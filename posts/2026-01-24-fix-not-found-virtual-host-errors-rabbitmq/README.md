@@ -8,7 +8,7 @@ Description: Diagnose and resolve RabbitMQ virtual host not found errors by unde
 
 ---
 
-When connecting to RabbitMQ, you might encounter a "NOT_FOUND - no vhost" error. This happens when your client tries to connect to a virtual host that does not exist or when the user lacks permissions to access it. This guide explains virtual hosts, common error causes, and step-by-step solutions.
+When connecting to RabbitMQ, you might encounter a "NOT_FOUND - no vhost" error. This happens when your client tries to connect to a virtual host that does not exist. A related permission problem usually appears as an access refused error when the user lacks permissions to access the vhost. This guide explains virtual hosts, common error causes, and step-by-step solutions.
 
 ## Understanding Virtual Hosts
 
@@ -63,9 +63,9 @@ First, check what virtual hosts exist on your RabbitMQ server.
 # The default installation only has '/' vhost
 rabbitmqctl list_vhosts
 
-# Get detailed information including limits and metadata
-# The verbose flag shows tracing status and description
-rabbitmqctl list_vhosts --verbose
+# Get detailed information including metadata
+# These fields show tracing status, description, tags, and default queue type
+rabbitmqctl list_vhosts name tracing description tags default_queue_type
 ```
 
 Check if your user has permissions for the target vhost.
@@ -74,7 +74,7 @@ Check if your user has permissions for the target vhost.
 # List all permissions showing user, vhost, and access levels
 # The configure, write, and read columns show regex patterns
 # '.*' means full access, empty means no access
-rabbitmqctl list_permissions --vhost /myapp
+rabbitmqctl list_permissions -p /myapp
 
 # List all vhosts a specific user can access
 # This helps identify if the user is missing the required vhost
@@ -194,10 +194,7 @@ for vhost in vhosts:
 
 Use configuration management to ensure vhosts exist across environments.
 
-```yaml
-# rabbitmq-definitions.json
-# RabbitMQ definitions file for automated setup
-# Import with: rabbitmqctl import_definitions rabbitmq-definitions.json
+```json
 {
   "vhosts": [
     {
@@ -247,7 +244,7 @@ Import the definitions to configure RabbitMQ.
 ```bash
 # Import definitions from a JSON file
 # This creates all vhosts, users, permissions, exchanges, and queues
-# Existing resources are updated, not duplicated
+# Existing resources are not duplicated
 rabbitmqctl import_definitions /path/to/rabbitmq-definitions.json
 
 # Export current definitions for backup or migration
@@ -274,7 +271,7 @@ echo "Setting up RabbitMQ vhost: $VHOST for user: $USER"
 
 # Check if vhost exists, create if not
 # The grep -q suppresses output, using exit code for logic
-if rabbitmqctl list_vhosts --quiet | grep -q "^${VHOST}$"; then
+if rabbitmqctl list_vhosts --silent | grep -Fxq "$VHOST"; then
     echo "Vhost '$VHOST' already exists"
 else
     echo "Creating vhost '$VHOST'"
@@ -282,7 +279,7 @@ else
 fi
 
 # Check if user exists
-if ! rabbitmqctl list_users --quiet | grep -q "^${USER}"; then
+if ! rabbitmqctl list_users --silent | awk '{print $1}' | grep -Fxq "$USER"; then
     echo "Error: User '$USER' does not exist"
     echo "Create user first: rabbitmqctl add_user $USER <password>"
     exit 1
@@ -297,14 +294,14 @@ rabbitmqctl set_permissions -p "$VHOST" "$USER" ".*" ".*" ".*"
 echo ""
 echo "Verification:"
 echo "Vhost exists:"
-rabbitmqctl list_vhosts | grep "$VHOST"
+rabbitmqctl list_vhosts --silent | grep -Fx "$VHOST"
 echo ""
 echo "User permissions:"
-rabbitmqctl list_user_permissions "$USER" | grep "$VHOST"
+rabbitmqctl list_user_permissions "$USER" | awk '{print $1}' | grep -Fx "$VHOST"
 
 echo ""
 echo "Setup complete. Connection string:"
-echo "amqp://${USER}:<password>@localhost:5672/$(python3 -c "from urllib.parse import quote; print(quote('$VHOST', safe=''))")"
+echo "amqp://${USER}:<password>@localhost:5672/$(VHOST_TO_ENCODE="$VHOST" python3 -c 'import os; from urllib.parse import quote; print(quote(os.environ["VHOST_TO_ENCODE"], safe=""))')"
 ```
 
 ## Kubernetes Deployment with Init Container
@@ -332,7 +329,7 @@ spec:
       # It ensures the vhost and permissions exist
       initContainers:
         - name: init-rabbitmq
-          image: rabbitmq:3.12-management
+          image: rabbitmq:4-management
           command:
             - /bin/bash
             - -c
@@ -362,13 +359,13 @@ spec:
         - name: myapp
           image: myapp:latest
           env:
-            - name: RABBITMQ_URL
-              value: "amqp://appuser:$(RABBITMQ_PASSWORD)@rabbitmq:5672/%2Fmyapp"
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-secret
                   key: password
+            - name: RABBITMQ_URL
+              value: "amqp://appuser:$(RABBITMQ_PASSWORD)@rabbitmq:5672/%2Fmyapp"
 ```
 
 ## Debugging Connection Issues
@@ -448,9 +445,9 @@ def diagnose_connection(host, port, vhost, username, password):
         print()
         print("Possible causes:")
         print("  1. Virtual host does not exist")
-        print("     Fix: rabbitmqctl add_vhost {vhost}")
+        print(f"     Fix: rabbitmqctl add_vhost {vhost}")
         print("  2. User does not have permission to access vhost")
-        print("     Fix: rabbitmqctl set_permissions -p {vhost} {username} '.*' '.*' '.*'")
+        print(f"     Fix: rabbitmqctl set_permissions -p {vhost} {username} '.*' '.*' '.*'")
         print("  3. Invalid credentials")
         print("     Fix: Verify username and password")
 

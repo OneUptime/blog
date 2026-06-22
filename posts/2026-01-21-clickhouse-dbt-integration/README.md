@@ -15,7 +15,7 @@ dbt (data build tool) enables analytics engineering with version-controlled, tes
 ### Installation
 
 ```bash
-pip install dbt-clickhouse
+pip install dbt-core dbt-clickhouse
 
 # Initialize project
 
@@ -36,8 +36,7 @@ my_analytics:
       port: 8123
       user: default
       password: ''
-      database: analytics
-      schema: dbt_dev
+      schema: analytics_dev
       secure: false
 
     prod:
@@ -46,8 +45,7 @@ my_analytics:
       port: 8443
       user: dbt_user
       password: "{{ env_var('DBT_PASSWORD') }}"
-      database: analytics
-      schema: dbt_prod
+      schema: analytics_prod
       secure: true
 ```
 
@@ -68,6 +66,7 @@ SELECT
     toDateTime(event_timestamp) AS event_time,
     user_id,
     event_type,
+    revenue,
     JSONExtractString(properties, 'page') AS page
 FROM {{ source('raw', 'events') }}
 WHERE event_timestamp >= '2024-01-01'
@@ -82,7 +81,7 @@ WHERE event_timestamp >= '2024-01-01'
     engine='SummingMergeTree()',
     order_by='(event_date, user_id)',
     partition_by='toYYYYMM(event_date)',
-    unique_key='(event_date, user_id)'
+    unique_key=['event_date', 'user_id']
 ) }}
 
 SELECT
@@ -93,7 +92,7 @@ SELECT
     sumIf(revenue, event_type = 'purchase') AS total_revenue
 FROM {{ ref('stg_events') }}
 {% if is_incremental() %}
-WHERE event_time > (SELECT max(event_date) FROM {{ this }})
+WHERE toDate(event_time) >= (SELECT coalesce(max(event_date), toDate('1970-01-01')) FROM {{ this }})
 {% endif %}
 GROUP BY event_date, user_id
 ```
@@ -104,15 +103,15 @@ GROUP BY event_date, user_id
 -- models/marts/mv_hourly_stats.sql
 {{ config(
     materialized='materialized_view',
-    engine='SummingMergeTree()',
+    engine='AggregatingMergeTree()',
     order_by='(hour, event_type)'
 ) }}
 
 SELECT
     toStartOfHour(event_time) AS hour,
     event_type,
-    count() AS event_count,
-    uniq(user_id) AS unique_users
+    countState() AS event_count_state,
+    uniqState(user_id) AS unique_users_state
 FROM {{ ref('stg_events') }}
 GROUP BY hour, event_type
 ```

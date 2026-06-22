@@ -308,14 +308,34 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
-  # Connector metrics
-  - pattern: kafka.connect<type=connector-metrics, connector=(.+)><>(.+)
-    name: kafka_connect_connector_$2
+  # Connector status
+  - pattern: 'kafka.connect<type=connector-metrics, connector=(.+)><>status: (.+)'
+    name: kafka_connect_connector_status
+    value: 1
     type: GAUGE
     labels:
       connector: "$1"
+      status: "$2"
 
-  # Connector task metrics
+  # Connector task status
+  - pattern: 'kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>status: (.+)'
+    name: kafka_connect_connector_task_status
+    value: 1
+    type: GAUGE
+    labels:
+      connector: "$1"
+      task: "$2"
+      status: "$3"
+
+  # Connector task counters
+  - pattern: kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>(.+-total)
+    name: kafka_connect_connector_task_$3
+    type: COUNTER
+    labels:
+      connector: "$1"
+      task: "$2"
+
+  # Connector task gauges
   - pattern: kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>(.+)
     name: kafka_connect_connector_task_$3
     type: GAUGE
@@ -323,28 +343,38 @@ rules:
       connector: "$1"
       task: "$2"
 
-  # Source task metrics
-  - pattern: kafka.connect<type=source-task-metrics, connector=(.+), task=(.+)><>(.+)
-    name: kafka_connect_source_task_$3
+  # Source and sink task counters
+  - pattern: kafka.connect<type=(source|sink)-task-metrics, connector=(.+), task=(.+)><>(.+-total)
+    name: kafka_connect_$1_task_$4
+    type: COUNTER
+    labels:
+      connector: "$2"
+      task: "$3"
+
+  # Source and sink task gauges
+  - pattern: kafka.connect<type=(source|sink)-task-metrics, connector=(.+), task=(.+)><>(.+)
+    name: kafka_connect_$1_task_$4
     type: GAUGE
     labels:
-      connector: "$1"
-      task: "$2"
+      connector: "$2"
+      task: "$3"
 
-  # Sink task metrics
-  - pattern: kafka.connect<type=sink-task-metrics, connector=(.+), task=(.+)><>(.+)
-    name: kafka_connect_sink_task_$3
-    type: GAUGE
-    labels:
-      connector: "$1"
-      task: "$2"
+  # Worker counters
+  - pattern: kafka.connect<type=connect-worker-metrics><>(.+-total)
+    name: kafka_connect_worker_$1
+    type: COUNTER
 
-  # Worker metrics
+  # Worker gauges
   - pattern: kafka.connect<type=connect-worker-metrics><>(.+)
     name: kafka_connect_worker_$1
     type: GAUGE
 
-  # Worker rebalance metrics
+  # Worker rebalance counters
+  - pattern: kafka.connect<type=connect-worker-rebalance-metrics><>(.+-total)
+    name: kafka_connect_worker_rebalance_$1
+    type: COUNTER
+
+  # Worker rebalance gauges
   - pattern: kafka.connect<type=connect-worker-rebalance-metrics><>(.+)
     name: kafka_connect_worker_rebalance_$1
     type: GAUGE
@@ -357,7 +387,7 @@ services:
   kafka-connect:
     image: confluentinc/cp-kafka-connect:7.5.0
     environment:
-      KAFKA_JMX_OPTS: >-
+      KAFKA_OPTS: >-
         -javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent-0.19.0.jar=9404:/opt/jmx_exporter/config.yml
     volumes:
       - ./jmx_prometheus_javaagent-0.19.0.jar:/opt/jmx_exporter/jmx_prometheus_javaagent-0.19.0.jar
@@ -374,18 +404,18 @@ services:
 groups:
   - name: kafka-connect
     rules:
-      # Connector failed
-      - alert: KafkaConnectConnectorFailed
-        expr: kafka_connect_connector_status == 0
+      # Connector not running
+      - alert: KafkaConnectConnectorNotRunning
+        expr: kafka_connect_connector_status{status!="running"} == 1
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Kafka Connect connector {{ $labels.connector }} failed"
+          summary: "Kafka Connect connector {{ $labels.connector }} is {{ $labels.status }}"
 
       # Task failed
       - alert: KafkaConnectTaskFailed
-        expr: kafka_connect_connector_task_status == 0
+        expr: kafka_connect_connector_task_status{status="failed"} == 1
         for: 1m
         labels:
           severity: critical
@@ -410,14 +440,14 @@ groups:
         annotations:
           summary: "Low throughput on connector {{ $labels.connector }}"
 
-      # High lag (for sink connectors)
-      - alert: KafkaConnectSinkLag
-        expr: kafka_connect_sink_task_sink_record_lag > 10000
+      # High active record count (for sink connectors)
+      - alert: KafkaConnectSinkActiveRecordsHigh
+        expr: kafka_connect_sink_task_sink_record_active_count_max > 10000
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High lag on sink connector {{ $labels.connector }}"
+          summary: "High active record count on sink connector {{ $labels.connector }}"
 ```
 
 ## Grafana Dashboard
@@ -432,12 +462,12 @@ groups:
       "type": "stat",
       "targets": [
         {
-          "expr": "count(kafka_connect_connector_status == 1)",
+          "expr": "count(kafka_connect_connector_status{status=\"running\"} == 1)",
           "legendFormat": "Running"
         },
         {
-          "expr": "count(kafka_connect_connector_status == 0)",
-          "legendFormat": "Failed"
+          "expr": "count(kafka_connect_connector_status{status!=\"running\"} == 1)",
+          "legendFormat": "Not running"
         }
       ]
     },
@@ -487,15 +517,15 @@ check_connector_status() {
     local connector=$1
     local status=$(curl -s "$CONNECT_URL/connectors/$connector/status")
 
-    local connector_state=$(echo $status | jq -r '.connector.state')
+    local connector_state=$(echo "$status" | jq -r '.connector.state')
     if [ "$connector_state" != "RUNNING" ]; then
         echo "CRITICAL: Connector $connector state: $connector_state"
         return 1
     fi
 
-    local failed_tasks=$(echo $status | jq -r '.tasks[] | select(.state != "RUNNING") | .id')
-    if [ -n "$failed_tasks" ]; then
-        echo "CRITICAL: Connector $connector has failed tasks: $failed_tasks"
+    local non_running_tasks=$(echo "$status" | jq -r '.tasks[] | select(.state != "RUNNING") | .id')
+    if [ -n "$non_running_tasks" ]; then
+        echo "CRITICAL: Connector $connector has non-running tasks: $non_running_tasks"
         return 1
     fi
 
@@ -507,7 +537,7 @@ check_connector_status() {
 connectors=$(curl -s "$CONNECT_URL/connectors")
 exit_code=0
 
-for connector in $(echo $connectors | jq -r '.[]'); do
+for connector in $(echo "$connectors" | jq -r '.[]'); do
     if ! check_connector_status $connector; then
         exit_code=1
     fi
@@ -600,7 +630,7 @@ status.storage.replication.factor=3
 | connector-status | != RUNNING | Alert, auto-restart |
 | task-status | != RUNNING | Alert, restart task |
 | source-record-poll-rate | < baseline | Investigate source |
-| sink-record-lag | > 10000 | Scale tasks |
+| sink-record-active-count-max | > 10000 | Investigate sink throughput, scale tasks when possible |
 | rebalance-rate | > 0.1/min | Investigate instability |
 
 ## Summary

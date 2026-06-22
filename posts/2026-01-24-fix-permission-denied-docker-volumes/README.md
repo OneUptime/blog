@@ -18,10 +18,9 @@ When you mount a host directory into a container, file ownership stays the same.
 # On host: file owned by your user (UID 1000)
 
 ls -la ./data/
--rw-r--r-- 1 youruser youruser 1234 Jan 25 10:00 config.json
+-rw------- 1 youruser youruser 1234 Jan 25 10:00 config.json
 
-# In container: process runs as 'node' user (UID 1000 in the image)
-# But if the image uses UID 100, permission denied occurs
+# In container: process runs as a user with UID 100
 docker run -v ./data:/app/data myapp cat /app/data/config.json
 cat: /app/data/config.json: Permission denied
 ```
@@ -62,7 +61,7 @@ In Docker Compose:
 services:
   app:
     image: myapp:latest
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ./data:/app/data
 ```
@@ -70,8 +69,8 @@ services:
 Create a `.env` file or export variables:
 
 ```bash
-export UID=$(id -u)
-export GID=$(id -g)
+export HOST_UID=$(id -u)
+export HOST_GID=$(id -g)
 docker compose up
 ```
 
@@ -188,9 +187,6 @@ services:
     user: "1000:1000"
     volumes:
       - app-data:/app/data
-    depends_on:
-      volume-init:
-        condition: service_completed_successfully
 
 volumes:
   app-data:
@@ -207,8 +203,9 @@ docker compose up app
 
 Docker user namespaces remap container UIDs to unprivileged host UIDs:
 
+In `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "userns-remap": "default"
 }

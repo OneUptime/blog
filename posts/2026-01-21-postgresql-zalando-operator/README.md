@@ -12,7 +12,7 @@ The Zalando Postgres Operator is a battle-tested solution for running PostgreSQL
 
 ## Prerequisites
 
-- Kubernetes cluster (1.21+)
+- Kubernetes cluster supported by your operator release (current releases require Kubernetes 1.27+)
 - kubectl configured
 - Helm 3.x
 - Storage class available
@@ -42,7 +42,8 @@ helm install postgres-operator postgres-operator-charts/postgres-operator \
   --create-namespace
 
 # Optionally install the UI
-helm install postgres-operator-ui postgres-operator-charts/postgres-operator-ui \
+helm repo add postgres-operator-ui-charts https://opensource.zalando.com/postgres-operator/charts/postgres-operator-ui
+helm install postgres-operator-ui postgres-operator-ui-charts/postgres-operator-ui \
   --namespace postgres-operator
 ```
 
@@ -54,23 +55,28 @@ git clone https://github.com/zalando/postgres-operator.git
 cd postgres-operator
 
 # Install operator manifests
-kubectl create namespace postgres-operator
+# The example manifests target the default namespace unless you edit them.
 kubectl apply -f manifests/configmap.yaml
 kubectl apply -f manifests/operator-service-account-rbac.yaml
 kubectl apply -f manifests/postgres-operator.yaml
+kubectl apply -f manifests/api-service.yaml
 
 # Verify installation
-kubectl get pods -n postgres-operator
+kubectl get pods -l name=postgres-operator
 ```
 
 ### Verify Installation
 
 ```bash
-# Check operator is running
+# Check operator is running after Helm installation
 kubectl get deployment postgres-operator -n postgres-operator
 
 # Check operator logs
-kubectl logs -l name=postgres-operator -n postgres-operator
+kubectl logs -l app.kubernetes.io/name=postgres-operator -n postgres-operator
+
+# If you used the example manifests without editing namespaces
+kubectl get deployment postgres-operator
+kubectl logs -l name=postgres-operator
 ```
 
 ## Creating a PostgreSQL Cluster
@@ -313,7 +319,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: app
@@ -390,16 +402,16 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO manual_user;
 
 ### Password Rotation
 
-Update the secret to trigger password change:
+Enable operator-managed password rotation for selected users:
 
-```bash
-# Generate new password
-NEW_PASSWORD=$(openssl rand -base64 24)
+```yaml
+spec:
+  usersWithSecretRotation:
+    - myuser
 
-# Update secret
-kubectl patch secret myuser.acid-postgres-cluster.credentials.postgresql.acid.zalan.do \
-  --type='json' \
-  -p="[{\"op\": \"replace\", \"path\": \"/data/password\", \"value\": \"$(echo -n $NEW_PASSWORD | base64)\"}]"
+  # For rarely used users such as migration jobs, rotate the password in place.
+  usersWithInPlaceSecretRotation:
+    - flyway
 ```
 
 ## Connection Pooling
@@ -414,7 +426,7 @@ spec:
     mode: "transaction"  # or "session"
     schema: "pooler"
     user: "pooler"
-    dockerImage: "registry.opensource.zalan.do/acid/pgbouncer:master-28"
+    dockerImage: "ghcr.io/zalando/postgres-operator/pgbouncer:latest"
     maxDBConnections: 100
     resources:
       requests:
@@ -449,7 +461,7 @@ metadata:
   name: postgres-operator
   namespace: postgres-operator
 data:
-  logical_backup_docker_image: "registry.opensource.zalan.do/acid/logical-backup:v1.10.1"
+  logical_backup_docker_image: "ghcr.io/zalando/postgres-operator/logical-backup:v1.15.1"
   logical_backup_s3_bucket: "my-postgres-backups"
   logical_backup_s3_region: "us-east-1"
   logical_backup_s3_endpoint: ""
@@ -478,23 +490,22 @@ metadata:
   namespace: postgres-operator
 data:
   # WAL-G settings
-  wal_gs_bucket: "my-bucket"
   wal_s3_bucket: "my-bucket"
   aws_region: "us-east-1"
+  pod_environment_secret: "postgres-pod-env"
 
   # Enable continuous archiving
   enable_spilo_wal_path_compat: "true"
 ```
 
-For S3 backups, create a secret:
+For S3 backups, create the referenced secret in the PostgreSQL cluster namespace:
 
 ```bash
 kubectl create secret generic postgres-pod-env \
   --from-literal=AWS_ACCESS_KEY_ID=your-key \
   --from-literal=AWS_SECRET_ACCESS_KEY=your-secret \
   --from-literal=AWS_REGION=us-east-1 \
-  --from-literal=WAL_S3_BUCKET=my-backup-bucket \
-  -n postgres-operator
+  -n production
 ```
 
 Enable in cluster:
@@ -504,14 +515,6 @@ spec:
   env:
     - name: WAL_S3_BUCKET
       value: "my-backup-bucket"
-    - name: AWS_REGION
-      value: "us-east-1"
-    - name: USE_WALG_BACKUP
-      value: "true"
-    - name: USE_WALG_RESTORE
-      value: "true"
-    - name: BACKUP_SCHEDULE
-      value: "0 0 * * *"
 ```
 
 ## Monitoring
@@ -540,6 +543,25 @@ spec:
 
 ### ServiceMonitor for Prometheus Operator
 
+Create a Service for the exporter port, then select it with a ServiceMonitor:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: acid-postgres-cluster-metrics
+  labels:
+    cluster-name: acid-postgres-cluster
+    app: postgres-exporter
+spec:
+  selector:
+    cluster-name: acid-postgres-cluster
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+```
+
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -551,6 +573,7 @@ spec:
   selector:
     matchLabels:
       cluster-name: acid-postgres-cluster
+      app: postgres-exporter
   namespaceSelector:
     matchNames:
       - default
@@ -772,7 +795,7 @@ metadata:
   namespace: postgres-operator
 data:
   # Docker repository
-  docker_image: "registry.opensource.zalan.do/acid/spilo-16:3.0-p1"
+  docker_image: "ghcr.io/zalando/spilo-18:4.1-p1"
 
   # Resource defaults
   default_cpu_request: "100m"
@@ -791,12 +814,12 @@ data:
   replication_username: "standby"
 
   # Connection pooler
-  connection_pooler_image: "registry.opensource.zalan.do/acid/pgbouncer:master-28"
+  connection_pooler_image: "ghcr.io/zalando/postgres-operator/pgbouncer:latest"
   connection_pooler_default_cpu_request: "250m"
   connection_pooler_default_memory_request: "256Mi"
 
   # Logical backup
-  logical_backup_docker_image: "registry.opensource.zalan.do/acid/logical-backup:v1.10.1"
+  logical_backup_docker_image: "ghcr.io/zalando/postgres-operator/logical-backup:v1.15.1"
   logical_backup_s3_bucket: ""
 ```
 

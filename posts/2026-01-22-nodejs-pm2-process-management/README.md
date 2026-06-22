@@ -149,8 +149,8 @@ module.exports = {
 ```javascript
 const cluster = require('cluster');
 
-if (cluster.isMaster) {
-  console.log(`Master ${process.pid} is running`);
+if (cluster.isPrimary) {
+  console.log(`Primary ${process.pid} is running`);
 } else {
   console.log(`Worker ${process.pid} started`);
 }

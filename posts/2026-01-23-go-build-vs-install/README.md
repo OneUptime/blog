@@ -17,7 +17,7 @@ Two of the most common Go commands are `go build` and `go install`. They seem si
 | Command | Output Location | Use Case |
 |---------|-----------------|----------|
 | `go build` | Current directory (or temp) | Development, testing |
-| `go install` | `$GOPATH/bin` or `$GOBIN` | Installing tools, distribution |
+| `go install` | `$GOBIN` or `$GOPATH/bin` | Installing tools, distribution |
 
 ---
 
@@ -99,7 +99,7 @@ go install github.com/some/tool@v1.2.3
 flowchart LR
     A[Source Files] --> B[go install]
     B --> C[Compile]
-    C --> D[Binary in $GOBIN]
+    C --> D[Binary in $GOBIN or $GOPATH/bin]
     D --> E[Available in PATH]
 ```
 
@@ -126,7 +126,7 @@ go build -o mytool
 
 # When ready to use system-wide
 go install
-mytool --help  # Available anywhere (if $GOBIN in PATH)
+mytool --help  # Available anywhere (if the install directory is in PATH)
 ```
 
 ### Example 2: Building for Multiple Platforms
@@ -137,7 +137,8 @@ GOOS=linux GOARCH=amd64 go build -o dist/myapp-linux-amd64
 GOOS=darwin GOARCH=amd64 go build -o dist/myapp-darwin-amd64
 GOOS=windows GOARCH=amd64 go build -o dist/myapp-windows-amd64.exe
 
-# go install always targets the current platform
+# go install can cross-compile too, but it writes to a GOOS_GOARCH subdirectory
+# of the install directory instead of letting you choose the output file name
 ```
 
 ### Example 3: Installing Go Tools
@@ -158,7 +159,7 @@ dlv --help
 
 ## Build Flags
 
-Both commands support similar flags:
+Both commands support many of the same build flags, though `go install` does not use `go build`'s `-o` output flag:
 
 ```bash
 # Verbose output
@@ -192,7 +193,7 @@ go build ./...     # Build all packages
 go install ./...   # Install all main packages
 
 # Install remote tools
-go install github.com/some/tool@latest
+go install github.com/some/tool@latest  # Use @version for tools outside the current module
 ```
 
 ### GOPATH Mode (Legacy)
@@ -254,19 +255,23 @@ go env GOCACHE
 go install ./cmd/myapp
 
 # Binary goes to $GOBIN or $GOPATH/bin
-ls $(go env GOBIN)
+GOBIN=$(go env GOBIN)
+if [ -z "$GOBIN" ]; then
+    GOBIN="$(go env GOPATH)/bin"
+fi
+ls "$GOBIN"
 ```
 
 ### Remote Packages
 
 ```bash
-# Install with version (required for remote)
+# Install tools outside the current module with a version
 go install github.com/user/repo@latest
 go install github.com/user/repo@v1.2.3
 go install github.com/user/repo@commit-hash
 
-# Cannot install remote without version
-go install github.com/user/repo  # Error in module mode
+# Without a version, go install uses the current module context
+go install github.com/user/repo  # Works only if this package is available to the current module
 ```
 
 ---
@@ -340,7 +345,7 @@ done
 tools=(
     "golang.org/x/tools/cmd/goimports@latest"
     "github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
-    "github.com/cosmtrek/air@latest"
+    "github.com/air-verse/air@latest"
 )
 
 for tool in "${tools[@]}"; do
@@ -356,8 +361,12 @@ done
 ### Binary Not Found After go install
 
 ```bash
-# Check if GOBIN is in PATH
-echo $PATH | grep -q "$(go env GOBIN)" && echo "GOBIN in PATH" || echo "Add GOBIN to PATH"
+# Check if the Go install directory is in PATH
+GOBIN=$(go env GOBIN)
+if [ -z "$GOBIN" ]; then
+    GOBIN="$(go env GOPATH)/bin"
+fi
+echo "$PATH" | grep -q "$GOBIN" && echo "Go install directory in PATH" || echo "Add Go install directory to PATH"
 
 # Add to ~/.bashrc or ~/.zshrc
 export PATH="$PATH:$(go env GOPATH)/bin"
@@ -406,8 +415,8 @@ Use `go install` when:
 
 | Feature | go build | go install |
 |---------|----------|------------|
-| Output location | Current dir / specified | $GOBIN |
-| Cross-compilation | Yes | No (current platform only) |
+| Output location | Current dir / specified | $GOBIN or $GOPATH/bin |
+| Cross-compilation | Yes | Yes, but output location is fixed |
 | Remote packages | No | Yes (with @version) |
 | Output naming | Customizable | Fixed (package name) |
 

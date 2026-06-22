@@ -8,7 +8,7 @@ Description: A practical guide to connecting to ClickHouse from popular programm
 
 ---
 
-ClickHouse provides two protocols for client connections: HTTP (port 8123) and Native (port 9000). The native protocol is faster but requires language-specific drivers. The HTTP interface works with any HTTP client but adds some overhead. This guide covers the best client libraries for Python, Node.js, and Go, with working examples and production patterns.
+ClickHouse provides two protocols for client connections: HTTP (port 8123) and Native (port 9000). The native protocol is typically fastest but requires language-specific drivers. The HTTP interface works with any HTTP client and is often easier to use through proxies and firewalls. This guide covers the best client libraries for Python, Node.js, and Go, with working examples and production patterns.
 
 ## Python: clickhouse-connect
 
@@ -125,10 +125,9 @@ For web applications, use connection pooling to reuse connections:
 
 ```python
 import clickhouse_connect
-from contextlib import contextmanager
 
-# Create a client pool by keeping clients around
-# clickhouse-connect handles connection pooling internally
+# Create a reusable client wrapper
+# clickhouse-connect reuses underlying HTTP connections internally
 
 class ClickHousePool:
     def __init__(self, host, port=8123, username='default', password=''):
@@ -175,27 +174,24 @@ pip install asynch
 
 ```python
 import asyncio
-from asynch import connect
+from asynch import Connection
 
 async def main():
     # Create async connection
-    conn = await connect(
+    async with Connection(
         host='localhost',
         port=9000,  # Native protocol
         database='default',
         user='default',
         password='your_password'
-    )
+    ) as conn:
+        async with conn.cursor() as cursor:
+            # Execute query
+            await cursor.execute('SELECT * FROM events LIMIT 10')
+            result = await cursor.fetchall()
 
-    async with conn.cursor() as cursor:
-        # Execute query
-        await cursor.execute('SELECT * FROM events LIMIT 10')
-        result = await cursor.fetchall()
-
-        for row in result:
-            print(row)
-
-    # Connection automatically closed
+            for row in result:
+                print(row)
 
 asyncio.run(main())
 ```
@@ -219,7 +215,7 @@ const { createClient } = require('@clickhouse/client');
 
 // Create a client instance
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
   username: 'default',
   password: 'your_password',
   database: 'default',
@@ -247,7 +243,7 @@ The Node.js client supports various query formats:
 const { createClient } = require('@clickhouse/client');
 
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
 });
 
 // Query with JSONEachRow format for easy parsing
@@ -282,10 +278,11 @@ async function streamEvents() {
     format: 'JSONEachRow',
   });
 
-  // Stream processes rows one at a time
-  for await (const row of result.stream()) {
-    const event = JSON.parse(row.text);
-    processEvent(event);
+  // The stream yields chunks of parsed Row objects
+  for await (const rows of result.stream()) {
+    for (const row of rows) {
+      processEvent(row.json());
+    }
   }
 }
 ```
@@ -299,7 +296,7 @@ const { createClient } = require('@clickhouse/client');
 const { v4: uuidv4 } = require('uuid');
 
 const client = createClient({
-  host: 'http://localhost:8123',
+  url: 'http://localhost:8123',
 });
 
 // Insert array of objects
@@ -351,7 +348,7 @@ const app = express();
 
 // Create a single client instance for the application
 const clickhouse = createClient({
-  host: process.env.CLICKHOUSE_HOST || 'http://localhost:8123',
+  url: process.env.CLICKHOUSE_URL || 'http://localhost:8123',
   username: process.env.CLICKHOUSE_USER || 'default',
   password: process.env.CLICKHOUSE_PASSWORD || '',
   database: process.env.CLICKHOUSE_DATABASE || 'default',
@@ -598,6 +595,7 @@ func insertEventsBatch(ctx context.Context, conn clickhouse.Conn, count int) err
     if err != nil {
         return err
     }
+    defer batch.Close()
 
     // Add rows to the batch
     for i := 0; i < count; i++ {
@@ -719,10 +717,10 @@ async function queryWithRetry(client, query, maxRetries = 3) {
 
 ```go
 // Go retry pattern
-func queryWithRetry(ctx context.Context, conn clickhouse.Conn, query string, maxRetries int) ([]Event, error) {
+func queryWithRetry(ctx context.Context, conn clickhouse.Conn, eventType string, limit int, maxRetries int) ([]Event, error) {
     var lastErr error
     for attempt := 1; attempt <= maxRetries; attempt++ {
-        events, err := queryEvents(ctx, conn, query)
+        events, err := queryEvents(ctx, conn, eventType, limit)
         if err == nil {
             return events, nil
         }

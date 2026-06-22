@@ -28,15 +28,22 @@ The fix is visibility. Create dashboards that show budget status at a glance. He
 # SLO target: 99.9% (0.999)
 # Window: 30 days
 
-# First, calculate actual success rate over the window
-(
-  sum(increase(http_requests_total{status=~"2..|3.."}[30d]))
-  /
-  sum(increase(http_requests_total[30d]))
+clamp_min(
+  (
+    1 - (
+      (1 - (
+        sum(increase(http_requests_total{status!~"5.."}[30d]))
+        /
+        sum(increase(http_requests_total[30d]))
+      ))
+      /
+      (1 - 0.999)
+    )
+  ) * 100,
+  0
 )
 
-# Compare against SLO to get budget consumption
-# If actual is 99.95%, and SLO is 99.9%, budget used = (0.001 - 0.0005) / 0.001 = 50%
+# If actual is 99.95%, and SLO is 99.9%, budget remaining = 50%
 ```
 
 A cleaner approach is to compute this in your monitoring platform and expose it as a metric:
@@ -46,7 +53,6 @@ A cleaner approach is to compute this in your monitoring platform and expose it 
 # Calculate and expose error budget metrics
 
 from prometheus_client import Gauge
-import time
 
 # Metric that will be scraped by Prometheus
 error_budget_remaining = Gauge(
@@ -114,7 +120,7 @@ groups:
       - alert: ErrorBudgetFastBurn
         expr: |
           (1 - (
-            sum(rate(http_requests_total{status=~"2.."}[1h]))
+            sum(rate(http_requests_total{status!~"5.."}[1h]))
             / sum(rate(http_requests_total[1h]))
           )) > (14.4 * 0.001)
         for: 2m
@@ -129,9 +135,9 @@ groups:
       - alert: ErrorBudgetSlowBurn
         expr: |
           (1 - (
-            sum(rate(http_requests_total{status=~"2.."}[6h]))
+            sum(rate(http_requests_total{status!~"5.."}[6h]))
             / sum(rate(http_requests_total[6h]))
-          )) > (2 * 0.001)
+          )) > (6 * 0.001)
         for: 10m
         labels:
           severity: warning
@@ -201,7 +207,6 @@ Create and enforce a budget policy with real consequences:
 # Deployment gating based on error budget
 
 import requests
-from datetime import datetime
 
 class DeploymentGate:
     def __init__(self, monitoring_api_url, service_name):
@@ -314,7 +319,7 @@ standards:
       A request is successful if it returns a non-5xx status code.
 
     calculation: |
-      sum(requests{status!~"5.."}) / sum(requests)
+      sum(rate(requests_total{status!~"5.."}[5m])) / sum(rate(requests_total[5m]))
 
     exclusions:
       - "Health check endpoints (/health, /ready)"
@@ -327,7 +332,7 @@ standards:
       Measured at the application layer, not including network transit.
 
     calculation: |
-      histogram_quantile(0.95, request_duration_seconds_bucket)
+      histogram_quantile(0.95, sum by (le) (rate(request_duration_seconds_bucket[5m])))
 
     exclusions:
       - "Long-polling endpoints"

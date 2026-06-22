@@ -156,8 +156,8 @@ Quotes inside command substitution can cause confusion.
 result="$(echo "inner quote)"
 # The closing ) is inside the quoted string
 
-# Solution 1: Escape inner quotes
-result="$(echo \"inner quote\")"
+# Solution 1: Close the inner quote before the command substitution ends
+result="$(echo "inner quote")"
 
 # Solution 2: Use single quotes inside (if no expansion needed)
 result="$(echo 'inner quote')"
@@ -181,7 +181,7 @@ flowchart LR
     subgraph "Double Quotes \"...\""
         B1["Variables expanded: $var"]
         B2["Commands expanded: $(cmd)"]
-        B3["Escape sequences: \n, \\, \$, \""]
+        B3["Backslash escapes: dollar, backtick, quote, backslash, newline"]
         B4["Can contain single quotes"]
     end
 
@@ -301,9 +301,9 @@ WHERE name = 'John'
   AND status = 'active';
 EOF
 
-# Solution 4: Use variables
+# Solution 4: Use variables (escape or parameterize user input)
 name="John"
-mysql -e "SELECT * FROM users WHERE name = '$name'"
+mysql -e "SELECT * FROM users WHERE name = '${name//\'/\'\'}'"
 ```
 
 ### Pattern 3: Strings with Variables and Special Characters
@@ -527,7 +527,7 @@ run_query() {
     local search_term="$1"
 
     # Use parameterized queries when possible
-    # For simple cases, properly escape
+    # For simple MySQL string literals, double single quotes in the value
     mysql -e "SELECT * FROM users WHERE name = '${search_term//\'/\'\'}'"
 }
 

@@ -41,11 +41,11 @@ First, check what environment variables are actually available in your container
 
 kubectl exec -it myapp-pod -- env | sort
 
-# If the pod is crashing, use a debug container
-kubectl debug myapp-pod -it --image=busybox -- env | sort
+# If the pod is crashing, inspect the previous container logs
+kubectl logs myapp-pod --previous
 
 # Check what the deployment defines
-kubectl get deployment myapp -o jsonpath='{.spec.template.spec.containers[0].env}' | jq
+kubectl get deployment myapp -o json | jq '.spec.template.spec.containers[0].env'
 ```
 
 Common causes and fixes for missing environment variables:
@@ -117,7 +117,7 @@ kubectl create configmap myapp-config \
 
 ```bash
 # List all keys in a ConfigMap
-kubectl get configmap myapp-config -o jsonpath='{.data}' | jq 'keys'
+kubectl get configmap myapp-config -o json | jq '.data | keys'
 
 # Check the exact key name (watch for typos)
 kubectl get configmap myapp-config -o yaml
@@ -149,12 +149,12 @@ By default, environment variables from ConfigMaps are not updated when the Confi
 
 ```bash
 # Force a rolling restart to pick up ConfigMap changes
-kubectl rollout restart deployment myapp
+kubectl rollout restart deployment/myapp
 
 # Or use a hash annotation to trigger updates automatically
 ```
 
-For automatic updates, add a ConfigMap hash to your deployment:
+For automatic updates in a Helm chart, add a ConfigMap hash to your deployment:
 
 ```yaml
 apiVersion: apps/v1
@@ -219,6 +219,8 @@ metadata:
   name: prevent-direct-changes
 webhooks:
   - name: gitops-only.example.com
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
     rules:
       - operations: ["CREATE", "UPDATE", "DELETE"]
         apiGroups: ["apps"]
@@ -320,8 +322,17 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/myapp/config.yaml  # Mounts directory, not file
+      volumes:
+        - name: config
+          configMap:
+            name: myapp-config
 
 # Fix: Mount as subPath for single file
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
       containers:
         - name: myapp
           volumeMounts:
@@ -426,17 +437,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install validation dependencies
+        run: |
+          python3 -m pip install pyyaml jsonschema
+
       - name: Validate ConfigMaps
         run: |
           for env in development staging production; do
             echo "Validating $env configuration..."
-            kustomize build config/overlays/$env > /tmp/manifests.yaml
-            python scripts/config_validator.py /tmp/manifests.yaml
+            kustomize build config/overlays/$env > "/tmp/manifests-$env.yaml"
+            kubectl apply --dry-run=client -f "/tmp/manifests-$env.yaml"
           done
 
-      - name: Dry-run against cluster
+      - name: Validate application config files
         run: |
-          kubectl apply --dry-run=server -f /tmp/manifests.yaml
+          for env in development staging production; do
+            python3 scripts/config_validator.py "config/overlays/$env/app-config.yaml"
+          done
 ```
 
 ## Best Practices for Configuration Management

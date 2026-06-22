@@ -64,8 +64,9 @@ sudo -u postgres pg_ctl promote -D /var/lib/postgresql/16/main
 # Method 2: Using SQL (PostgreSQL 12+)
 sudo -u postgres psql -c "SELECT pg_promote();"
 
-# Method 3: Create trigger file (legacy)
-sudo -u postgres touch /var/lib/postgresql/16/main/failover.trigger
+# Method 3: Use promote_trigger_file (PostgreSQL 15 and older, if configured)
+# In PostgreSQL 16+, use pg_ctl promote or pg_promote() instead.
+sudo -u postgres touch /path/to/configured/promote_trigger_file
 ```
 
 ### Step 4: Verify Promotion
@@ -142,13 +143,13 @@ patronictl -c /etc/patroni/patroni.yml list
 patronictl -c /etc/patroni/patroni.yml switchover postgres-cluster
 
 # Interactive prompts:
-# Master [pg-node1]:
+# Leader [pg-node1]:
 # Candidate ['pg-node2', 'pg-node3'] []: pg-node2
 # When [now]:
 
 # Or non-interactive
 patronictl -c /etc/patroni/patroni.yml switchover \
-  --master pg-node1 \
+  --leader pg-node1 \
   --candidate pg-node2 \
   --force
 ```
@@ -157,10 +158,12 @@ patronictl -c /etc/patroni/patroni.yml switchover \
 
 ```bash
 # Force failover when leader is down
-patronictl -c /etc/patroni/patroni.yml failover postgres-cluster
+patronictl -c /etc/patroni/patroni.yml failover postgres-cluster \
+  --candidate pg-node2
 
 # Specify candidate
 patronictl -c /etc/patroni/patroni.yml failover \
+  postgres-cluster \
   --candidate pg-node2 \
   --force
 ```
@@ -224,7 +227,8 @@ def get_connection(max_retries=5, retry_delay=2):
 # /etc/haproxy/haproxy.cfg
 
 backend pg_backend
-    option httpchk GET /master
+    mode tcp
+    option httpchk GET /primary
     http-check expect status 200
 
     server pg-node1 10.0.0.11:5432 check port 8008
@@ -234,9 +238,9 @@ backend pg_backend
 
 Patroni's REST API responds:
 
-- `/master` - 200 if leader, 503 otherwise
+- `/primary` - 200 if primary with the leader lock, 503 otherwise
 - `/replica` - 200 if replica, 503 otherwise
-- `/health` - 200 if healthy
+- `/health` - 200 if PostgreSQL is up and running
 
 ## Post-Failover Recovery
 
@@ -251,6 +255,7 @@ After failover, the old primary needs to rejoin as a replica:
 # Stop PostgreSQL
 sudo systemctl stop postgresql
 
+# pg_rewind requires wal_log_hints=on or data checksums on the target.
 # Rewind to match new primary
 sudo -u postgres pg_rewind \
     --target-pgdata=/var/lib/postgresql/16/main \
@@ -372,14 +377,14 @@ groups:
   - name: postgresql_failover
     rules:
       - alert: PostgreSQLLeaderChanged
-        expr: changes(pg_replication_is_replica[5m]) > 0
+        expr: changes(patroni_primary{scope="postgres-cluster"}[5m]) > 0
         labels:
           severity: warning
         annotations:
           summary: "PostgreSQL leadership change detected"
 
       - alert: PostgreSQLNoLeader
-        expr: sum(pg_up{job="postgresql"} * on(instance) group_left() (1 - pg_replication_is_replica)) == 0
+        expr: sum(patroni_primary{scope="postgres-cluster"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -387,7 +392,11 @@ groups:
           summary: "No PostgreSQL primary available"
 
       - alert: PostgreSQLFailoverLag
-        expr: pg_replication_lag_seconds > 60
+        expr: |
+          max by (scope) (patroni_xlog_location{scope="postgres-cluster"})
+          -
+          min by (scope) (patroni_xlog_replayed_location{scope="postgres-cluster"} > 0)
+          > 104857600
         for: 2m
         labels:
           severity: warning
@@ -408,17 +417,17 @@ CREATE TABLE IF NOT EXISTS failover_log (
     details JSONB
 );
 
--- Trigger to log role changes
-CREATE OR REPLACE FUNCTION log_role_change()
-RETURNS EVENT_TRIGGER AS $$
-BEGIN
-    INSERT INTO failover_log (event_type, details)
-    VALUES ('role_change', jsonb_build_object(
+-- Run from failover automation after promotion
+INSERT INTO failover_log (event_type, old_role, new_role, details)
+VALUES (
+    'promotion',
+    'replica',
+    'primary',
+    jsonb_build_object(
         'is_recovery', pg_is_in_recovery(),
-        'timeline', pg_control_checkpoint().timeline_id
-    ));
-END;
-$$ LANGUAGE plpgsql;
+        'timeline', (pg_control_checkpoint()).timeline_id
+    )
+);
 ```
 
 ## Best Practices

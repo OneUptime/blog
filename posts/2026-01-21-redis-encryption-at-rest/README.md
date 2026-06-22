@@ -44,7 +44,7 @@ class RedisEncryption {
   }
 
   encrypt(data) {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
 
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
@@ -125,8 +125,12 @@ class EncryptedRedisClient {
       try {
         return this.encryption.decrypt(value);
       } catch (e) {
-        // Value might not be encrypted
-        return value;
+        // Value might be selectively encrypted object data or unencrypted
+        try {
+          return this.decryptObject(value);
+        } catch (e) {
+          return value;
+        }
       }
     }
     return value;
@@ -134,6 +138,10 @@ class EncryptedRedisClient {
 
   // Selectively encrypt sensitive fields in objects
   encryptObject(obj) {
+    return JSON.stringify(this.encryptObjectRecursive(obj));
+  }
+
+  encryptObjectRecursive(obj) {
     const encrypted = {};
 
     for (const [key, value] of Object.entries(obj)) {
@@ -141,13 +149,13 @@ class EncryptedRedisClient {
         encrypted[key] = this.encryption.encrypt(value);
         encrypted[`${key}_encrypted`] = true;
       } else if (typeof value === 'object' && value !== null) {
-        encrypted[key] = this.encryptObject(value);
+        encrypted[key] = this.encryptObjectRecursive(value);
       } else {
         encrypted[key] = value;
       }
     }
 
-    return JSON.stringify(encrypted);
+    return encrypted;
   }
 
   decryptObject(encryptedStr) {
@@ -372,6 +380,8 @@ if __name__ == '__main__':
 
 ## Key Management
 
+The key rotation example below demonstrates payload formats and rotation flow. In production, store encryption keys in an external KMS, HSM, or secrets manager rather than in the same Redis deployment as the encrypted data.
+
 ### Key Rotation Strategy
 
 ```javascript
@@ -437,7 +447,7 @@ class KeyRotationManager {
   // Encrypt with key ID embedded in payload
   async encrypt(data) {
     const key = await this.getCurrentKey();
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
@@ -592,8 +602,8 @@ appendonly yes
 appendfilename "appendonly.aof"
 appendfsync everysec
 
-# Disable memory overcommit to prevent swap
-# (swap might not be encrypted)
+# Enable memory overcommit so Redis background saves and replication can fork reliably.
+# This does not disable swap; disable swap or use encrypted swap separately if needed.
 # Set in sysctl: vm.overcommit_memory = 1
 
 # Limit memory to prevent swap usage
@@ -609,6 +619,7 @@ maxmemory-policy allkeys-lru
 # rdb_encryption.py
 import os
 import subprocess
+import time
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -655,11 +666,17 @@ def backup_encrypted():
     """Create encrypted backup of Redis RDB."""
     encryption = RDBEncryption(os.environ['REDIS_BACKUP_PASSWORD'])
 
+    last_save = subprocess.check_output(['redis-cli', 'LASTSAVE'], text=True).strip()
+
     # Trigger RDB save
     subprocess.run(['redis-cli', 'BGSAVE'], check=True)
 
     # Wait for save to complete
-    subprocess.run(['redis-cli', 'LASTSAVE'], check=True)
+    while True:
+        current_save = subprocess.check_output(['redis-cli', 'LASTSAVE'], text=True).strip()
+        if current_save != last_save:
+            break
+        time.sleep(1)
 
     # Encrypt the RDB file
     encryption.encrypt_rdb(
@@ -670,7 +687,6 @@ def backup_encrypted():
 
 if __name__ == '__main__':
     import sys
-    import time
 
     encryption = RDBEncryption(os.environ['REDIS_BACKUP_PASSWORD'])
 
@@ -695,7 +711,7 @@ class RedisEncryptionProxy {
     this.redisHost = config.redisHost || 'localhost';
     this.redisPort = config.redisPort || 6379;
     this.encryptionKey = crypto.scryptSync(config.encryptionKey, 'salt', 32);
-    this.encryptedCommands = new Set(['SET', 'SETEX', 'SETNX', 'MSET', 'HSET', 'LPUSH', 'RPUSH']);
+    this.encryptedCommands = new Set(['SET', 'SETEX', 'SETNX']);
   }
 
   start() {
@@ -737,7 +753,7 @@ class RedisEncryptionProxy {
   }
 
   encrypt(value) {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
 
     let encrypted = cipher.update(value, 'utf8', 'base64');
@@ -775,13 +791,13 @@ class RedisEncryptionProxy {
       const command = lines[2].toUpperCase();
 
       if (this.encryptedCommands.has(command)) {
-        // Encrypt the value (last argument for SET)
-        const valueIndex = lines.length - 2;
+        // Encrypt the value argument for SET, SETNX, and SETEX.
+        const valueIndex = command === 'SETEX' ? 8 : 6;
         const originalValue = lines[valueIndex];
         const encryptedValue = this.encrypt(originalValue);
 
         lines[valueIndex] = encryptedValue;
-        lines[valueIndex - 1] = `$${encryptedValue.length}`;
+        lines[valueIndex - 1] = `$${Buffer.byteLength(encryptedValue)}`;
       }
     }
 
@@ -800,7 +816,7 @@ class RedisEncryptionProxy {
       const value = lines[1];
       const decrypted = this.decrypt(value);
 
-      return `$${decrypted.length}\r\n${decrypted}\r\n`;
+      return `$${Buffer.byteLength(decrypted)}\r\n${decrypted}\r\n`;
     }
 
     return data;
@@ -876,7 +892,7 @@ class KMSEncryptedRedis {
 
   async encrypt(data) {
     const dataKey = await this.getDataKey();
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
 
     const cipher = crypto.createCipheriv(
       'aes-256-gcm',

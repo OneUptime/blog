@@ -29,7 +29,7 @@ flowchart TD
     subgraph "Common Causes"
         G[Topic not created]
         H[Auto-create disabled]
-        I[Partition deleted]
+        I[Partition count mismatch]
         J[Metadata not propagated]
         K[Typo in topic name]
     end
@@ -58,35 +58,38 @@ flowchart TD
 ## Solution: Create Topic Before Use
 
 ```java
-import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.errors.TopicExistsException;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
 public class TopicCreator {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
     public TopicCreator(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.adminClient = AdminClient.create(props);
+        this.adminClient = Admin.create(props);
     }
 
     public void createTopic(String topicName, int partitions, short replicationFactor) {
         NewTopic newTopic = new NewTopic(topicName, partitions, replicationFactor);
 
         // Configure topic settings
-        newTopic.configs(java.util.Map.of(
-            "cleanup.policy", "delete",
-            "retention.ms", "604800000",  // 7 days
-            "min.insync.replicas", "2"
-        ));
+        Map<String, String> configs = new HashMap<>();
+        configs.put("cleanup.policy", "delete");
+        configs.put("retention.ms", "604800000");  // 7 days
+        configs.put("min.insync.replicas",
+                    String.valueOf(Math.min(2, replicationFactor)));
+        newTopic.configs(configs);
 
         CreateTopicsResult result =
             adminClient.createTopics(Collections.singleton(newTopic));
@@ -130,7 +133,7 @@ public class TopicCreator {
 ## Solution: Wait for Topic Availability
 
 ```java
-import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 
@@ -139,9 +142,9 @@ import java.util.concurrent.ExecutionException;
 
 public class TopicAvailabilityWaiter {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public TopicAvailabilityWaiter(AdminClient adminClient) {
+    public TopicAvailabilityWaiter(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -209,7 +212,7 @@ flowchart TD
     J -->|Yes| L[Check broker connectivity]
 
     D --> M[Check disk space/permissions]
-    E --> N[Use AdminClient or CLI]
+    E --> N[Use Admin API or CLI]
     K --> O[Add exponential backoff]
 ```
 

@@ -254,7 +254,7 @@ class JobDataInspector {
     if (!job) return null;
 
     const state = await job.getState();
-    const logs = await job.log('');
+    const logs = await this.queue.getJobLogs(jobId);
 
     return {
       basic: {
@@ -287,7 +287,7 @@ class JobDataInspector {
         stacktrace: job.stacktrace,
       } : null,
       result: job.returnvalue,
-      logs: logs,
+      logs: logs.logs,
     };
   }
 
@@ -396,12 +396,14 @@ class DebugWorker {
       console.log(JSON.stringify(job.data, null, 2));
     }
 
+    let originalLog: typeof console.log | undefined;
+
     try {
       if (this.debugOptions.traceExecution) {
         // Add execution tracing
-        const originalLog = console.log;
+        originalLog = console.log;
         console.log = (...args) => {
-          originalLog(`[TRACE ${debugId}]`, ...args);
+          originalLog?.(`[TRACE ${debugId}]`, ...args);
         };
       }
 
@@ -433,6 +435,10 @@ class DebugWorker {
       }
 
       throw error;
+    } finally {
+      if (originalLog) {
+        console.log = originalLog;
+      }
     }
   }
 

@@ -303,7 +303,7 @@ local count = redis.call('ZCARD', key)
 if count < limit then
     -- Add current request
     redis.call('ZADD', key, now, now .. ':' .. math.random())
-    redis.call('EXPIRE', key, window)
+    redis.call('PEXPIRE', key, window)
     return 1  -- Allowed
 else
     return 0  -- Rate limited
@@ -326,7 +326,7 @@ local count = redis.call('ZCARD', key)
 
 if count < limit then
     redis.call('ZADD', key, now, now .. ':' .. math.random())
-    redis.call('EXPIRE', key, window)
+    redis.call('PEXPIRE', key, window)
     return 1
 else
     return 0
@@ -382,11 +382,11 @@ tokens = math.min(max_tokens, tokens + tokens_to_add)
 
 if tokens >= requested then
     tokens = tokens - requested
-    redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+    redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
     redis.call('EXPIRE', key, 3600)
     return 1  -- Allowed
 else
-    redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+    redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
     redis.call('EXPIRE', key, 3600)
     return 0  -- Denied
 end
@@ -594,22 +594,20 @@ return redis.call('HGETALL', key)
 
 ## Error Handling in Lua Scripts
 
-### Using pcall for Error Handling
+### Using redis.pcall for Error Handling
 
 ```lua
 -- safe_operation.lua
 local key = KEYS[1]
 local value = ARGV[1]
 
--- Use pcall to catch errors
-local ok, err = pcall(function()
-    redis.call('SET', key, value)
-end)
+-- Use redis.pcall to catch Redis command errors
+local result = redis.pcall('SET', key, value)
 
-if ok then
+if not result.err then
     return 'OK'
 else
-    return 'ERROR: ' .. tostring(err)
+    return 'ERROR: ' .. result.err
 end
 ```
 

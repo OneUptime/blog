@@ -176,7 +176,7 @@ class EcommerceUser(HttpUser):
         """Login when user starts"""
         self.client.post(
             "/login",
-            json={"username": f"user_{self.user_id}", "password": "testpass"}
+            json={"username": f"user_{id(self)}", "password": "testpass"}
         )
 ```
 
@@ -381,7 +381,6 @@ Track custom metrics beyond just response times.
 # custom_metrics.py
 # Custom metrics and event handling in Locust
 from locust import HttpUser, task, between, events
-import time
 
 # Track custom metrics
 custom_metrics = {
@@ -442,7 +441,7 @@ Run Locust across multiple machines to generate massive load.
 ```python
 # distributed/locustfile.py
 # Configuration for distributed testing
-from locust import HttpUser, task, between, events
+from locust import HttpUser, task, between
 import socket
 
 class DistributedUser(HttpUser):
@@ -493,8 +492,12 @@ services:
     volumes:
       - ./:/mnt/locust
     command: -f /mnt/locust/locustfile.py --worker --master-host master
-    deploy:
-      replicas: 4  # Run 4 worker containers
+```
+
+Start one master and four worker containers:
+
+```bash
+docker compose up --scale worker=4
 ```
 
 ---

@@ -16,7 +16,7 @@ This guide covers TCP routing in Traefik, including basic configuration, TLS ter
 
 HTTP routing uses headers, paths, and hostnames for routing decisions. TCP operates at a lower level where this information is not available (unless using TLS with SNI). For TCP:
 
-- Without TLS: Route based on port only
+- Without TLS: Route based on the entrypoint/port, with optional client IP matching
 - With TLS: Route based on SNI (Server Name Indication) hostname
 
 ```mermaid
@@ -317,8 +317,6 @@ spec:
           port: 6379
           # Weight for weighted load balancing (optional)
           weight: 1
-          # Connection timeout
-          terminationDelay: 100
 ```
 
 ## Weighted TCP Routing
@@ -385,7 +383,7 @@ spec:
 
 ## Multiple Services on One Port
 
-Use SNI to multiplex services on a single port:
+Use SNI to multiplex TLS-capable services on a single port:
 
 ```yaml
 # multiplexed-tcp.yaml
@@ -408,16 +406,16 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
 metadata:
-  name: db-mysql
+  name: rabbitmq-amqps
   namespace: default
 spec:
   entryPoints:
     - tcp-generic  # All use port 9000
   routes:
-    - match: HostSNI(`mysql.example.com`)
+    - match: HostSNI(`rabbitmq.example.com`)
       services:
-        - name: mysql-service
-          port: 3306
+        - name: rabbitmq-service
+          port: 5671
   tls:
     passthrough: true
 ---
@@ -438,29 +436,44 @@ spec:
     passthrough: true
 ```
 
-All three databases accessible via port 9000 with different hostnames.
+All three TLS-capable services are accessible via port 9000 with different hostnames, as long as clients send SNI during TLS negotiation.
 
 ## Health Checks for TCP
 
-Configure health checks to remove unhealthy backends:
+Traefik's Kubernetes TCP route does not define active backend health checks directly. Use Kubernetes readiness and liveness probes so unhealthy pods are removed from Service endpoints:
 
 ```yaml
 # tcp-health-check.yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRouteTCP
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: postgres-with-health
+  name: postgres
   namespace: default
 spec:
-  entryPoints:
-    - postgres
-  routes:
-    - match: HostSNI(`*`)
-      services:
-        - name: postgres-service
-          port: 5432
-          proxyProtocol:
-            version: 2
+  replicas: 3
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 30
 ```
 
 For TCP services, Kubernetes liveness/readiness probes handle health checking at the pod level.

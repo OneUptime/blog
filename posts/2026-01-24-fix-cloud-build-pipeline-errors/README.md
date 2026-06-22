@@ -27,7 +27,7 @@ flowchart TB
     end
 
     subgraph Resources["Resources"]
-        GCR[Container Registry]
+        GCR[gcr.io Artifact Registry Repositories]
         GCS[Cloud Storage]
         Secret[Secret Manager]
         Artifact[Artifact Registry]
@@ -48,16 +48,22 @@ flowchart TB
 
 ### Error: "PERMISSION_DENIED: The caller does not have permission"
 
-This is the most common Cloud Build error. The Cloud Build service account needs proper permissions.
+This is the most common Cloud Build error. The service account that runs the build needs proper permissions.
 
 ```bash
-# Find your Cloud Build service account
+# Find the legacy Cloud Build service account, if your project uses it.
 
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 SERVICE_ACCOUNT="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
+# If your project uses the Compute Engine default service account instead, use:
+# SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+#
+# If your trigger or build config specifies a service account, use that
+# service account email instead.
+
 # Grant required roles based on what your build does
-# For pushing to GCR/Artifact Registry
+# For pushing to Artifact Registry
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/artifactregistry.writer"
@@ -80,17 +86,19 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ### Error: "Error: failed to get credentials for registry"
 
-```bash
-# Your cloudbuild.yaml needs proper authentication
-# Add this as the first step:
+```yaml
+# Cloud Build does not require gcloud auth configure-docker for Artifact Registry,
+# but the build service account needs permission to access the repository.
+# Pulling a previous image for cache should tolerate a missing cache image:
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['pull', 'gcr.io/$PROJECT_ID/my-image:cache']
+    args: ['pull', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image:cache']
     allowFailure: true  # Don't fail if cache doesn't exist
+```
 
-# Or for Artifact Registry:
-  - name: 'gcr.io/cloud-builders/gcloud'
-    args: ['auth', 'configure-docker', 'us-central1-docker.pkg.dev', '--quiet']
+```bash
+# For local Docker clients or non-Cloud Build automation, configure Docker:
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 ```
 
 ## Build Configuration Errors
@@ -122,14 +130,14 @@ gcloud builds triggers create github \
 steps:
   # Wrong: Running docker build from wrong directory
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/app', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app', '.']
     # This fails if Dockerfile is in a subdirectory
 
   # Correct: Specify the build context and Dockerfile location
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'build',
-      '-t', 'gcr.io/$PROJECT_ID/app',
+      '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app',
       '-f', 'docker/Dockerfile',  # Explicit Dockerfile path
       '.'  # Build context is still root
     ]
@@ -137,12 +145,12 @@ steps:
 
 ### Error: "Step exceeded maximum allowed runtime"
 
-Default step timeout is 10 minutes. Override it for long-running steps.
+By default, a step runs until it completes or until the build itself times out. The default overall build timeout is 60 minutes. Set a step timeout for long-running or potentially stuck steps, and adjust the overall build timeout when needed.
 
 ```yaml
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/app', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app', '.']
     timeout: 1800s  # 30 minutes for this step
 
 # Set overall build timeout
@@ -159,14 +167,14 @@ options:
 Base image cannot be pulled.
 
 ```dockerfile
-# Bad: Using a tag that doesn't exist or got removed
+# Bad: Using a mutable tag that can change over time
 FROM node:lts-alpine
 
 # Better: Use specific versions
 FROM node:20.11-alpine
 
 # Best: Use SHA for reproducibility
-FROM node:20.11-alpine@sha256:abc123...
+FROM node:20.11-alpine@sha256:bf77dc26e48ea95fca9d1aceb5acfa69d2e546b765ec2abfb502975f1a2d4def
 ```
 
 ### Error: "COPY failed: file not found"
@@ -175,9 +183,11 @@ FROM node:20.11-alpine@sha256:abc123...
 # cloudbuild.yaml
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/app', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app', '.']
     dir: 'app'  # Set working directory for this step
+```
 
+```dockerfile
 # Or in Dockerfile, ensure paths are relative to build context
 # If your build context is the repo root:
 COPY app/package*.json ./  # Not just package*.json
@@ -194,24 +204,24 @@ steps:
     args:
       - '-c'
       - |
-        docker pull gcr.io/$PROJECT_ID/app:latest || exit 0
+        docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:latest || exit 0
 
   # Build with cache
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
-      - '--cache-from=gcr.io/$PROJECT_ID/app:latest'
-      - '-t=gcr.io/$PROJECT_ID/app:$SHORT_SHA'
-      - '-t=gcr.io/$PROJECT_ID/app:latest'
+      - '--cache-from=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:latest'
+      - '-t=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:$SHORT_SHA'
+      - '-t=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:latest'
       - '.'
 
   # Push both tags
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/app']
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app']
 
 images:
-  - 'gcr.io/$PROJECT_ID/app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app:latest'
 ```
 
 ## Secret Management Errors
@@ -222,11 +232,14 @@ images:
 # cloudbuild.yaml - Using secrets correctly
 steps:
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '--build-arg=API_KEY=$$API_KEY'  # Double $$ for substitution
-      - '-t=gcr.io/$PROJECT_ID/app'
-      - '.'
+      - '-c'
+      - |
+        docker build \
+          --build-arg=API_KEY=$$API_KEY \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app \
+          .
     secretEnv: ['API_KEY']
 
 availableSecrets:
@@ -238,7 +251,7 @@ availableSecrets:
 ```bash
 # Grant Cloud Build access to the secret
 gcloud secrets add-iam-policy-binding api-key \
-    --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor"
 ```
 
@@ -256,7 +269,7 @@ steps:
 
   # Step 2: Build and push (no secrets needed)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/app', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app', '.']
 
 availableSecrets:
   secretManager:
@@ -272,7 +285,7 @@ availableSecrets:
 # cloudbuild.yaml - Configure private pool for VPC access
 options:
   pool:
-    name: 'projects/$PROJECT_ID/locations/us-central1/workerPools/my-private-pool'
+    name: 'projects/my-project/locations/us-central1/workerPools/my-private-pool'
 
 # Or use cloud-builders with proper network config
 steps:
@@ -314,8 +327,9 @@ gcloud builds log BUILD_ID
 # Stream logs in real-time
 gcloud builds log BUILD_ID --stream
 
-# Get logs for a failed step
-gcloud builds describe BUILD_ID --format='value(steps[0].logs)'
+# Get build log URL and failed step status
+gcloud builds describe BUILD_ID --format='value(logUrl)'
+gcloud builds describe BUILD_ID --format='table(steps.id,steps.status,steps.exitCode)'
 ```
 
 ### Local Testing with cloud-build-local
@@ -337,13 +351,13 @@ cloud-build-local \
 ### Interactive Debugging
 
 ```yaml
-# Add a debug step that keeps container running
+# Add a debug step that prints build environment details
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/app', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/app', '.']
 
   # Debug step - comment out in production
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -363,6 +377,7 @@ steps:
 substitutions:
   _ENV: 'production'
   _REGION: 'us-central1'
+  _REPOSITORY: 'my-repo'
   _SERVICE_NAME: 'my-app'
 
 steps:
@@ -394,9 +409,9 @@ steps:
     id: 'build'
     args:
       - 'build'
-      - '--cache-from=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
-      - '-t=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
-      - '-t=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+      - '--cache-from=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
+      - '-t=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '-t=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
       - '--build-arg=BUILD_SHA=$SHORT_SHA'
       - '.'
     waitFor: ['test', 'security-scan']
@@ -404,7 +419,7 @@ steps:
   # Step 4: Push to registry
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push'
-    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}']
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}']
     waitFor: ['build']
 
   # Step 5: Deploy to Cloud Run
@@ -414,15 +429,15 @@ steps:
       - 'run'
       - 'deploy'
       - '${_SERVICE_NAME}'
-      - '--image=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$SHORT_SHA'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--quiet'
     waitFor: ['push']
 
 images:
-  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
 
 options:
   machineType: 'E2_HIGHCPU_8'

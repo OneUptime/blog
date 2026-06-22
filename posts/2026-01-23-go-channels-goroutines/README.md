@@ -79,7 +79,8 @@ graph LR
     A[Goroutine 1] -->|send| B[Channel]
     B -->|receive| C[Goroutine 2]
     
-    D[Sender blocks until] --> E[Receiver ready]
+    D[Unbuffered sender blocks until] --> E[Receiver ready]
+    H[Buffered sender blocks when] --> I[Buffer full]
     F[Receiver blocks until] --> G[Value available]
 ```
 
@@ -548,7 +549,7 @@ func main() {
 
 **Best Practices:**
 
-1. Always close channels from the sender side
+1. Close channels from the sender side when receivers need a completion signal
 2. Use buffered channels when sender/receiver speeds differ
 3. Use select for timeouts and multiple channels
 4. Check for closed channels with `val, ok := <-ch`

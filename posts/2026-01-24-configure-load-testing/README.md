@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Performance, Testing, Load Testing, k6, JMeter, Locust, DevOps, CI/CD, Scalability
+Tags: Performance, Testing, Load Testing, k6, Locust, DevOps, CI/CD, Scalability
 
-Description: A practical guide to configuring load testing for web applications using k6, Locust, and Artillery, including realistic scenarios, CI/CD integration, and result analysis.
+Description: A practical guide to configuring load testing for web applications using k6 and Locust, including realistic scenarios, CI/CD integration, and result analysis.
 
 ---
 
@@ -41,9 +41,7 @@ k6 is a modern load testing tool that uses JavaScript for test scripts.
 brew install k6
 
 # Linux
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-    --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
     sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
@@ -177,6 +175,7 @@ import random
 class WebsiteUser(HttpUser):
     # Wait between 1 and 5 seconds between tasks
     wait_time = between(1, 5)
+    weight = 10
 
     def on_start(self):
         """Called when a simulated user starts"""
@@ -392,9 +391,7 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-              --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
               sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
@@ -405,14 +402,6 @@ jobs:
         env:
           K6_TEST_URL: ${{ secrets.STAGING_URL }}
           K6_TEST_TOKEN: ${{ secrets.LOAD_TEST_TOKEN }}
-
-      - name: Check Thresholds
-        run: |
-          # Parse results and fail if thresholds not met
-          if grep -q '"thresholds":{".*":{"ok":false' results.json; then
-            echo "Load test thresholds not met!"
-            exit 1
-          fi
 
       - name: Upload Results
         uses: actions/upload-artifact@v4

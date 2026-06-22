@@ -321,14 +321,14 @@ private_key_file = /home/ansible/.ssh/id_ed25519
 host_key_checking = False
 timeout = 30
 
-# Retry failed connections
-retries = 3
-
 [ssh_connection]
 # SSH arguments
 ssh_args = -C -o ControlMaster=auto -o ControlPersist=60s
 
-# Pipelining (faster, but requires tty)
+# Retry failed SSH connections
+retries = 3
+
+# Pipelining (faster, but can require disabling requiretty for sudo)
 pipelining = True
 
 # Control path for SSH multiplexing
@@ -484,7 +484,7 @@ all:
     containers:
       hosts:
         app_container:
-          ansible_connection: docker
+          ansible_connection: community.docker.docker
           ansible_docker_extra_args: "-H tcp://docker-host:2375"
           ansible_host: my_container_name
 ```

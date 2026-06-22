@@ -32,21 +32,23 @@ flowchart TB
 
 ## Common Sensor Timeout Errors
 
-### Error 1: Soft Timeout (execution_timeout)
+### Error 1: Sensor Timeout (`timeout`)
 
 ```text
-airflow.exceptions.AirflowTaskTimeout:
-Timeout, waited 7200 seconds for <Task(FileSensor): wait_for_file>
+airflow.exceptions.AirflowSensorTimeout:
+Snap. Time is OUT. Dag id: file_processing_dag. Task id: wait_for_file
 ```
 
-This happens when the task exceeds its `execution_timeout`.
+This happens when the sensor exceeds its `timeout`. Airflow also has `execution_timeout` for the total task execution time, but sensor waiting is controlled by the sensor's `timeout` parameter.
 
 **Solution: Adjust timeout settings**
 
 ```python
-from airflow import DAG
-from airflow.sensors.filesystem import FileSensor
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import pendulum
+from airflow.providers.standard.sensors.filesystem import FileSensor
+from airflow.sdk import DAG
 
 default_args = {
     'owner': 'data-team',
@@ -57,8 +59,8 @@ default_args = {
 with DAG(
     'file_processing_dag',
     default_args=default_args,
-    schedule_interval='@daily',
-    start_date=datetime(2024, 1, 1),
+    schedule='@daily',
+    start_date=pendulum.datetime(2024, 1, 1, tz='UTC'),
     catchup=False
 ) as dag:
 
@@ -89,7 +91,9 @@ This occurs when too many sensors in poke mode consume all worker slots.
 **Solution: Use reschedule mode**
 
 ```python
-from airflow.sensors.external_task import ExternalTaskSensor
+from datetime import timedelta
+
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 
 wait_for_upstream = ExternalTaskSensor(
     task_id='wait_for_upstream_dag',
@@ -140,7 +144,7 @@ check_api_ready = HttpSensor(
     http_conn_id='api_connection',
     endpoint='/health',
     # Request timeout (separate from sensor timeout)
-    request_params={'timeout': 30},
+    extra_options={'timeout': 30},
     # Response check function
     response_check=lambda response: response.json().get('status') == 'healthy',
     # Sensor settings
@@ -150,41 +154,31 @@ check_api_ready = HttpSensor(
 )
 ```
 
-## Smart Sensor Configuration
+## Deferrable Sensor Configuration
 
-For Airflow 2.x, use smart sensors to reduce resource consumption:
-
-```python
-# airflow.cfg
-
-[smart_sensor]
-use_smart_sensor = true
-shard_code_upper_limit = 10000
-shards = 4
-sensors_enabled = ExternalTaskSensor,FileSensor,S3KeySensor
-```
+For modern Airflow deployments, use deferrable sensors when they are available. Deferrable sensors move the waiting work to the triggerer and release the worker slot while they wait.
 
 ```python
-from airflow.sensors.filesystem import FileSensor
+from airflow.providers.standard.sensors.filesystem import FileSensor
 
-# Smart sensor enabled by default for supported sensors
 wait_for_file = FileSensor(
-    task_id='smart_wait_for_file',
+    task_id='deferrable_wait_for_file',
     filepath='/data/input/{{ ds }}.parquet',
     poke_interval=60,
     timeout=3600,
-    # Smart sensor batches multiple sensor checks
-    mode='poke',  # Required for smart sensor
+    # Deferrable sensors release the worker slot while waiting
+    deferrable=True,
 )
 ```
 
 ## Custom Sensor with Proper Timeout Handling
 
 ```python
-from airflow.sensors.base import BaseSensorOperator
-from airflow.utils.decorators import apply_defaults
 import requests
 from typing import Any
+
+import pendulum
+from airflow.sdk import BaseSensorOperator, DAG
 
 class RobustApiSensor(BaseSensorOperator):
     """
@@ -193,7 +187,6 @@ class RobustApiSensor(BaseSensorOperator):
 
     template_fields = ('endpoint',)
 
-    @apply_defaults
     def __init__(
         self,
         endpoint: str,
@@ -235,7 +228,12 @@ class RobustApiSensor(BaseSensorOperator):
             return False
 
 # Usage in DAG
-with DAG('custom_sensor_dag', ...) as dag:
+with DAG(
+    'custom_sensor_dag',
+    schedule=None,
+    start_date=pendulum.datetime(2024, 1, 1, tz='UTC'),
+    catchup=False,
+) as dag:
 
     wait_for_job = RobustApiSensor(
         task_id='wait_for_processing_job',
@@ -254,14 +252,15 @@ with DAG('custom_sensor_dag', ...) as dag:
 ### Using soft_fail for Non-Critical Sensors
 
 ```python
-from airflow.operators.python import BranchPythonOperator
+from airflow.providers.standard.operators.python import BranchPythonOperator
+from airflow.providers.standard.sensors.filesystem import FileSensor
+from airflow.sdk import TriggerRule
 
 def check_sensor_result(**context):
-    """Check if sensor succeeded or soft-failed"""
-    ti = context['ti']
-    sensor_state = ti.xcom_pull(task_ids='optional_data_sensor', key='sensor_state')
+    """Check whether the optional sensor succeeded or was skipped by soft_fail."""
+    sensor_ti = context['dag_run'].get_task_instance('optional_data_sensor')
 
-    if sensor_state == 'success':
+    if sensor_ti and sensor_ti.state == 'success':
         return 'process_with_optional_data'
     else:
         return 'process_without_optional_data'
@@ -278,6 +277,7 @@ wait_for_optional = FileSensor(
 branch_task = BranchPythonOperator(
     task_id='check_data_availability',
     python_callable=check_sensor_result,
+    trigger_rule=TriggerRule.ALL_DONE,
 )
 
 wait_for_optional >> branch_task
@@ -286,10 +286,10 @@ wait_for_optional >> branch_task
 ### Implementing Circuit Breaker Pattern
 
 ```python
-from airflow.sensors.base import BaseSensorOperator
-from airflow.models import Variable
 import json
 from datetime import datetime
+
+from airflow.sdk import BaseSensorOperator, Variable
 
 class CircuitBreakerSensor(BaseSensorOperator):
     """
@@ -313,7 +313,7 @@ class CircuitBreakerSensor(BaseSensorOperator):
         try:
             state = json.loads(Variable.get(f"circuit_{self.sensor_id}", "{}"))
             return state
-        except:
+        except Exception:
             return {"failures": 0, "last_failure": None, "open": False}
 
     def _set_circuit_state(self, state):
@@ -377,17 +377,26 @@ logger = logging.getLogger(__name__)
 class SensorMetricsListener:
     """Track sensor execution metrics"""
 
+    def _is_sensor(self, task_instance):
+        try:
+            task = task_instance.get_template_context()["task"]
+        except Exception:
+            return False
+
+        return 'Sensor' in task.__class__.__name__
+
     @hookimpl
-    def on_task_instance_running(self, previous_state, task_instance, session):
-        if 'Sensor' in task_instance.task.__class__.__name__:
+    def on_task_instance_running(self, previous_state, task_instance):
+        if self._is_sensor(task_instance):
+            task = task_instance.get_template_context()["task"]
             logger.info(
                 f"Sensor started: {task_instance.task_id} "
-                f"mode={getattr(task_instance.task, 'mode', 'unknown')}"
+                f"mode={getattr(task, 'mode', 'unknown')}"
             )
 
     @hookimpl
-    def on_task_instance_success(self, previous_state, task_instance, session):
-        if 'Sensor' in task_instance.task.__class__.__name__:
+    def on_task_instance_success(self, previous_state, task_instance):
+        if self._is_sensor(task_instance):
             duration = (task_instance.end_date - task_instance.start_date).seconds
             logger.info(
                 f"Sensor succeeded: {task_instance.task_id} "
@@ -397,11 +406,11 @@ class SensorMetricsListener:
             # statsd.timing(f"airflow.sensor.{task_instance.task_id}.duration", duration)
 
     @hookimpl
-    def on_task_instance_failed(self, previous_state, task_instance, session):
-        if 'Sensor' in task_instance.task.__class__.__name__:
+    def on_task_instance_failed(self, previous_state, task_instance, error):
+        if self._is_sensor(task_instance):
             logger.error(
                 f"Sensor failed: {task_instance.task_id} "
-                f"error={task_instance.exception}"
+                f"error={error}"
             )
 
 class SensorMetricsPlugin(AirflowPlugin):
@@ -416,7 +425,7 @@ class SensorMetricsPlugin(AirflowPlugin):
 3. **Implement exponential backoff** to reduce load on external systems
 4. **Use soft_fail** for non-critical dependencies
 5. **Monitor sensor queue depth** and adjust worker pools accordingly
-6. **Consider smart sensors** for Airflow 2.x deployments
+6. **Consider deferrable sensors/operators** for supported sensors in modern Airflow deployments
 7. **Add request timeouts** separate from sensor timeouts for HTTP sensors
 8. **Implement circuit breakers** for unreliable external dependencies
 

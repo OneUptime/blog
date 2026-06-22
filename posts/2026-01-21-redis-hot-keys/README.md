@@ -118,13 +118,14 @@ class HotKeyDetector:
 
     def detect_with_keyspace_notifications(self, patterns: List[str], duration: int = 60) -> Dict[str, int]:
         """
-        Use keyspace notifications to track key access.
+        Use keyspace notifications to track key modification events.
+        This does not count pure reads such as GET.
         Requires: notify-keyspace-events = "KEA"
         """
         key_counts = Counter()
         pubsub = self.redis.pubsub()
 
-        # Subscribe to keyspace events for patterns
+        # Subscribe to keyspace modification events for patterns
         for pattern in patterns:
             pubsub.psubscribe(f'__keyspace@0__:{pattern}')
 
@@ -367,8 +368,8 @@ class HotKeyDetector {
      * Check cluster slot distribution
      */
     async checkClusterBalance() {
-        if (!this.redis.cluster) {
-            return { error: 'Not a cluster connection' };
+        if (typeof this.redis.nodes !== 'function') {
+            return { error: 'Not an ioredis Cluster connection' };
         }
 
         const nodes = this.redis.nodes('master');
@@ -396,6 +397,16 @@ class HotKeyDetector {
             }
         }
 
+        if (nodeStats.length === 0) {
+            return {
+                nodes: [],
+                avgKeys: 0,
+                avgMemory: 0,
+                maxKeyImbalance: 0,
+                maxMemoryImbalance: 0
+            };
+        }
+
         // Calculate imbalance
         const avgKeys = nodeStats.reduce((sum, n) => sum + n.keys, 0) / nodeStats.length;
         const avgMemory = nodeStats.reduce((sum, n) => sum + n.memory, 0) / nodeStats.length;
@@ -404,8 +415,8 @@ class HotKeyDetector {
             nodes: nodeStats,
             avgKeys,
             avgMemory,
-            maxKeyImbalance: Math.max(...nodeStats.map(n => Math.abs(n.keys - avgKeys) / avgKeys)),
-            maxMemoryImbalance: Math.max(...nodeStats.map(n => Math.abs(n.memory - avgMemory) / avgMemory))
+            maxKeyImbalance: avgKeys === 0 ? 0 : Math.max(...nodeStats.map(n => Math.abs(n.keys - avgKeys) / avgKeys)),
+            maxMemoryImbalance: avgMemory === 0 ? 0 : Math.max(...nodeStats.map(n => Math.abs(n.memory - avgMemory) / avgMemory))
         };
     }
 }
@@ -819,14 +830,16 @@ class HotKeyReplicaRouter:
         """
         hot_keys = []
         normal_keys = []
-        key_positions = {}
+        hot_key_positions = []
+        normal_key_positions = []
 
         for i, key in enumerate(keys):
             if key in self.hot_keys or self._matches_hot_pattern(key):
                 hot_keys.append(key)
+                hot_key_positions.append(i)
             else:
                 normal_keys.append(key)
-            key_positions[key] = i
+                normal_key_positions.append(i)
 
         results = [None] * len(keys)
 
@@ -834,14 +847,14 @@ class HotKeyReplicaRouter:
         if hot_keys:
             replica = self._get_replica()
             hot_values = replica.mget(*hot_keys)
-            for key, value in zip(hot_keys, hot_values):
-                results[key_positions[key]] = value
+            for position, value in zip(hot_key_positions, hot_values):
+                results[position] = value
 
         # Fetch normal keys from master
         if normal_keys:
             normal_values = self.master.mget(*normal_keys)
-            for key, value in zip(normal_keys, normal_values):
-                results[key_positions[key]] = value
+            for position, value in zip(normal_key_positions, normal_values):
+                results[position] = value
 
         return results
 
@@ -871,7 +884,8 @@ import redis
 import random
 import time
 import math
-from typing import Optional, Tuple
+import uuid
+from typing import Any, Optional, Tuple
 
 class ProbabilisticCache:
     """
@@ -888,7 +902,7 @@ class ProbabilisticCache:
         key: str,
         compute_fn,
         ttl: int = 300
-    ) -> Tuple[any, bool]:
+    ) -> Tuple[Any, bool]:
         """
         Get value with probabilistic early recomputation.
 
@@ -929,7 +943,7 @@ class ProbabilisticCache:
         """
         Determine if we should recompute based on XFetch algorithm.
 
-        P(recompute) = exp(-delta * beta / (ttl - delta))
+        P(recompute) = 1 - exp(-delta / (beta * (ttl - delta)))
         """
         if delta >= ttl:
             return True
@@ -957,8 +971,9 @@ class ProbabilisticCache:
 
         # Try to acquire lock
         lock_key = f"{key}:lock"
+        lock_token = str(uuid.uuid4())
         lock_acquired = self.redis.set(
-            lock_key, '1',
+            lock_key, lock_token,
             nx=True,
             ex=lock_timeout
         )
@@ -970,7 +985,18 @@ class ProbabilisticCache:
                 self.redis.setex(key, ttl, new_value)
                 return new_value
             finally:
-                self.redis.delete(lock_key)
+                self.redis.eval(
+                    """
+                    if redis.call("get", KEYS[1]) == ARGV[1] then
+                        return redis.call("del", KEYS[1])
+                    else
+                        return 0
+                    end
+                    """,
+                    1,
+                    lock_key,
+                    lock_token
+                )
         else:
             # Another process is computing - wait and retry
             for _ in range(lock_timeout * 10):

@@ -63,6 +63,7 @@ flowchart TB
 # Configure AWS Glue crawler for automatic metadata discovery
 
 import boto3
+import json
 
 glue_client = boto3.client('glue')
 
@@ -210,43 +211,56 @@ register_glue_table(
 ### Configure Atlas for Metadata Collection
 
 ```python
-# Apache Atlas client for metadata management
-from apache_atlas.client.base_client import AtlasClient
-from apache_atlas.model.instance import AtlasEntity, AtlasEntityWithExtInfo
-from apache_atlas.model.enums import EntityOperation
-import json
+# Apache Atlas REST API client for metadata management
+import requests
 
 class AtlasCatalogClient:
     def __init__(self, atlas_url, username, password):
-        self.client = AtlasClient(atlas_url, (username, password))
+        self.base_url = atlas_url.rstrip('/') + '/api/atlas/v2'
+        self.auth = (username, password)
+
+    def _post(self, path, payload):
+        response = requests.post(
+            f'{self.base_url}{path}',
+            json=payload,
+            auth=self.auth,
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json() if response.content else {}
 
     def register_database(self, database_name, description, owner):
         """Register database in Atlas"""
 
-        entity = AtlasEntity({
-            'typeName': 'hive_db',
-            'attributes': {
-                'qualifiedName': f'{database_name}@cluster',
-                'name': database_name,
-                'description': description,
-                'owner': owner,
-                'clusterName': 'production',
-                'location': f'/data/warehouse/{database_name}'
+        payload = {
+            'entity': {
+                'typeName': 'hive_db',
+                'attributes': {
+                    'qualifiedName': f'{database_name}@cluster',
+                    'name': database_name,
+                    'description': description,
+                    'owner': owner,
+                    'clusterName': 'production',
+                    'location': f'/data/warehouse/{database_name}'
+                }
             }
-        })
+        }
 
-        response = self.client.entity.create_entity(
-            AtlasEntityWithExtInfo(entity=entity)
-        )
-        return response.guidAssignments
+        response = self._post('/entity', payload)
+        mutated = response.get('mutatedEntities', {})
+        created_or_updated = mutated.get('CREATE') or mutated.get('UPDATE') or []
+        return created_or_updated[0]['guid'] if created_or_updated else None
 
     def register_table(self, database_name, table_name, columns, description):
         """Register table with columns in Atlas"""
 
         # Create column entities
         column_entities = []
-        for col in columns:
-            column_entity = AtlasEntity({
+        referred_entities = {}
+        for index, col in enumerate(columns, start=1):
+            column_guid = f'-{index}'
+            column_entity = {
+                'guid': column_guid,
                 'typeName': 'hive_column',
                 'attributes': {
                     'qualifiedName': f'{database_name}.{table_name}.{col["name"]}@cluster',
@@ -255,11 +269,16 @@ class AtlasCatalogClient:
                     'comment': col.get('comment', ''),
                     'owner': col.get('owner', 'data-engineering')
                 }
+            }
+            column_entities.append({
+                'guid': column_guid,
+                'typeName': 'hive_column'
             })
-            column_entities.append(column_entity)
+            referred_entities[column_guid] = column_entity
 
-        # Create table entity with column references
-        table_entity = AtlasEntity({
+        # Create table entity with column and database references
+        table_entity = {
+            'guid': '-101',
             'typeName': 'hive_table',
             'attributes': {
                 'qualifiedName': f'{database_name}.{table_name}@cluster',
@@ -267,6 +286,8 @@ class AtlasCatalogClient:
                 'description': description,
                 'owner': 'data-engineering',
                 'tableType': 'EXTERNAL_TABLE',
+            },
+            'relationshipAttributes': {
                 'db': {
                     'typeName': 'hive_db',
                     'uniqueAttributes': {
@@ -275,12 +296,15 @@ class AtlasCatalogClient:
                 },
                 'columns': column_entities
             }
-        })
+        }
 
-        response = self.client.entity.create_entity(
-            AtlasEntityWithExtInfo(entity=table_entity)
-        )
-        return response
+        payload = {
+            'entity': table_entity,
+            'referredEntities': referred_entities
+        }
+
+        response = self._post('/entity', payload)
+        return response['guidAssignments'].get('-101')
 
     def add_classification(self, entity_guid, classification_name, attributes=None):
         """Add classification (tag) to entity for governance"""
@@ -290,10 +314,7 @@ class AtlasCatalogClient:
             'attributes': attributes or {}
         }
 
-        self.client.entity.add_classification(
-            entity_guid,
-            [classification]
-        )
+        self._post(f'/entity/guid/{entity_guid}/classifications', [classification])
 
         print(f"Added classification {classification_name} to {entity_guid}")
 
@@ -329,44 +350,54 @@ atlas.add_classification(table_guid, 'PII')
 
 ```python
 # Capture data lineage from Spark transformations
+from datetime import datetime, timezone
+import uuid
+
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import count, sum
 from openlineage.client import OpenLineageClient
-from openlineage.client.run import Run, RunEvent, RunState
-from openlineage.client.facet import DataSourceDatasetFacet, SchemaDatasetFacet
+from openlineage.client.event_v2 import Dataset, Job, Run, RunEvent, RunState
+from openlineage.client.facet_v2 import schema_dataset
 
 class LineageTracker:
     def __init__(self, api_url, namespace):
-        self.client = OpenLineageClient(url=api_url)
+        self.client = OpenLineageClient(config={
+            'transport': {
+                'type': 'http',
+                'url': api_url
+            }
+        })
         self.namespace = namespace
+        self.producer = 'https://oneuptime.com/blog/data-catalog-integration'
 
     def create_dataset(self, name, location, schema_fields):
         """Create dataset with schema for lineage"""
 
-        return {
-            'namespace': self.namespace,
-            'name': name,
-            'facets': {
-                'dataSource': DataSourceDatasetFacet(
-                    name=name,
-                    uri=location
-                ),
-                'schema': SchemaDatasetFacet(
-                    fields=schema_fields
+        return Dataset(
+            namespace=location,
+            name=name,
+            facets={
+                'schema': schema_dataset.SchemaDatasetFacet(
+                    fields=[
+                        schema_dataset.SchemaDatasetFacetFields(
+                            name=field['name'],
+                            type=field['type']
+                        )
+                        for field in schema_fields
+                    ]
                 )
             }
-        }
+        )
 
     def emit_start_event(self, job_name, run_id, inputs, outputs):
         """Emit job start event with lineage"""
 
         event = RunEvent(
             eventType=RunState.START,
-            eventTime=datetime.utcnow().isoformat() + 'Z',
+            eventTime=datetime.now(timezone.utc).isoformat(),
             run=Run(runId=run_id),
-            job={
-                'namespace': self.namespace,
-                'name': job_name
-            },
+            job=Job(namespace=self.namespace, name=job_name),
+            producer=self.producer,
             inputs=inputs,
             outputs=outputs
         )
@@ -378,12 +409,25 @@ class LineageTracker:
 
         event = RunEvent(
             eventType=RunState.COMPLETE,
-            eventTime=datetime.utcnow().isoformat() + 'Z',
+            eventTime=datetime.now(timezone.utc).isoformat(),
             run=Run(runId=run_id),
-            job={
-                'namespace': self.namespace,
-                'name': job_name
-            },
+            job=Job(namespace=self.namespace, name=job_name),
+            producer=self.producer,
+            inputs=inputs,
+            outputs=outputs
+        )
+
+        self.client.emit(event)
+
+    def emit_fail_event(self, job_name, run_id, inputs, outputs):
+        """Emit job failure event"""
+
+        event = RunEvent(
+            eventType=RunState.FAIL,
+            eventTime=datetime.now(timezone.utc).isoformat(),
+            run=Run(runId=run_id),
+            job=Job(namespace=self.namespace, name=job_name),
+            producer=self.producer,
             inputs=inputs,
             outputs=outputs
         )
@@ -460,7 +504,7 @@ def run_etl_with_lineage():
 
     except Exception as e:
         # Emit failure
-        lineage.emit_fail_event(job_name, run_id, str(e))
+        lineage.emit_fail_event(job_name, run_id, inputs, outputs)
         raise
 ```
 
@@ -482,13 +526,12 @@ on-run-end:
   - "{{ export_lineage_to_catalog() }}"
 ```
 
-```python
+```sql
 # dbt macro to export lineage to catalog
 # macros/export_lineage.sql
 {% macro export_lineage_to_catalog() %}
     {% if execute %}
-        {% set manifest = load_manifest() %}
-        {% set nodes = manifest.nodes.values() %}
+        {% set nodes = graph.nodes.values() %}
 
         {% for node in nodes %}
             {% if node.resource_type == 'model' %}
@@ -506,7 +549,8 @@ on-run-end:
                     'meta': node.meta
                 } %}
 
-                {{ send_to_catalog_api(lineage_payload) }}
+                {% set payload_json = lineage_payload | tojson | replace("'", "''") %}
+                {% do run_query("insert into catalog_lineage_exports(payload) values ('" ~ payload_json ~ "')") %}
             {% endif %}
         {% endfor %}
     {% endif %}

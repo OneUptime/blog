@@ -176,15 +176,16 @@ redis-cli CONFIG REWRITE
 redis-cli CONFIG GET appendonly
 redis-cli CONFIG GET appendfsync
 redis-cli CONFIG GET appendfilename
+redis-cli CONFIG GET appenddirname
 
 # Check AOF file status
-ls -la /var/lib/redis/appendonly.aof*
+ls -la /var/lib/redis/appendonlydir/
 
 # Verify AOF file integrity
-redis-check-aof /var/lib/redis/appendonly.aof
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # If corrupted, attempt repair
-redis-check-aof --fix /var/lib/redis/appendonly.aof
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
 
 ### AOF Rewrite Issues
@@ -347,11 +348,12 @@ dir /var/lib/redis
 # AOF configuration
 appendonly yes
 appendfilename "appendonly.aof"
+appenddirname "appendonlydir"
 
 # fsync policy - everysec is good balance
 appendfsync everysec
 
-# Don't fsync during rewrite (improves performance)
+# Continue fsync during rewrite (safest for durability)
 no-appendfsync-on-rewrite no
 
 # Auto-rewrite AOF when it grows

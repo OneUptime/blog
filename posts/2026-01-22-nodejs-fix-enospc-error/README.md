@@ -38,15 +38,15 @@ df -i
 # Check current watcher limit (Linux)
 cat /proc/sys/fs/inotify/max_user_watches
 
-# Check how many watches are currently used
-find /proc/*/fd -lname anon_inode:inotify 2>/dev/null | wc -l
+# Check how many inotify watches are currently used (approx)
+grep -h '^inotify' /proc/*/fdinfo/* 2>/dev/null | wc -l
 ```
 
 ## Cause 1: File Watcher Limit (Most Common)
 
 ### The Problem
 
-Node.js development tools like nodemon, webpack, Vite, and create-react-app use file watchers to detect changes. Linux limits the number of file watchers per user, defaulting to around 8192.
+Node.js development tools like nodemon, webpack, Vite, and create-react-app use file watchers to detect changes. Linux limits the number of file watchers per user; older systems often default to around 8192, while newer kernels and distributions may set higher defaults based on available memory.
 
 A large project with node_modules can easily exceed this limit:
 
@@ -192,7 +192,7 @@ sudo rm -rf /tmp/*
 
 ### Ignore node_modules
 
-Configure your watcher to ignore node_modules:
+Configure your watcher to ignore large directories. Some tools, including nodemon and Vite, already ignore node_modules by default, but explicit ignores are useful when you customize watch paths:
 
 ```javascript
 // webpack.config.js
@@ -207,7 +207,7 @@ module.exports = {
 // nodemon.json
 {
   "ignore": [
-    "node_modules/**/node_modules",
+    "node_modules/**",
     ".git"
   ]
 }
@@ -250,7 +250,7 @@ nodemon --legacy-watch app.js
 
 ```javascript
 // chokidar (used by many tools)
-const chokidar = require('chokidar');
+import chokidar from 'chokidar';
 
 const watcher = chokidar.watch('src', {
   usePolling: true,
@@ -262,7 +262,7 @@ const watcher = chokidar.watch('src', {
 ### Graceful Error Handling
 
 ```javascript
-const chokidar = require('chokidar');
+import chokidar from 'chokidar';
 
 const watcher = chokidar.watch('src');
 
@@ -368,7 +368,7 @@ npm dedupe
 
 ### 2. Use pnpm
 
-pnpm uses hard links, resulting in fewer files:
+pnpm uses hard links and a content-addressable store, reducing duplicated disk usage across projects:
 
 ```bash
 npm install -g pnpm
@@ -418,7 +418,7 @@ echo -e "\n=== Inotify Watches Limit ==="
 cat /proc/sys/fs/inotify/max_user_watches
 
 echo -e "\n=== Current Watch Count (approx) ==="
-find /proc/*/fd -lname anon_inode:inotify 2>/dev/null | wc -l
+grep -h '^inotify' /proc/*/fdinfo/* 2>/dev/null | wc -l
 
 echo -e "\n=== Largest Directories ==="
 du -sh */ 2>/dev/null | sort -hr | head -5

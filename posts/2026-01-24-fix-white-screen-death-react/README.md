@@ -101,7 +101,8 @@ if (!container) {
 } else {
   const root = createRoot(container);
 
-  // Wrap in try-catch to catch render errors
+  // This catches setup errors in this block.
+  // Use Error Boundaries for component render errors.
   try {
     root.render(
       <React.StrictMode>
@@ -142,7 +143,7 @@ Verify your HTML has the root element:
 
 ## Step 3: Add Error Boundaries
 
-Error Boundaries catch rendering errors and display fallback UI instead of a white screen.
+Error Boundaries catch rendering errors, lifecycle errors, and constructor errors in their child component tree, then display fallback UI instead of a white screen. They do not catch errors in event handlers, asynchronous callbacks, server-side rendering, or errors thrown by the boundary itself.
 
 ```typescript
 // src/components/ErrorBoundary.tsx
@@ -555,7 +556,7 @@ module.exports = {
 
 For Create React App, check environment variables:
 
-```bash
+```text
 # .env file issues
 
 # Wrong: variables must start with REACT_APP_
@@ -564,8 +565,10 @@ API_URL=http://localhost:3001  # Won't work
 
 # Correct
 REACT_APP_API_URL=http://localhost:3001
+```
 
-# Check if .env is being loaded
+```javascript
+// Check if .env is being loaded
 console.log(process.env.REACT_APP_API_URL);
 ```
 
@@ -740,10 +743,12 @@ export function runDiagnostics(): void {
   // Check network requests
   if ('performance' in window) {
     const resources = performance.getEntriesByType('resource');
-    const failedResources = resources.filter(
-      (r) => (r as PerformanceResourceTiming).transferSize === 0
+    const zeroTransferResources = resources.filter(
+      (r) =>
+        (r as PerformanceResourceTiming).transferSize === 0 &&
+        (r as PerformanceResourceTiming).decodedBodySize === 0
     );
-    console.log('Failed resources:', failedResources.map((r) => r.name));
+    console.log('Resources with zero transfer/body size:', zeroTransferResources.map((r) => r.name));
   }
 
   // Check localStorage/sessionStorage

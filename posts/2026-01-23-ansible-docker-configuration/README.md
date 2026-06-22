@@ -21,10 +21,10 @@ The community.docker collection provides modules for all Docker operations.
 
 ansible-galaxy collection install community.docker
 
-# Install Python Docker SDK (required by modules)
+# Install Python dependencies used by most community.docker modules
 # Note: The legacy 'docker-compose' pip package is deprecated (Docker Compose v1 is EOL).
 # The docker_compose_v2 module only requires the Docker CLI with the Compose plugin.
-pip install docker
+pip install requests
 
 # Verify installation
 ansible-doc community.docker.docker_container
@@ -48,14 +48,21 @@ Ensure Docker is installed consistently across hosts.
     state: present
     update_cache: yes
 
+- name: Create APT keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Docker GPG key
-  apt_key:
+  get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
 
 - name: Add Docker repository
   apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
 
 - name: Install Docker
@@ -89,8 +96,7 @@ Ensure Docker is installed consistently across hosts.
   notify: restart docker
 ```
 
-```json
-// templates/daemon.json.j2
+```jinja
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -123,6 +129,11 @@ Deploy and manage individual containers.
         tag: latest
         source: pull
 
+    - name: Create application network
+      community.docker.docker_network:
+        name: app_network
+        driver: bridge
+
     - name: Run Nginx container
       community.docker.docker_container:
         name: webserver
@@ -152,6 +163,8 @@ Deploy and manage individual containers.
         volumes:
           - redis_data:/data
         command: redis-server --appendonly yes
+        networks:
+          - name: app_network
         healthcheck:
           test: ["CMD", "redis-cli", "ping"]
           interval: 10s
@@ -171,8 +184,6 @@ Deploy and manage individual containers.
           DATABASE_URL: "postgresql://{{ db_host }}:5432/{{ db_name }}"
           REDIS_URL: "redis://redis:6379"
           NODE_ENV: production
-        links:
-          - redis:redis
         networks:
           - name: app_network
 ```
@@ -191,7 +202,7 @@ Build images as part of your deployment pipeline.
   vars:
     app_name: myapp
     registry: ghcr.io/company
-    version: "{{ lookup('env', 'BUILD_VERSION') | default('latest') }}"
+    version: "{{ lookup('env', 'BUILD_VERSION') | default('latest', true) }}"
 
   tasks:
     - name: Copy application source
@@ -217,9 +228,10 @@ Build images as part of your deployment pipeline.
 
     - name: Tag image as latest
       community.docker.docker_image:
-        name: "{{ registry }}/{{ app_name }}"
-        tag: "{{ version }}"
-        repository: "{{ registry }}/{{ app_name }}"
+        name: "{{ registry }}/{{ app_name }}:{{ version }}"
+        repository: "{{ registry }}/{{ app_name }}:latest"
+        force_tag: yes
+        source: local
         push: no
       when: version != 'latest'
 
@@ -246,7 +258,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 FROM node:20-alpine
 
@@ -340,7 +352,7 @@ Create and manage persistent storage.
 
     - name: Display volume information
       debug:
-        msg: "Volume: {{ item.Name }} - Mountpoint: {{ item.Mountpoint }}"
+        msg: "Volume: {{ item.Name }} - Driver: {{ item.Driver }}"
       loop: "{{ docker_info.volumes }}"
 ```
 
@@ -379,10 +391,9 @@ Deploy multi-container applications with Docker Compose.
         mode: '0600'
 
     - name: Pull images
-      community.docker.docker_compose_v2:
+      community.docker.docker_compose_v2_pull:
         project_src: "{{ compose_dir }}"
-        pull: always
-        state: present
+        policy: always
 
     - name: Start application stack
       community.docker.docker_compose_v2:
@@ -491,7 +502,7 @@ Monitor and manage container health.
 
     - name: Restart unhealthy containers
       community.docker.docker_container:
-        name: "{{ item.container.Name }}"
+        name: "{{ item.container.Name | regex_replace('^/', '') }}"
         state: started
         restart: yes
       loop: "{{ container_health.results }}"

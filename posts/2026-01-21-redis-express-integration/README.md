@@ -13,7 +13,7 @@ Express.js pairs excellently with Redis for session storage, caching, rate limit
 ## Installation
 
 ```bash
-npm install redis express-session connect-redis ioredis rate-limit-redis
+npm install express redis ioredis express-session connect-redis express-rate-limit rate-limit-redis socket.io @socket.io/redis-adapter bullmq
 ```
 
 ## Redis Client Setup
@@ -73,10 +73,11 @@ module.exports = redis;
 // app.js
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 const redis = require('./redis');
 
 const app = express();
+app.use(express.json());
 
 // Create Redis store
 const redisStore = new RedisStore({
@@ -268,11 +269,6 @@ class CacheService {
     return data;
   }
 
-  async tags(tags) {
-    // Return a tagged cache instance
-    return new TaggedCache(this, tags);
-  }
-
   async flush(pattern = '*') {
     const keys = await redis.keys(this.key(pattern));
     if (keys.length > 0) {
@@ -332,7 +328,7 @@ async function updateProduct(req, res) {
 ```javascript
 // middleware/rateLimiter.js
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis').default;
+const { RedisStore } = require('rate-limit-redis');
 const redis = require('../redis');
 
 // General API rate limiter
@@ -508,12 +504,10 @@ class RealtimeService {
   constructor(io) {
     this.io = io;
     this.subscriber = redis.duplicate();
-    this.setupSubscriptions();
+    this.setupSubscriptions().catch(console.error);
   }
 
-  setupSubscriptions() {
-    this.subscriber.subscribe('notifications', 'orders');
-
+  async setupSubscriptions() {
     this.subscriber.on('message', (channel, message) => {
       const data = JSON.parse(message);
 
@@ -526,6 +520,8 @@ class RealtimeService {
           break;
       }
     });
+
+    await this.subscriber.subscribe('notifications', 'orders');
   }
 
   handleNotification(data) {
@@ -555,6 +551,7 @@ const RealtimeService = require('./services/realtime');
 
 // In a controller or service
 async function updateOrderStatus(orderId, status) {
+  const order = await Order.findById(orderId);
   await Order.update(orderId, { status });
 
   // Publish to Redis (all server instances receive it)
@@ -584,9 +581,14 @@ async function sendNotification(userId, message) {
 const { Queue, Worker } = require('bullmq');
 const redis = require('../redis');
 
+const queueConnection = redis;
+const workerConnection = redis.duplicate({
+  maxRetriesPerRequest: null,
+});
+
 // Create queue
 const emailQueue = new Queue('emails', {
-  connection: redis,
+  connection: queueConnection,
   defaultJobOptions: {
     attempts: 3,
     backoff: {
@@ -605,7 +607,7 @@ const emailWorker = new Worker('emails', async (job) => {
 
   return { sent: true };
 }, {
-  connection: redis,
+  connection: workerConnection,
   concurrency: 5,
 });
 
@@ -628,7 +630,7 @@ module.exports = {
 
 ## Best Practices
 
-1. **Use connection pooling** with ioredis
+1. **Use dedicated connections** for Pub/Sub, blocking, and queue workloads
 2. **Handle connection errors** gracefully
 3. **Set appropriate TTLs** for cached data
 4. **Use namespaced keys** with prefixes

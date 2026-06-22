@@ -33,10 +33,9 @@ flowchart TD
 
 The kernel calculates an "OOM score" for each process based on:
 
-- Memory consumption (higher memory = higher score)
-- Process age (newer processes score higher)
-- Process priority (nice value affects score)
-- Root processes score lower
+- Estimated memory and swap use relative to the memory available to that process
+- Whether the OOM condition is system-wide or constrained by a cpuset, memory policy, or memory cgroup
+- Privileged/root processes receive a small discount
 - User-defined adjustments (oom_score_adj)
 
 ## Detecting OOM Killer Events
@@ -114,7 +113,7 @@ cat /proc/<PID>/oom_score_adj
 # Protect service from OOM killer (-1000 to 1000)
 OOMScoreAdjust=-500
 
-# Alternative: disable OOM killing entirely for this service
+# Keep the unit running if one of its processes is OOM-killed
 OOMPolicy=continue
 ```
 
@@ -176,7 +175,7 @@ flowchart LR
 
 ```bash
 # For database servers - disable overcommit
-# This prevents OOM but may cause allocation failures
+# This reduces OOM risk by failing allocations earlier, but may cause allocation failures
 echo 2 > /proc/sys/vm/overcommit_memory
 echo 80 > /proc/sys/vm/overcommit_ratio
 
@@ -371,7 +370,7 @@ java -XX:+UseContainerSupport \
 ### Node.js Applications
 
 ```bash
-# Increase Node.js heap size (default is ~1.5GB)
+# Increase Node.js heap size when the default is too low
 node --max-old-space-size=4096 app.js
 
 # Monitor Node.js memory
@@ -403,17 +402,17 @@ work_mem = 64MB
 
 ## Preventing Future OOM Issues
 
-### Memory Limits with cgroups
+### Memory Limits with cgroups v1
 
 ```bash
-# Create a memory-limited cgroup
+# Create a memory-limited cgroup (cgroups v1)
 sudo cgcreate -g memory:/limited_apps
 
 # Set memory limit (2GB)
-echo 2147483648 > /sys/fs/cgroup/memory/limited_apps/memory.limit_in_bytes
+echo 2147483648 | sudo tee /sys/fs/cgroup/memory/limited_apps/memory.limit_in_bytes
 
 # Set swap limit (2GB additional)
-echo 4294967296 > /sys/fs/cgroup/memory/limited_apps/memory.memsw.limit_in_bytes
+echo 4294967296 | sudo tee /sys/fs/cgroup/memory/limited_apps/memory.memsw.limit_in_bytes
 
 # Run process in cgroup
 sudo cgexec -g memory:limited_apps /path/to/application
@@ -430,7 +429,7 @@ Description=My Application
 ExecStart=/usr/bin/myapp
 # Limit memory to 2GB
 MemoryMax=2G
-# Kill if memory limit exceeded
+# Disable swap for this service
 MemorySwapMax=0
 
 [Install]
@@ -484,7 +483,7 @@ ps aux --sort=-%mem | head -10
 free -h
 
 # View process OOM score
-cat /proc/$(pgrep processname)/oom_score
+cat /proc/$(pgrep -n processname)/oom_score
 
 # Protect a process from OOM killer
 echo -1000 > /proc/<PID>/oom_score_adj

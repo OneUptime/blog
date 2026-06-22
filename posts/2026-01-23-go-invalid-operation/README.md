@@ -21,11 +21,11 @@ func main() {
     // Error: invalid operation: mismatched types int and string
     x := 5 + "hello"
     
-    // Error: invalid operation: cannot compare slice with nil
+    // Error: invalid operation: s == []int{} (slice can only be compared to nil)
     var s []int
     if s == []int{} {}
     
-    // Error: invalid operation: x < y (operator < not defined on []int)
+    // Error: invalid operation: a < b (operator < not defined on []int)
     a := []int{1, 2}
     b := []int{3, 4}
     if a < b {}
@@ -79,6 +79,8 @@ func main() {
 ```go
 package main
 
+import "fmt"
+
 func main() {
     var a int32 = 5
     var b int64 = 5
@@ -118,6 +120,8 @@ Slices cannot be compared directly:
 
 ```go
 package main
+
+import "fmt"
 
 func main() {
     a := []int{1, 2, 3}
@@ -420,13 +424,12 @@ package main
 func main() {
     m := map[string]int{"a": 1}
     
-    // Error: invalid operation: cannot index m (map[string]int) with [int]
+    // Error: cannot use 0 (untyped int constant) as string value in map index
     val := m[0]
     
     s := "hello"
-    // Error: invalid operation: cannot slice s (strings are immutable)
-    // This is actually valid, but assignment isn't
-    // s[0] = 'H'  // Cannot assign to s[0]
+    // Error: cannot assign to s[0] (neither addressable nor a map index expression)
+    s[0] = 'H'
 }
 ```
 
@@ -459,14 +462,14 @@ func main() {
 
 | Type | Supported Operators |
 |------|---------------------|
-| Integers | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`, `==`, `<`, etc. |
-| Floats | `+`, `-`, `*`, `/`, `==`, `<`, `>`, etc. |
-| Strings | `+`, `==`, `<`, `>` |
-| Booleans | `&&`, `\|\|`, `!`, `==` |
+| Integers | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `&^`, `<<`, `>>`, `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| Floats | `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| Strings | `+`, `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| Booleans | `&&`, `\|\|`, `!`, `==`, `!=` |
 | Pointers | `==`, `!=` |
 | Channels | `==`, `!=`, `<-` |
-| Slices | `==` (only nil) |
-| Maps | `==` (only nil) |
+| Slices | `==`, `!=` (only with `nil`) |
+| Maps | `==`, `!=` (only with `nil`) |
 
 ---
 

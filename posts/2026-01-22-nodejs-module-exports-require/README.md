@@ -479,8 +479,12 @@ module.exports = function authMiddleware(options = {}) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    // Verify token...
-    req.user = decodedUser;
+    if (token) {
+      // Verify token and decode the user here
+      const decodedUser = { id: 'user-id' };
+      req.user = decodedUser;
+    }
+
     next();
   };
 };

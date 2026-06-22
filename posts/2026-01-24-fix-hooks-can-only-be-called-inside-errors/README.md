@@ -55,7 +55,7 @@ function UserProfile({ userId }: { userId: string | null }) {
   }
 
   // This hook is only called conditionally - ERROR!
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     fetchUser(userId).then(setUser);
@@ -66,7 +66,7 @@ function UserProfile({ userId }: { userId: string | null }) {
 
 // GOOD: Move the condition after hooks
 function UserProfile({ userId }: { userId: string | null }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (userId) {
@@ -133,7 +133,7 @@ function ListItem({ item }: { item: Item }) {
 function fetchUserData(userId: string) {
   // This is a regular function, not a component - ERROR!
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<User | null>(null);
 
   useEffect(() => {
     fetch(`/api/users/${userId}`)
@@ -150,7 +150,7 @@ function fetchUserData(userId: string) {
 // GOOD: Create a custom hook (name must start with 'use')
 function useUserData(userId: string) {
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<User | null>(null);
 
   useEffect(() => {
     fetch(`/api/users/${userId}`)
@@ -211,7 +211,7 @@ function Form() {
 class UserProfile extends React.Component {
   componentDidMount() {
     // Hooks cannot be used in class components
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<User | null>(null);
   }
 
   render() {
@@ -221,7 +221,7 @@ class UserProfile extends React.Component {
 
 // GOOD: Convert to function component
 function UserProfile() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     // Effect logic here
@@ -277,7 +277,7 @@ flowchart TB
 
 ### 6. Duplicate React Versions
 
-If you have multiple versions of React in your project, hooks will fail:
+If your app loads more than one copy of React, hooks can fail:
 
 ```bash
 # Check for duplicate React versions
@@ -287,20 +287,23 @@ npm ls react
 # If you see multiple versions, dedupe
 npm dedupe
 
-# Or ensure a single version in package.json
-# For monorepos, use resolutions/overrides
+# Or ensure a single version with package-manager overrides/resolutions
 ```
 
+package.json using npm overrides:
+
 ```json
-// package.json - Using npm overrides
 {
   "overrides": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   }
 }
+```
 
-// package.json - Using yarn resolutions
+package.json using Yarn resolutions:
+
+```json
 {
   "resolutions": {
     "react": "^18.2.0",
@@ -325,12 +328,12 @@ function MyComponent() {
 }
 ```
 
-### 8. Async Functions as Components
+### 8. Async Client Components
 
 ```tsx
-// BAD: Async function components (not supported)
+// BAD: Async client components (not supported)
 async function UserProfile({ userId }: { userId: string }) {
-  const user = await fetchUser(userId);  // Cannot use await here
+  const user = await fetchUser(userId);  // Cannot use await here in a client component
   const [editing, setEditing] = useState(false);  // Hook may fail
 
   return <div>{user.name}</div>;
@@ -407,12 +410,12 @@ module.exports = {
 |---------------|----------|
 | Hook inside if statement | Move hook before condition, put logic inside |
 | Hook inside loop | Extract loop item to separate component |
-| Hook in regular function | Rename function to start with `use` |
+| Hook in regular function | Extract a custom hook that starts with `use`, then call it from a component or another hook |
 | Hook in event handler | Declare state at component level |
 | Hook in class component | Convert to function component |
 | Multiple React versions | Run `npm dedupe` or use resolutions |
 | Lowercase component name | Use PascalCase for components |
-| Async component | Use useEffect for async operations |
+| Async client component | Use useEffect for async operations |
 
 ## Summary
 

@@ -123,7 +123,7 @@ def test_concurrent_increments():
     assert counter.value == 10  # Flaky! Race condition in Counter
 
 # Good: Use thread-safe counter or synchronization
-def test_concurrent_increments():
+def test_concurrent_increments_thread_safe():
     counter = ThreadSafeCounter()  # Uses locks internally
     threads = []
 
@@ -187,8 +187,8 @@ gcc -fsanitize=thread -g -O1 my_test.c -o my_test
 # Go with race detector
 go test -race ./...
 
-# Python with threading debug
-PYTHONTHREADDEBUG=1 python -m pytest tests/
+# Python: dump all thread tracebacks when a test hangs
+python -m pytest -o faulthandler_timeout=30 tests/
 ```
 
 ### Stress Testing to Reproduce
@@ -284,7 +284,7 @@ void testEventualConsistency() {
 
 ```typescript
 // TypeScript: Control async execution order
-import { runAllTimers, useFakeTimers } from '@jest/globals';
+import { jest } from '@jest/globals';
 
 describe('Timer-based tests', () => {
   beforeEach(() => {

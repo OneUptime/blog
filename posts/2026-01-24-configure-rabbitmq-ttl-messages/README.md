@@ -282,11 +282,12 @@ channel = connection.channel()
 
 # Queue will be deleted after 10 minutes of being unused
 # x-expires applies to the queue itself, not messages
+# "Unused" means no consumers, no recent redeclare, and no basic.get calls
 channel.queue_declare(
     queue='temporary_queue',
     durable=False,
     arguments={
-        'x-expires': 600000  # Queue expires after 10 minutes of no consumers
+        'x-expires': 600000  # Queue expires after 10 minutes unused
     }
 )
 
@@ -296,7 +297,7 @@ channel.queue_declare(
     durable=False,
     arguments={
         'x-message-ttl': 30000,   # Messages expire after 30 seconds
-        'x-expires': 300000       # Queue deleted after 5 minutes idle
+        'x-expires': 300000       # Queue deleted after 5 minutes unused
     }
 )
 
@@ -360,7 +361,7 @@ import uuid
 
 def create_session_queue(user_id, session_timeout_minutes=30):
     """
-    Create a per-user session queue that expires with the session.
+    Create a per-user session queue that expires after the session.
     Messages are temporary and should not outlive the session.
     """
     connection = pika.BlockingConnection(
@@ -371,16 +372,17 @@ def create_session_queue(user_id, session_timeout_minutes=30):
     queue_name = f"session_{user_id}_{uuid.uuid4().hex[:8]}"
     timeout_ms = session_timeout_minutes * 60 * 1000
 
-    # Queue and messages expire together
+    # Messages expire after the timeout; the queue expires after being unused
     channel.queue_declare(
         queue=queue_name,
         durable=False,  # Sessions don't survive restarts
         arguments={
             'x-message-ttl': timeout_ms,  # Messages expire with session
-            'x-expires': timeout_ms        # Queue deleted when session ends
+            'x-expires': timeout_ms        # Queue deleted after session timeout if unused
         }
     )
 
+    connection.close()
     return queue_name
 ```
 
@@ -436,7 +438,8 @@ def setup_retry_queues(channel, base_queue, max_retries=5):
         queue=base_queue,
         durable=True,
         arguments={
-            'x-dead-letter-exchange': f'{base_queue}_retry_exchange'
+            'x-dead-letter-exchange': f'{base_queue}_retry_exchange',
+            'x-dead-letter-routing-key': '0'
         }
     )
     channel.queue_bind(
@@ -476,15 +479,15 @@ def setup_retry_queues(channel, base_queue, max_retries=5):
 
         print(f"Created retry queue {retry_queue} with {delay_ms}ms delay")
 
-def reject_for_retry(channel, method, retry_count):
+def reject_for_retry(channel, base_queue, method, body, retry_count, max_retries=5):
     """
     Reject a message and route it to the appropriate retry queue.
     """
     # Route to retry queue based on count
     channel.basic_publish(
-        exchange='tasks_retry_exchange',
-        routing_key=str(min(retry_count, 4)),  # Max 5 retries
-        body=method.body,
+        exchange=f'{base_queue}_retry_exchange',
+        routing_key=str(min(retry_count, max_retries - 1)),
+        body=body,
         properties=pika.BasicProperties(
             headers={'retry_count': retry_count + 1}
         )
@@ -524,22 +527,22 @@ watch -n 5 'rabbitmqctl list_queues name messages | grep -E "(expired|dlx)"'
 
 ```promql
 # Rate of messages being dead-lettered due to TTL
-rate(rabbitmq_queue_messages_dead_lettered_expired_total[5m])
+rate(rabbitmq_global_messages_dead_lettered_expired_total[5m])
 
-# Queue depth over time
+# Queue depth over time (requires per-object queue metrics)
 rabbitmq_queue_messages{queue="orders"}
 
-# Average message age in queue
-rabbitmq_queue_head_message_timestamp
+# Ready messages waiting for consumers (requires per-object queue metrics)
+rabbitmq_queue_messages_ready{queue="orders"}
 ```
 
 ---
 
 ## Common Pitfalls
 
-### 1. TTL Only Checked at Queue Head
+### 1. Per-Message TTL Cleanup Happens at Queue Head
 
-Messages are only expired when they reach the head of the queue:
+With per-message TTL, expired messages can remain behind non-expired messages until they reach the head of the queue:
 
 ```mermaid
 flowchart LR
@@ -550,7 +553,7 @@ flowchart LR
 
 ```python
 # Problem: If Msg A has 10s TTL and Msg B has 5s TTL,
-# Msg B won't expire until Msg A is consumed or expires first.
+# Msg B may not be removed until Msg A is consumed or expires first.
 
 # Solution: Use per-queue TTL for consistent expiration
 # or ensure consumers process messages promptly
@@ -573,6 +576,8 @@ properties = pika.BasicProperties(
 ### 3. TTL Precision
 
 ```python
+import time
+
 # TTL is not guaranteed to be precise
 # Messages may live slightly longer than specified
 
@@ -594,7 +599,7 @@ def consume_with_freshness_check(ch, method, properties, body):
 
 ## Best Practices
 
-1. **Use queue TTL for consistent expiration** - per-message TTL can lead to out-of-order expiration
+1. **Use queue TTL for consistent expiration** - per-message TTL can delay cleanup behind non-expired messages
 2. **Always configure a DLX** - capture expired messages for debugging
 3. **Set appropriate TTL values** - too short loses messages, too long wastes memory
 4. **Monitor expired message rates** - high rates may indicate consumer issues

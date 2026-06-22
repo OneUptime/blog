@@ -16,6 +16,7 @@ CloudNativePG is a Kubernetes operator that manages the full lifecycle of Postgr
 - kubectl configured
 - Helm 3.x (for installation)
 - Storage class available for persistent volumes
+- Barman Cloud plugin installed for object-store backup examples
 
 ## Why CloudNativePG?
 
@@ -23,8 +24,8 @@ CloudNativePG offers several advantages:
 
 - **Native Kubernetes Integration**: Uses CRDs and follows Kubernetes patterns
 - **Automated Failover**: Promotes replicas automatically on primary failure
-- **Continuous Backup**: Built-in support for WAL archiving to S3/GCS/Azure
-- **Rolling Updates**: Zero-downtime PostgreSQL upgrades
+- **Continuous Backup**: Support for WAL archiving to S3/GCS/Azure through the Barman Cloud plugin
+- **Rolling Updates**: Controlled rolling updates for PostgreSQL patch releases and operator changes
 - **Connection Pooling**: Integrated PgBouncer support
 - **Monitoring**: Prometheus metrics out of the box
 
@@ -50,11 +51,11 @@ kubectl get pods -n cnpg-system
 ### Using kubectl
 
 ```bash
-# Install latest version
-kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+# Install the latest 1.29 patch release
+kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 
 # Verify the operator is running
-kubectl get deployment -n cnpg-system cnpg-controller-manager
+kubectl rollout status deployment -n cnpg-system cnpg-controller-manager
 ```
 
 ## Creating Your First PostgreSQL Cluster
@@ -109,7 +110,7 @@ metadata:
   namespace: production
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14
 
   postgresql:
     parameters:
@@ -184,25 +185,11 @@ spec:
     topologyKey: kubernetes.io/hostname
     podAntiAffinityType: required
 
-  monitoring:
-    enablePodMonitor: true
-
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://my-bucket/postgres-backups
-      s3Credentials:
-        accessKeyId:
-          name: s3-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: s3-credentials
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 4
-      data:
-        compression: gzip
-    retentionPolicy: "30d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-production-backups
 ```
 
 Create the required secrets:
@@ -217,8 +204,34 @@ kubectl create secret generic postgres-credentials \
 # S3 credentials for backups
 kubectl create secret generic s3-credentials \
   --from-literal=ACCESS_KEY_ID=your-access-key \
-  --from-literal=SECRET_ACCESS_KEY=your-secret-key \
+  --from-literal=ACCESS_SECRET_KEY=your-secret-key \
   -n production
+```
+
+Create the backup object store:
+
+```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-production-backups
+  namespace: production
+spec:
+  configuration:
+    destinationPath: s3://my-bucket/postgres-backups
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+      maxParallel: 4
+    data:
+      compression: gzip
+    retentionPolicy: "30d"
 ```
 
 ## Connecting to the Cluster
@@ -339,7 +352,7 @@ CREATE DATABASE newdb OWNER myuser;
 GRANT ALL PRIVILEGES ON DATABASE newdb TO myuser;
 ```
 
-Or use bootstrap postInitSQL:
+Or use bootstrap `postInitApplicationSQL`:
 
 ```yaml
 bootstrap:
@@ -359,26 +372,36 @@ bootstrap:
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 spec:
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://bucket-name/postgres/
-      endpointURL: https://s3.amazonaws.com
-      s3Credentials:
-        accessKeyId:
-          name: aws-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: aws-credentials
-          key: ACCESS_SECRET_KEY
-        region:
-          name: aws-credentials
-          key: REGION
-      wal:
-        compression: gzip
-        maxParallel: 4
-      data:
-        compression: gzip
-        jobs: 2
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-s3-backups
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-s3-backups
+spec:
+  configuration:
+    destinationPath: s3://bucket-name/postgres/
+    endpointURL: https://s3.amazonaws.com
+    s3Credentials:
+      accessKeyId:
+        name: aws-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: aws-credentials
+        key: ACCESS_SECRET_KEY
+      region:
+        name: aws-credentials
+        key: REGION
+    wal:
+      compression: gzip
+      maxParallel: 4
+    data:
+      compression: gzip
+      jobs: 2
     retentionPolicy: "30d"
 ```
 
@@ -388,17 +411,27 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 spec:
-  backup:
-    barmanObjectStore:
-      destinationPath: gs://bucket-name/postgres/
-      googleCredentials:
-        applicationCredentials:
-          name: gcs-credentials
-          key: gcsCredentials
-      wal:
-        compression: gzip
-      data:
-        compression: gzip
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-gcs-backups
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-gcs-backups
+spec:
+  configuration:
+    destinationPath: gs://bucket-name/postgres/
+    googleCredentials:
+      applicationCredentials:
+        name: gcs-credentials
+        key: gcsCredentials
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
     retentionPolicy: "30d"
 ```
 
@@ -408,20 +441,30 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 spec:
-  backup:
-    barmanObjectStore:
-      destinationPath: https://account.blob.core.windows.net/container/postgres/
-      azureCredentials:
-        storageAccount:
-          name: azure-credentials
-          key: STORAGE_ACCOUNT
-        storageKey:
-          name: azure-credentials
-          key: STORAGE_KEY
-      wal:
-        compression: gzip
-      data:
-        compression: gzip
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-azure-backups
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-azure-backups
+spec:
+  configuration:
+    destinationPath: https://account.blob.core.windows.net/container/postgres/
+    azureCredentials:
+      storageAccount:
+        name: azure-credentials
+        key: STORAGE_ACCOUNT
+      storageKey:
+        name: azure-credentials
+        key: STORAGE_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
     retentionPolicy: "30d"
 ```
 
@@ -433,10 +476,13 @@ kind: ScheduledBackup
 metadata:
   name: postgres-backup-schedule
 spec:
-  schedule: "0 0 * * *"  # Daily at midnight
+  schedule: "0 0 0 * * *"  # Daily at midnight
   backupOwnerReference: self
   cluster:
     name: postgres-cluster
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   immediate: false
 ```
 
@@ -448,6 +494,9 @@ kind: Backup
 metadata:
   name: postgres-backup-manual
 spec:
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   cluster:
     name: postgres-cluster
 ```
@@ -483,17 +532,11 @@ spec:
 
   externalClusters:
     - name: postgres-cluster
-      barmanObjectStore:
-        destinationPath: s3://bucket-name/postgres/
-        s3Credentials:
-          accessKeyId:
-            name: aws-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: aws-credentials
-            key: ACCESS_SECRET_KEY
-        wal:
-          maxParallel: 4
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: postgres-s3-backups
+          serverName: postgres-cluster
 ```
 
 ### Restore from Backup Object
@@ -524,7 +567,6 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 spec:
   monitoring:
-    enablePodMonitor: true
     customQueriesConfigMap:
       - name: postgres-custom-queries
         key: queries
@@ -568,18 +610,18 @@ data:
             usage: "COUNTER"
 ```
 
-### ServiceMonitor for Prometheus Operator
+### PodMonitor for Prometheus Operator
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: postgres-cluster
 spec:
   selector:
     matchLabels:
       cnpg.io/cluster: postgres-cluster
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -618,9 +660,6 @@ Manually promote a replica to primary:
 ```bash
 # Trigger switchover to specific instance
 kubectl cnpg promote postgres-cluster postgres-cluster-2
-
-# Or using annotation
-kubectl annotate cluster postgres-cluster cnpg.io/targetPrimary=postgres-cluster-2
 ```
 
 ### Rolling Restart
@@ -633,7 +672,7 @@ kubectl cnpg restart postgres-cluster
 
 ```yaml
 spec:
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.2  # Update version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14  # Update to the latest minor image
 ```
 
 Apply and watch the rolling update:
@@ -647,22 +686,21 @@ kubectl get pods -l cnpg.io/cluster=postgres-cluster -w
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
+kind: Pooler
+metadata:
+  name: postgres-cluster-pooler-rw
 spec:
-  instances: 3
-
-  # ... other config
-
-  pooler:
-    instances: 2
-    type: rw  # or "ro" for read replicas
-    pgbouncer:
-      poolMode: transaction
-      parameters:
-        max_client_conn: "1000"
-        default_pool_size: "25"
-        min_pool_size: "10"
-        reserve_pool_size: "5"
+  cluster:
+    name: postgres-cluster
+  instances: 2
+  type: rw  # or "ro" for read replicas
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "25"
+      min_pool_size: "10"
+      reserve_pool_size: "5"
 ```
 
 This creates a separate PgBouncer deployment:
@@ -735,4 +773,4 @@ CloudNativePG provides a robust, production-ready way to run PostgreSQL on Kuber
 5. Enable monitoring with Prometheus
 6. Consider PgBouncer for connection pooling
 
-With proper configuration, CloudNativePG handles automated failover, continuous backups, and rolling updates - letting you focus on your application rather than database operations.
+With proper configuration, CloudNativePG handles automated failover, continuous backups, and controlled rolling updates - letting you focus on your application rather than database operations.

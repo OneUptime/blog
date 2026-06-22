@@ -142,7 +142,7 @@ data:
     }
 ```
 
-### Use DNS Connection Reuse in Applications
+### Use HTTP Connection Reuse in Applications
 
 ```python
 # Python: Use a session with connection pooling
@@ -167,8 +167,8 @@ adapter = HTTPAdapter(
 session.mount('http://', adapter)
 session.mount('https://', adapter)
 
-# All requests through this session reuse connections
-# DNS is resolved once per connection pool
+# All requests through this session can reuse connections
+# DNS lookups happen when new connections are opened
 response = session.get('https://api.example.com/data')
 ```
 
@@ -191,7 +191,8 @@ func createOptimizedClient() *http.Client {
         MaxConnsPerHost:     100,
         IdleConnTimeout:     90 * time.Second,
 
-        // DNS caching through custom dialer
+        // Dialer controls connection establishment; reusing connections
+        // reduces repeated DNS lookups and TCP/TLS handshakes.
         DialContext: (&net.Dialer{
             Timeout:   30 * time.Second,
             KeepAlive: 30 * time.Second,
@@ -226,8 +227,10 @@ net.ipv4.tcp_keepalive_time = 60
 net.ipv4.tcp_keepalive_intvl = 10
 net.ipv4.tcp_keepalive_probes = 6
 
-# Reduce TIME_WAIT connections
+# Tune connection teardown and TIME_WAIT socket reuse
 net.ipv4.tcp_fin_timeout = 30
+# Test carefully before enabling globally; many modern kernels default to
+# loopback-only TIME_WAIT reuse.
 net.ipv4.tcp_tw_reuse = 1
 
 # Increase connection queue
@@ -294,7 +297,7 @@ async function getUserDataOptimized(userId) {
         fetch(`/api/users/${userId}/orders`),
         fetch(`/api/users/${userId}/preferences`)
     ]);
-    // Total time: 1x network round trip (parallel)
+    // Wall-clock time: requests overlap instead of running sequentially
     return { user, orders, preferences };
 }
 
@@ -330,6 +333,10 @@ type inflightRequest struct {
 
 func (c *RequestCoalescer) Do(key string, fn func() (interface{}, error)) (interface{}, error) {
     c.mu.Lock()
+
+    if c.inflight == nil {
+        c.inflight = make(map[string]*inflightRequest)
+    }
 
     // Check if request is already in flight
     if req, ok := c.inflight[key]; ok {
@@ -380,45 +387,46 @@ flowchart TB
 
 ### Use CDN for Static Content and Edge Caching
 
-```yaml
-# Cloudflare Workers for edge caching
+```toml
 # wrangler.toml
 name = "api-cache"
-type = "javascript"
+main = "src/worker.js"
+compatibility_date = "2026-06-19"
 
-[triggers]
-routes = ["api.example.com/cached/*"]
+[[routes]]
+pattern = "api.example.com/cached/*"
+zone_name = "example.com"
+```
 
-# worker.js
-addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request))
-})
+```javascript
+// src/worker.js
+export default {
+    async fetch(request, env, ctx) {
+        const cache = caches.default
 
-async function handleRequest(request) {
-    const cache = caches.default
+        // Try cache first
+        let response = await cache.match(request)
 
-    // Try cache first
-    let response = await cache.match(request)
+        if (!response) {
+            // Fetch from origin
+            response = await fetch(request)
 
-    if (!response) {
-        // Fetch from origin
-        response = await fetch(request)
+            // Cache successful responses
+            if (response.ok) {
+                const headers = new Headers(response.headers)
+                headers.set('Cache-Control', 'public, max-age=60')
 
-        // Cache successful responses
-        if (response.ok) {
-            const headers = new Headers(response.headers)
-            headers.set('Cache-Control', 'public, max-age=60')
+                response = new Response(response.body, {
+                    status: response.status,
+                    headers: headers
+                })
 
-            response = new Response(response.body, {
-                status: response.status,
-                headers: headers
-            })
-
-            event.waitUntil(cache.put(request, response.clone()))
+                ctx.waitUntil(cache.put(request, response.clone()))
+            }
         }
-    }
 
-    return response
+        return response
+    }
 }
 ```
 

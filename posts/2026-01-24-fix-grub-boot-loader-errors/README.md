@@ -18,10 +18,10 @@ flowchart TD
     B --> C{Boot Mode?}
     C -->|Legacy BIOS| D[Load MBR]
     C -->|UEFI| E[Load EFI Partition]
-    D --> F[GRUB Stage 1]
+    D --> F[GRUB boot.img]
     E --> G[GRUB EFI Binary]
-    F --> H[GRUB Stage 1.5]
-    H --> I[GRUB Stage 2]
+    F --> H[GRUB core.img]
+    H --> I[Load GRUB modules]
     G --> I
     I --> J[Load grub.cfg]
     J --> K{Config Valid?}
@@ -104,6 +104,7 @@ grub rescue> ls (hd0,msdos2)/boot/
 # Set the root partition (replace with your correct partition)
 grub rescue> set prefix=(hd0,msdos2)/boot/grub
 grub rescue> set root=(hd0,msdos2)
+# Use (hd0,msdos2)/grub instead if this is a separate /boot partition
 
 # Load the normal module
 grub rescue> insmod normal
@@ -117,7 +118,7 @@ grub rescue> normal
 ```bash
 # Load required modules
 grub rescue> insmod linux
-grub rescue> insmod ext2  # or ext4, xfs, btrfs depending on filesystem
+grub rescue> insmod ext2  # ext2 handles ext2/ext3/ext4; use xfs or btrfs if needed
 
 # Set kernel and initrd (adjust version numbers)
 grub rescue> linux /boot/vmlinuz-5.15.0-generic root=/dev/sda2
@@ -147,7 +148,8 @@ lsblk -f
 # sda
 # |-sda1 vfat   EFI
 # |-sda2 ext4   root
-# |-sda3 swap   swap
+# |-sda3 ext4   boot
+# |-sda4 swap   swap
 ```
 
 ### Step 3: Mount the Root Partition
@@ -157,9 +159,10 @@ lsblk -f
 sudo mount /dev/sda2 /mnt
 
 # If you have a separate boot partition, mount it too
-sudo mount /dev/sda1 /mnt/boot
+sudo mount /dev/sda3 /mnt/boot
 
 # For UEFI systems, mount EFI partition
+sudo mkdir -p /mnt/boot/efi
 sudo mount /dev/sda1 /mnt/boot/efi
 ```
 
@@ -188,11 +191,11 @@ sudo chroot /mnt /bin/bash
 ```bash
 # For Legacy BIOS systems
 grub-install /dev/sda
-update-grub
+update-grub  # Debian/Ubuntu
 
 # For UEFI systems
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu
-update-grub
+update-grub  # Debian/Ubuntu
 ```
 
 ### Step 7: Exit and Reboot
@@ -214,7 +217,7 @@ sudo reboot
 
 ```bash
 # Regenerate GRUB configuration
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 
 # Or manually
 sudo grub-mkconfig -o /boot/grub/grub.cfg
@@ -236,12 +239,12 @@ sudo blkid
 sudo nano /etc/default/grub
 
 # Regenerate configuration
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 ```
 
 ### Fix GRUB After Windows Installation
 
-Windows often overwrites the MBR, removing GRUB.
+On legacy BIOS systems, Windows can overwrite the MBR, removing GRUB. On UEFI systems, it more commonly changes the firmware boot order.
 
 ```bash
 # Boot from Live USB, then:
@@ -253,7 +256,7 @@ sudo mount --bind /sys /mnt/sys
 # Chroot and reinstall GRUB
 sudo chroot /mnt
 grub-install /dev/sda
-update-grub
+update-grub  # Debian/Ubuntu
 exit
 ```
 
@@ -268,7 +271,7 @@ sudo nano /etc/default/grub
 # Add or modify: GRUB_DISABLE_OS_PROBER=false
 
 # Regenerate GRUB config
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 ```
 
 ## GRUB Configuration
@@ -301,7 +304,7 @@ GRUB_DISABLE_OS_PROBER=false
 
 ```bash
 # After editing /etc/default/grub, regenerate config
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 
 # Verify changes
 grep -E "timeout|default" /boot/grub/grub.cfg
@@ -313,11 +316,11 @@ grep -E "timeout|default" /boot/grub/grub.cfg
 # List available menu entries
 grep -E "^menuentry" /boot/grub/grub.cfg
 
-# Set default by name
-sudo grub-set-default "Ubuntu"
+# Set default by name in /etc/default/grub
+GRUB_DEFAULT="Ubuntu"
 
-# Or by number (0-indexed)
-sudo grub-set-default 0
+# Or by number in /etc/default/grub (0-indexed)
+GRUB_DEFAULT=0
 
 # Set to boot last selected entry
 # Edit /etc/default/grub:
@@ -325,7 +328,7 @@ GRUB_DEFAULT=saved
 GRUB_SAVEDEFAULT=true
 
 # Regenerate
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 ```
 
 ## GRUB Boot Architecture
@@ -333,8 +336,8 @@ sudo update-grub
 ```mermaid
 flowchart TD
     subgraph "BIOS/Legacy Boot"
-        A1[MBR 512 bytes] --> A2[GRUB Stage 1.5]
-        A2 --> A3[GRUB Stage 2]
+        A1[MBR boot.img] --> A2[GRUB core.img]
+        A2 --> A3[GRUB modules]
         A3 --> A4[/boot/grub/grub.cfg]
     end
 
@@ -394,7 +397,7 @@ grub> set root=(hd0,msdos2)
 grub> echo $root
 
 # Load a module
-grub> insmod ext2
+grub> insmod ext2  # ext2/ext3/ext4 filesystems
 
 # Set kernel
 grub> linux /boot/vmlinuz-5.15.0 root=/dev/sda2
@@ -504,14 +507,14 @@ flowchart TD
 
 ```bash
 # Keep GRUB updated
-sudo apt update && sudo apt upgrade grub-pc  # Debian/Ubuntu
-sudo dnf update grub2  # Fedora
+sudo apt update && sudo apt upgrade  # Debian/Ubuntu
+sudo dnf upgrade 'grub2*'  # Fedora
 
 # Clean old kernels (keeps boot partition clean)
 sudo apt autoremove --purge
 
 # Verify GRUB after kernel updates
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 ```
 
 ### Create Recovery USB
@@ -541,11 +544,11 @@ cp /etc/default/grub /root/grub-default-backup
 ```bash
 # Reinstall GRUB (Legacy BIOS)
 sudo grub-install /dev/sda
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 
 # Reinstall GRUB (UEFI)
 sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi
-sudo update-grub
+sudo update-grub  # Debian/Ubuntu
 
 # Boot to recovery from GRUB menu
 # Press 'e' on menu entry, add 'single' or 'init=/bin/bash'

@@ -22,33 +22,43 @@ Redis excels at autocomplete because of:
 
 ## Approach 1: Using Sorted Sets
 
-The most common approach uses Redis Sorted Sets to store suggestions with scores representing relevance or popularity.
+The most common approach uses one Redis Sorted Set as a lexicographic index for prefix matching, plus a second Sorted Set for relevance or popularity scores.
 
 ### Basic Implementation
 
 ```bash
-# Add suggestions with scores (higher = more popular)
+# Add suggestions to a lexicographic index. Members must use the same score
+# for lexicographic range queries to have defined results.
+ZADD autocomplete:products:lex 0 "iphone"
+ZADD autocomplete:products:lex 0 "iphone 15"
+ZADD autocomplete:products:lex 0 "iphone 15 pro"
+ZADD autocomplete:products:lex 0 "iphone 15 pro max"
+ZADD autocomplete:products:lex 0 "iphone case"
+ZADD autocomplete:products:lex 0 "ipad"
+ZADD autocomplete:products:lex 0 "ipad pro"
+ZADD autocomplete:products:lex 0 "ipod"
 
-ZADD autocomplete:products 100 "iphone"
-ZADD autocomplete:products 95 "iphone 15"
-ZADD autocomplete:products 90 "iphone 15 pro"
-ZADD autocomplete:products 85 "iphone 15 pro max"
-ZADD autocomplete:products 80 "iphone case"
-ZADD autocomplete:products 75 "ipad"
-ZADD autocomplete:products 70 "ipad pro"
-ZADD autocomplete:products 50 "ipod"
+# Store ranking scores separately (higher = more popular)
+ZADD autocomplete:products:scores 100 "iphone"
+ZADD autocomplete:products:scores 95 "iphone 15"
+ZADD autocomplete:products:scores 90 "iphone 15 pro"
+ZADD autocomplete:products:scores 85 "iphone 15 pro max"
+ZADD autocomplete:products:scores 80 "iphone case"
+ZADD autocomplete:products:scores 75 "ipad"
+ZADD autocomplete:products:scores 70 "ipad pro"
+ZADD autocomplete:products:scores 50 "ipod"
 ```
 
 ### Lexicographic Prefix Matching
 
-For prefix matching, use ZRANGEBYLEX:
+For prefix matching, use `ZRANGE` with the `BYLEX` option:
 
 ```bash
 # All items starting with "iphone"
-ZRANGEBYLEX autocomplete:products "[iphone" "[iphone\xff" LIMIT 0 10
+ZRANGE autocomplete:products:lex "[iphone" "[iphone\xff" BYLEX LIMIT 0 10
 
 # All items starting with "ip"
-ZRANGEBYLEX autocomplete:products "[ip" "[ip\xff" LIMIT 0 10
+ZRANGE autocomplete:products:lex "[ip" "[ip\xff" BYLEX LIMIT 0 10
 ```
 
 ### Python Implementation
@@ -64,19 +74,24 @@ class RedisAutocomplete:
 
     def add_suggestion(self, category: str, text: str, score: float = 1.0):
         """Add a suggestion with a score."""
-        key = f"{self.prefix}:{category}"
+        lex_key = f"{self.prefix}:{category}:lex"
+        score_key = f"{self.prefix}:{category}:scores"
         # Store normalized (lowercase) version for matching
         normalized = text.lower()
-        # Store both the normalized key and original text
-        self.redis.zadd(key, {normalized: score})
+        # Lexicographic indexes require all members to use the same score
+        self.redis.zadd(lex_key, {normalized: 0})
+        self.redis.zadd(score_key, {normalized: score})
         # Store original text mapping
         self.redis.hset(f"{self.prefix}:original:{category}", normalized, text)
 
     def add_suggestions_bulk(self, category: str, suggestions: List[Tuple[str, float]]):
         """Add multiple suggestions at once."""
-        key = f"{self.prefix}:{category}"
-        mapping = {text.lower(): score for text, score in suggestions}
-        self.redis.zadd(key, mapping)
+        lex_key = f"{self.prefix}:{category}:lex"
+        score_key = f"{self.prefix}:{category}:scores"
+        lex_mapping = {text.lower(): 0 for text, _ in suggestions}
+        score_mapping = {text.lower(): score for text, score in suggestions}
+        self.redis.zadd(lex_key, lex_mapping)
+        self.redis.zadd(score_key, score_mapping)
 
         # Store original texts
         originals = {text.lower(): text for text, _ in suggestions}
@@ -84,16 +99,16 @@ class RedisAutocomplete:
 
     def get_suggestions(self, category: str, prefix: str, limit: int = 10) -> List[str]:
         """Get suggestions matching a prefix, sorted by score."""
-        key = f"{self.prefix}:{category}"
+        lex_key = f"{self.prefix}:{category}:lex"
+        score_key = f"{self.prefix}:{category}:scores"
         normalized_prefix = prefix.lower()
 
         # Get matching items using lexicographic range
-        matches = self.redis.zrangebylex(
-            key,
+        matches = self.redis.zrange(
+            lex_key,
             f"[{normalized_prefix}",
             f"[{normalized_prefix}\xff",
-            start=0,
-            num=limit * 2  # Get more to account for score sorting
+            bylex=True
         )
 
         if not matches:
@@ -102,8 +117,8 @@ class RedisAutocomplete:
         # Get scores for matches
         scored_matches = []
         for match in matches:
-            score = self.redis.zscore(key, match)
-            scored_matches.append((match, score))
+            score = self.redis.zscore(score_key, match)
+            scored_matches.append((match, score if score is not None else 0))
 
         # Sort by score (descending) and limit
         scored_matches.sort(key=lambda x: x[1], reverse=True)
@@ -120,18 +135,21 @@ class RedisAutocomplete:
 
     def increment_score(self, category: str, text: str, increment: float = 1.0):
         """Increase the score of a suggestion (e.g., when selected)."""
-        key = f"{self.prefix}:{category}"
-        self.redis.zincrby(key, increment, text.lower())
+        score_key = f"{self.prefix}:{category}:scores"
+        self.redis.zincrby(score_key, increment, text.lower())
 
     def remove_suggestion(self, category: str, text: str):
         """Remove a suggestion."""
-        key = f"{self.prefix}:{category}"
-        self.redis.zrem(key, text.lower())
+        lex_key = f"{self.prefix}:{category}:lex"
+        score_key = f"{self.prefix}:{category}:scores"
+        self.redis.zrem(lex_key, text.lower())
+        self.redis.zrem(score_key, text.lower())
         self.redis.hdel(f"{self.prefix}:original:{category}", text.lower())
 
     def clear_category(self, category: str):
         """Remove all suggestions in a category."""
-        self.redis.delete(f"{self.prefix}:{category}")
+        self.redis.delete(f"{self.prefix}:{category}:lex")
+        self.redis.delete(f"{self.prefix}:{category}:scores")
         self.redis.delete(f"{self.prefix}:original:{category}")
 
 
@@ -186,10 +204,12 @@ class RedisAutocomplete {
     }
 
     async addSuggestion(category, text, score = 1.0) {
-        const key = `${this.prefix}:${category}`;
+        const lexKey = `${this.prefix}:${category}:lex`;
+        const scoreKey = `${this.prefix}:${category}:scores`;
         const normalized = text.toLowerCase();
 
-        await this.client.zAdd(key, { score, value: normalized });
+        await this.client.zAdd(lexKey, { score: 0, value: normalized });
+        await this.client.zAdd(scoreKey, { score, value: normalized });
         await this.client.hSet(
             `${this.prefix}:original:${category}`,
             normalized,
@@ -198,13 +218,19 @@ class RedisAutocomplete {
     }
 
     async addSuggestionsBulk(category, suggestions) {
-        const key = `${this.prefix}:${category}`;
-        const members = suggestions.map(([text, score]) => ({
+        const lexKey = `${this.prefix}:${category}:lex`;
+        const scoreKey = `${this.prefix}:${category}:scores`;
+        const lexMembers = suggestions.map(([text]) => ({
+            score: 0,
+            value: text.toLowerCase()
+        }));
+        const scoreMembers = suggestions.map(([text, score]) => ({
             score,
             value: text.toLowerCase()
         }));
 
-        await this.client.zAdd(key, members);
+        await this.client.zAdd(lexKey, lexMembers);
+        await this.client.zAdd(scoreKey, scoreMembers);
 
         const originals = {};
         suggestions.forEach(([text]) => {
@@ -217,15 +243,16 @@ class RedisAutocomplete {
     }
 
     async getSuggestions(category, prefix, limit = 10) {
-        const key = `${this.prefix}:${category}`;
+        const lexKey = `${this.prefix}:${category}:lex`;
+        const scoreKey = `${this.prefix}:${category}:scores`;
         const normalizedPrefix = prefix.toLowerCase();
 
         // Get matches using lexicographic range
-        const matches = await this.client.zRangeByLex(
-            key,
+        const matches = await this.client.zRange(
+            lexKey,
             `[${normalizedPrefix}`,
             `[${normalizedPrefix}\xff`,
-            { LIMIT: { offset: 0, count: limit * 2 } }
+            { BY: 'LEX' }
         );
 
         if (!matches.length) return [];
@@ -233,8 +260,8 @@ class RedisAutocomplete {
         // Get scores for sorting
         const scored = await Promise.all(
             matches.map(async (match) => {
-                const score = await this.client.zScore(key, match);
-                return { match, score };
+                const score = await this.client.zScore(scoreKey, match);
+                return { match, score: score ?? 0 };
             })
         );
 
@@ -255,8 +282,8 @@ class RedisAutocomplete {
     }
 
     async incrementScore(category, text, increment = 1.0) {
-        const key = `${this.prefix}:${category}`;
-        await this.client.zIncrBy(key, increment, text.toLowerCase());
+        const scoreKey = `${this.prefix}:${category}:scores`;
+        await this.client.zIncrBy(scoreKey, increment, text.toLowerCase());
     }
 
     async disconnect() {
@@ -440,7 +467,7 @@ For more advanced prefix matching, we can build a trie structure using Redis:
 
 ```python
 import redis
-from typing import List, Set
+from typing import List
 
 class TrieAutocomplete:
     def __init__(self, host='localhost', port=6379, prefix='trie'):
@@ -476,7 +503,7 @@ class TrieAutocomplete:
         scored_matches = []
         for word in matches:
             score = self.redis.zscore(words_key, word)
-            if score:
+            if score is not None:
                 scored_matches.append((word, score))
 
         # Sort by score and limit
@@ -556,10 +583,12 @@ class AutocompleteService:
     def add_item(self, category: str, text: str, score: float = 1.0, metadata: dict = None):
         """Add an item to the autocomplete index."""
         normalized = text.lower()
-        key = f"autocomplete:{category}"
+        lex_key = f"autocomplete:{category}:lex"
+        score_key = f"autocomplete:{category}:scores"
 
-        # Add to sorted set
-        self.redis.zadd(key, {normalized: score})
+        # Add to lexicographic index and score index
+        self.redis.zadd(lex_key, {normalized: 0})
+        self.redis.zadd(score_key, {normalized: score})
 
         # Store original and metadata
         item_data = {"original": text, "metadata": metadata or {}}
@@ -569,15 +598,15 @@ class AutocompleteService:
         """Search for matching items."""
         limit = limit or self.default_limit
         normalized = query.lower()
-        key = f"autocomplete:{category}"
+        lex_key = f"autocomplete:{category}:lex"
+        score_key = f"autocomplete:{category}:scores"
 
         # Get matches
-        matches = self.redis.zrangebylex(
-            key,
+        matches = self.redis.zrange(
+            lex_key,
             f"[{normalized}",
             f"[{normalized}\xff",
-            start=0,
-            num=limit * 2
+            bylex=True
         )
 
         if not matches:
@@ -586,8 +615,8 @@ class AutocompleteService:
         # Get scores and sort
         scored = []
         for match in matches:
-            score = self.redis.zscore(key, match)
-            scored.append((match, score))
+            score = self.redis.zscore(score_key, match)
+            scored.append((match, score if score is not None else 0))
 
         scored.sort(key=lambda x: x[1], reverse=True)
 
@@ -609,8 +638,8 @@ class AutocompleteService:
     def record_selection(self, category: str, text: str, boost: float = 1.0):
         """Boost an item's score when selected by a user."""
         normalized = text.lower()
-        key = f"autocomplete:{category}"
-        self.redis.zincrby(key, boost, normalized)
+        score_key = f"autocomplete:{category}:scores"
+        self.redis.zincrby(score_key, boost, normalized)
 
 
 autocomplete = AutocompleteService()
@@ -771,10 +800,10 @@ Here's a simple JavaScript integration:
 
         function renderSuggestions(suggestions) {
             suggestionsDiv.innerHTML = suggestions.map(s => `
-                <div class="suggestion-item" data-text="${s.text}">
-                    <div class="suggestion-text">${highlightMatch(s.text, input.value)}</div>
+                <div class="suggestion-item" data-text="${escapeHtml(s.text)}">
+                    <div class="suggestion-text">${highlightMatch(escapeHtml(s.text), input.value)}</div>
                     <div class="suggestion-meta">
-                        ${s.metadata.category} - $${s.metadata.price}
+                        ${escapeHtml(s.metadata.category)} - $${escapeHtml(String(s.metadata.price))}
                     </div>
                 </div>
             `).join('');
@@ -782,8 +811,19 @@ Here's a simple JavaScript integration:
         }
 
         function highlightMatch(text, query) {
-            const regex = new RegExp(`(${query})`, 'gi');
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(${escapedQuery})`, 'gi');
             return text.replace(regex, '<strong>$1</strong>');
+        }
+
+        function escapeHtml(value) {
+            return value.replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
         }
 
         suggestionsDiv.addEventListener('click', async function(e) {
@@ -824,10 +864,12 @@ def add_suggestions_pipeline(self, category: str, suggestions: list):
 
     for text, score, metadata in suggestions:
         normalized = text.lower()
-        key = f"autocomplete:{category}"
+        lex_key = f"autocomplete:{category}:lex"
+        score_key = f"autocomplete:{category}:scores"
         data_key = f"autocomplete:data:{category}"
 
-        pipe.zadd(key, {normalized: score})
+        pipe.zadd(lex_key, {normalized: 0})
+        pipe.zadd(score_key, {normalized: score})
         pipe.hset(data_key, normalized, json.dumps({
             "original": text,
             "metadata": metadata
@@ -865,13 +907,17 @@ class CachedAutocomplete:
 ### 3. Limit Index Size with TTL
 
 ```python
+import time
+
 def add_with_ttl(self, category: str, text: str, score: float, ttl_days: int = 30):
     """Add suggestion with automatic expiration tracking."""
     normalized = text.lower()
-    key = f"autocomplete:{category}"
+    lex_key = f"autocomplete:{category}:lex"
+    score_key = f"autocomplete:{category}:scores"
 
-    # Add to main index
-    self.redis.zadd(key, {normalized: score})
+    # Add to lexicographic index and score index
+    self.redis.zadd(lex_key, {normalized: 0})
+    self.redis.zadd(score_key, {normalized: score})
 
     # Track expiration time
     expiry = int(time.time()) + (ttl_days * 86400)
@@ -888,11 +934,13 @@ def cleanup_expired(self, category: str):
 
     if expired:
         pipe = self.redis.pipeline()
-        key = f"autocomplete:{category}"
+        lex_key = f"autocomplete:{category}:lex"
+        score_key = f"autocomplete:{category}:scores"
         data_key = f"autocomplete:data:{category}"
 
         for item in expired:
-            pipe.zrem(key, item)
+            pipe.zrem(lex_key, item)
+            pipe.zrem(score_key, item)
             pipe.hdel(data_key, item)
             pipe.zrem(expiry_key, item)
 

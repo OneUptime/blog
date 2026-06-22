@@ -70,7 +70,10 @@ If `cluster_state` is not `ok`, there is a fundamental cluster problem.
 Check how slots are distributed:
 
 ```bash
-# View slot distribution
+# View slot distribution (preferred in Redis 7.0+)
+CLUSTER SHARDS
+
+# Legacy slot map format
 CLUSTER SLOTS
 
 # More detailed view
@@ -104,6 +107,8 @@ CLUSTER NODES | grep -E "migrating|importing"
 ```
 
 ### Fix Stuck Migration
+
+After verifying that the slot's keys are on the destination node, clear the migration state and assign the slot to its final owner:
 
 ```bash
 # On the source node (has "migrating" state)
@@ -152,7 +157,6 @@ const Redis = require('ioredis');
 const redis = new Redis({ host: '192.168.1.100', port: 6379 });
 
 // CORRECT - Use Cluster mode
-const Redis = require('ioredis');
 const cluster = new Redis.Cluster([
   { host: '192.168.1.100', port: 6379 },
   { host: '192.168.1.101', port: 6379 },
@@ -167,6 +171,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "github.com/redis/go-redis/v9"
 )
 
@@ -182,6 +187,10 @@ func main() {
 
     ctx := context.Background()
     val, err := rdb.Get(ctx, "mykey").Result()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(val)
 }
 ```
 
@@ -194,19 +203,12 @@ from redis.cluster import RedisCluster
 
 rc = RedisCluster(host='192.168.1.100', port=6379)
 
-# Force refresh of slot mappings
-rc.cluster_slots()
+# Fetch the current slot mapping from the cluster
+rc.cluster_shards()
 
 # Check which node owns a specific key
 def get_node_for_key(cluster, key):
-    slot = cluster.keyslot(key)
-    for node in cluster.get_nodes():
-        node_slots = cluster.cluster_slots()
-        # Find node responsible for this slot
-        for slot_range in node_slots:
-            if slot_range[0] <= slot <= slot_range[1]:
-                return slot_range[2]
-    return None
+    return cluster.get_node_from_key(key)
 
 print(get_node_for_key(rc, 'mykey'))
 ```
@@ -242,6 +244,10 @@ values = rc.mget('{user:1000}:name', '{user:1000}:email', '{user:1000}:age')
 ### Pipeline Operations
 
 ```python
+from redis.cluster import RedisCluster
+
+rc = RedisCluster(host='192.168.1.100', port=6379)
+
 # Cluster pipelines work but group commands by slot
 pipe = rc.pipeline()
 pipe.set('key1', 'value1')
@@ -255,8 +261,7 @@ results = pipe.execute()  # Commands grouped by slot automatically
 Create a monitoring script:
 
 ```python
-import redis
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 import time
 
 def monitor_cluster_health(startup_nodes):
@@ -304,9 +309,9 @@ def alert_cluster_problem(info):
 
 if __name__ == '__main__':
     nodes = [
-        {'host': '192.168.1.100', 'port': 6379},
-        {'host': '192.168.1.101', 'port': 6379},
-        {'host': '192.168.1.102', 'port': 6379}
+        ClusterNode('192.168.1.100', 6379),
+        ClusterNode('192.168.1.101', 6379),
+        ClusterNode('192.168.1.102', 6379)
     ]
     monitor_cluster_health(nodes)
 ```
@@ -370,7 +375,7 @@ redis-cli --cluster add-node \
 Build resilience into your application:
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 from redis.exceptions import (
     ClusterDownError,
     MovedError,
@@ -394,7 +399,7 @@ class ResilientRedisCluster:
                 self.client = RedisCluster(
                     startup_nodes=self.startup_nodes,
                     decode_responses=True,
-                    skip_full_coverage_check=True
+                    require_full_coverage=False
                 )
                 return
             except Exception as e:
@@ -412,8 +417,8 @@ class ResilientRedisCluster:
                 return method(*args, **kwargs)
 
             except (MovedError, AskError):
-                # Cluster client should handle these, but refresh just in case
-                self.client.cluster_slots()
+                # Cluster client should handle these, but reconnect just in case
+                self._connect()
                 continue
 
             except ClusterDownError:
@@ -437,8 +442,8 @@ class ResilientRedisCluster:
 
 # Usage
 nodes = [
-    {'host': '192.168.1.100', 'port': 6379},
-    {'host': '192.168.1.101', 'port': 6379}
+    ClusterNode('192.168.1.100', 6379),
+    ClusterNode('192.168.1.101', 6379)
 ]
 
 rc = ResilientRedisCluster(nodes)
@@ -454,8 +459,8 @@ value = rc.get('mykey')
 | Frequent ASK errors | Ongoing migration | Wait for migration to complete |
 | CROSSSLOT error | Keys on different nodes | Use hash tags |
 | CLUSTERDOWN error | Cluster lost quorum | Check node health, fix failures |
-| Stale slot mapping | Client cache outdated | Force refresh of slot mapping |
-| Stuck migration | Migration interrupted | Use `CLUSTER FIX` command |
+| Stale slot mapping | Client cache outdated | Refresh topology or reconnect client |
+| Stuck migration | Migration interrupted | Use `redis-cli --cluster fix` |
 
 ## Prevention Best Practices
 

@@ -122,7 +122,7 @@ echo "Notes repository initialized at ~/notes"
 | Diff viewing | See exactly what changed between versions |
 | Conflict resolution | Merge changes from multiple devices |
 
-**No sync conflicts. No data loss. No "oops, I deleted something important."**
+**No opaque sync conflicts. No data loss. No "oops, I deleted something important."**
 
 This script shows how to view the history of changes to a specific note. Git's log and diff commands reveal the complete evolution of your thinking.
 
@@ -230,7 +230,7 @@ rg -l "kubernetes" "$NOTES_DIR" --type md
 
 # Find TODO items across all notes
 echo -e "\n=== All TODO items ==="
-rg "- \[ \]" "$NOTES_DIR" --type md
+rg -e "- \[ \]" "$NOTES_DIR" --type md
 
 # Find notes modified this week
 echo -e "\n=== Recently modified ==="

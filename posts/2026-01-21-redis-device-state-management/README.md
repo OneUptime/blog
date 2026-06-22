@@ -294,7 +294,7 @@ class OfflineDetector:
 
 ## Using Redis Keyspace Notifications
 
-Subscribe to key expiration events for real-time offline detection:
+Subscribe to key expiration events for event-driven offline detection:
 
 ```python
 class KeyspaceOfflineDetector:
@@ -675,39 +675,43 @@ class OfflineDetector {
 }
 
 // Usage
-const stateManager = new DeviceStateManager({ host: 'localhost', port: 6379 });
+async function main() {
+    const stateManager = new DeviceStateManager({ host: 'localhost', port: 6379 });
 
-// Register device
-await stateManager.registerDevice('sensor-001', 'temperature_sensor', {
-    location: 'warehouse-a'
-});
+    // Register device
+    await stateManager.registerDevice('sensor-001', 'temperature_sensor', {
+        location: 'warehouse-a'
+    });
 
-// Device heartbeat
-await stateManager.deviceHeartbeat('sensor-001', {
-    temperature: 23.5,
-    humidity: 45
-});
+    // Device heartbeat
+    await stateManager.deviceHeartbeat('sensor-001', {
+        temperature: 23.5,
+        humidity: 45
+    });
 
-// Get state
-const state = await stateManager.getDeviceState('sensor-001');
-console.log(state);
+    // Get state
+    const state = await stateManager.getDeviceState('sensor-001');
+    console.log(state);
 
-// Set desired state
-await stateManager.setDesiredState('sensor-001', {
-    reportingInterval: 30
-});
+    // Set desired state
+    await stateManager.setDesiredState('sensor-001', {
+        reportingInterval: 30
+    });
 
-// Subscribe to presence
-stateManager.subscribeToPresence((event) => {
-    console.log(`Device ${event.deviceId} is now ${event.status}`);
-});
+    // Subscribe to presence
+    stateManager.subscribeToPresence((event) => {
+        console.log(`Device ${event.deviceId} is now ${event.status}`);
+    });
+}
+
+main().catch(console.error);
 ```
 
 ## Best Practices
 
 1. **Use TTL for heartbeats** - Let Redis handle expiration instead of polling.
 
-2. **Enable keyspace notifications** - Get real-time offline detection without polling.
+2. **Enable keyspace notifications** - Get event-driven offline detection without polling, keeping in mind that expiration events can be delayed and are delivered through Redis Pub/Sub.
 
 3. **Store state separately from heartbeat** - Device state persists even when heartbeat expires.
 

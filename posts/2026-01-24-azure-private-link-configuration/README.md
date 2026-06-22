@@ -18,19 +18,19 @@ Private Link works by creating a private endpoint in your VNet that maps to a sp
 flowchart LR
     subgraph VNet["Your Virtual Network"]
         VM[Virtual Machine]
-        PE[Private Endpoint<br/>10.0.1.10]
+        PEStorage[Private Endpoint<br/>10.0.1.10]
+        PESQL[Private Endpoint<br/>10.0.1.11]
     end
 
     subgraph Azure["Azure Backbone"]
-        PLS[Private Link Service]
         SQL[(Azure SQL)]
         Storage[(Azure Storage)]
     end
 
-    VM --> PE
-    PE --> PLS
-    PLS --> SQL
-    PLS --> Storage
+    VM --> PEStorage
+    VM --> PESQL
+    PEStorage --> Storage
+    PESQL --> SQL
 
     Internet((Public Internet))
     VM -.-x Internet
@@ -70,7 +70,7 @@ Let's walk through creating a private endpoint for an Azure Storage account.
 # Set variables
 RESOURCE_GROUP="rg-privatelink-demo"
 LOCATION="eastus"
-STORAGE_ACCOUNT="stprivatelinkdemo$(date +%s)"
+STORAGE_ACCOUNT="stpl$(date +%s)"
 VNET_NAME="vnet-privatelink"
 SUBNET_NAME="subnet-endpoints"
 
@@ -100,12 +100,12 @@ az network vnet create \
     --subnet-name $SUBNET_NAME \
     --subnet-prefix 10.0.1.0/24
 
-# Disable private endpoint network policies on the subnet
+# Keep private endpoint network policies disabled on the subnet
 az network vnet subnet update \
     --name $SUBNET_NAME \
     --resource-group $RESOURCE_GROUP \
     --vnet-name $VNET_NAME \
-    --disable-private-endpoint-network-policies true
+    --private-endpoint-network-policies Disabled
 ```
 
 ### Step 3: Create the Private Endpoint
@@ -147,7 +147,7 @@ az network private-dns link vnet create \
     --virtual-network $VNET_NAME \
     --registration-enabled false
 
-# Create DNS records for the private endpoint
+# Create a DNS zone group for the private endpoint
 az network private-endpoint dns-zone-group create \
     --resource-group $RESOURCE_GROUP \
     --endpoint-name "pe-storage-blob" \
@@ -166,6 +166,10 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
       version = "~> 3.0"
     }
   }
@@ -179,6 +183,12 @@ provider "azurerm" {
 resource "azurerm_resource_group" "main" {
   name     = "rg-privatelink-demo"
   location = "eastus"
+}
+
+resource "random_string" "suffix" {
+  length  = 12
+  special = false
+  upper   = false
 }
 
 # Virtual Network
@@ -196,13 +206,13 @@ resource "azurerm_subnet" "endpoints" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
 
-  # Required for private endpoints
-  private_endpoint_network_policies_enabled = false
+  # Keep disabled unless you need NSG or route table support for private endpoints
+  private_endpoint_network_policies = "Disabled"
 }
 
 # Storage Account
 resource "azurerm_storage_account" "main" {
-  name                     = "stprivatelinkdemo"
+  name                     = "stpl${random_string.suffix.result}"
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
@@ -278,7 +288,15 @@ flowchart TB
 ### Create a Private Link Service
 
 ```bash
-# First, create a Standard Load Balancer with your backend pool
+# First, create a Standard Load Balancer with your backend pool.
+# Create a subnet for the Private Link Service with network policies disabled.
+az network vnet subnet create \
+    --name "subnet-pls" \
+    --resource-group $RESOURCE_GROUP \
+    --vnet-name $VNET_NAME \
+    --address-prefixes 10.0.2.0/24 \
+    --private-link-service-network-policies Disabled
+
 # Then create the Private Link Service
 
 az network private-link-service create \
@@ -304,7 +322,7 @@ az network private-endpoint show \
 
 # Verify DNS resolution from a VM in the VNet
 # SSH into your VM and run:
-nslookup stprivatelinkdemo.blob.core.windows.net
+nslookup $STORAGE_ACCOUNT.blob.core.windows.net
 
 # Expected output should show private IP like 10.0.1.x
 # instead of public IP
@@ -347,7 +365,7 @@ az network private-dns link vnet show \
 
 ### Network Policies Blocking Traffic
 
-Make sure network policies are disabled on the subnet:
+If you enable private endpoint network policies to use NSGs or route tables, check that those rules are not blocking traffic. Otherwise, keep policies disabled:
 
 ```bash
 az network vnet subnet show \
@@ -370,7 +388,7 @@ az network vnet subnet show \
 
 Private Link pricing includes:
 - Hourly charge for each private endpoint (approximately $0.01/hour)
-- Data processing charges (approximately $0.01/GB)
+- Data processing charges for inbound and outbound traffic, with rates that vary by region and usage tier
 
 For high-throughput scenarios, factor these costs into your architecture decisions.
 

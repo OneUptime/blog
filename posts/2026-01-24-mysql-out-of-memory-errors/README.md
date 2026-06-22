@@ -20,7 +20,7 @@ flowchart TB
         A[InnoDB Buffer Pool]
         B[InnoDB Log Buffer]
         C[Key Buffer]
-        D[Query Cache - Deprecated]
+        D[Query Cache - Removed in MySQL 8.0]
     end
 
     subgraph PerThread["Per-Connection Memory"]
@@ -60,20 +60,22 @@ journalctl -u mysql | grep -i "oom\|killed\|memory"
 
 ### Monitor Current Memory Usage
 
+For complete results, enable Performance Schema memory instruments at startup.
+
 ```sql
 -- Check MySQL memory usage summary
 SELECT
     event_name,
-    current_alloc AS current_memory,
-    high_alloc AS peak_memory
-FROM sys.memory_global_by_current_bytes
+    FORMAT_BYTES(current_alloc) AS current_memory,
+    FORMAT_BYTES(high_alloc) AS peak_memory
+FROM sys.x$memory_global_by_current_bytes
 ORDER BY current_alloc DESC
 LIMIT 10;
 
 -- Check total allocated memory
 SELECT
     FORMAT_BYTES(SUM(current_alloc)) AS total_allocated
-FROM sys.memory_global_by_current_bytes;
+FROM sys.x$memory_global_by_current_bytes;
 ```
 
 ### Calculate Expected Memory Usage
@@ -107,7 +109,7 @@ The buffer pool is typically the largest memory consumer. Setting it too high le
 innodb_buffer_pool_size = 8G
 
 # Split buffer pool into multiple instances for better concurrency
-# Use 1 instance per GB (up to 64)
+# MySQL 8.4+ autosizes this by default; set manually only when needed
 innodb_buffer_pool_instances = 8
 
 # Enable buffer pool dump for faster warm-up after restart
@@ -199,12 +201,12 @@ SHOW STATUS LIKE 'Created_tmp%';
 
 -- Identify queries creating large temporary tables
 SELECT
-    sql_text,
-    created_tmp_tables,
-    created_tmp_disk_tables
+    digest_text,
+    sum_created_tmp_tables,
+    sum_created_tmp_disk_tables
 FROM performance_schema.events_statements_summary_by_digest
-WHERE created_tmp_tables > 0
-ORDER BY created_tmp_disk_tables DESC
+WHERE sum_created_tmp_tables > 0
+ORDER BY sum_created_tmp_disk_tables DESC
 LIMIT 10;
 ```
 
@@ -213,17 +215,22 @@ Configure temporary table limits:
 ```ini
 # my.cnf - Temporary table settings
 [mysqld]
-# Maximum size for in-memory temporary tables
+# Maximum size for an individual in-memory internal temporary table
 tmp_table_size = 64M
+
+# Global RAM limit for the TempTable engine in MySQL 8.0+
+temptable_max_ram = 1G
+
+# Limit for MEMORY-engine internal temporary tables and explicit MEMORY tables
 max_heap_table_size = 64M
 
-# Directory for disk-based temporary tables
+# Directory for temporary files, including TempTable overflow files
 tmpdir = /var/lib/mysql/tmp
 ```
 
-### 5. Memory Leaks in Stored Procedures
+### 5. Long-Running Stored Procedures or Queries
 
-Poorly written stored procedures can leak memory.
+Poorly written stored procedures or long-running queries can hold memory for longer than expected.
 
 ```sql
 -- Check for long-running procedures
@@ -291,6 +298,13 @@ echo "Total estimated MySQL usage: $((BUFFER_POOL_MB + MAX_THREAD_MEMORY + OTHER
 ### Set Up Memory Monitoring
 
 ```sql
+CREATE TABLE IF NOT EXISTS memory_stats (
+    recorded_at TIMESTAMP NOT NULL,
+    total_allocated BIGINT UNSIGNED,
+    buffer_pool_pages_data BIGINT UNSIGNED,
+    connections BIGINT UNSIGNED
+);
+
 -- Create a monitoring event
 DELIMITER //
 CREATE EVENT IF NOT EXISTS memory_monitor
@@ -305,7 +319,7 @@ BEGIN
     )
     SELECT
         NOW(),
-        (SELECT SUM(current_alloc) FROM sys.memory_global_by_current_bytes),
+        (SELECT SUM(current_alloc) FROM sys.x$memory_global_by_current_bytes),
         (SELECT SUM(database_pages) FROM information_schema.INNODB_BUFFER_POOL_STATS),
         (SELECT VARIABLE_VALUE FROM performance_schema.global_status
          WHERE VARIABLE_NAME = 'Threads_connected');
@@ -353,7 +367,7 @@ systemctl start mysql
 
 # 4. Check status
 mysql -e "SHOW STATUS LIKE 'Threads_connected';"
-mysql -e "SELECT FORMAT_BYTES(SUM(current_alloc)) FROM sys.memory_global_by_current_bytes;"
+mysql -e "SELECT FORMAT_BYTES(SUM(current_alloc)) FROM sys.x$memory_global_by_current_bytes;"
 
 echo "MySQL started with reduced memory settings"
 echo "Remember to remove /etc/mysql/conf.d/emergency.cnf after proper tuning"

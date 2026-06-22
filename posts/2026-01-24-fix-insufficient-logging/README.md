@@ -14,14 +14,14 @@ Insufficient logging is one of the most overlooked security vulnerabilities in m
 
 ## Why Insufficient Logging Is Dangerous
 
-The OWASP Top 10 includes insufficient logging and monitoring as a critical vulnerability. Without proper logs, attackers can:
+The OWASP Top 10 includes security logging and alerting failures as a critical vulnerability. Without proper logs, attackers can:
 
 - Probe your systems without detection
 - Maintain persistent access for extended periods
 - Cover their tracks after a breach
 - Exploit vulnerabilities repeatedly
 
-Studies show that the average time to detect a breach is over 200 days. Proper logging can reduce this dramatically.
+Studies show that the average time to identify and contain a breach can still be over 200 days. Proper logging can reduce this dramatically.
 
 ---
 
@@ -85,8 +85,7 @@ This code works functionally but provides no visibility into authentication fail
 ```python
 import logging
 import json
-from datetime import datetime
-from functools import wraps
+from datetime import datetime, timezone
 
 # Configure structured logging
 class SecurityLogger:
@@ -101,7 +100,7 @@ class SecurityLogger:
 
     def log_event(self, event_type, details, severity="INFO"):
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
             "severity": severity,
             "details": details
@@ -180,9 +179,9 @@ const securityLogger = winston.createLogger({
         // Write security events to dedicated file
         new winston.transports.File({
             filename: 'logs/security.log',
-            level: 'warn'
+            level: 'info'
         }),
-        // Also send to centralized logging
+        // Also write to stdout for collection by a centralized logging system
         new winston.transports.Console()
     ]
 });
@@ -210,24 +209,26 @@ async function authenticateUser(username, password, req) {
         const isValid = await bcrypt.compare(password, user.passwordHash);
 
         if (!isValid) {
+            const failedAttempts = user.failedAttempts + 1;
+
             securityLogger.warn('Authentication failed', {
                 event: 'AUTH_FAILURE',
                 reason: 'invalid_password',
                 userId: user.id,
                 username: username,
                 ipAddress: ipAddress,
-                failedAttempts: user.failedAttempts + 1
+                failedAttempts: failedAttempts
             });
 
             await user.incrementFailedAttempts();
 
             // Detect brute force
-            if (user.failedAttempts >= 5) {
+            if (failedAttempts >= 5) {
                 securityLogger.error('Possible brute force attack', {
                     event: 'BRUTE_FORCE_DETECTED',
                     userId: user.id,
                     ipAddress: ipAddress,
-                    attemptCount: user.failedAttempts
+                    attemptCount: failedAttempts
                 });
             }
 
@@ -303,6 +304,8 @@ def sanitize_log_data(data):
             k: '[REDACTED]' if k.lower() in SENSITIVE_FIELDS else sanitize_log_data(v)
             for k, v in data.items()
         }
+    if isinstance(data, list):
+        return [sanitize_log_data(item) for item in data]
     return data
 
 # Example usage
@@ -383,9 +386,9 @@ class AlertManager:
 
 ## Log Retention Policy
 
-Different types of logs require different retention periods:
+Depending on compliance and business requirements, different types of logs require different retention periods:
 
-| Log Type | Minimum Retention | Recommended |
+| Log Type | Baseline Retention | Recommended |
 |----------|------------------|-------------|
 | Authentication logs | 90 days | 1 year |
 | Access control logs | 90 days | 1 year |

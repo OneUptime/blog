@@ -134,16 +134,17 @@ function validateCSRF(req, res, next) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Get token from request (header, body, or query)
+    // Get token from request (header or body)
     const token = req.headers['x-csrf-token'] ||
-                  req.body._csrf ||
-                  req.query._csrf;
+                  req.body._csrf;
+
+    const expectedToken = Buffer.from(session.csrfToken);
+    const receivedToken = Buffer.from(typeof token === 'string' ? token : '');
 
     // Constant-time comparison to prevent timing attacks
-    if (!token || !crypto.timingSafeEqual(
-        Buffer.from(session.csrfToken),
-        Buffer.from(token)
-    )) {
+    if (typeof token !== 'string' ||
+        expectedToken.length !== receivedToken.length ||
+        !crypto.timingSafeEqual(expectedToken, receivedToken)) {
         return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
@@ -241,7 +242,7 @@ MIDDLEWARE = [
 
 # CSRF cookie settings
 CSRF_COOKIE_SECURE = True      # Only send over HTTPS
-CSRF_COOKIE_HTTPONLY = True    # Not accessible via JavaScript
+CSRF_COOKIE_HTTPONLY = False   # Required if JavaScript reads the token from the cookie
 CSRF_COOKIE_SAMESITE = 'Strict'  # Additional CSRF protection
 ```
 
@@ -257,6 +258,7 @@ CSRF_COOKIE_SAMESITE = 'Strict'  # Additional CSRF protection
 
 ```python
 # For AJAX requests, get token from cookie
+from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 @ensure_csrf_cookie
@@ -285,7 +287,7 @@ fetch('/api/transfer', {
 
 ## Double Submit Cookie Pattern
 
-An alternative to server-side token storage is the double submit cookie pattern. The token is sent as both a cookie and a request parameter.
+An alternative to server-side token storage is the double submit cookie pattern. The token is sent as both a cookie and a request parameter. For production systems, sign the token and bind it to the user's session to protect against cookie injection attacks.
 
 ```javascript
 const express = require('express');
@@ -643,7 +645,7 @@ function TransferForm() {
 1. **Use CSRF tokens** for all state-changing operations
 2. **Set SameSite=Strict** on session cookies when possible
 3. **Validate Origin/Referer** headers as additional defense
-4. **Use secure cookie flags** (Secure, HttpOnly)
+4. **Use secure cookie flags** (Secure, and HttpOnly for session cookies)
 5. **Require custom headers** for AJAX requests
 6. **Regenerate tokens** after login to prevent session fixation
 7. **Use constant-time comparison** to prevent timing attacks

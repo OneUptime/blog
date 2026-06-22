@@ -492,7 +492,6 @@ public class KerberosProducer {
 
 ```java
 import org.apache.kafka.clients.admin.*;
-import org.apache.kafka.common.config.ConfigResource;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -511,36 +510,35 @@ public class KafkaUserManager {
             throws ExecutionException, InterruptedException {
 
         // mechanism should be "SCRAM-SHA-256" or "SCRAM-SHA-512"
-        String configKey = mechanism + "=[password=" + password + "]";
+        ScramMechanism scramMechanism = ScramMechanism.fromMechanismName(mechanism);
+        if (scramMechanism == ScramMechanism.UNKNOWN) {
+            throw new IllegalArgumentException("Unsupported SCRAM mechanism: " + mechanism);
+        }
 
-        ConfigResource resource = new ConfigResource(
-            ConfigResource.Type.USER, username);
+        UserScramCredentialUpsertion upsertion =
+            new UserScramCredentialUpsertion(
+                username,
+                new ScramCredentialInfo(scramMechanism, 4096),
+                password);
 
-        AlterConfigOp op = new AlterConfigOp(
-            new ConfigEntry(mechanism, "[password=" + password + "]"),
-            AlterConfigOp.OpType.SET);
-
-        Map<ConfigResource, Collection<AlterConfigOp>> configs = new HashMap<>();
-        configs.put(resource, Collections.singletonList(op));
-
-        adminClient.incrementalAlterConfigs(configs).all().get();
+        adminClient.alterUserScramCredentials(
+            Collections.singletonList(upsertion)).all().get();
         System.out.println("Created SCRAM user: " + username);
     }
 
     public void deleteScramUser(String username, String mechanism)
             throws ExecutionException, InterruptedException {
 
-        ConfigResource resource = new ConfigResource(
-            ConfigResource.Type.USER, username);
+        ScramMechanism scramMechanism = ScramMechanism.fromMechanismName(mechanism);
+        if (scramMechanism == ScramMechanism.UNKNOWN) {
+            throw new IllegalArgumentException("Unsupported SCRAM mechanism: " + mechanism);
+        }
 
-        AlterConfigOp op = new AlterConfigOp(
-            new ConfigEntry(mechanism, ""),
-            AlterConfigOp.OpType.DELETE);
+        UserScramCredentialDeletion deletion =
+            new UserScramCredentialDeletion(username, scramMechanism);
 
-        Map<ConfigResource, Collection<AlterConfigOp>> configs = new HashMap<>();
-        configs.put(resource, Collections.singletonList(op));
-
-        adminClient.incrementalAlterConfigs(configs).all().get();
+        adminClient.alterUserScramCredentials(
+            Collections.singletonList(deletion)).all().get();
         System.out.println("Deleted SCRAM user: " + username);
     }
 
@@ -625,6 +623,7 @@ Combine SASL with ACLs to restrict access:
 ```bash
 # Grant produce permission only
 bin/kafka-acls.sh --bootstrap-server localhost:9093 \
+  --command-config admin.properties \
   --add --allow-principal User:producer \
   --operation Write --topic my-topic
 ```

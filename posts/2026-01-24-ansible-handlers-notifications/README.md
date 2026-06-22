@@ -336,8 +336,15 @@ Control when handlers are notified using `changed_when`:
       ansible.builtin.shell: |
         apt-get update && apt-get upgrade -y
       register: upgrade_result
-      # Notify handler only if packages were actually upgraded
+      # Report changed only if packages were actually upgraded
       changed_when: "'0 upgraded' not in upgrade_result.stdout"
+
+    # Notify handler only if Debian reports that a reboot is required
+    - name: Check whether reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      changed_when: reboot_required.stat.exists
       notify: Reboot if required
 
   handlers:
@@ -349,7 +356,9 @@ Control when handlers are notified using `changed_when`:
     - name: Reboot if required
       ansible.builtin.reboot:
         reboot_timeout: 300
-      when: ansible_facts['os_family'] == 'Debian'
+      when:
+        - ansible_facts['os_family'] == 'Debian'
+        - reboot_required.stat.exists
 ```
 
 ---
@@ -424,7 +433,7 @@ myapp_role/
 
 ## Handling Handler Failures
 
-By default, handler failures stop playbook execution. Use `ignore_errors` or blocks for error handling:
+By default, handler failures stop playbook execution. Also, if a later task fails after notifying a handler, Ansible does not run that handler on the failed host unless you enable forced handlers. Use `force_handlers` for later task failures, and use `ignore_errors` or blocks for failures inside handlers:
 
 ```yaml
 # playbook.yml
@@ -433,6 +442,7 @@ By default, handler failures stop playbook execution. Use `ignore_errors` or blo
 - name: Update services with error handling
   hosts: servers
   become: yes
+  force_handlers: true
 
   tasks:
     - name: Update service configuration
@@ -454,7 +464,7 @@ By default, handler failures stop playbook execution. Use `ignore_errors` or blo
       rescue:
         # If graceful restart fails, try force restart
         - name: Force restart service
-          ansible.builtin.command: systemctl reset-failed myservice && systemctl restart myservice
+          ansible.builtin.shell: systemctl reset-failed myservice && systemctl restart myservice
           register: force_restart
 
         - name: Log restart failure
@@ -659,8 +669,10 @@ handlers:
           ansible.builtin.uri:
             url: http://localhost:8080/health
             status_code: 200
+          register: health_check
           retries: 10
           delay: 5
+          until: health_check.status == 200
 
         - name: Add back to load balancer
           ansible.builtin.uri:

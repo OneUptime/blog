@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Kubernetes, Log Collection, Promtail, Pod Logs, Cloud Native, Observability
 
-Description: A comprehensive guide to collecting Kubernetes logs with Grafana Loki, covering pod logs, system logs, audit logs, and event collection with production-ready configurations.
+Description: A comprehensive guide to collecting Kubernetes logs with Grafana Loki, covering pod logs, system logs, audit logs, and event collection with legacy Promtail configurations.
 
 ---
 
 Kubernetes generates logs from multiple sources including container applications, system components, and audit systems. Grafana Loki provides an efficient solution for aggregating and querying these logs. This guide covers comprehensive Kubernetes log collection strategies using Loki.
+
+Note: Promtail reached end-of-life on March 2, 2026, and the `loki-stack` Helm chart is deprecated. These examples are useful for maintaining existing Promtail deployments; use Grafana Alloy or another supported Loki client for new production deployments.
 
 ## Prerequisites
 
@@ -42,7 +44,7 @@ Before starting, ensure you have:
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-# Install Loki Stack
+# Install Loki Stack (legacy chart)
 helm install loki grafana/loki-stack \
   --namespace loki \
   --create-namespace \
@@ -52,7 +54,7 @@ helm install loki grafana/loki-stack \
   --set loki.persistence.size=50Gi
 ```
 
-### Custom Values for Production
+### Custom Values for Existing Loki Stack Deployments
 
 Create `loki-stack-values.yaml`:
 
@@ -85,9 +87,17 @@ loki:
       ingestion_rate_mb: 32
       ingestion_burst_size_mb: 64
       max_streams_per_user: 50000
-    table_manager:
-      retention_deletes_enabled: true
       retention_period: 720h
+    compactor:
+      working_directory: /loki/compactor
+      retention_enabled: true
+      delete_request_store: filesystem
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /loki/index
+        cache_location: /loki/index_cache
+      filesystem:
+        directory: /loki/chunks
   resources:
     requests:
       cpu: 500m
@@ -293,18 +303,52 @@ data:
       # Kubernetes events
       - job_name: kubernetes-events
         kubernetes_sd_configs:
-          - role: endpoints
+          - role: pod
             namespaces:
               names:
-                - default
+                - kube-system
+        pipeline_stages:
+          - cri: {}
+          - json:
+              expressions:
+                reason: reason
+                type: type
+                message: message
+                involvedObject_namespace: involvedObject.namespace
+                involvedObject_name: involvedObject.name
+                involvedObject_kind: involvedObject.kind
+          - labels:
+              reason:
+              type:
+              involvedObject_namespace:
+              involvedObject_kind:
         relabel_configs:
           - source_labels:
-              - __meta_kubernetes_service_label_component
+              - __meta_kubernetes_pod_label_component
             regex: eventrouter
             action: keep
           - action: replace
             replacement: kubernetes-events
             target_label: job
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_pod_name
+            target_label: pod
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_pod_container_name
+            target_label: container
+          - action: replace
+            replacement: /var/log/pods/*$1/*.log
+            separator: /
+            source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            target_label: __path__
 
       # System logs via journal
       - job_name: journal
@@ -504,7 +548,7 @@ subjects:
 
 ### Event Router Deployment
 
-Deploy the event router to convert Kubernetes events to logs:
+Deploy the event router to convert Kubernetes events to logs. The Heptio/VMware eventrouter project is archived, so use this only for existing eventrouter-based setups:
 
 ```yaml
 apiVersion: v1
@@ -779,7 +823,7 @@ sum(count_over_time({namespace="production"} | json [1h])) by (level)
 
 ### Kubernetes Logs Dashboard Variables
 
-```yaml
+```logql
 # Namespace variable
 label_values({job="kubernetes-pods"}, namespace)
 
@@ -820,7 +864,8 @@ kubectl logs -n loki -l app=promtail --tail=50
 ### Check Promtail Targets
 
 ```bash
-kubectl port-forward -n loki svc/promtail 9080:9080
+PROMTAIL_POD=$(kubectl get pod -n loki -l app=promtail -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n loki pod/$PROMTAIL_POD 9080:9080
 curl http://localhost:9080/targets
 ```
 
@@ -852,7 +897,7 @@ curl http://localhost:3100/metrics | grep loki_distributor_lines_received
 
 Collecting Kubernetes logs with Loki requires understanding multiple log sources and appropriate collection strategies. Key takeaways:
 
-- Use Promtail as a DaemonSet for comprehensive log collection
+- Use Promtail as a DaemonSet only for existing Promtail deployments
 - Configure appropriate relabel rules for Kubernetes metadata
 - Collect events using an event router
 - Enable audit logging for security and compliance

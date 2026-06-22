@@ -15,10 +15,10 @@ Bull Board provides a beautiful, real-time dashboard for monitoring and managing
 Install the required packages:
 
 ```bash
-npm install @bull-board/api @bull-board/express bullmq
+npm install express @bull-board/api @bull-board/express bullmq ioredis
 # Or for Fastify
 
-npm install @bull-board/api @bull-board/fastify bullmq
+npm install fastify @bull-board/api @bull-board/fastify bullmq ioredis
 ```
 
 ## Basic Setup with Express
@@ -106,7 +106,6 @@ async function start() {
 
   await fastify.register(serverAdapter.registerPlugin(), {
     prefix: '/admin/queues',
-    basePath: '/admin/queues',
   });
 
   await fastify.listen({ port: 3000 });
@@ -125,6 +124,7 @@ import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
 
 class DynamicBullBoard {
   private queues: Map<string, Queue> = new Map();
@@ -132,7 +132,7 @@ class DynamicBullBoard {
   private board: ReturnType<typeof createBullBoard>;
   private serverAdapter: ExpressAdapter;
 
-  constructor(connection: Redis) {
+  constructor(private connection: Redis) {
     this.serverAdapter = new ExpressAdapter();
     this.serverAdapter.setBasePath('/admin/queues');
 
@@ -148,7 +148,7 @@ class DynamicBullBoard {
       return;
     }
 
-    const queue = new Queue(name, { connection });
+    const queue = new Queue(name, { connection: this.connection });
     const adapter = new BullMQAdapter(queue);
 
     this.queues.set(name, queue);
@@ -184,7 +184,7 @@ class DynamicBullBoard {
 
     // Create new queues
     const newAdapters = names.map((name) => {
-      const queue = new Queue(name, { connection });
+      const queue = new Queue(name, { connection: this.connection });
       const adapter = new BullMQAdapter(queue);
       this.queues.set(name, queue);
       this.adapters.set(name, adapter);
@@ -221,6 +221,8 @@ import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 
 const app = express();
+
+app.use(express.urlencoded({ extended: false }));
 
 // Session setup
 app.use(session({
@@ -316,7 +318,7 @@ class RoleBasedBullBoard {
   private serverAdapter: ExpressAdapter;
   private readOnlyAdapter: ExpressAdapter;
 
-  constructor(queues: Queue[], connection: Redis) {
+  constructor(queues: Queue[]) {
     // Full access board
     this.serverAdapter = new ExpressAdapter();
     this.serverAdapter.setBasePath('/admin/queues');
@@ -351,11 +353,7 @@ class RoleBasedBullBoard {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      if (role === 'viewer' || user.role === 'admin') {
-        return next();
-      }
-
-      if (user.role === role) {
+      if (user.role === 'admin' || user.role === role) {
         return next();
       }
 
@@ -410,14 +408,14 @@ interface QueueGroup {
 class GroupedBullBoard {
   private serverAdapter: ExpressAdapter;
 
-  constructor(groups: QueueGroup[], connection: Redis) {
+  constructor(groups: QueueGroup[]) {
     this.serverAdapter = new ExpressAdapter();
     this.serverAdapter.setBasePath('/admin/queues');
 
-    // Flatten and prefix queue names for grouping
+    // Flatten queues and show each queue's group in the UI
     const adapters = groups.flatMap((group) =>
       group.queues.map((queue) => {
-        // Add prefix to help identify groups in UI
+        // Add a description to help identify groups in UI
         const adapter = new BullMQAdapter(queue, {
           description: `Group: ${group.name}`,
         });
@@ -452,7 +450,7 @@ const groups: QueueGroup[] = [
   },
 ];
 
-const groupedBoard = new GroupedBullBoard(groups, connection);
+const groupedBoard = new GroupedBullBoard(groups);
 app.use('/admin/queues', groupedBoard.getRouter());
 ```
 
@@ -626,6 +624,8 @@ class QueueManager {
 // API endpoints alongside Bull Board
 const queueManager = new QueueManager(['emails', 'orders'], connection);
 
+app.use(express.json());
+
 app.post('/api/queues/:name/retry-failed', async (req, res) => {
   try {
     const count = await queueManager.retryAllFailed(req.params.name);
@@ -665,7 +665,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY . .
 

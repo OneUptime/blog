@@ -102,6 +102,8 @@ inputs = ["enrich", "docker_logs"]
 endpoint = "https://clickhouse.example.com:8443"
 database = "logs"
 table = "application_logs"
+date_time_best_effort = true
+skip_unknown_fields = true
 auth.strategy = "basic"
 auth.user = "vector_user"
 auth.password = "${CLICKHOUSE_PASSWORD}"
@@ -170,17 +172,30 @@ source = '''
 .status_category = to_string(floor(to_int!(.status) / 100)) + "xx"
 '''
 
+# Convert access logs to metrics
+[transforms.access_log_metrics]
+type = "log_to_metric"
+inputs = ["parse_access"]
+
+[[transforms.access_log_metrics.metrics]]
+type = "counter"
+field = "status"
+name = "requests_total"
+namespace = "access_logs"
+
+[transforms.access_log_metrics.metrics.tags]
+host = "{{host}}"
+status_category = "{{status_category}}"
+
 # Aggregate metrics
 [transforms.aggregate_metrics]
 type = "aggregate"
-inputs = ["parse_access"]
+inputs = ["access_log_metrics"]
 interval_ms = 60000
-group_by = ["host", "status_category"]
 
-[transforms.aggregate_metrics.metric]
-namespace = "access_logs"
-kind = "incremental"
-counter.value = "1"
+[transforms.metrics_to_logs]
+type = "metric_to_log"
+inputs = ["aggregate_metrics"]
 
 # Multiple ClickHouse sinks
 [sinks.clickhouse_errors]
@@ -199,7 +214,7 @@ table = "access_logs"
 
 [sinks.clickhouse_metrics]
 type = "clickhouse"
-inputs = ["aggregate_metrics"]
+inputs = ["metrics_to_logs"]
 endpoint = "https://clickhouse.example.com:8443"
 database = "logs"
 table = "access_metrics"
@@ -261,7 +276,7 @@ apt-get install fluent-bit  # Debian/Ubuntu
     Name          http
     Match         *
     Host          clickhouse.example.com
-    Port          8123
+    Port          8443
     URI           /?query=INSERT+INTO+logs.application_logs+FORMAT+JSONEachRow
     Format        json_lines
     Json_date_key timestamp
@@ -352,7 +367,7 @@ CREATE TABLE logs.application_logs (
 
     INDEX idx_trace_id trace_id TYPE bloom_filter GRANULARITY 4,
     INDEX idx_request_id request_id TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_message message TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
+    INDEX idx_message message TYPE text(tokenizer = splitByNonAlpha)
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
@@ -374,7 +389,7 @@ CREATE TABLE logs.access_logs (
     referer String,
 
     INDEX idx_status status TYPE set(0) GRANULARITY 4,
-    INDEX idx_path path TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
+    INDEX idx_path path TYPE text(tokenizer = splitByNonAlpha)
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
@@ -537,11 +552,10 @@ max_size = 5368709120   # 5GB
 when_full = "block"
 
 # Enable compression
-[sinks.clickhouse.encoding]
-codec = "json"
+[sinks.clickhouse]
+compression = "gzip"
 
 [sinks.clickhouse.request]
-compression = "gzip"
 concurrency = "adaptive"
 ```
 

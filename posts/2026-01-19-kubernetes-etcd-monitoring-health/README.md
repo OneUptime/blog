@@ -75,6 +75,7 @@ spec:
         - --key-file=/etc/kubernetes/pki/etcd/server.key
         - --listen-client-urls=https://127.0.0.1:2379,https://$(NODE_IP):2379
         - --listen-metrics-urls=http://0.0.0.0:2381  # Enable metrics
+        - --metrics=extensive  # Include server-side gRPC histogram metrics
         - --listen-peer-urls=https://$(NODE_IP):2380
         - --name=$(NODE_NAME)
         - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
@@ -98,8 +99,13 @@ Most managed Kubernetes services don't expose etcd directly. Use their native mo
 
 **GKE:**
 ```bash
-# etcd metrics available through Cloud Monitoring
-gcloud monitoring metrics list --filter="metric.type:starts_with('kubernetes.io/anthos/etcd')"
+# Direct etcd metrics are not exposed for GKE-managed control planes.
+# Use GKE's etcd usage recommendations when cluster storage approaches limits.
+gcloud recommender recommendations list \
+  --recommender=google.container.DiagnosisRecommender \
+  --location=LOCATION \
+  --project=PROJECT_ID \
+  --filter="recommenderSubtype:ETCD_DB_USAGE_APPROACHING_LIMIT"
 ```
 
 **EKS:**
@@ -161,25 +167,32 @@ spec:
   selector:
     component: etcd
 ---
-# Endpoints for static etcd (if not running as pods)
-apiVersion: v1
-kind: Endpoints
+# EndpointSlice for static etcd (if not running as pods)
+# For static endpoints, omit the Service selector above.
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: etcd
+  name: etcd-static
   namespace: kube-system
   labels:
     component: etcd
-subsets:
+    kubernetes.io/service-name: etcd
+    endpointslice.kubernetes.io/managed-by: cluster-admins
+addressType: IPv4
+ports:
+  - name: metrics
+    protocol: TCP
+    port: 2381
+endpoints:
   - addresses:
-      - ip: 192.168.1.10
-        nodeName: master-1
-      - ip: 192.168.1.11
-        nodeName: master-2
-      - ip: 192.168.1.12
-        nodeName: master-3
-    ports:
-      - name: metrics
-        port: 2381
+      - 192.168.1.10
+    nodeName: master-1
+  - addresses:
+      - 192.168.1.11
+    nodeName: master-2
+  - addresses:
+      - 192.168.1.12
+    nodeName: master-3
 ```
 
 ### Static Prometheus Config
@@ -193,13 +206,15 @@ scrape_configs:
           - '192.168.1.10:2381'
           - '192.168.1.11:2381'
           - '192.168.1.12:2381'
-    
+
+    scheme: http
+
     # For TLS-enabled metrics endpoint
-    scheme: https
-    tls_config:
-      ca_file: /etc/prometheus/etcd/ca.crt
-      cert_file: /etc/prometheus/etcd/client.crt
-      key_file: /etc/prometheus/etcd/client.key
+    # scheme: https
+    # tls_config:
+    #   ca_file: /etc/prometheus/etcd/ca.crt
+    #   cert_file: /etc/prometheus/etcd/client.crt
+    #   key_file: /etc/prometheus/etcd/client.key
 ```
 
 ## Essential Alert Rules
@@ -272,7 +287,7 @@ spec:
         
         # Database size
         - alert: etcdDatabaseQuotaLowSpace
-          expr: (etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes) * 100 > 80
+          expr: (etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes) > 0.8
           for: 5m
           labels:
             severity: warning
@@ -281,7 +296,7 @@ spec:
             description: "etcd cluster {{ $labels.job }} database size is {{ $value | humanizePercentage }} of quota"
         
         - alert: etcdDatabaseQuotaCritical
-          expr: (etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes) * 100 > 95
+          expr: (etcd_mvcc_db_total_size_in_bytes / etcd_server_quota_backend_bytes) > 0.95
           for: 1m
           labels:
             severity: critical
@@ -666,16 +681,34 @@ histogram_quantile(0.99, rate(etcd_network_peer_round_trip_time_seconds_bucket[5
 
 ```bash
 # Get current revision
-CURRENT_REV=$(etcdctl endpoint status --write-out="json" | jq -r '.[0].Status.header.revision')
+CURRENT_REV=$(etcdctl endpoint status \
+  --endpoints=$ETCD_ENDPOINTS \
+  --cacert=$ETCD_CACERT \
+  --cert=$ETCD_CERT \
+  --key=$ETCD_KEY \
+  --write-out="json" | jq -r '.[0].Status.header.revision')
 
 # Compact old revisions
-etcdctl compact $CURRENT_REV
+etcdctl compact $CURRENT_REV \
+  --endpoints=$ETCD_ENDPOINTS \
+  --cacert=$ETCD_CACERT \
+  --cert=$ETCD_CERT \
+  --key=$ETCD_KEY
 
 # Defragment to reclaim space
-etcdctl defrag --endpoints=$ETCD_ENDPOINTS
+etcdctl defrag \
+  --endpoints=$ETCD_ENDPOINTS \
+  --cacert=$ETCD_CACERT \
+  --cert=$ETCD_CERT \
+  --key=$ETCD_KEY
 
 # Check database size after defrag
-etcdctl endpoint status --write-out=table
+etcdctl endpoint status \
+  --endpoints=$ETCD_ENDPOINTS \
+  --cacert=$ETCD_CACERT \
+  --cert=$ETCD_CERT \
+  --key=$ETCD_KEY \
+  --write-out=table
 ```
 
 ## Summary

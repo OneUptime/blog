@@ -29,11 +29,11 @@ flowchart TB
     subgraph Evaluation["Rule Evaluation"]
         R1[Priority 100] --> R2[Priority 500]
         R2 --> R3[Priority 1000]
-        R3 --> R4[Priority 65534 - Implied Deny]
+        R3 --> R4[Implied Action]
     end
 ```
 
-Rules are evaluated by priority (lower number = higher priority). The first matching rule wins.
+Rules are evaluated by priority (lower number = higher priority). The highest-priority matching rule applies. If two VPC firewall rules with the same priority match, deny takes precedence over allow.
 
 ## Problem 1: Priority Conflicts
 
@@ -288,7 +288,8 @@ gcloud compute firewall-policies rules create 1000 \
     --direction=INGRESS \
     --src-ip-ranges="0.0.0.0/0" \
     --layer4-configs=tcp:80,tcp:443 \
-    --target-resources="projects/my-project/zones/us-central1-a/instances/my-instance"
+    --target-resources="https://www.googleapis.com/compute/v1/projects/my-project/global/networks/my-vpc" \
+    --target-service-accounts="web-vm@my-project.iam.gserviceaccount.com"
 ```
 
 ## Debugging with Firewall Rules Logging
@@ -373,4 +374,4 @@ Firewall rule issues in GCP usually stem from priority conflicts, mismatched net
 
 Enable firewall logging for detailed visibility into which rules are being applied. For complex environments with hierarchical policies, coordinate with organization admins to understand the full rule hierarchy.
 
-Remember that firewall rules are evaluated by priority, and the first matching rule wins. When in doubt, create a rule with a very low priority number (high priority) and verify it works before fine-tuning.
+Remember that firewall rules are evaluated by priority, and the highest-priority matching rule applies. When in doubt, create a rule with a very low priority number (high priority) and verify it works before fine-tuning.

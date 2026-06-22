@@ -83,10 +83,6 @@ value.converter=org.apache.kafka.connect.json.JsonConverter
 key.converter.schemas.enable=true
 value.converter.schemas.enable=true
 
-# Internal converter for Connect's internal topics
-internal.key.converter=org.apache.kafka.connect.json.JsonConverter
-internal.value.converter=org.apache.kafka.connect.json.JsonConverter
-
 # Offset storage topic configuration
 offset.storage.topic=connect-offsets
 offset.storage.replication.factor=1
@@ -104,8 +100,7 @@ status.storage.replication.factor=1
 offset.flush.interval.ms=10000
 
 # REST API configuration
-rest.host.name=0.0.0.0
-rest.port=8083
+listeners=HTTP://0.0.0.0:8083
 rest.advertised.host.name=localhost
 rest.advertised.port=8083
 
@@ -203,7 +198,7 @@ server-id = 1
 log_bin = mysql-bin
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 3
+binlog_expire_logs_seconds = 259200
 
 # Enable GTID for better tracking
 gtid_mode = ON
@@ -295,8 +290,7 @@ nano /tmp/postgres-connector.json
     "tombstones.on.delete": "true",
     "decimal.handling.mode": "string",
     "time.precision.mode": "connect",
-    "heartbeat.interval.ms": "10000",
-    "heartbeat.action.query": "UPDATE debezium_heartbeat SET last_heartbeat = NOW()"
+    "heartbeat.interval.ms": "10000"
   }
 }
 ```
@@ -357,7 +351,7 @@ Debezium produces messages with a consistent structure. Here is an example of an
 
 ```json
 {
-  "schema": { ... },
+  "schema": {},
   "payload": {
     "before": null,
     "after": {
@@ -522,9 +516,9 @@ Key metrics to monitor:
 ### Check Consumer Lag
 
 ```bash
-# Check CDC topic lag
+# Check CDC topic lag for an application consumer group
 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --describe --group connect-cluster
+  --describe --group your-consumer-group
 
 # List CDC topics
 /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep cdc
@@ -532,7 +526,7 @@ Key metrics to monitor:
 
 ## Handling Schema Changes
 
-Debezium handles schema changes automatically, but you should understand the behavior:
+Debezium handles many schema changes automatically, but you should understand the behavior:
 
 ```mermaid
 flowchart TD
@@ -548,7 +542,7 @@ flowchart TD
     F --> I[Update consumer subscriptions]
 ```
 
-Configure schema evolution handling:
+For MySQL connectors, configure schema history handling:
 
 ```json
 {
@@ -573,9 +567,10 @@ sudo journalctl -u kafka-connect -f
 curl http://localhost:8083/connector-plugins | jq
 
 # Validate connector configuration
-curl -X PUT http://localhost:8083/connector-plugins/PostgresConnector/config/validate \
+jq '.config' /tmp/postgres-connector.json | \
+  curl -X PUT http://localhost:8083/connector-plugins/io.debezium.connector.postgresql.PostgresConnector/config/validate \
   -H "Content-Type: application/json" \
-  -d @/tmp/postgres-connector.json | jq
+  -d @- | jq
 ```
 
 ### Replication Slot Issues
@@ -594,11 +589,11 @@ FROM pg_replication_slots;
 
 ### High Latency
 
-```bash
-# Increase parallelism in connector
+Tune polling and batch settings in the connector:
+
+```json
 {
   "config": {
-    "tasks.max": "4",
     "snapshot.fetch.size": "10240",
     "poll.interval.ms": "100",
     "max.batch.size": "2048"

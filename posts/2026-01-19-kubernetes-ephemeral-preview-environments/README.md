@@ -62,6 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write
       packages: write
       pull-requests: write
     
@@ -97,7 +98,7 @@ jobs:
           cache-to: type=gha,mode=max
       
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
       
       - name: Configure kubectl
         run: |
@@ -171,6 +172,8 @@ jobs:
             }
 ```
 
+This workflow assumes trusted pull requests from the same repository or organization. For public repositories, do not expose a production-capable `KUBECONFIG` to untrusted pull request code.
+
 ### Cleanup Workflow
 
 ```yaml
@@ -184,9 +187,11 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
       
       - name: Configure kubectl
         run: |
@@ -301,6 +306,8 @@ metadata:
   name: preview-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - pullRequest:
         github:
@@ -312,7 +319,7 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: 'preview-{{number}}'
+      name: 'preview-{{.number}}'
       namespace: argocd
       finalizers:
         - resources-finalizer.argocd.argoproj.io
@@ -320,18 +327,18 @@ spec:
       project: preview
       source:
         repoURL: https://github.com/myorg/myapp.git
-        targetRevision: '{{head_sha}}'
+        targetRevision: '{{.head_sha}}'
         path: kubernetes/preview
         helm:
           values: |
             image:
-              tag: pr-{{number}}
+              tag: pr-{{.number}}
             ingress:
-              host: pr-{{number}}.preview.mycompany.com
-            namespace: preview-pr-{{number}}
+              host: pr-{{.number}}.preview.mycompany.com
+            namespace: preview-pr-{{.number}}
       destination:
         server: https://kubernetes.default.svc
-        namespace: preview-pr-{{number}}
+        namespace: preview-pr-{{.number}}
       syncPolicy:
         automated:
           prune: true
@@ -449,38 +456,24 @@ commonLabels:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: preview-${PR_NUMBER}
+namespace: preview-pr-123
 
 resources:
   - ../../base
 
-namePrefix: preview-
+namePrefix: preview-pr-123-
 
 commonLabels:
   preview: "true"
-  pr-number: "${PR_NUMBER}"
+  pr-number: "123"
 
 images:
   - name: myapp
     newName: ghcr.io/myorg/myapp
-    newTag: pr-${PR_NUMBER}
+    newTag: pr-123
 
 patches:
   - path: preview-patches.yaml
-
-replacements:
-  - source:
-      kind: ConfigMap
-      name: preview-config
-      fieldPath: data.PR_NUMBER
-    targets:
-      - select:
-          kind: Ingress
-        fieldPaths:
-          - spec.rules.0.host
-        options:
-          delimiter: '.'
-          index: 0
 ```
 
 ```yaml
@@ -494,7 +487,7 @@ spec:
   template:
     spec:
       containers:
-        - name: app
+        - name: myapp
           resources:
             requests:
               cpu: 50m
@@ -509,86 +502,79 @@ metadata:
   name: myapp
 spec:
   rules:
-    - host: pr-${PR_NUMBER}.preview.mycompany.com
+    - host: pr-123.preview.mycompany.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myapp
+                port:
+                  number: 80
 ```
 
-## Method 4: PullUp (Dedicated Tool)
+Generate one overlay per PR in CI by copying the preview overlay and updating the namespace, labels, image tag, and host for that PR before running `kubectl apply -k`.
 
-### Installation
+## Method 4: Okteto (Dedicated Tool)
 
-```bash
-# Install PullUp controller
-kubectl apply -f https://raw.githubusercontent.com/pullup-io/pullup/main/deploy/install.yaml
-```
-
-### PullUp Configuration
+### Deploy Workflow
 
 ```yaml
-# pullup.yaml
-apiVersion: pullup.io/v1
-kind: PreviewEnvironment
-metadata:
-  name: myapp-previews
-spec:
-  github:
-    owner: myorg
-    repo: myapp
-  
-  template:
-    namespace: "preview-{{.PR.Number}}"
-    
-    resources:
-      - apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: myapp
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: myapp
-          template:
-            metadata:
-              labels:
-                app: myapp
-            spec:
-              containers:
-                - name: app
-                  image: "ghcr.io/myorg/myapp:pr-{{.PR.Number}}"
-                  ports:
-                    - containerPort: 8080
-      
-      - apiVersion: v1
-        kind: Service
-        metadata:
-          name: myapp
-        spec:
-          ports:
-            - port: 80
-              targetPort: 8080
-          selector:
-            app: myapp
-      
-      - apiVersion: networking.k8s.io/v1
-        kind: Ingress
-        metadata:
-          name: myapp
-        spec:
-          rules:
-            - host: "pr-{{.PR.Number}}.preview.mycompany.com"
-              http:
-                paths:
-                  - path: /
-                    pathType: Prefix
-                    backend:
-                      service:
-                        name: myapp
-                        port:
-                          number: 80
-  
+# .github/workflows/okteto-preview.yaml
+name: Okteto Preview Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure Okteto context
+        uses: okteto/context@latest
+        with:
+          url: ${{ secrets.OKTETO_CONTEXT }}
+          token: ${{ secrets.OKTETO_TOKEN }}
+
+      - name: Deploy preview environment
+        uses: okteto/deploy-preview@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: pr-${{ github.event.number }}
+          timeout: 15m
+```
+
+### Cleanup Workflow
+
+```yaml
+# .github/workflows/okteto-preview-cleanup.yaml
+name: Cleanup Okteto Preview Environment
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
   cleanup:
-    onClose: true
-    ttl: 72h  # Delete after 72 hours even if PR is open
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure Okteto context
+        uses: okteto/context@latest
+        with:
+          url: ${{ secrets.OKTETO_CONTEXT }}
+          token: ${{ secrets.OKTETO_TOKEN }}
+
+      - name: Destroy preview environment
+        uses: okteto/destroy-preview@latest
+        with:
+          name: pr-${{ github.event.number }}
 ```
 
 ## Shared Resources
@@ -694,6 +680,8 @@ spec:
 
 ### Wildcard Certificate
 
+Kubernetes Ingresses can only reference TLS Secrets in the same namespace. For a shared wildcard certificate, either copy the Secret into each preview namespace or configure your ingress controller to use the wildcard Secret as its default TLS certificate. The `letsencrypt-prod` ClusterIssuer must be configured with a DNS-01 solver for wildcard certificates.
+
 ```yaml
 # cert-manager-wildcard.yaml
 apiVersion: cert-manager.io/v1
@@ -736,11 +724,15 @@ spec:
                 - -c
                 - |
                   # Delete namespaces older than 72 hours
-                  kubectl get ns -l preview=true -o json | \
-                  jq -r '.items[] | select(
-                    (now - (.metadata.creationTimestamp | fromdateiso8601)) > 259200
-                  ) | .metadata.name' | \
-                  xargs -r kubectl delete ns
+                  now=$(date -u +%s)
+                  kubectl get ns -l preview=true \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.creationTimestamp}{"\n"}{end}' | \
+                  while read -r name created_at; do
+                    created=$(date -u -d "$created_at" +%s)
+                    if [ $((now - created)) -gt 259200 ]; then
+                      kubectl delete ns "$name"
+                    fi
+                  done
           restartPolicy: OnFailure
 ```
 
@@ -768,7 +760,7 @@ spec:
 | GitHub Actions | Low | Simple setups |
 | ArgoCD ApplicationSets | Medium | GitOps workflows |
 | Kustomize | Medium | Existing Kustomize users |
-| PullUp | Low | Dedicated solution |
+| Okteto | Low | Dedicated solution |
 
 ## Related Posts
 

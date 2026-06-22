@@ -31,7 +31,7 @@ npm config get cache
 
 # Default locations:
 # macOS/Linux: ~/.npm
-# Windows: %AppData%/npm-cache
+# Windows: %LocalAppData%/npm-cache
 ```
 
 ### Cache Contents
@@ -135,7 +135,7 @@ yarn cache clean
 # pnpm
 pnpm store prune
 
-# npm global cache and packages
+# npm cache directory
 npm cache clean --force
 rm -rf ~/.npm
 ```
@@ -186,11 +186,11 @@ rm -rf ~/.npm/_cacache
 # If offline install fails despite cached packages
 npm cache verify
 
-# Force online installation
+# Prefer checking the registry for updates
 npm install --prefer-online
 
 # Force offline installation
-npm install --prefer-offline
+npm install --offline
 ```
 
 ## Cache Configuration
@@ -235,12 +235,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version: '24'
           cache: 'npm'  # Built-in caching
       
       - name: Install dependencies
@@ -264,7 +264,7 @@ before_script:
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -284,8 +284,8 @@ COPY . .
 
 ```bash
 # Download and cache packages
-npm pack lodash
-npm pack express
+npm cache add lodash
+npm cache add express
 
 # Or install to populate cache
 npm install --prefer-offline
@@ -394,8 +394,9 @@ rm -rf ~/.npm/_npx
 | `npm cache clean --force` | Clear all cached data |
 | `npm cache verify` | Check and fix cache integrity |
 | `npm config get cache` | Show cache location |
-| `npm install --prefer-offline` | Use cached packages |
-| `npm install --prefer-online` | Force fresh downloads |
+| `npm install --prefer-offline` | Prefer cached packages, fetching missing data |
+| `npm install --prefer-online` | Prefer checking the registry for updates |
+| `npm install --offline` | Force offline installation |
 | `rm -rf ~/.npm` | Nuclear option: remove everything |
 
 When in doubt:

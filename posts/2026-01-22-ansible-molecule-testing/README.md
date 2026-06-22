@@ -21,6 +21,9 @@ Install Molecule with the Docker driver for container-based testing.
 
 pip install molecule molecule-plugins[docker]
 
+# Install the Ansible collections used by the Docker scenario
+ansible-galaxy collection install community.docker ansible.posix
+
 # Verify installation
 molecule --version
 
@@ -40,14 +43,14 @@ Set up Molecule in an existing role or create a new role with Molecule.
 ansible-galaxy role init my_role
 cd my_role
 
-# Add Molecule scenario to the role (default driver is docker)
-molecule init scenario -d docker
+# Add a Molecule scenario to the role
+molecule init scenario
 
 # Or add Molecule to an existing role
 cd roles/existing_role
-molecule init scenario -d docker
+molecule init scenario
 
-# Molecule creates this structure:
+# A role scenario typically uses this structure:
 # molecule/
 # └── default/
 #     ├── converge.yml       # Main playbook to test
@@ -389,9 +392,9 @@ Create different scenarios for different test cases.
 
 ```bash
 # Create additional scenario
-molecule init scenario --scenario-name with_ssl -d docker
+molecule init scenario with_ssl
 
-# Note: In Molecule 6.0+, use '-d' to specify the driver.
+# Note: In current Molecule versions, set the Docker driver in molecule.yml.
 # Use 'molecule init scenario --help' to see all available options.
 ```
 
@@ -479,6 +482,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install molecule molecule-plugins[docker] ansible-lint yamllint pytest-testinfra
+          ansible-galaxy collection install community.docker ansible.posix
 
       - name: Run Molecule tests
         run: molecule test -s ${{ matrix.scenario }}
@@ -511,8 +515,9 @@ molecule:
   before_script:
     - apk add --no-cache python3 py3-pip
     - pip install molecule molecule-plugins[docker] ansible pytest-testinfra
+    - ansible-galaxy collection install community.docker ansible.posix
   script:
-    - molecule test
+    - molecule test -s "$SCENARIO"
   parallel:
     matrix:
       - SCENARIO: [default, with_ssl]

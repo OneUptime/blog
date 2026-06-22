@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Promtail, Pipeline Stage, Log Processing, Data Transformation, Log Enrichment
 
-Description: A comprehensive guide to configuring Promtail pipelines for parsing, transforming, and enriching logs before sending to Loki, covering all pipeline stages and advanced processing techniques.
+Description: A comprehensive guide to configuring Promtail pipelines for parsing, transforming, and enriching logs before sending to Loki, covering common pipeline stages and advanced processing techniques.
 
 ---
 
-Promtail pipelines allow you to parse, transform, and enrich log data before it reaches Loki. Understanding pipeline stages is essential for efficient log processing and optimizing Loki storage. This guide covers all aspects of Promtail pipeline configuration.
+Promtail pipelines allow you to parse, transform, and enrich log data before it reaches Loki. Understanding pipeline stages is essential for efficient log processing and optimizing Loki storage. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy or another supported client for new deployments. This guide covers common Promtail pipeline configuration patterns for existing Promtail installations.
 
 ## Prerequisites
 
@@ -37,7 +37,8 @@ Log Entry -> Stage 1 -> Stage 2 -> Stage 3 -> ... -> Loki
 | `logfmt` | Parse logfmt logs |
 | `regex` | Parse with regular expressions |
 | `replace` | Replace text in logs |
-| `labels` | Add/modify labels |
+| `labels` | Add extracted values as labels |
+| `static_labels` | Add static labels |
 | `timestamp` | Extract/set timestamp |
 | `output` | Set final log line |
 | `match` | Conditional processing |
@@ -98,7 +99,7 @@ pipeline_stages:
         level: level
         message: message
         user_id: user.id
-        timestamp: '@timestamp'
+        timestamp: '"@timestamp"'
 ```
 
 ### Nested JSON
@@ -166,10 +167,10 @@ pipeline_stages:
 
 ```yaml
 pipeline_stages:
-  - labels:
-      env:
-      service:
-      datacenter:
+  - static_labels:
+      env: production
+      service: api
+      datacenter: us-east-1
 ```
 
 ### Dynamic Labels from Extraction
@@ -185,20 +186,18 @@ pipeline_stages:
       app:
 ```
 
-### Label Mapping
+### Label Normalization
 
 ```yaml
 pipeline_stages:
   - json:
       expressions:
         loglevel: level
-  - labelmap:
-      source: loglevel
-      mapping:
-        ERROR: error
-        WARN: warning
-        INFO: info
-        DEBUG: debug
+  - template:
+      source: level
+      template: '{{ if eq .loglevel "ERROR" }}error{{ else if eq .loglevel "WARN" }}warning{{ else }}{{ .loglevel | ToLower }}{{ end }}'
+  - labels:
+      level:
 ```
 
 ## Timestamp Stage
@@ -275,7 +274,7 @@ pipeline_stages:
         user: user_id
   - template:
       source: output
-      template: '[{{ .level }}] User {{ .user }}: {{ .message }}'
+      template: '[{{ .level }}] User {{ .user }}: {{ .msg }}'
   - output:
       source: output
 ```
@@ -348,8 +347,8 @@ pipeline_stages:
 ```yaml
 pipeline_stages:
   - replace:
-      expression: '(\d{4})-(\d{4})-(\d{4})-(\d{4})'
-      replace: '****-****-****-$4'
+      expression: '\d{4}-\d{4}-\d{4}-\d{4}'
+      replace: '****-****-****-****'
 ```
 
 ### Replace in Specific Field
@@ -391,7 +390,7 @@ pipeline_stages:
         msg: message
   - template:
       source: formatted
-      template: '{{ if eq .level "error" }}ERROR: {{ end }}{{ .message }}'
+      template: '{{ if eq .level "error" }}ERROR: {{ end }}{{ .msg }}'
 ```
 
 ### Template with Functions
@@ -423,7 +422,7 @@ scrape_configs:
       # Parse JSON
       - json:
           expressions:
-            timestamp: '@timestamp'
+            timestamp: '"@timestamp"'
             level: level
             message: message
             service: service
@@ -442,6 +441,7 @@ scrape_configs:
 
       # Mask sensitive data
       - replace:
+          source: message
           expression: 'Bearer [A-Za-z0-9-_=]+'
           replace: 'Bearer [REDACTED]'
 
@@ -491,6 +491,13 @@ scrape_configs:
   - job_name: kubernetes-pods
     kubernetes_sd_configs:
       - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        target_label: container
+      - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+        separator: /
+        target_label: __path__
+        replacement: /var/log/pods/*$1/*.log
     pipeline_stages:
       # Try JSON first
       - match:
@@ -533,6 +540,8 @@ pipeline_stages:
             expressions:
               level: level
               msg: message
+        - labels:
+            level:
 
   # Fall back to logfmt if JSON fails
   - match:
@@ -542,6 +551,8 @@ pipeline_stages:
             mapping:
               level:
               msg:
+        - labels:
+            level:
 
   # Final fallback - regex
   - match:
@@ -549,6 +560,8 @@ pipeline_stages:
       stages:
         - regex:
             expression: '(?P<level>\w+):\s+(?P<msg>.*)'
+        - labels:
+            level:
 ```
 
 ## Performance Best Practices
@@ -569,6 +582,8 @@ pipeline_stages:
   - json:
       expressions:
         level: level
+  - labels:
+      level:
   - match:
       selector: '{level="debug"}'
       action: drop
@@ -608,7 +623,7 @@ pipeline_stages:
 
 ```bash
 # Validate config
-promtail -config.file=/etc/promtail/config.yaml -dry-run
+promtail -config.file=/etc/promtail/config.yaml -check-syntax
 
 # Check targets
 curl http://localhost:9080/targets

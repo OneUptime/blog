@@ -19,12 +19,13 @@ Data archival moves old data to separate storage, improving query performance an
 CREATE TABLE orders_archive (LIKE orders INCLUDING ALL);
 
 -- Move old data
+WITH moved_rows AS (
+    DELETE FROM orders
+    WHERE created_at < NOW() - INTERVAL '1 year'
+    RETURNING *
+)
 INSERT INTO orders_archive
-SELECT * FROM orders
-WHERE created_at < NOW() - INTERVAL '1 year';
-
-DELETE FROM orders
-WHERE created_at < NOW() - INTERVAL '1 year';
+SELECT * FROM moved_rows;
 ```
 
 ### Partitioning for Auto-Archival
@@ -38,6 +39,9 @@ CREATE TABLE events (
 ) PARTITION BY RANGE (created_at);
 
 -- Monthly partitions
+CREATE TABLE events_2024_01 PARTITION OF events
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+
 CREATE TABLE events_2025_01 PARTITION OF events
     FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
 
@@ -64,18 +68,22 @@ psql archive_db < orders_archive.sql
 ```sql
 -- Archival function
 CREATE OR REPLACE FUNCTION archive_old_orders()
-RETURNS INTEGER AS $$
+RETURNS BIGINT AS $$
 DECLARE
-    archived_count INTEGER;
+    archived_count BIGINT;
 BEGIN
-    INSERT INTO orders_archive
-    SELECT * FROM orders
-    WHERE created_at < NOW() - INTERVAL '1 year';
-
-    GET DIAGNOSTICS archived_count = ROW_COUNT;
-
-    DELETE FROM orders
-    WHERE created_at < NOW() - INTERVAL '1 year';
+    WITH moved_rows AS (
+        DELETE FROM orders
+        WHERE created_at < NOW() - INTERVAL '1 year'
+        RETURNING *
+    ),
+    inserted_rows AS (
+        INSERT INTO orders_archive
+        SELECT * FROM moved_rows
+        RETURNING 1
+    )
+    SELECT COUNT(*) INTO archived_count
+    FROM inserted_rows;
 
     RETURN archived_count;
 END;
@@ -89,13 +97,14 @@ SELECT cron.schedule('archive-orders', '0 2 1 * *',
 ## Compression
 
 ```sql
--- Compress archive tables with pg_compression
-ALTER TABLE orders_archive SET (toast_tuple_target = 128);
+-- Use TOAST compression for large variable-width columns
+-- lz4 requires PostgreSQL to be built with LZ4 support
+ALTER TABLE orders_archive
+    ALTER COLUMN notes SET COMPRESSION lz4;
 
--- Or use tablespace with compression
+-- Move archive tables to lower-cost storage
 CREATE TABLESPACE archive_space
-    LOCATION '/mnt/archive'
-    WITH (compression = 'lz4');
+    LOCATION '/mnt/archive';
 
 ALTER TABLE orders_archive SET TABLESPACE archive_space;
 ```

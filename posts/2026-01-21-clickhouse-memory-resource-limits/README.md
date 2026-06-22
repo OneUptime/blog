@@ -40,14 +40,16 @@ Total Memory Usage
 The most important setting - limits memory per query:
 
 ```sql
--- Set globally (users.xml or SQL)
+-- Set for the current session
 SET max_memory_usage = 10000000000;  -- 10 GB
 
 -- Set per user
 ALTER USER analyst SETTINGS max_memory_usage = 5000000000;
 
 -- Set per query
-SELECT *
+SELECT
+    high_cardinality_column,
+    count()
 FROM large_table
 GROUP BY high_cardinality_column
 SETTINGS max_memory_usage = 20000000000;
@@ -62,14 +64,14 @@ Limits total memory across all queries for a user:
 ALTER USER etl_user SETTINGS max_memory_usage_for_user = 20000000000;
 ```
 
-### max_memory_usage_for_all_queries
+### max_server_memory_usage
 
-Server-wide limit for all queries combined:
+Server-wide limit for ClickHouse memory usage:
 
 ```xml
 <!-- /etc/clickhouse-server/config.d/memory.xml -->
 <clickhouse>
-    <max_memory_usage_for_all_queries>100000000000</max_memory_usage_for_all_queries>
+    <max_server_memory_usage>100000000000</max_server_memory_usage>
 </clickhouse>
 ```
 
@@ -81,7 +83,7 @@ Server-wide limit for all queries combined:
 -- Limit GROUP BY memory
 SET max_bytes_before_external_group_by = 5000000000;  -- 5 GB
 
--- When exceeded, spills to disk (slower but doesn't fail)
+-- When exceeded, can spill to disk (slower; still subject to memory and temporary disk limits)
 SELECT
     user_id,
     count() AS events
@@ -120,7 +122,10 @@ SET join_algorithm = 'partial_merge';
 
 ```sql
 -- Limit DISTINCT memory
-SET max_bytes_before_external_distinct = 5000000000;
+SET max_bytes_in_distinct = 5000000000;
+
+-- Behavior when exceeded
+SET distinct_overflow_mode = 'throw';  -- or 'break'
 ```
 
 ## Query Complexity Limits
@@ -157,8 +162,8 @@ SET result_overflow_mode = 'throw';
 -- Maximum query execution time (seconds)
 SET max_execution_time = 300;  -- 5 minutes
 
--- Maximum execution time for distributed queries
-SET max_execution_time_for_distributed_queries = 600;
+-- Maximum execution time on leaf nodes for distributed queries
+SET max_execution_time_leaf = 600;
 ```
 
 ### Thread Limits
@@ -170,7 +175,7 @@ SET max_threads = 8;
 -- Threads for INSERT queries
 SET max_insert_threads = 4;
 
--- Threads for reading from remote servers
+-- Connections for reading from remote servers
 SET max_distributed_connections = 100;
 ```
 
@@ -204,15 +209,15 @@ SET max_distributed_connections = 100;
 </clickhouse>
 ```
 
-### Background Operation Memory
+### Background Operation Concurrency
 
 ```xml
 <clickhouse>
-    <!-- Memory for background merges -->
+    <!-- Concurrency for background merges -->
     <background_pool_size>16</background_pool_size>
     <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
 
-    <!-- Memory for background moves -->
+    <!-- Concurrency for background moves -->
     <background_move_pool_size>8</background_move_pool_size>
 </clickhouse>
 ```
@@ -252,11 +257,11 @@ SETTINGS
 
 ```sql
 -- Apply to users
-ALTER USER analyst SETTINGS PROFILE analyst_profile;
-ALTER USER etl_user SETTINGS PROFILE etl_profile;
+ALTER USER analyst ADD PROFILES 'analyst_profile';
+ALTER USER etl_user ADD PROFILES 'etl_profile';
 
 -- Apply to roles
-ALTER ROLE data_reader SETTINGS PROFILE analyst_profile;
+ALTER ROLE data_reader ADD PROFILES 'analyst_profile';
 ```
 
 ## Quotas for Resource Control
@@ -377,7 +382,7 @@ SELECT
 FROM events
 GROUP BY user_id;
 
--- Better: Use approximate
+-- Better: Allow external aggregation
 SELECT
     user_id,
     count()
@@ -417,36 +422,23 @@ KILL QUERY WHERE query_id = 'abc-123';
 KILL QUERY WHERE user = 'bad_user';
 ```
 
-Resource Isolation
+## Resource Isolation
 
 ### Workload Management
 
 ```sql
 -- Create workload for different query types
--- (Available in ClickHouse 23.9+)
+CREATE RESOURCE cpu (MASTER THREAD, WORKER THREAD);
+CREATE WORKLOAD all SETTINGS max_concurrent_threads = 100;
+CREATE WORKLOAD interactive IN all SETTINGS priority = -1, max_concurrent_threads = 50;
+CREATE WORKLOAD batch IN all SETTINGS priority = 1, max_concurrent_threads = 20;
+-- Enable CPU slot preemption if you need fair CPU-time allocation, not only slot scheduling.
+-- Configure <cpu_slot_preemption>true</cpu_slot_preemption> in server configuration.
 
--- Define workloads in config
-```
-
-```xml
-<clickhouse>
-    <workload_schedulers>
-        <default>
-            <max_requests>100</max_requests>
-            <max_cost>1000000000</max_cost>
-        </default>
-        <interactive>
-            <max_requests>50</max_requests>
-            <max_cost>500000000</max_cost>
-            <priority>high</priority>
-        </interactive>
-        <batch>
-            <max_requests>20</max_requests>
-            <max_cost>2000000000</max_cost>
-            <priority>low</priority>
-        </batch>
-    </workload_schedulers>
-</clickhouse>
+-- Mark queries with the workload setting
+SELECT count()
+FROM events
+SETTINGS workload = 'interactive';
 ```
 
 ### CPU Priority
@@ -468,7 +460,6 @@ SET os_thread_priority = 0;
 <clickhouse>
     <!-- Server limits (64 GB RAM server) -->
     <max_server_memory_usage>55000000000</max_server_memory_usage>
-    <max_memory_usage_for_all_queries>45000000000</max_memory_usage_for_all_queries>
 
     <!-- Caches -->
     <mark_cache_size>5368709120</mark_cache_size>

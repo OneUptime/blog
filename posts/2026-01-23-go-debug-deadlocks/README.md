@@ -36,6 +36,8 @@ func main() {
 ```go
 package main
 
+import "fmt"
+
 func main() {
     ch := make(chan int)  // Unbuffered channel
     
@@ -74,6 +76,8 @@ func main() {
 ```go
 package main
 
+import "fmt"
+
 func main() {
     ch := make(chan int)
     
@@ -106,7 +110,10 @@ func main() {
 ```go
 package main
 
-import "sync"
+import (
+    "sync"
+    "time"
+)
 
 var mu1, mu2 sync.Mutex
 
@@ -115,6 +122,7 @@ func routine1() {
     defer mu1.Unlock()
     
     // Simulate work
+    time.Sleep(100 * time.Millisecond)
     mu2.Lock()  // Waits for mu2
     defer mu2.Unlock()
 }
@@ -124,6 +132,7 @@ func routine2() {
     defer mu2.Unlock()
     
     // Simulate work
+    time.Sleep(100 * time.Millisecond)
     mu1.Lock()  // Waits for mu1 - DEADLOCK!
     defer mu1.Unlock()
 }
@@ -179,7 +188,7 @@ func doSomethingElse() {
 }
 ```
 
-**Fix: Use RWMutex or restructure code**
+**Fix: Restructure code**
 
 ```go
 // Solution 1: Don't lock in nested function
@@ -218,12 +227,14 @@ But it won't detect if just some goroutines are deadlocked while others run.
 
 ### Using -race Flag
 
+The race detector catches data races, not deadlocks directly, but it is still useful when debugging concurrent code:
+
 ```bash
 go run -race main.go
 go test -race ./...
 ```
 
-### Deadlock Detection with pprof
+### Deadlock Investigation with pprof
 
 ```go
 package main
@@ -411,7 +422,7 @@ var mu deadlock.Mutex
 
 func example() {
     mu.Lock()
-    // If another goroutine is stuck waiting, you'll get a warning
+    // If the library detects a potential mutex deadlock, you'll get a warning
     mu.Unlock()
 }
 ```

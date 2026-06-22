@@ -193,7 +193,7 @@ ORDER BY (timestamp, metric_name, host)
 ORDER BY (metric_name, host, timestamp)
 ```
 
-When you query `WHERE metric_name = 'cpu_usage' AND host = 'server-1'`, ClickHouse can locate the exact data range instantly.
+When you query `WHERE metric_name = 'cpu_usage' AND host = 'server-1'`, ClickHouse can narrow the data ranges efficiently.
 
 ### Example: Event Tracking
 
@@ -416,11 +416,11 @@ PARTITION BY toYYYYMM(timestamp)
 ORDER BY (metric_name, timestamp)
 
 -- Delete data older than 90 days
-TTL timestamp + INTERVAL 90 DAY DELETE
+TTL timestamp + INTERVAL 90 DAY DELETE;
 
--- Or move to cold storage after 30 days, delete after 90
-TTL timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
-    timestamp + INTERVAL 90 DAY DELETE;
+-- Or use this TTL instead to move to cold storage after 30 days, delete after 90
+-- TTL timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
+--     timestamp + INTERVAL 90 DAY DELETE;
 ```
 
 ## Common Mistakes
@@ -428,10 +428,10 @@ TTL timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
 ### Too Many Columns in ORDER BY
 
 ```sql
--- Bad: Too specific, poor compression
+-- Bad: Long primary key, higher insert cost and primary-key index memory
 ORDER BY (timestamp, host, region, service, metric_name, user_id)
 
--- Good: Just the columns you filter on
+-- Good: Focused on the most common filters
 ORDER BY (metric_name, host, timestamp)
 ```
 

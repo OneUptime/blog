@@ -57,7 +57,7 @@ The most explicit approach - version in the URL path:
 # url_versioning.py
 
 from fastapi import FastAPI, APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from opentelemetry import trace
 
@@ -77,7 +77,7 @@ class UserV2(BaseModel):
     full_name: str  # Renamed from 'name'
     email: str
     phone: Optional[str] = None  # New field
-    roles: List[str] = []  # New field
+    roles: List[str] = Field(default_factory=list)  # New field
 
 # V3 Models - restructured
 class NameV3(BaseModel):
@@ -89,8 +89,8 @@ class UserV3(BaseModel):
     name: NameV3  # Changed from string to object
     email: str
     phone: Optional[str] = None
-    roles: List[str] = []
-    metadata: dict = {}  # New field
+    roles: List[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)  # New field
 
 
 # V1 Router
@@ -245,7 +245,7 @@ async def add_version_headers(request: Request, call_next):
     # Add deprecation warning if present
     if hasattr(request.state, "deprecation_warning"):
         response.headers["X-API-Deprecation-Warning"] = request.state.deprecation_warning
-        response.headers["Sunset"] = "2025-06-01"  # RFC 8594
+        response.headers["Sunset"] = "Sun, 01 Jun 2025 00:00:00 GMT"  # RFC 8594
 
     return response
 
@@ -400,6 +400,8 @@ Transform responses between versions without duplicating business logic:
 # response_transformer.py
 from typing import Any, Dict, Callable
 from abc import ABC, abstractmethod
+from functools import wraps
+from fastapi import Request
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -493,6 +495,7 @@ class VersionedEndpoint:
         self.pipeline = pipeline
 
     def __call__(self, func: Callable) -> Callable:
+        @wraps(func)
         async def wrapper(request, *args, **kwargs):
             # Get requested version
             version = getattr(request.state, "api_version", self.current_version)
@@ -543,8 +546,9 @@ Handle requests from different API versions:
 
 ```python
 # request_compatibility.py
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Union, Any
+from fastapi import Request
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -559,7 +563,7 @@ class CreateUserV2(BaseModel):
     full_name: str  # Renamed
     email: str
     phone: Optional[str] = None
-    roles: List[str] = []
+    roles: List[str] = Field(default_factory=list)
 
 # V3 Request
 class CreateUserNameV3(BaseModel):
@@ -570,8 +574,8 @@ class CreateUserV3(BaseModel):
     name: CreateUserNameV3  # Structured
     email: str
     phone: Optional[str] = None
-    roles: List[str] = []
-    metadata: dict = {}
+    roles: List[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class UnifiedCreateUser(BaseModel):
@@ -586,10 +590,11 @@ class UnifiedCreateUser(BaseModel):
     last_name: Optional[str] = None
     email: str
     phone: Optional[str] = None
-    roles: List[str] = []
-    metadata: dict = {}
+    roles: List[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def normalize_name(cls, values):
         """Normalize name from various input formats"""
 
@@ -630,8 +635,15 @@ class UnifiedCreateUser(BaseModel):
 
     def to_internal(self) -> dict:
         """Convert to internal format"""
+        if isinstance(self.name, CreateUserNameV3):
+            name = self.name.model_dump()
+        elif isinstance(self.name, dict):
+            name = self.name
+        else:
+            name = {"first": "", "last": ""}
+
         return {
-            "name": self.name if isinstance(self.name, dict) else {"first": "", "last": ""},
+            "name": name,
             "email": self.email,
             "phone": self.phone,
             "roles": self.roles,
@@ -670,7 +682,7 @@ class RequestNormalizer:
 # Usage in endpoint
 normalizer = RequestNormalizer()
 
-@app.post("/users")
+@app.post("/users", status_code=201)
 async def create_user(request: Request, user_data: dict):
     """Create user accepting any API version format"""
 
@@ -697,10 +709,12 @@ Implement proper deprecation with sunset dates:
 
 ```python
 # deprecation.py
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional, List
 from dataclasses import dataclass
-from fastapi import Request, HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -717,8 +731,11 @@ class DeprecationInfo:
 
     def is_sunset(self) -> bool:
         """Check if the sunset date has passed"""
-        sunset = datetime.fromisoformat(self.sunset_date)
-        return datetime.utcnow() > sunset
+        sunset = datetime.strptime(
+            self.sunset_date,
+            "%a, %d %b %Y %H:%M:%S GMT"
+        ).replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > sunset
 
 
 class DeprecationRegistry:
@@ -751,21 +768,21 @@ deprecation_registry = DeprecationRegistry()
 # Register deprecations
 deprecation_registry.register("v1", DeprecationInfo(
     version="v1",
-    deprecated_date="2024-01-01",
-    sunset_date="2025-06-01",
+    deprecated_date="@1704067200",
+    sunset_date="Sun, 01 Jun 2025 00:00:00 GMT",
     replacement="v3",
     migration_guide="https://api.example.com/docs/migration/v1-to-v3",
     breaking_changes=[
         "User name field changed from string to object",
-        "Roles field added as required",
+        "Roles field added",
         "Metadata field added"
     ]
 ))
 
 deprecation_registry.register("v2", DeprecationInfo(
     version="v2",
-    deprecated_date="2024-06-01",
-    sunset_date="2025-12-01",
+    deprecated_date="@1717200000",
+    sunset_date="Mon, 01 Dec 2025 00:00:00 GMT",
     replacement="v3",
     migration_guide="https://api.example.com/docs/migration/v2-to-v3",
     breaking_changes=[
@@ -774,14 +791,14 @@ deprecation_registry.register("v2", DeprecationInfo(
 ))
 
 
-class DeprecationMiddleware:
+class DeprecationMiddleware(BaseHTTPMiddleware):
     """Middleware to handle API deprecation"""
 
     def __init__(self, app, registry: DeprecationRegistry):
-        self.app = app
+        super().__init__(app)
         self.registry = registry
 
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         version = getattr(request.state, "api_version", "v3")
 
         with tracer.start_as_current_span("deprecation_check") as span:
@@ -790,9 +807,9 @@ class DeprecationMiddleware:
             # Check if version is sunset
             if self.registry.is_sunset(version):
                 span.set_attribute("api.sunset", True)
-                raise HTTPException(
+                return JSONResponse(
                     status_code=410,  # Gone
-                    detail={
+                    content={
                         "error": "api_version_sunset",
                         "message": f"API version {version} is no longer available",
                         "migration_guide": self.registry.get(version).migration_guide
@@ -809,13 +826,6 @@ class DeprecationMiddleware:
                 response.headers["Deprecation"] = info.deprecated_date
                 response.headers["Sunset"] = info.sunset_date
                 response.headers["Link"] = f'<{info.migration_guide}>; rel="deprecation"'
-
-                # Add warning header
-                response.headers["Warning"] = (
-                    f'299 - "API version {version} is deprecated. '
-                    f'Sunset date: {info.sunset_date}. '
-                    f'Please migrate to {info.replacement}."'
-                )
 
             return response
 
@@ -870,17 +880,19 @@ class VersionedAPITester:
         """Test an endpoint across all versions"""
 
         results = {}
+        base_headers = kwargs.get("headers", {})
+        request_kwargs = {key: value for key, value in kwargs.items() if key != "headers"}
 
         for version in self.versions:
             # Add version header
-            headers = kwargs.pop("headers", {})
+            headers = dict(base_headers)
             headers["X-API-Version"] = version
 
             response = await self.client.request(
                 method,
                 path,
                 headers=headers,
-                **kwargs
+                **request_kwargs
             )
 
             results[version] = {
@@ -941,7 +953,7 @@ async def test_deprecated_version_headers(client: AsyncClient):
 
     assert "Deprecation" in response.headers
     assert "Sunset" in response.headers
-    assert "Warning" in response.headers
+    assert "Link" in response.headers
 
 
 @pytest.mark.asyncio
@@ -991,6 +1003,7 @@ Track version usage to inform deprecation decisions:
 ```python
 # version_metrics.py
 from prometheus_client import Counter, Histogram, Gauge
+from starlette.middleware.base import BaseHTTPMiddleware
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -1016,14 +1029,14 @@ active_clients_by_version = Gauge(
 )
 
 
-class VersionMetricsMiddleware:
+class VersionMetricsMiddleware(BaseHTTPMiddleware):
     """Middleware to collect API version metrics"""
 
     def __init__(self, app):
-        self.app = app
+        super().__init__(app)
         self.client_versions = {}  # Track client -> version mapping
 
-    async def __call__(self, request, call_next):
+    async def dispatch(self, request, call_next):
         import time
 
         version = getattr(request.state, "api_version", "unknown")

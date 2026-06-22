@@ -86,17 +86,12 @@ spec:
       containers:
         - name: processor
           image: myapp/processor:latest
-          command: ["./process", "--item-id=$(JOB_COMPLETION_INDEX)"]
-          env:
-            - name: JOB_COMPLETION_INDEX
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          command: ["./process", "--queue=batch-items"]
       restartPolicy: Never
   backoffLimit: 6
 ```
 
-### Indexed Job (Work Queue Pattern)
+### Indexed Job (Static Work Assignment)
 
 ```yaml
 # indexed-job.yaml
@@ -406,7 +401,7 @@ spec:
         # Extract
         - name: extract
           image: myapp/extractor:latest
-          command: ["./extract", "--date", "$(date +%Y-%m-%d)"]
+          command: ["/bin/sh", "-c", "./extract --date $(date +%Y-%m-%d)"]
           volumeMounts:
             - name: data
               mountPath: /data
@@ -507,10 +502,10 @@ kubectl patch cronjob daily-backup -p '{"spec":{"suspend":false}}'
 
 ```bash
 # Delete all completed jobs
-kubectl delete jobs --field-selector status.successful=1
+kubectl get jobs -o json | jq -r '.items[] | select(.status.conditions[]? | .type == "Complete" and .status == "True") | .metadata.name' | xargs -r kubectl delete job
 
 # Delete failed jobs
-kubectl delete jobs --field-selector status.successful=0
+kubectl get jobs -o json | jq -r '.items[] | select((.status.failed // 0) > 0) | .metadata.name' | xargs -r kubectl delete job
 
 # Delete jobs older than 1 hour using TTL (automatic)
 # Or manually:
@@ -556,7 +551,9 @@ spec:
         # CronJob not running
         - alert: CronJobNotScheduled
           expr: |
-            time() - kube_cronjob_status_last_schedule_time > kube_cronjob_spec_schedule_delay_seconds * 2
+            time() > kube_cronjob_next_schedule_time
+            and
+            kube_cronjob_spec_suspend == 0
           for: 10m
           labels:
             severity: warning
@@ -614,9 +611,11 @@ restartPolicy: OnFailure  # Restart container in same pod
 
 ```yaml
 spec:
-  ttlSecondsAfterFinished: 86400  # 24 hours
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400  # 24 hours
 ```
 
 ### 4. Add Observability

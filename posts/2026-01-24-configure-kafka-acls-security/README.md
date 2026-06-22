@@ -82,7 +82,7 @@ sasl.mechanism.inter.broker.protocol=SCRAM-SHA-256
 sasl.enabled.mechanisms=SCRAM-SHA-256
 
 # Enable ACL authorizer
-authorizer.class.name=kafka.security.authorizer.AclAuthorizer
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
 
 # Set super users who bypass ACL checks
 super.users=User:admin
@@ -120,7 +120,7 @@ ssl.truststore.password=truststore-password
 ssl.client.auth=required
 
 # Enable ACL authorizer
-authorizer.class.name=kafka.security.authorizer.AclAuthorizer
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
 
 # Super users use certificate DN
 super.users=User:CN=admin,O=MyOrg,C=US
@@ -262,16 +262,23 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
 Grant administrative permissions for topic management.
 
 ```bash
-# Allow topic creation and deletion
+# Allow topic creation
 kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
   --add \
   --allow-principal User:topic-admin \
   --operation Create \
+  --cluster
+
+# Allow topic deletion and metadata changes
+kafka-acls.sh --bootstrap-server localhost:9092 \
+  --command-config admin.properties \
+  --add \
+  --allow-principal User:topic-admin \
   --operation Delete \
   --operation Alter \
   --operation Describe \
-  --cluster
+  --topic '*'
 
 # Allow topic configuration changes
 kafka-acls.sh --bootstrap-server localhost:9092 \
@@ -476,7 +483,12 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
   --add \
   --allow-principal User:svc-order-service \
   --operation Write \
-  --topic orders \
+  --topic orders
+
+kafka-acls.sh --bootstrap-server localhost:9092 \
+  --command-config admin.properties \
+  --add \
+  --allow-principal User:svc-order-service \
   --operation Read \
   --topic inventory
 ```
@@ -497,20 +509,12 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
   --topic orders
 ```
 
-### 4. Deny Rules for Sensitive Topics
+### 4. Restrict Sensitive Topics
 
-Explicitly deny access to sensitive topics.
+Grant access to sensitive topics only to the principals that need it.
 
 ```bash
-# Deny all access to PII topic by default
-kafka-acls.sh --bootstrap-server localhost:9092 \
-  --command-config admin.properties \
-  --add \
-  --deny-principal User:'*' \
-  --operation All \
-  --topic customer-pii
-
-# Then explicitly allow specific users
+# Allow only specific users
 kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
   --add \

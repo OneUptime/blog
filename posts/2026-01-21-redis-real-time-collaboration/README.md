@@ -26,6 +26,7 @@ A real-time collaboration system typically includes:
 
 ```python
 import redis
+import hashlib
 import json
 import time
 from typing import Dict, List, Optional
@@ -135,7 +136,8 @@ class PresenceService:
             '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
             '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
         ]
-        return colors[hash(user_id) % len(colors)]
+        digest = hashlib.sha256(user_id.encode()).hexdigest()
+        return colors[int(digest, 16) % len(colors)]
 
 
 # Usage
@@ -161,10 +163,10 @@ presence.heartbeat('doc_123', 'user_456')
 
 ```python
 import asyncio
-import aioredis
+import redis.asyncio as redis
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from typing import Dict, Set
+from typing import Dict
 
 app = FastAPI()
 
@@ -178,7 +180,7 @@ class CollaborationManager:
 
     async def get_redis(self):
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost', decode_responses=True)
+            self.redis = redis.from_url('redis://localhost', decode_responses=True)
         return self.redis
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str, user_info: dict):
@@ -200,7 +202,7 @@ class CollaborationManager:
         user_data = {
             'user_id': user_id,
             **user_info,
-            'joined_at': asyncio.get_event_loop().time()
+            'joined_at': asyncio.get_running_loop().time()
         }
         await redis.hset(f"presence:{room_id}", user_id, json.dumps(user_data))
 
@@ -409,6 +411,7 @@ class CursorRenderer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         this.cursors = new Map();
+        this.selections = new Map();
     }
 
     updateCursor(userId, position, userName, color) {
@@ -434,10 +437,17 @@ class CursorRenderer {
     createCursorElement(userId, userName, color) {
         const cursor = document.createElement('div');
         cursor.className = 'remote-cursor';
-        cursor.innerHTML = `
-            <div class="cursor-caret" style="background-color: ${color}"></div>
-            <div class="cursor-label" style="background-color: ${color}">${userName}</div>
-        `;
+
+        const caret = document.createElement('div');
+        caret.className = 'cursor-caret';
+        caret.style.backgroundColor = color;
+
+        const label = document.createElement('div');
+        label.className = 'cursor-label';
+        label.style.backgroundColor = color;
+        label.textContent = userName;
+
+        cursor.append(caret, label);
         this.container.appendChild(cursor);
         return cursor;
     }
@@ -452,17 +462,20 @@ class CursorRenderer {
 
     updateSelection(userId, selection, color) {
         // Render selection highlight
-        const existingHighlight = document.querySelector(`.selection-${userId}`);
+        const existingHighlight = this.selections.get(userId);
         if (existingHighlight) {
             existingHighlight.remove();
+            this.selections.delete(userId);
         }
 
         if (selection) {
             const highlight = document.createElement('div');
-            highlight.className = `selection-highlight selection-${userId}`;
+            highlight.className = 'selection-highlight';
+            highlight.dataset.userId = userId;
             highlight.style.backgroundColor = `${color}33`; // With transparency
             // Position based on selection coordinates
             this.container.appendChild(highlight);
+            this.selections.set(userId, highlight);
         }
     }
 }
@@ -562,98 +575,48 @@ class CollaborativeDocument:
 
     def apply_operation(self, operation: Operation, user_id: str, base_version: int) -> dict:
         """Apply operation with conflict resolution"""
-        # Use Lua script for atomicity
-        APPLY_OP_SCRIPT = """
-        local content_key = KEYS[1]
-        local ops_key = KEYS[2]
-        local version_key = KEYS[3]
+        while True:
+            with self.redis.pipeline() as pipe:
+                try:
+                    pipe.watch(self.content_key, self.version_key, self.ops_key)
+                    content = pipe.get(self.content_key) or ''
+                    current_version = int(pipe.get(self.version_key) or 0)
+                    transformed_op = Operation.from_dict(operation.to_dict())
 
-        local op_json = ARGV[1]
-        local user_id = ARGV[2]
-        local base_version = tonumber(ARGV[3])
+                    # Transform if needed
+                    if base_version < current_version:
+                        ops_since = pipe.zrangebyscore(
+                            self.ops_key,
+                            base_version + 1,
+                            current_version
+                        )
+                        for op_json in ops_since:
+                            past_op = Operation.from_dict(json.loads(op_json))
+                            transformed_op = self._transform(transformed_op, past_op)
 
-        local current_version = tonumber(redis.call('GET', version_key) or 0)
-        local content = redis.call('GET', content_key) or ''
-        local op = cjson.decode(op_json)
+                    # Apply operation
+                    if transformed_op.type == 'insert':
+                        pos = min(transformed_op.position, len(content))
+                        content = content[:pos] + transformed_op.text + content[pos:]
+                    elif transformed_op.type == 'delete':
+                        pos = min(transformed_op.position, len(content))
+                        end = min(pos + transformed_op.length, len(content))
+                        content = content[:pos] + content[end:]
 
-        -- Check if we need to transform the operation
-        if base_version < current_version then
-            -- Get operations since base_version
-            local ops_since = redis.call('ZRANGEBYSCORE', ops_key, base_version + 1, current_version)
+                    new_version = current_version + 1
+                    op_data = transformed_op.to_dict()
+                    op_data['version'] = new_version
+                    op_data['user_id'] = user_id
 
-            -- Transform operation against each
-            for _, past_op_json in ipairs(ops_since) do
-                local past_op = cjson.decode(past_op_json)
-                op = transform_operation(op, past_op)
-            end
-        end
-
-        -- Apply operation to content
-        if op.type == 'insert' then
-            local pos = math.min(op.position, #content)
-            content = string.sub(content, 1, pos) .. op.text .. string.sub(content, pos + 1)
-        elseif op.type == 'delete' then
-            local pos = math.min(op.position, #content)
-            local del_end = math.min(pos + op.length, #content)
-            content = string.sub(content, 1, pos) .. string.sub(content, del_end + 1)
-        end
-
-        -- Update state
-        local new_version = current_version + 1
-        redis.call('SET', content_key, content)
-        redis.call('SET', version_key, new_version)
-
-        -- Store operation with version as score
-        op.version = new_version
-        op.user_id = user_id
-        redis.call('ZADD', ops_key, new_version, cjson.encode(op))
-
-        -- Trim old operations (keep last 1000)
-        redis.call('ZREMRANGEBYRANK', ops_key, 0, -1001)
-
-        return cjson.encode({
-            success = true,
-            version = new_version,
-            operation = op,
-            content = content
-        })
-        """
-
-        # Simplified Python version (for demonstration)
-        content = self.get_content()
-        current_version = self.get_version()
-
-        # Transform if needed
-        if base_version < current_version:
-            ops_since = self.redis.zrangebyscore(
-                self.ops_key,
-                base_version + 1,
-                current_version
-            )
-            for op_json in ops_since:
-                past_op = Operation.from_dict(json.loads(op_json))
-                operation = self._transform(operation, past_op)
-
-        # Apply operation
-        if operation.type == 'insert':
-            pos = min(operation.position, len(content))
-            content = content[:pos] + operation.text + content[pos:]
-        elif operation.type == 'delete':
-            pos = min(operation.position, len(content))
-            end = min(pos + operation.length, len(content))
-            content = content[:pos] + content[end:]
-
-        # Update state atomically
-        pipe = self.redis.pipeline()
-        new_version = current_version + 1
-        pipe.set(self.content_key, content)
-        pipe.set(self.version_key, new_version)
-
-        op_data = operation.to_dict()
-        op_data['version'] = new_version
-        op_data['user_id'] = user_id
-        pipe.zadd(self.ops_key, {json.dumps(op_data): new_version})
-        pipe.execute()
+                    pipe.multi()
+                    pipe.set(self.content_key, content)
+                    pipe.set(self.version_key, new_version)
+                    pipe.zadd(self.ops_key, {json.dumps(op_data): new_version})
+                    pipe.zremrangebyrank(self.ops_key, 0, -1001)
+                    pipe.execute()
+                    break
+                except redis.WatchError:
+                    continue
 
         # Publish operation
         self.redis.publish(f"doc:{self.doc_id}:ops", json.dumps(op_data))
@@ -776,28 +739,48 @@ class ORSet:
     def __init__(self, redis_client, key: str):
         self.redis = redis_client
         self.key = key
+        self.adds_key = f"{key}:adds"
+        self.removes_key = f"{key}:removes"
 
     def add(self, element: str):
         """Add element with unique tag"""
         tag = str(uuid.uuid4())
-        self.redis.hset(f"{self.key}:elements", f"{element}:{tag}", element)
+        self.redis.hset(self.adds_key, tag, element)
 
     def remove(self, element: str):
-        """Remove all instances of element"""
-        elements = self.redis.hgetall(f"{self.key}:elements")
-        to_remove = [k for k, v in elements.items() if v == element]
-        if to_remove:
-            self.redis.hdel(f"{self.key}:elements", *to_remove)
+        """Mark observed instances of element as removed"""
+        elements = self.redis.hgetall(self.adds_key)
+        tags_to_remove = [tag for tag, value in elements.items() if value == element]
+        if tags_to_remove:
+            self.redis.hset(self.removes_key, mapping={tag: element for tag in tags_to_remove})
 
     def contains(self, element: str) -> bool:
         """Check if element is in set"""
-        elements = self.redis.hgetall(f"{self.key}:elements")
-        return element in elements.values()
+        adds = self.redis.hgetall(self.adds_key)
+        removes = self.redis.hgetall(self.removes_key)
+        return any(
+            value == element and tag not in removes
+            for tag, value in adds.items()
+        )
 
     def members(self) -> set:
         """Get all elements"""
-        elements = self.redis.hgetall(f"{self.key}:elements")
-        return set(elements.values())
+        adds = self.redis.hgetall(self.adds_key)
+        removes = self.redis.hgetall(self.removes_key)
+        return {
+            value
+            for tag, value in adds.items()
+            if tag not in removes
+        }
+
+    def merge(self, other_adds: Dict[str, str], other_removes: Dict[str, str]):
+        """Merge with remote OR-Set state"""
+        pipe = self.redis.pipeline()
+        if other_adds:
+            pipe.hset(self.adds_key, mapping=other_adds)
+        if other_removes:
+            pipe.hset(self.removes_key, mapping=other_removes)
+        pipe.execute()
 
 
 # Usage

@@ -343,7 +343,7 @@ import (
     "strings"
 )
 
-// GetJSONTags returns all json tag names for a struct
+// GetJSONTags returns all JSON field names for a struct
 func GetJSONTags(t reflect.Type) map[string]bool {
     tags := make(map[string]bool)
     
@@ -358,14 +358,20 @@ func GetJSONTags(t reflect.Type) map[string]bool {
             continue
         }
         
+        name := field.Name
         tag := field.Tag.Get("json")
-        if tag == "" || tag == "-" {
+        if tag == "-" {
             continue
         }
         
         // Handle tags like "name,omitempty"
-        parts := strings.Split(tag, ",")
-        tags[parts[0]] = true
+        if tag != "" {
+            parts := strings.Split(tag, ",")
+            if parts[0] != "" {
+                name = parts[0]
+            }
+        }
+        tags[name] = true
     }
     
     return tags
@@ -512,7 +518,7 @@ import (
     "encoding/json"
     "fmt"
     
-    "github.com/mitchellh/mapstructure"
+    "github.com/go-viper/mapstructure/v2"
 )
 
 type Config struct {

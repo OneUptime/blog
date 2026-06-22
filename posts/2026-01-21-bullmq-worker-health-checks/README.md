@@ -19,9 +19,8 @@ There are three main types of health checks:
 3. **Startup** - Has the worker completed initialization?
 
 ```typescript
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import express from 'express';
 
 const connection = new Redis({
   host: 'localhost',
@@ -217,6 +216,9 @@ class HealthCheckServer {
 Implement detailed health checks:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
+
 interface HealthCheckResult {
   name: string;
   healthy: boolean;
@@ -534,12 +536,15 @@ startupProbe:
 Implement auto-recovery based on health checks:
 
 ```typescript
+import { Job, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
+
 class SelfHealingWorker {
   private worker: Worker | null = null;
   private connection: Redis;
   private queueName: string;
   private processor: (job: Job) => Promise<any>;
-  private healthCheckInterval?: NodeJS.Timer;
+  private healthCheckInterval?: NodeJS.Timeout;
   private restartCount = 0;
   private maxRestarts = 5;
   private restartCooldown = 60000;
@@ -678,6 +683,7 @@ class SelfHealingWorker {
 Export health metrics for Prometheus:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
 import { Registry, Gauge, Counter, Histogram } from 'prom-client';
 
 class HealthMetricsExporter {
@@ -686,26 +692,25 @@ class HealthMetricsExporter {
   private queue: Queue;
 
   // Gauges
-  private workerRunning: Gauge;
-  private activeJobs: Gauge;
-  private waitingJobs: Gauge;
-  private memoryUsage: Gauge;
-  private eventLoopLag: Gauge;
+  private workerRunning!: Gauge;
+  private activeJobs!: Gauge;
+  private waitingJobs!: Gauge;
+  private memoryUsage!: Gauge;
+  private eventLoopLag!: Gauge;
 
   // Counters
-  private healthChecksPassed: Counter;
-  private healthChecksFailed: Counter;
+  private healthChecksPassed!: Counter;
+  private healthChecksFailed!: Counter;
 
   // Histogram
-  private redisLatency: Histogram;
+  private redisLatency!: Histogram;
 
-  constructor(worker: Worker, queue: Queue, connection: Redis) {
+  constructor(worker: Worker, queue: Queue) {
     this.registry = new Registry();
     this.worker = worker;
     this.queue = queue;
 
     this.setupMetrics();
-    this.startCollecting();
   }
 
   private setupMetrics() {
@@ -713,18 +718,29 @@ class HealthMetricsExporter {
       name: 'bullmq_worker_running',
       help: 'Whether the worker is running (1) or not (0)',
       registers: [this.registry],
+      collect: () => {
+        this.workerRunning.set(this.worker.isRunning() ? 1 : 0);
+      },
     });
 
     this.activeJobs = new Gauge({
       name: 'bullmq_active_jobs',
       help: 'Number of currently active jobs',
       registers: [this.registry],
+      collect: async () => {
+        const counts = await this.queue.getJobCounts('active');
+        this.activeJobs.set(counts.active);
+      },
     });
 
     this.waitingJobs = new Gauge({
       name: 'bullmq_waiting_jobs',
       help: 'Number of waiting jobs',
       registers: [this.registry],
+      collect: async () => {
+        const counts = await this.queue.getJobCounts('waiting', 'delayed');
+        this.waitingJobs.set(counts.waiting + counts.delayed);
+      },
     });
 
     this.memoryUsage = new Gauge({
@@ -732,12 +748,22 @@ class HealthMetricsExporter {
       help: 'Worker memory usage in bytes',
       labelNames: ['type'],
       registers: [this.registry],
+      collect: () => {
+        const mem = process.memoryUsage();
+        this.memoryUsage.labels('heap_used').set(mem.heapUsed);
+        this.memoryUsage.labels('heap_total').set(mem.heapTotal);
+        this.memoryUsage.labels('rss').set(mem.rss);
+      },
     });
 
     this.eventLoopLag = new Gauge({
       name: 'bullmq_event_loop_lag_ms',
       help: 'Event loop lag in milliseconds',
       registers: [this.registry],
+      collect: async () => {
+        const lag = await this.measureEventLoopLag();
+        this.eventLoopLag.set(lag);
+      },
     });
 
     this.healthChecksPassed = new Counter({
@@ -758,32 +784,6 @@ class HealthMetricsExporter {
       buckets: [1, 5, 10, 25, 50, 100, 250, 500, 1000],
       registers: [this.registry],
     });
-  }
-
-  private startCollecting() {
-    setInterval(async () => {
-      await this.collectMetrics();
-    }, 5000);
-  }
-
-  private async collectMetrics() {
-    // Worker status
-    this.workerRunning.set(this.worker.isRunning() ? 1 : 0);
-
-    // Queue counts
-    const counts = await this.queue.getJobCounts();
-    this.activeJobs.set(counts.active);
-    this.waitingJobs.set(counts.waiting + counts.delayed);
-
-    // Memory
-    const mem = process.memoryUsage();
-    this.memoryUsage.labels('heap_used').set(mem.heapUsed);
-    this.memoryUsage.labels('heap_total').set(mem.heapTotal);
-    this.memoryUsage.labels('rss').set(mem.rss);
-
-    // Event loop lag
-    const lag = await this.measureEventLoopLag();
-    this.eventLoopLag.set(lag);
   }
 
   private measureEventLoopLag(): Promise<number> {

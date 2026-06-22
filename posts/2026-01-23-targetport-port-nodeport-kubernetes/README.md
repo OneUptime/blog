@@ -87,7 +87,7 @@ spec:
   - name: web
     image: nginx:1.25
     ports:
-    - containerPort: 8080  # App listens on 8080
+    - containerPort: 80  # nginx listens on 80 by default
 ---
 apiVersion: v1
 kind: Service
@@ -98,7 +98,7 @@ spec:
     app: web
   ports:
   - port: 80
-    targetPort: 8080  # Forward to container port 8080
+    targetPort: 80  # Forward to container port 80
 ```
 
 If `targetPort` is not specified, it defaults to the same value as `port`.
@@ -247,7 +247,7 @@ spec:
   - name: http
     port: 80          # External LB port
     targetPort: 8080  # Container port
-    # nodePort auto-assigned or can be specified
+    # nodePort usually auto-assigned or can be specified
 ```
 
 ## Troubleshooting Port Issues
@@ -262,14 +262,14 @@ kubectl exec web-pod -- netstat -tlnp
 # or
 kubectl exec web-pod -- ss -tlnp
 
-# Check Service endpoints
-kubectl get endpoints web-service
-# Should show pod IPs with targetPort
+# Check Service endpoint slices
+kubectl get endpointslices -l kubernetes.io/service-name=web-service
+# Should show ready pod IPs with targetPort
 ```
 
 ### Service Has No Endpoints
 
-If the Service port and container port do not align:
+If the Service selector does not match any ready pods:
 
 ```bash
 # Check Service definition
@@ -326,4 +326,4 @@ Understanding the three ports is straightforward once you know their roles:
 - **targetPort**: What the app listens on (Container level)
 - **nodePort**: External access point (Node level, optional)
 
-Always verify your targetPort matches the port your application is actually listening on. Use named ports when container ports might vary across deployments. When troubleshooting, check endpoints first to see if the Service can reach your pods.
+Always verify your targetPort matches the port your application is actually listening on. Use named ports when container ports might vary across deployments. When troubleshooting, check EndpointSlices first to see if the Service can reach your pods.

@@ -34,7 +34,7 @@ CREATE TABLE example (
     id SERIAL PRIMARY KEY,
     data JSONB,
     tags TEXT[],
-    location GEOMETRY(Point, 4326),
+    location POINT,
     ip_addr INET,
     mac_addr MACADDR,
     price_range INT4RANGE,
@@ -50,7 +50,7 @@ CREATE TABLE example (
     data JSON,
     -- No native arrays, use JSON
     tags JSON,
-    -- Requires spatial extension
+    -- Built-in spatial type
     location POINT SRID 4326,
     ip_addr VARCHAR(45),
     mac_addr VARCHAR(17)
@@ -93,7 +93,7 @@ CREATE INDEX idx_color ON products(color);
 
 -- Query JSON
 SELECT * FROM products
-WHERE JSON_EXTRACT(attributes, '$.color') = 'red';
+WHERE attributes->>'$.color' = 'red';
 ```
 
 ### Window Functions
@@ -106,8 +106,7 @@ SELECT
     department,
     salary,
     RANK() OVER (PARTITION BY department ORDER BY salary DESC),
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary)
-        OVER (PARTITION BY department) AS median_salary
+    AVG(salary) OVER (PARTITION BY department) AS avg_department_salary
 FROM employees;
 ```
 
@@ -210,10 +209,15 @@ CREATE SUBSCRIPTION my_sub
 ```sql
 -- Binary log replication
 -- GTID for easier failover
--- Group replication for multi-master
+-- Group replication for multi-primary topologies
 
--- Enable GTID
-SET GLOBAL gtid_mode = ON;
+-- Enable GTID online on each server
+SET @@GLOBAL.enforce_gtid_consistency = WARN;
+SET @@GLOBAL.enforce_gtid_consistency = ON;
+SET @@GLOBAL.gtid_mode = OFF_PERMISSIVE;
+SET @@GLOBAL.gtid_mode = ON_PERMISSIVE;
+-- Wait until Ongoing_anonymous_transaction_count is 0
+SET @@GLOBAL.gtid_mode = ON;
 
 -- Setup replica
 CHANGE REPLICATION SOURCE TO
@@ -313,13 +317,13 @@ INSTALL PLUGIN clone SONAME 'mysql_clone.so';
 ### Aurora Comparison
 
 **Aurora PostgreSQL:**
-- PostgreSQL 11-16 compatible
-- Up to 128 TB storage
+- PostgreSQL 13-17 compatible
+- Up to 256 TiB storage on supported versions
 - 15 read replicas
 
 **Aurora MySQL:**
-- MySQL 5.7/8.0 compatible
-- Up to 128 TB storage
+- MySQL 5.7/8.0/8.4 compatible
+- Up to 256 TiB storage on supported versions
 - 15 read replicas
 - Generally more mature
 

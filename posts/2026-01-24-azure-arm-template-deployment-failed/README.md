@@ -67,12 +67,14 @@ InvalidTemplate - Deployment template validation failed: 'The template parameter
 
 **Fix:** Ensure parameter names match exactly between template and parameters file.
 
+`template.json` parameter definition:
+
 ```json
-// template.json - parameter definition
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
   "parameters": {
-    "storageAccountName": {  // Note: camelCase
+    "storageAccountName": {
       "type": "string",
       "metadata": {
         "description": "Name of the storage account"
@@ -80,13 +82,16 @@ InvalidTemplate - Deployment template validation failed: 'The template parameter
     }
   }
 }
+```
 
-// parameters.json - must match exactly
+`parameters.json` must match exactly:
+
+```json
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "storageAccountName": {  // Must match template parameter name
+    "storageAccountName": {
       "value": "mystorageaccount"
     }
   }
@@ -128,7 +133,6 @@ InvalidTemplate - Deployment template validation failed: 'The template reference
           "appSettings": [
             {
               "name": "STORAGE_CONNECTION",
-              // Correct reference syntax
               "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-01-01').keys[0].value)]"
             }
           ]
@@ -169,7 +173,6 @@ ResourceNotFound - The Resource 'Microsoft.Storage/storageAccounts/mystorageacco
       "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
       "apiVersion": "2023-01-01",
       "name": "[concat(parameters('storageAccountName'), '/default/uploads')]",
-      // Add dependency to ensure storage account exists first
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
       ],
@@ -227,7 +230,6 @@ Conflict - The resource write operation failed to complete successfully, because
   },
   "resources": [
     {
-      // Only create if parameter is true
       "condition": "[parameters('createNewStorage')]",
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-01-01",
@@ -245,13 +247,13 @@ Conflict - The resource write operation failed to complete successfully, because
 Or use deployment mode to handle existing resources:
 
 ```bash
-# Incremental mode (default) - adds/updates resources, does not delete
+# Incremental mode (default, recommended) - adds/updates resources, does not delete
 az deployment group create \
   --resource-group rg-myapp \
   --template-file template.json \
   --mode Incremental
 
-# Complete mode - deletes resources not in template (use carefully!)
+# Complete mode - deletes resources not in template (not recommended; use deployment stacks for deletions)
 az deployment group create \
   --resource-group rg-myapp \
   --template-file template.json \
@@ -276,10 +278,19 @@ QuotaExceeded - Operation could not be completed as it results in exceeding appr
 az vm list-usage --location eastus --output table
 
 # Request quota increase via Azure Portal or
-az support tickets create \
-  --ticket-name "VM Quota Increase" \
+az support in-subscription tickets create \
+  --ticket-name "ComputeVMCoresQuotaIncreaseRequest" \
+  --title "Request for Compute VM Cores Quota Increase" \
   --description "Need to increase standardDSv3Family cores from 20 to 50 in East US" \
-  --problem-classification "/providers/Microsoft.Support/services/xxx/problemClassifications/yyy" \
+  --advanced-diagnostic-consent "Yes" \
+  --contact-country "USA" \
+  --contact-email "admin@example.com" \
+  --contact-first-name "First" \
+  --contact-last-name "Last" \
+  --contact-language "en-us" \
+  --contact-method "email" \
+  --contact-timezone "Pacific Standard Time" \
+  --problem-classification "/providers/Microsoft.Support/services/quota_service_guid/problemClassifications/CoresQuotaProblemClassificationNameGuid" \
   --severity "minimal"
 ```
 
@@ -294,7 +305,7 @@ Alternatively, modify template to use available VM sizes:
       "allowedValues": [
         "Standard_D2s_v3",
         "Standard_D4s_v3",
-        "Standard_B2ms"  // Add alternative that has quota
+        "Standard_B2ms"
       ]
     }
   }
@@ -328,6 +339,9 @@ az role definition create --role-definition '{
     "Microsoft.Network/virtualNetworks/subnets/join/action",
     "Microsoft.Network/virtualNetworks/subnets/read"
   ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
   "AssignableScopes": ["/subscriptions/<sub-id>"]
 }'
 ```
@@ -369,7 +383,6 @@ az deployment operation group show \
     }
   },
   "variables": {
-    // Use variables to avoid repeated expressions
     "storageAccountName": "[concat('st', parameters('environment'), uniqueString(resourceGroup().id))]",
     "appServicePlanName": "[concat('asp-', parameters('environment'))]"
   },
@@ -390,7 +403,6 @@ az deployment operation group show \
     }
   ],
   "outputs": {
-    // Outputs help debug what was actually created
     "storageAccountName": {
       "type": "string",
       "value": "[variables('storageAccountName')]"

@@ -17,7 +17,7 @@ Before optimizing, understand how Redis executes Lua scripts:
 - **Single-threaded**: Scripts block other operations while running
 - **Atomic**: Entire script executes without interruption
 - **Memory**: Scripts share memory with Redis data
-- **Time limit**: Default 5-second timeout (configurable via `lua-time-limit`)
+- **Time limit**: Default 5-second timeout; Redis reports long-running scripts as BUSY instead of killing them automatically
 
 ## Profiling Lua Scripts
 
@@ -100,17 +100,13 @@ return result
 ```lua
 -- BAD: Making Redis calls in a loop
 local results = {}
-for i = 1, 1000 do
-    local value = redis.call('GET', 'key:' .. i)
+for i = 1, #KEYS do
+    local value = redis.call('GET', KEYS[i])
     table.insert(results, value)
 end
 
 -- GOOD: Use MGET for batch operations
-local keys = {}
-for i = 1, 1000 do
-    table.insert(keys, 'key:' .. i)
-end
-local results = redis.call('MGET', unpack(keys))
+local results = redis.call('MGET', unpack(KEYS))
 ```
 
 ### Pitfall 2: Large Table Operations
@@ -125,18 +121,17 @@ for i = 1, 100000 do
     }
 end
 
--- GOOD: Process in chunks or stream results
+-- GOOD: Process a bounded chunk per script invocation
 local chunk_size = 1000
-local cursor = 0
-repeat
-    local result = redis.call('SCAN', cursor, 'COUNT', chunk_size)
-    cursor = tonumber(result[1])
-    local keys = result[2]
-    -- Process this chunk
-    for _, key in ipairs(keys) do
-        -- Process each key
-    end
-until cursor == 0
+local start_index = tonumber(ARGV[1]) or 1
+local end_index = math.min(start_index + chunk_size - 1, #KEYS)
+
+for i = start_index, end_index do
+    local key = KEYS[i]
+    -- Process each key
+end
+
+return end_index + 1
 ```
 
 ### Pitfall 3: String Concatenation in Loops
@@ -159,12 +154,12 @@ local result = table.concat(parts, ',')  -- O(n) complexity
 ### Pitfall 4: Not Using Local Variables
 
 ```lua
--- BAD: Global variable access is slower
+-- BAD: Redis blocks accidental global variable assignment
 for i = 1, 10000 do
-    x = i * 2  -- Global
+    x = i * 2  -- Error: attempted to create a global variable
 end
 
--- GOOD: Local variables are faster
+-- GOOD: Local variables are valid and faster
 local x
 for i = 1, 10000 do
     x = i * 2  -- Local
@@ -183,15 +178,15 @@ end
 
 ```lua
 -- BAD: Encoding/decoding in loops
-for i = 1, 1000 do
-    local data = cjson.decode(redis.call('GET', 'json:' .. i))
+for i = 1, #KEYS do
+    local data = cjson.decode(redis.call('GET', KEYS[i]))
     -- Process data
-    redis.call('SET', 'json:' .. i, cjson.encode(data))
+    redis.call('SET', KEYS[i], cjson.encode(data))
 end
 
 -- GOOD: Use Redis hashes instead of JSON when possible
-for i = 1, 1000 do
-    local data = redis.call('HGETALL', 'hash:' .. i)
+for i = 1, #KEYS do
+    local data = redis.call('HGETALL', KEYS[i])
     -- Process data directly
 end
 ```
@@ -207,70 +202,58 @@ end
 local source_set = KEYS[1]
 local dest_key = KEYS[2]
 local chunk_size = tonumber(ARGV[1]) or 100
-local processor_type = ARGV[2]
+local cursor = ARGV[2] or '0'
+local processor_type = ARGV[3]
 
 -- Cache function references
 local redis_call = redis.call
-local table_insert = table.insert
-
-local cursor = '0'
 local total_processed = 0
 
-repeat
-    local result = redis_call('SSCAN', source_set, cursor, 'COUNT', chunk_size)
-    cursor = result[1]
-    local members = result[2]
+local result = redis_call('SSCAN', source_set, cursor, 'COUNT', chunk_size)
+cursor = result[1]
+local members = result[2]
 
-    if #members > 0 then
-        -- Process chunk
-        if processor_type == 'copy' then
-            redis_call('SADD', dest_key, unpack(members))
-        elseif processor_type == 'count' then
-            total_processed = total_processed + #members
-        end
+if #members > 0 then
+    -- Process one bounded chunk per invocation
+    if processor_type == 'copy' then
+        redis_call('SADD', dest_key, unpack(members))
+    elseif processor_type == 'count' then
+        total_processed = total_processed + #members
     end
+end
 
-until cursor == '0'
-
-return total_processed
+return {cursor, total_processed}
 ```
 
 ### Efficient Key Scanning
 
 ```lua
 -- efficient_scan.lua
--- Scan keys with filtering without loading all into memory
+-- Run SCAN client-side, then pass each bounded batch as KEYS
 
-local pattern = ARGV[1]
-local limit = tonumber(ARGV[2]) or 100
-local action = ARGV[3]
+local limit = tonumber(ARGV[1]) or 100
+local action = ARGV[2]
+local ttl = tonumber(ARGV[3]) or 3600
 
 local redis_call = redis.call
 local results = {}
 local count = 0
-local cursor = '0'
 
-repeat
-    local scan_result = redis_call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 100)
-    cursor = scan_result[1]
-    local keys = scan_result[2]
-
-    for _, key in ipairs(keys) do
-        if count >= limit then
-            break
-        end
-
-        if action == 'delete' then
-            redis_call('DEL', key)
-        elseif action == 'list' then
-            table.insert(results, key)
-        elseif action == 'expire' then
-            redis_call('EXPIRE', key, tonumber(ARGV[4]) or 3600)
-        end
-
-        count = count + 1
+for _, key in ipairs(KEYS) do
+    if count >= limit then
+        break
     end
-until cursor == '0' or count >= limit
+
+    if action == 'delete' then
+        redis_call('DEL', key)
+    elseif action == 'list' then
+        table.insert(results, key)
+    elseif action == 'expire' then
+        redis_call('EXPIRE', key, ttl)
+    end
+
+    count = count + 1
+end
 
 if action == 'list' then
     return results
@@ -296,13 +279,14 @@ local redis_call = redis.call
 -- Calculate window boundaries
 local window_start = now - window_ms
 
--- Remove old entries and count in single pipeline
+-- Remove old entries and count within the same atomic script
 redis_call('ZREMRANGEBYSCORE', key, 0, window_start)
 local current_count = redis_call('ZCARD', key)
 
 if current_count < limit then
-    -- Use now + random component for uniqueness
-    redis_call('ZADD', key, now, identifier)
+    -- Use a unique request identifier as the sorted-set member
+    local member = now .. ':' .. identifier
+    redis_call('ZADD', key, now, member)
     redis_call('PEXPIRE', key, window_ms)
     return {1, limit - current_count - 1}  -- allowed, remaining
 end
@@ -314,10 +298,10 @@ return {0, 0}  -- denied, remaining
 
 ```lua
 -- efficient_aggregation.lua
--- Aggregate data without building large intermediate tables
+-- Aggregate a bounded batch of keys without building large intermediate tables
 
-local source_pattern = ARGV[1]
-local aggregation_type = ARGV[2]
+local aggregation_type = ARGV[1]
+local limit = tonumber(ARGV[2]) or #KEYS
 
 local redis_call = redis.call
 local tonumber = tonumber
@@ -327,26 +311,21 @@ local count = 0
 local min_val = nil
 local max_val = nil
 
-local cursor = '0'
-repeat
-    local result = redis_call('SCAN', cursor, 'MATCH', source_pattern, 'COUNT', 100)
-    cursor = result[1]
+for i = 1, math.min(limit, #KEYS) do
+    local key = KEYS[i]
+    local value = tonumber(redis_call('GET', key))
+    if value then
+        count = count + 1
+        sum = sum + value
 
-    for _, key in ipairs(result[2]) do
-        local value = tonumber(redis_call('GET', key))
-        if value then
-            count = count + 1
-            sum = sum + value
-
-            if not min_val or value < min_val then
-                min_val = value
-            end
-            if not max_val or value > max_val then
-                max_val = value
-            end
+        if not min_val or value < min_val then
+            min_val = value
+        end
+        if not max_val or value > max_val then
+            max_val = value
         end
     end
-until cursor == '0'
+end
 
 if aggregation_type == 'sum' then
     return sum
@@ -490,7 +469,15 @@ class ScriptMonitor:
                 # Check slowlog for script-related entries
                 slowlog = self.redis.slowlog_get(10)
                 for entry in slowlog:
-                    if entry['command'] and entry['command'][0].upper() in (b'EVAL', b'EVALSHA'):
+                    command = entry.get('command', b'')
+                    if isinstance(command, bytes):
+                        command_name = command.split(maxsplit=1)[0].upper()
+                    elif command:
+                        command_name = command[0].upper()
+                    else:
+                        command_name = b''
+
+                    if command_name in (b'EVAL', b'EVALSHA'):
                         duration_ms = entry['duration'] / 1000
                         if duration_ms >= self.threshold_ms:
                             print(f"Slow script detected:")
@@ -554,8 +541,8 @@ end
 ### Adjusting Lua Script Limits
 
 ```bash
-# Increase Lua script timeout (default 5 seconds)
-redis-cli CONFIG SET lua-time-limit 10000  # 10 seconds
+# Increase the script BUSY threshold (default 5 seconds)
+redis-cli CONFIG SET busy-reply-threshold 10000  # 10 seconds
 
 # Note: Scripts can still be killed with SCRIPT KILL
 # Only works if script hasn't performed writes yet
@@ -564,8 +551,9 @@ redis-cli CONFIG SET lua-time-limit 10000  # 10 seconds
 ### Memory Limits
 
 ```bash
-# Set maximum memory for Lua scripts (Redis 7.0+)
-redis-cli CONFIG SET lua-replicate-commands yes
+# Lua scripts share Redis memory; configure Redis memory limits instead
+redis-cli CONFIG SET maxmemory 1gb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru
 ```
 
 ## Best Practices Summary
@@ -586,15 +574,17 @@ local values = redis_call('MGET', unpack(keys))
 
 3. **Process data in chunks**
 ```lua
--- Use SCAN with reasonable COUNT
-local result = redis_call('SCAN', cursor, 'COUNT', 100)
+-- Run SCAN client-side, then pass a bounded batch as KEYS
+for i = 1, math.min(#KEYS, 100) do
+    local value = redis_call('GET', KEYS[i])
+end
 ```
 
-4. **Pre-allocate tables when size is known**
+4. **Fill arrays by index when size is known**
 ```lua
 local results = {}
 for i = 1, known_size do
-    results[i] = nil  -- Pre-allocate
+    results[i] = process(i)
 end
 ```
 

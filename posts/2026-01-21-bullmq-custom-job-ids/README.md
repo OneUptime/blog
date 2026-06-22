@@ -8,14 +8,14 @@ Description: A comprehensive guide to implementing custom job IDs in BullMQ for 
 
 ---
 
-Custom job IDs in BullMQ provide control over job identification, enabling idempotent job creation, easier tracking, and deduplication. Instead of letting BullMQ generate random IDs, you can assign meaningful identifiers that reflect your business logic. This guide covers strategies and patterns for effective custom job ID usage.
+Custom job IDs in BullMQ provide control over job identification, enabling idempotent job creation, easier tracking, and deduplication. Instead of letting BullMQ generate IDs from its queue-scoped counter, you can assign meaningful identifiers that reflect your business logic. This guide covers strategies and patterns for effective custom job ID usage.
 
 ## Understanding Custom Job IDs
 
-By default, BullMQ generates unique IDs for each job. Custom IDs let you define your own:
+By default, BullMQ generates unique IDs for each job using an increasing counter. Custom IDs let you define your own:
 
 ```typescript
-import { Queue, Worker } from 'bullmq';
+import { Job, Queue, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -38,7 +38,7 @@ console.log(job.id); // 'order-ORD-12345'
 
 ## Idempotent Job Creation
 
-Custom IDs enable idempotent job creation - adding the same job twice returns the existing job:
+Custom IDs enable idempotent job creation - you can check for an existing job before adding a duplicate:
 
 ```typescript
 class IdempotentQueue {
@@ -59,12 +59,11 @@ class IdempotentQueue {
 
     if (existingJob) {
       const state = await existingJob.getState();
-      // Return existing if waiting, active, or delayed
-      if (['waiting', 'active', 'delayed'].includes(state)) {
+      // Return existing jobs unless your business logic explicitly removes them first.
+      // Completed or failed jobs still count as duplicates while they remain in Redis.
+      if (['waiting', 'active', 'delayed', 'completed', 'failed'].includes(state)) {
         return { job: existingJob, isNew: false };
       }
-      // If completed or failed, we might want to remove and recreate
-      // depending on business logic
     }
 
     const job = await this.queue.add('process', data, { jobId });
@@ -120,7 +119,7 @@ class JobIdGenerator {
 
   // Hierarchical ID (parent-child relationships)
   static forHierarchy(parentId: string, childId: string): string {
-    return `${parentId}:${childId}`;
+    return `${parentId}_${childId}`;
   }
 
   // Hash-based ID (from content)
@@ -149,7 +148,7 @@ const versionedId = JobIdGenerator.forVersion('document', 'DOC-001', 3);
 // 'document_DOC-001_v3'
 
 const hierarchyId = JobIdGenerator.forHierarchy('batch_B001', 'item_001');
-// 'batch_B001:item_001'
+// 'batch_B001_item_001'
 ```
 
 ## Retrieving Jobs by Custom ID
@@ -159,8 +158,10 @@ Easily retrieve jobs using their custom IDs:
 ```typescript
 class JobManager {
   private queue: Queue;
+  private connection: Redis;
 
   constructor(connection: Redis) {
+    this.connection = connection;
     this.queue = new Queue('managed', { connection });
   }
 
@@ -200,8 +201,10 @@ class JobManager {
       throw new Error(`Job ${jobId} not found`);
     }
 
+    const queueEvents = new QueueEvents(this.queue.name, { connection: this.connection });
+
     const result = await job.waitUntilFinished(
-      new QueueEvents(this.queue.name, { connection: this.queue.opts.connection }),
+      queueEvents,
       timeoutMs
     );
 
@@ -266,7 +269,7 @@ class BatchJobManager {
         ...item.data,
       },
       opts: {
-        jobId: `${config.batchId}:item_${item.id}`,
+        jobId: `${config.batchId}_item_${item.id}`,
       },
     }));
 
@@ -290,7 +293,7 @@ class BatchJobManager {
     ]);
 
     const filterBatch = (jobs: Job[]) =>
-      jobs.filter(j => j.id?.startsWith(`${batchId}:`));
+      jobs.filter(j => j.id?.startsWith(`${batchId}_`));
 
     const batchWaiting = filterBatch(waiting);
     const batchActive = filterBatch(active);
@@ -325,7 +328,7 @@ class BatchJobManager {
     ]);
 
     const toCancel = [...waiting, ...delayed].filter(j =>
-      j.id?.startsWith(`${batchId}:`)
+      j.id?.startsWith(`${batchId}_`)
     );
 
     await Promise.all(toCancel.map(j => j.remove()));
@@ -339,12 +342,14 @@ class BatchJobManager {
 Use custom IDs in flow hierarchies:
 
 ```typescript
-import { FlowProducer } from 'bullmq';
+import { FlowProducer, Queue } from 'bullmq';
 
 class FlowWithCustomIds {
   private flowProducer: FlowProducer;
+  private connection: Redis;
 
   constructor(connection: Redis) {
+    this.connection = connection;
     this.flowProducer = new FlowProducer({ connection });
   }
 
@@ -357,7 +362,7 @@ class FlowWithCustomIds {
       queueName: 'item-processing',
       data: { orderId, itemId },
       opts: {
-        jobId: `${flowId}:item_${itemId}`,
+        jobId: `${flowId}_item_${itemId}`,
       },
     }));
 
@@ -366,7 +371,7 @@ class FlowWithCustomIds {
       queueName: 'order-completion',
       data: { orderId },
       opts: {
-        jobId: `${flowId}:complete`,
+        jobId: `${flowId}_complete`,
       },
       children: [
         {
@@ -374,7 +379,7 @@ class FlowWithCustomIds {
           queueName: 'order-validation',
           data: { orderId },
           opts: {
-            jobId: `${flowId}:validate`,
+            jobId: `${flowId}_validate`,
           },
           children: itemChildren,
         },
@@ -385,22 +390,22 @@ class FlowWithCustomIds {
   async getFlowStatus(orderId: string) {
     const flowId = `order_flow_${orderId}`;
     const queues = {
-      items: new Queue('item-processing', { connection }),
-      validation: new Queue('order-validation', { connection }),
-      completion: new Queue('order-completion', { connection }),
+      items: new Queue('item-processing', { connection: this.connection }),
+      validation: new Queue('order-validation', { connection: this.connection }),
+      completion: new Queue('order-completion', { connection: this.connection }),
     };
 
     const jobs = await Promise.all([
-      queues.completion.getJob(`${flowId}:complete`),
-      queues.validation.getJob(`${flowId}:validate`),
+      queues.completion.getJob(`${flowId}_complete`),
+      queues.validation.getJob(`${flowId}_validate`),
       // Item jobs would need to be fetched based on known item IDs
     ]);
 
-    return jobs.filter(j => j !== null).map(async j => ({
+    return Promise.all(jobs.filter(j => j !== null).map(async j => ({
       id: j!.id,
       state: await j!.getState(),
       queue: j!.queueName,
-    }));
+    })));
   }
 }
 ```

@@ -60,15 +60,13 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import {
   PeriodicExportingMetricReader,
-  MeterProvider,
-  View,
-  Aggregation,
-  ExplicitBucketHistogramAggregation,
+  AggregationType,
 } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import type { ViewOptions } from '@opentelemetry/sdk-metrics';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'my-service',
 });
 
@@ -93,17 +91,20 @@ const metricReader = new PeriodicExportingMetricReader({
   exportIntervalMillis: 15000,
 });
 
-// Define views to control exemplar collection
-const views = [
-  // Collect exemplars for request duration histogram
-  new View({
+// Define views to control histogram aggregation
+const views: ViewOptions[] = [
+  // Use explicit buckets for request duration histogram
+  {
     instrumentName: 'http.server.request.duration',
-    aggregation: Aggregation.ExplicitBucketHistogram({
-      boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
-      // Enable exemplar collection (default is enabled)
-      recordMinMax: true,
-    }),
-  }),
+    aggregation: {
+      type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+      options: {
+        boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+        // Keep min/max on histogram points; exemplars are sampled separately.
+        recordMinMax: true,
+      },
+    },
+  },
 ];
 
 // Initialize the SDK
@@ -111,6 +112,7 @@ const sdk = new NodeSDK({
   resource,
   traceExporter,
   metricReader,
+  views,
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -119,11 +121,11 @@ sdk.start();
 
 ## Recording Metrics with Exemplars
 
-When recording metrics within a traced context, exemplars are automatically captured:
+When recording metrics within a sampled traced context, exemplars are automatically captured:
 
 ```typescript
 // metrics.ts
-import { metrics, trace, context } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('my-service', '1.0.0');
 
@@ -260,14 +262,14 @@ def configure_opentelemetry():
     # Configure tracing
     trace_provider = TracerProvider(resource=resource)
     trace_exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces"),
     )
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(trace_provider)
 
-    # Configure metrics with exemplar-enabled views
+    # Configure metrics; the default exemplar filter is trace-based
     metric_exporter = OTLPMetricExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/metrics"),
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://localhost:4318/v1/metrics"),
     )
 
     metric_reader = PeriodicExportingMetricReader(
@@ -275,7 +277,7 @@ def configure_opentelemetry():
         export_interval_millis=15000,
     )
 
-    # Define views for exemplar collection
+    # Define views for histogram aggregation
     views = [
         View(
             instrument_name="http.server.request.duration",
@@ -298,6 +300,7 @@ def configure_opentelemetry():
 ```python
 # app.py
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 import time
 from instrumentation import configure_opentelemetry
 
@@ -329,12 +332,12 @@ def process_request(request_data: dict):
             # Do the actual work
             result = do_work(request_data)
 
-            span.set_status(trace.Status(trace.StatusCode.OK))
+            span.set_status(Status(StatusCode.OK))
             return result
 
         except Exception as e:
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 
         finally:
@@ -365,6 +368,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -425,6 +429,8 @@ func initTelemetry(ctx context.Context) (func(), error) {
 				sdkmetric.WithInterval(15*time.Second),
 			),
 		),
+		// The default is trace-based; this makes the example explicit.
+		sdkmetric.WithExemplarFilter(exemplar.TraceBasedFilter),
 		// Configure views for histogram boundaries
 		sdkmetric.WithView(
 			sdkmetric.NewView(
@@ -491,16 +497,16 @@ Once collected, exemplars can be queried in various ways depending on your backe
 
 ### Prometheus Query
 
-If using Prometheus, you can query exemplars alongside your metrics:
+If using Prometheus, use a normal PromQL query for the metric series and have Grafana request exemplars for the same time range:
 
 ```promql
-# Query histogram with exemplars
+# Query the histogram time series
 histogram_quantile(0.99,
   sum(rate(http_server_request_duration_bucket[5m])) by (le)
 )
 
-# In Grafana, enable "Exemplars" toggle in the query options
-# to display exemplar data points on the graph
+# In Grafana, enable exemplar display in the Prometheus data source or query options
+# to show exemplar data points alongside the graph.
 ```
 
 ### OneUptime
@@ -529,72 +535,19 @@ flowchart TD
     F --> J[Controlled overhead<br/>Representative sample]
 ```
 
-### Implementing Custom Exemplar Filtering
+### Configuring Exemplar Filtering
 
-```typescript
-// custom-exemplar-filter.ts
-import { ExemplarFilter, Context } from '@opentelemetry/sdk-metrics';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+OpenTelemetry SDKs support built-in exemplar filters. Use `trace_based` for the normal production case so only measurements recorded inside sampled traces are eligible:
 
-// Custom filter that only collects exemplars for interesting cases
-export class SelectiveExemplarFilter implements ExemplarFilter {
-  private exemplarCount = 0;
-  private lastResetTime = Date.now();
-  private maxExemplarsPerInterval = 100;
-  private intervalMs = 60000; // 1 minute
+```bash
+# Collect exemplars only when the active span is sampled (default)
+export OTEL_METRICS_EXEMPLAR_FILTER=trace_based
 
-  shouldSample(
-    value: number,
-    timestamp: number,
-    attributes: Record<string, unknown>,
-    ctx: Context
-  ): boolean {
-    // Reset counter if interval has passed
-    const now = Date.now();
-    if (now - this.lastResetTime > this.intervalMs) {
-      this.exemplarCount = 0;
-      this.lastResetTime = now;
-    }
+# Collect exemplars for every measurement
+export OTEL_METRICS_EXEMPLAR_FILTER=always_on
 
-    // Check if we have exceeded the rate limit
-    if (this.exemplarCount >= this.maxExemplarsPerInterval) {
-      return false;
-    }
-
-    // Get current span to check for errors
-    const span = trace.getSpan(ctx);
-    if (!span) {
-      return false; // No active span, skip exemplar
-    }
-
-    const spanContext = span.spanContext();
-    if (!spanContext.traceId) {
-      return false; // Invalid trace context
-    }
-
-    // Always sample errors
-    const status = (span as any)._status;
-    if (status?.code === SpanStatusCode.ERROR) {
-      this.exemplarCount++;
-      return true;
-    }
-
-    // Sample high latency requests (value is duration in ms)
-    if (value > 1000) {
-      this.exemplarCount++;
-      return true;
-    }
-
-    // Sample a percentage of normal requests
-    if (Math.random() < 0.01) {
-      // 1% sampling
-      this.exemplarCount++;
-      return true;
-    }
-
-    return false;
-  }
-}
+# Disable exemplar collection
+export OTEL_METRICS_EXEMPLAR_FILTER=always_off
 ```
 
 ## Best Practices
@@ -632,7 +585,7 @@ requestDuration.record(duration, {
 
 ### 3. Ensure Trace Context Propagation
 
-Exemplars only work when there is an active span:
+With the default trace-based filter, exemplars are only sampled when there is an active sampled span:
 
 ```typescript
 // Ensure you are within a traced context
@@ -660,7 +613,7 @@ exporters:
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| No exemplars appearing | No active trace context | Ensure metrics are recorded within a span |
+| No exemplars appearing | No active sampled trace context | Ensure metrics are recorded within a sampled span |
 | Exemplar links broken | Trace already deleted | Align trace and metric retention periods |
 | Too many exemplars | No filtering configured | Implement sampling or rate limiting |
 | Missing trace IDs | Propagation not configured | Set up W3C TraceContext propagator |

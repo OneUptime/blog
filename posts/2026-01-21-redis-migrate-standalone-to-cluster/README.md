@@ -25,7 +25,7 @@ The migration involves three main challenges: moving data, updating client code 
 | Transactions | Full support | Limited to single slot |
 | Lua Scripts | Full support | Keys must be in same slot |
 | Database Selection | 0-15 | Only database 0 |
-| Pub/Sub | Global | Per-node by default |
+| Pub/Sub | Global | Global fan-out; sharded Pub/Sub is per shard |
 
 ### Migration Strategies
 
@@ -42,6 +42,7 @@ The migration involves three main challenges: moving data, updating client code 
 
 ```python
 import redis
+import re
 from collections import defaultdict
 
 def analyze_key_patterns(host, password):
@@ -49,8 +50,6 @@ def analyze_key_patterns(host, password):
     r = redis.Redis(host=host, password=password)
 
     patterns = defaultdict(int)
-    multi_key_commands = []
-
     # Sample keys
     cursor = 0
     while True:
@@ -58,8 +57,8 @@ def analyze_key_patterns(host, password):
 
         for key in keys:
             # Extract pattern (replace numbers/UUIDs with placeholders)
-            pattern = re.sub(r'\d+', '{id}', key.decode())
-            pattern = re.sub(r'[a-f0-9-]{36}', '{uuid}', pattern)
+            pattern = re.sub(r'[a-f0-9-]{36}', '{uuid}', key.decode())
+            pattern = re.sub(r'\d+', '{id}', pattern)
             patterns[pattern] += 1
 
         if cursor == 0:
@@ -132,14 +131,14 @@ redis-cli --cluster import \
 # --cluster-replace: Replace existing keys in target
 ```
 
-### Method 2: Using MIGRATE Command
+### Method 2: Using Type-by-Type Copy
 
 ```python
 import redis
 from redis.cluster import RedisCluster
 
 def migrate_keys(source_host, target_cluster_host, password, pattern='*'):
-    """Migrate keys from standalone to cluster"""
+    """Copy common Redis data types from standalone to cluster"""
     source = redis.Redis(host=source_host, password=password)
     target = RedisCluster(host=target_cluster_host, password=password)
 
@@ -214,6 +213,8 @@ print(f"Migrated: {migrated}, Errors: {errors}")
 ### Method 3: Using DUMP/RESTORE
 
 ```python
+import redis
+
 def migrate_with_dump_restore(source, target, keys):
     """Migrate using DUMP and RESTORE (preserves TTL and type)"""
     pipeline_size = 100
@@ -394,7 +395,7 @@ rc.mset({'{app}.key1': 'val1', '{app}.key2': 'val2', '{app}.key3': 'val3'})
 rc.mget('{app}.key1', '{app}.key2', '{app}.key3')
 
 # Transactions limited to same slot
-pipe = rc.pipeline()
+pipe = rc.pipeline(transaction=True)
 pipe.incr('{counters}.counter1')
 pipe.incr('{counters}.counter2')
 pipe.execute()
@@ -441,12 +442,10 @@ def safe_mset(mapping):
 # Or group keys by slot
 def mget_by_slot(keys):
     """Group keys by slot and batch GET"""
-    from redis.cluster import get_key_slot
-
     # Group keys by slot
     slot_keys = {}
     for key in keys:
-        slot = get_key_slot(key)
+        slot = rc.keyslot(key)
         if slot not in slot_keys:
             slot_keys[slot] = []
         slot_keys[slot].append(key)

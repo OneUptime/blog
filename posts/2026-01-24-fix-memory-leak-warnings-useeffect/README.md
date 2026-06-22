@@ -8,15 +8,17 @@ Description: Learn how to fix memory leak warnings in React useEffect by properl
 
 ---
 
-"Warning: Can't perform a React state update on an unmounted component. This is a no-op, but it indicates a memory leak in your application." This warning appears when your component tries to update state after it has unmounted. Understanding cleanup functions in useEffect is essential to preventing these leaks.
+"Warning: Can't perform a React state update on an unmounted component. This is a no-op, but it indicates a memory leak in your application." In React versions before 18, this warning appeared when your component tried to update state after it had unmounted. React 18 removed this warning because many delayed state updates are harmless, but understanding cleanup functions in useEffect is still essential for preventing real leaks from subscriptions, timers, and connections.
 
 ## Understanding the Problem
 
-The memory leak warning occurs when:
+In React versions before 18, the warning can occur when:
 
 1. Component mounts and starts an async operation
 2. Component unmounts before the operation completes
-3. Operation completes and tries to update state on unmounted component
+3. Operation completes and tries to update state on an unmounted component
+
+For one-time async work like a Promise, this is not always a true memory leak. For ongoing work like intervals, event listeners, subscriptions, or WebSocket connections, missing cleanup can keep work alive after the component is gone.
 
 ```mermaid
 sequenceDiagram
@@ -36,10 +38,10 @@ sequenceDiagram
 
 ### 1. Fetch Requests Without Cleanup
 
-The most common cause is fetch requests that complete after unmount:
+One common cause in older React versions is fetch requests that complete after unmount. Even in newer React versions, cleanup prevents stale updates and wasted network work:
 
 ```javascript
-// BAD: No cleanup, will warn if component unmounts during fetch
+// BAD in React < 18: No cleanup, may warn if component unmounts during fetch
 function UserProfile({ userId }) {
   const [user, setUser] = useState(null);
 
@@ -427,15 +429,15 @@ function Dashboard({ userId }) {
 }
 ```
 
-## Using React Query for Automatic Cleanup
+## Using React Query for Cancellation Support
 
-Libraries like React Query handle cleanup automatically:
+Libraries like React Query provide cancellation support through an AbortSignal:
 
 ```javascript
 import { useQuery } from '@tanstack/react-query';
 
 function UserProfile({ userId }) {
-  // React Query handles cancellation and cleanup automatically
+  // React Query provides a signal; fetch is cancelled when that signal is consumed
   const { data: user, isLoading, error } = useQuery({
     queryKey: ['user', userId],
     queryFn: async ({ signal }) => {
@@ -470,4 +472,4 @@ function UserProfile({ userId }) {
 4. Does your effect open a connection? Close it in cleanup.
 5. Does your effect subscribe to something? Unsubscribe in cleanup.
 
-Every useEffect that initiates an async operation or subscription should return a cleanup function. This ensures your React applications stay performant and warning-free.
+Every useEffect that initiates ongoing work or connects to an external system should return a cleanup function. For one-time async work, use cancellation or an ignore flag when you need to prevent stale updates or wasted work. This ensures your React applications stay performant and warning-free in React versions that still emit the warning.

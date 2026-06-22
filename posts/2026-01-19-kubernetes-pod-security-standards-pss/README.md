@@ -67,17 +67,17 @@ Use this only for system-level components that genuinely need host access:
 The practical starting point for most workloads. It blocks:
 - Privileged containers
 - Host namespaces (hostNetwork, hostPID, hostIPC)
-- Dangerous capabilities (NET_RAW is allowed, CAP_SYS_ADMIN is not)
-- HostPath volumes (except specific safe types)
+- Dangerous added capabilities (NET_BIND_SERVICE is allowed, CAP_SYS_ADMIN is not)
+- HostPath volumes
 - Certain seccomp/AppArmor modifications
 
 ### Restricted (Hardened Workloads)
 
 For security-conscious production deployments:
 - Must run as non-root user
-- Must drop ALL capabilities (can add back specific safe ones)
+- Must drop ALL capabilities (can add back NET_BIND_SERVICE)
 - Must use a seccomp profile (RuntimeDefault or Localhost)
-- Cannot write to the root filesystem (strongly encouraged)
+- Read-only root filesystem is strongly encouraged, but not required by PSS
 
 ## How Pod Security Admission Works
 
@@ -99,10 +99,10 @@ Pod Security Admission is stable in Kubernetes 1.25+. Verify your version:
 # Check the server version to ensure PSA is available
 
 # PSA is beta in 1.23-1.24 and stable in 1.25+
-kubectl version --short
+kubectl version
 ```
 
-If you're on 1.22 or earlier, you're still using PodSecurityPolicies. Plan your upgrade first.
+If you're on 1.22 or earlier, Pod Security Admission is not generally available. Plan your upgrade first.
 
 ## Step 2: Audit Current Workloads
 
@@ -417,23 +417,21 @@ PSA writes violations to the Kubernetes audit log. Configure your logging system
 
 Create an audit policy that captures PSS events:
 
-This audit policy captures all pod security violations at the RequestResponse level, providing full details for security investigations.
+This audit policy captures pod create and update requests at the RequestResponse level, including any Pod Security audit annotations for security investigations.
 
 ```yaml
 # /etc/kubernetes/audit/policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+  - RequestReceived
 rules:
-  # Log all Pod Security violations
+  # Log pod create/update requests so Pod Security audit annotations are captured
   - level: RequestResponse
-    namespaces: ["*"]
     verbs: ["create", "update"]
     resources:
       - group: ""
         resources: ["pods"]
-    # Only log when there are annotations about security violations
-    omitStages:
-      - RequestReceived
 ```
 
 ### Query Violations
@@ -602,11 +600,11 @@ spec:
 This error means enforcement is working. Check the full message for details:
 
 ```bash
-# Get detailed error message about what's failing
-kubectl describe pod failing-pod -n restricted-namespace
-
-# Check events for specific violations
+# For controller-created pods, check events for specific violations
 kubectl get events -n restricted-namespace --field-selector reason=FailedCreate
+
+# Look at the ReplicaSet events for Deployments
+kubectl describe replicaset -n restricted-namespace
 ```
 
 ### Pods Stuck in Pending
@@ -628,10 +626,12 @@ Many Helm charts don't follow security best practices. Override values to add se
 ```bash
 # Install chart with security context overrides
 # Check the chart's values.yaml for available security options
-helm install myapp bitnami/nginx \
-  --set securityContext.runAsNonRoot=true \
-  --set securityContext.runAsUser=1001 \
-  --set containerSecurityContext.allowPrivilegeEscalation=false
+helm install myapp oci://registry-1.docker.io/bitnamicharts/nginx \
+  --set containerSecurityContext.runAsNonRoot=true \
+  --set containerSecurityContext.runAsUser=1001 \
+  --set containerSecurityContext.allowPrivilegeEscalation=false \
+  --set containerSecurityContext.capabilities.drop[0]=ALL \
+  --set containerSecurityContext.seccompProfile.type=RuntimeDefault
 ```
 
 ## Best Practices Summary

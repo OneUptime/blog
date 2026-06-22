@@ -12,7 +12,7 @@ BigQuery is Google's serverless data warehouse that can process petabytes of dat
 
 ## Understanding BigQuery Pricing
 
-BigQuery charges for data scanned, not query complexity. A simple SELECT that scans 1 TB costs the same as a complex JOIN that scans 1 TB.
+With on-demand pricing, BigQuery charges for bytes processed, not query complexity. A simple SELECT that processes 1 TiB costs the same as a complex JOIN that processes 1 TiB. With capacity-based pricing, you pay for slots instead of per-query bytes processed.
 
 ```mermaid
 flowchart LR
@@ -22,8 +22,8 @@ flowchart LR
     end
 
     subgraph Pricing["Pricing Model"]
-        P1[On-demand: $5/TB scanned]
-        P2[Flat-rate: Fixed monthly cost]
+        P1[On-demand: $6.25/TiB processed]
+        P2[Capacity-based: Reservations and slots]
     end
 
     C --> P1
@@ -79,11 +79,11 @@ job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
 # Run dry run
 query_job = client.query(query, job_config=job_config)
 
-# Calculate cost (on-demand pricing: $5 per TB)
+# Calculate cost (on-demand pricing: $6.25 per TiB)
 bytes_processed = query_job.total_bytes_processed
-cost_estimate = (bytes_processed / (1024**4)) * 5
+cost_estimate = (bytes_processed / (1024**4)) * 6.25
 
-print(f"This query will process {bytes_processed / (1024**3):.2f} GB")
+print(f"This query will process {bytes_processed / (1024**3):.2f} GiB")
 print(f"Estimated cost: ${cost_estimate:.4f}")
 ```
 
@@ -110,7 +110,7 @@ Partitioned tables let BigQuery scan only relevant partitions.
 ```sql
 -- Create a partitioned table
 CREATE TABLE `my-project.sales.orders_partitioned`
-PARTITION BY DATE(order_date)
+PARTITION BY order_date
 CLUSTER BY user_id
 AS SELECT * FROM `my-project.sales.orders`;
 
@@ -143,7 +143,7 @@ Clustering sorts data within partitions for faster filtering.
 ```sql
 -- Create table with clustering
 CREATE TABLE `my-project.sales.orders_optimized`
-PARTITION BY DATE(order_date)
+PARTITION BY order_date
 CLUSTER BY region, product_category
 AS SELECT * FROM `my-project.sales.orders`;
 
@@ -160,6 +160,8 @@ GROUP BY product_category;
 
 ### Use LIMIT for Exploration
 
+LIMIT helps keep result sets manageable while exploring data, but for non-clustered tables it does not reduce the bytes read or the query cost.
+
 ```sql
 -- Always use LIMIT when exploring data
 SELECT *
@@ -174,7 +176,7 @@ LIMIT 1000;
 -- Save results to a destination table instead of downloading
 CREATE TABLE `my-project.analytics.daily_summary` AS
 SELECT
-    DATE(order_date) as date,
+    order_date as date,
     region,
     COUNT(*) as order_count,
     SUM(total_amount) as revenue
@@ -237,7 +239,7 @@ SELECT
     ) as running_total
 FROM (
     SELECT
-        DATE(order_date) as order_date,
+        order_date,
         SUM(total_amount) as daily_revenue
     FROM `my-project.sales.orders`
     GROUP BY order_date
@@ -265,11 +267,11 @@ GROUP BY region;
 -- Extract fields from JSON columns
 SELECT
     order_id,
-    JSON_EXTRACT_SCALAR(metadata, '$.source') as source,
-    JSON_EXTRACT_SCALAR(metadata, '$.campaign_id') as campaign_id,
-    CAST(JSON_EXTRACT_SCALAR(metadata, '$.discount_percent') AS FLOAT64) as discount
+    JSON_VALUE(metadata, '$.source') as source,
+    JSON_VALUE(metadata, '$.campaign_id') as campaign_id,
+    CAST(JSON_VALUE(metadata, '$.discount_percent') AS FLOAT64) as discount
 FROM `my-project.sales.orders`
-WHERE JSON_EXTRACT_SCALAR(metadata, '$.source') = 'mobile_app';
+WHERE JSON_VALUE(metadata, '$.source') = 'mobile_app';
 ```
 
 ## Scheduled Queries
@@ -291,7 +293,7 @@ bq query \
         COUNT(*) as order_count,
         SUM(total_amount) as revenue
     FROM `my-project.sales.orders`
-    WHERE DATE(order_date) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    WHERE order_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
     GROUP BY region
     '
 ```
@@ -316,7 +318,7 @@ resource "google_bigquery_data_transfer_config" "daily_summary" {
         COUNT(*) as order_count,
         SUM(total_amount) as revenue
       FROM `my-project.sales.orders`
-      WHERE DATE(order_date) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+      WHERE order_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
       GROUP BY region
     EOT
   }
@@ -353,7 +355,7 @@ else:
 
 ## Cost Control Best Practices
 
-### Set Project-Level Quotas
+### Set Query-Level Byte Limits
 
 ```bash
 # Set maximum bytes billed per query (1 GB limit)
@@ -366,11 +368,9 @@ SELECT * FROM `my-project.sales.orders`
 
 ### Use Labels for Cost Tracking
 
-```sql
--- Add labels to track costs by team or project
--- In the query settings or via API
-
--- Python example
+```python
+# Add labels to track costs by team or project
+# In the query settings or via API
 job_config = bigquery.QueryJobConfig(
     labels={"team": "analytics", "project": "q1-report"}
 )
@@ -383,14 +383,14 @@ job_config = bigquery.QueryJobConfig(
 SELECT
     user_email,
     COUNT(*) as query_count,
-    SUM(total_bytes_processed) / POW(1024, 4) as tb_processed,
-    SUM(total_bytes_processed) / POW(1024, 4) * 5 as estimated_cost_usd
+    SUM(total_bytes_processed) / POW(1024, 4) as tib_processed,
+    SUM(total_bytes_billed) / POW(1024, 4) * 6.25 as estimated_cost_usd
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
 GROUP BY user_email
-ORDER BY tb_processed DESC;
+ORDER BY tib_processed DESC;
 ```
 
 ```mermaid

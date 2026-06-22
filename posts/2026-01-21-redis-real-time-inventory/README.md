@@ -154,6 +154,13 @@ class AtomicInventoryService:
     local reference_id = ARGV[2]
     local timestamp = ARGV[3]
 
+    if not quantity or quantity <= 0 then
+        return cjson.encode({
+            success = false,
+            error = 'INVALID_QUANTITY'
+        })
+    end
+
     local available = tonumber(redis.call('HGET', key, 'available') or 0)
 
     if available < quantity then
@@ -184,6 +191,13 @@ class AtomicInventoryService:
     local quantity = tonumber(ARGV[1])
     local timestamp = ARGV[2]
 
+    if not quantity or quantity <= 0 then
+        return cjson.encode({
+            success = false,
+            error = 'INVALID_QUANTITY'
+        })
+    end
+
     local available = tonumber(redis.call('HGET', key, 'available') or 0)
     local total = tonumber(redis.call('HGET', key, 'total') or 0)
 
@@ -204,10 +218,18 @@ class AtomicInventoryService:
     RESERVE_STOCK_SCRIPT = """
     local key = KEYS[1]
     local reservations_key = KEYS[2]
+    local expiry_key = KEYS[3]
     local quantity = tonumber(ARGV[1])
     local reservation_id = ARGV[2]
     local ttl = tonumber(ARGV[3])
     local timestamp = ARGV[4]
+
+    if not quantity or quantity <= 0 then
+        return cjson.encode({
+            success = false,
+            error = 'INVALID_QUANTITY'
+        })
+    end
 
     local available = tonumber(redis.call('HGET', key, 'available') or 0)
 
@@ -234,8 +256,8 @@ class AtomicInventoryService:
     })
     redis.call('HSET', reservations_key, reservation_id, reservation)
 
-    -- Set expiry key for auto-release
-    redis.call('SETEX', 'reservation_expiry:' .. reservation_id, ttl, key .. ':' .. quantity)
+    -- Set an expiry marker; a cleanup worker can use it to release expired reservations
+    redis.call('SET', expiry_key, key .. ':' .. quantity, 'EX', ttl)
 
     return cjson.encode({
         success = true,
@@ -250,6 +272,7 @@ class AtomicInventoryService:
     COMMIT_RESERVATION_SCRIPT = """
     local key = KEYS[1]
     local reservations_key = KEYS[2]
+    local expiry_key = KEYS[3]
     local reservation_id = ARGV[1]
     local timestamp = ARGV[2]
 
@@ -265,9 +288,16 @@ class AtomicInventoryService:
 
     -- Check if expired
     if tonumber(timestamp) > reservation.expires then
+        redis.call('HINCRBY', key, 'available', reservation.quantity)
+        redis.call('HINCRBY', key, 'reserved', -reservation.quantity)
+        redis.call('HSET', key, 'updated_at', timestamp)
+        redis.call('HDEL', reservations_key, reservation_id)
+        redis.call('DEL', expiry_key)
+
         return cjson.encode({
             success = false,
-            error = 'RESERVATION_EXPIRED'
+            error = 'RESERVATION_EXPIRED',
+            quantity_released = reservation.quantity
         })
     end
 
@@ -278,7 +308,7 @@ class AtomicInventoryService:
 
     -- Remove reservation record
     redis.call('HDEL', reservations_key, reservation_id)
-    redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+    redis.call('DEL', expiry_key)
 
     return cjson.encode({
         success = true,
@@ -290,6 +320,7 @@ class AtomicInventoryService:
     RELEASE_RESERVATION_SCRIPT = """
     local key = KEYS[1]
     local reservations_key = KEYS[2]
+    local expiry_key = KEYS[3]
     local reservation_id = ARGV[1]
     local timestamp = ARGV[2]
 
@@ -310,7 +341,7 @@ class AtomicInventoryService:
 
     -- Remove reservation record
     redis.call('HDEL', reservations_key, reservation_id)
-    redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+    redis.call('DEL', expiry_key)
 
     return cjson.encode({
         success = true,
@@ -367,10 +398,11 @@ class AtomicInventoryService:
         key = f"inventory:{warehouse}:{sku}"
         reservations_key = f"inventory:{warehouse}:{sku}:reservations"
         reservation_id = str(uuid.uuid4())
+        expiry_key = f"reservation_expiry:{reservation_id}"
         timestamp = str(time.time())
 
         result = self._reserve_stock(
-            keys=[key, reservations_key],
+            keys=[key, reservations_key, expiry_key],
             args=[quantity, reservation_id, ttl_seconds, timestamp]
         )
 
@@ -386,10 +418,11 @@ class AtomicInventoryService:
         """Commit a reservation (complete purchase)"""
         key = f"inventory:{warehouse}:{sku}"
         reservations_key = f"inventory:{warehouse}:{sku}:reservations"
+        expiry_key = f"reservation_expiry:{reservation_id}"
         timestamp = str(time.time())
 
         result = self._commit_reservation(
-            keys=[key, reservations_key],
+            keys=[key, reservations_key, expiry_key],
             args=[reservation_id, timestamp]
         )
 
@@ -397,6 +430,8 @@ class AtomicInventoryService:
 
         if result_dict.get('success'):
             self._publish_update(sku, warehouse, 'commit', result_dict['quantity_committed'])
+        elif result_dict.get('error') == 'RESERVATION_EXPIRED':
+            self._publish_update(sku, warehouse, 'release', result_dict['quantity_released'])
 
         return result_dict
 
@@ -405,10 +440,11 @@ class AtomicInventoryService:
         """Release a reservation (cancel checkout)"""
         key = f"inventory:{warehouse}:{sku}"
         reservations_key = f"inventory:{warehouse}:{sku}:reservations"
+        expiry_key = f"reservation_expiry:{reservation_id}"
         timestamp = str(time.time())
 
         result = self._release_reservation(
-            keys=[key, reservations_key],
+            keys=[key, reservations_key, expiry_key],
             args=[reservation_id, timestamp]
         )
 
@@ -455,7 +491,7 @@ class OrderInventoryService:
     """Process orders with multiple SKUs atomically"""
 
     PROCESS_ORDER_SCRIPT = """
-    -- KEYS: inventory keys for each item
+    -- KEYS: order key, then inventory keys for each item
     -- ARGV: order_id, timestamp, then (sku, quantity, warehouse) tuples
 
     local order_id = ARGV[1]
@@ -464,17 +500,33 @@ class OrderInventoryService:
     local items = {}
     local i = 3
     while i <= #ARGV do
+        local quantity = tonumber(ARGV[i + 1])
+        if not quantity or quantity <= 0 then
+            return cjson.encode({
+                success = false,
+                error = 'INVALID_QUANTITY',
+                sku = ARGV[i]
+            })
+        end
+
         table.insert(items, {
             sku = ARGV[i],
-            quantity = tonumber(ARGV[i + 1]),
+            quantity = quantity,
             warehouse = ARGV[i + 2]
         })
         i = i + 3
     end
 
+    if #KEYS ~= (#items + 1) then
+        return cjson.encode({
+            success = false,
+            error = 'INVALID_KEYS'
+        })
+    end
+
     -- First pass: validate all items have sufficient stock
     for idx, item in ipairs(items) do
-        local key = 'inventory:' .. item.warehouse .. ':' .. item.sku
+        local key = KEYS[idx + 1]
         local available = tonumber(redis.call('HGET', key, 'available') or 0)
 
         if available < item.quantity then
@@ -492,7 +544,7 @@ class OrderInventoryService:
     -- Second pass: deduct all items
     local deducted = {}
     for idx, item in ipairs(items) do
-        local key = 'inventory:' .. item.warehouse .. ':' .. item.sku
+        local key = KEYS[idx + 1]
 
         local prev_available = tonumber(redis.call('HGET', key, 'available'))
         redis.call('HINCRBY', key, 'available', -item.quantity)
@@ -508,7 +560,7 @@ class OrderInventoryService:
     end
 
     -- Record order
-    local order_key = 'orders:inventory:' .. order_id
+    local order_key = KEYS[1]
     redis.call('SET', order_key, cjson.encode({
         order_id = order_id,
         items = deducted,
@@ -538,7 +590,7 @@ class OrderInventoryService:
 
         # Build args
         args = [order_id, timestamp]
-        keys = []
+        keys = [f"orders:inventory:{order_id}"]
         for item in items:
             warehouse = item.get('warehouse', 'default')
             keys.append(f"inventory:{warehouse}:{item['sku']}")
@@ -577,10 +629,12 @@ print(f"Order result: {result}")
 
 ```python
 import asyncio
-import aioredis
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import json
+from contextlib import asynccontextmanager
+from typing import Dict, List, Set
 
-app = FastAPI()
+import redis.asyncio as redis_async
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 class InventoryWebSocketManager:
     """Real-time inventory updates via WebSocket"""
@@ -592,7 +646,7 @@ class InventoryWebSocketManager:
 
     async def get_redis(self):
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost', decode_responses=True)
+            self.redis = redis_async.from_url('redis://localhost', decode_responses=True)
         return self.redis
 
     async def connect(self, websocket: WebSocket, skus: List[str] = None):
@@ -619,14 +673,15 @@ class InventoryWebSocketManager:
 
     async def start_subscription(self):
         """Start Redis subscription for inventory updates"""
-        redis = await self.get_redis()
-        pubsub = redis.pubsub()
-        await pubsub.subscribe('inventory:updates')
+        redis_client = await self.get_redis()
 
-        async for message in pubsub.listen():
-            if message['type'] == 'message':
-                update = json.loads(message['data'])
-                await self._broadcast_update(update)
+        async with redis_client.pubsub() as pubsub:
+            await pubsub.subscribe('inventory:updates')
+
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    update = json.loads(message['data'])
+                    await self._broadcast_update(update)
 
     async def _broadcast_update(self, update: dict):
         """Broadcast update to relevant connections"""
@@ -678,9 +733,23 @@ class InventoryWebSocketManager:
 
 manager = InventoryWebSocketManager()
 
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(manager.start_subscription())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    subscription_task = asyncio.create_task(manager.start_subscription())
+    try:
+        yield
+    finally:
+        subscription_task.cancel()
+        try:
+            await subscription_task
+        except asyncio.CancelledError:
+            pass
+
+        if manager.redis:
+            await manager.redis.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 @app.websocket("/ws/inventory")
 async def inventory_websocket(websocket: WebSocket, skus: str = None):
@@ -768,7 +837,7 @@ class StockAlertService:
         result = self._check_low_stock(
             keys=[
                 f"inventory:{warehouse}:{sku}",
-                'inventory:alerts'
+                f"inventory:alerts:{warehouse}"
             ],
             args=[sku, threshold, str(time.time())]
         )
@@ -784,7 +853,7 @@ class StockAlertService:
 
     def get_low_stock_items(self, warehouse: str = 'default') -> List[Dict]:
         """Get all items with low stock"""
-        alerts = self.redis.hgetall('inventory:alerts')
+        alerts = self.redis.hgetall(f"inventory:alerts:{warehouse}")
         low_stock = []
 
         for sku, alert_json in alerts.items():

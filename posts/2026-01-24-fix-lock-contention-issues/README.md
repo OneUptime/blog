@@ -42,32 +42,20 @@ Use this query to find active lock waits in PostgreSQL. It shows which queries a
 ```sql
 -- Find blocked queries and what they're waiting for
 SELECT
-    blocked.pid AS blocked_pid,
-    blocked.usename AS blocked_user,
+    blocked_activity.pid AS blocked_pid,
+    blocked_activity.usename AS blocked_user,
     blocked_activity.query AS blocked_query,
     blocked_activity.wait_event_type,
-    blocking.pid AS blocking_pid,
-    blocking.usename AS blocking_user,
+    blocking_activity.pid AS blocking_pid,
+    blocking_activity.usename AS blocking_user,
     blocking_activity.query AS blocking_query,
     now() - blocked_activity.query_start AS blocked_duration
-FROM pg_catalog.pg_locks blocked
-JOIN pg_catalog.pg_stat_activity blocked_activity
-    ON blocked.pid = blocked_activity.pid
-JOIN pg_catalog.pg_locks blocking
-    ON blocked.locktype = blocking.locktype
-    AND blocked.database IS NOT DISTINCT FROM blocking.database
-    AND blocked.relation IS NOT DISTINCT FROM blocking.relation
-    AND blocked.page IS NOT DISTINCT FROM blocking.page
-    AND blocked.tuple IS NOT DISTINCT FROM blocking.tuple
-    AND blocked.virtualxid IS NOT DISTINCT FROM blocking.virtualxid
-    AND blocked.transactionid IS NOT DISTINCT FROM blocking.transactionid
-    AND blocked.classid IS NOT DISTINCT FROM blocking.classid
-    AND blocked.objid IS NOT DISTINCT FROM blocking.objid
-    AND blocked.objsubid IS NOT DISTINCT FROM blocking.objsubid
-    AND blocked.pid != blocking.pid
+FROM pg_catalog.pg_stat_activity blocked_activity
+JOIN LATERAL unnest(pg_catalog.pg_blocking_pids(blocked_activity.pid))
+    AS blocking_pid(pid) ON true
 JOIN pg_catalog.pg_stat_activity blocking_activity
-    ON blocking.pid = blocking_activity.pid
-WHERE NOT blocked.granted;
+    ON blocking_activity.pid = blocking_pid.pid
+WHERE blocked_activity.wait_event_type = 'Lock';
 ```
 
 ### MySQL Lock Monitoring
@@ -84,11 +72,11 @@ SELECT
     b.trx_mysql_thread_id AS blocking_thread,
     b.trx_query AS blocking_query,
     TIMESTAMPDIFF(SECOND, r.trx_wait_started, NOW()) AS wait_seconds
-FROM information_schema.innodb_lock_waits w
+FROM performance_schema.data_lock_waits w
 JOIN information_schema.innodb_trx b
-    ON b.trx_id = w.blocking_trx_id
+    ON b.trx_id = w.blocking_engine_transaction_id
 JOIN information_schema.innodb_trx r
-    ON r.trx_id = w.requesting_trx_id;
+    ON r.trx_id = w.requesting_engine_transaction_id;
 ```
 
 ### Application-Level Lock Monitoring
@@ -109,10 +97,12 @@ class LockMonitor {
 
     async withLock(lockName, operation, fn) {
         const startWait = Date.now();
+        let acquired = false;
 
         try {
             // Attempt to acquire the lock
             await this.acquireLock(lockName);
+            acquired = true;
 
             // Record wait time
             const waitTime = (Date.now() - startWait) / 1000;
@@ -129,7 +119,9 @@ class LockMonitor {
             // Execute the protected operation
             return await fn();
         } finally {
-            await this.releaseLock(lockName);
+            if (acquired) {
+                await this.releaseLock(lockName);
+            }
         }
     }
 }
@@ -224,7 +216,23 @@ CREATE TABLE counter_shards (
 
 -- Insert 16 shards per counter
 INSERT INTO counter_shards (name, shard_id, value)
-SELECT 'page_views', generate_series(0, 15), 0;
+VALUES
+    ('page_views', 0, 0),
+    ('page_views', 1, 0),
+    ('page_views', 2, 0),
+    ('page_views', 3, 0),
+    ('page_views', 4, 0),
+    ('page_views', 5, 0),
+    ('page_views', 6, 0),
+    ('page_views', 7, 0),
+    ('page_views', 8, 0),
+    ('page_views', 9, 0),
+    ('page_views', 10, 0),
+    ('page_views', 11, 0),
+    ('page_views', 12, 0),
+    ('page_views', 13, 0),
+    ('page_views', 14, 0),
+    ('page_views', 15, 0);
 ```
 
 ```python
@@ -250,14 +258,14 @@ def get_counter(name: str) -> int:
 
 ### 3. Index Contention
 
-Missing or poorly designed indexes cause table scans that hold locks on many rows.
+Missing or poorly designed indexes cause table scans that examine many rows and keep transactions open longer.
 
 ```sql
--- Bad: Full table scan locks many rows
+-- Bad: Full table scan examines many rows before updating matches
 UPDATE orders SET status = 'shipped'
 WHERE customer_email = 'user@example.com' AND status = 'pending';
 
--- Fix: Add an index to reduce locked rows
+-- Fix: Add an index to reduce rows examined
 CREATE INDEX idx_orders_email_status ON orders(customer_email, status);
 ```
 
@@ -305,9 +313,11 @@ def transfer_funds(from_account: int, to_account: int, amount: float):
 Instead of holding locks, use version numbers to detect conflicts. This works well when conflicts are rare.
 
 ```python
+import time
+
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.exc import StaleDataError
+from sqlalchemy.orm.exc import StaleDataError
 
 Base = declarative_base()
 
@@ -329,7 +339,7 @@ def update_inventory(product_id: int, quantity_change: int) -> bool:
 
     for attempt in range(max_retries):
         try:
-            product = session.query(Product).get(product_id)
+            product = session.get(Product, product_id)
             product.quantity += quantity_change
             session.commit()
             return True
@@ -382,15 +392,15 @@ Track these key metrics to catch lock contention early:
 groups:
   - name: lock_contention
     rules:
-      # Alert on high lock wait time
-      - alert: HighLockWaitTime
+      # Alert on many sessions waiting for locks
+      - alert: HighLockWaitCount
         expr: |
-          rate(pg_stat_activity_wait_seconds_total{wait_event_type="Lock"}[5m]) > 0.1
+          pg_stat_activity_count{wait_event_type="Lock"} > 5
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High lock wait time detected"
+          summary: "Many sessions are waiting for locks"
 
       # Alert on deadlocks
       - alert: DeadlocksDetected
@@ -404,7 +414,7 @@ groups:
       # Alert on long-running transactions
       - alert: LongRunningTransaction
         expr: |
-          pg_stat_activity_max_tx_duration_seconds > 300
+          pg_stat_activity_max_tx_duration > 300
         for: 1m
         labels:
           severity: warning

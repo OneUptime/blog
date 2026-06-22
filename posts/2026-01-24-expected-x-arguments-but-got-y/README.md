@@ -169,8 +169,8 @@ createElement("div");
 createElement("span");
 createElement("a", "https://example.com");
 
-// Error: Expected 2 arguments, but got 1
-// (when calling with "a", the overload requires href)
+// Error: No overload matches this call
+// (the "a" overload requires href)
 createElement("a");
 ```
 
@@ -178,9 +178,17 @@ createElement("a");
 
 ```typescript
 // If you need an anchor without href, update overloads
+function createElement(tag: "div"): HTMLDivElement;
+function createElement(tag: "span"): HTMLSpanElement;
 function createElement(tag: "a"): HTMLAnchorElement;
 function createElement(tag: "a", href: string): HTMLAnchorElement;
-// ... rest of implementation
+function createElement(tag: string, href?: string): HTMLElement {
+    const element = document.createElement(tag);
+    if (tag === "a" && href) {
+        (element as HTMLAnchorElement).href = href;
+    }
+    return element;
+}
 ```
 
 ### Cause 6: Class Constructor Arguments
@@ -264,7 +272,7 @@ distance([0, 0]);
 
 ## Working with Third-Party Libraries
 
-Library type definitions might not match your expected usage:
+Library type definitions might preserve argument requirements you did not expect:
 
 ```typescript
 // Example: lodash debounce
@@ -274,23 +282,28 @@ function handleInput(event: Event, context: string): void {
     // handle input
 }
 
-// Error: The underlying debounce might have different type expectations
+// debounce preserves the original function's argument requirements
 const debouncedHandler = debounce(handleInput, 300);
+
+// Error: Expected 2 arguments, but got 1
+debouncedHandler(new Event("input"));
 ```
 
-**Solution: Check the library's type definitions or use type assertions.**
+**Solution: Check the library's type definitions and pass the arguments they require.**
 
 ```typescript
 // Option 1: Wrap in a compatible function
-const debouncedHandler = debounce((event: Event) => {
+const debouncedInputHandler = debounce((event: Event) => {
     handleInput(event, "search");
 }, 300);
 
-// Option 2: Use proper typing
-const debouncedHandler = debounce(
+// Option 2: Call the debounced function with the full argument list
+const debouncedHandlerWithContext = debounce(
     (event: Event, context: string) => handleInput(event, context),
     300
 );
+
+debouncedHandlerWithContext(new Event("input"), "search");
 ```
 
 ## Debugging Strategies
@@ -313,7 +326,7 @@ fetch("https://api.example.com", { method: "POST" });  // Also works
 Sometimes TypeScript infers types incorrectly:
 
 ```typescript
-const handlers = {
+const inferredHandlers = {
     onClick: (event: MouseEvent, data: string) => {
         console.log(data);
     }
@@ -325,7 +338,7 @@ interface Handlers {
     onClick: (event: MouseEvent, data: string) => void;
 }
 
-const handlers: Handlers = {
+const explicitHandlers: Handlers = {
     onClick: (event, data) => {
         console.log(data);
     }
@@ -365,13 +378,14 @@ function processArray<T>(
     return items.map(processor);
 }
 
-// Error if processor signature does not match
-processArray([1, 2, 3], (item) => item * 2);  // Works - index is optional for callbacks
+// Works - a callback with fewer parameters can ignore the index
+processArray([1, 2, 3], (item) => item * 2);
 
-// Error: Expected 2 arguments, but got 3
 function badProcessor(item: number, index: number, extra: string): number {
     return item;
 }
+
+// Error: Target signature provides too few arguments
 processArray([1, 2, 3], badProcessor);
 ```
 
@@ -450,6 +464,12 @@ createRequest({
 Use JSDoc comments to clarify parameter expectations:
 
 ```typescript
+interface User {
+    name: string;
+    email: string;
+    age?: number;
+}
+
 /**
  * Creates a new user in the system
  * @param name - The user's full name (required)
@@ -467,7 +487,11 @@ When argument requirements are complex, be explicit:
 
 ```typescript
 // Implicit - hard to understand from signature
-function query(sql: string, ...params: unknown[]): Promise<Result[]>;
+interface Result {
+    rowsAffected: number;
+}
+
+declare function query(sql: string, ...params: unknown[]): Promise<Result[]>;
 
 // Explicit - clear what is expected
 interface QueryOptions {
@@ -476,7 +500,7 @@ interface QueryOptions {
     timeout?: number;
 }
 
-function query(options: QueryOptions): Promise<Result[]>;
+declare function query(options: QueryOptions): Promise<Result[]>;
 ```
 
 ## Conclusion

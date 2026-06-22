@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Monitoring, Kube-state-metrics, Prometheus, Custom Metric, Observability
 
-Description: Learn how to extend kube-state-metrics with custom collectors, create business-specific metrics from Kubernetes objects, and build comprehensive monitoring dashboards.
+Description: Learn how to extend kube-state-metrics with custom resource metrics, create business-specific metrics from Kubernetes objects, and build comprehensive monitoring dashboards.
 
 ---
 
-kube-state-metrics generates Prometheus metrics from Kubernetes API objects. While it provides extensive built-in metrics, you often need custom metrics for business-specific requirements, custom resources, or derived calculations. This guide covers extending and customizing kube-state-metrics.
+kube-state-metrics generates Prometheus metrics from Kubernetes API objects. While it provides extensive built-in metrics, you often need custom metrics for business-specific requirements, custom resources, or derived calculations. This guide covers custom resource state metrics, recording rules, and custom exporters.
 
 ## Understanding kube-state-metrics
 
@@ -25,7 +25,7 @@ flowchart LR
     subgraph "kube-state-metrics"
         KSM[kube-state-metrics]
         COLLECTORS[Collectors]
-        CUSTOM[Custom Collectors]
+        CUSTOM[Custom Resource State]
     end
     
     subgraph "Metrics Pipeline"
@@ -79,6 +79,15 @@ resources:
     cpu: 500m
     memory: 512Mi
 
+rbac:
+  extraRules:
+    - apiGroups: ["apiextensions.k8s.io"]
+      resources: ["customresourcedefinitions"]
+      verbs: ["list", "watch"]
+    - apiGroups: ["argoproj.io"]
+      resources: ["applications"]
+      verbs: ["list", "watch"]
+
 # Collectors to enable
 collectors:
   - certificatesigningrequests
@@ -114,12 +123,14 @@ collectors:
 customResourceState:
   enabled: true
   config:
+    kind: CustomResourceStateMetrics
     spec:
       resources:
         - groupVersionKind:
             group: argoproj.io
             version: v1alpha1
             kind: Application
+          metricNamePrefix: ""
           labelsFromPath:
             name: [metadata, name]
             namespace: [metadata, namespace]
@@ -131,18 +142,17 @@ customResourceState:
                 info:
                   labelsFromPath:
                     project: [spec, project]
-                    sync_policy: [spec, syncPolicy, automated]
             - name: argocd_application_sync_status
               help: "ArgoCD Application sync status"
               each:
-                type: Gauge
-                gauge:
+                type: StateSet
+                stateSet:
+                  labelName: status
                   path: [status, sync, status]
-                  valueFrom: [status, sync, status]
-                  nilValue: 0
-              commonLabels:
-                status: synced
-              labelFromKey: status
+                  list:
+                    - Synced
+                    - OutOfSync
+                    - Unknown
 
 # Metric labels to allow
 metricLabelsAllowlist:
@@ -151,7 +161,7 @@ metricLabelsAllowlist:
   - deployments=[*]
 
 # Namespace denylist
-namespacesDenylist: []
+namespacesDenylist: ""
 
 # Prometheus scraping config
 prometheus:
@@ -173,6 +183,7 @@ metadata:
   namespace: monitoring
 data:
   config.yaml: |
+    kind: CustomResourceStateMetrics
     spec:
       resources:
         # ArgoCD Applications
@@ -180,6 +191,7 @@ data:
             group: argoproj.io
             version: v1alpha1
             kind: Application
+          metricNamePrefix: ""
           labelsFromPath:
             name: [metadata, name]
             namespace: [metadata, namespace]
@@ -227,6 +239,7 @@ data:
             group: cert-manager.io
             version: v1
             kind: Certificate
+          metricNamePrefix: ""
           labelsFromPath:
             name: [metadata, name]
             namespace: [metadata, namespace]
@@ -263,6 +276,7 @@ data:
             group: networking.istio.io
             version: v1beta1
             kind: VirtualService
+          metricNamePrefix: ""
           labelsFromPath:
             name: [metadata, name]
             namespace: [metadata, namespace]
@@ -281,6 +295,7 @@ data:
             group: serving.knative.dev
             version: v1
             kind: Service
+          metricNamePrefix: ""
           labelsFromPath:
             name: [metadata, name]
             namespace: [metadata, namespace]
@@ -308,6 +323,8 @@ data:
 ```
 
 ### Deploy with Custom Config
+
+When deploying by manifest, grant the kube-state-metrics ServiceAccount `list` and `watch` permissions for `customresourcedefinitions.apiextensions.k8s.io` and each custom resource kind in the config.
 
 ```yaml
 # kube-state-metrics-deployment.yaml
@@ -473,7 +490,7 @@ spec:
             )
 ```
 
-## Custom Metrics via Sidecar
+## Custom Metrics via Exporter
 
 ### Build Custom Metrics Exporter
 

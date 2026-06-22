@@ -85,7 +85,8 @@ CREATE TABLE events
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(event_date)
-ORDER BY (event_type, user_id, event_time)
+ORDER BY (event_type, user_id, event_time, intHash64(user_id))
+SAMPLE BY intHash64(user_id)
 TTL event_date + INTERVAL 90 DAY;
 ```
 
@@ -210,8 +211,7 @@ ALTER USER analytics_writer SETTINGS
 # Python ingestion example
 
 import clickhouse_connect
-from datetime import datetime
-import json
+from datetime import datetime, timezone
 
 client = clickhouse_connect.get_client(
     host='clickhouse',
@@ -222,7 +222,6 @@ client = clickhouse_connect.get_client(
 
 def track_event(event_type, user_id, properties=None):
     client.insert('events', [[
-        None,  # event_id (auto-generated)
         event_type,
         properties.get('name', '') if properties else '',
         user_id,
@@ -233,9 +232,9 @@ def track_event(event_type, user_id, properties=None):
         properties.get('browser', '') if properties else '',
         properties.get('country', '') if properties else '',
         properties or {},
-        datetime.utcnow()
+        datetime.now(timezone.utc)
     ]], column_names=[
-        'event_id', 'event_type', 'event_name', 'user_id',
+        'event_type', 'event_name', 'user_id',
         'session_id', 'anonymous_id', 'device_type', 'os',
         'browser', 'country', 'properties', 'event_time'
     ])
@@ -247,7 +246,8 @@ def track_event(event_type, user_id, properties=None):
 
 ```python
 from fastapi import FastAPI, Query
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 import clickhouse_connect
 
 app = FastAPI()
@@ -255,13 +255,13 @@ client = clickhouse_connect.get_client(host='clickhouse')
 
 @app.get("/api/metrics/overview")
 async def get_overview(
-    start: datetime = Query(default=None),
-    end: datetime = Query(default=None)
+    start: Optional[datetime] = Query(default=None),
+    end: Optional[datetime] = Query(default=None)
 ):
     if not start:
-        start = datetime.utcnow() - timedelta(days=7)
+        start = datetime.now(timezone.utc) - timedelta(days=7)
     if not end:
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
 
     result = client.query("""
         SELECT
@@ -281,14 +281,14 @@ async def get_overview(
 
 @app.get("/api/metrics/timeseries")
 async def get_timeseries(
-    start: datetime = Query(default=None),
-    end: datetime = Query(default=None),
+    start: Optional[datetime] = Query(default=None),
+    end: Optional[datetime] = Query(default=None),
     interval: str = Query(default='hour')
 ):
     if not start:
-        start = datetime.utcnow() - timedelta(days=7)
+        start = datetime.now(timezone.utc) - timedelta(days=7)
     if not end:
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
 
     interval_func = {
         'minute': 'toStartOfMinute',
@@ -314,14 +314,14 @@ async def get_timeseries(
 
 @app.get("/api/metrics/top-events")
 async def get_top_events(
-    start: datetime = Query(default=None),
-    end: datetime = Query(default=None),
+    start: Optional[datetime] = Query(default=None),
+    end: Optional[datetime] = Query(default=None),
     limit: int = Query(default=10)
 ):
     if not start:
-        start = datetime.utcnow() - timedelta(days=7)
+        start = datetime.now(timezone.utc) - timedelta(days=7)
     if not end:
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
 
     result = client.query("""
         SELECT
@@ -489,7 +489,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.send_json({
             'events': row[0],
             'users': row[1],
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
 
         await asyncio.sleep(5)  # Update every 5 seconds
@@ -505,7 +505,8 @@ SELECT
     toStartOfHour(event_time) AS time,
     count() AS events
 FROM events
-WHERE event_time >= now() - INTERVAL 24 HOUR
+WHERE event_time >= toDateTime('2026-01-20 00:00:00')
+  AND event_time < toDateTime('2026-01-21 00:00:00')
 GROUP BY time
 ORDER BY time
 SETTINGS use_query_cache = 1, query_cache_ttl = 60;
@@ -562,23 +563,13 @@ LIMIT 20;
 Resource Usage
 
 ```sql
--- Monitor concurrent queries
+-- Monitor currently running dashboard queries
 SELECT
-    toStartOfMinute(event_time) AS minute,
-    max(concurrent_queries) AS peak_concurrent
-FROM (
-    SELECT
-        event_time,
-        count() OVER (
-            ORDER BY event_time
-            RANGE BETWEEN INTERVAL 1 MINUTE PRECEDING AND CURRENT ROW
-        ) AS concurrent_queries
-    FROM system.query_log
-    WHERE type = 'QueryStart'
-      AND event_date = today()
-)
-GROUP BY minute
-ORDER BY minute;
+    count() AS running_queries,
+    max(elapsed) AS longest_running_seconds,
+    formatReadableSize(sum(memory_usage)) AS total_memory
+FROM system.processes
+WHERE query LIKE '%events%';
 ```
 
 ---

@@ -94,6 +94,7 @@ import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.RetriableException;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -225,6 +226,7 @@ public class TimeoutResilientProducer {
 
 ```java
 import org.apache.kafka.clients.producer.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -290,7 +292,7 @@ public class BatchProducerWithTimeoutHandling {
             List<ProducerRecord<String, String>> batch = new ArrayList<>();
             long lastFlush = System.currentTimeMillis();
 
-            while (running) {
+            while (running || !buffer.isEmpty()) {
                 try {
                     ProducerRecord<String, String> record =
                         buffer.poll(100, TimeUnit.MILLISECONDS);
@@ -312,6 +314,10 @@ public class BatchProducerWithTimeoutHandling {
                     Thread.currentThread().interrupt();
                     break;
                 }
+            }
+
+            if (!batch.isEmpty()) {
+                sendBatch(batch);
             }
         });
     }
@@ -352,6 +358,14 @@ public class BatchProducerWithTimeoutHandling {
     public void close() {
         running = false;
         executor.shutdown();
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
         producer.close(Duration.ofSeconds(30));
     }
 }
@@ -529,16 +543,26 @@ class TimeoutResilientProducer:
 
         while attempts < self.max_retries and not success:
             try:
+                delivery_error = None
+
+                def delivery_callback(err, msg):
+                    nonlocal delivery_error
+                    if err:
+                        delivery_error = err
+
                 self.producer.produce(
                     topic,
                     key=key.encode('utf-8') if key else None,
-                    value=value.encode('utf-8')
+                    value=value.encode('utf-8'),
+                    callback=delivery_callback
                 )
 
                 # Wait for delivery with timeout
                 remaining = self.producer.flush(timeout=30)
                 if remaining > 0:
                     raise Exception(f"{remaining} messages still in queue")
+                if delivery_error is not None:
+                    raise KafkaException(delivery_error)
 
                 success = True
 

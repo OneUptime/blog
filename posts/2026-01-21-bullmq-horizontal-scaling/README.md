@@ -15,10 +15,8 @@ Horizontal scaling allows you to increase job processing capacity by adding more
 BullMQ uses Redis as a central coordination point, allowing multiple workers to process jobs from the same queue safely. Each worker instance can run on different processes, servers, or containers.
 
 ```typescript
-import { Queue, Worker } from 'bullmq';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import cluster from 'cluster';
-import os from 'os';
 
 const connection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -44,11 +42,11 @@ Use Node.js cluster module to utilize all CPU cores:
 ```typescript
 // cluster-worker.ts
 import cluster from 'cluster';
-import os from 'os';
-import { Worker, Queue } from 'bullmq';
+import { availableParallelism } from 'os';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
-const numCPUs = os.cpus().length;
+const numCPUs = availableParallelism();
 const WORKERS_PER_CPU = 1;
 
 if (cluster.isPrimary) {
@@ -104,8 +102,6 @@ if (cluster.isPrimary) {
 Create a worker pool that can scale up and down:
 
 ```typescript
-import { Worker, Queue } from 'bullmq';
-import { Redis } from 'ioredis';
 import { fork, ChildProcess } from 'child_process';
 
 interface WorkerPoolConfig {
@@ -259,7 +255,7 @@ process.on('message', async (message) => {
 Automatically scale workers based on queue size:
 
 ```typescript
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 
 interface AutoScalerConfig {
@@ -378,7 +374,7 @@ export function getWorkerConfig(): WorkerNodeConfig {
 }
 
 // distributed-worker.ts
-import { Worker, Queue, QueueEvents } from 'bullmq';
+import { Job, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { getWorkerConfig, WorkerNodeConfig } from './config/worker-config';
 
@@ -386,7 +382,7 @@ class DistributedWorkerNode {
   private workers: Map<string, Worker> = new Map();
   private config: WorkerNodeConfig;
   private connection: Redis;
-  private heartbeatInterval?: NodeJS.Timer;
+  private heartbeatInterval?: NodeJS.Timeout;
 
   constructor() {
     this.config = getWorkerConfig();
@@ -426,7 +422,7 @@ class DistributedWorkerNode {
     console.log(`[${this.config.nodeId}] Processing ${queueName}:${job.id}`);
 
     // Your processing logic here
-    const result = await performTask(job.data);
+    const result = job.data;
 
     console.log(`[${this.config.nodeId}] Completed ${queueName}:${job.id} in ${Date.now() - startTime}ms`);
     return result;
@@ -460,7 +456,7 @@ class DistributedWorkerNode {
         await Promise.all(
           [...this.workers.entries()].map(async ([name, worker]) => {
             return [name, {
-              running: await worker.isRunning(),
+              running: worker.isRunning(),
               // Add more metrics as needed
             }];
           })
@@ -521,6 +517,9 @@ process.on('SIGINT', () => node.shutdown());
 Implement different load balancing approaches:
 
 ```typescript
+import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
+
 // Round-robin queue assignment
 class RoundRobinAssigner {
   private queues: string[];

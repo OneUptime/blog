@@ -126,10 +126,12 @@ index file corrupted
 docker stop loki
 
 # Check index files
-ls -la /loki/tsdb-index/
+ls -la /loki/index/
 
-# Remove corrupted index (will rebuild from chunks)
-rm -rf /loki/tsdb-index/*
+# Remove only a corrupted local index cache if the index is safely stored in object storage
+rm -rf /loki/index_cache/*
+
+# If the persisted index itself is corrupted, restore it from backup
 
 # Start Loki
 docker start loki
@@ -205,13 +207,14 @@ AccessDenied
 # loki-config.yaml - Verify S3 configuration
 storage_config:
   aws:
-    s3: s3://bucket-name
+    s3: s3://us-east-1/bucket-name
     region: us-east-1
     access_key_id: ${AWS_ACCESS_KEY_ID}
     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
     # Or use IAM role
     # s3: s3://region/bucket-name
-    sse_encryption: true
+    sse:
+      type: SSE-S3
     insecure: false
 ```
 
@@ -261,8 +264,8 @@ failed to create GCS client
 storage_config:
   gcs:
     bucket_name: your-loki-bucket
-    # Use service account key file
-    service_account: /etc/loki/gcp-key.json
+    # Use GOOGLE_APPLICATION_CREDENTIALS for a key file, or put the JSON key content here
+    service_account: ${GCP_SERVICE_ACCOUNT_JSON}
 ```
 
 ```bash
@@ -282,8 +285,8 @@ storage_config:
     account_name: ${AZURE_STORAGE_ACCOUNT}
     account_key: ${AZURE_STORAGE_KEY}
     container_name: loki
-    # Or use MSI
-    use_managed_identity: true
+    # Or omit account_key and use managed identity
+    # use_managed_identity: true
 ```
 
 ### Object Storage Timeouts
@@ -300,7 +303,7 @@ timeout waiting for s3 response
 # Increase timeouts
 storage_config:
   aws:
-    s3: s3://bucket-name
+    s3: s3://us-east-1/bucket-name
     region: us-east-1
     http_config:
       idle_conn_timeout: 90s
@@ -324,7 +327,6 @@ curl -s http://loki:3100/metrics | grep loki_compactor
 # Enable compaction
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -388,7 +390,7 @@ curl -s http://loki:3100/metrics | grep "loki_compactor_delete"
 # Step 1: Configure new S3 storage
 storage_config:
   aws:
-    s3: s3://new-bucket
+    s3: s3://us-east-1/new-bucket
     region: us-east-1
 
 # Step 2: Add new schema period
@@ -403,7 +405,7 @@ schema_config:
         prefix: index_
         period: 24h
     # New S3 period
-    - from: 2024-01-01
+    - from: 2026-02-01
       store: tsdb
       object_store: s3
       schema: v13
@@ -432,21 +434,21 @@ groups:
 
       - alert: LokiChunkStoreFailed
         expr: |
-          rate(loki_chunk_store_index_entries_per_chunk_count{status="error"}[5m]) > 0
+          sum(rate(loki_objstore_bucket_operation_failures_total[5m])) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Loki chunk store failures"
+          summary: "Loki object store failures"
 
       - alert: LokiCompactionFailed
         expr: |
-          rate(loki_compactor_running_compactions{status="error"}[5m]) > 0
+          time() - max(loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds) > 10800
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Loki compaction failures"
+          summary: "No successful Loki compaction for more than 3 hours"
 ```
 
 ### Storage Dashboard
@@ -466,16 +468,16 @@ groups:
         ]
       },
       {
-        "title": "Chunk Store Operations",
+        "title": "Object Store Operations",
         "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(loki_chunk_store_chunks_fetched_total[5m])",
-            "legendFormat": "Fetched"
+            "expr": "sum by (operation) (rate(loki_objstore_bucket_operations_total[5m]))",
+            "legendFormat": "{{operation}}"
           },
           {
-            "expr": "rate(loki_chunk_store_chunks_stored_total[5m])",
-            "legendFormat": "Stored"
+            "expr": "sum by (operation) (rate(loki_objstore_bucket_operation_failures_total[5m]))",
+            "legendFormat": "{{operation}} failures"
           }
         ]
       },
@@ -484,7 +486,7 @@ groups:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "loki_compactor_running_compactions"
+            "expr": "loki_boltdb_shipper_compactor_running"
           }
         ]
       }

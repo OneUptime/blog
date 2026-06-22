@@ -10,7 +10,7 @@ Description: A complete guide to setting up and configuring API routes in Next.j
 
 ## Introduction
 
-Next.js API routes allow you to build a complete backend within your Next.js application. These serverless functions handle API requests without requiring a separate server. This guide covers everything from basic setup to advanced patterns for production-ready APIs.
+Next.js API routes allow you to build a complete backend within your Next.js application. These server-side handlers process API requests without requiring a separate server. This guide covers everything from basic setup to advanced patterns for production-ready APIs.
 
 ## API Routes Architecture
 
@@ -191,7 +191,7 @@ export default async function handler(req, res) {
 import { NextResponse } from 'next/server';
 
 export async function GET(request, { params }) {
-  const { id } = params;
+  const { id } = await params;
 
   const user = await getUserById(id);
   if (!user) {
@@ -205,7 +205,7 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const { id } = params;
+  const { id } = await params;
   const body = await request.json();
 
   const updatedUser = await updateUser(id, body);
@@ -213,7 +213,7 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
-  const { id } = params;
+  const { id } = await params;
 
   await deleteUser(id);
   return new Response(null, { status: 204 });
@@ -238,7 +238,7 @@ export default function handler(req, res) {
 // app/api/posts/[...slug]/route.js
 
 export async function GET(request, { params }) {
-  const { slug } = params;
+  const { slug } = await params;
   // slug is an array
 
   return Response.json({ slug });
@@ -307,11 +307,11 @@ export async function GET(request) {
   const limit = searchParams.get('limit') || '10';
 
   // Headers
-  const headersList = headers();
+  const headersList = await headers();
   const authHeader = headersList.get('authorization');
 
   // Cookies
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionId = cookieStore.get('sessionId')?.value;
 
   // Perform search
@@ -395,14 +395,14 @@ async function handler(req, res) {
 export default withAuth(handler);
 ```
 
-### App Router Middleware
+### App Router Proxy
 
 ```javascript
-// middleware.js (at project root)
+// proxy.js (at project root)
 
 import { NextResponse } from 'next/server';
 
-export function middleware(request) {
+export function proxy(request) {
   // Check if it's an API route
   if (request.nextUrl.pathname.startsWith('/api/protected')) {
     const token = request.headers.get('authorization')?.replace('Bearer ', '');
@@ -571,6 +571,8 @@ module.exports = {
 
 ## Rate Limiting
 
+This in-memory pattern is useful for a single Node.js process. For serverless or multi-instance deployments, use a shared external store such as Redis so limits are consistent across instances.
+
 ```javascript
 // lib/rate-limit.js
 
@@ -593,9 +595,7 @@ export function rateLimiter(options = {}) {
 
         const tokenKey = `${ip}`;
         const now = Date.now();
-        const windowStart = now - interval;
 
-        // Get existing record
         const record = rateLimit.get(tokenKey) || { count: 0, resetAt: now + interval };
 
         // Reset if window expired
@@ -834,7 +834,7 @@ describe('/api/users', () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect(JSON.parse(res._getData())).toHaveProperty('data');
+    expect(Array.isArray(JSON.parse(res._getData()))).toBe(true);
   });
 
   it('creates user on POST', async () => {
@@ -850,7 +850,7 @@ describe('/api/users', () => {
 
     expect(res._getStatusCode()).toBe(201);
     const data = JSON.parse(res._getData());
-    expect(data.data.name).toBe('John Doe');
+    expect(data.name).toBe('John Doe');
   });
 
   it('returns 400 on invalid POST', async () => {

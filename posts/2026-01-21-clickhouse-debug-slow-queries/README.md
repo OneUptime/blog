@@ -35,12 +35,11 @@ LIMIT 20;
 SELECT
     query_start_time,
     memory_usage,
-    peak_memory_usage,
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_date = today()
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -152,7 +151,7 @@ WHERE user_id = 12345
 EXPLAIN indexes = 1
 SELECT *
 FROM logs
-WHERE message LIKE '%error%'
+WHERE hasAllTokens(message, 'error')
   AND timestamp >= now() - INTERVAL 1 HOUR;
 ```
 
@@ -188,10 +187,10 @@ SETTINGS
 ```sql
 -- Get detailed metrics for a specific query
 SELECT
-    ProfileEvents.Names AS metric,
-    ProfileEvents.Values AS value
+    metric,
+    ProfileEvents[metric] AS value
 FROM system.query_log
-ARRAY JOIN ProfileEvents
+ARRAY JOIN mapKeys(ProfileEvents) AS metric
 WHERE query_id = 'your-query-id'
   AND type = 'QueryFinish';
 
@@ -226,12 +225,12 @@ ORDER BY read_rows DESC;
 ### Missing Partition Pruning
 
 ```sql
--- Bad: No partition pruning
+-- Bad: Harder to reason about than the partition's raw date range
 SELECT count()
 FROM events
-WHERE toYYYYMM(event_time) = 202401;  -- Function prevents pruning
+WHERE toYYYYMM(event_time) = 202401;
 
--- Good: Partition pruning works
+-- Good: Explicit range filters make partition pruning easy to verify
 SELECT count()
 FROM events
 WHERE event_time >= '2024-01-01'
@@ -279,13 +278,12 @@ FROM events
 GROUP BY session_id
 SETTINGS max_bytes_before_external_group_by = 5000000000;
 
--- Solution 2: Limit cardinality
+-- Solution 2: Aggregate at lower cardinality
 SELECT
     user_id,
     count() AS events
 FROM events
-GROUP BY user_id
-HAVING events > 10;  -- Filter low-value groups
+GROUP BY user_id;
 ```
 
 ### Large JOINs
@@ -370,13 +368,14 @@ SELECT
 FROM system.data_skipping_indices
 WHERE table = 'events';
 
--- Add bloom filter for text search
-ALTER TABLE logs ADD INDEX idx_message message TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4;
+-- Add text index for full-text search
+ALTER TABLE logs ADD INDEX idx_message message TYPE text(tokenizer = splitByNonAlpha) GRANULARITY 4;
 
 -- Add set index for low-cardinality columns
 ALTER TABLE events ADD INDEX idx_status status TYPE set(100) GRANULARITY 4;
 
--- Materialize the index
+-- Materialize the indexes
+ALTER TABLE logs MATERIALIZE INDEX idx_message;
 ALTER TABLE events MATERIALIZE INDEX idx_status;
 ```
 
@@ -396,7 +395,7 @@ SETTINGS
 
 -- Get trace data
 SELECT
-    arrayStringConcat(arrayReverse(trace), ';') AS stack,
+    arrayStringConcat(arrayMap(x -> toString(x), arrayReverse(trace)), ';') AS stack,
     count() AS samples
 FROM system.trace_log
 WHERE query_id = 'your-query-id'
@@ -411,12 +410,13 @@ LIMIT 100;
 ```bash
 # Export trace data
 
-clickhouse-client --query "
+clickhouse-client --allow_introspection_functions=1 --query "
 SELECT
     arrayStringConcat(arrayReverse(arrayMap(x -> demangle(addressToSymbol(x)), trace)), ';') AS stack,
     count() AS samples
 FROM system.trace_log
 WHERE query_id = 'your-query-id'
+  AND trace_type = 'CPU'
 GROUP BY trace
 FORMAT TabSeparated
 " > trace.txt
@@ -430,7 +430,7 @@ FORMAT TabSeparated
 ```markdown
 1. **Check Partition Pruning**
    - Use date range filters that match partition key
-   - Avoid functions on partition columns in WHERE
+   - Prefer explicit range predicates so pruning is easy to verify
 
 2. **Verify Primary Key Usage**
    - Filter on columns in ORDER BY (left to right)

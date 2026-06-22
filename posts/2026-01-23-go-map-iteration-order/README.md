@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Map, Iteration, Sorting, Deterministic Order
 
-Description: Learn why Go maps have random iteration order and discover patterns to iterate maps in sorted, deterministic, or insertion order for consistent results.
+Description: Learn why Go maps have unspecified iteration order and discover patterns to iterate maps in sorted, deterministic, or insertion order for consistent results.
 
 ---
 
-Go maps deliberately randomize iteration order. This prevents developers from accidentally depending on implementation details. If you need consistent ordering, you must implement it yourself.
+Go maps deliberately leave iteration order unspecified. The runtime may vary the order, which prevents developers from accidentally depending on implementation details. If you need consistent ordering, you must implement it yourself.
 
 ---
 
 ## The Problem
 
-Map iteration order is randomized:
+Map iteration order is not specified:
 
 ```go
 package main
@@ -30,7 +30,7 @@ func main() {
         "five":  5,
     }
     
-    // Run this multiple times - order changes!
+    // Run this multiple times - order may change!
     fmt.Println("Run 1:")
     for k, v := range m {
         fmt.Printf("  %s: %d\n", k, v)
@@ -43,7 +43,7 @@ func main() {
 }
 ```
 
-Output will vary between iterations:
+Output can vary between iterations:
 
 ```text
 Run 1:
@@ -63,13 +63,13 @@ Run 2:
 
 ---
 
-## Why Random Order?
+## Why Unspecified Order?
 
-Go randomizes map iteration for good reasons:
+Go leaves map iteration order unspecified for good reasons:
 
 1. **Prevents reliance on implementation details** - Hash table order depends on hash function and bucket layout
 2. **Enables optimization** - Runtime can change implementation without breaking code
-3. **Security** - Makes hash collision attacks harder to exploit
+3. **Security** - Randomized hashing and an unspecified iteration order avoid exposing a stable hash table layout
 
 ---
 
@@ -143,8 +143,11 @@ func main() {
         keys = append(keys, k)
     }
     
-    // Sort keys by their values
+    // Sort keys by their values, then by key for deterministic ties
     sort.Slice(keys, func(i, j int) bool {
+        if m[keys[i]] == m[keys[j]] {
+            return keys[i] < keys[j]
+        }
         return m[keys[i]] < m[keys[j]]
     })
     
@@ -181,13 +184,16 @@ func SortedKeys[K cmp.Ordered, V any](m map[K]V) []K {
 }
 
 // SortedByValue returns keys sorted by their values
-func SortedByValue[K comparable, V cmp.Ordered](m map[K]V) []K {
+func SortedByValue[K cmp.Ordered, V cmp.Ordered](m map[K]V) []K {
     keys := make([]K, 0, len(m))
     for k := range m {
         keys = append(keys, k)
     }
     slices.SortFunc(keys, func(a, b K) int {
-        return cmp.Compare(m[a], m[b])
+        if n := cmp.Compare(m[a], m[b]); n != 0 {
+            return n
+        }
+        return cmp.Compare(a, b)
     })
     return keys
 }
@@ -220,7 +226,7 @@ func main() {
 
 ---
 
-## Solution 4: Insertion Order with Linked List
+## Solution 4: Insertion Order with Slice
 
 When you need insertion order, use a slice alongside the map:
 
@@ -385,48 +391,27 @@ func main() {
 
 ### JSON Output with Consistent Order
 
+For maps with string, integer, or `encoding.TextMarshaler` keys, `encoding/json` sorts map keys when marshaling:
+
 ```go
 package main
 
 import (
     "encoding/json"
     "fmt"
-    "sort"
 )
 
-type SortedMap map[string]interface{}
-
-func (sm SortedMap) MarshalJSON() ([]byte, error) {
-    // Get sorted keys
-    keys := make([]string, 0, len(sm))
-    for k := range sm {
-        keys = append(keys, k)
-    }
-    sort.Strings(keys)
-    
-    // Build JSON manually
-    result := "{"
-    for i, k := range keys {
-        if i > 0 {
-            result += ","
-        }
-        keyJSON, _ := json.Marshal(k)
-        valJSON, _ := json.Marshal(sm[k])
-        result += string(keyJSON) + ":" + string(valJSON)
-    }
-    result += "}"
-    
-    return []byte(result), nil
-}
-
 func main() {
-    data := SortedMap{
+    data := map[string]interface{}{
         "zebra": 1,
         "apple": 2,
         "mango": 3,
     }
     
-    output, _ := json.Marshal(data)
+    output, err := json.Marshal(data)
+    if err != nil {
+        panic(err)
+    }
     fmt.Println(string(output))
     // Always: {"apple":2,"mango":3,"zebra":1}
 }
@@ -482,9 +467,11 @@ func main() {
 | Method | Lookup | Insert | Delete | Memory |
 |--------|--------|--------|--------|--------|
 | Standard map | O(1) | O(1) | O(1) | Low |
-| Sorted keys each time | O(n log n) | O(1) | O(1) | Low |
+| Sorted keys each time | O(1) | O(1) | O(1) | Low |
 | OrderedMap (slice) | O(1) | O(1) | O(n) | Medium |
 | OrderedMap (list) | O(1) | O(1) | O(1) | Higher |
+
+Sorting keys for each ordered iteration costs O(n log n).
 
 Choose based on your needs:
 
@@ -504,11 +491,11 @@ Map iteration order solutions:
 | Numeric order | Sort keys, iterate |
 | By value | Sort keys by value comparison |
 | Insertion order | OrderedMap (slice or list) |
-| Consistent JSON | Custom MarshalJSON |
+| Consistent JSON | Use `encoding/json` for supported map key types |
 
 **Key Points:**
 
-1. Go intentionally randomizes map iteration
+1. Go intentionally leaves map iteration order unspecified
 2. Extract keys to slice for sorting
 3. Use generics for reusable sorted iteration
 4. OrderedMap pattern for insertion order

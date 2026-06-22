@@ -62,14 +62,16 @@ This script collects basic DevEx metrics from git and CI systems.
 
 import subprocess
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def get_build_times(days=30):
     """Calculate average build times from CI logs."""
     # Query your CI system API for build durations
     # This example uses GitHub Actions
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     result = subprocess.run([
         'gh', 'run', 'list',
+        '--created', f'>={since}',
         '--limit', '100',
         '--json', 'databaseId,conclusion,createdAt,updatedAt'
     ], capture_output=True, text=True)
@@ -92,9 +94,11 @@ def get_build_times(days=30):
 
 def get_pr_cycle_time(days=30):
     """Calculate time from PR open to merge."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     result = subprocess.run([
         'gh', 'pr', 'list',
         '--state', 'merged',
+        '--search', f'merged:>={since}',
         '--limit', '50',
         '--json', 'createdAt,mergedAt'
     ], capture_output=True, text=True)
@@ -193,7 +197,7 @@ For Docker builds, use multi-stage builds with layer caching.
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 FROM node:20-alpine AS builder
 WORKDIR /app

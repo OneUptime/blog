@@ -173,13 +173,17 @@ Different browsers render at different speeds. An element visible in Chrome migh
 
 ```javascript
 // Bad: Immediate element access
-const button = page.locator('#submit-button');
-await button.click();  // Might fail in slower browsers
+{
+  const button = page.locator('#submit-button');
+  await button.click();  // Might fail in slower browsers
+}
 
 // Good: Wait for element to be actionable
-const button = page.locator('#submit-button');
-await button.waitFor({ state: 'visible' });
-await button.click();
+{
+  const button = page.locator('#submit-button');
+  await button.waitFor({ state: 'visible' });
+  await button.click();
+}
 
 // Better: Use Playwright's auto-waiting with explicit timeout
 const button = page.locator('#submit-button');
@@ -211,7 +215,7 @@ Some CSS selectors work differently across browsers:
 
 ```javascript
 // Bad: Browser-specific pseudo-selectors
-const input = page.locator('input::-webkit-search-cancel-button');
+const searchCancelButton = page.locator('input::-webkit-search-cancel-button');
 
 // Good: Cross-browser selector
 const input = page.locator('input[type="search"]');
@@ -221,7 +225,7 @@ const item = page.locator('ul > li:nth-child(2n+1):not(:last-child)');
 
 // Good: Simpler, more reliable selector
 const items = page.locator('ul > li');
-const oddItems = await items.filter({ hasNot: page.locator(':last-child') });
+const firstItem = items.first();
 ```
 
 Use data attributes for reliable selection:
@@ -242,11 +246,11 @@ await button.click();
 Date parsing varies significantly between browsers:
 
 ```javascript
-// Bad: Inconsistent date parsing
-const date = new Date('2024-01-15');  // Works in Chrome, might fail in Safari
+// Bad: Non-standard date parsing
+const parsedDate = new Date('01/15/2024');  // May vary across browsers and locales
 
 // Good: ISO format with explicit timezone
-const date = new Date('2024-01-15T00:00:00Z');
+const explicitDate = new Date('2024-01-15T00:00:00Z');
 
 // Better: Use a library for consistent parsing
 import { parseISO } from 'date-fns';
@@ -278,9 +282,9 @@ Browsers dispatch events differently:
 await input.fill('test');
 await input.press('Enter');  // Might not trigger form submit in all browsers
 
-// Good: Explicit form submission
+// Good: Request form submission through the browser's submit flow
 await input.fill('test');
-await page.locator('form').evaluate(form => form.submit());
+await page.locator('form').evaluate(form => form.requestSubmit());
 
 // Or click the submit button explicitly
 await input.fill('test');
@@ -290,8 +294,8 @@ await page.locator('button[type="submit"]').click();
 Handle keyboard events consistently:
 
 ```javascript
-// Bad: Browser-specific key codes
-await page.keyboard.press('Escape');  // Key name varies
+// Bad: Testing app code that depends on legacy browser-specific key codes
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 27 })));
 
 // Good: Use standardized key values
 await page.keyboard.press('Escape');
@@ -373,8 +377,6 @@ def test_file_upload(browser):
     import os
     file_path = os.path.abspath('./test-data/document.pdf')
 
-    # Clear the input first (some browsers need this)
-    file_input.clear()
     file_input.send_keys(file_path)
 
     # Wait for upload to complete
@@ -392,7 +394,7 @@ def test_file_upload(browser):
 Sometimes you need different behavior for different browsers:
 
 ```javascript
-// playwright.config.js
+// example.spec.js
 test('should render correctly', async ({ page, browserName }) => {
   await page.goto('/dashboard');
 
@@ -407,7 +409,7 @@ test('should render correctly', async ({ page, browserName }) => {
 
 // Skip tests for specific browsers
 test('should use WebGL', async ({ page, browserName }) => {
-  test.skip(browserName === 'webkit', 'WebGL not fully supported in WebKit');
+  test.skip(browserName === 'webkit', 'Known rendering issue in this app on WebKit');
 
   await page.goto('/3d-viewer');
   await expect(page.locator('canvas')).toBeVisible();
@@ -477,7 +479,7 @@ npx playwright show-trace trace.zip
 test('form submission', async ({ page, browserName }) => {
   await page.fill('#email', 'test@example.com');
 
-  // WORKAROUND: Safari doesn't trigger form submit on Enter key
+  // WORKAROUND: This form's custom key handling is unreliable in WebKit
   // Bug: https://bugs.webkit.org/show_bug.cgi?id=XXXXX
   if (browserName === 'webkit') {
     await page.click('button[type="submit"]');

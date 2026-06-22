@@ -78,8 +78,8 @@ flowchart TB
 
 bind 10.0.0.100
 
-# Require strong authentication
-requirepass ${REDIS_PASSWORD}
+# Require strong authentication through ACL users
+aclfile /etc/redis/users.acl
 
 # TLS Configuration
 tls-port 6379
@@ -113,11 +113,8 @@ maxmemory-policy noeviction
 loglevel notice
 logfile /var/log/redis/redis.log
 
-# Disable saving cleartext passwords
+# Require clients to connect to a bound/private interface
 protected-mode yes
-
-# ACL settings
-aclfile /etc/redis/users.acl
 ```
 
 ## Access Control Implementation
@@ -148,18 +145,22 @@ user default off
 ```javascript
 // hipaaAccessControl.js
 const Redis = require('ioredis');
-const crypto = require('crypto');
+const fs = require('fs');
+const HIPAAAuditLogger = require('./hipaaAuditLogger');
 
 class HIPAAAccessControl {
   constructor(config) {
+    const redisConfig = config.redis || config;
+
     this.redis = new Redis({
-      host: config.host,
-      port: config.port,
-      password: config.password,
+      host: redisConfig.host,
+      port: redisConfig.port,
+      username: redisConfig.username,
+      password: redisConfig.password,
       tls: {
-        ca: fs.readFileSync(config.tlsCaPath),
-        cert: fs.readFileSync(config.tlsCertPath),
-        key: fs.readFileSync(config.tlsKeyPath),
+        ca: fs.readFileSync(redisConfig.tlsCaPath),
+        cert: fs.readFileSync(redisConfig.tlsCertPath),
+        key: fs.readFileSync(redisConfig.tlsKeyPath),
         rejectUnauthorized: true
       }
     });
@@ -245,11 +246,36 @@ class HIPAAAccessControl {
 
     const filtered = {};
     for (const [key, value] of Object.entries(data)) {
-      if (permissions.canRead.includes(key)) {
+      const dataType = this.getDataTypeForField(key);
+      if (permissions.canRead.includes(dataType)) {
         filtered[key] = value;
       }
     }
     return filtered;
+  }
+
+  getDataTypeForField(field) {
+    const fieldToType = {
+      name: 'demographics',
+      dob: 'demographics',
+      address: 'demographics',
+      phone: 'demographics',
+      email: 'demographics',
+      ssn: 'demographics',
+      medical_record_number: 'demographics',
+      diagnosis: 'diagnosis',
+      treatment: 'treatment',
+      medications: 'medications',
+      allergies: 'allergies',
+      vitals: 'vitals',
+      lab_results: 'lab_results',
+      insurance_id: 'insurance',
+      billing: 'billing',
+      appointments: 'appointments',
+      notes: 'notes'
+    };
+
+    return fieldToType[field] || field;
   }
 }
 
@@ -274,7 +300,7 @@ class PHIEncryption {
 
   // Encrypt PHI data
   encrypt(data) {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(this.algorithm, this.dataKey, iv);
 
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'base64');
@@ -309,7 +335,7 @@ class PHIEncryption {
   createSearchHash(value) {
     return crypto
       .createHmac('sha256', this.searchKey)
-      .update(value.toLowerCase().trim())
+      .update(String(value).toLowerCase().trim())
       .digest('hex');
   }
 
@@ -319,13 +345,13 @@ class PHIEncryption {
 
     for (const field of phiFields) {
       if (record[field]) {
-        encrypted[field] = this.encrypt(record[field]);
+        encrypted[field] = JSON.stringify(this.encrypt(record[field]));
         encrypted[`${field}_search`] = this.createSearchHash(String(record[field]));
       }
     }
 
     encrypted._encrypted_at = new Date().toISOString();
-    encrypted._phi_fields = phiFields;
+    encrypted._phi_fields = JSON.stringify(phiFields);
 
     return encrypted;
   }
@@ -333,11 +359,18 @@ class PHIEncryption {
   // Decrypt specific PHI fields
   decryptPHIFields(record) {
     const decrypted = { ...record };
-    const phiFields = record._phi_fields || [];
+    const phiFields = Array.isArray(record._phi_fields)
+      ? record._phi_fields
+      : JSON.parse(record._phi_fields || '[]');
 
     for (const field of phiFields) {
-      if (record[field] && record[field].version) {
-        decrypted[field] = this.decrypt(record[field]);
+      if (record[field]) {
+        const encryptedField = typeof record[field] === 'string'
+          ? JSON.parse(record[field])
+          : record[field];
+        if (encryptedField.version) {
+          decrypted[field] = this.decrypt(encryptedField);
+        }
       }
       delete decrypted[`${field}_search`];
     }
@@ -396,6 +429,11 @@ class PatientDataStore {
 
     await this.redis.hset(`patient:${patientId}`, encrypted);
 
+    if (data.ssn) {
+      const ssnSearchHash = this.encryption.createSearchHash(data.ssn);
+      await this.redis.set(`patient:index:ssn:${ssnSearchHash}`, patientId);
+    }
+
     // Log the write
     await this.auditLogger.logDataWrite(userId, patientId, Object.keys(data));
 
@@ -419,22 +457,19 @@ class PatientDataStore {
     // Get encrypted data
     let encrypted;
     if (fields) {
-      encrypted = await this.redis.hmget(`patient:${patientId}`, ...fields, '_phi_fields');
+      const requestedFields = [...fields, '_phi_fields'];
+      const values = await this.redis.hmget(`patient:${patientId}`, ...requestedFields);
+      encrypted = Object.fromEntries(
+        requestedFields
+          .map((field, index) => [field, values[index]])
+          .filter(([, value]) => value !== null)
+      );
     } else {
       encrypted = await this.redis.hgetall(`patient:${patientId}`);
     }
 
     if (!encrypted || Object.keys(encrypted).length === 0) {
       return null;
-    }
-
-    // Parse JSON fields
-    for (const [key, value] of Object.entries(encrypted)) {
-      if (typeof value === 'string' && value.startsWith('{')) {
-        try {
-          encrypted[key] = JSON.parse(value);
-        } catch {}
-      }
     }
 
     // Decrypt PHI
@@ -713,14 +748,13 @@ class HIPAAAuditLogger {
 
       for (const entryStr of entries) {
         const entry = JSON.parse(entryStr);
-        report.summary.totalEvents++;
-
         // Apply filters
         if (filters.userId && entry.userId !== filters.userId) continue;
         if (filters.patientId && entry.patientId !== filters.patientId) continue;
         if (filters.eventType && entry.eventType !== filters.eventType) continue;
 
         // Update summary
+        report.summary.totalEvents++;
         if (entry.eventType === 'PHI_ACCESS') {
           if (entry.result === 'GRANTED') report.summary.accessGranted++;
           else report.summary.accessDenied++;
@@ -787,6 +821,7 @@ module.exports = HIPAAAuditLogger;
 ```javascript
 // emergencyAccess.js
 const Redis = require('ioredis');
+const crypto = require('crypto');
 const HIPAAAuditLogger = require('./hipaaAuditLogger');
 
 class EmergencyAccessService {
@@ -797,7 +832,7 @@ class EmergencyAccessService {
 
   async requestEmergencyAccess(userId, patientId, reason) {
     // Generate emergency access token
-    const token = `emergency_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const token = `emergency_${crypto.randomBytes(32).toString('hex')}`;
 
     const emergencyAccess = {
       token,
@@ -923,49 +958,50 @@ DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_NAME="redis_backup_$DATE"
 
 # Ensure backup directory exists
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Trigger Redis save
-redis-cli -a "$REDIS_PASSWORD" --tls \
+# Wait for save to complete
+LASTSAVE_BEFORE=$(redis-cli --user admin -a "$REDIS_ADMIN_PASSWORD" --tls \
+  --cert /etc/redis/certs/redis.crt \
+  --key /etc/redis/certs/redis.key \
+  --cacert /etc/redis/certs/ca.crt \
+  LASTSAVE)
+
+redis-cli --user admin -a "$REDIS_ADMIN_PASSWORD" --tls \
   --cert /etc/redis/certs/redis.crt \
   --key /etc/redis/certs/redis.key \
   --cacert /etc/redis/certs/ca.crt \
   BGSAVE
 
-# Wait for save to complete
-while [ $(redis-cli -a "$REDIS_PASSWORD" --tls \
+while [ "$(redis-cli --user admin -a "$REDIS_ADMIN_PASSWORD" --tls \
   --cert /etc/redis/certs/redis.crt \
   --key /etc/redis/certs/redis.key \
   --cacert /etc/redis/certs/ca.crt \
-  LASTSAVE) == $(redis-cli -a "$REDIS_PASSWORD" --tls \
-  --cert /etc/redis/certs/redis.crt \
-  --key /etc/redis/certs/redis.key \
-  --cacert /etc/redis/certs/ca.crt \
-  LASTSAVE) ]; do
+  LASTSAVE)" = "$LASTSAVE_BEFORE" ]; do
   sleep 1
 done
 
 # Create encrypted backup
-tar czf - $REDIS_DATA_DIR | \
+tar czf - "$REDIS_DATA_DIR" | \
   openssl enc -aes-256-cbc -salt -pbkdf2 \
-  -pass file:$ENCRYPTION_KEY_FILE \
-  -out $BACKUP_DIR/$BACKUP_NAME.tar.gz.enc
+  -pass file:"$ENCRYPTION_KEY_FILE" \
+  -out "$BACKUP_DIR/$BACKUP_NAME.tar.gz.enc"
 
 # Generate checksum
-sha256sum $BACKUP_DIR/$BACKUP_NAME.tar.gz.enc > \
-  $BACKUP_DIR/$BACKUP_NAME.sha256
+sha256sum "$BACKUP_DIR/$BACKUP_NAME.tar.gz.enc" > \
+  "$BACKUP_DIR/$BACKUP_NAME.sha256"
 
 # Upload to secure offsite storage
-aws s3 cp $BACKUP_DIR/$BACKUP_NAME.tar.gz.enc \
+aws s3 cp "$BACKUP_DIR/$BACKUP_NAME.tar.gz.enc" \
   s3://hipaa-backups/redis/ \
-  --sse aws:kms --sse-kms-key-id $KMS_KEY_ID
+  --sse aws:kms --sse-kms-key-id "$KMS_KEY_ID"
 
-aws s3 cp $BACKUP_DIR/$BACKUP_NAME.sha256 \
+aws s3 cp "$BACKUP_DIR/$BACKUP_NAME.sha256" \
   s3://hipaa-backups/redis/
 
 # Clean old local backups (keep 7 days)
-find $BACKUP_DIR -name "*.enc" -mtime +7 -delete
-find $BACKUP_DIR -name "*.sha256" -mtime +7 -delete
+find "$BACKUP_DIR" -name "*.enc" -mtime +7 -delete
+find "$BACKUP_DIR" -name "*.sha256" -mtime +7 -delete
 
 # Log backup completion
 echo "$(date): Backup $BACKUP_NAME completed successfully" >> /var/log/hipaa-backup.log

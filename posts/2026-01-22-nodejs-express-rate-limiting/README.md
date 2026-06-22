@@ -8,7 +8,7 @@ Description: Learn how to implement rate limiting in Express.js applications to 
 
 ---
 
-Rate limiting controls how many requests a client can make within a time window. It protects your API from abuse, prevents DDoS attacks, and ensures fair usage among clients.
+Rate limiting controls how many requests a client can make within a time window. It protects your API from abuse, helps mitigate abusive traffic patterns, and ensures fair usage among clients.
 
 ## Quick Setup with express-rate-limit
 
@@ -27,11 +27,11 @@ const app = express();
 // Apply to all requests
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,  // 15 minutes
-  max: 100,                   // Limit each IP to 100 requests per window
+  limit: 100,                 // Limit each IP to 100 requests per window
   message: {
     error: 'Too many requests, please try again later.',
   },
-  standardHeaders: true,      // Return rate limit info in headers
+  standardHeaders: true,      // Return rate limit info in RateLimit-* headers
   legacyHeaders: false,       // Disable X-RateLimit-* headers
 });
 
@@ -55,7 +55,7 @@ const app = express();
 // Strict limit for authentication routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,  // 15 minutes
-  max: 5,                     // 5 attempts
+  limit: 5,                   // 5 attempts
   message: { error: 'Too many login attempts' },
   skipSuccessfulRequests: true,  // Don't count successful logins
 });
@@ -63,13 +63,13 @@ const authLimiter = rateLimit({
 // Moderate limit for API routes
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,  // 1 minute
-  max: 60,               // 60 requests per minute
+  limit: 60,             // 60 requests per minute
 });
 
 // Lenient limit for public endpoints
 const publicLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  limit: 200,
 });
 
 // Apply different limiters
@@ -86,14 +86,14 @@ npm install rate-limit-redis ioredis
 
 ```javascript
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { RedisStore } = require('rate-limit-redis');
 const Redis = require('ioredis');
 
 const redis = new Redis(process.env.REDIS_URL);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  limit: 100,
   
   // Use Redis store
   store: new RedisStore({
@@ -113,17 +113,21 @@ const Redis = require('ioredis');
 const redis = new Redis();
 
 async function fixedWindowLimit(key, limit, windowSeconds) {
-  const current = await redis.incr(key);
+  const script = `
+    local current = redis.call('incr', KEYS[1])
+    if current == 1 then
+      redis.call('expire', KEYS[1], ARGV[1])
+    end
+    return {current, redis.call('ttl', KEYS[1])}
+  `;
   
-  if (current === 1) {
-    await redis.expire(key, windowSeconds);
-  }
+  const [current, ttl] = await redis.eval(script, 1, key, windowSeconds);
   
   return {
     allowed: current <= limit,
     current,
     remaining: Math.max(0, limit - current),
-    resetAt: await redis.ttl(key),
+    resetAt: ttl,
   };
 }
 
@@ -174,7 +178,7 @@ async function slidingWindowLimit(key, limit, windowMs) {
   const now = Date.now();
   const windowStart = now - windowMs;
   
-  // Use Redis transaction
+  // Use Redis pipeline
   const pipeline = redis.pipeline();
   
   // Remove old entries
@@ -190,12 +194,12 @@ async function slidingWindowLimit(key, limit, windowMs) {
   pipeline.expire(key, Math.ceil(windowMs / 1000) + 1);
   
   const results = await pipeline.exec();
-  const currentCount = results[1][1];
+  const currentCount = results[1][1] + 1;
   
   return {
-    allowed: currentCount < limit,
+    allowed: currentCount <= limit,
     current: currentCount,
-    remaining: Math.max(0, limit - currentCount - 1),
+    remaining: Math.max(0, limit - currentCount),
   };
 }
 ```
@@ -292,17 +296,17 @@ app.use('/api/', tokenBucketMiddleware(bucket, {
 ## Per-User Rate Limiting
 
 ```javascript
-const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
 
 // Rate limit by user ID instead of IP
 const userLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  limit: 100,
   
   // Use authenticated user ID
   keyGenerator: (req) => {
-    return req.user?.id || req.ip;
+    return req.user?.id || ipKeyGenerator(req.ip);
   },
   
   // Skip rate limiting for certain users
@@ -342,7 +346,7 @@ function tieredRateLimit() {
     res.set({
       'X-RateLimit-Limit': max,
       'X-RateLimit-Remaining': result.remaining,
-      'X-RateLimit-Reset': result.resetAt,
+      'X-RateLimit-Reset': Date.now() + (result.resetAt * 1000),
     });
     
     if (!result.allowed) {
@@ -373,7 +377,7 @@ const endpointCosts = {
 
 function costBasedRateLimit(dailyBudget = 1000) {
   return async (req, res, next) => {
-    const endpoint = `${req.method} ${req.route?.path || req.path}`;
+    const endpoint = `${req.method} ${req.baseUrl}${req.route?.path || req.path}`;
     const cost = endpointCosts[endpoint] || 1;
     
     const key = `budget:${req.user?.id || req.ip}`;
@@ -471,7 +475,7 @@ const allowedUsers = ['admin@example.com'];
 
 const limiter = rateLimit({
   windowMs: 60000,
-  max: 100,
+  limit: 100,
   
   skip: (req) => {
     // Skip for allowed IPs
@@ -501,7 +505,7 @@ const rateLimit = require('express-rate-limit');
 
 const limiter = rateLimit({
   windowMs: 60000,
-  max: 100,
+  limit: 100,
   
   handler: (req, res, next, options) => {
     // Log rate limit hit
@@ -518,11 +522,6 @@ const limiter = rateLimit({
       error: 'Too many requests',
       retryAfter: Math.ceil(options.windowMs / 1000),
     });
-  },
-  
-  onLimitReached: (req, res, options) => {
-    // First time reaching limit
-    console.log(`Rate limit reached for ${req.ip}`);
   },
 });
 ```

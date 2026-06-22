@@ -29,7 +29,7 @@ flowchart LR
 
     subgraph Exporters["Exporters"]
         E1[OTLP Exporter]
-        E2[Logging Exporter]
+        E2[Debug Exporter]
     end
 
     R1 --> P1
@@ -53,14 +53,15 @@ flowchart LR
 The most common cause is an exporter unable to send data fast enough.
 
 ```yaml
-# Problematic configuration - no retry or queue
+# Problematic configuration - retry and queue disabled
 
 exporters:
   otlp:
     endpoint: "slow-backend:4317"
-    # No timeout configured
-    # No retry configured
-    # No sending queue
+    retry_on_failure:
+      enabled: false
+    sending_queue:
+      enabled: false
 ```
 
 ### 2. Insufficient Batch Processing
@@ -109,7 +110,7 @@ otelcol_exporter_sent_spans{exporter="otlp"}
 # Failed export attempts
 otelcol_exporter_send_failed_spans{exporter="otlp"}
 
-# Queue size (if using queued retry)
+# Queue size (if using sending queue)
 otelcol_exporter_queue_size{exporter="otlp"}
 
 # Queue capacity
@@ -124,7 +125,14 @@ service:
     logs:
       level: debug
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Look for messages like:
@@ -237,11 +245,8 @@ processors:
     # Set limit based on container/pod memory
     # If container has 2GB, set to ~80%
     limit_mib: 1600
-    # Allow spikes up to 90%
-    spike_limit_mib: 1800
-    # Configure what happens when limit is reached
-    limit_percentage: 80
-    spike_limit_percentage: 90
+    # Allow spikes of about 20% of the hard limit
+    spike_limit_mib: 320
 ```
 
 ### Solution 4: Add Timeout Configuration
@@ -313,7 +318,7 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 1600
-    spike_limit_mib: 1800
+    spike_limit_mib: 320
 
   # Batch for efficiency
   batch:
@@ -350,7 +355,7 @@ extensions:
   pprof:
     endpoint: 0.0.0.0:1777
 
-  # Prometheus metrics
+  # Live diagnostic pages
   zpages:
     endpoint: 0.0.0.0:55679
 
@@ -361,7 +366,14 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -504,7 +516,7 @@ groups:
 
       - alert: CollectorDroppingData
         expr: |
-          rate(otelcol_exporter_send_failed_spans[5m]) > 0
+          rate(otelcol_exporter_enqueue_failed_spans[5m]) > 0
         for: 2m
         labels:
           severity: critical
@@ -514,7 +526,7 @@ groups:
 
       - alert: CollectorHighMemory
         expr: |
-          process_resident_memory_bytes{job="otel-collector"} / 1024 / 1024 > 1500
+          otelcol_process_memory_rss{job="otel-collector"} / 1024 / 1024 > 1500
         for: 5m
         labels:
           severity: warning

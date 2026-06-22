@@ -8,7 +8,7 @@ Description: A comprehensive guide to dropping and filtering logs in Promtail to
 
 ---
 
-Not all logs are equally valuable. Health checks, debug logs, and redundant messages can consume significant storage without providing actionable insights. This guide covers techniques for dropping and filtering logs in Promtail to reduce volume and costs.
+Not all logs are equally valuable. Health checks, debug logs, and redundant messages can consume significant storage without providing actionable insights. Promtail is deprecated and reached end-of-life on March 2, 2026, but this guide covers techniques for existing Promtail deployments to reduce volume and costs.
 
 ## Prerequisites
 
@@ -89,15 +89,16 @@ pipeline_stages:
       drop_counter_reason: 'too_old'
 ```
 
-### Drop with Rate
+### Sample with Rate
 
 ```yaml
 pipeline_stages:
   # Sample 10% of info logs
-  - drop:
-      expression: '.*INFO.*'
-      drop_counter_reason: 'info_sampling'
-      value: '0.9'  # Drop 90%
+  - match:
+      selector: '{} |= "INFO"'
+      stages:
+        - sampling:
+            rate: 0.1
 ```
 
 ## Match Stage for Filtering
@@ -187,18 +188,7 @@ relabel_configs:
 ```yaml
 pipeline_stages:
   - drop:
-      expression: |
-        .*(
-          /health|
-          /healthz|
-          /healthcheck|
-          /ready|
-          /readiness|
-          /live|
-          /liveness|
-          /ping|
-          /status
-        ).*
+      expression: '.*/(health|healthz|healthcheck|ready|readiness|live|liveness|ping|status).*'
 ```
 
 ### Load Balancer Filtering
@@ -255,18 +245,7 @@ pipeline_stages:
 ```yaml
 pipeline_stages:
   - drop:
-      expression: |
-        .*(
-          Googlebot|
-          bingbot|
-          Baiduspider|
-          YandexBot|
-          Sogou|
-          facebookexternalhit|
-          Twitterbot|
-          LinkedInBot|
-          Slackbot
-        ).*
+      expression: '.*(Googlebot|bingbot|Baiduspider|YandexBot|Sogou|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot).*'
 ```
 
 ### Static Asset Filtering
@@ -296,9 +275,8 @@ pipeline_stages:
   - match:
       selector: '{level="info"}'
       stages:
-        - drop:
-            value: '0.5'
-            drop_counter_reason: 'info_sampling'
+        - sampling:
+            rate: 0.5
 ```
 
 ### Conditional Sampling
@@ -314,13 +292,10 @@ pipeline_stages:
 
   # Sample frequent endpoints
   - match:
-      selector: '{level="info"}'
+      selector: '{level="info"} |~ "/(api/events|metrics)"'
       stages:
-        - regex:
-            source: path
-            expression: '/(api/events|metrics)'
-        - drop:
-            value: '0.9'  # Keep 10%
+        - sampling:
+            rate: 0.1
 ```
 
 ### Time-Based Sampling
@@ -395,12 +370,12 @@ relabel_configs:
 ```promql
 # Dropped entries by reason
 
-sum by (reason) (rate(promtail_dropped_entries_total[5m]))
+sum by (reason) (rate(logentry_dropped_lines_total[5m]))
 
 # Drop rate percentage
-rate(promtail_dropped_entries_total[5m])
+sum(rate(logentry_dropped_lines_total[5m]))
 /
-rate(promtail_read_entries_total[5m])
+sum(rate(promtail_read_lines_total[5m]))
 * 100
 ```
 
@@ -423,7 +398,7 @@ sum(rate(loki_distributor_lines_received_total[5m]))
   "type": "timeseries",
   "targets": [
     {
-      "expr": "sum by (reason) (rate(promtail_dropped_entries_total[5m]))",
+      "expr": "sum by (reason) (rate(logentry_dropped_lines_total[5m]))",
       "legendFormat": "{{ reason }}"
     }
   ]
@@ -493,12 +468,10 @@ scrape_configs:
 
       # Sample frequent paths
       - match:
-          selector: '{level="info"}'
+          selector: '{level="info"} |= "/api/events"'
           stages:
-            - drop:
-                expression: '/api/events'
-                value: '0.9'
-                drop_counter_reason: 'events_sampling'
+            - sampling:
+                rate: 0.1
 
       # Drop old logs
       - drop:

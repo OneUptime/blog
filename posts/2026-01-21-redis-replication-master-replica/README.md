@@ -21,7 +21,7 @@ Replication is the foundation for both Redis Sentinel and Redis Cluster high ava
 ```mermaid
 flowchart LR
     subgraph WritePath["Write Path"]
-        C1[Client] --> M1[Master] --> R1[Replicas<br/>async/sync]
+        C1[Client] --> M1[Master] --> R1[Replicas<br/>async]
     end
 ```
 
@@ -47,8 +47,8 @@ flowchart LR
 | Type | Consistency | Performance | Data Safety |
 |------|------------|-------------|-------------|
 | Async (default) | Eventual | High | Risk of data loss |
-| Semi-sync (WAIT) | Strong | Medium | Configurable |
-| Sync (diskless) | Eventual | Higher | Risk of data loss |
+| WAIT-assisted | Eventual | Medium | Configurable |
+| Diskless full sync | Eventual | Higher for slow-disk, fast-network full syncs | Risk of data loss |
 
 ---
 
@@ -219,10 +219,10 @@ volumes:
 # Default behavior - no special config needed
 ```
 
-### Synchronous Writes with WAIT
+### WAIT-Assisted Writes
 
 ```bash
-# Client can request sync confirmation
+# Client can request replica acknowledgment
 redis-cli -a password SET key value
 redis-cli -a password WAIT 1 1000
 # Waits for 1 replica to acknowledge, timeout 1000ms
@@ -413,7 +413,7 @@ class ReplicationManager:
                 info = conn.info('replication')
 
                 # Check replication offset
-                offset = info.get('master_repl_offset', 0)
+                offset = info.get('slave_repl_offset', 0)
                 if offset > best_offset:
                     best_offset = offset
                     best_replica = (host, port)
@@ -546,7 +546,10 @@ def monitor_replication(master_host, replicas, password):
             for i in range(info.get('connected_slaves', 0)):
                 slave_info = info.get(f'slave{i}', '')
                 if slave_info:
-                    parts = dict(p.split('=') for p in slave_info.split(','))
+                    if isinstance(slave_info, dict):
+                        parts = slave_info
+                    else:
+                        parts = dict(p.split('=') for p in slave_info.split(','))
                     lag = int(parts.get('lag', 0))
                     replication_lag.labels(replica=parts['ip']).set(lag)
 
@@ -679,7 +682,7 @@ Redis replication provides data redundancy and read scaling:
 - **Failover capability**: Promote replica to master when needed
 
 Key takeaways:
-- Replication is asynchronous by default - use WAIT for sync writes
+- Replication is asynchronous by default - use WAIT when you need replica acknowledgment
 - Size backlog appropriately for your write volume
 - Monitor replication lag continuously
 - Test failover procedures regularly

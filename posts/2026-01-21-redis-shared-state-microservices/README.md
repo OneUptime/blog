@@ -102,7 +102,9 @@ class DistributedSessionStore:
 
         # Update last accessed time
         session.last_accessed = time.time()
+        session.expires_at = session.last_accessed + self.ttl
         self.redis.setex(session_key, self.ttl, json.dumps(asdict(session)))
+        self.redis.expire(self._user_sessions_key(session.user_id), self.ttl * 2)
 
         return session
 
@@ -115,9 +117,11 @@ class DistributedSessionStore:
 
         session.data.update(data)
         session.last_accessed = time.time()
+        session.expires_at = session.last_accessed + self.ttl
 
         session_key = self._session_key(session_id)
         self.redis.setex(session_key, self.ttl, json.dumps(asdict(session)))
+        self.redis.expire(self._user_sessions_key(session.user_id), self.ttl * 2)
 
         return session
 
@@ -572,28 +576,32 @@ class DistributedRateLimiter:
         key = self._key(identifier)
         now = time.time()
         window_start = now - self.window
+        request_id = f"{now}:{identifier}"
 
-        pipe = self.redis.pipeline()
+        script = """
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+        local count = redis.call('ZCARD', KEYS[1])
+        local limit = tonumber(ARGV[2])
+        if count >= limit then
+            return {0, 0}
+        end
+        redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+        redis.call('EXPIRE', KEYS[1], ARGV[5])
+        return {1, limit - count - 1}
+        """
 
-        # Remove old entries
-        pipe.zremrangebyscore(key, "-inf", window_start)
+        allowed, remaining = self.redis.eval(
+            script,
+            1,
+            key,
+            window_start,
+            self.limit,
+            now,
+            request_id,
+            self.window
+        )
 
-        # Count current entries
-        pipe.zcard(key)
-
-        # Add current request
-        pipe.zadd(key, {str(now): now})
-
-        # Set expiry
-        pipe.expire(key, self.window)
-
-        results = pipe.execute()
-        current_count = results[1]
-
-        remaining = max(0, self.limit - current_count - 1)
-        allowed = current_count < self.limit
-
-        return allowed, remaining
+        return bool(allowed), int(remaining)
 
     def get_usage(self, identifier: str) -> dict:
         """Get current usage stats."""
@@ -644,16 +652,33 @@ class DistributedQuota:
             return True, -1  # No limit set
 
         limit = int(limit)
-        current = self.redis.incrby(key, amount)
+        pipe = self.redis.pipeline()
 
-        # Set expiry based on period
-        if period == "daily":
-            self.redis.expire(key, 86400 * 2)
-        elif period == "monthly":
-            self.redis.expire(key, 86400 * 35)
+        while True:
+            try:
+                pipe.watch(key)
+                current = pipe.get(key)
+                current = int(current) if current else 0
+                new_total = current + amount
 
-        remaining = max(0, limit - current)
-        return current <= limit, remaining
+                if new_total > limit:
+                    pipe.unwatch()
+                    return False, max(0, limit - current)
+
+                pipe.multi()
+                pipe.incrby(key, amount)
+
+                # Set expiry based on period
+                if period == "daily":
+                    pipe.expire(key, 86400 * 2)
+                elif period == "monthly":
+                    pipe.expire(key, 86400 * 35)
+
+                pipe.execute()
+                remaining = max(0, limit - new_total)
+                return True, remaining
+            except redis.WatchError:
+                continue
 
     def set_limit(self, identifier: str, limit: int, period: str = "daily"):
         """Set quota limit for identifier."""
@@ -837,10 +862,14 @@ class StateLock:
         raise LockAcquisitionError(f"Could not acquire lock: {self.key}")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Only release if we hold the lock
-        current = self.redis.get(self.key)
-        if current and current.decode() == self.token:
-            self.redis.delete(self.key)
+        # Only release if we hold the lock.
+        script = """
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+            return redis.call('DEL', KEYS[1])
+        end
+        return 0
+        """
+        self.redis.eval(script, 1, self.key, self.token)
         return False
 
 class OptimisticLockError(Exception):

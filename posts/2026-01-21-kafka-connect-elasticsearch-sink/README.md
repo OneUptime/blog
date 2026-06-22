@@ -81,6 +81,7 @@ services:
       - -c
       - |
         confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.0
+        confluent-hub install --no-prompt confluentinc/connect-transforms:latest
         /etc/confluent/docker/run
     depends_on:
       - kafka
@@ -99,10 +100,9 @@ volumes:
     "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
     "topics": "orders,products",
     "connection.url": "http://elasticsearch:9200",
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "true",
-    "behavior.on.null.values": "delete",
+    "behavior.on.null.values": "DELETE",
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter.schemas.enable": "false"
@@ -122,12 +122,11 @@ volumes:
     "connection.username": "elastic",
     "connection.password": "${secrets:es-credentials:password}",
 
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "true",
 
-    "write.method": "upsert",
-    "behavior.on.null.values": "delete",
+    "write.method": "UPSERT",
+    "behavior.on.null.values": "DELETE",
     "behavior.on.malformed.documents": "warn",
 
     "batch.size": "2000",
@@ -147,6 +146,7 @@ volumes:
     "transforms.routeTS.type": "org.apache.kafka.connect.transforms.TimestampRouter",
     "transforms.routeTS.topic.format": "${topic}-${timestamp}",
     "transforms.routeTS.timestamp.format": "yyyy-MM",
+    "flush.synchronously": "true",
 
     "errors.tolerance": "all",
     "errors.log.enable": "true",
@@ -277,7 +277,8 @@ curl -X PUT "http://localhost:9200/_index_template/orders-template" \
     "transforms": "routeTS",
     "transforms.routeTS.type": "org.apache.kafka.connect.transforms.TimestampRouter",
     "transforms.routeTS.topic.format": "${topic}-${timestamp}",
-    "transforms.routeTS.timestamp.format": "yyyy-MM-dd"
+    "transforms.routeTS.timestamp.format": "yyyy-MM-dd",
+    "flush.synchronously": "true"
   }
 }
 ```
@@ -290,7 +291,8 @@ curl -X PUT "http://localhost:9200/_index_template/orders-template" \
     "transforms": "routeByField",
     "transforms.routeByField.type": "org.apache.kafka.connect.transforms.RegexRouter",
     "transforms.routeByField.regex": "(.+)",
-    "transforms.routeByField.replacement": "events-$1"
+    "transforms.routeByField.replacement": "events-$1",
+    "flush.synchronously": "true"
   }
 }
 ```
@@ -302,7 +304,8 @@ curl -X PUT "http://localhost:9200/_index_template/orders-template" \
   "config": {
     "transforms": "route",
     "transforms.route.type": "io.confluent.connect.transforms.ExtractTopic$Value",
-    "transforms.route.field": "event_type"
+    "transforms.route.field": "event_type",
+    "flush.synchronously": "true"
   }
 }
 ```
@@ -343,7 +346,7 @@ curl -X PUT "http://localhost:9200/_index_template/orders-template" \
   "config": {
     "transforms": "removeFields",
     "transforms.removeFields.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
-    "transforms.removeFields.blacklist": "internal_id,temp_field"
+    "transforms.removeFields.exclude": "internal_id,temp_field"
   }
 }
 ```
@@ -355,19 +358,19 @@ curl -X PUT "http://localhost:9200/_index_template/orders-template" \
 ```json
 {
   "config": {
-    "write.method": "insert"
+    "write.method": "INSERT"
   }
 }
 ```
 
-Documents with duplicate IDs will fail.
+Documents with duplicate IDs replace the existing document.
 
 ### Upsert
 
 ```json
 {
   "config": {
-    "write.method": "upsert"
+    "write.method": "UPSERT"
   }
 }
 ```
@@ -379,7 +382,7 @@ Creates or updates documents.
 ```json
 {
   "config": {
-    "behavior.on.null.values": "delete"
+    "behavior.on.null.values": "DELETE"
   }
 }
 ```
@@ -414,16 +417,6 @@ Tombstone messages (null value) delete the document.
 ```
 
 Options: `fail`, `warn`, `ignore`
-
-### Version Conflicts
-
-```json
-{
-  "config": {
-    "behavior.on.version.conflict": "ignore"
-  }
-}
-```
 
 ## Performance Tuning
 
@@ -517,24 +510,22 @@ elasticsearch_index_request_rate
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
 
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "false",
     "compact.map.entries": "true",
 
-    "write.method": "upsert",
-    "behavior.on.null.values": "delete",
+    "write.method": "UPSERT",
+    "behavior.on.null.values": "DELETE",
 
     "batch.size": "2000",
     "max.in.flight.requests": "5",
     "linger.ms": "1000",
 
-    "transforms": "unwrap,routeTS",
-    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
+    "transforms": "routeTS",
     "transforms.routeTS.type": "org.apache.kafka.connect.transforms.TimestampRouter",
     "transforms.routeTS.topic.format": "${topic}-${timestamp}",
     "transforms.routeTS.timestamp.format": "yyyy-MM",
+    "flush.synchronously": "true",
 
     "tasks.max": "3",
 
@@ -561,7 +552,7 @@ elasticsearch_index_request_rate
 | batch.size | 1000-5000 |
 | linger.ms | 1000-5000 |
 | tasks.max | Match Kafka partitions |
-| write.method | upsert for updates |
+| write.method | UPSERT for updates |
 | errors.tolerance | all with DLQ |
 
 The Elasticsearch Sink Connector provides a reliable pipeline for real-time search indexing from Kafka topics.

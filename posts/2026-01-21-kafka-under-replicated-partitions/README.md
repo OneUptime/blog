@@ -107,9 +107,9 @@ iostat -x 5
 # Check network
 sar -n DEV 5
 
-# Check broker lag
-kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --describe --group __kafka_replica_fetcher
+# Check replica fetcher lag through JMX
+kafka.server:type=ReplicaFetcherManager,name=MaxLag,clientId=Replica
+kafka.server:type=FetcherLagMetrics,name=ConsumerLag,clientId=Replica,topic=orders,partition=0
 ```
 
 **Solution**: Investigate disk performance, network latency, or hardware issues.
@@ -175,9 +175,11 @@ done
 ### Step 3: Check ISR Status
 
 ```bash
-# Get detailed ISR info
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "cat /brokers/topics/orders/partitions/0/state"
+# Get detailed ISR info from a KRaft metadata snapshot
+kafka-metadata-shell.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000007228-0000000001.checkpoint
+
+# In the metadata shell:
+cat /topics/orders/0/data
 ```
 
 ### Step 4: Monitor Recovery
@@ -187,9 +189,9 @@ kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000
 kafka-topics.sh --bootstrap-server localhost:9092 \
   --describe --topic orders
 
-# Monitor replication lag
-watch -n 5 'kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --describe --group __kafka_replica_fetcher 2>/dev/null'
+# Monitor under-replicated partitions
+watch -n 5 'kafka-topics.sh --bootstrap-server localhost:9092 \
+  --describe --under-replicated-partitions'
 ```
 
 ## Preventive Measures
@@ -239,9 +241,6 @@ replica.socket.receive.buffer.bytes=65536
 ```bash
 # Graceful shutdown
 kafka-server-stop.sh
-
-# Clear checkpoint if needed
-rm /var/kafka-logs/replication-offset-checkpoint
 
 # Start broker
 kafka-server-start.sh -daemon config/server.properties

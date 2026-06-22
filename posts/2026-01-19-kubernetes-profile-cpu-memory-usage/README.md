@@ -65,6 +65,10 @@ kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/production/pods/my-pod
 kubectl get --raw /api/v1/nodes/<node-name>/proxy/metrics/cadvisor
 
 # Detailed container stats
+kubectl exec -it my-pod -- cat /sys/fs/cgroup/memory.current
+kubectl exec -it my-pod -- cat /sys/fs/cgroup/cpu.stat
+
+# cgroup v1 paths, if your nodes still use cgroup v1
 kubectl exec -it my-pod -- cat /sys/fs/cgroup/memory/memory.usage_in_bytes
 kubectl exec -it my-pod -- cat /sys/fs/cgroup/cpu/cpuacct.usage
 ```
@@ -86,7 +90,7 @@ import (
 func main() {
     // Start pprof server on separate port
     go func() {
-        log.Println(http.ListenAndServe("localhost:6060", nil))
+        log.Println(http.ListenAndServe(":6060", nil))
     }()
     
     // Your application code
@@ -102,7 +106,13 @@ kind: Deployment
 metadata:
   name: go-app
 spec:
+  selector:
+    matchLabels:
+      app: go-app
   template:
+    metadata:
+      labels:
+        app: go-app
     spec:
       containers:
         - name: app
@@ -164,7 +174,13 @@ kind: Deployment
 metadata:
   name: java-app
 spec:
+  selector:
+    matchLabels:
+      app: java-app
   template:
+    metadata:
+      labels:
+        app: java-app
     spec:
       containers:
         - name: app
@@ -191,12 +207,15 @@ spec:
 FROM eclipse-temurin:17-jdk
 
 # Install async-profiler
+ARG ASYNC_PROFILER_VERSION=4.4
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 RUN wget -O /tmp/async-profiler.tar.gz \
-    https://github.com/jvm-profiling-tools/async-profiler/releases/download/v2.9/async-profiler-2.9-linux-x64.tar.gz && \
+    https://github.com/async-profiler/async-profiler/releases/download/v${ASYNC_PROFILER_VERSION}/async-profiler-${ASYNC_PROFILER_VERSION}-linux-x64.tar.gz && \
     tar -xzf /tmp/async-profiler.tar.gz -C /opt && \
     rm /tmp/async-profiler.tar.gz
 
-ENV ASYNC_PROFILER_PATH=/opt/async-profiler-2.9-linux-x64
+ENV ASYNC_PROFILER_PATH=/opt/async-profiler-${ASYNC_PROFILER_VERSION}-linux-x64
 
 COPY target/app.jar /app/app.jar
 CMD ["java", "-jar", "/app/app.jar"]
@@ -209,15 +228,15 @@ CMD ["java", "-jar", "/app/app.jar"]
 POD=$(kubectl get pods -l app=java-app -o jsonpath='{.items[0].metadata.name}')
 
 # Profile CPU for 30 seconds
-kubectl exec -it $POD -- /opt/async-profiler-2.9-linux-x64/profiler.sh \
-  -d 30 -f /tmp/cpu-profile.html -o flamegraph $(pgrep -f java)
+kubectl exec -it $POD -- sh -c \
+  '$ASYNC_PROFILER_PATH/bin/asprof -d 30 -f /tmp/cpu-profile.html $(pgrep -f java)'
 
 # Copy the flame graph
 kubectl cp $POD:/tmp/cpu-profile.html ./cpu-profile.html
 
 # Profile memory allocation
-kubectl exec -it $POD -- /opt/async-profiler-2.9-linux-x64/profiler.sh \
-  -d 30 -e alloc -f /tmp/alloc-profile.html -o flamegraph $(pgrep -f java)
+kubectl exec -it $POD -- sh -c \
+  '$ASYNC_PROFILER_PATH/bin/asprof -d 30 -e alloc -f /tmp/alloc-profile.html $(pgrep -f java)'
 ```
 
 ## Python Application Profiling
@@ -247,7 +266,13 @@ kind: Deployment
 metadata:
   name: python-app
 spec:
+  selector:
+    matchLabels:
+      app: python-app
   template:
+    metadata:
+      labels:
+        app: python-app
     spec:
       containers:
         - name: app
@@ -356,7 +381,13 @@ kind: Deployment
 metadata:
   name: node-app
 spec:
+  selector:
+    matchLabels:
+      app: node-app
   template:
+    metadata:
+      labels:
+        app: node-app
     spec:
       containers:
         - name: app
@@ -398,9 +429,7 @@ spec:
     spec:
       containers:
         - name: pyroscope
-          image: pyroscope/pyroscope:latest
-          args:
-            - server
+          image: grafana/pyroscope:latest
           ports:
             - containerPort: 4040
           volumeMounts:
@@ -431,7 +460,13 @@ kind: Deployment
 metadata:
   name: go-app
 spec:
+  selector:
+    matchLabels:
+      app: go-app
   template:
+    metadata:
+      labels:
+        app: go-app
     spec:
       containers:
         - name: app
@@ -450,7 +485,9 @@ spec:
 package main
 
 import (
-    "github.com/pyroscope-io/client/pyroscope"
+    "os"
+
+    "github.com/grafana/pyroscope-go"
 )
 
 func main() {
@@ -491,7 +528,7 @@ go tool pprof -http=:8081 heap.prof
 
 ```promql
 # Container memory growth over time
-rate(container_memory_usage_bytes{pod="my-pod"}[1h])
+deriv(container_memory_working_set_bytes{pod="my-pod"}[1h])
 
 # Memory vs limit
 container_memory_usage_bytes{pod="my-pod"} / 
@@ -512,7 +549,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       shareProcessNamespace: true  # Share processes between containers
       containers:
@@ -526,6 +569,7 @@ spec:
           securityContext:
             capabilities:
               add:
+                - PERFMON
                 - SYS_PTRACE
 ```
 
@@ -533,14 +577,14 @@ spec:
 
 ```bash
 # Using perf in Kubernetes
-kubectl exec -it profiler-container -- apk add perf
+kubectl exec -it <pod-name> -c profiler -- apk add perf
 
 # Record CPU samples
-kubectl exec -it profiler-container -- perf record -F 99 -p <PID> -g -- sleep 30
+kubectl exec -it <pod-name> -c profiler -- perf record -F 99 -p <PID> -g -- sleep 30
 
 # Generate flame graph
-kubectl exec -it profiler-container -- perf script > perf.data
-./FlameGraph/stackcollapse-perf.pl perf.data | ./FlameGraph/flamegraph.pl > flamegraph.svg
+kubectl exec -it <pod-name> -c profiler -- perf script > out.perf
+./FlameGraph/stackcollapse-perf.pl out.perf | ./FlameGraph/flamegraph.pl > flamegraph.svg
 ```
 
 ## Prometheus Metrics for Profiling
@@ -581,8 +625,8 @@ jvm_memory_used_bytes{area="heap", job="java-app"}
 # JVM: GC time
 rate(jvm_gc_pause_seconds_sum{job="java-app"}[5m])
 
-# Python: Thread count
-python_info{job="python-app"}
+# Python: Process memory
+process_resident_memory_bytes{job="python-app"}
 ```
 
 ## Conclusion
@@ -595,7 +639,7 @@ Effective profiling in Kubernetes requires the right tools and techniques for yo
 4. **Profile in production carefully** - Use sidecars and limit overhead
 5. **Visualize with flame graphs** - Make bottlenecks obvious
 
-For comprehensive application performance monitoring, check out [OneUptime's APM solution](https://oneuptime.com/product/apm).
+For comprehensive application performance monitoring, check out [OneUptime's observability platform](https://oneuptime.com/).
 
 ## Related Resources
 

@@ -43,7 +43,7 @@ flowchart LR
 ```bash
 # macOS
 
-brew install tilt-dev/tap/tilt
+brew install tilt
 
 # Linux
 curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
@@ -82,7 +82,7 @@ k3d cluster create dev
 docker_build('myapp', '.')
 
 # Deploy Kubernetes manifests
-k8s_yaml('kubernetes/deployment.yaml')
+k8s_yaml('kubernetes/')
 
 # Port forward for local access
 k8s_resource('myapp', port_forwards='3000:3000')
@@ -221,7 +221,7 @@ k8s_resource('go-app', port_forwards='8080:8080')
 FROM golang:1.21-alpine
 
 # Install air for hot reload
-RUN go install github.com/cosmtrek/air@latest
+RUN go install github.com/air-verse/air@latest
 
 WORKDIR /app
 
@@ -525,7 +525,7 @@ Resource Management
 
 ```python
 # Tiltfile with organized resources
-config.define_string_list('services', args=True)
+config.define_string_list('services')
 cfg = config.parse()
 
 # Only enable selected services
@@ -546,10 +546,10 @@ if 'all' in enabled_services or 'backend' in enabled_services:
 
 ```bash
 # Start only specific services
-tilt up -- --services=frontend
+tilt up -- --services frontend
 
 # Start multiple services
-tilt up -- --services=frontend --services=backend
+tilt up -- --services frontend --services backend
 ```
 
 ## Environment Configuration
@@ -559,7 +559,7 @@ tilt up -- --services=frontend --services=backend
 ```python
 # Tiltfile
 # Read environment from config
-config.define_string('env', args=True)
+config.define_string('env')
 cfg = config.parse()
 env = cfg.get('env', 'local')
 
@@ -579,21 +579,24 @@ k8s_resource('myapp', port_forwards='8080:8080')
 
 ```python
 # Tiltfile with secrets
-# Create secret from local file (for development only!)
-k8s_yaml(secret_from_env(
+load('ext://secret', 'secret_from_dict', 'secret_yaml_tls')
+
+# Create secret from environment variables (for development only!)
+k8s_yaml(secret_from_dict(
     'myapp-secrets',
     namespace='default',
-    env=['DB_PASSWORD', 'API_KEY']
+    inputs={
+        'DB_PASSWORD': os.getenv('DB_PASSWORD'),
+        'API_KEY': os.getenv('API_KEY'),
+    }
 ))
 
-# Or from files
-k8s_yaml(secret_from_files(
+# Or create a TLS secret from files
+k8s_yaml(secret_yaml_tls(
     'tls-secret',
     namespace='default',
-    files={
-        'tls.crt': './certs/dev.crt',
-        'tls.key': './certs/dev.key',
-    }
+    cert='./certs/dev.crt',
+    key='./certs/dev.key',
 ))
 ```
 
@@ -634,8 +637,8 @@ docker_build_with_restart(
     live_update=[sync('./src', '/app/src')]
 )
 
-# Cancel outstanding builds on Ctrl+C
-load('ext://cancel', 'cancel')
+# Add cancel buttons for local resources
+include('ext://cancel')
 ```
 
 ## Running Tilt
@@ -646,17 +649,17 @@ load('ext://cancel', 'cancel')
 # Start Tilt
 tilt up
 
-# Start in background
-tilt up -d
+# Stream logs in the terminal
+tilt up --stream
 
-# View dashboard
-tilt up --web-mode=local
+# Run dashboard on the default host and port
+tilt up --host=localhost --port=10350
 
 # Stop Tilt
 tilt down
 
-# Check status
-tilt status
+# Check resource status
+tilt get uiresources
 
 # View logs
 tilt logs
@@ -674,8 +677,8 @@ tilt ci
 # With timeout
 tilt ci --timeout=10m
 
-# Only build (don't deploy)
-tilt docker-build myapp
+# Run a Docker build through Tilt's Docker environment
+tilt docker -- build -t myapp .
 ```
 
 ## Best Practices

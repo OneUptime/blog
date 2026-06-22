@@ -58,7 +58,7 @@ ACL GETUSER alice
 # Get current user
 ACL WHOAMI
 
-# Count users
+# List usernames
 ACL USERS
 ```
 
@@ -122,10 +122,10 @@ resetpass   # Remove all passwords
 ~pattern    # Allow access to keys matching pattern
 ~*          # Allow all keys
 ~app:*      # Keys starting with "app:"
-~user:${username}:*  # Dynamic pattern (Redis 7+)
-%R~pattern  # Read-only access to pattern
-%W~pattern  # Write-only access to pattern
-%RW~pattern # Read-write access (default)
+~user:*      # Keys starting with "user:"
+%R~pattern  # Read-only access to pattern (Redis 7+)
+%W~pattern  # Write-only access to pattern (Redis 7+)
+%RW~pattern # Read-write access (default, Redis 7+)
 allkeys     # Allow all keys
 resetkeys   # Remove all key patterns
 ```
@@ -178,7 +178,7 @@ ACL CAT dangerous
 ## Pub/Sub Channel Patterns
 
 ```bash
-&pattern    # Allow Pub/Sub channel pattern
+&pattern    # Allow Pub/Sub channel pattern (Redis 6.2+)
 &*          # All channels
 &news:*     # Channels starting with "news:"
 allchannels # Allow all channels
@@ -253,7 +253,7 @@ class MultiTenantACLManager:
             rules.extend(['+@all', '-@admin', '-@dangerous', '-keys'])
 
         username = f"tenant_{tenant_id}"
-        self.redis.acl_setuser(username, *rules)
+        self.redis.execute_command('ACL', 'SETUSER', username, *rules)
         return username
 
     def create_tenant_admin(self, tenant_id: str, password: str):
@@ -261,7 +261,8 @@ class MultiTenantACLManager:
         key_pattern = f"tenant:{tenant_id}:*"
 
         username = f"tenant_{tenant_id}_admin"
-        self.redis.acl_setuser(
+        self.redis.execute_command(
+            'ACL', 'SETUSER',
             username,
             'on',
             f'>{password}',
@@ -283,10 +284,10 @@ class MultiTenantACLManager:
     def rotate_tenant_password(self, tenant_id: str, new_password: str):
         """Rotate password for tenant user."""
         username = f"tenant_{tenant_id}"
-        user_info = self.redis.acl_getuser(username)
-
         # Add new password, remove old ones
-        self.redis.acl_setuser(username, 'resetpass', f'>{new_password}')
+        self.redis.execute_command(
+            'ACL', 'SETUSER', username, 'resetpass', f'>{new_password}'
+        )
 
 
 # Usage
@@ -355,7 +356,7 @@ Create `/etc/redis/users.acl`:
 user default off
 
 # Admin user
-user admin on #6f4e3d2c1b0a9f8e7d6c5b4a3029180716253443 ~* +@all
+user admin on #b630f5d579dfef28c45ddf5e3c7a65f09ebca4d5b064a70c4203578c8667fdeb ~* +@all
 
 # Application users
 user webapp on >webapp-pass ~webapp:* +@all -@admin -@dangerous
@@ -405,7 +406,7 @@ class ACLUser:
     enabled: bool
     passwords: List[str]
     key_patterns: List[str]
-    commands: str
+    commands: List[str]
     channels: List[str]
 
 class RedisACLManager:
@@ -419,6 +420,10 @@ class RedisACLManager:
             password=admin_password,
             decode_responses=True
         )
+
+    def _acl_setuser(self, username: str, *rules: str):
+        """Apply raw Redis ACL SETUSER rules."""
+        return self.redis.execute_command('ACL', 'SETUSER', username, *rules)
 
     # User Management
     def create_user(self, username: str, password: str = None,
@@ -452,7 +457,7 @@ class RedisACLManager:
                 rules.append(f'-{cmd}')
 
         try:
-            self.redis.acl_setuser(username, *rules)
+            self._acl_setuser(username, *rules)
             return True
         except Exception as e:
             print(f"Error creating user: {e}")
@@ -468,7 +473,7 @@ class RedisACLManager:
                     enabled='on' in info.get('flags', []),
                     passwords=[p[:8] + '...' for p in info.get('passwords', [])],
                     key_patterns=info.get('keys', []),
-                    commands=info.get('commands', ''),
+                    commands=info.get('commands', []),
                     channels=info.get('channels', [])
                 )
         except Exception as e:
@@ -493,9 +498,9 @@ class RedisACLManager:
         """Set user password."""
         try:
             if clear_existing:
-                self.redis.acl_setuser(username, 'resetpass', f'>{password}')
+                self._acl_setuser(username, 'resetpass', f'>{password}')
             else:
-                self.redis.acl_setuser(username, f'>{password}')
+                self._acl_setuser(username, f'>{password}')
             return True
         except Exception as e:
             print(f"Error setting password: {e}")
@@ -513,7 +518,7 @@ class RedisACLManager:
     def grant_command(self, username: str, command: str) -> bool:
         """Grant a command to user."""
         try:
-            self.redis.acl_setuser(username, f'+{command}')
+            self._acl_setuser(username, f'+{command}')
             return True
         except Exception as e:
             print(f"Error granting command: {e}")
@@ -522,7 +527,7 @@ class RedisACLManager:
     def revoke_command(self, username: str, command: str) -> bool:
         """Revoke a command from user."""
         try:
-            self.redis.acl_setuser(username, f'-{command}')
+            self._acl_setuser(username, f'-{command}')
             return True
         except Exception as e:
             print(f"Error revoking command: {e}")
@@ -531,7 +536,7 @@ class RedisACLManager:
     def grant_key_pattern(self, username: str, pattern: str) -> bool:
         """Grant access to key pattern."""
         try:
-            self.redis.acl_setuser(username, f'~{pattern}')
+            self._acl_setuser(username, f'~{pattern}')
             return True
         except Exception as e:
             print(f"Error granting key pattern: {e}")
@@ -578,15 +583,18 @@ class RedisACLManager:
         for username in self.list_users():
             user = self.get_user(username)
             if user:
+                command_rules = set(user.commands)
                 audit_results.append({
                     'username': user.username,
                     'enabled': user.enabled,
                     'has_password': len(user.passwords) > 0,
                     'key_patterns': user.key_patterns,
-                    'has_dangerous': '@dangerous' not in user.commands or
-                                    '+@dangerous' in user.commands,
-                    'has_admin': '@admin' not in user.commands or
-                                '+@admin' in user.commands,
+                    'has_dangerous': '+@dangerous' in command_rules or
+                                     ('+@all' in command_rules and
+                                      '-@dangerous' not in command_rules),
+                    'has_admin': '+@admin' in command_rules or
+                                 ('+@all' in command_rules and
+                                  '-@admin' not in command_rules),
                 })
         return audit_results
 
@@ -594,10 +602,10 @@ class RedisACLManager:
                           keys: List[str] = None) -> Dict:
         """Check if user has access to command and keys."""
         try:
-            args = ['DRYRUN', username, command]
+            args = [command]
             if keys:
                 args.extend(keys)
-            result = self.redis.execute_command('ACL', *args)
+            result = self.redis.acl_dryrun(username, *args)
             return {'allowed': True, 'result': result}
         except redis.ResponseError as e:
             return {'allowed': False, 'error': str(e)}
@@ -681,7 +689,7 @@ ACL SETUSER admin on >different-pass ~* +@all
 echo -n "password" | sha256sum
 
 # Use hash instead of plaintext
-ACL SETUSER user on #5e884898da28047d... ~* +@all
+ACL SETUSER user on #5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8 ~* +@all
 ```
 
 ### 5. Regular Audits

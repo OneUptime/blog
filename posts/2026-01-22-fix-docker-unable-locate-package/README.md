@@ -66,7 +66,7 @@ Alpine uses `apk` instead of `apt`:
 ```dockerfile
 FROM alpine:3.20
 
-# apk update is usually not needed - Alpine fetches lists automatically
+# --no-cache fetches the package index without storing it locally
 RUN apk add --no-cache \
     curl \
     wget \
@@ -225,14 +225,14 @@ RUN apk add --no-cache \
 ### Pin Package Versions
 
 ```dockerfile
-# Debian/Ubuntu
+# Debian bookworm
 RUN apt-get update && apt-get install -y \
-    nginx=1.24.0-1ubuntu1 \
+    nginx=1.22.1-9+deb12u8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Alpine (use = for exact version)
 RUN apk add --no-cache \
-    nginx=1.24.0-r15
+    nginx=1.26.3-r0
 ```
 
 ### Find Available Versions
@@ -285,18 +285,20 @@ FROM ubuntu:24.04  # Instead of ubuntu:20.04
 The following signatures couldn't be verified because the public key is not available
 ```
 
-Add the missing key:
+Add the missing key with a repository-specific keyring:
 
 ```dockerfile
-RUN apt-get update && apt-get install -y gnupg \
-    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys KEYID \
-    && apt-get update
+RUN apt-get update && apt-get install -y ca-certificates curl gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://example.com/key.gpg | gpg --dearmor -o /etc/apt/keyrings/example.gpg \
+    && chmod a+r /etc/apt/keyrings/example.gpg
 ```
 
-Or for modern systems:
+Reference that key from the repository entry:
 
 ```dockerfile
-RUN curl -fsSL https://example.com/key.gpg | gpg --dearmor -o /etc/apt/keyrings/example.gpg
+RUN echo "deb [signed-by=/etc/apt/keyrings/example.gpg] https://example.com/apt stable main" > /etc/apt/sources.list.d/example.list \
+    && apt-get update
 ```
 
 ## Multi-Architecture Considerations

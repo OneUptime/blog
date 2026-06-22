@@ -59,38 +59,64 @@ flowchart TD
 Use the Loki Helm chart for deployment:
 
 ```bash
-# Add the Grafana Helm repository
+# Add the Grafana Community Helm repository
 
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
 
 # Create namespace
 kubectl create namespace logging
 
-# Install Loki stack (includes Promtail)
-# Note: grafana/loki-stack is deprecated. For new deployments, use grafana/loki instead.
-helm install loki grafana/loki-stack \
+# Install Loki
+helm install loki grafana-community/loki \
   --namespace logging \
-  --set loki.persistence.enabled=true \
-  --set loki.persistence.size=50Gi \
-  --set promtail.enabled=true
+  --set deploymentMode=Monolithic \
+  --set loki.commonConfig.replication_factor=1 \
+  --set singleBinary.replicas=1 \
+  --set singleBinary.persistence.enabled=true \
+  --set singleBinary.persistence.size=50Gi \
+  --set backend.replicas=0 \
+  --set read.replicas=0 \
+  --set write.replicas=0 \
+  --set ingester.replicas=0 \
+  --set querier.replicas=0 \
+  --set queryFrontend.replicas=0 \
+  --set queryScheduler.replicas=0 \
+  --set distributor.replicas=0 \
+  --set compactor.replicas=0 \
+  --set indexGateway.replicas=0 \
+  --set bloomPlanner.replicas=0 \
+  --set bloomBuilder.replicas=0 \
+  --set bloomGateway.replicas=0
 ```
 
-For production, use the distributed deployment:
+For larger deployments, use a scalable deployment with object storage:
 
 ```yaml
 # loki-values.yaml
+deploymentMode: SimpleScalable
+
 loki:
   auth_enabled: false
 
+  storage_config:
+    aws:
+      region: us-east-1
+      bucketnames: company-loki-logs
+      s3forcepathstyle: false
+
   storage:
     type: s3
+    bucketNames:
+      chunks: company-loki-logs
+      ruler: company-loki-ruler
+      admin: company-loki-admin
     s3:
       endpoint: s3.amazonaws.com
-      bucketnames: company-loki-logs
       region: us-east-1
-      access_key_id: ${AWS_ACCESS_KEY_ID}
-      secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      accessKeyId: <AWS_ACCESS_KEY_ID>
+      secretAccessKey: <AWS_SECRET_ACCESS_KEY>
+      s3ForcePathStyle: false
 
   schemaConfig:
     configs:
@@ -132,14 +158,14 @@ backend:
 Install with custom values:
 
 ```bash
-helm install loki grafana/loki \
+helm install loki grafana-community/loki \
   --namespace logging \
   -f loki-values.yaml
 ```
 
 ## Configuring Promtail
 
-Promtail is the log collection agent that ships logs to Loki. It runs as a DaemonSet on each node.
+Promtail is the legacy log collection agent that ships logs to Loki. It runs as a DaemonSet on each node. As of March 2, 2026, Promtail is end-of-life; use Grafana Alloy for new deployments and keep Promtail only for existing installations that have not yet migrated.
 
 ```yaml
 # promtail-values.yaml
@@ -220,7 +246,7 @@ datasources:
       derivedFields:
         - name: TraceID
           matcherRegex: '"traceID":"(\w+)"'
-          url: '${__value.raw}'
+          url: '$${__value.raw}'
           datasourceUid: tempo
           urlDisplayLabel: View Trace
 ```
@@ -455,7 +481,6 @@ loki:
     chunk_idle_period: 30m
     chunk_block_size: 262144
     chunk_retain_period: 1m
-    max_transfer_retries: 0
 ```
 
 ### Query Limits
@@ -500,7 +525,7 @@ datasources:
       derivedFields:
         - name: TraceID
           matcherRegex: 'traceID=(\w+)'
-          url: '${__value.raw}'
+          url: '$${__value.raw}'
           datasourceUid: tempo
 ```
 

@@ -146,10 +146,8 @@ export AWS_PROFILE=production
 all:
   children:
     production:
-      children:
-        webservers:
-          hosts:
-            # Hosts might be conditionally included elsewhere
+      hosts:
+        app1:
     staging:
       children:
         webservers:
@@ -247,7 +245,7 @@ flowchart LR
 # Wildcard matching
 - hosts: "*.example.com"
 - hosts: "web*"
-- hosts: "server[1:5]"  # server1 through server5
+- hosts: "server?"  # server1 through server9-style names
 
 # Complex patterns
 - hosts: "production:&webservers:!maintenance"
@@ -403,7 +401,7 @@ filters:
   tag:Environment: production
   instance-state-name: running
 keyed_groups:
-  - key: tags.Role
+  - key: ec2_tags.Role
     prefix: role
   - key: placement.availability_zone
     prefix: az
@@ -491,9 +489,9 @@ ansible-inventory -i custom_inventory.py --graph
     - name: Fail if target group is empty
       assert:
         that:
-          - groups['webservers'] | length > 0
+          - groups.get('webservers', []) | length > 0
         fail_msg: "No webservers found in inventory!"
-        success_msg: "Found {{ groups['webservers'] | length }} webservers"
+        success_msg: "Found {{ groups.get('webservers', []) | length }} webservers"
 
 - name: Configure webservers
   hosts: webservers
@@ -503,18 +501,24 @@ ansible-inventory -i custom_inventory.py --graph
         msg: "Configuring {{ inventory_hostname }}"
 ```
 
-### Use meta to Stop on Empty
+### Fail Fast Before the Target Play
 
 ```yaml
 ---
+- name: Validate targets before configuring servers
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Stop if no webservers were matched
+      fail:
+        msg: "No webservers found in inventory!"
+      when: groups.get('webservers', []) | length == 0
+
 - name: Configure servers
   hosts: webservers
 
   tasks:
-    - name: End play if no hosts
-      meta: end_play
-      when: ansible_play_hosts | length == 0
-
     - name: Continue with configuration
       debug:
         msg: "Working on {{ inventory_hostname }}"
@@ -527,9 +531,9 @@ ansible-inventory -i custom_inventory.py --graph
 # ci_check.sh
 
 # Verify hosts will match before running playbook
-HOST_COUNT=$(ansible webservers -i inventory.yml --list-hosts 2>/dev/null | grep -c "hosts")
+HOST_COUNT=$(ansible webservers -i inventory.yml --list-hosts 2>/dev/null | awk '/hosts \([0-9]+\):/ { gsub(/[^0-9]/, "", $2); print $2 }')
 
-if [ "$HOST_COUNT" -eq 0 ]; then
+if [ "${HOST_COUNT:-0}" -eq 0 ]; then
     echo "ERROR: No hosts matched for webservers group"
     exit 1
 fi

@@ -49,7 +49,7 @@ flowchart LR
 |---------|-----------|------------|--------|
 | Network | WAN-tolerant | LAN only | WAN-tolerant |
 | Coupling | Loose | Tight | Point-to-point |
-| Data Sharing | Selected exchanges/queues | All data | Specific queues |
+| Data Sharing | Selected exchanges/queues | Cluster metadata; replicated queues when configured | Specific queues |
 | Admin Domains | Multiple | Single | Multiple |
 | Use Case | Geo-distribution | HA within DC | Data migration |
 
@@ -57,7 +57,7 @@ flowchart LR
 
 Before configuring federation:
 
-1. RabbitMQ 3.8+ installed on all brokers
+1. A currently supported RabbitMQ release installed on all brokers
 2. Network connectivity between brokers (AMQP port 5672 or 5671 for TLS)
 3. User accounts with appropriate permissions on each broker
 
@@ -85,7 +85,7 @@ Expected output:
 
 ## Exchange Federation
 
-Exchange federation replicates messages published to an upstream exchange to downstream exchanges with the same name.
+Exchange federation asynchronously re-publishes messages from an upstream exchange to downstream exchanges, using the same exchange name unless another upstream exchange name is configured.
 
 ### Architecture
 
@@ -238,8 +238,9 @@ rabbitmqctl set_policy federation-work-queues "^work\." \
 
 Queue federation pulls messages from upstream only when:
 1. Local consumers are connected to the downstream queue
-2. The upstream queue has messages available
+2. The downstream queue has run out of local messages
 3. Local consumers have available prefetch capacity
+4. The upstream queue has messages that are not being consumed locally
 
 This enables work distribution across datacenters while maintaining message locality.
 
@@ -314,14 +315,7 @@ curl -u admin:password -X PUT \
   http://localhost:15672/api/parameters/federation-upstream/%2f/secure-upstream \
   -d '{
     "value": {
-      "uri": "amqps://federation:password@remote-rabbitmq.example.com:5671",
-      "tls": {
-        "cacertfile": "/path/to/ca.pem",
-        "certfile": "/path/to/client-cert.pem",
-        "keyfile": "/path/to/client-key.pem",
-        "verify": "verify_peer",
-        "server_name_indication": "remote-rabbitmq.example.com"
-      }
+      "uri": "amqps://federation:password@remote-rabbitmq.example.com:5671?cacertfile=/path/to/ca.pem&certfile=/path/to/client-cert.pem&keyfile=/path/to/client-key.pem&verify=verify_peer&server_name_indication=remote-rabbitmq.example.com"
     }
   }'
 ```
@@ -335,8 +329,13 @@ curl -u admin:password -X PUT \
 rabbitmqctl federation_status
 
 # Sample output:
-# Node         | Exchange/Queue | Upstream    | Status  | Local Connection | URI
-# rabbit@node1 | orders         | dc1-upstream | running | <pid>           | amqp://...
+# [[{type,<<"exchange">>},
+#   {name,<<"orders">>},
+#   {vhost,<<"/">>},
+#   {connection,<<"dc1-upstream">>},
+#   {upstream_name,<<"dc1-upstream">>},
+#   {status,{running,<<"<rabbit@downstream.1.123.0>">>}},
+#   {timestamp,{{2026,1,24},{10,30,0}}}]]
 ```
 
 ### Using Management API
@@ -365,9 +364,9 @@ curl -u admin:password http://localhost:15672/api/federation-links | jq '.'
 
 ```yaml
 # Key federation metrics
-- rabbitmq_federation_links_count
-- rabbitmq_federation_link_status{upstream="dc1-upstream",status="running"}
-- rabbitmq_federation_messages_transferred_total
+- rabbitmq_federation_links{status="running"}
+- rabbitmq_federation_links{status="starting"}
+- rabbitmq_federation_links{status="shutdown"}
 ```
 
 ### Alerting Rules
@@ -378,7 +377,7 @@ groups:
   - name: rabbitmq_federation
     rules:
       - alert: RabbitMQFederationLinkDown
-        expr: rabbitmq_federation_link_status{status!="running"} == 1
+        expr: sum(rabbitmq_federation_links{status!="running"}) > 0
         for: 2m
         labels:
           severity: critical
@@ -387,7 +386,7 @@ groups:
           description: "Link status: {{ $labels.status }}"
 
       - alert: RabbitMQFederationLinkMissing
-        expr: absent(rabbitmq_federation_links_count)
+        expr: absent(rabbitmq_federation_links)
         for: 5m
         labels:
           severity: warning
@@ -417,9 +416,6 @@ rabbitmqctl set_permissions -p / federation_user ".*" ".*" ".*"
 ```bash
 # Test connectivity from downstream to upstream
 nc -zv dc1-rabbitmq.example.com 5672
-
-# Check if federation can connect
-rabbitmqctl eval 'net_adm:ping('\''rabbit@dc1-rabbitmq'\'').'
 
 # Verify firewall rules
 iptables -L -n | grep 5672

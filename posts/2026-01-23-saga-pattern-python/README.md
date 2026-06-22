@@ -10,7 +10,7 @@ Description: Learn how to implement the Saga pattern in Python to manage distrib
 
 > Distributed transactions are hard. The Saga pattern solves this by breaking a transaction into a series of local transactions, each with a compensating action if things go wrong. This guide shows you how to implement both orchestration and choreography sagas in Python.
 
-When you split a monolith into microservices, you lose the ability to wrap operations in a single database transaction. The Saga pattern provides eventual consistency by coordinating transactions across services with automatic rollback on failures.
+When you split a monolith into microservices, you lose the ability to wrap operations in a single database transaction. The Saga pattern provides eventual consistency by coordinating transactions across services with compensating actions on failures.
 
 ---
 
@@ -53,9 +53,8 @@ First, let's define the building blocks for saga steps.
 from dataclasses import dataclass, field
 from typing import Callable, Any, Optional, Dict, List
 from enum import Enum
-from abc import ABC, abstractmethod
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SagaStatus(Enum):
     """Possible states for a saga execution"""
@@ -63,8 +62,8 @@ class SagaStatus(Enum):
     RUNNING = "running"  # In progress
     COMPLETED = "completed"  # All steps succeeded
     COMPENSATING = "compensating"  # Rolling back
-    FAILED = "failed"  # Completed with failure
-    COMPENSATED = "compensated"  # Successfully rolled back
+    FAILED = "failed"  # Failed and could not be fully compensated
+    COMPENSATED = "compensated"  # Successfully compensated
 
 @dataclass
 class SagaStep:
@@ -77,8 +76,8 @@ class SagaStep:
     - compensation: Function to undo the step if later steps fail
     """
     name: str
-    action: Callable[[Dict[str, Any]], Any]  # Execute the step
-    compensation: Callable[[Dict[str, Any]], Any]  # Undo the step
+    action: Callable[["SagaContext"], Any]  # Execute the step
+    compensation: Callable[["SagaContext"], Any]  # Undo the step
     timeout_seconds: float = 30.0  # Max time for step execution
 
 @dataclass
@@ -93,7 +92,7 @@ class SagaContext:
     data: Dict[str, Any] = field(default_factory=dict)  # Input data
     results: Dict[str, Any] = field(default_factory=dict)  # Step outputs
     completed_steps: List[str] = field(default_factory=list)  # For compensation
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: SagaStatus = SagaStatus.PENDING
 
     def set_result(self, step_name: str, result: Any):
@@ -115,9 +114,11 @@ The orchestrator pattern uses a central coordinator that executes steps sequenti
 ```python
 # saga_orchestrator.py
 # Orchestration-based Saga implementation
-from typing import List, Optional
+from typing import Any, Callable, Dict, List
 import asyncio
 import logging
+
+from saga_core import SagaContext, SagaStatus, SagaStep
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,7 @@ class SagaOrchestrator:
     async def _compensate(self, context: SagaContext):
         """Run compensation for all completed steps in reverse order"""
         context.status = SagaStatus.COMPENSATING
+        compensation_errors = []
         logger.info(f"Starting compensation for saga {context.saga_id}")
 
         # Reverse through completed steps
@@ -216,10 +218,15 @@ class SagaOrchestrator:
 
             except Exception as e:
                 # Log but continue with other compensations
+                compensation_errors.append(e)
                 logger.error(f"Compensation for {step_name} failed: {e}")
 
-        context.status = SagaStatus.COMPENSATED
-        logger.info(f"Saga {context.saga_id} compensated")
+        if compensation_errors:
+            context.status = SagaStatus.FAILED
+            logger.error(f"Saga {context.saga_id} compensation failed")
+        else:
+            context.status = SagaStatus.COMPENSATED
+            logger.info(f"Saga {context.saga_id} compensated")
 
 class SagaStepError(Exception):
     """Raised when a saga step fails"""
@@ -236,8 +243,11 @@ Here is a complete example implementing an e-commerce order saga.
 # order_saga.py
 # E-commerce order processing saga
 from dataclasses import dataclass
-from typing import Optional
+from typing import List
 import httpx
+
+from saga_core import SagaContext, SagaStep
+from saga_orchestrator import SagaOrchestrator
 
 @dataclass
 class OrderData:
@@ -421,7 +431,6 @@ In choreography, services react to events without a central coordinator.
 from dataclasses import dataclass
 from typing import Callable, Dict, Any, List
 from enum import Enum
-import json
 
 class EventType(Enum):
     """Event types for saga choreography"""
@@ -579,9 +588,11 @@ For production systems, you need to persist saga state for recovery.
 ```python
 # saga_persistence.py
 # Saga state persistence for recovery and monitoring
-from typing import Optional
-from datetime import datetime
+from typing import List, Optional
+from datetime import datetime, timezone
 import json
+
+from saga_core import SagaContext, SagaStatus
 
 class SagaRepository:
     """
@@ -611,7 +622,7 @@ class SagaRepository:
             json.dumps(context.results),
             json.dumps(context.completed_steps),
             context.started_at,
-            datetime.utcnow()
+            datetime.now(timezone.utc)
         )
 
     async def load(self, saga_id: str) -> Optional[SagaContext]:
@@ -624,6 +635,23 @@ class SagaRepository:
         if not row:
             return None
 
+        return self._row_to_context(row)
+
+    async def find_stuck_sagas(self, timeout_minutes: int = 30) -> List[SagaContext]:
+        """Find sagas that have been running too long"""
+        rows = await self.db.fetch(
+            """
+            SELECT * FROM sagas
+            WHERE status = 'running'
+            AND updated_at < NOW() - make_interval(mins => $1)
+            """,
+            timeout_minutes
+        )
+
+        return [self._row_to_context(row) for row in rows]
+
+    def _row_to_context(self, row) -> SagaContext:
+        """Convert a database row to a SagaContext"""
         return SagaContext(
             saga_id=row["id"],
             data=json.loads(row["data"]),
@@ -632,19 +660,6 @@ class SagaRepository:
             started_at=row["started_at"],
             status=SagaStatus(row["status"])
         )
-
-    async def find_stuck_sagas(self, timeout_minutes: int = 30) -> List[SagaContext]:
-        """Find sagas that have been running too long"""
-        rows = await self.db.fetch(
-            """
-            SELECT * FROM sagas
-            WHERE status = 'running'
-            AND updated_at < NOW() - INTERVAL '$1 minutes'
-            """,
-            timeout_minutes
-        )
-
-        return [self._row_to_context(row) for row in rows]
 ```
 
 ---
@@ -657,7 +672,10 @@ Testing sagas requires simulating failures at different points.
 # test_saga.py
 # Tests for saga implementation
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+
+from order_saga import OrderData, order_saga, place_order
+from saga_core import SagaStatus
 
 class TestOrderSaga:
     """Tests for the order processing saga"""
@@ -682,9 +700,12 @@ class TestOrderSaga:
     async def test_payment_failure_triggers_compensation(self):
         """Payment failure should compensate previous steps"""
         # Mock payment to fail
-        with patch("order_saga.process_payment") as mock_payment:
-            mock_payment.side_effect = Exception("Payment declined")
+        original_action = order_saga._step_map["process_payment"].action
+        order_saga._step_map["process_payment"].action = AsyncMock(
+            side_effect=Exception("Payment declined")
+        )
 
+        try:
             order = OrderData(
                 customer_id="cust-123",
                 items=[{"product_id": "prod-1", "quantity": 1, "price": 10.0}],
@@ -700,13 +721,15 @@ class TestOrderSaga:
             assert "reserve_inventory" in result.completed_steps
             # Payment was not completed
             assert "process_payment" not in result.completed_steps
+        finally:
+            order_saga._step_map["process_payment"].action = original_action
 
     @pytest.mark.asyncio
     async def test_compensation_order_is_reversed(self):
         """Compensations should run in reverse order"""
         compensation_order = []
 
-        async def track_compensation(name):
+        def track_compensation(name):
             async def comp(ctx):
                 compensation_order.append(name)
             return comp

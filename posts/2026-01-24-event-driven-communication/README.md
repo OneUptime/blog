@@ -447,7 +447,7 @@ flowchart TB
 ```python
 import json
 import pika
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Dict, Any
 import logging
@@ -490,7 +490,7 @@ class RabbitMQPublisher:
         event = {
             'event_id': str(uuid4()),
             'event_type': event_type,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'correlation_id': correlation_id or str(uuid4()),
             'data': event_data
         }
@@ -502,7 +502,7 @@ class RabbitMQPublisher:
             delivery_mode=2,  # Persistent
             message_id=event['event_id'],
             correlation_id=event['correlation_id'],
-            timestamp=int(datetime.utcnow().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
             headers={
                 'event_type': event_type,
                 'version': '1.0'
@@ -583,6 +583,17 @@ class RabbitMQConsumer:
             exchange_type='topic',
             durable=True
         )
+        self.channel.exchange_declare(
+            exchange='events.dlx',
+            exchange_type='topic',
+            durable=True
+        )
+        self.channel.queue_declare(queue='events.dlq', durable=True)
+        self.channel.queue_bind(
+            exchange='events.dlx',
+            queue='events.dlq',
+            routing_key='dead.letter'
+        )
 
     def register_handler(self, event_pattern: str, handler: Callable,
                          queue_name: str = None):
@@ -612,7 +623,7 @@ class RabbitMQConsumer:
     def _on_message(self, channel, method, properties, body):
         """Process incoming message."""
         event_id = properties.message_id
-        event_type = properties.headers.get('event_type', 'unknown')
+        event_type = (properties.headers or {}).get('event_type', 'unknown')
 
         try:
             # Idempotency check
@@ -784,7 +795,7 @@ class RetryableConsumer {
     }
 
     getRetryCount(msg) {
-        const xDeath = msg.properties.headers['x-death'];
+        const xDeath = msg.properties.headers?.['x-death'];
         if (!xDeath) return 0;
         return xDeath.reduce((count, death) => count + death.count, 0);
     }
@@ -794,7 +805,7 @@ class RetryableConsumer {
 
         // Update headers with retry info
         const headers = {
-            ...msg.properties.headers,
+            ...(msg.properties.headers || {}),
             'x-retry-count': retryNumber,
             'x-original-routing-key': msg.fields.routingKey
         };
@@ -872,8 +883,12 @@ public class OrderCreatedEvent extends SpecificRecordBase {
         "{\"name\":\"eventId\",\"type\":[\"null\",\"string\"],\"default\":null}," +
         "{\"name\":\"orderId\",\"type\":\"string\"}," +
         "{\"name\":\"customerId\",\"type\":\"string\"}," +
-        "{\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":\"OrderItem\"}}," +
-        "{\"name\":\"totalAmount\",\"type\":{\"type\":\"bytes\",\"logicalType\":\"decimal\"}}," +
+        "{\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"OrderItem\",\"fields\":[" +
+        "{\"name\":\"productId\",\"type\":\"string\"}," +
+        "{\"name\":\"quantity\",\"type\":\"int\"}," +
+        "{\"name\":\"price\",\"type\":{\"type\":\"bytes\",\"logicalType\":\"decimal\",\"precision\":10,\"scale\":2}}" +
+        "]}}}," +
+        "{\"name\":\"totalAmount\",\"type\":{\"type\":\"bytes\",\"logicalType\":\"decimal\",\"precision\":12,\"scale\":2}}," +
         "{\"name\":\"currency\",\"type\":\"string\",\"default\":\"USD\"}" +
         "]}"
     );
@@ -946,7 +961,7 @@ groups:
 ### Distributed Tracing
 
 ```javascript
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 class TracedEventPublisher {
     constructor(publisher) {

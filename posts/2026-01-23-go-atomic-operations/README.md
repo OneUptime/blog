@@ -8,7 +8,7 @@ Description: Learn how to use atomic operations in Go for lock-free concurrent p
 
 ---
 
-Atomic operations provide lock-free access to shared variables, offering better performance than mutexes for simple operations. The `sync/atomic` package provides low-level atomic memory primitives.
+Atomic operations provide lock-free access to shared variables, and can offer better performance than mutexes for simple operations. The `sync/atomic` package provides low-level atomic memory primitives.
 
 ---
 
@@ -229,7 +229,7 @@ func main() {
 
 ---
 
-## Atomic Value for Any Type
+## Atomic Value for Consistent Types
 
 ```go
 package main
@@ -249,7 +249,7 @@ type Config struct {
 var config atomic.Value
 
 func init() {
-    // Store initial config
+    // Store initial config. Future stores must use the same concrete type.
     config.Store(&Config{
         Workers: 4,
         Timeout: 30,
@@ -602,7 +602,7 @@ func main() {
 | Store | `Store` | Write values |
 | Swap | `Swap` | Exchange values |
 | CAS | `CompareAndSwap` | Lock-free updates |
-| Value | `atomic.Value` | Any type storage |
+| Value | `atomic.Value` | Consistently typed storage |
 
 **When to use atomics:**
 
@@ -616,8 +616,8 @@ func main() {
 
 1. Multiple variables need consistency
 2. Complex operations
-3. Conditional logic during updates
-4. When correctness is more important than speed
+3. Complex conditional logic during updates
+4. When simpler, easier-to-review synchronization is preferred
 
 ---
 

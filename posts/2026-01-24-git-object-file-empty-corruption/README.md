@@ -26,7 +26,7 @@ flowchart TD
     D --> I[Compressed object collections]
 ```
 
-Git stores everything as objects in `.git/objects/`. Each object is identified by a SHA-1 hash. When an object file becomes empty or corrupted, Git cannot read the data it references.
+Git stores everything as objects in `.git/objects/`. Each object is identified by an object ID (SHA-1 in traditional repositories, or SHA-256 in repositories initialized for that object format). When an object file becomes empty or corrupted, Git cannot read the data it references.
 
 ## Diagnosing the Problem
 
@@ -79,8 +79,8 @@ The simplest fix when you have a remote:
 # Remove empty object files
 find .git/objects -type f -empty -delete
 
-# Fetch missing objects from remote
-git fetch origin
+# Re-fetch objects from remote
+git fetch origin --refetch
 
 # Verify repository
 git fsck --full
@@ -95,10 +95,10 @@ If local changes are not critical:
 find .git/objects -type f -empty -delete
 
 # Reset to match remote exactly
-git fetch origin
+git fetch origin --refetch
 git reset --hard origin/main
 
-# Pull all branches
+# Fetch all remotes
 git fetch --all
 ```
 
@@ -126,7 +126,7 @@ flowchart TD
     B --> C{Valid commit found?}
     C -->|Yes| D[Reset to valid commit]
     C -->|No| E[Try other recovery methods]
-    D --> F[Fetch missing objects]
+    D --> F[Re-fetch objects]
     F --> G[Verify with fsck]
 ```
 
@@ -142,8 +142,8 @@ git reflog
 # Reset to a known good commit
 git reset --hard def5678
 
-# Fetch any missing objects
-git fetch origin
+# Re-fetch objects
+git fetch origin --refetch
 ```
 
 ### Method 5: Recover Individual Objects
@@ -158,11 +158,14 @@ git fsck --full 2>&1 | grep "empty\|corrupt"
 # The full hash is the directory + filename
 # ab + cdef123456... = abcdef123456...
 
-# Try to find this object in a pack file
-git unpack-objects < .git/objects/pack/*.pack
+# Remove the empty loose copy, then try to restore it from pack files
+rm .git/objects/ab/cdef123456...
+for pack in .git/objects/pack/*.pack; do
+    git unpack-objects < "$pack"
+done
 
-# Or fetch the specific object from remote
-git fetch origin
+# Or re-fetch objects from remote
+git fetch origin --refetch
 ```
 
 ### Method 6: Rebuild from Pack Files
@@ -218,7 +221,7 @@ echo "Step 3: Remove empty objects"
 find .git/objects -type f -empty -delete
 
 echo "Step 4: Try to fetch from remote"
-git fetch origin --all
+git fetch --all --refetch
 
 echo "Step 5: Verify fix"
 git fsck --full
@@ -268,7 +271,7 @@ git read-tree HEAD
 
 ```bash
 # Check pack file integrity
-git verify-pack -v .git/objects/pack/*.pack
+git verify-pack -v .git/objects/pack/*.idx
 
 # If pack is corrupted, try to recover what you can
 git unpack-objects < .git/objects/pack/pack-abc123.pack
@@ -336,7 +339,7 @@ git cat-file -p <hash>  # Content
 git rev-list --all --objects
 
 # Verify pack files
-git verify-pack -v .git/objects/pack/*.pack
+git verify-pack -v .git/objects/pack/*.idx
 
 # Show object location
 git cat-file --batch-check --batch-all-objects
@@ -372,7 +375,7 @@ flowchart TD
 
 | Problem | Solution |
 |---------|----------|
-| Empty object files | `find .git/objects -type f -empty -delete && git fetch` |
+| Empty object files | `find .git/objects -type f -empty -delete && git fetch origin --refetch` |
 | Corrupted HEAD | Check reflog, reset to valid commit |
 | Corrupted index | `rm .git/index && git reset` |
 | Multiple corruptions | Clone fresh, copy uncommitted work |

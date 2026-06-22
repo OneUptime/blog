@@ -160,6 +160,13 @@ Git 2.13 introduced conditional includes, which automatically apply different co
     name = Your Name
     email = personal@gmail.com
 
+[core]
+    editor = vim
+    autocrlf = input
+
+[init]
+    defaultBranch = main
+
 [includeIf "gitdir:~/work/"]
     # Include work config for repositories under ~/work/
     path = ~/.gitconfig-work
@@ -171,13 +178,6 @@ Git 2.13 introduced conditional includes, which automatically apply different co
 [includeIf "gitdir:~/opensource/"]
     # Include personal config explicitly for open source work
     path = ~/.gitconfig-personal
-
-[core]
-    editor = vim
-    autocrlf = input
-
-[init]
-    defaultBranch = main
 ```
 
 Create the work-specific configuration file:

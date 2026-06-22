@@ -497,6 +497,8 @@ curl -u elastic:password -X POST "localhost:9200/_ilm/start"
 
 ### Move to Next Phase
 
+Use the exact `current_step` values from `_ilm/explain`; ILM rejects the move if they do not match the index's current step.
+
 ```bash
 curl -u elastic:password -X POST "localhost:9200/_ilm/move/logs-000001" -H 'Content-Type: application/json' -d'
 {
@@ -608,7 +610,9 @@ curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/size-based-policy" -
 }'
 ```
 
-### Downsampling for Metrics
+### Downsampling for Time Series Metrics
+
+Downsampling applies to time series (TSDS) indices and data streams. Configure your metrics template as time series data before using this ILM action.
 
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/metrics-downsample-policy" -H 'Content-Type: application/json' -d'

@@ -4,41 +4,44 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hash, Memory Optimization, Data Structure, Ziplist, Performance
 
-Description: A comprehensive guide to using Redis hashes for memory-efficient storage, covering ziplist encoding, hash-max-ziplist optimizations, and patterns for storing millions of small objects efficiently.
+Description: A comprehensive guide to using Redis hashes for memory-efficient storage, covering compact hash encoding, hash-max-listpack optimizations, and patterns for storing millions of small objects efficiently.
 
 ---
 
-Redis hashes can be dramatically more memory-efficient than storing individual keys when properly configured. By leveraging ziplist encoding, you can store millions of small objects using a fraction of the memory. This guide covers the internals, configuration, and practical patterns for memory-optimized Redis storage.
+Redis hashes can be dramatically more memory-efficient than storing individual keys when properly configured. By leveraging Redis' compact hash encoding, you can store millions of small objects using a fraction of the memory. This guide covers the internals, configuration, and practical patterns for memory-optimized Redis storage.
 
 ## Understanding Redis Hash Memory Optimization
 
 Redis uses two internal encodings for hashes:
 
-1. **Ziplist (listpack in Redis 7.0+)**: Compact, memory-efficient encoding for small hashes
+1. **Listpack (ziplist in Redis 6.2 and earlier)**: Compact, memory-efficient encoding for small hashes
 2. **Hashtable**: Standard hash table for larger hashes
 
-The magic happens with ziplist encoding - it stores data in a contiguous memory block without the overhead of pointers, resulting in 5-10x memory savings for small objects.
+The magic happens with compact hash encoding - it stores data in a contiguous memory block without the overhead of pointers, resulting in 5-10x memory savings for small objects.
 
-## Ziplist Configuration Thresholds
+## Compact Encoding Configuration Thresholds
 
 ```bash
 # Check current settings
 
-redis-cli CONFIG GET hash-max-ziplist-entries
-redis-cli CONFIG GET hash-max-ziplist-value
+redis-cli CONFIG GET hash-max-listpack-entries
+redis-cli CONFIG GET hash-max-listpack-value
 
 # Default values:
-# hash-max-ziplist-entries: 512
-# hash-max-ziplist-value: 64
+# hash-max-listpack-entries: 512
+# hash-max-listpack-value: 64
 
 # Optimize for more entries per hash
-redis-cli CONFIG SET hash-max-ziplist-entries 1024
-redis-cli CONFIG SET hash-max-ziplist-value 128
+redis-cli CONFIG SET hash-max-listpack-entries 1024
+redis-cli CONFIG SET hash-max-listpack-value 128
+
+# Redis 6.2 and earlier use hash-max-ziplist-entries
+# and hash-max-ziplist-value for the same thresholds.
 ```
 
-A hash uses ziplist encoding when BOTH conditions are met:
-- Number of fields <= hash-max-ziplist-entries
-- All field names and values are <= hash-max-ziplist-value bytes
+A hash uses compact encoding when BOTH conditions are met:
+- Number of fields <= hash-max-listpack-entries (or hash-max-ziplist-entries on Redis 6.2 and earlier)
+- All field names and values are <= hash-max-listpack-value bytes (or hash-max-ziplist-value on Redis 6.2 and earlier)
 
 ## Memory Comparison: Keys vs Hashes
 
@@ -85,7 +88,6 @@ def store_as_bucket_hashes(count, bucket_size=100):
     r.flushdb()
     for i in range(count):
         bucket = i // bucket_size
-        field = f'{i}:name'
         r.hset(f'users:{bucket}', mapping={
             f'{i}:name': f'User {i}',
             f'{i}:email': f'user{i}@example.com',
@@ -123,6 +125,7 @@ The most memory-efficient pattern groups items into hash buckets:
 ```python
 import redis
 import json
+import hashlib
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -137,7 +140,7 @@ class HashBucketStore:
         # Convert string IDs to int for bucketing
         if isinstance(item_id, str):
             # Hash string IDs for consistent bucketing
-            numeric_id = hash(item_id) % (10 ** 9)
+            numeric_id = int(hashlib.sha256(item_id.encode()).hexdigest(), 16) % (10 ** 9)
         else:
             numeric_id = item_id
 
@@ -254,7 +257,6 @@ For structured data, store fields directly in the hash:
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -348,18 +350,20 @@ Store millions of counters efficiently:
 ```python
 import redis
 import time
+import hashlib
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 class EfficientCounters:
-    def __init__(self, name, bucket_size=500, redis_client=None):
+    def __init__(self, name, bucket_count=10000, redis_client=None):
         self.name = name
-        self.bucket_size = bucket_size
+        self.bucket_count = bucket_count
         self.redis = redis_client or r
 
     def _bucket_key(self, counter_id):
         # Use hash of counter_id for distribution
-        bucket = hash(counter_id) % 10000
+        counter_hash = hashlib.sha256(str(counter_id).encode()).hexdigest()
+        bucket = int(counter_hash, 16) % self.bucket_count
         return f"counters:{self.name}:{bucket}"
 
     def increment(self, counter_id, amount=1):
@@ -575,12 +579,16 @@ print(f"Average CPU: {avg:.2f}")
 
 ## Monitoring Hash Efficiency
 
-Check if your hashes are using ziplist encoding:
+Check if your hashes are using compact encoding:
 
 ```python
 import redis
 
-r = redis.Redis(host='localhost', port=6379)
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+def _string_size(value):
+    """Return the byte length Redis uses for a text field or value."""
+    return len(value.encode('utf-8')) if isinstance(value, str) else len(value)
 
 def analyze_hash(key):
     """Analyze a hash for memory efficiency"""
@@ -599,21 +607,37 @@ def analyze_hash(key):
 
     # Sample field sizes
     fields = r.hkeys(key)[:5]  # Sample first 5
+    max_sample_size = 0
     for field in fields:
         value = r.hget(key, field)
-        print(f"    Field '{field}': {len(value)} bytes")
+        field_size = _string_size(field)
+        value_size = _string_size(value)
+        max_sample_size = max(max_sample_size, field_size, value_size)
+        print(f"    Field '{field}': {value_size} bytes")
 
     # Calculate bytes per field
     if field_count > 0:
         print(f"  Avg memory per field: {memory / field_count:.1f} bytes")
 
-    # Check if ziplist thresholds might be exceeded
-    config_entries = int(r.config_get('hash-max-ziplist-entries')['hash-max-ziplist-entries'])
-    config_value = int(r.config_get('hash-max-ziplist-value')['hash-max-ziplist-value'])
+    # Check if compact-encoding thresholds might be exceeded.
+    # Redis 7.0+ uses listpack settings; Redis 6.2 and earlier use ziplist settings.
+    config_entries = (
+        r.config_get('hash-max-listpack-entries').get('hash-max-listpack-entries')
+        or r.config_get('hash-max-ziplist-entries').get('hash-max-ziplist-entries')
+    )
+    config_value = (
+        r.config_get('hash-max-listpack-value').get('hash-max-listpack-value')
+        or r.config_get('hash-max-ziplist-value').get('hash-max-ziplist-value')
+    )
 
-    if field_count > config_entries:
-        print(f"  WARNING: Field count {field_count} exceeds ziplist threshold {config_entries}")
-    if encoding != b'ziplist' and encoding != b'listpack':
+    config_entries = int(config_entries) if config_entries is not None else None
+    config_value = int(config_value) if config_value is not None else None
+
+    if config_entries is not None and field_count > config_entries:
+        print(f"  WARNING: Field count {field_count} exceeds compact-encoding threshold {config_entries}")
+    if config_value is not None and max_sample_size > config_value:
+        print(f"  WARNING: Sample field or value exceeds compact-encoding value threshold {config_value}")
+    if encoding not in ('ziplist', 'listpack'):
         print(f"  WARNING: Not using compact encoding")
 
 # Usage
@@ -626,35 +650,38 @@ analyze_hash('test_hash')
 ```bash
 # For storing many small objects (sessions, counters, etc.)
 # Increase entries threshold
-redis-cli CONFIG SET hash-max-ziplist-entries 1024
+redis-cli CONFIG SET hash-max-listpack-entries 1024
 
 # For storing larger field values (JSON, longer strings)
 # Increase value threshold
-redis-cli CONFIG SET hash-max-ziplist-value 256
+redis-cli CONFIG SET hash-max-listpack-value 256
+
+# Redis 6.2 and earlier use hash-max-ziplist-entries
+# and hash-max-ziplist-value instead.
 
 # Monitor memory efficiency
-redis-cli INFO memory | grep hash
+redis-cli MEMORY USAGE myhash
 
 # Check specific hash encoding
-redis-cli DEBUG OBJECT myhash
+redis-cli OBJECT ENCODING myhash
 ```
 
 ## Best Practices Summary
 
 1. **Use bucket hashes** for millions of small objects
-2. **Keep bucket size under ziplist threshold** (default 512)
+2. **Keep bucket size under compact-encoding threshold** (default 512)
 3. **Keep field values short** (under 64 bytes default)
-4. **Tune hash-max-ziplist-* settings** for your workload
-5. **Monitor encoding** to ensure ziplist is used
+4. **Tune hash-max-listpack-* settings** for your workload (or hash-max-ziplist-* on Redis 6.2 and earlier)
+5. **Monitor encoding** to ensure listpack or ziplist is used
 6. **Avoid HGETALL on large hashes** - use HSCAN
 7. **Consider field naming** - shorter field names save memory
 
 ## Conclusion
 
-Redis hashes with ziplist encoding can reduce memory usage by 5-10x compared to individual keys. The key strategies are:
+Redis hashes with compact encoding can reduce memory usage by 5-10x compared to individual keys. The key strategies are:
 
 - Group related data into hash buckets
-- Keep bucket sizes within ziplist thresholds
+- Keep bucket sizes within compact-encoding thresholds
 - Use efficient field naming
 - Monitor encoding to verify optimization
 

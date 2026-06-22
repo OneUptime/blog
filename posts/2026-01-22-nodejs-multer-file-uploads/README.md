@@ -70,7 +70,7 @@ const storage = multer.diskStorage({
   // Set filename
   filename: (req, file, cb) => {
     // Keep original name
-    cb(null, file.originalname);
+    // cb(null, file.originalname);
     
     // Or generate unique name
     const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
@@ -464,7 +464,7 @@ app.post('/upload', upload.single('file'), async (req, res, next) => {
     res.json({ success: true });
   } catch (error) {
     // Clean up uploaded file on error
-    if (req.file) {
+    if (req.file?.path) {
       await fs.unlink(req.file.path).catch(() => {});
     }
     next(error);

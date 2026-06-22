@@ -29,7 +29,7 @@ Production Redis deployments require proactive alerting to catch issues before t
 | Memory > 75% | Approaching capacity | > 75% of maxmemory |
 | High latency | Performance degradation | > 10ms average |
 | Keys evicted | Memory pressure | > 0 keys/sec |
-| Replication lag | Data consistency risk | > 10 seconds |
+| Replication I/O stale | Data consistency risk | > 30 seconds since master I/O |
 | Slow log growing | Performance issues | > 100 entries |
 | Connection spike | Possible leak or attack | > 150% of baseline |
 
@@ -56,7 +56,7 @@ groups:
 
       # Memory Critical
       - alert: RedisMemoryCritical
-        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90 and redis_memory_max_bytes > 0
         for: 5m
         labels:
           severity: critical
@@ -110,7 +110,7 @@ groups:
     rules:
       # Memory Warning
       - alert: RedisMemoryHigh
-        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 75
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 75 and redis_memory_max_bytes > 0
         for: 10m
         labels:
           severity: warning
@@ -140,15 +140,15 @@ groups:
           summary: "Redis cache hit rate low on {{ $labels.instance }}"
           description: "Cache hit rate is {{ $value | printf \"%.1f\" }}%."
 
-      # Replication Lag
-      - alert: RedisReplicationLag
+      # Replication I/O
+      - alert: RedisReplicationIOStale
         expr: redis_master_last_io_seconds_ago > 30
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Redis replication lag on {{ $labels.instance }}"
-          description: "Replica is {{ $value }}s behind master."
+          summary: "Redis replication I/O stale on {{ $labels.instance }}"
+          description: "Replica has not interacted with its master for {{ $value }}s."
 
       # Slow Log
       - alert: RedisSlowLogGrowing
@@ -192,7 +192,7 @@ groups:
       # Command Latency
       - alert: RedisCommandLatencyHigh
         expr: |
-          rate(redis_commands_duration_seconds_total[5m]) /
+          sum without (cmd) (rate(redis_commands_duration_seconds_total[5m])) /
           rate(redis_commands_processed_total[5m]) * 1000 > 10
         for: 5m
         labels:
@@ -253,14 +253,14 @@ route:
 
   routes:
     # Critical Redis alerts go to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       continue: true
 
     # Warning alerts go to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
       group_wait: 1m
       repeat_interval: 1h
@@ -295,10 +295,10 @@ receivers:
 
 inhibit_rules:
   # If Redis is down, suppress other Redis alerts
-  - source_match:
-      alertname: RedisDown
-    target_match_re:
-      alertname: Redis.*
+  - source_matchers:
+      - alertname="RedisDown"
+    target_matchers:
+      - alertname=~"Redis.*"
     equal: ['instance']
 ```
 
@@ -509,6 +509,19 @@ class RedisAlerter:
             )
             self._handle_alert(alert)
             return
+        else:
+            down_key = f"RedisDown:{self.instance_name}"
+            if down_key in self.active_alerts:
+                self._handle_alert(Alert(
+                    name="RedisDown",
+                    severity=Severity.CRITICAL,
+                    message=f"Redis instance {self.instance_name} is reachable again",
+                    instance=self.instance_name,
+                    value=1,
+                    threshold=1,
+                    timestamp=datetime.now(),
+                    resolved=True
+                ))
 
         # Get current info
         info = self.get_redis_info()
@@ -690,7 +703,7 @@ if __name__ == '__main__':
 ### Resolution Steps
 1. If OOM: Reduce maxmemory, add RAM, or scale horizontally
 2. If disk full: Clear space, disable persistence temporarily
-3. If config error: Check redis.conf, validate with redis-server --test-memory
+3. If config error: Check redis.conf and test the corrected configuration in a safe environment before restarting production
 4. If network: Check firewall rules, verify connectivity
 
 ### Verification
@@ -718,14 +731,14 @@ if __name__ == '__main__':
 1. **Quick**: Increase maxmemory if RAM available
    ```
    CONFIG SET maxmemory 4gb
-   ```text
+   ```
 
 2. **Expire old data**: Add TTLs to keys without expiration
    ```python
    for key in r.scan_iter():
        if r.ttl(key) == -1:
            r.expire(key, 86400)
-   ```bash
+   ```
 
 3. **Delete unused keys**: Remove orphaned or stale data
 
@@ -736,7 +749,7 @@ if __name__ == '__main__':
 - Implement proper TTLs
 - Consider Redis Cluster for horizontal scaling
 - Review data structures for efficiency
-```text
+```
 
 ## Best Practices
 
@@ -787,10 +800,10 @@ severity: info -> Logging only
 ```yaml
 # Suppress child alerts when parent is firing
 inhibit_rules:
-  - source_match:
-      alertname: RedisDown
-    target_match_re:
-      alertname: Redis.*
+  - source_matchers:
+      - alertname="RedisDown"
+    target_matchers:
+      - alertname=~"Redis.*"
     equal: ['instance']
 ```
 

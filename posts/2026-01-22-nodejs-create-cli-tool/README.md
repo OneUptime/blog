@@ -111,7 +111,7 @@ my-cli/
 Commander is the most popular library for building CLIs:
 
 ```bash
-npm install commander
+npm install commander@10
 ```
 
 ### Basic Command
@@ -210,9 +210,9 @@ program.parse();
 ### Subcommands with Separate Files
 
 ```javascript
-// bin/cli.js
 #!/usr/bin/env node
 
+// bin/cli.js
 const { program } = require('commander');
 const init = require('../lib/commands/init');
 const build = require('../lib/commands/build');
@@ -248,7 +248,7 @@ module.exports = async function init() {
 Yargs is another powerful argument parser:
 
 ```bash
-npm install yargs
+npm install yargs@17
 ```
 
 ### Basic Usage
@@ -313,7 +313,7 @@ yargs(hideBin(process.argv))
 ## Interactive Prompts with Inquirer
 
 ```bash
-npm install inquirer
+npm install inquirer@8
 ```
 
 ### Basic Prompts
@@ -366,6 +366,7 @@ const questions = [
       { name: 'ESLint' },
       { name: 'Prettier' },
       { name: 'Jest' },
+      { name: 'Database' },
     ],
   },
   {
@@ -401,7 +402,7 @@ inquirer.prompt(questions).then(console.log);
 ## Adding Colors and Styling
 
 ```bash
-npm install chalk
+npm install chalk@4
 ```
 
 ### Colorful Output
@@ -430,7 +431,7 @@ console.log(info('This is info'));
 ### Progress Indicators
 
 ```bash
-npm install ora
+npm install ora@5
 ```
 
 ```javascript
@@ -503,9 +504,13 @@ async function saveConfig(config) {
 }
 
 // Usage
-const config = await loadConfig();
-config.apiKey = 'new-key';
-await saveConfig(config);
+async function main() {
+  const config = await loadConfig();
+  config.apiKey = 'new-key';
+  await saveConfig(config);
+}
+
+main();
 ```
 
 ### Template Generation
@@ -528,10 +533,14 @@ async function generateFromTemplate(templateName, targetPath, variables) {
 }
 
 // Usage
-await generateFromTemplate('component.tsx.template', 'Button.tsx', {
-  name: 'Button',
-  props: 'label: string',
-});
+async function main() {
+  await generateFromTemplate('component.tsx.template', 'Button.tsx', {
+    name: 'Button',
+    props: 'label: string',
+  });
+}
+
+main();
 ```
 
 ## Error Handling

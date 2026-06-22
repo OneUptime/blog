@@ -37,7 +37,7 @@ Start with a basic implementation before adopting a full-featured service. This 
 # feature_flags.py - Simple file-based feature flags
 
 import json
-import os
+import hashlib
 from functools import wraps
 from typing import Any, Callable, Dict, Optional
 
@@ -76,7 +76,7 @@ class FeatureFlags:
             if "percentage" in flag:
                 if user_id:
                     # Consistent hashing for user
-                    hash_value = hash(f"{flag_name}:{user_id}") % 100
+                    hash_value = self._stable_bucket(flag_name, user_id)
                     return hash_value < flag["percentage"]
                 return default
 
@@ -107,7 +107,7 @@ class FeatureFlags:
 
         if user_id:
             # Consistent assignment based on user
-            hash_value = hash(f"{flag_name}:{user_id}") % 100
+            hash_value = self._stable_bucket(flag_name, user_id)
             cumulative = 0
             for variant in variants:
                 cumulative += variant.get("weight", 0)
@@ -115,6 +115,11 @@ class FeatureFlags:
                     return variant["name"]
 
         return default
+
+    def _stable_bucket(self, flag_name: str, user_id: str) -> int:
+        """Return a stable bucket from 0 to 99 for rollout decisions."""
+        digest = hashlib.sha256(f"{flag_name}:{user_id}".encode()).hexdigest()
+        return int(digest[:8], 16) % 100
 
 
 # Decorator for feature-flagged functions
@@ -196,9 +201,8 @@ def new_search(query: str, user_id: str = None):
 
 Unleash is an open-source feature flag service you can self-host. Here is how to integrate it.
 
-```bash
+```yaml
 # Deploy Unleash with Docker Compose
-version: "3.8"
 services:
   unleash:
     image: unleashorg/unleash-server:latest
@@ -207,6 +211,7 @@ services:
     environment:
       DATABASE_URL: postgres://unleash:unleash@db:5432/unleash
       DATABASE_SSL: "false"
+      INIT_BACKEND_API_TOKENS: default:development.unleash-insecure-api-token
     depends_on:
       - db
 
@@ -235,12 +240,12 @@ class FeatureFlagService:
         self,
         url: str = "http://unleash:4242/api",
         app_name: str = "myapp",
-        environment: str = "production"
+        api_token: str = "default:development.unleash-insecure-api-token"
     ):
         self.client = UnleashClient(
             url=url,
             app_name=app_name,
-            environment=environment,
+            custom_headers={"Authorization": api_token},
             refresh_interval=15,  # Seconds between flag updates
             metrics_interval=60   # Seconds between metrics reports
         )
@@ -331,7 +336,13 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -353,8 +364,9 @@ Application code that watches for changes:
 
 ```python
 # config_watcher.py
+import hashlib
 import json
-import time
+import os
 import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -387,18 +399,38 @@ class DynamicFeatureFlags:
 
     def _start_watcher(self):
         """Start watching for file changes."""
-        observer = Observer()
+        self._observer = Observer()
         handler = FeatureFlagWatcher(self)
-        observer.schedule(
+        self._observer.schedule(
             handler,
             path=os.path.dirname(self.config_path),
             recursive=False
         )
-        observer.start()
+        self._observer.start()
 
     def is_enabled(self, flag_name: str, **context) -> bool:
         with self._lock:
             return self._evaluate_flag(flag_name, context)
+
+    def _evaluate_flag(self, flag_name: str, context: dict) -> bool:
+        flag = self._flags.get(flag_name)
+
+        if isinstance(flag, bool):
+            return flag
+
+        if isinstance(flag, dict):
+            if "users" in flag and context.get("user_id"):
+                return context["user_id"] in flag["users"]
+            if "percentage" in flag and context.get("user_id"):
+                bucket = self._stable_bucket(flag_name, context["user_id"])
+                return bucket < flag["percentage"]
+            return flag.get("enabled", False)
+
+        return False
+
+    def _stable_bucket(self, flag_name: str, user_id: str) -> int:
+        digest = hashlib.sha256(f"{flag_name}:{user_id}".encode()).hexdigest()
+        return int(digest[:8], 16) % 100
 ```
 
 ## Managing Feature Flag Lifecycle

@@ -67,9 +67,9 @@ export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
 // tracing.js - Basic OTLP configuration for Node.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': process.env.OTEL_SERVICE_NAME || 'my-service',
   'deployment.environment': process.env.NODE_ENV || 'development',
 });
@@ -133,8 +133,11 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+processors:
+  batch: {}
+
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     encoding: json
     headers:
@@ -151,7 +154,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ---

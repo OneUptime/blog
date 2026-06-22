@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring Grafana Loki storage backends 
 
 ---
 
-Grafana Loki's storage architecture separates index and chunk storage, allowing flexible configuration of backends based on your requirements. Choosing the right storage backend is crucial for performance, cost, and reliability. This guide covers all supported storage backends with production-ready configurations.
+Grafana Loki's storage architecture separates index and chunk storage, allowing flexible configuration of backends based on your requirements. Choosing the right storage backend is crucial for performance, cost, and reliability. This guide covers the most common supported storage backends with production-ready configurations.
 
 ## Understanding Loki Storage Architecture
 
@@ -17,7 +17,7 @@ Loki stores data in two distinct forms:
 - **Chunks**: Compressed log data organized by streams
 - **Index**: Metadata that maps labels to chunk locations
 
-Both can use the same backend or different backends depending on your needs.
+For current TSDB configurations, the index and chunks for a given schema period use the backend selected by `object_store`.
 
 ## Storage Backend Options
 
@@ -69,10 +69,10 @@ storage_config:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
+  delete_request_store: filesystem
 ```
 
 ### Docker Volume Mount
@@ -80,7 +80,7 @@ compactor:
 ```yaml
 services:
   loki:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.2
     volumes:
       - loki-data:/loki
     command: -config.file=/etc/loki/config.yaml
@@ -132,7 +132,8 @@ storage_config:
     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
     s3forcepathstyle: false
     insecure: false
-    sse_encryption: true
+    sse:
+      type: SSE-S3
     http_config:
       idle_conn_timeout: 90s
       response_header_timeout: 0s
@@ -142,11 +143,9 @@ storage_config:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
     cache_ttl: 24h
-    shared_store: s3
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -275,11 +274,9 @@ storage_config:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
     cache_ttl: 24h
-    shared_store: gcs
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: gcs
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -387,28 +384,25 @@ storage_config:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
     cache_ttl: 24h
-    shared_store: azure
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: azure
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
   delete_request_store: azure
 ```
 
-### Azure with Managed Identity (AKS)
+### Azure with Workload Identity (AKS)
 
-Enable AAD Pod Identity or Workload Identity:
+Enable Workload Identity:
 
 ```yaml
 storage_config:
   azure:
     account_name: mystorageaccount
     container_name: loki
-    use_managed_identity: true
-    user_assigned_id: /subscriptions/xxx/resourcegroups/xxx/providers/Microsoft.ManagedIdentity/userAssignedIdentities/loki-identity
+    use_federated_token: true
 ```
 
 Assign Storage Blob Data Contributor role:
@@ -425,11 +419,8 @@ az role assignment create \
 ```yaml
 storage_config:
   azure:
-    account_name: mystorageaccount
+    connection_string: ${AZURE_STORAGE_CONNECTION_STRING}
     container_name: loki
-    use_service_principal: false
-    # Use environment variable for SAS token
-    # Set AZURE_STORAGE_SAS_TOKEN in your deployment
 ```
 
 ## MinIO (Self-Hosted S3)
@@ -490,11 +481,9 @@ storage_config:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
     cache_ttl: 24h
-    shared_store: s3
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -513,8 +502,7 @@ storage_config:
     secret_access_key: ${MINIO_SECRET_KEY}
     insecure: false
     http_config:
-      tls_config:
-        ca_file: /certs/ca.crt
+      ca_file: /certs/ca.crt
 ```
 
 ### MinIO Distributed Mode
@@ -618,7 +606,7 @@ kubectl port-forward -n loki svc/loki 3100:3100
 curl http://localhost:3100/ready
 
 # Check metrics
-curl http://localhost:3100/metrics | grep loki_boltdb_shipper
+curl http://localhost:3100/metrics | grep -E 'loki_(tsdb|compactor|chunk)'
 ```
 
 ### Test Write and Read
@@ -648,8 +636,8 @@ Key metrics to monitor:
 # Chunk store operations
 rate(loki_chunk_store_chunks_stored_total[5m])
 
-# Storage errors
-rate(loki_boltdb_shipper_request_duration_seconds_count{status_code!="200"}[5m])
+# Flush failures
+rate(loki_ingester_chunks_flush_failures_total[5m])
 
 # Compactor progress
 loki_compactor_running
@@ -696,14 +684,14 @@ Choosing the right storage backend for Loki depends on your infrastructure, scal
 - Use **Filesystem** for development and testing
 - Use **AWS S3** for production AWS deployments with IRSA
 - Use **GCS** for production GCP deployments with Workload Identity
-- Use **Azure Blob** for production Azure deployments with Managed Identity
+- Use **Azure Blob** for production Azure deployments with Workload Identity
 - Use **MinIO** for self-hosted S3-compatible storage
 
 Key recommendations:
 
 - Always enable caching for better read performance
 - Configure appropriate retention policies to manage costs
-- Use IAM roles or managed identities instead of static credentials
+- Use IAM roles, Workload Identity, or managed identities instead of static credentials
 - Monitor storage metrics for early detection of issues
 - Consider data lifecycle policies for long-term cost optimization
 

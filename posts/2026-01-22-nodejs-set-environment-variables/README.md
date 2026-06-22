@@ -50,19 +50,19 @@ source ~/.zshrc
 
 ```cmd
 :: Set for a single command
-set PORT=3000 && node server.js
+cmd /C "set PORT=3000 && node server.js"
 
 :: Set for session
-set PORT=3000
-set NODE_ENV=production
+set "PORT=3000"
+set "NODE_ENV=production"
 node server.js
 ```
 
 ### Windows PowerShell
 
 ```powershell
-# Set for a single command
-$env:PORT=3000; node server.js
+# Set, run a command, then remove from the current session
+$env:PORT = "3000"; node server.js; Remove-Item Env:PORT
 
 # Set for session
 $env:PORT = "3000"
@@ -230,7 +230,7 @@ module.exports = {
   apiKey: env.API_KEY,
   debug: env.DEBUG,
   isProduction: env.isProduction,  // Built-in helper
-  isDevelopment: env.isDevelopment,
+  isDevelopment: env.isDev,
 };
 ```
 
@@ -245,11 +245,11 @@ npm install zod
 const { z } = require('zod');
 
 const envSchema = z.object({
-  PORT: z.string().transform(Number).default('3000'),
+  PORT: z.string().default('3000').transform(Number),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().url(),
   API_KEY: z.string().min(1),
-  DEBUG: z.string().transform(v => v === 'true').default('false'),
+  DEBUG: z.string().default('false').transform(v => v === 'true'),
 });
 
 const env = envSchema.parse(process.env);
@@ -428,7 +428,7 @@ jobs:
     env:
       NODE_ENV: production
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - run: npm ci
       - run: npm run build
         env:
@@ -440,12 +440,12 @@ jobs:
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .
-RUN npm ci --production
+RUN npm ci --omit=dev
 
-# Set at runtime, not build time
+# Default runtime value; override with docker run -e or your platform config
 ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["node", "server.js"]

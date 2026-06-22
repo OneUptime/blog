@@ -10,7 +10,7 @@ Description: A comprehensive guide to diagnosing and fixing common getServerSide
 
 ## Introduction
 
-`getServerSideProps` is one of Next.js's most powerful features for server-side rendering (SSR). It allows you to fetch data on each request and pre-render pages with dynamic content. However, developers often encounter errors when implementing this function. This guide covers the most common issues and provides practical solutions.
+`getServerSideProps` is one of Next.js's most powerful Pages Router features for server-side rendering (SSR). It allows you to fetch data on each request and pre-render pages with dynamic content. However, developers often encounter errors when implementing this function. This guide covers the most common issues and provides practical solutions.
 
 ## Understanding getServerSideProps
 
@@ -196,16 +196,19 @@ flowchart TD
     A --> C[req]
     A --> D[res]
     A --> E[query]
-    A --> F[preview]
-    A --> G[previewData]
+    A --> F[draftMode]
+    A --> G[locales]
     A --> H[resolvedUrl]
     A --> I[locale]
+    A --> J[defaultLocale]
 
     B --> B1[Dynamic route parameters]
     C --> C1[HTTP request object]
     D --> D1[HTTP response object]
     E --> E1[Query string parameters]
-    F --> F1[Preview mode boolean]
+    F --> F1[Draft Mode boolean]
+    G --> G1[Supported locales]
+    J --> J1[Configured default locale]
 ```
 
 ```javascript

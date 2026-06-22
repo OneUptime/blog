@@ -33,11 +33,11 @@ sequenceDiagram
 ```
 
 Cloud-init runs in stages:
-1. **Generator**: Detects datasource (AWS, Azure, etc.)
-2. **Local**: Network-independent configuration
-3. **Network**: Fetch metadata, configure network
-4. **Config**: User/group creation, package installation
-5. **Final**: User scripts, signals
+1. **Detect**: Identifies the platform and decides whether cloud-init should run
+2. **Local**: Locates local datasources and applies network configuration
+3. **Network**: Fetches metadata and processes user data
+4. **Config**: Runs config modules such as `runcmd` setup
+5. **Final**: Installs packages, runs configuration management plugins, user scripts, and signals
 
 ## User Data Formats
 
@@ -81,6 +81,7 @@ write_files:
   - path: /etc/nginx/nginx.conf
     owner: root:root
     permissions: '0644'
+    defer: true
     content: |
       user www-data;
       worker_processes auto;
@@ -97,6 +98,7 @@ write_files:
       }
 
   - path: /var/www/html/index.html
+    defer: true
     content: |
       <!DOCTYPE html>
       <html>
@@ -224,6 +226,7 @@ packages:
 
 write_files:
   - path: /etc/nginx/sites-available/app
+    defer: true
     content: |
       server {
           listen 80;
@@ -280,6 +283,7 @@ write_files:
 
   - path: /opt/app/docker-compose.yml
     owner: deploy:deploy
+    defer: true
     content: |
       version: '3.8'
       services:
@@ -362,7 +366,7 @@ write_files:
   - path: /etc/chef/client.rb
     content: |
       chef_server_url 'https://chef.example.com/organizations/myorg'
-      node_name '${HOSTNAME}'
+      node_name 'web-server-01'
       validation_client_name 'myorg-validator'
 
   - path: /etc/chef/validation.pem
@@ -371,6 +375,12 @@ write_files:
       -----BEGIN RSA PRIVATE KEY-----
       ... validator key content ...
       -----END RSA PRIVATE KEY-----
+
+  - path: /etc/chef/first-boot.json
+    content: |
+      {
+        "run_list": ["recipe[myapp::default]"]
+      }
 
 runcmd:
   - curl -L https://omnitruck.chef.io/install.sh | bash
@@ -421,7 +431,7 @@ az vm create \
 ### Google Cloud
 
 ```bash
-# Pass startup script via gcloud
+# Pass cloud-init user data via gcloud metadata
 gcloud compute instances create myvm \
   --zone us-central1-a \
   --machine-type e2-medium \

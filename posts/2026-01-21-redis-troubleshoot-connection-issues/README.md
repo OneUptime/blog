@@ -131,7 +131,7 @@ def troubleshoot_connection_refused():
     print("2. Check Redis binding configuration:")
     print("   redis-cli CONFIG GET bind")
     print("   # If returns '127.0.0.1', Redis only accepts local connections")
-    print("   # To allow remote: CONFIG SET bind '0.0.0.0' (restart required)")
+    print("   # To allow remote: CONFIG SET bind '0.0.0.0' (also update redis.conf or run CONFIG REWRITE)")
     print()
 
     # Step 3: Check protected mode
@@ -314,6 +314,7 @@ diagnose_too_many_connections('localhost')
 
 ```python
 import redis
+import socket
 from redis import ConnectionPool
 
 # Create a connection pool
@@ -347,7 +348,7 @@ def check_pool_status(pool):
     print(f"In use: {len(pool._in_use_connections)}")
 ```
 
-### Node.js Connection Pool
+### Node.js Redis Client
 
 ```javascript
 const Redis = require('ioredis');
@@ -379,7 +380,7 @@ const redis = new Redis({
     // Keep-alive
     keepAlive: 30000,
 
-    // Connection pool (for cluster)
+    // Request retry limit
     maxRetriesPerRequest: 3,
 });
 
@@ -534,6 +535,7 @@ class RobustRedisClient:
             socket_keepalive=True,
             health_check_interval=30,
             retry_on_timeout=True,
+            decode_responses=True,
         )
         self.client = redis.Redis(connection_pool=self.pool)
         self._connected = False

@@ -21,15 +21,30 @@ Archiving data to S3 reduces storage costs while preserving data for compliance 
         <disks>
             <s3_archive>
                 <type>s3</type>
-                <endpoint>https://s3.amazonaws.com/archive-bucket/clickhouse/</endpoint>
+                <endpoint>https://archive-bucket.s3.amazonaws.com/clickhouse/</endpoint>
                 <access_key_id>xxx</access_key_id>
                 <secret_access_key>xxx</secret_access_key>
                 <metadata_path>/var/lib/clickhouse/disks/s3_archive/</metadata_path>
-                <cache_enabled>true</cache_enabled>
-                <cache_path>/var/lib/clickhouse/disks/s3_cache/</cache_path>
-                <data_cache_max_size>10737418240</data_cache_max_size>
             </s3_archive>
+            <s3_archive_cache>
+                <type>cache</type>
+                <disk>s3_archive</disk>
+                <path>/var/lib/clickhouse/disks/s3_cache/</path>
+                <max_size>10Gi</max_size>
+            </s3_archive_cache>
         </disks>
+        <policies>
+            <default_with_s3>
+                <volumes>
+                    <hot>
+                        <disk>default</disk>
+                    </hot>
+                    <cold>
+                        <disk>s3_archive_cache</disk>
+                    </cold>
+                </volumes>
+            </default_with_s3>
+        </policies>
     </storage_configuration>
 </clickhouse>
 ```
@@ -43,8 +58,9 @@ CREATE TABLE events (
     timestamp DateTime,
     data String
 ) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
 ORDER BY timestamp
-TTL timestamp + INTERVAL 30 DAY TO DISK 's3_archive'
+TTL timestamp + INTERVAL 30 DAY TO DISK 's3_archive_cache'
 SETTINGS storage_policy = 'default_with_s3';
 ```
 
@@ -53,7 +69,7 @@ SETTINGS storage_policy = 'default_with_s3';
 ```sql
 -- Export partition to S3
 INSERT INTO FUNCTION s3(
-    'https://bucket.s3.amazonaws.com/archive/events/2024-01/',
+    'https://bucket.s3.amazonaws.com/archive/events/2024-01/events_202401.parquet',
     'access_key', 'secret_key',
     'Parquet',
     'timestamp DateTime, data String'
@@ -62,13 +78,23 @@ SELECT * FROM events
 WHERE toYYYYMM(timestamp) = 202401;
 
 -- Track what was archived
-INSERT INTO archive_manifest
+INSERT INTO archive_manifest (
+    table_name,
+    partition,
+    row_count,
+    size_bytes,
+    archived_at,
+    s3_location,
+    retention_until
+)
 SELECT
     'events' AS table_name,
     '202401' AS partition,
     count() AS row_count,
+    0 AS size_bytes,
     now() AS archived_at,
-    's3://bucket/archive/events/2024-01/' AS location
+    's3://bucket/archive/events/2024-01/events_202401.parquet' AS s3_location,
+    toDate('2031-01-01') AS retention_until
 FROM events
 WHERE toYYYYMM(timestamp) = 202401;
 
@@ -81,7 +107,7 @@ ALTER TABLE events DROP PARTITION '202401';
 ```bash
 # Using clickhouse-backup
 
-clickhouse-backup create_remote --tables default.events 2024-01-archive
+clickhouse-backup create --tables default.events 2024-01-archive
 
 # Upload to S3
 clickhouse-backup upload 2024-01-archive
@@ -99,6 +125,10 @@ FROM s3(
 
 -- Create external table for regular access
 CREATE TABLE events_archive_2024_01
+(
+    timestamp DateTime,
+    data String
+)
 ENGINE = S3(
     'https://bucket.s3.amazonaws.com/archive/events/2024-01/*.parquet',
     'Parquet'

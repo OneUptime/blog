@@ -54,7 +54,7 @@ import pybreaker
 import requests
 
 # Create a circuit breaker instance
-# Opens after 5 failures within 30 seconds
+# Opens after 5 consecutive failures
 # Stays open for 60 seconds before trying again
 payment_breaker = pybreaker.CircuitBreaker(
     fail_max=5,              # Failures before opening
@@ -116,7 +116,8 @@ Customize the circuit breaker for your specific needs:
 
 import pybreaker
 import logging
-from datetime import datetime
+import requests
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -130,18 +131,18 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
     def state_change(self, breaker, old_state, new_state):
         """Called when the circuit breaker changes state."""
         logger.warning(
-            f"Circuit breaker '{breaker.name}' changed from {old_state} to {new_state}",
+            f"Circuit breaker '{breaker.name}' changed from {old_state.name} to {new_state.name}",
             extra={
                 "breaker_name": breaker.name,
-                "old_state": str(old_state),
-                "new_state": str(new_state),
+                "old_state": old_state.name,
+                "new_state": new_state.name,
                 "failure_count": breaker.fail_counter,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
         # Alert when circuit opens
-        if str(new_state) == "open":
+        if new_state.name == pybreaker.STATE_OPEN:
             send_alert(
                 f"Circuit breaker {breaker.name} opened",
                 severity="warning"
@@ -190,9 +191,7 @@ api_breaker = pybreaker.CircuitBreaker(
     reset_timeout=60,
     # Client errors (4xx) are not the service's fault
     # Don't count them toward the failure threshold
-    exclude=[ValueError, KeyError],
-    # Custom function to exclude certain exceptions
-    # exclude=lambda e: is_client_error(e),
+    exclude=[ValueError, KeyError, is_client_error],
     name="external-api"
 )
 ```
@@ -212,8 +211,9 @@ import threading
 from enum import Enum
 from typing import Callable, Any, Optional
 from functools import wraps
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import deque
+import requests
 
 
 class CircuitState(Enum):
@@ -337,13 +337,15 @@ class CircuitBreaker:
         if current_state == CircuitState.CLOSED:
             return True
         elif current_state == CircuitState.OPEN:
-            self.stats.rejected_calls += 1
+            with self._lock:
+                self.stats.rejected_calls += 1
             return False
         elif current_state == CircuitState.HALF_OPEN:
             with self._lock:
                 if self._half_open_calls < self.config.half_open_max_calls:
                     self._half_open_calls += 1
                     return True
+                self.stats.rejected_calls += 1
                 return False
         return False
 
@@ -411,6 +413,7 @@ Provide fallback behavior when the circuit is open:
 # Circuit breaker with fallback strategies
 
 import pybreaker
+import requests
 from functools import wraps
 from typing import Callable, Any, TypeVar, Optional
 
@@ -518,12 +521,10 @@ Integrate circuit breakers with FastAPI:
 # fastapi_integration.py
 # Circuit breaker integration with FastAPI
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 import pybreaker
-import httpx
-from typing import Optional
-from contextlib import asynccontextmanager
 
 app = FastAPI()
 
@@ -561,19 +562,16 @@ class ProtectedClient:
     def __init__(self, base_url: str, breaker: pybreaker.CircuitBreaker):
         self.base_url = base_url
         self.breaker = breaker
-        self.client = httpx.AsyncClient(timeout=10.0)
 
     async def get(self, path: str) -> dict:
         """Make a GET request through the circuit breaker."""
         def make_request():
-            # Note: For async, we need to handle this differently
-            # This is a simplified example
             import requests
             response = requests.get(f"{self.base_url}{path}", timeout=10)
             response.raise_for_status()
             return response.json()
 
-        return self.breaker.call(make_request)
+        return await run_in_threadpool(self.breaker.call, make_request)
 
     async def post(self, path: str, data: dict) -> dict:
         """Make a POST request through the circuit breaker."""
@@ -587,7 +585,7 @@ class ProtectedClient:
             response.raise_for_status()
             return response.json()
 
-        return self.breaker.call(make_request)
+        return await run_in_threadpool(self.breaker.call, make_request)
 
 
 # Service clients
@@ -645,15 +643,15 @@ async def breaker_health():
     """Health check endpoint showing circuit breaker states."""
     return {
         "payment": {
-            "state": str(breakers.payment.state),
+            "state": breakers.payment.current_state,
             "fail_counter": breakers.payment.fail_counter
         },
         "inventory": {
-            "state": str(breakers.inventory.state),
+            "state": breakers.inventory.current_state,
             "fail_counter": breakers.inventory.fail_counter
         },
         "notification": {
-            "state": str(breakers.notification.state),
+            "state": breakers.notification.current_state,
             "fail_counter": breakers.notification.fail_counter
         }
     }
@@ -680,7 +678,11 @@ class TestCircuitBreaker:
 
     def test_circuit_opens_after_failures(self):
         """Circuit should open after reaching failure threshold."""
-        breaker = pybreaker.CircuitBreaker(fail_max=3, reset_timeout=10)
+        breaker = pybreaker.CircuitBreaker(
+            fail_max=3,
+            reset_timeout=10,
+            throw_new_error_on_trip=False
+        )
 
         @breaker
         def failing_function():
@@ -699,7 +701,11 @@ class TestCircuitBreaker:
 
     def test_circuit_closes_after_success(self):
         """Circuit should close after successful calls in half-open state."""
-        breaker = pybreaker.CircuitBreaker(fail_max=2, reset_timeout=0.1)
+        breaker = pybreaker.CircuitBreaker(
+            fail_max=2,
+            reset_timeout=0.1,
+            throw_new_error_on_trip=False
+        )
         call_count = 0
 
         @breaker
@@ -727,7 +733,11 @@ class TestCircuitBreaker:
 
     def test_circuit_stays_open_on_half_open_failure(self):
         """Circuit should reopen if half-open test fails."""
-        breaker = pybreaker.CircuitBreaker(fail_max=1, reset_timeout=0.1)
+        breaker = pybreaker.CircuitBreaker(
+            fail_max=1,
+            reset_timeout=0.1,
+            throw_new_error_on_trip=False
+        )
 
         @breaker
         def always_fails():

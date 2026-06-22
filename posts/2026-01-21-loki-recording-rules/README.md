@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Recording Rules, LogQL, Performance Optimization, Metric, Pre-Aggregation
 
-Description: A comprehensive guide to using Loki recording rules for pre-computing expensive LogQL queries, creating metrics from logs, and optimizing dashboard performance through query result caching.
+Description: A comprehensive guide to using Loki recording rules for pre-computing expensive LogQL queries, creating metrics from logs, and optimizing dashboard performance through pre-computation.
 
 ---
 
@@ -60,8 +60,9 @@ ruler:
   # Remote write for recording rule metrics
   remote_write:
     enabled: true
-    client:
-      url: http://prometheus:9090/api/v1/write
+    clients:
+      default:
+        url: http://prometheus:9090/api/v1/write
 
   # Ring configuration for HA
   ring:
@@ -93,17 +94,12 @@ ruler:
 
 ### Prometheus Configuration to Accept Remote Write
 
-```yaml
-# prometheus.yml
-global:
-  scrape_interval: 15s
-
-# Enable remote write receiver
-remote_write:
-  - url: "http://prometheus:9090/api/v1/write"
-
-# Or explicitly enable the feature
-# Start Prometheus with: --enable-feature=remote-write-receiver
+```bash
+# Start Prometheus with the remote write receiver enabled.
+# The receiver endpoint is /api/v1/write.
+prometheus \
+  --config.file=prometheus.yml \
+  --web.enable-remote-write-receiver
 ```
 
 ## Creating Recording Rules
@@ -186,28 +182,28 @@ groups:
       - record: log:request_duration:p50_5m
         expr: |
           quantile_over_time(0.50,
-            {job="application"} | json | unwrap duration [5m]
+            {job="application"} | json | unwrap duration | __error__=""[5m]
           ) by (service)
 
       # P95 latency
       - record: log:request_duration:p95_5m
         expr: |
           quantile_over_time(0.95,
-            {job="application"} | json | unwrap duration [5m]
+            {job="application"} | json | unwrap duration | __error__=""[5m]
           ) by (service)
 
       # P99 latency
       - record: log:request_duration:p99_5m
         expr: |
           quantile_over_time(0.99,
-            {job="application"} | json | unwrap duration [5m]
+            {job="application"} | json | unwrap duration | __error__=""[5m]
           ) by (service)
 
       # Average latency
       - record: log:request_duration:avg_5m
         expr: |
           avg_over_time(
-            {job="application"} | json | unwrap duration [5m]
+            {job="application"} | json | unwrap duration | __error__=""[5m]
           ) by (service)
 ```
 
@@ -286,10 +282,10 @@ groups:
 # List all rule groups
 curl -s http://loki:3100/loki/api/v1/rules | jq
 
-# Get rules for a specific tenant
+# Get rules for a specific namespace
 curl -s http://loki:3100/loki/api/v1/rules/fake | jq
 
-# Create/Update rules
+# Create/Update rules in the "fake" namespace
 curl -X POST http://loki:3100/loki/api/v1/rules/fake \
   -H "Content-Type: application/yaml" \
   -d '
@@ -300,7 +296,7 @@ groups:
         expr: sum(rate({job="test"} [5m]))
 '
 
-# Delete a rule group
+# Delete a rule group from the "fake" namespace
 curl -X DELETE http://loki:3100/loki/api/v1/rules/fake/my_rules
 ```
 
@@ -363,9 +359,8 @@ log:error_rate:rate5m{service="api-server"}
 # Use in calculations
 log:error_rate:rate5m / log:request_count:rate5m
 
-# In alerts
-alert: HighErrorRate
-expr: log:error_rate:rate5m > 10
+# Alert expression
+log:error_rate:rate5m > 10
 ```
 
 ### In Grafana

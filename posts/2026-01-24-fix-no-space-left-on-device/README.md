@@ -165,6 +165,11 @@ apt-get autoremove --purge
 
 # RHEL/CentOS - List and remove old kernels
 rpm -q kernel
+
+# RHEL/CentOS 8+ (yum is backed by dnf)
+dnf --setopt=installonly_limit=2 remove --oldinstallonly
+
+# Older RHEL/CentOS with yum-utils
 package-cleanup --oldkernels --count=2
 ```
 
@@ -183,10 +188,10 @@ docker image prune
 # Remove stopped containers
 docker container prune
 
-# Remove unused volumes (be careful - this deletes data)
+# Remove unused anonymous volumes (be careful - this deletes data)
 docker volume prune
 
-# Remove everything including volumes
+# Remove everything including anonymous volumes
 docker system prune -a --volumes
 ```
 
@@ -280,7 +285,7 @@ journalctl --vacuum-size=100M
 # Reduce to 1% to free space (use cautiously)
 tune2fs -m 1 /dev/sda1
 
-# Check current reserved percentage
+# Check current reserved block count
 tune2fs -l /dev/sda1 | grep "Reserved block count"
 ```
 

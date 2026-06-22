@@ -38,7 +38,7 @@ Key columns:
 - `query_duration_ms`: Total execution time
 - `read_rows` / `read_bytes`: Data scanned
 - `result_rows` / `result_bytes`: Data returned
-- `memory_usage`: Peak memory used
+- `memory_usage`: Memory used by the query
 - `ProfileEvents`: Detailed counters
 
 ### Query Performance Analysis
@@ -68,7 +68,7 @@ SELECT
     exception,
     query
 FROM system.query_log
-WHERE type = 'ExceptionWhileProcessing'
+WHERE type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')
   AND event_date = today()
 ORDER BY query_start_time DESC
 LIMIT 20;
@@ -185,7 +185,13 @@ SELECT
     metric,
     value
 FROM system.asynchronous_metrics
-WHERE metric IN ('Uptime', 'VersionInteger');
+WHERE metric = 'Uptime'
+UNION ALL
+SELECT
+    metric,
+    toFloat64(value) AS value
+FROM system.metrics
+WHERE metric = 'VersionInteger';
 ```
 
 ### system.events
@@ -356,7 +362,7 @@ SELECT
     countIf(exception_code != 0) AS errors,
     round(avg(query_duration_ms)) AS avg_duration_ms
 FROM system.query_log
-WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing')
+WHERE type IN ('QueryFinish', 'ExceptionBeforeStart', 'ExceptionWhileProcessing')
   AND event_date = today()
   AND query_start_time > now() - INTERVAL 1 HOUR
 GROUP BY minute
@@ -416,7 +422,7 @@ WHERE elapsed > 300;
 SELECT
     round(countIf(exception_code != 0) / count() * 100, 2) AS error_rate
 FROM system.query_log
-WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing')
+WHERE type IN ('QueryFinish', 'ExceptionBeforeStart', 'ExceptionWhileProcessing')
   AND event_date = today()
   AND query_start_time > now() - INTERVAL 5 MINUTE
 HAVING error_rate > 5;

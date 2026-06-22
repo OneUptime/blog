@@ -56,7 +56,7 @@ Start with minimal base images to reduce the attack surface.
 FROM ubuntu:22.04
 
 # Better: Alpine (5 MB, fewer packages)
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Best: Distroless (minimal attack surface)
 FROM gcr.io/distroless/static-debian12
@@ -66,7 +66,7 @@ FROM gcr.io/distroless/static-debian12
 
 ```dockerfile
 # Build stage with all tools
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -97,10 +97,10 @@ ENTRYPOINT ["/server"]
 FROM nginx:latest
 
 # Better: Specific version
-FROM nginx:1.25.3
+FROM nginx:1.30.3
 
 # Best: SHA256 digest for immutability
-FROM nginx@sha256:6926dd802f40b1...
+FROM nginx:1.30.3@sha256:939dac6d4b5aceafe1a564f6c2bcb6d1c5dcf4305b1af4a99e114068b079c6fd
 ```
 
 ## Running Containers as Non-Root
@@ -110,7 +110,7 @@ Most container breaches escalate through root privileges. Never run as root.
 ### Create Non-Root User in Dockerfile
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Create app directory
 WORKDIR /app
@@ -121,7 +121,7 @@ RUN addgroup -g 1001 -S appgroup && \
 
 # Copy application files
 COPY --chown=appuser:appgroup package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --chown=appuser:appgroup . .
 
@@ -145,20 +145,15 @@ spec:
     runAsNonRoot: true
     runAsUser: 1001
     runAsGroup: 1001
-    # Prevent privilege escalation
-    allowPrivilegeEscalation: false
-    # Drop all capabilities
-    capabilities:
-      drop:
-        - ALL
-    # Read-only root filesystem
-    readOnlyRootFilesystem: true
   containers:
     - name: app
       image: myapp:1.0.0
       securityContext:
+        # Prevent privilege escalation
         allowPrivilegeEscalation: false
+        # Read-only root filesystem
         readOnlyRootFilesystem: true
+        # Drop all capabilities
         capabilities:
           drop:
             - ALL
@@ -208,6 +203,9 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -215,7 +213,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'sarif'
@@ -358,7 +356,7 @@ spec:
 ### Use External Secrets Operator
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets

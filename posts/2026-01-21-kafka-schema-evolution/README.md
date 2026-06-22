@@ -21,7 +21,7 @@ Schema evolution is the process of modifying message schemas over time while mai
 
 ## Backward Compatible Changes
 
-```json
+```jsonc
 // Original schema (v1)
 {
   "type": "record",
@@ -46,7 +46,7 @@ Schema evolution is the process of modifying message schemas over time while mai
 
 ## Forward Compatible Changes
 
-```json
+```jsonc
 // Remove optional field for FORWARD compatibility
 // v1 - has optional field
 {
@@ -130,14 +130,14 @@ public class SchemaEvolutionManager {
 
 ```python
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSchema
+from confluent_kafka.schema_registry import Schema
 
 class SchemaEvolutionManager:
     def __init__(self, registry_url: str):
         self.client = SchemaRegistryClient({'url': registry_url})
 
     def check_compatibility(self, subject: str, schema_str: str) -> bool:
-        schema = AvroSchema(schema_str)
+        schema = Schema(schema_str, 'AVRO')
         return self.client.test_compatibility(subject, schema)
 
     def set_compatibility(self, subject: str, level: str):
@@ -146,7 +146,7 @@ class SchemaEvolutionManager:
 
     def evolve_schema(self, subject: str, new_schema_str: str) -> int:
         if self.check_compatibility(subject, new_schema_str):
-            schema = AvroSchema(new_schema_str)
+            schema = Schema(new_schema_str, 'AVRO')
             schema_id = self.client.register_schema(subject, schema)
             print(f"Registered new schema version with id: {schema_id}")
             return schema_id

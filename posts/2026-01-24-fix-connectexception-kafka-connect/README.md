@@ -128,7 +128,7 @@ org.apache.kafka.connect.errors.ConnectException:
 
     "connection.url": "jdbc:postgresql://db-server:5432/mydb?connectTimeout=30&socketTimeout=60",
     "connection.user": "connect_user",
-    "connection.password": "${secrets:jdbc-password}",
+    "connection.password": "${file:/etc/kafka-connect/secrets.properties:jdbc-password}",
 
     "connection.attempts": 5,
     "connection.backoff.ms": 10000,
@@ -190,15 +190,11 @@ org.apache.kafka.connect.errors.ConnectException:
 
     "http.api.url": "https://api.example.com/events",
 
-    "request.timeout.ms": 30000,
     "retry.backoff.ms": 500,
     "max.retries": 10,
 
-    "connection.timeout.ms": 10000,
-    "socket.timeout.ms": 30000,
-
     "http.connect.timeout.ms": 10000,
-    "http.read.timeout.ms": 30000
+    "http.request.timeout.ms": 30000
   }
 }
 ```
@@ -211,6 +207,9 @@ org.apache.kafka.connect.errors.ConnectException:
   "config": {
     "connector.class": "io.confluent.connect.s3.S3SinkConnector",
     "topics": "logs",
+    "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
+    "storage.class": "io.confluent.connect.s3.storage.S3Storage",
+    "flush.size": 1000,
 
     "s3.bucket.name": "my-bucket",
     "s3.region": "us-east-1",
@@ -219,9 +218,8 @@ org.apache.kafka.connect.errors.ConnectException:
     "s3.wan.mode": true,
 
     "s3.http.send.expect.continue": false,
-    "s3.http.max.retries": 5,
-    "s3.socket.timeout.ms": 60000,
-    "s3.connection.timeout.ms": 30000
+    "s3.part.retries": 5,
+    "s3.retry.backoff.ms": 1000
   }
 }
 ```
@@ -245,7 +243,7 @@ org.apache.kafka.connect.errors.ConnectException:
 
     "connection.url": "jdbc:postgresql://db-server:5432/mydb?ssl=true&sslmode=verify-full&sslrootcert=/etc/kafka-connect/certs/ca.pem",
     "connection.user": "connect_user",
-    "connection.password": "${secrets:jdbc-password}"
+    "connection.password": "${file:/etc/kafka-connect/secrets.properties:jdbc-password}"
   }
 }
 ```
@@ -258,20 +256,20 @@ org.apache.kafka.connect.errors.ConnectException:
 # SSL for Kafka broker connection
 security.protocol=SSL
 ssl.truststore.location=/etc/kafka-connect/truststore.jks
-ssl.truststore.password=${secrets:truststore-password}
+ssl.truststore.password=${file:/etc/kafka-connect/secrets.properties:truststore-password}
 ssl.keystore.location=/etc/kafka-connect/keystore.jks
-ssl.keystore.password=${secrets:keystore-password}
-ssl.key.password=${secrets:key-password}
+ssl.keystore.password=${file:/etc/kafka-connect/secrets.properties:keystore-password}
+ssl.key.password=${file:/etc/kafka-connect/secrets.properties:key-password}
 
 # Producer SSL
 producer.security.protocol=SSL
 producer.ssl.truststore.location=/etc/kafka-connect/truststore.jks
-producer.ssl.truststore.password=${secrets:truststore-password}
+producer.ssl.truststore.password=${file:/etc/kafka-connect/secrets.properties:truststore-password}
 
 # Consumer SSL
 consumer.security.protocol=SSL
 consumer.ssl.truststore.location=/etc/kafka-connect/truststore.jks
-consumer.ssl.truststore.password=${secrets:truststore-password}
+consumer.ssl.truststore.password=${file:/etc/kafka-connect/secrets.properties:truststore-password}
 ```
 
 **Verify SSL certificates:**
@@ -312,14 +310,20 @@ org.apache.kafka.connect.errors.ConnectException:
 
     "connection.url": "jdbc:postgresql://db-server:5432/mydb",
     "connection.user": "${env:DB_USER}",
-    "connection.password": "${secrets:db-password}",
-
-    "config.providers": "secrets,env",
-    "config.providers.secrets.class": "org.apache.kafka.common.config.provider.FileConfigProvider",
-    "config.providers.secrets.param.file.path": "/etc/kafka-connect/secrets",
-    "config.providers.env.class": "org.apache.kafka.common.config.provider.EnvironmentConfigProvider"
+    "connection.password": "${file:/etc/kafka-connect/secrets.properties:db-password}"
   }
 }
+```
+
+Configure the providers in the worker configuration:
+
+```properties
+# connect-distributed.properties
+
+config.providers=file,env
+config.providers.file.class=org.apache.kafka.common.config.provider.FileConfigProvider
+config.providers.file.param.allowed.paths=/etc/kafka-connect
+config.providers.env.class=org.apache.kafka.common.config.provider.EnvVarConfigProvider
 ```
 
 **For SASL authentication:**
@@ -400,10 +404,7 @@ org.apache.kafka.connect.errors.ConnectException:
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
     "value.converter.basic.auth.credentials.source": "USER_INFO",
-    "value.converter.basic.auth.user.info": "user:password",
-
-    "schema.registry.url": "http://schema-registry:8081",
-    "schema.registry.basic.auth.user.info": "user:password"
+    "value.converter.basic.auth.user.info": "user:password"
   }
 }
 ```
@@ -539,7 +540,7 @@ echo "=== Troubleshooting Complete ==="
 
     "connection.url": "jdbc:postgresql://db:5432/mydb",
     "connection.user": "connect",
-    "connection.password": "${secrets:password}",
+    "connection.password": "${file:/etc/kafka-connect/secrets.properties:password}",
 
     "connection.attempts": 10,
     "connection.backoff.ms": 5000,

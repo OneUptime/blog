@@ -77,7 +77,11 @@ az cosmosdb sql container create \
 
 ```javascript
 // Node.js SDK setup
-const { CosmosClient } = require("@azure/cosmos");
+const {
+    BulkOperationType,
+    ChangeFeedStartFrom,
+    CosmosClient
+} = require("@azure/cosmos");
 
 const client = new CosmosClient({
     endpoint: process.env.COSMOS_ENDPOINT,
@@ -370,13 +374,14 @@ const goodAgg = await container.items
 // Bulk insert for high throughput
 async function bulkInsertOrders(orders) {
     const operations = orders.map(order => ({
-        operationType: "Create",
+        operationType: BulkOperationType.Create,
+        partitionKey: order.customerId,
         resourceBody: order
     }));
 
-    const response = await container.items.bulk(operations);
+    const response = await container.items.executeBulkOperations(operations);
 
-    const totalRU = response.reduce((sum, r) => sum + r.requestCharge, 0);
+    const totalRU = response.reduce((sum, r) => sum + (r.response?.requestCharge ?? 0), 0);
     console.log(`Total RU for ${orders.length} documents: ${totalRU}`);
 
     return response;
@@ -474,21 +479,21 @@ The change feed lets you react to document changes in real-time.
 
 ```javascript
 // Process changes as they happen
-const changeFeedIterator = container.items.changeFeed({
-    startFromBeginning: false
+const changeFeedIterator = container.items.getChangeFeedIterator({
+    changeFeedStartFrom: ChangeFeedStartFrom.Now()
 });
 
 async function processChanges() {
     while (changeFeedIterator.hasMoreResults) {
-        const { resources } = await changeFeedIterator.fetchNext();
+        const response = await changeFeedIterator.readNext();
 
-        for (const change of resources) {
+        for (const change of response.result ?? []) {
             console.log(`Document changed: ${change.id}`);
             await handleChange(change);
         }
 
         // Save continuation token for restart
-        await saveContinuationToken(changeFeedIterator.continuationToken);
+        await saveContinuationToken(response.continuationToken);
 
         // Wait before next poll
         await new Promise(r => setTimeout(r, 1000));

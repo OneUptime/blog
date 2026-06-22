@@ -33,6 +33,7 @@ import json
 import uuid
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional, Dict, List, Callable, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -131,9 +132,8 @@ class JobScheduler:
         pipe.hset(f"job:{job_id}", mapping=job.to_dict())
 
         # Add to scheduled jobs sorted set
-        # Score combines timestamp and priority for ordering
-        score = scheduled_at - (priority / 1000)  # Higher priority = lower score
-        pipe.zadd(self.SCHEDULED_JOBS_KEY, {job_id: score})
+        # Use the timestamp as the score so delayed jobs never become due early.
+        pipe.zadd(self.SCHEDULED_JOBS_KEY, {job_id: scheduled_at})
 
         pipe.execute()
 
@@ -171,13 +171,28 @@ class JobScheduler:
         now = time.time()
 
         # Get jobs with score <= now
-        return r.zrangebyscore(
+        job_ids = r.zrangebyscore(
             self.SCHEDULED_JOBS_KEY,
             "-inf",
             now,
             start=0,
             num=limit
         )
+        if len(job_ids) <= 1:
+            return job_ids
+
+        pipe = r.pipeline()
+        for job_id in job_ids:
+            pipe.hget(f"job:{job_id}", "priority")
+        priorities = pipe.execute()
+
+        return [
+            job_id for job_id, _ in sorted(
+                zip(job_ids, priorities),
+                key=lambda item: int(item[1] or 0),
+                reverse=True
+            )
+        ]
 
     def claim_job(self, job_id: str, worker_id: str) -> Optional[Job]:
         """Atomically claim a job for processing."""
@@ -447,7 +462,8 @@ class RecurringJobScheduler:
                              payload: Dict, cron_expression: str,
                              timezone: str = "UTC") -> Dict:
         """Create a recurring job with cron schedule."""
-        now = datetime.now()
+        tz = ZoneInfo(timezone)
+        now = datetime.now(tz)
 
         # Validate cron expression
         try:
@@ -476,13 +492,10 @@ class RecurringJobScheduler:
         # Add to recurring jobs set
         pipe.sadd(self.RECURRING_JOBS_KEY, job_id)
 
-        # Schedule the first instance
-        pipe.zadd(
-            JobScheduler.SCHEDULED_JOBS_KEY,
-            {f"{job_id}:{int(next_run.timestamp())}": next_run.timestamp()}
-        )
-
         pipe.execute()
+
+        # Schedule the first instance with a complete job record.
+        self.scheduler.schedule_job(job_type, payload, run_at=next_run)
 
         return {
             "job_id": job_id,
@@ -492,7 +505,8 @@ class RecurringJobScheduler:
 
     def update_recurring_job(self, job_id: str, **updates) -> bool:
         """Update a recurring job's configuration."""
-        if not r.exists(f"recurring:{job_id}"):
+        data = r.hgetall(f"recurring:{job_id}")
+        if not data:
             return False
 
         if "payload" in updates:
@@ -500,7 +514,8 @@ class RecurringJobScheduler:
 
         if "cron_expression" in updates:
             # Recalculate next run
-            now = datetime.now()
+            tz = ZoneInfo(updates.get("timezone", data.get("timezone", "UTC")))
+            now = datetime.now(tz)
             cron = croniter(updates["cron_expression"], now)
             updates["next_run"] = cron.get_next(datetime).timestamp()
 
@@ -582,7 +597,8 @@ class RecurringJobScheduler:
                 )
 
                 # Calculate next run time
-                cron = croniter(data["cron_expression"], datetime.fromtimestamp(now))
+                tz = ZoneInfo(data.get("timezone", "UTC"))
+                cron = croniter(data["cron_expression"], datetime.fromtimestamp(now, tz))
                 next_run_time = cron.get_next(datetime)
 
                 # Update recurring job

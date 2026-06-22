@@ -39,7 +39,7 @@ flowchart TD
 
 Start with a template that guides toward useful outcomes:
 
-```markdown
+````markdown
 # Post-Mortem: [Incident Title]
 
 **Incident ID:** INC-XXXX
@@ -184,12 +184,12 @@ full rollout.
 
 ### Relevant Logs
 
-```
+```text
 2026-01-24T14:15:23Z ERROR [auth-service] NullPointerException in SessionValidator
   at com.company.auth.SessionValidator.validate(SessionValidator.java:45)
   at com.company.auth.AuthController.login(AuthController.java:78)
 Caused by: token.user_id is null for token abc123...
-```text
+```
 
 ### Relevant Metrics
 
@@ -198,7 +198,7 @@ Caused by: token.user_id is null for token abc123...
 ### Related Incidents
 
 - INC-892: Similar issue with legacy user IDs (2025-06-15)
-```
+````
 
 ## Automate Post-Mortem Creation
 
@@ -209,7 +209,7 @@ Make it easy to start a post-mortem:
 
 # Automatically create post-mortem document from incident data
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 class PostMortemGenerator:
@@ -372,8 +372,9 @@ All times in UTC.
             start = datetime.fromisoformat(incident['created_at'].replace('Z', '+00:00'))
             end = datetime.fromisoformat(incident['resolved_at'].replace('Z', '+00:00'))
             delta = end - start
-            hours = delta.seconds // 3600
-            minutes = (delta.seconds % 3600) // 60
+            total_seconds = int(delta.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
             return f"{hours} hours {minutes} minutes"
         return "[Ongoing]"
 
@@ -456,6 +457,8 @@ flowchart LR
 # action_item_tracker.py
 # Ensure post-mortem action items get completed
 
+from datetime import datetime
+
 class ActionItemTracker:
     def __init__(self, jira_client, slack_client):
         self.jira = jira_client
@@ -509,7 +512,9 @@ class ActionItemTracker:
         for owner, owner_items in by_owner.items():
             message += f"*@{owner}* ({len(owner_items)} items):\n"
             for item in owner_items:
-                days_overdue = (datetime.now() - item['due_date']).days
+                due_date = self._parse_datetime(item['due_date'])
+                now = datetime.now(due_date.tzinfo) if due_date.tzinfo else datetime.now()
+                days_overdue = (now - due_date).days
                 message += f"  - {item['key']}: {item['summary']} ({days_overdue}d overdue)\n"
             message += "\n"
 
@@ -523,7 +528,10 @@ class ActionItemTracker:
         )
 
         completed = [i for i in all_items if i['status'] == 'Done']
-        on_time = [i for i in completed if i['resolved_date'] <= i['due_date']]
+        on_time = [
+            i for i in completed
+            if self._parse_datetime(i['resolved_date']) <= self._parse_datetime(i['due_date'])
+        ]
 
         return {
             'total': len(all_items),
@@ -532,6 +540,27 @@ class ActionItemTracker:
             'on_time_rate': len(on_time) / len(completed) if completed else 0,
             'avg_days_to_complete': self._avg_completion_time(completed)
         }
+
+    def _avg_completion_time(self, items):
+        """Calculate average days from creation to resolution"""
+
+        if not items:
+            return 0
+
+        durations = []
+        for item in items:
+            created = self._parse_datetime(item['created'])
+            resolved = self._parse_datetime(item['resolved_date'])
+            durations.append((resolved - created).days)
+
+        return sum(durations) / len(durations)
+
+    def _parse_datetime(self, value):
+        """Parse Jira date or datetime values"""
+
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
 ```
 
 ## Run Effective Post-Mortem Meetings

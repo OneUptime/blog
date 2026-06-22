@@ -68,9 +68,8 @@ az group list --query "[].name" --output table
 # Check if specific resource group exists
 az group exists --name mygroup
 
-# Common typo: case sensitivity matters sometimes
-# "MyResourceGroup" vs "myresourcegroup"
-az group show --name MyResourceGroup 2>&1 || az group show --name myresourcegroup
+# Resource group names are case-insensitive, but returned casing may differ
+az group show --name myresourcegroup
 ```
 
 ## Cause 3: Resource Name Typo
@@ -133,13 +132,13 @@ az keyvault purge --name myvault
 ### Storage Account Recovery
 
 ```bash
-# Check if storage account was recently deleted
-# (Storage accounts can sometimes be recovered within 14 days)
+# Confirm no active storage account already uses the name
 az storage account list \
   --query "[?name=='mystorageaccount']" \
   --output table
 
-# If you need to recreate with the same name, wait or use a different name
+# Deleted storage accounts can sometimes be recovered within 14 days from the Azure portal
+# If you need to recreate with the same name and recovery is not available, use a different name
 ```
 
 ### App Configuration Soft Delete
@@ -157,7 +156,7 @@ az appconfig purge --name myconfig --location eastus
 
 ## Cause 6: Cross-Region Issues
 
-Some resources are regional and won't be found if you're looking in the wrong region.
+Most ARM resource lookups use subscription, resource group, and name rather than location. Region becomes relevant for location-scoped operations, including some deleted-resource recovery commands.
 
 ```bash
 # Check resource's actual location
@@ -165,7 +164,7 @@ az resource list \
   --query "[?name=='myresource'].{Name:name, Location:location}" \
   --output table
 
-# Some commands require location parameter
+# Normal App Configuration lookup uses name and resource group, not location
 az appconfig show \
   --name myconfig \
   --resource-group mygroup

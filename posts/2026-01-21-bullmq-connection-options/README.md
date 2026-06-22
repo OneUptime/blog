@@ -70,7 +70,7 @@ const secureQueue = new Queue('secure-queue', {
 For optimal resource usage, share connections across queues and workers:
 
 ```typescript
-import { Queue, Worker, QueueEvents } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 // Create a shared connection factory
@@ -79,9 +79,8 @@ function createConnection(): Redis {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     password: process.env.REDIS_PASSWORD,
-    // Critical settings for BullMQ
+    // Required when this connection is passed to Worker instances
     maxRetriesPerRequest: null,
-    enableReadyCheck: false,
   });
 }
 
@@ -107,7 +106,7 @@ const notificationWorker = new Worker('notification', async (job) => {
 
 ## Connection Pool Configuration
 
-For high-throughput applications, configure connection pooling:
+For applications with strict connection limits, create a small set of reusable connections:
 
 ```typescript
 import { Queue, Worker } from 'bullmq';
@@ -243,6 +242,7 @@ For high availability with automatic failover:
 ```typescript
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
+import * as fs from 'fs';
 
 // Sentinel connection
 const sentinelConnection = new Redis({
@@ -267,8 +267,8 @@ sentinelConnection.on('connect', () => {
   console.log('Connected to Redis via Sentinel');
 });
 
-sentinelConnection.on('+switch-master', (master) => {
-  console.log('Sentinel switched to new master:', master);
+sentinelConnection.on('reconnecting', () => {
+  console.log('Reconnecting to Redis via Sentinel');
 });
 
 sentinelConnection.on('error', (error) => {
@@ -293,6 +293,7 @@ const secureSentinelConnection = new Redis({
   tls: {
     ca: fs.readFileSync('/path/to/ca.crt'),
   },
+  enableTLSForSentinelMode: true,
   sentinelTLS: {
     ca: fs.readFileSync('/path/to/sentinel-ca.crt'),
   },
@@ -308,6 +309,7 @@ For horizontal scaling with Redis Cluster:
 ```typescript
 import { Queue, Worker } from 'bullmq';
 import { Cluster } from 'ioredis';
+import * as fs from 'fs';
 
 // Redis Cluster connection
 const clusterConnection = new Cluster(
@@ -327,7 +329,7 @@ const clusterConnection = new Cluster(
       return Math.min(times * 100, 3000);
     },
     enableOfflineQueue: true,
-    scaleReads: 'slave', // Read from replicas
+    scaleReads: 'master', // Keep BullMQ reads on masters for consistent queue state
   }
 );
 
@@ -349,8 +351,8 @@ clusterConnection.on('-node', (node) => {
 });
 
 // Create queue with cluster connection
-// Note: BullMQ requires all keys for a queue to be on the same node
-// Use hash tags to ensure this
+// Note: BullMQ requires all keys for a queue to be in the same hash slot.
+// Use a hash tag in the queue name or prefix to ensure this.
 const clusterQueue = new Queue('{my-app}:jobs', {
   connection: clusterConnection,
 });
@@ -656,12 +658,12 @@ const connection = new Redis({
   // Socket keepalive
   keepAlive: 30000, // 30 seconds
 
-  // Disable offline queue to fail fast
+  // Disable offline queue to fail fast for producer/client commands.
+  // Do not use this on Worker connections that must keep blocking commands alive.
   enableOfflineQueue: false,
 
-  // BullMQ required settings
+  // Required when this connection is passed to Worker instances
   maxRetriesPerRequest: null,
-  enableReadyCheck: false,
 
   // Auto-reconnect settings
   autoResubscribe: true,
@@ -692,13 +694,13 @@ const result = await executeWithTimeout(
 
 ## Best Practices
 
-1. **Always set `maxRetriesPerRequest: null`** - This is required for BullMQ to handle blocking commands properly.
+1. **Set `maxRetriesPerRequest: null` for Worker connections** - BullMQ requires this when you pass a manually created ioredis connection to a Worker so blocking commands can keep retrying. For producer-only Queue connections, use the default retry limit or a small number if callers should fail fast.
 
-2. **Set `enableReadyCheck: false`** - Prevents issues with Redis Cluster and Sentinel.
+2. **Be deliberate with `enableReadyCheck`** - The ioredis default waits until Redis reports it is ready. Disable it only when your Redis deployment or provider requires that behavior.
 
 3. **Share connections wisely** - Share connections within the same process but use separate connection instances for queues and workers.
 
-4. **Use connection pooling for high throughput** - Create multiple connections for applications processing many jobs.
+4. **Use a bounded set of connections when needed** - Create multiple reusable connections only when you have measured contention or need to stay within provider connection limits.
 
 5. **Configure retry strategies** - Implement exponential backoff with maximum retry limits.
 

@@ -21,7 +21,7 @@ Partitioning is fundamental to Kafka's scalability and performance. Proper parti
 
 ### Default Partitioning Behavior
 
-Without a key, Kafka uses sticky partitioning (batching to same partition). With a key, it uses `murmur2(key) % numPartitions`.
+Without a key, Kafka uses sticky partitioning (batching to the same partition). With a key, it uses `toPositive(murmur2(keyBytes)) % numPartitions`.
 
 ## Key Design Strategies
 
@@ -95,13 +95,13 @@ public class CustomPartitioner implements Partitioner {
         int numPartitions = partitions.size();
 
         if (keyBytes == null) {
-            // Round-robin for null keys
+            // Random partition for null keys
             return (int) (Math.random() * numPartitions);
         }
 
         // Custom partitioning logic
         String keyString = (String) key;
-        return Math.abs(keyString.hashCode() % numPartitions);
+        return Math.floorMod(keyString.hashCode(), numPartitions);
     }
 
     @Override
@@ -136,6 +136,7 @@ public class PriorityPartitioner implements Partitioner {
 
         List<PartitionInfo> partitions = cluster.partitionsForTopic(topic);
         totalPartitions = partitions.size();
+        int reservedPartitions = Math.min(highPriorityPartitions, totalPartitions);
 
         if (key == null) {
             return (int) (Math.random() * totalPartitions);
@@ -146,13 +147,17 @@ public class PriorityPartitioner implements Partitioner {
         // High priority messages go to reserved partitions
         if (keyString.startsWith("HIGH:")) {
             String actualKey = keyString.substring(5);
-            return Math.abs(actualKey.hashCode() % highPriorityPartitions);
+            return Math.floorMod(actualKey.hashCode(), reservedPartitions);
         }
 
         // Normal messages go to remaining partitions
-        int normalPartitions = totalPartitions - highPriorityPartitions;
-        return highPriorityPartitions +
-            Math.abs(keyString.hashCode() % normalPartitions);
+        int normalPartitions = totalPartitions - reservedPartitions;
+        if (normalPartitions == 0) {
+            return Math.floorMod(keyString.hashCode(), totalPartitions);
+        }
+
+        return reservedPartitions +
+            Math.floorMod(keyString.hashCode(), normalPartitions);
     }
 
     @Override
@@ -183,8 +188,9 @@ public class RegionPartitioner implements Partitioner {
     public int partition(String topic, Object key, byte[] keyBytes,
                         Object value, byte[] valueBytes, Cluster cluster) {
 
+        int numPartitions = cluster.partitionsForTopic(topic).size();
+
         if (key == null) {
-            int numPartitions = cluster.partitionsForTopic(topic).size();
             return (int) (Math.random() * numPartitions);
         }
 
@@ -197,14 +203,23 @@ public class RegionPartitioner implements Partitioner {
 
             List<Integer> partitions = regionPartitions.get(region);
             if (partitions != null) {
-                int index = Math.abs(entityId.hashCode() % partitions.size());
-                return partitions.get(index);
+                List<Integer> validPartitions = new ArrayList<>();
+                for (Integer partition : partitions) {
+                    if (partition < numPartitions) {
+                        validPartitions.add(partition);
+                    }
+                }
+
+                if (!validPartitions.isEmpty()) {
+                    int index = Math.floorMod(entityId.hashCode(),
+                        validPartitions.size());
+                    return validPartitions.get(index);
+                }
             }
         }
 
         // Default partition
-        return Math.abs(keyString.hashCode() %
-            cluster.partitionsForTopic(topic).size());
+        return Math.floorMod(keyString.hashCode(), numPartitions);
     }
 
     @Override
@@ -253,7 +268,13 @@ public class CustomPartitionerProducer {
 
 ```python
 from confluent_kafka import Producer
+import hashlib
 import json
+
+def stable_hash(value):
+    value_bytes = value.encode('utf-8') if isinstance(value, str) else value
+    return int.from_bytes(hashlib.sha256(value_bytes).digest()[:8], 'big')
+
 
 def custom_partitioner(key, all_partitions, available_partitions):
     """Custom partitioner function."""
@@ -264,8 +285,8 @@ def custom_partitioner(key, all_partitions, available_partitions):
 
     # Hash-based partitioning
     key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-    partition = abs(hash(key_str)) % len(all_partitions)
-    return partition
+    partition_index = stable_hash(key_str) % len(all_partitions)
+    return all_partitions[partition_index]
 
 
 def create_producer_with_partitioner():
@@ -320,7 +341,13 @@ if __name__ == '__main__':
 
 ```python
 from confluent_kafka import Producer
+import hashlib
 import json
+
+def stable_hash(value):
+    value_bytes = value.encode('utf-8') if isinstance(value, str) else value
+    return int.from_bytes(hashlib.sha256(value_bytes).digest()[:8], 'big')
+
 
 class PriorityPartitioner:
     def __init__(self, high_priority_partitions=3):
@@ -328,6 +355,10 @@ class PriorityPartitioner:
 
     def partition(self, key, all_partitions, available_partitions):
         total_partitions = len(all_partitions)
+        high_priority_partitions = min(
+            self.high_priority_partitions,
+            total_partitions
+        )
 
         if key is None:
             import random
@@ -338,12 +369,18 @@ class PriorityPartitioner:
         if key_str.startswith('HIGH:'):
             # High priority - use first N partitions
             actual_key = key_str[5:]
-            return abs(hash(actual_key)) % self.high_priority_partitions
+            partition_index = stable_hash(actual_key) % high_priority_partitions
+            return all_partitions[partition_index]
         else:
             # Normal priority - use remaining partitions
-            normal_partitions = total_partitions - self.high_priority_partitions
-            return self.high_priority_partitions + \
-                   abs(hash(key_str)) % normal_partitions
+            normal_partitions = total_partitions - high_priority_partitions
+            if normal_partitions == 0:
+                partition_index = stable_hash(key_str) % total_partitions
+                return all_partitions[partition_index]
+
+            partition_index = high_priority_partitions + \
+                stable_hash(key_str) % normal_partitions
+            return all_partitions[partition_index]
 
 
 class PartitionedProducer:
@@ -401,7 +438,7 @@ if __name__ == '__main__':
 ## Node.js Custom Partitioner
 
 ```javascript
-const { Kafka, Partitioners } = require('kafkajs');
+const { Kafka } = require('kafkajs');
 
 // Custom partitioner
 const regionPartitioner = () => {
@@ -412,23 +449,25 @@ const regionPartitioner = () => {
   };
 
   return ({ topic, partitionMetadata, message }) => {
-    const numPartitions = partitionMetadata.length;
+    const partitionIds = partitionMetadata.map(({ partitionId }) => partitionId);
 
     if (!message.key) {
-      return Math.floor(Math.random() * numPartitions);
+      return partitionIds[Math.floor(Math.random() * partitionIds.length)];
     }
 
     const key = message.key.toString();
     const [region, entityId] = key.split(':');
 
-    const partitions = regionMapping[region];
-    if (partitions) {
+    const partitions = (regionMapping[region] || [])
+      .filter((partition) => partitionIds.includes(partition));
+    if (partitions.length > 0) {
       const hash = hashCode(entityId || key);
       const index = Math.abs(hash) % partitions.length;
       return partitions[index];
     }
 
-    return Math.abs(hashCode(key)) % numPartitions;
+    const index = Math.abs(hashCode(key)) % partitionIds.length;
+    return partitionIds[index];
   };
 };
 
@@ -549,6 +588,11 @@ public class PartitionMonitor {
 ### Mitigating Hotspots
 
 ```java
+import org.apache.kafka.clients.producer.Partitioner;
+import org.apache.kafka.common.Cluster;
+import java.util.Map;
+import java.util.Random;
+
 // Add random suffix to spread load
 public class SpreadPartitioner implements Partitioner {
     private static final int SPREAD_FACTOR = 10;
@@ -565,7 +609,7 @@ public class SpreadPartitioner implements Partitioner {
         String keyStr = (String) key;
         String spreadKey = keyStr + "-" + (System.nanoTime() % SPREAD_FACTOR);
 
-        return Math.abs(spreadKey.hashCode() %
+        return Math.floorMod(spreadKey.hashCode(),
             cluster.partitionsForTopic(topic).size());
     }
 

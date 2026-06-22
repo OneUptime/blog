@@ -426,20 +426,47 @@ groups:
         data:
           - refId: A
             datasourceUid: loki
+            relativeTimeRange:
+              from: 600
+              to: 0
             model:
+              datasource:
+                type: loki
+                uid: loki
               expr: sum(rate({namespace="production"} |= "error" [5m]))
+              intervalMs: 1000
+              maxDataPoints: 43200
               queryType: range
+              refId: A
           - refId: B
             datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
             model:
+              datasource:
+                type: __expr__
+                uid: __expr__
               expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
               type: reduce
               reducer: last
           - refId: C
             datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
             model:
-              expression: B > 10
-              type: threshold
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: '$$B > 10'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: math
         for: 5m
         labels:
           severity: critical
@@ -469,11 +496,11 @@ annotations:
 Use query hints to improve performance:
 
 ```logql
-# Limit time range
-{namespace="production"} [1h]
+# Limit time range in metric queries
+count_over_time({namespace="production"}[1h])
 
-# Limit results
-{namespace="production"} | limit 1000
+# Limit results with Grafana Explore's line limit setting
+{namespace="production"}
 
 # Use specific labels (avoid regex when possible)
 {namespace="production", app="api-server"}  # Good

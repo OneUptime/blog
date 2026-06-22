@@ -12,13 +12,13 @@ Query performance directly impacts user experience and system resources. Slow qu
 
 ## Understanding Query Execution
 
-Elasticsearch queries go through several phases:
+Elasticsearch search requests commonly include several kinds of work:
 
 1. **Query phase**: Find matching documents and calculate scores
 2. **Fetch phase**: Retrieve document content for results
-3. **Aggregation phase**: Calculate aggregations if requested
+3. **Aggregation work**: Calculate aggregations if requested
 
-Each phase can be optimized independently.
+Each part can be optimized independently.
 
 ## Query Profiling
 
@@ -96,7 +96,7 @@ curl -X GET "https://localhost:9200/products/_explain/1" \
 
 ### Use Filters for Non-Scoring Queries
 
-Filters are cached and skip scoring:
+Filters skip scoring and frequently used filters are eligible for caching:
 
 ```bash
 # Bad: Using query context for exact match
@@ -251,18 +251,26 @@ curl -X GET "https://localhost:9200/products/_search" \
 # Better: Pre-calculate and index the value
 ```
 
-### 5. Use Query Caching
+### 5. Use Request Caching for Repeated Aggregations
+
+The shard request cache is most useful for repeated `size: 0` searches, such as dashboards and aggregation queries:
 
 ```bash
 curl -X GET "https://localhost:9200/products/_search?request_cache=true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
+    "size": 0,
     "query": {
       "bool": {
         "filter": [
           { "term": { "category": "electronics" } }
         ]
+      }
+    },
+    "aggs": {
+      "by_status": {
+        "terms": { "field": "status" }
       }
     }
   }'
@@ -286,6 +294,8 @@ curl -X GET "https://localhost:9200/products/_search" \
 
 ### Use search_after for Deep Results
 
+When you are not using PIT, include a stable tiebreaker field with a unique value for each document, such as a keyword field that stores a copy of the document ID.
+
 ```bash
 # First page
 curl -X GET "https://localhost:9200/products/_search" \
@@ -295,7 +305,7 @@ curl -X GET "https://localhost:9200/products/_search" \
     "size": 100,
     "sort": [
       { "created_at": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
     "query": { "match_all": {} }
   }'
@@ -308,7 +318,7 @@ curl -X GET "https://localhost:9200/products/_search" \
     "size": 100,
     "sort": [
       { "created_at": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
     "search_after": ["2024-01-15T10:30:00", "abc123"],
     "query": { "match_all": {} }
@@ -333,8 +343,7 @@ curl -X GET "https://localhost:9200/_search" \
     },
     "size": 100,
     "sort": [
-      { "created_at": "desc" },
-      { "_id": "asc" }
+      { "created_at": "desc" }
     ],
     "query": { "match_all": {} }
   }'
@@ -449,7 +458,7 @@ curl -X GET "https://localhost:9200/products/_search" \
 
 ### Use Stored Fields
 
-For frequently retrieved small fields:
+For explicitly stored fields only. This requires `store: true` in the field mapping; otherwise, prefer source filtering or `docvalue_fields` for fields that support doc values.
 
 ```bash
 curl -X GET "https://localhost:9200/products/_search" \

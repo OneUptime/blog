@@ -99,7 +99,7 @@ def get_with_lock(
 
             # Cache the result
             if value is not None:
-                redis_client.setex(key, ttl, json.dumps(value, default=str))
+                redis_client.set(key, json.dumps(value, default=str), ex=ttl)
 
             return value
         finally:
@@ -107,7 +107,12 @@ def get_with_lock(
             release_lock(lock_key, lock_value)
     else:
         # Lock not acquired - wait for cache to be populated
-        return wait_for_cache(key, wait_timeout)
+        cached_value = wait_for_cache(key, wait_timeout)
+        if cached_value is not None:
+            return cached_value
+
+        # Timeout - fall back to fetching directly
+        return fetch_fn()
 
 def release_lock(lock_key: str, lock_value: str):
     """Release lock only if we own it (atomic operation)"""
@@ -131,7 +136,7 @@ def wait_for_cache(key: str, timeout: float) -> Optional[Any]:
             return json.loads(cached)
         time.sleep(poll_interval)
 
-    # Timeout - fall back to fetching directly
+    # Timeout - caller can fall back to fetching directly
     return None
 
 # Usage
@@ -182,7 +187,7 @@ def get_with_lock_retry(
                 # Fetch and cache
                 value = fetch_fn()
                 if value is not None:
-                    redis_client.setex(key, ttl, json.dumps(value, default=str))
+                    redis_client.set(key, json.dumps(value, default=str), ex=ttl)
                 return value
             finally:
                 release_lock(lock_key, lock_value)
@@ -202,9 +207,11 @@ def get_with_lock_retry(
 ### XFetch Algorithm
 
 ```python
+import json
 import math
 import random
 import time
+from typing import Any, Optional, Callable
 
 def get_with_per(
     key: str,
@@ -233,10 +240,10 @@ def get_with_per(
         remaining = expiry - time.time()
 
         # XFetch formula: refresh early with probability that increases as expiry approaches
-        # P(refresh) = exp(-remaining / (beta * delta))
-        threshold = delta * beta * math.log(random.random())
+        # Refresh when: now - (delta * beta * log(rand)) >= expiry
+        early_refresh_window = -delta * beta * math.log(max(random.random(), 1e-9))
 
-        if remaining < threshold or remaining <= 0:
+        if remaining <= early_refresh_window or remaining <= 0:
             # Early refresh - recompute in foreground
             return refresh_cache(key, fetch_fn, ttl)
 
@@ -257,7 +264,7 @@ def refresh_cache(key: str, fetch_fn: Callable, ttl: int) -> Any:
             'delta': delta,
             'expiry': time.time() + ttl
         }
-        redis_client.setex(key, ttl, json.dumps(data, default=str))
+        redis_client.set(key, json.dumps(data, default=str), ex=ttl)
 
     return value
 
@@ -279,6 +286,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=10)
 refreshing_keys = set()
+refreshing_keys_lock = threading.Lock()
 
 def get_with_background_refresh(
     key: str,
@@ -311,16 +319,18 @@ def get_with_background_refresh(
 
 def trigger_background_refresh(key: str, fetch_fn: Callable, ttl: int):
     """Trigger async refresh if not already in progress"""
-    if key in refreshing_keys:
-        return
+    with refreshing_keys_lock:
+        if key in refreshing_keys:
+            return
 
-    refreshing_keys.add(key)
+        refreshing_keys.add(key)
 
     def refresh():
         try:
             fetch_and_cache(key, fetch_fn, ttl)
         finally:
-            refreshing_keys.discard(key)
+            with refreshing_keys_lock:
+                refreshing_keys.discard(key)
 
     executor.submit(refresh)
 
@@ -346,7 +356,7 @@ def fetch_and_cache(key: str, fetch_fn: Callable, ttl: int) -> Any:
 
 ```python
 import threading
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Optional, Callable
 from dataclasses import dataclass
 import time
 
@@ -354,8 +364,8 @@ import time
 class Call:
     """Represents an in-flight request"""
     result: Any = None
-    error: Exception = None
-    done: threading.Event = None
+    error: Optional[BaseException] = None
+    done: Optional[threading.Event] = None
     count: int = 0
 
 class Singleflight:
@@ -380,14 +390,16 @@ class Singleflight:
                 # Request already in-flight - wait for it
                 call = self.calls[key]
                 call.count += 1
+                leader = False
             else:
                 # First request - create new call
                 call = Call(done=threading.Event())
                 self.calls[key] = call
                 call.count = 1
+                leader = True
 
         # If we're not the first, wait for result
-        if call.count > 1:
+        if not leader:
             call.done.wait()
             if call.error:
                 raise call.error
@@ -429,7 +441,7 @@ def get_with_singleflight(key: str, fetch_fn: Callable, ttl: int = 300) -> Any:
 
         value = fetch_fn()
         if value is not None:
-            redis_client.setex(key, ttl, json.dumps(value, default=str))
+            redis_client.set(key, json.dumps(value, default=str), ex=ttl)
         return value
 
     return sf.do(key, fetch_and_cache)
@@ -486,7 +498,7 @@ async function getWithSingleflight(key, fetchFn, ttl = 300) {
 
         const value = await fetchFn();
         if (value !== null && value !== undefined) {
-            await redis.setEx(key, ttl, JSON.stringify(value));
+            await redis.set(key, JSON.stringify(value), { EX: ttl });
         }
         return value;
     });
@@ -500,9 +512,10 @@ async function getWithSingleflight(key, fetchFn, ttl = 300) {
 ### Proactive Cache Refresh
 
 ```python
-import schedule
+import json
+import threading
 import time
-from typing import List, Callable
+from typing import Any, Optional, Dict, Callable
 
 class ProactiveCacheWarmer:
     """
@@ -548,10 +561,10 @@ class ProactiveCacheWarmer:
         try:
             value = config['fetch_fn']()
             if value is not None:
-                self.redis.setex(
+                self.redis.set(
                     key,
-                    config['ttl'],
-                    json.dumps(value, default=str)
+                    json.dumps(value, default=str),
+                    ex=config['ttl']
                 )
         except Exception as e:
             print(f"Error refreshing {key}: {e}")
@@ -604,7 +617,9 @@ featured = warmer.get("homepage:featured")
 
 ```python
 import asyncio
+import json
 from asyncio import Semaphore
+from typing import Any, Dict, Callable
 
 class ThrottledCache:
     """
@@ -660,10 +675,10 @@ class ThrottledCache:
                 value = await fetch_fn()
                 if value is not None:
                     await asyncio.to_thread(
-                        self.redis.setex,
+                        self.redis.set,
                         key,
-                        ttl,
-                        json.dumps(value, default=str)
+                        json.dumps(value, default=str),
+                        ex=ttl
                     )
                 return value
 ```
@@ -675,6 +690,13 @@ class ThrottledCache:
 ### Production-Ready Implementation
 
 ```python
+import json
+import math
+import random
+import threading
+import time
+from typing import Any, Callable
+
 class StampedeResistantCache:
     """
     Combines multiple stampede prevention strategies:
@@ -688,6 +710,7 @@ class StampedeResistantCache:
         self.redis = redis_client
         self.singleflight = Singleflight()
         self.refreshing = set()
+        self.refreshing_lock = threading.Lock()
 
     def get(
         self,
@@ -712,9 +735,9 @@ class StampedeResistantCache:
             if age < ttl:
                 # Check for probabilistic early refresh
                 remaining = ttl - age
-                threshold = delta * beta * math.log(random.random())
+                early_refresh_window = -delta * beta * math.log(max(random.random(), 1e-9))
 
-                if remaining > threshold:
+                if remaining > early_refresh_window:
                     return value
 
                 # Early refresh - do in background
@@ -750,16 +773,18 @@ class StampedeResistantCache:
 
     def _background_refresh(self, key: str, fetch_fn: Callable, ttl: int):
         """Refresh in background thread"""
-        if key in self.refreshing:
-            return
+        with self.refreshing_lock:
+            if key in self.refreshing:
+                return
 
-        self.refreshing.add(key)
+            self.refreshing.add(key)
 
         def refresh():
             try:
                 self._fetch_and_cache(key, fetch_fn, ttl)
             finally:
-                self.refreshing.discard(key)
+                with self.refreshing_lock:
+                    self.refreshing.discard(key)
 
         threading.Thread(target=refresh, daemon=True).start()
 

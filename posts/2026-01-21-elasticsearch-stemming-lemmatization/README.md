@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing stemming and lemmatization in
 
 ---
 
-Stemming and lemmatization help search match different forms of the same word. When a user searches for "running", they should also find documents containing "run", "runs", and "ran". Elasticsearch provides multiple stemming algorithms and options for root word matching. This guide covers implementing effective stemming strategies.
+Stemming and lemmatization help search match different forms of the same word. When a user searches for "running", they should also find documents containing "run" and "runs"; with custom overrides, they can also find irregular forms such as "ran". Elasticsearch provides multiple stemming algorithms and options for root word matching. This guide covers implementing effective stemming strategies.
 
 ## Stemming vs Lemmatization
 
@@ -26,7 +26,7 @@ Elasticsearch primarily uses stemming, which is faster and sufficient for most s
 
 ## Built-in Language Analyzers with Stemming
 
-Language analyzers include stemming by default:
+Many language analyzers include stemming by default:
 
 ```bash
 curl -X POST "https://localhost:9200/_analyze" \
@@ -38,7 +38,7 @@ curl -X POST "https://localhost:9200/_analyze" \
   }'
 ```
 
-Output tokens: `[runner, run, quick]`
+Output tokens: `[runner, run, quickli]`
 
 ## Stemmer Token Filters
 
@@ -110,10 +110,10 @@ curl -X PUT "https://localhost:9200/articles" \
 
 Supported Snowball languages:
 - Arabic, Armenian, Basque, Catalan, Danish
-- Dutch, English, Finnish, French, German
-- German2, Hungarian, Italian, Kp, Lithuanian
+- Dutch, English, Estonian, Finnish, French, German
+- German2, Hungarian, Irish, Italian, Kp, Lithuanian
 - Lovins, Norwegian, Porter, Portuguese, Romanian
-- Russian, Spanish, Swedish, Turkish
+- Russian, Serbian, Spanish, Swedish, Turkish
 
 ### Stemmer Filter
 
@@ -147,7 +147,8 @@ curl -X PUT "https://localhost:9200/articles" \
 Available stemmer languages:
 - arabic, armenian, basque, bengali, brazilian
 - bulgarian, catalan, czech, danish, dutch
-- dutch_kp, english, light_english, minimal_english
+- dutch_kp (deprecated in 8.16), english, light_english, lovins (deprecated in 8.16)
+- minimal_english, estonian
 - porter2, possessive_english, finnish, light_finnish
 - french, light_french, minimal_french, galician
 - minimal_galician, german, german2, light_german
@@ -155,9 +156,11 @@ Available stemmer languages:
 - light_hungarian, indonesian, irish, italian
 - light_italian, sorani, latvian, lithuanian
 - norwegian, light_norwegian, minimal_norwegian
+- light_nynorsk, minimal_nynorsk, persian
 - portuguese, light_portuguese, minimal_portuguese
-- romanian, russian, light_russian, spanish
-- light_spanish, swedish, light_swedish, turkish
+- portuguese_rslp, romanian, russian, light_russian
+- serbian, spanish, light_spanish, spanish_plural
+- swedish, light_swedish, turkish
 
 ### Comparing Stemmers
 
@@ -390,6 +393,10 @@ curl -X PUT "https://localhost:9200/articles" \
           "keyword_pattern": {
             "type": "keyword_marker",
             "keywords_pattern": ".*ing$"
+          },
+          "english_stemmer": {
+            "type": "stemmer",
+            "language": "english"
           }
         },
         "analyzer": {

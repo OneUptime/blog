@@ -10,6 +10,8 @@ Description: A comprehensive guide to diagnosing and fixing NotLeaderForPartitio
 
 > The `NotLeaderForPartitionException` is one of the most common errors encountered when working with Apache Kafka. This exception occurs when a producer or consumer tries to communicate with a broker that is no longer the leader for a specific partition. Understanding why this happens and how to handle it properly is essential for building resilient Kafka applications.
 
+In Kafka 2.6 and later, `NotLeaderForPartitionException` is deprecated in the Java client and replaced by `NotLeaderOrFollowerException`, but the underlying recovery pattern is the same.
+
 This guide covers the root causes of this exception, immediate fixes, and long-term strategies to prevent it from disrupting your applications.
 
 ---
@@ -90,9 +92,9 @@ public class ResilientKafkaProducer {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
                   StringSerializer.class.getName());
 
-        // CRITICAL: Retry configuration for handling NotLeaderForPartitionException
-        // Number of retries before giving up
-        props.put(ProducerConfig.RETRIES_CONFIG, 3);
+        // CRITICAL: Keep retries enabled for transient metadata errors
+        // Modern Kafka clients default this to Integer.MAX_VALUE; delivery.timeout.ms bounds retries
+        props.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
 
         // Time to wait before retrying (allows metadata refresh)
         props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, 100);
@@ -164,7 +166,7 @@ public class ResilientKafkaConsumer {
 
 ## Best Practices Summary
 
-1. **Always configure retries** - Set `retries` to at least 3 with appropriate backoff
+1. **Keep retries enabled** - Use the default large retry count or another suitably high value with appropriate backoff, and control the total retry time with `delivery.timeout.ms`
 2. **Use idempotent producers** - Enable `enable.idempotence=true` to prevent duplicates during retries
 3. **Monitor leadership changes** - Track partition leadership metrics in your monitoring system
 4. **Set appropriate timeouts** - Balance between fast failure detection and avoiding false positives

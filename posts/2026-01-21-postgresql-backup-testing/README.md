@@ -171,6 +171,9 @@ if [ -f "$CHECKSUM_FILE" ]; then
         exit 2
     fi
 fi
+
+echo "OK: Backup integrity checks passed"
+exit 0
 ```
 
 ### PostgreSQL 13+ Backup Manifest
@@ -267,7 +270,7 @@ exit 0
 #!/bin/bash
 # full_restore_test.sh
 
-set -e
+set -euo pipefail
 
 BACKUP_FILE=$1
 TEST_DB="full_restore_test_$$"
@@ -363,6 +366,7 @@ mkdir -p "$TEST_DIR"
 # Restore backup
 pgbackrest --stanza=$STANZA \
     --pg1-path="$TEST_DIR" \
+    --archive-mode=off \
     --target-action=promote \
     restore
 
@@ -370,7 +374,6 @@ pgbackrest --stanza=$STANZA \
 cat >> "$TEST_DIR/postgresql.conf" << EOF
 port = $TEST_PORT
 unix_socket_directories = '$TEST_DIR'
-archive_mode = off
 EOF
 
 # Start test instance
@@ -408,6 +411,7 @@ APP_USER="myapp"
 APP_CONFIG="/etc/myapp/database.yml"
 
 # Restore backup
+createdb "$TEST_DB"
 pg_restore -d "$TEST_DB" /var/lib/postgresql/backup/latest.dump
 
 # Test application user can connect
@@ -532,6 +536,7 @@ EOF
 # generate_test_report.sh
 
 REPORT_FILE="/var/log/postgresql/backup_test_report_$(date +%Y%m%d).txt"
+BACKUP_FILE="/var/lib/postgresql/backup/latest.dump"
 
 cat > "$REPORT_FILE" << EOF
 PostgreSQL Backup Test Report
@@ -553,11 +558,11 @@ echo "Existence Check:" >> "$REPORT_FILE"
 
 echo "" >> "$REPORT_FILE"
 echo "Integrity Check:" >> "$REPORT_FILE"
-/usr/local/bin/verify_backup_integrity.sh >> "$REPORT_FILE" 2>&1
+/usr/local/bin/verify_backup_integrity.sh "$BACKUP_FILE" >> "$REPORT_FILE" 2>&1
 
 echo "" >> "$REPORT_FILE"
 echo "Restore Test:" >> "$REPORT_FILE"
-/usr/local/bin/full_restore_test.sh >> "$REPORT_FILE" 2>&1
+/usr/local/bin/full_restore_test.sh "$BACKUP_FILE" >> "$REPORT_FILE" 2>&1
 
 # Send report
 mail -s "Backup Test Report - $(hostname)" admin@company.com < "$REPORT_FILE"

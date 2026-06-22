@@ -29,8 +29,9 @@ A single runaway container can consume all available disk space, affecting every
 
 Set log rotation defaults for all containers in the Docker daemon configuration:
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -50,10 +51,7 @@ Options explained:
 Apply the configuration:
 
 ```bash
-# Reload Docker daemon
-sudo systemctl reload docker
-
-# Or restart if reload doesn't apply changes
+# Restart Docker daemon
 sudo systemctl restart docker
 ```
 
@@ -76,8 +74,6 @@ In Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -136,8 +132,9 @@ services:
 
 The `local` driver is optimized for performance with built-in rotation:
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "local",
   "log-opts": {
@@ -161,6 +158,7 @@ services:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
+        fluentd-async: "true"
         tag: "docker.{{.Name}}"
 
   fluentd:
@@ -314,15 +312,14 @@ graph LR
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
     logging:
       driver: fluentd
       options:
-        fluentd-address: "fluentd:24224"
+        fluentd-address: "localhost:24224"
+        fluentd-async: "true"
         tag: "app.{{.Name}}"
 
   fluentd:

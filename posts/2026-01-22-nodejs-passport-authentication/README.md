@@ -13,7 +13,7 @@ Passport.js is the most popular authentication middleware for Node.js. It suppor
 ## Installation
 
 ```bash
-npm install passport passport-local passport-jwt express-session bcrypt
+npm install express passport passport-local passport-jwt express-session bcrypt jsonwebtoken
 ```
 
 ## Basic Setup
@@ -173,7 +173,7 @@ app.post('/logout', (req, res, next) => {
 ## JWT Strategy
 
 ```bash
-npm install passport-jwt
+npm install passport-jwt jsonwebtoken
 ```
 
 ### Configuration
@@ -219,7 +219,11 @@ app.post('/login', (req, res, next) => {
     const token = jwt.sign(
       { sub: user.id },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      {
+        expiresIn: '1h',
+        issuer: 'myapp.com',
+        audience: 'myapp.com',
+      }
     );
     
     res.json({ token, user: { id: user.id, email: user.email } });
@@ -422,11 +426,11 @@ function flexAuth(req, res, next) {
 // Link Google account to existing user
 app.get('/link/google',
   ensureAuthenticated,
-  passport.authorize('google', { scope: ['profile', 'email'] })
+  passport.authorize('google-authz', { scope: ['profile', 'email'] })
 );
 
 app.get('/link/google/callback',
-  passport.authorize('google', { failureRedirect: '/settings' }),
+  passport.authorize('google-authz', { failureRedirect: '/settings' }),
   async (req, res) => {
     // req.account contains the Google profile
     // req.user contains the logged-in user
@@ -456,15 +460,16 @@ passport.use('google-authz', new GoogleStrategy({
 ## Session Store with Redis
 
 ```bash
-npm install connect-redis ioredis
+npm install connect-redis redis
 ```
 
 ```javascript
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
-const Redis = require('ioredis');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
 
-const redisClient = new Redis(process.env.REDIS_URL);
+const redisClient = createClient({ url: process.env.REDIS_URL });
+redisClient.connect().catch(console.error);
 
 app.use(session({
   store: new RedisStore({ client: redisClient }),

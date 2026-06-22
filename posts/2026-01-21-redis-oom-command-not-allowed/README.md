@@ -100,8 +100,11 @@ redis-cli CONFIG SET maxmemory-policy volatile-ttl
 Identify what is consuming memory:
 
 ```bash
-# Use redis-cli with --bigkeys to find large keys
+# Use redis-cli with --bigkeys to find large keys by type/cardinality
 redis-cli --bigkeys
+
+# Use --memkeys when you need memory-size estimates
+redis-cli --memkeys
 
 # Sample output:
 # Biggest string found 'user:session:abc123' has 1048576 bytes
@@ -115,7 +118,7 @@ For more detailed analysis:
 # Memory usage for specific key
 redis-cli MEMORY USAGE mykey
 
-# Memory analysis with sampling
+# Memory diagnostics report
 redis-cli MEMORY DOCTOR
 ```
 
@@ -186,7 +189,7 @@ r = redis.Redis(host='localhost', port=6379)
 # Always set TTL when creating cache keys
 def cache_set(key, value, ttl_seconds=3600):
     """Set a cache key with mandatory TTL"""
-    r.setex(key, ttl_seconds, value)
+    r.set(key, value, ex=ttl_seconds)
 
 # Find keys without TTL
 def find_keys_without_ttl(pattern='*', sample_size=1000):
@@ -293,7 +296,7 @@ def store_user_bad(user_id, data):
     for field, value in data.items():
         r.set(f'user:{user_id}:{field}', value)
 
-# GOOD: Use hash for small objects (ziplist encoding)
+# GOOD: Use hash for small objects (compact listpack encoding in modern Redis)
 def store_user_good(user_id, data):
     r.hset(f'user:{user_id}', mapping=data)
 
@@ -321,6 +324,7 @@ def monitor_memory(host='localhost', port=6379, threshold_percent=80):
 
     while True:
         info = r.info('memory')
+        stats = r.info('stats')
 
         used = info['used_memory']
         maxmem = info.get('maxmemory', 0)
@@ -332,13 +336,13 @@ def monitor_memory(host='localhost', port=6379, threshold_percent=80):
                   f"{maxmem / (1024**3):.2f}GB ({usage_percent:.1f}%)")
 
             if usage_percent >= threshold_percent:
-                alert_high_memory(usage_percent, info)
+                alert_high_memory(usage_percent, info, stats)
         else:
             print(f"Memory: {used / (1024**3):.2f}GB (no limit set)")
 
         time.sleep(60)
 
-def alert_high_memory(usage_percent, info):
+def alert_high_memory(usage_percent, info, stats):
     """Send alert for high memory usage"""
     message = f"""
     Redis Memory Alert!
@@ -347,7 +351,7 @@ def alert_high_memory(usage_percent, info):
     Used Memory: {info['used_memory_human']}
     Peak Memory: {info['used_memory_peak_human']}
     Fragmentation Ratio: {info['mem_fragmentation_ratio']}
-    Evicted Keys: {info.get('evicted_keys', 0)}
+    Evicted Keys: {stats.get('evicted_keys', 0)}
     """
     print(f"ALERT: {message}")
     # Send to your alerting system (PagerDuty, Slack, etc.)
@@ -366,7 +370,7 @@ class RedisCache:
 
     def set(self, key, value, ttl=None):
         ttl = ttl or self.default_ttl
-        self.redis.setex(key, ttl, value)
+        self.redis.set(key, value, ex=ttl)
 
     def get(self, key):
         return self.redis.get(key)

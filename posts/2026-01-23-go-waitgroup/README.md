@@ -129,7 +129,7 @@ for i := 0; i < 3; i++ {
         // work
     }()
 }
-wg.Wait()  // Panic: negative WaitGroup counter
+wg.Wait()  // Extra Done calls can panic: negative WaitGroup counter
 ```
 
 ```go

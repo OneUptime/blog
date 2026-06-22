@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Container, Hybrid, Multi-OS, DevOps
+Tags: Kubernetes, Windows, Container, Hybrid, Multi-OS, DevOps
 
 Description: Learn how to run Windows containers alongside Linux containers in Kubernetes by configuring Windows node pools and deploying Windows workloads.
 
@@ -46,27 +46,26 @@ flowchart TD
 |--------|-------|---------|
 | Control Plane | ✅ Supported | ❌ Not Supported |
 | Worker Nodes | ✅ Supported | ✅ Supported |
-| Container Runtime | containerd, CRI-O | containerd |
-| Networking | All CNIs | Limited CNI support |
-| Storage | All CSI drivers | Limited CSI support |
+| Container Runtime | containerd, CRI-O | containerd, Mirantis Container Runtime |
+| Networking | Broad CNI support | CNI support varies by provider |
+| Storage | Broad CSI support | CSI support varies by provider |
 
 ## Prerequisites
 
 ### Windows Server Requirements
 
 ```plaintext
-# Supported Windows versions:
+# Current upstream Windows versions:
 
-- Windows Server 2019 (LTSC)
 - Windows Server 2022 (LTSC)
-- Windows Server SAC (Semi-Annual Channel)
+- Windows Server 2025 (LTSC)
 
 # Kubernetes version:
-- Kubernetes 1.14+ for Windows support
-- Kubernetes 1.22+ recommended for GA features
+- Use a supported Kubernetes release for your provider
+- Upstream Kubernetes v1.36 supports Windows Server 2022 and Windows Server 2025 nodes
 
 # Container runtime:
-- containerd 1.6+ (recommended)
+- containerd 1.7+ (recommended)
 ```
 
 ## Setting Up Windows Nodes
@@ -88,10 +87,6 @@ nodeGroups:
     desiredCapacity: 2
     labels:
       kubernetes.io/os: linux
-    taints:
-      - key: "os"
-        value: "linux"
-        effect: "NoSchedule"
 
 managedNodeGroups:
   # Windows nodes
@@ -145,6 +140,7 @@ gcloud container node-pools create windows-pool \
   --cluster hybrid-cluster \
   --zone us-central1-a \
   --image-type WINDOWS_LTSC_CONTAINERD \
+  --windows-os-version ltsc2022 \
   --machine-type n1-standard-4 \
   --num-nodes 2 \
   --metadata disable-legacy-endpoints=true
@@ -155,24 +151,15 @@ gcloud container node-pools create windows-pool \
 ```powershell
 # On Windows Server node
 # Install containerd
-$Version = "1.6.8"
-curl.exe -L https://github.com/containerd/containerd/releases/download/v$Version/containerd-$Version-windows-amd64.tar.gz -o containerd.tar.gz
-tar xvf containerd.tar.gz
+curl.exe -LO https://raw.githubusercontent.com/kubernetes-sigs/sig-windows-tools/master/hostprocess/Install-Containerd.ps1
+.\Install-Containerd.ps1 -ContainerDVersion 1.7.22
 
-# Configure containerd
-mkdir "C:\Program Files\containerd"
-Copy-Item .\bin\* "C:\Program Files\containerd"
-cd "C:\Program Files\containerd"
-.\containerd.exe config default | Set-Content config.toml
+# Install kubeadm and kubelet
+curl.exe -LO https://raw.githubusercontent.com/kubernetes-sigs/sig-windows-tools/master/hostprocess/PrepareNode.ps1
+.\PrepareNode.ps1 -KubernetesVersion v1.36.0
 
-# Register and start containerd service
-.\containerd.exe --register-service
-Start-Service containerd
-
-# Install kubeadm, kubelet, kubectl
-curl.exe -LO https://dl.k8s.io/release/v1.28.0/bin/windows/amd64/kubeadm.exe
-curl.exe -LO https://dl.k8s.io/release/v1.28.0/bin/windows/amd64/kubelet.exe
-curl.exe -LO https://dl.k8s.io/release/v1.28.0/bin/windows/amd64/kubectl.exe
+# Join the node to an existing kubeadm cluster
+.\kubeadm.exe join <control-plane-host>:<control-plane-port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
 ## Deploying Windows Workloads
@@ -197,6 +184,8 @@ spec:
       labels:
         app: windows-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -242,6 +231,8 @@ spec:
       labels:
         app: iis-web
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -293,6 +284,8 @@ spec:
       labels:
         app: aspnet-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -313,7 +306,7 @@ spec:
                   key: connection-string
           volumeMounts:
             - name: config
-              mountPath: C:\inetpub\wwwroot\Web.config
+              mountPath: "C:\\inetpub\\wwwroot\\Web.config"
               subPath: Web.config
           resources:
             requests:
@@ -371,7 +364,7 @@ spec:
       labels:
         app: dotnet-api
     spec:
-      # Can run on both Linux and Windows
+      # For cross-platform .NET, publish OS-specific image variants and use separate manifests or RuntimeClasses
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -413,6 +406,8 @@ spec:
       labels:
         app: frontend
     spec:
+      os:
+        name: linux
       nodeSelector:
         kubernetes.io/os: linux
       containers:
@@ -436,6 +431,8 @@ spec:
       labels:
         app: backend-api
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -497,6 +494,8 @@ kind: Pod
 metadata:
   name: gmsa-demo
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -516,6 +515,8 @@ kind: Pod
 metadata:
   name: windows-host-process
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -557,9 +558,9 @@ spec:
     - file_mode=0777
   csi:
     driver: smb.csi.k8s.io
-    volumeHandle: smb-server.default.svc.cluster.local/share
+    volumeHandle: smb-server.example.com##share
     volumeAttributes:
-      source: //smb-server.default.svc.cluster.local/share
+      source: //smb-server.example.com/share
     nodeStageSecretRef:
       name: smb-creds
       namespace: default
@@ -621,18 +622,20 @@ spec:
 ### Windows CNI Support
 
 ```yaml
-# calico-windows-config.yaml
-# Example Calico configuration for Windows
-apiVersion: v1
-kind: ConfigMap
+# calico-windows-installation.yaml
+# Example Calico operator configuration for a Windows-capable cluster
+apiVersion: operator.tigera.io/v1
+kind: Installation
 metadata:
-  name: calico-windows-config
-  namespace: calico-system
-data:
-  CALICO_NETWORKING_BACKEND: "windows-bgp"
-  KUBERNETES_SERVICE_HOST: "kubernetes.default.svc"
-  KUBERNETES_SERVICE_PORT: "443"
-  K8S_SERVICE_CIDR: "10.96.0.0/12"
+  name: default
+spec:
+  calicoNetwork:
+    bgp: Disabled
+    ipPools:
+      - cidr: 10.244.0.0/16
+        encapsulation: VXLAN
+        natOutgoing: Enabled
+        nodeSelector: all()
 ```
 
 ### Service Configuration
@@ -681,6 +684,13 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9182"
     spec:
+      os:
+        name: windows
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\system"
+      hostNetwork: true
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -692,10 +702,10 @@ spec:
         - name: windows-exporter
           image: ghcr.io/prometheus-community/windows-exporter:latest
           args:
-            - --collectors.enabled
-            - cpu,cs,logical_disk,memory,net,os,process,system
+            - --collectors.enabled=cpu,cs,logical_disk,memory,net,os,process,system
           ports:
             - containerPort: 9182
+              hostPort: 9182
               name: metrics
 ```
 

@@ -32,13 +32,12 @@ go 1.21
 
 ## Adding Dependencies
 
-Dependencies are added automatically when you import and build:
+After adding imports, use `go get` or `go mod tidy` to update dependencies:
 
 ```go
 package main
 
 import (
-    "fmt"
     "github.com/gin-gonic/gin"
 )
 
@@ -52,9 +51,9 @@ func main() {
 ```
 
 ```bash
-go build
-# or
+go get github.com/gin-gonic/gin@v1.9.1
 
+# or
 go mod tidy
 ```
 
@@ -98,7 +97,7 @@ replace github.com/original/pkg => github.com/fork/pkg v1.0.0
 | Directive | Purpose |
 |-----------|---------|
 | `module` | Module path (import path) |
-| `go` | Minimum Go version |
+| `go` | Go version semantics and minimum required Go version |
 | `require` | Dependencies with versions |
 | `exclude` | Versions to exclude |
 | `replace` | Override module location |
@@ -339,7 +338,7 @@ github.com/stretchr/testify v1.8.0 [v1.8.4]
 go get github.com/gin-gonic/gin@latest
 ```
 
-### Upgrade All Direct Dependencies
+### Upgrade Dependencies for Packages
 
 ```bash
 go get -u ./...
@@ -441,10 +440,10 @@ go clean -modcache
 go mod verify
 ```
 
-### Debug Module Resolution
+### Debug Module Downloads
 
 ```bash
-GODEBUG=http2debug=1 go get github.com/some/pkg
+go get -x github.com/some/pkg
 ```
 
 ### Force Specific Version

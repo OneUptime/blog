@@ -137,6 +137,7 @@ gcloud container node-pools create spot-pool \
   --zone=us-central1-a \
   --spot \
   --num-nodes=5 \
+  --enable-autoscaling \
   --min-nodes=0 \
   --max-nodes=20 \
   --machine-type=n2-standard-4 \
@@ -148,6 +149,7 @@ gcloud container node-pools create on-demand-pool \
   --cluster=production-cluster \
   --zone=us-central1-a \
   --num-nodes=3 \
+  --enable-autoscaling \
   --min-nodes=3 \
   --max-nodes=6 \
   --machine-type=n2-standard-4 \
@@ -198,6 +200,11 @@ spec:
       # Tolerate spot node taint
       tolerations:
         - key: node-type
+          operator: Equal
+          value: spot
+          effect: NoSchedule
+        # AKS Spot node pools also add this built-in taint
+        - key: kubernetes.azure.com/scalesetpriority
           operator: Equal
           value: spot
           effect: NoSchedule
@@ -305,6 +312,8 @@ spec:
       app: web-api
 ```
 
+PDBs help during voluntary evictions such as node drains. They cannot prevent involuntary Spot or preemptible VM terminations, but unavailable pods still count against the budget.
+
 ## Handling Spot Termination
 
 ### AWS Node Termination Handler
@@ -356,7 +365,13 @@ metadata:
   name: preemption-aware-app
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: preemption-aware-app
   template:
+    metadata:
+      labels:
+        app: preemption-aware-app
     spec:
       # GKE-specific: listen for SIGTERM
       terminationGracePeriodSeconds: 25  # Less than 30s GKE warning
@@ -381,45 +396,11 @@ spec:
 
 ### Azure Scheduled Events Handler
 
-```yaml
-# azure-scheduled-events-daemonset.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: azure-scheduled-events-handler
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: azure-scheduled-events
-  template:
-    metadata:
-      labels:
-        app: azure-scheduled-events
-    spec:
-      hostNetwork: true
-      nodeSelector:
-        kubernetes.azure.com/scalesetpriority: spot
-      tolerations:
-        - key: node-type
-          operator: Equal
-          value: spot
-          effect: NoSchedule
-      containers:
-        - name: handler
-          image: mcr.microsoft.com/aks/scheduled-events-handler:latest
-          env:
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          volumeMounts:
-            - name: host-run
-              mountPath: /var/run
-      volumes:
-        - name: host-run
-          hostPath:
-            path: /var/run
+Azure exposes Spot eviction events through the Instance Metadata Service (IMDS). Poll this endpoint from automation running on the node and trigger your own drain or checkpoint logic when a `Preempt` event appears:
+
+```bash
+curl -H "Metadata:true" \
+  "http://169.254.169.254/metadata/scheduledevents?api-version=2020-07-01"
 ```
 
 ## Cluster Autoscaler Configuration
@@ -435,9 +416,9 @@ metadata:
   namespace: kube-system
 data:
   priorities: |
-    10:
-      - .*spot.*
     50:
+      - .*spot.*
+    10:
       - .*on-demand.*
 ---
 apiVersion: apps/v1
@@ -446,7 +427,13 @@ metadata:
   name: cluster-autoscaler
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
       containers:
         - name: cluster-autoscaler
@@ -469,115 +456,146 @@ spec:
 ### Karpenter for Spot (AWS)
 
 ```yaml
-# karpenter-spot-provisioner.yaml
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# karpenter-spot-nodepool.yaml
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
-  name: spot-provisioner
+  name: spot-nodepool
 spec:
-  # Requirements for spot nodes
-  requirements:
-    - key: karpenter.sh/capacity-type
-      operator: In
-      values:
-        - spot
-        - on-demand  # Fallback to on-demand if no spot available
-    - key: kubernetes.io/arch
-      operator: In
-      values:
-        - amd64
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - m5.xlarge
-        - m5.2xlarge
-        - m5a.xlarge
-        - m5a.2xlarge
-        - m5n.xlarge
-        - m5n.2xlarge
-        - m4.xlarge
-        - m4.2xlarge
+  template:
+    metadata:
+      labels:
+        node-type: spot
+        workload-type: interruptible
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: spot
+
+      # Taints for spot nodes
+      taints:
+        - key: node-type
+          value: spot
+          effect: NoSchedule
+
+      # Requirements for spot nodes
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - spot
+            - on-demand  # Fallback to on-demand if no spot available
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - amd64
+        - key: kubernetes.io/os
+          operator: In
+          values:
+            - linux
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m5.xlarge
+            - m5.2xlarge
+            - m5a.xlarge
+            - m5a.2xlarge
+            - m5n.xlarge
+            - m5n.2xlarge
+            - m4.xlarge
+            - m4.2xlarge
+
+      # TTL settings
+      expireAfter: 720h  # 30 days
   
   # Consolidation settings
-  consolidation:
-    enabled: true
-  
-  # TTL settings
-  ttlSecondsAfterEmpty: 30
-  ttlSecondsUntilExpired: 2592000  # 30 days
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
   
   # Limits
   limits:
-    resources:
-      cpu: 1000
-      memory: 1000Gi
-  
+    cpu: "1000"
+    memory: 1000Gi
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: spot
+spec:
   # Provider configuration
-  provider:
-    subnetSelector:
-      karpenter.sh/discovery: my-cluster
-    securityGroupSelector:
-      karpenter.sh/discovery: my-cluster
-    
-    # Spot-specific settings
-    capacityType:
-      - spot
-      - on-demand
-    
-    # Diversify across instance types
-    instanceProfile: KarpenterNodeInstanceProfile
-    
-  # Taints for spot nodes
-  taints:
-    - key: node-type
-      value: spot
-      effect: NoSchedule
-  
-  # Labels
-  labels:
-    node-type: spot
-    workload-type: interruptible
+  role: KarpenterNodeRole-my-cluster
+  amiSelectorTerms:
+    - alias: al2023@latest  # Pin a tested AMI version in production
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
 ```
 
 ```yaml
-# karpenter-on-demand-provisioner.yaml
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# karpenter-on-demand-nodepool.yaml
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
-  name: on-demand-provisioner
+  name: on-demand-nodepool
 spec:
-  requirements:
-    - key: karpenter.sh/capacity-type
-      operator: In
-      values:
-        - on-demand
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - m5.xlarge
-        - m5.2xlarge
+  template:
+    metadata:
+      labels:
+        node-type: on-demand
+        workload-type: critical
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: on-demand
   
-  ttlSecondsAfterEmpty: 300
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - on-demand
+        - key: kubernetes.io/os
+          operator: In
+          values:
+            - linux
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m5.xlarge
+            - m5.2xlarge
+
+      taints:
+        - key: workload-type
+          value: critical
+          effect: NoSchedule
+  
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
   
   limits:
-    resources:
-      cpu: 100
-      memory: 200Gi
-  
-  provider:
-    subnetSelector:
-      karpenter.sh/discovery: my-cluster
-    securityGroupSelector:
-      karpenter.sh/discovery: my-cluster
-  
-  taints:
-    - key: workload-type
-      value: critical
-      effect: NoSchedule
-  
-  labels:
-    node-type: on-demand
-    workload-type: critical
+    cpu: "100"
+    memory: 200Gi
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: on-demand
+spec:
+  role: KarpenterNodeRole-my-cluster
+  amiSelectorTerms:
+    - alias: al2023@latest  # Pin a tested AMI version in production
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
 ```
 
 ## Workload Classification
@@ -593,7 +611,13 @@ metadata:
   namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       # Only run on on-demand nodes
       nodeSelector:
@@ -633,6 +657,10 @@ spec:
       
       tolerations:
         - key: node-type
+          operator: Equal
+          value: spot
+          effect: NoSchedule
+        - key: kubernetes.azure.com/scalesetpriority
           operator: Equal
           value: spot
           effect: NoSchedule
@@ -699,6 +727,10 @@ metadata:
     environment: production
     app: api-service
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
   template:
     metadata:
       labels:
@@ -706,6 +738,10 @@ spec:
         team: platform
         environment: production
         app: api-service
+    spec:
+      containers:
+        - name: api-service
+          image: myregistry/api-service:v1.0.0
 ```
 
 ### Spot Savings Calculator Script
@@ -771,6 +807,7 @@ package main
 
 import (
     "context"
+    "log"
     "net/http"
     "os"
     "os/signal"
@@ -812,6 +849,7 @@ func main() {
 import pickle
 import os
 import signal
+import sys
 
 CHECKPOINT_FILE = '/data/checkpoints/progress.pkl'
 
@@ -857,7 +895,7 @@ Using spot instances can dramatically reduce Kubernetes costs:
 | Multi-AZ | Spread across zones | Survive zone-level interruptions |
 | Graceful shutdown | Handle SIGTERM properly | Clean connection draining |
 | Checkpointing | Save progress periodically | Resume interrupted jobs |
-| PDBs | Set minAvailable | Maintain availability during churn |
+| PDBs | Set minAvailable | Limit voluntary drain disruption |
 | Node termination handler | Install cloud-specific handler | Early warning and drainage |
 
 Start with non-critical workloads and gradually expand spot usage as you gain confidence in your termination handling strategies.

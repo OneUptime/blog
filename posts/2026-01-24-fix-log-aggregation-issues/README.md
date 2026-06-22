@@ -23,7 +23,7 @@ flowchart LR
     end
 
     subgraph Collection
-        F[Fluentd/Promtail]
+        F[Fluentd/Grafana Alloy]
     end
 
     subgraph Processing
@@ -71,11 +71,11 @@ kubectl logs -f my-app-pod-abc123
 If logs are being produced, check if the collector is running and healthy:
 
 ```bash
-# For Promtail
-kubectl logs -n monitoring promtail-xxxxx --tail=100
+# For Grafana Alloy
+kubectl logs -n monitoring alloy-xxxxx --tail=100
 
-# Check Promtail targets
-curl http://promtail:9080/targets
+# Check Alloy health
+curl http://alloy:12345/-/healthy
 
 # For Fluentd
 kubectl logs -n monitoring fluentd-xxxxx --tail=100
@@ -86,29 +86,44 @@ curl http://fluentd:24220/api/plugins.json
 
 ### Common Collection Failures
 
-Promtail or Fluentd might fail to collect logs for several reasons. Check the configuration:
+Grafana Alloy or Fluentd might fail to collect logs for several reasons. Check the configuration:
 
-```yaml
-# Promtail: Ensure the scrape config matches your pod labels
-scrape_configs:
-  - job_name: kubernetes-pods
-    kubernetes_sd_configs:
-      - role: pod
-    relabel_configs:
-      # This filter might be too restrictive
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        action: keep
-        regex: my-app  # Only collects from pods with app=my-app label
+```hcl
+# Grafana Alloy: Ensure the discovery relabeling matches your pod labels
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  # This filter might be too restrictive
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    action        = "keep"
+    regex         = "my-app" # Only collects from pods with app=my-app label
+  }
+}
+
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pods.output
+  forward_to = [loki.write.local.receiver]
+}
 ```
 
 Fix by broadening the filter or ensuring your pods have the correct labels:
 
-```yaml
+```hcl
 # Fix: Accept all pods with a specific annotation instead
-relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_annotation_logging_enabled]
-    action: keep
-    regex: "true"
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_logging_enabled"]
+    action        = "keep"
+    regex         = "true"
+  }
+}
 ```
 
 ### Permission Issues
@@ -184,36 +199,54 @@ labels:
 
 Fix by moving high-cardinality data to the log message itself:
 
-```yaml
+```hcl
 # GOOD: Use static labels, put dynamic data in the log line
-labels:
-  app: my-app
-  environment: production
-  namespace: default
+loki.process "app_logs" {
+  forward_to = [loki.write.local.receiver]
 
-# Include dynamic data in structured log message instead
-pipeline_stages:
-  - json:
-      expressions:
-        request_id: request_id
-        user_id: user_id
-  # These become searchable but don't create new streams
-  - output:
-      source: message
+  stage.static_labels {
+    values = {
+      app         = "my-app"
+      environment = "production"
+      namespace   = "default"
+    }
+  }
+
+  # Keep dynamic fields in the structured log message instead
+  stage.json {
+    expressions = {
+      message    = "message"
+      request_id = "request_id"
+      user_id    = "user_id"
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      request_id = ""
+      user_id    = ""
+    }
+  }
+
+  stage.output {
+    source = "message"
+  }
+}
 ```
 
 ### Dropping High Cardinality Labels
 
 Configure your collector to drop problematic labels:
 
-```yaml
-# Promtail: Drop specific labels before sending to Loki
-pipeline_stages:
-  - labeldrop:
-      - request_id
-      - trace_id
-      - span_id
-      - pod_name
+```hcl
+# Grafana Alloy: Drop specific labels before sending to Loki
+loki.process "drop_high_cardinality_labels" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.label_drop {
+    values = ["request_id", "trace_id", "span_id", "pod_name"]
+  }
+}
 ```
 
 For Fluentd:
@@ -303,8 +336,8 @@ Always use time constraints in queries:
 # BAD: Scans all data
 {app="my-app"} |= "error"
 
-# GOOD: Limit time range
-{app="my-app"} |= "error" | __timestamp__ >= now() - 1h
+# GOOD: Select a one-hour time range in Grafana Explore or the query API
+{app="my-app"} |= "error"
 ```
 
 ### Use Label Filters First
@@ -312,8 +345,8 @@ Always use time constraints in queries:
 Put label matchers before line filters:
 
 ```logql
-# BAD: Line filter applied to all logs, then label filter
-{namespace="production"} |= "error" | app="my-app"
+# BAD: Missing the app label matcher scans more streams
+{namespace="production"} |= "error" | json | app="my-app"
 
 # GOOD: Label filter reduces data first
 {namespace="production", app="my-app"} |= "error"
@@ -343,9 +376,8 @@ Bloom filters accelerate line content searches:
 storage_config:
   bloom_shipper:
     working_directory: /loki/bloom
-  bloom_compactor:
-    enabled: true
-    working_directory: /loki/bloom-compactor
+    blocks_cache:
+      soft_limit: 10GiB
 
 schema_config:
   configs:
@@ -356,8 +388,16 @@ schema_config:
       index:
         prefix: index_
         period: 24h
-      bloom_build:
-        enabled: true
+
+bloom_build:
+  enabled: true
+
+bloom_gateway:
+  enabled: true
+
+limits_config:
+  bloom_creation_enabled: true
+  bloom_gateway_enable_filtering: true
 ```
 
 ## Storage Problems
@@ -385,7 +425,7 @@ limits_config:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
+  delete_request_store: filesystem
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
@@ -436,19 +476,9 @@ Enable compression to reduce storage:
 
 ```yaml
 # Loki chunk compression
-storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
-
-chunk_store_config:
-  chunk_cache_config:
-    enable_fifocache: true
-    fifocache:
-      max_size_items: 1024
-
 ingester:
-  chunk_encoding: snappy  # or gzip for better compression
+  chunk_encoding: snappy
+  chunk_target_size: 1572864
 ```
 
 ## Structured Logging Best Practices

@@ -183,23 +183,23 @@ echo "Username is: $username"        # Output: (empty)
 echo "User: ${username:=guest}"      # Output: guest
 echo "Username is: $username"        # Output: guest
 
-# ${var:+alternate} - Use alternate if var is set
+# ${var:+alternate} - Use alternate if var is set and non-empty
 username="admin"
 echo "User: ${username:+authenticated}"  # Output: authenticated
 
-# ${var:?error_message} - Exit with error if unset
-# echo "User: ${username:?Username is required}"  # Would exit if unset
+# ${var:?error_message} - Exit with error if unset or empty
+# echo "User: ${username:?Username is required}"  # Would exit if unset or empty
 ```
 
 ---
 
-## Solution 4: Check If Variable Is Set First
+## Solution 4: Check If Variable Is Non-Empty First
 
-Explicitly check if a variable is set before using it.
+Explicitly check if a variable has a non-empty value before using it.
 
 ```bash
 #!/bin/bash
-# Check variable existence before comparison
+# Check variable content before comparison
 
 # Using -n (non-zero length string test)
 if [ -n "$my_var" ] && [ "$my_var" = "hello" ]; then

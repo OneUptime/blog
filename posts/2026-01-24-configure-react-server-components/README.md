@@ -8,7 +8,7 @@ Description: Learn how to configure and use React Server Components to build fas
 
 ---
 
-React Server Components (RSC) execute on the server and stream rendered output to the client. They offer zero client-side JavaScript, direct database access, and automatic code splitting.
+React Server Components (RSC) execute on the server and stream an RSC payload and HTML to the client. They reduce client-side JavaScript by keeping Server Component code out of the browser bundle, support direct backend access, and enable automatic code splitting.
 
 ## What Are React Server Components?
 
@@ -26,7 +26,7 @@ flowchart LR
         CC --> DOM
     end
 
-    SC -->|Rendered HTML| CC
+    SC -->|RSC payload + HTML| CC
 ```
 
 ## Setting Up Next.js with Server Components
@@ -78,7 +78,7 @@ function Counter(): React.ReactElement {
 import { Suspense } from 'react';
 import ProductList from './ProductList';
 
-function ProductsPage(): React.ReactElement {
+export default function ProductsPage(): React.ReactElement {
   return (
     <Suspense fallback={<div>Loading...</div>}>
       <ProductList category="electronics" />
@@ -117,9 +117,9 @@ sequenceDiagram
 
 | Feature | Server Components | Client Components |
 |---------|------------------|-------------------|
-| JavaScript to client | None | Yes |
-| Can use hooks | No | Yes |
-| Can access backend | Yes | No |
+| JavaScript to client | Component code is not bundled | Yes |
+| Can use client hooks | No | Yes |
+| Can access backend | Directly | Via APIs or Server Actions |
 | Default in App Router | Yes | No |
 
 Start with Server Components by default and add 'use client' only when you need interactivity.

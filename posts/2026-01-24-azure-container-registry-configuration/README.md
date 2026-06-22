@@ -56,7 +56,7 @@ az acr create \
     --sku Basic \
     --location eastus
 
-# For production, use Standard or Premium tier
+# For production, create the registry with Standard or Premium instead
 az acr create \
     --resource-group myContainerResources \
     --name mycompanyregistry \
@@ -83,27 +83,19 @@ resource "azurerm_container_registry" "main" {
 
   # Enable geo-replication for Premium tier
   georeplications {
-    location                = "westeurope"
-    zone_redundancy_enabled = true
-    tags                    = {}
-  }
-
-  georeplications {
     location                = "southeastasia"
     zone_redundancy_enabled = true
     tags                    = {}
   }
 
-  # Retention policy for untagged manifests
-  retention_policy {
-    days    = 7
-    enabled = true
+  georeplications {
+    location                = "westeurope"
+    zone_redundancy_enabled = true
+    tags                    = {}
   }
 
-  # Enable content trust (image signing)
-  trust_policy {
-    enabled = true
-  }
+  # Retention policy for untagged manifests
+  retention_policy_in_days = 7
 
   tags = {
     environment = "production"
@@ -118,12 +110,12 @@ output "acr_login_server" {
 
 ## Authentication Methods
 
-### Method 1: Azure AD Authentication (Recommended)
+### Method 1: Microsoft Entra ID Authentication (Recommended)
 
 This is the most secure approach for production environments.
 
 ```bash
-# Login using Azure AD credentials
+# Login using Microsoft Entra ID credentials
 az acr login --name mycompanyregistry
 
 # The above command automatically configures Docker to use your Azure credentials
@@ -348,7 +340,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -365,12 +357,25 @@ jobs:
           docker tag $REGISTRY/$IMAGE_NAME:${{ github.sha }} $REGISTRY/$IMAGE_NAME:latest
           docker push $REGISTRY/$IMAGE_NAME:latest
 
-      - name: Scan image for vulnerabilities
+      - name: Query Defender vulnerability findings
         run: |
-          az acr security-assessment show \
-            --registry mycompanyregistry \
-            --repository $IMAGE_NAME \
-            --tag ${{ github.sha }}
+          az extension add --name resource-graph
+          az graph query --graph-query "
+            SecurityResources
+            | where type == 'microsoft.security/assessments'
+            | where properties.displayName contains 'Container registry images should have vulnerability findings resolved'
+            | summarize by assessmentKey=name
+            | join kind=inner (
+              securityresources
+              | where type == 'microsoft.security/assessments/subassessments'
+              | extend assessmentKey = extract('.*assessments/(.+?)/.*', 1, id)
+            ) on assessmentKey
+            | extend additionalData = tostring(properties.additionalData)
+            | where additionalData contains '$REGISTRY'
+            | where additionalData contains '$IMAGE_NAME'
+            | where additionalData contains '${{ github.sha }}'
+            | project vulnerability=tostring(properties.displayName), severity=tostring(properties.status.severity), status=tostring(properties.status.code), additionalData
+          "
 ```
 
 ## Image Management
@@ -389,10 +394,10 @@ az acr repository show-tags \
     --output table
 
 # Get image manifest details
-az acr repository show-manifests \
-    --name mycompanyregistry \
-    --repository myapp \
-    --detail
+az acr manifest list-metadata \
+    --registry mycompanyregistry \
+    --name myapp \
+    --orderby time_desc
 ```
 
 ### Cleanup Old Images
@@ -456,11 +461,11 @@ ContainerRegistryRepositoryEvents
 
 ## Best Practices
 
-1. **Use Premium tier for production** - Gives you geo-replication, private endpoints, and content trust.
+1. **Use Premium tier for production** - Gives you geo-replication, private endpoints, and higher throughput limits.
 
-2. **Never enable admin account in production** - Use Azure AD authentication or managed identities instead.
+2. **Never enable admin account in production** - Use Microsoft Entra ID authentication or managed identities instead.
 
-3. **Implement image scanning** - Enable Microsoft Defender for container registries to scan images for vulnerabilities.
+3. **Implement image scanning** - Enable Microsoft Defender for Containers to scan images for vulnerabilities.
 
 4. **Use immutable tags** - Tag images with Git SHA or build number, not just "latest".
 
@@ -470,4 +475,4 @@ ContainerRegistryRepositoryEvents
 
 ---
 
-Azure Container Registry is straightforward to set up but has many features you should configure for production use. Start with the basics, then layer on security features like private endpoints and content trust as your needs grow.
+Azure Container Registry is straightforward to set up but has many features you should configure for production use. Start with the basics, then layer on security features like private endpoints and Notary Project-based signing as your needs grow.

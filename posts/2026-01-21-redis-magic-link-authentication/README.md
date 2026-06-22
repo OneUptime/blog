@@ -63,7 +63,7 @@ class MagicLinkAuth:
         key = f"{self.prefix}:{token_hash}"
 
         # Store with TTL
-        r.setex(key, self.token_ttl, json.dumps(token_data))
+        r.set(key, json.dumps(token_data), ex=self.token_ttl)
 
         # Track tokens by email (for rate limiting and management)
         email_key = f"{self.prefix}:email:{email.lower()}"
@@ -98,10 +98,10 @@ class MagicLinkAuth:
             return None
 
         if consume:
-            # Mark as used atomically
+            # Mark as used and keep briefly
             token_data['used'] = True
             token_data['used_at'] = int(time.time())
-            r.setex(key, 300, json.dumps(token_data))  # Keep for 5 min after use
+            r.set(key, json.dumps(token_data), ex=300)  # Keep for 5 min after use
 
         return {
             'email': token_data['email'],
@@ -184,7 +184,7 @@ class MagicLinkAuth {
     const emailKey = `${this.prefix}:email:${email.toLowerCase()}`;
 
     await redis.pipeline()
-      .setex(key, this.tokenTTL, JSON.stringify(tokenData))
+      .set(key, JSON.stringify(tokenData), 'EX', this.tokenTTL)
       .lpush(emailKey, tokenHash)
       .ltrim(emailKey, 0, 4)
       .expire(emailKey, this.tokenTTL)
@@ -211,7 +211,7 @@ class MagicLinkAuth {
     if (consume) {
       tokenData.used = true;
       tokenData.used_at = Math.floor(Date.now() / 1000);
-      await redis.setex(key, 300, JSON.stringify(tokenData));
+      await redis.set(key, JSON.stringify(tokenData), 'EX', 300);
     }
 
     return {
@@ -293,7 +293,7 @@ class SecureMagicLinkAuth(MagicLinkAuth):
         }
 
         key = f"{self.prefix}:{token_hash}"
-        r.setex(key, self.token_ttl, json.dumps(token_data))
+        r.set(key, json.dumps(token_data), ex=self.token_ttl)
 
         # Update rate limit counters
         self._increment_rate_limit(email, 'email')
@@ -343,7 +343,7 @@ class SecureMagicLinkAuth(MagicLinkAuth):
         if consume then
             token_data.used = true
             token_data.used_at = current_time
-            redis.call('SETEX', key, 300, cjson.encode(token_data))
+            redis.call('SET', key, cjson.encode(token_data), 'EX', 300)
         else
             redis.call('SET', key, cjson.encode(token_data), 'KEEPTTL')
         end
@@ -502,7 +502,7 @@ class MagicLinkService {
     const key = `${this.prefix}:${tokenHash}`;
 
     await redis.pipeline()
-      .setex(key, CONFIG.tokenTTL, JSON.stringify(tokenData))
+      .set(key, JSON.stringify(tokenData), 'EX', CONFIG.tokenTTL)
       .exec();
 
     // Update rate limits
@@ -541,7 +541,7 @@ class MagicLinkService {
       token_data.used = true
       token_data.used_at = current_time
 
-      redis.call('SETEX', key, 300, cjson.encode(token_data))
+      redis.call('SET', key, cjson.encode(token_data), 'EX', 300)
 
       return cjson.encode({
         email = token_data.email,
@@ -571,7 +571,7 @@ class MagicLinkService {
   }
 
   async sendMagicLinkEmail(email, token) {
-    const magicLink = `${CONFIG.baseUrl}/auth/verify?token=${token}`;
+    const magicLink = `${CONFIG.baseUrl}/auth/verify?token=${encodeURIComponent(token)}`;
 
     await transporter.sendMail({
       from: '"Your App" <noreply@yourapp.com>',
@@ -600,7 +600,7 @@ const magicLinkService = new MagicLinkService();
 // Request magic link endpoint
 app.post('/auth/magic-link', async (req, res) => {
   const { email } = req.body;
-  const ipAddress = req.ip || req.connection.remoteAddress;
+  const ipAddress = req.ip || req.socket.remoteAddress;
 
   if (!email || !email.includes('@')) {
     return res.status(400).json({ error: 'Valid email required' });
@@ -657,13 +657,14 @@ app.get('/auth/verify', async (req, res) => {
 
     // Create session for the user
     const sessionToken = crypto.randomBytes(32).toString('base64url');
-    await redis.setex(
+    await redis.set(
       `session:${sessionToken}`,
-      86400, // 24 hours
       JSON.stringify({
         email: result.data.email,
         created_at: Math.floor(Date.now() / 1000)
-      })
+      }),
+      'EX',
+      86400 // 24 hours
     );
 
     // Set session cookie
@@ -720,7 +721,7 @@ class ContextBoundMagicLinkAuth(SecureMagicLinkAuth):
         }
 
         key = f"{self.prefix}:{token_hash}"
-        r.setex(key, self.token_ttl, json.dumps(token_data))
+        r.set(key, json.dumps(token_data), ex=self.token_ttl)
 
         self._increment_rate_limit(email, 'email')
 
@@ -758,7 +759,7 @@ class ContextBoundMagicLinkAuth(SecureMagicLinkAuth):
         # Mark as used
         token_data['used'] = True
         token_data['used_at'] = int(time.time())
-        r.setex(key, 300, json.dumps(token_data))
+        r.set(key, json.dumps(token_data), ex=300)
 
         return {
             'email': token_data['email'],

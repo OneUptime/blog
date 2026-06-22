@@ -31,30 +31,26 @@ CloudNativePG uses PgBouncer for connection pooling:
 
 - Deployed as separate pods
 - Managed by the operator
-- Automatic credential sync
+- Built-in password authentication integration
 - High availability support
 
 ## Basic Pooler Configuration
 
-### Enable Built-in Pooler
+### Create a Pooler
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
+kind: Pooler
 metadata:
-  name: postgres-cluster
+  name: postgres-pooler-rw
 spec:
-  instances: 3
-  storage:
-    size: 10Gi
+  cluster:
+    name: postgres-cluster
+  instances: 2
+  type: rw  # Read-write pooler
 
-  # Enable connection pooler
-  pooler:
-    instances: 2
-    type: rw  # Read-write pooler
-
-    pgbouncer:
-      poolMode: transaction
+  pgbouncer:
+    poolMode: transaction
 ```
 
 ### Pooler Types
@@ -63,6 +59,7 @@ spec:
 |------|---------|----------|
 | `rw` | Read-write to primary | Application writes |
 | `ro` | Read-only to replicas | Read scaling |
+| `r` | Any PostgreSQL instance | Load balancing across instances |
 
 ### Create Both Types
 
@@ -111,7 +108,7 @@ spec:
     # Transaction mode (recommended for most apps)
     poolMode: transaction
 
-    # Session mode (for prepared statements, LISTEN/NOTIFY)
+    # Session mode (for session state such as LISTEN/NOTIFY)
     # poolMode: session
 ```
 
@@ -225,11 +222,6 @@ spec:
       log_pooler_errors: "1"
       stats_period: "60"
 
-    # Authentication file entries
-    authQuerySecret:
-      name: pgbouncer-auth
-    authQuery: SELECT usename, passwd FROM pg_shadow WHERE usename=$1
-
   # Resource limits
   template:
     spec:
@@ -255,43 +247,42 @@ spec:
 
 ### Default Authentication
 
-CloudNativePG syncs user credentials automatically from the cluster.
+CloudNativePG provides built-in password authentication for PgBouncer clients. It creates and manages the `cnpg_pooler_pgbouncer` auth user, a password lookup function, and the PgBouncer `auth_user`, `auth_query`, and `auth_dbname` settings automatically.
 
-### Custom Auth Query
+### Custom Authentication
 
 ```yaml
 spec:
   pgbouncer:
-    authQuerySecret:
-      name: pgbouncer-auth-user
-    authQuery: SELECT usename, passwd FROM pg_shadow WHERE usename=$1
+    serverTLSSecret:
+      name: pgbouncer-server-tls
+    serverCASecret:
+      name: pgbouncer-server-ca
+    clientTLSSecret:
+      name: pgbouncer-client-tls
+    clientCASecret:
+      name: pgbouncer-client-ca
 ```
 
-Create the auth user:
+Providing your own certificate secrets disables the built-in integration. You then need to manage PgBouncer authentication yourself. To reproduce the default lookup behavior, create a dedicated auth user and a `SECURITY DEFINER` function:
 
 ```sql
-CREATE USER pgbouncer_auth WITH PASSWORD 'secure_password';
-GRANT SELECT ON pg_shadow TO pgbouncer_auth;
-```
+CREATE ROLE pgbouncer_auth WITH LOGIN;
+GRANT CONNECT ON DATABASE postgres TO pgbouncer_auth;
 
-Create the secret:
+CREATE OR REPLACE FUNCTION public.user_search(uname TEXT)
+  RETURNS TABLE (usename name, passwd text)
+  LANGUAGE sql SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp AS
+  'SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename=$1;';
 
-```bash
-kubectl create secret generic pgbouncer-auth-user \
-  --from-literal=username=pgbouncer_auth \
-  --from-literal=password=secure_password
+REVOKE ALL ON FUNCTION public.user_search(text) FROM public;
+GRANT EXECUTE ON FUNCTION public.user_search(text) TO pgbouncer_auth;
 ```
 
 ### User List Authentication
 
-```yaml
-spec:
-  pgbouncer:
-    # Static user list
-    passthroughSecretList:
-      - name: app-user-credentials
-      - name: readonly-user-credentials
-```
+CloudNativePG manages PgBouncer's `users` section for a single PostgreSQL cluster. Static PgBouncer user lists are not exposed through the `Pooler` API.
 
 ## Connecting to Pooler
 
@@ -330,14 +321,6 @@ spec:
       containers:
         - name: app
           env:
-            # Use pooler for connections
-            - name: DATABASE_URL
-              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-pooler-rw:5432/myapp"
-
-            # Read replica connection via pooler
-            - name: DATABASE_REPLICA_URL
-              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-pooler-ro:5432/myapp"
-
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -348,6 +331,14 @@ spec:
                 secretKeyRef:
                   name: postgres-cluster-app
                   key: password
+
+            # Use pooler for connections
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-pooler-rw:5432/myapp"
+
+            # Read replica connection via pooler
+            - name: DATABASE_REPLICA_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-pooler-ro:5432/myapp"
 ```
 
 ## High Availability
@@ -362,6 +353,7 @@ spec:
   # Pod anti-affinity
   template:
     spec:
+      containers: []
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -391,11 +383,11 @@ spec:
 
 ### Built-in Metrics
 
-PgBouncer exposes metrics on port 9127:
+The CloudNativePG pooler exporter exposes metrics on port 9127 on each PgBouncer pod:
 
 ```bash
-# Port forward to pooler
-kubectl port-forward svc/postgres-pooler-rw 9127:9127
+# Port forward to a pooler pod
+kubectl port-forward "$(kubectl get pod -l cnpg.io/poolerName=postgres-pooler-rw -o name | head -n 1)" 9127:9127
 
 # Fetch metrics
 curl http://localhost:9127/metrics
@@ -405,36 +397,36 @@ curl http://localhost:9127/metrics
 
 ```yaml
 # Active client connections
-pgbouncer_pools_client_active_connections
+cnpg_pgbouncer_pools_cl_active
 
 # Waiting client connections
-pgbouncer_pools_client_waiting_connections
+cnpg_pgbouncer_pools_cl_waiting
 
 # Active server connections
-pgbouncer_pools_server_active_connections
+cnpg_pgbouncer_pools_sv_active
 
 # Idle server connections
-pgbouncer_pools_server_idle_connections
+cnpg_pgbouncer_pools_sv_idle
 
 # Total query count
-pgbouncer_stats_total_query_count
+cnpg_pgbouncer_stats_total_query_count
 
 # Average query time
-pgbouncer_stats_avg_query_time
+cnpg_pgbouncer_stats_avg_query_time
 ```
 
-### ServiceMonitor
+### PodMonitor
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: postgres-pooler
 spec:
   selector:
     matchLabels:
       cnpg.io/poolerName: postgres-pooler-rw
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -446,7 +438,7 @@ groups:
   - name: pgbouncer
     rules:
       - alert: PgBouncerWaitingClients
-        expr: pgbouncer_pools_client_waiting_connections > 50
+        expr: sum(cnpg_pgbouncer_pools_cl_waiting) > 50
         for: 5m
         labels:
           severity: warning
@@ -454,7 +446,7 @@ groups:
           summary: "Clients waiting for connections"
 
       - alert: PgBouncerNoAvailableConnections
-        expr: pgbouncer_pools_server_idle_connections == 0 AND pgbouncer_pools_server_active_connections >= pgbouncer_pools_server_used_connections
+        expr: sum(cnpg_pgbouncer_pools_sv_idle) == 0 and sum(cnpg_pgbouncer_pools_cl_waiting) > 0
         for: 2m
         labels:
           severity: critical
@@ -462,7 +454,7 @@ groups:
           summary: "No available server connections"
 
       - alert: PgBouncerPoolExhausted
-        expr: pgbouncer_pools_client_waiting_connections > 0 AND pgbouncer_pools_server_active_connections >= on(database, user) pgbouncer_pools_max_connections
+        expr: cnpg_pgbouncer_pools_cl_waiting > 0 and cnpg_pgbouncer_pools_maxwait > 60
         for: 5m
         labels:
           severity: critical
@@ -541,7 +533,7 @@ kubectl get svc postgres-pooler-rw
 
 ```bash
 # Check pool status
-kubectl exec deployment/postgres-pooler-rw -- psql -h 127.0.0.1 -p 6432 pgbouncer -c "SHOW POOLS;"
+kubectl exec deployment/postgres-pooler-rw -- psql pgbouncer -c "SHOW POOLS;"
 
 # Increase pool size
 kubectl patch pooler postgres-pooler-rw --type merge -p '{"spec":{"pgbouncer":{"parameters":{"default_pool_size":"50"}}}}'
@@ -564,10 +556,10 @@ kubectl logs -l cnpg.io/poolerName=postgres-pooler-rw | grep -i auth
 
 ```bash
 # Check pool utilization
-kubectl exec deployment/postgres-pooler-rw -- psql -h 127.0.0.1 -p 6432 pgbouncer -c "SHOW STATS;"
+kubectl exec deployment/postgres-pooler-rw -- psql pgbouncer -c "SHOW STATS;"
 
 # Check waiting connections
-kubectl exec deployment/postgres-pooler-rw -- psql -h 127.0.0.1 -p 6432 pgbouncer -c "SHOW CLIENTS;" | grep waiting
+kubectl exec deployment/postgres-pooler-rw -- psql pgbouncer -c "SHOW CLIENTS;" | grep waiting
 ```
 
 ## Best Practices
@@ -577,7 +569,7 @@ kubectl exec deployment/postgres-pooler-rw -- psql -h 127.0.0.1 -p 6432 pgbounce
 | Mode | Use Case | Limitations |
 |------|----------|-------------|
 | Transaction | Web apps, microservices | No session state |
-| Session | Legacy apps, prepared statements | Less efficient |
+| Session | Legacy apps, session state | Less efficient |
 
 ### Application Guidelines
 
@@ -597,7 +589,7 @@ kubectl exec deployment/postgres-pooler-rw -- psql -h 127.0.0.1 -p 6432 pgbounce
 
 Connection pooling with CloudNativePG is straightforward:
 
-1. **Enable pooler** in cluster spec
+1. **Create a Pooler** resource for the cluster
 2. **Configure pool mode** based on application needs
 3. **Size appropriately** for your workload
 4. **Monitor pool metrics** for optimization

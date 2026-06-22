@@ -12,7 +12,7 @@ ServiceAccounts provide an identity for pods running in Kubernetes. They are use
 
 ## What is a ServiceAccount?
 
-Every pod runs with a ServiceAccount identity. By default, pods use the `default` ServiceAccount in their namespace, which has minimal permissions. Custom ServiceAccounts let you grant specific permissions to specific workloads.
+Every pod runs with a ServiceAccount identity. By default, pods use the `default` ServiceAccount in their namespace, which has no permissions beyond the default API discovery permissions in RBAC-enabled clusters. Custom ServiceAccounts let you grant specific permissions to specific workloads.
 
 ```mermaid
 flowchart TD
@@ -93,7 +93,7 @@ kubectl get pod my-app-xxx -n production -o jsonpath='{.spec.serviceAccountName}
 
 ## Grant Permissions with RBAC
 
-ServiceAccounts have no permissions by default. Use Roles and RoleBindings to grant access:
+ServiceAccounts have no workload permissions by default beyond API discovery. Use Roles and RoleBindings to grant access:
 
 ```yaml
 # rbac.yaml
@@ -168,7 +168,7 @@ roleRef:
 
 ## ServiceAccount Tokens
 
-Kubernetes automatically mounts a token into pods. You can also create long-lived tokens:
+Kubernetes automatically mounts a token into pods unless token automounting is disabled. You can also manually create long-lived token Secrets when needed:
 
 ### Automatic Token (Kubernetes 1.22+)
 
@@ -179,7 +179,7 @@ Tokens are projected into pods automatically with bounded lifetime:
 kubectl exec my-app-pod -- cat /var/run/secrets/kubernetes.io/serviceaccount/token
 ```
 
-### Create a Long-Lived Token (Kubernetes 1.24+)
+### Create a Long-Lived Token Secret
 
 ```yaml
 # token-secret.yaml

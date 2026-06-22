@@ -59,11 +59,11 @@ elk_components:
 # Loki Architecture
 loki_components:
   collection:
-    - Promtail (equivalent to Filebeat)
+    - Grafana Alloy (recommended collector)
     - Or Fluent Bit
     - Or OpenTelemetry
   processing:
-    - Promtail pipelines (simpler than Logstash)
+    - Grafana Alloy pipelines
     - Or Vector
   storage:
     - Loki (label indexing only)
@@ -163,6 +163,21 @@ gradual:
 loki:
   auth_enabled: false
 
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  storage_config:
+    aws:
+      region: us-east-1
+      bucketnames: loki-chunks
+
   storage:
     type: s3
     bucketNames:
@@ -172,46 +187,47 @@ loki:
     s3:
       region: us-east-1
 
-  schema_config:
-    configs:
-      - from: 2024-01-01
-        store: tsdb
-        object_store: s3
-        schema: v13
-        index:
-          prefix: loki_index_
-          period: 24h
-
   limits_config:
     retention_period: 720h
     ingestion_rate_mb: 20
     ingestion_burst_size_mb: 30
+
+deploymentMode: SimpleScalable
+
+backend:
+  replicas: 3
+read:
+  replicas: 3
+write:
+  replicas: 3
+
+minio:
+  enabled: false
 ```
 
 ```bash
 # Deploy with Helm
-# Note: grafana/loki-stack is deprecated. For new deployments, use grafana/loki instead.
-helm repo add grafana https://grafana.github.io/helm-charts
-helm install loki grafana/loki-stack -f loki-values.yaml -n loki --create-namespace
+# Note: grafana/loki-stack is deprecated. For new deployments, use the Loki community chart.
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update
+helm install loki grafana-community/loki -f loki-values.yaml -n loki --create-namespace
 ```
 
 ### Phase 2: Configure Dual Shipping
 
 ```yaml
-# Filebeat to both ELK and Loki
-# filebeat.yml - Send to both destinations
+# Filebeat to Logstash for fan-out to Elasticsearch and Loki
+# filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: app-logs
     paths:
       - /var/log/app/*.log
-    json.keys_under_root: true
-    json.add_error_key: true
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
 
-output.elasticsearch:
-  hosts: ["elasticsearch:9200"]
-  index: "app-logs-%{+yyyy.MM.dd}"
-
-# Add Logstash output for forwarding to Loki
 output.logstash:
   hosts: ["logstash:5044"]
 ```
@@ -230,7 +246,8 @@ filter {
   mutate {
     add_field => {
       "job" => "application"
-      "env" => "%{[fields][env]}"
+      "env" => "%{[env]}"
+      "service" => "%{[service]}"
     }
   }
 }
@@ -245,47 +262,56 @@ output {
   # Also send to Loki
   loki {
     url => "http://loki:3100/loki/api/v1/push"
-    labels => {
-      job => "application"
-      env => "%{env}"
-      service => "%{[fields][service]}"
-    }
+    message_field => "message"
+    include_fields => ["job", "env", "service"]
   }
 }
 ```
 
-### Alternative: Promtail Parallel Collection
+### Alternative: Grafana Alloy Parallel Collection
 
-```yaml
-# promtail-config.yaml
-server:
-  http_listen_port: 9080
+```hcl
+# config.alloy
+local.file_match "application" {
+  path_targets = [{
+    "__path__" = "/var/log/app/*.log",
+    "job"      = "application",
+  }]
+}
 
-positions:
-  filename: /tmp/positions.yaml
+loki.source.file "application" {
+  targets    = local.file_match.application.targets
+  forward_to = [loki.process.application.receiver]
+}
 
-clients:
-  - url: http://loki:3100/loki/api/v1/push
+loki.process "application" {
+  stage.json {
+    expressions = {
+      level   = "level"
+      service = "service"
+      message = "message"
+    }
+  }
 
-scrape_configs:
-  - job_name: application
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: application
-          __path__: /var/log/app/*.log
-    pipeline_stages:
-      - json:
-          expressions:
-            level: level
-            service: service
-            message: message
-      - labels:
-          level:
-          service:
-      - output:
-          source: message
+  stage.labels {
+    values = {
+      level   = "level"
+      service = "service"
+    }
+  }
+
+  stage.output {
+    source = "message"
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 ```
 
 ### Phase 3: Translate Queries
@@ -385,11 +411,11 @@ elk: |
   }
 logql: |
   # P50
-  quantile_over_time(0.50, {job="application"} | json | unwrap duration [5m]) by (service)
+  quantile_over_time(0.50, {job="application"} | json | unwrap duration | __error__=""[5m]) by (service)
   # P95
-  quantile_over_time(0.95, {job="application"} | json | unwrap duration [5m]) by (service)
+  quantile_over_time(0.95, {job="application"} | json | unwrap duration | __error__=""[5m]) by (service)
   # P99
-  quantile_over_time(0.99, {job="application"} | json | unwrap duration [5m]) by (service)
+  quantile_over_time(0.99, {job="application"} | json | unwrap duration | __error__=""[5m]) by (service)
 
 # Top N
 elk: |
@@ -589,13 +615,13 @@ groups:
     rules:
       - alert: HighErrorRate
         expr: |
-          sum(rate({job="application"} | json | level="error" [5m])) > 100
+          sum(count_over_time({job="application"} | json | level="error" [5m])) > 100
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "High error rate detected"
-          description: "Error rate is {{ $value }} errors/sec"
+          description: "Error count is {{ $value }} over 5 minutes"
 
 # Grafana Alert (if using Grafana Alerting)
 grafana_alert:
@@ -606,7 +632,7 @@ grafana_alert:
       params: [100]
   query:
     datasource: Loki
-    expr: 'sum(rate({job="application"} | json | level="error" [5m]))'
+    expr: 'sum(count_over_time({job="application"} | json | level="error" [5m]))'
   notifications:
     - slack-channel
 ```
@@ -700,7 +726,7 @@ solutions:
 
   2_structured_metadata:
     - Use structured metadata for searchable fields
-    - Indexed but doesn't create streams
+    - Queryable without creating streams or label index entries
 
   3_recording_rules:
     - Pre-compute frequent queries
@@ -730,7 +756,7 @@ migration_strategy:
   loki_approach:
     - Keep in log content
     - Query with json filter
-    - Use structured metadata (Loki 2.7+)
+    - Use structured metadata with Loki 3.0+ and schema v13
 
 # Example
 elk_query: 'user_id: "12345"'

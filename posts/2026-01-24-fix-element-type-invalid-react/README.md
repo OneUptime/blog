@@ -12,7 +12,7 @@ The "Element type is invalid: expected a string (for built-in components) or a c
 
 ## Understanding the Error
 
-This error occurs when React tries to render something that is not a valid React element. The most common causes are:
+This error occurs when React tries to render something that is not a valid React element type. The most common causes are:
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ flowchart TD
 
 ### 1. Default vs Named Export Mismatch
 
-This is the most frequent cause. When a component uses a default export but you import it as a named export (or vice versa), you get undefined.
+This is the most frequent cause. When a component uses a default export but you import it as a named export (or vice versa), the import will fail during module loading/build in standard ES modules, or your tooling may pass `undefined` through to React.
 
 ```javascript
 // MyComponent.js - Default export
@@ -49,7 +49,7 @@ const MyComponent = () => {
 export default MyComponent;
 
 // App.js - WRONG import (treating default as named)
-import { MyComponent } from './MyComponent'; // Returns undefined!
+import { MyComponent } from './MyComponent'; // Fails or produces undefined, depending on tooling
 
 // App.js - CORRECT import (default import)
 import MyComponent from './MyComponent'; // Works correctly
@@ -64,7 +64,7 @@ export const Button = ({ children }) => {
 };
 
 // App.js - WRONG import (treating named as default)
-import Button from './Button'; // Returns undefined!
+import Button from './Button'; // Fails or produces undefined, depending on tooling
 
 // App.js - CORRECT import (named import)
 import { Button } from './Button'; // Works correctly
@@ -72,17 +72,20 @@ import { Button } from './Button'; // Works correctly
 
 ### 2. Typo in Component Name
 
-A simple typo can cause the import to fail silently:
+A simple typo can cause the import to fail or produce an undefined component:
 
 ```javascript
-// WRONG - typo in filename or component name
-import MyComponet from './MyComponent'; // Typo: 'Componet'
+// MyComponent.js
+export const MyComponent = () => <div>Hello World</div>;
 
-// File might export 'MyComponent' but you are looking for 'MyComponet'
-// Result: undefined
+// WRONG - typo in named import
+import { MyComponet } from './MyComponent'; // Typo: 'Componet'
+
+// File exports 'MyComponent' but you are looking for 'MyComponet'
+// Result: import failure or undefined, depending on tooling
 
 // CORRECT
-import MyComponent from './MyComponent';
+import { MyComponent } from './MyComponent';
 ```
 
 ### 3. Circular Dependencies
@@ -101,21 +104,21 @@ flowchart LR
 
 ```javascript
 // ComponentA.js
-import ComponentC from './ComponentC';
+import { ComponentC } from './ComponentC';
 
 export const ComponentA = () => {
   return <ComponentC />;
 };
 
 // ComponentB.js
-import ComponentA from './ComponentA';
+import { ComponentA } from './ComponentA';
 
 export const ComponentB = () => {
   return <ComponentA />;
 };
 
 // ComponentC.js - Creates circular dependency!
-import ComponentB from './ComponentB';
+import { ComponentB } from './ComponentB';
 
 export const ComponentC = () => {
   return <ComponentB />;
@@ -166,9 +169,11 @@ export { Button };
 External packages can fail to install correctly:
 
 ```javascript
-// WRONG - Package not installed or incorrectly installed
+// WRONG - Package not installed or incorrect export name
 import { SomeComponent } from 'some-package';
-// If package installation failed, SomeComponent will be undefined
+// If the package is missing, the module resolver will throw an error.
+// If the export name is wrong, the import can fail or produce undefined,
+// depending on your tooling.
 
 // Debug by checking the import
 import * as SomePackage from 'some-package';
@@ -184,6 +189,8 @@ Create a helper to identify problematic components:
 
 ```javascript
 // debugRender.js
+import * as ReactIs from 'react-is';
+
 export const debugRender = (Component, name) => {
   if (Component === undefined) {
     console.error(`Component "${name}" is undefined!`);
@@ -211,7 +218,7 @@ export const debugRender = (Component, name) => {
     );
   }
 
-  if (typeof Component !== 'function' && typeof Component !== 'object') {
+  if (!ReactIs.isValidElementType(Component)) {
     console.error(`Component "${name}" is not a valid type:`, typeof Component);
     return () => (
       <div style={{

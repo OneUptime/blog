@@ -12,7 +12,7 @@ pg_stat_statements is the most essential extension for PostgreSQL performance mo
 
 ## Prerequisites
 
-- PostgreSQL 9.4+ (significantly improved in 13+)
+- PostgreSQL 13+ for the column names used in this guide (older versions use `total_time`, `mean_time`, and related columns)
 - Superuser access for installation
 - Understanding of query patterns
 
@@ -34,6 +34,9 @@ SELECT * FROM pg_extension WHERE extname = 'pg_stat_statements';
 # Add to shared_preload_libraries (requires restart)
 
 shared_preload_libraries = 'pg_stat_statements'
+
+# PostgreSQL 14+: enable query identifiers if not already enabled
+# compute_query_id = auto
 
 # Configuration options
 pg_stat_statements.max = 10000           # Max statements to track
@@ -184,15 +187,15 @@ ORDER BY total_plan_time DESC
 LIMIT 20;
 ```
 
-### Query Throughput Analysis
+### Calls per Execution Minute
 
 ```sql
--- Queries per minute (approximate)
+-- Calls per minute of cumulative execution time (not wall-clock throughput)
 SELECT
     query,
     calls,
-    round(total_exec_time / 60000, 2) AS total_minutes,
-    round(calls * 60000.0 / total_exec_time, 2) AS calls_per_minute
+    round((total_exec_time / 60000)::numeric, 2) AS total_exec_minutes,
+    round((calls * 60000.0 / total_exec_time)::numeric, 2) AS calls_per_exec_minute
 FROM pg_stat_statements
 WHERE total_exec_time > 0
 ORDER BY calls DESC
@@ -223,7 +226,7 @@ LIMIT 20;
 SELECT pg_stat_statements_reset();
 ```
 
-### Reset Specific User (PostgreSQL 14+)
+### Reset Specific User (PostgreSQL 13+)
 
 ```sql
 -- Reset for specific user
@@ -293,6 +296,8 @@ SELECT
 FROM pg_stat_statements_history h1
 JOIN pg_stat_statements_history h2
     ON h1.queryid = h2.queryid
+   AND h1.dbid = h2.dbid
+   AND h1.userid = h2.userid
 WHERE h1.snapshot_time = '2026-01-20 00:00:00'
   AND h2.snapshot_time = '2026-01-21 00:00:00'
 ORDER BY new_time_ms DESC

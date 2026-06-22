@@ -73,6 +73,8 @@ const exporter = new OTLPTraceExporter({
 **Python:**
 
 ```python
+import os
+
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 exporter = OTLPSpanExporter(
@@ -91,10 +93,10 @@ exporter = OTLPSpanExporter(
 # otel-collector-config.yaml
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
       Content-Type: application/json
     encoding: json
 ```

@@ -8,7 +8,7 @@ Description: A comprehensive guide to shipping logs to Grafana Loki using Promta
 
 ---
 
-Promtail is the official log collection agent for Grafana Loki. It discovers log files, extracts labels, transforms log lines through pipeline stages, and pushes them to Loki. This guide covers everything from basic setup to advanced pipeline configurations for production environments.
+Promtail is the legacy log collection agent for Grafana Loki. Grafana marks Promtail as end-of-life as of March 2, 2026 and recommends migrating to Grafana Alloy or another supported client for new production deployments. Promtail discovers log files, extracts labels, transforms log lines through pipeline stages, and pushes them to Loki. This guide covers everything from basic setup to advanced pipeline configurations for existing Promtail environments.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Before starting, ensure you have:
 ### Binary Installation
 
 ```bash
-# Download latest release
+# Download a Promtail 2.9.x release
 
 PROMTAIL_VERSION="2.9.4"
 curl -LO "https://github.com/grafana/loki/releases/download/v${PROMTAIL_VERSION}/promtail-linux-amd64.zip"
@@ -87,7 +87,7 @@ scrape_configs:
           - localhost
         labels:
           job: varlogs
-          host: ${HOSTNAME}
+          host: localhost
           __path__: /var/log/*.log
 ```
 
@@ -154,7 +154,7 @@ clients:
   # Primary Loki cluster
   - url: http://loki-primary:3100/loki/api/v1/push
     tenant_id: primary
-  # Secondary for replication
+  # Secondary endpoint; a failing client can delay sends to other clients
   - url: http://loki-secondary:3100/loki/api/v1/push
     tenant_id: secondary
 ```
@@ -344,7 +344,7 @@ pipeline_stages:
   - labeldrop:
       - user_id  # Remove high-cardinality label
 
-  # Rename labels
+  # Allow only selected labels
   - labelallow:
       - level
       - method
@@ -399,7 +399,7 @@ pipeline_stages:
       replace: '${1}[REDACTED]'
 
   - replace:
-      expression: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+      expression: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
       replace: '[EMAIL_REDACTED]'
 
   # Mask credit card numbers
@@ -445,7 +445,7 @@ clients:
       max_retries: 10
     external_labels:
       cluster: production-us-east
-      hostname: ${HOSTNAME}
+      hostname: promtail-host
 
 scrape_configs:
   # Application JSON logs
@@ -473,16 +473,18 @@ scrape_configs:
       - timestamp:
           source: timestamp
           format: RFC3339Nano
-      - output:
-          source: message
-      # Redact PII
-      - replace:
-          expression: '"email":\s*"[^"]*"'
-          replace: '"email": "[REDACTED]"'
       # Drop debug in production
       - drop:
-          expression: '"level":\s*"debug"'
+          source: level
+          value: debug
           drop_counter_reason: debug_logs
+      # Redact PII
+      - replace:
+          source: message
+          expression: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+          replace: '[EMAIL_REDACTED]'
+      - output:
+          source: message
 
   # Nginx access logs
   - job_name: nginx-access

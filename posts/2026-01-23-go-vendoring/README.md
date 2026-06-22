@@ -19,7 +19,7 @@ graph LR
     A[Go Project] --> B{Dependency Source}
     B -->|Without Vendor| C[Module Cache]
     B -->|With Vendor| D[vendor/ Directory]
-    C --> E[Network Required]
+    C --> E[Network or Cache]
     D --> F[Self-Contained]
 ```
 
@@ -43,8 +43,8 @@ go mod init myproject
 # Download dependencies and create vendor/
 go mod vendor
 
-# Verify vendor matches go.mod
-go mod verify
+# Check that vendored packages can be loaded
+go list -mod=vendor ./...
 ```
 
 ---
@@ -77,7 +77,7 @@ go build -mod=vendor
 # Run tests with vendor
 go test -mod=vendor ./...
 
-# Set default in go.mod (Go 1.14+)
+# With Go 1.14+, vendor/ is used automatically when present
 ```
 
 In `go.mod`:
@@ -87,7 +87,7 @@ module myproject
 
 go 1.21
 
-// Forces vendor usage
+// Uses vendor/ automatically when the directory is present
 ```
 
 ---
@@ -100,6 +100,8 @@ package main
 
 import (
     "fmt"
+    "net/http"
+
     "github.com/gorilla/mux"
 )
 
@@ -172,8 +174,8 @@ go mod vendor
 ## Checking Vendor Status
 
 ```bash
-# Verify vendor matches go.mod/go.sum
-go mod verify
+# Check that vendored packages can be loaded
+go list -mod=vendor ./...
 
 # Tidy and re-vendor
 go mod tidy
@@ -215,10 +217,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
         go-version: '1.21'
     
@@ -238,13 +240,13 @@ jobs:
 
 ## Partial Vendoring
 
-You can vendor only specific packages (not recommended):
+Go does not support selecting only specific packages with `go mod vendor`. Manually deleting vendored packages is fragile and not recommended:
 
 ```bash
-# Vendor specific module
+# Vendor all packages needed to build and test the main module
 go mod vendor
 
-# Remove unwanted (manual, not recommended)
+# Remove unwanted packages (manual, not recommended)
 rm -rf vendor/unwanted/package
 ```
 
@@ -308,7 +310,7 @@ vendor/
 
 ```bash
 # Check which module provides a package
-go list -m -json all | jq '.Path'
+go list -f '{{.Module.Path}} {{.Module.Version}}' github.com/gorilla/mux
 
 # See where a package comes from
 go list -f '{{.Dir}}' github.com/gorilla/mux
@@ -363,7 +365,7 @@ require (
 vendor:
 	go mod tidy
 	go mod vendor
-	go mod verify
+	go list -mod=vendor ./...
 
 .PHONY: build
 build: vendor
@@ -381,7 +383,7 @@ test:
 | Command | Description |
 |---------|-------------|
 | `go mod vendor` | Create/update vendor/ |
-| `go mod verify` | Verify vendor integrity |
+| `go list -mod=vendor ./...` | Check vendored packages can be loaded |
 | `go build -mod=vendor` | Build using vendor |
 | `go mod tidy && go mod vendor` | Clean and re-vendor |
 

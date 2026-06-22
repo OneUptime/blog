@@ -194,17 +194,17 @@ If PostgreSQL isn't using parallelism when it should:
 
 ```sql
 -- Lower the costs to encourage parallelism
-SET parallel_tuple_cost = 0.001;  -- Default 0.01
+SET parallel_tuple_cost = 0.001;  -- Default 0.1
 SET parallel_setup_cost = 100;    -- Default 1000
 
 -- Reduce minimum table size threshold
 SET min_parallel_table_scan_size = '1MB';  -- Default 8MB
 ```
 
-### Force Parallelism for Testing
+### Encourage Parallelism for Testing
 
 ```sql
--- Force parallel query (for testing only)
+-- Encourage parallel query (for testing only)
 SET parallel_tuple_cost = 0;
 SET parallel_setup_cost = 0;
 SET max_parallel_workers_per_gather = 4;
@@ -268,7 +268,7 @@ SELECT * FROM sales WHERE id = 12345;
 
 ### Write Operations
 
-INSERT, UPDATE, DELETE are not parallelized (except CREATE TABLE AS SELECT):
+Data-modifying queries that write or lock rows do not use parallel plans. Commands such as CREATE TABLE AS SELECT can still use a parallel plan for the underlying SELECT:
 
 ```sql
 -- Serial execution
@@ -354,7 +354,7 @@ For an analytics workload on a server with 8 CPU cores:
 max_parallel_workers = 8                   # Total workers
 max_parallel_workers_per_gather = 4        # Per query
 max_parallel_maintenance_workers = 4       # For index builds
-parallel_tuple_cost = 0.01                 # Default
+parallel_tuple_cost = 0.1                  # Default
 parallel_setup_cost = 1000                 # Default
 min_parallel_table_scan_size = 8MB         # Default
 min_parallel_index_scan_size = 512kB       # Default

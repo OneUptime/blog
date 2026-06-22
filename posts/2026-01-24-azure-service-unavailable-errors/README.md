@@ -70,10 +70,10 @@ az webapp log download --name myapp --resource-group myresourcegroup --log-file 
 ### Check Metrics
 
 ```bash
-# Get recent HTTP 503 count
+# Get recent HTTP 5xx count, including 503 responses
 az monitor metrics list \
     --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/myapp" \
-    --metric "Http503" \
+    --metric "Http5xx" \
     --interval PT1M \
     --start-time $(date -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
 ```
@@ -86,10 +86,10 @@ The most common cause of 503 errors is your application crashing.
 
 ```bash
 # Check for Out of Memory errors
-az webapp log show-container-logs --name myapp --resource-group myresourcegroup | grep -i "memory\|oom\|killed"
+az webapp log tail --name myapp --resource-group myresourcegroup | grep -i "memory\|oom\|killed"
 
 # Check for unhandled exceptions
-az webapp log show-container-logs --name myapp --resource-group myresourcegroup | grep -i "exception\|error\|fatal"
+az webapp log tail --name myapp --resource-group myresourcegroup | grep -i "exception\|error\|fatal"
 ```
 
 ### Add Global Error Handling
@@ -164,10 +164,17 @@ flowchart LR
 ### Check Current Resource Usage
 
 ```bash
-# Get App Service metrics
+# Get App Service Plan CPU and memory metrics
+az monitor metrics list \
+    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/serverFarms/myplan" \
+    --metric "CpuPercentage,MemoryPercentage" \
+    --interval PT5M \
+    --query "value[].timeseries[].data[-1]"
+
+# Get web app connection count
 az monitor metrics list \
     --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/myapp" \
-    --metric "CpuPercentage,MemoryPercentage,Connections" \
+    --metric "AppConnections" \
     --interval PT5M \
     --query "value[].timeseries[].data[-1]"
 ```
@@ -175,11 +182,11 @@ az monitor metrics list \
 ### Scale Up or Out
 
 ```bash
-# Scale up to larger instance
-az webapp update \
+# Enable Always On to reduce cold-start related 503s
+az webapp config set \
     --name myapp \
     --resource-group myresourcegroup \
-    --set siteConfig.alwaysOn=true
+    --always-on true
 
 # Change to higher tier App Service Plan
 az appservice plan update \
@@ -188,10 +195,10 @@ az appservice plan update \
     --sku P2V3
 
 # Scale out to multiple instances
-az webapp scale \
-    --name myapp \
+az appservice plan update \
+    --name myplan \
     --resource-group myresourcegroup \
-    --instance-count 3
+    --number-of-workers 3
 ```
 
 ### Configure Autoscale
@@ -224,7 +231,7 @@ az monitor autoscale rule create \
 
 ## Fix 3: Health Check Failures
 
-Azure removes instances that fail health checks, causing 503 errors if all instances are unhealthy.
+Azure removes unhealthy instances from load balancer rotation, reducing available capacity and potentially causing 503 errors during load spikes. If all App Service instances are unhealthy, App Service keeps them in rotation to avoid taking the application completely out of service.
 
 ### Configure Health Check
 
@@ -233,7 +240,7 @@ Azure removes instances that fail health checks, causing 503 errors if all insta
 az webapp config set \
     --name myapp \
     --resource-group myresourcegroup \
-    --health-check-path /health
+    --generic-configurations '{"healthCheckPath": "/health"}'
 ```
 
 ### Implement Proper Health Endpoint
@@ -463,13 +470,14 @@ Sometimes the issue is with Azure itself.
 ### Check Azure Status
 
 ```bash
-# Check Azure status page programmatically
-curl -s "https://status.azure.com/api/v1/services" | jq '.services[] | select(.status != "good")'
+# Check Azure status page
+curl -I "https://azure.status.microsoft/"
 
 # Check Resource Health
-az resource show \
-    --ids "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/myapp" \
-    --query "properties.resourceHealth"
+az rest \
+    --method get \
+    --url "https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/myapp/providers/Microsoft.ResourceHealth/availabilityStatuses/current?api-version=2025-05-01" \
+    --query "properties.{state:availabilityState,details:detailedStatus,summary:summary}"
 ```
 
 ### Enable Multi-Region Failover
@@ -525,16 +533,16 @@ az network traffic-manager endpoint create \
 Set up alerts to catch 503 errors before users report them.
 
 ```bash
-# Create alert for 503 errors
+# Create alert for server-side 5xx errors, including 503 responses
 az monitor metrics alert create \
-    --name "High503Errors" \
+    --name "High5xxErrors" \
     --resource-group myresourcegroup \
     --scopes "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/myapp" \
-    --condition "total Http503 > 10" \
+    --condition "total Http5xx > 10" \
     --window-size 5m \
     --evaluation-frequency 1m \
     --action-group myactiongroup \
-    --description "More than 10 503 errors in 5 minutes"
+    --description "More than 10 server-side 5xx errors in 5 minutes"
 
 # Alert on instance health
 az monitor metrics alert create \

@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Filesystem, Permission, ErrorHandling, Window
+Tags: NodeJS, Filesystem, Permission, ErrorHandling, Windows
 
 Description: Learn how to diagnose and fix the EPERM operation not permitted error in Node.js, common on Windows when files are locked or permissions are insufficient.
 
 ---
 
-The `EPERM: operation not permitted` error occurs when Node.js cannot perform a file system operation due to permission restrictions. This is particularly common on Windows but can occur on any operating system.
+The `EPERM: operation not permitted` error occurs when Node.js cannot perform a file system operation because the operation is not allowed, often due to permissions, file attributes, or another process locking the file. This is particularly common on Windows but can occur on any operating system.
 
 ## Understanding the Error
 
@@ -68,8 +68,8 @@ Solutions:
 taskkill /f /im node.exe  # Windows
 pkill node                 # Linux/macOS
 
-# Clear npm cache
-npm cache clean --force
+# Verify npm cache
+npm cache verify
 
 # Delete node_modules and reinstall
 rm -rf node_modules
@@ -152,15 +152,17 @@ npm install rimraf
 ```javascript
 const { rimraf } = require('rimraf');
 
-// Delete directory with all contents
-await rimraf('node_modules');
+async function cleanup() {
+  // Delete directory with all contents
+  await rimraf('node_modules');
 
-// With options
-await rimraf('temp/*', {
-  glob: true,
-  maxRetries: 3,
-  backoff: 100,
-});
+  // With options
+  await rimraf('temp/*', {
+    glob: true,
+    maxRetries: 3,
+    backoff: 1.2,
+  });
+}
 ```
 
 ## Windows-Specific Solutions
@@ -189,6 +191,8 @@ resmon.exe
 Some antivirus software locks files during scanning:
 
 ```javascript
+const fs = require('fs').promises;
+
 // Add delay before file operations
 async function writeWithDelay(path, data) {
   await fs.writeFile(path, data);
@@ -213,7 +217,7 @@ Add-MpPreference -ExclusionPath "C:\Projects\myapp"
 ```javascript
 const fs = require('fs').promises;
 
-async function safeFileOperation(operation, filePath, options = {}) {
+async function safeFileOperation(operation, options = {}) {
   const { retries = 3, delay = 100 } = options;
   
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -233,11 +237,12 @@ async function safeFileOperation(operation, filePath, options = {}) {
 }
 
 // Usage
-await safeFileOperation(
-  () => fs.unlink('file.txt'),
-  'file.txt',
-  { retries: 5, delay: 200 }
-);
+async function deleteWithRetry() {
+  await safeFileOperation(
+    () => fs.unlink('file.txt'),
+    { retries: 5, delay: 200 }
+  );
+}
 ```
 
 ### File Lock Wrapper
@@ -274,12 +279,14 @@ class FileLock {
 const fileLock = new FileLock();
 
 // Usage
-await fileLock.withLock('data.json', async () => {
-  const data = await fs.readFile('data.json', 'utf8');
-  const updated = JSON.parse(data);
-  updated.count++;
-  await fs.writeFile('data.json', JSON.stringify(updated));
-});
+async function updateCount() {
+  await fileLock.withLock('data.json', async () => {
+    const data = await fs.readFile('data.json', 'utf8');
+    const updated = JSON.parse(data);
+    updated.count++;
+    await fs.writeFile('data.json', JSON.stringify(updated));
+  });
+}
 ```
 
 ## Cross-Platform Considerations
@@ -299,6 +306,8 @@ const normalizedPath = path.normalize(userInput);
 ### Handle Different Error Codes
 
 ```javascript
+const fs = require('fs').promises;
+
 async function deleteFile(filePath) {
   try {
     await fs.unlink(filePath);
@@ -357,18 +366,13 @@ async function readWithCleanup(path) {
 
 ```javascript
 const fs = require('fs');
+const { pipeline } = require('stream/promises');
 
-function processFile(inputPath, outputPath) {
-  return new Promise((resolve, reject) => {
-    const readStream = fs.createReadStream(inputPath);
-    const writeStream = fs.createWriteStream(outputPath);
-    
-    readStream.pipe(writeStream);
-    
-    writeStream.on('finish', resolve);
-    writeStream.on('error', reject);
-    readStream.on('error', reject);
-  });
+async function processFile(inputPath, outputPath) {
+  await pipeline(
+    fs.createReadStream(inputPath),
+    fs.createWriteStream(outputPath)
+  );
 }
 ```
 
@@ -410,17 +414,16 @@ npm config get prefix
 # On Windows, use npm properly installed paths
 # Or use nvm-windows
 
-# Fix ownership on macOS/Linux
-sudo chown -R $(whoami) $(npm config get prefix)/{lib/node_modules,bin,share}
+# On macOS/Linux, use a Node version manager or a user-owned npm prefix
 ```
 
-### Clear All Caches
+### Verify Cache and Reinstall
 
 ```bash
-# Clear npm cache
-npm cache clean --force
+# Verify npm cache
+npm cache verify
 
-# Delete package-lock
+# Delete package-lock only if you need to regenerate the lockfile
 rm package-lock.json
 
 # Delete node_modules
@@ -436,8 +439,8 @@ npm install
 |-------|----------|
 | File locked | Close other processes, retry with backoff |
 | Read-only file | Change permissions with `chmod` |
-| npm issues | Clear cache, delete node_modules |
-| Antivirus | Add exclusion, use delays |
+| npm issues | Verify cache, delete node_modules |
+| Antivirus | Add exclusion, use delays when needed |
 | Administrator needed | Run as admin (Windows) |
 | Insufficient permissions | Check file/folder ownership |
 
@@ -446,5 +449,5 @@ Best practices:
 - Implement retry logic for file operations
 - Use libraries like rimraf for deletion
 - Handle platform-specific error codes
-- Add delays when dealing with antivirus software
+- Add delays or exclusions when dealing with antivirus software
 - Use temporary files for atomic operations

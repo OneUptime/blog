@@ -23,10 +23,10 @@ flowchart TB
     end
 
     subgraph Examples["Example Quotas"]
-        SUB --> E1[Total vCPUs per subscription]
+        SUB --> E1[Resource counts per subscription]
         REG --> E2[VM family cores per region]
         RES --> E3[Storage accounts per region]
-        RES --> E4[Public IPs per subscription]
+        RES --> E4[Public IPs per region]
     end
 
     subgraph Actions["When Exceeded"]
@@ -81,7 +81,7 @@ az storage account list \
 
 ### Using Azure Portal
 
-Navigate to your subscription and select "Usage + quotas" to see a visual breakdown of all quotas and current usage.
+Search for "Quotas" in the Azure portal, select "Quotas", and open "My quotas" to see a visual breakdown of quotas and current usage.
 
 ### Using PowerShell
 
@@ -93,6 +93,7 @@ Get-AzVMUsage -Location "eastus" |
 
 # Calculate percentage used
 Get-AzVMUsage -Location "eastus" |
+    Where-Object { $_.Limit -gt 0 } |
     Select-Object @{N='Resource';E={$_.Name.LocalizedValue}},
                   @{N='Used';E={$_.CurrentValue}},
                   @{N='Limit';E={$_.Limit}},
@@ -121,12 +122,11 @@ az quota request list \
 
 ### Via Azure Portal
 
-1. Go to "Subscriptions" then select your subscription
-2. Click "Usage + quotas" in the left menu
-3. Find the quota you need to increase
-4. Click "Request increase"
-5. Fill in the justification and new limit
-6. Submit the request
+1. Search for "Quotas" in the Azure portal and select "Quotas"
+2. On the "My quotas" page, select the provider and quota you need to increase
+3. Click "Request increase" or select the pencil icon for adjustable quotas
+4. Enter the new quota limit
+5. Submit the request
 
 ### Automated Quota Request Script
 
@@ -179,7 +179,7 @@ az vm list-usage --location eastus --output table
 
 # Common VM families and their codes
 # standardDSv3Family - General purpose
-# standardDSv4Family - Latest general purpose
+# standardDSv4Family - General purpose
 # standardESv3Family - Memory optimized
 # standardNCSv3Family - GPU compute
 # standardLSv2Family - Storage optimized
@@ -209,7 +209,7 @@ az network public-ip list \
 ### Storage Account Quotas
 
 ```bash
-# Default limit is 250 storage accounts per subscription per region
+# Default standard endpoint limit is 250 storage accounts per subscription per region
 az storage account list \
     --query "[].{Name:name, Location:location, Kind:kind}" \
     --output table | sort
@@ -222,43 +222,21 @@ az storage account list \
 
 ## Proactive Quota Monitoring
 
-### Azure Monitor Alert Rule
+### Azure Resource Graph Query for Alert Rule
 
-```json
-{
-  "type": "Microsoft.Insights/metricAlerts",
-  "apiVersion": "2018-03-01",
-  "name": "quota-alert-vcpus",
-  "location": "global",
-  "properties": {
-    "description": "Alert when vCPU quota usage exceeds 80%",
-    "severity": 2,
-    "enabled": true,
-    "scopes": [
-      "/subscriptions/<subscription-id>"
-    ],
-    "evaluationFrequency": "PT1H",
-    "windowSize": "PT1H",
-    "criteria": {
-      "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
-      "allOf": [
-        {
-          "name": "vCPU quota threshold",
-          "metricName": "UsagePercent",
-          "metricNamespace": "Microsoft.Compute/locations",
-          "operator": "GreaterThan",
-          "threshold": 80,
-          "timeAggregation": "Maximum"
-        }
-      ]
-    },
-    "actions": [
-      {
-        "actionGroupId": "/subscriptions/<sub>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/ops-team"
-      }
-    ]
-  }
-}
+```kusto
+arg("").QuotaResources
+| where type =~ "microsoft.compute/locations/usages"
+| where subscriptionId =~ "<subscription-id>"
+| where location =~ "eastus"
+| mv-expand usage = properties.value limit 400
+| extend current = toint(usage.currentValue),
+         quotaLimit = toint(usage["limit"]),
+         quotaName = tostring(usage["name"].localizedValue)
+| where quotaLimit > 0
+| extend usagePercent = current * 100 / quotaLimit
+| where usagePercent > 80
+| project subscriptionId, location, quotaName, current, quotaLimit, usagePercent
 ```
 
 ### Python Monitoring Script
@@ -342,6 +320,7 @@ az vm list-usage \
 ```bash
 # Find deallocated VMs (still consuming quota)
 az vm list \
+    --show-details \
     --query "[?powerState=='VM deallocated'].{Name:name, RG:resourceGroup}" \
     --output table
 
@@ -406,8 +385,11 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 REQUIRED=16
-                AVAILABLE=$(az vm list-usage --location eastus \
-                  --query "[?name.value=='standardDSv3Family'].[limit - currentValue]" -o tsv)
+                CURRENT=$(az vm list-usage --location eastus \
+                  --query "[?name.value=='standardDSv3Family'].currentValue" -o tsv)
+                LIMIT=$(az vm list-usage --location eastus \
+                  --query "[?name.value=='standardDSv3Family'].limit" -o tsv)
+                AVAILABLE=$((LIMIT - CURRENT))
 
                 if [ "$AVAILABLE" -lt "$REQUIRED" ]; then
                   echo "##vso[task.logissue type=error]Insufficient quota: need $REQUIRED cores, only $AVAILABLE available"

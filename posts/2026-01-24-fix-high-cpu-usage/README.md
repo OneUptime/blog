@@ -58,7 +58,7 @@ iostat -x 1 5
 | %system | Time in kernel (system calls) | < 30% |
 | %iowait | Waiting for I/O | < 20% |
 | %idle | Doing nothing | > 20% |
-| Load average | Queue of processes waiting | < CPU cores |
+| Load average | Runnable processes and tasks waiting on disk I/O | < CPU cores |
 
 ### Application-Level Profiling
 
@@ -334,7 +334,7 @@ console.time('bad regex');
 badEmailRegex.test(maliciousInput);  // Hangs!
 console.timeEnd('bad regex');
 
-// GOOD: Non-backtracking regex
+// GOOD: Safer regex without nested quantifiers
 const goodEmailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 console.time('good regex');
@@ -345,7 +345,7 @@ console.timeEnd('good regex');
 const validator = require('validator');
 
 function validateEmail(email) {
-    // Set a timeout for safety
+    // Use a maintained validator instead of hand-rolled regex
     return validator.isEmail(email, {
         allow_display_name: false,
         require_display_name: false,
@@ -449,10 +449,10 @@ class RedisCache:
 
                 # Compute and cache
                 result = func(*args, **kwargs)
-                self.client.setex(
+                self.client.set(
                     cache_key,
-                    ttl or self.default_ttl,
-                    json.dumps(result)
+                    json.dumps(result),
+                    ex=ttl or self.default_ttl
                 )
 
                 return result
@@ -544,15 +544,15 @@ flowchart LR
 
 const Queue = require('bull');
 const cluster = require('cluster');
-const numCPUs = require('os').cpus().length;
+const numCPUs = require('os').availableParallelism();
 
 // Create queue
 const processingQueue = new Queue('cpu-intensive', {
     redis: { host: 'localhost', port: 6379 }
 });
 
-if (cluster.isMaster) {
-    // Master process handles web requests
+if (cluster.isPrimary) {
+    // Primary process handles web requests
     const express = require('express');
     const app = express();
 
@@ -654,12 +654,12 @@ groups:
 When debugging high CPU usage:
 
 1. **Identify the process** - Use top/htop to find which process
-2. **Check if it is user or system** - User means your code, system means I/O
+2. **Check if it is user, system, or iowait** - User means application code, system means kernel CPU time, iowait means waiting on I/O
 3. **Profile the code** - Use language-specific profilers
 4. **Look for hot functions** - Focus on top CPU consumers
 5. **Check algorithm complexity** - O(n^2) or worse causes issues at scale
 6. **Review regex patterns** - Test for catastrophic backtracking
-7. **Consider async/workers** - Offload CPU work from main thread
+7. **Consider workers/background jobs** - Offload CPU work from main thread
 8. **Add caching** - Do not recompute what can be cached
 9. **Batch large operations** - Spread load over time
 10. **Set up alerts** - Catch issues before users complain

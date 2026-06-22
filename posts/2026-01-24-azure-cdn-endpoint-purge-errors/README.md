@@ -73,13 +73,12 @@ The most frequent purge error is hitting rate limits.
 Implement rate limiting and batching in your purge logic:
 
 ```bash
-# Check current purge limits for your CDN profile
+# Check the CDN profile SKU before choosing provider-specific purge settings
 
-az cdn endpoint show \
+az cdn profile show \
     --resource-group myResourceGroup \
-    --profile-name myCDNProfile \
-    --name myEndpoint \
-    --query "deliveryPolicy"
+    --name myCDNProfile \
+    --query "sku.name"
 ```
 
 Implement a purge script with rate limiting:
@@ -93,6 +92,7 @@ Azure CDN Purge Script with Rate Limiting and Retry Logic
 import time
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.cdn import CdnManagementClient
+from azure.mgmt.cdn.models import PurgeParameters
 
 class CDNPurger:
     def __init__(self, subscription_id, resource_group, profile_name, endpoint_name):
@@ -103,7 +103,7 @@ class CDNPurger:
         self.endpoint_name = endpoint_name
 
         # Rate limiting settings
-        self.max_paths_per_request = 50  # Azure limit
+        self.max_paths_per_request = 50  # Conservative batch size
         self.requests_per_minute = 10
         self.last_request_time = 0
 
@@ -141,7 +141,7 @@ class CDNPurger:
                         resource_group_name=self.resource_group,
                         profile_name=self.profile_name,
                         endpoint_name=self.endpoint_name,
-                        content_file_paths={"content_paths": batch}
+                        content_file_paths=PurgeParameters(content_paths=batch)
                     )
 
                     # Wait for completion
@@ -154,7 +154,7 @@ class CDNPurger:
                     error_msg = str(e)
 
                     if "TooManyRequests" in error_msg:
-                        wait_time = 60 * (attempt + 1)  # Exponential backoff
+                        wait_time = 60 * (2 ** attempt)  # Exponential backoff
                         print(f"Rate limited. Waiting {wait_time} seconds...")
                         time.sleep(wait_time)
                     elif attempt == max_retries - 1:
@@ -406,42 +406,25 @@ ENDPOINT_NAME="myEndpoint"
 
 # Start the purge (async)
 echo "Starting purge..."
-OPERATION_URL=$(az cdn endpoint purge \
+az cdn endpoint purge \
     --resource-group $RESOURCE_GROUP \
     --profile-name $PROFILE_NAME \
     --name $ENDPOINT_NAME \
     --content-paths "/*" \
-    --no-wait \
-    --query "id" -o tsv 2>&1)
+    --no-wait
 
 echo "Purge operation started"
 
-# Monitor purge status
-MAX_WAIT=600  # 10 minutes
-ELAPSED=0
-INTERVAL=30
+# Wait for the endpoint operation to finish
+az cdn endpoint wait \
+    --resource-group $RESOURCE_GROUP \
+    --profile-name $PROFILE_NAME \
+    --name $ENDPOINT_NAME \
+    --updated \
+    --interval 30 \
+    --timeout 600
 
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    # Check endpoint for recent purge activity
-    STATUS=$(az cdn endpoint show \
-        --resource-group $RESOURCE_GROUP \
-        --profile-name $PROFILE_NAME \
-        --name $ENDPOINT_NAME \
-        --query "provisioningState" -o tsv)
-
-    echo "Status after ${ELAPSED}s: $STATUS"
-
-    if [ "$STATUS" == "Succeeded" ]; then
-        echo "Purge completed successfully!"
-        exit 0
-    fi
-
-    sleep $INTERVAL
-    ELAPSED=$((ELAPSED + INTERVAL))
-done
-
-echo "Purge timed out after ${MAX_WAIT} seconds"
-exit 1
+echo "Purge completed successfully!"
 ```
 
 ## Implementing a Robust Purge Pipeline
@@ -498,10 +481,10 @@ stages:
                   exit 0
                 fi
 
-                # Convert to JSON array
-                PATHS_JSON=$(echo "$CHANGED_FILES" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+                # Convert changed files to a Bash array
+                mapfile -t CONTENT_PATHS <<< "$CHANGED_FILES"
 
-                echo "Purging paths: $PATHS_JSON"
+                echo "Purging paths: ${CONTENT_PATHS[*]}"
 
                 # Purge with retry
                 for i in {1..3}; do
@@ -509,7 +492,7 @@ stages:
                     --resource-group $(resourceGroup) \
                     --profile-name $(cdnProfile) \
                     --name $(cdnEndpoint) \
-                    --content-paths $PATHS_JSON && break
+                    --content-paths "${CONTENT_PATHS[@]}" && break
 
                   echo "Purge attempt $i failed, retrying in 30s..."
                   sleep 30

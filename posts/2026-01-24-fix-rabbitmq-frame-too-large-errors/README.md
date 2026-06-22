@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Troubleshooting, AMQP, Backend, Distributed System, Configuration
 
-Description: Learn how to diagnose and fix RabbitMQ frame too large errors caused by oversized messages exceeding the configured frame size limit.
+Description: Learn how to diagnose and fix RabbitMQ frame too large errors caused by AMQP frames exceeding the negotiated frame size limit.
 
 ---
 
-> Frame too large errors occur when a message exceeds RabbitMQ's maximum frame size limit. Understanding frame sizes and configuring appropriate limits prevents message delivery failures and connection drops.
+> Frame too large errors occur when an AMQP frame exceeds RabbitMQ's negotiated maximum frame size. Message bodies can be split across multiple frames, but individual method, header, heartbeat, and body frames must still fit within the negotiated limit.
 
-This error appears as `frame_too_large` or error code 501, typically causing channel or connection closure.
+This error appears as `frame_too_large` or AMQP reply code 501 (`FRAME_ERROR`), and it closes the connection.
 
 ---
 
@@ -18,12 +18,13 @@ This error appears as `frame_too_large` or error code 501, typically causing cha
 
 ```mermaid
 flowchart TD
-    A[Large Message<br/>5MB] --> B{Frame Size Check}
-    B -->|< Max Frame Size| C[Split into Frames]
+    A[Message Body<br/>5MB] --> B{Body Frame Size Check}
+    B -->|Body can be split| C[Split into Body Frames]
     C --> D[Send Frames]
     D --> E[Reassemble at Broker]
 
-    B -->|> Max Frame Size| F[FRAME_TOO_LARGE Error]
+    H[Large Headers<br/>or Bad Client Frame] --> I{Single Frame Check}
+    I -->|> Max Frame Size| F[FRAME_TOO_LARGE Error]
     F --> G[Connection Closed]
 ```
 
@@ -31,14 +32,15 @@ flowchart TD
 
 ## What Causes Frame Too Large Errors
 
-### 1. Message Exceeds Negotiated Frame Size
+### 1. A Single Frame Exceeds Negotiated Frame Size
 
 ```python
 import pika
 
-# Default frame size is often 131072 bytes (128KB)
+# Default frame size is 131072 bytes (128 KiB)
 
-# Sending a larger message without proper configuration fails
+# Message bodies larger than frame_max are normally split into body frames.
+# A large content header, however, must fit in a single frame.
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters('localhost')
@@ -46,14 +48,17 @@ connection = pika.BlockingConnection(
 channel = connection.channel()
 channel.queue_declare(queue='large_messages')
 
-# This 1MB message will fail with default settings
-large_message = 'x' * (1024 * 1024)  # 1MB
+# This oversized header can exceed the negotiated frame size
+large_headers = {
+    'trace_context': 'x' * (256 * 1024)  # 256 KiB
+}
 
 try:
     channel.basic_publish(
         exchange='',
         routing_key='large_messages',
-        body=large_message
+        body='small body',
+        properties=pika.BasicProperties(headers=large_headers)
     )
 except pika.exceptions.AMQPError as e:
     print(f"Error: {e}")
@@ -62,21 +67,21 @@ except pika.exceptions.AMQPError as e:
 
 ### 2. Frame Size Mismatch
 
-Client and server frame sizes must match:
+Client and server frame sizes are negotiated during connection tuning:
 
 ```python
 import pika
 
-# Client requests 1MB frame size
+# Client requests 1 MiB frame size
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         'localhost',
-        frame_max=1048576  # 1MB
+        frame_max=1048576  # 1 MiB
     )
 )
 
-# If server's max is lower (e.g., 128KB), connection will use lower value
-# Messages larger than the negotiated size will fail
+# If the client tries to negotiate a value higher than the server allows,
+# the server closes the connection according to the AMQP 0-9-1 rules.
 ```
 
 ---
@@ -105,9 +110,7 @@ curl -u guest:guest \
     http://localhost:15672/api/connections | \
     jq '.[] | {name: .name, frame_max: .frame_max}'
 
-# Check overview for default settings
-curl -u guest:guest \
-    http://localhost:15672/api/overview | jq '.frame_max'
+# Management API exposes the negotiated value on each connection
 ```
 
 ---
@@ -116,11 +119,11 @@ curl -u guest:guest \
 
 ### Solution 1: Increase Frame Size
 
-Configure RabbitMQ to accept larger frames:
+Configure RabbitMQ to accept larger individual frames:
 
 ```ini
 # rabbitmq.conf
-# Increase frame_max to 1MB (default is 131072 = 128KB)
+# Increase frame_max to 1 MiB (default is 131072 = 128 KiB)
 frame_max = 1048576
 ```
 
@@ -137,39 +140,42 @@ Or using the advanced config format:
 
 ### Client Configuration
 
-Match the client frame size to the server:
+Set the client frame size to a value allowed by the server:
 
 ```python
 import pika
 
-# Configure client with matching frame size
+# Configure client with a larger frame size
 connection_params = pika.ConnectionParameters(
     host='localhost',
-    frame_max=1048576  # 1MB - must not exceed server's frame_max
+    frame_max=1048576  # 1 MiB - must not exceed server's configured limit
 )
 
 connection = pika.BlockingConnection(connection_params)
 channel = connection.channel()
 channel.queue_declare(queue='large_messages')
 
-# Now 1MB messages work
-large_message = 'x' * (1024 * 1024)
+# Now larger headers can fit in one frame
+large_headers = {
+    'trace_context': 'x' * (256 * 1024)
+}
 channel.basic_publish(
     exchange='',
     routing_key='large_messages',
-    body=large_message
+    body='small body',
+    properties=pika.BasicProperties(headers=large_headers)
 )
-print("Large message sent successfully")
+print("Message with large headers sent successfully")
 connection.close()
 ```
 
 ### Solution 2: Compress Messages
 
-Reduce message size through compression:
+Reduce payload size through compression when you are also approaching RabbitMQ's `max_message_size` limit:
 
 ```python
 import pika
-import zlib
+import gzip
 import json
 
 def publish_compressed(channel, queue, data):
@@ -178,7 +184,7 @@ def publish_compressed(channel, queue, data):
     """
     # Convert to JSON and compress
     json_data = json.dumps(data).encode('utf-8')
-    compressed = zlib.compress(json_data, level=9)
+    compressed = gzip.compress(json_data, compresslevel=9)
 
     compression_ratio = len(compressed) / len(json_data)
     print(f"Compression ratio: {compression_ratio:.2%}")
@@ -202,7 +208,7 @@ def consume_compressed(ch, method, properties, body):
     Decompress message before processing.
     """
     if properties.content_encoding == 'gzip':
-        decompressed = zlib.decompress(body)
+        decompressed = gzip.decompress(body)
         data = json.loads(decompressed.decode('utf-8'))
     else:
         data = json.loads(body.decode('utf-8'))
@@ -225,13 +231,13 @@ publish_compressed(channel, 'compressed_queue', large_data)
 
 ### Solution 3: Chunk Large Messages
 
-Split large messages into smaller chunks:
+Split large messages into smaller application-level chunks when compression is insufficient or messages approach `max_message_size`:
 
 ```mermaid
 flowchart LR
     A[Large Message<br/>10MB] --> B[Chunker]
-    B --> C1[Chunk 1<br/>1MB]
-    B --> C2[Chunk 2<br/>1MB]
+    B --> C1[Chunk 1<br/>1 MiB]
+    B --> C2[Chunk 2<br/>1 MiB]
     B --> C3[Chunk N<br/>...]
 
     C1 --> Q[Queue]
@@ -517,11 +523,11 @@ class LargeMessageConsumer:
 
 | Use Case | Frame Size | Notes |
 |----------|-----------|-------|
-| Default | 128 KB | Suitable for most applications |
-| JSON APIs | 256 KB | Accommodates typical JSON payloads |
-| File processing | 1 MB | Balance between performance and memory |
-| Large documents | 4 MB | For PDF/image processing |
-| Maximum | 128 MB | AMQP protocol limit |
+| Default | 128 KiB | Suitable for most applications |
+| Large headers | 256 KB | Helps when message properties or headers exceed the default |
+| OAuth/JWT-heavy clients | 1 MB | Useful when authentication or metadata frames are unusually large |
+| Large metadata envelopes | 4 MB | Use only when headers or method frames truly require it |
+| Message payloads | Use `max_message_size` | Message bodies are split into frames; payload limits are separate |
 
 ### Configuration Examples
 
@@ -532,10 +538,10 @@ class LargeMessageConsumer:
 frame_max = 262144
 
 # For document processing systems
-frame_max = 4194304
+max_message_size = 33554432
 
-# Maximum allowed (not recommended)
-# frame_max = 134217728
+# RabbitMQ 4.x default max_message_size is 16777216 bytes (16 MiB)
+# Maximum allowed is 536870912 bytes (512 MiB)
 ```
 
 ---
@@ -556,11 +562,11 @@ grep -i "frame_too_large\|frame size" /var/log/rabbitmq/rabbit@hostname.log
 ### Prometheus Metrics
 
 ```promql
-# Connection close reasons (look for frame_too_large)
-increase(rabbitmq_connection_closed_total{reason="frame_too_large"}[5m])
+# Connection closes can indicate protocol errors; confirm the reason in logs
+increase(rabbitmq_connections_closed_total[5m])
 
-# Monitor message sizes via histogram
-histogram_quantile(0.99, rabbitmq_message_size_bytes_bucket)
+# Monitor queued payload bytes
+rabbitmq_queue_messages_bytes
 ```
 
 ### Alert Configuration
@@ -571,13 +577,13 @@ groups:
   - name: rabbitmq_frame_alerts
     rules:
       - alert: RabbitMQFrameTooLarge
-        expr: increase(rabbitmq_connection_closed_total{reason="frame_too_large"}[5m]) > 0
+        expr: increase(rabbitmq_connections_closed_total[5m]) > 0
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "Frame too large errors detected"
-          description: "Messages are exceeding the configured frame size"
+          summary: "RabbitMQ connection closures detected"
+          description: "Check RabbitMQ logs for frame_too_large or other protocol errors"
 ```
 
 ---
@@ -591,10 +597,10 @@ import pika
 
 class SafePublisher:
     """
-    Publisher that validates message size before sending.
+    Publisher that validates payload size before sending.
     """
 
-    def __init__(self, channel, max_size=131072):
+    def __init__(self, channel, max_size=16777216):
         self.channel = channel
         self.max_size = max_size
 
@@ -610,7 +616,7 @@ class SafePublisher:
         if len(body) > self.max_size and not force:
             raise ValueError(
                 f"Message size {len(body)} exceeds max {self.max_size}. "
-                f"Use compression or chunking."
+                f"Use compression, chunking, or external storage."
             )
 
         self.channel.basic_publish(
@@ -661,7 +667,7 @@ from pika.exceptions import AMQPError, ChannelClosedByBroker
 
 def safe_publish(channel, queue, message, fallback_handler=None):
     """
-    Publish with graceful error handling for frame size issues.
+    Publish with graceful error handling for frame size and payload size issues.
     """
     try:
         channel.basic_publish(
@@ -671,17 +677,17 @@ def safe_publish(channel, queue, message, fallback_handler=None):
         )
         return True
 
-    except ChannelClosedByBroker as e:
+    except (pika.exceptions.ConnectionClosedByBroker, ChannelClosedByBroker) as e:
         if 'frame_too_large' in str(e).lower():
-            print(f"Message too large ({len(message)} bytes)")
+            print(f"AMQP frame too large while publishing {len(message)} bytes")
 
             if fallback_handler:
-                # Use fallback strategy (compress, chunk, external storage)
+                # Use fallback strategy (reduce headers, compress, chunk, external storage)
                 return fallback_handler(message)
             else:
                 raise ValueError(
-                    f"Message exceeds frame size limit. "
-                    f"Size: {len(message)}, implement fallback handler."
+                    f"An AMQP frame exceeded the negotiated frame size. "
+                    f"Payload size: {len(message)}, inspect headers and frame_max."
                 )
         raise
 
@@ -694,9 +700,9 @@ def safe_publish(channel, queue, message, fallback_handler=None):
 
 ## Conclusion
 
-Frame too large errors indicate messages exceeding RabbitMQ's configured limits. Key takeaways:
+Frame too large errors indicate an AMQP frame exceeded the negotiated frame limit. Large payloads are governed separately by `max_message_size`. Key takeaways:
 
-- **Increase frame_max** on both server and client for larger messages
+- **Increase frame_max** only when individual frames, such as headers or authentication data, are too large
 - **Compress messages** to reduce size before publishing
 - **Chunk large messages** when compression is insufficient
 - **Use external storage** (S3, Redis) for very large payloads

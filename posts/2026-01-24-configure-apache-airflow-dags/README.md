@@ -30,8 +30,8 @@ flowchart LR
 
 ```python
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 # Define default arguments for all tasks
 
@@ -50,7 +50,7 @@ with DAG(
     dag_id='sales_etl',
     default_args=default_args,
     description='Daily sales data ETL pipeline',
-    schedule_interval='0 6 * * *',  # Run at 6 AM daily
+    schedule='0 6 * * *',  # Run at 6 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=['etl', 'sales'],
@@ -98,38 +98,38 @@ with DAG(
 
 ```python
 # Cron expressions
-schedule_interval='0 6 * * *'     # Daily at 6 AM
-schedule_interval='0 */2 * * *'   # Every 2 hours
-schedule_interval='0 0 * * 0'     # Weekly on Sunday
-schedule_interval='0 0 1 * *'     # Monthly on 1st
+schedule='0 6 * * *'     # Daily at 6 AM
+schedule='0 */2 * * *'   # Every 2 hours
+schedule='0 0 * * 0'     # Weekly on Sunday
+schedule='0 0 1 * *'     # Monthly on 1st
 
 # Preset schedules
-schedule_interval='@daily'        # Midnight daily
-schedule_interval='@hourly'       # Every hour
-schedule_interval='@weekly'       # Midnight on Sunday
-schedule_interval='@monthly'      # Midnight on 1st
+schedule='@daily'        # Midnight daily
+schedule='@hourly'       # Every hour
+schedule='@weekly'       # Midnight on Sunday
+schedule='@monthly'      # Midnight on 1st
 
 # Timedelta
 from datetime import timedelta
-schedule_interval=timedelta(hours=6)  # Every 6 hours
+schedule=timedelta(hours=6)  # Every 6 hours
 
 # None for manual/triggered only
-schedule_interval=None
+schedule=None
 ```
 
-### Data-Aware Scheduling (Airflow 2.4+)
+### Asset-Aware Scheduling
 
 ```python
-from airflow import Dataset
+from airflow.sdk import Asset, task
 
-# Define datasets
-sales_data = Dataset('s3://bucket/sales/')
-inventory_data = Dataset('s3://bucket/inventory/')
+# Define assets
+sales_data = Asset(name='sales_data', uri='s3://bucket/sales/')
+inventory_data = Asset(name='inventory_data', uri='s3://bucket/inventory/')
 
-# Producer DAG updates the dataset
+# Producer DAG updates the asset
 with DAG(
     dag_id='produce_sales_data',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
 ) as producer_dag:
 
@@ -138,10 +138,10 @@ with DAG(
         # Generate sales data
         pass
 
-# Consumer DAG runs when dataset is updated
+# Consumer DAG runs when both assets are updated
 with DAG(
     dag_id='consume_sales_data',
-    schedule=[sales_data, inventory_data],  # Runs when both are updated
+    schedule=(sales_data & inventory_data),  # Runs when both are updated
     start_date=datetime(2026, 1, 1),
 ) as consumer_dag:
 
@@ -157,7 +157,7 @@ with DAG(
 
 ```python
 # Chain operator
-from airflow.models.baseoperator import chain
+from airflow.sdk import chain
 
 # Linear dependency
 extract >> transform >> load
@@ -169,7 +169,7 @@ extract >> [transform_a, transform_b] >> load
 chain(extract, transform, validate, load)
 
 # Cross dependencies
-from airflow.models.baseoperator import cross_downstream
+from airflow.sdk import cross_downstream
 
 # All tasks in first list trigger all in second
 cross_downstream([extract_a, extract_b], [transform_a, transform_b])
@@ -178,8 +178,8 @@ cross_downstream([extract_a, extract_b], [transform_a, transform_b])
 ### Conditional Dependencies
 
 ```python
-from airflow.operators.python import BranchPythonOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.providers.standard.operators.python import BranchPythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 
 def decide_branch(**context):
     """Decide which branch to take based on data."""
@@ -224,7 +224,7 @@ with DAG('branching_example', ...) as dag:
 ## Task Groups
 
 ```python
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import TaskGroup
 
 with DAG('task_groups_example', ...) as dag:
 
@@ -268,11 +268,11 @@ with DAG('task_groups_example', ...) as dag:
 ### Using Airflow Variables
 
 ```python
-from airflow.models import Variable
+from airflow.sdk import Variable
 
 # Get variables (set via UI or CLI)
 warehouse_host = Variable.get('warehouse_host')
-api_key = Variable.get('api_key', default_var='default_key')
+api_key = Variable.get('api_key', default='default_key')
 
 # Get JSON variable
 config = Variable.get('etl_config', deserialize_json=True)
@@ -289,7 +289,7 @@ with DAG('variables_example', ...) as dag:
 ### Using Connections
 
 ```python
-from airflow.hooks.base import BaseHook
+from airflow.sdk import BaseHook
 
 # Get connection (configured in UI or as env vars)
 def get_database_connection():
@@ -303,12 +303,12 @@ def get_database_connection():
     }
 
 # Use with operators
-from airflow.providers.postgres.operators.postgres import PostgresOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
-query_task = PostgresOperator(
+query_task = SQLExecuteQueryOperator(
     task_id='run_query',
-    postgres_conn_id='warehouse_db',  # Connection ID
-    sql='SELECT * FROM sales WHERE date = {{ ds }}',
+    conn_id='warehouse_db',  # Connection ID
+    sql="SELECT * FROM sales WHERE date = '{{ ds }}'",
 )
 ```
 
@@ -368,7 +368,7 @@ def transform_data(**context):
     print(f"Processing {record_count} records from {data_path}")
 
 # Using TaskFlow API (Airflow 2.0+)
-from airflow.decorators import task
+from airflow.sdk import task
 
 @task
 def extract():
@@ -388,7 +388,7 @@ with DAG('taskflow_example', ...) as dag:
 ## Error Handling and Retries
 
 ```python
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, AirflowFailException
 
 default_args = {
     'retries': 3,
@@ -406,7 +406,7 @@ def task_with_error_handling(**context):
         raise AirflowException(f"Connection failed, will retry: {e}")
     except ValueError as e:
         # Non-retryable error - fail immediately
-        raise AirflowException(f"Invalid data, cannot retry: {e}")
+        raise AirflowFailException(f"Invalid data, cannot retry: {e}")
 
 # Task-specific retry settings
 critical_task = PythonOperator(
@@ -438,12 +438,12 @@ task_with_callbacks = PythonOperator(
 ## Trigger Rules
 
 ```python
-from airflow.utils.trigger_rule import TriggerRule
+from airflow.sdk import TriggerRule
 
 # Task runs only when all upstream tasks succeed (default)
 task_a = EmptyOperator(task_id='task_a', trigger_rule=TriggerRule.ALL_SUCCESS)
 
-# Task runs if all upstream are done (success or failed)
+# Task runs if all upstream are done, regardless of final state
 task_b = EmptyOperator(task_id='task_b', trigger_rule=TriggerRule.ALL_DONE)
 
 # Task runs if at least one upstream succeeded
@@ -452,7 +452,7 @@ task_c = EmptyOperator(task_id='task_c', trigger_rule=TriggerRule.ONE_SUCCESS)
 # Task runs if at least one upstream failed
 task_d = EmptyOperator(task_id='task_d', trigger_rule=TriggerRule.ONE_FAILED)
 
-# Task runs if no upstream failed (skipped counts as success)
+# Task runs if no upstream failed (skipped upstream tasks are allowed)
 task_e = EmptyOperator(task_id='task_e', trigger_rule=TriggerRule.NONE_FAILED)
 
 # Cleanup task that always runs
@@ -488,7 +488,7 @@ dags/
 ```python
 # tests/test_sales_etl.py
 import pytest
-from airflow.models import DagBag
+from airflow.dag_processing.dagbag import DagBag
 
 def test_dag_loads_without_errors():
     """Test that DAG file loads without errors."""
@@ -522,11 +522,11 @@ def test_task_dependencies():
 with DAG(
     dag_id='optimized_dag',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
     max_active_runs=1,  # Prevent overlapping runs
-    concurrency=10,     # Max parallel tasks in this DAG
+    max_active_tasks=10,  # Max parallel tasks in this DAG
     dagrun_timeout=timedelta(hours=2),  # Kill if running too long
 ) as dag:
     pass

@@ -25,16 +25,16 @@ flowchart TD
         D --> E[Batch Ready]
         E --> F[Send to Broker]
         F --> G{Response Received?}
-        G -->|No| H[request.timeout.ms]
+        G -->|No| H[request.timeout.ms elapsed]
+        H --> J
         G -->|Yes| I{Successful?}
         I -->|No| J[Retry?]
         J -->|Yes, retries left| F
-        J -->|No, exhausted| K[delivery.timeout.ms exceeded]
+        J -->|No, exhausted or deadline passed| K[Fail send]
         I -->|Yes| L[Success Callback]
     end
 
     C --> M[TimeoutException]
-    H --> M
     K --> M
 
     style M fill:#f66
@@ -45,8 +45,8 @@ flowchart TD
 | Timeout Type | Configuration | Default | Triggers When |
 |-------------|---------------|---------|---------------|
 | Metadata fetch | `max.block.ms` | 60000ms | Cannot fetch topic metadata |
-| Request | `request.timeout.ms` | 30000ms | Broker does not respond in time |
-| Delivery | `delivery.timeout.ms` | 120000ms | Total time for send including retries |
+| Request | `request.timeout.ms` | 30000ms | Broker response is not received before the per-request timeout; the request is retried if possible or failed if retries are exhausted |
+| Delivery | `delivery.timeout.ms` | 120000ms | Total time for send including batching, broker acknowledgment, and retries |
 
 ---
 
@@ -136,7 +136,7 @@ flowchart TD
 
 1. **Always specify multiple bootstrap servers** for redundancy
 2. **Set delivery.timeout.ms appropriately** based on your latency requirements
-3. **Enable idempotent producer** to safely retry without duplicates
+3. **Enable idempotent producer** to safely retry producer sends without duplicate records
 4. **Monitor producer metrics** for early warning signs
 5. **Implement circuit breaker pattern** for graceful degradation
 6. **Use async sends with callbacks** for better throughput

@@ -85,8 +85,9 @@ Error: template: mychart/templates/deployment.yaml:10:20: executing "mychart/tem
 # Wrong - assumes nested structure exists
 name: {{ .Values.app.name }}
 
-# Correct - check if exists
-name: {{ .Values.app.name | default "myapp" }}
+# Correct - default the parent map first
+{{- $app := .Values.app | default dict }}
+name: {{ $app.name | default "myapp" }}
 
 # Better - conditional check
 {{- if .Values.app }}
@@ -281,9 +282,23 @@ metadata:
   name: helm-deployer
   namespace: production
 rules:
-- apiGroups: ["", "apps", "extensions"]
+- apiGroups: ["", "apps"]
   resources: ["*"]
   verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: helm-deployer
+  namespace: production
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+roleRef:
+  kind: Role
+  name: helm-deployer
+  apiGroup: rbac.authorization.k8s.io
 EOF
 ```
 
@@ -405,8 +420,8 @@ Error: UPGRADE FAILED: cannot patch "my-app" with kind Deployment: Deployment.ap
 kubectl delete deployment my-app
 helm upgrade my-release ./mychart
 
-# Or use --force flag
-helm upgrade my-release ./mychart --force
+# Or use --force-replace flag
+helm upgrade my-release ./mychart --force-replace
 ```
 
 ## Hook Errors
@@ -527,8 +542,8 @@ Error: timed out waiting for the condition
 
 **Solution:**
 ```bash
-# Increase timeout
-helm install my-release ./mychart --timeout 10m
+# Increase timeout and wait for resources
+helm install my-release ./mychart --wait --timeout 10m
 
 # Check what's not ready
 kubectl get pods
@@ -539,7 +554,7 @@ kubectl logs <pod-name>
 kubectl get events --sort-by='.lastTimestamp'
 
 # Don't wait for resources
-helm install my-release ./mychart --wait=false
+helm install my-release ./mychart
 ```
 
 ## Debugging Commands Reference
@@ -548,7 +563,7 @@ helm install my-release ./mychart --wait=false
 |---------|---------|
 | `helm template ./mychart` | Render templates locally |
 | `helm template ./mychart --debug` | Verbose template output |
-| `helm install --dry-run --debug` | Simulate install |
+| `helm install release ./mychart --dry-run --debug` | Simulate install |
 | `helm get manifest release` | Get deployed manifests |
 | `helm get values release` | Get deployed values |
 | `helm history release` | View release history |
@@ -594,7 +609,7 @@ helm list -A --all
 kubectl get namespace myns
 
 # 8. Install with debug
-helm install my-release ./mychart --debug --timeout 10m
+helm install my-release ./mychart --debug --wait --timeout 10m
 
 # 9. If failed, check pods
 kubectl get pods

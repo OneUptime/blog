@@ -114,7 +114,7 @@ primary->dr.enabled = true
 primary->dr.topics = .*
 primary->dr.topics.exclude = .*[\-\.]internal, .*\.replica, __.*
 
-# Sync consumer offsets
+# Sync consumer offsets for inactive groups on the DR cluster
 sync.group.offsets.enabled = true
 sync.group.offsets.interval.seconds = 5
 
@@ -135,10 +135,9 @@ tasks.max = 10
 
 ```java
 import org.apache.kafka.clients.admin.*;
-import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
@@ -246,7 +245,7 @@ public class KafkaDRManager {
         Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> offsets =
             admin.listOffsets(partitions).all().get();
 
-        for (var entry : offsets.entrySet()) {
+        for (Map.Entry<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> entry : offsets.entrySet()) {
             totalOffset += entry.getValue().offset();
         }
 
@@ -264,11 +263,12 @@ public class KafkaDRManager {
         // 2. Stop MirrorMaker (in practice, this would be done externally)
         System.out.println("Step 1: Stop MirrorMaker replication");
 
-        // 3. Translate consumer offsets
-        System.out.println("Step 2: Consumer offsets have been synced by MM2");
+        // 3. Verify translated consumer offsets
+        System.out.println("Step 2: Verify MM2 synced offsets for inactive consumer groups");
 
         // 4. Update client configurations
         System.out.println("Step 3: Update clients to use DR cluster: " + drBootstrap);
+        System.out.println("Step 3a: Use replicated topic names such as primary.<topic>, unless IdentityReplicationPolicy is configured");
 
         // 5. Verify consumers can resume
         System.out.println("Step 4: Verify consumer offset translation");
@@ -522,7 +522,8 @@ FAILOVER STEPS:
    - Restart producer applications
 
 6. RESTART CONSUMERS
-   - Consumers should resume from synced offsets
+   - Use replicated topic names such as primary.<topic>, unless IdentityReplicationPolicy is configured
+   - Consumers should resume from synced offsets only for groups that were inactive on the DR cluster during sync
    - Monitor for any offset issues
 
 7. VERIFY PRODUCTION
@@ -618,7 +619,8 @@ echo ""
 echo "For producers, update bootstrap.servers:"
 echo "  bootstrap.servers=$DR_BOOTSTRAP"
 echo ""
-echo "For consumers, offsets have been synced by MM2"
+echo "For consumers, use replicated topic names such as primary.<topic>, unless IdentityReplicationPolicy is configured"
+echo "Synced offsets apply only for groups that were inactive on the DR cluster during sync"
 
 # Step 6: Log the failover
 echo ""
@@ -662,7 +664,7 @@ class DRTest:
         test3 = self._test_offset_sync()
         results['tests'].append(test3)
 
-        # Test 4: Produce to DR (read-only test)
+        # Test 4: Produce to DR (non-production test)
         test4 = self._test_dr_write_capability()
         results['tests'].append(test4)
 
@@ -777,7 +779,7 @@ groups:
   - name: kafka-dr
     rules:
       - alert: KafkaDRReplicationLag
-        expr: kafka_mirrormaker_replication_lag_seconds > 60
+        expr: kafka_dr_replication_lag_seconds > 60
         for: 5m
         labels:
           severity: warning

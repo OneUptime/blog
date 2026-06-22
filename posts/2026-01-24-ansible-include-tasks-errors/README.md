@@ -19,8 +19,8 @@ flowchart TB
     subgraph Import["import_tasks (Static)"]
         I1[Parsed at playbook load time]
         I2[Cannot use loop]
-        I3[Cannot use when with task vars]
-        I4[Variables resolved early]
+        I3[When applies to imported tasks]
+        I4[Import path variables resolved early]
     end
 
     subgraph Include["include_tasks (Dynamic)"]
@@ -84,10 +84,9 @@ Ansible looks for included files relative to the current file's location or the 
 - name: Include with correct relative path
   ansible.builtin.include_tasks: tasks/common.yml
 
-# Option 4: For files in the same directory
+# Option 4: For files in the same role task directory
 - name: Include sibling file
-  ansible.builtin.include_tasks: "{{ ansible_parent_role_paths | first }}/tasks/common.yml"
-  when: ansible_parent_role_paths is defined
+  ansible.builtin.include_tasks: common.yml
 ```
 
 ### Directory Structure Reference
@@ -114,10 +113,6 @@ project/
 
 ```yaml
 # main.yml
-- name: Set application name
-  ansible.builtin.set_fact:
-    app_name: myapp
-
 - name: Include install tasks
   ansible.builtin.include_tasks: install.yml
 ```
@@ -216,21 +211,23 @@ Use `include_tasks` for loops, not `import_tasks`:
   ansible.builtin.command: cat /etc/os-release
   register: os_info
 
+- name: Set OS task file
+  ansible.builtin.set_fact:
+    os_type: ubuntu
+  when: os_info.stdout is search('Ubuntu')
+
 - name: Import OS-specific tasks
   ansible.builtin.import_tasks: "{{ os_type }}.yml"
-  when: os_info.stdout is search('Ubuntu')
-  vars:
-    os_type: ubuntu
 ```
 
 Error message:
 ```text
-ERROR! 'os_info' is undefined
+ERROR! 'os_type' is undefined
 ```
 
 **The Fix:**
 
-Import_tasks is processed before tasks run, so registered variables are not available. Use include_tasks instead:
+The import path is resolved before tasks run, so variables created by earlier tasks are not available for the file name. Use include_tasks instead:
 
 ```yaml
 ---
@@ -249,7 +246,7 @@ flowchart TD
     subgraph ImportProblem["import_tasks Timeline"]
         A1[Parse Playbook] --> A2[Resolve import_tasks]
         A2 --> A3[Run Tasks]
-        A2 -.-> A4[Variable not yet defined!]
+        A2 -.-> A4[File variable not yet defined!]
     end
 
     subgraph IncludeSolution["include_tasks Timeline"]
@@ -314,16 +311,29 @@ With `include_tasks`, tags on the include statement only determine if the includ
 # handlers/main.yml
 - name: Include common handlers
   ansible.builtin.include_tasks: common_handlers.yml
+
+# common_handlers.yml
+- name: Restart app
+  ansible.builtin.service:
+    name: app
+    state: restarted
+
+# tasks/main.yml
+- name: Update config
+  ansible.builtin.template:
+    src: config.j2
+    dest: /etc/app/config
+  notify: Restart app
 ```
 
 Error message:
 ```text
-ERROR! no action detected in task
+ERROR! The requested handler 'Restart app' was not found
 ```
 
 **The Fix:**
 
-Use `import_tasks` for handlers, or include a handlers file:
+Dynamic handler includes must be notified by the include task name or listener. Use `import_tasks` to notify individual imported handlers, or notify the dynamic include itself:
 
 ```yaml
 ---
@@ -331,7 +341,14 @@ Use `import_tasks` for handlers, or include a handlers file:
 # handlers/main.yml
 - import_tasks: common_handlers.yml
 
-# Option 2: Use include_tasks with listen
+# tasks/main.yml
+- name: Update config
+  ansible.builtin.template:
+    src: config.j2
+    dest: /etc/app/config
+  notify: Restart app
+
+# Option 2: Use include_tasks with listen and notify the listener
 # handlers/main.yml
 - name: Include restart handlers
   ansible.builtin.include_tasks: restart_handlers.yml
@@ -494,11 +511,11 @@ Restructure tasks to avoid circular dependencies:
     - include_tasks: recovery.yml
 ```
 
-Error message may vary, but includes often behave unexpectedly in blocks.
+Error message may vary, but dynamic includes can be harder to trace in blocks because the include is a task that expands at runtime.
 
 **The Fix:**
 
-Use import_tasks in blocks for predictable behavior:
+Use import_tasks in blocks for static expansion, or wrap includes in named tasks for clearer error handling:
 
 ```yaml
 ---
@@ -546,7 +563,8 @@ ansible-playbook playbook.yml --list-tasks
     msg:
       - "playbook_dir: {{ playbook_dir }}"
       - "role_path: {{ role_path | default('N/A') }}"
-      - "ansible_search_path: {{ lookup('config', 'DEFAULT_ROLES_PATH') }}"
+      - "ansible_search_path: {{ ansible_search_path | default([]) }}"
+      - "DEFAULT_ROLES_PATH: {{ lookup('config', 'DEFAULT_ROLES_PATH') }}"
 
 - name: Check if file exists
   ansible.builtin.stat:

@@ -82,9 +82,6 @@ receivers:
         # Maximum concurrent streams per connection
         max_concurrent_streams: 100
 
-        # Enable gzip compression
-        compression: gzip
-
         # TLS configuration for secure connections
         tls:
           cert_file: /certs/server.crt
@@ -133,13 +130,16 @@ receivers:
         endpoint: 0.0.0.0:4317
         # Authentication using headers
         auth:
-          authenticator: bearer_token
+          authenticator: bearertokenauth
 
 extensions:
   # Bearer token authenticator
-  bearertoken:
+  bearertokenauth:
     scheme: "Bearer"
     token: "${env:OTEL_AUTH_TOKEN}"
+
+service:
+  extensions: [bearertokenauth]
 ```
 
 ## Prometheus Receiver
@@ -176,7 +176,7 @@ receivers:
             - source_labels: [__address__]
               target_label: instance
               regex: '([^:]+):\d+'
-              replacement: '${1}'
+              replacement: '$${1}'
 
         # Kubernetes service discovery
         - job_name: 'kubernetes-pods'
@@ -199,7 +199,7 @@ receivers:
               action: replace
               target_label: __address__
               regex: (\d+);(.+)
-              replacement: ${2}:${1}
+              replacement: $${2}:$${1}
 ```
 
 ## Jaeger Receiver
@@ -257,19 +257,23 @@ receivers:
       # Disk metrics
       disk:
         include:
-          devices: ['sda', 'sdb', 'nvme*']
+          devices: ['^sda$', '^sdb$', '^nvme.*']
           match_type: regexp
         exclude:
-          devices: ['loop*']
+          devices: ['^loop.*']
           match_type: regexp
 
       # Filesystem metrics
       filesystem:
-        include:
+        include_fs_types:
           fs_types: ['ext4', 'xfs', 'btrfs']
+          match_type: strict
+        include_mount_points:
           mount_points: ['/data', '/var']
-        exclude:
+          match_type: strict
+        exclude_mount_points:
           mount_points: ['/dev', '/proc', '/sys']
+          match_type: strict
 
       # Load average metrics
       load:
@@ -278,17 +282,17 @@ receivers:
       # Network metrics
       network:
         include:
-          interfaces: ['eth*', 'ens*']
+          interfaces: ['^eth.*', '^ens.*']
           match_type: regexp
         exclude:
-          interfaces: ['lo', 'docker*', 'veth*']
+          interfaces: ['^lo$', '^docker.*', '^veth.*']
           match_type: regexp
 
       # Process metrics
       process:
         include:
           names: ['nginx', 'postgres', 'redis']
-          match_type: regexp
+          match_type: strict
         mute_process_name_error: true
         metrics:
           process.cpu.utilization:
@@ -316,9 +320,6 @@ receivers:
     # Protocol version
     protocol_version: "2.6.0"
 
-    # Topic to consume from
-    topic: otel-traces
-
     # Consumer group ID
     group_id: otel-collector-traces
 
@@ -326,10 +327,18 @@ receivers:
     client_id: otel-collector
 
     # Initial offset when no committed offset exists
-    initial_offset: oldest
+    initial_offset: earliest
 
-    # Encoding of the messages
-    encoding: otlp_proto
+    # Topic and encoding for trace messages
+    traces:
+      topics: [otel-traces]
+      encoding: otlp_proto
+
+    # TLS configuration
+    tls:
+      ca_file: /certs/kafka-ca.crt
+      cert_file: /certs/kafka-client.crt
+      key_file: /certs/kafka-client.key
 
     # Authentication
     auth:
@@ -338,12 +347,6 @@ receivers:
         mechanism: SCRAM-SHA-512
         username: ${env:KAFKA_USERNAME}
         password: ${env:KAFKA_PASSWORD}
-
-      # TLS configuration
-      tls:
-        ca_file: /certs/kafka-ca.crt
-        cert_file: /certs/kafka-client.crt
-        key_file: /certs/kafka-client.key
 
     # Metadata configuration
     metadata:
@@ -411,7 +414,7 @@ receivers:
 
       # Add resource attributes
       - type: add
-        field: resource.service.name
+        field: resource["service.name"]
         value: my-application
 ```
 
@@ -433,19 +436,16 @@ Receive syslog messages.
 ```yaml
 receivers:
   syslog:
-    # Protocol: tcp or udp
-    protocol: tcp
-
-    # Endpoint to listen on
-    listen_address: 0.0.0.0:514
+    # TCP listener configuration
+    tcp:
+      listen_address: 0.0.0.0:514
+      # TLS for TCP
+      tls:
+        cert_file: /certs/server.crt
+        key_file: /certs/server.key
 
     # Syslog protocol: rfc3164 or rfc5424
-    protocol_type: rfc5424
-
-    # TLS for TCP
-    tls:
-      cert_file: /certs/server.crt
-      key_file: /certs/server.key
+    protocol: rfc5424
 ```
 
 ## Complete Multi-Receiver Configuration
@@ -539,7 +539,7 @@ extensions:
   pprof:
     endpoint: 0.0.0.0:1777
 
-  # Prometheus metrics for the collector itself
+  # In-process diagnostic pages
   zpages:
     endpoint: 0.0.0.0:55679
 
@@ -620,7 +620,7 @@ receivers:
         max_concurrent_streams: 100
         # Authentication for security
         auth:
-          authenticator: bearer_token
+          authenticator: bearertokenauth
 
 processors:
   # Always include memory limiter first
@@ -628,6 +628,14 @@ processors:
     check_interval: 1s
     limit_mib: 2000
     spike_limit_mib: 400
+
+extensions:
+  bearertokenauth:
+    scheme: "Bearer"
+    token: "${env:OTEL_AUTH_TOKEN}"
+
+service:
+  extensions: [bearertokenauth]
 ```
 
 ## Conclusion

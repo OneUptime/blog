@@ -21,7 +21,7 @@ flowchart LR
     end
     
     subgraph "States"
-        PENDING[Pod Pending] --> RUNNING[Init Running]
+        PENDING[Pod Pending<br/>Init Running] --> RUNNING[App Containers Running]
         RUNNING --> READY[Pod Ready]
     end
 ```
@@ -29,9 +29,9 @@ flowchart LR
 | Feature | Init Container | Regular Container |
 |---------|---------------|-------------------|
 | Runs | Sequentially, to completion | Concurrently |
-| Restarts | Pod restarts on failure | Depends on restartPolicy |
-| Probes | Not supported | Supported |
-| Resources | Independent limits | Shared resources |
+| Restarts | Retried based on Pod restartPolicy | Depends on restartPolicy |
+| Probes | Not supported for regular init containers | Supported |
+| Resources | Counted as the highest init request/limit | App container requests/limits are summed |
 | Image | Can be different | App image |
 
 ## Common Use Cases
@@ -205,7 +205,7 @@ spec:
             - -c
             - |
               echo "Downloading configuration..."
-              curl -s -o /config/app.yaml \
+              curl -fsS -o /config/app.yaml \
                 -H "Authorization: Bearer ${CONFIG_TOKEN}" \
                 https://config-server.internal/v1/config/myapp
               
@@ -352,7 +352,7 @@ spec:
                 -out /certs/server.crt \
                 -days 365 \
                 -subj "/CN=tls-app.production.svc.cluster.local" \
-                -addext "subjectAltName=DNS:tls-app,DNS:tls-app.production,DNS:tls-app.production.svc.cluster.local"
+                -addext "subjectAltName=DNS:tls-app,DNS:tls-app.production,DNS:tls-app.production.svc,DNS:tls-app.production.svc.cluster.local"
               
               # Set permissions
               chmod 600 /certs/server.key
@@ -452,7 +452,7 @@ spec:
                 /app/seed --data-file=/seed/data.json
                 
                 # Mark as completed
-                psql -c "INSERT INTO seed_status (completed, timestamp) VALUES (true, NOW())"
+                psql "$DATABASE_URL" -c "INSERT INTO seed_status (completed, timestamp) VALUES (true, NOW())"
                 echo "Seeding complete!"
               else
                 echo "Seeding not needed, skipping..."
@@ -522,7 +522,13 @@ kind: Deployment
 metadata:
   name: app-with-kubectl-init
 spec:
+  selector:
+    matchLabels:
+      app: app-with-kubectl-init
   template:
+    metadata:
+      labels:
+        app: app-with-kubectl-init
     spec:
       serviceAccountName: kubectl-access
       initContainers:
@@ -535,20 +541,28 @@ spec:
               echo "Waiting for dependency deployment to be ready..."
               kubectl rollout status deployment/dependency-app -n production --timeout=300s
               echo "Dependency is ready!"
+      containers:
+        - name: app
+          image: myregistry/app:v1.0.0
 ```
 
-### Shared Process Namespace
+### Shared Volume State
 
 ```yaml
-# shared-process-init.yaml
+# shared-volume-init.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app-with-shared-process
+  name: app-with-shared-state
 spec:
+  selector:
+    matchLabels:
+      app: app-with-shared-state
   template:
+    metadata:
+      labels:
+        app: app-with-shared-state
     spec:
-      shareProcessNamespace: true
       initContainers:
         - name: setup-shared
           image: busybox:1.36
@@ -556,9 +570,21 @@ spec:
             - sh
             - -c
             - |
-              # Write PID file that app container can read
-              echo $$ > /shared/init-pid
+              # Write status file that app container can read
+              echo "initialized" > /shared/init-status
               # Setup complete
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+      containers:
+        - name: app
+          image: myregistry/app:v1.0.0
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+      volumes:
+        - name: shared
+          emptyDir: {}
 ```
 
 ## Debugging Init Containers

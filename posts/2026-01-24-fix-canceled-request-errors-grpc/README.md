@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve gRPC canceled request errors caus
 
 ---
 
-The "Canceled" status code in gRPC indicates that an operation was terminated before completion. This error appears in various scenarios including client timeouts, context cancellation, and connection issues. Understanding the root cause is essential for building reliable gRPC services. This guide covers common causes and solutions for canceled request errors.
+The "Canceled" status code in gRPC indicates that an operation was terminated before completion. Cancellation-related errors appear in various scenarios including context cancellation, client disconnections, connection issues, and timeouts. Timeouts usually surface as `DEADLINE_EXCEEDED`, so understanding the root cause is essential for building reliable gRPC services. This guide covers common causes and solutions for canceled request errors.
 
 ## Understanding gRPC Cancellation
 
@@ -27,8 +27,8 @@ flowchart TD
     E --> I[HTTP/2 connection closed]
     F --> J[Server graceful stop]
 
-    G --> K[Status: CANCELLED]
-    H --> K
+    G --> L[Status: DEADLINE_EXCEEDED]
+    H --> K[Status: CANCELLED]
     I --> K
     J --> K
 ```
@@ -37,7 +37,7 @@ flowchart TD
 
 ### Context Timeout Expiration
 
-The most common cause of cancellation errors.
+A common source of cancellation-related errors.
 
 ```go
 // client_timeout.go
@@ -57,12 +57,12 @@ import (
 )
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
 
@@ -72,7 +72,7 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
     defer cancel()
 
-    // This will fail with CANCELLED if the server takes > 100ms
+    // This will fail with DEADLINE_EXCEEDED if the server takes > 100ms
     resp, err := client.GetUser(ctx, &pb.GetUserRequest{UserId: "123"})
     if err != nil {
         st, ok := status.FromError(err)
@@ -80,10 +80,10 @@ func main() {
             switch st.Code() {
             case codes.Canceled:
                 log.Printf("Request was canceled: %v", st.Message())
-                // This could be client timeout or manual cancellation
+                // This could be manual cancellation or client disconnect
             case codes.DeadlineExceeded:
                 log.Printf("Request deadline exceeded: %v", st.Message())
-                // The deadline was reached before cancellation
+                // The timeout expired before the response completed
             default:
                 log.Printf("RPC failed: %v", st.Message())
             }
@@ -255,12 +255,12 @@ func (c *UserClient) CreateUsersBatch(ctx context.Context, users []*pb.User) err
 }
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
 
@@ -406,12 +406,12 @@ func (c *RetryingClient) GetUserWithRetry(ctx context.Context, userID string) (*
 }
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
 
@@ -445,8 +445,6 @@ import (
     "context"
     "database/sql"
     "log"
-    "time"
-
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -577,6 +575,9 @@ func (s *streamingServer) ServerStream(req *pb.StreamRequest, stream pb.StreamSe
             // Check if send failed due to cancellation
             if ctx.Err() != nil {
                 log.Printf("Stream send failed due to cancellation")
+                if ctx.Err() == context.DeadlineExceeded {
+                    return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+                }
                 return status.Error(codes.Canceled, "stream canceled")
             }
             return status.Error(codes.Internal, "failed to send")
@@ -596,6 +597,9 @@ func (s *streamingServer) ClientStream(stream pb.StreamService_ClientStreamServe
         select {
         case <-ctx.Done():
             log.Printf("Client stream context canceled: %v", ctx.Err())
+            if ctx.Err() == context.DeadlineExceeded {
+                return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+            }
             return status.Error(codes.Canceled, "stream canceled")
         default:
         }
@@ -610,6 +614,9 @@ func (s *streamingServer) ClientStream(stream pb.StreamService_ClientStreamServe
         if err != nil {
             // Check if error is due to cancellation
             if ctx.Err() != nil {
+                if ctx.Err() == context.DeadlineExceeded {
+                    return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+                }
                 return status.Error(codes.Canceled, "stream canceled during receive")
             }
             return status.Error(codes.Internal, "receive error")
@@ -624,8 +631,8 @@ func (s *streamingServer) BidirectionalStream(stream pb.StreamService_Bidirectio
     ctx := stream.Context()
 
     // Create channel for receive errors
-    recvChan := make(chan *pb.BidiRequest)
-    errChan := make(chan error)
+    recvChan := make(chan *pb.BidiRequest, 1)
+    errChan := make(chan error, 1)
 
     // Start receive goroutine
     go func() {
@@ -635,7 +642,11 @@ func (s *streamingServer) BidirectionalStream(stream pb.StreamService_Bidirectio
                 errChan <- err
                 return
             }
-            recvChan <- req
+            select {
+            case recvChan <- req:
+            case <-ctx.Done():
+                return
+            }
         }
     }()
 
@@ -643,6 +654,9 @@ func (s *streamingServer) BidirectionalStream(stream pb.StreamService_Bidirectio
         select {
         case <-ctx.Done():
             log.Printf("Bidirectional stream canceled: %v", ctx.Err())
+            if ctx.Err() == context.DeadlineExceeded {
+                return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+            }
             return status.Error(codes.Canceled, "stream canceled")
 
         case err := <-errChan:
@@ -650,6 +664,9 @@ func (s *streamingServer) BidirectionalStream(stream pb.StreamService_Bidirectio
                 return nil
             }
             if ctx.Err() != nil {
+                if ctx.Err() == context.DeadlineExceeded {
+                    return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+                }
                 return status.Error(codes.Canceled, "stream canceled")
             }
             return status.Error(codes.Internal, err.Error())
@@ -660,6 +677,9 @@ func (s *streamingServer) BidirectionalStream(stream pb.StreamService_Bidirectio
                 Result: processRequest(req),
             }); err != nil {
                 if ctx.Err() != nil {
+                    if ctx.Err() == context.DeadlineExceeded {
+                        return status.Error(codes.DeadlineExceeded, "stream deadline exceeded")
+                    }
                     return status.Error(codes.Canceled, "stream canceled during send")
                 }
                 return status.Error(codes.Internal, "send error")
@@ -796,6 +816,7 @@ package main
 import (
     "context"
     "log"
+    "strconv"
     "time"
 
     "google.golang.org/grpc"
@@ -866,7 +887,7 @@ func NewTrackedContext(parent context.Context, method string, timeout time.Durat
     // Add tracking metadata
     md := metadata.Pairs(
         "x-request-start", tracked.createdAt.Format(time.RFC3339Nano),
-        "x-timeout-ms", string(rune(timeout.Milliseconds())),
+        "x-timeout-ms", strconv.FormatInt(timeout.Milliseconds(), 10),
     )
     ctx = metadata.NewOutgoingContext(ctx, md)
 
@@ -910,7 +931,7 @@ type ConnectionManager struct {
 
 // NewConnectionManager creates a new connection manager
 func NewConnectionManager(target string) (*ConnectionManager, error) {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
 
@@ -1007,7 +1028,6 @@ package main
 import (
     "context"
     "sync"
-    "time"
 
     "google.golang.org/grpc"
 
@@ -1022,8 +1042,9 @@ type DeduplicatingClient struct {
 }
 
 type inflightRequest struct {
-    result chan *pb.User
-    err    chan error
+    done   chan struct{}
+    result *pb.User
+    err    error
     ctx    context.Context
 }
 
@@ -1045,10 +1066,8 @@ func (c *DeduplicatingClient) GetUser(ctx context.Context, userID string) (*pb.U
 
         // Wait for existing request to complete
         select {
-        case result := <-req.result:
-            return result, nil
-        case err := <-req.err:
-            return nil, err
+        case <-req.done:
+            return req.result, req.err
         case <-ctx.Done():
             return nil, ctx.Err()
         }
@@ -1056,8 +1075,7 @@ func (c *DeduplicatingClient) GetUser(ctx context.Context, userID string) (*pb.U
 
     // Create new in-flight request
     req := &inflightRequest{
-        result: make(chan *pb.User, 1),
-        err:    make(chan error, 1),
+        done:   make(chan struct{}),
         ctx:    ctx,
     }
     c.inFlight[userID] = req
@@ -1071,20 +1089,14 @@ func (c *DeduplicatingClient) GetUser(ctx context.Context, userID string) (*pb.U
             c.mu.Unlock()
         }()
 
-        user, err := c.client.GetUser(ctx, &pb.GetUserRequest{UserId: userID})
-        if err != nil {
-            req.err <- err
-        } else {
-            req.result <- user
-        }
+        req.result, req.err = c.client.GetUser(ctx, &pb.GetUserRequest{UserId: userID})
+        close(req.done)
     }()
 
     // Wait for result
     select {
-    case result := <-req.result:
-        return result, nil
-    case err := <-req.err:
-        return nil, err
+    case <-req.done:
+        return req.result, req.err
     case <-ctx.Done():
         return nil, ctx.Err()
     }
@@ -1124,28 +1136,7 @@ import (
 // Use sparingly for critical operations that must complete
 func ShieldedContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
     // Create new context with deadline but without cancel propagation
-    ctx, cancel := context.WithTimeout(context.Background(), timeout)
-
-    // Copy values from parent context
-    return &shieldedContext{
-        Context: ctx,
-        parent:  parent,
-    }, cancel
-}
-
-type shieldedContext struct {
-    context.Context
-    parent context.Context
-}
-
-// Value retrieves values from the parent context
-func (s *shieldedContext) Value(key interface{}) interface{} {
-    // Check local context first
-    if v := s.Context.Value(key); v != nil {
-        return v
-    }
-    // Fall back to parent for values like trace context
-    return s.parent.Value(key)
+    return context.WithTimeout(context.WithoutCancel(parent), timeout)
 }
 
 // Example usage
@@ -1170,27 +1161,7 @@ func (s *service) ProcessOrder(ctx context.Context, order *Order) error {
 // DetachContext creates a completely independent context
 // with values preserved but no deadline or cancellation
 func DetachContext(parent context.Context) context.Context {
-    return &detachedContext{parent: parent}
-}
-
-type detachedContext struct {
-    parent context.Context
-}
-
-func (d *detachedContext) Deadline() (time.Time, bool) {
-    return time.Time{}, false
-}
-
-func (d *detachedContext) Done() <-chan struct{} {
-    return nil
-}
-
-func (d *detachedContext) Err() error {
-    return nil
-}
-
-func (d *detachedContext) Value(key interface{}) interface{} {
-    return d.parent.Value(key)
+    return context.WithoutCancel(parent)
 }
 ```
 

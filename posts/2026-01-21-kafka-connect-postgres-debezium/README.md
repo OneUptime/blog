@@ -78,21 +78,22 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
 
   kafka-connect:
-    image: debezium/connect:2.4
+    image: quay.io/debezium/connect:3.5
     container_name: kafka-connect
     ports:
       - "8083:8083"
     environment:
-      BOOTSTRAP_SERVERS: kafka:9092
+      BOOTSTRAP_SERVERS: kafka:19092
       GROUP_ID: connect-cluster
       CONFIG_STORAGE_TOPIC: connect-configs
       OFFSET_STORAGE_TOPIC: connect-offsets
@@ -163,7 +164,7 @@ volumes:
     "time.precision.mode": "connect",
 
     "heartbeat.interval.ms": "10000",
-    "heartbeat.topics.prefix": "__debezium-heartbeat",
+    "topic.heartbeat.prefix": "__debezium-heartbeat",
 
     "poll.interval.ms": "500",
     "max.batch.size": "2048",
@@ -174,8 +175,7 @@ volumes:
     "transforms.route.regex": "([^.]+)\\.([^.]+)\\.([^.]+)",
     "transforms.route.replacement": "$3",
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
-    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.delete.tombstone.handling.mode": "rewrite",
     "transforms.unwrap.add.fields": "op,table,lsn,source.ts_ms",
 
     "errors.tolerance": "all",
@@ -229,7 +229,7 @@ curl -X DELETE http://localhost:8083/connectors/postgres-source
       "created_at": 1705320000000
     },
     "source": {
-      "version": "2.4.0.Final",
+      "version": "3.5.0.Final",
       "connector": "postgresql",
       "name": "cdc",
       "ts_ms": 1705320000123,
@@ -304,11 +304,21 @@ for message in consumer:
 ### Java Consumer with Debezium Format
 
 ```java
-import io.debezium.data.Envelope;
-import org.apache.kafka.clients.consumer.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Properties;
 
 public class CDCConsumer {
-    public void consume() {
+    public void consume() throws Exception {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "cdc-processor");
@@ -340,6 +350,11 @@ public class CDCConsumer {
             }
         }
     }
+
+    private void handleInsert(JsonNode after) {}
+    private void handleUpdate(JsonNode before, JsonNode after) {}
+    private void handleDelete(JsonNode before) {}
+    private void handleSnapshot(JsonNode after) {}
 }
 ```
 
@@ -357,24 +372,26 @@ public class CDCConsumer {
 |------|-------------|
 | `initial` | Snapshot on first run, then stream changes |
 | `initial_only` | Only snapshot, no streaming |
-| `never` | No snapshot, only stream changes |
+| `no_data` | No snapshot, only stream changes |
+| `never` | Deprecated; use `no_data` |
 | `when_needed` | Snapshot if offset not available |
-| `exported` | Snapshot using pg_export_snapshot |
+| `always` | Snapshot every time the connector starts |
+| `configuration_based` | Snapshot behavior controlled by `snapshot.mode.configuration.based.*` properties |
 | `custom` | Custom snapshot implementation |
 
 ## Schema Changes
 
-### Handling DDL Events
+### Handling Schema Evolution
 
 ```json
 {
   "config": {
-    "include.schema.changes": "true",
-    "schema.history.internal.kafka.topic": "schema-changes.mydb",
-    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092"
+    "schema.refresh.mode": "columns_diff"
   }
 }
 ```
+
+PostgreSQL logical decoding does not emit DDL change events, so the PostgreSQL connector cannot publish DDL events to a schema change topic. Debezium refreshes its in-memory table schema for captured data-change events.
 
 ### Schema Compatibility
 
@@ -415,14 +432,14 @@ rules:
 debezium_streaming_lag_ms
 
 # Events processed
-debezium_postgres_total_number_of_events_seen
+debezium_postgres_TotalNumberOfEventsSeen
 
 # Snapshot status
-debezium_postgres_snapshot_completed
-debezium_postgres_snapshot_running
+debezium_postgres_SnapshotCompleted
+debezium_postgres_SnapshotRunning
 
 # Replication slot
-debezium_postgres_connected
+debezium_postgres_Connected
 ```
 
 ## Troubleshooting
@@ -455,13 +472,13 @@ curl http://localhost:8083/connectors/postgres-source/tasks/0/status
 
 ```bash
 # Stop connector first
-curl -X PUT http://localhost:8083/connectors/postgres-source/pause
+curl -X PUT http://localhost:8083/connectors/postgres-source/stop
 
-# Delete connector
-curl -X DELETE http://localhost:8083/connectors/postgres-source
+# Reset connector offsets
+curl -X DELETE http://localhost:8083/connectors/postgres-source/offsets
 
-# Reset offsets by deleting from offset topic or recreating connector
-# with snapshot.mode=initial
+# Restart with snapshot.mode=initial if you want a fresh snapshot
+curl -X POST http://localhost:8083/connectors/postgres-source/restart
 ```
 
 ## Best Practices
@@ -478,7 +495,7 @@ curl -X DELETE http://localhost:8083/connectors/postgres-source
 | Configuration | Use Case |
 |--------------|----------|
 | `snapshot.mode=initial` | New deployments |
-| `snapshot.mode=never` | Resuming from offset |
+| `snapshot.mode=no_data` | Resuming from offset without a snapshot |
 | `ExtractNewRecordState` | Simplified message format |
 | Schema Registry | Production with schema evolution |
 

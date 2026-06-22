@@ -40,19 +40,19 @@ flowchart TD
 
 The authorization endpoint requires specific parameters that vary by grant type.
 
-### Authorization Code Flow Required Parameters
+### Authorization Code Flow Parameters
 
 ```javascript
 // Incorrect - missing required parameters
 const authUrl = 'https://auth.example.com/authorize?client_id=abc123';
 
-// Correct - all required parameters included
+// Correct - required and recommended parameters included
 const authUrl = new URL('https://auth.example.com/authorize');
 authUrl.searchParams.set('client_id', 'abc123');
 authUrl.searchParams.set('response_type', 'code');
-authUrl.searchParams.set('redirect_uri', 'https://myapp.com/callback');
-authUrl.searchParams.set('scope', 'openid profile email');
-authUrl.searchParams.set('state', generateSecureState());
+authUrl.searchParams.set('redirect_uri', 'https://myapp.com/callback'); // Required by most providers
+authUrl.searchParams.set('scope', 'openid profile email'); // Optional in OAuth2, required for OpenID Connect
+authUrl.searchParams.set('state', generateSecureState()); // Recommended for CSRF protection
 
 console.log(authUrl.toString());
 ```
@@ -64,11 +64,14 @@ console.log(authUrl.toString());
 async function exchangeCodeForToken(code) {
     const params = new URLSearchParams();
 
-    // All required parameters for authorization_code grant
+    // Required parameters for authorization_code grant
     params.append('grant_type', 'authorization_code');
     params.append('code', code);
+    // Required if redirect_uri was included in the authorization request
     params.append('redirect_uri', 'https://myapp.com/callback');
+    // Required for public clients, or when not using another client authentication method
     params.append('client_id', process.env.CLIENT_ID);
+    // For confidential clients using request-body credentials; HTTP Basic is preferred when supported
     params.append('client_secret', process.env.CLIENT_SECRET);
 
     const response = await fetch('https://auth.example.com/oauth/token', {
@@ -172,7 +175,7 @@ const scope = encodeURIComponent(encodeURIComponent('openid profile'));
 // Correct - single encoding or use URLSearchParams
 const params = new URLSearchParams();
 params.set('scope', 'openid profile'); // Automatically encoded correctly
-// Results in: openid%20profile (correct)
+// Results in: scope=openid+profile (correct form encoding)
 ```
 
 ### Building Authorization URLs Safely
@@ -202,7 +205,7 @@ class OAuth2Client {
             url.searchParams.set('scope', scopes.join(' '));
         }
 
-        // State - required for security
+        // State - recommended for CSRF protection
         const state = options.state || this.generateState();
         url.searchParams.set('state', state);
 
@@ -285,7 +288,7 @@ Different grant types have different parameter requirements.
 ```mermaid
 flowchart TD
     A[Grant Type] --> B{Which Type?}
-    B -->|authorization_code| C[code, redirect_uri, client_id]
+    B -->|authorization_code| C[code, conditional redirect_uri/client_id]
     B -->|refresh_token| D[refresh_token]
     B -->|client_credentials| E[scope optional]
     B -->|password| F[username, password deprecated]
@@ -301,7 +304,8 @@ flowchart TD
 ```javascript
 const GRANT_TYPE_PARAMS = {
     authorization_code: {
-        required: ['code', 'redirect_uri', 'client_id'],
+        required: ['code'],
+        conditional: ['redirect_uri if used in the authorization request', 'client_id if the client is not otherwise authenticating'],
         optional: ['code_verifier'],
     },
     refresh_token: {
@@ -365,6 +369,7 @@ const goodRequest = await fetch('https://auth.example.com/oauth/token', {
         code: authCode,
         redirect_uri: redirectUri,
         client_id: clientId,
+        // For confidential clients using request-body credentials; HTTP Basic is preferred when supported
         client_secret: clientSecret,
     }).toString(),
 });
@@ -380,7 +385,7 @@ class OAuth2Debugger {
         const params = urlObj.searchParams;
 
         // Check required parameters
-        const required = ['client_id', 'response_type', 'redirect_uri'];
+        const required = ['client_id', 'response_type'];
         for (const param of required) {
             if (!params.has(param)) {
                 issues.push(`Missing required parameter: ${param}`);
@@ -388,7 +393,7 @@ class OAuth2Debugger {
         }
 
         // Check response_type validity
-        const validResponseTypes = ['code', 'token', 'id_token', 'code token', 'code id_token'];
+        const validResponseTypes = ['code', 'token', 'id_token', 'id_token token', 'code token', 'code id_token', 'code id_token token'];
         if (params.has('response_type') && !validResponseTypes.includes(params.get('response_type'))) {
             issues.push(`Invalid response_type: ${params.get('response_type')}`);
         }
@@ -420,14 +425,14 @@ const analysis = OAuth2Debugger.analyzeAuthorizationRequest(
     'https://auth.example.com/authorize?client_id=abc&response_type=code'
 );
 console.log(analysis);
-// { valid: false, issues: ['Missing required parameter: redirect_uri', 'Missing state parameter'] }
+// { valid: false, issues: ['Missing state parameter (security warning)'] }
 ```
 
 ## Summary
 
 The "invalid_request" error usually comes from one of these issues:
 
-1. Missing required parameters (client_id, response_type, redirect_uri)
+1. Missing required parameters (client_id, response_type, and often redirect_uri)
 2. Redirect URI not matching registered URIs exactly
 3. Improper URL encoding of parameters
 4. Duplicate parameters in the request

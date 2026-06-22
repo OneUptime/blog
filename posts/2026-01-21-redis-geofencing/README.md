@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Geofencing, IoT, Location, Geospatial, GEORADIUS, Alert, GPS Tracking
+Tags: Redis, Geofencing, IoT, Location, Geospatial, GEOSEARCH, Alert, GPS Tracking
 
 Description: A comprehensive guide to implementing geofencing with Redis, covering geospatial indexes, location-based triggers, entry/exit detection, and real-time alerts for IoT and fleet management.
 
@@ -28,8 +28,7 @@ Redis provides these geospatial commands:
 - `GEOADD` - Add location with longitude/latitude
 - `GEOPOS` - Get position of a member
 - `GEODIST` - Distance between two members
-- `GEORADIUS` - Find members within radius of a point
-- `GEOSEARCH` - Advanced search within radius or box
+- `GEOSEARCH` - Find members within radius or box
 - `GEOHASH` - Get geohash of a member
 
 ## Basic Geofencing Implementation
@@ -60,7 +59,7 @@ class Geofence:
     center_lat: float
     center_lon: float
     radius_meters: float  # For circle type
-    polygon_points: List[Tuple[float, float]] = None  # For polygon type
+    polygon_points: List[Tuple[float, float]] = None  # Longitude/latitude points for polygon type
     metadata: Dict = None
 
 class GeofenceManager:
@@ -135,11 +134,11 @@ class GeofenceManager:
         radius_km: float = 10
     ) -> List[str]:
         """Get geofences within radius of a point."""
-        results = self.redis.georadius(
+        results = self.redis.geosearch(
             self.fences_key,
-            lon,
-            lat,
-            radius_km,
+            longitude=lon,
+            latitude=lat,
+            radius=radius_km,
             unit="km"
         )
         return [r.decode() if isinstance(r, bytes) else r for r in results]
@@ -335,11 +334,11 @@ class DeviceTracker:
             return []
 
         # Query devices near fence center
-        nearby = self.redis.georadius(
+        nearby = self.redis.geosearch(
             self.device_locations_key,
-            fence.center_lon,
-            fence.center_lat,
-            fence.radius_meters / 1000 + 1,  # km with buffer
+            longitude=fence.center_lon,
+            latitude=fence.center_lat,
+            radius=fence.radius_meters / 1000 + 1,  # km with buffer
             unit="km",
             withcoord=True
         )
@@ -525,10 +524,12 @@ class GeofenceManager {
     }
 
     async getNearbyFences(lat, lon, radiusKm = 10) {
-        const results = await this.redis.georadius(
+        const results = await this.redis.geosearch(
             this.fencesKey,
+            'FROMLONLAT',
             lon,
             lat,
+            'BYRADIUS',
             radiusKm,
             'km'
         );
@@ -658,19 +659,19 @@ class DeviceTracker {
         const fence = await this.fenceManager.getGeofence(fenceId);
         if (!fence) return [];
 
-        const nearby = await this.redis.georadius(
+        const nearby = await this.redis.geosearch(
             this.deviceLocationsKey,
+            'FROMLONLAT',
             fence.centerLon,
             fence.centerLat,
+            'BYRADIUS',
             fence.radiusMeters / 1000 + 1,
             'km',
             'WITHCOORD'
         );
 
         const inside = [];
-        for (let i = 0; i < nearby.length; i += 2) {
-            const deviceId = nearby[i];
-            const coords = nearby[i + 1];
+        for (const [deviceId, coords] of nearby) {
             const [lon, lat] = coords.map(parseFloat);
 
             if (this.fenceManager.isInsideFence(fence, lat, lon)) {
@@ -697,34 +698,38 @@ class DeviceTracker {
 }
 
 // Usage
-const tracker = new DeviceTracker({ host: 'localhost', port: 6379 });
+async function main() {
+    const tracker = new DeviceTracker({ host: 'localhost', port: 6379 });
 
-// Create geofences
-await tracker.fenceManager.createGeofence({
-    fenceId: 'warehouse-1',
-    name: 'Main Warehouse',
-    centerLat: 37.7749,
-    centerLon: -122.4194,
-    radiusMeters: 500
-});
+    // Create geofences
+    await tracker.fenceManager.createGeofence({
+        fenceId: 'warehouse-1',
+        name: 'Main Warehouse',
+        centerLat: 37.7749,
+        centerLon: -122.4194,
+        radiusMeters: 500
+    });
 
-// Update device location
-const result = await tracker.updateDeviceLocation(
-    'truck-001',
-    37.7750,
-    -122.4195
-);
-console.log(result);
+    // Update device location
+    const result = await tracker.updateDeviceLocation(
+        'truck-001',
+        37.7750,
+        -122.4195
+    );
+    console.log(result);
 
-// Subscribe to events
-tracker.subscribeToEvents((event) => {
-    console.log(`Device ${event.deviceId} ${event.eventType} ${event.fenceName}`);
-});
+    // Subscribe to events
+    tracker.subscribeToEvents((event) => {
+        console.log(`Device ${event.deviceId} ${event.eventType} ${event.fenceName}`);
+    });
+}
+
+main().catch(console.error);
 ```
 
 ## Best Practices
 
-1. **Use GEORADIUS for initial filtering** - Narrow down candidates before detailed checks.
+1. **Use GEOSEARCH for initial filtering** - Narrow down candidates before detailed checks.
 
 2. **Index fence centers** - Store fence centers in geospatial index for fast proximity queries.
 
@@ -740,6 +745,6 @@ tracker.subscribeToEvents((event) => {
 
 ## Conclusion
 
-Redis geospatial commands provide an efficient foundation for geofencing systems. By combining GEORADIUS for proximity queries with application-level fence checks, you can build scalable geofencing that handles millions of location updates. The key is maintaining device state to accurately detect enter/exit events.
+Redis geospatial commands provide an efficient foundation for geofencing systems. By combining GEOSEARCH for proximity queries with application-level fence checks, you can build scalable geofencing that handles millions of location updates. The key is maintaining device state to accurately detect enter/exit events.
 
 For more IoT patterns with Redis, check out our guides on [Device State Management](https://oneuptime.com/blog/post/2026-01-21-redis-device-state-management/view) and [IoT Data Ingestion](https://oneuptime.com/blog/post/2026-01-21-redis-iot-data-ingestion/view).

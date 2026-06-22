@@ -113,7 +113,7 @@ def process_file(filepath):
 
 ## Cause 2: Oversized Attributes
 
-Attributes that exceed size limits will fail serialization.
+Very large attributes can inflate export payloads and may exceed backend or pipeline limits. OpenTelemetry SDKs can also truncate attribute values when attribute value length limits are configured.
 
 ```go
 // WRONG: Storing large data in attributes
@@ -121,7 +121,7 @@ func processRequest(ctx context.Context, body []byte) {
     ctx, span := tracer.Start(ctx, "process-request")
     defer span.End()
 
-    // This may exceed attribute size limits (typically 4KB-64KB)
+    // This may create very large export payloads
     span.SetAttributes(
         attribute.String("request.body", string(body)), // Could be megabytes!
     )
@@ -140,7 +140,6 @@ import (
     "unicode/utf8"
 
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -191,19 +190,19 @@ func processRequest(ctx context.Context, body []byte) {
 }
 ```
 
-## Cause 3: Nil or Invalid Span Context
+## Cause 3: Using a No-Op Span When You Expected a Recording Span
 
-Attempting to serialize spans with invalid context causes errors.
+Getting a span from an empty context returns a non-recording span. It will not be exported, so attributes set on it are dropped.
 
 ```go
-// WRONG: May result in nil span context
+// WRONG: This does not create a recording span
 func doWork() {
     // Getting span from potentially empty context
     span := trace.SpanFromContext(context.Background())
 
     // This span might be a no-op span with invalid context
     span.SetAttributes(attribute.String("key", "value"))
-    // Serialization may fail when exporting
+    // Nothing will be exported from this span
 }
 ```
 
@@ -231,7 +230,7 @@ func doWork(ctx context.Context) {
 
 ## Cause 4: Unsupported Attribute Types
 
-OpenTelemetry only supports specific attribute types.
+OpenTelemetry span attributes in the Python SDK support specific primitive types and homogeneous sequences of those primitive types.
 
 ```python
 # WRONG: Using unsupported types as attributes
@@ -288,15 +287,14 @@ def convert_attribute(value):
         if not value:
             return []
 
-        # Determine the dominant type
-        first_type = type(value[0])
-        if first_type == str:
+        # Lists must be homogeneous. Fall back to strings for mixed lists.
+        if all(isinstance(v, str) for v in value):
             return [str(v) for v in value]
-        elif first_type == bool:
+        elif all(isinstance(v, bool) for v in value):
             return [bool(v) for v in value]
-        elif first_type == int:
+        elif all(isinstance(v, int) and not isinstance(v, bool) for v in value):
             return [int(v) for v in value]
-        elif first_type == float:
+        elif all(isinstance(v, float) for v in value):
             return [float(v) for v in value]
         else:
             # Fall back to string representation
@@ -317,19 +315,19 @@ def process_data(data):
         span.set_attribute("items", convert_attribute([1, 2, 3]))
 ```
 
-## Cause 5: Protobuf Version Mismatch
+## Cause 5: Protobuf Dependency Mismatch
 
-Incompatible protobuf versions can cause serialization issues.
+Incompatible Python protobuf package versions can cause import or serialization issues in OTLP exporters. Keep OpenTelemetry Python packages on compatible versions and let the exporter package pull the matching `opentelemetry-proto` dependency.
 
 ```mermaid
 flowchart TD
-    A[Application] --> B[OTel SDK v1.20]
-    B --> C[protobuf v4.x]
+    A[Application] --> B[OTel Python SDK]
+    B --> C[OTLP Exporter]
 
-    D[OTel Collector] --> E[protobuf v3.x]
+    C --> D[opentelemetry-proto]
+    D --> E[protobuf runtime]
 
-    C -->|Version Mismatch| F[Serialization Error]
-    E -->|Version Mismatch| F
+    E -->|Incompatible Version| F[Import or Serialization Error]
 
     style F fill:#f99,stroke:#333
 ```
@@ -340,15 +338,16 @@ flowchart TD
 # Check current protobuf version
 pip show protobuf
 
-# Upgrade to compatible version
-pip install --upgrade protobuf>=4.21.0
+# Upgrade the OTLP exporter and its matching dependencies together
+pip install --upgrade opentelemetry-exporter-otlp-proto-grpc
 
 # Or pin to a specific version in requirements.txt
 # requirements.txt
-opentelemetry-api==1.20.0
-opentelemetry-sdk==1.20.0
-opentelemetry-exporter-otlp==1.20.0
-protobuf>=4.21.0,<5.0.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
+opentelemetry-proto==1.42.1
+protobuf>=5.0,<7.0
 ```
 
 For Go applications:
@@ -375,7 +374,6 @@ Create a wrapper to catch and debug serialization issues:
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 import logging
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -596,6 +594,12 @@ Configure your OpenTelemetry Collector to handle malformed data:
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   # Transform processor to fix common issues
   transform:
@@ -605,13 +609,13 @@ processors:
           # Truncate long attribute values
           - truncate_all(attributes, 4096)
           # Remove attributes with empty keys
-          - delete_key(attributes, "") where attributes[""] != nil
+          - delete_key(attributes, "")
 
     log_statements:
       - context: log
         statements:
           # Truncate long log bodies
-          - truncate_all(body, 65536)
+          - set(body, Substring(body, 0, 65536, true)) where IsString(body) and Len(body) > 65536
 
   # Filter out spans with invalid data
   filter:
@@ -619,7 +623,15 @@ processors:
     traces:
       span:
         # Drop spans with suspiciously long names
-        - 'len(name) > 256'
+        - 'Len(name) > 256'
+
+  batch:
+
+exporters:
+  otlp:
+    endpoint: backend.example.com:4317
+    tls:
+      insecure: false
 
 service:
   pipelines:

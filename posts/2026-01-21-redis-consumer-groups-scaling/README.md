@@ -8,7 +8,7 @@ Description: A comprehensive guide to scaling event consumers with Redis Consume
 
 ---
 
-Redis Consumer Groups enable horizontal scaling of event consumers while ensuring each message is processed exactly once. This guide covers practical patterns for scaling event processing across multiple consumers.
+Redis Consumer Groups enable horizontal scaling of event consumers while delivering each new message to one consumer in a group at a time. This guide covers practical patterns for scaling event processing across multiple consumers.
 
 ## Why Consumer Groups?
 
@@ -18,7 +18,7 @@ Consumer Groups provide essential capabilities for scalable event processing:
 - **Load balancing**: Redis automatically distributes messages across consumers
 - **Acknowledgment tracking**: Track which messages have been processed
 - **Failure recovery**: Reassign messages from failed consumers
-- **Exactly-once semantics**: Each message is delivered to only one consumer
+- **At-least-once delivery**: Each new message is delivered to one consumer at a time, and unacknowledged messages can be recovered
 
 ## Consumer Group Architecture
 
@@ -207,7 +207,7 @@ Run multiple consumers for parallel processing:
 import redis
 import threading
 import time
-from typing import Dict, Callable
+from typing import Dict, Callable, List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -325,6 +325,7 @@ Recover and reprocess messages from failed consumers:
 ```python
 import redis
 import time
+import threading
 from typing import Dict, Any, List, Optional, Callable
 import logging
 
@@ -550,26 +551,15 @@ class AutoScalingConsumerPool:
 
     def _get_lag(self) -> int:
         """Get current processing lag."""
-        # Get stream length
-        stream_length = self.redis.xlen(self.stream_key)
-
-        # Get last delivered ID
         groups = self.redis.xinfo_groups(self.stream_key)
         for group in groups:
             name = group.get("name")
             if isinstance(name, bytes):
                 name = name.decode()
             if name == self.group_name:
-                last_delivered = group.get("last-delivered-id")
-                if last_delivered:
-                    if isinstance(last_delivered, bytes):
-                        last_delivered = last_delivered.decode()
-                    # Count messages after last delivered
-                    pending_count = self.redis.xlen(self.stream_key)
-                    # This is approximate - for accurate count, use XRANGE
-                    return max(0, stream_length - group.get("pending", 0))
+                return group.get("lag", 0) or 0
 
-        return stream_length
+        return 0
 
     def _auto_scale_loop(self):
         """Auto-scaling decision loop."""
@@ -699,7 +689,7 @@ class ConsumerGroupMonitor:
                 ) / 1000  # Convert to seconds
 
         # Calculate lag
-        lag = stream_length - pending  # Approximate
+        lag = group_info.get("lag", 0) or 0
 
         return ConsumerGroupMetrics(
             group_name=self.group_name,

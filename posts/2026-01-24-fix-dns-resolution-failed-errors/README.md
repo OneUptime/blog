@@ -41,7 +41,7 @@ Start by identifying where the DNS resolution is failing.
 ```bash
 # Test basic DNS resolution with different tools
 
-# nslookup queries DNS servers directly
+# nslookup queries the configured DNS resolver by default
 nslookup google.com
 
 # dig provides detailed DNS query information
@@ -93,7 +93,7 @@ Here's how to identify and fix the most common DNS issues.
 # Check if you can reach the DNS server
 ping -c 3 $(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}')
 
-# Verify DNS port is accessible
+# Verify DNS TCP port is accessible
 nc -zv 8.8.8.8 53
 
 # Check if systemd-resolved is running (Ubuntu/Debian)
@@ -118,7 +118,7 @@ EOF
 # Check if resolv.conf is a symlink being overwritten
 ls -la /etc/resolv.conf
 
-# For systemd-resolved systems, check the stub resolver
+# For systemd-resolved systems, check the upstream resolver file
 cat /run/systemd/resolve/resolv.conf
 ```
 
@@ -160,7 +160,7 @@ flowchart TD
 
 ## 5. Fixing systemd-resolved Issues
 
-Modern Linux distributions use systemd-resolved for DNS. Here's how to troubleshoot it.
+Many modern Linux distributions use systemd-resolved for DNS. Here's how to troubleshoot it.
 
 ```bash
 # Check systemd-resolved status
@@ -271,8 +271,8 @@ sudo nscd -i hosts
 # Clear dnsmasq cache (if used)
 sudo systemctl restart dnsmasq
 
-# Check if local caching is causing issues by bypassing it
-dig @8.8.8.8 +nocache google.com
+# Check if local caching is causing issues by querying an upstream resolver directly
+dig @8.8.8.8 google.com
 
 # For applications using their own cache (like browsers)
 # Restart the application or use internal cache clear

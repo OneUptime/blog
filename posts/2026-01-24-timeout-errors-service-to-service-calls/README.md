@@ -58,12 +58,18 @@ kind: Deployment
 metadata:
   name: user-service
 spec:
+  selector:
+    matchLabels:
+      app: user-service
   template:
+    metadata:
+      labels:
+        app: user-service
     spec:
       containers:
         - name: user-service
           image: user-service:latest
-          # Ensure readiness probe timeout is less than service timeout
+          # Ensure the readiness probe timeout fits the health endpoint's expected latency
           readinessProbe:
             httpGet:
               path: /health
@@ -129,6 +135,7 @@ package main
 import (
     "context"
     "fmt"
+    "net"
     "net/http"
     "time"
 )
@@ -202,7 +209,7 @@ func main() {
 
 ### Strategy 2: Implementing Retries with Backoff
 
-Add retries with exponential backoff to handle transient timeout issues.
+Add retries with exponential backoff to handle transient timeout issues for safe or idempotent operations.
 
 ```go
 package main
@@ -488,7 +495,7 @@ spec:
 ```promql
 # P99 latency by service
 histogram_quantile(0.99,
-  sum(rate(http_request_duration_seconds_bucket{job="user-service"}[5m])) by (le)
+  sum(rate(http_request_duration_seconds_bucket{job="user-service"}[5m])) by (job, le)
 )
 
 # Timeout error rate
@@ -519,7 +526,7 @@ kubectl exec -it <source-pod> -n <namespace> -- \
 ## Best Practices Summary
 
 1. Set layered timeouts where outer layers have longer timeouts than inner layers
-2. Always implement retries with exponential backoff and jitter
+2. Implement retries with exponential backoff and jitter for safe or idempotent operations
 3. Use circuit breakers to prevent cascading failures
 4. Monitor timeout metrics and set up alerts
 5. Configure connection pools to prevent resource exhaustion

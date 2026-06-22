@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve read-only variable errors in Bash
 
 ---
 
-The "read-only variable" error in Bash occurs when you attempt to modify or unset a variable that has been marked as read-only. This protection mechanism is useful for constants but can cause issues when inherited or when scripts need to reset state. This guide covers how to understand, diagnose, and work around read-only variable errors.
+The "read-only variable" error in Bash occurs when you attempt to modify or unset a variable that has been marked as read-only. This protection mechanism is useful for constants but can cause issues when sourced files or startup files mark names readonly, or when scripts need to reset state. This guide covers how to understand, diagnose, and work around read-only variable errors.
 
 ---
 
@@ -93,7 +93,9 @@ readonly -p
 # Check if specific variable is read-only
 is_readonly() {
     local var_name=$1
-    if readonly -p | grep -q "declare -r $var_name="; then
+    local declaration
+    declaration=$(declare -p "$var_name" 2>/dev/null) || return 1
+    if [[ $declaration == declare\ -*r* ]]; then
         return 0  # Is read-only
     else
         return 1  # Not read-only
@@ -112,19 +114,19 @@ fi
 
 ## 2. Common Causes of Read-Only Errors
 
-### Inherited Read-Only Variables
+### Sourced Read-Only Variables
 
 ```bash
 #!/bin/bash
 
-# Parent script
+# config.sh
 readonly SHARED_CONFIG="/etc/app/config"
 export SHARED_CONFIG
 
-# Child script tries to modify
-# child.sh:
+# main.sh sources config.sh, so the readonly attribute remains in this shell
 #!/bin/bash
-SHARED_CONFIG="/new/path"  # Error if inherited as readonly
+source config.sh
+SHARED_CONFIG="/new/path"  # Error because it was marked readonly in this shell
 ```
 
 ### System Read-Only Variables
@@ -214,14 +216,14 @@ diagnose_variable() {
     fi
 
     # Check if readonly
-    if readonly -p | grep -q "declare -r $var_name"; then
+    if declare -p "$var_name" 2>/dev/null | grep -q '^declare -[^ ]*r'; then
         echo "Read-only: Yes"
     else
         echo "Read-only: No"
     fi
 
     # Check if exported
-    if export -p | grep -q "declare -x $var_name"; then
+    if declare -p "$var_name" 2>/dev/null | grep -q '^declare -[^ ]*x'; then
         echo "Exported: Yes"
     else
         echo "Exported: No"
@@ -261,8 +263,8 @@ flowchart TD
     G --> K[System variable]
 
     H --> L[Modify script]
-    I --> M[Modify sourced file or use subshell]
-    J --> N[Use subshell or new shell]
+    I --> M[Modify sourced file or use different name]
+    J --> N[Check startup files or use a clean shell]
     K --> O[Cannot modify - use different name]
 ```
 
@@ -275,7 +277,7 @@ flowchart TD
 ```bash
 #!/bin/bash
 
-# If CONFIG is readonly from environment
+# If CONFIG is readonly in the current shell
 # Use a different name internally
 
 readonly EXTERNAL_CONFIG="${CONFIG:-default}"
@@ -285,7 +287,7 @@ INTERNAL_CONFIG="$EXTERNAL_CONFIG"
 INTERNAL_CONFIG="modified value"  # This works
 ```
 
-### Solution 2: Use Subshell
+### Solution 2: Use Function Arguments
 
 ```bash
 #!/bin/bash
@@ -293,12 +295,12 @@ INTERNAL_CONFIG="modified value"  # This works
 # Parent context
 readonly PARENT_VAR="original"
 
-# Subshell creates new variable space
-(
-    # This is a copy, not the readonly variable
-    PARENT_VAR="modified in subshell"
-    echo "In subshell: $PARENT_VAR"
-)
+use_parent_var() {
+    local parent_var=$1
+    echo "Using value: $parent_var"
+}
+
+use_parent_var "modified for this call"
 
 echo "In parent: $PARENT_VAR"  # Still "original"
 ```
@@ -309,6 +311,7 @@ echo "In parent: $PARENT_VAR"  # Still "original"
 #!/bin/bash
 
 readonly LOCKED_VAR="locked"
+export LOCKED_VAR
 
 # Start completely new shell without the variable
 env -u LOCKED_VAR bash -c '
@@ -383,25 +386,26 @@ set_config "DB_HOST" "newhost"  # Error (by convention)
 
 ## 5. Working with Environment Variables
 
-### Handling Inherited Read-Only Variables
+### Handling Read-Only Variables in the Current Shell
 
 ```bash
 #!/bin/bash
 
-# Script that might receive readonly variables
+# Script that might run with PROBLEMATIC_VAR already marked readonly
 main() {
-    # Check if we inherited problematic readonly vars
-    if readonly -p | grep -q "declare -r PROBLEMATIC_VAR"; then
+    # Check if PROBLEMATIC_VAR was marked readonly in this shell
+    if declare -p PROBLEMATIC_VAR 2>/dev/null | grep -q '^declare -[^ ]*r'; then
         echo "Warning: PROBLEMATIC_VAR is readonly"
-        echo "Starting fresh shell to work around..."
 
-        # Restart without the variable
-        exec env -u PROBLEMATIC_VAR "$0" "$@"
+        # Use a different internal name instead of modifying it
+        INTERNAL_PROBLEMATIC_VAR="${PROBLEMATIC_VAR:-safe default}"
+    else
+        PROBLEMATIC_VAR="safe to set now"
+        INTERNAL_PROBLEMATIC_VAR="$PROBLEMATIC_VAR"
     fi
 
     # Normal script logic
-    PROBLEMATIC_VAR="safe to set now"
-    echo "$PROBLEMATIC_VAR"
+    echo "$INTERNAL_PROBLEMATIC_VAR"
 }
 
 main "$@"
@@ -415,11 +419,11 @@ main "$@"
 # When exporting constants to child processes
 # Consider whether they need to be modifiable
 
-# Method 1: Export and readonly (child cannot modify)
+# Method 1: Export and readonly (this shell cannot modify it)
 export STRICT_CONST="value"
 readonly STRICT_CONST
 
-# Method 2: Export only (child can modify their copy)
+# Method 2: Export only (child shells can modify their copy)
 export FLEXIBLE_CONST="value"
 # Children can: FLEXIBLE_CONST="new value"
 ```
@@ -433,15 +437,11 @@ flowchart TD
     B -->|Yes| D{Make readonly?}
 
     D -->|No| E[Child gets writable copy]
-    D -->|Yes| F{Child inherits readonly?}
-
-    F -->|Bash 4.4+| G[Child inherits readonly attribute]
-    F -->|Older Bash| H[Child gets writable copy]
+    D -->|Yes| F[Child gets exported value]
 
     C --> I[Not visible to children]
     E --> J[Child can modify their copy]
-    G --> K[Child cannot modify]
-    H --> J
+    F --> J
 ```
 
 ---
@@ -533,7 +533,7 @@ declare_constant() {
     local value=$2
 
     # Check if already readonly
-    if readonly -p | grep -q "declare -r $name="; then
+    if declare -p "$name" 2>/dev/null | grep -q '^declare -[^ ]*r'; then
         echo "Warning: $name is already readonly" >&2
         return 1
     fi
@@ -567,11 +567,10 @@ readonly MAIN_CONFIG="main"
 process_with_override() {
     local override=$1
 
-    # Run in subshell to avoid affecting parent
+    # Run in subshell to avoid affecting parent state
     (
-        # This shadows the readonly variable
-        local MAIN_CONFIG="$override"
-        echo "Using config: $MAIN_CONFIG"
+        local config_to_use="$override"
+        echo "Using config: $config_to_use"
         # Do work...
     )
 }
@@ -611,10 +610,10 @@ flowchart TD
     E --> F{Modify VAR?}
 
     F -->|Direct| G[Error: readonly]
-    F -->|local VAR| H[New local variable created]
+    F -->|local VAR| H[Error: readonly]
 
-    H --> I[Local shadows parent]
-    I --> J[Modifications work on local]
+    H --> I[Use different local name]
+    I --> J[Modifications work on different variable]
     J --> K[Subshell exits]
     K --> L[Parent VAR unchanged]
 
@@ -622,14 +621,14 @@ flowchart TD
     M --> N[VAR still readonly]
 ```
 
-### Process Substitution
+### Function Argument Overrides
 
 ```bash
 #!/bin/bash
 
 readonly DATA_FILE="/original/data"
 
-# Use process substitution to work with modified paths
+# Use function arguments to work with modified paths
 # without actually changing the variable
 
 process_data() {
@@ -704,7 +703,7 @@ safe_set() {
     local value=$2
 
     # Check if readonly
-    if readonly -p | grep -q "declare -r $var_name="; then
+    if declare -p "$var_name" 2>/dev/null | grep -q '^declare -[^ ]*r'; then
         echo "Error: Cannot set $var_name - readonly" >&2
         return 1
     fi
@@ -718,7 +717,7 @@ safe_readonly() {
     local value=$2
 
     # Check if already readonly
-    if readonly -p | grep -q "declare -r $var_name="; then
+    if declare -p "$var_name" 2>/dev/null | grep -q '^declare -[^ ]*r'; then
         echo "Warning: $var_name already readonly" >&2
         return 1
     fi
@@ -769,7 +768,7 @@ var_get() {
 var_is_readonly() {
     local name=$1
     [[ "${_VAR_METADATA[$name]}" == *"readonly"* ]] || \
-    readonly -p | grep -q "declare -r $name="
+    declare -p "$name" 2>/dev/null | grep -q '^declare -[^ ]*r'
 }
 
 var_info() {
@@ -778,7 +777,7 @@ var_info() {
     echo "Variable: $name"
     echo "Value: ${!name}"
     echo "Readonly: $(var_is_readonly "$name" && echo "yes" || echo "no")"
-    echo "Exported: $(export -p | grep -q "declare -x $name=" && echo "yes" || echo "no")"
+    echo "Exported: $(declare -p "$name" 2>/dev/null | grep -q '^declare -[^ ]*x' && echo "yes" || echo "no")"
 }
 
 # Usage
@@ -805,14 +804,14 @@ declare -r VAR="value"
 readonly -p
 
 # Check if readonly
-readonly -p | grep "declare -r VAR="
+declare -p VAR 2>/dev/null | grep '^declare -[^ ]*r'
 
 # Cannot unset readonly
 unset VAR  # Error
 
 # Workarounds:
 # 1. Use different variable name
-# 2. Use subshell: (VAR="new"; ...)
+# 2. Pass alternate values via function arguments or different variable names
 # 3. Use new shell: bash -c 'VAR="new"; ...'
 # 4. Use indirection/wrapper functions
 ```
@@ -821,22 +820,22 @@ unset VAR  # Error
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `VAR: readonly variable` | Trying to assign | Use different name or subshell |
-| `cannot unset: readonly variable` | Trying to unset | Use subshell or new shell |
+| `VAR: readonly variable` | Trying to assign | Use different name, function argument, or new shell |
+| `cannot unset: readonly variable` | Trying to unset | Use a new shell or avoid setting it readonly |
 | `cannot modify readonly variable` | Trying to modify | Same as above |
 
 ---
 
 ## Key Takeaways
 
-1. **Understand readonly scope** - Readonly is per-shell; subshells can shadow but not modify
+1. **Understand readonly scope** - Readonly is per-shell; parenthesized subshells inherit the readonly attribute
 2. **Use readonly intentionally** - Only for true constants that must never change
 3. **Document readonly variables** - Mark them clearly in your code
 4. **Provide override mechanisms** - Use functions or override variables for flexibility
 5. **Test before setting** - Check if a variable is already readonly before modification
 6. **Use naming conventions** - ALL_CAPS for constants helps identify them
-7. **Consider inheritance** - Readonly may or may not propagate to child processes
-8. **Use subshells for isolation** - When you need to temporarily use different values
+7. **Consider inheritance** - Exported values propagate to child processes, but ordinary readonly attributes do not
+8. **Use new shells or arguments for isolation** - When you need to temporarily use different values
 
 ---
 

@@ -6,7 +6,7 @@ Tags: Kubernetes, Security, Secrets Management, HashiCorp Vault, External Secret
 
 Description: Integration patterns for secret management using External Secrets Operator with HashiCorp Vault, AWS Secrets Manager, and other providers.
 
-Kubernetes Secrets have a fundamental problem: they're base64 encoded, not encrypted. Anyone with RBAC access to read secrets can decode them instantly. Worse, secrets in GitOps repositories become security liabilities. External Secrets Operator (ESO) solves this by syncing secrets from external providers like HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault into your cluster automatically. This guide covers the complete setup from provider configuration to production patterns.
+Kubernetes Secrets have a fundamental problem: they're base64 encoded in manifests and, by default, stored unencrypted in etcd unless encryption at rest is configured. Anyone with RBAC access to read secrets can decode them instantly. Worse, secrets in GitOps repositories become security liabilities. External Secrets Operator (ESO) solves this by syncing secrets from external providers like HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault into your cluster automatically. This guide covers the complete setup from provider configuration to production patterns.
 
 ---
 
@@ -16,7 +16,7 @@ Storing secrets directly in Kubernetes manifests or Git repositories creates sev
 
 - **Base64 is not encryption** - `kubectl get secret -o yaml` reveals everything
 - **Git history is forever** - a rotated secret in Git still exists in history
-- **No audit trail** - Kubernetes doesn't log who read which secret when
+- **Audit logging must be configured** - Kubernetes audit logs depend on API server audit policy and backend configuration
 - **No central rotation** - updating a secret means touching every cluster
 
 External secret managers solve these problems:
@@ -97,7 +97,7 @@ kubectl get pods -n external-secrets
 kubectl get crd | grep external-secrets
 ```
 
-You should see three CRDs: `secretstores`, `clustersecretstores`, and `externalsecrets`.
+You should see the core CRDs, including `secretstores`, `clustersecretstores`, and `externalsecrets`, along with additional CRDs for features such as generators and push secrets.
 
 ## Step 2: Configure HashiCorp Vault
 
@@ -129,9 +129,9 @@ kubectl port-forward svc/vault -n vault 8200:8200 &
 export VAULT_ADDR="http://localhost:8200"
 export VAULT_TOKEN="root"
 
-# Enable KV v2 secrets engine at path "secret"
-# KV v2 supports versioning of secrets
-vault secrets enable -path=secret kv-v2
+# Enable KV v2 secrets engine at path "secret" if it is not already enabled
+# Vault dev mode usually enables KV v2 at this path by default
+vault secrets enable -path=secret kv-v2 || true
 
 # Write a test secret
 vault kv put secret/myapp/config \
@@ -147,11 +147,15 @@ ESO needs credentials to authenticate with Vault. Kubernetes Auth is the recomme
 # Enable Kubernetes auth method in Vault
 vault auth enable kubernetes
 
+# Allow the Vault server service account to call the TokenReview API
+kubectl create clusterrolebinding vault-tokenreview-binding \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=vault:vault
+
 # Configure Kubernetes auth to trust the cluster's service accounts
 # This allows pods in your cluster to authenticate with Vault
 vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc" \
-  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  kubernetes_host="https://kubernetes.default.svc:443"
 ```
 
 Create a Vault policy for ESO:
@@ -186,7 +190,7 @@ This SecretStore tells ESO how to authenticate with Vault using Kubernetes servi
 
 ```yaml
 # ClusterSecretStore for Vault (available to all namespaces)
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -232,7 +236,7 @@ Now create an ExternalSecret that pulls data from Vault into a Kubernetes Secret
 This ExternalSecret syncs the myapp/config secret from Vault into a Kubernetes Secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -284,7 +288,7 @@ If you want all keys from a Vault secret without mapping each one:
 This pattern syncs all keys from a Vault secret path, useful when you don't want to enumerate each key:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-all-secrets
@@ -335,7 +339,7 @@ Configure ESO to use AWS Secrets Manager:
 This SecretStore authenticates with AWS using IRSA (IAM Roles for Service Accounts) which is the recommended approach for EKS:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -355,7 +359,7 @@ spec:
 If using static credentials (not recommended for production):
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -380,7 +384,7 @@ spec:
 Sync a secret from AWS Secrets Manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-aws-secrets
@@ -411,7 +415,7 @@ This pattern gives each team their own SecretStore, limiting what secrets they c
 
 ```yaml
 # Team-specific SecretStore
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: team-alpha-vault
@@ -438,7 +442,7 @@ ESO can template secrets for complex configurations:
 Templates let you combine multiple secret values or add static data:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-connection
@@ -459,19 +463,19 @@ spec:
   data:
     - secretKey: username
       remoteRef:
-        key: secret/data/database/credentials
+        key: database/credentials
         property: username
     - secretKey: password
       remoteRef:
-        key: secret/data/database/credentials
+        key: database/credentials
         property: password
     - secretKey: host
       remoteRef:
-        key: secret/data/database/config
+        key: database/config
         property: host
     - secretKey: database
       remoteRef:
-        key: secret/data/database/config
+        key: database/config
         property: name
 ```
 
@@ -479,7 +483,7 @@ spec:
 
 ESO can also push Kubernetes Secrets to external providers:
 
-Push Secrets are useful for syncing generated credentials (like TLS certs) to your secret manager:
+Push Secrets are useful for syncing generated credentials (like TLS certs) to your secret manager. For Vault KV v2, the referenced SecretStore policy must also allow `create`, `read`, and `update` on the target `secret/data/...` and `secret/metadata/...` paths:
 
 ```yaml
 apiVersion: external-secrets.io/v1alpha1
@@ -504,12 +508,12 @@ spec:
     - match:
         secretKey: tls.crt
         remoteRef:
-          remoteKey: secret/data/certs/my-tls-cert
+          remoteKey: certs/my-tls-cert
           property: certificate
     - match:
         secretKey: tls.key
         remoteRef:
-          remoteKey: secret/data/certs/my-tls-cert
+          remoteKey: certs/my-tls-cert
           property: private_key
 ```
 
@@ -520,7 +524,7 @@ ESO can generate secrets dynamically:
 Use generators for passwords, UUIDs, or other values that should be created on-demand:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: generated-password
@@ -573,7 +577,13 @@ metadata:
     # Reloader watches this secret and restarts pods when it changes
     reloader.stakater.com/auto: "true"
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: app
@@ -592,7 +602,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  selector:
+    matchLabels:
+      app: nginx
   template:
+    metadata:
+      labels:
+        app: nginx
     spec:
       containers:
         - name: nginx
@@ -601,11 +617,8 @@ spec:
             - name: secrets
               mountPath: /etc/nginx/secrets
               readOnly: true
-          # Nginx reloads config on SIGHUP
-          lifecycle:
-            postStart:
-              exec:
-                command: ["/bin/sh", "-c", "nginx -s reload"]
+          # Your application or a sidecar should watch this directory
+          # and reload Nginx with SIGHUP when the files change.
       volumes:
         - name: secrets
           secret:
@@ -690,10 +703,10 @@ Key metrics to monitor:
 
 ```promql
 # Alert on sync failures
-sum(rate(externalsecret_sync_calls_error_total[5m])) by (name, namespace) > 0
+sum(rate(externalsecret_sync_calls_error[5m])) by (name, namespace) > 0
 
 # Alert on provider authentication failures
-sum(rate(externalsecret_provider_api_calls_error_total[5m])) by (provider) > 0
+sum(rate(externalsecret_provider_api_calls_count{status!="success"}[5m])) by (provider) > 0
 ```
 
 ## Related Resources

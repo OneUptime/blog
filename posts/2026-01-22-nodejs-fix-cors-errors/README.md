@@ -23,7 +23,7 @@ It means the browser is protecting users by blocking a cross-origin request beca
 
 ### Why CORS Exists
 
-CORS is a security feature that prevents malicious websites from making requests to your API on behalf of unsuspecting users. Without it, any website could make authenticated requests to your banking API using your saved cookies.
+CORS is a browser security feature that controls whether JavaScript from one origin can read responses from another origin. It is not a replacement for authentication or authorization, because non-browser clients can ignore CORS and some browser requests may still be sent even when the response is blocked.
 
 ```text
 Same Origin (allowed by default):
@@ -174,12 +174,12 @@ app.use((req, res, next) => {
 
 Browsers send a preflight OPTIONS request before "non-simple" requests. This includes requests with:
 - Methods other than GET, HEAD, or POST
-- Headers other than Accept, Accept-Language, Content-Language, or Content-Type
+- Headers other than Accept, Accept-Language, Content-Language, Content-Type, or Range
 - Content-Type other than application/x-www-form-urlencoded, multipart/form-data, or text/plain
 
 ```javascript
-// Handle preflight for all routes
-app.options('*', (req, res) => {
+// Handle preflight for all routes in Express 5
+app.options('/{*splat}', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
@@ -266,7 +266,7 @@ const corsOptions = {
 
 ### Issue 4: CORS Error Only in Production
 
-This usually happens because localhost works without CORS (same-origin) but production involves different domains.
+This usually happens because development may use a same-origin proxy or tools that do not enforce CORS, while production involves different browser origins.
 
 ```javascript
 const corsOptions = {

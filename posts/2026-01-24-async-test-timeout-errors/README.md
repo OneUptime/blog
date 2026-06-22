@@ -80,15 +80,19 @@ test('processes data', (done) => {
   });
 });
 
-// CORRECT - Call done.fail() on errors
+// CORRECT - Pass errors to done()
 test('processes data', (done) => {
   processData((error, result) => {
     if (error) {
-      done.fail(error);
+      done(error);
       return;
     }
-    expect(result).toBe('success');
-    done();
+    try {
+      expect(result).toBe('success');
+      done();
+    } catch (error) {
+      done(error);
+    }
   });
 });
 ```
@@ -109,11 +113,9 @@ function fetchWithRetry(url, maxRetries = 3) {
         .catch(error => {
           attempts++;
           if (attempts < maxRetries) {
-            // BUG: If this branch runs infinitely,
-            // promise never resolves
             attempt();
           }
-          // BUG: Missing else with reject!
+          // BUG: If all retries fail, the promise never settles
         });
     }
 
@@ -164,12 +166,10 @@ test('slow operation', async () => {
   await slowOperation();
 }, 30000); // 30 seconds for this test only
 
-// Per-describe block
-describe('slow tests', () => {
-  beforeAll(() => {
-    jest.setTimeout(30000);
-  });
+// For a file containing slow describe blocks
+jest.setTimeout(30000);
 
+describe('slow tests', () => {
   test('first slow test', async () => {
     await slowOperation();
   });
@@ -232,12 +232,10 @@ import { test } from 'vitest';
 
 test('slow operation', async () => {
   await slowOperation();
-}, { timeout: 30000 });
+}, 30000);
 
-// Using test.extend for reusable timeouts
-const slowTest = test.extend({
-  timeout: 30000,
-});
+// Using a helper for reusable timeouts
+const slowTest = (name, fn) => test(name, fn, 30000);
 
 slowTest('my slow test', async () => {
   await slowOperation();
@@ -273,10 +271,13 @@ test('complex async flow', async () => {
 ```javascript
 // timeout-utils.js
 function withTimeout(promise, ms, message = 'Operation timed out') {
+  let timeoutId;
   const timeout = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(message)), ms);
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
   });
-  return Promise.race([promise, timeout]);
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
 }
 
 // In your test
@@ -360,18 +361,22 @@ test('handles event', (done) => {
 test('handles event', (done) => {
   const emitter = new EventEmitter();
   const timeout = setTimeout(() => {
-    done.fail('Event never fired');
+    done(new Error('Event never fired'));
   }, 5000);
 
   emitter.on('data', (data) => {
     clearTimeout(timeout);
-    expect(data).toBe('expected');
-    done();
+    try {
+      expect(data).toBe('expected');
+      done();
+    } catch (error) {
+      done(error);
+    }
   });
 
   emitter.on('error', (error) => {
     clearTimeout(timeout);
-    done.fail(error);
+    done(error);
   });
 
   triggerEvent(emitter);
@@ -486,7 +491,7 @@ test('retries after delay', async () => {
   const promise = retryWithDelay(mockFn, 3, 1000);
 
   // Fast-forward through all retries
-  jest.advanceTimersByTime(3000);
+  await jest.advanceTimersByTimeAsync(3000);
 
   await promise;
 

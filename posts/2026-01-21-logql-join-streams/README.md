@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, LogQL, Log Correlation, Distributed Tracing, Request Tracking, Microservice
 
-Description: A comprehensive guide to correlating and joining log streams in LogQL, covering request ID tracking, distributed tracing integration, multi-service log correlation.
+Description: A comprehensive guide to correlating log streams in LogQL, covering request ID tracking, distributed tracing integration, multi-service log correlation.
 
 ---
 
-In microservices architectures, a single user request often spans multiple services. Correlating logs across these services is essential for debugging and understanding system behavior. This guide covers techniques for joining and correlating log streams in Loki.
+In microservices architectures, a single user request often spans multiple services. Correlating logs across these services is essential for debugging and understanding system behavior. This guide covers techniques for correlating log streams in Loki. LogQL does not perform SQL-style joins, but you can query multiple streams and filter them by shared IDs.
 
 ## Prerequisites
 
@@ -158,12 +158,13 @@ In Grafana, configure derived fields to link logs to traces:
 
 ```yaml
 # Grafana Loki data source config
-derivedFields:
-  - name: TraceID
-    matcherRegex: "trace_id=([a-f0-9]+)"
-    url: "${__value.raw}"
-    datasourceUid: tempo
-    urlDisplayLabel: "View Trace"
+jsonData:
+  derivedFields:
+    - name: TraceID
+      matcherRegex: "trace_id=([a-f0-9]+)"
+      url: "$${__value.raw}"
+      datasourceUid: tempo
+      urlDisplayLabel: "View Trace"
 ```
 
 ## Advanced Correlation Techniques
@@ -171,12 +172,11 @@ derivedFields:
 ### Following Request Flow
 
 ```logql
-# Get chronological view of request
+# Get request logs, then use Grafana's Oldest first option for chronological order
 {job=~".*-service"}
 | json
 | request_id = "req-12345"
 | line_format "{{.timestamp}} [{{.job}}] {{.level}}: {{.message}}"
-| sort by (timestamp)
 ```
 
 ### Cross-Service Error Tracking
@@ -243,20 +243,23 @@ derivedFields:
 
 ## Correlation with Labels
 
-### Using Promtail Labels
+### Using Grafana Alloy Labels
 
-Configure Promtail to extract correlation IDs as labels:
+Configure Grafana Alloy to extract correlation IDs as labels:
 
-```yaml
-# promtail.yaml
-scrape_configs:
-  - job_name: app
-    pipeline_stages:
-      - json:
-          expressions:
-            request_id: request_id
-      - labels:
-          request_id:
+```alloy
+# alloy.config
+loki.process "app" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = { request_id = "request_id" }
+  }
+
+  stage.labels {
+    values = { request_id = "request_id" }
+  }
+}
 ```
 
 Query with label:
@@ -269,29 +272,42 @@ Query with label:
 
 ### Selective Label Extraction
 
-```yaml
+```alloy
 # Only label recent/important requests
-pipeline_stages:
-  - json:
-      expressions:
-        level: level
-        request_id: request_id
-  - match:
-      selector: '{level="error"}'
-      stages:
-        - labels:
-            request_id:
+loki.process "app" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = {
+      level = "level"
+      request_id = "request_id"
+    }
+  }
+
+  stage.labels {
+    values = { level = "level" }
+  }
+
+  stage.match {
+    selector = "{level=\"error\"}"
+
+    stage.labels {
+      values = { request_id = "request_id" }
+    }
+  }
+}
 ```
 
 ## Grafana Dashboard Techniques
 
 ### Variable-Based Correlation
 
-Create a dashboard variable:
+Create a dashboard text box variable:
 
 ```text
 Variable: request_id
-Query: {job=~".*-service"} |~ "request_id" | json | line_format "{{.request_id}}" | dedup
+Type: Text box
+Default value: req-12345
 ```
 
 Use in panel:
@@ -377,13 +393,13 @@ Use UUIDs or sortable IDs:
 
 ```javascript
 // UUID v4
-const requestId = uuid.v4();  // 550e8400-e29b-41d4-a716-446655440000
+const uuidRequestId = uuidv4();  // 550e8400-e29b-41d4-a716-446655440000
 
 // ULID (sortable)
-const requestId = ulid();  // 01ARZ3NDEKTSV4RRFFQ69G5FAV
+const ulidRequestId = ulid();  // 01ARZ3NDEKTSV4RRFFQ69G5FAV
 
 // Custom format
-const requestId = `req-${Date.now()}-${randomString(8)}`;
+const customRequestId = `req-${Date.now()}-${randomString(8)}`;
 ```
 
 ### Propagation Headers
@@ -394,7 +410,7 @@ Standard headers to propagate:
 X-Request-ID: req-12345
 X-Correlation-ID: corr-67890
 X-Trace-ID: abc123
-traceparent: 00-abc123-def456-01
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 
 ### Service Naming

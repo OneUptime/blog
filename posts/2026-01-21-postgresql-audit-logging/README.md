@@ -12,7 +12,7 @@ Audit logging tracks all changes to your database for security, compliance, and 
 
 ## Prerequisites
 
-- PostgreSQL 12+ installed
+- PostgreSQL 14+ installed
 - Understanding of compliance requirements
 - Sufficient storage for audit data
 
@@ -43,6 +43,7 @@ CREATE TABLE audit_log (
     user_name VARCHAR(100),
     application_name VARCHAR(100),
     client_addr INET,
+    app_context JSONB,
     session_id TEXT,
     transaction_id BIGINT,
     statement_id INTEGER,
@@ -70,15 +71,15 @@ DECLARE
 BEGIN
     -- Determine row ID
     IF TG_OP = 'DELETE' THEN
-        row_id := OLD.id::TEXT;
         old_data := to_jsonb(OLD);
+        row_id := old_data->>'id';
     ELSIF TG_OP = 'INSERT' THEN
-        row_id := NEW.id::TEXT;
         new_data := to_jsonb(NEW);
+        row_id := new_data->>'id';
     ELSIF TG_OP = 'UPDATE' THEN
-        row_id := NEW.id::TEXT;
         old_data := to_jsonb(OLD);
         new_data := to_jsonb(NEW);
+        row_id := new_data->>'id';
 
         -- Find changed fields
         SELECT array_agg(key)
@@ -123,7 +124,8 @@ BEGIN
 
     RETURN COALESCE(NEW, OLD);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp;
 ```
 
 ### Apply Audit Trigger
@@ -213,7 +215,7 @@ SELECT new_data FROM changes WHERE rn = 1;
 sudo apt install postgresql-16-pgaudit
 
 # RHEL/CentOS
-sudo dnf install pgaudit16
+sudo dnf install pgaudit_16
 ```
 
 ### Configure pgaudit
@@ -221,30 +223,32 @@ sudo dnf install pgaudit16
 ```conf
 # postgresql.conf
 shared_preload_libraries = 'pgaudit'
-
-# Log all DDL and DML
-pgaudit.log = 'ddl, write, read'
-
-# Log statement parameters
-pgaudit.log_parameter = on
-
-# Log catalog access
-pgaudit.log_catalog = off
-
-# Log client info
-pgaudit.log_client = on
-
-# Log level
-pgaudit.log_level = 'log'
-
-# Log specific roles only
-# pgaudit.role = 'auditor'
 ```
 
 ### Enable Extension
 
 ```sql
 CREATE EXTENSION pgaudit;
+
+-- Log all DDL and DML
+ALTER SYSTEM SET pgaudit.log = 'ddl, write, read';
+
+-- Log statement parameters
+ALTER SYSTEM SET pgaudit.log_parameter = on;
+
+-- Reduce catalog-query noise
+ALTER SYSTEM SET pgaudit.log_catalog = off;
+
+-- Send audit messages to clients, useful for testing
+ALTER SYSTEM SET pgaudit.log_client = off;
+
+-- Log level
+ALTER SYSTEM SET pgaudit.log_level = 'log';
+
+-- Log specific roles only
+-- ALTER SYSTEM SET pgaudit.role = 'auditor';
+
+SELECT pg_reload_conf();
 
 -- Configure per-role auditing
 ALTER ROLE admin SET pgaudit.log = 'all';
@@ -429,7 +433,7 @@ BEGIN
     -- Mask credit card numbers
     IF data ? 'card_number' THEN
         data := jsonb_set(data, '{card_number}',
-            '"****-****-****-' || RIGHT(data->>'card_number', 4) || '"');
+            to_jsonb('****-****-****-' || RIGHT(data->>'card_number', 4)));
     END IF;
 
     -- Mask CVV

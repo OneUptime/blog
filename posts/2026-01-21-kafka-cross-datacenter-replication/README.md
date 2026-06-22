@@ -89,10 +89,8 @@ checkpoints.topic.replication.factor = 3
 # Run as Connect cluster
 connect-mirror-maker.sh mm2.properties
 
-# Or as standalone
-kafka-mirror-maker.sh --consumer.config consumer.properties \
-  --producer.config producer.properties \
-  --whitelist "orders.*,events.*"
+# Or limit this MM2 process to specific local cluster aliases
+connect-mirror-maker.sh mm2.properties --clusters dc1 dc2
 ```
 
 ## Docker Compose Setup
@@ -162,8 +160,9 @@ public class CustomReplicationPolicy implements ReplicationPolicy {
     }
 
     @Override
-    public boolean isInternalTopic(String topic) {
-        return topic.startsWith("mm2-") || topic.endsWith(".internal");
+    public boolean isMM2InternalTopic(String topic) {
+        return topic.startsWith("mm2") && topic.endsWith(".internal")
+            || topic.endsWith(".checkpoints.internal");
     }
 }
 ```
@@ -186,36 +185,18 @@ sync.group.offsets.interval.seconds = 60
 
 ```java
 public class OffsetTranslation {
-    private final KafkaConsumer<String, String> consumer;
+    public Map<TopicPartition, OffsetAndMetadata> getTranslatedOffsets(
+            Map<String, Object> targetClusterConfig,
+            String sourceCluster,
+            String consumerGroup) throws InterruptedException, TimeoutException {
 
-    public Map<TopicPartition, Long> getTranslatedOffsets(
-            String sourceCluster, String consumerGroup) {
-
-        // MM2 stores translated offsets in checkpoint topic
-        String checkpointTopic = sourceCluster + ".checkpoints.internal";
-
-        Map<TopicPartition, Long> translatedOffsets = new HashMap<>();
-
-        // Read checkpoint topic
-        consumer.assign(Collections.singletonList(
-            new TopicPartition(checkpointTopic, 0)));
-        consumer.seekToBeginning(consumer.assignment());
-
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
-
-        for (ConsumerRecord<String, String> record : records) {
-            // Parse checkpoint record
-            // Format: group:topic:partition -> offset
-            Checkpoint checkpoint = parseCheckpoint(record);
-            if (checkpoint.getGroup().equals(consumerGroup)) {
-                translatedOffsets.put(
-                    new TopicPartition(checkpoint.getTopic(), checkpoint.getPartition()),
-                    checkpoint.getOffset()
-                );
-            }
-        }
-
-        return translatedOffsets;
+        // RemoteClusterUtils reads the sourceCluster.checkpoints.internal topic.
+        return RemoteClusterUtils.translateOffsets(
+            targetClusterConfig,
+            sourceCluster,
+            consumerGroup,
+            Duration.ofSeconds(30)
+        );
     }
 }
 ```
@@ -230,12 +211,12 @@ clusters = dc1, dc2
 dc1->dc2.enabled = true
 dc1->dc2.topics = orders.*, events.*
 # Exclude already replicated topics
-dc1->dc2.topics.blacklist = dc2\..*
+dc1->dc2.topics.exclude = dc2\..*
 
 # DC2 -> DC1
 dc2->dc1.enabled = true
 dc2->dc1.topics = orders.*, events.*
-dc2->dc1.topics.blacklist = dc1\..*
+dc2->dc1.topics.exclude = dc1\..*
 
 # Prevent replication loops
 replication.policy.class = org.apache.kafka.connect.mirror.DefaultReplicationPolicy
@@ -246,13 +227,12 @@ replication.policy.class = org.apache.kafka.connect.mirror.DefaultReplicationPol
 ### Key Metrics
 
 ```bash
-# Check replication lag
-kafka-consumer-groups.sh --bootstrap-server dc2-kafka:9092 \
-  --describe --group mm2-MirrorSourceConnector
+# Check connector status through the Connect REST API
+curl http://connect-host:8083/connectors
 
 # Check heartbeats
 kafka-console-consumer.sh --bootstrap-server dc2-kafka:9092 \
-  --topic mm2-heartbeats.dc1.internal \
+  --topic heartbeats \
   --from-beginning
 ```
 
@@ -272,8 +252,8 @@ kafka-console-consumer.sh --bootstrap-server dc2-kafka:9092 \
 # 1. Stop producers in DC1
 
 # 2. Wait for replication to catch up
-kafka-consumer-groups.sh --bootstrap-server dc2-kafka:9092 \
-  --describe --group mm2-MirrorSourceConnector
+# Check MirrorSourceConnector metrics or Connect REST status
+curl http://connect-host:8083/connectors
 
 # 3. Translate consumer offsets
 # Consumers read from dc1.* topics in DC2

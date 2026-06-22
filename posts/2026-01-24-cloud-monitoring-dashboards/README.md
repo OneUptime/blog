@@ -77,7 +77,7 @@ For reproducible dashboards, use the API or Terraform.
     "columns": "2",
     "widgets": [
       {
-        "title": "Request Latency (p99)",
+        "title": "CPU Utilization (p99 across instances)",
         "xyChart": {
           "dataSets": [
             {
@@ -311,7 +311,7 @@ resource "google_monitoring_dashboard" "main" {
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule | metric 'loadbalancing.googleapis.com/https/request_count' | filter response_code_class != '2xx' | align rate(1m) | group_by [], sum(value.request_count)"
+                "timeSeriesQueryLanguage": "fetch https_lb_rule | metric 'loadbalancing.googleapis.com/https/request_count' | filter response_code_class != 200 | group_by [], sum(val())"
               }
             }]
           }
@@ -374,8 +374,7 @@ resource "google_monitoring_dashboard" "main" {
             },
             "thresholds": [{
               "value": 0.8,
-              "color": "RED",
-              "direction": "ABOVE"
+              "label": "80% utilization"
             }]
           }
         }
@@ -408,7 +407,7 @@ resource "google_monitoring_dashboard" "main" {
 
 ## MQL (Monitoring Query Language)
 
-MQL provides more powerful querying capabilities than filters.
+MQL can express more complex querying capabilities than filters. However, as of October 22, 2024, Google no longer recommends MQL for new Cloud Monitoring work. Existing MQL dashboards continue to work, and new MQL dashboards can still be created through the Cloud Monitoring API, but Google recommends PromQL or the interactive query builder for new dashboards.
 
 ```bash
 # Basic MQL query
@@ -422,8 +421,8 @@ fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/request_count'
 | align rate(1m)
 | group_by [resource.url_map_name],
-    sum(if(metric.response_code_class = "5xx", value.request_count, 0))
-    / sum(value.request_count) * 100
+    sum(if(response_code_class = 500, val(), 0))
+    / sum(val()) * 100
 
 # Join metrics for ratio calculation
 {
@@ -450,7 +449,7 @@ project_name = f"projects/my-project"
 descriptor = monitoring_v3.MetricDescriptor()
 descriptor.type = "custom.googleapis.com/app/request_latency"
 descriptor.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
-descriptor.value_type = monitoring_v3.MetricDescriptor.ValueType.DISTRIBUTION
+descriptor.value_type = monitoring_v3.MetricDescriptor.ValueType.DOUBLE
 descriptor.unit = "ms"
 descriptor.description = "Application request latency"
 
@@ -481,7 +480,7 @@ client.create_time_series(name=project_name, time_series=[series])
 
 ## Dashboard Best Practices
 
-### 1. Use Consistent Time Ranges
+### 1. Use Consistent Alignment Periods
 
 ```json
 {
@@ -493,7 +492,7 @@ client.create_time_series(name=project_name, time_series=[series])
           "timeSeriesFilter": {
             "filter": "...",
             "aggregation": {
-              "alignmentPeriod": "60s"  // Keep consistent across widgets
+              "alignmentPeriod": "60s"
             }
           }
         }
@@ -516,14 +515,10 @@ client.create_time_series(name=project_name, time_series=[series])
       "thresholds": [
         {
           "value": 0.01,
-          "color": "YELLOW",
-          "direction": "ABOVE",
           "label": "Warning: 1%"
         },
         {
           "value": 0.05,
-          "color": "RED",
-          "direction": "ABOVE",
           "label": "Critical: 5%"
         }
       ]
@@ -558,11 +553,14 @@ flowchart LR
 ### 4. Use Variables for Filtering
 
 ```bash
-# Create dashboard with template variables
-# In the dashboard JSON, reference variables like:
-# ${project_id}, ${region}, ${service_name}
+# Create dashboard filters with template variables
+# In dashboardFilters, define templateVariable values like:
+# zone, instance_id, or service_name
+#
+# Reference those variables in chart filters like:
+# resource.label."zone" = "${zone}"
 
-# This allows users to filter the entire dashboard at once
+# This allows users to filter multiple widgets at once
 ```
 
 ## Troubleshooting Dashboard Issues
@@ -609,7 +607,7 @@ gcloud projects get-iam-policy my-project \
 # Export dashboard configuration
 gcloud monitoring dashboards describe \
     projects/my-project/dashboards/dashboard-id \
-    --format=json > dashboard-backup.json
+    --format=json | jq 'del(.name, .etag)' > dashboard-backup.json
 
 # Import to another project
 gcloud monitoring dashboards create \

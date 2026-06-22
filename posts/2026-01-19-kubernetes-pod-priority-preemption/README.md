@@ -44,15 +44,15 @@ flowchart TD
 ```yaml
 # priority-classes.yaml
 
-# System critical - highest priority
+# Cluster critical - highest custom priority
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-critical
+  name: cluster-critical
 value: 1000000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
-description: "System critical components - kube-system pods"
+description: "Cluster critical components - highest custom priority"
 ---
 # Platform critical - essential platform services
 apiVersion: scheduling.k8s.io/v1
@@ -315,7 +315,7 @@ spec:
           - batch-processing
 ```
 
-### Priority-Based Limit Ranges
+### Namespace Limit Ranges
 
 ```yaml
 # limit-ranges.yaml
@@ -364,13 +364,21 @@ kubectl get events --field-selector reason=Scheduled --watch
 
 ```promql
 # Pending pods by priority
-kube_pod_status_phase{phase="Pending"} * on(pod) group_left(priority_class) kube_pod_spec_priority_class
+sum by (namespace, priority_class) (
+  kube_pod_status_phase{phase="Pending"}
+  * on(namespace, pod, uid) group_left(priority_class)
+  kube_pod_info
+)
 
-# Preemption events
-increase(kube_pod_container_status_terminated_reason{reason="Preempted"}[1h])
+# Pods preempted by the scheduler
+sum by (namespace) (kube_pod_status_reason{reason="PreemptionByScheduler"})
 
 # Resource usage by priority class
-sum(container_memory_usage_bytes) by (priority_class)
+sum by (priority_class) (
+  container_memory_usage_bytes{container!="", pod!=""}
+  * on(namespace, pod) group_left(priority_class)
+  kube_pod_info
+)
 ```
 
 ## Best Practices
@@ -389,7 +397,7 @@ sum(container_memory_usage_bytes) by (priority_class)
 # - development (dev/test)
 
 # Priority values:
-# system-critical: 1000000000
+# cluster-critical: 1000000000
 # platform-critical: 100000000
 # production-high: 10000000
 # production-standard: 1000000
@@ -479,7 +487,7 @@ spec:
 
 ```yaml
 # pdb-with-priority.yaml
-# Critical service - always maintain availability
+# Critical service - maintain availability during voluntary disruptions
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -514,9 +522,9 @@ kubectl describe pod <pending-pod> | grep -A 10 Events
 kubectl logs -n kube-system -l component=kube-scheduler | grep <pod-name>
 
 # Check preemption candidates
-kubectl get pods --all-namespaces -o custom-columns=\
+kubectl get pods --all-namespaces --no-headers -o custom-columns=\
 'NAMESPACE:.metadata.namespace,NAME:.metadata.name,PRIORITY:.spec.priority,NODE:.spec.nodeName' \
-| sort -t',' -k3 -n
+| sort -k3 -n
 
 # Find pods that can be preempted
 kubectl get pods --all-namespaces -o json | jq '.items[] | 
@@ -533,7 +541,7 @@ kubectl get pods --all-namespaces -o json | jq '.items[] |
 # Check: Node affinity satisfied?
 
 # Issue: Lower priority pods being preempted unexpectedly
-# Solution: Use PodDisruptionBudget
+# Solution: Use PodDisruptionBudget to reduce disruption; preemption can still violate PDBs
 # Solution: Set preemptionPolicy: Never for stable workloads
 
 # Issue: Too many preemptions causing instability
@@ -549,7 +557,7 @@ Pod priority and preemption ensure critical workloads run during resource conten
 1. **Define clear priority tiers** - System, platform, production, batch, dev
 2. **Set appropriate preemption policies** - Not all high-priority pods need to preempt
 3. **Combine with resource quotas** - Prevent priority abuse
-4. **Use PDBs for stability** - Protect against excessive preemption
+4. **Use PDBs for stability** - Reduce voluntary disruption; preemption honors them best effort
 5. **Monitor and alert** - Track preemption events and pending pods
 
 For monitoring your Kubernetes scheduling, check out [OneUptime's cluster monitoring](https://oneuptime.com/product/metrics).

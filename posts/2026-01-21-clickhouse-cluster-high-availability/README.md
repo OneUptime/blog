@@ -132,10 +132,10 @@ Verify the cluster is healthy:
 
 ```bash
 echo ruok | nc keeper-1.example.com 9181
-# Should return: imok
+# Returns imok if the Keeper process is running
 
 echo mntr | nc keeper-1.example.com 9181
-# Shows detailed metrics including leader status
+# Shows detailed metrics including leader/follower status
 
 ```
 
@@ -457,14 +457,16 @@ clickhouse-backup restore daily_backup
 
 ### Replica Divergence
 
-If replicas have different data:
+If replicas fall behind or show signs of divergence:
 
 ```sql
--- Check for divergence
+-- Check replication lag and queue status
 SELECT
     replica_name,
-    total_rows,
-    total_bytes
+    log_max_index,
+    log_pointer,
+    absolute_delay,
+    queue_size
 FROM system.replicas
 WHERE table = 'events_local';
 
@@ -492,10 +494,10 @@ SELECT * FROM system.replication_queue
 WHERE last_exception != '';
 ```
 
-Clear problematic entries if necessary:
+If a replica is permanently dead and its metadata remains in Keeper, drop the stale replica metadata:
 
 ```sql
-SYSTEM DROP REPLICA 'broken_replica' FROM TABLE events_local;
+SYSTEM DROP REPLICA 'broken_replica' FROM TABLE default.events_local;
 ```
 
 ---

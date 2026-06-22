@@ -33,7 +33,7 @@ graph TD
 
 ## Creating Your First Workflow
 
-You can create workflows through the UI, REST API, or Databricks Asset Bundles. Here is the programmatic approach using the Jobs API.
+You can create workflows through the UI, REST API, or Declarative Automation Bundles. Here is the programmatic approach using the Jobs API.
 
 ```python
 # workflow_config.py
@@ -41,9 +41,10 @@ You can create workflows through the UI, REST API, or Databricks Asset Bundles. 
 # Define a workflow using the Databricks SDK
 
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.compute import ClusterSpec
 from databricks.sdk.service.jobs import (
     Task, NotebookTask, TaskDependency,
-    JobCluster, ClusterSpec, JobSettings
+    JobCluster, JobSettings, CronSchedule, JobEmailNotifications
 )
 
 # Initialize the client
@@ -116,23 +117,23 @@ job_config = JobSettings(
     ],
 
     # Schedule the job
-    schedule={
-        "quartz_cron_expression": "0 0 6 * * ?",  # 6 AM daily
-        "timezone_id": "America/New_York"
-    },
+    schedule=CronSchedule(
+        quartz_cron_expression="0 0 6 * * ?",  # 6 AM daily
+        timezone_id="America/New_York"
+    ),
 
     # Email notifications
-    email_notifications={
-        "on_failure": ["data-team@company.com"],
-        "on_success": ["data-team@company.com"]
-    },
+    email_notifications=JobEmailNotifications(
+        on_failure=["data-team@company.com"],
+        on_success=["data-team@company.com"]
+    ),
 
     # Retry configuration
     max_concurrent_runs=1
 )
 
 # Create the job
-job = client.jobs.create(**job_config.__dict__)
+job = client.jobs.create(**job_config.as_shallow_dict())
 print(f"Created job with ID: {job.job_id}")
 ```
 
@@ -225,7 +226,7 @@ Configure robust error handling to make workflows production-ready.
 
 from databricks.sdk.service.jobs import (
     Task, NotebookTask, TaskDependency,
-    RetryPolicy, TaskNotificationSettings
+    RunIf, TaskNotificationSettings
 )
 
 tasks = [
@@ -254,11 +255,10 @@ tasks = [
             notebook_path="/Repos/production/etl/process"
         ),
         depends_on=[
-            TaskDependency(
-                task_key="flaky_external_api",
-                outcome="SUCCEEDED"  # Only run if previous task succeeded
-            )
-        ]
+            TaskDependency(task_key="flaky_external_api")
+        ],
+        # Only run if previous task succeeded
+        run_if=RunIf.ALL_SUCCESS
     ),
     Task(
         task_key="handle_failure",
@@ -266,11 +266,10 @@ tasks = [
             notebook_path="/Repos/production/etl/failure_handler"
         ),
         depends_on=[
-            TaskDependency(
-                task_key="flaky_external_api",
-                outcome="FAILED"  # Run if previous task failed
-            )
-        ]
+            TaskDependency(task_key="flaky_external_api")
+        ],
+        # Run if previous task failed
+        run_if=RunIf.AT_LEAST_ONE_FAILED
     )
 ]
 ```
@@ -285,7 +284,7 @@ Use the `run_if` condition to control when tasks execute based on previous task 
 # conditional_workflow.py
 # Tasks that run based on conditions
 
-from databricks.sdk.service.jobs import Task, RunIf
+from databricks.sdk.service.jobs import Task, NotebookTask, TaskDependency, RunIf
 
 tasks = [
     Task(
@@ -338,7 +337,7 @@ Process multiple items in parallel using ForEach tasks.
 # Process multiple tables in parallel
 
 from databricks.sdk.service.jobs import (
-    Task, ForEachTask, NotebookTask
+    Task, TaskDependency, ForEachTask, NotebookTask
 )
 
 tasks = [
@@ -404,7 +403,7 @@ Query workflow run history and metrics programmatically.
 # Monitor and analyze workflow execution
 
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import ListRunsRunType
+from databricks.sdk.service.jobs import RunType
 from datetime import datetime, timedelta
 
 client = WorkspaceClient()
@@ -419,7 +418,8 @@ def get_job_metrics(job_id: int, days: int = 7):
     runs = client.jobs.list_runs(
         job_id=job_id,
         start_time_from=start_time_ms,
-        run_type=ListRunsRunType.JOB_RUN
+        completed_only=True,
+        run_type=RunType.JOB_RUN
     )
 
     metrics = {
@@ -427,20 +427,24 @@ def get_job_metrics(job_id: int, days: int = 7):
         "successful": 0,
         "failed": 0,
         "durations_seconds": [],
-        "failure_reasons": []
+        "failure_reasons": [],
+        "avg_duration": 0,
+        "max_duration": 0,
+        "min_duration": 0
     }
 
     for run in runs:
         metrics["total_runs"] += 1
+        result_state = run.state.result_state.value if run.state and run.state.result_state else "UNKNOWN"
 
-        if run.state.result_state.value == "SUCCESS":
+        if result_state == "SUCCESS":
             metrics["successful"] += 1
         else:
             metrics["failed"] += 1
             metrics["failure_reasons"].append({
                 "run_id": run.run_id,
-                "state": run.state.result_state.value,
-                "message": run.state.state_message
+                "state": result_state,
+                "message": run.state.state_message if run.state else None
             })
 
         if run.end_time and run.start_time:
@@ -497,12 +501,15 @@ Trigger workflows based on file arrival or external events.
 
 from databricks.sdk.service.jobs import (
     FileArrivalTriggerConfiguration,
-    Trigger
+    JobSettings,
+    NotebookTask,
+    Task,
+    TriggerSettings
 )
 
 job_config = JobSettings(
     name="file_arrival_processor",
-    trigger=Trigger(
+    trigger=TriggerSettings(
         file_arrival=FileArrivalTriggerConfiguration(
             url="s3://incoming-data/daily/",
             min_time_between_triggers_seconds=300,  # 5 minute cooldown
@@ -527,7 +534,7 @@ job_config = JobSettings(
 1. **Use job clusters** - Share clusters across tasks to reduce startup time
 2. **Set appropriate timeouts** - Prevent runaway tasks from consuming resources
 3. **Implement idempotency** - Tasks should be safe to retry without side effects
-4. **Version your notebooks** - Use Repos for source control integration
+4. **Version your notebooks** - Use Git folders for source control integration
 5. **Monitor actively** - Set up alerts for failures and performance degradation
 6. **Use task values wisely** - Keep passed data small; use paths for large datasets
 7. **Test in development** - Use separate workspaces for testing workflows

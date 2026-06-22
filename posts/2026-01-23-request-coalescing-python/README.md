@@ -68,9 +68,9 @@ Let us build a coalescer from scratch. The core idea is simple: track in-flight 
 
 # Request coalescing to prevent duplicate concurrent database calls
 import asyncio
-from typing import TypeVar, Generic, Callable, Awaitable, Dict, Optional
+from typing import TypeVar, Generic, Callable, Awaitable, Dict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 T = TypeVar('T')
 
@@ -110,7 +110,7 @@ class RequestCoalescer(Generic[T]):
                 future = in_flight.future
             else:
                 # No in-flight request - we will make the actual call
-                future = asyncio.get_event_loop().create_future()
+                future = asyncio.get_running_loop().create_future()
                 self.in_flight[key] = InFlightRequest(
                     future=future,
                     created_at=datetime.utcnow()
@@ -120,12 +120,15 @@ class RequestCoalescer(Generic[T]):
 
         # Wait for the result (whether we initiated it or not)
         try:
-            result = await asyncio.wait_for(future, timeout=self.timeout_seconds)
+            result = await asyncio.wait_for(
+                asyncio.shield(future),
+                timeout=self.timeout_seconds
+            )
             return result
         except asyncio.TimeoutError:
             # Clean up on timeout
             async with self.lock:
-                if key in self.in_flight:
+                if key in self.in_flight and self.in_flight[key].future is future:
                     del self.in_flight[key]
             raise
 
@@ -138,13 +141,15 @@ class RequestCoalescer(Generic[T]):
         """Execute the actual fetch and resolve the future"""
         try:
             result = await fetch_func()
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
         finally:
             # Clean up the in-flight tracking
             async with self.lock:
-                if key in self.in_flight:
+                if key in self.in_flight and self.in_flight[key].future is future:
                     del self.in_flight[key]
 
     def get_stats(self) -> Dict:
@@ -255,9 +260,8 @@ For even better performance, combine coalescing with a short-lived cache. The ca
 # coalescer_with_cache.py
 # Request coalescing combined with TTL-based caching
 import asyncio
-from typing import TypeVar, Generic, Callable, Awaitable, Dict, Optional, Tuple
+from typing import TypeVar, Generic, Callable, Awaitable, Dict, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 import time
 
 T = TypeVar('T')
@@ -327,12 +331,15 @@ class CachingCoalescer(Generic[T]):
             else:
                 # No in-flight request - create one
                 self.misses += 1
-                future = asyncio.get_event_loop().create_future()
+                future = asyncio.get_running_loop().create_future()
                 self.in_flight[key] = future
                 asyncio.create_task(self._fetch_and_cache(key, fetch_func, future, ttl))
 
         # Wait for result
-        return await asyncio.wait_for(future, timeout=self.timeout_seconds)
+        return await asyncio.wait_for(
+            asyncio.shield(future),
+            timeout=self.timeout_seconds
+        )
 
     async def _fetch_and_cache(
         self,
@@ -352,13 +359,15 @@ class CachingCoalescer(Generic[T]):
                 expires_at=time.time() + ttl_seconds
             )
 
-            future.set_result(value)
+            if not future.done():
+                future.set_result(value)
 
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
         finally:
             async with self.lock:
-                if key in self.in_flight:
+                if key in self.in_flight and self.in_flight[key] is future:
                     del self.in_flight[key]
 
     def _evict_if_needed(self):
@@ -522,7 +531,13 @@ Sometimes you want to cache "not found" results to prevent repeated database loo
 ```python
 # negative_caching.py
 # Cache negative results (not found) to prevent repeated lookups
-from typing import Optional
+import asyncio
+import time
+from typing import Awaitable, Callable, Optional, TypeVar
+
+from coalescer_with_cache import CacheEntry, CachingCoalescer
+
+T = TypeVar('T')
 
 class NegativeCachingCoalescer(CachingCoalescer):
     """
@@ -542,22 +557,69 @@ class NegativeCachingCoalescer(CachingCoalescer):
         """
         Get a value, caching None results with shorter TTL.
         """
-        # Check if we have a cached negative result
         negative_key = f"_negative:{key}"
-        if negative_key in self.cache and not self.cache[negative_key].is_expired():
-            return None
 
-        async def fetch_with_negative_cache():
-            result = await fetch_func()
-            if result is None:
-                # Cache the negative result
+        async with self.lock:
+            # Check if we have a cached positive or negative result
+            if key in self.cache and not self.cache[key].is_expired():
+                return self.cache[key].value
+            if negative_key in self.cache and not self.cache[negative_key].is_expired():
+                return None
+
+            # Cache miss - check for in-flight request
+            if key in self.in_flight:
+                self.coalesced += 1
+                future = self.in_flight[key]
+            else:
+                self.misses += 1
+                future = asyncio.get_running_loop().create_future()
+                self.in_flight[key] = future
+                asyncio.create_task(
+                    self._fetch_and_cache_optional(
+                        key,
+                        negative_key,
+                        fetch_func,
+                        future
+                    )
+                )
+
+        return await asyncio.wait_for(
+            asyncio.shield(future),
+            timeout=self.timeout_seconds
+        )
+
+    async def _fetch_and_cache_optional(
+        self,
+        key: str,
+        negative_key: str,
+        fetch_func: Callable[[], Awaitable[Optional[T]]],
+        future: asyncio.Future
+    ):
+        """Fetch value, cache positive and negative results, and resolve waiters"""
+        try:
+            value = await fetch_func()
+
+            self._evict_if_needed()
+            if value is None:
                 self.cache[negative_key] = CacheEntry(
                     value=True,  # Just a marker
                     expires_at=time.time() + self.negative_ttl_seconds
                 )
-            return result
+            else:
+                self.cache[key] = CacheEntry(
+                    value=value,
+                    expires_at=time.time() + self.default_ttl_seconds
+                )
 
-        return await self.get(key, fetch_with_negative_cache)
+            if not future.done():
+                future.set_result(value)
+        except Exception as e:
+            if not future.done():
+                future.set_exception(e)
+        finally:
+            async with self.lock:
+                if key in self.in_flight and self.in_flight[key] is future:
+                    del self.in_flight[key]
 ```
 
 ### Error Handling
@@ -567,7 +629,13 @@ When a coalesced request fails, all waiters receive the same exception. You migh
 ```python
 # retry_coalescer.py
 # Coalescer with retry logic for transient failures
+import asyncio
 import random
+from typing import Awaitable, Callable, TypeVar
+
+from coalescer_with_cache import CachingCoalescer
+
+T = TypeVar('T')
 
 class RetryingCoalescer(CachingCoalescer):
     """

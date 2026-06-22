@@ -37,8 +37,8 @@ sequenceDiagram
 
 ### Signs of Thread Contention
 
-- **High CPU usage but low throughput** - Threads are busy acquiring locks, not doing work
-- **Response time increases with load** - Linear degradation as threads pile up
+- **High or misleading CPU usage but low throughput** - Threads are waiting for locks or spending time coordinating instead of doing useful work
+- **Response time increases with load** - Degradation as threads pile up
 - **Thread dumps show waiting threads** - Many threads blocked on the same lock
 - **Lock wait time metrics are high** - If you are measuring lock acquisition time
 
@@ -49,8 +49,8 @@ sequenceDiagram
 
 jstack <pid> > threaddump.txt
 
-# Or trigger from within the JVM
-kill -3 <pid>
+# Or send SIGQUIT to the JVM on Unix-like systems
+kill -QUIT <pid>
 ```
 
 Look for patterns like this in the dump:
@@ -112,6 +112,9 @@ The most common mistake is using a single lock for all operations.
 **Java - Before (Single Lock):**
 
 ```java
+import java.util.HashMap;
+import java.util.Map;
+
 public class UserCache {
     private final Map<String, User> cache = new HashMap<>();
 
@@ -132,7 +135,7 @@ public class UserCache {
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UserCache {
-    // GOOD: ConcurrentHashMap uses fine-grained locking
+    // GOOD: ConcurrentHashMap uses internal concurrency control
     private final ConcurrentHashMap<String, User> cache = new ConcurrentHashMap<>();
 
     public User get(String userId) {
@@ -140,7 +143,7 @@ public class UserCache {
     }
 
     public void put(String userId, User user) {
-        cache.put(userId, user);  // Lock-free for different keys
+        cache.put(userId, user);  // No single cache-wide lock
     }
 
     // For atomic compute operations
@@ -155,6 +158,9 @@ public class UserCache {
 When you need more control than ConcurrentHashMap provides, use lock striping to reduce contention.
 
 ```java
+import java.util.HashMap;
+import java.util.Map;
+
 public class StripedCache<K, V> {
     private static final int STRIPE_COUNT = 16;
     private final Object[] locks = new Object[STRIPE_COUNT];
@@ -171,7 +177,7 @@ public class StripedCache<K, V> {
 
     private int stripeIndex(K key) {
         // Spread keys across stripes
-        return Math.abs(key.hashCode() % STRIPE_COUNT);
+        return Math.floorMod(key.hashCode(), STRIPE_COUNT);
     }
 
     public V get(K key) {
@@ -368,6 +374,9 @@ Eliminate contention entirely by giving each thread its own copy.
 **Java ThreadLocal:**
 
 ```java
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 public class DateFormatter {
     // BAD: SimpleDateFormat is not thread-safe, single lock
     // private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");

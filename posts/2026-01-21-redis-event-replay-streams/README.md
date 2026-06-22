@@ -177,6 +177,7 @@ Rebuild read models from event history:
 ```python
 import redis
 import json
+import time
 from typing import Dict, Any, List, Callable, Optional
 import logging
 
@@ -552,14 +553,17 @@ class ParallelReplayer:
         last_ts = int(last_id.split("-")[0])
 
         # Create ranges
-        range_size = (last_ts - first_ts) // self.num_workers
+        range_size = max(1, (last_ts - first_ts + 1) // self.num_workers)
         ranges = []
 
         for i in range(self.num_workers):
             start_ts = first_ts + (i * range_size)
             end_ts = first_ts + ((i + 1) * range_size) if i < self.num_workers - 1 else last_ts + 1
 
-            start_id = f"{start_ts}-0" if i == 0 else f"{start_ts}-0"
+            if start_ts > last_ts:
+                break
+
+            start_id = f"{start_ts}-0"
             end_id = f"{end_ts - 1}-9999999999"
 
             ranges.append((start_id, end_id))
@@ -580,7 +584,7 @@ class ParallelReplayer:
             count = 0
 
             # Create new Redis connection for thread
-            r = redis.Redis()
+            r = redis.Redis(**self.redis.connection_pool.connection_kwargs)
             entries = r.xrange(self.stream_key, min=start_id, max=end_id)
 
             for stream_id, data in entries:
@@ -661,7 +665,7 @@ Track replay progress and performance:
 import redis
 import json
 import time
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List, Optional
 from dataclasses import dataclass, field
 import logging
 

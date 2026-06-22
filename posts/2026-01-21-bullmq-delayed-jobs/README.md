@@ -127,7 +127,7 @@ class ScheduledNotificationService {
 Handle time zones properly when scheduling jobs:
 
 ```typescript
-import { format, zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 interface TimezoneAwareJobData {
   userId: string;
@@ -148,14 +148,14 @@ class TimezoneAwareScheduler {
 
     // Create the target time in user's timezone
     const now = new Date();
-    const userNow = utcToZonedTime(now, userTimezone);
+    const userNow = toZonedTime(now, userTimezone);
 
     const targetDate = new Date(userNow);
     targetDate.setDate(targetDate.getDate() + daysFromNow);
     targetDate.setHours(localTime.hour, localTime.minute, 0, 0);
 
     // Convert back to UTC for accurate delay calculation
-    const utcTargetDate = zonedTimeToUtc(targetDate, userTimezone);
+    const utcTargetDate = fromZonedTime(targetDate, userTimezone);
     const delay = utcTargetDate.getTime() - now.getTime();
 
     if (delay <= 0) {
@@ -188,6 +188,13 @@ await scheduler.scheduleMorningNotification({
 ### Checking Job Delay Status
 
 ```typescript
+async function getDelayedUntil(queue: Queue, jobId: string) {
+  const client = await queue.client;
+  const score = await client.zscore(queue.toKey('delayed'), jobId);
+
+  return score ? Math.floor(Number(score) / 0x1000) : null;
+}
+
 async function getDelayedJobInfo(queue: Queue, jobId: string) {
   const job = await queue.getJob(jobId);
   if (!job) {
@@ -198,12 +205,13 @@ async function getDelayedJobInfo(queue: Queue, jobId: string) {
   const now = Date.now();
 
   if (state === 'delayed') {
-    const delayedUntil = job.timestamp + (job.opts.delay || 0);
+    const delayedUntil = await getDelayedUntil(queue, jobId);
+
     return {
       id: job.id,
       state,
-      scheduledFor: new Date(delayedUntil).toISOString(),
-      timeRemaining: delayedUntil - now,
+      scheduledFor: delayedUntil ? new Date(delayedUntil).toISOString() : null,
+      timeRemaining: delayedUntil ? delayedUntil - now : null,
       data: job.data,
     };
   }
@@ -218,11 +226,17 @@ async function getDelayedJobInfo(queue: Queue, jobId: string) {
 // Get all delayed jobs
 async function getAllDelayedJobs(queue: Queue) {
   const delayedJobs = await queue.getDelayed();
-  return delayedJobs.map(job => ({
-    id: job.id,
-    scheduledFor: new Date(job.timestamp + (job.opts.delay || 0)).toISOString(),
-    data: job.data,
-  }));
+  return Promise.all(
+    delayedJobs.map(async (job) => {
+      const delayedUntil = await getDelayedUntil(queue, job.id!);
+
+      return {
+        id: job.id,
+        scheduledFor: delayedUntil ? new Date(delayedUntil).toISOString() : null,
+        data: job.data,
+      };
+    })
+  );
 }
 ```
 
@@ -473,10 +487,19 @@ class TrialExpirationService {
     }
 
     // On expiration
-    await this.queue.add('trial-expired', trial, {
-      delay: trialEnd.getTime() - now,
-      jobId: `trial_expired_${trial.userId}`,
-    });
+    const expirationDelay = trialEnd.getTime() - now;
+    await this.queue.add(
+      'trial-expired',
+      trial,
+      expirationDelay > 0
+        ? {
+            delay: expirationDelay,
+            jobId: `trial_expired_${trial.userId}`,
+          }
+        : {
+            jobId: `trial_expired_${trial.userId}`,
+          }
+    );
 
     console.log(`Scheduled trial notifications for user ${trial.userId}`);
   }

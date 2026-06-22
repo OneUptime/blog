@@ -8,7 +8,7 @@ Description: A comprehensive guide to LogQL metric queries in Grafana Loki, cove
 
 ---
 
-LogQL metric queries transform log data into numeric time series, enabling you to create dashboards, alerts, and visualizations from your logs. This powerful feature bridges the gap between logs and metrics in your observability stack. This guide covers all metric query functions and aggregation patterns.
+LogQL metric queries transform log data into numeric time series, enabling you to create dashboards, alerts, and visualizations from your logs. This powerful feature bridges the gap between logs and metrics in your observability stack. This guide covers common metric query functions and aggregation patterns.
 
 ## Prerequisites
 
@@ -101,8 +101,8 @@ Extract numeric values from logs and aggregate them.
 Extract numeric fields for aggregation:
 
 ```logql
-# Extract duration field
-{namespace="production"} | json | unwrap duration
+# Extract duration field as part of a metric query
+avg_over_time({namespace="production"} | json | unwrap duration [5m])
 ```
 
 ### Aggregation Functions with unwrap
@@ -366,8 +366,10 @@ sum(rate({namespace="production"} | json | method="GET" [5m]))
 # Total log volume by namespace
 sum by (namespace) (bytes_rate({job="kubernetes-pods"}[5m]))
 
-# Log volume growth
-rate(bytes_over_time({namespace="production"}[1h])[5m:1m])
+# Current vs previous hour log volume
+sum(bytes_over_time({namespace="production"}[1h]))
+/
+sum(bytes_over_time({namespace="production"}[1h] offset 1h))
 
 # Top talkers
 topk(10, sum by (app) (bytes_rate({namespace="production"}[5m])))

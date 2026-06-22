@@ -306,12 +306,12 @@ const server = app.listen(3000, () => {
 });
 
 // Handle graceful shutdown
-process.once('SIGUSR2', () => {
+process.on('SIGUSR2', () => {
   console.log('Received SIGUSR2, shutting down gracefully...');
   
   server.close(() => {
     console.log('Server closed');
-    process.kill(process.pid, 'SIGUSR2');
+    process.kill(process.pid, 'SIGTERM');
   });
 });
 
@@ -394,7 +394,7 @@ nodemon script.py
   "ext": "js,json,ts",
   "verbose": true,
   "legacyWatch": false,
-  "exec": "node",
+  "exec": "node src/server.js",
   "signal": "SIGUSR2",
   "env": {
     "NODE_ENV": "development",
@@ -456,7 +456,7 @@ Node.js 18+ has built-in watch mode:
 # Built-in watch (Node 18+)
 node --watch app.js
 
-# Watch specific paths
+# Watch specific paths (macOS and Windows)
 node --watch-path=./src --watch-path=./config app.js
 ```
 
@@ -472,7 +472,7 @@ node --watch-path=./src --watch-path=./config app.js
 
 | Feature | Nodemon | node --watch |
 |---------|---------|--------------|
-| Watch paths | Yes | Yes (Node 18+) |
+| Watch paths | Yes | Yes (with `--watch-path` on macOS and Windows) |
 | Ignore patterns | Yes | Limited |
 | Custom executables | Yes | No |
 | Event hooks | Yes | No |
@@ -505,4 +505,4 @@ node --watch-path=./src --watch-path=./config app.js
 | Local install | Add to devDependencies |
 | Config file | Consistent team settings |
 | Ignore properly | Avoid watching node_modules |
-| Graceful shutdown | Handle SIGUSR2 signal |
+| Graceful shutdown | Handle SIGUSR2 and exit after cleanup |

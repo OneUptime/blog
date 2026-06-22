@@ -82,7 +82,6 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "8888:8888"   # Prometheus metrics
-      - "8889:8889"   # Prometheus exporter
       - "13133:13133" # Health check
     networks:
       - tracing
@@ -92,7 +91,6 @@ services:
     container_name: jaeger
     ports:
       - "16686:16686" # Jaeger UI
-      - "14250:14250" # gRPC
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
@@ -134,41 +132,35 @@ processors:
 
   # Filter out health checks
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "health.*"
-          - "readiness.*"
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "health.*")'
+        - 'IsMatch(name, "readiness.*")'
 
 exporters:
-  # Jaeger
-  jaeger:
-    endpoint: jaeger:14250
+  # Jaeger via OTLP
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
   # OTLP to OneUptime
-  otlp/oneuptime:
+  otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
   # Debug logging
-  logging:
-    loglevel: debug
-
-  # Prometheus metrics from spans
-  prometheus:
-    endpoint: 0.0.0.0:8889
-    namespace: traces
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, resource, filter]
-      exporters: [jaeger, otlp/oneuptime, logging]
+      processors: [resource, filter, probabilistic_sampler, batch]
+      exporters: [otlp/jaeger, otlphttp/oneuptime, debug]
 
   extensions: [health_check]
 
@@ -187,7 +179,10 @@ extensions:
 pip install opentelemetry-api \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp \
+    opentelemetry-propagator-b3 \
     opentelemetry-instrumentation-flask \
+    opentelemetry-instrumentation-fastapi \
+    opentelemetry-instrumentation-httpx \
     opentelemetry-instrumentation-requests \
     opentelemetry-instrumentation-sqlalchemy
 ```
@@ -415,14 +410,17 @@ npm install @opentelemetry/api \
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure the SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'notification-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'notification-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
     'deployment.environment': process.env.ENVIRONMENT || 'development',
   }),
 
@@ -799,7 +797,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 ---
@@ -1005,13 +1003,18 @@ async def tracing_health():
 
 ```python
 # Follow OpenTelemetry semantic conventions
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes.db_attributes import DB_QUERY_TEXT, DB_SYSTEM_NAME
+from opentelemetry.semconv.attributes.http_attributes import (
+    HTTP_REQUEST_METHOD,
+    HTTP_RESPONSE_STATUS_CODE,
+)
+from opentelemetry.semconv.attributes.url_attributes import URL_FULL
 
-span.set_attribute(SpanAttributes.HTTP_METHOD, "POST")
-span.set_attribute(SpanAttributes.HTTP_URL, url)
-span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, 200)
-span.set_attribute(SpanAttributes.DB_SYSTEM, "postgresql")
-span.set_attribute(SpanAttributes.DB_STATEMENT, "SELECT * FROM users")
+span.set_attribute(HTTP_REQUEST_METHOD, "POST")
+span.set_attribute(URL_FULL, url)
+span.set_attribute(HTTP_RESPONSE_STATUS_CODE, 200)
+span.set_attribute(DB_SYSTEM_NAME, "postgresql")
+span.set_attribute(DB_QUERY_TEXT, "SELECT * FROM users")
 ```
 
 ### 2. Name Spans Meaningfully

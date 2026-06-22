@@ -84,7 +84,7 @@ filters:
 # Create groups based on tags and attributes
 keyed_groups:
   # Group by Environment tag (env_production, env_staging)
-  - key: tags.Environment
+  - key: ec2_tags.Environment
     prefix: env
     separator: "_"
 
@@ -97,13 +97,13 @@ keyed_groups:
     prefix: az
 
   # Group by custom Application tag
-  - key: tags.Application
+  - key: ec2_tags.Application
     prefix: app
 
 # Create groups from boolean conditions
 groups:
   # All production web servers
-  production_webservers: tags.Environment == 'production' and tags.Role == 'webserver'
+  production_webservers: ec2_tags.Environment == 'production' and ec2_tags.Role == 'webserver'
 
   # Large instances that might need special handling
   large_instances: instance_type.startswith('m5') or instance_type.startswith('c5')
@@ -113,8 +113,8 @@ compose:
   # Use public IP for ansible_host (or private_ip_address for VPN)
   ansible_host: public_ip_address | default(private_ip_address)
 
-  # Set SSH user based on AMI
-  ansible_user: "'ubuntu' if 'ubuntu' in (image_id | lower) else 'ec2-user'"
+  # Set SSH user from a tag, falling back to ec2-user
+  ansible_user: ec2_tags.AnsibleUser | default('ec2-user')
 
 # Hostnames to use for inventory
 hostnames:
@@ -170,8 +170,8 @@ Query Azure for virtual machines.
 # Install Azure collection
 ansible-galaxy collection install azure.azcollection
 
-# Install Azure SDK
-pip install azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource
+# Install the collection's Python requirements
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 ```
 
 ```yaml
@@ -187,9 +187,9 @@ include_vm_resource_groups:
   - production-rg
   - staging-rg
 
-# Exclude resource groups
-exclude_vm_resource_groups:
-  - test-rg
+# Exclude hosts from specific resource groups if needed
+exclude_host_filters:
+  - "'/resourceGroups/test-rg/' in id"
 
 # Filter by tags
 conditional_groups:
@@ -204,12 +204,9 @@ keyed_groups:
   - key: tags.Environment | default('untagged')
     prefix: env
 
-  - key: resource_group
-    prefix: rg
-
 # Host variables from Azure metadata
-compose:
-  ansible_host: public_ip_addresses[0] | default(private_ip_addresses[0])
+hostvar_expressions:
+  ansible_host: (public_ipv4_addresses + private_ipv4_addresses) | first
   ansible_user: "'azureuser'"
 
 # Use VM name as hostname
@@ -241,8 +238,8 @@ Query Google Cloud Platform for compute instances.
 # Install GCP collection
 ansible-galaxy collection install google.cloud
 
-# Install Google Cloud SDK
-pip install google-auth google-cloud-compute
+# Install Python requirements
+pip install requests google-auth
 ```
 
 ```yaml
@@ -294,6 +291,7 @@ hostnames:
 
 # Authentication via service account
 service_account_file: /path/to/service-account.json
+auth_kind: serviceaccount
 # Or use application default credentials
 # auth_kind: application
 ```
@@ -538,7 +536,7 @@ filters:
 
 ```bash
 # Refresh cache manually
-ansible-inventory -i inventory/aws_ec2.yml --list --refresh-cache
+ansible-inventory -i inventory/aws_ec2.yml --list --flush-cache
 
 # Use cache for subsequent runs
 ansible-inventory -i inventory/aws_ec2.yml --list

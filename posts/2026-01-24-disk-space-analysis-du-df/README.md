@@ -132,7 +132,7 @@ du -hd 2 /var 2>/dev/null | sort -hr | head -10
 
 # Find large directories starting from root
 # Excludes pseudo-filesystems to avoid false results
-du -h --max-depth=1 / 2>/dev/null | sort -hr | head -15
+du -xh --max-depth=1 / 2>/dev/null | sort -hr | head -15
 ```
 
 ### Finding Large Files
@@ -204,7 +204,7 @@ systemctl restart nginx
 # Alternative: truncate the file descriptor directly (advanced)
 # This empties the deleted file without restarting the process
 # First, identify the PID and FD from lsof output
-# Then truncate: echo "" > /proc/PID/fd/FD
+# Then truncate: : > /proc/PID/fd/FD
 ```
 
 ### Issue 2: Inode Exhaustion
@@ -216,7 +216,7 @@ df -i
 
 # Find directories with many files
 # Counts files in each directory under /var
-find /var -xdev -type d -exec sh -c 'echo "$(find "{}" -maxdepth 1 -type f | wc -l) {}"' \; 2>/dev/null | sort -rn | head -20
+find /var -xdev -type d -exec sh -c 'for dir do printf "%s %s\n" "$(find "$dir" -maxdepth 1 -type f | wc -l)" "$dir"; done' sh {} + 2>/dev/null | sort -rn | head -20
 
 # Common culprits: session files, cache directories
 # Check PHP session directory

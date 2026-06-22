@@ -245,8 +245,8 @@ VITE_DEBUG=true
 VITE_API_URL=https://api.production.com
 VITE_DEBUG=false
 
-# .env.local (gitignored, for secrets)
-VITE_API_KEY=your-secret-key
+# .env.local (gitignored, for local-only public values)
+VITE_API_BASE_PATH=/api
 ```
 
 Access environment variables in your code:
@@ -264,7 +264,7 @@ interface ImportMetaEnv {
   readonly VITE_API_URL: string;
   readonly VITE_APP_TITLE: string;
   readonly VITE_DEBUG: string;
-  readonly VITE_API_KEY: string;
+  readonly VITE_API_BASE_PATH: string;
 }
 
 interface ImportMeta {
@@ -367,9 +367,15 @@ CSS Modules work out of the box:
 
 ```tsx
 // Button.tsx
+import type { ReactNode } from 'react';
 import styles from './Button.module.css';
 
-export function Button({ variant = 'primary', children }) {
+type ButtonProps = {
+  variant?: 'primary';
+  children: ReactNode;
+};
+
+export function Button({ variant = 'primary', children }: ButtonProps) {
   return (
     <button className={`${styles.button} ${styles[variant]}`}>
       {children}
@@ -405,35 +411,35 @@ $border-radius: 4px;
 Configure Tailwind CSS with Vite:
 
 ```bash
-npm install -D tailwindcss postcss autoprefixer
-npx tailwindcss init -p
+npm install tailwindcss @tailwindcss/vite
 ```
 
-```javascript
-// tailwind.config.js
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
   ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}
+});
 ```
 
 ```css
 /* src/index.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 ```
 
 ## Production Build Optimization
 
 Configure optimized production builds:
+
+```bash
+npm install -D terser
+```
 
 ```typescript
 // vite.config.ts

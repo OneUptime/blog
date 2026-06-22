@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Sorted Set, TTL, Data Structure, Time-Based Expiration, ZRANGEBYSCORE
+Tags: Redis, Sorted Set, TTL, Data Structure, Time-Based Expiration, ZRANGE BYSCORE
 
 Description: A comprehensive guide to implementing custom time-based expiration patterns using Redis sorted sets, including sliding windows, scheduled cleanup.
 
@@ -22,7 +22,7 @@ Standard Redis TTL has limitations:
 Sorted sets with timestamp scores provide:
 
 - Element-level expiration within a single key
-- Range queries by time (ZRANGEBYSCORE)
+- Range queries by time (ZRANGE with BYSCORE)
 - Bulk removal of expired items
 - Sliding window implementations
 - Custom expiration logic
@@ -56,12 +56,12 @@ class TimeSortedSet:
     def get_active(self):
         """Get all non-expired members"""
         now = time.time()
-        return self.redis.zrangebyscore(self.key, now, '+inf')
+        return self.redis.zrange(self.key, now, '+inf', byscore=True)
 
     def get_expired(self):
         """Get all expired members"""
         now = time.time()
-        return self.redis.zrangebyscore(self.key, '-inf', now)
+        return self.redis.zrange(self.key, '-inf', now, byscore=True)
 
     def remove_expired(self):
         """Remove all expired members"""
@@ -73,7 +73,7 @@ class TimeSortedSet:
         """Get members expiring within specified seconds"""
         now = time.time()
         future = now + within_seconds
-        return self.redis.zrangebyscore(self.key, now, future)
+        return self.redis.zrange(self.key, now, future, byscore=True)
 
 # Usage
 
@@ -133,7 +133,7 @@ class SlidingWindow:
         """Get all items in current window"""
         now = time.time()
         cutoff = now - self.window_seconds
-        items = self.redis.zrangebyscore(self.key, cutoff, now)
+        items = self.redis.zrange(self.key, cutoff, now, byscore=True)
         # Extract values from "timestamp:value" format
         return [item.split(':', 1)[1] for item in items]
 
@@ -157,6 +157,7 @@ Implement precise rate limiting with sorted sets:
 ```python
 import redis
 import time
+import uuid
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -170,35 +171,47 @@ class SortedSetRateLimiter:
 
         Returns (allowed: bool, remaining: int, retry_after: float)
         """
-        now = time.time()
-        window_start = now - window_seconds
+        now_ms = int(time.time() * 1000)
+        window_ms = int(window_seconds * 1000)
+        member = f"{now_ms}:{uuid.uuid4()}"
 
-        # Use pipeline for atomic operations
-        pipe = self.redis.pipeline()
-        # Remove old entries
-        pipe.zremrangebyscore(key, '-inf', window_start)
-        # Count current entries
-        pipe.zcard(key)
-        # Get oldest entry timestamp
-        pipe.zrange(key, 0, 0, withscores=True)
-        results = pipe.execute()
+        lua_script = """
+        local key = KEYS[1]
+        local now_ms = tonumber(ARGV[1])
+        local window_ms = tonumber(ARGV[2])
+        local limit = tonumber(ARGV[3])
+        local member = ARGV[4]
+        local window_start = now_ms - window_ms
 
-        current_count = results[1]
-        oldest_entry = results[2]
+        redis.call('ZREMRANGEBYSCORE', key, '-inf', window_start)
+        local current_count = redis.call('ZCARD', key)
 
-        if current_count < limit:
-            # Allowed - add this request
-            self.redis.zadd(key, {f"{now}:{id(now)}": now})
-            self.redis.expire(key, window_seconds)
-            return True, limit - current_count - 1, 0
+        if current_count < limit then
+            redis.call('ZADD', key, now_ms, member)
+            redis.call('EXPIRE', key, math.ceil(window_ms / 1000))
+            return {1, limit - current_count - 1, 0}
+        end
 
-        # Rate limited
-        if oldest_entry:
-            retry_after = (oldest_entry[0][1] + window_seconds) - now
-        else:
-            retry_after = window_seconds
+        local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+        local retry_after_ms = window_ms
+        if #oldest > 0 then
+            retry_after_ms = math.max(0, tonumber(oldest[2]) + window_ms - now_ms)
+        end
 
-        return False, 0, retry_after
+        return {0, 0, retry_after_ms}
+        """
+
+        allowed, remaining, retry_after_ms = self.redis.eval(
+            lua_script,
+            1,
+            key,
+            now_ms,
+            window_ms,
+            limit,
+            member
+        )
+
+        return bool(allowed), remaining, retry_after_ms / 1000.0
 
     def get_usage(self, key, window_seconds):
         """Get current usage stats"""
@@ -276,7 +289,7 @@ class ScheduledQueue:
         local now = tonumber(ARGV[1])
         local batch_size = tonumber(ARGV[2])
 
-        local jobs = redis.call('ZRANGEBYSCORE', scheduled_key, '-inf', now, 'LIMIT', 0, batch_size)
+        local jobs = redis.call('ZRANGE', scheduled_key, '-inf', now, 'BYSCORE', 'LIMIT', 0, batch_size)
 
         if #jobs > 0 then
             for i, job in ipairs(jobs) do
@@ -419,7 +432,7 @@ class SessionManager:
         now = time.time()
 
         # Get expired session IDs
-        expired = self.redis.zrangebyscore(self.sessions_key, '-inf', now)
+        expired = self.redis.zrange(self.sessions_key, '-inf', now, byscore=True)
 
         if expired:
             pipe = self.redis.pipeline()
@@ -440,10 +453,11 @@ class SessionManager:
     def get_expiring_soon(self, within_seconds=300):
         """Get sessions expiring within specified time"""
         now = time.time()
-        return self.redis.zrangebyscore(
+        return self.redis.zrange(
             self.sessions_key,
             now,
-            now + within_seconds
+            now + within_seconds,
+            byscore=True
         )
 
 # Usage
@@ -497,11 +511,12 @@ class TimeSeriesWithExpiration:
 
     def get_range(self, start_time, end_time):
         """Get data points in time range"""
-        items = self.redis.zrangebyscore(
+        items = self.redis.zrange(
             self.key,
             start_time,
             end_time,
-            withscores=True
+            withscores=True,
+            byscore=True
         )
         return [(float(item[0].split(':')[1]), item[1]) for item in items]
 
@@ -538,11 +553,12 @@ class TimeSeriesWithExpiration:
         now = time.time()
         cutoff = now - self.retention
 
-        items = self.redis.zrangebyscore(
+        items = self.redis.zrange(
             self.key,
             cutoff,
             now,
-            withscores=True
+            withscores=True,
+            byscore=True
         )
 
         if not items:
@@ -659,7 +675,7 @@ class ExpirationManager:
 # Usage
 manager = ExpirationManager(r, cleanup_interval=30)
 manager.register('sessions:active')
-manager.register('rate_limits:*')
+manager.register('rate:user:123:api')
 manager.start()
 ```
 
@@ -673,14 +689,24 @@ def get_with_cleanup(redis_client, key, batch_size=100):
     """
     now = time.time()
 
+    expired = redis_client.zrange(
+        key,
+        '-inf',
+        now,
+        byscore=True,
+        offset=0,
+        num=batch_size
+    )
+
     pipe = redis_client.pipeline()
     # Remove a batch of expired items
-    pipe.zremrangebyscore(key, '-inf', now)
+    if expired:
+        pipe.zrem(key, *expired)
     # Get active items
-    pipe.zrangebyscore(key, now, '+inf')
+    pipe.zrange(key, now, '+inf', byscore=True)
     results = pipe.execute()
 
-    return results[1]  # Return active items
+    return results[-1]  # Return active items
 ```
 
 ## Best Practices
@@ -729,4 +755,4 @@ Redis sorted sets provide powerful time-based data management capabilities that 
 - Time-series data with automatic retention
 - Custom expiration patterns for complex use cases
 
-The key is to combine sorted set operations (ZADD, ZRANGEBYSCORE, ZREMRANGEBYSCORE) with proper cleanup strategies to maintain efficient memory usage while providing flexible time-based access patterns.
+The key is to combine sorted set operations (ZADD, ZRANGE with BYSCORE, ZREMRANGEBYSCORE) with proper cleanup strategies to maintain efficient memory usage while providing flexible time-based access patterns.

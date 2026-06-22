@@ -600,18 +600,13 @@ flowchart TB
     # Process results safely
     - name: Process service results
       ansible.builtin.set_fact:
-        service_results: >-
-          {{
-            service_check.results | default([]) |
-            map('combine', {'name': item.item}) |
-            list
-          }}
+        service_results: "{{ service_check.results | default([]) }}"
       when: service_check.results is defined
 
     # Report with safe access
     - name: Report service status
       ansible.builtin.debug:
-        msg: "{{ item.name }}: {{ 'running' if item.rc == 0 else 'stopped' }}"
+        msg: "{{ item.item }}: {{ 'running' if item.rc == 0 else 'stopped' }}"
       loop: "{{ service_results }}"
       when:
         - service_results | length > 0

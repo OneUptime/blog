@@ -145,6 +145,7 @@ $(whoami)
 import subprocess
 import shlex
 import re
+from pathlib import Path
 from typing import Optional
 
 # SECURE: Use argument arrays, never shell=True
@@ -172,11 +173,12 @@ def is_valid_hostname(hostname: str) -> bool:
     return bool(re.match(pattern, hostname)) and len(hostname) <= 253
 
 
-# SECURE: If shell is absolutely required, use shlex.quote
+# SECURE: If shell is absolutely required, combine strict validation with shlex.quote
 def grep_logs_secure(search_term: str, log_file: str) -> str:
     # Validate log file is in allowed directory
-    allowed_dir = "/var/log/myapp/"
-    if not log_file.startswith(allowed_dir):
+    safe_file_path = Path(log_file).resolve()
+    allowed_dir = Path("/var/log/myapp").resolve()
+    if not safe_file_path.is_relative_to(allowed_dir):
         raise ValueError("Invalid log file path")
 
     # Whitelist allowed characters for search term
@@ -185,13 +187,14 @@ def grep_logs_secure(search_term: str, log_file: str) -> str:
 
     # Quote the arguments
     safe_term = shlex.quote(search_term)
-    safe_file = shlex.quote(log_file)
+    safe_file = shlex.quote(str(safe_file_path))
 
     result = subprocess.run(
         f"grep {safe_term} {safe_file}",
         shell=True,
         capture_output=True,
-        text=True
+        text=True,
+        timeout=30
     )
     return result.stdout
 
@@ -200,12 +203,10 @@ def grep_logs_secure(search_term: str, log_file: str) -> str:
 def count_lines_secure(filepath: str) -> int:
     """Count lines without shell commands"""
     # Validate path
-    from pathlib import Path
-
     safe_path = Path(filepath).resolve()
     allowed_dir = Path("/var/data").resolve()
 
-    if not str(safe_path).startswith(str(allowed_dir)):
+    if not safe_path.is_relative_to(allowed_dir):
         raise ValueError("Access denied")
 
     # Use Python instead of wc -l
@@ -230,7 +231,7 @@ function pingHostSecure(hostname) {
         }
 
         // execFile does NOT use shell - arguments are passed directly
-        execFile('ping', ['-c', '4', hostname], (error, stdout) => {
+        execFile('ping', ['-c', '4', hostname], { timeout: 30000 }, (error, stdout) => {
             if (error) {
                 return reject(error);
             }
@@ -259,17 +260,26 @@ function convertImageSecure(inputFile, outputFormat) {
         }
 
         const outputFile = `output.${outputFormat}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
 
         // spawn with array - no shell interpretation
-        const process = spawn('convert', [inputFile, outputFile]);
+        const process = spawn('convert', [inputFile, outputFile], {
+            signal: controller.signal
+        });
 
         let stdout = '';
         let stderr = '';
 
         process.stdout.on('data', (data) => { stdout += data; });
         process.stderr.on('data', (data) => { stderr += data; });
+        process.on('error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+        });
 
         process.on('close', (code) => {
+            clearTimeout(timeout);
             if (code === 0) {
                 resolve(stdout);
             } else {
@@ -284,10 +294,10 @@ const fs = require('fs').promises;
 
 async function countLinesSecure(filepath) {
     // Validate path is within allowed directory
-    const allowedDir = '/var/data';
+    const allowedDir = path.resolve('/var/data');
     const resolvedPath = path.resolve(filepath);
 
-    if (!resolvedPath.startsWith(allowedDir + path.sep)) {
+    if (resolvedPath !== allowedDir && !resolvedPath.startsWith(allowedDir + path.sep)) {
         throw new Error('Access denied');
     }
 
@@ -332,10 +342,11 @@ flowchart TD
 package main
 
 import (
+    "context"
     "fmt"
     "os/exec"
     "regexp"
-    "strings"
+    "time"
 )
 
 // SECURE: Use exec.Command with separate arguments
@@ -345,8 +356,11 @@ func pingHostSecure(hostname string) (string, error) {
         return "", fmt.Errorf("invalid hostname")
     }
 
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
     // Arguments passed as separate strings - no shell interpretation
-    cmd := exec.Command("ping", "-c", "4", hostname)
+    cmd := exec.CommandContext(ctx, "ping", "-c", "4", hostname)
     output, err := cmd.Output()
     if err != nil {
         return "", err
@@ -367,9 +381,9 @@ func isValidHostname(hostname string) bool {
 
 // SECURE: Whitelist approach for allowed commands
 var allowedCommands = map[string][]string{
-    "disk_usage": {"df", "-h"},
-    "memory":     {"free", "-m"},
-    "uptime":     {"uptime"},
+    "disk_usage": []string{"df", "-h"},
+    "memory":     []string{"free", "-m"},
+    "uptime":     []string{"uptime"},
 }
 
 func runSystemCommand(commandName string) (string, error) {
@@ -378,7 +392,10 @@ func runSystemCommand(commandName string) (string, error) {
         return "", fmt.Errorf("command not allowed")
     }
 
-    cmd := exec.Command(args[0], args[1:]...)
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    cmd := exec.CommandContext(ctx, args[0], args[1:]...)
     output, err := cmd.Output()
     if err != nil {
         return "", err

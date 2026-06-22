@@ -33,8 +33,8 @@ docker run -d \
   --es.indices \
   --es.indices_settings \
   --es.shards \
-  --es.snapshots \
-  --es.cluster_settings \
+  --collector.snapshots \
+  --collector.clustersettings \
   --es.ssl-skip-verify
 ```
 
@@ -146,7 +146,7 @@ scrape_configs:
 ### Cluster Health
 
 ```promql
-# Cluster status (0=green, 1=yellow, 2=red)
+# Cluster status (the active color has value 1; inactive colors have value 0)
 elasticsearch_cluster_health_status{color="green"}
 elasticsearch_cluster_health_status{color="yellow"}
 elasticsearch_cluster_health_status{color="red"}
@@ -210,7 +210,7 @@ rate(elasticsearch_indices_indexing_index_total[5m])
 rate(elasticsearch_indices_search_query_total[5m])
 
 # Search latency
-elasticsearch_indices_search_query_time_seconds / elasticsearch_indices_search_query_total
+rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m])
 ```
 
 ## Grafana Dashboard
@@ -234,7 +234,7 @@ elasticsearch_indices_search_query_time_seconds / elasticsearch_indices_search_q
         "type": "stat",
         "targets": [
           {
-            "expr": "elasticsearch_cluster_health_status{color=\"green\"} * 0 + elasticsearch_cluster_health_status{color=\"yellow\"} * 1 + elasticsearch_cluster_health_status{color=\"red\"} * 2",
+            "expr": "sum(elasticsearch_cluster_health_status{color=\"yellow\"}) + sum(elasticsearch_cluster_health_status{color=\"red\"}) * 2",
             "legendFormat": "Status"
           }
         ],
@@ -424,15 +424,6 @@ groups:
           summary: "Elasticsearch node down"
           description: "Elasticsearch cluster has only {{ $value }} nodes, expected 3."
 
-      # Index Health Red
-      - alert: ElasticsearchIndexRed
-        expr: elasticsearch_index_health_status{color="red"} == 1
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Elasticsearch index is RED"
-          description: "Elasticsearch index {{ $labels.index }} is RED."
 ```
 
 ### Grafana Alerting
@@ -447,13 +438,76 @@ groups:
     rules:
       - uid: elasticsearch-cluster-red
         title: Elasticsearch Cluster RED
-        condition: A
+        condition: C
         data:
           - refId: A
+            datasourceUid: prometheus
             queryType: instant
+            relativeTimeRange:
+              from: 600
+              to: 0
             model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
               expr: elasticsearch_cluster_health_status{color="red"}
               instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              refId: C
+              type: threshold
         noDataState: NoData
         execErrState: Error
         for: 5m
@@ -486,7 +540,7 @@ groups:
 
       # Search Latency
       - record: elasticsearch:search_latency_seconds
-        expr: rate(elasticsearch_indices_search_query_time_seconds_total[5m]) / rate(elasticsearch_indices_search_query_total[5m])
+        expr: rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m])
 
       # Disk Usage Percentage
       - record: elasticsearch:disk_used_percent

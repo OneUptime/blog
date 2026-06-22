@@ -83,6 +83,17 @@ class MetricsStore:
             key = f"{key}:{label_key}"
 
         new_value = self.redis.incrbyfloat(key, amount)
+        timestamp = time.time()
+
+        current_key = f"metrics:current:{metric_name}"
+        if labels:
+            current_key = f"{current_key}:{label_key}"
+
+        self.redis.hset(current_key, mapping={
+            'value': new_value,
+            'timestamp': timestamp,
+            'labels': json.dumps(labels or {})
+        })
 
         # Publish update
         self.redis.publish('metrics:updates', json.dumps({
@@ -90,7 +101,7 @@ class MetricsStore:
             'value': new_value,
             'labels': labels,
             'type': 'counter',
-            'timestamp': time.time()
+            'timestamp': timestamp
         }))
 
         return new_value
@@ -219,7 +230,7 @@ data = ts.query_aggregated(
 
 ```python
 class StreamMetrics:
-    """Stream-based metrics with consumer groups"""
+    """Stream-based metrics"""
 
     def __init__(self, redis_client):
         self.redis = redis_client
@@ -281,9 +292,9 @@ class StreamMetrics:
 
 ```python
 import asyncio
-import aioredis
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from redis import asyncio as aioredis
 from typing import Dict, Set
 
 app = FastAPI()
@@ -297,7 +308,7 @@ class DashboardServer:
 
     async def get_redis(self):
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost', decode_responses=True)
+            self.redis = aioredis.from_url('redis://localhost', decode_responses=True)
         return self.redis
 
     async def connect(self, websocket: WebSocket, dashboard_id: str):
@@ -353,7 +364,7 @@ class DashboardServer:
         message_str = json.dumps(message)
         dead = set()
 
-        for ws in self.connections[dashboard_id]:
+        for ws in list(self.connections[dashboard_id]):
             try:
                 await ws.send_text(message_str)
             except Exception:
@@ -399,9 +410,9 @@ class DashboardServer:
             'id': dashboard_id,
             'name': 'Default Dashboard',
             'widgets': [
-                {'type': 'gauge', 'metric': 'cpu_usage', 'title': 'CPU Usage'},
-                {'type': 'chart', 'metric': 'response_time', 'title': 'Response Time'},
-                {'type': 'counter', 'metric': 'requests_total', 'title': 'Total Requests'}
+                {'id': 'w1', 'type': 'gauge', 'metric': 'cpu_usage', 'title': 'CPU Usage'},
+                {'id': 'w2', 'type': 'line_chart', 'metric': 'response_time', 'title': 'Response Time'},
+                {'id': 'w3', 'type': 'counter', 'metric': 'requests_total', 'title': 'Total Requests'}
             ]
         }
 
@@ -456,9 +467,15 @@ class DashboardServer {
             });
 
             ws.on('message', (message) => {
-                this.handleClientMessage(ws, dashboardId, JSON.parse(message));
+                this.handleClientMessage(ws, dashboardId, JSON.parse(message.toString()));
             });
         });
+    }
+
+    handleClientMessage(ws, dashboardId, message) {
+        if (message.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
+        }
     }
 
     setupMetricsSubscription() {
@@ -530,6 +547,10 @@ class DashboardServer {
 
     extractDashboardId(req) {
         const url = new URL(req.url, 'http://localhost');
+        const parts = url.pathname.split('/').filter(Boolean);
+        if (parts[0] === 'ws' && parts[1] === 'dashboard' && parts[2]) {
+            return parts[2];
+        }
         return url.searchParams.get('id') || 'default';
     }
 }
@@ -551,7 +572,7 @@ class DashboardClient {
     }
 
     connect() {
-        this.ws = new WebSocket(`wss://api.example.com/ws/dashboard?id=${this.dashboardId}`);
+        this.ws = new WebSocket(`wss://api.example.com/ws/dashboard/${this.dashboardId}`);
 
         this.ws.onopen = () => {
             console.log('Connected to dashboard');
@@ -725,9 +746,9 @@ class DashboardClient {
         const arc = widget.element.querySelector('.gauge-value');
         const label = widget.element.querySelector('.value');
 
-        // Update arc (assuming 180 degree gauge)
-        const angle = (percent / 100) * 180;
-        // Update SVG path based on angle
+        const dashLength = 126;
+        arc.style.strokeDasharray = dashLength;
+        arc.style.strokeDashoffset = dashLength * (1 - percent / 100);
         label.textContent = Math.round(value);
 
         // Color based on value
@@ -810,7 +831,7 @@ class MetricsAggregator:
         if not raw_data:
             return
 
-        values = [float(item.split(':')[1]) for item in raw_data]
+        values = [float(item.rsplit(':', 1)[1]) for item in raw_data]
 
         # Compute aggregations
         aggregation = {
@@ -915,6 +936,10 @@ def run_aggregations():
 
 # Run every minute
 schedule.every(1).minutes.do(run_aggregations)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
 ```
 
 ## Dashboard Configuration Storage

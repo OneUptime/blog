@@ -23,7 +23,7 @@ Check your CNI supports Network Policies:
 ```bash
 # Check CNI plugin
 
-kubectl get pods -n kube-system | grep -E "calico|cilium|weave"
+kubectl get pods -n kube-system | grep -E "calico|cilium|weave|antrea"
 ```
 
 ## How Network Policies Work
@@ -40,7 +40,7 @@ graph LR
 Key concepts:
 - Policies are additive (if any policy allows traffic, it is allowed)
 - No policy = all traffic allowed
-- Any policy selecting a pod = default deny for that pod
+- Any policy selecting a pod for ingress or egress = default deny for that direction
 - Policies are namespace-scoped
 
 ## Basic Network Policy Structure
@@ -343,9 +343,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ---
 # API can only receive from frontend, send to database
 apiVersion: networking.k8s.io/v1
@@ -379,9 +384,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ---
 # Database can only receive from API
 apiVersion: networking.k8s.io/v1
@@ -429,9 +439,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ```
 
 ### Pattern 3: Allow Monitoring
@@ -515,8 +530,9 @@ kubectl get pods -n production -l app=api
 ### Verify Policy is Applied
 
 ```bash
-# Check pod's network policies
-kubectl describe pod my-pod -n production | grep -A 10 "Network Policies"
+# Kubernetes does not list NetworkPolicies on Pods; verify by matching selectors
+kubectl describe networkpolicy api-policy -n production
+kubectl get pods -n production --show-labels
 ```
 
 ### Common Issues
@@ -557,9 +573,14 @@ egress:
       - namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
     ports:
       - port: 53
         protocol: UDP
+      - port: 53
+        protocol: TCP
 ```
 
 ### 3. Use Labels Consistently
@@ -631,6 +652,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP

@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring PostgreSQL synchronous replica
 
 ---
 
-Synchronous replication ensures that transactions are committed on both primary and standby before being acknowledged to the client. This provides zero data loss guarantees at the cost of increased latency. This guide covers complete synchronous replication setup.
+Synchronous replication ensures that transactions wait for the configured standby acknowledgment before being acknowledged to the client. With `synchronous_commit = on`, the standby has flushed the commit WAL record to durable storage; with `remote_apply`, it has also replayed it. This provides zero data loss for acknowledged commits when the required synchronous standbys remain available, at the cost of increased latency. This guide covers complete synchronous replication setup.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Synchronous replication ensures that transactions are committed on both primary 
 
 | Aspect | Synchronous | Asynchronous |
 |--------|-------------|--------------|
-| Data Loss | Zero | Possible |
+| Data Loss | Zero for acknowledged commits when sync standbys are available | Possible |
 | Commit Latency | Higher (network RTT) | Lower |
 | Availability | Lower (standby required) | Higher |
 | Use Case | Critical data | General purpose |
@@ -56,10 +56,10 @@ synchronous_commit = off
 # local - Sync to local disk only
 synchronous_commit = local
 
-# remote_write - Sync to standby OS (not disk)
+# remote_write - Wait until standby writes WAL to the operating system, but not necessarily to durable storage
 synchronous_commit = remote_write
 
-# on (remote_apply) - Sync to standby WAL
+# on - Wait until standby flushes WAL to durable storage
 synchronous_commit = on
 
 # remote_apply - Sync until applied on standby
@@ -104,7 +104,7 @@ synchronous_standby_names = 'ANY 2 (standby1, standby2, standby3)'
 synchronous_standby_names = 'ANY 3 (standby1, standby2, standby3)'
 ```
 
-### Mixed Priority and Quorum
+### Priority With Multiple Required Standbys
 
 ```conf
 # First 2 from the priority list
@@ -251,7 +251,7 @@ wal_sender_timeout = 30s  # Default: 60s
 
 ```conf
 # 2 standbys in DC1, 2 in DC2
-# Require acknowledgment from both DCs
+# Prefer one standby from each DC when the first standby in each DC is available
 synchronous_standby_names = 'FIRST 2 (dc1_standby1, dc2_standby1, dc1_standby2, dc2_standby2)'
 ```
 
@@ -265,8 +265,8 @@ synchronous_standby_names = 'ANY 2 (us_east, us_west, eu_west)'
 ### Local + Remote Sync
 
 ```conf
-# Always sync to local, optionally to remote
-synchronous_standby_names = 'FIRST 1 (local_standby), ANY 1 (remote_dc1, remote_dc2)'
+# Prefer the local standby; use remote standbys as failover candidates
+synchronous_standby_names = 'FIRST 1 (local_standby, remote_dc1, remote_dc2)'
 ```
 
 ## Synchronous with Patroni
@@ -316,7 +316,7 @@ SELECT
     pg_wal_lsn_diff(pg_current_wal_lsn(), flush_lsn) AS flush_lag_bytes,
     pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS replay_lag_bytes
 FROM pg_stat_replication
-WHERE sync_state = 'sync';
+WHERE sync_state IN ('sync', 'quorum');
 ```
 
 ### On Standby
@@ -398,8 +398,9 @@ synchronous_standby_names = 'ANY 2 (standby1, standby2, standby3)'
 def insert_critical_data(data):
     try:
         # Try synchronous commit
-        conn.execute("SET LOCAL synchronous_commit = on")
-        conn.execute("INSERT INTO critical_table VALUES (%s)", data)
+        with conn.cursor() as cur:
+            cur.execute("SET LOCAL synchronous_commit = on")
+            cur.execute("INSERT INTO critical_table VALUES (%s)", (data,))
         conn.commit()
     except OperationalError as e:
         if "synchronous standby" in str(e):
@@ -443,12 +444,12 @@ groups:
 -- Comprehensive sync status check
 SELECT
     CASE
-        WHEN COUNT(*) FILTER (WHERE sync_state = 'sync') > 0 THEN 'OK'
+        WHEN COUNT(*) FILTER (WHERE sync_state IN ('sync', 'quorum')) > 0 THEN 'OK'
         WHEN COUNT(*) FILTER (WHERE sync_state = 'potential') > 0 THEN 'DEGRADED'
         ELSE 'CRITICAL'
     END AS sync_status,
     COUNT(*) AS total_standbys,
-    COUNT(*) FILTER (WHERE sync_state = 'sync') AS sync_standbys,
+    COUNT(*) FILTER (WHERE sync_state IN ('sync', 'quorum')) AS sync_standbys,
     MAX(pg_wal_lsn_diff(pg_current_wal_lsn(), flush_lsn)) AS max_flush_lag_bytes
 FROM pg_stat_replication;
 ```

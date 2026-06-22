@@ -56,7 +56,7 @@ ls -la /var/lib/postgresql/backup/
 pgbackrest --stanza=main info
 
 # For Barman
-barman list-backup main
+barman list-backups main
 
 # Identify backup taken BEFORE your recovery target
 ```
@@ -68,7 +68,8 @@ barman list-backup main
 ls -la /var/lib/postgresql/archive/ | head -20
 
 # Find WAL file for specific time (approximate)
-# WAL files are named: TIMELINE + LSN
+# WAL segment names include the timeline ID and WAL position
+# Use pg_walfile_name(lsn) when mapping an exact LSN to a WAL file
 ```
 
 ## Recovery Procedure
@@ -148,8 +149,11 @@ recovery_target_time = '2025-01-21 14:34:59'
 # Option 4: Recover to named restore point
 # recovery_target_name = 'before_migration'
 
-# Option 5: Recover to end of available WAL
+# Option 5: Recover only until the database becomes consistent
 # recovery_target = 'immediate'
+
+# To recover to the end of available WAL, leave all recovery_target*
+# settings unset and use only restore_command.
 
 # What to do after reaching target
 recovery_target_action = 'promote'  # or 'pause' or 'shutdown'
@@ -196,7 +200,7 @@ If `recovery_target_action = 'pause'`:
 SELECT pg_is_in_recovery();  -- Should be true
 
 -- If satisfied, promote to normal operation
-SELECT pg_wal_replay_resume();  -- Continue WAL replay
+SELECT pg_wal_replay_resume();  -- Resume and finish recovery at the target
 -- Or
 SELECT pg_promote();  -- Promote immediately
 ```
@@ -230,8 +234,8 @@ recovery_target_time = '2025-01-21 14:34:59 America/New_York'
 -- First, find the XID you want to recover to
 -- This requires having logged transaction IDs
 
--- On a test restore, find transactions around your target time
-SELECT xmin, xmax, * FROM pg_class LIMIT 10;
+-- Use PostgreSQL logs, audit tables, or application logs that recorded XIDs
+-- xmin/xmax are row-version metadata and are not a reliable commit timeline
 ```
 
 ```conf
@@ -243,7 +247,7 @@ recovery_target_xid = '12345678'
 
 ```sql
 -- Find LSN from logs or WAL file names
--- LSN format: segment/offset, e.g., 0/1234567
+-- LSN format: hexadecimal WAL location, e.g., 0/1234567
 ```
 
 ```conf
@@ -286,7 +290,7 @@ sudo systemctl start postgresql
 
 ```bash
 # Recover to specific time
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --target-time "2025-01-21 14:34:59" \
     --remote-ssh-command "ssh postgres@db-server"
 
@@ -313,6 +317,8 @@ scp -r backup-server:/var/lib/postgresql/backup/base_20250120/* \
 
 # Or restore from S3
 aws s3 sync s3://my-bucket/backups/base_20250120/ /var/lib/postgresql/16/main/
+
+sudo chown -R postgres:postgres /var/lib/postgresql/16/main
 ```
 
 ### Step 3: Setup WAL Access
@@ -337,7 +343,7 @@ restore_command = 'pgbackrest --stanza=main archive-get %f %p'
 
 ```bash
 # Create recovery.signal
-touch /var/lib/postgresql/16/main/recovery.signal
+sudo -u postgres touch /var/lib/postgresql/16/main/recovery.signal
 
 # Configure recovery target
 # Edit postgresql.conf
@@ -355,29 +361,32 @@ sudo systemctl start postgresql
 # test_pitr.sh
 
 TEST_DIR="/tmp/pitr_test_$$"
-TEST_DB="pitr_test"
 
 echo "Creating test environment..."
-mkdir -p $TEST_DIR
+mkdir -p "$TEST_DIR/basebackup" "$TEST_DIR/data"
 
 # Restore backup
-pg_basebackup -D $TEST_DIR/data -Ft -z -P
+pg_basebackup -D "$TEST_DIR/basebackup" -Ft -z -X none -P
+TARGET_TIME="$(date "+%Y-%m-%d %H:%M:%S.%6N%z")"
+
+# Generate WAL after the target and force a segment switch for archiving
+psql -c "SELECT txid_current(); SELECT pg_switch_wal();"
 
 # Extract
-tar -xzf $TEST_DIR/data/base.tar.gz -C $TEST_DIR/data/
+tar -xzf "$TEST_DIR/basebackup/base.tar.gz" -C "$TEST_DIR/data/"
 
 # Configure for recovery test
-cat >> $TEST_DIR/data/postgresql.conf << EOF
+cat >> "$TEST_DIR/data/postgresql.conf" << EOF
 port = 5433
 restore_command = 'cp /var/lib/postgresql/archive/%f %p'
-recovery_target_time = '$(date -d "1 hour ago" "+%Y-%m-%d %H:%M:%S")'
+recovery_target_time = '$TARGET_TIME'
 recovery_target_action = 'promote'
 EOF
 
-touch $TEST_DIR/data/recovery.signal
+touch "$TEST_DIR/data/recovery.signal"
 
 # Start test instance
-pg_ctl -D $TEST_DIR/data start -o "-p 5433"
+pg_ctl -D "$TEST_DIR/data" start -o "-p 5433"
 
 # Wait for recovery
 sleep 30
@@ -386,8 +395,8 @@ sleep 30
 psql -p 5433 -c "SELECT pg_is_in_recovery();"
 
 # Cleanup
-pg_ctl -D $TEST_DIR/data stop
-rm -rf $TEST_DIR
+pg_ctl -D "$TEST_DIR/data" stop
+rm -rf "$TEST_DIR"
 
 echo "PITR test completed"
 ```

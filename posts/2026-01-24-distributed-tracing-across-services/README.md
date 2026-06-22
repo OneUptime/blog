@@ -47,11 +47,11 @@ sequenceDiagram
     participant B as Service B
     participant C as Service C
 
-    A->>A: Create Span (trace_id=abc)
-    A->>B: HTTP Request<br/>traceparent: 00-abc-001-01
+    A->>A: Create Span (trace_id=4bf92f3577b34da6a3ce929d0e0e4736)
+    A->>B: HTTP Request<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
     B->>B: Extract Context
     B->>B: Create Child Span
-    B->>C: HTTP Request<br/>traceparent: 00-abc-002-01
+    B->>C: HTTP Request<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-4d2e5f6a7b8c9d0e-01
     C->>C: Extract Context
     C->>C: Create Child Span
     C->>B: Response
@@ -75,14 +75,13 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.propagate import inject
 from opentelemetry.sdk.resources import Resource
 
 # Configure the tracer provider with service identification
 resource = Resource.create({
     "service.name": "api-gateway",
     "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -165,7 +164,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "order-service",
     "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -243,14 +242,17 @@ Here is how to implement the same pattern in Go:
 package main
 
 import (
+    "bytes"
     "context"
     "encoding/json"
+    "io"
     "log"
     "net/http"
     "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -280,7 +282,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
             semconv.SchemaURL,
             semconv.ServiceName("api-gateway"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            attribute.String("deployment.environment.name", "production"),
         ),
     )
     if err != nil {
@@ -392,10 +394,8 @@ Sometimes you need to propagate context manually (for example, with message queu
 # manual_propagation.py
 from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 tracer = trace.get_tracer(__name__)
-propagator = TraceContextTextMapPropagator()
 
 def publish_to_queue(message: dict, queue_client):
     """
@@ -403,7 +403,8 @@ def publish_to_queue(message: dict, queue_client):
     """
     with tracer.start_as_current_span("publish_message") as span:
         span.set_attribute("messaging.system", "rabbitmq")
-        span.set_attribute("messaging.destination", "orders")
+        span.set_attribute("messaging.destination.name", "orders")
+        span.set_attribute("messaging.operation.type", "publish")
 
         # Inject trace context into message headers
         headers = {}
@@ -416,7 +417,7 @@ def publish_to_queue(message: dict, queue_client):
         }
 
         queue_client.publish("orders", message_with_context)
-        span.set_attribute("messaging.message_id", message.get('id'))
+        span.set_attribute("messaging.message.id", message.get('id'))
 
 def consume_from_queue(message: dict):
     """
@@ -433,7 +434,7 @@ def consume_from_queue(message: dict):
         kind=trace.SpanKind.CONSUMER
     ) as span:
         span.set_attribute("messaging.system", "rabbitmq")
-        span.set_attribute("messaging.operation", "receive")
+        span.set_attribute("messaging.operation.type", "process")
 
         # Process the message
         body = message.get("body", {})
@@ -444,6 +445,8 @@ def consume_from_queue(message: dict):
 
 ```python
 # kafka_tracing.py
+import json
+
 from kafka import KafkaProducer, KafkaConsumer
 from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
@@ -466,8 +469,8 @@ class TracedKafkaProducer:
             kind=trace.SpanKind.PRODUCER
         ) as span:
             span.set_attribute("messaging.system", "kafka")
-            span.set_attribute("messaging.destination", topic)
-            span.set_attribute("messaging.destination_kind", "topic")
+            span.set_attribute("messaging.destination.name", topic)
+            span.set_attribute("messaging.operation.type", "send")
 
             # Inject trace context into Kafka headers
             headers = []
@@ -487,7 +490,7 @@ class TracedKafkaProducer:
 
             # Wait for send to complete
             record_metadata = future.get(timeout=10)
-            span.set_attribute("messaging.kafka.partition", record_metadata.partition)
+            span.set_attribute("messaging.destination.partition.id", str(record_metadata.partition))
             span.set_attribute("messaging.kafka.offset", record_metadata.offset)
 
 class TracedKafkaConsumer:
@@ -512,17 +515,18 @@ class TracedKafkaConsumer:
 
             ctx = extract(carrier)
 
-            # Create consumer span linked to producer
+            # Create consumer span that continues the producer trace
             with tracer.start_as_current_span(
                 f"kafka.consume.{message.topic}",
                 context=ctx,
                 kind=trace.SpanKind.CONSUMER
             ) as span:
                 span.set_attribute("messaging.system", "kafka")
-                span.set_attribute("messaging.destination", message.topic)
-                span.set_attribute("messaging.kafka.partition", message.partition)
+                span.set_attribute("messaging.destination.name", message.topic)
+                span.set_attribute("messaging.operation.type", "process")
+                span.set_attribute("messaging.destination.partition.id", str(message.partition))
                 span.set_attribute("messaging.kafka.offset", message.offset)
-                span.set_attribute("messaging.kafka.consumer_group", self.consumer.config['group_id'])
+                span.set_attribute("messaging.consumer.group.name", self.consumer.config['group_id'])
 
                 try:
                     handler(message.value)
@@ -595,11 +599,18 @@ For manual propagation in gRPC:
 
 ```python
 # grpc_manual_propagation.py
+from collections import namedtuple
+
 import grpc
 from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
 
 tracer = trace.get_tracer(__name__)
+
+_ClientCallDetails = namedtuple(
+    "_ClientCallDetails",
+    ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
+)
 
 class TracingClientInterceptor(grpc.UnaryUnaryClientInterceptor):
     """gRPC client interceptor that injects trace context."""
@@ -618,11 +629,13 @@ class TracingClientInterceptor(grpc.UnaryUnaryClientInterceptor):
                 metadata.append((key, value))
 
             # Create new call details with updated metadata
-            new_details = grpc.ClientCallDetails(
-                method=client_call_details.method,
-                timeout=client_call_details.timeout,
-                metadata=metadata,
-                credentials=client_call_details.credentials,
+            new_details = _ClientCallDetails(
+                client_call_details.method,
+                client_call_details.timeout,
+                metadata,
+                client_call_details.credentials,
+                client_call_details.wait_for_ready,
+                client_call_details.compression,
             )
 
             response = continuation(new_details, request)
@@ -639,14 +652,23 @@ class TracingServerInterceptor(grpc.ServerInterceptor):
                 carrier[key] = value
 
         ctx = extract(carrier)
+        handler = continuation(handler_call_details)
+        if handler is None or handler.unary_unary is None:
+            return handler
 
-        # Continue with extracted context
-        with tracer.start_as_current_span(
-            f"grpc.{handler_call_details.method}",
-            context=ctx,
-            kind=trace.SpanKind.SERVER
-        ):
-            return continuation(handler_call_details)
+        def traced_unary_unary(request, context):
+            with tracer.start_as_current_span(
+                f"grpc.{handler_call_details.method}",
+                context=ctx,
+                kind=trace.SpanKind.SERVER
+            ):
+                return handler.unary_unary(request, context)
+
+        return grpc.unary_unary_rpc_method_handler(
+            traced_unary_unary,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 ```
 
 ## Baggage for Cross-Service Data
@@ -655,8 +677,7 @@ Use baggage to pass business data across service boundaries:
 
 ```python
 # baggage_example.py
-from opentelemetry import baggage, trace
-from opentelemetry.propagate import inject, extract
+from opentelemetry import baggage, context as otel_context, trace
 
 tracer = trace.get_tracer(__name__)
 
@@ -686,12 +707,16 @@ def create_order():
             tenant_id=request.headers.get('X-Tenant-ID')
         )
 
-        # Baggage is automatically propagated with trace context
-        response = requests.post(
-            "http://order-service:8080/orders",
-            json=request.json
-        )
-        return response.json()
+        # Attach the baggage context so requests instrumentation can propagate it
+        token = otel_context.attach(ctx)
+        try:
+            response = requests.post(
+                "http://order-service:8080/orders",
+                json=request.json
+            )
+            return response.json()
+        finally:
+            otel_context.detach(token)
 
 # In the order service
 @app.route('/orders', methods=['POST'])

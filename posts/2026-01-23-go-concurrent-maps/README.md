@@ -17,15 +17,22 @@ Go maps are not safe for concurrent access. Reading and writing from multiple go
 ```go
 package main
 
+import "sync"
+
 func main() {
     m := make(map[string]int)
+    var wg sync.WaitGroup
     
     // Multiple goroutines accessing same map
     for i := 0; i < 100; i++ {
+        wg.Add(1)
         go func(n int) {
+            defer wg.Done()
             m["key"] = n  // RACE: concurrent write
         }(i)
     }
+
+    wg.Wait()
     
     // fatal error: concurrent map writes
 }

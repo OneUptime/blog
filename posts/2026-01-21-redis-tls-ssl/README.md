@@ -215,7 +215,7 @@ tls-protocols "TLSv1.2 TLSv1.3"
 
 # Cipher suites (strong ciphers only)
 tls-ciphersuites "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
-tls-cipher-suites "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305"
+tls-ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305"
 
 # Prefer server cipher order
 tls-prefer-server-ciphers yes
@@ -256,7 +256,12 @@ sudo systemctl restart redis
 sudo systemctl status redis
 
 # Verify TLS is enabled
-redis-cli --tls --cacert /etc/redis/certs/ca.crt ping
+redis-cli --tls \
+  --cacert certs/ca.crt \
+  --cert certs/redis-client.crt \
+  --key certs/redis-client.key \
+  -h redis.local \
+  ping
 ```
 
 ## Configuring TLS for Replication
@@ -355,12 +360,6 @@ redis-cli --tls --insecure -h redis.local
 
 ```python
 import redis
-import ssl
-
-# Create SSL context
-ssl_context = ssl.create_default_context(
-    cafile='/path/to/ca.crt'
-)
 
 # Connect with TLS
 client = redis.Redis(
@@ -380,19 +379,6 @@ print(client.ping())  # True
 
 ```python
 import redis
-import ssl
-
-# Create SSL context with client certificate
-ssl_context = ssl.create_default_context(
-    purpose=ssl.Purpose.SERVER_AUTH,
-    cafile='/path/to/ca.crt'
-)
-ssl_context.load_cert_chain(
-    certfile='/path/to/redis-client.crt',
-    keyfile='/path/to/redis-client.key'
-)
-ssl_context.check_hostname = True
-ssl_context.verify_mode = ssl.CERT_REQUIRED
 
 # Connect with mutual TLS
 client = redis.Redis(
@@ -415,18 +401,8 @@ print(client.ping())
 ```python
 import asyncio
 import redis.asyncio as redis
-import ssl
 
 async def main():
-    # Create SSL context
-    ssl_context = ssl.create_default_context(
-        cafile='/path/to/ca.crt'
-    )
-    ssl_context.load_cert_chain(
-        certfile='/path/to/redis-client.crt',
-        keyfile='/path/to/redis-client.key'
-    )
-
     # Connect with TLS
     client = redis.Redis(
         host='redis.local',
@@ -440,7 +416,7 @@ async def main():
     )
 
     print(await client.ping())
-    await client.close()
+    await client.aclose()
 
 asyncio.run(main())
 ```
@@ -458,8 +434,12 @@ sentinel = Sentinel(
     ],
     socket_timeout=0.5,
     # Sentinel connection TLS
-    ssl=True,
-    ssl_ca_certs='/path/to/ca.crt'
+    sentinel_kwargs={
+        'ssl': True,
+        'ssl_ca_certs': '/path/to/ca.crt',
+        'ssl_certfile': '/path/to/redis-client.crt',
+        'ssl_keyfile': '/path/to/redis-client.key'
+    }
 )
 
 # Get master with TLS
@@ -550,10 +530,13 @@ const redis = new Redis({
   name: 'mymaster',
   password: 'your_password',
   sentinelPassword: 'sentinel_password',
+  enableTLSForSentinelMode: true,
 
   // TLS for Sentinel connections
   sentinelTLS: {
     ca: ca,
+    cert: cert,
+    key: key,
     rejectUnauthorized: true,
   },
 
@@ -724,6 +707,7 @@ import (
     "context"
     "crypto/tls"
     "crypto/x509"
+    "fmt"
     "log"
     "os"
 
@@ -788,6 +772,7 @@ import (
     "context"
     "crypto/tls"
     "crypto/x509"
+    "fmt"
     "log"
     "os"
 
@@ -798,14 +783,21 @@ func main() {
     ctx := context.Background()
 
     // Load certificates
-    caCert, _ := os.ReadFile("/path/to/ca.crt")
+    caCert, err := os.ReadFile("/path/to/ca.crt")
+    if err != nil {
+        log.Fatal(err)
+    }
+
     caCertPool := x509.NewCertPool()
     caCertPool.AppendCertsFromPEM(caCert)
 
-    clientCert, _ := tls.LoadX509KeyPair(
+    clientCert, err := tls.LoadX509KeyPair(
         "/path/to/redis-client.crt",
         "/path/to/redis-client.key",
     )
+    if err != nil {
+        log.Fatal(err)
+    }
 
     tlsConfig := &tls.Config{
         RootCAs:      caCertPool,
@@ -838,24 +830,42 @@ func main() {
 
 ```bash
 # Check TLS connection with OpenSSL
-openssl s_client -connect redis.local:6379 -CAfile ca.crt
+openssl s_client -connect redis.local:6379 \
+  -CAfile ca.crt \
+  -cert redis-client.crt \
+  -key redis-client.key
 
 # Check certificate details
-openssl s_client -connect redis.local:6379 -CAfile ca.crt 2>/dev/null | \
+openssl s_client -connect redis.local:6379 \
+  -CAfile ca.crt \
+  -cert redis-client.crt \
+  -key redis-client.key 2>/dev/null | \
   openssl x509 -noout -text
 
 # Verify cipher suites
-openssl s_client -connect redis.local:6379 -CAfile ca.crt -cipher 'ECDHE-RSA-AES256-GCM-SHA384'
+openssl s_client -connect redis.local:6379 \
+  -CAfile ca.crt \
+  -cert redis-client.crt \
+  -key redis-client.key \
+  -cipher 'ECDHE-RSA-AES256-GCM-SHA384'
 ```
 
 ### Check Redis TLS Status
 
 ```bash
 # Connect with TLS
-redis-cli --tls --cacert ca.crt INFO server
+redis-cli --tls \
+  --cacert ca.crt \
+  --cert redis-client.crt \
+  --key redis-client.key \
+  INFO server
 
 # Check TLS configuration
-redis-cli --tls --cacert ca.crt CONFIG GET "tls-*"
+redis-cli --tls \
+  --cacert ca.crt \
+  --cert redis-client.crt \
+  --key redis-client.key \
+  CONFIG GET "tls-*"
 ```
 
 ## Troubleshooting
@@ -883,7 +893,11 @@ sudo netstat -tlnp | grep redis
 sudo journalctl -u redis -f
 
 # Verify configuration
-redis-cli --tls --cacert ca.crt ping
+redis-cli --tls \
+  --cacert ca.crt \
+  --cert redis-client.crt \
+  --key redis-client.key \
+  ping
 ```
 
 ### Hostname Mismatch

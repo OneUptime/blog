@@ -17,15 +17,15 @@ This guide covers the causes, troubleshooting, and prevention of resource-based 
 ```mermaid
 flowchart TD
     subgraph "Node Pressure States"
-        MP[Memory Pressure] --> E1[Evict BestEffort Pods First]
+        MP[Memory Pressure] --> E1[Rank Pods by Usage vs Requests]
         DP[Disk Pressure] --> E2[Evict Based on Usage]
-        PP[PID Pressure] --> E3[Evict Process-Heavy Pods]
+        PP[PID Pressure] --> E3[Evict by Pod Priority]
     end
     
-    subgraph "Eviction Priority"
-        E1 --> P1[1. BestEffort<br/>No requests/limits]
-        E2 --> P2[2. Burstable<br/>Requests < Limits]
-        E3 --> P3[3. Guaranteed<br/>Requests = Limits]
+    subgraph "Eviction Ranking"
+        E1 --> P1[1. Pods exceeding requests]
+        E2 --> P2[2. Lowest priority]
+        E3 --> P3[3. Highest usage relative to requests]
     end
     
     P1 --> EV[Pod Evicted]
@@ -79,13 +79,8 @@ du -sh /var/log
 # Check PID pressure
 kubectl describe nodes | grep PIDPressure
 
-# Check PID allocation
-kubectl get nodes -o custom-columns=\
-"NAME:.metadata.name,\
-PIDS:.status.allocatable.pods"
-
 # SSH to node and check processes
-ps aux | wc -l
+ps -eLf | wc -l
 cat /proc/sys/kernel/pid_max
 ```
 
@@ -113,16 +108,15 @@ kubectl describe pod evicted-pod-name -n namespace
 
 ```yaml
 # Default soft eviction thresholds (can be delayed)
-memory.available < 100Mi         # 100Mi free memory
-nodefs.available < 10%           # 10% filesystem available
-nodefs.inodesFree < 5%           # 5% inodes available
-imagefs.available < 15%          # 15% image filesystem available
+# None by default. If you configure evictionSoft, you must also configure
+# matching evictionSoftGracePeriod values.
 
-# Default hard eviction thresholds (immediate eviction)
-memory.available < 100Mi         # Same as soft by default
+# Default hard eviction thresholds (immediate eviction, Linux)
+memory.available < 100Mi         # 100Mi free memory
 nodefs.available < 10%
 nodefs.inodesFree < 5%
 imagefs.available < 15%
+imagefs.inodesFree < 5%
 ```
 
 ### Configuring Custom Eviction Thresholds
@@ -155,11 +149,13 @@ evictionPressureTransitionPeriod: "30s"
 
 ## QoS Classes and Eviction Order
 
+QoS classes are a useful way to estimate eviction risk, but kubelet does not use QoS class alone to determine eviction order. For memory pressure, kubelet first considers whether a pod is using more than its request, then pod priority, then usage relative to requests. For PID and inode pressure, there are no pod requests, so kubelet uses pod priority to rank evictions.
+
 ### Understanding QoS Classes
 
 ```yaml
-# Guaranteed QoS - Requests = Limits for all containers
-# Last to be evicted
+# Guaranteed QoS - CPU and memory requests = limits for all containers
+# Usually among the last to be evicted under memory pressure
 apiVersion: v1
 kind: Pod
 metadata:
@@ -176,8 +172,8 @@ spec:
           memory: "512Mi"    # Same as request
           cpu: "500m"        # Same as request
 ---
-# Burstable QoS - Has requests, but limits > requests
-# Evicted after BestEffort
+# Burstable QoS - Has at least one CPU or memory request/limit, but does not meet Guaranteed criteria
+# Higher eviction risk when usage exceeds requests
 apiVersion: v1
 kind: Pod
 metadata:
@@ -194,8 +190,8 @@ spec:
           memory: "512Mi"    # Higher than request
           cpu: "500m"
 ---
-# BestEffort QoS - No requests or limits
-# First to be evicted
+# BestEffort QoS - No CPU or memory requests or limits
+# Highest eviction risk under memory pressure
 apiVersion: v1
 kind: Pod
 metadata:
@@ -325,7 +321,6 @@ kind: KubeletConfiguration
 systemReserved:
   cpu: "500m"
   memory: "1Gi"
-  ephemeral-storage: "10Gi"
 kubeReserved:
   cpu: "500m"
   memory: "1Gi"
@@ -369,8 +364,8 @@ spec:
           labels:
             severity: warning
             
-        # Pod using more memory than requested
-        - alert: PodMemoryOvercommit
+        # Pod approaching its memory limit
+        - alert: PodMemoryNearLimit
           expr: |
             container_memory_usage_bytes{container!=""} > 
             container_spec_memory_limit_bytes{container!=""} * 0.9
@@ -382,17 +377,17 @@ spec:
 ### Grafana Dashboard Query Examples
 
 ```promql
-# Memory available percentage
+# Memory used percentage
 100 - (100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
 
-# Disk available percentage
+# Disk used percentage
 100 - (100 * node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
 
 # Pods by QoS class
 count(kube_pod_status_qos_class) by (qos_class)
 
 # Eviction events
-sum(increase(kubelet_evictions{eviction_signal="allocatableMemory.available"}[1h])) by (node)
+sum(increase(kubelet_evictions{eviction_signal="memory.available"}[1h])) by (node)
 ```
 
 ## Handling Active Memory Pressure
@@ -416,7 +411,7 @@ kubectl get pods --all-namespaces -o json | jq -r '
 # 4. Scale down non-critical workloads
 kubectl scale deployment non-critical-app --replicas=0 -n staging
 
-# 5. Delete evicted pods to free up resources
+# 5. Delete evicted pod objects to clean up API state
 kubectl delete pods --all-namespaces --field-selector 'status.phase=Failed'
 ```
 
@@ -475,17 +470,17 @@ fi
 ## Best Practices Summary
 
 1. **Always set resource requests** - Prevents BestEffort QoS and unpredictable evictions
-2. **Use Guaranteed QoS for critical workloads** - Set requests equal to limits
+2. **Use Guaranteed QoS and priority for critical workloads** - Set CPU and memory requests equal to limits, and use appropriate PriorityClasses
 3. **Monitor node resources** - Alert before hitting eviction thresholds
 4. **Configure appropriate eviction thresholds** - Based on your workload patterns
 5. **Reserve system resources** - Use systemReserved and kubeReserved
-6. **Clean up regularly** - Remove evicted pods, old images, and logs
+6. **Clean up regularly** - Remove evicted pod objects, old images, and logs
 
 ## Conclusion
 
 Understanding and preventing pod evictions is essential for cluster stability. Key takeaways:
 
-1. **Know your QoS classes** - Guaranteed pods are evicted last
+1. **Know your QoS classes and priorities** - Guaranteed pods are usually lower-risk under memory pressure, but kubelet also considers requests, priority, and relative usage
 2. **Set proper resource limits** - Based on actual usage patterns
 3. **Monitor proactively** - Don't wait for evictions to notice pressure
 4. **Configure eviction thresholds** - Tune for your specific workloads

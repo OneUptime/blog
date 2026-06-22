@@ -147,13 +147,13 @@ flowchart LR
 
     subgraph "Warning Signs"
         D[Seq Scan on large table]
-        E[High row estimates]
+        E[Bad row estimates]
         F[Sort on disk]
     end
 
     subgraph "Action Needed"
         D --> G[Add Index]
-        E --> H[Add WHERE clause]
+        E --> H[Run ANALYZE or improve statistics]
         F --> I[Increase work_mem]
     end
 ```
@@ -162,7 +162,7 @@ flowchart LR
 
 ```sql
 -- MySQL explain format
-EXPLAIN FORMAT=JSON
+EXPLAIN FORMAT=TRADITIONAL
 SELECT o.id, o.total, c.name
 FROM orders o
 JOIN customers c ON c.id = o.customer_id
@@ -238,13 +238,13 @@ SELECT * FROM orders WHERE id = 123;
 -- BETTER: Select only needed columns
 SELECT id, total, status FROM orders WHERE id = 123;
 
--- BAD: Subquery executed for each row
+-- SOMETIMES BAD: Subquery can be harder to reason about or tune
 SELECT * FROM orders o
 WHERE customer_id IN (
     SELECT id FROM customers WHERE country = 'US'
 );
 
--- BETTER: Use JOIN instead
+-- ALTERNATIVE: Use JOIN and compare the execution plan
 SELECT o.* FROM orders o
 JOIN customers c ON c.id = o.customer_id
 WHERE c.country = 'US';
@@ -321,8 +321,9 @@ def update_batch_good(db, updates):
         query += f" WHEN %s THEN %s"
         params.extend([update['id'], update['status']])
 
-    query += " END WHERE id IN %s"
-    params.append(tuple(ids))
+    placeholders = ", ".join(["%s"] * len(ids))
+    query += f" END WHERE id IN ({placeholders})"
+    params.extend(ids)
 
     db.execute(query, params)
 ```
@@ -365,6 +366,15 @@ ALTER TABLE orders ADD COLUMN item_count INTEGER DEFAULT 0;
 CREATE OR REPLACE FUNCTION update_order_item_count()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF TG_OP = 'DELETE' THEN
+        UPDATE orders
+        SET item_count = (
+            SELECT COUNT(*) FROM order_items WHERE order_id = OLD.order_id
+        )
+        WHERE id = OLD.order_id;
+        RETURN OLD;
+    END IF;
+
     UPDATE orders
     SET item_count = (
         SELECT COUNT(*) FROM order_items WHERE order_id = NEW.order_id
@@ -386,11 +396,11 @@ FOR EACH ROW EXECUTE FUNCTION update_order_item_count();
 
 -- BAD: Using VARCHAR for fixed-length codes
 CREATE TABLE countries (
-    code VARCHAR(255),  -- Wastes space, slower comparisons
+    code VARCHAR(255),  -- Allows invalid longer codes
     name VARCHAR(255)
 );
 
--- GOOD: Use CHAR for fixed-length
+-- GOOD: Use a constrained type for fixed-length codes
 CREATE TABLE countries (
     code CHAR(2),       -- Exactly 2 characters
     name VARCHAR(100)   -- Reasonable limit
@@ -405,7 +415,7 @@ CREATE TABLE logs (
 -- GOOD: Use ENUM for limited values
 CREATE TYPE log_level AS ENUM ('debug', 'info', 'warn', 'error');
 CREATE TABLE logs (
-    level log_level,    -- Stored as integer internally
+    level log_level,    -- Compact fixed set of allowed values
     message TEXT
 );
 
@@ -421,7 +431,7 @@ Set up continuous monitoring for database performance:
 
 ```sql
 -- PostgreSQL: Find most time-consuming queries
--- Requires pg_stat_statements extension
+-- Requires pg_stat_statements in shared_preload_libraries and the extension
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 SELECT
@@ -443,7 +453,7 @@ LIMIT 20;
 | Query Pattern | Index Type | Example |
 |--------------|-----------|---------|
 | WHERE col = value | B-tree (default) | `CREATE INDEX ON t(col)` |
-| WHERE col LIKE 'prefix%' | B-tree | `CREATE INDEX ON t(col)` |
+| WHERE col LIKE 'prefix%' | B-tree | `CREATE INDEX ON t(col)`; PostgreSQL may need `text_pattern_ops` |
 | WHERE col LIKE '%suffix' | Trigram (pg_trgm) | `CREATE INDEX ON t USING gin(col gin_trgm_ops)` |
 | WHERE col @> array | GIN | `CREATE INDEX ON t USING gin(col)` |
 | WHERE point <-> point | GiST | `CREATE INDEX ON t USING gist(col)` |

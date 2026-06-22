@@ -34,6 +34,7 @@ stateDiagram-v2
 
 ```python
 import redis
+import requests
 import time
 import json
 from enum import Enum
@@ -272,6 +273,14 @@ class SlidingWindowCircuitBreaker:
     def _opened_at_key(self) -> str:
         return f"{self._prefix}:opened_at"
 
+    @property
+    def _half_open_calls_key(self) -> str:
+        return f"{self._prefix}:half_open_calls"
+
+    @property
+    def _half_open_successes_key(self) -> str:
+        return f"{self._prefix}:half_open_successes"
+
     def _record_call(self, success: bool):
         """Record a call outcome in the sliding window."""
         now = time.time()
@@ -328,8 +337,8 @@ class SlidingWindowCircuitBreaker:
 
         if state == CircuitState.HALF_OPEN:
             # Check if we can close
-            failure_rate, total = self._calculate_failure_rate()
-            if total >= self.config.half_open_calls and failure_rate == 0:
+            successes = self.redis.incr(self._half_open_successes_key)
+            if successes >= self.config.half_open_calls:
                 self._close()
 
     def record_failure(self):
@@ -351,6 +360,8 @@ class SlidingWindowCircuitBreaker:
         pipe = self.redis.pipeline()
         pipe.set(self._state_key, CircuitState.OPEN.value)
         pipe.set(self._opened_at_key, time.time())
+        pipe.delete(self._half_open_calls_key)
+        pipe.delete(self._half_open_successes_key)
         pipe.execute()
 
         logger.warning(f"Circuit {self.name} opened (sliding window)")
@@ -360,6 +371,8 @@ class SlidingWindowCircuitBreaker:
         pipe = self.redis.pipeline()
         pipe.set(self._state_key, CircuitState.CLOSED.value)
         pipe.delete(self._opened_at_key)
+        pipe.delete(self._half_open_calls_key)
+        pipe.delete(self._half_open_successes_key)
         pipe.execute()
 
         logger.info(f"Circuit {self.name} closed")
@@ -381,13 +394,18 @@ class SlidingWindowCircuitBreaker:
 
         if state == CircuitState.OPEN:
             if self._check_timeout():
-                self.redis.set(self._state_key, CircuitState.HALF_OPEN.value)
+                pipe = self.redis.pipeline()
+                pipe.set(self._state_key, CircuitState.HALF_OPEN.value)
+                pipe.set(self._half_open_calls_key, 1)
+                pipe.set(self._half_open_successes_key, 0)
+                pipe.execute()
                 return True
             return False
 
         if state == CircuitState.HALF_OPEN:
             # Allow limited requests
-            return True
+            calls = self.redis.incr(self._half_open_calls_key)
+            return calls <= self.config.half_open_calls
 
         return False
 
@@ -475,7 +493,8 @@ Implement fallback behavior when circuit is open:
 
 ```python
 import redis
-from typing import Callable, Any, Optional, TypeVar
+import json
+from typing import Callable, Any, Optional, TypeVar, Dict
 from functools import wraps
 import logging
 
@@ -607,7 +626,7 @@ Create a monitoring dashboard endpoint:
 ```python
 import redis
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
 @dataclass
@@ -659,7 +678,7 @@ class CircuitMonitor:
         return open_circuits
 
     def export_metrics(self) -> Dict:
-        """Export metrics for Prometheus or similar."""
+        """Export metrics summary for dashboards or similar."""
         metrics = {
             "circuits_total": 0,
             "circuits_open": 0,
@@ -712,7 +731,7 @@ def circuits_stats():
 
 @app.route('/circuits/metrics')
 def circuits_metrics():
-    """Prometheus-compatible metrics."""
+    """JSON metrics summary."""
     return jsonify(monitor.export_metrics())
 ```
 
@@ -728,4 +747,4 @@ def circuits_metrics():
 
 ## Conclusion
 
-Redis-based circuit breakers provide distributed fault tolerance for microservices architectures. The shared state ensures consistent behavior across service instances, and Redis's atomic operations make it safe for concurrent updates. Combine circuit breakers with fallbacks and proper monitoring for resilient systems that degrade gracefully under failure conditions.
+Redis-based circuit breakers provide distributed fault tolerance for microservices architectures. The shared state ensures consistent behavior across service instances, and Redis's atomic operations help coordinate counters and state updates across concurrent instances. Combine circuit breakers with fallbacks and proper monitoring for resilient systems that degrade gracefully under failure conditions.

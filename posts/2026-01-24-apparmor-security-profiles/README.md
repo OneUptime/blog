@@ -10,7 +10,7 @@ Description: Learn how to configure AppArmor security profiles to restrict appli
 
 > AppArmor is a Mandatory Access Control (MAC) security system that confines programs to a limited set of resources. Unlike traditional discretionary access controls, AppArmor profiles define exactly what files, network access, and capabilities each application can use.
 
-Your web server should not be reading SSH keys. Your database should not be executing shell commands. AppArmor makes sure they cannot.
+Your web server should not be reading SSH keys. Your database should not be executing shell commands. A correctly loaded AppArmor profile in enforce mode makes sure they cannot.
 
 ---
 
@@ -549,8 +549,8 @@ sudo apparmor_parser -a /etc/apparmor.d/usr.local.bin.myapp
 # Remove a profile from kernel (temporary)
 sudo apparmor_parser -R /etc/apparmor.d/usr.local.bin.myapp
 
-# Check syntax without loading
-sudo apparmor_parser -p /etc/apparmor.d/usr.local.bin.myapp
+# Check syntax without loading into the kernel
+sudo apparmor_parser -Q /etc/apparmor.d/usr.local.bin.myapp
 ```
 
 ---
@@ -608,8 +608,8 @@ profile my-container-profile flags=(attach_disconnected,mediate_deleted) {
 ### Issue 1: Profile Not Loading
 
 ```bash
-# Check for syntax errors
-sudo apparmor_parser -p /etc/apparmor.d/profile_name
+# Check for syntax errors without loading into the kernel
+sudo apparmor_parser -Q /etc/apparmor.d/profile_name
 
 # View detailed parsing output
 sudo apparmor_parser -v /etc/apparmor.d/profile_name

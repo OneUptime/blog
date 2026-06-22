@@ -107,7 +107,7 @@ fi
 ```bash
 #!/bin/bash
 
-read -p "Enter your name: " name
+read -r -p "Enter your name: " name
 
 # Method 1: Using -z (check if string is empty)
 if [[ -z "$name" ]]; then
@@ -126,7 +126,7 @@ fi
 ```bash
 #!/bin/bash
 
-read -p "Enter username (3-20 characters): " username
+read -r -p "Enter username (3-20 characters): " username
 
 # Check minimum length
 if [[ ${#username} -lt 3 ]]; then
@@ -161,7 +161,7 @@ validate_email() {
     fi
 }
 
-read -p "Enter email address: " email
+read -r -p "Enter email address: " email
 
 if validate_email "$email"; then
     echo "Valid email: $email"
@@ -189,7 +189,7 @@ validate_identifier() {
     fi
 }
 
-read -p "Enter variable name: " var_name
+read -r -p "Enter variable name: " var_name
 
 if validate_identifier "$var_name"; then
     echo "Valid identifier: $var_name"
@@ -220,7 +220,7 @@ is_integer_v2() {
     [[ "$input" == "$((input))" ]] 2>/dev/null
 }
 
-read -p "Enter a number: " num
+read -r -p "Enter a number: " num
 
 if is_integer "$num"; then
     echo "$num is a valid integer"
@@ -245,7 +245,7 @@ validate_port() {
     fi
 
     # Check range (valid ports: 1-65535)
-    if [[ $port -lt 1 || $port -gt 65535 ]]; then
+    if (( 10#$port < 1 || 10#$port > 65535 )); then
         echo "Error: Port must be between 1 and 65535" >&2
         return 1
     fi
@@ -253,7 +253,7 @@ validate_port() {
     return 0
 }
 
-read -p "Enter port number: " port
+read -r -p "Enter port number: " port
 
 if validate_port "$port"; then
     echo "Using port: $port"
@@ -271,7 +271,7 @@ is_float() {
     [[ $input =~ ^-?[0-9]*\.?[0-9]+$ ]]
 }
 
-read -p "Enter a decimal number: " decimal
+read -r -p "Enter a decimal number: " decimal
 
 if is_float "$decimal"; then
     echo "$decimal is a valid number"
@@ -325,18 +325,24 @@ fi
 
 # Safe path validation - prevent directory traversal
 validate_safe_path() {
-    local base_dir="$1"
+    local base_dir
     local user_path="$2"
+
+    base_dir=$(realpath -m "$1" 2>/dev/null)
 
     # Resolve to absolute path
     local resolved_path
     resolved_path=$(realpath -m "$base_dir/$user_path" 2>/dev/null)
 
     # Check if the resolved path is within the base directory
-    if [[ "$resolved_path" != "$base_dir"* ]]; then
-        echo "Error: Path traversal detected" >&2
-        return 1
-    fi
+    case "$resolved_path" in
+        "$base_dir"|"$base_dir"/*)
+            ;;
+        *)
+            echo "Error: Path traversal detected" >&2
+            return 1
+            ;;
+    esac
 
     echo "$resolved_path"
     return 0
@@ -424,7 +430,7 @@ validate_date_format() {
     return 0
 }
 
-read -p "Enter date (YYYY-MM-DD): " input_date
+read -r -p "Enter date (YYYY-MM-DD): " input_date
 
 if validate_date_format "$input_date"; then
     echo "Valid date: $input_date"
@@ -463,7 +469,7 @@ sanitize_input() {
     # Remove shell metacharacters
     # This removes: ; & | ` $ ( ) { } [ ] < > \ ! # * ? ~
     local sanitized
-    sanitized=$(echo "$input" | tr -d ';|&`$(){}[]<>\\!#*?~')
+    sanitized=$(printf '%s' "$input" | tr -d ';|&`$(){}[]<>\\!#*?~')
 
     echo "$sanitized"
 }
@@ -474,14 +480,14 @@ sanitize_strict() {
 
     # Only keep alphanumeric, spaces, and basic punctuation
     local sanitized
-    sanitized=$(echo "$input" | tr -cd 'a-zA-Z0-9 .,_-')
+    sanitized=$(printf '%s' "$input" | tr -cd 'a-zA-Z0-9 .,_-')
 
     echo "$sanitized"
 }
 
 user_input='; rm -rf /'  # Malicious input
 safe_input=$(sanitize_strict "$user_input")
-echo "Sanitized: '$safe_input'"  # Output: "rm rf"
+echo "Sanitized: '$safe_input'"  # Output: " rm -rf "
 ```
 
 ### Escape Special Characters for Safe Use
@@ -532,7 +538,7 @@ is_integer() {
 
 # Check if value is a positive integer
 is_positive_integer() {
-    [[ "$1" =~ ^[0-9]+$ ]] && [[ "$1" -gt 0 ]]
+    [[ "$1" =~ ^[0-9]+$ ]] && (( 10#$1 > 0 ))
 }
 
 # Check if value is within range
@@ -541,7 +547,29 @@ is_in_range() {
     local min="$2"
     local max="$3"
 
-    is_integer "$value" && [[ "$value" -ge "$min" ]] && [[ "$value" -le "$max" ]]
+    if ! is_integer "$value" || ! is_integer "$min" || ! is_integer "$max"; then
+        return 1
+    fi
+
+    if [[ $value == -* ]]; then
+        value=$((-10#${value#-}))
+    else
+        value=$((10#$value))
+    fi
+
+    if [[ $min == -* ]]; then
+        min=$((-10#${min#-}))
+    else
+        min=$((10#$min))
+    fi
+
+    if [[ $max == -* ]]; then
+        max=$((-10#${max#-}))
+    else
+        max=$((10#$max))
+    fi
+
+    (( value >= min && value <= max ))
 }
 
 # Check if string matches pattern
@@ -576,7 +604,7 @@ is_valid_ip() {
     # Check each octet is 0-255
     IFS='.' read -ra octets <<< "$ip"
     for octet in "${octets[@]}"; do
-        if [[ $octet -gt 255 ]]; then
+        if (( 10#$octet > 255 )); then
             return 1
         fi
     done
@@ -677,9 +705,9 @@ prompt_until_valid() {
     local result
 
     while true; do
-        read -p "$prompt" result
+        read -r -p "$prompt" result
 
-        if $validator "$result"; then
+        if "$validator" "$result"; then
             echo "$result"
             return 0
         else

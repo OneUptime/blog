@@ -102,13 +102,22 @@ class PriceCache:
         results = pipe.execute()
 
         prices = {}
+        current_time = int(time.time())
         for pid, data in zip(product_ids, results):
             if data:
-                # Parse and return (simplified)
                 price_data = json.loads(data)
+                sale_active = False
+                if price_data.get('sale_price'):
+                    sale_start = price_data.get('sale_start', 0)
+                    sale_end = price_data.get('sale_end') or float('inf')
+                    sale_active = sale_start <= current_time <= sale_end
+
                 prices[pid] = {
                     'base_price': Decimal(price_data['base_price']),
-                    'current_price': Decimal(price_data.get('sale_price') or price_data['base_price'])
+                    'sale_price': Decimal(price_data['sale_price']) if price_data['sale_price'] else None,
+                    'current_price': Decimal(price_data['sale_price']) if sale_active else Decimal(price_data['base_price']),
+                    'currency': price_data['currency'],
+                    'on_sale': sale_active
                 }
 
         return prices
@@ -210,14 +219,27 @@ class PriceCache {
 
     const results = await pipeline.exec();
     const prices = {};
+    const currentTime = Math.floor(Date.now() / 1000);
 
     for (let i = 0; i < productIds.length; i++) {
       const [err, data] = results[i];
       if (data) {
         const priceData = JSON.parse(data);
+        let saleActive = false;
+        if (priceData.sale_price) {
+          const saleStart = priceData.sale_start || 0;
+          const saleEnd = priceData.sale_end || Infinity;
+          saleActive = saleStart <= currentTime && currentTime <= saleEnd;
+        }
+
         prices[productIds[i]] = {
           basePrice: new Decimal(priceData.base_price),
-          currentPrice: new Decimal(priceData.sale_price || priceData.base_price)
+          salePrice: priceData.sale_price ? new Decimal(priceData.sale_price) : null,
+          currentPrice: saleActive
+            ? new Decimal(priceData.sale_price)
+            : new Decimal(priceData.base_price),
+          currency: priceData.currency,
+          onSale: saleActive
         };
       }
     }
@@ -281,8 +303,8 @@ class CouponService:
             'discount_type': config['discount_type'],
             'discount_value': str(config['discount_value']),
             'min_purchase': str(config.get('min_purchase', 0)),
-            'max_discount': str(config.get('max_discount')) if config.get('max_discount') else None,
-            'max_uses': config.get('max_uses'),
+            'max_discount': str(config.get('max_discount')) if config.get('max_discount') else '',
+            'max_uses': str(config['max_uses']) if config.get('max_uses') is not None else '',
             'max_uses_per_user': config.get('max_uses_per_user', 1),
             'valid_from': config.get('valid_from', int(time.time())),
             'valid_until': config['valid_until'],
@@ -306,6 +328,8 @@ class CouponService:
         """Validate a coupon for a user and cart."""
         key = f"{self.prefix}:{code.upper()}"
         coupon = r.hgetall(key)
+        product_ids = product_ids or []
+        category_ids = category_ids or []
 
         if not coupon:
             return {'valid': False, 'error': 'INVALID_CODE'}
@@ -349,9 +373,15 @@ class CouponService:
 
         # Check product restriction
         allowed_products = json.loads(coupon.get('product_ids', '[]'))
-        if allowed_products and product_ids:
+        if allowed_products:
             if not any(p in allowed_products for p in product_ids):
                 return {'valid': False, 'error': 'PRODUCTS_NOT_ELIGIBLE'}
+
+        # Check category restriction
+        allowed_categories = json.loads(coupon.get('category_ids', '[]'))
+        if allowed_categories:
+            if not any(c in allowed_categories for c in category_ids):
+                return {'valid': False, 'error': 'CATEGORIES_NOT_ELIGIBLE'}
 
         # Calculate discount
         discount = self._calculate_discount(coupon, cart_total)
@@ -387,6 +417,25 @@ class CouponService:
         lua_script = """
         local key = KEYS[1]
         local user_key = KEYS[2]
+        local current_time = tonumber(ARGV[1])
+
+        if redis.call('EXISTS', key) == 0 then
+            return 'INVALID_CODE'
+        end
+
+        if redis.call('HGET', key, 'active') ~= 'true' then
+            return 'COUPON_INACTIVE'
+        end
+
+        local valid_from = tonumber(redis.call('HGET', key, 'valid_from') or 0)
+        local valid_until = tonumber(redis.call('HGET', key, 'valid_until') or 0)
+        if current_time < valid_from then
+            return 'NOT_YET_VALID'
+        end
+        if current_time > valid_until then
+            return 'EXPIRED'
+        end
+
         local max_uses = tonumber(redis.call('HGET', key, 'max_uses'))
         local max_user_uses = tonumber(redis.call('HGET', key, 'max_uses_per_user') or 1)
         local current_uses = tonumber(redis.call('HGET', key, 'uses') or 0)
@@ -409,7 +458,7 @@ class CouponService:
         return 'SUCCESS'
         """
 
-        result = r.eval(lua_script, 2, key, user_key)
+        result = r.eval(lua_script, 2, key, user_key, int(time.time()))
 
         if result == 'SUCCESS':
             # Track order-coupon mapping
@@ -666,8 +715,9 @@ class PricingEngine:
         coupon_discount = Decimal('0')
         if coupon_code:
             product_ids = [item['product_id'] for item in cart_items]
+            category_ids = [item.get('category_id') for item in cart_items if item.get('category_id')]
             coupon_result = self.coupon_service.validate_coupon(
-                coupon_code, user_id, subtotal, product_ids
+                coupon_code, user_id, subtotal, product_ids, category_ids
             )
 
             if coupon_result['valid']:

@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Caching, Cache-Aside, Performance, Database, Python, Node.js, Go
 
-Description: A comprehensive guide to implementing the cache-aside pattern with Redis for read-through caching of database queries.
+Description: A comprehensive guide to implementing the cache-aside pattern with Redis for lazy loading of database query results.
 
 ---
 
-> The cache-aside pattern is the most widely used caching strategy for database queries. Also known as "lazy loading" or "read-through" caching, it loads data into the cache only when needed, reducing database load while keeping your cache efficient.
+> The cache-aside pattern is the most widely used caching strategy for database queries. Also known as "lazy loading," it loads data into the cache only when needed, reducing database load while keeping your cache efficient.
 
 In the cache-aside pattern, the application code is responsible for maintaining the cache. When data is requested, the application first checks the cache - if found (cache hit), it returns immediately. If not found (cache miss), it fetches from the database, stores in cache, and then returns the data.
 
@@ -32,8 +32,8 @@ flowchart TB
     App -->|"2. Check Cache"| Redis[("Redis Cache")]
     Redis -->|"3. Return (on hit)"| App
     App -->|"4. Query (on miss)"| DB[("Database")]
-    DB -->|"5. Store in cache"| Redis
     DB --> App
+    App -->|"5. Store in cache"| Redis
 ```
 
 ---
@@ -84,10 +84,10 @@ def get_user(user_id: str) -> Optional[dict]:
 
     if user_data:
         # Store in cache with TTL of 1 hour
-        redis_client.setex(
+        redis_client.set(
             cache_key,
-            3600,  # TTL in seconds
-            json.dumps(user_data)
+            json.dumps(user_data),
+            ex=3600  # TTL in seconds
         )
 
     return user_data
@@ -142,7 +142,7 @@ def cache_aside(
 
             # Store in cache
             if result is not None:
-                redis_client.setex(cache_key, ttl, json.dumps(result))
+                redis_client.set(cache_key, json.dumps(result), ex=ttl)
 
             return result
 
@@ -158,7 +158,7 @@ def get_user_profile(user_id: str) -> dict:
 @cache_aside(
     prefix="search",
     ttl=300,
-    key_builder=lambda query, page: f"{hashlib.md5(query.encode()).hexdigest()}:{page}"
+    key_builder=lambda query, page=1: f"{hashlib.md5(query.encode()).hexdigest()}:{page}"
 )
 def search_products(query: str, page: int = 1) -> list:
     """Search products with caching"""
@@ -178,14 +178,15 @@ npm install redis
 ### Basic Implementation
 
 ```javascript
-const redis = require('redis');
+import { createClient } from 'redis';
 
 // Create Redis client
-const client = redis.createClient({
+const client = createClient({
     url: 'redis://localhost:6379'
 });
 
-client.connect();
+client.on('error', err => console.error('Redis Client Error', err));
+await client.connect();
 
 /**
  * Get user data using cache-aside pattern
@@ -207,7 +208,7 @@ async function getUser(userId) {
 
     if (userData) {
         // Store in cache with TTL
-        await client.setEx(cacheKey, 3600, JSON.stringify(userData));
+        await client.set(cacheKey, JSON.stringify(userData), { EX: 3600 });
     }
 
     return userData;
@@ -240,7 +241,7 @@ function cacheAside(options = {}) {
 
             // Store in cache
             if (result !== null && result !== undefined) {
-                await client.setEx(cacheKey, ttl, JSON.stringify(result));
+                await client.set(cacheKey, JSON.stringify(result), { EX: ttl });
             }
 
             return result;
@@ -261,7 +262,7 @@ async function withCache(key, ttl, fetchFn) {
     // Fetch and cache
     const result = await fetchFn();
     if (result !== null && result !== undefined) {
-        await client.setEx(key, ttl, JSON.stringify(result));
+        await client.set(key, JSON.stringify(result), { EX: ttl });
     }
 
     return result;
@@ -316,14 +317,13 @@ func NewCacheAside(addr string, ttl time.Duration) *CacheAside {
 }
 
 // Get retrieves data using cache-aside pattern
-func (c *CacheAside) Get(key string, fetchFn func() (interface{}, error)) (interface{}, error) {
+func (c *CacheAside) Get(key string, dest interface{}, fetchFn func() (interface{}, error)) error {
     // Check cache
     cached, err := c.client.Get(ctx, key).Result()
     if err == nil {
-        var result interface{}
-        if err := json.Unmarshal([]byte(cached), &result); err == nil {
+        if err := json.Unmarshal([]byte(cached), dest); err == nil {
             fmt.Printf("Cache hit for %s\n", key)
-            return result, nil
+            return nil
         }
     }
 
@@ -331,16 +331,24 @@ func (c *CacheAside) Get(key string, fetchFn func() (interface{}, error)) (inter
     fmt.Printf("Cache miss for %s\n", key)
     data, err := fetchFn()
     if err != nil {
-        return nil, err
+        return err
     }
 
     // Store in cache
     if data != nil {
-        jsonData, _ := json.Marshal(data)
-        c.client.Set(ctx, key, jsonData, c.ttl)
+        jsonData, err := json.Marshal(data)
+        if err != nil {
+            return err
+        }
+        if err := c.client.Set(ctx, key, jsonData, c.ttl).Err(); err != nil {
+            return err
+        }
+        if err := json.Unmarshal(jsonData, dest); err != nil {
+            return err
+        }
     }
 
-    return data, nil
+    return nil
 }
 
 // User represents a user entity
@@ -354,7 +362,8 @@ type User struct {
 func GetUser(cache *CacheAside, userID string) (*User, error) {
     key := fmt.Sprintf("user:%s", userID)
 
-    result, err := cache.Get(key, func() (interface{}, error) {
+    var user User
+    err := cache.Get(key, &user, func() (interface{}, error) {
         // Fetch from database
         return fetchUserFromDatabase(userID)
     })
@@ -363,16 +372,7 @@ func GetUser(cache *CacheAside, userID string) (*User, error) {
         return nil, err
     }
 
-    // Type assertion
-    if user, ok := result.(map[string]interface{}); ok {
-        return &User{
-            ID:    user["id"].(string),
-            Name:  user["name"].(string),
-            Email: user["email"].(string),
-        }, nil
-    }
-
-    return nil, fmt.Errorf("invalid user data")
+    return &user, nil
 }
 
 func main() {
@@ -398,13 +398,13 @@ Cache invalidation is one of the hardest problems in computer science. Here are 
 
 ```python
 # Simple TTL - data expires after fixed time
-redis_client.setex("user:123", 3600, json.dumps(user_data))
+redis_client.set("user:123", json.dumps(user_data), ex=3600)
 
 # Use shorter TTL for frequently changing data
-redis_client.setex("stock:AAPL", 60, json.dumps(stock_price))  # 1 minute
+redis_client.set("stock:AAPL", json.dumps(stock_price), ex=60)  # 1 minute
 
 # Use longer TTL for static data
-redis_client.setex("product:catalog", 86400, json.dumps(catalog))  # 24 hours
+redis_client.set("product:catalog", json.dumps(catalog), ex=86400)  # 24 hours
 ```
 
 ### 2. Explicit Invalidation on Write
@@ -484,7 +484,7 @@ def get_user_with_version(user_id: str) -> dict:
 
     user = fetch_user_from_database(user_id)
     if user:
-        redis_client.setex(cache_key, 3600, json.dumps(user))
+        redis_client.set(cache_key, json.dumps(user), ex=3600)
 
     return user
 
@@ -511,7 +511,7 @@ def get_user_unsafe(user_id: str) -> dict:
 
     # Multiple requests can reach here simultaneously
     user = fetch_user_from_database(user_id)  # Expensive!
-    redis_client.setex(f"user:{user_id}", 3600, json.dumps(user))
+    redis_client.set(f"user:{user_id}", json.dumps(user), ex=3600)
     return user
 ```
 
@@ -545,12 +545,18 @@ def get_user_with_lock(user_id: str) -> dict:
             # Fetch from database
             user = fetch_user_from_database(user_id)
             if user:
-                redis_client.setex(cache_key, 3600, json.dumps(user))
+                redis_client.set(cache_key, json.dumps(user), ex=3600)
             return user
         finally:
-            # Release lock (only if we own it)
-            if redis_client.get(lock_key) == lock_value:
-                redis_client.delete(lock_key)
+            # Release lock atomically, only if we own it
+            release_script = """
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            """
+            redis_client.eval(release_script, 1, lock_key, lock_value)
     else:
         # Wait for lock holder to populate cache
         for _ in range(50):  # Max 5 seconds
@@ -567,7 +573,7 @@ def get_user_with_lock(user_id: str) -> dict:
 
 ```python
 import random
-import math
+from typing import Any
 
 def get_with_early_expiration(
     key: str,
@@ -589,20 +595,22 @@ def get_with_early_expiration(
 
         # Calculate early expiration probability
         # As TTL decreases, probability of refresh increases
-        delta = ttl - remaining_ttl
-        probability = math.exp(-delta / (beta * ttl))
+        if remaining_ttl > 0:
+            probability = 1 - (remaining_ttl / ttl)
+        else:
+            probability = 1
 
-        if random.random() < probability:
+        if random.random() < min(1, probability * beta):
             # Early refresh - fetch in background
             data = fetch_fn()
-            redis_client.setex(key, ttl, json.dumps(data))
+            redis_client.set(key, json.dumps(data), ex=ttl)
 
         return data
 
     # Cache miss
     data = fetch_fn()
     if data:
-        redis_client.setex(key, ttl, json.dumps(data))
+        redis_client.set(key, json.dumps(data), ex=ttl)
 
     return data
 ```
@@ -649,7 +657,7 @@ def get_user_resilient(user_id: str) -> dict:
     # Try to cache, but don't fail if Redis is down
     try:
         if user:
-            redis_client.setex(cache_key, 3600, json.dumps(user))
+            redis_client.set(cache_key, json.dumps(user), ex=3600)
     except redis.RedisError:
         pass
 
@@ -697,7 +705,7 @@ def get_user_instrumented(user_id: str) -> dict:
 
     if user:
         with cache_latency.labels(cache='user', operation='set').time():
-            redis_client.setex(cache_key, 3600, json.dumps(user))
+            redis_client.set(cache_key, json.dumps(user), ex=3600)
 
     return user
 ```

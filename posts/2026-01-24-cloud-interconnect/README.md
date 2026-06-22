@@ -55,7 +55,7 @@ flowchart TB
 ### When to Use Each Option
 
 **Dedicated Interconnect** is best when you need:
-- 10 Gbps or 100 Gbps connections
+- 10 Gbps, 100 Gbps, or 400 Gbps connections
 - Direct physical connection to Google
 - Highest possible performance and lowest latency
 
@@ -104,6 +104,7 @@ gcloud compute interconnects create my-interconnect \
     --link-type=LINK_TYPE_ETHERNET_10G_LR \
     --location=las-vegas-zone1-2 \
     --requested-link-count=2 \
+    --customer-name="Example Company" \
     --description="Primary datacenter connection" \
     --admin-enabled
 ```
@@ -120,9 +121,9 @@ gcloud compute routers create my-cloud-router \
     --network=my-vpc \
     --region=us-central1 \
     --asn=65001 \
-    --advertise-mode=custom \
-    --set-advertised-groups=ALL_SUBNETS \
-    --set-advertised-ranges=10.0.0.0/8
+    --advertisement-mode=custom \
+    --set-advertisement-groups=ALL_SUBNETS \
+    --set-advertisement-ranges=10.0.0.0/8
 ```
 
 ### Step 3: Create VLAN Attachments
@@ -229,7 +230,7 @@ gcloud compute interconnects attachments describe partner-attachment \
 # Activate the attachment after provider confirmation
 gcloud compute interconnects attachments partner update partner-attachment \
     --region=us-central1 \
-    --admin-enabled
+    --enable-admin
 ```
 
 ## High Availability Configuration
@@ -291,16 +292,16 @@ gcloud compute interconnects attachments dedicated create attachment-zone2 \
 Use Multi-Exit Discriminator (MED) values to control traffic flow preferences.
 
 ```bash
-# Update Cloud Router to advertise routes with MED values
-gcloud compute routers update cloud-router-1 \
+# Update BGP peers to advertise routes with different MED values
+gcloud compute routers update-bgp-peer cloud-router-1 \
     --region=us-central1 \
-    --advertisement-mode=custom \
-    --set-advertised-ranges='10.0.0.0/8:100'
+    --peer-name=peer-zone1 \
+    --advertised-route-priority=100
 
-gcloud compute routers update cloud-router-2 \
+gcloud compute routers update-bgp-peer cloud-router-2 \
     --region=us-central1 \
-    --advertisement-mode=custom \
-    --set-advertised-ranges='10.0.0.0/8:200'
+    --peer-name=peer-zone2 \
+    --advertised-route-priority=200
 ```
 
 ## Monitoring Interconnect Health
@@ -345,15 +346,15 @@ def create_interconnect_alert(project_id, interconnect_name):
                     "filter": f'''
                         resource.type="interconnect"
                         resource.labels.interconnect_name="{interconnect_name}"
-                        metric.type="compute.googleapis.com/interconnect/link/operational_status"
+                        metric.type="interconnect.googleapis.com/network/interconnect/operational"
                     ''',
                     "comparison": "COMPARISON_LT",
-                    "threshold_value": 1,  # 1 = UP, 0 = DOWN
+                    "threshold_value": 1,
                     "duration": duration_pb2.Duration(seconds=300),
                     "aggregations": [
                         {
                             "alignment_period": duration_pb2.Duration(seconds=60),
-                            "per_series_aligner": "ALIGN_MEAN",
+                            "per_series_aligner": "ALIGN_COUNT_TRUE",
                         }
                     ],
                 },
@@ -427,8 +428,7 @@ Interconnect pricing includes port fees and egress charges. Here are some optimi
 
 # Check current utilization
 gcloud monitoring read \
-    "fetch compute.googleapis.com/interconnect/link/received_bytes_count" \
-    --filter='resource.labels.interconnect_name="my-interconnect"' \
+    "fetch interconnect | metric 'interconnect.googleapis.com/network/interconnect/received_bytes_count' | filter resource.interconnect_name == 'my-interconnect'" \
     --interval="$(date -d '7 days ago' -Iseconds)/$(date -Iseconds)"
 
 # For variable workloads, consider Partner Interconnect with smaller capacity
@@ -439,7 +439,7 @@ gcloud monitoring read \
 
 Configuring Cloud Interconnect requires careful planning and coordination with either colocation providers or service partners. Key considerations include:
 
-- Choose Dedicated Interconnect for highest performance (10G or 100G connections)
+- Choose Dedicated Interconnect for highest performance (10G, 100G, or 400G connections)
 - Choose Partner Interconnect for flexibility and smaller capacity needs
 - Always configure redundant connections across different availability domains
 - Use BGP MED values to control traffic engineering preferences

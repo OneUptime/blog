@@ -43,11 +43,11 @@ processors:
     # How often to check memory usage
     check_interval: 1s
 
-    # Hard limit - collector will drop data above this
+    # Hard limit - target maximum heap allocation
     limit_mib: 512
 
-    # Soft limit - collector will start refusing data before hitting hard limit
-    # This gives time for GC to run before hitting the hard limit
+    # Spike limit - soft limit is limit_mib - spike_limit_mib
+    # The collector starts refusing data above the soft limit
     spike_limit_mib: 128
 
     # Alternative: percentage-based limits (useful in containerized environments)
@@ -61,12 +61,12 @@ The memory limiter works by monitoring memory usage and applying backpressure:
 flowchart TD
     A[Incoming Data] --> B{Memory Check}
     B -->|Below Soft Limit| C[Accept Data]
-    B -->|Above Soft Limit| D{Above Hard Limit?}
-    D -->|No| E[Accept with Warning]
-    D -->|Yes| F[Reject/Drop Data]
+    B -->|At or Above Soft Limit| D[Refuse Data and Return Error]
+    D --> E{Receiver Can Retry?}
+    E -->|Yes| C
+    E -->|No| F[Data May Be Dropped]
     C --> G[Continue Processing]
-    E --> G
-    F --> H[Return Error to Sender]
+    F --> H[Reduce Collector Memory Pressure]
 
     style C fill:#c8e6c9
     style E fill:#fff9c4
@@ -142,15 +142,14 @@ processors:
 
   # Attributes processor with conditions
   attributes/conditional:
+    include:
+      match_type: regexp
+      span_names:
+        - ".*database.*"
+        - ".*query.*"
     actions:
       - key: db.statement
         action: delete
-        # Only apply to spans matching these conditions
-        include:
-          match_type: regexp
-          span_names:
-            - ".*database.*"
-            - ".*query.*"
 ```
 
 ### 4. Filter Processor
@@ -161,41 +160,37 @@ The filter processor drops telemetry that matches (or does not match) specified 
 processors:
   # Filter traces
   filter/traces:
-    traces:
-      span:
-        # Drop health check spans
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
-        # Drop spans shorter than 1ms (likely not interesting)
-        - 'duration < 1000000'  # nanoseconds
+    error_mode: ignore
+    trace_conditions:
+      # Drop health check spans
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
+      # Drop spans shorter than 1ms (likely not interesting)
+      - 'span.end_time_unix_nano - span.start_time_unix_nano < 1000000'
 
   # Filter metrics
   filter/metrics:
-    metrics:
-      metric:
-        # Drop specific metrics by name
-        - 'name == "system.cpu.utilization"'
-        # Drop metrics with specific labels
-        - 'resource.attributes["service.name"] == "test-service"'
+    error_mode: ignore
+    metric_conditions:
+      # Drop specific metrics by name
+      - 'metric.name == "system.cpu.utilization"'
+      # Drop metrics with specific labels
+      - 'resource.attributes["service.name"] == "test-service"'
 
   # Filter logs
   filter/logs:
-    logs:
-      log_record:
-        # Drop debug logs
-        - 'severity_number < 9'  # Below INFO level
-        # Drop logs from specific services
-        - 'resource.attributes["service.name"] == "noisy-service"'
+    error_mode: ignore
+    log_conditions:
+      # Drop logs below INFO level
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
+      # Drop logs from specific services
+      - 'resource.attributes["service.name"] == "noisy-service"'
 
-  # Using include instead of exclude (whitelist approach)
+  # Whitelist approach: drop spans not from these services
   filter/include-only:
-    traces:
-      span:
-        include:
-          match_type: strict
-          services:
-            - "critical-service"
-            - "payment-service"
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] != "critical-service" and resource.attributes["service.name"] != "payment-service"'
 ```
 
 Filtering decision flow:
@@ -233,7 +228,7 @@ processors:
         action: insert
 
       - key: cloud.region
-        value: "${AWS_REGION}"
+        value: "${env:AWS_REGION}"
         action: insert
 
       # Rename attributes to match conventions
@@ -258,38 +253,38 @@ processors:
       - context: span
         statements:
           # Truncate long attribute values
-          - truncate_all(attributes, 256)
+          - truncate_all(span.attributes, 256)
 
           # Set span name based on attributes
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]])) where attributes["http.route"] != nil
+          - set(span.name, Concat([span.attributes["http.method"], span.attributes["http.route"]], " ")) where span.attributes["http.route"] != nil
 
           # Convert status code
-          - set(status.code, 2) where attributes["http.status_code"] >= 500
+          - set(span.status.code, STATUS_CODE_ERROR) where span.attributes["http.status_code"] >= 500
 
           # Add computed attribute
-          - set(attributes["latency_class"], "slow") where duration > 1000000000
-          - set(attributes["latency_class"], "fast") where duration <= 1000000000
+          - set(span.attributes["latency_class"], "slow") where span.end_time_unix_nano - span.start_time_unix_nano > 1000000000
+          - set(span.attributes["latency_class"], "fast") where span.end_time_unix_nano - span.start_time_unix_nano <= 1000000000
 
     # Transform metric data
     metric_statements:
       - context: datapoint
         statements:
           # Scale metric values
-          - set(value_double, value_double * 1000) where metric.name == "response_time_seconds"
+          - set(datapoint.value_double, datapoint.value_double * 1000) where metric.name == "response_time_seconds"
 
           # Add labels
-          - set(attributes["normalized"], true)
+          - set(datapoint.attributes["normalized"], true)
 
     # Transform log data
     log_statements:
       - context: log
         statements:
           # Parse JSON body
-          - merge_maps(attributes, ParseJSON(body), "insert") where IsMatch(body, "^\\{")
+          - merge_maps(log.attributes, ParseJSON(log.body), "insert") where IsMatch(log.body, "^\\{")
 
           # Mask sensitive data
-          - replace_pattern(body, "password=\\w+", "password=***")
-          - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "***@***.***")
+          - replace_pattern(log.body, "password=\\w+", "password=***")
+          - replace_pattern(log.body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "***@***.***")
 ```
 
 ### 7. Span Processor
@@ -298,7 +293,7 @@ The span processor modifies span names and extracts attributes from span names.
 
 ```yaml
 processors:
-  span:
+  span/rename:
     # Rename spans using attributes
     name:
       from_attributes:
@@ -306,6 +301,7 @@ processors:
         - http.route
       separator: " "
 
+  span/extract:
     # Extract attributes from span name using regex
     # Example: "GET /users/123" -> method="GET", user_id="123"
     name:
@@ -316,12 +312,12 @@ processors:
 
 ### 8. Probabilistic Sampler Processor
 
-The probabilistic sampler reduces data volume by sampling a percentage of traces.
+The probabilistic sampler reduces data volume by sampling spans based on the trace ID. Use tail sampling when you need whole-trace decisions.
 
 ```yaml
 processors:
   probabilistic_sampler:
-    # Sample 10% of traces
+    # Sample 10% of spans
     sampling_percentage: 10
 
     # Use trace ID for consistent sampling
@@ -383,7 +379,7 @@ processors:
   resource:
     attributes:
       - key: deployment.environment
-        value: "${ENVIRONMENT:-development}"
+        value: "${env:ENVIRONMENT}"
         action: insert
       - key: collector.version
         value: "1.0.0"
@@ -391,15 +387,14 @@ processors:
 
   # 3. Filter out unwanted telemetry
   filter/drop-noise:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/metrics"'
-        - 'attributes["http.route"] == "/ready"'
-    logs:
-      log_record:
-        - 'severity_number < 9'
-        - 'body == "Health check passed"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/metrics"'
+      - 'span.attributes["http.route"] == "/ready"'
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
+      - 'log.body == "Health check passed"'
 
   # 4. Modify attributes
   attributes/sanitize:
@@ -413,15 +408,16 @@ processors:
 
   # 5. Transform data
   transform/enrich:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
-          - set(attributes["processed_at"], Now())
-          - set(attributes["latency_ms"], duration / 1000000)
+          - set(span.attributes["processed_at_unix_nano"], UnixNano(Now()))
+          - set(span.attributes["latency_ms"], (span.end_time_unix_nano - span.start_time_unix_nano) / 1000000)
     log_statements:
       - context: log
         statements:
-          - set(attributes["collector.processed"], true)
+          - set(log.attributes["collector.processed"], true)
 
   # 6. Sample to reduce volume
   probabilistic_sampler:
@@ -437,7 +433,7 @@ exporters:
   otlphttp:
     endpoint: https://api.oneuptime.com
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
   debug:
     verbosity: detailed

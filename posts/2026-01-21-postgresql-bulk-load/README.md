@@ -10,7 +10,7 @@ Description: A guide to efficiently bulk loading data into PostgreSQL using COPY
 
 Bulk loading is essential for data migrations and ETL processes. This guide covers efficient techniques for loading large datasets.
 
-## COPY Command (Fastest)
+## COPY Command (Fast Built-in Method)
 
 ### Basic COPY
 
@@ -85,12 +85,13 @@ ALTER TABLE users ENABLE TRIGGER ALL;
 SET maintenance_work_mem = '1GB';
 ```
 
-### Disable WAL for Initial Load
+### Reduce WAL for Initial Load
 
 ```conf
 # For initial load only (data loss risk!)
 # postgresql.conf
 wal_level = minimal
+archive_mode = off
 max_wal_senders = 0
 ```
 
@@ -144,18 +145,18 @@ pg_bulkload -d myapp -i data.csv -O users
 
 ```bash
 # Split file and load in parallel
-split -l 1000000 data.csv data_part_
+tail -n +2 data.csv | split -l 1000000 - data_part_
 
 # Load each part
 for f in data_part_*; do
-    psql -c "COPY users FROM '$f' CSV" &
+    psql -d myapp -c "\copy users FROM '$f' WITH (FORMAT csv)" &
 done
 wait
 ```
 
 ## Best Practices
 
-1. **Use COPY** - Fastest method
+1. **Use COPY** - Fast built-in method
 2. **Drop indexes** - Recreate after load
 3. **Disable triggers** - If safe
 4. **Batch operations** - Not single inserts
@@ -164,4 +165,4 @@ wait
 
 ## Conclusion
 
-COPY is the fastest method for bulk loading. Optimize by disabling indexes and triggers during load, then rebuilding after completion.
+COPY is the fastest built-in method for bulk loading. Optimize by disabling indexes and triggers during load, then rebuilding after completion.

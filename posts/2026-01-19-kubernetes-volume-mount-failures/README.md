@@ -20,7 +20,7 @@ flowchart TD
     MSG --> |PVC not bound| PVC[Check PVC Status]
     MSG --> |Permission denied| PERM[Fix Permissions]
     MSG --> |Mount failed| MOUNT[Check CSI/Kubelet]
-    MSG --> |Read-only| ACCESS[Fix Access Mode]
+    MSG --> |Read-only| ACCESS[Fix readOnly setting]
     
     PVC --> PVC1{StorageClass exists?}
     PVC1 --> |No| FIX1[Create StorageClass]
@@ -31,7 +31,7 @@ flowchart TD
     
     PERM --> FIX4[Fix securityContext/fsGroup]
     MOUNT --> FIX5[Check CSI driver/kubelet]
-    ACCESS --> FIX6[Update PVC access mode]
+    ACCESS --> FIX6[Update pod/PV readOnly setting]
 ```
 
 ## Step 1: Check Pod Events
@@ -109,7 +109,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: standard
-provisioner: kubernetes.io/aws-ebs  # or your provider
+provisioner: ebs.csi.aws.com  # or your provider's CSI provisioner
 parameters:
   type: gp3
 reclaimPolicy: Delete
@@ -130,7 +130,7 @@ kubectl get pvc data-pvc -o jsonpath='{.spec.accessModes}'
 kubectl get pv <pv-name> -o jsonpath='{.spec.accessModes}'
 # ["ReadWriteOnce"]
 
-# If pod needs RWX but PV/PVC is RWO, binding fails
+# If PVC requests RWX but the PV only supports RWO, binding fails
 ```
 
 ### Solution
@@ -143,9 +143,9 @@ metadata:
   name: shared-data
 spec:
   accessModes:
-    - ReadWriteMany  # RWX - multiple pods can mount
-    # - ReadWriteOnce  # RWO - single pod
-    # - ReadOnlyMany   # ROX - multiple pods read-only
+    - ReadWriteMany  # RWX - many nodes can mount read-write
+    # - ReadWriteOnce  # RWO - one node can mount read-write
+    # - ReadOnlyMany   # ROX - many nodes can mount read-only
   resources:
     requests:
       storage: 10Gi
@@ -158,7 +158,7 @@ spec:
 
 ```bash
 # Error: "Multi-Attach error for volume"
-# Occurs when RWO volume is attached to node but pod on different node
+# Occurs when an RWO volume is attached to one node but another pod is scheduled on a different node
 
 # Check which node has volume attached
 kubectl get volumeattachment
@@ -311,7 +311,7 @@ spec:
           mountPath: /app/logs
           subPath: logs  # Now exists
 
-# Option 2: Use subPathExpr (dynamic, Kubernetes 1.17+)
+# Option 2: Use subPathExpr (dynamic, Kubernetes 1.17+) with POD_NAME defined as an environment variable
 volumeMounts:
   - name: data
     mountPath: /app/logs
@@ -366,7 +366,7 @@ spec:
           mountPath: /data
           readOnly: false  # Make sure this isn't true!
 
-# For PVC, check if PV has readOnly in claimRef
+# For PVC, check if the pod volume source or PV/CSI source forces readOnly
 kubectl get pv <pv-name> -o yaml
 ```
 
@@ -433,7 +433,7 @@ kubectl run debug-volume --rm -it --image=busybox \
       }
     }]
   }
-}' -- sh
+}'
 ```
 
 ## Summary
@@ -441,7 +441,7 @@ kubectl run debug-volume --rm -it --image=busybox \
 | Error | Cause | Solution |
 |-------|-------|----------|
 | PVC Pending | No matching PV | Create PV or check StorageClass |
-| Multi-Attach | RWO volume on multiple nodes | Use RWX or node affinity |
+| Multi-Attach | RWO volume on multiple nodes | Use RWX or keep pods on one node |
 | Permission denied | Wrong fsGroup/user | Set securityContext |
 | Mount failed | CSI driver issue | Restart CSI components |
 | Subpath not found | Directory missing | Use init container |

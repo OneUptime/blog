@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Bitmap, Analytics, Feature Flag, User Activity, Memory Efficient, SETBIT, GETBIT, BITCOUNT
 
-Description: A comprehensive guide to using Redis Bitmaps for analytics and feature flags, covering SETBIT, GETBIT, BITCOUNT, BITOP commands, and practical examples in Python, Node.
+Description: A comprehensive guide to using Redis Bitmaps for analytics and feature flags, covering SETBIT, GETBIT, BITCOUNT, BITOP commands, and practical examples in Python, Node.js, and Go.
 
 ---
 
@@ -17,12 +17,12 @@ In this guide, we will explore Redis Bitmaps in depth, covering essential comman
 A bitmap is essentially an array of bits where each bit can be 0 or 1. Redis stores bitmaps as strings, allowing you to:
 
 - Address individual bits by offset
-- Perform bitwise operations (AND, OR, XOR, NOT)
+- Perform bitwise operations (such as AND, OR, XOR, NOT)
 - Count set bits efficiently
 
 Memory efficiency example:
 - Tracking 100 million users' daily login: ~12.5 MB
-- Same with a Set: ~400 MB (assuming 4-byte user IDs)
+- Same with a Set: at least ~400 MB before Redis Set overhead (assuming 4-byte user IDs)
 
 Use cases:
 - Daily/weekly/monthly active users
@@ -94,7 +94,7 @@ BITOP OR active:either logins:2024-01-14 logins:2024-01-15
 # XOR - users active on exactly ONE day
 BITOP XOR active:one logins:2024-01-14 logins:2024-01-15
 
-# NOT - users NOT active
+# NOT - users NOT active within the stored bitmap length
 BITOP NOT inactive:2024-01-15 logins:2024-01-15
 ```
 
@@ -255,13 +255,16 @@ class FeatureFlags:
 
     def enable_for_percentage(self, feature: str, percentage: float, max_user_id: int) -> int:
         """Enable feature for percentage of users (deterministic)."""
-        # Enable for user IDs where user_id % 100 < percentage
-        threshold = int(percentage)
+        if not 0 <= percentage <= 100:
+            raise ValueError("percentage must be between 0 and 100")
+
+        # Enable for user IDs where user_id % 10000 < percentage * 100
+        threshold = int(percentage * 100)
         enabled_count = 0
 
         pipe = client.pipeline()
-        for user_id in range(max_user_id):
-            if user_id % 100 < threshold:
+        for user_id in range(1, max_user_id + 1):
+            if user_id % 10000 < threshold:
                 pipe.setbit(self._key(feature), user_id, 1)
                 enabled_count += 1
 

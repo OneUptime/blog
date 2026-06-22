@@ -24,14 +24,14 @@ sequenceDiagram
     User->>LB: HTTP Request
     LB->>FE: Forward Request
     FE->>App: Process Request
-    Note over App: Processing takes > 230s
+    Note over App: Processing takes > platform timeout
     FE-->>LB: 504 Gateway Timeout
     LB-->>User: 504 Gateway Timeout
 ```
 
 ### Key Timeout Values
 
-Azure App Service has a fixed request timeout of 230 seconds. You cannot change this. If your application does not respond within 230 seconds, you get a 504.
+Azure App Service has a fixed request timeout of about 230 seconds on Windows apps and 240 seconds on Linux apps. You cannot change this. If your application does not respond within the platform timeout, you get a 504.
 
 | Error Code | Meaning | Common Cause |
 |------------|---------|--------------|
@@ -68,7 +68,7 @@ az monitor app-insights component create \
 az webapp config appsettings set \
     --name myapp \
     --resource-group myresourcegroup \
-    --settings APPINSIGHTS_INSTRUMENTATIONKEY=<your-key>
+    --settings APPLICATIONINSIGHTS_CONNECTION_STRING="<your-connection-string>"
 ```
 
 ### Query Failed Requests
@@ -92,7 +92,7 @@ The most common cause of gateway timeouts is database queries that take too long
 ```mermaid
 flowchart LR
     A[App Service] -->|Slow Query| B[Azure SQL]
-    B -->|> 230s| C[Timeout]
+    B -->|> platform timeout| C[Timeout]
 
     A -->|Optimized Query| D[Azure SQL]
     D -->|< 30s| E[Success]
@@ -101,7 +101,7 @@ flowchart LR
 **Solution: Add query timeouts and optimize queries**
 
 ```csharp
-// C# - Set command timeout shorter than 230 seconds
+// C# - Set command timeout shorter than the App Service request timeout
 using var connection = new SqlConnection(connectionString);
 using var command = new SqlCommand(query, connection);
 command.CommandTimeout = 120; // 120 seconds max
@@ -161,22 +161,22 @@ except requests.Timeout:
 
 ### Cause 3: Application Startup Taking Too Long
 
-If your application takes longer than the health check timeout to start, the load balancer marks it as unhealthy.
+If your Linux app or container takes longer than the startup limit to become ready, App Service fails the startup attempt and retries. Health Check can also remove an unhealthy instance from the load balancer rotation.
 
 **Solution: Configure health check and startup settings**
 
 ```bash
-# Increase startup time limit
-az webapp config set \
+# Increase startup time limit for App Service on Linux
+az webapp config appsettings set \
     --name myapp \
     --resource-group myresourcegroup \
-    --startup-time-limit 300
+    --settings WEBSITES_CONTAINER_START_TIME_LIMIT=300
 
 # Configure health check path
 az webapp config set \
     --name myapp \
     --resource-group myresourcegroup \
-    --health-check-path /health
+    --generic-configurations '{"healthCheckPath": "/health"}'
 ```
 
 Create a lightweight health endpoint:
@@ -211,7 +211,7 @@ public async Task<IActionResult> ProcessData()
 
 // Do this (good)
 [HttpPost("process")]
-public async Task<IActionResult> ProcessData()
+public async Task<IActionResult> ProcessData([FromBody] object data)
 {
     var jobId = await _backgroundQueue.QueueAsync(data);
     return Accepted(new { jobId, statusUrl = $"/jobs/{jobId}" });
@@ -293,7 +293,7 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
 
 ### Pattern 1: Async Request-Reply
 
-For operations that might take longer than 230 seconds, use async patterns.
+For operations that might take longer than the App Service request timeout, use async patterns.
 
 ```mermaid
 sequenceDiagram
@@ -363,7 +363,7 @@ az monitor metrics alert create \
     --condition "avg Http5xx > 10" \
     --window-size 5m \
     --evaluation-frequency 1m \
-    --action-group myactiongroup
+    --action myactiongroup
 ```
 
 ## Checklist for Gateway Timeout Prevention
@@ -380,4 +380,4 @@ az monitor metrics alert create \
 
 ---
 
-Gateway timeouts are almost always caused by something in your application taking too long. Start with Application Insights to find the slow operations, then apply timeouts and async patterns to fix them. The 230 second limit is not going away, so design your application to complete requests quickly or use async patterns for longer operations.
+Gateway timeouts are almost always caused by something in your application taking too long. Start with Application Insights to find the slow operations, then apply timeouts and async patterns to fix them. The App Service request timeout is not going away, so design your application to complete requests quickly or use async patterns for longer operations.

@@ -76,9 +76,9 @@ Here is a recommended configuration for modern Node.js applications:
         // This enables modern JavaScript features like top-level await
         "target": "ES2022",
 
-        // Use Node16 module system for proper ESM support
+        // Use Node20 module system for Node.js 20 behavior
         // This handles both .mjs and .cjs files correctly
-        "module": "Node16",
+        "module": "Node20",
         "moduleResolution": "Node16",
 
         // Output directory for compiled JavaScript
@@ -195,7 +195,7 @@ ES Modules use `import` and `export` natively:
 {
     "compilerOptions": {
         "target": "ES2022",
-        "module": "Node16",
+        "module": "Node20",
         "moduleResolution": "Node16",
         "outDir": "./dist",
         "rootDir": "./src",
@@ -220,7 +220,7 @@ Your `package.json` should specify `"type": "module"`:
 }
 ```
 
-**Important**: With ESM, you must include file extensions in imports:
+**Important**: With ESM, you must include file extensions in relative imports:
 
 ```typescript
 // With ESM, always include the .js extension (even for .ts files)
@@ -265,18 +265,18 @@ import { User } from "@models/user";
 
 TypeScript path aliases only work at compile time. For runtime, you need additional setup.
 
-**Option 1: Use tsconfig-paths**
+**Option 1: Use tsconfig-paths during CommonJS ts-node development**
 
 ```bash
-npm install -D tsconfig-paths
+npm install -D ts-node tsconfig-paths
 ```
 
-Update your start script:
+Update your development script:
 
 ```json
 {
     "scripts": {
-        "start": "node -r tsconfig-paths/register dist/index.js"
+        "dev": "ts-node -r tsconfig-paths/register src/index.ts"
     }
 }
 ```
@@ -404,7 +404,7 @@ You might want different settings for development and production.
 {
     "compilerOptions": {
         "target": "ES2022",
-        "module": "Node16",
+        "module": "Node20",
         "moduleResolution": "Node16",
         "rootDir": "./src",
         "strict": true,
@@ -566,7 +566,7 @@ main().catch((error) => {
 
 ### Import Extensions with ESM
 
-When using ES Modules, always include `.js` extensions in imports:
+When using ES Modules, always include `.js` extensions in relative imports:
 
 ```typescript
 // Wrong - will fail at runtime
@@ -591,7 +591,7 @@ Enable JSON imports in your config:
 Then import JSON files:
 
 ```typescript
-import packageJson from "../package.json" assert { type: "json" };
+import packageJson from "../package.json" with { type: "json" };
 console.log(packageJson.version);
 ```
 

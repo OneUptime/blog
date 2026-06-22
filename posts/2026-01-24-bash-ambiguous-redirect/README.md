@@ -54,7 +54,7 @@ echo "Hello World" > "$filename"  # WORKS
 ```bash
 #!/bin/bash
 
-# Problematic - variable is empty
+# Problematic - variable is empty or unset
 echo "Data" > $output_file  # FAILS
 
 # Fixed - set a default value
@@ -62,10 +62,10 @@ output_file="${output_file:-/tmp/default_output.txt}"
 echo "Data" > "$output_file"  # WORKS
 
 # Or check if variable is set
-if [[ -n "$output_file" ]]; then
-    echo "Data" > "$output_file"
+if [[ -n "${custom_output_file:-}" ]]; then
+    echo "Data" > "$custom_output_file"
 else
-    echo "Error: output_file is not set" >&2
+    echo "Error: custom_output_file is not set" >&2
     exit 1
 fi
 ```
@@ -161,7 +161,7 @@ write_to_file "Hello World" "$output_file"
 |---------|----------|
 | Spaces in filename | Quote the variable: `"$filename"` |
 | Empty variable | Use default: `"${var:-default}"` |
-| Unset variable | Check first: `[[ -n "$var" ]]` |
+| Unset variable | Check first: `[[ -n "${var:-}" ]]` |
 | Multiple words | Use array or loop |
 | Command substitution | Quote: `"$(command)"` |
 

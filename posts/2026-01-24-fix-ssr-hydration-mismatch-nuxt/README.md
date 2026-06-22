@@ -8,7 +8,7 @@ Description: Diagnose and resolve Nuxt SSR hydration mismatch errors caused by c
 
 ---
 
-Hydration is the process where Vue takes over the server-rendered HTML and makes it interactive on the client. When the client-side virtual DOM does not match the server-rendered HTML, Vue throws a hydration mismatch warning. These mismatches can cause visual glitches, broken interactivity, or full page re-renders.
+Hydration is the process where Vue takes over the server-rendered HTML and makes it interactive on the client. When the client-side virtual DOM does not match the server-rendered HTML, Vue throws a hydration mismatch warning. These mismatches can cause visual glitches, broken interactivity, or Vue re-rendering the affected component tree.
 
 ## Understanding Hydration
 
@@ -128,14 +128,12 @@ onMounted(() => {
 </script>
 ```
 
-**Solution: Use Nuxt's useNuxtApp**
+**Solution: Use Nuxt's Runtime Flags**
 
 ```vue
 <script setup>
-const nuxtApp = useNuxtApp();
-
 // Only runs on client
-if (process.client) {
+if (import.meta.client) {
   const width = window.innerWidth;
 }
 
@@ -264,15 +262,15 @@ export default defineNuxtPlugin(() => {
 });
 ```
 
-### 5. Different HTML Structure
+### 5. Data-Dependent HTML Structure
 
-Whitespace or structural differences cause mismatches.
+Different server and client data can render different element structures.
 
 **Problem:**
 
 ```vue
 <template>
-  <!-- Extra whitespace can cause issues -->
+  <!-- items must be initialized the same way on server and client -->
   <ul>
     <li v-for="item in items" :key="item.id">
       {{ item.name }}
@@ -281,18 +279,23 @@ Whitespace or structural differences cause mismatches.
 </template>
 ```
 
-**Solution: Use Consistent Formatting**
+**Solution: Use Consistent Data**
 
 ```vue
+<script setup>
+const { data: items } = await useAsyncData('items', () => $fetch('/api/items'));
+</script>
+
 <template>
-  <ul><li
-    v-for="item in items"
-    :key="item.id"
-  >{{ item.name }}</li></ul>
+  <ul>
+    <li v-for="item in items" :key="item.id">
+      {{ item.name }}
+    </li>
+  </ul>
 </template>
 ```
 
-Or configure your linter to handle whitespace consistently.
+Or initialize the list from a stable `useState` value so both renders produce the same structure.
 
 ### 6. Invalid HTML Nesting
 
@@ -377,19 +380,9 @@ onMounted(() => {
 
 ## Debugging Hydration Mismatches
 
-### Enable Detailed Warnings
+### Check Development Console Warnings
 
-```typescript
-// nuxt.config.ts
-export default defineNuxtConfig({
-  vue: {
-    compilerOptions: {
-      // Shows which element caused the mismatch
-      isCustomElement: (tag) => false
-    }
-  }
-});
-```
+Vue logs hydration mismatch warnings in the browser console during development. Use those warnings to identify the component and DOM node that rendered differently.
 
 ### Log Server vs Client HTML
 
@@ -402,7 +395,7 @@ onMounted(() => {
   console.log('Client HTML:', containerRef.value?.innerHTML);
 });
 
-if (process.server) {
+if (import.meta.server) {
   onServerPrefetch(() => {
     // Would need different approach to log server HTML
     console.log('Server rendering component');
@@ -417,9 +410,9 @@ if (process.server) {
 </template>
 ```
 
-### Use Vue DevTools
+### Use Browser DevTools
 
-Vue DevTools highlights hydration mismatches in the component tree. Look for components marked with warnings.
+Use the browser console and Elements panel together: the console warning shows that hydration failed, and the Elements panel lets you inspect the DOM that Vue hydrated.
 
 ## Creating Hydration-Safe Components
 
@@ -472,11 +465,11 @@ export function useStorage<T>(key: string, defaultValue: T) {
         data.value = defaultValue;
       }
     }
-  });
 
-  watch(data, (newValue) => {
-    localStorage.setItem(key, JSON.stringify(newValue));
-  }, { deep: true });
+    watch(data, (newValue) => {
+      localStorage.setItem(key, JSON.stringify(newValue));
+    }, { deep: true });
+  });
 
   return data;
 }
@@ -582,7 +575,7 @@ const { data: posts, pending, error } = await useAsyncData(
 | Cause | Solution |
 |-------|----------|
 | Date/time values | Use ClientOnly or onMounted |
-| Browser APIs | Check process.client or use onMounted |
+| Browser APIs | Check import.meta.client or use onMounted |
 | Auth state differences | Use useCookie or server-consistent state |
 | Third-party DOM libs | Dynamic import with .client.ts |
 | Invalid HTML | Fix nesting issues |

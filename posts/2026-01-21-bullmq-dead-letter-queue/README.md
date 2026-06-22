@@ -15,7 +15,7 @@ Dead letter queues (DLQ) provide a safety net for jobs that fail repeatedly or c
 BullMQ does not have built-in DLQ support, but implementing one is straightforward:
 
 ```typescript
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue, Worker, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -101,7 +101,6 @@ interface DLQJobData {
 class DeadLetterQueueManager {
   private mainQueue: Queue;
   private dlq: Queue;
-  private dlqEvents: QueueEvents;
 
   constructor(
     mainQueueName: string,
@@ -114,10 +113,6 @@ class DeadLetterQueueManager {
   ) {
     this.mainQueue = new Queue(mainQueueName, { connection });
     this.dlq = new Queue(
-      `${mainQueueName}${options.dlqSuffix || '-dlq'}`,
-      { connection }
-    );
-    this.dlqEvents = new QueueEvents(
       `${mainQueueName}${options.dlqSuffix || '-dlq'}`,
       { connection }
     );
@@ -184,15 +179,14 @@ class DeadLetterQueueManager {
     }
 
     const dlqData = dlqJob.data as DLQJobData;
+    const originalOpts = { ...(dlqData.originalJob.opts || {}) };
+    delete originalOpts.jobId;
 
     // Re-add to main queue
     const newJob = await this.mainQueue.add(
       dlqData.originalJob.name,
       dlqData.originalJob.data,
-      {
-        ...dlqData.originalJob.opts,
-        jobId: undefined, // Generate new ID
-      }
+      originalOpts
     );
 
     // Mark DLQ job as processed
@@ -279,7 +273,6 @@ class DeadLetterQueueManager {
   async close(): Promise<void> {
     await this.mainQueue.close();
     await this.dlq.close();
-    await this.dlqEvents.close();
   }
 }
 ```
@@ -439,7 +432,7 @@ class DLQProcessor {
         return this.archiveJob(data);
 
       case 'manual':
-        // Move back to waiting state for manual review
+        // Fail the DLQ job so it remains available for manual review
         throw new Error('MANUAL_REVIEW_REQUIRED');
 
       default:
@@ -448,12 +441,14 @@ class DLQProcessor {
   }
 
   private async retryJob(data: DLQJobData): Promise<DLQProcessingResult> {
+    const originalOpts = { ...(data.originalJob.opts || {}) };
+    delete originalOpts.jobId;
+
     const newJob = await this.mainQueue.add(
       data.originalJob.name,
       data.originalJob.data,
       {
-        ...data.originalJob.opts,
-        jobId: undefined,
+        ...originalOpts,
         attempts: 3, // Reset attempts
       }
     );
@@ -477,7 +472,6 @@ class DLQProcessor {
 // Example analyzer function
 async function analyzeDLQJob(data: DLQJobData): Promise<DLQAction> {
   const errorType = data.failure.errorType;
-  const attemptsMade = data.failure.attemptsMade;
   const failedAt = new Date(data.failure.failedAt);
 
   // Auto-retry transient errors after some time

@@ -275,7 +275,7 @@ type Permission uint
 
 const (
     PermNone    Permission = 0
-    PermRead    Permission = 1 << iota // 1
+    PermRead    Permission = 1 << (iota - 1) // 1
     PermWrite                          // 2
     PermExecute                        // 4
     PermDelete                         // 8

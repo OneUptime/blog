@@ -452,13 +452,17 @@ spec:
         Automation: {{ .AutomationObject }}
         
         Files:
-        {{ range $filename, $_ := .Updated.Files -}}
+        {{ range $filename, $_ := .Changed.FileChanges -}}
         - {{ $filename }}
         {{ end -}}
         
         Objects:
-        {{ range $resource, $_ := .Updated.Objects -}}
+        {{ range $resource, $changes := .Changed.Objects -}}
         - {{ $resource.Kind }} {{ $resource.Name }}
+          Changes:
+        {{- range $_, $change := $changes }}
+            - {{ $change.OldValue }} -> {{ $change.NewValue }}
+        {{ end -}}
         {{ end -}}
     push:
       branch: main
@@ -480,8 +484,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          # {"$imagepolicy": "flux-system:frontend"}
-          image: myregistry/frontend:v1.2.3
+          image: myregistry/frontend:v1.2.3 # {"$imagepolicy": "flux-system:frontend"}
 ```
 
 ## Secrets Management
@@ -538,11 +541,20 @@ sops --encrypt --in-place secret.yaml
 
 ```yaml
 # infrastructure/controllers/sealed-secrets/release.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: sealed-secrets
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://bitnami-labs.github.io/sealed-secrets
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: sealed-secrets
-  namespace: kube-system
+  namespace: flux-system
 spec:
   interval: 1h
   chart:
@@ -562,12 +574,12 @@ spec:
 ```yaml
 # Monitor Flux with Prometheus
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
 spec:
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
   selector:
     matchLabels:
@@ -578,7 +590,7 @@ spec:
 
 ```yaml
 # Set up Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -589,7 +601,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call

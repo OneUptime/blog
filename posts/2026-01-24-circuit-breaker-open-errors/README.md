@@ -106,9 +106,13 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class PaymentService {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final RestTemplate restTemplate;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
@@ -190,6 +194,7 @@ resilience4j:
       paymentService:
         maxAttempts: 3
         waitDuration: 1s
+        enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
         retryExceptions:
           - java.io.IOException
@@ -398,7 +403,7 @@ func (cb *CircuitBreaker) allowRequest() bool {
         // Check if timeout has passed
         if time.Since(cb.lastFailure) > cb.timeout {
             cb.state = StateHalfOpen
-            cb.halfOpenCalls = 0
+            cb.halfOpenCalls = 1
             cb.successes = 0
             return true
         }
@@ -443,6 +448,8 @@ func (cb *CircuitBreaker) recordResult(err error) {
                 cb.state = StateClosed
                 cb.failures = 0
             }
+        } else if cb.state == StateClosed {
+            cb.failures = 0
         }
     }
 }
@@ -610,6 +617,9 @@ flowchart LR
 ```java
 @Service
 public class ProductService {
+
+    private static final org.slf4j.Logger log =
+        org.slf4j.LoggerFactory.getLogger(ProductService.class);
 
     private final RestTemplate restTemplate;
     private final CacheManager cacheManager;

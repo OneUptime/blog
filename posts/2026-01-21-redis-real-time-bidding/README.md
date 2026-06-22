@@ -263,22 +263,20 @@ class BidService:
 
     -- Check for auto-bid competition
     local auto_bid_key = auction_key .. ':auto_bid'
-    local existing_auto_bid = redis.call('HGETALL', auto_bid_key)
+    local auto_bidder = redis.call('HGET', auto_bid_key, 'bidder_id')
+    local auto_max = tonumber(redis.call('HGET', auto_bid_key, 'max_bid') or '0')
 
     local final_price = bid_amount
     local winner = bidder_id
 
-    if #existing_auto_bid > 0 then
-        local auto_bidder = existing_auto_bid[2]
-        local auto_max = tonumber(existing_auto_bid[4])
-
+    if auto_bidder then
         if auto_bidder ~= bidder_id and auto_max >= bid_amount then
             -- Auto-bidder outbids
             if is_auto_bid and max_auto_bid > auto_max then
                 -- New auto-bid is higher
                 final_price = auto_max + min_increment
                 winner = bidder_id
-                redis.call('HMSET', auto_bid_key, 'bidder_id', bidder_id, 'max_bid', max_auto_bid)
+                redis.call('HSET', auto_bid_key, 'bidder_id', bidder_id, 'max_bid', max_auto_bid)
             else
                 -- Existing auto-bidder wins
                 final_price = math.min(bid_amount + min_increment, auto_max)
@@ -300,7 +298,7 @@ class BidService:
 
     -- Set up new auto-bid if provided
     if is_auto_bid and max_auto_bid > final_price then
-        redis.call('HMSET', auto_bid_key, 'bidder_id', bidder_id, 'max_bid', max_auto_bid)
+        redis.call('HSET', auto_bid_key, 'bidder_id', bidder_id, 'max_bid', max_auto_bid)
     end
 
     -- Update auction
@@ -423,11 +421,76 @@ print(f"Bid result: {result}")
 
 ```python
 import asyncio
-import aioredis
+import json
+import time
+import uuid
+import redis.asyncio as redis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from typing import Dict, Set
+from pydantic import BaseModel
+from typing import Dict, Optional, Set
 
 app = FastAPI()
+
+class BidRequest(BaseModel):
+    bidder_id: str
+    amount: float
+    max_auto_bid: Optional[float] = None
+
+class AsyncBidService:
+    """Async wrapper for the bid script used by the FastAPI endpoint"""
+
+    def __init__(self, redis_client):
+        self.redis = redis_client
+        self._place_bid = redis_client.register_script(BidService.PLACE_BID_SCRIPT)
+
+    async def place_bid(
+        self,
+        auction_id: str,
+        bidder_id: str,
+        amount: float,
+        max_auto_bid: Optional[float] = None
+    ) -> Dict:
+        """Place a bid atomically"""
+        bid_id = str(uuid.uuid4())
+        timestamp = time.time()
+        is_auto_bid = max_auto_bid is not None and max_auto_bid > amount
+
+        result = await self._place_bid(
+            keys=[
+                f"auction:{auction_id}",
+                f"auction:{auction_id}:bids",
+                f"bidder:{bidder_id}:auctions"
+            ],
+            args=[
+                bid_id,
+                bidder_id,
+                str(amount),
+                str(timestamp),
+                'true' if is_auto_bid else 'false',
+                str(max_auto_bid or 0)
+            ]
+        )
+
+        bid_result = json.loads(result)
+
+        if bid_result.get('success'):
+            bid_count = await self.get_bid_count(auction_id)
+            await self.redis.publish(f"auction:{auction_id}:events", json.dumps({
+                'type': 'new_bid',
+                'auction_id': auction_id,
+                'bid_id': bid_result['bid_id'],
+                'amount': bid_result['amount'],
+                'bidder_id': bid_result['winner'],
+                'timestamp': timestamp,
+                'bid_count': bid_count
+            }))
+
+        return bid_result
+
+    async def get_bid_count(self, auction_id: str) -> int:
+        """Get total bid count"""
+        count = await self.redis.hget(f"auction:{auction_id}", 'bid_count')
+        return int(count) if count else 0
 
 class AuctionWebSocketManager:
     """Manage WebSocket connections for auction updates"""
@@ -439,7 +502,7 @@ class AuctionWebSocketManager:
 
     async def get_redis(self):
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost', decode_responses=True)
+            self.redis = redis.from_url('redis://localhost', decode_responses=True)
         return self.redis
 
     async def connect(self, websocket: WebSocket, auction_id: str, user_id: str = None):
@@ -477,17 +540,15 @@ class AuctionWebSocketManager:
     async def _subscribe_auction(self, auction_id: str):
         """Subscribe to auction events"""
         redis = await self.get_redis()
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(f"auction:{auction_id}:events")
+        async with redis.pubsub() as pubsub:
+            await pubsub.subscribe(f"auction:{auction_id}:events")
 
-        try:
-            async for message in pubsub.listen():
-                if message['type'] == 'message':
-                    await self._broadcast(auction_id, message['data'])
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await pubsub.unsubscribe(f"auction:{auction_id}:events")
+            try:
+                async for message in pubsub.listen():
+                    if message['type'] == 'message':
+                        await self._broadcast(auction_id, message['data'])
+            except asyncio.CancelledError:
+                pass
 
     async def _broadcast(self, auction_id: str, message: str):
         """Broadcast message to all connected clients"""
@@ -532,6 +593,7 @@ class AuctionWebSocketManager:
                 'current_price': float(auction_data['current_price']),
                 'current_winner': auction_data.get('current_winner') or None,
                 'bid_count': int(auction_data.get('bid_count', 0)),
+                'min_increment': float(auction_data['min_increment']),
                 'end_time': float(auction_data['end_time']),
                 'status': auction_data['status']
             },
@@ -566,12 +628,17 @@ async def auction_websocket(websocket: WebSocket, auction_id: str):
 
 
 @app.post("/api/auctions/{auction_id}/bid")
-async def place_bid(auction_id: str, bidder_id: str, amount: float, max_auto_bid: float = None):
+async def place_bid(auction_id: str, bid: BidRequest):
     """REST endpoint for placing bids"""
     redis = await manager.get_redis()
-    bid_service = BidService(redis)
+    bid_service = AsyncBidService(redis)
 
-    result = bid_service.place_bid(auction_id, bidder_id, amount, max_auto_bid)
+    result = await bid_service.place_bid(
+        auction_id,
+        bid.bidder_id,
+        bid.amount,
+        bid.max_auto_bid
+    )
 
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error'))
@@ -712,7 +779,7 @@ class AuctionClient {
                             <input type="number" class="max-bid-input" placeholder="Maximum bid" disabled>
                         </div>
 
-                        <button class="bid-button" onclick="auction.placeBid()">
+                        <button class="bid-button">
                             Place Bid
                         </button>
                     </div>
@@ -735,6 +802,9 @@ class AuctionClient {
         // Setup event listeners
         this.container.querySelector('.auto-bid-toggle').addEventListener('change', (e) => {
             this.container.querySelector('.max-bid-input').disabled = !e.target.checked;
+        });
+        this.container.querySelector('.bid-button').addEventListener('click', () => {
+            this.placeBid();
         });
     }
 

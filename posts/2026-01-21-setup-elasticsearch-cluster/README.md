@@ -27,7 +27,7 @@ Before setting up your cluster, ensure you have:
 - At least 3 servers (for production high availability)
 - Ubuntu 22.04 LTS or similar Linux distribution
 - Minimum 4GB RAM per node (8GB+ recommended for production)
-- Java 11 or later (bundled with Elasticsearch)
+- No separate Java installation required (Elasticsearch includes a bundled OpenJDK)
 - Open ports: 9200 (HTTP), 9300 (transport)
 
 ## Installing Elasticsearch on All Nodes
@@ -193,11 +193,11 @@ sudo /usr/share/elasticsearch/bin/elasticsearch-certutil ca --out /etc/elasticse
 sudo /usr/share/elasticsearch/bin/elasticsearch-certutil cert \
   --ca /etc/elasticsearch/certs/elastic-stack-ca.p12 \
   --ca-pass "" \
-  --out /etc/elasticsearch/certs/elastic-certificates.p12 \
+  --out /etc/elasticsearch/certs/transport.p12 \
   --pass ""
 
 # Generate HTTP certificates
-sudo /usr/share/elasticsearch/bin/elasticsearch-certutil http
+sudo /usr/share/elasticsearch/bin/elasticsearch-certutil http --out /tmp/elasticsearch-ssl-http.zip
 ```
 
 When running the HTTP certificate utility, you will be prompted for configuration. Use these settings:
@@ -208,13 +208,16 @@ Use an existing CA? [y/N] y
 CA Path: /etc/elasticsearch/certs/elastic-stack-ca.p12
 Password for elastic-stack-ca.p12: (empty)
 Validity (days): 365
-Generate a certificate per node? [y/N] y
+Generate a certificate per node? [y/N] n
 ```
 
-For each node, provide the following:
-- Node name (es-master-1, es-master-2, es-master-3)
-- Hostname
-- IP address
+Provide all hostnames and IP addresses that clients use to connect to the cluster, including `es-master-1`, `es-master-2`, `es-master-3`, `192.168.1.10`, `192.168.1.11`, and `192.168.1.12`.
+
+Unzip the generated HTTP certificate bundle and use the generated `http.p12` file on each node:
+
+```bash
+sudo unzip /tmp/elasticsearch-ssl-http.zip -d /tmp/elasticsearch-ssl-http
+```
 
 ### Copy Certificates to All Nodes
 
@@ -223,11 +226,17 @@ For each node, provide the following:
 sudo mkdir -p /etc/elasticsearch/certs
 
 # Copy certificates (from first node to others)
-scp /etc/elasticsearch/certs/*.p12 user@192.168.1.11:/tmp/
-scp /etc/elasticsearch/certs/*.p12 user@192.168.1.12:/tmp/
+sudo cp /etc/elasticsearch/certs/transport.p12 /tmp/transport.p12
+sudo chown "$USER":"$USER" /tmp/transport.p12
+sudo cp /tmp/elasticsearch-ssl-http/elasticsearch/http.p12 /etc/elasticsearch/certs/http.p12
+sudo cp /tmp/elasticsearch-ssl-http/elasticsearch/http.p12 /tmp/http.p12
+sudo chown "$USER":"$USER" /tmp/http.p12
+scp /tmp/transport.p12 /tmp/http.p12 user@192.168.1.11:/tmp/
+scp /tmp/transport.p12 /tmp/http.p12 user@192.168.1.12:/tmp/
 
 # On each receiving node, move certs to the proper location
-sudo mv /tmp/*.p12 /etc/elasticsearch/certs/
+sudo mv /tmp/http.p12 /etc/elasticsearch/certs/
+sudo mv /tmp/transport.p12 /etc/elasticsearch/certs/
 sudo chown -R elasticsearch:elasticsearch /etc/elasticsearch/certs/
 sudo chmod 660 /etc/elasticsearch/certs/*
 ```
@@ -244,6 +253,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable elasticsearch
 sudo systemctl start elasticsearch
 ```
+
+After the cluster forms successfully for the first time, remove `cluster.initial_master_nodes` from every node's configuration. Do not use this setting when restarting this cluster or adding nodes to it later.
 
 ### Reset the Elastic User Password
 
@@ -388,7 +399,7 @@ xpack.security.transport.ssl:
 
 ## Configuring Shard Allocation
 
-### Set Default Number of Replicas
+### Tune Recovery Concurrency
 
 ```bash
 curl -k -u elastic:your_password -X PUT "https://192.168.1.10:9200/_cluster/settings" \
@@ -435,8 +446,7 @@ frontend elasticsearch_frontend
 
 backend elasticsearch_backend
     balance roundrobin
-    option httpchk GET /_cluster/health
-    http-check expect status 200
+    option tcp-check
     server es-master-1 192.168.1.10:9200 check ssl verify none
     server es-master-2 192.168.1.11:9200 check ssl verify none
     server es-master-3 192.168.1.12:9200 check ssl verify none

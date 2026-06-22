@@ -483,6 +483,10 @@ parse_args() {
                 shift
                 ;;
             -o|--output)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --output requires a file path"
+                    exit 1
+                fi
                 OUTPUT_FILE="$2"
                 shift 2
                 ;;
@@ -830,7 +834,7 @@ process_file() {
 # Break complex conditions into readable parts
 
 # Hard to read
-if [[ -f "$config" && -r "$config" && $(stat -c %s "$config") -gt 0 && ! $(grep -q "disabled" "$config") ]]; then
+if [[ -f "$config" && -r "$config" && $(stat -c %s "$config") -gt 0 ]] && ! grep -q "disabled" "$config"; then
     load_config
 fi
 

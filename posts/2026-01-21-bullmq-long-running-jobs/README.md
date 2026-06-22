@@ -49,7 +49,7 @@ const worker = new Worker('long-running', async (job) => {
   return await processLongTask(job);
 }, {
   connection,
-  // Lock duration - how long before job is considered stalled
+  // Lock duration - how long the worker lock lasts between automatic renewals
   lockDuration: 300000, // 5 minutes
 
   // How often to check for stalled jobs
@@ -174,10 +174,10 @@ class LongRunningJobProcessor {
 
       try {
         // Execute stage with progress callback
-        await this.executeStage(stage.name, job, (stageProgress) => {
+        await this.executeStage(stage.name, job, async (stageProgress) => {
           progress.stageProgress = stageProgress;
           progress.overallProgress = completedWeight + (stage.weight * stageProgress / 100);
-          job.updateProgress(progress);
+          await job.updateProgress(progress);
         });
 
         progress.stages[i].status = 'completed';
@@ -188,7 +188,7 @@ class LongRunningJobProcessor {
 
       } catch (error) {
         progress.stages[i].status = 'failed';
-        progress.logs.push(`Failed stage: ${stage.name} - ${error.message}`);
+        progress.logs.push(`Failed stage: ${stage.name} - ${(error as Error).message}`);
         await job.updateProgress(progress);
         throw error;
       }
@@ -200,7 +200,7 @@ class LongRunningJobProcessor {
   private async executeStage(
     stageName: string,
     job: Job,
-    onProgress: (progress: number) => void
+    onProgress: (progress: number) => Promise<void>
   ) {
     switch (stageName) {
       case 'initialization':
@@ -222,56 +222,59 @@ class LongRunningJobProcessor {
   }
 
   // Stage implementations...
-  private async initialize(data: any, onProgress: (p: number) => void) {
-    onProgress(50);
+  private async initialize(data: any, onProgress: (p: number) => Promise<void>) {
+    await onProgress(50);
     await new Promise(resolve => setTimeout(resolve, 1000));
-    onProgress(100);
+    await onProgress(100);
   }
 
-  private async fetchData(data: any, onProgress: (p: number) => void) {
+  private async fetchData(data: any, onProgress: (p: number) => Promise<void>) {
     for (let i = 0; i <= 100; i += 10) {
-      onProgress(i);
+      await onProgress(i);
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
-  private async processData(data: any, onProgress: (p: number) => void) {
+  private async processData(data: any, onProgress: (p: number) => Promise<void>) {
     for (let i = 0; i <= 100; i += 5) {
-      onProgress(i);
+      await onProgress(i);
       await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
 
-  private async validate(data: any, onProgress: (p: number) => void) {
-    onProgress(50);
+  private async validate(data: any, onProgress: (p: number) => Promise<void>) {
+    await onProgress(50);
     await new Promise(resolve => setTimeout(resolve, 500));
-    onProgress(100);
+    await onProgress(100);
   }
 
-  private async finalize(data: any, onProgress: (p: number) => void) {
-    onProgress(100);
+  private async finalize(data: any, onProgress: (p: number) => Promise<void>) {
+    await onProgress(100);
   }
 }
 ```
 
 ## Keeping Jobs Alive
 
-Extend lock duration to prevent stalling:
+BullMQ workers renew locks automatically. If you manually manage locks or disable automatic renewal, extend the lock before it expires:
 
 ```typescript
 const worker = new Worker('long-running', async (job) => {
   const items = job.data.items;
-  const lockExtensionInterval = 60000; // 1 minute
+  const lockDuration = 120000; // 2 minutes
+  const lockExtensionInterval = lockDuration / 2;
 
   // Set up lock extension
   const lockExtender = setInterval(async () => {
     try {
-      await job.extendLock(job.token!, lockExtensionInterval);
-      console.log(`Extended lock for job ${job.id}`);
+      if (job.token) {
+        await job.extendLock(job.token, lockDuration);
+        console.log(`Extended lock for job ${job.id}`);
+      }
     } catch (error) {
       console.error(`Failed to extend lock for job ${job.id}:`, error);
     }
-  }, lockExtensionInterval - 5000); // Extend 5 seconds before expiry
+  }, lockExtensionInterval);
 
   try {
     for (let i = 0; i < items.length; i++) {
@@ -285,7 +288,7 @@ const worker = new Worker('long-running', async (job) => {
   }
 }, {
   connection,
-  lockDuration: 120000, // 2 minutes initial lock
+  lockDuration,
 });
 ```
 
@@ -503,7 +506,7 @@ class TimeoutAwareProcessor {
     try {
       return await Promise.race([processingPromise, timeoutPromise]);
     } catch (error) {
-      if (error.message === 'JOB_TIMEOUT') {
+      if ((error as Error).message === 'JOB_TIMEOUT') {
         // Save checkpoint for resume
         await this.saveTimeoutCheckpoint(job);
         throw new Error(`Job timed out after ${maxDuration}ms`);
@@ -616,11 +619,11 @@ class LongJobMonitor {
 
 ## Best Practices
 
-1. **Configure lock duration** - Set lockDuration longer than expected job duration.
+1. **Configure lock duration** - Set `lockDuration` long enough for the worker to renew the lock before it expires.
 
-2. **Extend locks proactively** - Use `extendLock` for jobs exceeding lock duration.
+2. **Understand lock renewal** - Standard workers renew locks automatically; use `extendLock` only when you manually manage locks or intentionally disable automatic renewal.
 
-3. **Update progress frequently** - Regular progress updates show the job is alive.
+3. **Update progress frequently** - Regular progress updates show users how much work has completed.
 
 4. **Implement checkpointing** - Save state periodically for recovery.
 

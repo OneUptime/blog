@@ -134,7 +134,7 @@ function UserAvatar({ response }) {
   return (
     <div>
       {/* Error: avatar is an object */}
-      <img src={response.data.user.profile.avatar} />
+      <p>Avatar: {response.data.user.profile.avatar}</p>
     </div>
   );
 }
@@ -441,7 +441,7 @@ function UserCard({ user }: UserCardProps) {
     <div>
       <h2>{user.name}</h2>
       <p>{user.email}</p>
-      {/* TypeScript will catch: user.createdAt is Date, not string */}
+      {/* TypeScript would catch rendering user.createdAt directly because Date is not a valid React child */}
       <p>Member since: {user.createdAt.toLocaleDateString()}</p>
     </div>
   );

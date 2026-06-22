@@ -106,7 +106,7 @@ const redis = new Redis();
 class MetricsCollector {
   constructor(streamPrefix = 'metrics:raw') {
     this.streamPrefix = streamPrefix;
-    this.buffer = [];
+    this.bufferedMetrics = [];
     this.flushInterval = null;
   }
 
@@ -124,17 +124,17 @@ class MetricsCollector {
 
   // Buffered collection for high-throughput scenarios
   buffer(metricName, value, tags = {}) {
-    this.buffer.push({ name: metricName, value, tags, timestamp: Date.now() });
+    this.bufferedMetrics.push({ name: metricName, value, tags, timestamp: Date.now() });
 
-    if (this.buffer.length >= 100) {
+    if (this.bufferedMetrics.length >= 100) {
       this.flush();
     }
   }
 
   async flush() {
-    if (this.buffer.length === 0) return;
+    if (this.bufferedMetrics.length === 0) return;
 
-    const metrics = this.buffer.splice(0);
+    const metrics = this.bufferedMetrics.splice(0);
     const pipeline = redis.pipeline();
 
     for (const metric of metrics) {
@@ -155,10 +155,10 @@ class MetricsCollector {
     this.flushInterval = setInterval(() => this.flush(), intervalMs);
   }
 
-  stopAutoFlush() {
+  async stopAutoFlush() {
     if (this.flushInterval) {
       clearInterval(this.flushInterval);
-      this.flush(); // Final flush
+      await this.flush(); // Final flush
     }
   }
 }
@@ -310,6 +310,8 @@ class TimeSeriesAggregator:
         min_key = f"ts:{metric_name}:1m"
         hour_key = f"ts:{metric_name}:1h"
 
+        labels = {'metric_type': 'metric', 'metric_name': metric_name, **labels}
+
         # Create series
         for key, retention in [
             (raw_key, self.raw_retention),
@@ -371,9 +373,10 @@ aggregator.create_metric_with_rollups('cpu_usage', {'host': 'server1'})
 aggregator.create_metric_with_rollups('memory_usage', {'host': 'server1'})
 
 # Add data
+base_time = int(time.time() * 1000)
 for i in range(1000):
-    aggregator.add_metric('cpu_usage', 50 + (i % 30))
-    aggregator.add_metric('memory_usage', 60 + (i % 20))
+    aggregator.add_metric('cpu_usage', 50 + (i % 30), base_time + i)
+    aggregator.add_metric('memory_usage', 60 + (i % 20), base_time + i)
 
 # Query at different resolutions
 now = int(time.time() * 1000)
@@ -390,6 +393,7 @@ minute_data = aggregator.query_metric('cpu_usage', '1m', one_hour_ago, now)
 ```python
 from flask import Flask, request, jsonify
 from datetime import datetime
+import time
 
 app = Flask(__name__)
 
@@ -401,10 +405,12 @@ class MetricsQueryService:
         """Query metrics within a time range."""
         if labels:
             # Multi-series query with label filters
-            filter_str = ' '.join([f'{k}={v}' for k, v in labels.items()])
+            filters = [f'metric_name={metric_name}'] + [
+                f'{k}={v}' for k, v in labels.items()
+            ]
             results = self.ts.mrange(
                 start, end,
-                filters=[filter_str],
+                filters=filters,
                 aggregation_type='avg',
                 bucket_size_msec=self._resolution_to_ms(resolution)
             )
@@ -434,10 +440,12 @@ class MetricsQueryService:
     def list_metrics(self, label_filter=None):
         """List all available metrics."""
         if label_filter:
-            filter_str = ' '.join([f'{k}={v}' for k, v in label_filter.items()])
-            return self.ts.queryindex([filter_str])
+            filters = ['metric_type=metric'] + [
+                f'{k}={v}' for k, v in label_filter.items()
+            ]
+            return self.ts.queryindex(filters)
         else:
-            return self.ts.queryindex(['__name__!='])
+            return self.ts.queryindex(['metric_type=metric'])
 
     def _resolution_to_ms(self, resolution):
         units = {'s': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000}
@@ -588,7 +596,7 @@ app.listen(3000, () => {
 
 ```python
 import asyncio
-import aioredis
+import redis.asyncio as redis
 import time
 import random
 from dataclasses import dataclass
@@ -611,12 +619,12 @@ class MetricsPipeline:
 
     async def connect(self):
         """Initialize Redis connection."""
-        self.redis = await aioredis.from_url(self.redis_url)
+        self.redis = redis.from_url(self.redis_url, decode_responses=True)
 
     async def close(self):
         """Close Redis connection."""
         if self.redis:
-            await self.redis.close()
+            await self.redis.aclose()
 
     async def collect(self, metric: Metric):
         """Add metric to buffer for batch processing."""
@@ -730,6 +738,10 @@ async def main():
     print(f"Latest value: {latest}")
 
     flush_task.cancel()
+    try:
+        await flush_task
+    except asyncio.CancelledError:
+        pass
     await pipeline.close()
 
 if __name__ == '__main__':

@@ -15,16 +15,16 @@ When you look at a package.json file, you will see dependency versions prefixed 
 ```json
 {
   "dependencies": {
-    "express": "^4.18.2",    // Caret: allows 4.x.x where x >= 18.2
-    "lodash": "~4.17.21",    // Tilde: allows 4.17.x where x >= 21
-    "moment": "2.29.4"       // Exact: only 2.29.4
+    "express": "^4.18.2",
+    "lodash": "~4.17.21",
+    "moment": "2.29.4"
   }
 }
 ```
 
 **In short:**
 - `^` (caret): Update minor and patch versions
-- `~` (tilde): Update patch versions only
+- `~` (tilde): Update patch versions only when the minor version is specified
 - No symbol: Exact version only
 
 ## Understanding Semantic Versioning
@@ -85,12 +85,12 @@ Use caret (the default for `npm install --save`) when:
 # npm uses caret by default
 
 npm install express
-# Results in: "express": "^4.18.2"
+# Results in: "express": "^<installed-version>"
 ```
 
-## Tilde (~): Patch Updates Only
+## Tilde (~): Patch Updates
 
-The tilde allows only patch updates, keeping the minor version fixed.
+With a full `MAJOR.MINOR.PATCH` version, the tilde allows only patch updates, keeping the minor version fixed.
 
 ```json
 {
@@ -154,10 +154,10 @@ This will only ever install version `2.29.4`, nothing else.
 ```json
 {
   "dependencies": {
-    "foo": ">1.0.0",       // Any version greater than 1.0.0
-    "bar": ">=1.0.0",      // 1.0.0 or greater
-    "baz": "<2.0.0",       // Any version less than 2.0.0
-    "qux": "<=2.0.0"       // 2.0.0 or less
+    "foo": ">1.0.0",
+    "bar": ">=1.0.0",
+    "baz": "<2.0.0",
+    "qux": "<=2.0.0"
   }
 }
 ```
@@ -167,10 +167,10 @@ This will only ever install version `2.29.4`, nothing else.
 ```json
 {
   "dependencies": {
-    "foo": ">=1.0.0 <2.0.0",   // 1.x.x only
-    "bar": "1.0.0 - 2.0.0",     // 1.0.0 to 2.0.0 inclusive
-    "baz": "1.x",               // Any 1.x.x version
-    "qux": "*"                  // Any version (dangerous!)
+    "foo": ">=1.0.0 <2.0.0",
+    "bar": "1.0.0 - 2.0.0",
+    "baz": "1.x",
+    "qux": "*"
   }
 }
 ```
@@ -180,7 +180,7 @@ This will only ever install version `2.29.4`, nothing else.
 ```json
 {
   "dependencies": {
-    "foo": "^1.0.0 || ^2.0.0"  // Either 1.x.x or 2.x.x
+    "foo": "^1.0.0 || ^2.0.0"
   }
 }
 ```
@@ -190,10 +190,12 @@ This will only ever install version `2.29.4`, nothing else.
 ```json
 {
   "dependencies": {
-    "foo": "^2.0.0-beta.1"    // 2.0.0-beta.1 or higher prereleases
+    "foo": "^2.0.0-beta.1"
   }
 }
 ```
+
+This can include later `2.0.0` prereleases, the stable `2.0.0` release, and stable `2.x.x` versions below `3.0.0`. By default, prereleases for other version tuples such as `2.1.0-beta.1` are not included.
 
 ## Practical Examples
 
@@ -232,10 +234,10 @@ If you are publishing a package, use wider ranges to avoid conflicts:
 ```json
 {
   "dependencies": {
-    "lodash": "^4.17.0"  // Allow any 4.17.x+
+    "lodash": "^4.17.0"
   },
   "peerDependencies": {
-    "react": "^17.0.0 || ^18.0.0"  // Support multiple majors
+    "react": "^17.0.0 || ^18.0.0"
   }
 }
 ```
@@ -244,8 +246,9 @@ If you are publishing a package, use wider ranges to avoid conflicts:
 
 Lock files (`package-lock.json` or `yarn.lock`) pin exact versions regardless of your range specifiers:
 
+package.json:
+
 ```json
-// package.json
 {
   "dependencies": {
     "express": "^4.18.2"
@@ -253,12 +256,13 @@ Lock files (`package-lock.json` or `yarn.lock`) pin exact versions regardless of
 }
 ```
 
+package-lock.json (simplified):
+
 ```json
-// package-lock.json (simplified)
 {
   "packages": {
     "node_modules/express": {
-      "version": "4.18.2",  // Exact version locked
+      "version": "4.18.2",
       "resolved": "https://registry.npmjs.org/express/-/express-4.18.2.tgz",
       "integrity": "sha512-..."
     }
@@ -271,10 +275,10 @@ Lock files (`package-lock.json` or `yarn.lock`) pin exact versions regardless of
 2. Subsequent `npm install`: npm uses exact versions from lock file
 3. `npm update`: npm updates within your allowed ranges and updates lock file
 
-### When Lock File Is Ignored
+### When Lock File Is Updated
 
 ```bash
-# These use your ranges, ignoring lock file
+# These use your ranges and update the lock file
 npm update              # Updates within ranges
 npm install foo@latest  # Installs latest regardless
 
@@ -370,7 +374,7 @@ npm audit fix
 ```json
 {
   "dependencies": {
-    "problematic-package": "1.2.3"  // Pin to last working version
+    "problematic-package": "1.2.3"
   }
 }
 ```

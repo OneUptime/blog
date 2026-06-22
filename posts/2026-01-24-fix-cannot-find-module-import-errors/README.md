@@ -21,14 +21,14 @@ flowchart TB
 
     C --> E{File Exists?}
     E -->|Yes| F[Load Module]
-    E -->|No| G[Try Extensions]
+    E -->|No| G[Apply Runtime/Tool Rules]
 
-    G --> H[.js, .jsx, .ts, .tsx]
+    G --> H[CJS .js/.json/.node, bundlers/TS configured extensions]
     H --> I{Found?}
     I -->|Yes| F
     I -->|No| J[Check index file]
 
-    J --> K{index.js exists?}
+    J --> K{Index file supported and exists?}
     K -->|Yes| F
     K -->|No| L[Cannot Find Module Error]
 
@@ -116,7 +116,7 @@ import config from './config.json';
 
 If you use path aliases, ensure both TypeScript and your bundler are configured:
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
@@ -223,13 +223,17 @@ module.exports = { handler: () => {} };
 
 Ensure your package.json specifies the correct type:
 
+For ESM:
+
 ```json
-// For ESM
 {
   "type": "module"
 }
+```
 
-// For CommonJS (default)
+For CommonJS (default):
+
+```json
 {
   "type": "commonjs"
 }
@@ -298,7 +302,7 @@ import { Button } from './components/Button';
 
 ### 7. Missing Index File
 
-When importing a directory, Node looks for an index file:
+When using CommonJS or a bundler configuration that supports directory imports, the resolver can look for an index file:
 
 ```text
 // File structure:
@@ -317,9 +321,11 @@ export type { ButtonProps } from './Button';
 Now you can import the directory:
 
 ```typescript
-// This works because index.ts exists
+// This works in TypeScript/bundler setups that support directory index resolution
 import { Button } from '@/components/Button';
 ```
+
+In native Node.js ESM, include the full index path and file extension instead, such as `import { Button } from './components/Button/index.js';`.
 
 ### 8. Node.js Built-in Module Issues
 
@@ -350,7 +356,7 @@ const url = new URL('./file.txt', import.meta.url);
 
 In monorepos, packages need proper configuration:
 
-```json
+```jsonc
 // packages/shared/package.json
 {
   "name": "@myorg/shared",
@@ -366,7 +372,7 @@ In monorepos, packages need proper configuration:
 }
 ```
 
-```json
+```jsonc
 // packages/app/package.json
 {
   "dependencies": {
@@ -375,7 +381,7 @@ In monorepos, packages need proper configuration:
 }
 ```
 
-```json
+```jsonc
 // Root tsconfig.json for monorepo
 {
   "compilerOptions": {
@@ -430,7 +436,7 @@ flowchart TB
 | Cannot find module './file' | Wrong relative path | Check file path and case |
 | Cannot find module '@/path' | Path alias misconfigured | Update tsconfig and bundler config |
 | Could not find declaration file | Missing TypeScript types | `npm install -D @types/package` |
-| ERR_MODULE_NOT_FOUND | ESM/CJS mismatch | Check package.json "type" field |
+| ERR_MODULE_NOT_FOUND | Missing file extension, missing package export, or unresolved import in ESM | Check the import path, file extension, and package "exports" field |
 | Module not found: Can't resolve | Webpack/Vite cannot find | Check resolve.alias config |
 
 ## Debugging Commands

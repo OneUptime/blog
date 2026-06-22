@@ -70,12 +70,11 @@ diff <(dpkg -l | awk '{print $2}') <(ssh backup-server "dpkg -l | awk '{print \$
 
 ### Using with Programs That Require File Arguments
 
-Some programs only accept file arguments, not stdin input.
+Process substitution is useful with commands that operate on multiple file operands.
 
 ```bash
 #!/bin/bash
 
-# paste command requires file arguments
 # Join two command outputs side by side
 paste <(seq 1 5) <(seq 6 10)
 # Output:
@@ -103,8 +102,8 @@ Process substitution allows combining multiple input sources.
 # Merge multiple sorted files
 sort -m <(sort file1.txt) <(sort file2.txt) <(sort file3.txt)
 
-# Compare three configurations
-diff3 <(cat config.local) <(cat config.dev) <(cat config.prod)
+# Find lines common to three sorted configuration lists
+comm -12 <(comm -12 <(sort config.local) <(sort config.dev)) <(sort config.prod)
 
 # Combine data from multiple sources
 paste <(cut -d',' -f1 data.csv) \
@@ -240,12 +239,12 @@ while read -r file; do
 done < <(ls -1)
 echo "Found $count files"  # Variable is accessible here
 
-# Compare with pipe (variables lost in subshell)
+# Compare with pipe (variables are usually lost in a subshell)
 count=0
 ls -1 | while read -r file; do
     ((count++))
 done
-echo "Found $count files"  # This prints 0!
+echo "Found $count files"  # This usually prints 0
 ```
 
 ### With Here Documents
@@ -438,10 +437,8 @@ fi
 ulimit -n
 
 # For scripts with many substitutions, be mindful of limits
-# Bad: Too many simultaneous substitutions
-for i in {1..1000}; do
-    cat <(echo $i) > /dev/null
-done
+# Bad: Too many simultaneous substitutions in one command
+paste <(echo 1) <(echo 2) <(echo 3) # ... hundreds more
 
 # Better: Reuse or limit parallel operations
 ```
@@ -451,12 +448,12 @@ done
 ```bash
 #!/bin/bash
 
-# Pipes create subshells, losing variable changes
+# Pipes usually create subshells, losing variable changes
 count=0
 cat file.txt | while read -r line; do
     ((count++))
 done
-echo "Count: $count"  # Always 0!
+echo "Count: $count"  # Usually 0
 
 # Process substitution keeps variables in current shell
 count=0
@@ -529,18 +526,18 @@ run_audit() {
     echo "Audit complete. Report saved to: $REPORT_FILE"
 }
 
-# Generate summary using process substitution
+# Generate summary
 generate_summary() {
     echo ""
     echo "=== Summary ===" >> "$REPORT_FILE"
 
-    # Count identical vs different
+    # Count identical markers and diff output lines
     local identical different
     identical=$(grep -c "IDENTICAL" "$REPORT_FILE" || echo 0)
     different=$(grep -c "^[<>]" "$REPORT_FILE" || echo 0)
 
     echo "Identical configurations: $identical" >> "$REPORT_FILE"
-    echo "Configurations with differences: $different" >> "$REPORT_FILE"
+    echo "Difference lines: $different" >> "$REPORT_FILE"
 }
 
 # Run the audit
@@ -562,7 +559,7 @@ Key points to remember:
 
 - Use `<(command)` for input substitution (reading command output as a file)
 - Use `>(command)` for output substitution (writing to a command as if it were a file)
-- Process substitution is Bash-specific and not POSIX compliant
+- Process substitution is not POSIX compliant; it is supported by Bash and some other shells such as Zsh and ksh
 - Commands in process substitution run in parallel
 - Prefer process substitution over pipes when you need to preserve variable scope
 

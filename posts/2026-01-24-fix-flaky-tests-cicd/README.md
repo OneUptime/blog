@@ -53,21 +53,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run tests with retry tracking
         run: |
           # Run tests and capture exit code
-          npm test -- --json --outputFile=results.json || true
+          set +e
+          npm test -- --json --outputFile=results.json
+          test_exit=$?
+          set -e
 
           # Check for flaky tests by running failures again
           if [ -f results.json ]; then
             node scripts/detect-flaky.js results.json
           fi
 
+          exit "$test_exit"
+
       - name: Upload flaky test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flaky-report
           path: flaky-tests.json
@@ -77,25 +82,41 @@ Create a detection script that reruns failed tests:
 
 ```javascript
 // scripts/detect-flaky.js
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 
 const results = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'));
-const failedTests = results.testResults
-  .filter(t => t.status === 'failed')
-  .map(t => t.name);
+const failedTests = results.testResults.flatMap(testFile =>
+  testFile.testResults
+    .filter(t => t.status === 'failed')
+    .map(t => ({
+      file: testFile.testFilePath,
+      name: [...t.ancestorTitles, t.title].join(' ')
+    }))
+);
 
 const flakyTests = [];
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Rerun each failed test multiple times to check for flakiness
-for (const testName of failedTests) {
+for (const test of failedTests) {
   let passCount = 0;
   let failCount = 0;
 
   // Run 3 times to detect inconsistency
   for (let i = 0; i < 3; i++) {
     try {
-      execSync(`npm test -- --testNamePattern="${testName}"`, {
+      execFileSync('npm', [
+        'test',
+        '--',
+        '--runTestsByPath',
+        test.file,
+        '--testNamePattern',
+        `^${escapeRegExp(test.name)}$`
+      ], {
         stdio: 'pipe'
       });
       passCount++;
@@ -107,7 +128,8 @@ for (const testName of failedTests) {
   // If results are mixed, the test is flaky
   if (passCount > 0 && failCount > 0) {
     flakyTests.push({
-      name: testName,
+      name: test.name,
+      file: test.file,
       passRate: passCount / 3,
       detectedAt: new Date().toISOString()
     });
@@ -338,13 +360,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Continue running other jobs even if one fails
+      # Continue running other matrix jobs even if one fails
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run tests with retries
-        uses: nick-invision/retry@v2
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 10
           max_attempts: 3
@@ -356,7 +378,7 @@ jobs:
         if: failure()
         run: |
           # Run quarantined tests separately
-          npm test -- --testPathPattern="quarantine" || true
+          npm test -- --testPathPatterns="quarantine" || true
 ```
 
 ## Tracking and Prioritizing Flaky Tests

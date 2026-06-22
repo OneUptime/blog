@@ -44,7 +44,6 @@ sequenceDiagram
 | Metric | Good | Needs Work | Poor | What It Measures |
 |--------|------|------------|------|------------------|
 | LCP (Largest Contentful Paint) | < 2.5s | 2.5s - 4s | > 4s | Loading performance |
-| FID (First Input Delay) | < 100ms | 100ms - 300ms | > 300ms | Interactivity |
 | CLS (Cumulative Layout Shift) | < 0.1 | 0.1 - 0.25 | > 0.25 | Visual stability |
 | INP (Interaction to Next Paint) | < 200ms | 200ms - 500ms | > 500ms | Responsiveness |
 
@@ -56,31 +55,36 @@ sequenceDiagram
 // performance-timing.js
 // Measure key performance metrics in the browser
 
+import { onCLS, onINP, onLCP } from 'web-vitals';
+
 function measurePerformance() {
     // Wait for page to fully load
     window.addEventListener('load', () => {
         setTimeout(() => {
-            const timing = performance.timing;
             const navigation = performance.getEntriesByType('navigation')[0];
+
+            if (!navigation) {
+                return;
+            }
 
             const metrics = {
                 // DNS lookup time
-                dns: timing.domainLookupEnd - timing.domainLookupStart,
+                dns: navigation.domainLookupEnd - navigation.domainLookupStart,
 
                 // TCP connection time
-                tcp: timing.connectEnd - timing.connectStart,
+                tcp: navigation.connectEnd - navigation.connectStart,
 
                 // Time to First Byte
-                ttfb: timing.responseStart - timing.requestStart,
+                ttfb: navigation.responseStart - navigation.requestStart,
 
                 // DOM Content Loaded
-                domContentLoaded: timing.domContentLoadedEventEnd - timing.navigationStart,
+                domContentLoaded: navigation.domContentLoadedEventEnd - navigation.startTime,
 
                 // Full page load
-                pageLoad: timing.loadEventEnd - timing.navigationStart,
+                pageLoad: navigation.loadEventEnd - navigation.startTime,
 
                 // DOM Interactive
-                domInteractive: timing.domInteractive - timing.navigationStart
+                domInteractive: navigation.domInteractive - navigation.startTime
             };
 
             console.table(metrics);
@@ -107,29 +111,9 @@ function sendToAnalytics(metrics) {
 
 // Measure Core Web Vitals
 function measureCoreWebVitals() {
-    // LCP - Largest Contentful Paint
-    new PerformanceObserver((list) => {
-        const entries = list.getEntries();
-        const lastEntry = entries[entries.length - 1];
-        console.log('LCP:', lastEntry.startTime);
-    }).observe({ type: 'largest-contentful-paint', buffered: true });
-
-    // CLS - Cumulative Layout Shift
-    let clsValue = 0;
-    new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-            if (!entry.hadRecentInput) {
-                clsValue += entry.value;
-            }
-        }
-        console.log('CLS:', clsValue);
-    }).observe({ type: 'layout-shift', buffered: true });
-
-    // FID - First Input Delay
-    new PerformanceObserver((list) => {
-        const entry = list.getEntries()[0];
-        console.log('FID:', entry.processingStart - entry.startTime);
-    }).observe({ type: 'first-input', buffered: true });
+    onLCP((metric) => console.log('LCP:', metric.value));
+    onCLS((metric) => console.log('CLS:', metric.value));
+    onINP((metric) => console.log('INP:', metric.value));
 }
 ```
 
@@ -191,7 +175,7 @@ http {
 # server_caching.py
 # Flask example with response caching
 
-from flask import Flask, make_response
+from flask import Flask, jsonify, make_response
 from functools import wraps
 import hashlib
 
@@ -321,7 +305,8 @@ Images are often the largest resources on a page.
            (max-width: 1200px) 800px,
            1200px"
     alt="Hero image"
-    loading="lazy"
+    loading="eager"
+    fetchpriority="high"
     decoding="async"
     width="1200"
     height="600"
@@ -342,6 +327,8 @@ Images are often the largest resources on a page.
     <img
         src="/images/hero-desktop.jpg"
         alt="Hero"
+        loading="eager"
+        fetchpriority="high"
         width="1200"
         height="600">
 </picture>
@@ -354,15 +341,17 @@ Images are often the largest resources on a page.
 // Build script to optimize images
 
 const sharp = require('sharp');
-const glob = require('glob');
+const { globSync } = require('glob');
 const path = require('path');
+const fs = require('fs/promises');
 
 async function optimizeImages() {
-    const images = glob.sync('./src/images/**/*.{jpg,jpeg,png}');
+    const images = globSync('./src/images/**/*.{jpg,jpeg,png}');
 
     for (const imagePath of images) {
         const filename = path.basename(imagePath, path.extname(imagePath));
         const outputDir = path.dirname(imagePath).replace('src', 'dist');
+        await fs.mkdir(outputDir, { recursive: true });
 
         // Generate multiple sizes
         const sizes = [400, 800, 1200, 1600];
@@ -564,7 +553,7 @@ Apply these optimizations for immediate improvements:
 3. **Use a CDN** - Serve assets from edge locations
 4. **Optimize images** - WebP format, responsive sizes
 5. **Defer non-critical JS** - Use defer or async attributes
-6. **Inline critical CSS** - First 14KB should render above-fold
+6. **Inline critical CSS** - Keep above-the-fold CSS small and inline
 7. **Preconnect to origins** - DNS prefetch third-party domains
 8. **Set image dimensions** - Prevent layout shift
 9. **Use font-display: swap** - Show text immediately

@@ -163,7 +163,7 @@ By default, cron emails output to the user. Configure output handling explicitly
 0 3 * * * /home/admin/scripts/cleanup.sh > /dev/null 2>&1
 
 # Log stdout to file, email stderr
-0 4 * * * /home/admin/scripts/task.sh >> /var/log/task.log 2>&1
+0 4 * * * /home/admin/scripts/task.sh >> /var/log/task.log
 
 # Set a custom email address for cron output
 MAILTO="admin@example.com"
@@ -217,6 +217,8 @@ Here's a production-ready backup script with proper logging and error handling.
 #!/bin/bash
 # /home/admin/scripts/backup.sh
 # Database backup script with logging and error handling
+
+set -o pipefail
 
 # Configuration
 BACKUP_DIR="/var/backups/db"

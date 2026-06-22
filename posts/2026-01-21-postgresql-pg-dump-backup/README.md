@@ -332,7 +332,7 @@ crontab -e
 ### Backup to Remote Server
 
 ```bash
-# SSH tunnel
+# Stream over SSH
 pg_dump -h localhost -p 5432 mydb | ssh user@backup-server "cat > /backups/mydb.sql"
 
 # With compression
@@ -399,7 +399,7 @@ exit ${RESULT}
 
 ### Backup Strategy
 
-1. **Daily incremental** or full backups
+1. **Daily full logical backups** with pg_dump
 2. **Weekly full backups** retained longer
 3. **Test restores** regularly
 4. **Multiple backup locations** (local + remote)

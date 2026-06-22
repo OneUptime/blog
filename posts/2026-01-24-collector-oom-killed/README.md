@@ -62,16 +62,16 @@ kubectl top pod otel-collector-xxx --containers
 
 ```promql
 # Current memory usage
-process_resident_memory_bytes{job="otel-collector"}
+otelcol_process_memory_rss{job="otel-collector"}
 
 # Memory allocation rate
-rate(go_memstats_alloc_bytes_total{job="otel-collector"}[5m])
+rate(otelcol_process_runtime_total_alloc_bytes{job="otel-collector"}[5m])
 
 # Heap usage
-go_memstats_heap_inuse_bytes{job="otel-collector"}
+otelcol_process_runtime_heap_alloc_bytes{job="otel-collector"}
 
-# GC pressure - high values indicate memory pressure
-rate(go_gc_duration_seconds_sum{job="otel-collector"}[5m])
+# Memory limiter refusals - sustained values indicate memory pressure
+rate(otelcol_processor_refused_spans{job="otel-collector", processor="memory_limiter"}[5m])
 ```
 
 ## Fix 1: Configure Memory Limiter Processor
@@ -142,7 +142,7 @@ spec:
           env:
             # Set GOMEMLIMIT to help Go runtime
             - name: GOMEMLIMIT
-              value: "900MiB"
+              value: "800MiB"
 ```
 
 ## Fix 2: Optimize Batch Processor Settings
@@ -163,8 +163,8 @@ processors:
     send_batch_size: 200        # Default is 8192
     send_batch_max_size: 500    # Hard limit per batch
 
-    # Export more frequently to free memory
-    timeout: 5s                 # Default is 200ms
+    # Export frequently to free memory
+    timeout: 1s                 # Default is 200ms
 
   # Alternative: Use batch with size limits
   batch/memory-optimized:
@@ -175,7 +175,7 @@ processors:
 
 ## Fix 3: Control Exporter Queue Size
 
-Exporter queues can grow unbounded during backend outages:
+Exporter queues can consume significant memory during backend outages:
 
 ```yaml
 # otel-collector-config.yaml
@@ -188,7 +188,7 @@ exporters:
       enabled: true
       # Limit number of batches in queue
       num_consumers: 10
-      queue_size: 1000          # Default is 5000
+      queue_size: 1000          # Default is 1000
 
       # Enable persistent queue to survive restarts
       # This moves data to disk instead of memory
@@ -210,6 +210,9 @@ extensions:
       on_start: true
       on_rebound: true
       directory: /var/lib/otel/queue/compaction
+
+service:
+  extensions: [file_storage/otlp_queue]
 ```
 
 ## Fix 4: Implement Data Filtering
@@ -226,19 +229,17 @@ processors:
   # Filter out verbose or unnecessary data
   filter/drop-debug:
     error_mode: ignore
-    traces:
-      span:
-        # Drop debug spans
-        - 'attributes["log.level"] == "debug"'
-        # Drop health check spans
-        - 'name == "health_check"'
-        - 'name == "readiness_probe"'
-    logs:
-      log_record:
-        # Drop debug logs
-        - 'severity_number < 9'  # Below INFO
-        # Drop verbose logs
-        - 'body == "heartbeat"'
+    trace_conditions:
+      # Drop debug spans
+      - 'span.attributes["log.level"] == "debug"'
+      # Drop health check spans
+      - 'span.name == "health_check"'
+      - 'span.name == "readiness_probe"'
+    log_conditions:
+      # Drop debug logs
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
+      # Drop verbose logs
+      - 'log.body == "heartbeat"'
 
   # Remove large attributes that consume memory
   attributes/trim:
@@ -398,7 +399,7 @@ metadata:
   name: otel-collector
 spec:
   type: ClusterIP
-  # Use client IP affinity for trace context continuity
+  # Optional: pin clients to a collector; this is not trace-ID aware
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
@@ -568,16 +569,16 @@ groups:
           summary: "Collector memory growing rapidly"
           description: "Memory growing at {{ $value | humanize }}B/s"
 
-      # Alert when memory limiter is dropping data
-      - alert: CollectorDroppingData
+      # Alert when memory limiter is refusing data
+      - alert: CollectorRefusingData
         expr: |
-          rate(otelcol_processor_dropped_spans[5m]) > 0
+          rate(otelcol_processor_refused_spans{processor="memory_limiter"}[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Collector dropping spans due to memory pressure"
-          description: "Dropping {{ $value | humanize }} spans/second"
+          summary: "Collector refusing spans due to memory pressure"
+          description: "Refusing {{ $value | humanize }} spans/second"
 
       # Alert on queue buildup
       - alert: CollectorQueueBacklog
@@ -600,13 +601,13 @@ container_spec_memory_limit_bytes{container="otel-collector"} * 100
 sum(rate(otelcol_receiver_accepted_spans[5m])) by (receiver)
 
 # Drop rate
-sum(rate(otelcol_processor_dropped_spans[5m])) by (processor)
+sum(rate(otelcol_processor_refused_spans[5m])) by (processor)
 
 # Queue size trend
 otelcol_exporter_queue_size
 
-# GC time percentage
-rate(go_gc_duration_seconds_sum{job="otel-collector"}[5m]) * 100
+# Memory limiter refusal rate
+rate(otelcol_processor_refused_spans{job="otel-collector", processor="memory_limiter"}[5m])
 ```
 
 ## Fix 9: Tune Go Runtime
@@ -620,29 +621,26 @@ spec:
     - name: collector
       env:
         # Set soft memory limit for Go runtime
-        # Should be ~90% of container limit
+        # Should be ~80% of container limit
         - name: GOMEMLIMIT
-          value: "900MiB"
+          value: "800MiB"
 
         # GC target percentage (default 100)
         # Lower = more frequent GC = lower peak memory
         - name: GOGC
           value: "80"
 
-        # Enable memory ballast (deprecated but still works)
-        # Reduces GC frequency
-        - name: OTEL_MEMORY_BALLAST_SIZE_MIB
-          value: "165"
+        # Do not enable memory ballast on current Collector versions
+        # Use GOMEMLIMIT instead
 ```
 
 ### Memory Ballast Extension (Legacy)
 
 ```yaml
-# For older collector versions
+# For older collector versions only; use GOMEMLIMIT on current versions
 extensions:
   memory_ballast:
     size_mib: 165  # ~1/3 to 1/2 of memory limit
-    size_in_percentage: 20  # Or use percentage
 
 service:
   extensions: [memory_ballast]
@@ -673,10 +671,12 @@ processors:
   # Second: Filter unnecessary data
   filter/noise:
     error_mode: ignore
-    traces:
-      span:
-        - 'name == "health"'
-        - 'name == "ping"'
+    trace_conditions:
+      - 'span.name == "health"'
+      - 'span.name == "ping"'
+    log_conditions:
+      - 'log.body == "health"'
+      - 'log.body == "ping"'
 
   # Third: Remove large attributes
   attributes/trim:
@@ -728,8 +728,13 @@ service:
 
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:

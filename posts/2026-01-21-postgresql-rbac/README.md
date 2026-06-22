@@ -30,21 +30,17 @@ CREATE ROLE app_admins;
 -- Grant group membership
 GRANT app_readers TO app_user;
 
--- User inherits permissions from app_readers
+-- User inherits permissions from app_readers by default
 ```
 
-## Privilege Hierarchy
+## Privilege Scope
 
 ```text
-Superuser
-    |
-Database Owner
-    |
-Schema Owner
-    |
-Table Owner
-    |
-Granted Privileges (SELECT, INSERT, UPDATE, DELETE)
+Superuser privileges
+Database-level privileges (CONNECT, CREATE, TEMPORARY)
+Schema-level privileges (USAGE, CREATE)
+Table-level privileges (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER)
+Sequence-level privileges (USAGE, SELECT, UPDATE)
 ```
 
 ## Common Patterns
@@ -58,7 +54,7 @@ GRANT CONNECT ON DATABASE myapp TO readonly;
 GRANT USAGE ON SCHEMA public TO readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
 
--- For future tables
+-- For future tables created by the current role
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT ON TABLES TO readonly;
 ```
@@ -73,7 +69,7 @@ GRANT USAGE ON SCHEMA public TO readwrite;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readwrite;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO readwrite;
 
--- For future objects
+-- For future objects created by the current role
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO readwrite;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -83,7 +79,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 ### Admin Role
 
 ```sql
--- Create admin role (not superuser)
+-- Create admin role (not superuser and not object owner)
 CREATE ROLE app_admin;
 GRANT CONNECT ON DATABASE myapp TO app_admin;
 GRANT ALL PRIVILEGES ON SCHEMA public TO app_admin;

@@ -40,10 +40,10 @@ flowchart LR
 
 CCR requires:
 
-- Elasticsearch 6.5+ (basic features) or 7.x+ (recommended)
-- Platinum or Enterprise license (or trial license)
+- Elasticsearch 6.5+ with a valid license that includes CCR, or 7.x/8.x+ (recommended)
+- Platinum or Enterprise subscription (or trial license)
 - Network connectivity between clusters
-- TLS configured on both clusters
+- TLS configured on both clusters for secured remote cluster connections
 
 ### Enable Trial License (For Testing)
 
@@ -70,7 +70,8 @@ curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/jso
             "leader-node-1:9300",
             "leader-node-2:9300",
             "leader-node-3:9300"
-          ]
+          ],
+          "skip_unavailable": false
         }
       }
     }
@@ -110,7 +111,8 @@ curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/jso
       "remote": {
         "leader-cluster": {
           "mode": "proxy",
-          "proxy_address": "leader-cluster-proxy:9300"
+          "proxy_address": "leader-cluster-proxy:9300",
+          "skip_unavailable": false
         }
       }
     }
@@ -305,7 +307,11 @@ curl -X POST "localhost:9200/my-index-follower/_ccr/pause_follow"
 ### Step 2: Unfollow (Convert to Regular Index)
 
 ```bash
+curl -X POST "localhost:9200/my-index-follower/_close"
+
 curl -X POST "localhost:9200/my-index-follower/_ccr/unfollow"
+
+curl -X POST "localhost:9200/my-index-follower/_open"
 ```
 
 The follower index is now a regular read-write index.
@@ -352,7 +358,8 @@ flowchart LR
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
   "persistent": {
-    "cluster.remote.cluster-b.seeds": ["cluster-b-node:9300"]
+    "cluster.remote.cluster-b.seeds": ["cluster-b-node:9300"],
+    "cluster.remote.cluster-b.skip_unavailable": false
   }
 }'
 
@@ -371,7 +378,8 @@ curl -X PUT "localhost:9200/orders-a/_ccr/follow" -H 'Content-Type: application/
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
   "persistent": {
-    "cluster.remote.cluster-a.seeds": ["cluster-a-node:9300"]
+    "cluster.remote.cluster-a.seeds": ["cluster-a-node:9300"],
+    "cluster.remote.cluster-a.skip_unavailable": false
   }
 }'
 
@@ -440,39 +448,56 @@ xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
 xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
 ```
 
-### Create CCR User
+### Create CCR Roles and User
 
 ```bash
 # Create role on leader cluster
-curl -X PUT "localhost:9200/_security/role/ccr_role" -H 'Content-Type: application/json' -d'
+curl -X PUT "localhost:9200/_security/role/remote-replication" -H 'Content-Type: application/json' -d'
 {
   "cluster": ["read_ccr"],
   "indices": [
     {
       "names": ["*"],
-      "privileges": ["monitor", "read", "view_index_metadata"]
+      "privileges": ["monitor", "read"]
     }
   ]
 }'
 
-# Create user
+# Create matching role on follower cluster
+curl -X PUT "localhost:9200/_security/role/remote-replication" -H 'Content-Type: application/json' -d'
+{
+  "cluster": ["manage_ccr"],
+  "indices": [
+    {
+      "names": ["*"],
+      "privileges": ["monitor", "read", "write", "manage_follow_index"]
+    }
+  ]
+}'
+
+# Create user on follower cluster
 curl -X PUT "localhost:9200/_security/user/ccr_user" -H 'Content-Type: application/json' -d'
 {
   "password": "secure-password",
-  "roles": ["ccr_role"]
+  "roles": ["remote-replication"]
 }'
 ```
 
 ### Configure Remote Cluster with Authentication
 
+With TLS certificate authentication, remote cluster connections use the transport interface and mutual certificate trust:
+
 ```bash
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
   "persistent": {
-    "cluster.remote.leader-cluster.seeds": ["leader-node:9300"]
+    "cluster.remote.leader-cluster.seeds": ["leader-node:9300"],
+    "cluster.remote.leader-cluster.skip_unavailable": false
   }
 }'
 ```
+
+For Elasticsearch 8.14+ deployments using API key authentication, create a cross-cluster API key on the leader cluster, store it in the follower cluster keystore as `cluster.remote.leader-cluster.credentials`, and connect to the remote cluster server port (9443 by default) instead of the transport port.
 
 ## Troubleshooting CCR
 

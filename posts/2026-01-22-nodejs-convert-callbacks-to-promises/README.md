@@ -227,7 +227,7 @@ const result = await customAsyncOpAsync({ fail: false });
 Modern Node.js versions provide Promise-based APIs out of the box. Always prefer these over promisifying the callback versions.
 
 ```javascript
-// fs promises API (Node.js 10+)
+// fs promises API (Node.js 10.1+)
 const fs = require('fs').promises;
 // Or: const fs = require('fs/promises'); // Node.js 14+
 
@@ -358,7 +358,7 @@ async function readStreamFully(filePath) {
 }
 ```
 
-### Using events.once (Node.js 11.13+)
+### Using events.once (Node.js 10.16+ or 11.13+)
 
 Node.js provides a built-in helper for this:
 
@@ -372,7 +372,8 @@ async function waitForStreamEnd() {
   // Wait for the stream to be ready
   await once(stream, 'ready');
   
-  // Process data...
+  // Consume the stream so it can emit 'end'
+  stream.resume();
   
   // Wait for completion
   await once(stream, 'end');
@@ -500,13 +501,13 @@ class PromisifiedDatabase {
   
   // Add convenience methods
   async transaction(fn) {
-    await this.query('BEGIN');
+    await this.query('BEGIN', []);
     try {
       const result = await fn(this);
-      await this.query('COMMIT');
+      await this.query('COMMIT', []);
       return result;
     } catch (error) {
-      await this.query('ROLLBACK');
+      await this.query('ROLLBACK', []);
       throw error;
     }
   }
@@ -518,7 +519,7 @@ async function main() {
   
   await db.connect({ host: 'localhost' });
   
-  const users = await db.query('SELECT * FROM users');
+  const users = await db.query('SELECT * FROM users', []);
   console.log('Users:', users);
   
   await db.close();

@@ -73,7 +73,7 @@ git stash pop
 git add .
 git commit -m "WIP: work in progress"
 git pull
-# This may create a merge commit
+# This may fast-forward, rebase, merge, or fail depending on your pull configuration
 
 # Option 3: Use pull with rebase and autostash
 git pull --rebase --autostash
@@ -109,8 +109,8 @@ gitGraph
 ### Option A: Merge (Creates a Merge Commit)
 
 ```bash
-# Standard pull creates a merge commit
-git pull
+# Pull and merge explicitly
+git pull --no-rebase
 
 # Or explicitly
 git fetch
@@ -279,7 +279,7 @@ jobs:
           fetch-depth: 0
       - name: Check if branch is up to date
         run: |
-          git fetch origin main
+          git fetch origin main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor origin/main HEAD; then
             echo "Branch is not up to date with main"
             exit 1
@@ -334,7 +334,7 @@ git pull --rebase --autostash
 git pull --rebase
 
 # Diverged, want merge commit
-git pull
+git pull --no-rebase
 
 # Completely reset to remote (destructive!)
 git fetch && git reset --hard origin/main

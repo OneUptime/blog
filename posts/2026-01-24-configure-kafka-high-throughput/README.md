@@ -77,7 +77,7 @@ public class HighThroughputProducer {
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536); // 64KB
 
         // Time to wait for batch to fill before sending
-        // Default: 0 (send immediately), add delay to allow batching
+        // Default: 5 in Apache Kafka 4.0+ (0 in earlier versions), add delay to allow batching
         props.put(ProducerConfig.LINGER_MS_CONFIG, 10); // Wait up to 10ms
 
         // Total memory for buffering records
@@ -146,12 +146,19 @@ Choose the right compression algorithm for your use case:
 | gzip | 3-4x | High | Maximum compression, batch jobs |
 
 ```java
+import org.apache.kafka.clients.producer.*;
+import java.util.Properties;
+
 // Benchmark different compression settings
 public class CompressionBenchmark {
 
     public static void benchmarkCompression(String compressionType, int messageCount) {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+            "org.apache.kafka.common.serialization.StringSerializer");
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+            "org.apache.kafka.common.serialization.StringSerializer");
         props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, compressionType);
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536);
         props.put(ProducerConfig.LINGER_MS_CONFIG, 10);
@@ -190,6 +197,7 @@ public class CompressionBenchmark {
 import org.apache.kafka.clients.consumer.*;
 import java.util.Properties;
 import java.util.Collections;
+import java.time.Duration;
 
 public class HighThroughputConsumer {
 
@@ -206,11 +214,11 @@ public class HighThroughputConsumer {
 
         // THROUGHPUT SETTINGS
 
-        // Maximum data returned per fetch request
+        // Target maximum data returned per fetch request
         // Default: 52428800 (50MB), increase for high throughput
         props.put(ConsumerConfig.FETCH_MAX_BYTES_CONFIG, 104857600); // 100MB
 
-        // Maximum data per partition per fetch
+        // Target maximum data per partition per fetch
         // Default: 1048576 (1MB)
         props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, 10485760); // 10MB
 
@@ -243,6 +251,9 @@ public class HighThroughputConsumer {
 Maximize throughput by matching consumer instances to partitions:
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.concurrent.*;
 import java.util.List;
 import java.util.ArrayList;
@@ -352,7 +363,7 @@ num.network.threads=8
 # I/O threads handle disk operations
 num.io.threads=16
 
-# Request handler threads
+# Replica fetcher threads
 num.replica.fetchers=4
 
 # SOCKET SETTINGS
@@ -376,7 +387,7 @@ log.retention.bytes=-1
 log.cleanup.policy=delete
 
 # COMPRESSION
-# Allow broker to validate compressed batches
+# Retain producer-selected compression by default
 compression.type=producer
 ```
 
@@ -433,6 +444,8 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 ### Producer Configuration Summary
 
 ```java
+import java.util.Properties;
+
 public class OptimalProducerConfig {
 
     public static Properties getHighThroughputConfig() {
@@ -493,6 +506,8 @@ public class OptimalProducerConfig {
 ### Consumer Configuration Summary
 
 ```java
+import java.util.Properties;
+
 public class OptimalConsumerConfig {
 
     public static Properties getHighThroughputConfig(String groupId) {
@@ -536,7 +551,7 @@ kafka-producer-perf-test.sh \
   --num-records 10000000 \
   --record-size 1024 \
   --throughput -1 \
-  --producer-props \
+  --command-property \
     bootstrap.servers=localhost:9092 \
     batch.size=131072 \
     linger.ms=20 \
@@ -547,8 +562,7 @@ kafka-producer-perf-test.sh \
 kafka-consumer-perf-test.sh \
   --bootstrap-server localhost:9092 \
   --topic benchmark-topic \
-  --messages 10000000 \
-  --threads 4
+  --num-records 10000000
 ```
 
 ### Expected Results
@@ -569,6 +583,11 @@ With optimized configuration on modern hardware:
 Track these metrics to ensure your configuration is working:
 
 ```java
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
+import java.util.Map;
+
 // Key producer metrics to monitor
 public class ThroughputMetrics {
 

@@ -23,7 +23,7 @@ Prometheus provides four core metric types, each designed for specific use cases
 | Counter | Things that only go up | Request count, errors, bytes sent |
 | Gauge | Values that go up and down | Temperature, queue size, active connections |
 | Histogram | Distribution with buckets | Request latency, response sizes |
-| Summary | Distribution with quantiles | Similar to histogram, calculated client-side |
+| Summary | Distribution with count and sum | Similar to histogram, but without configurable buckets |
 
 Choosing the right type matters. Using a gauge where you need a counter will produce incorrect rates in your dashboards.
 
@@ -65,8 +65,8 @@ request_latency = Histogram(
     buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
 )
 
-# Summary: tracks distribution with pre-calculated quantiles
-# Use when: you need specific percentiles and can afford client-side computation
+# Summary: tracks distribution with count and sum
+# Use when: you need average duration or size, but not percentiles
 request_duration = Summary(
     'app_request_duration_seconds',
     'Request duration in seconds',
@@ -218,8 +218,8 @@ def normalize_endpoint(path: str) -> str:
 async def metrics():
     """Prometheus metrics endpoint"""
     # Check if running in multiprocess mode (gunicorn with multiple workers)
-    if 'prometheus_multiproc_dir' in os.environ:
-        registry = CollectorRegistry()
+    if 'PROMETHEUS_MULTIPROC_DIR' in os.environ:
+        registry = CollectorRegistry(support_collectors_without_names=True)
         multiprocess.MultiProcessCollector(registry)
         return Response(
             content=generate_latest(registry),
@@ -383,12 +383,12 @@ from prometheus_client import CollectorRegistry, multiprocess, generate_latest
 
 # Set the prometheus multiprocess directory BEFORE importing metrics
 # This should be set as an environment variable before the app starts
-# export prometheus_multiproc_dir=/tmp/prometheus_multiproc
+# export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
 
 def setup_multiprocess_metrics():
     """Configure metrics for multiprocess deployment"""
     # Ensure the directory exists
-    prom_dir = os.environ.get('prometheus_multiproc_dir')
+    prom_dir = os.environ.get('PROMETHEUS_MULTIPROC_DIR')
     if prom_dir:
         os.makedirs(prom_dir, exist_ok=True)
 
@@ -415,9 +415,9 @@ memory_usage_bytes = Gauge(
 
 def get_metrics():
     """Generate metrics output for multiprocess mode"""
-    if 'prometheus_multiproc_dir' in os.environ:
+    if 'PROMETHEUS_MULTIPROC_DIR' in os.environ:
         # Collect from all workers
-        registry = CollectorRegistry()
+        registry = CollectorRegistry(support_collectors_without_names=True)
         multiprocess.MultiProcessCollector(registry)
         return generate_latest(registry)
     else:
@@ -439,8 +439,8 @@ Gunicorn configuration for multiprocess metrics:
 import os
 from prometheus_client import multiprocess
 
-# Set multiprocess directory
-os.environ['prometheus_multiproc_dir'] = '/tmp/prometheus_multiproc'
+# Set PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc in the startup shell
+# before Gunicorn starts. Do not set it here in Python.
 
 # Number of workers
 workers = 4
@@ -452,7 +452,7 @@ def child_exit(server, worker):
 
 def on_starting(server):
     """Clear old metrics on server start"""
-    prom_dir = os.environ.get('prometheus_multiproc_dir')
+    prom_dir = os.environ.get('PROMETHEUS_MULTIPROC_DIR')
     if prom_dir and os.path.exists(prom_dir):
         import shutil
         shutil.rmtree(prom_dir)
@@ -468,8 +468,8 @@ For Celery workers or other background job processors, expose metrics differentl
 ```python
 # worker_metrics.py
 # Prometheus metrics for Celery background workers
-from prometheus_client import Counter, Histogram, Gauge, push_to_gateway
-from prometheus_client import CollectorRegistry, pushadd_to_gateway
+from prometheus_client import Counter, Histogram, Gauge, REGISTRY
+from prometheus_client import pushadd_to_gateway
 from celery import Celery
 from celery.signals import task_prerun, task_postrun, task_failure
 import time
@@ -506,28 +506,23 @@ def task_prerun_handler(task_id, task, *args, **kwargs):
     tasks_in_progress.labels(task_name=task.name).inc()
 
 @task_postrun.connect
-def task_postrun_handler(task_id, task, *args, **kwargs):
-    """Called after successful task execution"""
+def task_postrun_handler(task_id=None, task=None, state=None, **kwargs):
+    """Called after task execution"""
     # Record duration
     if task_id in task_start_times:
         duration = time.time() - task_start_times.pop(task_id)
         task_duration_seconds.labels(task_name=task.name).observe(duration)
 
-    # Update counters
-    tasks_total.labels(task_name=task.name, status='success').inc()
+    if state == 'SUCCESS':
+        tasks_total.labels(task_name=task.name, status='success').inc()
+
     tasks_in_progress.labels(task_name=task.name).dec()
 
 @task_failure.connect
-def task_failure_handler(task_id, exception, *args, **kwargs):
+def task_failure_handler(sender=None, task_id=None, exception=None, **kwargs):
     """Called when task fails"""
-    task = kwargs.get('sender')
-
-    if task_id in task_start_times:
-        duration = time.time() - task_start_times.pop(task_id)
-        task_duration_seconds.labels(task_name=task.name).observe(duration)
-
-    tasks_total.labels(task_name=task.name, status='failure').inc()
-    tasks_in_progress.labels(task_name=task.name).dec()
+    task_name = sender.name if sender else 'unknown'
+    tasks_total.labels(task_name=task_name, status='failure').inc()
 
 # Push metrics to Prometheus Pushgateway
 def push_metrics_to_gateway(job_name: str, gateway_url: str = 'localhost:9091'):
@@ -557,6 +552,7 @@ Following Prometheus naming conventions makes your metrics easier to query and u
 ```python
 # naming_conventions.py
 # Prometheus metric naming best practices
+from prometheus_client import Counter, Histogram
 
 # Good: clear, follows conventions
 http_requests_total = Counter('http_requests_total', 'Total HTTP requests', ['method'])

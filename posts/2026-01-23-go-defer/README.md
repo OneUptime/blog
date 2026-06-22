@@ -348,10 +348,10 @@ func readFile(path string) (data []byte, err error) {
 ### Mistake 3: Deferring Method on Nil
 
 ```go
-// WRONG: Will panic in defer
+// WRONG: Defers Close on the nil receiver, not the file opened later
 func example() {
     var file *os.File  // nil
-    defer file.Close() // Panic when defer runs!
+    defer file.Close() // Close runs on nil and returns os.ErrInvalid
     
     file, _ = os.Open("file.txt")  // file is now valid
 }

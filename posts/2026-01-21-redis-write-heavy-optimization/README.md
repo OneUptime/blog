@@ -898,7 +898,7 @@ class MemoryEfficientWriter:
         Better approach: Store all objects in one hash.
         Memory overhead: Shared hash overhead, ~50 bytes per field.
 
-        Best for: < 512 fields with values < 64 bytes (uses ziplist)
+        Best for: < 512 fields with values < 64 bytes (uses listpack in Redis 7+)
         """
         mapping = {
             obj_id: json.dumps(obj)
@@ -946,8 +946,8 @@ class MemoryEfficientWriter:
         pipe = self.redis.pipeline()
 
         for i, (name, value) in enumerate(counters.items()):
-            # Store counter at offset i * 16 bits
-            pipe.bitfield(key, 'SET', 'u16', f'#{i * 16}', value)
+            # Store counter at element offset i (Redis multiplies # offsets by the type width)
+            pipe.execute_command('BITFIELD', key, 'SET', 'u16', f'#{i}', value)
             # Store name-to-index mapping
             pipe.hset(f"{prefix}:index", name, i)
 
@@ -1235,6 +1235,11 @@ class RedisStreamWriter:
         pipe = self.redis.pipeline()
 
         for msg_id, fields in messages:
+            fields = {
+                (key.decode() if isinstance(key, bytes) else key):
+                (value.decode() if isinstance(value, bytes) else value)
+                for key, value in fields.items()
+            }
             target_key = fields['target_key']
             command = fields['command']
             data = json.loads(fields['data'])
@@ -1354,19 +1359,19 @@ active-defrag-threshold-lower 10
 active-defrag-threshold-upper 25
 
 # Hash optimization (for many small hashes)
-hash-max-ziplist-entries 512
-hash-max-ziplist-value 64
+hash-max-listpack-entries 512
+hash-max-listpack-value 64
 
 # List optimization
-list-max-ziplist-size -2
+list-max-listpack-size -2
 list-compress-depth 0
 
 # Set optimization
 set-max-intset-entries 512
 
 # Sorted set optimization
-zset-max-ziplist-entries 128
-zset-max-ziplist-value 64
+zset-max-listpack-entries 128
+zset-max-listpack-value 64
 ```
 
 ### Kernel Tuning

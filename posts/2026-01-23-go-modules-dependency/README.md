@@ -126,7 +126,7 @@ graph TD
     D --> E[Selected: Dep C v1.3.0]
 ```
 
-Go selects the **minimum version** that satisfies all requirements.
+For each module path, Go selects the **highest version required** anywhere in the module graph. This is the minimal version that satisfies all minimum requirements.
 
 ---
 

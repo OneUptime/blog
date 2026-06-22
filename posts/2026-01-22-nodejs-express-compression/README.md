@@ -132,61 +132,19 @@ Brotli offers better compression ratios than gzip. Enable it with Express:
 
 ```javascript
 const express = require('express');
+const compression = require('compression');
 const zlib = require('zlib');
 
 const app = express();
 
-// Custom Brotli compression middleware
-function brotliCompress(req, res, next) {
-  // Check if client accepts Brotli
-  const acceptEncoding = req.headers['accept-encoding'] || '';
-  
-  if (!acceptEncoding.includes('br')) {
-    return next();
-  }
-  
-  // Store original send and json methods
-  const originalSend = res.send.bind(res);
-  const originalJson = res.json.bind(res);
-  
-  res.send = function(body) {
-    if (typeof body === 'string' || Buffer.isBuffer(body)) {
-      const buffer = Buffer.isBuffer(body) ? body : Buffer.from(body);
-      
-      // Only compress if large enough
-      if (buffer.length < 1024) {
-        return originalSend(body);
-      }
-      
-      zlib.brotliCompress(buffer, {
-        params: {
-          [zlib.constants.BROTLI_PARAM_QUALITY]: 4 // 0-11, higher = better but slower
-        }
-      }, (err, compressed) => {
-        if (err) {
-          return originalSend(body);
-        }
-        
-        res.set('Content-Encoding', 'br');
-        res.set('Content-Length', compressed.length);
-        res.removeHeader('Content-Length');
-        originalSend(compressed);
-      });
-    } else {
-      originalSend(body);
+// compression supports Brotli when the client sends Accept-Encoding: br
+app.use(compression({
+  brotli: {
+    params: {
+      [zlib.constants.BROTLI_PARAM_QUALITY]: 4 // 0-11, higher = better but slower
     }
-  };
-  
-  res.json = function(obj) {
-    const body = JSON.stringify(obj);
-    res.set('Content-Type', 'application/json');
-    res.send(body);
-  };
-  
-  next();
-}
-
-app.use(brotliCompress);
+  }
+}));
 
 app.get('/api/data', (req, res) => {
   res.json({ message: 'Compressed with Brotli!' });
@@ -277,28 +235,42 @@ const path = require('path');
 
 const app = express();
 
+function safeJoin(basePath, requestPath) {
+  const resolvedPath = path.resolve(basePath, '.' + requestPath);
+  if (resolvedPath !== basePath && !resolvedPath.startsWith(basePath + path.sep)) {
+    return null;
+  }
+  return resolvedPath;
+}
+
 // Serve pre-compressed files when available
 function servePrecompressed(staticPath) {
+  const staticRoot = path.resolve(staticPath);
+
   return (req, res, next) => {
-    const acceptEncoding = req.headers['accept-encoding'] || '';
-    const filePath = path.join(staticPath, req.path);
+    const filePath = safeJoin(staticRoot, req.path);
+    if (!filePath) {
+      return res.status(403).send('Forbidden');
+    }
     
     // Try Brotli first
-    if (acceptEncoding.includes('br')) {
+    if (req.acceptsEncodings('br')) {
       const brotliPath = filePath + '.br';
       if (fs.existsSync(brotliPath)) {
         res.set('Content-Encoding', 'br');
-        res.set('Vary', 'Accept-Encoding');
+        res.vary('Accept-Encoding');
+        res.type(filePath);
         return res.sendFile(brotliPath);
       }
     }
     
     // Try gzip
-    if (acceptEncoding.includes('gzip')) {
+    if (req.acceptsEncodings('gzip')) {
       const gzipPath = filePath + '.gz';
       if (fs.existsSync(gzipPath)) {
         res.set('Content-Encoding', 'gzip');
-        res.set('Vary', 'Accept-Encoding');
+        res.vary('Accept-Encoding');
+        res.type(filePath);
         return res.sendFile(gzipPath);
       }
     }
@@ -320,13 +292,17 @@ app.listen(3000);
 const express = require('express');
 const zlib = require('zlib');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
+const filesRoot = path.resolve(__dirname, 'files');
 
 // Stream large files with compression
 app.get('/download/:file', (req, res) => {
-  const filePath = `./files/${req.params.file}`;
-  const acceptEncoding = req.headers['accept-encoding'] || '';
+  const filePath = path.resolve(filesRoot, req.params.file);
+  if (!filePath.startsWith(filesRoot + path.sep)) {
+    return res.status(403).send('Forbidden');
+  }
   
   // Check if file exists
   if (!fs.existsSync(filePath)) {
@@ -336,14 +312,17 @@ app.get('/download/:file', (req, res) => {
   const readStream = fs.createReadStream(filePath);
   
   // Choose compression based on client support
-  if (acceptEncoding.includes('br')) {
+  if (req.acceptsEncodings('br')) {
     res.set('Content-Encoding', 'br');
+    res.vary('Accept-Encoding');
     readStream.pipe(zlib.createBrotliCompress()).pipe(res);
-  } else if (acceptEncoding.includes('gzip')) {
+  } else if (req.acceptsEncodings('gzip')) {
     res.set('Content-Encoding', 'gzip');
+    res.vary('Accept-Encoding');
     readStream.pipe(zlib.createGzip()).pipe(res);
-  } else if (acceptEncoding.includes('deflate')) {
+  } else if (req.acceptsEncodings('deflate')) {
     res.set('Content-Encoding', 'deflate');
+    res.vary('Accept-Encoding');
     readStream.pipe(zlib.createDeflate()).pipe(res);
   } else {
     readStream.pipe(res);
@@ -362,7 +341,7 @@ const mcache = require('memory-cache');
 
 const app = express();
 
-// Cache compressed responses
+// Cache response bodies; compression is still negotiated per request
 const cacheMiddleware = (duration) => {
   return (req, res, next) => {
     const key = '__express__' + req.originalUrl;
@@ -386,7 +365,7 @@ const cacheMiddleware = (duration) => {
   };
 };
 
-// Apply compression first, then caching
+// Apply compression before routes so cached hits are compressed per client
 app.use(compression());
 
 app.get('/api/data', cacheMiddleware(300), (req, res) => {
@@ -409,7 +388,7 @@ const app = express();
 const compressionStats = {
   requests: 0,
   compressed: 0,
-  originalSize: 0,
+  bytesWritten: 0,
   compressedSize: 0
 };
 
@@ -433,8 +412,10 @@ app.use((req, res, next) => {
       responseSize += Buffer.byteLength(chunk);
     }
     
-    const encoding = res.get('Content-Encoding');
-    if (encoding === 'gzip' || encoding === 'br' || encoding === 'deflate') {
+    compressionStats.bytesWritten += responseSize;
+    
+    const contentEncoding = res.get('Content-Encoding');
+    if (contentEncoding === 'gzip' || contentEncoding === 'br' || contentEncoding === 'deflate') {
       compressionStats.compressed++;
       compressionStats.compressedSize += responseSize;
     }
@@ -451,7 +432,7 @@ app.use(compression());
 app.get('/stats/compression', (req, res) => {
   res.json({
     ...compressionStats,
-    compressionRatio: compressionStats.compressed / compressionStats.requests
+    compressedRequestRatio: compressionStats.compressed / compressionStats.requests
   });
 });
 

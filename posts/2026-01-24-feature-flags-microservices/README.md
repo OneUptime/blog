@@ -44,7 +44,7 @@ A dedicated service handles all flag evaluations, ensuring consistency.
 # flag_service.py - Centralized feature flag service
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 import hashlib
 import json
@@ -55,7 +55,7 @@ app = FastAPI()
 class FlagContext(BaseModel):
     user_id: str
     session_id: Optional[str] = None
-    attributes: Dict[str, Any] = {}
+    attributes: Dict[str, Any] = Field(default_factory=dict)
 
 class FlagEvaluation(BaseModel):
     flag_name: str
@@ -342,10 +342,15 @@ flowchart LR
 # context_propagation.py - Propagate flag decisions across services
 import json
 import base64
+import logging
+import os
+import time
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import hmac
 import hashlib
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class FeatureFlagHeader:
@@ -509,13 +514,13 @@ A long-running request might span a flag change. Ensure consistency within a sin
 ```python
 # request_scoped_flags.py - Snapshot flags at request start
 from contextvars import ContextVar
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
 
 @dataclass
 class FlagSnapshot:
-    """Immutable snapshot of flag evaluations for a request."""
+    """Request-scoped snapshot of flag evaluations."""
     timestamp: datetime
     evaluations: Dict[str, bool] = field(default_factory=dict)
     variants: Dict[str, str] = field(default_factory=dict)
@@ -620,6 +625,7 @@ Testing requires controlling flags across multiple services.
 import pytest
 from unittest.mock import patch, MagicMock
 from contextlib import contextmanager
+from typing import Dict, Any
 
 class FeatureFlagTestHelper:
     """Helper for testing with feature flags."""
@@ -916,10 +922,58 @@ class RolloutController:
         """Check if metrics meet success criteria."""
         for metric, threshold in criteria.items():
             value = metrics.get(metric)
-            if not self._evaluate_threshold(value, threshold):
+            if not self._evaluate_threshold(value, threshold, metrics, metric):
                 print(f"Criteria failed: {metric}={value}, required {threshold}")
                 return False
         return True
+
+    def _evaluate_threshold(
+        self,
+        value,
+        threshold: str,
+        metrics: Dict,
+        metric_name: str
+    ) -> bool:
+        """Evaluate simple thresholds like '< 0.1%' or '> baseline - 1%'."""
+        operator, target = threshold.split(" ", 1)
+
+        if target.startswith("baseline - "):
+            baseline = metrics.get(f"{metric_name}_baseline")
+            if baseline is None:
+                baseline = metrics.get("baseline", {}).get(metric_name)
+            if baseline is None:
+                return False
+            target_value = float(baseline) - self._parse_metric_value(
+                target.removeprefix("baseline - ")
+            )
+        else:
+            target_value = self._parse_metric_value(target)
+
+        current_value = self._parse_metric_value(value)
+
+        if operator == "<":
+            return current_value < target_value
+        if operator == ">":
+            return current_value > target_value
+        if operator == "<=":
+            return current_value <= target_value
+        if operator == ">=":
+            return current_value >= target_value
+        if operator == "==":
+            return current_value == target_value
+        raise ValueError(f"Unsupported threshold operator: {operator}")
+
+    def _parse_metric_value(self, value) -> float:
+        """Convert simple metric strings such as '0.1%', '500ms', or '2s'."""
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        text = str(value).strip()
+        for suffix in ("%", "ms", "s"):
+            if text.endswith(suffix):
+                text = text[:-len(suffix)]
+                break
+        return float(text.strip())
 
     async def _rollback(self, flag_name: str):
         """Rollback flag to safe state."""

@@ -202,16 +202,15 @@ Hermes is Facebook's JavaScript engine optimized for React Native. It compiles J
 
 ### Enabling Hermes
 
-In your `android/app/build.gradle`:
+Hermes is enabled by default in current React Native projects, so no additional configuration is required for a newly created app. If you are maintaining an older project or one that explicitly opts out, use the React Native version's generated configuration instead of hardcoding a `hermesCommand`.
 
-```groovy
-project.ext.react = [
-    enableHermes: true,
-    hermesCommand: "../../node_modules/hermes-engine/%OS-BIN%/hermes",
-]
+For older Android projects that expose the flag in `android/gradle.properties`:
+
+```properties
+hermesEnabled=true
 ```
 
-For iOS, in your `Podfile`:
+For older iOS projects, in your `Podfile`:
 
 ```ruby
 use_react_native!(
@@ -314,7 +313,7 @@ Create `android/app/proguard-rules.pro`:
     public static int i(...);
 }
 
-# Encrypt string literals
+# Adapt class-name string constants and resource references after obfuscation
 -adaptclassstrings
 -adaptresourcefilenames
 -adaptresourcefilecontents
@@ -322,7 +321,15 @@ Create `android/app/proguard-rules.pro`:
 
 ### R8 Full Mode
 
-Enable R8 full mode for more aggressive optimization:
+R8 full mode is enabled by default with Android Gradle Plugin 8.0 and later. Make sure your project does not opt out:
+
+```properties
+# gradle.properties
+# Remove this line if it exists:
+# android.enableR8.fullMode=false
+```
+
+For projects still using Android Gradle Plugin 7.x, explicitly enable full mode:
 
 ```properties
 # gradle.properties
@@ -335,13 +342,13 @@ This provides better code shrinking and obfuscation but requires more careful te
 
 iOS apps compiled with Xcode have different protection mechanisms.
 
-### Bitcode and Symbol Stripping
+### Symbol Stripping
 
 In Xcode, enable these settings for release builds:
 
 ```text
 Build Settings:
-- Enable Bitcode: Yes
+- Enable Bitcode: No (or leave unavailable in current Xcode versions)
 - Strip Debug Symbols During Copy: Yes
 - Strip Linked Product: Yes
 - Strip Style: All Symbols
@@ -373,24 +380,24 @@ Runtime detection helps identify when your app is being analyzed.
 // DebugDetector.java
 public class DebugDetector {
 
+    private static final String DEBUG_SIGNATURE_SHA256 = "YOUR_DEBUG_CERT_SHA256";
+
     public static boolean isDebuggerConnected() {
         return Debug.isDebuggerConnected() || Debug.waitingForDebugger();
     }
 
-    public static boolean isDebuggable() {
+    public static boolean isDebuggable(Context context) {
         return (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
-    public static boolean hasDebugKey() {
+    public static boolean hasDebugKey(Context context) {
         try {
-            PackageInfo info = context.getPackageManager()
-                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
-            for (Signature signature : info.signatures) {
-                MessageDigest md = MessageDigest.getInstance("SHA");
+            Signature[] signatures = getSignatures(context);
+            for (Signature signature : signatures) {
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
                 md.update(signature.toByteArray());
-                String currentSignature = Base64.encodeToString(md.digest(), Base64.DEFAULT);
-                // Check against known debug key hash
-                if (currentSignature.contains("debug")) {
+                String currentSignature = bytesToHex(md.digest());
+                if (DEBUG_SIGNATURE_SHA256.equalsIgnoreCase(currentSignature)) {
                     return true;
                 }
             }
@@ -398,6 +405,28 @@ public class DebugDetector {
             return true; // Fail secure
         }
         return false;
+    }
+
+    private static Signature[] getSignatures(Context context) throws PackageManager.NameNotFoundException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageInfo info = context.getPackageManager()
+                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+            return info.signingInfo.getApkContentsSigners();
+        }
+
+        PackageInfo info = context.getPackageManager()
+            .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
+        return info.signatures;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : bytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 
     public static boolean detectFrida() {
@@ -432,8 +461,13 @@ public class DebugDetector {
 
 ```objective-c
 // DebugDetector.m
+#import <arpa/inet.h>
 #import <sys/sysctl.h>
 #import <dlfcn.h>
+#import <mach-o/dyld.h>
+#import <netinet/in.h>
+#import <sys/socket.h>
+#import <unistd.h>
 
 @implementation DebugDetector
 
@@ -598,13 +632,7 @@ public class SignatureValidator {
 
     public static boolean validateSignature(Context context) {
         try {
-            PackageInfo info = context.getPackageManager()
-                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
-
-            SigningInfo signingInfo = info.signingInfo;
-            Signature[] signatures = signingInfo.getApkContentsSigners();
-
-            for (Signature signature : signatures) {
+            for (Signature signature : getSignatures(context)) {
                 MessageDigest md = MessageDigest.getInstance("SHA-256");
                 md.update(signature.toByteArray());
                 String currentSignature = bytesToHex(md.digest());
@@ -618,31 +646,55 @@ public class SignatureValidator {
         }
         return false;
     }
+
+    private static Signature[] getSignatures(Context context) throws PackageManager.NameNotFoundException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageInfo info = context.getPackageManager()
+                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+            return info.signingInfo.getApkContentsSigners();
+        }
+
+        PackageInfo info = context.getPackageManager()
+            .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
+        return info.signatures;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : bytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
+    }
 }
 ```
 
-### Memory Integrity Monitoring
+### File Integrity Monitoring
 
-Detect runtime memory modifications:
+Detect modifications to critical files or native libraries:
 
 ```java
-// MemoryIntegrityMonitor.java
-public class MemoryIntegrityMonitor {
+// FileIntegrityMonitor.java
+public class FileIntegrityMonitor {
 
-    private static Map<String, Integer> methodHashes = new HashMap<>();
+    private static final Map<File, String> expectedHashes = new HashMap<>();
 
-    public static void registerMethod(String name, Method method) {
-        // Store hash of method bytecode
-        int hash = calculateMethodHash(method);
-        methodHashes.put(name, hash);
+    public static void registerFile(File file, String expectedSha256) {
+        expectedHashes.put(file, expectedSha256);
     }
 
-    public static boolean verifyMethod(String name, Method method) {
-        Integer expectedHash = methodHashes.get(name);
+    public static boolean verifyFile(File file) {
+        String expectedHash = expectedHashes.get(file);
         if (expectedHash == null) return false;
 
-        int currentHash = calculateMethodHash(method);
-        return expectedHash.equals(currentHash);
+        try {
+            String currentHash = sha256(file);
+            return expectedHash.equalsIgnoreCase(currentHash);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            return false;
+        }
     }
 
     // Run periodic checks
@@ -651,12 +703,35 @@ public class MemoryIntegrityMonitor {
         timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-                for (Map.Entry<String, Integer> entry : methodHashes.entrySet()) {
-                    // Verify each registered method
-                    // Take action if modification detected
+                for (File file : expectedHashes.keySet()) {
+                    if (!verifyFile(file)) {
+                        // Take action if modification detected
+                    }
                 }
             }
         }, 0, 30000); // Check every 30 seconds
+    }
+
+    private static String sha256(File file) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream input = new FileInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        return bytesToHex(digest.digest());
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : bytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 }
 ```
@@ -718,27 +793,26 @@ Use platform secure storage for user-specific secrets:
 
 ```javascript
 // secureStorage.js
+import { Platform } from 'react-native';
 import * as Keychain from 'react-native-keychain';
-import EncryptedStorage from 'react-native-encrypted-storage';
 
 export const storeSecret = async (key, value) => {
-  if (Platform.OS === 'ios') {
-    await Keychain.setGenericPassword(key, value, {
+  const options = Platform.OS === 'ios'
+    ? {
+      service: key,
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    }
+    : {
+      service: key,
       securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
-    });
-  } else {
-    await EncryptedStorage.setItem(key, value);
-  }
+    };
+
+  await Keychain.setGenericPassword(key, value, options);
 };
 
 export const retrieveSecret = async (key) => {
-  if (Platform.OS === 'ios') {
-    const credentials = await Keychain.getGenericPassword();
-    return credentials ? credentials.password : null;
-  } else {
-    return await EncryptedStorage.getItem(key);
-  }
+  const credentials = await Keychain.getGenericPassword({ service: key });
+  return credentials ? credentials.password : null;
 };
 ```
 
@@ -783,10 +857,7 @@ public class SignatureVerifier {
 
     public static boolean verify(Context context) {
         try {
-            PackageInfo packageInfo = context.getPackageManager()
-                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
-
-            for (Signature signature : packageInfo.signatures) {
+            for (Signature signature : getSignatures(context)) {
                 String currentSignature = getSignatureHash(signature);
                 if (RELEASE_SIGNATURE.equals(currentSignature)) {
                     return true;
@@ -798,6 +869,18 @@ public class SignatureVerifier {
         return false;
     }
 
+    private static Signature[] getSignatures(Context context) throws PackageManager.NameNotFoundException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageInfo packageInfo = context.getPackageManager()
+                .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+            return packageInfo.signingInfo.getApkContentsSigners();
+        }
+
+        PackageInfo packageInfo = context.getPackageManager()
+            .getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
+        return packageInfo.signatures;
+    }
+
     private static String getSignatureHash(Signature signature) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         digest.update(signature.toByteArray());
@@ -807,9 +890,12 @@ public class SignatureVerifier {
         for (byte b : hashBytes) {
             String hex = Integer.toHexString(0xff & b);
             if (hex.length() == 1) hexString.append('0');
-            hexString.append(hex).append(":");
+            hexString.append(hex).append(':');
         }
-        return hexString.toString().toUpperCase();
+        if (hexString.length() > 0) {
+            hexString.setLength(hexString.length() - 1);
+        }
+        return hexString.toString().toUpperCase(Locale.US);
     }
 }
 ```
@@ -819,6 +905,7 @@ public class SignatureVerifier {
 ```objective-c
 // CodeSigningValidator.m
 #import <Foundation/Foundation.h>
+#import <Security/Security.h>
 
 @implementation CodeSigningValidator
 
@@ -842,22 +929,19 @@ public class SignatureVerifier {
     return YES;
 }
 
-+ (BOOL)verifyBinaryIntegrity {
-    // Get code signature status
-    SecStaticCodeRef staticCode;
-    NSURL *bundleURL = [[NSBundle mainBundle] bundleURL];
++ (BOOL)verifyExpectedEntitlements {
+    SecTaskRef task = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    if (!task) return NO;
 
-    OSStatus status = SecStaticCodeCreateWithPath((__bridge CFURLRef)bundleURL,
-                                                   kSecCSDefaultFlags,
-                                                   &staticCode);
-    if (status != errSecSuccess) return NO;
+    CFTypeRef appIdentifier = SecTaskCopyValueForEntitlement(task,
+        CFSTR("application-identifier"),
+        NULL);
+    CFRelease(task);
 
-    status = SecStaticCodeCheckValidity(staticCode,
-                                         kSecCSDefaultFlags,
-                                         NULL);
-    CFRelease(staticCode);
+    if (!appIdentifier) return NO;
 
-    return status == errSecSuccess;
+    NSString *identifier = CFBridgingRelease(appIdentifier);
+    return [identifier isEqualToString:@"TEAMID.com.yourcompany.yourapp"];
 }
 
 @end

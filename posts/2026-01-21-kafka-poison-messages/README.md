@@ -145,7 +145,8 @@ public class DLQConsumer {
             System.out.println("Sent to DLQ: " + dlqRecord);
         } catch (Exception e) {
             System.err.println("Failed to send to DLQ: " + e.getMessage());
-            // Log to file as last resort
+            // Do not commit the source offset if the DLQ write failed
+            throw new RuntimeException("DLQ write failed", e);
         }
     }
 
@@ -203,7 +204,7 @@ class DLQConsumer:
                     self._handle_failed_message(msg, e)
 
                 # Commit after processing (success or DLQ)
-                self.consumer.commit(msg)
+                self.consumer.commit(msg, asynchronous=False)
 
         finally:
             self.consumer.close()
@@ -211,6 +212,7 @@ class DLQConsumer:
 
     def _handle_failed_message(self, msg, exception: Exception):
         print(f"Failed to process message: {exception}")
+        delivery_errors = []
 
         headers = [
             ('dlq.original.topic', msg.topic().encode()),
@@ -227,20 +229,24 @@ class DLQConsumer:
             for key, value in msg.headers():
                 headers.append((f'dlq.original.header.{key}', value))
 
+        def delivery_callback(err, delivered_msg):
+            if err:
+                delivery_errors.append(err)
+                print(f"Failed to send to DLQ: {err}")
+            else:
+                print(f"Sent to DLQ: {delivered_msg.topic()}[{delivered_msg.partition()}] @ {delivered_msg.offset()}")
+
         self.producer.produce(
             self.dlq_topic,
             key=msg.key(),
             value=msg.value(),
             headers=headers,
-            callback=self._delivery_callback
+            callback=delivery_callback
         )
         self.producer.flush()
 
-    def _delivery_callback(self, err, msg):
-        if err:
-            print(f"Failed to send to DLQ: {err}")
-        else:
-            print(f"Sent to DLQ: {msg.topic()}[{msg.partition()}] @ {msg.offset()}")
+        if delivery_errors:
+            raise RuntimeError(f"DLQ write failed: {delivery_errors[0]}")
 
 
 def main():
@@ -315,7 +321,7 @@ public class RetryConsumer {
         ProducerRecord<String, String> retryRecord = new ProducerRecord<>(
             retryTopic,
             null,
-            System.currentTimeMillis() + delay,  // Scheduled timestamp
+            System.currentTimeMillis() + delay,  // Record timestamp metadata
             record.key(),
             record.value()
         );
@@ -327,7 +333,11 @@ public class RetryConsumer {
             .add("retry.scheduled.time",
                 String.valueOf(System.currentTimeMillis() + delay).getBytes());
 
-        producer.send(retryRecord);
+        try {
+            producer.send(retryRecord).get();
+        } catch (Exception sendException) {
+            throw new RuntimeException("Failed to send retry message", sendException);
+        }
         System.out.printf("Scheduled retry %d for message (delay: %dms)%n",
             retryCount, delay);
     }
@@ -357,7 +367,7 @@ public class RetryTopicConsumer {
     private final Consumer<String, String> consumer;
     private final Producer<String, String> producer;
 
-    public void consumeRetryTopic(String retryTopic, String originalTopic) {
+    public void consumeRetryTopic(String retryTopic, String originalTopic) throws Exception {
         consumer.subscribe(Collections.singletonList(retryTopic));
 
         while (true) {
@@ -376,7 +386,7 @@ public class RetryTopicConsumer {
                     // Copy retry headers
                     record.headers().forEach(h -> forwardRecord.headers().add(h));
 
-                    producer.send(forwardRecord);
+                    producer.send(forwardRecord).get();
                 } else {
                     // Not ready yet, pause and reprocess later
                     // In production, use a delay queue or scheduled task
@@ -428,6 +438,7 @@ public class CircuitBreakerConsumer {
 
             ConsumerRecords<String, String> records =
                 consumer.poll(Duration.ofMillis(1000));
+            Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
 
             if (state == CircuitState.HALF_OPEN && !records.isEmpty()) {
                 // Test with single message
@@ -440,11 +451,16 @@ public class CircuitBreakerConsumer {
                     openCircuit();
                     handleFailedMessage(testRecord, e);
                 }
-                consumer.commitSync();
+                consumer.commitSync(Collections.singletonMap(
+                    new TopicPartition(testRecord.topic(), testRecord.partition()),
+                    new OffsetAndMetadata(testRecord.offset() + 1)
+                ));
                 continue;
             }
 
             for (ConsumerRecord<String, String> record : records) {
+                boolean stopAfterRecord = false;
+
                 try {
                     processor.process(record);
                     recordSuccess();
@@ -454,12 +470,23 @@ public class CircuitBreakerConsumer {
 
                     if (failureCount.get() >= failureThreshold) {
                         openCircuit();
-                        break;  // Stop processing current batch
+                        stopAfterRecord = true;  // Stop after committing this handled record
                     }
+                }
+
+                offsetsToCommit.put(
+                    new TopicPartition(record.topic(), record.partition()),
+                    new OffsetAndMetadata(record.offset() + 1)
+                );
+
+                if (stopAfterRecord) {
+                    break;
                 }
             }
 
-            consumer.commitSync();
+            if (!offsetsToCommit.isEmpty()) {
+                consumer.commitSync(offsetsToCommit);
+            }
         }
     }
 
@@ -594,7 +621,7 @@ public class DLQReprocessor {
     private final Producer<String, String> producer;
 
     public void reprocess(String dlqTopic, MessageFilter filter,
-                          MessageTransformer transformer) {
+                          MessageTransformer transformer) throws Exception {
         dlqConsumer.subscribe(Collections.singletonList(dlqTopic));
 
         while (true) {
@@ -628,7 +655,7 @@ public class DLQReprocessor {
                 replayRecord.headers().add("reprocessed.timestamp",
                     String.valueOf(System.currentTimeMillis()).getBytes());
 
-                producer.send(replayRecord);
+                producer.send(replayRecord).get();
             }
 
             dlqConsumer.commitSync();
@@ -663,13 +690,16 @@ String dlqTopic = sourceTopic + "-dlq";
 
 ```java
 // Headers should contain enough info to debug
-headers.add("error.message", exception.getMessage());
-headers.add("error.stacktrace", getStackTrace(exception));
-headers.add("original.topic", record.topic());
-headers.add("original.partition", record.partition());
-headers.add("original.offset", record.offset());
-headers.add("original.timestamp", record.timestamp());
-headers.add("processing.host", hostname);
+headers.add("error.message", exception.getMessage().getBytes(StandardCharsets.UTF_8));
+headers.add("error.stacktrace", getStackTrace(exception).getBytes(StandardCharsets.UTF_8));
+headers.add("original.topic", record.topic().getBytes(StandardCharsets.UTF_8));
+headers.add("original.partition",
+    String.valueOf(record.partition()).getBytes(StandardCharsets.UTF_8));
+headers.add("original.offset",
+    String.valueOf(record.offset()).getBytes(StandardCharsets.UTF_8));
+headers.add("original.timestamp",
+    String.valueOf(record.timestamp()).getBytes(StandardCharsets.UTF_8));
+headers.add("processing.host", hostname.getBytes(StandardCharsets.UTF_8));
 ```
 
 ### 3. Monitor DLQ Size

@@ -15,7 +15,7 @@ Helmfile is a declarative spec for deploying Helm charts. It lets you:
 - Define multiple releases in one file
 - Manage environment-specific values
 - Apply releases in order with dependencies
-- Sync, diff, and apply changes atomically
+- Sync, diff, and apply changes with optional atomic Helm upgrades
 
 ```mermaid
 flowchart LR
@@ -47,12 +47,15 @@ flowchart LR
 brew install helmfile
 
 # Linux
-curl -LO https://github.com/helmfile/helmfile/releases/download/v0.158.0/helmfile_0.158.0_linux_amd64.tar.gz
-tar xzf helmfile_0.158.0_linux_amd64.tar.gz
+curl -LO https://github.com/helmfile/helmfile/releases/download/v1.5.5/helmfile_1.5.5_linux_amd64.tar.gz
+tar xzf helmfile_1.5.5_linux_amd64.tar.gz
 sudo mv helmfile /usr/local/bin/
 
 # Verify installation
 helmfile version
+
+# Install required plugins, such as helm-diff
+helmfile init
 ```
 
 ## Basic Helmfile Structure
@@ -261,7 +264,7 @@ helmfile -l tier=backend sync
 helmfile -l app=cache sync
 
 # Combine selectors
-helmfile -l tier=backend -l app=cache diff
+helmfile -l tier=backend,app=cache diff
 ```
 
 ## Release Dependencies
@@ -434,19 +437,10 @@ releases:
     hooks:
       - events: ["presync"]
         showlogs: true
-        command: "kubectl"
+        command: "sh"
         args:
-          - "create"
-          - "namespace"
-          - "app"
-          - "--dry-run=client"
-          - "-o"
-          - "yaml"
-          - "|"
-          - "kubectl"
-          - "apply"
-          - "-f"
-          - "-"
+          - "-c"
+          - "kubectl create namespace app --dry-run=client -o yaml | kubectl apply -f -"
       
       - events: ["postsync"]
         showlogs: true
@@ -562,24 +556,24 @@ Use OCI registries for charts:
 ```yaml
 repositories:
   - name: myregistry
-    url: ghcr.io/myorg/charts
+    url: ghcr.io
     oci: true
 
 releases:
   - name: my-app
     namespace: app
-    chart: myregistry/my-app
+    chart: myregistry/myorg/charts/my-app
     version: 1.0.0
 ```
 
-## State Management
+## Helm Defaults
 
-Helmfile can manage state files for tracking releases.
+Set default Helm options for all releases.
 
 ```yaml
 # helmfile.yaml
 helmDefaults:
-  # Enable state management
+  # Create namespaces and wait for releases
   createNamespace: true
   wait: true
   timeout: 600
@@ -608,9 +602,15 @@ jobs:
       
       - name: Install Helmfile
         run: |
-          curl -LO https://github.com/helmfile/helmfile/releases/download/v0.158.0/helmfile_0.158.0_linux_amd64.tar.gz
-          tar xzf helmfile_0.158.0_linux_amd64.tar.gz
+          curl -LO https://github.com/helmfile/helmfile/releases/download/v1.5.5/helmfile_1.5.5_linux_amd64.tar.gz
+          tar xzf helmfile_1.5.5_linux_amd64.tar.gz
           sudo mv helmfile /usr/local/bin/
+          
+      - name: Install Helm
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+          chmod 700 get_helm.sh
+          ./get_helm.sh
           
       - name: Install helm-diff
         run: helm plugin install https://github.com/databus23/helm-diff
@@ -618,7 +618,7 @@ jobs:
       - name: Configure kubectl
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
           
       - name: Diff
         run: helmfile -e production diff
@@ -635,9 +635,12 @@ deploy:
   stage: deploy
   image: alpine:latest
   before_script:
-    - apk add --no-cache curl bash
-    - curl -LO https://github.com/helmfile/helmfile/releases/download/v0.158.0/helmfile_0.158.0_linux_amd64.tar.gz
-    - tar xzf helmfile_0.158.0_linux_amd64.tar.gz
+    - apk add --no-cache curl bash git openssl
+    - curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+    - chmod 700 get_helm.sh
+    - ./get_helm.sh
+    - curl -LO https://github.com/helmfile/helmfile/releases/download/v1.5.5/helmfile_1.5.5_linux_amd64.tar.gz
+    - tar xzf helmfile_1.5.5_linux_amd64.tar.gz
     - mv helmfile /usr/local/bin/
     - helm plugin install https://github.com/databus23/helm-diff
   script:

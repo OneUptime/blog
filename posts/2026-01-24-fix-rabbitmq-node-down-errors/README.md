@@ -242,8 +242,8 @@ flowchart LR
 ### Detecting Partitions
 
 ```bash
-# Check for partition status
-rabbitmqctl cluster_status | grep -A 5 "Network Partitions"
+# Check for reachable peers
+rabbitmq-diagnostics cluster_status
 
 # Via the management API
 curl -u admin:password http://localhost:15672/api/nodes | jq '.[].partitions'
@@ -252,7 +252,7 @@ curl -u admin:password http://localhost:15672/api/nodes | jq '.[].partitions'
 ### Resolving Partitions
 
 ```bash
-# Option 1: Restart the minority partition nodes
+# Option 1: For RabbitMQ 3.13 through 4.2, restart the minority partition nodes
 # First, identify which nodes are in the minority
 rabbitmqctl cluster_status
 
@@ -269,7 +269,7 @@ rabbitmqctl forget_cluster_node rabbit@node3
 
 ### Partition Handling Strategies
 
-Configure automatic partition handling in `rabbitmq.conf`:
+For RabbitMQ 3.13 through 4.2, configure automatic partition handling in `rabbitmq.conf`:
 
 ```ini
 # rabbitmq.conf
@@ -287,6 +287,8 @@ cluster_partition_handling = pause_minority
 | `ignore` | No automatic action | Manual intervention preferred |
 | `pause_minority` | Minority partition nodes pause | Most common, prevents split-brain |
 | `autoheal` | Automatically heals by restarting nodes | Hands-off operation |
+
+In RabbitMQ 4.3 and later, these partition handling modes were removed with the Mnesia metadata store. The old `cluster_partition_handling` keys are accepted for backwards compatibility but have no effect, so partition recovery should be handled by restoring connectivity and checking Raft-based quorum queue, stream, and metadata store health.
 
 ## Preventing Future Node Down Errors
 
@@ -314,28 +316,30 @@ cat > /usr/local/bin/rabbitmq-health-check.sh << 'EOF'
 #!/bin/bash
 
 # Check if RabbitMQ is responding
-if ! rabbitmqctl status > /dev/null 2>&1; then
+if ! rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
     echo "CRITICAL: RabbitMQ not responding"
     exit 2
 fi
 
-# Check cluster status
-CLUSTER_STATUS=$(rabbitmqctl cluster_status 2>&1)
-if echo "$CLUSTER_STATUS" | grep -q "Network Partitions"; then
-    echo "WARNING: Network partition detected"
+# Check if the RabbitMQ application is running
+if ! rabbitmq-diagnostics -q check_running > /dev/null 2>&1; then
+    echo "CRITICAL: RabbitMQ application is not running"
+    exit 2
+fi
+
+# Check resource alarms across the cluster
+if ! rabbitmq-diagnostics -q check_alarms > /dev/null 2>&1; then
+    echo "WARNING: RabbitMQ resource alarm detected"
     exit 1
 fi
 
-# Check for down nodes
-RUNNING_NODES=$(echo "$CLUSTER_STATUS" | grep -A 100 "Running Nodes" | grep "rabbit@" | wc -l)
-TOTAL_NODES=$(echo "$CLUSTER_STATUS" | grep -A 100 "Disc Nodes\|RAM Nodes" | grep "rabbit@" | sort -u | wc -l)
-
-if [ "$RUNNING_NODES" -lt "$TOTAL_NODES" ]; then
-    echo "WARNING: Only $RUNNING_NODES of $TOTAL_NODES nodes running"
+# Check cluster status can be queried
+if ! rabbitmq-diagnostics -q cluster_status > /dev/null 2>&1; then
+    echo "WARNING: Cluster status check failed"
     exit 1
 fi
 
-echo "OK: All $RUNNING_NODES nodes healthy"
+echo "OK: RabbitMQ node is healthy"
 exit 0
 EOF
 
@@ -350,7 +354,7 @@ groups:
   - name: rabbitmq_cluster
     rules:
       - alert: RabbitMQNodeDown
-        expr: rabbitmq_running{job="rabbitmq"} == 0
+        expr: up{job="rabbitmq"} == 0
         for: 1m
         labels:
           severity: critical
@@ -359,43 +363,52 @@ groups:
           description: "Node has been unreachable for more than 1 minute"
 
       - alert: RabbitMQClusterPartition
-        expr: rabbitmq_partitions > 0
-        for: 0m
+        expr: |
+          count by (namespace, rabbitmq_cluster) (
+            erlang_vm_dist_node_state * on(instance) group_left(rabbitmq_cluster)
+            max by (instance, rabbitmq_cluster) (rabbitmq_identity_info) == 3
+          )
+          <
+          count by (namespace, rabbitmq_cluster) (
+            rabbitmq_build_info * on(instance) group_left(rabbitmq_cluster)
+            max by (instance, rabbitmq_cluster) (rabbitmq_identity_info)
+          )
+          *
+          (
+            count by (namespace, rabbitmq_cluster) (
+              rabbitmq_build_info * on(instance) group_left(rabbitmq_cluster)
+              max by (instance, rabbitmq_cluster) (rabbitmq_identity_info)
+            ) - 1
+          )
+        for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "RabbitMQ cluster partition detected"
-          description: "Cluster has {{ $value }} partitions"
-
-      - alert: RabbitMQNodeNotDistributed
-        expr: rabbitmq_clustered == 0
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "RabbitMQ node not clustered"
-          description: "Node {{ $labels.instance }} is not part of the cluster"
+          summary: "RabbitMQ cluster may have missing Erlang distribution links"
+          description: "Cluster {{ $labels.rabbitmq_cluster }} has fewer established inter-node links than expected."
 ```
 
 ### 4. Implement Proper Load Balancing
 
 ```nginx
 # nginx.conf for RabbitMQ load balancing
-upstream rabbitmq_cluster {
-    # Use least_conn for better distribution
-    least_conn;
+stream {
+    upstream rabbitmq_cluster {
+        # Use least_conn for better distribution
+        least_conn;
 
-    server rabbit-node1:5672 weight=1 max_fails=3 fail_timeout=30s;
-    server rabbit-node2:5672 weight=1 max_fails=3 fail_timeout=30s;
-    server rabbit-node3:5672 weight=1 max_fails=3 fail_timeout=30s;
-}
+        server rabbit-node1:5672 weight=1 max_fails=3 fail_timeout=30s;
+        server rabbit-node2:5672 weight=1 max_fails=3 fail_timeout=30s;
+        server rabbit-node3:5672 weight=1 max_fails=3 fail_timeout=30s;
+    }
 
-server {
-    listen 5672;
-    proxy_pass rabbitmq_cluster;
+    server {
+        listen 5672;
+        proxy_pass rabbitmq_cluster;
 
-    # Health check configuration
-    health_check interval=5s fails=3 passes=2;
+        # Active TCP health checks require NGINX Plus:
+        # health_check interval=5s fails=3 passes=2;
+    }
 }
 ```
 
@@ -434,7 +447,7 @@ If the cluster cannot start normally:
 ```bash
 # WARNING: Use only as last resort - may cause data loss
 
-# Force boot the node (ignores cluster membership)
+# Force boot the node on its next start, even if it was not the last node to shut down
 rabbitmqctl force_boot
 
 # Start the application
@@ -452,7 +465,7 @@ Resolving "Node Down" errors in RabbitMQ requires systematic diagnosis:
 2. **Check Erlang cookie consistency** across the cluster
 3. **Ensure EPMD and distribution ports** are accessible
 4. **Monitor resource usage** to prevent exhaustion
-5. **Configure partition handling** appropriate for your use case
+5. **Use partition handling appropriate for your RabbitMQ version**
 6. **Set up proactive monitoring** to catch issues early
 
 By following these practices and maintaining proper monitoring, you can minimize downtime and ensure your RabbitMQ cluster remains highly available.

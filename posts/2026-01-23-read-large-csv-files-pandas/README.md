@@ -123,18 +123,18 @@ def optimize_dtypes(df):
             c_max = df[col].max()
 
             if c_min >= 0:
-                if c_max < 255:
+                if c_max <= 255:
                     df[col] = df[col].astype('uint8')
-                elif c_max < 65535:
+                elif c_max <= 65535:
                     df[col] = df[col].astype('uint16')
-                elif c_max < 4294967295:
+                elif c_max <= 4294967295:
                     df[col] = df[col].astype('uint32')
             else:
-                if c_min > -128 and c_max < 127:
+                if c_min >= -128 and c_max <= 127:
                     df[col] = df[col].astype('int8')
-                elif c_min > -32768 and c_max < 32767:
+                elif c_min >= -32768 and c_max <= 32767:
                     df[col] = df[col].astype('int16')
-                elif c_min > -2147483648 and c_max < 2147483647:
+                elif c_min >= -2147483648 and c_max <= 2147483647:
                     df[col] = df[col].astype('int32')
 
         # Optimize floats
@@ -240,16 +240,18 @@ def process_chunk(chunk_data):
 def parallel_process_csv(filepath, chunk_size=100_000):
     """Process CSV in parallel using multiple cores."""
 
-    chunks = list(pd.read_csv(filepath, chunksize=chunk_size))
-
     # Process chunks in parallel
     num_workers = multiprocessing.cpu_count()
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        results = list(executor.map(process_chunk, chunks))
+        results = executor.map(
+            process_chunk,
+            pd.read_csv(filepath, chunksize=chunk_size),
+            buffersize=num_workers
+        )
 
-    # Combine results
-    return pd.concat(results).groupby(level=0).sum()
+        # Combine results
+        return pd.concat(results).groupby(level=0).sum()
 
 # Usage
 result = parallel_process_csv('large_file.csv')
@@ -290,7 +292,7 @@ lazy_df = pl.scan_csv('large_file.csv')
 result = (
     lazy_df
     .filter(pl.col('amount') > 100)
-    .groupby('category')
+    .group_by('category')
     .agg(pl.col('amount').sum())
     .collect()
 )
@@ -358,7 +360,7 @@ df = pd.read_parquet('data_part_0.parquet', columns=['id', 'amount'])
 ### Feather Format for Speed
 
 ```python
-# Feather is fast for read/write (no compression)
+# Feather is fast for read/write and supports optional compression
 df.to_feather('data.feather')
 df = pd.read_feather('data.feather')
 ```

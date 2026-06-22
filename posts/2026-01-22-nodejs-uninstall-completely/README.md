@@ -18,11 +18,11 @@ Check your current Node.js installation:
 # Check Node.js version and location
 
 node --version
-which node
+command -v node
 
 # Check npm version and location  
 npm --version
-which npm
+command -v npm
 
 # List globally installed packages (you might want to save this)
 npm list -g --depth=0 > ~/global-packages.txt
@@ -34,7 +34,7 @@ npm list -g --depth=0 > ~/global-packages.txt
 
 ```bash
 # Check if installed via Homebrew
-brew list | grep node
+brew list --formula | grep '^node$'
 
 # Uninstall Node.js
 brew uninstall node
@@ -56,6 +56,7 @@ nvm uninstall 18.17.0
 nvm uninstall <version>
 
 # Remove nvm itself
+nvm unload
 rm -rf ~/.nvm
 
 # Remove nvm config from shell profile
@@ -92,7 +93,7 @@ rm -rf ~/.npmrc
 rm -rf ~/.npx
 
 # Verify removal
-which node  # Should return nothing
+command -v node  # Should return nothing
 node --version  # Should return "command not found"
 ```
 
@@ -126,6 +127,7 @@ rm -rf ~/.node-gyp
 rm -rf ~/.node_repl_history
 
 # Remove nvm if installed
+nvm unload 2>/dev/null
 rm -rf ~/.nvm
 
 # Homebrew cleanup (if applicable)
@@ -157,11 +159,11 @@ Open PowerShell as Administrator:
 
 ```powershell
 # Remove npm cache
-Remove-Item -Recurse -Force "$env:APPDATA\npm"
-Remove-Item -Recurse -Force "$env:APPDATA\npm-cache"
+Remove-Item -Recurse -Force "$env:APPDATA\npm" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:APPDATA\npm-cache" -ErrorAction SilentlyContinue
 
-# Remove roaming npm data
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\npm-cache"
+# Remove npm cache used by newer npm versions
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\npm-cache" -ErrorAction SilentlyContinue
 
 # Remove node_repl_history
 Remove-Item -Force "$env:USERPROFILE\.node_repl_history" -ErrorAction SilentlyContinue
@@ -191,11 +193,11 @@ nvm list
 # Remove all versions
 nvm uninstall <version>
 
-# Remove nvm itself
+# Remove nvm itself (the installer also provides unins000.exe in this folder)
 # Delete C:\Users\<username>\AppData\Roaming\nvm
-Remove-Item -Recurse -Force "$env:APPDATA\nvm"
+Remove-Item -Recurse -Force "$env:APPDATA\nvm" -ErrorAction SilentlyContinue
 
-# Remove nvm from PATH
+# Remove nvm from PATH and remove NVM_HOME/NVM_SYMLINK environment variables
 ```
 
 ### If Installed via Chocolatey
@@ -235,7 +237,9 @@ sudo apt-get clean
 sudo apt-get purge nodejs
 
 # Remove NodeSource repository
-sudo rm /etc/apt/sources.list.d/nodesource.list
+sudo rm -f /etc/apt/sources.list.d/nodesource.list
+sudo rm -f /etc/apt/sources.list.d/nodesource.sources
+sudo rm -f /usr/share/keyrings/nodesource.gpg
 sudo apt-get update
 ```
 
@@ -271,6 +275,7 @@ nvm list
 nvm uninstall <version>
 
 # Remove nvm
+nvm unload 2>/dev/null
 rm -rf ~/.nvm
 
 # Remove nvm configuration from shell
@@ -281,7 +286,7 @@ rm -rf ~/.nvm
 
 ```bash
 # Find where node is installed
-which node
+command -v node
 # Example: /usr/local/bin/node
 
 # Remove binaries
@@ -337,8 +342,10 @@ rm -rf ~/.nvm
 rm -rf ~/.node-gyp
 rm -rf ~/.node_repl_history
 
-# Remove NodesSource if present
+# Remove NodeSource if present
 sudo rm -f /etc/apt/sources.list.d/nodesource.list
+sudo rm -f /etc/apt/sources.list.d/nodesource.sources
+sudo rm -f /usr/share/keyrings/nodesource.gpg
 
 echo "Node.js has been removed."
 echo "Please restart your terminal."
@@ -358,7 +365,7 @@ npx --version
 ps aux | grep node
 
 # Check for remaining files
-which node
+command -v node
 ls -la /usr/local/bin/node* 2>/dev/null
 ls -la /usr/local/lib/node_modules 2>/dev/null
 ```
@@ -371,7 +378,7 @@ After complete removal, you can install Node.js fresh:
 
 ```bash
 # Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 
 # Restart terminal, then install Node
 nvm install --lts

@@ -44,7 +44,7 @@ sequenceDiagram
 
 ### 1. Connection Leaks
 
-The most frequent cause of pool exhaustion is forgetting to close connections.
+The most frequent cause of pool exhaustion is forgetting to return connections to the pool.
 
 ```python
 # connection_leak_bad.py
@@ -105,7 +105,7 @@ def get_db_connection():
     try:
         conn = db_pool.getconn()
         yield conn
-    except Exception as e:
+    except Exception:
         if conn:
             conn.rollback()  # Rollback on error
         raise
@@ -137,6 +137,7 @@ Holding connections during slow operations starves the pool.
 # Holding connection during external API calls - BAD
 
 import requests
+from psycopg2.extras import Json
 
 def sync_data_bad(db_pool):
     with get_db_connection() as conn:
@@ -154,7 +155,7 @@ def sync_data_bad(db_pool):
 
             cursor.execute(
                 "UPDATE items SET data = %s, needs_sync = false WHERE id = %s",
-                (data, item_id)
+                (Json(data), item_id)
             )
 
         conn.commit()
@@ -166,6 +167,7 @@ def sync_data_bad(db_pool):
 
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from psycopg2.extras import Json
 
 def fetch_external_data(external_id):
     """Fetch data without holding a database connection"""
@@ -204,7 +206,7 @@ def sync_data_good(db_pool):
         for item_id, data in results:
             cursor.execute(
                 "UPDATE items SET data = %s, needs_sync = false WHERE id = %s",
-                (data, item_id)
+                (Json(data), item_id)
             )
         conn.commit()
 ```
@@ -275,7 +277,6 @@ You cannot fix what you cannot see. Add monitoring to detect pool issues before 
 import time
 import threading
 from dataclasses import dataclass
-from typing import Optional
 import psycopg2
 from psycopg2 import pool
 
@@ -284,7 +285,7 @@ class PoolMetrics:
     total_connections: int
     available_connections: int
     in_use_connections: int
-    waiting_requests: int
+    failed_acquires: int
     acquire_time_ms: float
 
 class MonitoredConnectionPool:
@@ -293,26 +294,22 @@ class MonitoredConnectionPool:
     def __init__(self, minconn, maxconn, **kwargs):
         self._pool = pool.ThreadedConnectionPool(minconn, maxconn, **kwargs)
         self._in_use = 0
-        self._waiting = 0
+        self._failed_acquires = 0
         self._lock = threading.Lock()
         self._acquire_times = []
 
-    def getconn(self, timeout: Optional[float] = None) -> psycopg2.extensions.connection:
+    def getconn(self) -> psycopg2.extensions.connection:
         """Get a connection with timing and metrics"""
         start_time = time.time()
 
-        with self._lock:
-            self._waiting += 1
-
         try:
-            # Try to get a connection
+            # psycopg2 raises PoolError immediately if maxconn is exhausted.
             conn = self._pool.getconn()
 
             # Record metrics
             acquire_time = (time.time() - start_time) * 1000
             with self._lock:
                 self._in_use += 1
-                self._waiting -= 1
                 self._acquire_times.append(acquire_time)
                 # Keep only last 100 samples
                 if len(self._acquire_times) > 100:
@@ -320,9 +317,9 @@ class MonitoredConnectionPool:
 
             return conn
 
-        except pool.PoolError as e:
+        except pool.PoolError:
             with self._lock:
-                self._waiting -= 1
+                self._failed_acquires += 1
             raise
 
     def putconn(self, conn, close: bool = False):
@@ -343,7 +340,7 @@ class MonitoredConnectionPool:
                 total_connections=self._pool.maxconn,
                 available_connections=self._pool.maxconn - self._in_use,
                 in_use_connections=self._in_use,
-                waiting_requests=self._waiting,
+                failed_acquires=self._failed_acquires,
                 acquire_time_ms=avg_acquire_time
             )
 
@@ -361,7 +358,7 @@ def export_metrics_to_monitoring():
 
     # Example: Print metrics (replace with your monitoring system)
     print(f"Pool utilization: {metrics.in_use_connections}/{metrics.total_connections}")
-    print(f"Waiting requests: {metrics.waiting_requests}")
+    print(f"Failed acquire attempts: {metrics.failed_acquires}")
     print(f"Avg acquire time: {metrics.acquire_time_ms:.2f}ms")
 
     # Alert if pool is nearly exhausted
@@ -369,8 +366,8 @@ def export_metrics_to_monitoring():
     if utilization > 0.8:
         print(f"WARNING: Connection pool {utilization*100:.0f}% utilized!")
 
-    if metrics.waiting_requests > 0:
-        print(f"CRITICAL: {metrics.waiting_requests} requests waiting for connections!")
+    if metrics.failed_acquires > 0:
+        print(f"CRITICAL: {metrics.failed_acquires} connection acquire attempts failed!")
 ```
 
 ---

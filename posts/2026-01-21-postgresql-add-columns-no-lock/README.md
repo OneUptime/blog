@@ -1,28 +1,28 @@
-# How to Add Columns Without Locking in PostgreSQL
+# How to Add Columns Without Long Locks in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Schema Change, Zero Downtime, DDL, Migration
 
-Description: A guide to adding columns to PostgreSQL tables without blocking queries, covering safe operations and multi-step migration strategies.
+Description: A guide to adding columns to PostgreSQL tables without long blocking operations, covering safe operations and multi-step migration strategies.
 
 ---
 
-Adding columns can lock tables and block queries. This guide covers safe techniques for zero-downtime column additions.
+Adding columns briefly locks tables and can block queries if the operation rewrites or scans a large table. This guide covers safe techniques for zero-downtime column additions.
 
-## Safe Operations (No Lock)
+## Safe Operations (Short Lock, No Rewrite)
 
 ### Add Nullable Column
 
 ```sql
--- Instant, no lock (PostgreSQL 11+)
+-- Metadata-only change with a brief ACCESS EXCLUSIVE lock
 ALTER TABLE users ADD COLUMN nickname VARCHAR(100);
 ```
 
 ### Add Column with Default (PostgreSQL 11+)
 
 ```sql
--- Instant in PostgreSQL 11+
+-- Fast in PostgreSQL 11+ for non-volatile defaults
 ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'active';
 
 -- Older versions required table rewrite
@@ -33,17 +33,16 @@ ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'active';
 ### Add NOT NULL Without Default
 
 ```sql
--- AVOID: Requires table scan
+-- AVOID: Fails on existing rows because the new column would be NULL
 ALTER TABLE users ADD COLUMN age INTEGER NOT NULL;
--- This will fail on existing rows anyway
 ```
 
 ### Add Column with Volatile Default
 
 ```sql
 -- AVOID: Rewrites table
-ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT NOW();
--- Use DEFAULT CURRENT_TIMESTAMP instead
+ALTER TABLE users ADD COLUMN observed_at TIMESTAMP DEFAULT clock_timestamp();
+-- Add the column first, backfill it, then add the default separately
 ```
 
 ## Safe Migration Pattern
@@ -72,7 +71,7 @@ WHERE id BETWEEN 10001 AND 20000 AND new_status IS NULL;
 ALTER TABLE users ADD CONSTRAINT users_status_not_null
     CHECK (new_status IS NOT NULL) NOT VALID;
 
--- Validate in background
+-- Validate separately with a weaker lock
 ALTER TABLE users VALIDATE CONSTRAINT users_status_not_null;
 
 -- Or make column NOT NULL (scans table)
@@ -95,7 +94,7 @@ WHERE relation = 'users'::regclass;
 
 ## Best Practices
 
-1. **Add nullable columns** - Always safe
+1. **Add nullable columns** - Metadata-only, with only a brief lock
 2. **Backfill in batches** - Avoid long transactions
 3. **Use NOT VALID constraints** - Add without scanning
 4. **Validate separately** - During low traffic
@@ -103,4 +102,4 @@ WHERE relation = 'users'::regclass;
 
 ## Conclusion
 
-PostgreSQL 11+ allows most column additions without table locks. Use nullable columns and multi-step migrations for safe schema evolution.
+PostgreSQL 11+ allows most column additions without table rewrites, though `ALTER TABLE` still takes a brief lock. Use nullable columns and multi-step migrations for safe schema evolution.

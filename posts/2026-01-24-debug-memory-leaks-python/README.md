@@ -10,7 +10,7 @@ Description: Learn to identify and fix memory leaks in Python applications using
 
 > Memory leaks in Python are often unexpected since Python has automatic garbage collection. However, they do happen, and when they do, your application slowly consumes more and more memory until it crashes or gets killed by the OS. This guide shows you how to find and fix them.
 
-While Python's garbage collector handles most memory management automatically, memory leaks can still occur. Common causes include circular references with custom `__del__` methods, caches that grow unbounded, and references held in global state or closures.
+While Python's garbage collector handles most memory management automatically, memory leaks can still occur. Common causes include caches that grow unbounded, references held in global state or closures, and finalizers that resurrect objects or keep resources alive longer than expected.
 
 ---
 
@@ -32,8 +32,8 @@ print(sys.getrefcount(a))  # 3
 del b  # Remove reference
 print(sys.getrefcount(a))  # 2
 
-# When refcount hits 0, memory is freed
-del a  # List is garbage collected
+# When refcount hits 0, the object can be deallocated
+del a
 ```
 
 Memory leaks happen when references are kept alive unintentionally.
@@ -44,7 +44,7 @@ Memory leaks happen when references are kept alive unintentionally.
 
 ### Using tracemalloc (Standard Library)
 
-The `tracemalloc` module tracks memory allocations:
+The `tracemalloc` module tracks Python memory allocations:
 
 ```python
 import tracemalloc
@@ -287,10 +287,14 @@ class Publisher:
 
     def subscribe(self, handler):
         # Store weak reference
-        self.handlers.append(weakref.ref(handler))
+        try:
+            handler_ref = weakref.WeakMethod(handler)
+        except TypeError:
+            handler_ref = weakref.ref(handler)
+        self.handlers.append(handler_ref)
 
     def unsubscribe(self, handler):
-        self.handlers = [h for h in self.handlers if h() is not handler]
+        self.handlers = [h for h in self.handlers if h() != handler]
 
     def notify(self, event):
         # Clean up dead references during notification
@@ -303,10 +307,10 @@ class Publisher:
         self.handlers = live_handlers
 ```
 
-### 3. Circular References with __del__
+### 3. Circular References with Finalizers
 
 ```python
-# LEAKY: Circular reference with __del__
+# RISKY: Circular reference with __del__
 class Node:
     def __init__(self):
         self.parent = None
@@ -317,7 +321,8 @@ class Node:
         self.children.append(child)
 
     def __del__(self):
-        # Having __del__ can prevent garbage collection of cycles
+        # Finalizers can be hard to reason about, especially if they
+        # resurrect objects or depend on other objects during shutdown
         print(f"Deleting {self}")
 ```
 
@@ -347,23 +352,24 @@ class Node:
 ### 4. Closures Capturing References
 
 ```python
-# LEAKY: Lambda captures entire scope
+# LEAKY: Handler keeps large objects alive
 def create_handlers(data_list):
     handlers = []
     for item in data_list:
-        # This lambda captures the loop variable
+        # The handler keeps a reference to item as long as the handler exists
         handlers.append(lambda: process(item))
     return handlers
 ```
 
-**Fix: Explicitly bind the variable**
+**Fix: Capture only the data needed**
 
 ```python
 def create_handlers(data_list):
     handlers = []
     for item in data_list:
-        # Bind item as default argument
-        handlers.append(lambda x=item: process(x))
+        # Store a lightweight value instead of the whole object
+        item_id = item.id
+        handlers.append(lambda x=item_id: process_by_id(x))
     return handlers
 ```
 
@@ -548,8 +554,8 @@ To debug memory leaks in Python:
 Common causes and fixes:
 - Unbounded caches: Use `lru_cache` or TTL caches
 - Event handlers: Use weak references or explicit cleanup
-- Circular references: Use `weakref` for back-references
-- Closures: Be careful what variables are captured
+- Circular references: Use `weakref` for back-references when ownership is one-way
+- Closures: Capture only the data you need
 - Global state: Use bounded collections
 
 Regular monitoring in production helps catch leaks before they cause outages.

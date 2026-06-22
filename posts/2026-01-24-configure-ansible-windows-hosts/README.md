@@ -52,7 +52,7 @@ pip install pywinrm
 # For Kerberos authentication (optional but recommended for domains)
 pip install pywinrm[kerberos]
 
-# For certificate authentication
+# For CredSSP authentication
 pip install pywinrm[credssp]
 ```
 
@@ -83,7 +83,10 @@ winrm create winrm/config/Listener?Address=*+Transport=HTTPS "@{Hostname=`"$env:
 # Configure WinRM settings
 winrm set winrm/config/service '@{AllowUnencrypted="false"}'
 winrm set winrm/config/service/auth '@{Basic="true"}'
-winrm set winrm/config/service/auth '@{CredSSP="true"}'
+Enable-WSManCredSSP -Role Server -Force
+
+# Allow local administrator accounts to connect remotely
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWORD -Force
 
 # Open firewall for WinRM HTTPS
 New-NetFirewallRule -Name "WinRM-HTTPS" -DisplayName "WinRM HTTPS" -Enabled True -Direction Inbound -Protocol TCP -LocalPort 5986 -Action Allow
@@ -110,9 +113,8 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
 # Warning: Only use in test environments or with proper network security
 winrm set winrm/config/service/auth '@{Basic="true"}'
 
-# Step 5: Configure TrustedHosts (if not using domain authentication)
-# Replace * with specific IP addresses in production
-winrm set winrm/config/client '@{TrustedHosts="*"}'
+# Step 5: Allow local administrator accounts to connect remotely
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWORD -Force
 ```
 
 ## Ansible Inventory Configuration
@@ -193,7 +195,7 @@ flowchart TB
     N -->|HTTPS| Local[Local Accounts]
     K -->|HTTPS| Domain[Domain Accounts]
     C -->|HTTPS| Delegation[Credential Delegation]
-    Cert -->|HTTPS| Secure[Most Secure]
+    Cert -->|HTTPS| Secure[Local Account]
 ```
 
 ### NTLM Authentication
@@ -248,7 +250,7 @@ Configure Kerberos on the Ansible controller:
 
 ### Certificate Authentication
 
-Most secure option for production environments:
+A strong option for local accounts in production environments:
 
 ```yaml
 # group_vars/secure_windows.yml
@@ -474,7 +476,7 @@ Here is a comprehensive playbook that sets up a Windows web server:
         state: directory
 
     - name: Create application pool
-      win_iis_webapppool:
+      microsoft.iis.web_app_pool:
         name: "{{ app_pool_name }}"
         state: started
         attributes:
@@ -482,14 +484,16 @@ Here is a comprehensive playbook that sets up a Windows web server:
           managedPipelineMode: Integrated
 
     - name: Create IIS website
-      win_iis_website:
+      microsoft.iis.website:
         name: "{{ app_name }}"
         state: started
-        port: 80
-        ip: "*"
-        hostname: ""
         application_pool: "{{ app_pool_name }}"
         physical_path: "{{ app_path }}"
+        bindings:
+          set:
+            - ip: "*"
+              port: 80
+              hostname: ""
 
     - name: Deploy application files
       win_copy:
@@ -543,7 +547,7 @@ flowchart TD
 
 ```bash
 # Test WinRM connectivity from Linux
-curl -k -u Administrator:Password https://192.168.1.100:5986/wsman
+curl -k --ntlm -u Administrator:Password https://192.168.1.100:5986/wsman
 
 # Check WinRM configuration on Windows
 winrm get winrm/config

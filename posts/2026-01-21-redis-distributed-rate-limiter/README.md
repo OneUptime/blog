@@ -107,7 +107,7 @@ class DistributedRateLimiter:
             remaining = tokens
         end
 
-        redis.call('HMSET', key, 'tokens', tokens, 'timestamp', now)
+        redis.call('HSET', key, 'tokens', tokens, 'timestamp', now)
         redis.call('EXPIRE', key, math.ceil(capacity / rate) + 1)
 
         local retryAfter = 0
@@ -211,26 +211,27 @@ class MultiKeyRateLimiter:
 
 # FastAPI middleware example
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
 
-class RateLimitMiddleware:
+class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for distributed rate limiting."""
 
     def __init__(self, app: FastAPI, limiter: DistributedRateLimiter,
                  limit: int = 100, window: int = 60):
-        self.app = app
+        super().__init__(app)
         self.limiter = limiter
         self.limit = limit
         self.window = window
 
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         # Extract rate limit key
         key = self._get_key(request)
 
         # Check rate limit (run in thread pool for sync Redis)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         allowed, info = await loop.run_in_executor(
             None,
             lambda: self.limiter.check_sliding_window(key, self.limit, self.window)
@@ -333,7 +334,7 @@ class DistributedRateLimiter {
             remaining = tokens
         end
 
-        redis.call('HMSET', key, 'tokens', tokens, 'timestamp', now)
+        redis.call('HSET', key, 'tokens', tokens, 'timestamp', now)
         redis.call('EXPIRE', key, math.ceil(capacity / rate) + 1)
 
         local retryAfter = 0
@@ -464,13 +465,16 @@ app.post('/api/expensive', createRateLimitMiddleware(limiter, {
 For high availability, use Redis Cluster with hash tags:
 
 ```python
+from typing import Tuple, Dict
+
 class ClusterAwareRateLimiter:
     """Rate limiter compatible with Redis Cluster."""
 
     def __init__(self, redis_urls: list):
-        from redis.cluster import RedisCluster
+        from redis.cluster import ClusterNode, RedisCluster
+
         self.redis = RedisCluster(startup_nodes=[
-            {'host': url.split(':')[0], 'port': int(url.split(':')[1])}
+            ClusterNode(url.split(':')[0], int(url.split(':')[1]))
             for url in redis_urls
         ], decode_responses=True)
 
@@ -492,7 +496,10 @@ Handle Redis failures gracefully:
 
 ```python
 import logging
+import redis
+import time
 from contextlib import contextmanager
+from typing import Tuple, Dict
 
 logger = logging.getLogger(__name__)
 

@@ -113,7 +113,7 @@ kubectl wait --namespace metallb-system \
 
 ### Layer 2 Mode Configuration
 
-Layer 2 mode is the simplest to set up and works in any network environment:
+Layer 2 mode is the simplest to set up and works on a local Layer 2 network:
 
 ```yaml
 # metallb-config-l2.yaml
@@ -194,7 +194,7 @@ spec:
   #   - 65535:65282  # NO_ADVERTISE - keep routes local
 
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: router-peer
@@ -241,8 +241,11 @@ kube-vip provides both control plane HA and LoadBalancer services in a single so
 ### Installing kube-vip for LoadBalancer Services
 
 ```bash
-# Install kube-vip as a DaemonSet for LoadBalancer functionality
+# Install kube-vip RBAC for the DaemonSet
 kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
+
+# Install the kube-vip cloud provider, which assigns IPs to LoadBalancer services
+kubectl apply -f https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
 
 # Create the kube-vip cloud controller configmap
 cat <<EOF | kubectl apply -f -
@@ -278,9 +281,9 @@ spec:
       serviceAccountName: kube-vip-cloud-controller
       containers:
         - name: kube-vip-cloud-provider
-          image: ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.7
+          image: ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.12
           # The cloud provider assigns IPs from the configmap range
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
@@ -307,7 +310,7 @@ spec:
       hostNetwork: true  # Required for ARP/BGP announcements
       containers:
         - name: kube-vip
-          image: ghcr.io/kube-vip/kube-vip:v0.7.2
+          image: ghcr.io/kube-vip/kube-vip:v1.0.4
           args:
             - manager
           env:
@@ -363,52 +366,54 @@ PureLB is a newer alternative that focuses on simplicity and native Kubernetes i
 
 ```bash
 # Install PureLB using Helm
-helm repo add purelb https://gitlab.com/api/v4/projects/purelb%2Fpurelb/packages/helm/stable
+helm repo add purelb https://purelb.io/charts
 helm repo update
 
 helm install purelb purelb/purelb \
-  --namespace purelb \
+  --namespace purelb-system \
   --create-namespace
 ```
 
 ```yaml
 # purelb-config.yaml
 # ServiceGroup defines a pool of IPs for PureLB
-apiVersion: purelb.io/v1
+apiVersion: purelb.io/v2
 kind: ServiceGroup
 metadata:
   name: default
-  namespace: purelb
+  namespace: purelb-system
 spec:
   local:
     # IP range for LoadBalancer services
-    # PureLB uses a virtual network interface approach
+    # Local pools are for addresses on the same subnet as the nodes
     v4pool:
-      subnet: 192.168.1.224/27
+      subnet: 192.168.1.0/24
       pool: 192.168.1.230-192.168.1.250
       aggregation: default
 
 ---
 # LBNodeAgent configures how PureLB operates on nodes
-apiVersion: purelb.io/v1
+apiVersion: purelb.io/v2
 kind: LBNodeAgent
 metadata:
   name: default
-  namespace: purelb
+  namespace: purelb-system
 spec:
   local:
-    # Interface to use for virtual IPs
-    # PureLB creates virtual interfaces rather than using ARP
-    extlbint: kube-lb0
+    # Interface used for local address announcements
+    localInterface: default
+    # Dummy interface used for remote/routed addresses
+    dummyInterface: kube-lb0
 ```
 
-## Solution 4: OpenELB (for Kubernetes on OpenStack)
+## Solution 4: OpenELB (for Bare Metal and Private Environments)
 
-OpenELB (formerly PorterLB) is designed for hybrid environments:
+OpenELB (formerly PorterLB) is designed for bare metal, edge, and private environments:
 
 ```bash
 # Install OpenELB
-kubectl apply -f https://raw.githubusercontent.com/openelb/openelb/master/deploy/openelb.yaml
+wget https://raw.githubusercontent.com/openelb/openelb/release-0.6/deploy/openelb.yaml
+kubectl apply -f openelb.yaml
 ```
 
 ```yaml
@@ -461,7 +466,7 @@ flowchart LR
         Q1{Simple Setup?<br/>Small Cluster?}
         Q2{Need Control<br/>Plane HA too?}
         Q3{Have BGP<br/>Router?}
-        Q4{OpenStack<br/>Environment?}
+        Q4{Need OpenELB<br/>features?}
         
         MetalLB[MetalLB L2]
         MetalLBBGP[MetalLB BGP]
@@ -484,12 +489,12 @@ flowchart LR
 | Feature | MetalLB | kube-vip | PureLB | OpenELB |
 |---------|---------|----------|--------|---------|
 | Layer 2 Mode | ✅ | ✅ | ✅ | ✅ |
-| BGP Mode | ✅ | ✅ | ❌ | ✅ |
+| BGP Mode | ✅ | ✅ | ✅ | ✅ |
 | Control Plane HA | ❌ | ✅ | ❌ | ❌ |
 | Maturity | High | Medium | Medium | Medium |
 | Community | Large | Growing | Small | Medium |
 | Configuration | CRDs | Env/CRDs | CRDs | CRDs |
-| Best For | General use | kubeadm HA | Simple setups | OpenStack |
+| Best For | General use | kubeadm HA | Simple setups | Bare metal, edge, and private environments |
 
 ## Production Best Practices
 
@@ -543,7 +548,7 @@ metadata:
   name: my-app
   annotations:
     # Request IP from specific pool
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   # ... rest of spec
@@ -560,11 +565,11 @@ metadata:
   name: api-gateway
   annotations:
     # MetalLB annotation for specific IP
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.240
+    metallb.io/loadBalancerIPs: 192.168.1.240
 spec:
   type: LoadBalancer
-  # Alternatively, use the standard field (Kubernetes 1.24+)
-  loadBalancerIP: 192.168.1.240
+  # spec.loadBalancerIP is deprecated in Kubernetes 1.24+;
+  # prefer the MetalLB annotation above for new manifests
   ports:
     - port: 443
       targetPort: 8443
@@ -575,19 +580,19 @@ spec:
 ### 4. Monitor Your Load Balancer
 
 ```yaml
-# servicemonitor-metallb.yaml
+# podmonitor-metallb.yaml
 # Monitor MetalLB with Prometheus
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: metallb
   namespace: metallb-system
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: metallb
-  endpoints:
-    - port: metrics
+      app: metallb
+  podMetricsEndpoints:
+    - port: monitoring
       interval: 30s
 ```
 
@@ -625,7 +630,7 @@ spec:
 kubectl get pods -n metallb-system
 
 # Check MetalLB logs for errors
-kubectl logs -n metallb-system -l app=metallb -c controller
+kubectl logs -n metallb-system -l app=metallb,component=controller -c controller
 
 # Verify IP pool has available addresses
 kubectl get ipaddresspool -n metallb-system -o yaml
@@ -641,7 +646,7 @@ arping -c 3 192.168.1.240
 kubectl logs -n metallb-system -l component=speaker | grep "announcing"
 
 # Verify the service has endpoints
-kubectl get endpoints my-app
+kubectl get endpointslice -l kubernetes.io/service-name=my-app
 
 # Check if pods are ready
 kubectl get pods -l app=my-app
@@ -675,7 +680,7 @@ Running Kubernetes without a cloud provider doesn't mean you have to give up Loa
 
 Key takeaways:
 
-1. **Start with MetalLB Layer 2** - It's the simplest to set up and works in any network
+1. **Start with MetalLB Layer 2** - It's the simplest to set up when clients can reach the same Layer 2 network
 2. **Graduate to BGP** - When you need true load distribution or have many services
 3. **Plan your IP allocation** - Reserve a dedicated range that won't conflict with other systems
 4. **Monitor your load balancer** - IP exhaustion and session failures can cause outages

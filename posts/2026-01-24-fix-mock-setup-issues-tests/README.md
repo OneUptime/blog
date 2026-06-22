@@ -29,9 +29,9 @@ flowchart TD
 
 ## Issue 1: Mock Not Being Applied
 
-The most common issue is mocks not taking effect because of hoisting or import order problems.
+The most common issue is mocks not taking effect because of hoisting or import order problems. In Babel-transformed CommonJS tests, Jest hoists `jest.mock` calls. In native ESM tests, static imports are evaluated before the rest of the file, so you need dynamic imports after mock setup.
 
-**Problem: Mock defined after import**
+**Problem: Non-hoisted mock defined after import**
 
 ```javascript
 // BROKEN: Import happens before mock is set up
@@ -39,12 +39,12 @@ import { fetchUser } from './api';
 import { UserService } from './user-service';
 
 // This mock is too late - the module already imported the real function
-jest.mock('./api', () => ({
+jest.doMock('./api', () => ({
   fetchUser: jest.fn()
 }));
 ```
 
-**Solution: Jest hoists jest.mock, but imports must come after**
+**Solution: Use a hoisted jest.mock call in transformed CommonJS tests**
 
 ```javascript
 // FIXED: jest.mock is automatically hoisted above imports
@@ -68,7 +68,7 @@ describe('UserService', () => {
 });
 ```
 
-**For ES modules with named exports, mock the entire module:**
+**For transformed ES module syntax with named exports, mock the entire module:**
 
 ```javascript
 // Mock entire module for ES modules
@@ -160,7 +160,7 @@ describe('UserRepository', () => {
   database.query.mockResolvedValue([{ id: '1' }]);
 
   it('should find user', async () => {
-    // Mock might have been cleared by previous test file
+    // Mock might have been cleared by automatic mock cleanup
     const users = await userRepo.findAll();
     expect(users).toHaveLength(1);  // Might fail unexpectedly
   });
@@ -207,7 +207,9 @@ export default function fetchData() {
 }
 
 // test.js - BROKEN
-jest.mock('./api', () => jest.fn());  // Wrong structure
+jest.mock('./api', () => ({
+  default: jest.fn()
+}));  // Missing __esModule flag
 
 import fetchData from './api';
 
@@ -260,7 +262,7 @@ export function formatDate(date) { /* real implementation */ }
 export function generateId() { /* want to mock this */ }
 export function validateEmail(email) { /* real implementation */ }
 
-// test.js - PROBLEM: All functions are now undefined
+// test.js - PROBLEM: All functions are now mocked, so real behavior is gone
 jest.mock('./utils');
 ```
 
@@ -290,21 +292,20 @@ it('should use mocked generateId with real formatDate', () => {
 
 ## Issue 6: Async Mock Setup Timing
 
-Async setup can cause race conditions with mocks.
+Async setup can make it harder to see when a mock is configured. Jest waits for an async `beforeEach` to finish before running the test, but setting mocks after slow setup can still cause failures if that setup calls code that depends on the mock.
 
-**Problem: Mock not ready when test runs**
+**Problem: Mock configured after async setup that may use it**
 
 ```javascript
 describe('DataService', () => {
   beforeEach(async () => {
     // Async setup
     await database.connect();
-    // Mock setup happens after async operation
+    // Mock setup happens after an async operation that may trigger code using api.fetch
     api.fetch.mockResolvedValue({ data: 'test' });
   });
 
   it('should fetch data', async () => {
-    // Test might run before mock is configured
     const result = await dataService.getData();
   });
 });

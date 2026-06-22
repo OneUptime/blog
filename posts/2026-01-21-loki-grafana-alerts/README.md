@@ -33,16 +33,13 @@ flowchart TB
 
 ## Enabling Grafana Unified Alerting
 
-Ensure unified alerting is enabled in your Grafana configuration:
+Grafana Alerting is enabled by default in Grafana 9.0 and later. To set it explicitly, use your Grafana configuration:
 
 ```ini
 # grafana.ini
 
 [unified_alerting]
 enabled = true
-
-[alerting]
-enabled = false
 ```
 
 Or via environment variable:
@@ -51,7 +48,6 @@ Or via environment variable:
 # docker-compose.yaml
 environment:
   - GF_UNIFIED_ALERTING_ENABLED=true
-  - GF_ALERTING_ENABLED=false
 ```
 
 ## Creating Contact Points
@@ -155,15 +151,16 @@ Query A (Loki):
     sum(rate({job="application"} |= "error" [5m]))
     /
     sum(rate({job="application"} [5m]))
+    * 100
 
 Condition:
   Expression: A
-  Threshold: IS ABOVE 0.05
+  Threshold: IS ABOVE 5
 
 Alert Name: HighErrorRate
 Summary: Error rate exceeds 5%
 Description: |
-  Error rate is {{ $value | printf "%.2f" }}% which exceeds the 5% threshold.
+  Error rate is {{ printf "%.2f" $values.A.Value }}% which exceeds the 5% threshold.
 Labels:
   severity: critical
   team: platform
@@ -239,7 +236,7 @@ Query A (Loki):
     quantile_over_time(0.95,
       {job="application"}
       | json
-      | unwrap duration [5m]
+      | unwrap duration_seconds(duration) [5m]
     ) by (service)
 
 Condition:
@@ -278,26 +275,23 @@ groups:
               to: 0
             datasourceUid: loki-datasource
             model:
-              expr: sum(rate({job="application"} |= "error" [5m]))
-              queryType: range
-          - refId: B
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: loki-datasource
-            model:
-              expr: sum(rate({job="application"} [5m]))
-              queryType: range
+              expr: |
+                (
+                  sum(rate({job="application"} |= "error" [5m]))
+                  /
+                  sum(rate({job="application"} [5m]))
+                ) * 100
+              queryType: instant
           - refId: C
             datasourceUid: __expr__
             model:
               type: math
-              expression: $A / $B
+              expression: $A > 5
         noDataState: NoData
         execErrState: Alerting
         for: 5m
         annotations:
-          summary: Error rate is {{ $value | printf "%.2f" }}%
+          summary: Error rate is {{ printf "%.2f" $values.A.Value }}%
           description: The error rate has exceeded the 5% threshold
           runbook_url: https://wiki.example.com/runbooks/error-rate
         labels:
@@ -306,7 +300,7 @@ groups:
 
       - uid: critical-error-alert
         title: Critical Error Logged
-        condition: A
+        condition: C
         data:
           - refId: A
             relativeTimeRange:
@@ -314,8 +308,13 @@ groups:
               to: 0
             datasourceUid: loki-datasource
             model:
-              expr: count_over_time({job="application"} |~ "CRITICAL|FATAL" [5m])
+              expr: sum(count_over_time({job="application"} |~ "CRITICAL|FATAL" [5m]))
               queryType: instant
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: $A > 0
         noDataState: OK
         execErrState: Alerting
         for: 0m
@@ -332,7 +331,7 @@ groups:
     rules:
       - uid: auth-failure-spike
         title: Authentication Failure Spike
-        condition: A
+        condition: C
         data:
           - refId: A
             relativeTimeRange:
@@ -342,12 +341,17 @@ groups:
             model:
               expr: sum(count_over_time({job="auth-service"} |= "authentication failed" [5m]))
               queryType: instant
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: $A > 20
         noDataState: OK
         execErrState: Alerting
         for: 2m
         annotations:
           summary: Authentication failures spiking
-          description: "{{ $value }} authentication failures in the last 5 minutes"
+          description: "{{ $values.A.Value }} authentication failures in the last 5 minutes"
         labels:
           severity: warning
           category: security
@@ -416,7 +420,7 @@ policies:
 
       - receiver: slack-notifications
         matchers:
-          - severity =~ warning|info
+          - severity =~ "warning|info"
         repeat_interval: 8h
 ```
 

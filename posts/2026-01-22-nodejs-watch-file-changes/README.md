@@ -35,7 +35,7 @@ fs.watch('./src', (eventType, filename) => {
 const fs = require('fs');
 
 const watcher = fs.watch('./src', {
-  recursive: true,       // Watch subdirectories (macOS/Windows)
+  recursive: true,       // Watch subdirectories on supported platforms
   persistent: true,      // Keep process running
   encoding: 'utf8',      // Filename encoding
 }, (eventType, filename) => {
@@ -67,7 +67,7 @@ fs.watch('./src', (eventType, filename) => {
 
 ## Built-in fs.watchFile()
 
-Polls the file for changes (more reliable but less efficient):
+Polls the file for changes (useful as a fallback, but less efficient):
 
 ```javascript
 const fs = require('fs');
@@ -77,7 +77,7 @@ fs.watchFile('config.json', (curr, prev) => {
   console.log('Previous modified time:', prev.mtime);
   console.log('Current modified time:', curr.mtime);
   
-  if (curr.mtime !== prev.mtime) {
+  if (curr.mtimeMs !== prev.mtimeMs) {
     console.log('File was modified');
   }
 });
@@ -113,7 +113,7 @@ fs.watchFile('myfile.txt', (curr, prev) => {
 Built-in watchers have issues:
 - `fs.watch` behavior varies by platform
 - May not report filename on some systems
-- Recursive watching not supported on Linux
+- Recursive watching support depends on the Node.js version and platform
 - Can emit duplicate events
 - Missing events on some editors (atomic saves)
 
@@ -122,8 +122,10 @@ Built-in watchers have issues:
 Chokidar provides reliable cross-platform file watching:
 
 ```bash
-npm install chokidar
+npm install chokidar@3
 ```
+
+The examples below use Chokidar 3.x, which supports CommonJS and glob patterns. Chokidar 4 removed glob support, and Chokidar 5 is ESM-only.
 
 ### Basic Usage
 
@@ -147,7 +149,7 @@ watcher
   .on('ready', () => console.log('Initial scan complete'));
 
 // Close watcher
-// watcher.close();
+// await watcher.close();
 ```
 
 ### Chokidar Options
@@ -280,8 +282,8 @@ watcher.on('change', (path) => {
 startServer();
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  watcher.close();
+process.on('SIGINT', async () => {
+  await watcher.close();
   if (server) server.kill();
   process.exit();
 });
@@ -381,24 +383,27 @@ async function loadConfig() {
   return config;
 }
 
-// Initial load
-await loadConfig();
+(async () => {
+  // Initial load
+  await loadConfig();
 
-// Watch for changes
-chokidar.watch('config.json').on('change', async () => {
-  console.log('Config file changed, reloading...');
-  try {
-    await loadConfig();
-  } catch (error) {
-    console.error('Failed to reload config:', error);
-  }
-});
+  // Watch for changes
+  chokidar.watch('config.json').on('change', async () => {
+    console.log('Config file changed, reloading...');
+    try {
+      await loadConfig();
+    } catch (error) {
+      console.error('Failed to reload config:', error);
+    }
+  });
+})();
 ```
 
 ## File Watching in Tests
 
 ```javascript
 const chokidar = require('chokidar');
+const fs = require('fs');
 
 describe('File Watcher', () => {
   let watcher;
@@ -430,7 +435,7 @@ describe('File Watcher', () => {
 | Method | Pros | Cons |
 |--------|------|------|
 | `fs.watch()` | Fast, event-based | Inconsistent across platforms |
-| `fs.watchFile()` | Reliable, works everywhere | Uses polling, less efficient |
+| `fs.watchFile()` | Polling-based fallback | Uses polling, less efficient |
 | Chokidar | Reliable, feature-rich | External dependency |
 
 Best practices:

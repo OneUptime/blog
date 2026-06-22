@@ -21,7 +21,7 @@ props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 // Batch size in bytes (default 16KB)
 props.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536);  // 64KB
 
-// Wait time to fill batch (default 0ms)
+// Wait time to fill batch (default 5ms in Kafka 4.0+)
 props.put(ProducerConfig.LINGER_MS_CONFIG, 10);
 
 // Buffer memory for unsent records (default 32MB)
@@ -48,7 +48,7 @@ props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "lz4");
 
 | Type | CPU | Ratio | Speed | Recommendation |
 |------|-----|-------|-------|----------------|
-| none | None | 1:1 | Fastest | Testing only |
+| none | None | 1:1 | Fastest | Low latency or CPU-bound workloads |
 | lz4 | Low | ~2x | Fast | General purpose |
 | snappy | Low | ~2x | Fast | Low CPU |
 | zstd | Medium | ~3x | Medium | Best ratio |
@@ -119,6 +119,9 @@ public static Properties highThroughputConfig() {
     // Acknowledgments - leader only for speed
     props.put(ProducerConfig.ACKS_CONFIG, "1");
 
+    // Disable idempotence because acks=1 and max.in.flight > 5 are incompatible with it
+    props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);
+
     // High in-flight requests
     props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 10);
 
@@ -172,7 +175,7 @@ public static Properties reliableConfig() {
     // Full durability
     props.put(ProducerConfig.ACKS_CONFIG, "all");
 
-    // Idempotence for exactly-once
+    // Idempotence prevents duplicate writes during retries
     props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
     // Retries
@@ -201,7 +204,7 @@ producer.send(record, (metadata, exception) -> {
 });
 ```
 
-### Sync (Guaranteed Order)
+### Sync (Blocking Send)
 
 ```java
 // Sync - blocks until ack
@@ -243,6 +246,9 @@ metrics.forEach((name, metric) -> {
 ```java
 public class ProducerBenchmark {
     public static void benchmark(Properties props, int messageCount, int messageSize) {
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+
         try (Producer<String, byte[]> producer = new KafkaProducer<>(props)) {
             byte[] payload = new byte[messageSize];
             new Random().nextBytes(payload);
@@ -270,7 +276,7 @@ public class ProducerBenchmark {
 
 | Goal | Settings |
 |------|----------|
-| Max throughput | Large batch, high linger, lz4, acks=1 |
+| Max throughput | Large batch, high linger, lz4, acks=1, idempotence=false |
 | Low latency | Small batch, linger=0, no compression |
 | Reliability | acks=all, idempotence, retries |
 | Balanced | 64KB batch, 10ms linger, lz4, acks=all |

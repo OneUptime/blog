@@ -38,7 +38,7 @@ cat data.txt | redis-cli -h redis.example.com -p 6379 --pipe
 
 ### Creating Redis Protocol Files
 
-The Redis protocol format is straightforward:
+The Redis protocol format is straightforward. Each line is terminated with `\r\n`, and bulk string lengths are byte counts:
 
 ```text
 *<number of arguments>
@@ -52,16 +52,17 @@ $<length of argument 2>
 Here's a Python script to generate protocol files:
 
 ```python
-import sys
-from typing import List, Any, TextIO
+from typing import List, Any
 
 def encode_command(args: List[Any]) -> bytes:
     """Encode a Redis command to protocol format."""
-    cmd = f"*{len(args)}\r\n"
+    parts = [f"*{len(args)}\r\n".encode('ascii')]
     for arg in args:
-        arg_str = str(arg)
-        cmd += f"${len(arg_str)}\r\n{arg_str}\r\n"
-    return cmd.encode('utf-8')
+        arg_bytes = str(arg).encode('utf-8')
+        parts.append(f"${len(arg_bytes)}\r\n".encode('ascii'))
+        parts.append(arg_bytes)
+        parts.append(b"\r\n")
+    return b''.join(parts)
 
 def generate_protocol_file(output_file: str, data: List[dict]):
     """Generate a Redis protocol file from data."""
@@ -239,28 +240,34 @@ class LuaBulkLoader:
         self.load_user_script = self.redis.register_script("""
             local user_data = cjson.decode(ARGV[1])
             local key = KEYS[1]
+            local users_all_key = KEYS[2]
+            local users_by_email_key = KEYS[3]
+            local users_by_created_key = KEYS[4]
 
             -- Store user data
             redis.call('SET', key, ARGV[1])
 
             -- Add to indexes
-            redis.call('SADD', 'users:all', user_data.id)
+            redis.call('SADD', users_all_key, user_data.id)
 
             if user_data.email then
-                redis.call('HSET', 'users:by_email', user_data.email, user_data.id)
+                redis.call('HSET', users_by_email_key, user_data.email, user_data.id)
             end
 
             if user_data.created_at then
-                redis.call('ZADD', 'users:by_created', user_data.created_at, user_data.id)
+                redis.call('ZADD', users_by_created_key, user_data.created_at, user_data.id)
             end
 
             return 1
         """)
 
-        # Bulk load script with transaction semantics
+        # Bulk SET script with atomic execution semantics
         self.bulk_load_script = self.redis.register_script("""
             local count = 0
-            local num_items = #ARGV / 2
+            if (#ARGV % 2) ~= 0 then
+                return redis.error_reply('Expected key/value argument pairs')
+            end
+            local num_items = math.floor(#ARGV / 2)
 
             for i = 1, num_items do
                 local key = ARGV[(i-1)*2 + 1]
@@ -276,21 +283,18 @@ class LuaBulkLoader:
         """Load a single user with indexes atomically."""
         key = f"user:{user['id']}"
         result = self.load_user_script(
-            keys=[key],
+            keys=[key, 'users:all', 'users:by_email', 'users:by_created'],
             args=[json.dumps(user)]
         )
         return result == 1
 
     def load_users_batch(self, users: List[Dict[str, Any]]) -> int:
-        """Load multiple users in batches."""
+        """Load multiple users with one atomic script execution per user."""
         loaded = 0
-        batch_size = 100  # Lua script argument limit
 
-        for i in range(0, len(users), batch_size):
-            batch = users[i:i + batch_size]
-            for user in batch:
-                self.load_user(user)
-                loaded += 1
+        for user in users:
+            self.load_user(user)
+            loaded += 1
 
         return loaded
 
@@ -318,6 +322,7 @@ Load data directly from a database:
 ```python
 import redis
 import psycopg2
+from psycopg2 import sql
 import json
 from typing import Generator, Dict, Any
 
@@ -327,7 +332,7 @@ class DatabaseToRedisLoader:
         self.pg = pg_connection
         self.batch_size = 5000
 
-    def stream_from_postgres(self, query: str,
+    def stream_from_postgres(self, query: Any,
                             batch_size: int = 1000) -> Generator[Dict, None, None]:
         """Stream rows from PostgreSQL using server-side cursor."""
         cursor = self.pg.cursor(name='bulk_load_cursor')
@@ -344,7 +349,7 @@ class DatabaseToRedisLoader:
     def load_table(self, table_name: str, key_column: str,
                    key_prefix: str) -> int:
         """Load an entire table from PostgreSQL to Redis."""
-        query = f"SELECT * FROM {table_name}"
+        query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table_name))
         pipe = self.redis.pipeline(transaction=False)
         count = 0
         total = 0
@@ -609,12 +614,13 @@ class MonitoredBulkLoader:
         """Print current progress."""
         p = self.progress
         eta = p.eta_seconds
+        eta_text = f"{eta:.0f}s" if eta else "calculating..."
 
         print(
             f"Progress: {p.progress_percent:.1f}% | "
             f"Loaded: {p.loaded_items:,} / {p.total_items:,} | "
             f"Rate: {p.items_per_second:,.0f}/s | "
-            f"ETA: {eta:.0f}s" if eta else "ETA: calculating..."
+            f"ETA: {eta_text}"
         )
 
     def load_with_monitoring(self, data_iterator, key_prefix: str,

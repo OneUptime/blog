@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Redis Stack, RediSearch, RedisJSON, RedisTimeSeries, RedisGraph, RedisBloom
 
-Description: A comprehensive guide to getting started with Redis Stack, the all-in-one package combining Redis with Search, JSON, TimeSeries, Graph, and Bloom filter modules.
+Description: A comprehensive guide to getting started with Redis Stack, the all-in-one package combining Redis with Search, JSON, TimeSeries, and Bloom filter modules.
 
 ---
 
-Redis Stack is an extension of Redis that bundles powerful modules - RediSearch, RedisJSON, RedisTimeSeries, RedisGraph, and RedisBloom - into a single, easy-to-deploy package. This guide will help you get started with Redis Stack and explore its capabilities.
+Redis Stack is an extension of Redis that bundles powerful modules - RediSearch, RedisJSON, RedisTimeSeries, and RedisBloom - into a single, easy-to-deploy package. This guide will help you get started with Redis Stack and explore its capabilities.
 
 ## What is Redis Stack?
 
@@ -18,7 +18,7 @@ Redis Stack combines:
 - **RediSearch** - Full-text search and secondary indexing
 - **RedisJSON** - Native JSON document support
 - **RedisTimeSeries** - Time-series data storage and queries
-- **RedisGraph** - Graph database with Cypher queries
+- **RedisGraph** - Deprecated graph database module for legacy Redis Stack deployments
 - **RedisBloom** - Probabilistic data structures (Bloom filters, etc.)
 
 ## Installation
@@ -99,8 +99,7 @@ MODULE LIST
 # 1) "name" "search"
 # 2) "name" "ReJSON"
 # 3) "name" "timeseries"
-# 4) "name" "graph"
-# 5) "name" "bf"
+# 4) "name" "bf"
 ```
 
 ## Python Client Setup
@@ -113,7 +112,7 @@ pip install redis
 import redis
 from redis.commands.search.field import TextField, NumericField, TagField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
-from redis.commands.search.query import Query
+from redis.commands.search.query import Query, NumericFilter
 
 # Connect to Redis Stack
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -187,7 +186,7 @@ for product in products:
 ### Searching
 
 ```python
-from redis.commands.search.query import Query
+from redis.commands.search.query import Query, NumericFilter
 
 # Simple text search
 results = r.ft("idx:products").search("bluetooth")
@@ -414,6 +413,8 @@ r.ts().createrule(
 
 ## RedisGraph: Graph Database
 
+RedisGraph is deprecated and is not included in current Redis Stack releases. The examples below apply only to legacy Redis Stack deployments or Redis databases where the RedisGraph module is explicitly enabled.
+
 ### Creating a Graph
 
 ```python
@@ -510,7 +511,11 @@ r.cf().delete("cf:usernames", "alice")
 r.cms().initbyprob("cms:pageviews", 0.01, 0.001)
 
 # Increment counts
-r.cms().incrby("cms:pageviews", ["page:/home", 1, "page:/about", 1, "page:/home", 1])
+r.cms().incrby(
+    "cms:pageviews",
+    ["page:/home", "page:/about", "page:/home"],
+    [1, 1, 1]
+)
 
 # Query counts
 count = r.cms().query("cms:pageviews", "page:/home")
@@ -521,11 +526,11 @@ print(f"Approximate views for /home: {count}")
 
 ```python
 # Track top-k items
-r.topk().create("topk:searches", k=10)
+r.topk().reserve("topk:searches", 10, 2000, 7, 0.925)
 
 # Add items
 r.topk().add("topk:searches", "redis tutorial", "python redis", "redis stack")
-r.topk().incrby("topk:searches", ["redis tutorial", 5, "python redis", 3])
+r.topk().incrby("topk:searches", ["redis tutorial", "python redis"], [5, 3])
 
 # Get top items
 top_items = r.topk().list("topk:searches")
@@ -541,6 +546,7 @@ is_top = r.topk().query("topk:searches", "redis tutorial")
 import redis
 from redis.commands.search.field import TextField, NumericField, TagField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.query import Query, NumericFilter
 import time
 import json
 
@@ -554,12 +560,12 @@ def setup_product_index():
         pass
 
     schema = (
-        TextField("name", weight=5.0),
-        TextField("description"),
-        NumericField("price", sortable=True),
-        TagField("category"),
-        TagField("brand"),
-        NumericField("rating", sortable=True),
+        TextField("$.name", as_name="name", weight=5.0),
+        TextField("$.description", as_name="description"),
+        NumericField("$.price", as_name="price", sortable=True),
+        TagField("$.category", as_name="category"),
+        TagField("$.brand", as_name="brand"),
+        NumericField("$.rating", as_name="rating", sortable=True),
     )
 
     r.ft("idx:products").create_index(
@@ -631,8 +637,9 @@ def is_suspicious_ip(ip):
 def flag_suspicious_ip(ip):
     r.bf().add("bf:suspicious_ips", ip)
 
-# --- Social Features with Graph ---
+# --- Legacy Social Features with RedisGraph ---
 def setup_social_graph():
+    # Requires a legacy RedisGraph-enabled deployment.
     r.graph("social").query("MATCH (n) DETACH DELETE n")
 
 def follow_user(follower_id, followee_id):
@@ -664,7 +671,6 @@ if __name__ == "__main__":
     # Setup
     setup_product_index()
     setup_fraud_detection()
-    setup_social_graph()
 
     # Add products
     add_product("1", {
@@ -683,13 +689,17 @@ if __name__ == "__main__":
     # Track analytics
     track_pageview("/products/1")
 
-    # Social
-    follow_user("user1", "user2")
-    follow_user("user1", "user3")
-    follow_user("user2", "user4")
+    # Social (legacy RedisGraph deployments only)
+    try:
+        setup_social_graph()
+        follow_user("user1", "user2")
+        follow_user("user1", "user3")
+        follow_user("user2", "user4")
 
-    recommendations = get_recommendations("user1")
-    print(f"Recommendations: {recommendations}")
+        recommendations = get_recommendations("user1")
+        print(f"Recommendations: {recommendations}")
+    except (AttributeError, redis.ResponseError):
+        print("RedisGraph is not available in this deployment")
 ```
 
 ## Conclusion
@@ -699,16 +709,16 @@ Redis Stack provides a powerful, all-in-one solution for modern application need
 - **RediSearch**: Full-text search and secondary indexing
 - **RedisJSON**: Native JSON document storage
 - **RedisTimeSeries**: Time-series data with aggregations
-- **RedisGraph**: Graph relationships with Cypher queries
+- **RedisGraph**: Deprecated graph relationships with Cypher queries for legacy deployments
 - **RedisBloom**: Probabilistic data structures
 
 With a single deployment, you get the functionality that would otherwise require multiple specialized databases.
 
 ## Related Resources
 
-- [Redis Stack Documentation](https://redis.io/docs/stack/)
-- [RediSearch Documentation](https://redis.io/docs/stack/search/)
-- [RedisJSON Documentation](https://redis.io/docs/stack/json/)
-- [RedisTimeSeries Documentation](https://redis.io/docs/stack/timeseries/)
-- [RedisGraph Documentation](https://redis.io/docs/stack/graph/)
-- [RedisBloom Documentation](https://redis.io/docs/stack/bloom/)
+- [Redis Stack Documentation](https://redis.io/docs/latest/operate/oss_and_stack/install/archive/install-stack/)
+- [RediSearch Documentation](https://redis.io/docs/latest/develop/ai/search-and-query/)
+- [RedisJSON Documentation](https://redis.io/docs/latest/develop/data-types/json/)
+- [RedisTimeSeries Documentation](https://redis.io/docs/latest/develop/data-types/timeseries/)
+- [RedisGraph Documentation](https://redis.io/docs/latest/operate/oss_and_stack/stack-with-enterprise/deprecated-features/graph/)
+- [RedisBloom Documentation](https://redis.io/docs/latest/develop/data-types/probabilistic/)

@@ -45,17 +45,18 @@ Common callback events:
 
 ## Enabling Built-in Callbacks
 
-Ansible includes several useful callbacks. Enable them in ansible.cfg.
+Ansible and commonly installed collections include several useful callbacks. Enable them in ansible.cfg.
 
 ```ini
 # ansible.cfg
 
 [defaults]
 # Enable stdout callback (only one at a time)
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 
 # Enable additional callbacks (comma-separated)
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 
 # Callback plugin search path
 callback_plugins = ./plugins/callback
@@ -67,7 +68,7 @@ Shows playbook execution time.
 
 ```ini
 [defaults]
-callbacks_enabled = timer
+callbacks_enabled = ansible.posix.timer
 ```
 
 Output:
@@ -81,7 +82,7 @@ Shows timing for each task.
 
 ```ini
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Output:
@@ -99,7 +100,8 @@ More readable output format.
 
 ```ini
 [defaults]
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 ```
 
 Output:
@@ -117,7 +119,7 @@ Machine-readable output for CI/CD integration.
 
 ```ini
 [defaults]
-stdout_callback = json
+stdout_callback = ansible.posix.json
 ```
 
 ### Dense Callback
@@ -126,7 +128,7 @@ Compact output for large inventories.
 
 ```ini
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
 ```
 
 ## Log Callbacks
@@ -136,10 +138,11 @@ Write output to log files.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = log_plays
+callbacks_enabled = community.general.log_plays
 
-# Log file location
-log_path = /var/log/ansible/playbook.log
+[callback_log_plays]
+# Log directory, one file per host
+log_folder = /var/log/ansible/hosts
 ```
 
 ### Syslog Callback
@@ -148,14 +151,14 @@ Send events to syslog.
 
 ```ini
 [defaults]
-callbacks_enabled = syslog_json
+callbacks_enabled = community.general.syslog_json
 ```
 
 ```ini
 # Environment variables for configuration
 export SYSLOG_SERVER=syslog.example.com
 export SYSLOG_PORT=514
-export SYSLOG_FACILITY=LOG_USER
+export SYSLOG_FACILITY=user
 ```
 
 ## Creating Custom Callbacks
@@ -202,7 +205,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'custom_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
@@ -325,7 +328,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'slack_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
@@ -445,7 +448,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'aggregate'
     CALLBACK_NAME = 'metrics_statsd'
-    CALLBACK_NEEDS_WHITELIST = True
+    NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()

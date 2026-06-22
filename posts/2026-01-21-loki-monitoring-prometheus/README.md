@@ -37,7 +37,7 @@ curl http://loki:3100/metrics
 | `loki_distributor_bytes_received_total` | Total bytes received |
 | `loki_ingester_chunks_created_total` | Chunks created by ingester |
 | `loki_ingester_chunks_flushed_total` | Chunks flushed to storage |
-| `loki_ingester_wal_bytes_total` | WAL bytes written |
+| `loki_ingester_wal_logged_bytes_total` | WAL bytes written |
 
 ### Query Metrics
 
@@ -45,16 +45,16 @@ curl http://loki:3100/metrics
 |--------|-------------|
 | `loki_request_duration_seconds` | Request latency histogram |
 | `loki_querier_tail_active` | Active tail connections |
-| `loki_query_frontend_queries_total` | Total queries processed |
+| `loki_request_duration_seconds_count` | Total requests processed |
 | `loki_query_frontend_queue_length` | Query queue length |
 
 ### Storage Metrics
 
 | Metric | Description |
 |--------|-------------|
-| `loki_chunk_store_chunks_stored_total` | Total chunks stored |
-| `loki_compactor_running` | Compactor running status |
-| `loki_boltdb_shipper_uploads_total` | Index uploads to storage |
+| `loki_chunk_store_stored_chunks_total` | Total chunks stored |
+| `loki_boltdb_shipper_compactor_running` | Compactor running status |
+| `loki_boltdb_shipper_compact_tables_operation_total` | Index compaction operations |
 
 ### Component Health
 
@@ -173,16 +173,16 @@ sum(rate(loki_request_duration_seconds_count{route=~"/loki/api/v1/query.*", stat
 
 ```promql
 # Chunks stored per second
-sum(rate(loki_chunk_store_chunks_stored_total[5m]))
+sum(rate(loki_chunk_store_stored_chunks_total[5m]))
 
 # Compactor status
-loki_compactor_running
+loki_boltdb_shipper_compactor_running
 
-# Index uploads
-sum(rate(loki_boltdb_shipper_uploads_total[5m]))
+# Index compaction operations
+sum(rate(loki_boltdb_shipper_compact_tables_operation_total[5m]))
 
 # Storage errors
-sum(rate(loki_chunk_store_errors_total[5m]))
+sum(rate(loki_objstore_bucket_operation_failures_total[5m]))
 ```
 
 ### Component Health
@@ -201,16 +201,14 @@ up{job="loki"}
 process_resident_memory_bytes{job="loki"}
 ```
 
-### Rate Limiting
+### Discarded Samples
 
 ```promql
-# Rate limited requests
-sum(rate(loki_distributor_lines_dropped_total[5m]))
+# Discarded samples
+sum(rate(loki_discarded_samples_total[5m]))
 
-# Ingestion rate vs limit
-sum(rate(loki_distributor_bytes_received_total[5m]))
-/
-loki_distributor_ingestion_rate_limit_bytes
+# Discarded samples by reason
+sum by (reason) (rate(loki_discarded_samples_total[5m]))
 ```
 
 ## Grafana Dashboard
@@ -337,7 +335,7 @@ groups:
           description: "{{ $value }} ingesters are not in ACTIVE state"
 
       - alert: LokiCompactorNotRunning
-        expr: loki_compactor_running == 0
+        expr: sum(loki_boltdb_shipper_compactor_running) == 0
         for: 15m
         labels:
           severity: warning
@@ -345,17 +343,17 @@ groups:
           summary: "Loki compactor not running"
           description: "Compactor has not been running for 15 minutes"
 
-      - alert: LokiRateLimited
-        expr: sum(rate(loki_distributor_lines_dropped_total[5m])) > 0
+      - alert: LokiDiscardedSamples
+        expr: sum(rate(loki_discarded_samples_total[5m])) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Loki is rate limiting"
-          description: "{{ $value | printf \"%.0f\" }} lines/s are being dropped"
+          summary: "Loki is discarding samples"
+          description: "{{ $value | printf \"%.0f\" }} samples/s are being discarded"
 
       - alert: LokiStorageErrors
-        expr: sum(rate(loki_chunk_store_errors_total[5m])) > 0
+        expr: sum(rate(loki_objstore_bucket_operation_failures_total[5m])) > 0
         for: 5m
         labels:
           severity: critical
@@ -380,8 +378,8 @@ sum(rate(loki_ingester_chunk_size_bytes_count[5m]))
 # Streams per tenant
 sum by (tenant) (loki_ingester_memory_streams)
 
-# Retention effectiveness
-loki_compactor_retention_bytes_deleted_total
+# Retention operations
+sum(rate(loki_compactor_apply_retention_operation_total[5m]))
 ```
 
 ### Performance Tuning Queries
@@ -390,13 +388,13 @@ loki_compactor_retention_bytes_deleted_total
 # Query queue wait time
 histogram_quantile(0.95, sum(rate(loki_query_frontend_queue_duration_seconds_bucket[5m])) by (le))
 
-# Parallel query performance
-histogram_quantile(0.95, sum(rate(loki_querier_split_queries_bucket[5m])) by (le))
+# Queries in progress
+loki_query_frontend_queries_in_progress
 
 # Cache hit ratio
-sum(rate(loki_query_frontend_cache_hits_total[5m]))
+sum(rate(loki_query_frontend_log_result_cache_hit_total[5m]))
 /
-(sum(rate(loki_query_frontend_cache_hits_total[5m])) + sum(rate(loki_query_frontend_cache_misses_total[5m])))
+(sum(rate(loki_query_frontend_log_result_cache_hit_total[5m])) + sum(rate(loki_query_frontend_log_result_cache_miss_total[5m])))
 ```
 
 ## Best Practices

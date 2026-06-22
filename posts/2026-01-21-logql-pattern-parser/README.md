@@ -123,8 +123,8 @@ Use multiple patterns for complex logs:
 
 {job="app"}
 | pattern `<timestamp> <level> <json_payload>`
-| json payload_json=json_payload
-| json user_id, action from payload_json
+| line_format "{{.json_payload}}"
+| json user_id, action
 ```
 
 ### Handling Variable Formats
@@ -132,12 +132,15 @@ Use multiple patterns for complex logs:
 For logs with optional fields:
 
 ```logql
-# First try full pattern
 {job="nginx"}
 | pattern `<ip> - <user> [<timestamp>] "<method> <path> <_>" <status> <bytes> "<referer>"`
+```
 
-# Fall back for logs without referer
-| pattern `<ip> - <user> [<timestamp>] "<method> <path> <_>" <status> <bytes>` | referer=""
+For logs without a referer, use a separate query with the shorter pattern:
+
+```logql
+{job="nginx"}
+| pattern `<ip> - <user> [<timestamp>] "<method> <path> <_>" <status> <bytes>`
 ```
 
 ### Extracting from Middle of Line
@@ -192,7 +195,8 @@ For logs with optional fields:
 ```logql
 {namespace="production"}
 | pattern `<timestamp> <stream> <_> <json_line>`
-| json level, msg, duration from json_line
+| line_format "{{.json_line}}"
+| json level, msg, duration
 | level = "error"
 ```
 
@@ -278,6 +282,7 @@ avg_over_time(
   {job="nginx"}
   | pattern `<_> "<_> <_> <_>" <_> <bytes>`
   | unwrap bytes
+  | __error__ = ""
   [5m]
 ) by (job)
 ```
@@ -287,8 +292,9 @@ avg_over_time(
 ```logql
 quantile_over_time(0.95,
   {job="app"}
-  | pattern `<_> duration=<duration>ms <_>`
+  | pattern `<_> duration=<duration>ms`
   | unwrap duration
+  | __error__ = ""
   [5m]
 )
 ```
@@ -332,7 +338,7 @@ Check your pattern against actual log format:
 
 ```logql
 # View raw logs first
-{job="app"} | limit 10
+{job="app"}
 
 # Test pattern incrementally
 {job="app"} | pattern `<first_field> <rest>`
@@ -357,7 +363,7 @@ Handle multiple formats:
 ```logql
 {job="mixed"}
 | pattern `<timestamp> <level> <message>`
-| level != "" or line_format "{{.}}"
+| __error__ = ""
 ```
 
 ## Best Practices

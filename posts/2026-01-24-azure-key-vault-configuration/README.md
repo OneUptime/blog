@@ -82,7 +82,8 @@ az keyvault create \
   --resource-group rg-security \
   --location eastus \
   --enable-rbac-authorization false \
-  --enable-soft-delete true
+  --enable-purge-protection true \
+  --retention-days 90
 ```
 
 ### Enable Diagnostic Logging
@@ -119,7 +120,7 @@ az keyvault secret set \
   --vault-name kv-myapp-prod \
   --name "ApiKey" \
   --value "sk-abc123xyz789" \
-  --expires "2025-12-31T23:59:59Z"
+  --expires "2027-12-31T23:59:59Z"
 
 # Add secret with tags
 az keyvault secret set \
@@ -424,7 +425,8 @@ az keyvault secret set \
   --value "NewSuperSecretPassword456!"
 
 # Old version is preserved, new version becomes current
-# Applications using latest version automatically get new value
+# Applications that fetch the latest version get the new value
+# App Service Key Vault references refresh automatically within 24 hours
 ```
 
 ### Event Grid Integration for Rotation Alerts

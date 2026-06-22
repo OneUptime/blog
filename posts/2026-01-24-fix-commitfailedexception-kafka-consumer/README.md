@@ -8,7 +8,7 @@ Description: A detailed guide to diagnosing and fixing Kafka's CommitFailedExcep
 
 ---
 
-The `CommitFailedException` is a common error in Kafka consumers that occurs when a consumer tries to commit offsets but is no longer part of its consumer group. This typically happens due to session timeouts during long message processing. This guide explains the root causes and provides practical solutions.
+The `CommitFailedException` is a common error in Kafka consumers that occurs when a consumer tries to commit offsets but is no longer part of its consumer group. In modern Kafka clients, this typically happens when the time between calls to `poll()` exceeds `max.poll.interval.ms`; in older clients, long processing could also cause session timeouts because heartbeats were tied to the poll loop. This guide explains the root causes and provides practical solutions.
 
 ## Understanding the Error
 
@@ -29,14 +29,14 @@ sequenceDiagram
     participant P as Partition
 
     Note over C,G: Normal Operation
-    C->>G: Poll (heartbeat)
+    C->>G: Poll/fetch and heartbeat
     G-->>C: Messages
     C->>C: Process (fast)
     C->>G: Commit offsets
     G-->>C: Success
 
     Note over C,G: CommitFailedException Scenario
-    C->>G: Poll (heartbeat)
+    C->>G: Poll/fetch and heartbeat
     G-->>C: Messages
     C->>C: Process (SLOW - 6 minutes)
     Note over G: max.poll.interval.ms exceeded
@@ -59,9 +59,9 @@ flowchart TD
     end
 
     subgraph Rules["Configuration Rules"]
-        R1["heartbeat.interval.ms < session.timeout.ms / 3"]
+        R1["heartbeat.interval.ms < session.timeout.ms<br/>(typically <= 1/3)"]
         R2["Processing time < max.poll.interval.ms"]
-        R3["session.timeout.ms < max.poll.interval.ms"]
+        R3["Usually keep session.timeout.ms < max.poll.interval.ms"]
     end
 
     HB --> R1
@@ -106,7 +106,7 @@ public class LongProcessingConsumer {
         // Reduce records per poll to limit processing time per batch
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100);
 
-        // Session timeout (must be less than max.poll.interval.ms)
+        // Session timeout (usually less than max.poll.interval.ms)
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 60000);
 
         // Heartbeat interval (should be 1/3 of session timeout)
@@ -186,19 +186,20 @@ Process messages asynchronously while keeping the consumer alive:
 
 ```java
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.*;
 
 public class AsyncProcessingConsumer {
 
     private final KafkaConsumer<String, String> consumer;
     private final ExecutorService executor;
-    private final BlockingQueue<ProcessingTask> taskQueue;
+    private final AtomicInteger pendingTasks;
     private final int maxPendingTasks;
 
     public AsyncProcessingConsumer(Properties props, int threadPoolSize, int maxPending) {
         this.consumer = new KafkaConsumer<>(props);
         this.executor = Executors.newFixedThreadPool(threadPoolSize);
-        this.taskQueue = new LinkedBlockingQueue<>(maxPending);
+        this.pendingTasks = new AtomicInteger(0);
         this.maxPendingTasks = maxPending;
     }
 
@@ -208,13 +209,15 @@ public class AsyncProcessingConsumer {
     public void consume(String topic) {
         consumer.subscribe(Collections.singletonList(topic));
 
-        // Track pending tasks for offset management
-        Map<TopicPartition, OffsetAndMetadata> pendingOffsets = new ConcurrentHashMap<>();
+        // Track completed offsets without committing past gaps in a partition
+        Map<TopicPartition, NavigableSet<Long>> inFlightOffsets = new ConcurrentHashMap<>();
+        Map<TopicPartition, NavigableSet<Long>> completedOffsets = new ConcurrentHashMap<>();
+        Map<TopicPartition, Long> nextCommitOffsets = new HashMap<>();
         Set<TopicPartition> pausedPartitions = new HashSet<>();
 
         while (true) {
             // Check if we need to pause due to backpressure
-            if (taskQueue.size() >= maxPendingTasks) {
+            if (pendingTasks.get() >= maxPendingTasks) {
                 // Pause all assigned partitions
                 Set<TopicPartition> assigned = consumer.assignment();
                 if (!assigned.isEmpty() && pausedPartitions.isEmpty()) {
@@ -229,31 +232,62 @@ public class AsyncProcessingConsumer {
                 System.out.println("Resumed consumption");
             }
 
-            // Poll - this also sends heartbeats
+            // Poll regularly so max.poll.interval.ms is not exceeded
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 
             for (ConsumerRecord<String, String> record : records) {
                 // Create processing task
-                ProcessingTask task = new ProcessingTask(record, pendingOffsets);
+                TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+                nextCommitOffsets.putIfAbsent(tp, record.offset());
+                inFlightOffsets.computeIfAbsent(tp, ignored -> new ConcurrentSkipListSet<>())
+                    .add(record.offset());
+                completedOffsets.computeIfAbsent(tp, ignored -> new ConcurrentSkipListSet<>());
+
+                ProcessingTask task = new ProcessingTask(record, completedOffsets);
 
                 // Submit to thread pool
-                taskQueue.offer(task);
+                pendingTasks.incrementAndGet();
                 executor.submit(task);
             }
 
             // Commit completed offsets
-            commitCompletedOffsets(pendingOffsets);
+            commitCompletedOffsets(inFlightOffsets, completedOffsets, nextCommitOffsets);
         }
     }
 
     /**
-     * Commit offsets for completed tasks.
+     * Commit offsets only when all lower offsets in the same partition are done.
      */
-    private void commitCompletedOffsets(Map<TopicPartition, OffsetAndMetadata> offsets) {
-        if (!offsets.isEmpty()) {
-            Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>(offsets);
-            offsets.clear();
+    private void commitCompletedOffsets(Map<TopicPartition, NavigableSet<Long>> inFlightOffsets,
+                                        Map<TopicPartition, NavigableSet<Long>> completedOffsets,
+                                        Map<TopicPartition, Long> nextCommitOffsets) {
+        Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
 
+        for (Map.Entry<TopicPartition, Long> entry : nextCommitOffsets.entrySet()) {
+            TopicPartition tp = entry.getKey();
+            long nextOffset = entry.getValue();
+            NavigableSet<Long> inFlight = inFlightOffsets.get(tp);
+            NavigableSet<Long> completed = completedOffsets.get(tp);
+
+            while (inFlight != null && completed != null && !inFlight.isEmpty()) {
+                long firstInFlight = inFlight.first();
+                if (firstInFlight > nextOffset) {
+                    nextOffset = firstInFlight;
+                }
+                if (!completed.remove(firstInFlight)) {
+                    break;
+                }
+                inFlight.remove(firstInFlight);
+                nextOffset = firstInFlight + 1;
+            }
+
+            if (nextOffset > entry.getValue()) {
+                nextCommitOffsets.put(tp, nextOffset);
+                toCommit.put(tp, new OffsetAndMetadata(nextOffset));
+            }
+        }
+
+        if (!toCommit.isEmpty()) {
             try {
                 consumer.commitSync(toCommit);
             } catch (CommitFailedException e) {
@@ -267,12 +301,12 @@ public class AsyncProcessingConsumer {
      */
     class ProcessingTask implements Runnable {
         private final ConsumerRecord<String, String> record;
-        private final Map<TopicPartition, OffsetAndMetadata> pendingOffsets;
+        private final Map<TopicPartition, NavigableSet<Long>> completedOffsets;
 
         ProcessingTask(ConsumerRecord<String, String> record,
-                       Map<TopicPartition, OffsetAndMetadata> pendingOffsets) {
+                       Map<TopicPartition, NavigableSet<Long>> completedOffsets) {
             this.record = record;
-            this.pendingOffsets = pendingOffsets;
+            this.completedOffsets = completedOffsets;
         }
 
         @Override
@@ -283,12 +317,12 @@ public class AsyncProcessingConsumer {
 
                 // Mark offset as ready to commit
                 TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-                pendingOffsets.put(tp, new OffsetAndMetadata(record.offset() + 1));
+                completedOffsets.get(tp).add(record.offset());
 
             } catch (Exception e) {
                 System.err.printf("Processing failed: %s%n", e.getMessage());
             } finally {
-                taskQueue.poll(); // Remove from queue
+                pendingTasks.decrementAndGet();
             }
         }
 
@@ -343,7 +377,7 @@ public class ManualAssignmentConsumer {
     }
 
     /**
-     * Manually assign partitions - no consumer group, no rebalancing.
+     * Manually assign partitions - no group management or automatic rebalancing.
      */
     public void consumeWithManualAssignment(String topic) {
         // Get partition information
@@ -368,7 +402,7 @@ public class ManualAssignmentConsumer {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 
             for (ConsumerRecord<String, String> record : records) {
-                // Process without worrying about rebalancing
+                // Process without group-management rebalances
                 processLongRunning(record);
             }
 
@@ -378,7 +412,7 @@ public class ManualAssignmentConsumer {
     }
 
     private void processLongRunning(ConsumerRecord<String, String> record) {
-        // Long processing is safe - no group coordination
+        // Long processing is safe from group-management rebalances
     }
 }
 ```
@@ -563,7 +597,7 @@ flowchart TD
 2. **Set max.poll.interval.ms** to at least 2x your maximum processing time
 3. **Set max.poll.records** based on how many records you can process within timeout
 4. **Configure heartbeat.interval.ms** to 1/3 of session.timeout.ms
-5. **Set session.timeout.ms** between heartbeat and max.poll.interval
+5. **Set session.timeout.ms** above heartbeat.interval.ms and usually below max.poll.interval.ms
 
 ### Code Review Checklist
 

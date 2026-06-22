@@ -217,6 +217,11 @@ aws elbv2 create-target-group \
     --healthy-threshold-count 2 \
     --unhealthy-threshold-count 3
 
+# Register targets with the target group
+aws elbv2 register-targets \
+    --target-group-arn arn:aws:elasticloadbalancing:region:account:targetgroup/my-targets/xxx \
+    --targets Id=i-0123456789abcdef0 Id=i-0abcdef1234567890
+
 # Create listener
 aws elbv2 create-listener \
     --load-balancer-arn arn:aws:elasticloadbalancing:region:account:loadbalancer/app/my-alb/xxx \
@@ -326,10 +331,13 @@ sequenceDiagram
 # health_check.py - A proper health check endpoint
 
 from flask import Flask, jsonify
+import os
 import psycopg2
 import redis
 
 app = Flask(__name__)
+DATABASE_URL = os.environ["DATABASE_URL"]
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 
 @app.route('/health')
 def health_check():

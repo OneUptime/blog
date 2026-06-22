@@ -72,13 +72,13 @@ GET user:1:name
 
 # Set with expiration
 SET session:abc123 "data" EX 3600  # Expires in 1 hour
-SETEX session:xyz "data" 3600       # Same as above
+SET session:xyz "data" EX 3600      # Same as above
 
 # Set only if not exists
 SET lock:resource "owner" NX EX 30  # NX = only if not exists
 
 # Get and set
-GETSET counter 0  # Returns old value, sets new
+SET counter 0 GET  # Returns old value, sets new
 
 # Delete
 DEL key1 key2 key3
@@ -227,9 +227,9 @@ ZREVRANK leaderboard "alice"  # Descending
 ZSCORE leaderboard "alice"
 
 # Range queries
-ZRANGE leaderboard 0 9 WITHSCORES        # Top 10 (ascending)
-ZREVRANGE leaderboard 0 9 WITHSCORES     # Top 10 (descending)
-ZRANGEBYSCORE leaderboard 80 100         # Score 80-100
+ZRANGE leaderboard 0 9 WITHSCORES        # Lowest 10 (ascending)
+ZRANGE leaderboard 0 9 REV WITHSCORES    # Top 10 (descending)
+ZRANGE leaderboard 80 100 BYSCORE        # Score 80-100
 
 # Increment score
 ZINCRBY leaderboard 10 "alice"
@@ -288,7 +288,12 @@ SLOWLOG RESET     # Clear log
 ### DEBUG Commands
 
 ```bash
+# DEBUG commands are disabled by default in Redis 7+
+
 # Object encoding
+OBJECT ENCODING mykey
+
+# Low-level object details
 DEBUG OBJECT mykey
 
 # Memory usage
@@ -387,7 +392,7 @@ redis-cli --bigkeys
 # [00.00%] Biggest hash   found so far 'user:1' with 150 fields
 
 # With more samples
-redis-cli --bigkeys -i 0.1  # 0.1 second delay between scans
+redis-cli --bigkeys -i 0.1  # 0.1 second delay per 100 SCAN calls
 ```
 
 ### Memory Analysis
@@ -639,8 +644,8 @@ redis-cli HGETALL user:1 | paste - - | jq -R -s 'split("\n") | map(select(length
 127.0.0.1:6379> HELP SET
 127.0.0.1:6379> HELP @string  # Help for string commands
 
-# Repeat last command
-127.0.0.1:6379> r
+# Run a command multiple times
+127.0.0.1:6379> 5 INCR mycounter
 ```
 
 ## Conclusion

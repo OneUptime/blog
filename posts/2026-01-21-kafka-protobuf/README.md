@@ -12,7 +12,7 @@ Protocol Buffers (Protobuf) is Google's language-neutral, platform-neutral seria
 
 ## Why Use Protobuf with Kafka
 
-- **Smaller message sizes**: More compact than JSON and Avro
+- **Smaller message sizes**: More compact than JSON, and often compact compared with other schema-based formats
 - **Faster serialization**: Better performance than text-based formats
 - **Strong typing**: Generated code provides compile-time type safety
 - **Schema evolution**: Support for backward and forward compatibility
@@ -205,39 +205,31 @@ def create_protobuf_producer():
 
     protobuf_serializer = ProtobufSerializer(
         User,
-        schema_registry_client
+        schema_registry_client,
+        {'use.deprecated.format': False}
     )
 
-    from confluent_kafka import SerializingProducer
-    return SerializingProducer({
-        'bootstrap.servers': 'localhost:9092',
-        'key.serializer': lambda x, _: x.encode() if x else None,
-        'value.serializer': protobuf_serializer
-    })
+    producer = Producer({'bootstrap.servers': 'localhost:9092'})
+    return producer, protobuf_serializer
 
 
 def create_protobuf_consumer(group_id: str):
-    schema_registry_conf = {'url': 'http://localhost:8081'}
-    schema_registry_client = SchemaRegistryClient(schema_registry_conf)
-
     protobuf_deserializer = ProtobufDeserializer(
         User,
         {'use.deprecated.format': False}
     )
 
-    from confluent_kafka import DeserializingConsumer
-    return DeserializingConsumer({
+    consumer = Consumer({
         'bootstrap.servers': 'localhost:9092',
         'group.id': group_id,
-        'auto.offset.reset': 'earliest',
-        'key.deserializer': lambda x, _: x.decode() if x else None,
-        'value.deserializer': protobuf_deserializer
+        'auto.offset.reset': 'earliest'
     })
+    return consumer, protobuf_deserializer
 
 
 def main():
     # Produce
-    producer = create_protobuf_producer()
+    producer, protobuf_serializer = create_protobuf_producer()
 
     user = User()
     user.id = "user-123"
@@ -245,12 +237,19 @@ def main():
     user.email = "john@example.com"
     user.created_at = int(time.time() * 1000)
 
-    producer.produce(topic='users-proto', key=user.id, value=user)
+    producer.produce(
+        topic='users-proto',
+        key=user.id.encode('utf-8'),
+        value=protobuf_serializer(
+            user,
+            SerializationContext('users-proto', MessageField.VALUE)
+        )
+    )
     producer.flush()
     print(f"Sent user: {user.id}")
 
     # Consume
-    consumer = create_protobuf_consumer('protobuf-consumer-group')
+    consumer, protobuf_deserializer = create_protobuf_consumer('protobuf-consumer-group')
     consumer.subscribe(['users-proto'])
 
     while True:
@@ -261,7 +260,10 @@ def main():
             print(f"Error: {msg.error()}")
             continue
 
-        user = msg.value()
+        user = protobuf_deserializer(
+            msg.value(),
+            SerializationContext(msg.topic(), MessageField.VALUE)
+        )
         print(f"Received: id={user.id}, name={user.name}")
 
 

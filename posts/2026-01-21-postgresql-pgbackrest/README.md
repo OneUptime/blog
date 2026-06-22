@@ -12,7 +12,7 @@ pgBackRest is a reliable, feature-rich backup and restore solution for PostgreSQ
 
 ## Prerequisites
 
-- PostgreSQL 10+ installed
+- A supported PostgreSQL release installed
 - Sufficient storage for backups
 - Network access to backup storage
 - Root/sudo access for installation
@@ -35,8 +35,8 @@ pgBackRest is a reliable, feature-rich backup and restore solution for PostgreSQ
 ```bash
 # Add PostgreSQL repository
 
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+sudo apt install -y postgresql-common ca-certificates
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
 sudo apt update
 
 # Install pgBackRest
@@ -176,10 +176,10 @@ repo1-retention-full=2
 # Keep 4 differential backups
 repo1-retention-diff=4
 
-# Keep 7 days of WAL
+# Keep WAL for 7 full backups
 repo1-retention-archive=7
 
-# Or use count-based archive retention
+# Keep WAL based on full backup retention
 repo1-retention-archive-type=full
 ```
 
@@ -243,9 +243,10 @@ repo2-s3-bucket=my-backup-bucket
 repo2-s3-region=us-east-1
 repo2-path=/postgres-backups
 repo2-retention-full=4
+repo2-s3-endpoint=s3.amazonaws.com
 
-# Backup to both repositories
-repo-hardlink=y
+# Optional hardlinks for the local POSIX repository
+repo1-hardlink=y
 ```
 
 ```bash
@@ -283,7 +284,7 @@ openssl rand -base64 48
 sudo systemctl stop postgresql
 
 # Remove existing data
-sudo -u postgres rm -rf /var/lib/postgresql/16/main/*
+sudo -u postgres find /var/lib/postgresql/16/main -mindepth 1 -delete
 
 # Restore
 sudo -u postgres pgbackrest --stanza=main restore
@@ -293,6 +294,8 @@ sudo systemctl start postgresql
 ```
 
 ### Point-in-Time Recovery
+
+Stop PostgreSQL and empty the data directory before running these restore commands.
 
 ```bash
 # Restore to specific time
@@ -315,6 +318,8 @@ sudo -u postgres pgbackrest --stanza=main \
 ```
 
 ### Selective Restore
+
+Stop PostgreSQL and empty the data directory before running selective restore commands.
 
 ```bash
 # Restore specific database
@@ -409,6 +414,7 @@ ExecStart=/usr/bin/pgbackrest --stanza=main --type=full backup
 ```
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl enable pgbackrest-full.timer
 sudo systemctl start pgbackrest-full.timer
 ```
@@ -436,7 +442,7 @@ MAX_AGE_HOURS=24
 
 # Get last backup time
 LAST_BACKUP=$(sudo -u postgres pgbackrest --stanza=$STANZA info --output=json | \
-    jq -r '.[0].backup[-1].timestamp.stop')
+    jq -r '.[0].backup[-1].timestamp.stop // empty')
 
 if [ -z "$LAST_BACKUP" ]; then
     echo "CRITICAL: No backups found"
@@ -444,7 +450,7 @@ if [ -z "$LAST_BACKUP" ]; then
 fi
 
 # Calculate age
-LAST_BACKUP_EPOCH=$(date -d "$LAST_BACKUP" +%s)
+LAST_BACKUP_EPOCH="$LAST_BACKUP"
 NOW_EPOCH=$(date +%s)
 AGE_HOURS=$(( (NOW_EPOCH - LAST_BACKUP_EPOCH) / 3600 ))
 
@@ -459,12 +465,11 @@ exit 0
 
 ### Prometheus Metrics
 
-```yaml
-# Custom exporter query
-- name: pgbackrest_last_full_backup_age_seconds
-  query: |
-    SELECT EXTRACT(EPOCH FROM (NOW() - last_backup_time))
-    FROM (SELECT MAX(stop_time) as last_backup_time FROM pgbackrest.backup WHERE type='full') t
+```bash
+# Example metric for a node_exporter textfile collector
+sudo -u postgres pgbackrest --stanza=main info --output=json | \
+    jq -r '.[0].backup | map(select(.type=="full")) | max_by(.timestamp.stop).timestamp.stop |
+    "pgbackrest_last_full_backup_timestamp_seconds \(.)"'
 ```
 
 ## Disaster Recovery

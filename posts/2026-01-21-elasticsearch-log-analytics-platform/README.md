@@ -95,7 +95,7 @@ indices.memory.index_buffer_size: 30%
 ### Index Settings for Logs
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_index_template/logs-template" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_index_template/logs-template" -H 'Content-Type: application/json' -d'
 {
   "index_patterns": ["logs-*"],
   "template": {
@@ -151,7 +151,7 @@ curl -u elastic:password -X PUT "localhost:9200/_index_template/logs-template" -
 ### Create ILM Policy
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/logs-policy" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_ilm/policy/logs-policy" -H 'Content-Type: application/json' -d'
 {
   "policy": {
     "phases": {
@@ -214,7 +214,7 @@ curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/logs-policy" -H 'Con
 
 ```bash
 # Create initial index with write alias
-curl -u elastic:password -X PUT "localhost:9200/logs-000001" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/logs-000001" -H 'Content-Type: application/json' -d'
 {
   "aliases": {
     "logs": {
@@ -232,7 +232,8 @@ curl -u elastic:password -X PUT "localhost:9200/logs-000001" -H 'Content-Type: a
 # filebeat.yml
 filebeat.inputs:
   # Application logs
-  - type: log
+  - type: filestream
+    id: application-logs
     enabled: true
     paths:
       - /var/log/app/*.log
@@ -240,13 +241,15 @@ filebeat.inputs:
       service.name: my-application
       service.environment: production
     fields_under_root: true
-    multiline:
-      pattern: '^\d{4}-\d{2}-\d{2}'
-      negate: true
-      match: after
+    parsers:
+      - multiline:
+          pattern: '^\d{4}-\d{2}-\d{2}'
+          negate: true
+          match: after
 
   # System logs
-  - type: log
+  - type: filestream
+    id: system-logs
     enabled: true
     paths:
       - /var/log/syslog
@@ -256,10 +259,14 @@ filebeat.inputs:
     fields_under_root: true
 
   # Container logs
-  - type: container
+  - type: filestream
+    id: container-logs
     enabled: true
+    prospector.scanner.symlinks: true
     paths:
       - /var/lib/docker/containers/*/*.log
+    parsers:
+      - container: ~
     processors:
       - add_kubernetes_metadata:
           host: ${NODE_NAME}
@@ -277,7 +284,8 @@ output.elasticsearch:
   username: "${ES_USERNAME}"
   password: "${ES_PASSWORD}"
   ssl.certificate_authorities: ["/etc/filebeat/ca.crt"]
-  index: "logs-%{+yyyy.MM.dd}"
+  index: "logs"
+  pipeline: "logs-pipeline"
 
 setup.template.enabled: false
 setup.ilm.enabled: false
@@ -320,7 +328,7 @@ Module configuration (`modules.d/nginx.yml`):
 ### Create Log Parsing Pipeline
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/logs-pipeline" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_ingest/pipeline/logs-pipeline" -H 'Content-Type: application/json' -d'
 {
   "description": "Pipeline for processing application logs",
   "processors": [
@@ -396,7 +404,7 @@ curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/logs-pipeline" 
 ### JSON Log Pipeline
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/json-logs-pipeline" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_ingest/pipeline/json-logs-pipeline" -H 'Content-Type: application/json' -d'
 {
   "description": "Pipeline for JSON-formatted logs",
   "processors": [
@@ -462,9 +470,9 @@ For complex processing requirements:
 input {
   beats {
     port => 5044
-    ssl => true
+    ssl_enabled => true
     ssl_certificate => "/etc/logstash/certs/logstash.crt"
-    ssl_key => "/etc/logstash/certs/logstash.key"
+    ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
   }
 }
 
@@ -498,7 +506,7 @@ filter {
 
   # Add metadata
   mutate {
-    add_field => { "[@metadata][index]" => "logs-%{[service][name]}-%{+YYYY.MM.dd}" }
+    add_field => { "[@metadata][index]" => "logs" }
   }
 }
 
@@ -507,8 +515,8 @@ output {
     hosts => ["https://elasticsearch:9200"]
     user => "${ES_USER}"
     password => "${ES_PASSWORD}"
-    ssl => true
-    cacert => "/etc/logstash/certs/ca.crt"
+    ssl_enabled => true
+    ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
     index => "%{[@metadata][index]}"
     pipeline => "logs-pipeline"
   }
@@ -535,12 +543,12 @@ xpack.security.encryptionKey: "your-32-character-encryption-key"
 xpack.reporting.encryptionKey: "your-32-character-encryption-key"
 ```
 
-### Create Index Pattern
+### Create Data View
 
 ```bash
-curl -u elastic:password -X POST "localhost:5601/api/index_patterns/index_pattern" -H 'Content-Type: application/json' -H 'kbn-xsrf: true' -d'
+curl -u elastic:password -X POST "localhost:5601/api/data_views/data_view" -H 'Content-Type: application/json' -H 'kbn-xsrf: true' -d'
 {
-  "index_pattern": {
+  "data_view": {
     "title": "logs-*",
     "timeFieldName": "@timestamp"
   }
@@ -552,7 +560,7 @@ curl -u elastic:password -X POST "localhost:5601/api/index_patterns/index_patter
 ### Search for Errors
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "bool": {
@@ -572,7 +580,7 @@ curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Conte
 ### Error Count by Service
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "query": {
@@ -607,7 +615,7 @@ curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Conte
 ### Full-Text Search
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "bool": {
@@ -636,7 +644,7 @@ curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Conte
 ### Trace Correlation
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "term": {"trace.id": "abc123xyz"}
@@ -652,7 +660,7 @@ curl -u elastic:password -X GET "localhost:9200/logs-*/_search?pretty" -H 'Conte
 
 ```bash
 # During initial load
-curl -u elastic:password -X PUT "localhost:9200/logs-*/_settings" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/logs-*/_settings" -H 'Content-Type: application/json' -d'
 {
   "index": {
     "refresh_interval": "30s",
@@ -661,7 +669,7 @@ curl -u elastic:password -X PUT "localhost:9200/logs-*/_settings" -H 'Content-Ty
 }'
 
 # After load complete
-curl -u elastic:password -X PUT "localhost:9200/logs-*/_settings" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/logs-*/_settings" -H 'Content-Type: application/json' -d'
 {
   "index": {
     "refresh_interval": "5s",
@@ -670,16 +678,15 @@ curl -u elastic:password -X PUT "localhost:9200/logs-*/_settings" -H 'Content-Ty
 }'
 ```
 
-### Cluster Settings for Logs
+### Node Settings for Logs
 
-```bash
-curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
-{
-  "persistent": {
-    "indices.memory.index_buffer_size": "30%",
-    "thread_pool.write.queue_size": 1000
-  }
-}'
+```yaml
+# elasticsearch.yml on ingest-heavy data nodes
+indices.memory.index_buffer_size: 30%
+
+thread_pool:
+  write:
+    queue_size: 1000
 ```
 
 ## Monitoring the Platform
@@ -687,19 +694,19 @@ curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-T
 ### Cluster Health
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/_cluster/health?pretty"
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/_cluster/health?pretty"
 ```
 
 ### Index Statistics
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/logs-*/_stats?pretty"
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/logs-*/_stats?pretty"
 ```
 
 ### Ingest Pipeline Statistics
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/_nodes/stats/ingest?pretty"
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X GET "https://localhost:9200/_nodes/stats/ingest?pretty"
 ```
 
 ## Security Best Practices
@@ -707,7 +714,7 @@ curl -u elastic:password -X GET "localhost:9200/_nodes/stats/ingest?pretty"
 ### Create Log Writer Role
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_security/role/log_writer" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_security/role/log_writer" -H 'Content-Type: application/json' -d'
 {
   "cluster": ["monitor"],
   "indices": [
@@ -722,7 +729,7 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/log_writer" -H 'C
 ### Create Log Reader Role
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_security/role/log_reader" -H 'Content-Type: application/json' -d'
+curl --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:password -X PUT "https://localhost:9200/_security/role/log_reader" -H 'Content-Type: application/json' -d'
 {
   "cluster": ["monitor"],
   "indices": [

@@ -127,7 +127,7 @@ publisher.send_notification('user123', {
 
 ```python
 import asyncio
-import aioredis
+import redis.asyncio as redis
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Set
@@ -140,6 +140,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, Set[WebSocket]] = {}
         self.redis = None
+        self.subscription_tasks: Dict[str, asyncio.Task] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         """Accept WebSocket and start subscription"""
@@ -151,7 +152,7 @@ class ConnectionManager:
 
         # Start Redis subscription for this user if first connection
         if len(self.active_connections[user_id]) == 1:
-            asyncio.create_task(self._subscribe(user_id))
+            self.subscription_tasks[user_id] = asyncio.create_task(self._subscribe(user_id))
 
     async def disconnect(self, websocket: WebSocket, user_id: str):
         """Remove WebSocket connection"""
@@ -159,29 +160,37 @@ class ConnectionManager:
             self.active_connections[user_id].discard(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
+                task = self.subscription_tasks.pop(user_id, None)
+                if task:
+                    task.cancel()
 
     async def _subscribe(self, user_id: str):
         """Subscribe to Redis channel and forward messages"""
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost')
+            self.redis = redis.from_url('redis://localhost', decode_responses=True)
 
         pubsub = self.redis.pubsub()
         await pubsub.subscribe(f"notifications:{user_id}")
 
         try:
             async for message in pubsub.listen():
+                if user_id not in self.active_connections:
+                    break
                 if message['type'] == 'message':
                     await self._broadcast_to_user(user_id, message['data'])
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             print(f"Subscription error: {e}")
         finally:
             await pubsub.unsubscribe(f"notifications:{user_id}")
+            await pubsub.aclose()
 
     async def _broadcast_to_user(self, user_id: str, message: str):
         """Send message to all connections for a user"""
         if user_id in self.active_connections:
             dead_connections = set()
-            for websocket in self.active_connections[user_id]:
+            for websocket in list(self.active_connections[user_id]):
                 try:
                     await websocket.send_text(message)
                 except Exception:
@@ -389,9 +398,9 @@ class StreamNotificationService:
     ) -> List[Dict]:
         """Get notifications for a user"""
         stream_key = f"notifications:stream:{user_id}"
-        start_id = last_id if last_id else '-'
+        max_id = f"({last_id}" if last_id else '+'
 
-        entries = self.redis.xrevrange(stream_key, '+', start_id, count=count)
+        entries = self.redis.xrevrange(stream_key, max_id, '-', count=count)
 
         notifications = []
         unread_ids = self.redis.smembers(f"notifications:unread:{user_id}")
@@ -517,15 +526,15 @@ service.mark_as_read('user123', [notif_id])
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 import asyncio
-import aioredis
+import redis.asyncio as redis
 import json
 
 app = FastAPI()
 
 async def notification_stream(user_id: str):
     """Generate SSE stream for notifications"""
-    redis = await aioredis.from_url('redis://localhost', decode_responses=True)
-    pubsub = redis.pubsub()
+    redis_client = redis.from_url('redis://localhost', decode_responses=True)
+    pubsub = redis_client.pubsub()
     await pubsub.subscribe(f"notifications:{user_id}")
 
     try:
@@ -540,7 +549,8 @@ async def notification_stream(user_id: str):
         pass
     finally:
         await pubsub.unsubscribe(f"notifications:{user_id}")
-        await redis.close()
+        await pubsub.aclose()
+        await redis_client.aclose()
 
 @app.get("/notifications/stream/{user_id}")
 async def sse_notifications(user_id: str, request: Request):
@@ -589,9 +599,6 @@ class NotificationClient {
         this.eventSource.onerror = (error) => {
             console.error('SSE error:', error);
             this.emit('error', error);
-
-            // Reconnect after delay
-            setTimeout(() => this.connect(), 5000);
         };
     }
 
@@ -924,9 +931,9 @@ class ReconnectingNotificationClient {
 ### 2. Batch Notifications
 
 ```python
-def batch_notifications(notifications, batch_size=100):
+def batch_notifications(redis_client, notifications, batch_size=100):
     """Batch multiple notifications for efficiency"""
-    pipeline = redis.pipeline()
+    pipeline = redis_client.pipeline()
 
     for i, notification in enumerate(notifications):
         pipeline.publish(
@@ -936,7 +943,7 @@ def batch_notifications(notifications, batch_size=100):
 
         if (i + 1) % batch_size == 0:
             pipeline.execute()
-            pipeline = redis.pipeline()
+            pipeline = redis_client.pipeline()
 
     if notifications:
         pipeline.execute()

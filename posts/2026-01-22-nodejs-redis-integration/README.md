@@ -21,7 +21,7 @@ npm install redis
 
 ## Basic Connection
 
-### Using ioredis (Recommended)
+### Using ioredis
 
 ```javascript
 const Redis = require('ioredis');
@@ -30,7 +30,7 @@ const Redis = require('ioredis');
 const redis = new Redis();
 
 // With options
-const redis = new Redis({
+const redisWithOptions = new Redis({
   host: 'localhost',
   port: 6379,
   password: 'your-password',
@@ -48,7 +48,7 @@ const redis = new Redis({
 });
 
 // Using URL
-const redis = new Redis(process.env.REDIS_URL);
+const redisFromUrl = new Redis(process.env.REDIS_URL);
 // redis://user:password@host:port/db
 
 // Event handlers
@@ -90,10 +90,9 @@ const value = await redis.get('key');
 
 // Set with expiration
 await redis.set('key', 'value', 'EX', 3600);  // Expires in 1 hour
-await redis.setex('key', 3600, 'value');       // Same as above
 
 // Set only if not exists
-await redis.setnx('key', 'value');
+await redis.set('key', 'value', 'NX');
 
 // Set only if exists
 await redis.set('key', 'value', 'XX');
@@ -178,7 +177,7 @@ const randomTag = await redis.srandmember('tags');
 await redis.zadd('leaderboard', 100, 'player1', 200, 'player2', 150, 'player3');
 
 // Get by score range
-const topPlayers = await redis.zrevrange('leaderboard', 0, 9, 'WITHSCORES');
+const topPlayers = await redis.zrange('leaderboard', 0, 9, 'REV', 'WITHSCORES');
 
 // Get rank
 const rank = await redis.zrevrank('leaderboard', 'player1');
@@ -187,7 +186,7 @@ const rank = await redis.zrevrank('leaderboard', 'player1');
 await redis.zincrby('leaderboard', 50, 'player1');
 
 // Get by score
-const players = await redis.zrangebyscore('leaderboard', 100, 200);
+const players = await redis.zrange('leaderboard', 100, 200, 'BYSCORE');
 ```
 
 ## Caching Patterns
@@ -209,7 +208,7 @@ async function getUser(userId) {
   
   if (user) {
     // Cache for 1 hour
-    await redis.setex(cacheKey, 3600, JSON.stringify(user));
+    await redis.set(cacheKey, JSON.stringify(user), 'EX', 3600);
   }
   
   return user;
@@ -234,7 +233,7 @@ async function saveUser(user) {
   const saved = await db.users.save(user);
   
   // Update cache
-  await redis.setex(`user:${saved.id}`, 3600, JSON.stringify(saved));
+  await redis.set(`user:${saved.id}`, JSON.stringify(saved), 'EX', 3600);
   
   return saved;
 }
@@ -247,7 +246,7 @@ async function cacheWithTags(key, value, tags, ttl = 3600) {
   const pipeline = redis.pipeline();
   
   // Store the value
-  pipeline.setex(key, ttl, JSON.stringify(value));
+  pipeline.set(key, JSON.stringify(value), 'EX', ttl);
   
   // Add key to each tag set
   for (const tag of tags) {
@@ -276,18 +275,23 @@ await invalidateByTag('products');  // Clear all product caches
 ### Express Session with Redis
 
 ```bash
-npm install express-session connect-redis
+npm install redis express-session connect-redis
 ```
 
 ```javascript
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
-const Redis = require('ioredis');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
 
-const redis = new Redis(process.env.REDIS_URL);
+const redisClient = createClient({
+  url: process.env.REDIS_URL,
+});
+
+redisClient.on('error', (err) => console.error('Redis error:', err));
+await redisClient.connect();
 
 app.use(session({
-  store: new RedisStore({ client: redis }),
+  store: new RedisStore({ client: redisClient }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -302,6 +306,8 @@ app.use(session({
 ### Custom Session Management
 
 ```javascript
+const crypto = require('node:crypto');
+
 class SessionManager {
   constructor(redis) {
     this.redis = redis;
@@ -317,10 +323,11 @@ class SessionManager {
       createdAt: Date.now(),
     };
     
-    await this.redis.setex(
+    await this.redis.set(
       this.prefix + sessionId,
-      this.ttl,
-      JSON.stringify(session)
+      JSON.stringify(session),
+      'EX',
+      this.ttl
     );
     
     // Track user sessions
@@ -551,7 +558,7 @@ pipeline.set('key2', 'value2');
 pipeline.incr('counter');
 pipeline.hset('hash', 'field', 'value');
 
-const results = await pipeline.exec();
+const pipelineResults = await pipeline.exec();
 // [[null, 'OK'], [null, 'OK'], [null, 1], [null, 1]]
 
 // Multi for atomic transactions
@@ -561,7 +568,7 @@ multi.get('balance');
 multi.decrby('balance', 100);
 multi.incrby('spent', 100);
 
-const results = await multi.exec();
+const transactionResults = await multi.exec();
 ```
 
 ### Optimistic Locking with WATCH

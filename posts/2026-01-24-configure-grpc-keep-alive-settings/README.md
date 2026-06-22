@@ -58,7 +58,9 @@ func main() {
     kaParams := keepalive.ClientParameters{
         // Time after which client sends PING if no activity
         // Default: infinity (disabled)
-        // Recommended: 10-30 seconds for most use cases
+        // Example: 10 seconds for controlled services
+        // For public services, coordinate with the server owner
+        // and avoid values much below 1 minute
         Time: 10 * time.Second,
 
         // Timeout for PING ACK before considering connection dead
@@ -73,7 +75,7 @@ func main() {
     }
 
     // Create connection with keep-alive
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(kaParams),
@@ -331,13 +333,13 @@ import (
 func ValidateKeepAliveSettings(client keepalive.ClientParameters, server keepalive.ServerParameters, policy keepalive.EnforcementPolicy) []string {
     var warnings []string
 
-    // Client timeout should be less than client time
-    if client.Timeout >= client.Time {
+    // Client timeout should be less than client time when both are configured
+    if client.Time > 0 && client.Timeout > 0 && client.Timeout >= client.Time {
         warnings = append(warnings, "Client timeout should be less than client time")
     }
 
     // Client time should be >= server MinTime
-    if client.Time < policy.MinTime {
+    if client.Time > 0 && policy.MinTime > 0 && client.Time < policy.MinTime {
         warnings = append(warnings, "Client time is less than server MinTime - client may be disconnected")
     }
 
@@ -375,7 +377,7 @@ func RecommendedSettings(scenario Scenario) (keepalive.ClientParameters, keepali
     switch scenario {
     case ScenarioLowLatency:
         return keepalive.ClientParameters{
-                Time:                5 * time.Second,
+                Time:                10 * time.Second,
                 Timeout:             2 * time.Second,
                 PermitWithoutStream: true,
             },
@@ -383,11 +385,11 @@ func RecommendedSettings(scenario Scenario) (keepalive.ClientParameters, keepali
                 MaxConnectionIdle:     5 * time.Minute,
                 MaxConnectionAge:      15 * time.Minute,
                 MaxConnectionAgeGrace: 2 * time.Second,
-                Time:                  5 * time.Second,
+                Time:                  10 * time.Second,
                 Timeout:               2 * time.Second,
             },
             keepalive.EnforcementPolicy{
-                MinTime:             3 * time.Second,
+                MinTime:             10 * time.Second,
                 PermitWithoutStream: true,
             }
 
@@ -494,11 +496,9 @@ def create_channel(target: str) -> grpc.Channel:
         # Default: 0 (false)
         ('grpc.keepalive_permit_without_calls', 1),  # true
 
-        # Maximum time to wait for HTTP/2 ping response
-        ('grpc.http2.min_time_between_pings_ms', 10000),
-
-        # Minimum time between pings
-        ('grpc.http2.min_ping_interval_without_data_ms', 5000),
+        # Maximum number of pings before data/header frames are sent
+        # 0 allows keep-alive pings without this throttle
+        ('grpc.http2.max_pings_without_data', 0),
     ]
 
     # Create channel
@@ -730,10 +730,13 @@ upstream grpc_backends {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
 
     ssl_certificate /etc/nginx/ssl/cert.pem;
     ssl_certificate_key /etc/nginx/ssl/key.pem;
+
+    keepalive_timeout 3600s;
 
     location / {
         grpc_pass grpc://grpc_backends;
@@ -744,7 +747,6 @@ server {
 
         # HTTP/2 settings
         http2_max_concurrent_streams 128;
-        http2_idle_timeout 3600s;
     }
 }
 ```
@@ -805,7 +807,11 @@ static_resources:
     connect_timeout: 5s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
 
     # Connection pool settings
     circuit_breakers:
@@ -834,7 +840,7 @@ static_resources:
 
 ## 7. Monitoring Keep-Alive
 
-Track keep-alive related metrics.
+Track connection-state metrics that often reveal keep-alive issues.
 
 ```go
 // monitoring.go
@@ -867,22 +873,6 @@ var (
         []string{"target", "from_state", "to_state"},
     )
 
-    pingsSent = promauto.NewCounterVec(
-        prometheus.CounterOpts{
-            Name: "grpc_keepalive_pings_sent_total",
-            Help: "Total number of keep-alive pings sent",
-        },
-        []string{"target"},
-    )
-
-    pingLatency = promauto.NewHistogramVec(
-        prometheus.HistogramOpts{
-            Name:    "grpc_keepalive_ping_latency_seconds",
-            Help:    "Latency of keep-alive ping responses",
-            Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1},
-        },
-        []string{"target"},
-    )
 )
 
 // MonitorConnection monitors a gRPC connection state
@@ -955,17 +945,6 @@ groups:
           summary: "gRPC connection in TransientFailure state"
           description: "Connection to {{ $labels.target }} has been failing for 5 minutes"
 
-      # Alert on high ping latency
-      - alert: GRPCHighPingLatency
-        expr: |
-          histogram_quantile(0.99, rate(grpc_keepalive_ping_latency_seconds_bucket[5m]))
-          > 1
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High gRPC keep-alive ping latency"
-          description: "99th percentile ping latency to {{ $labels.target }} is {{ $value }}s"
 ```
 
 ## 8. Troubleshooting Keep-Alive Issues
@@ -1123,7 +1102,7 @@ flowchart TD
 checklist:
   client:
     - name: Time
-      recommendation: "10-30 seconds for most cases"
+      recommendation: "At least 1 minute unless the server owner has approved a shorter interval"
       note: "Must be >= server MinTime"
 
     - name: Timeout

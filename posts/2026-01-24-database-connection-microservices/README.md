@@ -102,7 +102,7 @@ SELECT
     TIME,
     STATE,
     INFO
-FROM information_schema.PROCESSLIST
+FROM performance_schema.processlist
 ORDER BY TIME DESC;
 
 -- Connection limits
@@ -140,8 +140,9 @@ class PoolStats:
     timestamp: datetime
 
 class ConnectionPoolMonitor:
-    def __init__(self, engine):
+    def __init__(self, engine, max_overflow: int = 0):
         self.engine = engine
+        self.max_overflow = max_overflow
         self.stats_history: List[PoolStats] = []
         self._setup_event_listeners()
 
@@ -191,13 +192,14 @@ class ConnectionPoolMonitor:
         pool = self.engine.pool
 
         issues = []
+        capacity = pool.size() + self.max_overflow
 
         # Check if pool is exhausted
-        if stats.checked_out >= pool.size() + pool._max_overflow:
+        if stats.checked_out >= capacity:
             issues.append("Pool exhausted - all connections in use")
 
         # Check for high utilization
-        utilization = stats.checked_out / (pool.size() + pool._max_overflow)
+        utilization = stats.checked_out / capacity
         if utilization > 0.8:
             issues.append(f"High pool utilization: {utilization:.1%}")
 
@@ -236,7 +238,7 @@ engine = create_engine(
     pool_timeout=30,
     pool_pre_ping=True
 )
-monitor = ConnectionPoolMonitor(engine)
+monitor = ConnectionPoolMonitor(engine, max_overflow=5)
 
 @app.route("/health/db")
 def db_health():
@@ -385,6 +387,7 @@ Connections timing out due to network issues, slow queries, or database overload
 # fix_connection_timeouts.py - Handle timeouts gracefully
 
 import time
+import random
 from functools import wraps
 from typing import TypeVar, Callable
 from sqlalchemy.exc import OperationalError, TimeoutError as SATimeoutError
@@ -546,6 +549,7 @@ from datetime import datetime
 from typing import Dict, Set
 import threading
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -695,7 +699,7 @@ listen_port = 6432
 auth_type = md5
 auth_file = /etc/pgbouncer/userlist.txt
 
-; Pool mode: transaction is best for microservices
+; Pool mode: transaction is often a good default for short transactions
 pool_mode = transaction
 
 ; Pool sizing
@@ -739,7 +743,7 @@ spec:
     spec:
       containers:
         - name: pgbouncer
-          image: edoburu/pgbouncer:1.18.0
+          image: edoburu/pgbouncer:v1.25.2-p0
           ports:
             - containerPort: 6432
           env:
@@ -789,6 +793,8 @@ spec:
 ```python
 # Connect through PgBouncer
 import os
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 # Application connects to PgBouncer instead of directly to PostgreSQL
 DATABASE_URL = os.getenv(
@@ -796,7 +802,7 @@ DATABASE_URL = os.getenv(
     "postgresql://user:pass@pgbouncer:5432/mydb"
 )
 
-# Important: Disable client-side connection pooling when using PgBouncer
+# Important: avoid large client-side pools when using PgBouncer
 engine = create_engine(
     DATABASE_URL,
     # Use NullPool since PgBouncer handles pooling
@@ -826,7 +832,7 @@ groups:
 
       - alert: ConnectionPoolExhausted
         expr: |
-          sqlalchemy_pool_checkedout / sqlalchemy_pool_size >= 1
+          sqlalchemy_pool_checkedout / sqlalchemy_pool_capacity >= 1
         for: 1m
         labels:
           severity: critical
@@ -867,13 +873,18 @@ pool_overflow = Gauge(
     'Overflow connections in use',
     ['service', 'database']
 )
+pool_capacity = Gauge(
+    'sqlalchemy_pool_capacity',
+    'Maximum connections allowed by the pool, including overflow',
+    ['service', 'database']
+)
 connection_errors = Counter(
     'app_db_connection_errors_total',
     'Database connection errors',
     ['service', 'error_type']
 )
 
-def update_pool_metrics(engine, service_name: str, database: str):
+def update_pool_metrics(engine, service_name: str, database: str, max_overflow: int = 0):
     """Update Prometheus metrics from pool stats."""
     pool = engine.pool
 
@@ -883,6 +894,9 @@ def update_pool_metrics(engine, service_name: str, database: str):
     )
     pool_overflow.labels(service=service_name, database=database).set(
         pool.overflow()
+    )
+    pool_capacity.labels(service=service_name, database=database).set(
+        pool.size() + max_overflow
     )
 ```
 

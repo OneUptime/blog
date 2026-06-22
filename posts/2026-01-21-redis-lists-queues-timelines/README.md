@@ -165,8 +165,11 @@ LMOVE jobs processing LEFT RIGHT
 # On success, remove from processing
 LREM processing 1 '{"task": "process", "data": "item1"}'
 
-# On failure, move back to jobs
-LMOVE processing jobs RIGHT LEFT
+# On failure, remove the exact failed job and return it to jobs
+MULTI
+LREM processing 1 '{"task": "process", "data": "item1"}'
+LPUSH jobs '{"task": "process", "data": "item1"}'
+EXEC
 ```
 
 ### Priority Queue
@@ -226,7 +229,7 @@ class JobQueue:
         return None
 
     def dequeue_reliable(self, timeout: int = 0) -> Optional[Dict]:
-        """Get job with reliable processing guarantee."""
+        """Get job and move it to a processing list."""
         job_json = client.blmove(
             self.queue_key,
             self.processing_key,
@@ -354,13 +357,12 @@ class CircularBuffer:
 
 
 # =============================================================================
-# Message Queue with Consumer Groups (Simple)
+# Simple Message Queue
 # =============================================================================
 
 class MessageQueue:
     def __init__(self, name: str):
         self.queue_key = f"mq:{name}"
-        self.consumers_key = f"mq:{name}:consumers"
 
     def publish(self, message: Dict) -> str:
         """Publish message to queue."""
@@ -740,7 +742,6 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "log"
     "time"
 
     "github.com/google/uuid"
@@ -1065,7 +1066,7 @@ func main() {
 
 ### Queue Design
 
-1. **Use reliable queues** - Move to processing list before work
+1. **Use processing lists** - Move jobs to a processing list before work and recover stale items
 2. **Handle failures** - Return failed jobs to queue
 3. **Set timeouts** - Avoid blocking indefinitely
 4. **Monitor queue length** - Alert on growing backlogs
@@ -1094,7 +1095,7 @@ Redis Lists provide powerful primitives for building queues, timelines, and mess
 
 - Use RPUSH/LPOP for FIFO queues
 - Use BLPOP/BRPOP for blocking consumers
-- Use LMOVE for reliable queue processing
+- Use LMOVE for processing-list queue workflows
 - Combine multiple lists for priority queues
 - Always trim lists to prevent unbounded growth
 

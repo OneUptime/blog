@@ -46,11 +46,11 @@ Before starting, ensure you have:
 ```bash
 # Download Kafka
 
-wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
+wget https://archive.apache.org/dist/kafka/3.7.2/kafka_2.13-3.7.2.tgz
 
 # Extract
-tar -xzf kafka_2.13-3.7.0.tgz
-cd kafka_2.13-3.7.0
+tar -xzf kafka_2.13-3.7.2.tgz
+cd kafka_2.13-3.7.2
 ```
 
 ### Generate Cluster ID
@@ -262,11 +262,11 @@ bin/kafka-server-start.sh -daemon config/broker.properties
 ### Verify Cluster Health
 
 ```bash
-# Check cluster metadata
-bin/kafka-metadata.sh --snapshot /var/kafka-controller/__cluster_metadata-0/00000000000000000000.log --command "cat"
+# Check metadata quorum status
+bin/kafka-metadata-quorum.sh --bootstrap-server broker-1:9092 describe --status
 
-# Describe cluster
-bin/kafka-metadata.sh --snapshot /var/kafka-controller/__cluster_metadata-0/00000000000000000000.log --command "describe"
+# Check metadata quorum replication
+bin/kafka-metadata-quorum.sh --bootstrap-server broker-1:9092 describe --replication
 
 # Check broker registration
 bin/kafka-broker-api-versions.sh --bootstrap-server broker-1:9092
@@ -341,8 +341,8 @@ keytool -keystore kafka.server.truststore.jks -alias CARoot \
 ### Configure TLS
 
 ```properties
-# TLS configuration for brokers
-listeners=PLAINTEXT://:9092,SSL://:9093,CONTROLLER://:9094
+# TLS configuration for broker client listeners
+listeners=PLAINTEXT://:9092,SSL://:9093
 advertised.listeners=PLAINTEXT://broker-1:9092,SSL://broker-1:9093
 controller.listener.names=CONTROLLER
 listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SSL:SSL
@@ -360,9 +360,9 @@ ssl.client.auth=required
 
 ### Migration Overview
 
-Kafka supports migration from ZooKeeper to KRaft:
+Kafka 3.7 supports migration from ZooKeeper to KRaft, but the Apache Kafka 3.7 documentation treats it as an Early Access feature that is not recommended for production clusters:
 
-1. Upgrade to Kafka 3.6 or later
+1. Upgrade brokers to Kafka 3.7.2 and set `inter.broker.protocol.version=3.7`
 2. Deploy KRaft controllers
 3. Enable migration mode
 4. Migrate metadata
@@ -377,10 +377,13 @@ Deploy KRaft controllers with migration config:
 process.roles=controller
 node.id=3000
 controller.quorum.voters=3000@controller-1:9093,3001@controller-2:9093,3002@controller-3:9093
+controller.listener.names=CONTROLLER
+listeners=CONTROLLER://:9093
 
 # ZooKeeper connection for migration
 zookeeper.connect=zk1:2181,zk2:2181,zk3:2181
 zookeeper.metadata.migration.enable=true
+inter.broker.listener.name=PLAINTEXT
 ```
 
 ### Step 2: Configure Brokers for Migration
@@ -389,9 +392,11 @@ Update existing broker configuration:
 
 ```properties
 # Broker migration configuration
+broker.id=101
 controller.quorum.voters=3000@controller-1:9093,3001@controller-2:9093,3002@controller-3:9093
 controller.listener.names=CONTROLLER
 listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+inter.broker.protocol.version=3.7
 
 # Keep ZooKeeper connection during migration
 zookeeper.connect=zk1:2181,zk2:2181,zk3:2181
@@ -400,14 +405,21 @@ zookeeper.metadata.migration.enable=true
 
 ### Step 3: Complete Migration
 
-After all brokers are running with KRaft:
+After the metadata migration completes, restart each broker as a KRaft broker by replacing `broker.id` with `node.id`, adding `process.roles=broker`, and removing the ZooKeeper migration settings:
+
+```properties
+process.roles=broker
+node.id=101
+controller.quorum.voters=3000@controller-1:9093,3001@controller-2:9093,3002@controller-3:9093
+controller.listener.names=CONTROLLER
+listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+```
+
+Then remove `zookeeper.metadata.migration.enable` and `zookeeper.connect` from the controllers and restart controllers one by one:
 
 ```bash
-# Remove ZooKeeper configuration from brokers
-# Restart brokers one by one
-
 # Verify migration complete
-bin/kafka-metadata.sh --snapshot /var/kafka-controller/__cluster_metadata-0/00000000000000000000.log --command "describe"
+bin/kafka-metadata-quorum.sh --bootstrap-server broker-1:9092 describe --status
 ```
 
 ## Monitoring KRaft Clusters
@@ -415,9 +427,8 @@ bin/kafka-metadata.sh --snapshot /var/kafka-controller/__cluster_metadata-0/0000
 ### Key Metrics
 
 ```bash
-# Using kafka-metadata.sh
-bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "describe"
+# Using kafka-metadata-quorum.sh
+bin/kafka-metadata-quorum.sh --bootstrap-server broker-1:9092 describe --status
 ```
 
 ### JMX Metrics
@@ -428,7 +439,9 @@ Important KRaft metrics to monitor:
 kafka.controller:type=KafkaController,name=ActiveControllerCount
 kafka.controller:type=KafkaController,name=LastAppliedRecordOffset
 kafka.controller:type=KafkaController,name=LastAppliedRecordTimestamp
-kafka.controller:type=ControllerStats,name=UncleanLeaderElectionRate
+kafka.server:type=raft-metrics,name=current-state
+kafka.server:type=raft-metrics,name=high-watermark
+kafka.server:type=broker-metadata-metrics,name=last-applied-record-offset
 kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions
 kafka.server:type=ReplicaManager,name=PartitionCount
 ```
@@ -470,6 +483,7 @@ for resource, config in broker_configs.items():
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.Node;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
@@ -551,7 +565,7 @@ broker.session.timeout.ms=18000
 
 ```bash
 # Check metadata log
-bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log --command "cat"
+bin/kafka-dump-log.sh --cluster-metadata-decoder --files /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log
 
 # Verify storage format
 cat /var/kafka-logs/meta.properties
@@ -578,7 +592,7 @@ controller.quorum.voters=1@c1:9093,2@c2:9093,3@c3:9093
 
 ## Conclusion
 
-KRaft mode represents the future of Kafka, eliminating ZooKeeper dependency while providing improved scalability and simpler operations. Start with development setups using combined mode, then graduate to dedicated controllers and brokers for production. The migration path from ZooKeeper is well-supported, allowing gradual adoption in existing deployments.
+KRaft mode represents the future of Kafka, eliminating ZooKeeper dependency while providing improved scalability and simpler operations. Start with development setups using combined mode, then graduate to dedicated controllers and brokers for production. For existing ZooKeeper-based clusters, test the version-specific migration path carefully before adopting it in production.
 
 Key takeaways:
 

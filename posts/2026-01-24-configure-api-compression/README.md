@@ -121,7 +121,7 @@ http {
 
 ## Node.js Express Compression
 
-For Node.js applications, the `compression` middleware handles gzip compression.
+For Node.js applications, the `compression` middleware handles gzip, deflate, and Brotli compression.
 
 ```javascript
 const express = require('express');
@@ -129,10 +129,10 @@ const compression = require('compression');
 
 const app = express();
 
-// Basic compression with defaults
-app.use(compression());
+// Basic compression with defaults:
+// app.use(compression());
 
-// Or with custom options
+// Or use custom options
 app.use(compression({
     // Only compress responses larger than 1KB
     threshold: 1024,
@@ -168,28 +168,24 @@ app.listen(3000);
 
 ```javascript
 const express = require('express');
-const shrinkRay = require('shrink-ray-current');  // Supports Brotli
+const compression = require('compression');
+const zlib = require('node:zlib');
 
 const app = express();
 
-// shrink-ray supports both gzip and Brotli
-app.use(shrinkRay({
-    // Use Brotli when available
+// compression supports gzip, deflate, and Brotli
+app.use(compression({
+    threshold: 1024,
+
+    // Gzip/deflate settings
+    level: 6,
+
+    // Brotli settings
     brotli: {
-        quality: 6  // Brotli quality (1-11)
-    },
-
-    // Fallback to gzip
-    zlib: {
-        level: 6
-    },
-
-    // Cache compressed responses
-    cache: (req, res) => {
-        return req.method === 'GET';
-    },
-
-    threshold: 1024
+        params: {
+            [zlib.constants.BROTLI_PARAM_QUALITY]: 6
+        }
+    }
 }));
 
 app.get('/api/data', (req, res) => {
@@ -256,6 +252,20 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import brotli
 
+def accepts_brotli(accept_encoding: str) -> bool:
+    for item in accept_encoding.split(','):
+        parts = [part.strip() for part in item.split(';')]
+        if not parts or parts[0] != 'br':
+            continue
+        for part in parts[1:]:
+            if part.startswith('q='):
+                try:
+                    return float(part[2:]) > 0
+                except ValueError:
+                    return False
+        return True
+    return False
+
 class BrotliMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, minimum_size: int = 1000, quality: int = 6):
         super().__init__(app)
@@ -267,7 +277,11 @@ class BrotliMiddleware(BaseHTTPMiddleware):
 
         # Check if client accepts Brotli
         accept_encoding = request.headers.get('accept-encoding', '')
-        if 'br' not in accept_encoding:
+        if not accepts_brotli(accept_encoding):
+            return response
+
+        # Skip responses that are already encoded
+        if response.headers.get('content-encoding'):
             return response
 
         # Get response body
@@ -292,6 +306,8 @@ class BrotliMiddleware(BaseHTTPMiddleware):
             headers = dict(response.headers)
             headers['content-encoding'] = 'br'
             headers['content-length'] = str(len(compressed))
+            vary = headers.get('vary')
+            headers['vary'] = f'{vary}, Accept-Encoding' if vary else 'Accept-Encoding'
 
             return Response(
                 content=compressed,
@@ -300,7 +316,12 @@ class BrotliMiddleware(BaseHTTPMiddleware):
                 media_type=response.media_type
             )
 
-        return response
+        return Response(
+            content=body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type
+        )
 
 app = FastAPI()
 app.add_middleware(BrotliMiddleware, minimum_size=1000, quality=6)
@@ -315,6 +336,7 @@ import (
     "compress/gzip"
     "io"
     "net/http"
+    "strconv"
     "strings"
 )
 
@@ -328,11 +350,32 @@ func (w GzipResponseWriter) Write(b []byte) (int, error) {
     return w.Writer.Write(b)
 }
 
+func acceptsEncoding(header string, encoding string) bool {
+    for _, item := range strings.Split(header, ",") {
+        parts := strings.Split(item, ";")
+        if strings.TrimSpace(parts[0]) != encoding {
+            continue
+        }
+
+        for _, part := range parts[1:] {
+            keyValue := strings.SplitN(strings.TrimSpace(part), "=", 2)
+            if len(keyValue) == 2 && keyValue[0] == "q" {
+                quality, err := strconv.ParseFloat(keyValue[1], 64)
+                return err == nil && quality > 0
+            }
+        }
+
+        return true
+    }
+
+    return false
+}
+
 // GzipMiddleware compresses responses with gzip
 func GzipMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         // Check if client accepts gzip
-        if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+        if !acceptsEncoding(r.Header.Get("Accept-Encoding"), "gzip") {
             next.ServeHTTP(w, r)
             return
         }
@@ -347,6 +390,7 @@ func GzipMiddleware(next http.Handler) http.Handler {
 
         // Set headers
         w.Header().Set("Content-Encoding", "gzip")
+        w.Header().Add("Vary", "Accept-Encoding")
         w.Header().Del("Content-Length")  // Length will change
 
         // Wrap response writer
@@ -360,7 +404,7 @@ func main() {
 
     mux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(`{"users": [...]}`))  // Will be compressed
+        w.Write([]byte(`{"users":[]}`))  // Will be compressed
     })
 
     // Apply middleware
@@ -399,7 +443,6 @@ gzip_types
     application/xml
     text/plain
     text/css
-    text/html
     text/xml
     image/svg+xml;  # SVG is text-based, compress it
 ```

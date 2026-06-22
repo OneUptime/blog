@@ -134,6 +134,14 @@ REMOTE_HOST="backup-server"
 REMOTE_DIR="/var/lib/postgresql/archive"
 
 # Local archive
+if [ -f "$ARCHIVE_DIR/$WAL_NAME" ]; then
+    if cmp -s "$WAL_FILE" "$ARCHIVE_DIR/$WAL_NAME"; then
+        exit 0
+    fi
+    echo "Archive already exists with different contents"
+    exit 1
+fi
+
 if ! cp "$WAL_FILE" "$ARCHIVE_DIR/$WAL_NAME"; then
     echo "Local archive failed"
     exit 1
@@ -170,6 +178,14 @@ WAL_NAME=$2
 ARCHIVE_DIR="/var/lib/postgresql/archive"
 
 # Compress and archive
+if [ -f "$ARCHIVE_DIR/${WAL_NAME}.gz" ]; then
+    if gzip -cd "$ARCHIVE_DIR/${WAL_NAME}.gz" | cmp -s "$WAL_FILE" -; then
+        exit 0
+    fi
+    echo "Archive already exists with different contents"
+    exit 1
+fi
+
 gzip -c "$WAL_FILE" > "$ARCHIVE_DIR/${WAL_NAME}.gz"
 
 # Verify
@@ -232,9 +248,13 @@ pg_basebackup \
 ### Backup Manifest
 
 ```bash
-# PostgreSQL 13+ creates backup_manifest
-# Verify backup integrity
+# PostgreSQL 13+ creates backup_manifest unless --no-manifest is used
+# Verify plain-format backups
 pg_verifybackup /var/lib/postgresql/backup/base_20250121
+
+# PostgreSQL 13-17: extract tar-format backups before verification
+# PostgreSQL 18+: tar-format backups can be verified directly
+pg_verifybackup -F t -n /var/lib/postgresql/backup/base_20250121
 ```
 
 ## Archive Cleanup
@@ -361,6 +381,8 @@ touch /var/lib/postgresql/16/main/recovery.signal
 ```conf
 # postgresql.conf for recovery
 restore_command = 'cp /var/lib/postgresql/archive/%f %p'
+# If archived WAL files are compressed with gzip, use:
+# restore_command = 'gunzip < /var/lib/postgresql/archive/%f.gz > %p'
 recovery_target_time = '2025-01-21 14:30:00'
 recovery_target_action = 'promote'
 ```
@@ -395,6 +417,7 @@ wal_keep_size = 2GB
 # /usr/local/bin/archive_wal.sh
 
 set -e
+trap 'rm -f "$COMPRESSED"' EXIT
 
 WAL_PATH="$1"
 WAL_NAME="$2"
@@ -402,17 +425,23 @@ LOCAL_ARCHIVE="/var/lib/postgresql/archive"
 S3_BUCKET="s3://my-backup-bucket/wal"
 
 # Compress
-COMPRESSED="/tmp/${WAL_NAME}.gz"
+COMPRESSED="/tmp/${WAL_NAME}.$$.gz"
 gzip -c "$WAL_PATH" > "$COMPRESSED"
 
 # Archive to local
-cp "$COMPRESSED" "${LOCAL_ARCHIVE}/${WAL_NAME}.gz"
+if [ -f "${LOCAL_ARCHIVE}/${WAL_NAME}.gz" ]; then
+    if gzip -cd "${LOCAL_ARCHIVE}/${WAL_NAME}.gz" | cmp -s "$WAL_PATH" -; then
+        echo "Local archive already exists with identical contents"
+    else
+        echo "Archive already exists with different contents"
+        exit 1
+    fi
+else
+    cp "$COMPRESSED" "${LOCAL_ARCHIVE}/${WAL_NAME}.gz"
+fi
 
 # Archive to S3
 aws s3 cp "$COMPRESSED" "${S3_BUCKET}/${WAL_NAME}.gz" --only-show-errors
-
-# Cleanup
-rm -f "$COMPRESSED"
 
 # Verify local archive exists
 test -f "${LOCAL_ARCHIVE}/${WAL_NAME}.gz"

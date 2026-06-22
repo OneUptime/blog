@@ -141,7 +141,7 @@ Check your `ansible.cfg` file for settings that might affect connectivity.
 
 ```ini
 # ansible.cfg
-# Place this file in your project root or /etc/ansible/
+# Place this file in your current working directory or /etc/ansible/
 
 [defaults]
 # Path to your inventory file or directory
@@ -196,7 +196,7 @@ If you see "Host key verification failed", you need to add the host key to known
 
 ```bash
 # Add host key to known_hosts automatically
-# StrictHostKeyChecking=accept-new adds new keys but rejects changed ones
+# Verify the fingerprint before trusting and saving the key
 ssh-keyscan -H 192.168.1.100 >> ~/.ssh/known_hosts
 
 # Or connect once manually to accept the key
@@ -254,14 +254,21 @@ sudo firewall-cmd --reload
 Verify the SSH service is running on the target host.
 
 ```bash
-# Check SSH service status
+# Check SSH service status (RHEL/CentOS/Fedora)
 sudo systemctl status sshd
+
+# Check SSH service status (Debian/Ubuntu)
+sudo systemctl status ssh
 
 # Start SSH service if not running
 sudo systemctl start sshd
+# Or on Debian/Ubuntu:
+sudo systemctl start ssh
 
 # Enable SSH to start on boot
 sudo systemctl enable sshd
+# Or on Debian/Ubuntu:
+sudo systemctl enable ssh
 ```
 
 ## Connection Flow Diagram

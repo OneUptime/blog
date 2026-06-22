@@ -55,10 +55,9 @@ Isolates operations using dedicated thread pools:
 # bulkhead.py
 
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Any, Dict
 from dataclasses import dataclass
-from functools import wraps
 import time
 
 @dataclass
@@ -112,7 +111,7 @@ class ThreadPoolBulkhead:
             self.metrics.record_success(time.time() - start_time)
             return result
 
-        except Exception as e:
+        except Exception:
             self.metrics.record_failure(time.time() - start_time)
             raise
 
@@ -124,11 +123,41 @@ class ThreadPoolBulkhead:
         """Async version using asyncio"""
         import asyncio
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self.executor,
-            lambda: func(*args, **kwargs)
+        loop = asyncio.get_running_loop()
+        acquired = await loop.run_in_executor(
+            None,
+            lambda: self.semaphore.acquire(
+                blocking=True,
+                timeout=self.config.max_wait_time
+            )
         )
+
+        if not acquired:
+            self.metrics.record_rejected()
+            raise BulkheadFullException(self.config.name)
+
+        self.metrics.record_call_started()
+        start_time = time.time()
+
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = await loop.run_in_executor(
+                    self.executor,
+                    lambda: func(*args, **kwargs)
+                )
+
+            self.metrics.record_success(time.time() - start_time)
+            return result
+
+        except Exception:
+            self.metrics.record_failure(time.time() - start_time)
+            raise
+
+        finally:
+            self.semaphore.release()
+            self.metrics.record_call_finished()
 
     def shutdown(self):
         """Gracefully shutdown the bulkhead"""
@@ -173,9 +202,10 @@ class BulkheadMetrics:
 
     def get_stats(self) -> Dict:
         with self._lock:
+            completed_calls = self.successful_calls + self.failed_calls
             avg_duration = (
-                self.total_duration / self.successful_calls
-                if self.successful_calls > 0 else 0
+                self.total_duration / completed_calls
+                if completed_calls > 0 else 0
             )
             return {
                 "bulkhead": self.name,
@@ -512,6 +542,11 @@ async def create_payment(request: PaymentRequest):
     """Create payment with bulkhead protection"""
 
     payment_bulkhead = bulkhead_registry.get("payment-service")
+    if payment_bulkhead is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Payment bulkhead not configured"
+        )
 
     try:
         result = await payment_bulkhead.execute_async(
@@ -706,7 +741,6 @@ class CircuitBreaker:
     def record_success(self):
         with self._lock:
             if self._state == CircuitState.HALF_OPEN:
-                self._half_open_calls += 1
                 if self._half_open_calls >= self.half_open_max_calls:
                     self._state = CircuitState.CLOSED
                     self._failure_count = 0
@@ -720,11 +754,25 @@ class CircuitBreaker:
 
             if self._state == CircuitState.HALF_OPEN:
                 self._state = CircuitState.OPEN
+                self._half_open_calls = 0
             elif self._failure_count >= self.failure_threshold:
                 self._state = CircuitState.OPEN
 
     def allow_request(self) -> bool:
-        return self.state != CircuitState.OPEN
+        with self._lock:
+            if self._state == CircuitState.OPEN:
+                if time.time() - self._last_failure_time > self.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                    self._half_open_calls = 0
+                else:
+                    return False
+
+            if self._state == CircuitState.HALF_OPEN:
+                if self._half_open_calls >= self.half_open_max_calls:
+                    return False
+                self._half_open_calls += 1
+
+            return True
 
 
 class ResilientBulkhead:
@@ -758,7 +806,7 @@ class ResilientBulkhead:
                 result = func(*args, **kwargs)
                 self.circuit_breaker.record_success()
                 return result
-            except Exception as e:
+            except Exception:
                 self.circuit_breaker.record_failure()
                 raise
 
@@ -798,51 +846,45 @@ def process_payment_resilient(order_id: str, amount: float):
 ```python
 # bulkhead_monitoring.py
 from prometheus_client import Gauge, Counter, Histogram
-import threading
 import time
 
 
 class BulkheadPrometheusMetrics:
     """Prometheus metrics for bulkhead monitoring"""
 
+    active_calls = Gauge(
+        'bulkhead_active_calls',
+        'Number of active calls in bulkhead',
+        ['bulkhead']
+    )
+
+    available_permits = Gauge(
+        'bulkhead_available_permits',
+        'Number of available permits in bulkhead',
+        ['bulkhead']
+    )
+
+    calls_total = Counter(
+        'bulkhead_calls_total',
+        'Total number of calls',
+        ['bulkhead', 'result']
+    )
+
+    rejected_total = Counter(
+        'bulkhead_rejected_total',
+        'Total number of rejected calls',
+        ['bulkhead']
+    )
+
+    call_duration = Histogram(
+        'bulkhead_call_duration_seconds',
+        'Call duration in seconds',
+        ['bulkhead'],
+        buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10]
+    )
+
     def __init__(self, name: str):
         self.name = name
-
-        # Active calls gauge
-        self.active_calls = Gauge(
-            'bulkhead_active_calls',
-            'Number of active calls in bulkhead',
-            ['bulkhead']
-        )
-
-        # Available permits gauge
-        self.available_permits = Gauge(
-            'bulkhead_available_permits',
-            'Number of available permits in bulkhead',
-            ['bulkhead']
-        )
-
-        # Call counter
-        self.calls_total = Counter(
-            'bulkhead_calls_total',
-            'Total number of calls',
-            ['bulkhead', 'result']
-        )
-
-        # Rejected calls counter
-        self.rejected_total = Counter(
-            'bulkhead_rejected_total',
-            'Total number of rejected calls',
-            ['bulkhead']
-        )
-
-        # Call duration histogram
-        self.call_duration = Histogram(
-            'bulkhead_call_duration_seconds',
-            'Call duration in seconds',
-            ['bulkhead'],
-            buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10]
-        )
 
     def record_call_started(self, active: int, available: int):
         self.active_calls.labels(bulkhead=self.name).set(active)
@@ -866,8 +908,9 @@ class MonitoredBulkhead(ThreadPoolBulkhead):
 
     def execute(self, func, *args, **kwargs):
         # Update metrics before call
-        active = self.config.max_concurrent - self.semaphore._value
-        available = self.semaphore._value
+        stats = self.metrics.get_stats()
+        active = stats["active_calls"]
+        available = self.config.max_concurrent - active
         self.prometheus_metrics.record_call_started(active, available)
 
         start_time = time.time()
@@ -876,6 +919,7 @@ class MonitoredBulkhead(ThreadPoolBulkhead):
         try:
             return super().execute(func, *args, **kwargs)
         except BulkheadFullException:
+            success = False
             self.prometheus_metrics.record_rejected()
             raise
         except Exception:
@@ -918,7 +962,8 @@ def check_inventory(product_id: str):
 
 ```python
 # Alert when rejection rate exceeds threshold
-if metrics.rejected_calls / metrics.total_calls > 0.1:
+attempted_calls = metrics.total_calls + metrics.rejected_calls
+if attempted_calls > 0 and metrics.rejected_calls / attempted_calls > 0.1:
     alert("Bulkhead rejection rate > 10%")
 ```
 

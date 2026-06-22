@@ -33,8 +33,8 @@ sequenceDiagram
         React->>Browser: Attach event listeners
         React->>Browser: App is interactive
     else Mismatch
-        React->>Browser: Hydration error
-        React->>Browser: Re-render entire component
+        React->>Browser: Hydration warning/error
+        React->>Browser: Patch what it can or switch to client rendering
     end
 ```
 
@@ -78,6 +78,8 @@ function MyComponent() {
 
 ```javascript
 // Alternative: Check if window exists
+import { useState, useEffect } from 'react';
+
 function MyComponent() {
   const [isClient, setIsClient] = useState(false);
 
@@ -343,6 +345,16 @@ Some CSS-in-JS libraries generate different class names on server and client.
 
 ```javascript
 // For styled-components, ensure proper SSR setup
+// next.config.js
+
+module.exports = {
+  compiler: {
+    styledComponents: true,
+  },
+};
+```
+
+```javascript
 // pages/_document.js
 
 import Document from 'next/document';
@@ -378,21 +390,52 @@ export default class MyDocument extends Document {
 ```
 
 ```javascript
-// For Emotion with Next.js App Router
+// For styled-components with Next.js App Router
+// lib/registry.js
+
+'use client';
+
+import { useState } from 'react';
+import { useServerInsertedHTML } from 'next/navigation';
+import { ServerStyleSheet, StyleSheetManager } from 'styled-components';
+
+export default function StyledComponentsRegistry({ children }) {
+  const [styledComponentsStyleSheet] = useState(() => new ServerStyleSheet());
+
+  useServerInsertedHTML(() => {
+    const styles = styledComponentsStyleSheet.getStyleElement();
+    styledComponentsStyleSheet.instance.clearTag();
+    return <>{styles}</>;
+  });
+
+  if (typeof window !== 'undefined') {
+    return <>{children}</>;
+  }
+
+  return (
+    <StyleSheetManager sheet={styledComponentsStyleSheet.instance}>
+      {children}
+    </StyleSheetManager>
+  );
+}
+```
+
+```javascript
 // app/layout.js
 
-import { CacheProvider } from '@emotion/react';
-import createEmotionCache from '@/lib/createEmotionCache';
+import StyledComponentsRegistry from '@/lib/registry';
 
-const clientSideEmotionCache = createEmotionCache();
+// Emotion support in the App Router is still listed by Next.js as in progress.
+// Use a CSS-in-JS library with documented App Router support, or follow that
+// library's official registry example.
 
 export default function RootLayout({ children }) {
   return (
     <html>
       <body>
-        <CacheProvider value={clientSideEmotionCache}>
+        <StyledComponentsRegistry>
           {children}
-        </CacheProvider>
+        </StyledComponentsRegistry>
       </body>
     </html>
   );
@@ -404,6 +447,8 @@ export default function RootLayout({ children }) {
 For components that should only render on the client, use dynamic imports with `ssr: false`.
 
 ```javascript
+'use client';
+
 import dynamic from 'next/dynamic';
 
 // Component will only render on client
@@ -421,7 +466,7 @@ const ChartComponent = dynamic(
   { ssr: false }
 );
 
-function Dashboard() {
+function Dashboard({ chartData }) {
   return (
     <div>
       <h1>Dashboard</h1>
@@ -436,6 +481,7 @@ function Dashboard() {
 
 ```javascript
 // components/ClientOnly.js
+'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -479,19 +525,7 @@ function MyPage() {
 
 ### Enable Detailed Error Messages
 
-```javascript
-// next.config.js
-
-module.exports = {
-  reactStrictMode: true,
-
-  // In development, log detailed hydration errors
-  onDemandEntries: {
-    maxInactiveAge: 25 * 1000,
-    pagesBufferLength: 2,
-  },
-};
-```
+React and Next.js show hydration diagnostics in development by default. Run the app in development mode and check the browser console or Next.js error overlay; `onDemandEntries` only controls how long development pages stay in memory and does not enable hydration-specific logging.
 
 ### Use React DevTools
 

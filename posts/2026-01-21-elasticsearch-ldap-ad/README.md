@@ -89,6 +89,13 @@ xpack.security.authc.realms.active_directory.ad1:
   follow_referrals: true
 ```
 
+If you configure a `bind_dn` for Active Directory, also add its password to the Elasticsearch keystore:
+
+```bash
+/usr/share/elasticsearch/bin/elasticsearch-keystore add \
+  xpack.security.authc.realms.active_directory.ad1.secure_bind_password
+```
+
 ## Secure LDAP with TLS/SSL
 
 ### LDAPS Configuration
@@ -108,12 +115,12 @@ xpack.security.authc.realms.ldap.ldap1:
     certificate_authorities: ["/etc/elasticsearch/certs/ldap-ca.crt"]
 ```
 
-### StartTLS Configuration
+### LDAPS Configuration with CA Trust
 
 ```yaml
 xpack.security.authc.realms.ldap.ldap1:
   order: 1
-  url: "ldap://ldap.example.com:389"
+  url: "ldaps://ldap.example.com:636"
   bind_dn: "cn=elasticsearch,ou=services,dc=example,dc=com"
   user_search:
     base_dn: "ou=users,dc=example,dc=com"
@@ -136,7 +143,13 @@ xpack.security.authc.realms.ldap.ldap1:
   ssl:
     truststore:
       path: "/etc/elasticsearch/certs/ldap-truststore.jks"
-      password: "${LDAP_TRUSTSTORE_PASSWORD}"
+```
+
+Add the truststore password to the Elasticsearch keystore if the truststore is password protected:
+
+```bash
+/usr/share/elasticsearch/bin/elasticsearch-keystore add \
+  xpack.security.authc.realms.ldap.ldap1.ssl.truststore.secure_password
 ```
 
 ## User Search Configuration
@@ -182,9 +195,7 @@ xpack.security.authc.realms.ldap.ldap1:
   bind_dn: "cn=elasticsearch,ou=services,dc=example,dc=com"
   user_search:
     base_dn: "ou=users,dc=example,dc=com"
-    filter: "(uid={0})"
-    attribute:
-      uid: "sAMAccountName"
+    filter: "(sAMAccountName={0})"
   metadata:
     - cn
     - mail
@@ -235,8 +246,7 @@ xpack.security.authc.realms.active_directory.ad1:
   group_search:
     base_dn: "DC=example,DC=com"
     scope: sub_tree
-    # This filter resolves nested group membership
-    filter: "(member:1.2.840.113556.1.4.1941:={0})"
+    # Active Directory realms retrieve security group memberships from tokenGroups.
 ```
 
 ## Role Mapping
@@ -411,7 +421,7 @@ xpack.security.authc.realms.ldap.ldap1:
     - "ldaps://ldap2.example.com:636"
     - "ldaps://ldap3.example.com:636"
   load_balance:
-    type: "failover"  # or "round_robin" or "dns_failover"
+    type: "failover"  # or "round_robin"
   bind_dn: "cn=elasticsearch,ou=services,dc=example,dc=com"
   user_search:
     base_dn: "ou=users,dc=example,dc=com"
@@ -428,12 +438,12 @@ xpack.security.authc.realms.ldap.ldap1:
   user_search:
     base_dn: "ou=users,dc=example,dc=com"
     filter: "(uid={0})"
-  connection_pool:
-    size: 20
-    initial_size: 5
+    pool:
+      size: 20
+      initial_size: 5
   timeout:
     tcp_connect: "5s"
-    tcp_read: "5s"
+    response: "5s"
     ldap_search: "5s"
 ```
 
@@ -469,6 +479,9 @@ xpack.security.authc.realms:
       base_dn: "OU=Users,DC=example,DC=com"
       scope: sub_tree
       filter: "(&(objectClass=user)(sAMAccountName={0}))"
+      pool:
+        size: 20
+        initial_size: 5
     group_search:
       base_dn: "OU=Groups,DC=example,DC=com"
       scope: sub_tree
@@ -481,11 +494,8 @@ xpack.security.authc.realms:
       certificate_authorities: ["/etc/elasticsearch/certs/ad-ca.crt"]
     timeout:
       tcp_connect: "5s"
-      tcp_read: "5s"
+      response: "5s"
       ldap_search: "5s"
-    connection_pool:
-      size: 20
-      initial_size: 5
     follow_referrals: true
     unmapped_groups_as_roles: false
 ```

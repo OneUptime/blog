@@ -116,7 +116,11 @@ spec:
     matchLabels:
       app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
+      serviceAccountName: cluster-autoscaler
       containers:
         - name: cluster-autoscaler
           image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
@@ -126,6 +130,10 @@ spec:
             - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
             - --scale-down-utilization-threshold=0.5
             - --skip-nodes-with-local-storage=false
+
+# Also create the required ServiceAccount/RBAC and cloud IAM permissions
+# for your provider. Match the Cluster Autoscaler version to your
+# Kubernetes cluster minor version.
 ```
 
 ## Issue 2: Node Selector Not Matching
@@ -371,7 +379,9 @@ kubectl uncordon node-2
 kubectl get nodes
 ```
 
-## Issue 7: Resource Quotas Exceeded
+## Issue 7: Resource Quotas Block Pod Creation
+
+If a Deployment or other controller cannot create replacement pods, check resource quotas. Quota failures usually reject new pods during admission instead of leaving a created pod in Pending state.
 
 ### Diagnosis
 

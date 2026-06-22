@@ -12,11 +12,11 @@ BullMQ provides a rich event system that allows you to track job lifecycle chang
 
 ## Understanding BullMQ Events
 
-BullMQ provides events at multiple levels:
+BullMQ provides events and status tracking at multiple levels:
 
 - **Worker Events**: Events on the worker processing jobs
 - **Queue Events**: Global events for any job in the queue (via QueueEvents)
-- **Job Events**: Events on individual job instances
+- **Job Completion Tracking**: Individual jobs can wait for completion with `waitUntilFinished`
 
 ```typescript
 import { Queue, Worker, QueueEvents, Job } from 'bullmq';
@@ -27,13 +27,18 @@ const connection = new Redis({
   port: 6379,
   maxRetriesPerRequest: null,
 });
+const queueEventsConnection = new Redis({
+  host: 'localhost',
+  port: 6379,
+  maxRetriesPerRequest: null,
+});
 
 // Create queue, worker, and events listener
 const queue = new Queue('events-demo', { connection });
 const worker = new Worker('events-demo', async (job) => {
   return { processed: true };
 }, { connection });
-const queueEvents = new QueueEvents('events-demo', { connection });
+const queueEvents = new QueueEvents('events-demo', { connection: queueEventsConnection });
 ```
 
 ## Worker Events
@@ -102,7 +107,7 @@ worker.on('drained', () => {
 Use QueueEvents to track all jobs in a queue from any process:
 
 ```typescript
-const queueEvents = new QueueEvents('tasks', { connection });
+const queueEvents = new QueueEvents('tasks', { connection: queueEventsConnection });
 
 // Job waiting (added to queue)
 queueEvents.on('waiting', ({ jobId }) => {
@@ -183,10 +188,10 @@ class JobTracker extends EventEmitter {
   private queue: Queue;
   private jobs: Map<string, JobStatus> = new Map();
 
-  constructor(queueName: string, connection: Redis) {
+  constructor(queueName: string, connection: Redis, queueEventsConnection: Redis) {
     super();
     this.queue = new Queue(queueName, { connection });
-    this.queueEvents = new QueueEvents(queueName, { connection });
+    this.queueEvents = new QueueEvents(queueName, { connection: queueEventsConnection });
     this.setupListeners();
   }
 
@@ -227,7 +232,7 @@ class JobTracker extends EventEmitter {
       const status = this.jobs.get(jobId);
       if (status) {
         status.state = 'completed';
-        status.result = returnvalue;
+        status.result = returnvalue ? JSON.parse(returnvalue) : undefined;
         status.timestamps.completed = Date.now();
         this.emit('job:completed', status);
       }
@@ -259,7 +264,7 @@ class JobTracker extends EventEmitter {
 }
 
 // Usage
-const tracker = new JobTracker('tasks', connection);
+const tracker = new JobTracker('tasks', connection, queueEventsConnection);
 
 tracker.on('job:completed', (status) => {
   console.log(`Job ${status.id} completed in ${status.timestamps.completed! - status.timestamps.started!}ms`);
@@ -286,9 +291,9 @@ class JobWebSocketServer {
   private queueEvents: QueueEvents;
   private subscriptions: Map<WebSocket, Set<string>> = new Map();
 
-  constructor(port: number, queueName: string, connection: Redis) {
+  constructor(port: number, queueName: string, queueEventsConnection: Redis) {
     this.wss = new WebSocketServer({ port });
-    this.queueEvents = new QueueEvents(queueName, { connection });
+    this.queueEvents = new QueueEvents(queueName, { connection: queueEventsConnection });
 
     this.setupWebSocket();
     this.setupQueueEvents();
@@ -433,8 +438,8 @@ class WorkflowOrchestrator {
   private queueEvents: QueueEvents;
   private queues: Map<string, Queue> = new Map();
 
-  constructor(connection: Redis) {
-    this.queueEvents = new QueueEvents('workflow-trigger', { connection });
+  constructor(connection: Redis, queueEventsConnection: Redis) {
+    this.queueEvents = new QueueEvents('workflow-trigger', { connection: queueEventsConnection });
     this.setupTriggers();
 
     // Initialize downstream queues

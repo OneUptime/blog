@@ -78,7 +78,7 @@ class TokenBucketLimiter:
 
     Key optimizations:
     1. Lazy token refill (only calculate on access)
-    2. Per-key locks instead of global lock
+    2. Lock striping instead of one global request lock
     3. Memory-efficient bucket cleanup
     """
 
@@ -86,30 +86,32 @@ class TokenBucketLimiter:
         self,
         rate: float,           # Tokens per second
         capacity: int,         # Maximum tokens (burst size)
-        cleanup_interval: int = 60  # Seconds between cleanups
+        cleanup_interval: int = 60,  # Seconds between cleanups
+        lock_stripes: int = 1024     # Number of locks shared across keys
     ):
+        if rate <= 0:
+            raise ValueError("rate must be greater than 0")
+        if capacity <= 0:
+            raise ValueError("capacity must be greater than 0")
+        if lock_stripes <= 0:
+            raise ValueError("lock_stripes must be greater than 0")
+
         self.rate = rate
         self.capacity = capacity
         self.cleanup_interval = cleanup_interval
 
-        # Use dict with fine-grained locking
+        # Use lock striping to reduce contention without unbounded lock growth
         self._buckets: Dict[str, Bucket] = {}
-        self._locks: Dict[str, threading.Lock] = {}
+        self._locks = [threading.Lock() for _ in range(lock_stripes)]
         self._global_lock = threading.Lock()
 
         self._last_cleanup = time.time()
 
     def _get_lock(self, key: str) -> threading.Lock:
-        """Get or create a lock for a specific key"""
-        # Quick check without lock
-        if key in self._locks:
-            return self._locks[key]
-
-        # Create lock if needed
-        with self._global_lock:
-            if key not in self._locks:
-                self._locks[key] = threading.Lock()
-            return self._locks[key]
+        """Get the lock stripe for a specific key"""
+        digest = hashlib.sha256(key.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:8], "big") % len(self._locks)
+        return self._locks[index]
 
     def _maybe_cleanup(self) -> None:
         """Remove stale buckets to prevent memory growth"""
@@ -121,19 +123,25 @@ class TokenBucketLimiter:
             if now - self._last_cleanup < self.cleanup_interval:
                 return  # Double-check after acquiring lock
 
-            # Find and remove stale buckets (no activity for 2x cleanup interval)
-            stale_threshold = now - (self.cleanup_interval * 2)
-            stale_keys = [
-                key for key, bucket in self._buckets.items()
-                if bucket.last_update < stale_threshold
-            ]
+            # Pause bucket updates briefly while scanning and deleting.
+            for lock in self._locks:
+                lock.acquire()
 
-            for key in stale_keys:
-                del self._buckets[key]
-                if key in self._locks:
-                    del self._locks[key]
+            try:
+                # Find and remove stale buckets (no activity for 2x cleanup interval)
+                stale_threshold = now - (self.cleanup_interval * 2)
+                stale_keys = [
+                    key for key, bucket in self._buckets.items()
+                    if bucket.last_update < stale_threshold
+                ]
 
-            self._last_cleanup = now
+                for key in stale_keys:
+                    del self._buckets[key]
+
+                self._last_cleanup = now
+            finally:
+                for lock in reversed(self._locks):
+                    lock.release()
 
     def is_allowed(self, key: str, tokens: int = 1) -> bool:
         """
@@ -183,6 +191,14 @@ class TokenBucketLimiter:
                 return None
 
             bucket = self._buckets[key]
+            now = time.time()
+            elapsed = now - bucket.last_update
+            bucket.tokens = min(
+                self.capacity,
+                bucket.tokens + (elapsed * self.rate)
+            )
+            bucket.last_update = now
+
             if bucket.tokens >= 1:
                 return None
 
@@ -216,6 +232,7 @@ For distributed systems, Redis-based rate limiting needs optimization:
 
 import redis
 import time
+import uuid
 from typing import Tuple
 
 class RedisRateLimiter:
@@ -236,6 +253,7 @@ class RedisRateLimiter:
     local window_size = tonumber(ARGV[1])
     local max_requests = tonumber(ARGV[2])
     local now = tonumber(ARGV[3])
+    local request_id = ARGV[4]
     local window_start = now - window_size
 
     -- Remove old entries outside the window
@@ -246,7 +264,7 @@ class RedisRateLimiter:
 
     if current_count < max_requests then
         -- Add new request timestamp
-        redis.call('ZADD', key, now, now .. '-' .. math.random())
+        redis.call('ZADD', key, now, request_id)
         -- Set TTL for automatic cleanup
         redis.call('EXPIRE', key, window_size + 1)
         return {1, max_requests - current_count - 1, 0}
@@ -297,7 +315,7 @@ class RedisRateLimiter:
         try:
             result = self._script(
                 keys=[key],
-                args=[self.window_size, self.max_requests, now]
+                args=[self.window_size, self.max_requests, now, uuid.uuid4().hex]
             )
 
             allowed = bool(result[0])
@@ -324,7 +342,7 @@ class RedisRateLimiter:
             key = f"{self.key_prefix}{identifier}"
             self._script(
                 keys=[key],
-                args=[self.window_size, self.max_requests, now],
+                args=[self.window_size, self.max_requests, now, uuid.uuid4().hex],
                 client=pipe
             )
 
@@ -387,7 +405,7 @@ Add local caching to reduce Redis calls:
 
 import time
 import threading
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 from dataclasses import dataclass
 
 @dataclass
@@ -396,7 +414,6 @@ class CacheEntry:
     allowed: bool
     remaining: int
     expires_at: float
-    last_sync: float
 
 class CachedRateLimiter:
     """
@@ -405,21 +422,18 @@ class CachedRateLimiter:
     Strategy:
     1. Cache positive results locally for short duration
     2. Always check Redis when cache says "blocked"
-    3. Sync to Redis periodically, not on every request
+    3. Keep the cache TTL short so distributed counters stay close to Redis
     """
 
     def __init__(
         self,
         redis_limiter: 'RedisRateLimiter',
-        cache_ttl: float = 0.1,      # 100ms local cache
-        sync_interval: float = 1.0    # Sync to Redis every second
+        cache_ttl: float = 0.1      # 100ms local cache
     ):
         self.redis_limiter = redis_limiter
         self.cache_ttl = cache_ttl
-        self.sync_interval = sync_interval
 
         self._cache: Dict[str, CacheEntry] = {}
-        self._local_counts: Dict[str, int] = {}
         self._lock = threading.Lock()
 
     def is_allowed(self, identifier: str) -> Tuple[bool, int, float]:
@@ -433,15 +447,9 @@ class CachedRateLimiter:
 
                 # Cache still valid and has remaining capacity
                 if entry.expires_at > now and entry.remaining > 0:
-                    # Decrement local count
+                    # Decrement locally so a single process does not exceed
+                    # the remaining count returned by Redis during this TTL.
                     entry.remaining -= 1
-                    self._local_counts[identifier] = \
-                        self._local_counts.get(identifier, 0) + 1
-
-                    # Sync to Redis if interval passed
-                    if now - entry.last_sync > self.sync_interval:
-                        self._sync_to_redis(identifier)
-
                     return True, entry.remaining, 0
 
         # Cache miss or expired - check Redis
@@ -452,19 +460,10 @@ class CachedRateLimiter:
             self._cache[identifier] = CacheEntry(
                 allowed=allowed,
                 remaining=remaining,
-                expires_at=now + self.cache_ttl,
-                last_sync=now
+                expires_at=now + self.cache_ttl
             )
-            self._local_counts[identifier] = 0
 
         return allowed, remaining, retry_after
-
-    def _sync_to_redis(self, identifier: str) -> None:
-        """Sync local counts to Redis"""
-        # In production, you would update Redis with accumulated counts
-        # This is simplified for illustration
-        self._cache[identifier].last_sync = time.time()
-        self._local_counts[identifier] = 0
 ```
 
 ---
@@ -477,7 +476,7 @@ Monitor your rate limiter performance:
 # rate_limit_metrics.py
 # Prometheus metrics for rate limiter monitoring
 
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram
 import time
 import functools
 
@@ -535,13 +534,13 @@ def monitored_rate_limit(func):
 | Practice | Benefit |
 |----------|---------|
 | Use Lua scripts for Redis | Single round-trip, atomic operations |
-| Implement local caching | Reduce external calls by 90%+ |
+| Implement short-lived local caching | Reduce repeated external calls |
 | Use connection pooling | Avoid connection overhead |
 | Choose appropriate algorithm | Token bucket for most cases |
 | Set proper TTLs | Automatic memory cleanup |
 | Monitor latency | Catch problems early |
 | Fail open on errors | Availability over strict limiting |
-| Use per-key locks | Reduce contention |
+| Use per-key locks or lock striping | Reduce contention |
 
 ---
 

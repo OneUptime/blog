@@ -61,17 +61,17 @@ SET GLOBAL net_write_timeout = 120;
 SET SESSION net_read_timeout = 300;
 ```
 
-### 2. Sort Buffer Overflow
+### 2. Sort Buffer Spills
 
-When the sort buffer is too small, MySQL writes to temporary files. If those files grow too large or disk space runs out, the sort aborts.
+When the sort buffer is too small for a filesort, MySQL uses temporary files and merge passes as needed. If the temporary files cannot be written because disk space is exhausted or the temp directory is unavailable, the sort can abort.
 
 ```sql
 -- Check current sort buffer size
 SHOW VARIABLES LIKE 'sort_buffer_size';
 
--- Default is usually 256KB, which is often too small
+-- Default is 256KB in MySQL 8.4
 -- Increase for sessions that need large sorts
-SET SESSION sort_buffer_size = 4 * 1024 * 1024;  -- 4MB
+SET SESSION sort_buffer_size = 4194304;  -- 4MB
 
 -- Check how many sorts are using disk
 SHOW GLOBAL STATUS LIKE 'Sort%';
@@ -84,20 +84,22 @@ SHOW GLOBAL STATUS LIKE 'Sort%';
 
 **Fix**: Tune sort buffer and temp table sizes.
 
-```sql
--- my.cnf configuration
+```ini
+# my.cnf configuration
 [mysqld]
 sort_buffer_size = 4M
 tmp_table_size = 64M
 max_heap_table_size = 64M
+```
 
+```sql
 -- Verify temp directory has enough space
 SHOW VARIABLES LIKE 'tmpdir';
 ```
 
 ### 3. Query Killed or Timeout
 
-Long-running sorts may be killed by the query timeout or manually by administrators.
+Long-running SELECT sorts may be stopped by the SELECT execution timeout or killed manually by administrators.
 
 ```sql
 -- Check for killed queries in process list
@@ -108,7 +110,7 @@ SHOW PROCESSLIST;
 -- Check max execution time (MySQL 5.7.8+)
 SHOW VARIABLES LIKE 'max_execution_time';
 
--- Set query timeout (milliseconds)
+-- Set SELECT execution timeout (milliseconds)
 SET GLOBAL max_execution_time = 30000;  -- 30 seconds
 
 -- Per-query timeout using optimizer hint
@@ -171,13 +173,15 @@ WHERE SUM_ERRORS > 0 OR SUM_WARNINGS > 0
 ORDER BY SUM_ERRORS DESC
 LIMIT 20;
 
--- Check for sorts in progress
+-- Check for queries currently in a sort-related state
 SELECT
-    THREAD_ID,
-    SQL_TEXT,
-    ROUND(TIMER_WAIT/1000000000000, 2) AS seconds,
+    ID,
+    `USER`,
+    DB,
+    `TIME` AS seconds,
+    INFO AS SQL_TEXT,
     STATE
-FROM performance_schema.events_statements_current
+FROM performance_schema.processlist
 WHERE STATE LIKE '%sort%';
 ```
 
@@ -222,9 +226,9 @@ ORDER BY created_at DESC;
 ### Reduce Result Set Size
 
 ```sql
--- Problem: Sorting entire table before limiting
+-- Problem: Sorting without a usable index before limiting
 SELECT * FROM logs ORDER BY timestamp DESC LIMIT 10;
--- Must sort ALL rows, then take 10
+-- Must examine matching rows and perform a filesort before returning 10
 
 -- Better: Use indexed column
 CREATE INDEX idx_timestamp ON logs(timestamp DESC);
@@ -324,16 +328,18 @@ END//
 DELIMITER ;
 
 -- Strategy 2: Use a materialized view approach
--- Pre-sort data into a summary table
+-- Precompute data into a summary table with an index for the sort order
 
 CREATE TABLE orders_sorted AS
-SELECT * FROM orders ORDER BY created_at DESC;
+SELECT * FROM orders;
 
 ALTER TABLE orders_sorted ADD PRIMARY KEY (id);
+CREATE INDEX idx_orders_sorted_created
+ON orders_sorted(created_at DESC);
 
 -- Refresh periodically
 TRUNCATE orders_sorted;
-INSERT INTO orders_sorted SELECT * FROM orders ORDER BY created_at DESC;
+INSERT INTO orders_sorted SELECT * FROM orders;
 ```
 
 ## Monitoring and Alerting

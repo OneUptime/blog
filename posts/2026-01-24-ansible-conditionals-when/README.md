@@ -134,7 +134,7 @@ Important rules:
 - name: Alternative empty check
   ansible.builtin.debug:
     msg: "List has items"
-  when: packages is defined and packages
+  when: packages is defined and packages | length > 0
 
 - name: Check for empty string
   ansible.builtin.debug:
@@ -250,7 +250,7 @@ graph TD
     dest: /etc/app/config
   when: >
     (environment == "production" and region == "us-east-1") or
-    (environment == "staging" and deploy_to_staging | default(false))
+    (environment == "staging" and deploy_to_staging | default(false) | bool)
 
 # Multi-line for readability
 - name: Complex condition (readable format)
@@ -258,9 +258,9 @@ graph TD
     name: nginx
     state: restarted
   when:
-    - nginx_config_changed | default(false)
+    - nginx_config_changed | default(false) | bool
     - >
-      (environment == "production" and maintenance_window | default(false)) or
+      (environment == "production" and maintenance_window | default(false) | bool) or
       environment != "production"
 ```
 
@@ -323,6 +323,7 @@ graph TD
 - name: Run migrations
   ansible.builtin.command: /opt/app/migrate
   register: migration_result
+  changed_when: "'Migrations applied' in migration_result.stdout"
 
 - name: Notify about migration
   ansible.builtin.debug:
@@ -339,7 +340,7 @@ graph TD
   ansible.builtin.apt:
     name: "{{ item }}"
     state: present
-  loop: "{{ packages }}"
+  loop: "{{ packages | default([]) }}"
   when: item is defined and item | length > 0
 
 - name: Create users with conditions
@@ -562,7 +563,7 @@ graph TD
 - name: Good example
   debug:
     msg: "Hello"
-  when: my_var
+  when: my_var | bool
 
 # WRONG: Comparing with undefined variable
 - name: This will fail

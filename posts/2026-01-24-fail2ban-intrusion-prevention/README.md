@@ -84,7 +84,8 @@ fail2ban uses multiple configuration files with a specific hierarchy:
   ├── jail.conf         # Default jail definitions (do not modify)
   ├── jail.local        # Local jail overrides (create this)
   ├── jail.d/           # Additional jail configurations
-  │   └── *.conf        # Drop-in jail files
+  │   ├── *.conf        # Package or site drop-in jail files
+  │   └── *.local       # Local drop-in jail overrides
   ├── filter.d/         # Filter definitions (regex patterns)
   │   ├── sshd.conf
   │   ├── apache-auth.conf
@@ -95,7 +96,7 @@ fail2ban uses multiple configuration files with a specific hierarchy:
       └── ...
 ```
 
-**Important**: Never modify `.conf` files directly. Create `.local` files or add files to `.d` directories for customization. This preserves your changes during package updates.
+**Important**: Never modify package-provided `.conf` files directly. Create `.local` files or add files to `.d` directories for customization. This preserves your changes during package updates.
 
 ---
 
@@ -133,9 +134,9 @@ backend = auto
 # sender = fail2ban@example.com
 # mta = sendmail
 
-# Ban action - uses iptables by default
-# For nftables: banaction = nftables-multiport
-banaction = iptables-multiport
+# Ban action - use the firewall backend on your system
+# Debian/Ubuntu packages commonly default to nftables
+banaction = nftables-multiport
 
 # Ignore these IP addresses (whitelist)
 # Add your trusted IPs here
@@ -147,11 +148,11 @@ bantime.factor = 2
 bantime.maxtime = 1w
 
 [sshd]
-# SSH jail - enabled by default
+# SSH jail
 enabled = true
 port = ssh
-filter = sshd
-logpath = /var/log/auth.log
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
 maxretry = 3
 bantime = 1h
 EOF
@@ -183,8 +184,9 @@ cat > /etc/fail2ban/jail.d/sshd.local << 'EOF'
 [sshd]
 enabled = true
 port = ssh
-filter = sshd
+filter = sshd[mode=%(mode)s]
 logpath = %(sshd_log)s
+backend = %(sshd_backend)s
 
 # Aggressive settings for SSH
 # SSH brute-force is common and dangerous
@@ -206,8 +208,9 @@ mode = aggressive
 # Additional jail for SSH DDoS patterns
 enabled = true
 port = ssh
-filter = sshd-ddos
+filter = sshd[mode=ddos]
 logpath = %(sshd_log)s
+backend = %(sshd_backend)s
 maxretry = 10
 findtime = 30s
 bantime = 1h
@@ -219,7 +222,7 @@ EOF
 ```bash
 # Create a stricter SSH filter if needed
 # This catches additional attack patterns
-cat > /etc/fail2ban/filter.d/sshd-strict.local << 'EOF'
+cat > /etc/fail2ban/filter.d/sshd-strict.conf << 'EOF'
 # Custom SSH filter for additional patterns
 [INCLUDES]
 before = sshd.conf
@@ -233,6 +236,8 @@ failregex = %(known/failregex)s
 ignoreregex = ^%(__prefix_line)sConnection closed by authenticating user .* \[preauth\]$
 EOF
 ```
+
+Use `filter = sshd-strict` in the `[sshd]` jail if you enable this custom filter.
 
 ---
 
@@ -300,7 +305,7 @@ bantime = 1h
 enabled = true
 port = http,https
 filter = nginx-botsearch
-logpath = /var/log/nginx/*access.log
+logpath = /var/log/nginx/*error.log
 maxretry = 2
 bantime = 24h
 
@@ -319,13 +324,11 @@ EOF
 ### Custom Nginx Rate Limit Filter
 
 ```bash
-# Create filter for nginx rate limiting
-cat > /etc/fail2ban/filter.d/nginx-limit-req.conf << 'EOF'
-# Filter for nginx rate limit exceeded messages
+# Extend the packaged nginx rate limit filter if needed
+cat > /etc/fail2ban/filter.d/nginx-limit-req.local << 'EOF'
 [Definition]
-failregex = limiting requests, excess: .* by zone .*, client: <HOST>
-
-ignoreregex =
+# Match Nginx limit_req messages for selected zones only
+ngx_limit_req_zones = api|login
 EOF
 ```
 
@@ -340,8 +343,8 @@ cat > /etc/fail2ban/jail.d/postfix.local << 'EOF'
 [postfix]
 enabled = true
 port = smtp,465,submission
-filter = postfix
-logpath = /var/log/mail.log
+logpath = %(postfix_log)s
+backend = %(postfix_backend)s
 maxretry = 5
 bantime = 1h
 
@@ -349,8 +352,9 @@ bantime = 1h
 # SMTP authentication failures
 enabled = true
 port = smtp,465,submission,imap,imaps,pop3,pop3s
-filter = postfix-sasl
-logpath = /var/log/mail.log
+filter = postfix[mode=auth]
+logpath = %(postfix_log)s
+backend = %(postfix_backend)s
 maxretry = 3
 bantime = 1h
 EOF
@@ -363,8 +367,8 @@ cat > /etc/fail2ban/jail.d/mysql.local << 'EOF'
 [mysqld-auth]
 enabled = true
 port = 3306
-filter = mysqld-auth
-logpath = /var/log/mysql/error.log
+logpath = %(mysql_log)s
+backend = %(mysql_backend)s
 maxretry = 5
 bantime = 1h
 EOF
@@ -378,13 +382,14 @@ EOF
 
 ```bash
 # Configure progressive ban times for repeat offenders
+# Recidive uses fail2ban's database history; keep dbpurgeage longer than findtime
 cat > /etc/fail2ban/jail.d/recidive.local << 'EOF'
 [recidive]
 # Ban IPs that get banned repeatedly
 enabled = true
 filter = recidive
 logpath = /var/log/fail2ban.log
-action = %(action_mwl)s
+banaction = %(banaction_allports)s
 
 # Trigger after 5 bans from any jail
 maxretry = 5
@@ -404,7 +409,7 @@ EOF
 
 ```bash
 # Create a custom action that sends notifications
-cat > /etc/fail2ban/action.d/notify.local << 'EOF'
+cat > /etc/fail2ban/action.d/notify.conf << 'EOF'
 # Custom notification action
 [Definition]
 actionstart =
@@ -624,21 +629,26 @@ tail -f /var/log/fail2ban.log
 
 ```bash
 # Enable persistent bans with SQLite database
-# Add to [DEFAULT] in jail.local
+# Add to [Definition] in fail2ban.local
+cat > /etc/fail2ban/fail2ban.local << 'EOF'
+[Definition]
 dbfile = /var/lib/fail2ban/fail2ban.sqlite3
-dbpurgeage = 1d
+dbpurgeage = 7d
+EOF
 ```
 
 ### High Resource Usage
 
 ```bash
-# Reduce log polling frequency
-# Add to jail.local [DEFAULT] section
-backend = systemd    # Use systemd journal instead of file polling
+# Prefer event-driven backends when available
+# Add to jail.local [DEFAULT] section, or use your distribution defaults
+backend = systemd    # Use systemd journal where the filter supports journalmatch
 
-# Or if using file backend, reduce frequency
-backend = polling
-polltime = 10        # Poll every 10 seconds instead of default
+# For file-based logs on Linux, use inotify instead
+# backend = pyinotify
+
+# If you must use polling, reduce the number of enabled jails and log files
+# backend = polling
 ```
 
 ---

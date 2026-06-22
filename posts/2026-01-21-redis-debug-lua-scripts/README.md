@@ -233,7 +233,7 @@ local function execute_with_debug()
     local value = redis.call('GET', KEYS[1])
     table.insert(debug_info, "Got value: " .. tostring(value))
 
-    local result = tonumber(value) + 1
+    local result = (tonumber(value) or 0) + 1
     table.insert(debug_info, "Computed result: " .. tostring(result))
 
     redis.call('SET', KEYS[1], result)
@@ -482,10 +482,10 @@ def execute_script(redis_client, sha, script, keys, args):
         return redis_client.eval(script, len(keys), *keys, *args)
 ```
 
-### 2. Wrong Number of Keys
+### 2. Undeclared Key Arguments
 
 ```lua
--- Error: Wrong number of keys specified
+-- Issue: key arguments passed as ARGV are not declared as keys
 -- Always use KEYS[] for key arguments
 
 -- Wrong
@@ -542,7 +542,7 @@ redis-cli CONFIG GET lua-time-limit
 # Increase timeout (milliseconds)
 redis-cli CONFIG SET lua-time-limit 10000
 
-# Kill running script (last resort)
+# Kill a running script that has not performed writes (last resort)
 redis-cli SCRIPT KILL
 ```
 
@@ -566,12 +566,12 @@ local a, b, c = unpack(values)
 ```lua
 -- Use hashes instead of multiple keys
 -- Inefficient
-redis.call('SET', 'user:1:name', name)
-redis.call('SET', 'user:1:email', email)
-redis.call('SET', 'user:1:age', age)
+redis.call('SET', KEYS[1], name)
+redis.call('SET', KEYS[2], email)
+redis.call('SET', KEYS[3], age)
 
 -- Better
-redis.call('HSET', 'user:1', 'name', name, 'email', email, 'age', age)
+redis.call('HSET', KEYS[1], 'name', name, 'email', email, 'age', age)
 ```
 
 ### Avoid Large Return Values
@@ -581,18 +581,13 @@ redis.call('HSET', 'user:1', 'name', name, 'email', email, 'age', age)
 -- Better to process on server or paginate
 
 -- Instead of returning all
-local all_keys = redis.call('KEYS', pattern)
-return all_keys  -- Could be huge
+local all_items = redis.call('LRANGE', KEYS[1], 0, -1)
+return all_items  -- Could be huge
 
--- Return count and process in batches
-local count = 0
-local cursor = "0"
-repeat
-    local result = redis.call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 100)
-    cursor = result[1]
-    count = count + #result[2]
-until cursor == "0"
-return count
+-- Return a page and process the rest in batches
+local start = tonumber(ARGV[1]) or 0
+local stop = tonumber(ARGV[2]) or (start + 99)
+return redis.call('LRANGE', KEYS[1], start, stop)
 ```
 
 ### Profile Scripts

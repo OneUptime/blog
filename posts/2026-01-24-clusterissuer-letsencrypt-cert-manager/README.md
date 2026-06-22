@@ -17,7 +17,7 @@ First, install cert-manager in your cluster:
 ```bash
 # Install cert-manager using kubectl
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager pods to be ready
 kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=120s
@@ -154,7 +154,6 @@ spec:
     solvers:
     - dns01:
         cloudflare:
-          email: cloudflare@example.com
           apiTokenSecretRef:
             name: cloudflare-api-token
             key: api-token
@@ -301,15 +300,11 @@ curl -v http://app.example.com/.well-known/acme-challenge/test
 
 ## Renewing Certificates
 
-cert-manager automatically renews certificates before expiration (default: 30 days before). To manually trigger renewal:
+cert-manager automatically renews certificates before expiration. By default, it renews certificates two-thirds of the way through their actual duration, which is about 30 days before expiration for a 90-day certificate. To manually trigger renewal, use `cmctl`:
 
 ```bash
-# Delete the certificate secret to force renewal
-kubectl delete secret app-example-com-tls -n production
-
-# Or add an annotation to the Certificate
-kubectl annotate certificate app-example-com-tls \
-  cert-manager.io/issuer-name- --overwrite
+# Manually trigger renewal
+cmctl renew app-example-com-tls -n production
 ```
 
 Check renewal status:

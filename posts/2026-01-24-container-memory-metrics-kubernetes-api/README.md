@@ -100,30 +100,36 @@ Example response:
       "name": "app",
       "usage": {
         "cpu": "25m",
-        "memory": "134217728"
+        "memory": "131072Ki"
       }
     }
   ]
 }
 ```
 
-Memory is returned in bytes. Convert to human-readable format:
+Memory is returned as a Kubernetes resource quantity, commonly in Ki with metrics-server. Convert to human-readable format:
 
 ```bash
 # Get memory in Mi for all pods
 kubectl get --raw "/apis/metrics.k8s.io/v1beta1/namespaces/default/pods" | \
-  jq '.items[] | {
+  jq 'def memory_to_mi:
+    if endswith("Ki") then (rtrimstr("Ki") | tonumber) / 1024
+    elif endswith("Mi") then (rtrimstr("Mi") | tonumber)
+    elif endswith("Gi") then (rtrimstr("Gi") | tonumber) * 1024
+    else tonumber / 1024 / 1024
+    end;
+  .items[] | {
     pod: .metadata.name,
     containers: [.containers[] | {
       name: .name,
-      memory_mi: ((.usage.memory | rtrimstr("Ki") | tonumber) / 1024 | floor)
+      memory_mi: (.usage.memory | memory_to_mi | floor)
     }]
   }'
 ```
 
-## Method 3: Using kubectl with JSONPath
+## Method 3: Filtering with jq
 
-Extract specific memory values with JSONPath:
+Extract and filter specific memory values with jq:
 
 ```bash
 # Get memory usage for a specific container
@@ -132,7 +138,13 @@ kubectl get --raw "/apis/metrics.k8s.io/v1beta1/namespaces/default/pods/web-app-
 
 # List all pods with memory over 200Mi
 kubectl get --raw "/apis/metrics.k8s.io/v1beta1/namespaces/default/pods" | \
-  jq -r '.items[] | select(.containers[].usage.memory | gsub("Ki";"") | tonumber > 204800) | .metadata.name'
+  jq -r 'def memory_to_mi:
+    if endswith("Ki") then (rtrimstr("Ki") | tonumber) / 1024
+    elif endswith("Mi") then (rtrimstr("Mi") | tonumber)
+    elif endswith("Gi") then (rtrimstr("Gi") | tonumber) * 1024
+    else tonumber / 1024 / 1024
+    end;
+  .items[] | select(any(.containers[]; (.usage.memory | memory_to_mi) > 200)) | .metadata.name'
 ```
 
 ## Method 4: Programmatic Access with Python
@@ -142,7 +154,7 @@ Access metrics from your applications:
 ```python
 # kubernetes_metrics.py
 from kubernetes import client, config
-import json
+from decimal import Decimal
 
 def get_pod_memory_metrics(namespace="default"):
     """
@@ -170,7 +182,7 @@ def get_pod_memory_metrics(namespace="default"):
     for pod in metrics.get("items", []):
         pod_name = pod["metadata"]["name"]
         for container in pod.get("containers", []):
-            # Parse memory value (comes as string like "134217728" or "128Ki")
+            # Parse Kubernetes quantity strings like "131072Ki" or "128Mi"
             memory_str = container["usage"]["memory"]
             memory_bytes = parse_memory(memory_str)
 
@@ -185,15 +197,28 @@ def get_pod_memory_metrics(namespace="default"):
 
 def parse_memory(memory_str):
     """Convert Kubernetes memory string to bytes."""
-    if memory_str.endswith("Ki"):
-        return int(memory_str[:-2]) * 1024
-    elif memory_str.endswith("Mi"):
-        return int(memory_str[:-2]) * 1024 * 1024
-    elif memory_str.endswith("Gi"):
-        return int(memory_str[:-2]) * 1024 * 1024 * 1024
-    else:
-        # Plain bytes
-        return int(memory_str)
+    binary_suffixes = {
+        "Ki": 1024,
+        "Mi": 1024 ** 2,
+        "Gi": 1024 ** 3,
+        "Ti": 1024 ** 4,
+        "Pi": 1024 ** 5,
+        "Ei": 1024 ** 6,
+    }
+    decimal_suffixes = {
+        "k": 1000,
+        "M": 1000 ** 2,
+        "G": 1000 ** 3,
+        "T": 1000 ** 4,
+        "P": 1000 ** 5,
+        "E": 1000 ** 6,
+    }
+
+    for suffix, multiplier in {**binary_suffixes, **decimal_suffixes}.items():
+        if memory_str.endswith(suffix):
+            return int(Decimal(memory_str[:-len(suffix)]) * multiplier)
+
+    return int(Decimal(memory_str))
 
 if __name__ == "__main__":
     metrics = get_pod_memory_metrics("production")
@@ -243,7 +268,17 @@ jq -r --slurpfile metrics /tmp/metrics.json '
     "\($pod.metadata.name)/\($container.name)",
     ($metric.usage.memory // "N/A"),
     ($container.resources.requests.memory // "not set"),
-    ($container.resources.limits.memory // "not set")
+    ($container.resources.limits.memory // "not set"),
+    (def to_bytes:
+      if . == null then null
+      elif endswith("Ki") then (rtrimstr("Ki") | tonumber) * 1024
+      elif endswith("Mi") then (rtrimstr("Mi") | tonumber) * 1024 * 1024
+      elif endswith("Gi") then (rtrimstr("Gi") | tonumber) * 1024 * 1024 * 1024
+      else tonumber
+      end;
+    (($metric.usage.memory | to_bytes) as $usage |
+     ($container.resources.limits.memory | to_bytes) as $limit |
+     if $limit then (($usage / $limit * 100) | floor | tostring + "%") else "N/A" end))
   ] | @tsv
 ' /tmp/pods.json | column -t
 ```
@@ -260,9 +295,9 @@ flowchart TD
     D --> G[Page cache, can be reclaimed]
 ```
 
-The metrics-server reports **working set** memory, which is what Kubernetes uses for OOM decisions:
+The metrics-server reports **working set** memory:
 - **Working Set** = Total usage minus inactive file-backed memory
-- This is the memory that cannot be reclaimed without killing the process
+- This is the memory that has not been identified as inactive file-backed memory. It is useful for autoscaling and quick capacity checks, but OOM enforcement is based on cgroup memory limits and kernel behavior, not directly on the metrics-server value.
 
 ## Node Memory Metrics
 
@@ -275,7 +310,7 @@ kubectl top nodes
 # Detailed node metrics via API
 kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes" | jq '.items[] | {
   node: .metadata.name,
-  memory_bytes: .usage.memory,
+  memory_quantity: .usage.memory,
   memory_gi: ((.usage.memory | rtrimstr("Ki") | tonumber) / 1024 / 1024 | . * 100 | floor / 100)
 }'
 ```
@@ -296,7 +331,7 @@ kubectl logs -n kube-system -l k8s-app=metrics-server
 
 ### Metrics Delayed
 
-Metrics-server scrapes every 15 seconds by default. Recent pods may not have metrics yet:
+Metrics-server scrapes every 60 seconds by default, and recent pods may not have metrics yet:
 
 ```bash
 # Check the timestamp in metrics response
@@ -315,4 +350,4 @@ kubectl get pod my-pod -o jsonpath='{.spec.containers[*].resources}'
 
 ## Summary
 
-Kubernetes provides container memory metrics through the Metrics API (requires metrics-server). Use `kubectl top` for quick checks, direct API queries for scripting, or the Python client for application integration. Memory is reported as working set memory, which reflects actual non-reclaimable usage. Compare usage to limits to identify pods at risk of OOM, and use these metrics for capacity planning and resource optimization.
+Kubernetes provides container memory metrics through the Metrics API (requires metrics-server). Use `kubectl top` for quick checks, direct API queries for scripting, or the Python client for application integration. Memory is reported as working set memory, which is useful for estimating active memory usage. Compare usage to limits to identify pods that may be at risk of OOM, and use these metrics for capacity planning and resource optimization.

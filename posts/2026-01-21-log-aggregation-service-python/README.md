@@ -47,16 +47,18 @@ The ingestion layer accepts logs from various sources and normalizes them into a
 # ingestion.py
 
 # Log ingestion API with HTTP and UDP support
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 import asyncio
-import socket
 import json
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Log Aggregation Service")
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+    return datetime.now(UTC)
 
 class LogLevel(str, Enum):
     DEBUG = "debug"
@@ -70,7 +72,7 @@ class LogEntry(BaseModel):
     Normalized log entry format.
     All incoming logs are converted to this structure.
     """
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     level: LogLevel = LogLevel.INFO
     service: str  # Source service name
     message: str
@@ -94,51 +96,6 @@ async def get_buffer() -> asyncio.Queue:
         log_buffer = asyncio.Queue(maxsize=100000)
     return log_buffer
 
-@app.post("/ingest")
-async def ingest_single_log(log: LogEntry, request: Request):
-    """
-    Ingest a single log entry.
-    Fast path for low-volume logging.
-    """
-    # Add client IP if not provided
-    if not log.host:
-        log.host = request.client.host
-
-    buffer = await get_buffer()
-
-    try:
-        buffer.put_nowait(log)
-        return {"status": "accepted", "queue_size": buffer.qsize()}
-    except asyncio.QueueFull:
-        # Buffer is full - apply backpressure
-        return {"status": "rejected", "reason": "buffer_full"}, 503
-
-@app.post("/ingest/batch")
-async def ingest_batch(batch: LogBatch, request: Request):
-    """
-    Ingest a batch of logs.
-    More efficient for high-volume logging.
-    """
-    buffer = await get_buffer()
-    accepted = 0
-
-    for log in batch.logs:
-        if not log.host:
-            log.host = request.client.host
-
-        try:
-            buffer.put_nowait(log)
-            accepted += 1
-        except asyncio.QueueFull:
-            break
-
-    return {
-        "status": "accepted",
-        "accepted": accepted,
-        "total": len(batch.logs),
-        "queue_size": buffer.qsize()
-    }
-
 # UDP ingestion for syslog-style logging
 class UDPLogServer:
     """
@@ -154,7 +111,7 @@ class UDPLogServer:
 
     async def start(self, buffer: asyncio.Queue):
         """Start the UDP server"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         self.transport, self.protocol = await loop.create_datagram_endpoint(
             lambda: UDPLogProtocol(buffer),
@@ -196,14 +153,59 @@ class UDPLogProtocol(asyncio.DatagramProtocol):
 # Start UDP server alongside FastAPI
 udp_server = UDPLogServer()
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     buffer = await get_buffer()
     await udp_server.start(buffer)
-
-@app.on_event("shutdown")
-async def shutdown():
+    yield
     udp_server.stop()
+
+app = FastAPI(title="Log Aggregation Service", lifespan=lifespan)
+
+@app.post("/ingest")
+async def ingest_single_log(log: LogEntry, request: Request):
+    """
+    Ingest a single log entry.
+    Fast path for low-volume logging.
+    """
+    # Add client IP if not provided
+    if not log.host:
+        log.host = request.client.host
+
+    buffer = await get_buffer()
+
+    try:
+        buffer.put_nowait(log)
+        return {"status": "accepted", "queue_size": buffer.qsize()}
+    except asyncio.QueueFull:
+        # Buffer is full - apply backpressure
+        raise HTTPException(status_code=503, detail="buffer_full")
+
+@app.post("/ingest/batch")
+async def ingest_batch(batch: LogBatch, request: Request):
+    """
+    Ingest a batch of logs.
+    More efficient for high-volume logging.
+    """
+    buffer = await get_buffer()
+    accepted = 0
+
+    for log in batch.logs:
+        if not log.host:
+            log.host = request.client.host
+
+        try:
+            buffer.put_nowait(log)
+            accepted += 1
+        except asyncio.QueueFull:
+            break
+
+    return {
+        "status": "accepted",
+        "accepted": accepted,
+        "total": len(batch.logs),
+        "queue_size": buffer.qsize()
+    }
 ```
 
 ---
@@ -216,8 +218,8 @@ The batch processor reads from the buffer and writes logs efficiently in batches
 # processor.py
 # Batch processor for log aggregation
 import asyncio
-from typing import List, Optional
-from datetime import datetime, timedelta
+from typing import List
+from datetime import datetime, UTC
 from dataclasses import dataclass
 import json
 import gzip
@@ -243,7 +245,7 @@ class BatchProcessor:
         self.buffer = buffer
         self.config = config
         self.current_batch: List[LogEntry] = []
-        self.last_flush = datetime.utcnow()
+        self.last_flush = datetime.now(UTC)
         self._running = False
 
     async def start(self):
@@ -301,10 +303,10 @@ class BatchProcessor:
         # Grab the batch and reset
         batch = self.current_batch
         self.current_batch = []
-        self.last_flush = datetime.utcnow()
+        self.last_flush = datetime.now(UTC)
 
         # Generate filename based on timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
         filename = f"logs_{timestamp}.jsonl"
 
         if self.config.compress:
@@ -327,7 +329,7 @@ class BatchProcessor:
         content = "".join(lines).encode('utf-8')
 
         # Run file I/O in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         if self.config.compress:
             await loop.run_in_executor(
@@ -399,15 +401,14 @@ The query API allows searching and retrieving logs from storage.
 ```python
 # query.py
 # Query API for searching aggregated logs
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import asyncio
 import gzip
 import json
 import os
-import re
 
 from ingestion import LogEntry, LogLevel
 
@@ -478,7 +479,7 @@ async def get_relevant_files(query: LogQuery) -> List[str]:
         try:
             # Format: logs_YYYYMMDD_HHMMSS_ffffff.jsonl.gz
             ts_str = filename.split("_")[1] + filename.split("_")[2]
-            file_time = datetime.strptime(ts_str, "%Y%m%d%H%M%S")
+            file_time = datetime.strptime(ts_str, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
         except (ValueError, IndexError):
             continue
 
@@ -497,7 +498,7 @@ async def search_file(filepath: str, query: LogQuery) -> List[LogEntry]:
     Search a single log file for matching entries.
     Runs file I/O in thread pool to avoid blocking.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Read file in thread pool
     if filepath.endswith('.gz'):
@@ -610,10 +611,8 @@ A simple client library makes it easy for services to send logs.
 # client.py
 # Client library for sending logs to the aggregation service
 import requests
-import asyncio
-import aiohttp
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+from typing import Optional
+from datetime import datetime, UTC
 from dataclasses import dataclass
 from enum import Enum
 import queue
@@ -665,7 +664,7 @@ class LogAggregatorClient:
         Log a message. This is non-blocking and queues the log for sending.
         """
         entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": level.value,
             "service": self.config.service_name,
             "message": message,
@@ -823,6 +822,7 @@ async def lifespan(app: FastAPI):
 
     # Start the batch processor
     buffer = await get_buffer()
+    await udp_server.start(buffer)
     config = ProcessorConfig(
         batch_size=1000,
         flush_interval=5.0,
@@ -845,7 +845,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Log Aggregation Service", lifespan=lifespan)
 
 # Mount routers
-app.mount("/", ingestion_app)
+app.include_router(ingestion_app.router)
 app.include_router(query_router)
 
 @app.get("/health")

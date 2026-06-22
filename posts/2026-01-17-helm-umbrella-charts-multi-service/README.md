@@ -105,7 +105,7 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
   
-  # External chart from another repo
+  # Another external chart from Bitnami
   - name: rabbitmq
     version: "12.x.x"
     repository: https://charts.bitnami.com/bitnami
@@ -127,40 +127,32 @@ global:
     pullPolicy: IfNotPresent
   
   postgresql:
-    host: "{{ .Release.Name }}-postgresql"
+    host: my-app-postgresql
     port: 5432
     database: myapp
     username: myapp
   
   redis:
-    host: "{{ .Release.Name }}-redis-master"
+    host: my-app-redis-master
     port: 6379
   
   rabbitmq:
-    host: "{{ .Release.Name }}-rabbitmq"
+    host: my-app-rabbitmq
     port: 5672
 
 # Enable/disable components
-frontend:
-  enabled: true
-  
-backend:
-  enabled: true
-
-worker:
-  enabled: true
-
-postgresql:
-  enabled: true
-
-redis:
-  enabled: true
-
 rabbitmq:
   enabled: false
+  auth:
+    username: myapp
+    password: "rabbitmq-password"
+
+networkPolicy:
+  enabled: true
 
 # Frontend configuration
 frontend:
+  enabled: true
   replicaCount: 3
   
   image:
@@ -170,7 +162,7 @@ frontend:
   ingress:
     enabled: true
     hosts:
-      - host: "{{ .Values.global.domain }}"
+      - host: example.com
         paths:
           - path: /
   
@@ -184,6 +176,7 @@ frontend:
 
 # Backend configuration
 backend:
+  enabled: true
   replicaCount: 3
   
   image:
@@ -193,7 +186,7 @@ backend:
   ingress:
     enabled: true
     hosts:
-      - host: "api.{{ .Values.global.domain }}"
+      - host: api.example.com
         paths:
           - path: /
   
@@ -201,12 +194,12 @@ backend:
     - name: DATABASE_URL
       valueFrom:
         secretKeyRef:
-          name: "{{ .Release.Name }}-secrets"
+          name: my-app-secrets
           key: database-url
     - name: REDIS_URL
       valueFrom:
         secretKeyRef:
-          name: "{{ .Release.Name }}-secrets"
+          name: my-app-secrets
           key: redis-url
   
   resources:
@@ -219,6 +212,7 @@ backend:
 
 # Worker configuration
 worker:
+  enabled: true
   replicaCount: 2
   
   image:
@@ -229,17 +223,17 @@ worker:
     - name: DATABASE_URL
       valueFrom:
         secretKeyRef:
-          name: "{{ .Release.Name }}-secrets"
+          name: my-app-secrets
           key: database-url
     - name: REDIS_URL
       valueFrom:
         secretKeyRef:
-          name: "{{ .Release.Name }}-secrets"
+          name: my-app-secrets
           key: redis-url
     - name: RABBITMQ_URL
       valueFrom:
         secretKeyRef:
-          name: "{{ .Release.Name }}-secrets"
+          name: my-app-secrets
           key: rabbitmq-url
   
   resources:
@@ -252,6 +246,7 @@ worker:
 
 # PostgreSQL configuration
 postgresql:
+  enabled: true
   auth:
     postgresPassword: "postgres-password"
     username: myapp
@@ -265,6 +260,7 @@ postgresql:
 
 # Redis configuration  
 redis:
+  enabled: true
   auth:
     enabled: true
     password: "redis-password"
@@ -549,13 +545,13 @@ redis:
 
 ```bash
 # Download/update all dependencies
-helm dependency update
+helm dependency update .
 
-# Or build if charts exist locally
-helm dependency build
+# Or rebuild from Chart.lock
+helm dependency build .
 
 # List dependencies
-helm dependency list
+helm dependency list .
 ```
 
 ### Template and Verify
@@ -708,8 +704,8 @@ exports:
 # Lint
 helm lint .
 
-# Test render
-helm template my-app . --validate
+# Test render with server-side validation
+helm template my-app . --dry-run=server
 
 # Dry run installation
 helm install my-app . --dry-run --debug
@@ -724,7 +720,7 @@ helm test my-app -n production
 |----------|-------------|
 | Use conditions | Enable/disable components with conditions |
 | Global values | Share common config via global |
-| Version pinning | Pin dependency versions explicitly |
+| Version constraints | Set dependency version constraints explicitly |
 | Environment files | Separate values files per environment |
 | Local development | Support disabling external dependencies |
 | Documentation | Document component dependencies |

@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing GDPR Article 17 Right to Eras
 
 ---
 
-The GDPR Right to Erasure (Article 17), also known as the "right to be forgotten," requires organizations to delete personal data upon request. This guide covers implementing a compliant erasure system with Redis.
+The GDPR Right to Erasure (Article 17), also known as the "right to be forgotten," requires organizations to delete personal data without undue delay when one of the Article 17 grounds applies. This guide covers implementing a compliant erasure system with Redis.
 
 ## Understanding the Right to Erasure
 
@@ -156,7 +156,7 @@ class DataDiscoveryService {
       discovery.categories[category] = {
         pattern,
         keyCount: keys.length,
-        keys: keys.slice(0, 100), // Limit for report
+        keys, // Keep the complete list for processing
         containsPII: config.contains_pii,
         retentionRequired: config.retention_required,
         retentionReason: config.retention_reason,
@@ -196,7 +196,7 @@ class DataDiscoveryService {
     return keys;
   }
 
-  // Also check sorted sets and lists for user references
+  // Also check sorted sets and sets for user references
   async findUserReferences(userId) {
     const references = [];
 
@@ -286,9 +286,11 @@ class ErasureRequestQueue {
   }
 
   async getNextRequest() {
-    const requestId = await this.redis.brpoplpush(
+    const requestId = await this.redis.blmove(
       this.queueKey,
       this.processingKey,
+      'RIGHT',
+      'LEFT',
       0
     );
 
@@ -332,7 +334,7 @@ class ErasureRequestQueue {
       failedAt: new Date().toISOString()
     });
 
-    // Move back to queue for retry
+    // Move to failed queue for retry or manual review
     await this.redis.lrem(this.processingKey, 1, requestId);
     await this.redis.lpush('erasure:failed', requestId);
   }
@@ -362,6 +364,7 @@ module.exports = ErasureRequestQueue;
 ```javascript
 // erasureExecutor.js
 const Redis = require('ioredis');
+const crypto = require('crypto');
 const DataDiscoveryService = require('./dataDiscovery');
 const ErasureRequestQueue = require('./erasureRequestQueue');
 
@@ -470,37 +473,19 @@ class ErasureExecutor {
   }
 
   async deleteData(key) {
-    // Backup before deletion (for audit)
+    // Record deletion metadata without copying the erased personal data
     const keyType = await this.redis.type(key);
-    let backup;
+    const keyHash = crypto
+      .createHash('sha256')
+      .update(key)
+      .digest('hex');
 
-    switch (keyType) {
-      case 'string':
-        backup = await this.redis.get(key);
-        break;
-      case 'hash':
-        backup = await this.redis.hgetall(key);
-        break;
-      case 'list':
-        backup = await this.redis.lrange(key, 0, -1);
-        break;
-      case 'set':
-        backup = await this.redis.smembers(key);
-        break;
-      case 'zset':
-        backup = await this.redis.zrange(key, 0, -1, 'WITHSCORES');
-        break;
-    }
-
-    // Store backup for 30 days (in case of disputes)
-    const backupKey = `erasure:backup:${key}:${Date.now()}`;
-    await this.redis.set(backupKey, JSON.stringify({
-      originalKey: key,
+    const deletionProofKey = `erasure:deleted:${Date.now()}:${keyHash}`;
+    await this.redis.hset(deletionProofKey, {
+      keyHash,
       type: keyType,
-      data: backup,
       erasedAt: new Date().toISOString()
-    }));
-    await this.redis.expire(backupKey, 30 * 24 * 3600);
+    });
 
     // Delete the original
     await this.redis.del(key);
@@ -608,13 +593,13 @@ class ErasureVerificationService {
 
   async initiateVerification(userId, email) {
     const verificationId = crypto.randomBytes(16).toString('hex');
-    const verificationCode = crypto.randomInt(100000, 999999).toString();
+    const verificationCode = crypto.randomInt(100000, 1000000).toString();
 
     const verification = {
       id: verificationId,
       userId,
       email,
-      code: verificationCode,
+      codeHash: crypto.createHash('sha256').update(String(verificationCode)).digest('hex'),
       status: 'pending',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
@@ -654,7 +639,9 @@ class ErasureVerificationService {
       return { verified: false, error: 'Too many attempts' };
     }
 
-    if (verification.code !== code) {
+    const submittedCodeHash = crypto.createHash('sha256').update(String(code || '')).digest('hex');
+
+    if (verification.codeHash !== submittedCodeHash) {
       return {
         verified: false,
         error: 'Invalid code',
@@ -671,13 +658,14 @@ class ErasureVerificationService {
     return {
       verified: true,
       userId: verification.userId,
+      email: verification.email,
       verifiedAt: new Date().toISOString()
     };
   }
 
   async sendVerificationEmail(email, code, verificationId) {
     // Implementation depends on your email service
-    console.log(`Sending erasure verification to ${email}: ${code}`);
+    console.log(`Sending erasure verification to ${email} for ${verificationId}`);
 
     // Log for audit
     await this.redis.lpush('audit:erasure:verification_sent', JSON.stringify({
@@ -742,6 +730,7 @@ router.post('/erasure/verify', async (req, res) => {
     // Submit actual erasure request
     const requestId = await queue.submitRequest({
       userId: result.userId,
+      email: result.email,
       verificationMethod: 'email_code',
       verifiedAt: result.verifiedAt,
       reason
@@ -945,8 +934,8 @@ class GDPRReportGenerator {
       slaCompliance: {
         within24Hours: 0,
         within72Hours: 0,
-        within30Days: 0,
-        exceeded30Days: 0
+        withinOneMonth: 0,
+        exceededOneMonth: 0
       }
     };
 
@@ -970,11 +959,13 @@ class GDPRReportGenerator {
         processingTimes.push(processingTime);
 
         // SLA compliance
+        const deadline = new Date(request.submittedAt);
+        deadline.setMonth(deadline.getMonth() + 1);
         const hours = processingTime / (1000 * 60 * 60);
         if (hours <= 24) report.slaCompliance.within24Hours++;
         else if (hours <= 72) report.slaCompliance.within72Hours++;
-        else if (hours <= 720) report.slaCompliance.within30Days++;
-        else report.slaCompliance.exceeded30Days++;
+        else if (new Date(request.completedAt) <= deadline) report.slaCompliance.withinOneMonth++;
+        else report.slaCompliance.exceededOneMonth++;
 
         // Retention reasons from result
         if (request.result) {
@@ -1039,7 +1030,7 @@ class GDPRReportGenerator {
     const responseTimeScore = Math.min(40,
       (report.slaCompliance.within24Hours * 40 +
        report.slaCompliance.within72Hours * 30 +
-       report.slaCompliance.within30Days * 20) /
+       report.slaCompliance.withinOneMonth * 20) /
       Math.max(1, report.summary.completed)
     );
     score.metrics.responseTime = responseTimeScore;
@@ -1164,7 +1155,7 @@ async function cleanupTestData() {
 
 ### Processing
 - [ ] Verify requester identity
-- [ ] Process within 30 days (or extend with justification)
+- [ ] Respond within one month (or extend by up to two further months with justification)
 - [ ] Handle retention exceptions
 - [ ] Anonymize where deletion not possible
 

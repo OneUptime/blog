@@ -13,6 +13,7 @@ Being able to restore from backup is as important as having backups. CloudNative
 ## Prerequisites
 
 - CloudNativePG operator installed
+- Barman Cloud Plugin installed for object storage recovery
 - Existing backups in object storage (S3, GCS, or Azure)
 - Access credentials for backup storage
 - Understanding of your backup retention policy
@@ -38,6 +39,22 @@ Being able to restore from backup is as important as having backups. CloudNative
 ### Restore to Latest State
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-backup
+  namespace: default
+spec:
+  configuration:
+    destinationPath: s3://my-bucket/postgres/
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -56,15 +73,11 @@ spec:
 
   externalClusters:
     - name: postgres-backup
-      barmanObjectStore:
-        destinationPath: s3://my-bucket/postgres/
-        s3Credentials:
-          accessKeyId:
-            name: s3-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: s3-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: postgres-backup
+          serverName: postgres
 ```
 
 ### Restore from Specific Backup
@@ -93,6 +106,21 @@ spec:
 ### Recover to Specific Timestamp
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-backup
+spec:
+  configuration:
+    destinationPath: s3://my-bucket/postgres/
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -112,15 +140,11 @@ spec:
 
   externalClusters:
     - name: postgres-backup
-      barmanObjectStore:
-        destinationPath: s3://my-bucket/postgres/
-        s3Credentials:
-          accessKeyId:
-            name: s3-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: s3-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: postgres-backup
+          serverName: postgres
 ```
 
 ### Recover to Specific LSN
@@ -142,6 +166,7 @@ spec:
     recovery:
       source: postgres-backup
       recoveryTarget:
+        backupID: "20260120T120000"
         targetXID: "12345678"
 ```
 
@@ -163,6 +188,7 @@ spec:
     recovery:
       source: postgres-backup
       recoveryTarget:
+        backupID: "20260120T120000"
         targetName: "before_migration"
 ```
 
@@ -176,6 +202,7 @@ spec:
     recovery:
       source: postgres-backup
       recoveryTarget:
+        backupID: "20260120T120000"
         targetImmediate: true
 ```
 
@@ -212,7 +239,8 @@ spec:
         # What to do after reaching target
         targetTLI: "latest"  # Timeline to recover to
 
-        # Backup to use as starting point
+        # Backup to use as starting point; required for targetXID,
+        # targetName, and targetImmediate
         # backupID: "20260120T120000"
 ```
 
@@ -221,6 +249,24 @@ spec:
 ### S3 Recovery
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: s3-backup
+spec:
+  configuration:
+    destinationPath: s3://bucket-name/postgres/
+    endpointURL: https://s3.us-east-1.amazonaws.com
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+    wal:
+      maxParallel: 8
+---
 spec:
   bootstrap:
     recovery:
@@ -230,26 +276,30 @@ spec:
 
   externalClusters:
     - name: s3-backup
-      barmanObjectStore:
-        destinationPath: s3://bucket-name/postgres/
-        endpointURL: https://s3.us-east-1.amazonaws.com
-        s3Credentials:
-          accessKeyId:
-            name: s3-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: s3-credentials
-            key: SECRET_ACCESS_KEY
-          region:
-            name: s3-credentials
-            key: AWS_REGION
-        wal:
-          maxParallel: 8
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: s3-backup
+          serverName: postgres
 ```
 
 ### GCS Recovery
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: gcs-backup
+spec:
+  configuration:
+    destinationPath: gs://bucket-name/postgres/
+    googleCredentials:
+      applicationCredentials:
+        name: gcs-credentials
+        key: gcsCredentials
+    wal:
+      maxParallel: 8
+---
 spec:
   bootstrap:
     recovery:
@@ -259,19 +309,33 @@ spec:
 
   externalClusters:
     - name: gcs-backup
-      barmanObjectStore:
-        destinationPath: gs://bucket-name/postgres/
-        googleCredentials:
-          applicationCredentials:
-            name: gcs-credentials
-            key: gcsCredentials
-        wal:
-          maxParallel: 8
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: gcs-backup
+          serverName: postgres
 ```
 
 ### Azure Recovery
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: azure-backup
+spec:
+  configuration:
+    destinationPath: https://storageaccount.blob.core.windows.net/container/postgres/
+    azureCredentials:
+      storageAccount:
+        name: azure-credentials
+        key: STORAGE_ACCOUNT
+      storageKey:
+        name: azure-credentials
+        key: STORAGE_KEY
+    wal:
+      maxParallel: 8
+---
 spec:
   bootstrap:
     recovery:
@@ -281,17 +345,11 @@ spec:
 
   externalClusters:
     - name: azure-backup
-      barmanObjectStore:
-        destinationPath: https://storageaccount.blob.core.windows.net/container/postgres/
-        azureCredentials:
-          storageAccount:
-            name: azure-credentials
-            key: STORAGE_ACCOUNT
-          storageKey:
-            name: azure-credentials
-            key: STORAGE_KEY
-        wal:
-          maxParallel: 8
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: azure-backup
+          serverName: postgres
 ```
 
 ## Clone Running Cluster
@@ -330,6 +388,42 @@ spec:
 When original cluster is completely lost:
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-backup
+  namespace: production
+spec:
+  configuration:
+    destinationPath: s3://company-backups/postgres/production/
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-dr-backup
+  namespace: production
+spec:
+  retentionPolicy: "30d"
+  configuration:
+    destinationPath: s3://company-backups/postgres/production-dr/
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+      maxParallel: 4
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -360,31 +454,18 @@ spec:
 
   externalClusters:
     - name: production-backup
-      barmanObjectStore:
-        destinationPath: s3://company-backups/postgres/production/
-        s3Credentials:
-          accessKeyId:
-            name: backup-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: backup-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: production-backup
+          serverName: production
 
-  # Set up new backups immediately
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://company-backups/postgres/production-dr/
-      s3Credentials:
-        accessKeyId:
-          name: backup-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: backup-credentials
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 4
-    retentionPolicy: "30d"
+  # Set up new WAL archiving immediately
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: production-dr-backup
 ```
 
 ### Cross-Region Recovery
@@ -392,6 +473,24 @@ spec:
 Restore in a different region for DR:
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: us-east-backup
+spec:
+  configuration:
+    # Original region backup
+    destinationPath: s3://us-east-backups/postgres/
+    endpointURL: https://s3.us-east-1.amazonaws.com
+    s3Credentials:
+      # Cross-region accessible credentials
+      accessKeyId:
+        name: cross-region-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: cross-region-credentials
+        key: SECRET_ACCESS_KEY
+---
 spec:
   bootstrap:
     recovery:
@@ -399,18 +498,11 @@ spec:
 
   externalClusters:
     - name: us-east-backup
-      barmanObjectStore:
-        # Original region backup
-        destinationPath: s3://us-east-backups/postgres/
-        endpointURL: https://s3.us-east-1.amazonaws.com
-        s3Credentials:
-          # Cross-region accessible credentials
-          accessKeyId:
-            name: cross-region-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: cross-region-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: us-east-backup
+          serverName: postgres
 ```
 
 ## Recovery Verification
@@ -505,6 +597,7 @@ spec:
       source: production-backup
       recoveryTarget:
         # Use exclusive to stop just before the bad transaction
+        backupID: "20260120T120000"
         targetXID: "12345678"
         exclusive: true
 ```
@@ -518,6 +611,7 @@ spec:
     recovery:
       source: production-backup
       recoveryTarget:
+        backupID: "20260120T120000"
         targetName: "before_migration_v2"
 ```
 
@@ -539,6 +633,22 @@ spec:
 Create a test recovery cluster monthly:
 
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-backup
+  namespace: test
+spec:
+  configuration:
+    destinationPath: s3://company-backups/postgres/production/
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -559,15 +669,11 @@ spec:
 
   externalClusters:
     - name: production-backup
-      barmanObjectStore:
-        destinationPath: s3://company-backups/postgres/production/
-        s3Credentials:
-          accessKeyId:
-            name: backup-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: backup-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: production-backup
+          serverName: production
 ```
 
 ### Automated Recovery Test Script
@@ -581,6 +687,22 @@ CLUSTER_NAME="recovery-test-$(date +%Y%m%d)"
 
 # Create recovery test cluster
 cat <<EOF | kubectl apply -f -
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-backup
+  namespace: ${NAMESPACE}
+spec:
+  configuration:
+    destinationPath: s3://company-backups/postgres/production/
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -595,15 +717,11 @@ spec:
       source: production-backup
   externalClusters:
     - name: production-backup
-      barmanObjectStore:
-        destinationPath: s3://company-backups/postgres/production/
-        s3Credentials:
-          accessKeyId:
-            name: backup-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: backup-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: production-backup
+          serverName: production
 EOF
 
 # Wait for cluster to be ready
@@ -654,8 +772,8 @@ aws s3 ls s3://bucket/postgres/wals/
 # Error: recovery target not found
 # The target time/LSN may be beyond available WAL
 
-# Check latest available WAL
-kubectl exec postgres-restored-1 -- barman-cloud-wal-archive --list s3://bucket/postgres/
+# Check the latest archived WAL files in S3
+aws s3 ls s3://bucket/postgres/wals/ --recursive | sort | tail
 
 # Use an earlier target or remove target for full recovery
 ```

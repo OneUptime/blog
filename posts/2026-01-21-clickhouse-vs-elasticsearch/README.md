@@ -43,11 +43,11 @@ flowchart TB
     subgraph ClickHouse Cluster
         subgraph N1[ClickHouse Node]
             MT1[MergeTree Table]
-            BF1[Bloom Filter Index]
+            TI1[Text Index]
         end
         subgraph N2[ClickHouse Node]
             MT2[MergeTree Table]
-            BF2[Bloom Filter Index]
+            TI2[Text Index]
         end
         N1 <--> N2
     end
@@ -56,7 +56,7 @@ flowchart TB
 Key characteristics:
 - Column-oriented storage
 - MergeTree engine family
-- Bloom filter indexes for text
+- Text indexes for token search
 - SQL interface
 - Batch-oriented ingestion
 
@@ -65,7 +65,7 @@ Key characteristics:
 | Feature | ClickHouse | Elasticsearch |
 |---------|------------|---------------|
 | Query Language | SQL | Query DSL, EQL, SQL |
-| Full-Text Search | Basic (tokenbf_v1) | Advanced (BM25, fuzzy) |
+| Full-Text Search | Basic (text indexes, token search) | Advanced (BM25, fuzzy) |
 | Aggregations | Excellent | Good |
 | Storage Efficiency | 10-30x compression | 1.5-3x compression |
 | Relevance Scoring | Manual | Built-in (TF-IDF, BM25) |
@@ -80,7 +80,6 @@ Key characteristics:
 ### Elasticsearch Full-Text Search
 
 ```json
-// Advanced full-text search
 {
   "query": {
     "bool": {
@@ -122,7 +121,7 @@ Features:
 ### ClickHouse Text Search
 
 ```sql
--- Token-based search with bloom filter
+-- Token-based search with text index
 SELECT
     timestamp,
     level,
@@ -131,8 +130,7 @@ SELECT
 FROM logs
 WHERE timestamp >= now() - INTERVAL 1 HOUR
   AND level = 'error'
-  AND hasToken(lower(message), 'timeout')
-  AND hasToken(lower(message), 'connection')
+  AND hasAllTokens(message, ['timeout', 'connection'])
 ORDER BY timestamp DESC
 LIMIT 100;
 
@@ -154,7 +152,7 @@ WHERE match(message, 'error.*timeout|timeout.*error')
 
 Features:
 - Token-based search
-- Bloom filter acceleration
+- Text index acceleration
 - Regular expressions
 - Multi-pattern matching
 - Case-insensitive options
@@ -290,12 +288,11 @@ CREATE TABLE logs (
     service LowCardinality(String),
     host LowCardinality(String),
     message String,
-    message_lower String MATERIALIZED lower(message),
     trace_id String,
     labels Map(String, String),
     response_time Float32,
     -- Indexes for search
-    INDEX msg_token message_lower TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4,
+    INDEX msg_text message TYPE text(tokenizer = splitByNonAlpha, preprocessor = lower(message)),
     INDEX trace_bf trace_id TYPE bloom_filter GRANULARITY 4
 ) ENGINE = MergeTree()
 PARTITION BY date
@@ -311,8 +308,11 @@ SETTINGS index_granularity = 8192;
 ```bash
 # Bulk API
 
-curl -X POST "localhost:9200/_bulk" -H 'Content-Type: application/json' --data-binary @logs.ndjson
+curl -X POST "http://localhost:9200/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary @logs.ndjson
 
+```
+
+```conf
 # Logstash pipeline
 input {
   beats { port => 5044 }
@@ -337,10 +337,19 @@ output {
 INSERT INTO logs
 SETTINGS async_insert = 1, wait_for_async_insert = 0
 FORMAT JSONEachRow
-{"timestamp": "2024-01-15 10:00:00", "level": "error", "message": "..."}
+{"timestamp": "2024-01-15 10:00:00", "level": "error", "service": "api", "host": "web-01", "message": "...", "trace_id": "abc123", "labels": {"env": "prod"}, "response_time": 125.5}
 
 -- Kafka integration
-CREATE TABLE logs_kafka AS logs
+CREATE TABLE logs_kafka (
+    timestamp DateTime64(3),
+    level LowCardinality(String),
+    service LowCardinality(String),
+    host LowCardinality(String),
+    message String,
+    trace_id String,
+    labels Map(String, String),
+    response_time Float32
+)
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:9092',
@@ -349,12 +358,25 @@ SETTINGS
     kafka_format = 'JSONEachRow';
 
 CREATE MATERIALIZED VIEW logs_mv TO logs AS
-SELECT * FROM logs_kafka;
+SELECT
+    timestamp,
+    level,
+    service,
+    host,
+    message,
+    trace_id,
+    labels,
+    response_time
+FROM logs_kafka;
+```
 
--- Vector integration (recommended)
+Vector integration (recommended):
+
+```toml
 # vector.toml
 [sinks.clickhouse]
 type = "clickhouse"
+inputs = ["logs"]
 endpoint = "http://clickhouse:8123"
 table = "logs"
 database = "default"
@@ -395,7 +417,6 @@ ORDER BY hour DESC, errors DESC;
 6. **Existing ELK stack** - Migration cost too high
 
 ```json
-// Elasticsearch excels here
 {
   "query": {
     "bool": {
@@ -420,7 +441,7 @@ ORDER BY hour DESC, errors DESC;
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import scan
 
-es = Elasticsearch(['localhost:9200'])
+es = Elasticsearch(['http://localhost:9200'])
 
 # Scroll through documents
 docs = scan(es, index='logs-*', query={'match_all': {}})
@@ -437,12 +458,25 @@ for doc in docs:
         'timestamp': source['@timestamp'],
         'level': source.get('level', ''),
         'service': source.get('service', ''),
-        'message': source.get('message', '')
+        'host': source.get('host', ''),
+        'message': source.get('message', ''),
+        'trace_id': source.get('trace_id', ''),
+        'labels': source.get('labels', {}),
+        'response_time': source.get('response_time', 0.0)
     })
 
     if len(batch) >= 10000:
-        client.execute('INSERT INTO logs VALUES', batch)
+        client.execute(
+            'INSERT INTO logs (timestamp, level, service, host, message, trace_id, labels, response_time) VALUES',
+            batch
+        )
         batch = []
+
+if batch:
+    client.execute(
+        'INSERT INTO logs (timestamp, level, service, host, message, trace_id, labels, response_time) VALUES',
+        batch
+    )
 ```
 
 ### Running Both (Hybrid)

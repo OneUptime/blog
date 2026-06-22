@@ -34,7 +34,7 @@ When you run a role with dependencies:
 1. Ansible reads the role's `meta/main.yml` file
 2. Dependencies are executed first, in order
 3. The main role executes after all dependencies complete
-4. By default, dependencies only run once per play
+4. By default, duplicate dependencies only run once per play unless their parameters, tags, or `when` clauses differ
 
 ## Defining Role Dependencies
 
@@ -249,14 +249,12 @@ Use case for `allow_duplicates`:
 # roles/app1/meta/main.yml
 dependencies:
   - role: logging
-    vars:
-      log_path: /var/log/app1
+    log_path: /var/log/app1
 
 # roles/app2/meta/main.yml
 dependencies:
   - role: logging
-    vars:
-      log_path: /var/log/app2
+    log_path: /var/log/app2
 ```
 
 ## Advanced Dependency Patterns
@@ -419,7 +417,7 @@ roles:
     version: "6.1.0"  # Pin specific version
 
   - name: geerlingguy.pip
-    version: ">=2.0.0,<3.0.0"  # Version range
+    version: "2.0.0"  # Role version ranges are not supported
 ```
 
 ### Debugging Dependencies

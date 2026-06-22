@@ -119,7 +119,7 @@ validate_input() {
         # Validate IPv4 address format
         # Each octet: number from 0-255
         ip)
-            local ip_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+            local ip_regex='^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
             if [[ $input =~ $ip_regex ]]; then
                 echo "Valid IP format: $input"
                 return 0
@@ -185,7 +185,7 @@ parse_log_entry() {
 
     # Apache combined log format regex
     # Captures: IP, date, method, path, status code, bytes
-    local log_regex='^([0-9.]+) .* \[([^\]]+)\] "([A-Z]+) ([^ ]+) [^"]*" ([0-9]+) ([0-9-]+)'
+    local log_regex='^([0-9.]+) .* \[([^]]+)\] "([A-Z]+) ([^ ]+) [^"]*" ([0-9]+) ([0-9-]+)'
 
     if [[ $log_line =~ $log_regex ]]; then
         echo "IP Address: ${BASH_REMATCH[1]}"
@@ -261,12 +261,12 @@ extract_version "2.0.0-beta.1+build.123"
 grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' contacts.txt
 
 # Find lines containing IP addresses
-# -P enables Perl-compatible regex for more features
+# -P enables Perl-compatible regex in GNU grep for more features
 grep -Po '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' server.log
 
 # Find all function definitions in a shell script
 # Match: function_name() or function function_name
-grep -E '^\s*(function\s+)?[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)' script.sh
+grep -E '^[[:space:]]*(function[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\(\)' script.sh
 
 # Count occurrences of HTTP status codes
 # -c counts matching lines
@@ -323,7 +323,7 @@ echo "contact@old-domain.com" | sed 's/@old-domain\.com/@new-domain.com/'
 echo "01/15/2024" | sed -E 's/([0-9]{2})\/([0-9]{2})\/([0-9]{4})/\3-\1-\2/'
 
 # Remove HTML tags from text
-# .*? is non-greedy matching in extended regex
+# Match each tag as "<" followed by non-">" characters, then ">"
 echo "<p>Hello <b>World</b></p>" | sed -E 's/<[^>]+>//g'
 
 # Normalize whitespace
@@ -357,7 +357,7 @@ flowchart TD
     subgraph "Anchors"
         A1["^ Start of line"]
         A2["$ End of line"]
-        A3["\b Word boundary"]
+        A3["\b Word boundary (PCRE/GNU grep)"]
     end
 
     subgraph "Quantifiers"
@@ -374,12 +374,12 @@ flowchart TD
         C3["[a-z] Range a to z"]
         C4[". Any character"]
         C5["\d Digit (Perl)"]
-        C6["\s Whitespace"]
+        C6["\s Whitespace (PCRE/GNU grep)"]
     end
 
     subgraph "Groups"
         G1["() Capture group"]
-        G2["(?:) Non-capture"]
+        G2["(?:) Non-capture (PCRE)"]
         G3["| Alternation"]
     end
 ```
@@ -410,8 +410,12 @@ mac_regex='^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'
 # Username (alphanumeric, underscore, 3-16 chars)
 username_regex='^[a-zA-Z0-9_]{3,16}$'
 
-# Password strength (8+ chars, upper, lower, digit, special)
-password_regex='^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*]).{8,}$'
+# Password strength pieces (8+ chars, upper, lower, digit, special)
+password_length_regex='^.{8,}$'
+password_lower_regex='[a-z]'
+password_upper_regex='[A-Z]'
+password_digit_regex='[0-9]'
+password_special_regex='[!@#$%^&*]'
 
 # File path (Unix)
 filepath_regex='^(/[^/ ]*)+/?$'
@@ -451,7 +455,7 @@ escape_regex() {
     local string="$1"
     # Escape all special regex characters
     # Use printf to handle the escaping
-    printf '%s\n' "$string" | sed 's/[.[\*^$()+?{|\\]/\\&/g'
+    printf '%s\n' "$string" | sed -E 's/[][(){}.^$?+*|\\]/\\&/g'
 }
 
 # Search for literal string containing special chars
@@ -459,8 +463,8 @@ search_literal="file.txt"
 escaped=$(escape_regex "$search_literal")
 echo "Escaped pattern: $escaped"
 
-# Now use in grep - will match literal "file.txt"
-grep "$escaped" filelist.txt
+# Now use in grep -E - will match literal "file.txt"
+grep -E "$escaped" filelist.txt
 
 # Alternative: Use grep -F for fixed strings (no regex)
 grep -F "file.txt" filelist.txt
@@ -516,7 +520,7 @@ done
 #!/bin/bash
 # Optimize regex for better performance
 
-# Bad: Greedy quantifiers can cause backtracking
+# Bad: Very broad wildcards can do unnecessary work
 # This pattern can be slow on large strings
 bad_pattern='.*foo.*bar.*'
 
@@ -531,7 +535,7 @@ better_pattern='[^f]*foo[^b]*bar'
 # Anchored patterns fail faster on non-matches
 anchored_pattern='^prefix.*suffix$'
 
-# Compile patterns once, use multiple times
+# Keep patterns in variables and reuse them
 # Store pattern in variable outside loops
 declare -r IP_PATTERN='^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
 
@@ -540,7 +544,7 @@ validate_ips() {
     local count=0
 
     while IFS= read -r line; do
-        # Pattern variable is reused, not recompiled
+        # Pattern variable is reused for readability and consistency
         if [[ $line =~ $IP_PATTERN ]]; then
             ((count++))
         fi

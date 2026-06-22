@@ -47,17 +47,11 @@ graph TB
 ### Docker Installation
 
 ```bash
-# Run Metabase with ClickHouse driver
+# Run Metabase with the bundled ClickHouse driver and the default H2 app database
 
 docker run -d \
   --name metabase \
   -p 3000:3000 \
-  -e MB_DB_TYPE=postgres \
-  -e MB_DB_DBNAME=metabase \
-  -e MB_DB_PORT=5432 \
-  -e MB_DB_USER=metabase \
-  -e MB_DB_PASS=password \
-  -e MB_DB_HOST=postgres \
   metabase/metabase
 ```
 
@@ -105,7 +99,7 @@ Database type: ClickHouse
 Display name: ClickHouse Analytics
 Host: clickhouse.example.com
 Port: 8443
-Database name: analytics
+Databases: analytics
 Username: metabase_user
 Password: ********
 Use secure connection: Yes
@@ -116,7 +110,7 @@ Use secure connection: Yes
 ```sql
 -- Create read-only user for Metabase
 CREATE USER metabase_user
-IDENTIFIED BY 'secure_password'
+IDENTIFIED WITH sha256_password BY 'secure_password'
 SETTINGS
     max_execution_time = 300,
     max_memory_usage = 10000000000,
@@ -129,6 +123,8 @@ GRANT SELECT ON analytics.* TO metabase_user;
 GRANT SELECT ON system.tables TO metabase_user;
 GRANT SELECT ON system.columns TO metabase_user;
 GRANT SELECT ON system.databases TO metabase_user;
+GRANT SELECT ON system.query_log TO metabase_user;
+GRANT SELECT ON system.processes TO metabase_user;
 ```
 
 ## Optimizing for Metabase Queries
@@ -138,28 +134,36 @@ GRANT SELECT ON system.databases TO metabase_user;
 ```sql
 -- Pre-aggregated table for dashboard performance
 CREATE TABLE daily_metrics_summary
-ENGINE = SummingMergeTree()
-ORDER BY (date, product_category)
-AS SELECT
-    toDate(timestamp) AS date,
-    product_category,
-    count() AS order_count,
-    sum(amount) AS total_revenue,
-    uniq(user_id) AS unique_customers
-FROM orders
-GROUP BY date, product_category;
+(
+    date Date,
+    product_category String,
+    order_count SimpleAggregateFunction(sum, UInt64),
+    total_revenue SimpleAggregateFunction(sum, Float64),
+    unique_customers AggregateFunction(uniq, String)
+)
+ENGINE = AggregatingMergeTree()
+ORDER BY (date, product_category);
 
--- Refresh daily
+-- Incrementally maintain the summary as new rows are inserted
 CREATE MATERIALIZED VIEW daily_metrics_mv
 TO daily_metrics_summary
 AS SELECT
     toDate(timestamp) AS date,
     product_category,
     count() AS order_count,
-    sum(amount) AS total_revenue,
-    uniq(user_id) AS unique_customers
+    sum(toFloat64(amount)) AS total_revenue,
+    uniqState(toString(user_id)) AS unique_customers
 FROM orders
-WHERE timestamp > now() - INTERVAL 1 DAY
+GROUP BY date, product_category;
+
+-- Query the summary table
+SELECT
+    date,
+    product_category,
+    sum(order_count) AS order_count,
+    sum(total_revenue) AS total_revenue,
+    uniqMerge(unique_customers) AS unique_customers
+FROM daily_metrics_summary
 GROUP BY date, product_category;
 ```
 
@@ -259,13 +263,10 @@ LIMIT 20;
 
 ### Metabase Cache Settings
 
-```json
-{
-  "cache-ttl": 3600,
-  "cache-max-kb": 1000000,
-  "query-caching-min-ttl": 60,
-  "query-caching-ttl-ratio": 10
-}
+```yaml
+settings:
+  query-caching-max-kb: 1000000
+  query-caching-max-ttl: 3600
 ```
 
 ### ClickHouse Query Cache
@@ -278,11 +279,11 @@ SET query_cache_min_query_runs = 2;
 
 -- Check cache effectiveness
 SELECT
-    query_cache_hits,
-    query_cache_misses,
-    round(query_cache_hits / (query_cache_hits + query_cache_misses) * 100, 2) AS hit_rate
-FROM system.metrics
-WHERE metric IN ('QueryCacheHits', 'QueryCacheMisses');
+    sumIf(value, event = 'QueryCacheHits') AS query_cache_hits,
+    sumIf(value, event = 'QueryCacheMisses') AS query_cache_misses,
+    round(query_cache_hits / nullIf(query_cache_hits + query_cache_misses, 0) * 100, 2) AS hit_rate
+FROM system.events
+WHERE event IN ('QueryCacheHits', 'QueryCacheMisses');
 ```
 
 ## Access Control
@@ -359,7 +360,7 @@ FROM system.processes
 WHERE user = 'metabase_user'
   AND elapsed > 30;
 
--- Kill stuck queries
+-- Kill stuck queries as an administrator
 KILL QUERY WHERE user = 'metabase_user' AND elapsed > 300;
 ```
 

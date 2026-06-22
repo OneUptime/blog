@@ -407,7 +407,7 @@ func applyRule(fieldName string, field reflect.Value, rule string) error {
 }
 
 func isZero(v reflect.Value) bool {
-    return v.Interface() == reflect.Zero(v.Type()).Interface()
+    return v.IsZero()
 }
 
 type User struct {

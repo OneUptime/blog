@@ -10,7 +10,7 @@ Description: Learn how to build a Consul client in Python for service discovery,
 
 > Consul is the backbone of service discovery in many distributed systems. Building a proper client in Python means understanding not just the API, but also how to handle failures gracefully and keep your services connected.
 
-Service discovery becomes essential when you move from a monolith to microservices. Instead of hardcoding service addresses, you register services with Consul and let it handle the routing. This guide shows you how to build a Python client that does this reliably.
+Service discovery becomes essential when you move from a monolith to microservices. Instead of hardcoding service addresses, you register services with Consul and let it handle service lookups. This guide shows you how to build a Python client that does this reliably.
 
 ---
 
@@ -21,7 +21,7 @@ Consul provides several key features:
 | Feature | Description | Use Case |
 |---------|-------------|----------|
 | **Service Discovery** | Find healthy service instances | Load balancing |
-| **Key-Value Store** | Distributed configuration | Feature flags, secrets |
+| **Key-Value Store** | Distributed configuration | Feature flags, app settings |
 | **Health Checks** | Monitor service health | Auto-deregistration |
 | **Service Mesh** | Secure service communication | mTLS, authorization |
 
@@ -198,8 +198,9 @@ class ConsulClient:
             List of ServiceInstance objects
         """
         # Build query parameters
+        filter_expr = f"{json.dumps(tag)} in Service.Tags" if tag else None
         params = self._build_params(
-            tag=tag,
+            filter=filter_expr,
             passing="true" if passing_only else None
         )
 
@@ -345,8 +346,9 @@ For async applications, here is an async version of the client using httpx's asy
 # async_consul_client.py
 # Async Python client for Consul
 import httpx
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import asyncio
+import json
 
 class AsyncConsulClient:
     """
@@ -365,6 +367,13 @@ class AsyncConsulClient:
         self._headers = {"Content-Type": "application/json"}
         if config.token:
             self._headers["X-Consul-Token"] = config.token
+
+    def _build_params(self, **kwargs) -> Dict[str, Any]:
+        """Build query parameters with datacenter if configured"""
+        params = {k: v for k, v in kwargs.items() if v is not None}
+        if self.config.datacenter:
+            params["dc"] = self.config.datacenter
+        return params
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -413,13 +422,26 @@ class AsyncConsulClient:
 
         return response.status_code == 200
 
+    async def deregister_service(self, service_id: str) -> bool:
+        """Deregister a service from Consul (async)"""
+        response = await self._client.put(
+            f"/v1/agent/service/deregister/{service_id}",
+            headers=self._headers
+        )
+        return response.status_code == 200
+
     async def get_service(
         self,
         name: str,
+        tag: Optional[str] = None,
         passing_only: bool = True
     ) -> List[ServiceInstance]:
         """Get service instances (async)"""
-        params = {"passing": "true"} if passing_only else {}
+        filter_expr = f"{json.dumps(tag)} in Service.Tags" if tag else None
+        params = self._build_params(
+            filter=filter_expr,
+            passing="true" if passing_only else None
+        )
 
         response = await self._client.get(
             f"/v1/health/service/{name}",
@@ -433,6 +455,7 @@ class AsyncConsulClient:
         instances = []
         for entry in response.json():
             service = entry["Service"]
+            checks = entry["Checks"]
             instances.append(ServiceInstance(
                 id=service["ID"],
                 name=service["Service"],
@@ -440,10 +463,21 @@ class AsyncConsulClient:
                 port=service["Port"],
                 tags=service.get("Tags", []),
                 meta=service.get("Meta", {}),
-                health=HealthStatus.PASSING  # Already filtered to passing
+                health=self._aggregate_health(checks)
             ))
 
         return instances
+
+    def _aggregate_health(self, checks: List[Dict]) -> HealthStatus:
+        """Determine overall health from multiple checks"""
+        statuses = [check["Status"] for check in checks]
+
+        if "critical" in statuses:
+            return HealthStatus.CRITICAL
+        elif "warning" in statuses:
+            return HealthStatus.WARNING
+        else:
+            return HealthStatus.PASSING
 
     async def watch_service(
         self,
@@ -605,7 +639,7 @@ class LoadBalancer:
 
 ---
 
-## Service Mesh Integration
+## FastAPI Integration
 
 Here is how to integrate Consul service discovery with your FastAPI application.
 
@@ -614,6 +648,7 @@ Here is how to integrate Consul service discovery with your FastAPI application.
 # FastAPI integration with Consul service discovery
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
+from typing import Optional
 import socket
 import os
 

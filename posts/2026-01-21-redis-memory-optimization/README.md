@@ -76,9 +76,9 @@ def analyze_memory(host, password, sample_size=10000):
             except:
                 continue
 
-            # Extract pattern (replace IDs with placeholder)
-            pattern = re.sub(r'\d+', '{id}', key.decode())
-            pattern = re.sub(r'[a-f0-9-]{36}', '{uuid}', pattern)
+            # Extract pattern (replace UUIDs and IDs with placeholders)
+            pattern = re.sub(r'[a-f0-9-]{36}', '{uuid}', key.decode())
+            pattern = re.sub(r'\d+', '{id}', pattern)
 
             patterns[pattern]['count'] += 1
             patterns[pattern]['memory'] += memory or 0
@@ -124,8 +124,8 @@ redis-cli OBJECT ENCODING mykey
 # - int: Integer as string
 # - embstr: Short string (< 44 bytes)
 # - raw: Long string
-# - ziplist: Small lists/hashes/sorted sets
-# - listpack: Replacement for ziplist (Redis 7+)
+# - ziplist: Small lists/hashes/sorted sets in Redis <= 6.2
+# - listpack: Compact encoding for small lists/hashes/sorted sets in Redis 7+
 # - hashtable: Large hashes
 # - skiplist: Large sorted sets
 # - intset: Small sets of integers
@@ -136,9 +136,9 @@ redis-cli OBJECT ENCODING mykey
 ```bash
 # redis.conf - Optimize for memory
 
-# Hashes: Use ziplist for small hashes
-hash-max-ziplist-entries 512    # Max entries before hashtable
-hash-max-ziplist-value 64       # Max value size in ziplist
+# Hashes: Use listpack for small hashes (Redis 7+)
+hash-max-listpack-entries 512   # Max entries before hashtable
+hash-max-listpack-value 64      # Max value size in listpack
 
 # Lists: Use listpack for small lists (Redis 7+)
 list-max-listpack-size -2       # -2 = 8kb per node
@@ -147,10 +147,13 @@ list-compress-depth 1           # Compress all but head/tail
 # Sets: Use intset for integer sets
 set-max-intset-entries 512      # Max entries for intset
 set-max-listpack-entries 128    # For non-integer small sets
+set-max-listpack-value 64       # Max value size for listpack sets
 
-# Sorted Sets: Use ziplist for small sorted sets
-zset-max-ziplist-entries 128    # Max entries before skiplist
-zset-max-ziplist-value 64       # Max value size
+# Sorted Sets: Use listpack for small sorted sets (Redis 7+)
+zset-max-listpack-entries 128   # Max entries before skiplist
+zset-max-listpack-value 64      # Max value size
+
+# Redis <= 6.2 used hash-max-ziplist-* and zset-max-ziplist-* instead.
 ```
 
 ### String Optimization
@@ -167,7 +170,7 @@ user_data = {"name": "John", "email": "john@example.com", "age": 30}
 r.set("user:1000", json.dumps(user_data))  # ~70 bytes
 
 # Better: Use hash for structured data
-r.hset("user:1000", mapping=user_data)  # Uses ziplist encoding
+r.hset("user:1000", mapping=user_data)  # Uses compact listpack encoding in Redis 7+
 
 # Best for many small objects: Pack into single hash
 # Store multiple users in one hash
@@ -189,7 +192,7 @@ for i in range(100000):
     r.set(f"object:{i}", f"value-{i}")
 # Each key has ~50+ bytes overhead
 
-# Good: Pack into hashes (ziplist encoding)
+# Good: Pack into hashes (compact listpack encoding in Redis 7+)
 # Group objects into buckets
 def get_bucket(object_id, bucket_size=1000):
     return object_id // bucket_size
@@ -197,7 +200,7 @@ def get_bucket(object_id, bucket_size=1000):
 for i in range(100000):
     bucket = get_bucket(i)
     r.hset(f"objects:{bucket}", str(i), f"value-{i}")
-# Uses ziplist encoding, much lower overhead
+# Uses compact encoding, much lower overhead
 
 # Check memory savings
 print(f"Individual keys: estimate high overhead")
@@ -260,7 +263,7 @@ maxmemory-policy allkeys-lru  # Recommended for cache
 lfu-log-factor 10    # How slowly counter decays (higher = slower)
 lfu-decay-time 1     # Minutes between counter decay
 
-# Higher lfu-log-factor = more accurate frequency tracking
+# Higher lfu-log-factor = slower counter growth and better distinction at high hit counts,
 # but slower to adapt to changing access patterns
 ```
 
@@ -507,6 +510,7 @@ import time
 redis_memory_used = Gauge('redis_memory_used_bytes', 'Redis used memory')
 redis_memory_rss = Gauge('redis_memory_rss_bytes', 'Redis RSS memory')
 redis_memory_peak = Gauge('redis_memory_peak_bytes', 'Redis peak memory')
+redis_memory_max = Gauge('redis_memory_max_bytes', 'Redis maxmemory setting')
 redis_fragmentation = Gauge('redis_memory_fragmentation_ratio', 'Memory fragmentation')
 redis_keys = Gauge('redis_keys_total', 'Total keys')
 
@@ -520,6 +524,7 @@ def monitor_memory(host, password):
             redis_memory_used.set(info['used_memory'])
             redis_memory_rss.set(info['used_memory_rss'])
             redis_memory_peak.set(info['used_memory_peak'])
+            redis_memory_max.set(info['maxmemory'])
             redis_fragmentation.set(info['mem_fragmentation_ratio'])
 
             # Count keys
@@ -617,7 +622,7 @@ Optimizing Redis memory requires:
 - **Monitoring**: Track memory usage and fragmentation
 
 Key takeaways:
-- Pack small objects into hashes for ziplist encoding
+- Pack small objects into hashes for compact encoding
 - Always set TTLs on cache data
 - Monitor fragmentation and enable active defrag
 - Choose appropriate eviction policy for your use case

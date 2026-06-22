@@ -72,7 +72,7 @@ logfile = /var/log/pgbouncer/pgbouncer.log
 pidfile = /var/run/pgbouncer/pgbouncer.pid
 
 # Admin access
-admin_users = postgres
+admin_users = admin
 stats_users = monitoring
 ```
 
@@ -83,9 +83,10 @@ stats_users = monitoring
 # Generate password hash:
 # psql -c "SELECT concat('\"', usename, '\" \"', passwd, '\"') FROM pg_shadow"
 
-"myapp" "SCRAM-SHA-256$4096:salt$hash"
-"readonly" "SCRAM-SHA-256$4096:salt$hash"
-"admin" "SCRAM-SHA-256$4096:salt$hash"
+"myapp" "SCRAM-SHA-256$4096:salt$storedkey:serverkey"
+"readonly" "SCRAM-SHA-256$4096:salt$storedkey:serverkey"
+"admin" "SCRAM-SHA-256$4096:salt$storedkey:serverkey"
+"monitoring" "SCRAM-SHA-256$4096:salt$storedkey:serverkey"
 ```
 
 ### Generate Password Hash
@@ -132,19 +133,21 @@ pool_mode = statement
 ```
 
 - Best for: Simple query workloads
-- Limitations: No transactions, no prepared statements
+- Limitations: No multi-statement transactions, SQL-level prepared statements are not compatible
 
 ### Feature Compatibility
 
 | Feature | Session | Transaction | Statement |
 |---------|---------|-------------|-----------|
-| Prepared statements | Yes | No* | No |
+| Protocol-level prepared statements | Yes | Yes* | Yes* |
+| SQL PREPARE/DEALLOCATE | Yes | No | No |
 | SET commands | Yes | No | No |
-| LISTEN/NOTIFY | Yes | No | No |
-| Advisory locks | Yes | No | No |
-| Transactions | Yes | Yes | No |
+| LISTEN | Yes | No | No |
+| NOTIFY | Yes | Yes | No |
+| Session-level advisory locks | Yes | No | No |
+| Transactions | Yes | Yes | Single-statement only |
 
-*Transaction-mode prepared statements require special handling
+*Transaction and statement-mode protocol-level prepared statements require `max_prepared_statements` to be set to a non-zero value.
 
 ## Pool Sizing
 
@@ -174,10 +177,10 @@ analytics = host=localhost dbname=analytics pool_size=10
 ### Calculating Pool Size
 
 ```text
-Required pool size = (Peak concurrent transactions) / (Average transaction time in seconds)
+Required pool size = Peak transaction rate per second * Average transaction time in seconds
 
 Example:
-- 500 concurrent requests
+- 500 requests per second
 - Average query time: 20ms (0.02s)
 - Pool size: 500 * 0.02 = 10 (add buffer: 15-20)
 ```
@@ -211,7 +214,7 @@ client_login_timeout = 60
 # Trust (no authentication)
 auth_type = trust
 
-# MD5 password (deprecated)
+# MD5 password (PostgreSQL MD5 password hashes are deprecated)
 auth_type = md5
 
 # SCRAM-SHA-256 (recommended)
@@ -230,12 +233,12 @@ auth_hba_file = /etc/pgbouncer/pg_hba.conf
 ```ini
 # Query PostgreSQL for authentication
 auth_type = scram-sha-256
-auth_query = SELECT usename, passwd FROM pg_shadow WHERE usename=$1
 auth_user = pgbouncer_auth
+auth_query = SELECT rolname, CASE WHEN rolvaliduntil < now() THEN NULL ELSE rolpassword END FROM pg_authid WHERE rolname=$1 AND rolcanlogin
 
-# Requires user in PostgreSQL:
+# Requires an auth user in PostgreSQL and password entry in userlist.txt:
 # CREATE USER pgbouncer_auth;
-# GRANT SELECT ON pg_shadow TO pgbouncer_auth;
+# Prefer a SECURITY DEFINER function for non-superuser access to pg_authid.
 ```
 
 ### TLS Configuration
@@ -313,7 +316,7 @@ SHOW POOLS;
 
 ```bash
 # Use pgbouncer_exporter
-pgbouncer_exporter --pgBouncer.connectionString="postgres://stats:pass@localhost:6432/pgbouncer"
+pgbouncer_exporter --pgBouncer.connectionString="postgres://monitoring:pass@localhost:6432/pgbouncer"
 ```
 
 ## High Availability

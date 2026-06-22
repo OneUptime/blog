@@ -81,21 +81,22 @@ async function waitForDatabase(maxRetries = 30, delay = 1000) {
     database: process.env.DB_NAME || 'test_db'
   });
 
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const client = await pool.connect();
-      await client.query('SELECT 1');
-      client.release();
-      console.log('Database is ready');
-      await pool.end();
-      return;
-    } catch (error) {
-      console.log(`Waiting for database... (${i + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+  try {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await pool.query('SELECT 1');
+        console.log('Database is ready');
+        return;
+      } catch (error) {
+        console.log(`Waiting for database... (${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  }
 
-  throw new Error('Database not available after maximum retries');
+    throw new Error('Database not available after maximum retries');
+  } finally {
+    await pool.end();
+  }
 }
 
 module.exports = { waitForDatabase };
@@ -112,6 +113,7 @@ module.exports = {
 
 // test/setup/globalSetup.js
 const { waitForDatabase } = require('./waitForDatabase');
+const { runMigrations } = require('./runMigrations');
 
 module.exports = async () => {
   await waitForDatabase();
@@ -250,9 +252,6 @@ describe('User Repository', () => {
 async function truncateAllTables(pool) {
   const client = await pool.connect();
   try {
-    // Disable foreign key checks temporarily
-    await client.query('SET session_replication_role = replica');
-
     // Get all table names
     const result = await client.query(`
       SELECT tablename FROM pg_tables
@@ -265,9 +264,6 @@ async function truncateAllTables(pool) {
     for (const row of result.rows) {
       await client.query(`TRUNCATE TABLE "${row.tablename}" CASCADE`);
     }
-
-    // Re-enable foreign key checks
-    await client.query('SET session_replication_role = DEFAULT');
   } finally {
     client.release();
   }
@@ -289,6 +285,10 @@ module.exports = { truncateAllTables };
 // test/fixtures/loader.js
 const path = require('path');
 const fs = require('fs');
+
+function quoteIdentifier(identifier) {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
 
 class FixtureLoader {
   constructor(pool) {
@@ -313,7 +313,7 @@ class FixtureLoader {
         const placeholders = values.map((_, i) => `$${i + 1}`);
 
         await client.query(
-          `INSERT INTO ${name} (${columns.join(', ')})
+          `INSERT INTO ${quoteIdentifier(name)} (${columns.map(quoteIdentifier).join(', ')})
            VALUES (${placeholders.join(', ')})
            ON CONFLICT DO NOTHING`,
           values
@@ -335,7 +335,7 @@ class FixtureLoader {
     const client = await this.pool.connect();
     try {
       for (const table of [...this.loadOrder].reverse()) {
-        await client.query(`TRUNCATE TABLE ${table} CASCADE`);
+        await client.query(`TRUNCATE TABLE ${quoteIdentifier(table)} CASCADE`);
       }
     } finally {
       client.release();
@@ -398,8 +398,8 @@ module.exports = {
   },
 
   test: {
-    client: process.env.USE_SQLITE ? 'sqlite3' : 'postgresql',
-    connection: process.env.USE_SQLITE
+    client: process.env.USE_SQLITE === 'true' ? 'sqlite3' : 'postgresql',
+    connection: process.env.USE_SQLITE === 'true'
       ? { filename: ':memory:' }
       : {
           host: process.env.DB_HOST || 'localhost',
@@ -408,7 +408,7 @@ module.exports = {
     useNullAsDefault: process.env.USE_SQLITE === 'true',
 
     // SQLite-specific settings
-    pool: process.env.USE_SQLITE
+    pool: process.env.USE_SQLITE === 'true'
       ? { min: 1, max: 1 }  // SQLite needs single connection for :memory:
       : { min: 2, max: 10 }
   }
@@ -424,7 +424,6 @@ module.exports = {
 ```yaml
 # docker-compose.test.yml
 
-version: '3.8'
 services:
   test-db:
     image: postgres:15
@@ -447,10 +446,10 @@ services:
 ```json
 {
   "scripts": {
-    "test:db:start": "docker-compose -f docker-compose.test.yml up -d",
-    "test:db:stop": "docker-compose -f docker-compose.test.yml down",
+    "test:db:start": "docker compose -f docker-compose.test.yml up -d",
+    "test:db:stop": "docker compose -f docker-compose.test.yml down",
     "test:db:wait": "node scripts/wait-for-db.js",
-    "test": "npm run test:db:start && npm run test:db:wait && jest && npm run test:db:stop"
+    "test": "npm run test:db:start && npm run test:db:wait && jest; status=$?; npm run test:db:stop; exit $status"
   }
 }
 ```
@@ -461,10 +460,8 @@ services:
 // test/setup/testcontainers.js
 const { PostgreSqlContainer } = require('@testcontainers/postgresql');
 
-let container;
-
 async function startContainer() {
-  container = await new PostgreSqlContainer('postgres:15')
+  const container = await new PostgreSqlContainer('postgres:15')
     .withDatabase('test_db')
     .withUsername('test')
     .withPassword('test')
@@ -480,7 +477,7 @@ async function startContainer() {
   return container;
 }
 
-async function stopContainer() {
+async function stopContainer(container) {
   if (container) {
     await container.stop();
   }
@@ -502,7 +499,7 @@ const { startContainer } = require('./testcontainers');
 const { runMigrations } = require('./runMigrations');
 
 module.exports = async () => {
-  await startContainer();
+  globalThis.__DB_CONTAINER__ = await startContainer();
   await runMigrations();
 };
 
@@ -512,7 +509,7 @@ const { closePool } = require('../../src/database/pool');
 
 module.exports = async () => {
   await closePool();
-  await stopContainer();
+  await stopContainer(globalThis.__DB_CONTAINER__);
 };
 ```
 
@@ -544,20 +541,26 @@ flowchart LR
 // jest.config.js
 module.exports = {
   // Run test files in parallel
-  maxWorkers: 4,
+  maxWorkers: Number(process.env.JEST_WORKERS || 4),
 
-  // Each worker gets a unique database
-  globalSetup: './test/setup/parallelSetup.js'
+  // Create worker databases once, then select one in each worker
+  globalSetup: './test/setup/parallelSetup.js',
+  setupFiles: ['./test/setup/workerDatabase.js']
 };
 
 // test/setup/parallelSetup.js
 const { Pool } = require('pg');
 
-module.exports = async () => {
-  const workerId = process.env.JEST_WORKER_ID || '1';
-  const dbName = `test_db_${workerId}`;
+const workerCount = Number(process.env.JEST_WORKERS || 4);
 
-  // Create database for this worker
+function quoteIdentifier(identifier) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(identifier)) {
+    throw new Error(`Unsafe database name: ${identifier}`);
+  }
+  return `"${identifier}"`;
+}
+
+module.exports = async () => {
   const adminPool = new Pool({
     host: process.env.DB_HOST,
     database: 'postgres',  // Connect to default DB
@@ -566,17 +569,30 @@ module.exports = async () => {
   });
 
   try {
-    // Drop and recreate database
-    await adminPool.query(`DROP DATABASE IF EXISTS ${dbName}`);
-    await adminPool.query(`CREATE DATABASE ${dbName}`);
+    for (let workerId = 1; workerId <= workerCount; workerId++) {
+      const dbName = quoteIdentifier(`test_db_${workerId}`);
+
+      // Drop and recreate database
+      await adminPool.query(`DROP DATABASE IF EXISTS ${dbName}`);
+      await adminPool.query(`CREATE DATABASE ${dbName}`);
+    }
   } finally {
     await adminPool.end();
   }
-
-  // Set worker-specific database
-  process.env.DB_NAME = dbName;
 };
+
+// test/setup/workerDatabase.js
+const workerId = process.env.JEST_WORKER_ID || '1';
+const dbName = `test_db_${workerId}`;
+
+if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
+  throw new Error(`Unsafe database name: ${dbName}`);
+}
+
+process.env.DB_NAME = dbName;
 ```
+
+Run migrations in each worker database before tests use it, or create these databases from a migrated template database.
 
 **Fix: Use database templates for faster setup**
 
@@ -601,6 +617,13 @@ CREATE DATABASE test_db_2 TEMPLATE test_template;
 async function createDatabaseFromTemplate(dbName, templateName = 'test_template') {
   const adminPool = new Pool({ database: 'postgres' });
 
+  function quoteIdentifier(identifier) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(identifier)) {
+      throw new Error(`Unsafe database name: ${identifier}`);
+    }
+    return `"${identifier}"`;
+  }
+
   try {
     // Terminate connections to template
     await adminPool.query(`
@@ -609,8 +632,10 @@ async function createDatabaseFromTemplate(dbName, templateName = 'test_template'
       WHERE datname = $1 AND pid <> pg_backend_pid()
     `, [templateName]);
 
-    await adminPool.query(`DROP DATABASE IF EXISTS ${dbName}`);
-    await adminPool.query(`CREATE DATABASE ${dbName} TEMPLATE ${templateName}`);
+    await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(dbName)}`);
+    await adminPool.query(
+      `CREATE DATABASE ${quoteIdentifier(dbName)} TEMPLATE ${quoteIdentifier(templateName)}`
+    );
   } finally {
     await adminPool.end();
   }
@@ -640,7 +665,7 @@ async function setupPrismaTest() {
   process.env.DATABASE_URL = testUrl;
 
   // Push schema to test database
-  execSync('npx prisma db push --skip-generate', {
+  execSync('npx prisma db push', {
     env: { ...process.env, DATABASE_URL: testUrl }
   });
 
@@ -650,10 +675,10 @@ async function setupPrismaTest() {
 
 async function cleanupPrismaTest() {
   // Delete all data in reverse dependency order
-  const tables = ['OrderItem', 'Order', 'Product', 'User'];
+  const models = ['orderItem', 'order', 'product', 'user'];
 
-  for (const table of tables) {
-    await prisma[table.toLowerCase()].deleteMany();
+  for (const model of models) {
+    await prisma[model].deleteMany();
   }
 }
 

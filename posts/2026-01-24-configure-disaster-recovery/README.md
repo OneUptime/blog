@@ -96,7 +96,7 @@ RETENTION_DAYS=30
 
 # Timestamp for this backup
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql.gz"
+BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.dump"
 
 # Create backup directory if needed
 mkdir -p "${BACKUP_DIR}"
@@ -110,8 +110,7 @@ pg_dump -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" \
     --file="${BACKUP_FILE}"
 
 # Verify backup integrity
-pg_restore --list "${BACKUP_FILE}" > /dev/null 2>&1
-if [ $? -eq 0 ]; then
+if pg_restore --list "${BACKUP_FILE}" > /dev/null 2>&1; then
     echo "[$(date)] Backup verified successfully"
 else
     echo "[$(date)] ERROR: Backup verification failed!"
@@ -131,7 +130,7 @@ aws s3 cp "${BACKUP_FILE}.sha256" "${S3_BUCKET}/${DB_NAME}/"
 echo "[$(date)] Backup uploaded to S3"
 
 # Cleanup old local backups
-find "${BACKUP_DIR}" -name "*.sql.gz" -mtime +7 -delete
+find "${BACKUP_DIR}" -name "*.dump" -mtime +7 -delete
 
 # Cleanup old S3 backups (keep 30 days)
 aws s3 ls "${S3_BUCKET}/${DB_NAME}/" | while read -r line; do
@@ -184,8 +183,8 @@ resource "aws_route53_health_check" "primary" {
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
-  failure_threshold = "3"
-  request_interval  = "10"
+  failure_threshold = 3
+  request_interval  = 10
 
   tags = {
     Name = "primary-health-check"
@@ -197,8 +196,8 @@ resource "aws_route53_health_check" "secondary" {
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
-  failure_threshold = "3"
-  request_interval  = "10"
+  failure_threshold = 3
+  request_interval  = 10
 
   tags = {
     Name = "secondary-health-check"
@@ -246,7 +245,7 @@ resource "aws_route53_record" "api_secondary" {
 
 ## Database Replication Setup
 
-Configure PostgreSQL streaming replication for zero-RPO recovery:
+Configure PostgreSQL streaming replication for low-RPO recovery:
 
 ```yaml
 # primary-postgresql.conf
@@ -261,7 +260,7 @@ wal_keep_size = 1GB
 archive_mode = on
 archive_command = 'aws s3 cp %p s3://company-wal-archive/%f'
 
-# Synchronous replication for zero data loss (optional, adds latency)
+# Synchronous replication can provide zero data loss when the standby is available (optional, adds latency)
 # synchronous_standby_names = 'replica1'
 ```
 
@@ -271,6 +270,9 @@ archive_command = 'aws s3 cp %p s3://company-wal-archive/%f'
 
 # This server is a standby
 hot_standby = on
+
+# For PostgreSQL 12+, create standby.signal in the data directory
+# touch /var/lib/postgresql/data/standby.signal
 
 # Connection to primary
 primary_conninfo = 'host=primary.db.internal port=5432 user=replication password=xxx'
@@ -292,6 +294,7 @@ import boto3
 import subprocess
 import time
 import logging
+import argparse
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -304,10 +307,10 @@ class DisasterRecoveryFailover:
         self.rds = boto3.client('rds')
         self.sns = boto3.client('sns')
 
-    def execute_failover(self, reason):
+    def execute_failover(self, reason, component='all'):
         """Execute full failover procedure"""
 
-        logger.info(f"Starting failover. Reason: {reason}")
+        logger.info(f"Starting failover. Component: {component}. Reason: {reason}")
         start_time = datetime.now()
 
         try:
@@ -319,13 +322,16 @@ class DisasterRecoveryFailover:
                 raise Exception("DR region health check failed")
 
             # Step 3: Promote database replica
-            self._promote_database()
+            if component in ('all', 'database'):
+                self._promote_database()
 
             # Step 4: Update DNS to point to DR region
-            self._update_dns()
+            if component in ('all', 'dns'):
+                self._update_dns()
 
             # Step 5: Verify failover
-            self._verify_failover()
+            if component in ('all', 'dns'):
+                self._verify_failover()
 
             # Step 6: Notify completion
             duration = (datetime.now() - start_time).total_seconds()
@@ -403,14 +409,7 @@ class DisasterRecoveryFailover:
 
         logger.info("Updating DNS records...")
 
-        # Get current records
-        response = self.route53.list_resource_record_sets(
-            HostedZoneId=self.config['hosted_zone_id'],
-            StartRecordName=self.config['domain'],
-            MaxItems='1'
-        )
-
-        # Update to DR endpoint
+        # Update the primary failover record to point to the DR endpoint
         self.route53.change_resource_record_sets(
             HostedZoneId=self.config['hosted_zone_id'],
             ChangeBatch={
@@ -420,6 +419,8 @@ class DisasterRecoveryFailover:
                     'ResourceRecordSet': {
                         'Name': self.config['domain'],
                         'Type': 'A',
+                        'SetIdentifier': 'primary',
+                        'Failover': 'PRIMARY',
                         'AliasTarget': {
                             'HostedZoneId': self.config['dr_alb_zone_id'],
                             'DNSName': self.config['dr_alb_dns'],
@@ -477,11 +478,13 @@ config = {
 }
 
 if __name__ == '__main__':
-    import sys
-    reason = sys.argv[1] if len(sys.argv) > 1 else "Manual failover"
+    parser = argparse.ArgumentParser(description='Execute disaster recovery failover')
+    parser.add_argument('--component', choices=['all', 'database', 'dns'], default='all')
+    parser.add_argument('--reason', default='Manual failover')
+    args = parser.parse_args()
 
     dr = DisasterRecoveryFailover(config)
-    dr.execute_failover(reason)
+    dr.execute_failover(args.reason, args.component)
 ```
 
 ## DR Testing Schedule
@@ -594,33 +597,33 @@ Do NOT activate DR for:
 
 ### 1. Database Failover (10 min)
 
-```bash
+~~~bash
 ## Promote replica to primary
 ./failover.py --component database --reason "Primary region failure"
 
 ## Verify database is accepting writes
 psql -h dr.db.company.internal -c "INSERT INTO health_check VALUES (now());"
-```bash
+~~~
 
 ### 2. Application Failover (5 min)
 
-```bash
+~~~bash
 ## Scale up DR application servers
 kubectl --context=dr-cluster scale deployment/api --replicas=10
 
 ## Verify applications are healthy
 curl -f https://dr.api.company.com/health
-```bash
+~~~
 
 ### 3. DNS Failover (5 min)
 
-```bash
+~~~bash
 ## Update DNS to point to DR
 ./failover.py --component dns
 
 ## Verify DNS propagation
 dig api.company.com
-```bash
+~~~
 
 ### 4. Verification (5 min)
 
@@ -644,7 +647,7 @@ Only failback when:
 - Data has been synchronized
 - Maintenance window is scheduled
 - Team is prepared for potential issues
-```text
+```
 
 ## Best Practices
 
@@ -660,6 +663,3 @@ Only failback when:
 ---
 
 Disaster recovery is insurance you hope to never use. But when you need it, having a well-configured, well-tested DR plan is the difference between a bad day and a business-ending catastrophe. Invest the time now to configure it properly, and test it regularly.
-
-```bash
-```

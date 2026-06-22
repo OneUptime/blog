@@ -81,15 +81,15 @@ helm upgrade my-app bitnami/nginx -f production-values.yaml
 
 ## Safe Upgrade Strategies
 
-### Atomic Upgrades
+### Rollback-on-Failure Upgrades
 
-The `--atomic` flag automatically rolls back if the upgrade fails. This is essential for production.
+The `--rollback-on-failure` flag automatically rolls back if the upgrade fails. This is essential for production.
 
 ```bash
-# Atomic upgrade: if pods don't become healthy, rollback automatically
+# Rollback-on-failure upgrade: if pods don't become healthy, rollback automatically
 helm upgrade my-app bitnami/nginx \
   --namespace production \
-  --atomic \
+  --rollback-on-failure \
   --timeout 10m \
   -f production-values.yaml
 ```
@@ -105,10 +105,10 @@ helm upgrade my-app bitnami/nginx \
   --timeout 5m \
   -f values.yaml
 
-# Combine with atomic for production safety
+# Combine with rollback-on-failure for production safety
 helm upgrade my-app bitnami/nginx \
   --wait \
-  --atomic \
+  --rollback-on-failure \
   --timeout 10m \
   -f values.yaml
 ```
@@ -194,10 +194,10 @@ helm rollback my-app 2 \
   --wait \
   --timeout 5m
 
-# Force resource updates during rollback (recreate if needed)
-helm rollback my-app 2 --force
+# Force resource updates during rollback (replace if needed)
+helm rollback my-app 2 --force-replace
 
-# Clean up pending operations if rollback is stuck
+# Clean up newly created resources if rollback fails
 helm rollback my-app 2 --cleanup-on-fail
 ```
 
@@ -303,8 +303,9 @@ Sometimes releases get stuck in pending states. Here's how to recover.
 # Check for secret storage issues
 kubectl get secrets -n production | grep my-app
 
-# Force the upgrade to overwrite the stuck state
-helm upgrade my-app bitnami/nginx --force -f values.yaml
+# Roll back to a known-good revision, then retry the upgrade
+helm history my-app -n production
+helm rollback my-app 2 -n production --wait
 
 # As a last resort, manually fix the release secret
 # WARNING: This is advanced - understand what you're doing
@@ -343,13 +344,13 @@ kubectl get secrets -n production | grep sh.helm.release
 
 | Flag | Description | Use Case |
 | --- | --- | --- |
-| `--atomic` | Rollback on failure | Production safety |
+| `--rollback-on-failure` | Rollback on failure | Production safety |
 | `--wait` | Wait for resources ready | Ensure deployment health |
 | `--timeout` | Max wait time | Prevent infinite hangs |
 | `--dry-run` | Preview without applying | Validate changes |
 | `--reuse-values` | Keep previous values | Quick single-value changes |
 | `--reset-values` | Start from defaults | Clean slate upgrades |
-| `--force` | Force resource updates | Recover stuck releases |
+| `--force-replace` | Force resource updates by replacement | Recover immutable-field failures |
 | `--cleanup-on-fail` | Remove new resources on fail | Clean failure recovery |
 | `--history-max` | Limit revision history | Reduce secret bloat |
 | `--version` | Target chart version | Pin specific versions |
@@ -360,10 +361,10 @@ kubectl get secrets -n production | grep sh.helm.release
 | --- | --- | --- |
 | `another operation in progress` | Concurrent Helm operation | Wait or fix stuck release |
 | `UPGRADE FAILED: timed out` | Pods not becoming ready | Increase timeout, check pod logs |
-| `cannot patch` immutable field | Trying to change immutable spec | Use `--force` or recreate resource |
+| `cannot patch` immutable field | Trying to change immutable spec | Use `--force-replace` or recreate resource |
 | Rollback creates new issues | Old config incompatible with current state | Re-upgrade with fixed values instead |
 | History growing too large | Default keeps 10 revisions | Set `--history-max` lower |
 
 ## Wrap-up
 
-Helm's upgrade and rollback capabilities make it safe to iterate on production deployments. Always use `--atomic` and `--wait` in production, preview changes with `--dry-run`, and keep your values files in version control. When problems occur, the revision history gives you a clear path back to a working state. Master these workflows and you'll deploy with confidence, knowing you can always recover.
+Helm's upgrade and rollback capabilities make it safe to iterate on production deployments. Always use `--rollback-on-failure` and `--wait` in production, preview changes with `--dry-run`, and keep your values files in version control. When problems occur, the revision history gives you a clear path back to a working state. Master these workflows and you'll deploy with confidence, knowing you can always recover.

@@ -16,7 +16,7 @@ Well-designed event schemas are the foundation of maintainable event-driven arch
 
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": ["metadata", "data"],
   "properties": {
@@ -91,6 +91,11 @@ Examples:
 ## Java Event Classes
 
 ```java
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
 // Base Event
 public abstract class DomainEvent {
     private EventMetadata metadata;
@@ -106,7 +111,7 @@ public abstract class DomainEvent {
     public void setMetadata(EventMetadata metadata) { this.metadata = metadata; }
 }
 
-public class EventMetadata {
+class EventMetadata {
     private String eventId;
     private String eventType;
     private String timestamp;
@@ -115,11 +120,24 @@ public class EventMetadata {
     private String correlationId;
     private String causationId;
 
-    // Getters and setters
+    public String getEventId() { return eventId; }
+    public void setEventId(String eventId) { this.eventId = eventId; }
+    public String getEventType() { return eventType; }
+    public void setEventType(String eventType) { this.eventType = eventType; }
+    public String getTimestamp() { return timestamp; }
+    public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public String getCorrelationId() { return correlationId; }
+    public void setCorrelationId(String correlationId) { this.correlationId = correlationId; }
+    public String getCausationId() { return causationId; }
+    public void setCausationId(String causationId) { this.causationId = causationId; }
 }
 
 // Domain Events
-public class OrderCreatedEvent extends DomainEvent {
+class OrderCreatedEvent extends DomainEvent {
     private OrderData data;
 
     public OrderCreatedEvent(OrderData data) {
@@ -131,7 +149,7 @@ public class OrderCreatedEvent extends DomainEvent {
     public OrderData getData() { return data; }
 }
 
-public class OrderData {
+class OrderData {
     private String orderId;
     private String customerId;
     private List<OrderItem> items;
@@ -140,13 +158,15 @@ public class OrderData {
 
     // Getters and setters
 }
+
+record OrderItem(String productId, int quantity, BigDecimal price) {}
 ```
 
 ## Python Event Classes
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Optional
 import uuid
 
@@ -154,7 +174,7 @@ import uuid
 class EventMetadata:
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     event_type: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
     version: str = "1.0"
     source: str = ""
     correlation_id: Optional[str] = None
@@ -175,12 +195,16 @@ class OrderItem:
     price: float
 
 @dataclass
-class OrderCreatedEvent(DomainEvent):
+class OrderData:
     order_id: str = ""
     customer_id: str = ""
     items: List[OrderItem] = field(default_factory=list)
     total_amount: float = 0.0
     currency: str = "USD"
+
+@dataclass
+class OrderCreatedEvent(DomainEvent):
+    data: OrderData = field(default_factory=OrderData)
 
     def __post_init__(self):
         super().__post_init__()
@@ -189,10 +213,12 @@ class OrderCreatedEvent(DomainEvent):
 # Usage
 
 event = OrderCreatedEvent(
-    order_id="order-123",
-    customer_id="customer-456",
-    items=[OrderItem("prod-1", 2, 29.99)],
-    total_amount=59.98
+    data=OrderData(
+        order_id="order-123",
+        customer_id="customer-456",
+        items=[OrderItem("prod-1", 2, 29.99)],
+        total_amount=59.98
+    )
 )
 ```
 

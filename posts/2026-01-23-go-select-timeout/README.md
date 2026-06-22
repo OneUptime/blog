@@ -101,7 +101,7 @@ func processWithRetry(jobs <-chan Job) {
 }
 ```
 
-**Warning:** Creating `time.After` in a loop can cause memory leaks. Use a timer instead:
+**Warning:** Creating `time.After` in a hot loop allocates a new timer each time. In Go versions before 1.23, unreferenced timers were not garbage collected until they fired. Use a timer instead when you need to reuse the timeout:
 
 ```go
 func processWithRetry(jobs <-chan Job) {
@@ -116,13 +116,22 @@ func processWithRetry(jobs <-chan Job) {
             close(done)
         }()
         
+        if !timer.Stop() {
+            select {
+            case <-timer.C:
+            default:
+            }
+        }
         timer.Reset(5 * time.Second)
         
         select {
         case <-done:
             fmt.Println("Job completed")
             if !timer.Stop() {
-                <-timer.C
+                select {
+                case <-timer.C:
+                default:
+                }
             }
         case <-timer.C:
             fmt.Println("Job timed out")
@@ -240,6 +249,8 @@ func main() {
     deadline := time.Now().Add(5 * time.Second)
     ctx2, cancel2 := context.WithDeadline(context.Background(), deadline)
     defer cancel2()
+    
+    _ = ctx2 // Use ctx2.Done() the same way when selecting on that deadline.
     
     // Both work the same in select
     select {
@@ -437,7 +448,7 @@ func robustFetch(ctx context.Context, url string) (string, error) {
 **Best Practices:**
 
 1. Use context for production timeout handling
-2. Avoid `time.After` in loops (memory leak)
+2. Avoid `time.After` in hot loops when you need to reuse a timer
 3. Always `defer cancel()` for context timeouts
 4. Handle both timeout and cancellation errors
 5. Use buffered channels to prevent goroutine leaks

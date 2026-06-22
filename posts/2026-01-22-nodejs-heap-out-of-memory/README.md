@@ -88,7 +88,7 @@ NODE_OPTIONS="--max-old-space-size=4096" npx webpack
 ```json
 {
   "scripts": {
-    "build": "react-scripts --max-old-space-size=4096 build"
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' react-scripts build"
   }
 }
 ```
@@ -109,10 +109,7 @@ npm install cross-env --save-dev
 
 ## Memory Limits by Default
 
-| Node Version | Default Heap | 32-bit | 64-bit Max |
-|--------------|--------------|--------|------------|
-| v12-v14 | ~1.5GB | 512MB | ~4GB |
-| v15+ | ~2GB | 512MB | System RAM |
+Default heap limits vary by Node.js version, V8 version, architecture, and available system or container memory. Instead of relying on a fixed default, check the current process limit:
 
 Check current memory usage:
 
@@ -218,9 +215,9 @@ function getData(key) {
 }
 
 // Solution: Use LRU cache with size limit
-const LRU = require('lru-cache');
+const { LRUCache } = require('lru-cache');
 
-const cache = new LRU({
+const cache = new LRUCache({
   max: 500,  // Maximum 500 items
   maxSize: 100 * 1024 * 1024,  // 100MB max
   sizeCalculation: (value) => JSON.stringify(value).length,
@@ -279,6 +276,8 @@ function createHandler() {
 
 ```javascript
 // Problem: Loading entire file
+const fs = require('fs');
+
 const data = fs.readFileSync('large-file.json', 'utf8');
 const parsed = JSON.parse(data);
 
@@ -322,12 +321,11 @@ setInterval(() => {
 
 ```javascript
 const v8 = require('v8');
-const fs = require('fs');
 
 function takeHeapSnapshot() {
   const snapshotPath = `heap-${Date.now()}.heapsnapshot`;
-  const snapshotStream = v8.writeHeapSnapshot(snapshotPath);
-  console.log(`Heap snapshot written to ${snapshotStream}`);
+  const filename = v8.writeHeapSnapshot(snapshotPath);
+  console.log(`Heap snapshot written to ${filename}`);
 }
 
 // Take snapshot when memory is high

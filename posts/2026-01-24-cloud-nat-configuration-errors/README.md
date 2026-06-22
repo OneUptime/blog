@@ -22,20 +22,20 @@ flowchart LR
             VM2[VM Instance 2]
             VM3[VM Instance 3]
         end
-        Router[Cloud Router]
+        Router[Cloud Router<br/>control plane]
     end
 
     NAT[Cloud NAT Gateway]
     Internet((Internet))
 
-    VM1 --> Router
-    VM2 --> Router
-    VM3 --> Router
-    Router --> NAT
+    Router -. NAT config .-> NAT
+    VM1 --> NAT
+    VM2 --> NAT
+    VM3 --> NAT
     NAT --> Internet
 ```
 
-Cloud NAT performs source network address translation (SNAT) for packets sent from instances in your VPC network. It requires a Cloud Router and can use automatic or manual NAT IP allocation.
+Cloud NAT performs source network address translation (SNAT) for packets sent from instances in your VPC network. It requires a Cloud Router for the control plane, but NAT traffic does not pass through the Cloud Router. Cloud NAT can use automatic or manual NAT IP allocation.
 
 ## Common Error 1: No External Connectivity
 
@@ -99,7 +99,7 @@ You see dropped connections or intermittent connectivity failures. Logs show "Ou
 
 ### Understanding the Problem
 
-Each NAT IP address can handle approximately 64,000 concurrent connections. With many VMs or connection-heavy workloads, you can exhaust available ports.
+Each NAT IP address provides approximately 64,000 source ports. With many VMs or connection-heavy workloads, you can exhaust available NAT source IP address and port tuples.
 
 ```mermaid
 flowchart TB
@@ -152,6 +152,7 @@ gcloud compute routers nats update my-nat \
     --router=my-router \
     --region=us-central1 \
     --enable-dynamic-port-allocation \
+    --no-enable-endpoint-independent-mapping \
     --min-ports-per-vm=64 \
     --max-ports-per-vm=65536
 ```
@@ -176,7 +177,7 @@ You receive errors about endpoint-independent mapping when using certain protoco
 
 ### The Problem
 
-Cloud NAT uses endpoint-independent mapping by default. Some applications (WebRTC, SIP, certain gaming protocols) require this, but it can cause issues with port reuse.
+Cloud NAT has endpoint-independent mapping disabled by default. Some applications (WebRTC, SIP, certain gaming protocols) can require it, but enabling it can cause endpoint independence conflicts and prevents dynamic port allocation.
 
 ### Fix: Configure Mapping Behavior
 
@@ -185,13 +186,13 @@ Cloud NAT uses endpoint-independent mapping by default. Some applications (WebRT
 gcloud compute routers nats update my-nat \
     --router=my-router \
     --region=us-central1 \
-    --endpoint-independent-mapping
+    --enable-endpoint-independent-mapping
 
 # For maximum port efficiency (breaks some protocols)
 gcloud compute routers nats update my-nat \
     --router=my-router \
     --region=us-central1 \
-    --no-endpoint-independent-mapping
+    --no-enable-endpoint-independent-mapping
 ```
 
 ## Common Error 4: NAT Logging Not Working
@@ -251,16 +252,16 @@ flowchart TB
         end
     end
 
-    Router[Cloud Router]
+    Router[Cloud Router<br/>control plane]
     NAT[Cloud NAT]
     GCR[gcr.io / Artifact Registry]
     External[External APIs]
 
-    Node1 --> Router
-    Node2 --> Router
+    Router -. NAT config .-> NAT
+    Node1 --> NAT
+    Node2 --> NAT
     Pod1 --> Node1
     Pod2 --> Node2
-    Router --> NAT
     NAT --> GCR
     NAT --> External
 ```
@@ -386,13 +387,14 @@ Set up proper monitoring to catch issues before they impact users.
 ### Create Alert Policies
 
 ```bash
-# Alert on high port usage
+# Alert on NAT allocation failures
 gcloud alpha monitoring policies create \
     --display-name="Cloud NAT Port Exhaustion" \
     --condition-display-name="Port allocation failures" \
     --condition-filter='resource.type="nat_gateway" AND metric.type="router.googleapis.com/nat/nat_allocation_failed"' \
-    --condition-threshold-value=1 \
-    --condition-threshold-duration=60s \
+    --if='> 0' \
+    --duration=60s \
+    --combiner=OR \
     --notification-channels=projects/my-project/notificationChannels/123
 ```
 
@@ -400,10 +402,10 @@ gcloud alpha monitoring policies create \
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `nat/allocated_ports` | Ports currently allocated | >80% of max |
-| `nat/nat_allocation_failed` | Failed port allocations | >0 |
+| `nat/allocated_ports` | Ports currently allocated | Compare against configured capacity |
+| `nat/nat_allocation_failed` | Whether NAT IP allocation is failing | `true` |
 | `nat/dropped_sent_packets_count` | Packets dropped due to NAT | >0 |
-| `nat/port_usage` | Port utilization percentage | >70% |
+| `nat/port_usage` | Maximum connections from a VM to one destination endpoint | Baseline-dependent |
 
 ## Troubleshooting Checklist
 

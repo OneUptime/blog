@@ -67,7 +67,7 @@ class CacheAside {
   }
 
   async set(key, value, ttl = this.defaultTTL) {
-    await redis.setex(key, ttl, JSON.stringify(value));
+    await redis.set(key, JSON.stringify(value), 'EX', ttl);
   }
 
   async delete(key) {
@@ -151,7 +151,7 @@ class WriteThroughCache {
     // Fetch from DB and cache
     const data = await this.db.get(key);
     if (data) {
-      await this.redis.setex(this.prefix + key, 3600, JSON.stringify(data));
+      await this.redis.set(this.prefix + key, JSON.stringify(data), 'EX', 3600);
     }
     return data;
   }
@@ -162,7 +162,7 @@ class WriteThroughCache {
     await this.db.set(key, value);
 
     // Then update cache
-    await this.redis.setex(this.prefix + key, ttl, JSON.stringify(value));
+    await this.redis.set(this.prefix + key, JSON.stringify(value), 'EX', ttl);
 
     return value;
   }
@@ -187,7 +187,7 @@ class WriteBehindCache {
 
   async set(key, value, ttl = 3600) {
     // Write to cache immediately (fast response)
-    await this.redis.setex(this.prefix + key, ttl, JSON.stringify(value));
+    await this.redis.set(this.prefix + key, JSON.stringify(value), 'EX', ttl);
 
     // Queue database write (async, may be batched)
     await this.queue.add('db-write', {
@@ -236,7 +236,7 @@ class TTLCache {
 
   async set(key, value, baseTTL) {
     const ttl = this.calculateTTL(baseTTL);
-    await this.redis.setex(key, ttl, JSON.stringify(value));
+    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
   }
 
   // Stale-while-revalidate pattern
@@ -295,11 +295,8 @@ class EventBasedCache extends EventEmitter {
       const { pattern, keys } = JSON.parse(message);
 
       if (pattern) {
-        // Invalidate by pattern
-        const matchingKeys = await this.redis.keys(pattern);
-        if (matchingKeys.length > 0) {
-          await this.redis.del(...matchingKeys);
-        }
+        // Invalidate by pattern without blocking Redis
+        await this.invalidateByPattern(pattern);
       } else if (keys) {
         // Invalidate specific keys
         await this.redis.del(...keys);
@@ -315,6 +312,19 @@ class EventBasedCache extends EventEmitter {
 
   async invalidatePattern(pattern) {
     await this.redis.publish('cache:invalidate', JSON.stringify({ pattern }));
+  }
+
+  async invalidateByPattern(pattern) {
+    const stream = this.redis.scanStream({
+      match: pattern,
+      count: 100
+    });
+
+    for await (const matchingKeys of stream) {
+      if (matchingKeys.length > 0) {
+        await this.redis.del(...matchingKeys);
+      }
+    }
   }
 }
 
@@ -368,7 +378,7 @@ class VersionedCache {
   async set(namespace, key, value, ttl = 3600) {
     const version = await this.getVersion(namespace);
     const fullKey = this.buildKey(namespace, key, version);
-    await this.redis.setex(fullKey, ttl, JSON.stringify(value));
+    await this.redis.set(fullKey, JSON.stringify(value), 'EX', ttl);
   }
 
   // Invalidate entire namespace by incrementing version
@@ -395,14 +405,14 @@ Combine in-memory and distributed caching for optimal performance:
 
 ```javascript
 // multi-tier-cache.js - L1 (memory) + L2 (Redis) caching
-const LRU = require('lru-cache');
+const { LRUCache } = require('lru-cache');
 
 class MultiTierCache {
   constructor(redis, options = {}) {
     this.redis = redis;
 
     // L1: In-memory LRU cache
-    this.l1 = new LRU({
+    this.l1 = new LRUCache({
       max: options.l1MaxItems || 1000,
       ttl: options.l1TTL || 60000, // 1 minute
       updateAgeOnGet: true
@@ -438,7 +448,7 @@ class MultiTierCache {
     this.l1.set(key, value);
 
     const l2Key = this.l2Prefix + key;
-    await this.redis.setex(l2Key, l2TTL, JSON.stringify(value));
+    await this.redis.set(l2Key, JSON.stringify(value), 'EX', l2TTL);
   }
 
   async delete(key) {
@@ -486,6 +496,8 @@ Prevent stampede with locking:
 
 ```javascript
 // stampede-protection.js - Mutex-based stampede protection
+const crypto = require('crypto');
+
 class StampedeProtectedCache {
   constructor(redis) {
     this.redis = redis;
@@ -494,18 +506,28 @@ class StampedeProtectedCache {
 
   async acquireLock(key) {
     const lockKey = `lock:${key}`;
+    const token = crypto.randomUUID();
     const acquired = await this.redis.set(
       lockKey,
-      '1',
+      token,
       'EX',
       this.lockTTL,
       'NX'
     );
-    return acquired === 'OK';
+    return acquired === 'OK' ? token : null;
   }
 
-  async releaseLock(key) {
-    await this.redis.del(`lock:${key}`);
+  async releaseLock(key, token) {
+    await this.redis.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then
+         return redis.call("del", KEYS[1])
+       else
+         return 0
+       end`,
+      1,
+      `lock:${key}`,
+      token
+    );
   }
 
   async getOrSet(key, fetchFn, ttl = 3600) {
@@ -516,9 +538,9 @@ class StampedeProtectedCache {
     }
 
     // Try to acquire lock
-    const hasLock = await this.acquireLock(key);
+    const lockToken = await this.acquireLock(key);
 
-    if (hasLock) {
+    if (lockToken) {
       try {
         // Double-check cache after acquiring lock
         data = await this.redis.get(key);
@@ -528,10 +550,10 @@ class StampedeProtectedCache {
 
         // Fetch and cache
         const freshData = await fetchFn();
-        await this.redis.setex(key, ttl, JSON.stringify(freshData));
+        await this.redis.set(key, JSON.stringify(freshData), 'EX', ttl);
         return freshData;
       } finally {
-        await this.releaseLock(key);
+        await this.releaseLock(key, lockToken);
       }
     } else {
       // Wait for lock holder to populate cache

@@ -28,10 +28,10 @@ INSERT INTO events VALUES
 ```
 
 Why batching matters:
-- Each INSERT creates a new "part" on disk
+- Each INSERT usually creates at least one new "part" per partition on disk
 - Too many parts triggers expensive merges
 - Network round-trips add latency
-- Aim for batches of 10,000 to 1,000,000 rows
+- Aim for batches of 10,000 to 100,000 rows, and test larger batches if memory allows
 
 ## Method 1: Batch INSERT Statements
 
@@ -102,7 +102,7 @@ Async inserts let ClickHouse batch small inserts server-side.
 ```sql
 -- Per-query
 INSERT INTO events
-SETTINGS async_insert = 1, wait_for_async_insert = 0
+SETTINGS async_insert = 1, wait_for_async_insert = 1
 VALUES (...);
 
 -- Or set as default for a user
@@ -114,11 +114,13 @@ ALTER USER default SETTINGS async_insert = 1;
 ```sql
 -- Key settings
 SET async_insert = 1;                    -- Enable async inserts
-SET wait_for_async_insert = 0;           -- Don't wait for flush (fastest)
+SET wait_for_async_insert = 1;           -- Wait for flush and receive errors
 SET async_insert_max_data_size = 10000000;  -- Flush at 10MB
 SET async_insert_busy_timeout_ms = 200;  -- Max wait before flush
 SET async_insert_stale_timeout_ms = 1000; -- Flush stale data
 ```
+
+Use `wait_for_async_insert = 0` only when fire-and-forget delivery is acceptable, because clients may not see flush errors.
 
 ### When to Use Async Inserts
 
@@ -131,10 +133,11 @@ SET async_insert_stale_timeout_ms = 1000; -- Flush stale data
 ```sql
 -- Check async insert queue
 SELECT
+    database,
     table,
-    bytes,
-    rows,
-    entries
+    format,
+    total_bytes,
+    length(entries.query_id) AS pending_queries
 FROM system.asynchronous_inserts;
 
 -- Check async insert metrics
@@ -202,7 +205,7 @@ OPTIMIZE TABLE events_buffer;
 ### CSV Import
 
 ```sql
--- From local file
+-- From a local server file under user_files_path
 INSERT INTO events
 SELECT *
 FROM file('events.csv', 'CSVWithNames');
@@ -294,7 +297,7 @@ clickhouse-local --query="
 
 ```sql
 -- Parallelize inserts
-SET max_insert_threads = 8;
+SET max_insert_threads = 8;  -- Applies to INSERT SELECT
 
 -- Larger blocks for better compression
 SET min_insert_block_size_rows = 1048576;
@@ -312,9 +315,6 @@ SET fsync_after_insert = 0;
 ```sql
 -- Disable deduplication
 SET insert_deduplicate = 0;
-
--- Skip constraint checks
-SET check_constraints = 0;
 
 -- Increase memory limits
 SET max_memory_usage = 20000000000;
@@ -337,7 +337,7 @@ Rows per batch    | Parts created | Merge load | Insert speed
 1,000,000         | Very Low      | Minimal    | Excellent
 ```
 
-Aim for 100,000 to 1,000,000 rows per INSERT.
+Aim for 10,000 to 100,000 rows per INSERT, and test larger batches if your row size and memory limits allow it.
 
 ### 2. Monitor Part Count
 
@@ -422,9 +422,9 @@ Use ReplicatedMergeTree's deduplication:
 -- Enable insert deduplication (default for Replicated tables)
 SET insert_deduplicate = 1;
 
--- Same insert block won't be duplicated
-INSERT INTO events VALUES (1, 'click', now());
-INSERT INTO events VALUES (1, 'click', now());  -- Deduplicated!
+-- Retrying the same insert block within the deduplication window won't duplicate it
+INSERT INTO events VALUES (1, 'click', toDateTime('2026-01-21 12:00:00'));
+INSERT INTO events VALUES (1, 'click', toDateTime('2026-01-21 12:00:00'));  -- Deduplicated!
 ```
 
 ### Partial Failure Handling
@@ -436,7 +436,7 @@ SET input_format_allow_errors_num = 100;     -- Or up to 100 errors
 
 INSERT INTO events FORMAT JSONEachRow
 {"id": 1, "type": "click"}
-{"id": "bad", "type": "view"}  -- This row fails, others succeed
+{"id": "bad", "type": "view"}
 {"id": 3, "type": "purchase"}
 ```
 

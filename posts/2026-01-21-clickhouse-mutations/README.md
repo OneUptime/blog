@@ -103,7 +103,7 @@ WHERE event_type = 'click' AND event_time < '2024-01-01';
 ALTER TABLE events
 UPDATE
     event_type = 'migrated',
-    properties['migrated'] = 'true'
+    migration_status = 'done'
 WHERE migration_status = 'pending';
 ```
 
@@ -149,18 +149,18 @@ SELECT
     create_time,
     is_done,
     parts_to_do,
-    parts_done
+    latest_fail_reason
 FROM system.mutations
 WHERE NOT is_done
 ORDER BY create_time;
 
--- Mutation progress
+-- Mutation queue size
 SELECT
     table,
     mutation_id,
     parts_to_do,
-    parts_done,
-    round(parts_done / (parts_to_do + parts_done) * 100, 2) AS progress_pct
+    length(parts_to_do_names) AS queued_part_names,
+    length(parts_in_progress_names) AS parts_in_progress
 FROM system.mutations
 WHERE NOT is_done;
 ```
@@ -197,6 +197,7 @@ KILL MUTATION WHERE mutation_id = 'mutation_123.txt';
 KILL MUTATION WHERE table = 'events';
 
 -- System table shows killed mutations
+-- is_killed is available in ClickHouse Cloud
 SELECT * FROM system.mutations WHERE is_killed = 1;
 ```
 
@@ -272,7 +273,7 @@ ENGINE = MergeTree()
 ORDER BY (metric_name, timestamp)
 TTL timestamp + INTERVAL 30 DAY
     GROUP BY metric_name
-    SET value = avg(value);  -- Aggregate to daily averages
+    SET value = avg(value);  -- Aggregate to per-metric averages
 ```
 
 ### Force TTL Application
@@ -386,7 +387,7 @@ ALTER TABLE events
 DELETE WHERE event_id = 1
 SETTINGS mutations_sync = 2;  -- 0=async, 1=wait current node, 2=wait all replicas
 
--- Limit parts processed per mutation
+-- Execute nondeterministic functions and scalar subqueries on the initiator
 SET mutations_execute_subqueries_on_initiator = 1;
 SET mutations_execute_nondeterministic_on_initiator = 1;
 ```
@@ -403,20 +404,16 @@ FROM system.mutations
 WHERE NOT is_done
 GROUP BY table;
 
--- Mutation processing rate
+-- Currently running mutation work
 SELECT
     table,
-    parts_done,
+    result_part_name,
     elapsed,
-    round(parts_done / elapsed, 2) AS parts_per_second
-FROM (
-    SELECT
-        table,
-        parts_done,
-        dateDiff('second', create_time, now()) AS elapsed
-    FROM system.mutations
-    WHERE is_done AND create_time >= today()
-);
+    progress,
+    rows_read,
+    rows_written
+FROM system.merges
+WHERE is_mutation = 1;
 ```
 
 ## Data Lifecycle Management
@@ -499,7 +496,7 @@ Before running large mutation:
 - [ ] Check current mutation queue
 - [ ] Estimate affected rows and parts
 - [ ] Schedule during maintenance window
-- [ ] Monitor disk space (mutations temporarily double space)
+- [ ] Monitor disk space (affected parts can temporarily require extra space)
 - [ ] Set appropriate timeout
 - [ ] Have rollback plan
 ```

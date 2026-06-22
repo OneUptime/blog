@@ -8,7 +8,7 @@ Description: A practical guide to diagnosing and fixing common Anthos Service Me
 
 ---
 
-Anthos Service Mesh (ASM) provides a managed Istio-based service mesh for your Kubernetes clusters. When things go wrong, debugging can be challenging because issues can stem from the control plane, data plane, or configuration. Let's walk through the most common errors and their solutions.
+Anthos Service Mesh (ASM), now Cloud Service Mesh, provides a managed Istio-based service mesh for your Kubernetes clusters. When things go wrong, debugging can be challenging because issues can stem from the control plane, data plane, or configuration. Let's walk through the most common errors and their solutions.
 
 ## Understanding ASM Architecture
 
@@ -63,12 +63,14 @@ kubectl get pods -n my-namespace -o jsonpath='{.items[*].spec.containers[*].name
 # First, find the ASM revision
 kubectl get controlplanerevision -n istio-system
 
-# Label the namespace with the revision
+# Label the namespace with the revision. If you use revisions, remove
+# istio-injection=enabled because revisioned control planes do not select it.
 kubectl label namespace my-namespace \
+    istio-injection- \
     istio.io/rev=asm-managed-stable \
     --overwrite
 
-# Or for automatic injection (older method)
+# Or for automatic injection in older/non-revisioned installs
 kubectl label namespace my-namespace \
     istio-injection=enabled \
     --overwrite
@@ -87,7 +89,7 @@ kubectl describe mutatingwebhookconfiguration istio-sidecar-injector-asm-managed
 kubectl get pods -n istio-system -l app=istiod
 ```
 
-### Fix: Pod Annotations Preventing Injection
+### Fix: Pod Labels Preventing Injection
 
 ```yaml
 # Check if pod has injection disabled
@@ -95,14 +97,14 @@ kubectl get pods -n istio-system -l app=istiod
 apiVersion: v1
 kind: Pod
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"  # Remove this
 
 # Good - ensure injection is enabled
 apiVersion: v1
 kind: Pod
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "true"
 ```
 
@@ -134,8 +136,8 @@ kubectl get peerauthentication -A
 # Check DestinationRule TLS settings
 kubectl get destinationrule -A -o yaml | grep -A5 "tls:"
 
-# Test connectivity from inside a pod
-kubectl exec -it deploy/my-app -c istio-proxy -- \
+# Test connectivity from inside the application container or a debug pod
+kubectl exec -it deploy/my-app -- \
     curl -v http://target-service:8080
 ```
 
@@ -256,7 +258,7 @@ spec:
       targetPort: 9090
 
     # Bad - unnamed or incorrectly named
-    - name: web         # Protocol unknown
+    - name: web         # No explicit protocol
       port: 80
     - port: 8080        # No name at all
 ```
@@ -383,7 +385,7 @@ spec:
         - "api.example.com"
       tls:
         mode: SIMPLE
-        credentialName: api-example-com-cert  # Secret in istio-system
+        credentialName: api-example-com-cert  # Secret in the ingress gateway workload namespace
 
 ---
 apiVersion: networking.istio.io/v1beta1
@@ -411,8 +413,8 @@ TLS handshake failures or certificate validation errors.
 ### Diagnosis
 
 ```bash
-# Check certificate status
-kubectl get secret -n istio-system | grep credential
+# Check certificate status in the ingress gateway workload namespace
+kubectl get secret api-example-com-cert -n istio-system
 
 # Verify certificate is valid
 kubectl get secret api-example-com-cert -n istio-system -o jsonpath='{.data.tls\.crt}' | \
@@ -426,7 +428,8 @@ kubectl exec -it deploy/my-app -c istio-proxy -- \
 ### Fix: Create TLS Secret Correctly
 
 ```bash
-# Create secret in istio-system namespace for Gateway TLS
+# Create secret in the ingress gateway workload namespace for Gateway TLS.
+# Use istio-system here only if your ingress gateway deployment runs there.
 kubectl create secret tls api-example-com-cert \
     --cert=tls.crt \
     --key=tls.key \
@@ -471,7 +474,7 @@ Set up proper monitoring to catch issues early.
 ```bash
 # Enable access logging
 kubectl apply -f - <<EOF
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default

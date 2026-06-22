@@ -44,15 +44,15 @@ type Query {
 ```
 
 ```graphql
-# Error: Argument "id" has invalid value "123"
-# Expected type "ID!", found "123" (as Int)
+# Error: Argument "id" has invalid value 123.45
+# Expected type "ID!", found 123.45 (as Float)
 query {
-  user(id: 123) {  # Wrong: passing Int instead of ID
+  user(id: 123.45) {  # Wrong: passing Float instead of ID
     name
   }
 }
 
-# Correct: ID type accepts strings
+# Correct: ID type accepts strings or integer literals
 query {
   user(id: "123") {
     name
@@ -230,7 +230,7 @@ query {
 # Schema
 type Query {
   user(id: ID!): User
-  users(filter: UserFilter): [User!]!
+  users(filter: UserFilter!): [User!]!
 }
 
 input UserFilter {
@@ -257,14 +257,18 @@ query GetUser($id: ID!) {
 
 ```graphql
 # Error: Variable "$filter" of type "UserFilter" used in position expecting type "UserFilter!"
-query GetUsers($filter: UserFilter!) {  # Variable is non-null but argument accepts null
+query GetUsers($filter: UserFilter) {  # Wrong: nullable variable for non-null argument
   users(filter: $filter) {
     name
   }
 }
 
-# This is actually fine - non-null variable is more restrictive
-# But if you pass null, you will get a runtime error
+# Correct: Match the argument's non-null requirement
+query GetUsers($filter: UserFilter!) {
+  users(filter: $filter) {
+    name
+  }
+}
 ```
 
 ### Error 7: Selection Set Required for Object Types
@@ -448,7 +452,6 @@ query GetUserWithPosts(
 ```
 
 ```json
-// Variables JSON
 {
   "userId": "123",
   "includeEmail": true,
@@ -528,7 +531,7 @@ function validateQuery(queryString) {
 
 ### 3. Use IDE Extensions
 
-```javascript
+```jsonc
 // VS Code settings for GraphQL extension
 // .vscode/settings.json
 {
@@ -604,6 +607,7 @@ npm install @graphql-codegen/cli @graphql-codegen/typescript @graphql-codegen/ty
 
 ```typescript
 // Generated types catch errors at compile time
+import { gql, useQuery } from '@apollo/client';
 import { GetUserQuery, GetUserQueryVariables } from './generated/graphql';
 
 const GET_USER = gql`
@@ -638,18 +642,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: npm install
 
       - name: Validate schema
         run: |
-          npx graphql-inspector validate ./schema.graphql ./src/**/*.graphql
+          npx @graphql-inspector/cli validate './src/**/*.graphql' ./schema.graphql
 
       - name: Check for breaking changes
         run: |
-          npx graphql-inspector diff ./schema.graphql ./schema-production.graphql
+          npx @graphql-inspector/cli diff ./schema-production.graphql ./schema.graphql
 ```
 
 ## Custom Validation Rules
@@ -658,22 +662,22 @@ You can add custom validation rules for business logic:
 
 ```javascript
 // custom-validation.js
-const { ValidationContext, ASTVisitor } = require('graphql');
+const { GraphQLError, validate, specifiedRules } = require('graphql');
 
-// Custom rule: Prevent querying too many items
+// Custom rule: Prevent querying too deeply
 function MaxDepthRule(maxDepth) {
   return function(context) {
     let depth = 0;
 
     return {
       Field: {
-        enter() {
+        enter(node) {
           depth++;
           if (depth > maxDepth) {
             context.reportError(
               new GraphQLError(
                 `Query exceeds maximum depth of ${maxDepth}`,
-                [context.getFieldDef()]
+                [node]
               )
             );
           }
@@ -710,9 +714,6 @@ function RequirePaginationRule(context) {
     }
   };
 }
-
-// Apply custom rules
-const { validate, specifiedRules } = require('graphql');
 
 function validateWithCustomRules(schema, document) {
   const customRules = [

@@ -46,12 +46,11 @@ Create files for different operating systems:
 
 package main
 
-import "syscall"
+import "os"
 
 func getSystemInfo() string {
-    var uname syscall.Utsname
-    syscall.Uname(&uname)
-    return string(uname.Nodename[:])
+    name, _ := os.Hostname()
+    return name
 }
 ```
 
@@ -113,7 +112,7 @@ func optimizedFunction() {
 
 ## Boolean Expressions
 
-### AND (comma)
+### AND (&&)
 
 ```go
 //go:build linux && amd64
@@ -233,6 +232,7 @@ Separate integration tests from unit tests:
 package db
 
 import (
+    "os"
     "testing"
 )
 
@@ -273,6 +273,8 @@ package main
 */
 import "C"
 
+import "unsafe"
+
 func nativeAlloc(size int) unsafe.Pointer {
     return C.malloc(C.size_t(size))
 }
@@ -283,6 +285,8 @@ func nativeAlloc(size int) unsafe.Pointer {
 //go:build !cgo
 
 package main
+
+import "unsafe"
 
 func nativeAlloc(size int) unsafe.Pointer {
     // Pure Go fallback
@@ -324,29 +328,30 @@ package main
 
 ## Ignore Files
 
-Prevent a file from ever being compiled:
+Exclude a file from normal builds:
 
 ```go
 //go:build ignore
 
 package main
 
-// This file is never compiled
+// This file is excluded unless the ignore tag is explicitly set
 // Useful for documentation, generators, etc.
 ```
 
 ---
 
-## Available Built-in Tags
+## Common Built-in Tags
 
 ### Operating Systems
 - `linux`, `darwin`, `windows`, `freebsd`, `netbsd`, `openbsd`
 - `dragonfly`, `solaris`, `plan9`, `js`, `aix`
+- `android`, `illumos`, `ios`, `wasip1`
 
 ### Architectures
 - `386`, `amd64`, `arm`, `arm64`
 - `ppc64`, `ppc64le`, `mips`, `mipsle`
-- `mips64`, `mips64le`, `s390x`, `wasm`, `riscv64`
+- `mips64`, `mips64le`, `s390x`, `wasm`, `riscv64`, `loong64`
 
 ### Other
 - `cgo` - CGO enabled
@@ -387,10 +392,10 @@ package main
 .PHONY: build-dev build-prod build-all
 
 build-dev:
-	go build -tags "debug logging" -o app-dev
+	go build -tags debug,logging -o app-dev
 
 build-prod:
-	go build -tags "premium production" -o app-prod
+	go build -tags premium,production -o app-prod
 
 build-all:
 	GOOS=linux GOARCH=amd64 go build -o app-linux-amd64

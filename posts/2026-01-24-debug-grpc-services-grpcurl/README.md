@@ -106,7 +106,7 @@ def serve():
 // server.js
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
-const grpcReflection = require('grpc-reflection-js');
+const { ReflectionService } = require('@grpc/reflection');
 
 // Load proto
 const packageDefinition = protoLoader.loadSync('service.proto');
@@ -119,12 +119,11 @@ const server = new grpc.Server();
 server.addService(protoDescriptor.UserService.service, userServiceImpl);
 
 // Add reflection service
-const reflection = new grpcReflection.ReflectionService(packageDefinition);
+const reflection = new ReflectionService(packageDefinition);
 reflection.addToServer(server);
 
 server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () => {
     console.log('Server with reflection on port 50051');
-    server.start();
 });
 ```
 
@@ -623,8 +622,7 @@ services:
     depends_on:
       grpc-server:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command: ["grpcurl -plaintext grpc-server:50051 list"]
+    command: ["-plaintext", "grpc-server:50051", "list"]
 ```
 
 ### CI/CD Integration
@@ -639,11 +637,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install grpcurl
         run: |
-          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.8.7/grpcurl_1.8.7_linux_x86_64.tar.gz | tar xz
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz | tar xz
           sudo mv grpcurl /usr/local/bin/
 
       - name: Start server

@@ -65,16 +65,15 @@ public class OrderCancelledEvent extends OrderEvent {
 
 ```java
 import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.clients.consumer.*;
+import org.springframework.kafka.annotation.KafkaListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class OrderService {
 
     private final KafkaProducer<String, String> producer;
-    private final KafkaConsumer<String, String> consumer;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public void createOrder(Order order) {
+    public void createOrder(Order order) throws Exception {
         String sagaId = UUID.randomUUID().toString();
 
         // Save order locally
@@ -90,11 +89,14 @@ public class OrderService {
         event.setTotalAmount(order.getTotalAmount());
         event.setTimestamp(System.currentTimeMillis());
 
-        producer.send(new ProducerRecord<>("order-events",
+        producer.send(new ProducerRecord<>("order-created-events",
             order.getId(), mapper.writeValueAsString(event)));
     }
 
-    public void handlePaymentFailed(PaymentFailedEvent event) {
+    @KafkaListener(topics = "payment-failed-events")
+    public void handlePaymentFailed(String message) throws Exception {
+        PaymentFailedEvent event = mapper.readValue(message, PaymentFailedEvent.class);
+
         // Compensate: Cancel the order
         Order order = orderRepository.findById(event.getOrderId());
         order.setStatus("CANCELLED");
@@ -106,7 +108,7 @@ public class OrderService {
         cancelEvent.setOrderId(event.getOrderId());
         cancelEvent.setReason("Payment failed: " + event.getReason());
 
-        producer.send(new ProducerRecord<>("order-events",
+        producer.send(new ProducerRecord<>("order-cancelled-events",
             event.getOrderId(), mapper.writeValueAsString(cancelEvent)));
     }
 }
@@ -117,8 +119,8 @@ public class OrderService {
 ```java
 public class PaymentService {
 
-    @KafkaListener(topics = "order-events")
-    public void handleOrderCreated(String message) {
+    @KafkaListener(topics = "order-created-events")
+    public void handleOrderCreated(String message) throws Exception {
         OrderCreatedEvent event = mapper.readValue(message, OrderCreatedEvent.class);
 
         try {
@@ -135,7 +137,7 @@ public class PaymentService {
             paymentEvent.setPaymentId(result.getPaymentId());
             paymentEvent.setStatus("SUCCESS");
 
-            producer.send(new ProducerRecord<>("payment-events",
+            producer.send(new ProducerRecord<>("payment-processed-events",
                 event.getOrderId(), mapper.writeValueAsString(paymentEvent)));
 
         } catch (PaymentException e) {
@@ -145,7 +147,7 @@ public class PaymentService {
             failEvent.setOrderId(event.getOrderId());
             failEvent.setReason(e.getMessage());
 
-            producer.send(new ProducerRecord<>("payment-events",
+            producer.send(new ProducerRecord<>("payment-failed-events",
                 event.getOrderId(), mapper.writeValueAsString(failEvent)));
         }
     }
@@ -194,11 +196,16 @@ public class OrderSagaOrchestrator {
     }
 
     @KafkaListener(topics = "saga-responses")
-    public void handleResponse(String message) {
+    public void handleResponse(String message) throws Exception {
         SagaResponse response = mapper.readValue(message, SagaResponse.class);
         SagaState state = sagaStates.get(response.getSagaId());
 
+        if (state == null) {
+            return;
+        }
+
         if (response.isSuccess()) {
+            state.getCompletedSteps().add(state.getCurrentStep());
             state.setCurrentStep(state.getCurrentStep().next());
             executeStep(state);
         } else {
@@ -212,10 +219,8 @@ public class OrderSagaOrchestrator {
 
         // Execute compensations in reverse order
         List<SagaStep> completedSteps = state.getCompletedSteps();
-        Collections.reverse(completedSteps);
-
-        for (SagaStep step : completedSteps) {
-            executeCompensation(state, step);
+        for (int i = completedSteps.size() - 1; i >= 0; i--) {
+            executeCompensation(state, completedSteps.get(i));
         }
 
         state.setStatus(SagaStatus.COMPENSATED);

@@ -8,7 +8,7 @@ Description: A comprehensive guide to handling stalled jobs in BullMQ, including
 
 ---
 
-Stalled jobs occur when a worker picks up a job but fails to complete it or renew its lock within the expected timeframe. This typically happens when workers crash, become unresponsive, or encounter infinite loops. Understanding and handling stalled jobs is critical for building reliable BullMQ systems.
+Stalled jobs occur when a worker picks up a job but fails to complete it or renew its lock within the expected timeframe. BullMQ workers renew locks automatically while they are able to run, so this typically happens when workers crash, lose connection, block the Node.js event loop, or encounter infinite loops. Understanding and handling stalled jobs is critical for building reliable BullMQ systems.
 
 ## Understanding Stalled Jobs
 
@@ -30,7 +30,7 @@ const worker = new Worker('orders', async (job) => {
   return processOrder(job.data);
 }, {
   connection,
-  lockDuration: 30000, // Lock expires after 30 seconds
+  lockDuration: 30000, // Lock expires after 30 seconds unless renewed
   stalledInterval: 15000, // Check for stalled jobs every 15 seconds
   maxStalledCount: 2, // Max times a job can stall before failing
 });
@@ -62,11 +62,11 @@ const crashyWorker = new Worker('risky', async (job) => {
   return process(job.data);
 }, { connection });
 
-// 2. Blocking operations that exceed lock duration
+// 2. CPU-bound operations that block the event loop
 const slowWorker = new Worker('slow', async (job) => {
-  // This takes longer than lock duration
-  await verySlowOperation(); // 60 seconds
-  // Lock expired at 30 seconds, job marked as stalled
+  // This blocks the event loop longer than lockDuration
+  verySlowSynchronousOperation(); // 60 seconds
+  // The worker cannot renew the lock while the event loop is blocked
   return 'done';
 }, {
   connection,
@@ -76,7 +76,7 @@ const slowWorker = new Worker('slow', async (job) => {
 // 3. Infinite loops or deadlocks
 const loopyWorker = new Worker('loopy', async (job) => {
   while (true) {
-    // Infinite loop, lock never renewed
+    // Infinite loop blocks the event loop, so the lock cannot be renewed
     doSomething();
   }
 }, { connection });
@@ -101,11 +101,13 @@ interface StallConfig {
 }
 
 function calculateStallConfig(
-  expectedJobDuration: number,
+  maxExpectedEventLoopBlockMs: number,
   safetyMargin: number = 2
 ): StallConfig {
-  // Lock should be longer than expected job duration
-  const lockDuration = expectedJobDuration * safetyMargin;
+  // Lock duration should cover the longest expected event-loop block,
+  // plus margin for Redis/network latency. Normal async jobs are
+  // automatically renewed while the worker is healthy.
+  const lockDuration = maxExpectedEventLoopBlockMs * safetyMargin;
 
   // Check interval should be less than lock duration
   const stalledInterval = lockDuration / 2;
@@ -117,7 +119,7 @@ function calculateStallConfig(
   };
 }
 
-// For a job that typically takes 10 seconds
+// For CPU-bound work that may block the event loop for up to 10 seconds
 const config = calculateStallConfig(10000);
 console.log(config);
 // { lockDuration: 20000, stalledInterval: 10000, maxStalledCount: 2 }
@@ -130,7 +132,7 @@ const worker = new Worker('tasks', processor, {
 
 ## Extending Lock Duration
 
-For long-running jobs, extend the lock:
+BullMQ workers renew locks automatically by default. If you disable automatic lock renewal or manually fetch jobs, extend the lock while the job is running:
 
 ```typescript
 const longRunningWorker = new Worker('long-tasks', async (job) => {
@@ -142,7 +144,7 @@ const longRunningWorker = new Worker('long-tasks', async (job) => {
     const result = await processItem(items[i]);
     results.push(result);
 
-    // Extend lock every N items
+    // Extend lock every N items when managing locks manually
     if (i % 10 === 0) {
       await job.extendLock(job.token!, 30000);
       await job.updateProgress((i / items.length) * 100);
@@ -154,12 +156,13 @@ const longRunningWorker = new Worker('long-tasks', async (job) => {
   connection,
   lockDuration: 30000,
   stalledInterval: 15000,
+  skipLockRenewal: true,
 });
 ```
 
 ## Auto-Extend Lock Utility
 
-Create a utility to automatically extend locks:
+Create a utility to extend locks when automatic lock renewal is disabled or when jobs are processed manually. This is not a replacement for avoiding CPU-bound event-loop blocking:
 
 ```typescript
 class LockExtender {
@@ -202,7 +205,10 @@ const worker = new Worker('long-tasks', async (job) => {
   } finally {
     lockExtender.stop();
   }
-}, { connection });
+}, {
+  connection,
+  skipLockRenewal: true,
+});
 ```
 
 ## Stall Recovery Strategies
@@ -248,13 +254,13 @@ class StallRecoveryManager {
           console.log(`Allowing job ${job.id} to be retried`);
           // Job will be automatically moved back to waiting
         } else {
-          console.log(`Job ${job.id} exceeded max stall retries, marking as failed`);
-          await job.moveToFailed(new Error('Max stall count exceeded'), job.token || '');
+          console.log(`Job ${job.id} exceeded configured stall threshold`);
+          // Set worker maxStalledCount to enforce failure after too many stalls.
         }
         break;
 
       case 'fail':
-        await job.moveToFailed(new Error('Job stalled'), job.token || '');
+        console.log(`Job ${job.id} stalled; configure maxStalledCount: 0 to fail on the first stall`);
         break;
 
       case 'custom':
@@ -283,8 +289,10 @@ const recoveryManager = new StallRecoveryManager(queue, worker, {
       stalledAt: new Date().toISOString(),
     });
 
-    // Remove from main queue
-    await job.remove();
+    // Optionally remove it if BullMQ has moved it back to waiting
+    if (await job.isWaiting()) {
+      await job.remove();
+    }
   },
 });
 ```
@@ -428,7 +436,7 @@ async function processInChunks<T, R>(
     const chunkResults = await Promise.all(chunk.map(processor));
     results.push(...chunkResults);
 
-    // Extend lock and update progress
+    // Update progress; extend manually only if automatic renewal is disabled
     if (job.token) {
       await job.extendLock(job.token, 30000);
     }
@@ -441,7 +449,7 @@ async function processInChunks<T, R>(
 // 3. Use sandboxed processors for isolation
 // See bullmq-sandboxed-processors post for details
 
-// 4. Implement heartbeat mechanism
+// 4. Implement heartbeat mechanism when automatic lock renewal is disabled
 class HeartbeatProcessor {
   async process(job: Job): Promise<any> {
     const heartbeatInterval = setInterval(async () => {
@@ -484,8 +492,8 @@ class StallDebugger {
 
     return Promise.all(
       activeJobs.map(async (job) => {
-        const lockKey = `bull:${this.queue.name}:${job.id}:lock`;
-        const lockTTL = await this.connection.ttl(lockKey);
+        const lockKey = this.queue.toKey(`${job.id}:lock`);
+        const lockTtlMs = await this.connection.pttl(lockKey);
 
         return {
           id: job.id,
@@ -494,7 +502,7 @@ class StallDebugger {
           runningFor: job.processedOn
             ? Date.now() - job.processedOn
             : null,
-          lockTTL: lockTTL > 0 ? lockTTL * 1000 : 'expired',
+          lockTtlMs: lockTtlMs > 0 ? lockTtlMs : 'expired',
           progress: job.progress,
           data: job.data,
         };
@@ -502,12 +510,12 @@ class StallDebugger {
     );
   }
 
-  async findPotentialStalls(lockDuration: number): Promise<any[]> {
+  async findPotentialStalls(): Promise<any[]> {
     const activeJobs = await this.getActiveJobDetails();
 
     return activeJobs.filter((job) => {
-      // Jobs running longer than 80% of lock duration
-      return job.runningFor && job.runningFor > lockDuration * 0.8;
+      // Active jobs without a lock are likely to be picked up by the stalled checker
+      return job.lockTtlMs === 'expired';
     });
   }
 
@@ -518,9 +526,9 @@ class StallDebugger {
     }
 
     const state = await job.getState();
-    const lockKey = `bull:${this.queue.name}:${job.id}:lock`;
+    const lockKey = this.queue.toKey(`${job.id}:lock`);
     const lockExists = await this.connection.exists(lockKey);
-    const lockTTL = await this.connection.ttl(lockKey);
+    const lockTtlMs = await this.connection.pttl(lockKey);
 
     return {
       id: job.id,
@@ -532,11 +540,10 @@ class StallDebugger {
       stacktrace: job.stacktrace,
       lock: {
         exists: lockExists === 1,
-        ttl: lockTTL > 0 ? lockTTL * 1000 : 'expired',
+        ttlMs: lockTtlMs > 0 ? lockTtlMs : 'expired',
       },
       data: job.data,
       opts: {
-        lockDuration: (job.opts as any).lockDuration,
         attempts: job.opts.attempts,
       },
     };
@@ -552,7 +559,7 @@ app.get('/debug/active-jobs', async (req, res) => {
 
 app.get('/debug/potential-stalls', async (req, res) => {
   const debugger = new StallDebugger(queue, connection);
-  const potentialStalls = await debugger.findPotentialStalls(30000);
+  const potentialStalls = await debugger.findPotentialStalls();
   res.json(potentialStalls);
 });
 
@@ -565,9 +572,9 @@ app.get('/debug/stall/:jobId', async (req, res) => {
 
 ## Best Practices
 
-1. **Set appropriate lock duration** - Should exceed max expected job time.
+1. **Set appropriate lock duration** - Should cover expected event-loop blocking time and renewal delays; healthy workers renew locks automatically.
 
-2. **Extend locks for long jobs** - Use job.extendLock() regularly.
+2. **Use automatic lock renewal for long jobs** - Only call job.extendLock() yourself when manual processing or skipLockRenewal requires it.
 
 3. **Use timeouts** - Prevent infinite waits on external calls.
 

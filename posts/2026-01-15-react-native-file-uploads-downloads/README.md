@@ -25,13 +25,13 @@ import RNFS from 'react-native-fs';
 
 // Common directories available
 const directories = {
-  // Main document directory - persists across app updates
+  // Main document directory - use this constant each time because the absolute path can change after app updates
   documents: RNFS.DocumentDirectoryPath,
 
   // Cache directory - may be cleared by the system
   cache: RNFS.CachesDirectoryPath,
 
-  // Temporary directory - cleared on app restart
+  // Temporary directory - may be cleared by the system
   temp: RNFS.TemporaryDirectoryPath,
 
   // iOS specific
@@ -55,12 +55,12 @@ For comprehensive file handling, you'll need several libraries:
 npm install react-native-fs
 
 # File and image picking
-npm install react-native-document-picker
+npm install @react-native-documents/picker
 npm install react-native-image-picker
 
 # Background upload/download support
 npm install react-native-background-upload
-npm install rn-fetch-blob
+npm install react-native-blob-util
 
 # For iOS, install pods
 cd ios && pod install
@@ -142,14 +142,13 @@ The first step in uploading files is allowing users to select them from their de
 ### Document Picker Implementation
 
 ```javascript
-import DocumentPicker from 'react-native-document-picker';
+import { errorCodes, isErrorWithCode, pick, types } from '@react-native-documents/picker';
 
 // Pick a single file
 const pickSingleFile = async () => {
   try {
-    const result = await DocumentPicker.pick({
-      type: [DocumentPicker.types.allFiles],
-      copyTo: 'cachesDirectory',
+    const result = await pick({
+      type: [types.allFiles],
     });
 
     return {
@@ -157,10 +156,9 @@ const pickSingleFile = async () => {
       name: result[0].name,
       type: result[0].type,
       size: result[0].size,
-      fileCopyUri: result[0].fileCopyUri,
     };
   } catch (error) {
-    if (DocumentPicker.isCancel(error)) {
+    if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
       console.log('User cancelled file picker');
       return null;
     }
@@ -171,10 +169,9 @@ const pickSingleFile = async () => {
 // Pick multiple files
 const pickMultipleFiles = async () => {
   try {
-    const results = await DocumentPicker.pick({
-      type: [DocumentPicker.types.allFiles],
+    const results = await pick({
+      type: [types.allFiles],
       allowMultiSelection: true,
-      copyTo: 'cachesDirectory',
     });
 
     return results.map(file => ({
@@ -182,10 +179,9 @@ const pickMultipleFiles = async () => {
       name: file.name,
       type: file.type,
       size: file.size,
-      fileCopyUri: file.fileCopyUri,
     }));
   } catch (error) {
-    if (DocumentPicker.isCancel(error)) {
+    if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
       return [];
     }
     throw error;
@@ -195,19 +191,18 @@ const pickMultipleFiles = async () => {
 // Pick specific file types
 const pickDocuments = async () => {
   try {
-    const result = await DocumentPicker.pick({
+    const result = await pick({
       type: [
-        DocumentPicker.types.pdf,
-        DocumentPicker.types.doc,
-        DocumentPicker.types.docx,
-        DocumentPicker.types.xls,
-        DocumentPicker.types.xlsx,
+        types.pdf,
+        types.doc,
+        types.docx,
+        types.xls,
+        types.xlsx,
       ],
-      copyTo: 'cachesDirectory',
     });
     return result;
   } catch (error) {
-    if (DocumentPicker.isCancel(error)) {
+    if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) {
       return null;
     }
     throw error;
@@ -327,7 +322,6 @@ const uploadFile = async (file, uploadUrl) => {
       method: 'POST',
       body: formData,
       headers: {
-        'Content-Type': 'multipart/form-data',
         'Authorization': 'Bearer YOUR_TOKEN',
       },
     });
@@ -364,9 +358,6 @@ const uploadMultipleFiles = async (files, uploadUrl) => {
     const response = await fetch(uploadUrl, {
       method: 'POST',
       body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
     });
 
     return await response.json();
@@ -559,15 +550,14 @@ Background uploads allow file transfers to continue even when the app is in the 
 import Upload from 'react-native-background-upload';
 
 const backgroundUpload = async (file, uploadUrl, options = {}) => {
-  const uploadOptions = {
+    const uploadOptions = {
     url: uploadUrl,
-    path: file.uri.replace('file://', ''),
+    path: file.uri,
     method: 'POST',
     type: 'multipart',
     field: 'file',
     headers: {
       'Authorization': 'Bearer YOUR_TOKEN',
-      'Content-Type': 'multipart/form-data',
     },
     parameters: {
       filename: file.name,

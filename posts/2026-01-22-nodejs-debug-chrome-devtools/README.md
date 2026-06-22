@@ -128,7 +128,7 @@ While paused, use the Console to:
 
 VS Code integrates Chrome DevTools protocol:
 
-```json
+```jsonc
 // .vscode/launch.json
 {
   "version": "0.2.0",
@@ -316,20 +316,25 @@ node --prof-process isolate-0xXXXX-v8.log > profile.txt
 ### Using v8-profiler in Code
 
 ```javascript
+const fs = require('fs');
 const v8Profiler = require('v8-profiler-next');
 
-// Start profiling
-v8Profiler.startProfiling('MyProfile', true);
+async function runProfile() {
+  // Start profiling
+  v8Profiler.startProfiling('MyProfile', true);
 
-// Run code to profile
-await doExpensiveWork();
+  // Run code to profile
+  await doExpensiveWork();
 
-// Stop and save
-const profile = v8Profiler.stopProfiling('MyProfile');
-profile.export((error, result) => {
-  fs.writeFileSync('profile.cpuprofile', result);
-  profile.delete();
-});
+  // Stop and save
+  const profile = v8Profiler.stopProfiling('MyProfile');
+  profile.export((error, result) => {
+    fs.writeFileSync('profile.cpuprofile', result);
+    profile.delete();
+  });
+}
+
+runProfile();
 ```
 
 Load the .cpuprofile file in Chrome DevTools.
@@ -341,8 +346,8 @@ Load the .cpuprofile file in Chrome DevTools.
 On the server:
 
 ```bash
-# Allow external connections
-node --inspect=0.0.0.0:9229 app.js
+# Listen on the remote server loopback interface for SSH tunneling
+node --inspect=127.0.0.1:9229 app.js
 ```
 
 On your machine, set up SSH tunnel:
@@ -384,7 +389,6 @@ node --inspect-brk node_modules/.bin/jest --runInBand
 ```
 
 ```json
-// package.json
 {
   "scripts": {
     "test:debug": "node --inspect-brk node_modules/.bin/jest --runInBand"
@@ -436,7 +440,6 @@ Object.keys(cache)
 For TypeScript or transpiled code:
 
 ```json
-// tsconfig.json
 {
   "compilerOptions": {
     "sourceMap": true
@@ -477,11 +480,11 @@ try {
 }
 ```
 
-### Breaking on Property Access
+### Breaking on Function Calls
 
 ```javascript
-// In console, set a getter breakpoint
-debug(myObject.propertyName);
+// In console, pause when processUser is called
+debug(processUser);
 ```
 
 ## Summary

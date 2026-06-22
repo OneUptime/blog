@@ -42,6 +42,8 @@ Redis Lua scripts solve this by executing atomically.
 local key = KEYS[1]
 local expected = ARGV[1]
 local new_value = ARGV[2]
+local expected_exists = ARGV[3]
+local new_value_exists = ARGV[4]
 
 local current = redis.call('GET', key)
 
@@ -49,12 +51,12 @@ local current = redis.call('GET', key)
 if current == false then
     current = nil
 end
-if expected == '' then
+if expected_exists == '0' then
     expected = nil
 end
 
 if current == expected then
-    if new_value == '' then
+    if new_value_exists == '0' then
         redis.call('DEL', key)
     else
         redis.call('SET', key, new_value)
@@ -78,14 +80,16 @@ class CASOperations:
     local key = KEYS[1]
     local expected = ARGV[1]
     local new_value = ARGV[2]
+    local expected_exists = ARGV[3]
+    local new_value_exists = ARGV[4]
 
     local current = redis.call('GET', key)
 
     if current == false then current = nil end
-    if expected == '' then expected = nil end
+    if expected_exists == '0' then expected = nil end
 
     if current == expected then
-        if new_value == '' then
+        if new_value_exists == '0' then
             redis.call('DEL', key)
         else
             redis.call('SET', key, new_value)
@@ -106,8 +110,13 @@ class CASOperations:
         """
         expected_str = '' if expected is None else str(expected)
         new_value_str = '' if new_value is None else str(new_value)
+        expected_exists = '0' if expected is None else '1'
+        new_value_exists = '0' if new_value is None else '1'
 
-        result = self._cas(keys=[key], args=[expected_str, new_value_str])
+        result = self._cas(
+            keys=[key],
+            args=[expected_str, new_value_str, expected_exists, new_value_exists]
+        )
         return result == 1
 
     def update_with_retry(self, key, update_func, max_retries=10):
@@ -200,9 +209,12 @@ return cjson.encode({
 -- Safely decrement inventory, preventing overselling
 
 local inventory_key = KEYS[1]
+local transaction_key = KEYS[2]
+
 local product_id = ARGV[1]
 local quantity = tonumber(ARGV[2])
 local order_id = ARGV[3]
+local timestamp = ARGV[4]
 
 -- Get current stock
 local current_stock = tonumber(redis.call('HGET', inventory_key, product_id) or 0)
@@ -221,13 +233,12 @@ end
 local new_stock = redis.call('HINCRBY', inventory_key, product_id, -quantity)
 
 -- Record the transaction
-local transaction_key = 'inventory_transactions:' .. product_id
 local transaction = cjson.encode({
     order_id = order_id,
     quantity = -quantity,
     stock_before = current_stock,
     stock_after = new_stock,
-    timestamp = redis.call('TIME')[1]
+    timestamp = timestamp
 })
 redis.call('LPUSH', transaction_key, transaction)
 redis.call('LTRIM', transaction_key, 0, 999)  -- Keep last 1000
@@ -318,9 +329,12 @@ class InventoryManager:
 
     DECREMENT_SCRIPT = """
     local inventory_key = KEYS[1]
+    local transaction_key = KEYS[2]
+
     local product_id = ARGV[1]
     local quantity = tonumber(ARGV[2])
     local order_id = ARGV[3]
+    local timestamp = ARGV[4]
 
     local current_stock = tonumber(redis.call('HGET', inventory_key, product_id) or 0)
 
@@ -334,6 +348,16 @@ class InventoryManager:
     end
 
     local new_stock = redis.call('HINCRBY', inventory_key, product_id, -quantity)
+
+    local transaction = cjson.encode({
+        order_id = order_id,
+        quantity = -quantity,
+        stock_before = current_stock,
+        stock_after = new_stock,
+        timestamp = timestamp
+    })
+    redis.call('LPUSH', transaction_key, transaction)
+    redis.call('LTRIM', transaction_key, 0, 999)
 
     return cjson.encode({
         success = true,
@@ -378,9 +402,17 @@ class InventoryManager:
         table.insert(deducted, {
             product_id = item.product_id,
             quantity = item.quantity,
+            previous_stock = item.available,
             new_stock = new_stock
         })
     end
+
+    local order_record = cjson.encode({
+        order_id = order_id,
+        timestamp = timestamp,
+        items = deducted
+    })
+    redis.call('HSET', orders_key, order_id, order_record)
 
     return cjson.encode({
         success = true,
@@ -405,9 +437,11 @@ class InventoryManager:
     def decrement(self, product_id, quantity, order_id=None):
         """Safely decrement stock for a single product"""
         order_id = order_id or str(uuid.uuid4())
+        timestamp = str(int(time.time() * 1000))
+        transaction_key = f'inventory_transactions:{product_id}'
         result = self._decrement(
-            keys=['inventory'],
-            args=[product_id, quantity, order_id]
+            keys=['inventory', transaction_key],
+            args=[product_id, quantity, order_id, timestamp]
         )
         return json.loads(result)
 
@@ -515,7 +549,6 @@ return cjson.encode({
 -- Counter that resets daily
 
 local counter_key = KEYS[1]
-local limit_key = KEYS[2]
 
 local operation = ARGV[1]
 local amount = tonumber(ARGV[2]) or 1
@@ -777,9 +810,7 @@ end
 
 -- All conditions pass, apply updates
 for _, result in ipairs(condition_results) do
-    if result.new_value ~= '' then
-        redis.call('SET', result.key, result.new_value)
-    end
+    redis.call('SET', result.key, result.new_value)
 end
 
 return cjson.encode({success = true, updates = #condition_results})

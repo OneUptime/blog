@@ -205,7 +205,7 @@ Ansible provides built-in special tags for common scenarios.
 
 ### The 'always' Tag
 
-Tasks tagged with `always` run regardless of which tags are specified:
+Tasks tagged with `always` run regardless of which tags are specified, unless they are explicitly skipped:
 
 ```yaml
 - name: Setup tasks
@@ -214,7 +214,7 @@ Tasks tagged with `always` run regardless of which tags are specified:
     - name: Gather custom facts
       setup:
         gather_subset: min
-      tags: always  # This always runs
+      tags: always  # This runs unless skipped with --skip-tags always
 
     - name: Install packages
       apt:
@@ -225,7 +225,7 @@ Tasks tagged with `always` run regardless of which tags are specified:
     - name: Log completion
       debug:
         msg: "Playbook completed at {{ ansible_date_time.iso8601 }}"
-      tags: always  # This always runs
+      tags: always  # This runs unless skipped with --skip-tags always
 ```
 
 ### The 'never' Tag
@@ -267,7 +267,7 @@ ansible-playbook site.yml --tags debug
 
 ## Tag Inheritance
 
-Tags flow down from plays to roles to blocks to tasks.
+Tags flow down from plays, blocks, roles declared with the `roles` keyword, and static imports to their tasks.
 
 ```mermaid
 flowchart TD
@@ -322,19 +322,19 @@ flowchart TD
       tags:
         - production
         - deploy
-      include_tasks: deploy-production.yml
+      import_tasks: deploy-production.yml
 
     - name: Deploy to staging
       tags:
         - staging
         - deploy
-      include_tasks: deploy-staging.yml
+      import_tasks: deploy-staging.yml
 
     - name: Deploy to development
       tags:
         - development
         - deploy
-      include_tasks: deploy-development.yml
+      import_tasks: deploy-development.yml
 ```
 
 ```bash
@@ -355,22 +355,22 @@ ansible-playbook site.yml --tags staging
   tasks:
     - name: Configure networking
       tags: networking
-      include_role:
+      import_role:
         name: networking
 
     - name: Configure storage
       tags: storage
-      include_role:
+      import_role:
         name: storage
 
     - name: Configure compute
       tags: compute
-      include_role:
+      import_role:
         name: compute
 
     - name: Configure monitoring
       tags: monitoring
-      include_role:
+      import_role:
         name: monitoring
 ```
 
@@ -553,7 +553,6 @@ tags: sec
       file:
         path: /var/log/
         state: absent
-        recurse: yes
 
     - name: Reset database
       command: dropdb myapp

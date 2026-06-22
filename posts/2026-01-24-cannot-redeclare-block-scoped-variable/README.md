@@ -90,34 +90,26 @@ function processUserBetter(userId: string): void {
 }
 ```
 
-### Cause 3: Conflicts with Type Declarations
+### Cause 3: Conflicts with Library Globals
 
-Sometimes your variable name conflicts with a type declaration from a library or your own code.
+Sometimes your variable name conflicts with a global value declaration from a library. For example, the DOM library declares browser globals such as `Request`, so a script file that declares the same name at the top level can trigger this error.
 
 ```typescript
-// types.ts
-export interface Request {
-    body: unknown;
-    params: Record<string, string>;
-}
-
-// handler.ts
-import { Request } from "./types";
-
+// In a script file with the DOM library enabled
 // Error: Cannot redeclare block-scoped variable 'Request'
 const Request = (url: string) => fetch(url);
 ```
 
-**Solution: Rename your variable or use different import names.**
+**Solution: Rename your variable or make the file a module.**
 
 ```typescript
 // Option 1: Rename your variable
-import { Request } from "./types";
-
 const makeRequest = (url: string) => fetch(url);
+```
 
-// Option 2: Rename the import
-import { Request as RequestType } from "./types";
+```typescript
+// Option 2: Make the file a module
+export {};
 
 const Request = (url: string) => fetch(url);
 ```
@@ -232,33 +224,42 @@ Your `tsconfig.json` settings can affect how this error appears.
         // Including "DOM" adds window.name and other globals
         "lib": ["ES2022", "DOM"],
 
-        // Module system affects script vs module mode
+        // Module system affects emitted JavaScript modules
         "module": "ESNext",
         "moduleResolution": "bundler",
+        "moduleDetection": "force",
 
         // Strict mode catches more potential issues
         "strict": true,
 
-        // Isolated modules ensures each file is a valid module
+        // Checks that each file can be safely transpiled in isolation
         "isolatedModules": true
     }
 }
 ```
 
-### Using isolatedModules
+### Using moduleDetection and isolatedModules
 
-When `isolatedModules` is enabled, TypeScript requires each file to be a valid standalone module. This helps catch the script-mode issue early:
+When you want TypeScript to treat every non-declaration file as a module, use `moduleDetection: "force"` or add `export {}` to individual files. The `isolatedModules` option has a different purpose: it checks that your code can be safely transpiled one file at a time. With `isolatedModules` enabled, some constructs such as namespaces are not allowed in global script files:
 
 ```typescript
-// With isolatedModules: true
-// This file has no imports or exports, so TypeScript warns you
+// utilities.ts with isolatedModules: true
+// This file has no imports or exports, so it is a script
 
-let name = "test";  // Error: 'name' cannot be used as a value
-                    // because it was imported using 'import type'
+namespace Utilities {
+    export const name = "test";
+}
+// Error: Namespaces are not allowed in global script files
+// when 'isolatedModules' is enabled
+```
 
-// Add an export to fix
+```typescript
+// utilities.ts
 export {};
-let name = "test";  // Now works
+
+namespace Utilities {
+    export const name = "test";
+}
 ```
 
 ## Best Practices to Avoid This Error

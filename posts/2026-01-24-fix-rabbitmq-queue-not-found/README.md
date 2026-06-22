@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix RabbitMQ queue not found errors, incl
 
 ---
 
-The "queue not found" error (NOT_FOUND) is a common issue in RabbitMQ that occurs when your application tries to consume from or publish to a queue that does not exist. This guide explains why this happens and how to fix it.
+The "queue not found" error (NOT_FOUND) is a common issue in RabbitMQ that occurs when your application tries to consume from, inspect, or passively declare a queue that does not exist. This guide explains why this happens and how to fix it.
 
 ## Understanding the Error
 
@@ -119,7 +119,7 @@ async function publishMessage() {
     await channel.assertQueue(queue, {
         durable: true,      // Queue survives broker restart
         exclusive: false,   // Not limited to this connection
-        autoDelete: false   // Don't delete when empty
+        autoDelete: false   // Don't delete when consumers disconnect
     });
 
     // Now safe to publish
@@ -149,7 +149,7 @@ connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='localhost',
         port=5672,
-        virtual_host='/production',  # Specify the correct vhost
+        virtual_host='production',  # Specify the correct vhost
         credentials=pika.PlainCredentials('user', 'password')
     )
 )
@@ -164,7 +164,7 @@ List virtual hosts and their queues:
 rabbitmqctl list_vhosts
 
 # List queues in a specific vhost
-rabbitmqctl list_queues -p /production name messages
+rabbitmqctl list_queues -p production name messages
 ```
 
 ## Step 4: Handle Queue Property Mismatches
@@ -237,10 +237,10 @@ Queues can be automatically deleted under certain conditions:
 ### 1. Auto-Delete Queues
 
 ```python
-# Auto-delete queue - deleted when last consumer disconnects
+# Auto-delete queue - deleted after it has had a consumer and the last consumer disconnects
 channel.queue_declare(
     queue='temp_queue',
-    auto_delete=True  # Will be deleted when no consumers
+    auto_delete=True  # Will be deleted when the last consumer disconnects
 )
 
 # Non-auto-delete queue - persists even without consumers
@@ -253,7 +253,7 @@ channel.queue_declare(
 ### 2. TTL (Time-To-Live) on Queues
 
 ```python
-# Queue with expiration - deleted after 1 hour of inactivity
+# Queue with expiration - deleted after at least 1 hour of inactivity
 # x-expires is in milliseconds
 channel.queue_declare(
     queue='expiring_queue',
@@ -383,7 +383,7 @@ stateDiagram-v2
     Active --> Active: Publish/Consume
     Active --> Empty: All messages consumed
     Empty --> Active: New messages
-    Empty --> Deleted: auto_delete + no consumers
+    Empty --> Deleted: auto_delete + last consumer unsubscribes
     Empty --> Deleted: x-expires timeout
     Active --> Deleted: queue_delete
     Created --> Deleted: queue_delete
@@ -425,7 +425,7 @@ done
 |-------|-------|----------|
 | NOT_FOUND 404 | Queue never created | Call queue_declare before use |
 | NOT_FOUND after restart | Non-durable queue | Set durable=True |
-| Queue disappears | auto_delete=True | Set auto_delete=False |
+| Queue disappears after consumers disconnect | auto_delete=True | Set auto_delete=False |
 | Queue expires | x-expires argument | Remove TTL or increase value |
 | Wrong vhost | Connection to wrong vhost | Check virtual_host parameter |
 | Property mismatch | Different queue options | Use passive=True or match properties |

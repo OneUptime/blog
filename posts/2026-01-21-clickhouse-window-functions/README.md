@@ -96,14 +96,20 @@ FROM leaderboard;
 SELECT
     user_id,
     total_purchases,
-    NTILE(4) OVER (ORDER BY total_purchases DESC) AS quartile
+    NTILE(4) OVER (
+        ORDER BY total_purchases DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS quartile
 FROM user_stats;
 
 -- Percentile buckets
 SELECT
     user_id,
     total_purchases,
-    NTILE(100) OVER (ORDER BY total_purchases DESC) AS percentile
+    NTILE(100) OVER (
+        ORDER BY total_purchases DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS percentile
 FROM user_stats;
 ```
 
@@ -116,8 +122,8 @@ FROM user_stats;
 SELECT
     event_time,
     price,
-    LAG(price) OVER (ORDER BY event_time) AS prev_price,
-    price - LAG(price) OVER (ORDER BY event_time) AS price_change
+    LAG(toNullable(price)) OVER (ORDER BY event_time) AS prev_price,
+    price - prev_price AS price_change
 FROM stock_prices
 WHERE symbol = 'AAPL';
 
@@ -125,7 +131,7 @@ WHERE symbol = 'AAPL';
 SELECT
     event_time,
     event_type,
-    LEAD(event_type) OVER (
+    LEAD(toNullable(event_type)) OVER (
         PARTITION BY user_id
         ORDER BY event_time
     ) AS next_event
@@ -277,9 +283,8 @@ FROM sales;
 SELECT
     event_month,
     revenue,
-    LAG(revenue, 12) OVER (ORDER BY event_month) AS revenue_last_year,
-    (revenue - LAG(revenue, 12) OVER (ORDER BY event_month)) /
-        LAG(revenue, 12) OVER (ORDER BY event_month) * 100 AS yoy_growth
+    LAG(toNullable(revenue), 12) OVER (ORDER BY event_month) AS revenue_last_year,
+    (revenue - revenue_last_year) / revenue_last_year * 100 AS yoy_growth
 FROM monthly_revenue;
 ```
 
@@ -290,9 +295,8 @@ FROM monthly_revenue;
 SELECT
     event_date,
     users,
-    users - LAG(users) OVER (ORDER BY event_date) AS dod_change,
-    (users - LAG(users) OVER (ORDER BY event_date)) /
-        LAG(users) OVER (ORDER BY event_date) * 100 AS dod_pct_change
+    users - LAG(toNullable(users)) OVER (ORDER BY event_date) AS dod_change,
+    dod_change / LAG(toNullable(users)) OVER (ORDER BY event_date) * 100 AS dod_pct_change
 FROM daily_users;
 ```
 
@@ -308,10 +312,10 @@ SELECT
     event_type,
     if(
         dateDiff('minute',
-            LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time),
+            LAG(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time),
             event_time
         ) > 30
-        OR LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time) IS NULL,
+        OR LAG(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time) IS NULL,
         1, 0
     ) AS is_session_start
 FROM events;
@@ -330,10 +334,10 @@ FROM (
         *,
         if(
             dateDiff('minute',
-                LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time),
+                LAG(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time),
                 event_time
             ) > 30
-            OR LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time) IS NULL,
+            OR LAG(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time) IS NULL,
             1, 0
         ) AS is_session_start
     FROM events
@@ -349,7 +353,7 @@ SELECT
     event_time,
     event_type,
     dateDiff('second',
-        LAG(event_time) OVER (PARTITION BY user_id ORDER BY event_time),
+        LAG(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time),
         event_time
     ) AS seconds_since_last_event
 FROM events;
@@ -366,9 +370,9 @@ SELECT
     event_time,
     event_type,
     ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_time) AS step,
-    LEAD(event_type) OVER (PARTITION BY user_id ORDER BY event_time) AS next_event,
+    LEAD(toNullable(event_type)) OVER (PARTITION BY user_id ORDER BY event_time) AS next_event,
     dateDiff('second', event_time,
-        LEAD(event_time) OVER (PARTITION BY user_id ORDER BY event_time)
+        LEAD(toNullable(event_time)) OVER (PARTITION BY user_id ORDER BY event_time)
     ) AS time_to_next
 FROM events
 WHERE event_type IN ('view', 'cart', 'checkout', 'purchase');
@@ -407,15 +411,16 @@ FROM events
 WINDOW w AS (
     PARTITION BY user_id
     ORDER BY event_time
-    ROWS UNBOUNDED PRECEDING
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 );
 ```
 
 ### Materialized Calculations
 
 ```sql
--- Pre-compute rankings in materialized view
+-- Periodically recompute rankings in a refreshable materialized view
 CREATE MATERIALIZED VIEW user_rankings
+REFRESH EVERY 1 HOUR
 ENGINE = ReplacingMergeTree()
 ORDER BY (ranking_date, user_id)
 AS SELECT
@@ -431,7 +436,7 @@ FROM user_scores;
 
 ```sql
 -- Avoid unbounded windows when possible
--- Instead of: ROWS UNBOUNDED PRECEDING
+-- Instead of: ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 -- Use bounded: ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
 
 SELECT

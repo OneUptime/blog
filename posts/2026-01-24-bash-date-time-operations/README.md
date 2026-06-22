@@ -16,11 +16,11 @@ Date and time operations are essential for log processing, scheduling, file mana
 # Current date and time
 
 date
-# Output: Fri Jan 24 14:30:00 UTC 2026
+# Output: Sat Jan 24 14:30:00 UTC 2026
 
 # Current timestamp (seconds since epoch)
 date +%s
-# Output: 1769347800
+# Output: 1769265000
 
 # Custom format
 date "+%Y-%m-%d %H:%M:%S"
@@ -69,7 +69,7 @@ date "+%Y%m%d_%H%M%S"
 
 # Human readable
 date "+%A, %B %d, %Y at %I:%M %p"
-# Output: Friday, January 24, 2026 at 02:30 PM
+# Output: Saturday, January 24, 2026 at 02:30 PM
 
 # File-safe timestamp (no colons)
 date "+%Y-%m-%d_%H-%M-%S"
@@ -137,7 +137,7 @@ date -d "$base_date -1 month" "+%Y-%m-%d"
 # Output: 2025-12-15
 
 # Add 2 hours and 30 minutes
-date -d "$base_date 14:00:00 +2 hours +30 minutes" "+%Y-%m-%d %H:%M:%S"
+date -d "$base_date 14:00:00 2 hours 30 minutes" "+%Y-%m-%d %H:%M:%S"
 # Output: 2026-01-15 16:30:00
 
 # Complex arithmetic

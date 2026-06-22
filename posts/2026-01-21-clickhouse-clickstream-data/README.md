@@ -102,8 +102,9 @@ CREATE TABLE sessions (
 PARTITION BY toYYYYMM(session_start)
 ORDER BY (visitor_id, session_start);
 
--- Materialized view to build sessions
+-- Refreshable materialized view to build sessions
 CREATE MATERIALIZED VIEW sessions_mv
+REFRESH EVERY 5 MINUTE
 TO sessions
 AS SELECT
     session_id,
@@ -125,7 +126,7 @@ AS SELECT
     any(browser) AS browser,
     any(country) AS country,
     max(if(event_name = 'purchase', 1, 0)) AS converted,
-    sum(if(event_name = 'purchase', toDecimal64(properties['value'], 2), 0)) AS conversion_value
+    sum(if(event_name = 'purchase', toDecimal64OrZero(properties['value'], 2), 0)) AS conversion_value
 FROM clickstream_events
 GROUP BY session_id;
 ```
@@ -142,12 +143,15 @@ WITH session_boundaries AS (
         event_time,
         event_name,
         page_path,
+        lagInFrame(toNullable(event_time), 1) OVER (
+            PARTITION BY visitor_id
+            ORDER BY event_time
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS previous_event_time,
         -- Detect session breaks (30 min inactivity)
         if(
-            dateDiff('second',
-                lagInFrame(event_time) OVER (PARTITION BY visitor_id ORDER BY event_time),
-                event_time
-            ) > 1800,
+            isNull(previous_event_time)
+            OR dateDiff('second', previous_event_time, event_time) > 1800,
             1, 0
         ) AS is_new_session
     FROM clickstream_events
@@ -208,7 +212,7 @@ SELECT
 FROM (
     SELECT
         session_id,
-        groupArray(page_path) AS page_sequence,
+        arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((page_num, page_path)))) AS page_sequence,
         any(duration_seconds) AS duration_seconds,
         any(converted) AS converted
     FROM (
@@ -247,7 +251,7 @@ WITH funnel_sessions AS (
             page_path = '/checkout',
             event_name = 'purchase'
         ) AS funnel_step,
-        groupArray(page_path) AS full_path
+        arrayMap(x -> x.2, arraySort(x -> x.1, groupArray((event_time, page_path)))) AS full_path
     FROM clickstream_events
     WHERE event_date >= today() - 7
     GROUP BY session_id
@@ -270,11 +274,17 @@ WITH page_transitions AS (
     SELECT
         session_id,
         page_path AS from_page,
-        leadInFrame(page_path, 1) OVER (
-            PARTITION BY session_id ORDER BY event_time
+        leadInFrame(toNullable(page_path), 1) OVER (
+            PARTITION BY session_id
+            ORDER BY event_time
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
         ) AS to_page,
         dateDiff('second', event_time,
-            leadInFrame(event_time, 1) OVER (PARTITION BY session_id ORDER BY event_time)
+            leadInFrame(toNullable(event_time), 1) OVER (
+                PARTITION BY session_id
+                ORDER BY event_time
+                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+            )
         ) AS time_to_next
     FROM clickstream_events
     WHERE event_name = 'page_view'
@@ -309,9 +319,9 @@ SELECT
 FROM (
     SELECT
         visitor_id,
-        argMin(coalesce(utm_source, referrer_domain, 'direct'), event_time) AS first_source,
+        argMin(coalesce(nullIf(utm_source, ''), nullIf(referrer_domain, ''), 'direct'), event_time) AS first_source,
         max(if(event_name = 'purchase', 1, 0)) AS any_conversion,
-        sum(if(event_name = 'purchase', toFloat64(properties['value']), 0)) AS total_value
+        sum(if(event_name = 'purchase', toFloat64OrZero(properties['value']), 0)) AS total_value
     FROM clickstream_events
     WHERE event_date >= today() - 30
     GROUP BY visitor_id
@@ -327,9 +337,15 @@ ORDER BY revenue DESC;
 WITH visitor_journeys AS (
     SELECT
         visitor_id,
-        groupArray(coalesce(utm_source, referrer_domain, 'direct')) AS touchpoints,
+        arrayMap(
+            x -> x.2,
+            arraySort(
+                x -> x.1,
+                groupArray((event_time, coalesce(nullIf(utm_source, ''), nullIf(referrer_domain, ''), 'direct')))
+            )
+        ) AS touchpoints,
         max(if(event_name = 'purchase', 1, 0)) AS converted,
-        max(if(event_name = 'purchase', toFloat64(properties['value']), 0)) AS value
+        max(if(event_name = 'purchase', toFloat64OrZero(properties['value']), 0)) AS value
     FROM clickstream_events
     WHERE event_date >= today() - 30
     GROUP BY visitor_id
@@ -370,7 +386,11 @@ SELECT
     -- Events in this session so far
     row_number() OVER (PARTITION BY session_id ORDER BY event_time) AS session_event_num,
     -- Previous page in session
-    lagInFrame(page_path, 1) OVER (PARTITION BY session_id ORDER BY event_time) AS previous_page
+    lagInFrame(toNullable(page_path), 1) OVER (
+        PARTITION BY session_id
+        ORDER BY event_time
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS previous_page
 FROM clickstream_events
 WHERE visitor_id = 'specific-visitor-id'
 ORDER BY event_time;

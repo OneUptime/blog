@@ -260,16 +260,6 @@ spec:
   ports:
     - port: 80
 ---
-# Cross-namespace mirroring requires ExternalName services
-apiVersion: v1
-kind: Service
-metadata:
-  name: staging-api-external
-  namespace: production
-spec:
-  type: ExternalName
-  externalName: staging-api.staging.svc.cluster.local
----
 apiVersion: traefik.io/v1alpha1
 kind: TraefikService
 metadata:
@@ -280,10 +270,13 @@ spec:
     name: prod-api
     port: 80
     mirrors:
-      - name: staging-api-external
+      - name: staging-api
+        namespace: staging
         port: 80
         percent: 100
 ```
+
+For cross-namespace mirroring, enable `providers.kubernetesCRD.allowCrossNamespace` in Traefik's static configuration.
 
 ## Monitoring Mirror Services
 
@@ -308,17 +301,17 @@ Query Prometheus for mirror-specific metrics:
 
 ```promql
 # Request rate to mirror service
-sum(rate(traefik_service_requests_total{service="staging-service@kubernetes"}[5m]))
+sum(rate(traefik_service_requests_total{service=~".*staging-service.*@kubernetescrd"}[5m]))
 
 # Error rate on mirror (should not affect users)
-sum(rate(traefik_service_requests_total{service="staging-service@kubernetes", code=~"5.."}[5m]))
+sum(rate(traefik_service_requests_total{service=~".*staging-service.*@kubernetescrd", code=~"5.."}[5m]))
 /
-sum(rate(traefik_service_requests_total{service="staging-service@kubernetes"}[5m]))
+sum(rate(traefik_service_requests_total{service=~".*staging-service.*@kubernetescrd"}[5m]))
 
 # Latency comparison between primary and mirror
 histogram_quantile(0.95,
   sum by (le, service) (
-    rate(traefik_service_request_duration_seconds_bucket{service=~"(production|staging)-service@kubernetes"}[5m])
+    rate(traefik_service_request_duration_seconds_bucket{service=~".*(production|staging)-service.*@kubernetescrd"}[5m])
   )
 )
 ```
@@ -442,9 +435,9 @@ spec:
       rules:
         - alert: MirrorHighErrorRate
           expr: |
-            sum(rate(traefik_service_requests_total{service="staging-service@kubernetes", code=~"5.."}[5m]))
+            sum(rate(traefik_service_requests_total{service=~".*staging-service.*@kubernetescrd", code=~"5.."}[5m]))
             /
-            sum(rate(traefik_service_requests_total{service="staging-service@kubernetes"}[5m]))
+            sum(rate(traefik_service_requests_total{service=~".*staging-service.*@kubernetescrd"}[5m]))
             > 0.1
           for: 5m
           labels:

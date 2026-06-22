@@ -110,7 +110,7 @@ Snowflake uses automatic micro-partitioning, but you can optimize it using clust
 flowchart TD
     subgraph "Snowflake Table"
         T[Table Data]
-        T --> MP1[Micro-Partition 1<br/>50-500MB compressed]
+        T --> MP1[Micro-Partition 1<br/>50-500MB uncompressed]
         T --> MP2[Micro-Partition 2]
         T --> MP3[Micro-Partition 3]
         T --> MP4[Micro-Partition 4]
@@ -280,8 +280,8 @@ WHERE user_id = 'abc123';  -- Scans all partitions
 ### 2. Avoid Too Many Small Partitions
 
 ```sql
--- Too granular: millions of tiny partitions
-PARTITION BY TIMESTAMP_TRUNC(event_timestamp, HOUR)  -- Avoid for high cardinality
+-- Too granular for long retention: many small partitions
+PARTITION BY TIMESTAMP_TRUNC(event_timestamp, HOUR)  -- Avoid unless queries need hourly pruning
 
 -- Better: larger, more manageable partitions
 PARTITION BY DATE(event_timestamp)  -- One partition per day
@@ -294,10 +294,13 @@ PARTITION BY DATE(event_timestamp)  -- One partition per day
 ALTER TABLE `project.dataset.logs`
 SET OPTIONS (partition_expiration_days = 30);
 
--- Snowflake: use Time Travel and Fail-safe periods
+-- Snowflake: delete old rows; Time Travel retention controls historical recovery, not row expiration
+DELETE FROM logs WHERE event_date < DATEADD(day, -30, CURRENT_DATE());
+
+-- Optional on Enterprise Edition or higher for extended Time Travel retention
 ALTER TABLE logs SET DATA_RETENTION_TIME_IN_DAYS = 30;
 
--- Redshift: use automated vacuum delete
+-- Redshift: delete old rows; Redshift also performs DELETE ONLY vacuum automatically in the background
 DELETE FROM logs WHERE event_date < DATEADD(day, -30, CURRENT_DATE);
 VACUUM DELETE ONLY logs;
 ```

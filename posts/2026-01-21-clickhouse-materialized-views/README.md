@@ -61,11 +61,11 @@ CREATE TABLE events_hourly
 (
     hour DateTime,
     event_type LowCardinality(String),
-    event_count UInt64,
-    unique_users UInt64,
-    total_duration UInt64
+    event_count AggregateFunction(count),
+    unique_users AggregateFunction(uniq, UInt64),
+    total_duration AggregateFunction(sum, UInt64)
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(hour)
 ORDER BY (event_type, hour);
 ```
@@ -77,9 +77,9 @@ CREATE MATERIALIZED VIEW events_hourly_mv TO events_hourly AS
 SELECT
     toStartOfHour(event_time) AS hour,
     event_type,
-    count() AS event_count,
-    uniq(user_id) AS unique_users,
-    sum(duration_ms) AS total_duration
+    countState() AS event_count,
+    uniqState(user_id) AS unique_users,
+    sumState(toUInt64(duration_ms)) AS total_duration
 FROM events
 GROUP BY hour, event_type;
 ```
@@ -95,10 +95,17 @@ INSERT INTO events VALUES
     (now(), 1, 'click', '/home', 100);
 ```
 
-The materialized view automatically aggregates and inserts into `events_hourly`:
+The materialized view automatically aggregates and inserts aggregate states into `events_hourly`:
 
 ```sql
-SELECT * FROM events_hourly;
+SELECT
+    hour,
+    event_type,
+    countMerge(event_count) AS event_count,
+    uniqMerge(unique_users) AS unique_users,
+    sumMerge(total_duration) AS total_duration
+FROM events_hourly
+GROUP BY hour, event_type;
 -- hour                | event_type | event_count | unique_users | total_duration
 -- 2024-01-15 14:00:00 | page_view  | 2           | 2            | 3500
 -- 2024-01-15 14:00:00 | click      | 1           | 1            | 100
@@ -135,7 +142,7 @@ CREATE TABLE hourly_stats
     service LowCardinality(String),
 
     -- Aggregate state columns
-    request_count AggregateFunction(count, UInt64),
+    request_count AggregateFunction(count),
     avg_latency AggregateFunction(avg, Float64),
     p95_latency AggregateFunction(quantile(0.95), Float64),
     unique_users AggregateFunction(uniq, UInt64)
@@ -177,7 +184,7 @@ ORDER BY hour;
 
 ### ReplacingMergeTree for Latest State
 
-Keep only the latest record per key:
+Eventually keep only the latest record per key after background merges. Use `FINAL` when you need the latest state at query time before merges have completed:
 
 ```sql
 CREATE TABLE user_latest_event
@@ -283,11 +290,11 @@ CREATE TABLE request_metrics
     minute DateTime,
     service LowCardinality(String),
 
-    total_requests AggregateFunction(count, UInt64),
-    error_count AggregateFunction(countIf, UInt16),
-    avg_latency AggregateFunction(avg, Float64),
-    p50_latency AggregateFunction(quantile(0.5), Float64),
-    p99_latency AggregateFunction(quantile(0.99), Float64),
+    total_requests AggregateFunction(count),
+    error_count AggregateFunction(sum, UInt64),
+    avg_latency AggregateFunction(avg, UInt32),
+    p50_latency AggregateFunction(quantile(0.5), UInt32),
+    p99_latency AggregateFunction(quantile(0.99), UInt32),
     unique_users AggregateFunction(uniq, UInt64)
 )
 ENGINE = AggregatingMergeTree()
@@ -298,7 +305,7 @@ SELECT
     toStartOfMinute(timestamp) AS minute,
     service,
     countState() AS total_requests,
-    countIfState(status_code >= 500) AS error_count,
+    sumState(toUInt64(status_code >= 500)) AS error_count,
     avgState(latency_ms) AS avg_latency,
     quantileState(0.5)(latency_ms) AS p50_latency,
     quantileState(0.99)(latency_ms) AS p99_latency,
@@ -313,7 +320,7 @@ SELECT
     minute,
     service,
     countMerge(total_requests) AS requests,
-    countMerge(error_count) AS errors,
+    sumMerge(error_count) AS errors,
     round(avgMerge(avg_latency), 2) AS avg_ms,
     round(quantileMerge(0.99)(p99_latency), 2) AS p99_ms,
     uniqMerge(unique_users) AS users
@@ -332,22 +339,22 @@ CREATE TABLE funnel_progress
 (
     date Date,
     user_id UInt64,
-    reached_step1 UInt8,
-    reached_step2 UInt8,
-    reached_step3 UInt8,
-    reached_step4 UInt8
+    reached_step1 AggregateFunction(max, UInt8),
+    reached_step2 AggregateFunction(max, UInt8),
+    reached_step3 AggregateFunction(max, UInt8),
+    reached_step4 AggregateFunction(max, UInt8)
 )
-ENGINE = ReplacingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (date, user_id);
 
 CREATE MATERIALIZED VIEW funnel_mv TO funnel_progress AS
 SELECT
     toDate(event_time) AS date,
     user_id,
-    max(event_type = 'visit') AS reached_step1,
-    max(event_type = 'signup') AS reached_step2,
-    max(event_type = 'activation') AS reached_step3,
-    max(event_type = 'purchase') AS reached_step4
+    maxState(toUInt8(event_type = 'visit')) AS reached_step1,
+    maxState(toUInt8(event_type = 'signup')) AS reached_step2,
+    maxState(toUInt8(event_type = 'activation')) AS reached_step3,
+    maxState(toUInt8(event_type = 'purchase')) AS reached_step4
 FROM events
 GROUP BY date, user_id;
 ```
@@ -360,7 +367,19 @@ SELECT
     sum(reached_step2) AS step2,
     sum(reached_step3) AS step3,
     sum(reached_step4) AS step4
-FROM funnel_progress FINAL
+FROM
+(
+    SELECT
+        date,
+        user_id,
+        maxMerge(reached_step1) AS reached_step1,
+        maxMerge(reached_step2) AS reached_step2,
+        maxMerge(reached_step3) AS reached_step3,
+        maxMerge(reached_step4) AS reached_step4
+    FROM funnel_progress
+    WHERE date >= today() - 30
+    GROUP BY date, user_id
+)
 WHERE date >= today() - 30
 GROUP BY date
 ORDER BY date;
@@ -384,6 +403,7 @@ ORDER BY (signup_date, user_id, activity_date);
 CREATE MATERIALIZED VIEW activity_mv TO user_activity_daily AS
 SELECT
     user_id,
+    -- Assumes the source events table includes first_seen DateTime.
     toDate(first_seen) AS signup_date,
     toDate(event_time) AS activity_date,
     1 AS was_active
@@ -415,9 +435,9 @@ INSERT INTO events_hourly
 SELECT
     toStartOfHour(event_time) AS hour,
     event_type,
-    count() AS event_count,
-    uniq(user_id) AS unique_users,
-    sum(duration_ms) AS total_duration
+    countState() AS event_count,
+    uniqState(user_id) AS unique_users,
+    sumState(toUInt64(duration_ms)) AS total_duration
 FROM events
 WHERE event_time < '2024-01-01'  -- Before MV was created
 GROUP BY hour, event_type;
@@ -426,20 +446,23 @@ GROUP BY hour, event_type;
 ### Method 2: POPULATE Clause
 
 ```sql
--- Create MV with POPULATE to process existing data
-CREATE MATERIALIZED VIEW events_hourly_mv TO events_hourly
+-- Create MV with its own storage and POPULATE to process existing data
+CREATE MATERIALIZED VIEW events_hourly_mv
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMM(hour)
+ORDER BY (event_type, hour)
 POPULATE AS
 SELECT
     toStartOfHour(event_time) AS hour,
     event_type,
-    count() AS event_count,
-    uniq(user_id) AS unique_users,
-    sum(duration_ms) AS total_duration
+    countState() AS event_count,
+    uniqState(user_id) AS unique_users,
+    sumState(toUInt64(duration_ms)) AS total_duration
 FROM events
 GROUP BY hour, event_type;
 ```
 
-Warning: POPULATE can be slow for large tables and may miss concurrent inserts.
+Warning: `POPULATE` cannot be used with `TO events_hourly`. It can be slow for large tables, is not supported in ClickHouse Cloud, and may miss concurrent inserts.
 
 ## Managing Materialized Views
 
@@ -460,7 +483,8 @@ WHERE engine = 'MaterializedView'
 ```sql
 -- See MV dependencies
 SELECT
-    table,
+    name,
+    target_table,
     dependencies_table
 FROM system.tables
 WHERE database = 'default';
@@ -516,27 +540,26 @@ GROUP BY hour;
 ```sql
 -- Check insert latency
 SELECT
-    table,
-    avg(duration_ms) AS avg_duration,
-    max(duration_ms) AS max_duration
+    arrayStringConcat(tables, ',') AS tables,
+    avg(query_duration_ms) AS avg_duration,
+    max(query_duration_ms) AS max_duration
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND query LIKE '%INSERT INTO events%'
   AND event_time > now() - INTERVAL 1 HOUR
-GROUP BY table;
+GROUP BY tables;
 ```
 
 ### Handle Insert Failures
 
-If MV processing fails, the source insert fails too. Design MVs to be resilient:
+By default, if MV processing fails, the `INSERT` query fails. Whether the block has already reached the source table depends on insert pipeline timing, so use insert deduplication when retrying:
 
 ```sql
--- Use SETTINGS to control behavior
-CREATE MATERIALIZED VIEW resilient_mv TO target
+INSERT INTO events
+SELECT ...
 SETTINGS
-    max_insert_block_size = 1048576,
-    max_threads = 1
-AS SELECT ...;
+    insert_deduplicate = 1,
+    deduplicate_blocks_in_dependent_materialized_views = 1;
 ```
 
 ---

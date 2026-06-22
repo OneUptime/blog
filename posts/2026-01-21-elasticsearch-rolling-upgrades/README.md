@@ -15,6 +15,7 @@ Upgrading Elasticsearch requires careful planning to avoid downtime and data los
 ### Supported Upgrade Paths
 
 - 7.17 -> 8.x (requires upgrade to 7.17 first)
+- 8.19 -> 9.x (requires upgrade to the latest 8.x first)
 - 8.x -> 8.y (rolling upgrade supported)
 - Major version upgrades require intermediate versions
 
@@ -51,6 +52,8 @@ curl -X GET "https://localhost:9200/_cluster/health?pretty" \
 
 ```bash
 # Create snapshot repository if not exists
+# For an fs repository, the location must be mounted on all master and data nodes
+# and allowed in path.repo in elasticsearch.yml before registration.
 curl -X PUT "https://localhost:9200/_snapshot/upgrade_backup" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -100,11 +103,10 @@ curl -X PUT "https://localhost:9200/_cluster/settings" \
   }'
 ```
 
-### 6. Perform Synced Flush (Pre-8.0)
+### 6. Perform Flush
 
 ```bash
-# For versions before 8.0
-curl -X POST "https://localhost:9200/_flush/synced" \
+curl -X POST "https://localhost:9200/_flush" \
   -u elastic:password
 ```
 
@@ -170,8 +172,8 @@ curl -X GET "https://localhost:9200/_cluster/health?wait_for_status=green&timeou
 ### Step 5: Repeat for Each Node
 
 Repeat steps 1-4 for remaining nodes:
-1. Data nodes first
-2. Then ingest nodes
+1. Data nodes first, tier-by-tier: frozen, cold, warm, hot, then other data nodes
+2. Then remaining non-master, non-data nodes such as ingest, ML, transform, and coordinating nodes
 3. Master-eligible nodes last
 4. Dedicated master nodes very last
 
@@ -247,7 +249,7 @@ upgrade_node() {
     NODE=$1
     echo "=== Upgrading node: $NODE ==="
 
-    # SSH to node and perform upgrade
+    # SSH to node and perform upgrade. NODE must resolve to a reachable SSH host.
     ssh $NODE << EOF
         sudo systemctl stop elasticsearch
         sudo apt-get update
@@ -279,6 +281,7 @@ curl -X PUT "https://$ES_HOST:$ES_PORT/_snapshot/upgrade_backup/pre_upgrade_$(da
     -d '{"indices": "*", "include_global_state": true}'
 
 # 3. Get list of nodes (data nodes first, then master)
+# For production automation, replace node names with SSH hostnames or IPs if they differ.
 DATA_NODES=$(curl -s -X GET "https://$ES_HOST:$ES_PORT/_cat/nodes?h=name,node.role" \
     -u $ES_USER:$ES_PASS | grep 'd' | awk '{print $1}')
 MASTER_NODES=$(curl -s -X GET "https://$ES_HOST:$ES_PORT/_cat/nodes?h=name,node.role" \
@@ -317,7 +320,7 @@ kind: Elasticsearch
 metadata:
   name: elasticsearch
 spec:
-  version: 8.12.0  # Change version here
+  version: 9.4.2  # Change version here
   nodeSets:
   - name: default
     count: 3
@@ -408,30 +411,28 @@ curl -X POST "https://localhost:9200/_reindex" \
 
 If upgrade fails:
 
-### 1. Stop the Upgraded Node
+Elasticsearch does not support downgrading an existing upgraded cluster. If a rolling upgrade has started, finish upgrading every node, or rebuild an empty cluster on the previous version and restore a snapshot taken before the upgrade.
+
+### 1. Stop the Failed Upgrade
 
 ```bash
 sudo systemctl stop elasticsearch
 ```
 
-### 2. Downgrade Package
+### 2. Rebuild a Cluster on the Previous Version
 
 ```bash
 # Debian/Ubuntu
 sudo apt-get install elasticsearch=8.11.0
 
 # RHEL/CentOS
-sudo yum downgrade elasticsearch-8.11.0
+sudo yum install elasticsearch-8.11.0
 ```
 
-### 3. Restore from Snapshot (if needed)
+### 3. Restore from Snapshot
 
 ```bash
-# Close indices
-curl -X POST "https://localhost:9200/_all/_close" \
-  -u elastic:password
-
-# Restore snapshot
+# Restore the pre-upgrade snapshot into the rebuilt cluster
 curl -X POST "https://localhost:9200/_snapshot/upgrade_backup/pre_upgrade_snapshot/_restore" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -455,7 +456,7 @@ Upgrade development/staging clusters first.
 
 Check for breaking changes and deprecations.
 
-### 4. Plan for Downgrade
+### 4. Plan for Rollback
 
 Know the rollback procedure before starting.
 

@@ -8,7 +8,7 @@ Description: Master Ansible facts to gather system information, make dynamic dec
 
 ---
 
-Ansible facts are system properties collected from managed hosts at the start of playbook execution. They include everything from IP addresses and disk space to OS versions and installed packages. Facts enable dynamic playbooks that adapt to each host's configuration without hardcoding values.
+Ansible facts are system properties collected from managed hosts at the start of playbook execution. They include everything from IP addresses and disk space to OS versions and package manager details. Facts enable dynamic playbooks that adapt to each host's configuration without hardcoding values.
 
 This guide covers using built-in facts, creating custom facts, and optimizing fact gathering for performance.
 
@@ -249,8 +249,9 @@ Create organization-specific facts with custom fact scripts.
 
 Place JSON or INI files in `/etc/ansible/facts.d/`.
 
+For `/etc/ansible/facts.d/application.fact`:
+
 ```json
-// /etc/ansible/facts.d/application.fact
 {
     "name": "myapp",
     "version": "2.1.0",
@@ -352,7 +353,7 @@ Access dynamic facts:
       Database connected: {{ ansible_local.app_status.database_connection }}
 
 - name: Alert on high disk usage
-  slack:
+  community.general.slack:
     token: "{{ slack_token }}"
     msg: "High disk usage on {{ ansible_hostname }}: {{ ansible_local.app_status.disk_usage_percent }}%"
   when: ansible_local.app_status.disk_usage_percent > 80

@@ -41,34 +41,41 @@ flowchart LR
 
 ### Error: "PERMISSION_DENIED: The caller does not have permission"
 
-This is the most common error. Cloud Scheduler uses a service account to call your targets.
+This is the most common error. For authenticated HTTP targets, Cloud Scheduler generates a token from the client service account configured on the job. For Pub/Sub targets, Cloud Scheduler uses its service agent to publish to the topic.
 
 ```bash
-# Check the service account used by Cloud Scheduler
+# Check the target and authentication configured on the job
 
 gcloud scheduler jobs describe my-job --location=us-central1
 
-# The output shows the service account in the httpTarget or pubsubTarget section
+# For HTTP targets, check httpTarget.oidcToken.serviceAccountEmail
+# or httpTarget.oauthToken.serviceAccountEmail.
 ```
 
-For HTTP targets, grant the invoker role:
+For authenticated HTTP targets, grant the invoker role to the client service account used by the job:
 
 ```bash
-# Get the Cloud Scheduler service account
+# Get the client service account configured on the Scheduler job
 PROJECT_ID=$(gcloud config get-value project)
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-SCHEDULER_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+INVOKER_SA="scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# For Cloud Functions, grant invoker role
+# For Cloud Run functions (2nd gen), grant Cloud Run Invoker
 gcloud functions add-iam-policy-binding my-function \
     --region=us-central1 \
-    --member="serviceAccount:${SCHEDULER_SA}" \
+    --gen2 \
+    --member="serviceAccount:${INVOKER_SA}" \
+    --role="roles/run.invoker"
+
+# For Cloud Functions (1st gen), grant Cloud Functions Invoker
+gcloud functions add-iam-policy-binding my-function \
+    --region=us-central1 \
+    --member="serviceAccount:${INVOKER_SA}" \
     --role="roles/cloudfunctions.invoker"
 
 # For Cloud Run, grant invoker role
 gcloud run services add-iam-policy-binding my-service \
     --region=us-central1 \
-    --member="serviceAccount:${SCHEDULER_SA}" \
+    --member="serviceAccount:${INVOKER_SA}" \
     --role="roles/run.invoker"
 ```
 
@@ -92,16 +99,24 @@ Creating a dedicated service account for Scheduler:
 gcloud iam service-accounts create scheduler-invoker \
     --display-name="Cloud Scheduler Invoker"
 
-# Grant necessary roles
-gcloud projects add-iam-policy-binding $PROJECT_ID \
+# Grant necessary role on the target Cloud Run service
+gcloud run services add-iam-policy-binding my-service \
+    --region=us-central1 \
     --member="serviceAccount:scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 
-# Grant Cloud Scheduler permission to use this service account
+# Grant the user or deployer creating the job permission to attach this service account
+USER_EMAIL=$(gcloud config get-value account)
 gcloud iam service-accounts add-iam-policy-binding \
     scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com" \
+    --member="user:${USER_EMAIL}" \
     --role="roles/iam.serviceAccountUser"
+
+# If the Cloud Scheduler service agent role was removed, restore it
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com" \
+    --role="roles/cloudscheduler.serviceAgent"
 ```
 
 ## HTTP Target Errors
@@ -115,7 +130,7 @@ The target endpoint is not accessible from Cloud Scheduler.
 curl -I https://your-endpoint.com/api/scheduled-task
 
 # Common issues:
-# 1. Endpoint requires VPC access (not supported directly)
+# 1. Endpoint is private and is not one of the private targets supported by Cloud Scheduler
 # 2. Firewall rules blocking traffic
 # 3. Service is down or not responding
 ```
@@ -354,9 +369,8 @@ resource.labels.job_id="my-job"
 severity>=WARNING
 ' --limit=20 --format=json
 
-# Monitor with custom dashboard query
-# Metric: cloudscheduler.googleapis.com/job/attempt_count
-# Filter by: status="failed"
+# Monitor with logs-based alerts or log-based metrics
+# Filter: resource.type="cloud_scheduler_job" AND severity>=ERROR
 ```
 
 ### Manual Job Trigger for Testing
@@ -389,7 +403,7 @@ echo -e "\nJobs with recent failures:"
 gcloud logging read '
 resource.type="cloud_scheduler_job"
 jsonPayload.status.code!=200
-timestamp>="'$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)'"
+timestamp>="'$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ)'"
 ' --limit=10 --format="table(timestamp, resource.labels.job_id, jsonPayload.status.code)"
 ```
 
@@ -424,7 +438,7 @@ def process_day():
 # Set appropriate timeouts
 # attempt-deadline should be less than your function/service timeout
 
-# For Cloud Functions (max 540s for gen2)
+# For Cloud Functions (max 540s for gen1)
 gcloud scheduler jobs update http my-cf-job \
     --location=us-central1 \
     --attempt-deadline=300s

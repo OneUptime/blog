@@ -50,10 +50,10 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
     // This goroutine uses the request context - PROBLEM!
     go func() {
-        defer span.End() // This may fail with "context canceled"
+        defer span.End()
 
         // By the time this runs, r.Context() may already be canceled
-        processInBackground(ctx) // Will fail!
+        processInBackground(ctx) // Work that honors ctx may fail!
     }()
 }
 ```
@@ -73,8 +73,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
     // but is not tied to the request lifecycle
     bgCtx := context.Background()
 
-    // Link the background context to the original trace
-    bgCtx = trace.ContextWithSpan(bgCtx, span)
+    // Link the background context to the original trace without copying
+    // the request cancellation signal
+    bgCtx = trace.ContextWithSpanContext(bgCtx, span.SpanContext())
 
     // Return response to client
     w.WriteHeader(http.StatusAccepted)
@@ -82,7 +83,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
     // Now the goroutine uses a context that won't be canceled
     go func() {
-        defer span.End() // This will work correctly
+        defer span.End()
 
         // Create child spans using the background context
         processInBackground(bgCtx)
@@ -211,8 +212,6 @@ async def do_background_work():
 from fastapi import FastAPI, Request, BackgroundTasks
 from opentelemetry import trace
 from opentelemetry.trace import SpanContext
-from opentelemetry.trace.propagation import set_span_in_context
-import contextvars
 
 app = FastAPI()
 tracer = trace.get_tracer(__name__)
@@ -255,7 +254,6 @@ For async operations, ensure context propagation:
 # async_context.py
 import asyncio
 from opentelemetry import trace, context
-from opentelemetry.trace import set_span_in_context
 
 tracer = trace.get_tracer(__name__)
 
@@ -320,7 +318,6 @@ import (
     "context"
     "fmt"
     "runtime"
-    "time"
 
     "go.opentelemetry.io/otel/trace"
 )
@@ -338,7 +335,7 @@ func DebugContext(parent context.Context, name string) context.Context {
         fmt.Printf("[DEBUG] Context '%s' canceled at %s\n", name, location)
         fmt.Printf("[DEBUG] Reason: %v\n", ctx.Err())
 
-        // Print stack trace to find the cancellation source
+        // Print this goroutine's stack trace to show where the watcher ran
         buf := make([]byte, 4096)
         n := runtime.Stack(buf, false)
         fmt.Printf("[DEBUG] Stack trace:\n%s\n", buf[:n])
@@ -456,8 +453,8 @@ func handleRequestProperly(w http.ResponseWriter, r *http.Request) {
 
     // 3. For async work, create a detached context
     if needsAsyncProcessing(result) {
-        // Copy trace context to new background context
-        bgCtx := trace.ContextWithSpan(context.Background(), span)
+        // Copy trace context to a new background context
+        bgCtx := trace.ContextWithSpanContext(context.Background(), span.SpanContext())
 
         // Start async work with detached context
         go func() {

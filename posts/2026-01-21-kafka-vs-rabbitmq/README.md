@@ -46,7 +46,7 @@ Key characteristics:
 - Queue-based with flexible routing
 - Push-based delivery (with pull option)
 - Message acknowledgment per message
-- Messages deleted after consumption
+- Messages removed after acknowledgment or expiration
 - Complex routing patterns
 
 ## Feature Comparison
@@ -56,12 +56,12 @@ Key characteristics:
 | Protocol | Custom binary | AMQP, MQTT, STOMP |
 | Message ordering | Per partition | Per queue |
 | Delivery guarantee | At-least-once, exactly-once | At-least-once, at-most-once |
-| Message retention | Configurable time/size | Until consumed |
-| Replay capability | Yes | No (without plugins) |
+| Message retention | Configurable time/size | Until acknowledged/expired |
+| Replay capability | Yes | No for queues (RabbitMQ Streams support replay) |
 | Routing | Partition key | Exchange types |
 | Consumer model | Pull (poll) | Push (with pull option) |
 | Scaling | Horizontal (partitions) | Vertical + clustering |
-| Throughput | Very high (millions/sec) | High (tens of thousands/sec) |
+| Throughput | Very high (workload-dependent) | High (workload-dependent) |
 | Latency | Higher (batching) | Lower (immediate delivery) |
 
 ## Performance Characteristics
@@ -69,7 +69,7 @@ Key characteristics:
 ### Kafka Performance
 
 ```text
-Throughput: 1-2 million messages/second (per broker)
+Throughput: Hundreds of thousands to millions of messages/second (workload-dependent)
 Latency: 5-50ms (depends on batching)
 Storage: Efficient sequential writes
 Scaling: Linear with partitions/brokers
@@ -84,10 +84,10 @@ Kafka excels at:
 ### RabbitMQ Performance
 
 ```text
-Throughput: 20,000-50,000 messages/second (per node)
+Throughput: Tens of thousands of messages/second or more (workload-dependent)
 Latency: Sub-millisecond to few milliseconds
-Memory: Messages primarily in memory
-Scaling: Clustering for HA, limited horizontal scaling
+Memory/disk: Depends on queue type, durability, and memory pressure
+Scaling: Clustering for HA, limited horizontal scaling for queues
 ```
 
 RabbitMQ excels at:
@@ -206,6 +206,7 @@ flowchart LR
 - Scheduled tasks
 - Retry with backoff
 - Timeout handling
+- Requires TTL/dead-lettering or the delayed message exchange plugin
 
 ## Code Comparison
 
@@ -292,16 +293,18 @@ channel.basicConsume("queue", false, deliverCallback, consumerTag -> {});
 ```bash
 # Create topic
 
-kafka-topics.sh --create --topic my-topic --partitions 12 --replication-factor 3
+kafka-topics.sh --create --topic my-topic --partitions 12 --replication-factor 3 \
+  --bootstrap-server localhost:9092
 
 # Describe topic
-kafka-topics.sh --describe --topic my-topic
+kafka-topics.sh --describe --topic my-topic --bootstrap-server localhost:9092
 
 # Consumer groups
-kafka-consumer-groups.sh --describe --group my-group
+kafka-consumer-groups.sh --describe --group my-group --bootstrap-server localhost:9092
 
 # Performance testing
-kafka-producer-perf-test.sh --topic test --num-records 1000000 --record-size 1000
+kafka-producer-perf-test.sh --topic test --num-records 1000000 --record-size 1000 \
+  --throughput -1 --producer-props bootstrap.servers=localhost:9092
 ```
 
 Operational considerations:
@@ -330,7 +333,7 @@ Operational considerations:
 - Management UI for monitoring
 - Memory management critical
 - Simpler to operate at smaller scale
-- Queue mirroring for HA
+- Quorum queues or streams for HA
 
 ## When to Use Both
 
@@ -390,7 +393,7 @@ When to migrate (rare):
 | Stream processing | Kafka |
 | Request-reply | RabbitMQ |
 | Log aggregation | Kafka |
-| Scheduled messages | RabbitMQ |
+| Scheduled messages | RabbitMQ (with TTL/dead-lettering or plugin) |
 
 ## Conclusion
 

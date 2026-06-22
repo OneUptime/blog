@@ -31,9 +31,9 @@ The key message is "This is probably not a problem with npm." The actual error i
 Try these in order:
 
 ```bash
-# 1. Clear npm cache
+# 1. Verify npm cache
 
-npm cache clean --force
+npm cache verify
 
 # 2. Delete node_modules and reinstall
 rm -rf node_modules package-lock.json
@@ -100,8 +100,8 @@ xcode-select --install
 # On Ubuntu/Debian
 sudo apt-get install build-essential
 
-# On Windows (run as Admin)
-npm install --global windows-build-tools
+# On Windows (PowerShell as Admin, with Chocolatey)
+choco install python visualstudio2022-workload-vctools -y
 ```
 
 For specific native modules:
@@ -180,7 +180,7 @@ Dependencies are corrupted:
 # Nuclear option: Clean everything
 rm -rf node_modules
 rm package-lock.json
-npm cache clean --force
+npm cache verify
 npm install
 
 # If using yarn
@@ -204,8 +204,8 @@ Package requires different Node version:
 node --version
 
 # Switch Node version with nvm
-nvm install 18
-nvm use 18
+nvm install 24
+nvm use 24
 npm install
 ```
 
@@ -341,7 +341,7 @@ npm install bcryptjs
 
 ```bash
 # Rebuild for electron
-./node_modules/.bin/electron-rebuild
+npx @electron/rebuild
 ```
 
 ## CI/CD Environment Fixes
@@ -354,18 +354,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       
       - name: Use Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version: '24'
           cache: 'npm'
       
       - name: Clean install
-        run: |
-          rm -rf node_modules
-          npm ci
+        run: npm ci
       
       - name: Build
         run: npm run build
@@ -376,7 +374,7 @@ jobs:
 ### Docker
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
@@ -412,7 +410,7 @@ npm audit fix
 
 ```bash
 # Create .nvmrc
-echo "18" > .nvmrc
+echo "24" > .nvmrc
 
 # Use in project
 nvm use
@@ -423,8 +421,8 @@ nvm use
 ```json
 {
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   }
 }
 ```

@@ -34,7 +34,7 @@ Before starting, ensure you have:
 ```text
 Distributor -> Ingester (Memory + WAL) -> Object Storage
                     |
-              Replication to N ingesters
+       Distributor writes to N ingesters
 ```
 
 ### State Management
@@ -64,7 +64,7 @@ ingester:
 1. Log entries written to WAL before acknowledgment
 2. WAL replayed on startup
 3. Checkpoints reduce replay time
-4. WAL segments deleted after flush
+4. Old WAL data is removed after checkpointing when no longer needed
 
 ### WAL Best Practices
 
@@ -92,7 +92,7 @@ ingester:
 
 **Recovery**:
 1. Ring detects failure
-2. Tokens redistributed
+2. Distributors skip unhealthy ingesters after the heartbeat timeout
 3. Pod restarts, WAL replays
 4. Ingester rejoins ring
 
@@ -105,7 +105,7 @@ curl http://loki:3100/ring
 
 ### Scenario 2: Multiple Ingester Failures
 
-**Impact**: Potential data loss if > (replication_factor - 1) fail
+**Impact**: Potential write errors or data loss if quorum cannot be maintained or multiple replicas with unflushed data fail
 
 **Recovery**:
 ```bash
@@ -121,18 +121,18 @@ kubectl rollout status statefulset/loki-ingester -n loki
 
 ### Scenario 3: WAL Corruption
 
-**Impact**: Data loss for affected ingester
+**Impact**: Possible data loss for affected ingester
 
 **Recovery**:
 ```bash
-# Clear corrupted WAL
-kubectl exec -n loki loki-ingester-0 -- rm -rf /loki/wal/*
-
-# Restart ingester
+# Restart ingester so Loki can attempt WAL repair/replay
 kubectl delete pod -n loki loki-ingester-0
 
-# Verify recovery
+# Verify recovery and corruption metrics
 kubectl logs -n loki loki-ingester-0 | grep -i wal
+
+# Only clear WAL as a last resort after backing it up, because this deletes recoverable data
+# kubectl exec -n loki loki-ingester-0 -- rm -rf /loki/wal/*
 ```
 
 ### Scenario 4: Storage Failure
@@ -170,11 +170,11 @@ With replication_factor=3:
 ```yaml
 common:
   replication_factor: 3
-  ring:
-    zone_awareness_enabled: true
 
 ingester:
   lifecycler:
+    ring:
+      zone_awareness_enabled: true
     availability_zone: ${ZONE}
 ```
 
@@ -185,7 +185,7 @@ ingester:
 ```yaml
 ingester:
   lifecycler:
-    final_sleep: 30s  # Time to transfer data
+    final_sleep: 30s  # Time to keep the process alive for final metric scrapes
 ```
 
 ### Kubernetes Configuration
@@ -201,15 +201,15 @@ spec:
             command:
               - /bin/sh
               - -c
-              - sleep 30 && kill -SIGTERM 1
+              - curl -X POST http://localhost:3100/ingester/prepare_shutdown || true
 ```
 
 ### Shutdown Procedure
 
 1. Pod receives SIGTERM
 2. Ingester stops accepting writes
-3. Flushes in-memory data to storage
-4. WAL flushed if configured
+3. Flushes in-memory data to storage if `flush_on_shutdown` is enabled
+4. Otherwise relies on WAL replay when the same ingester restarts with the same volume
 5. Leaves ring gracefully
 6. Pod terminates
 
@@ -299,7 +299,8 @@ kubectl get pod -n ${NAMESPACE} ${INGESTER}
 # 2. Check WAL status
 kubectl exec -n ${NAMESPACE} ${INGESTER} -- ls -la /loki/wal/
 
-# 3. If WAL corrupted, clear it
+# 3. If WAL corruption is reported, let Loki attempt automatic repair/replay first.
+#    Only clear the WAL as a last resort after backing it up.
 # kubectl exec -n ${NAMESPACE} ${INGESTER} -- rm -rf /loki/wal/*
 
 # 4. Delete pod to trigger restart
@@ -447,7 +448,6 @@ common:
   ring:
     kvstore:
       store: memberlist
-    zone_awareness_enabled: true
 
 memberlist:
   join_members:
@@ -459,6 +459,7 @@ ingester:
       kvstore:
         store: memberlist
       replication_factor: 3
+      zone_awareness_enabled: true
     num_tokens: 128
     heartbeat_period: 5s
     heartbeat_timeout: 1m
@@ -469,7 +470,6 @@ ingester:
     availability_zone: ${ZONE}
   chunk_idle_period: 30m
   chunk_retain_period: 1m
-  max_transfer_retries: 0
   wal:
     enabled: true
     dir: /loki/wal

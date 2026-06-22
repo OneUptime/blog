@@ -349,15 +349,16 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          # Required: Spread across zones
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: database
-              topologyKey: topology.kubernetes.io/zone
-          # Preferred: Also spread across nodes
+          # Prefer spreading across zones
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: database
+                topologyKey: topology.kubernetes.io/zone
+            # Also prefer spreading across nodes
+            - weight: 50
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
@@ -365,7 +366,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: db
-          image: postgresql:14
+          image: postgres:14
 ```
 
 ### Soft Anti-Affinity
@@ -494,6 +495,14 @@ spec:
       labels:
         app: postgresql
     spec:
+      # Enforce zone spreading
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: postgresql
       affinity:
         # Require SSD nodes
         nodeAffinity:
@@ -508,16 +517,18 @@ spec:
                     operator: In
                     values:
                       - database
-        # Spread across zones
+        # Also prefer spreading across nodes
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: postgresql
-              topologyKey: topology.kubernetes.io/zone
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: postgresql
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: postgresql
-          image: postgresql:14
+          image: postgres:14
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

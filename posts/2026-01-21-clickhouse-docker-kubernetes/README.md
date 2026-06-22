@@ -21,6 +21,7 @@ docker run -d \
   --name clickhouse \
   -p 8123:8123 \
   -p 9000:9000 \
+  -e CLICKHOUSE_SKIP_USER_SETUP=1 \
   clickhouse/clickhouse-server:latest
 ```
 
@@ -38,13 +39,14 @@ curl 'http://localhost:8123/?query=SELECT%201'
 
 ### Persisting Data
 
-Without volumes, data disappears when the container stops. Mount volumes for persistence:
+Without volumes, data is stored in the container's writable layer and is lost when the container is removed. Mount volumes for persistence:
 
 ```bash
 docker run -d \
   --name clickhouse \
   -p 8123:8123 \
   -p 9000:9000 \
+  -e CLICKHOUSE_SKIP_USER_SETUP=1 \
   -v clickhouse_data:/var/lib/clickhouse \
   -v clickhouse_logs:/var/log/clickhouse-server \
   clickhouse/clickhouse-server:latest
@@ -123,8 +125,6 @@ For local development with clustering, use Docker Compose. This setup creates a 
 Here's a `docker-compose.yml` file that sets up the complete cluster:
 
 ```yaml
-version: '3.8'
-
 services:
   clickhouse-keeper-1:
     image: clickhouse/clickhouse-keeper:latest
@@ -304,10 +304,44 @@ Create macro files for each node. Example for clickhouse-01:
 </clickhouse>
 ```
 
+Create the Keeper configuration files. Example for clickhouse-keeper-1:
+
+```xml
+<!-- keeper-config/keeper1.xml -->
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/clickhouse-keeper/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse-keeper/snapshots</snapshot_storage_path>
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>clickhouse-keeper-1</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>2</id>
+                <hostname>clickhouse-keeper-2</hostname>
+                <port>9234</port>
+            </server>
+            <server>
+                <id>3</id>
+                <hostname>clickhouse-keeper-3</hostname>
+                <port>9234</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+</clickhouse>
+```
+
+Create `keeper2.xml` and `keeper3.xml` with the same content, changing only `<server_id>` to `2` and `3`.
+
 Start the cluster:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 Verify the cluster is healthy:
@@ -326,16 +360,16 @@ For production Kubernetes deployments, use an operator. The Altinity ClickHouse 
 Add the Helm repository:
 
 ```bash
-helm repo add altinity https://altinity.github.io/clickhouse-operator
-helm repo update
+helm repo add altinity https://helm.altinity.com
+helm repo update altinity
 ```
 
 Install the operator:
 
 ```bash
-kubectl create namespace clickhouse
-helm install clickhouse-operator altinity/altinity-clickhouse-operator \
-  --namespace clickhouse
+helm upgrade --install clickhouse-operator altinity/altinity-clickhouse-operator \
+  --namespace clickhouse \
+  --create-namespace
 ```
 
 Verify the operator is running:
@@ -365,17 +399,12 @@ spec:
           replicasCount: 2
 
     zookeeper:
-      nodes:
-        - host: clickhouse-keeper-0.clickhouse-keeper-headless
-          port: 2181
-        - host: clickhouse-keeper-1.clickhouse-keeper-headless
-          port: 2181
-        - host: clickhouse-keeper-2.clickhouse-keeper-headless
-          port: 2181
+      keeper:
+        name: clickhouse-keeper
 
-    settings:
-      max_memory_usage: 10000000000
-      max_bytes_before_external_group_by: 5000000000
+    profiles:
+      default/max_memory_usage: 10000000000
+      default/max_bytes_before_external_group_by: 5000000000
 
     users:
       admin/password_sha256_hex: YOUR_SHA256_HASH
@@ -440,121 +469,50 @@ kubectl get pods -n clickhouse -w
 
 ### Deploying ClickHouse Keeper in Kubernetes
 
-The ClickHouse cluster needs a coordination service. Deploy ClickHouse Keeper as a StatefulSet:
+The ClickHouse cluster needs a coordination service. Deploy ClickHouse Keeper with the operator:
 
 ```yaml
 # clickhouse-keeper.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: clickhouse-keeper-headless
-  namespace: clickhouse
-spec:
-  clusterIP: None
-  ports:
-    - port: 2181
-      name: client
-    - port: 9234
-      name: raft
-  selector:
-    app: clickhouse-keeper
----
-apiVersion: apps/v1
-kind: StatefulSet
+apiVersion: clickhouse-keeper.altinity.com/v1
+kind: ClickHouseKeeperInstallation
 metadata:
   name: clickhouse-keeper
   namespace: clickhouse
 spec:
-  serviceName: clickhouse-keeper-headless
-  replicas: 3
-  selector:
-    matchLabels:
-      app: clickhouse-keeper
-  template:
-    metadata:
-      labels:
-        app: clickhouse-keeper
-    spec:
-      containers:
-        - name: keeper
-          image: clickhouse/clickhouse-keeper:24.1
-          ports:
-            - containerPort: 2181
-              name: client
-            - containerPort: 9234
-              name: raft
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/clickhouse-keeper
-            - name: config
-              mountPath: /etc/clickhouse-keeper
+  configuration:
+    clusters:
+      - name: keeper
+        layout:
+          replicasCount: 3
+
+  defaults:
+    templates:
+      podTemplate: keeper-pod
+      volumeClaimTemplate: keeper-storage
+
+  templates:
+    podTemplates:
+      - name: keeper-pod
+        spec:
+          containers:
+            - name: clickhouse-keeper
+              image: clickhouse/clickhouse-keeper:24.1
+              resources:
+                requests:
+                  memory: 512Mi
+                  cpu: 500m
+                limits:
+                  memory: 1Gi
+                  cpu: 1
+
+    volumeClaimTemplates:
+      - name: keeper-storage
+        spec:
+          accessModes:
+            - ReadWriteOnce
           resources:
             requests:
-              memory: 512Mi
-              cpu: 500m
-            limits:
-              memory: 1Gi
-              cpu: 1
-      volumes:
-        - name: config
-          configMap:
-            name: clickhouse-keeper-config
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 10Gi
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: clickhouse-keeper-config
-  namespace: clickhouse
-data:
-  keeper_config.xml: |
-    <clickhouse>
-      <logger>
-        <level>information</level>
-        <console>true</console>
-      </logger>
-      <listen_host>0.0.0.0</listen_host>
-      <keeper_server>
-        <tcp_port>2181</tcp_port>
-        <server_id from_env="POD_NAME"/>
-        <log_storage_path>/var/lib/clickhouse-keeper/log</log_storage_path>
-        <snapshot_storage_path>/var/lib/clickhouse-keeper/snapshots</snapshot_storage_path>
-        <coordination_settings>
-          <operation_timeout_ms>10000</operation_timeout_ms>
-          <session_timeout_ms>30000</session_timeout_ms>
-        </coordination_settings>
-        <raft_configuration>
-          <server>
-            <id>clickhouse-keeper-0</id>
-            <hostname>clickhouse-keeper-0.clickhouse-keeper-headless</hostname>
-            <port>9234</port>
-          </server>
-          <server>
-            <id>clickhouse-keeper-1</id>
-            <hostname>clickhouse-keeper-1.clickhouse-keeper-headless</hostname>
-            <port>9234</port>
-          </server>
-          <server>
-            <id>clickhouse-keeper-2</id>
-            <hostname>clickhouse-keeper-2.clickhouse-keeper-headless</hostname>
-            <port>9234</port>
-          </server>
-        </raft_configuration>
-      </keeper_server>
-    </clickhouse>
+              storage: 10Gi
 ```
 
 ### Accessing ClickHouse in Kubernetes
@@ -583,7 +541,7 @@ helm install clickhouse bitnami/clickhouse \
   --namespace clickhouse \
   --set shards=2 \
   --set replicaCount=2 \
-  --set zookeeper.enabled=true \
+  --set keeper.enabled=true \
   --set persistence.size=100Gi
 ```
 

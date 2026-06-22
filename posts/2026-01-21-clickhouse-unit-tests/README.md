@@ -129,7 +129,7 @@ class TestEventQueries:
 
 ```python
 # test_materialized_views.py
-import time
+import pytest
 
 class TestMaterializedViews:
 
@@ -151,9 +151,9 @@ class TestMaterializedViews:
             CREATE TABLE {test_db}.hourly_stats (
                 hour DateTime,
                 event_type String,
-                event_count UInt64,
-                unique_users UInt64
-            ) ENGINE = SummingMergeTree()
+                event_count AggregateFunction(count),
+                unique_users AggregateFunction(uniqExact, UInt64)
+            ) ENGINE = AggregatingMergeTree()
             ORDER BY (hour, event_type)
         """)
 
@@ -164,8 +164,8 @@ class TestMaterializedViews:
             AS SELECT
                 toStartOfHour(timestamp) AS hour,
                 event_type,
-                count() AS event_count,
-                uniq(user_id) AS unique_users
+                countState() AS event_count,
+                uniqExactState(user_id) AS unique_users
             FROM {test_db}.events_source
             GROUP BY hour, event_type
         """)
@@ -188,21 +188,26 @@ class TestMaterializedViews:
 
         # Query the materialized view target
         result = ch_client.query(f"""
-            SELECT hour, event_count, unique_users
+            SELECT
+                hour,
+                event_type,
+                countMerge(event_count) AS event_count,
+                uniqExactMerge(unique_users) AS unique_users
             FROM {db}.hourly_stats
-            ORDER BY hour
+            GROUP BY hour, event_type
+            ORDER BY hour, event_type
         """)
 
         rows = result.result_rows
         assert len(rows) == 2
 
         # Hour 10:00 - 3 events, 2 unique users
-        assert rows[0][1] == 3  # event_count
-        assert rows[0][2] == 2  # unique_users
+        assert rows[0][2] == 3  # event_count
+        assert rows[0][3] == 2  # unique_users
 
         # Hour 11:00 - 1 event, 1 unique user
-        assert rows[1][1] == 1
         assert rows[1][2] == 1
+        assert rows[1][3] == 1
 ```
 
 ## Testing Data Transformations
@@ -365,10 +370,10 @@ jobs:
           - 9000:9000
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 

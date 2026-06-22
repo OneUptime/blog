@@ -17,13 +17,10 @@ pgBadger is a powerful log analyzer that generates detailed reports from Postgre
 
 sudo apt install pgbadger
 
-# From CPAN
-cpan pgBadger
-
 # Or download
-wget https://github.com/darold/pgbadger/archive/refs/tags/v12.3.tar.gz
-tar xzf v12.3.tar.gz
-cd pgbadger-12.3
+wget https://github.com/darold/pgbadger/archive/refs/tags/v13.2.tar.gz
+tar xzf v13.2.tar.gz
+cd pgbadger-13.2
 perl Makefile.PL
 make && sudo make install
 ```
@@ -60,7 +57,7 @@ pgbadger -b '2025-01-20 00:00:00' -e '2025-01-21 23:59:59' \
     /var/log/postgresql/*.log -o report.html
 
 # Incremental mode (for daily reports)
-pgbadger --incremental /var/log/postgresql/*.log -o /var/www/reports/
+pgbadger --incremental /var/log/postgresql/*.log -O /var/www/reports/
 ```
 
 ## Report Contents
@@ -78,17 +75,17 @@ pgbadger --incremental /var/log/postgresql/*.log -o /var/www/reports/
 
 ```bash
 # Daily report cron job
-0 1 * * * pgbadger --incremental /var/log/postgresql/postgresql-$(date +\%Y-\%m-\%d)*.log -o /var/www/pgbadger/
+0 1 * * * pgbadger --incremental /var/log/postgresql/postgresql-$(date +\%Y-\%m-\%d)*.log -O /var/www/pgbadger/
 
 # Weekly summary
-0 2 * * 0 pgbadger -w /var/log/postgresql/*.log -o /var/www/pgbadger/weekly.html
+0 2 * * 0 pgbadger /var/log/postgresql/*.log -o /var/www/pgbadger/weekly.html
 ```
 
 ## Useful Options
 
 ```bash
 # JSON output for further processing
-pgbadger -f json -o report.json /var/log/postgresql/*.log
+pgbadger -x json -o report.json /var/log/postgresql/*.log
 
 # Specific database only
 pgbadger --dbname myapp /var/log/postgresql/*.log -o report.html

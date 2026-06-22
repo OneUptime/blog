@@ -104,7 +104,7 @@ apt-file search /usr/bin/command-name
 dpkg -S /usr/bin/command-name
 
 # RHEL/CentOS
-yum provides */command-name
+yum provides "*/command-name"
 # or
 rpm -qf /usr/bin/command-name
 ```
@@ -161,7 +161,7 @@ source ~/.zshrc
 echo 'export PATH="$PATH:/path/to/directory"' | sudo tee /etc/profile.d/custom-path.sh
 ```
 
-### Cause 3: Missing Shebang or Execute Permission
+### Cause 3: Script Execution Issues
 
 ```bash
 # Check if script has execute permission
@@ -219,21 +219,23 @@ sudo /usr/local/bin/mycommand
 # Or preserve PATH with sudo
 sudo env "PATH=$PATH" mycommand
 
-# Or configure sudo to preserve PATH
+# Or configure sudo to preserve PATH when secure_path is not set
 # Edit /etc/sudoers with visudo and add:
 # Defaults    env_keep += "PATH"
 
-# Or use secure_path in sudoers
+# Or set secure_path in sudoers; this overrides the user's PATH for sudo
 # Defaults    secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ```
 
 ### Cause 6: Symlink Issues
 
 ```bash
-# Check if command is a broken symlink
-ls -la $(which command-name)
+# Check if command is a broken symlink in PATH directories
+echo "$PATH" | tr ':' '\n' | while IFS= read -r dir; do
+    find "$dir" -maxdepth 1 -name command-name -xtype l -ls 2>/dev/null
+done
 
-# Find and remove broken symlinks
+# Find broken symlinks
 find /usr/local/bin -xtype l
 
 # Recreate symlink if needed

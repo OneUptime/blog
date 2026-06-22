@@ -168,7 +168,7 @@ def my_function():
 ### Multi-line Statements
 
 ```python
-# WRONG: Inconsistent continuation indentation
+# AVOID: Inconsistent continuation indentation (style issue)
 result = some_long_function_name(
     arg1,
   arg2,  # Different indentation
@@ -241,7 +241,7 @@ if (condition1 and
 # Install
 pip install autopep8
 
-# Fix indentation automatically
+# Fix many PEP 8 indentation/style issues automatically
 autopep8 --in-place --aggressive script.py
 ```
 
@@ -261,12 +261,12 @@ black script.py
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/psf/black
-    rev: 23.1.0
+    rev: 26.5.1
     hooks:
       - id: black
 
   - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
+    rev: 7.3.0
     hooks:
       - id: flake8
 ```
@@ -281,12 +281,11 @@ Most editors have options to display whitespace:
 - Spaces as dots: `....`
 - Tabs as arrows: `---->`
 
-### Use Python's -tt Flag
+### Run Python to Check Syntax
 
 ```bash
-# Python 3 errors on mixed tabs/spaces by default
-# Python 2 needed -tt flag
-python -tt script.py
+# Python 3 raises TabError for inconsistent tabs/spaces
+python script.py
 ```
 
 ### Check Character by Character
@@ -351,6 +350,8 @@ class EmptyClass:
     pass
 
 # Use ellipsis in protocols
+from typing import Protocol
+
 class MyProtocol(Protocol):
     def method(self) -> None: ...
 
@@ -437,7 +438,7 @@ IndentationError fixes:
 1. **Check for mixing tabs and spaces** - use one consistently (prefer spaces)
 2. **Verify indentation after colons** - blocks need to be indented
 3. **Match indentation levels exactly** - use your editor's whitespace display
-4. **Use code formatters** - black or autopep8 fix issues automatically
+4. **Use code formatters** - black or autopep8 keep valid code consistently formatted
 
 Configure your editor to:
 - Insert spaces instead of tabs

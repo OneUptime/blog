@@ -78,13 +78,13 @@ ACL LOG RESET
 
 ### MONITOR Command
 
-Real-time command logging (use carefully - impacts performance):
+Real-time command logging for most commands (use carefully - impacts performance):
 
 ```bash
 # Start monitoring
 redis-cli MONITOR
 
-# Output shows all commands:
+# Output shows processed commands:
 # 1609459200.000001 [0 127.0.0.1:52345] "SET" "key" "value"
 # 1609459200.000002 [0 127.0.0.1:52345] "GET" "key"
 ```
@@ -97,9 +97,7 @@ redis-cli MONITOR
 import redis
 import json
 import time
-import hashlib
-import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -148,13 +146,23 @@ class RedisAuditLogger:
         self.sensitive_commands = ['AUTH', 'CONFIG', 'ACL', 'DEBUG', 'SHUTDOWN']
         self.sensitive_keys = ['password', 'secret', 'token', 'key', 'credential']
 
+    def _to_text(self, value):
+        """Normalize Redis responses for clients with or without decode_responses."""
+        if isinstance(value, bytes):
+            return value.decode()
+        return value
+
     def log_event(self, event: AuditEvent):
         """Store audit event."""
         # Store in Redis stream
         stream_key = f"{self.audit_key_prefix}stream"
+        fields = {
+            key: json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            for key, value in event.to_dict().items()
+        }
         self.audit_storage.xadd(
             stream_key,
-            event.to_dict(),
+            fields,
             maxlen=100000  # Keep last 100k events
         )
 
@@ -223,13 +231,16 @@ class RedisAuditLogger:
 
         results = []
         for event_id, event_data in events:
-            if username and event_data.get(b'username', b'').decode() != username:
+            if username and self._to_text(event_data.get(b'username', event_data.get('username', ''))) != username:
                 continue
-            if event_type and event_data.get(b'event_type', b'').decode() != event_type:
+            if event_type and self._to_text(event_data.get(b'event_type', event_data.get('event_type', ''))) != event_type:
                 continue
 
-            decoded = {k.decode(): v.decode() for k, v in event_data.items()}
-            decoded['event_id'] = event_id.decode()
+            decoded = {
+                self._to_text(k): self._to_text(v)
+                for k, v in event_data.items()
+            }
+            decoded['event_id'] = self._to_text(event_id)
             results.append(decoded)
 
         return results
@@ -288,20 +299,20 @@ class RedisAuditLogger:
         # Get top users
         users = self.audit_storage.hgetall(f"{self.audit_key_prefix}users:{today}")
         report['top_users'] = {
-            k.decode(): int(v) for k, v in
+            self._to_text(k): int(v) for k, v in
             sorted(users.items(), key=lambda x: int(x[1]), reverse=True)[:10]
         }
 
         # Get top IPs
         ips = self.audit_storage.hgetall(f"{self.audit_key_prefix}ips:{today}")
         report['top_ips'] = {
-            k.decode(): int(v) for k, v in
+            self._to_text(k): int(v) for k, v in
             sorted(ips.items(), key=lambda x: int(x[1]), reverse=True)[:10]
         }
 
         # Get error summary
         errors = self.audit_storage.hgetall(f"{self.audit_key_prefix}errors:{today}")
-        report['error_summary'] = {k.decode(): int(v) for k, v in errors.items()}
+        report['error_summary'] = {self._to_text(k): int(v) for k, v in errors.items()}
 
         return report
 
@@ -392,9 +403,32 @@ class AuditedRedisClient:
         return self._execute_with_audit('SET', key, value, **kwargs)
 
     def delete(self, *keys):
-        for key in keys:
-            self._execute_with_audit('DEL', key)
-        return self.redis.delete(*keys)
+        if not keys:
+            return 0
+
+        start_time = time.time()
+        try:
+            result = self.redis.delete(*keys)
+            exec_time = (time.time() - start_time) * 1000
+            event = self._create_event(
+                command='DEL',
+                key=','.join(str(key) for key in keys),
+                success=True,
+                exec_time=exec_time
+            )
+            self.audit_logger.log_event(event)
+            return result
+        except redis.ResponseError as e:
+            exec_time = (time.time() - start_time) * 1000
+            event = self._create_event(
+                command='DEL',
+                key=','.join(str(key) for key in keys),
+                success=False,
+                error=str(e),
+                exec_time=exec_time
+            )
+            self.audit_logger.log_event(event)
+            raise
 
     def hget(self, name: str, key: str):
         return self._execute_with_audit('HGET', name, key)
@@ -410,8 +444,6 @@ class AuditedRedisClient:
 
 
 # Usage Example
-from datetime import timedelta
-
 # Create audited client
 client = AuditedRedisClient(
     host='localhost',
@@ -434,7 +466,7 @@ print(json.dumps(report, indent=2))
 ```python
 import redis
 import threading
-import re
+import shlex
 from datetime import datetime
 from queue import Queue
 import json
@@ -447,12 +479,6 @@ class RedisMonitorCollector:
         self.running = False
         self.event_queue = Queue()
         self.handlers = []
-
-        # Parse MONITOR output format
-        # 1609459200.000001 [0 127.0.0.1:52345] "SET" "key" "value"
-        self.monitor_pattern = re.compile(
-            r'(\d+\.\d+)\s+\[(\d+)\s+(\d+\.\d+\.\d+\.\d+):(\d+)\]\s+"(\w+)"(.*)$'
-        )
 
     def add_handler(self, handler):
         """Add event handler function."""
@@ -475,8 +501,6 @@ class RedisMonitorCollector:
 
     def _monitor_loop(self):
         """Read MONITOR output."""
-        pubsub = self.redis.pubsub()
-
         with self.redis.monitor() as m:
             for event in m.listen():
                 if not self.running:
@@ -502,13 +526,14 @@ class RedisMonitorCollector:
 
     def _parse_event(self, event: dict) -> dict:
         """Parse MONITOR event into structured format."""
+        parts = shlex.split(event.get('command', ''))
         return {
             'timestamp': datetime.utcnow().isoformat(),
             'time': event.get('time'),
             'database': event.get('db'),
             'client': event.get('client_address'),
-            'command': event.get('command'),
-            'args': event.get('args', [])
+            'command': parts[0] if parts else '',
+            'args': parts[1:]
         }
 
 
@@ -547,6 +572,11 @@ class SlowlogAnalyzer:
     def __init__(self, redis_client):
         self.redis = redis_client
 
+    def _to_text(self, value):
+        if isinstance(value, bytes):
+            return value.decode()
+        return str(value)
+
     def get_slowlog(self, count: int = 100) -> list:
         """Get formatted slowlog entries."""
         raw_entries = self.redis.slowlog_get(count)
@@ -557,7 +587,7 @@ class SlowlogAnalyzer:
                 'id': entry['id'],
                 'timestamp': datetime.fromtimestamp(entry['start_time']).isoformat(),
                 'duration_ms': entry['duration'] / 1000,
-                'command': ' '.join(str(arg) for arg in entry['command'][:5]),
+                'command': ' '.join(self._to_text(arg) for arg in entry['command'][:5]),
                 'client': entry.get('client_address', 'unknown'),
                 'client_name': entry.get('client_name', ''),
             })
@@ -623,8 +653,9 @@ analyzer = SlowlogAnalyzer(redis.Redis(password='your-password'))
 # Get summary
 summary = analyzer.get_slowlog_summary()
 print(f"Slowlog entries: {summary['count']}")
-print(f"Avg duration: {summary['avg_duration_ms']:.2f}ms")
-print(f"Max duration: {summary['max_duration_ms']:.2f}ms")
+if summary['count']:
+    print(f"Avg duration: {summary['avg_duration_ms']:.2f}ms")
+    print(f"Max duration: {summary['max_duration_ms']:.2f}ms")
 
 # Find suspicious patterns
 suspicious = analyzer.find_suspicious_patterns()
@@ -641,8 +672,13 @@ class ComplianceAuditReporter:
     def __init__(self, audit_logger: RedisAuditLogger):
         self.audit_logger = audit_logger
 
+    def _to_text(self, value):
+        if isinstance(value, bytes):
+            return value.decode()
+        return value
+
     def generate_pci_report(self, start_date: str, end_date: str) -> dict:
-        """Generate PCI-DSS compliant audit report."""
+        """Generate a PCI-DSS-oriented audit report."""
         return {
             'report_type': 'PCI-DSS Compliance Audit',
             'period': {'start': start_date, 'end': end_date},
@@ -673,7 +709,7 @@ class ComplianceAuditReporter:
             'findings': {
                 'auth_failures_today': len(report['auth_failures']),
                 'unique_users_today': len(report['top_users']),
-                'mfa_status': 'N/A for Redis - network level controls in place',
+                'mfa_status': 'Not provided natively by Redis - enforce at the network or identity layer',
             }
         }
 
@@ -684,7 +720,7 @@ class ComplianceAuditReporter:
             'findings': {
                 'logging_enabled': True,
                 'log_retention_days': 90,
-                'tamper_protection': 'Stream-based immutable logs',
+                'tamper_protection': 'Append-only stream with restricted write/delete permissions',
                 'review_frequency': 'Daily automated + weekly manual',
             }
         }
@@ -704,6 +740,7 @@ class ComplianceAuditReporter:
         users = self.audit_logger.audit_storage.acl_list()
         privileged = 0
         for user in users:
+            user = self._to_text(user)
             if '+@all' in user or '+@admin' in user:
                 privileged += 1
         return privileged
@@ -711,20 +748,21 @@ class ComplianceAuditReporter:
     def _check_tls(self) -> bool:
         try:
             port = self.audit_logger.audit_storage.config_get('tls-port')
-            return port.get('tls-port', '0') != '0'
+            return self._to_text(port.get('tls-port', port.get(b'tls-port', '0'))) != '0'
         except:
             return False
 
     def _get_bind_address(self) -> str:
         try:
-            return self.audit_logger.audit_storage.config_get('bind').get('bind', 'unknown')
+            bind = self.audit_logger.audit_storage.config_get('bind')
+            return self._to_text(bind.get('bind', bind.get(b'bind', 'unknown')))
         except:
             return 'unknown'
 
     def _check_protected_mode(self) -> bool:
         try:
             mode = self.audit_logger.audit_storage.config_get('protected-mode')
-            return mode.get('protected-mode', 'yes') == 'yes'
+            return self._to_text(mode.get('protected-mode', mode.get(b'protected-mode', 'yes'))) == 'yes'
         except:
             return False
 
@@ -757,7 +795,7 @@ from datetime import datetime
 class ElasticsearchAuditHandler:
     """Send Redis audit events to Elasticsearch."""
 
-    def __init__(self, es_hosts=['localhost:9200'], index_prefix='redis-audit'):
+    def __init__(self, es_hosts=['http://localhost:9200'], index_prefix='redis-audit'):
         self.es = Elasticsearch(es_hosts)
         self.index_prefix = index_prefix
 
@@ -777,13 +815,15 @@ class ElasticsearchAuditHandler:
             'execution_time_ms': event.get('execution_time_ms'),
         }
 
-        self.es.index(index=index_name, body=doc)
+        self.es.index(index=index_name, document=doc)
 ```
 
 ### Sending to Loki/Grafana
 
 ```python
 import requests
+import json
+from datetime import datetime
 
 class LokiAuditHandler:
     """Send Redis audit events to Loki."""
@@ -815,14 +855,15 @@ class LokiAuditHandler:
 
 ### 1. Log Retention Policy
 
-```python
+```bash
 # Set appropriate retention
 # - Security events: 1 year minimum
 # - Access logs: 90 days
 # - Performance logs: 30 days
 
-# Configure in Redis
-CONFIG SET maxmemory-policy volatile-ttl
+# Enforce retention explicitly with key expiry or stream trimming
+XTRIM audit:log:stream MAXLEN ~ 100000
+EXPIRE audit:log:users:2026-06-21 7776000  # 90 days
 ```
 
 ### 2. Protect Audit Logs

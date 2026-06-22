@@ -78,8 +78,8 @@ Supported languages:
 - `_german_`, `_greek_`, `_hindi_`, `_hungarian_`
 - `_indonesian_`, `_irish_`, `_italian_`, `_latvian_`
 - `_lithuanian_`, `_norwegian_`, `_persian_`, `_portuguese_`
-- `_romanian_`, `_russian_`, `_sorani_`, `_spanish_`
-- `_swedish_`, `_thai_`, `_turkish_`
+- `_romanian_`, `_russian_`, `_serbian_`, `_sorani_`
+- `_spanish_`, `_swedish_`, `_thai_`, `_turkish_`
 
 Special values:
 - `_none_`: No stop words (empty list)
@@ -362,7 +362,7 @@ curl -X PUT "https://localhost:9200/articles" \
 
 ## Remove Trailing Stop Words
 
-Remove stop words only at the end of phrases:
+By default, stop filters also remove a final token if it is a stop word. You can make that behavior explicit:
 
 ```bash
 curl -X PUT "https://localhost:9200/articles" \
@@ -705,9 +705,9 @@ curl -X PUT "https://localhost:9200/search_index" \
 
 # Index documents
 curl -X POST "https://localhost:9200/search_index/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary '
 {"index":{}}
 {"title":"The Quick Brown Fox","content":"The quick brown fox jumps over the lazy dog"}
 {"index":{}}

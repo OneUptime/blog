@@ -51,9 +51,9 @@ iostat -xz 2 5
 # sda      150.0   500.0 2400.0  16000.0  0.0    45.0   95.0   15.2
 
 # Key indicators of bottleneck:
-# - %util > 80% = disk is saturated
+# - %util > 80% = disk may be saturated (most reliable for devices serving requests serially)
 # - await > 20ms = high latency
-# - avgqu-sz > 1 = requests queuing up
+# - aqu-sz > 1 (avgqu-sz on older iostat versions) = requests queuing up
 ```
 
 ### Using iotop for Process-Level Analysis
@@ -113,7 +113,7 @@ echo "5. Mount Options"
 mount | grep -E '^/dev'
 
 echo ""
-echo "6. Pending I/O (should be low)"
+echo "6. Raw Disk Statistics"
 cat /proc/diskstats
 
 echo ""
@@ -138,7 +138,7 @@ done
 SELECT
     query,
     calls,
-    total_time,
+    total_exec_time,
     rows,
     shared_blks_read,  -- Blocks read from disk
     shared_blks_hit,   -- Blocks read from cache
@@ -165,14 +165,14 @@ from sqlalchemy.orm import sessionmaker
 engine = create_engine('postgresql://localhost/mydb')
 Session = sessionmaker(bind=engine)
 
-# Bad: Individual inserts (one I/O per row)
+# Bad: Individual inserts (one transaction per row)
 def insert_items_slow(items):
     session = Session()
     for item in items:
         session.add(Item(**item))
         session.commit()  # Commits after every item!
 
-# Good: Batch inserts (one I/O for all rows)
+# Good: Batch inserts (one transaction for the batch)
 def insert_items_fast(items):
     session = Session()
     session.bulk_insert_mappings(Item, items)
@@ -180,7 +180,8 @@ def insert_items_fast(items):
 
 # Even better: Use COPY for bulk loads
 def bulk_load_from_csv(filepath):
-    with engine.raw_connection() as conn:
+    conn = engine.raw_connection()
+    try:
         with conn.cursor() as cur:
             with open(filepath, 'r') as f:
                 cur.copy_expert(
@@ -188,6 +189,8 @@ def bulk_load_from_csv(filepath):
                     f
                 )
         conn.commit()
+    finally:
+        conn.close()
 ```
 
 ### Implement Caching to Reduce Disk Reads
@@ -285,7 +288,7 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue
 ### Increase Read-Ahead for Sequential Workloads
 
 ```bash
-# Check current read-ahead (in 512-byte sectors)
+# Check current read-ahead (in KB)
 cat /sys/block/sda/queue/read_ahead_kb
 # Default is usually 128KB
 
@@ -310,7 +313,7 @@ vm.dirty_background_ratio = 5
 # How long dirty pages can stay in memory (centiseconds)
 vm.dirty_expire_centisecs = 3000
 
-# How often to wake pdflush (centiseconds)
+# How often to wake kernel flusher threads (centiseconds)
 vm.dirty_writeback_centisecs = 500
 
 # Apply changes
@@ -360,17 +363,17 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  iopsPerGB: "50"
+  iops: "5000"
   fsType: ext4
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: standard
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   fsType: ext4

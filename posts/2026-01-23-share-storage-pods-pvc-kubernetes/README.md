@@ -12,13 +12,14 @@ Sometimes multiple pods need access to the same files. A content management syst
 
 ## Understanding Access Modes
 
-PersistentVolumes support three access modes:
+PersistentVolumes support four access modes:
 
 | Mode | Abbreviation | Description |
 |------|--------------|-------------|
 | ReadWriteOnce | RWO | Single node read-write |
 | ReadOnlyMany | ROX | Multiple nodes read-only |
 | ReadWriteMany | RWX | Multiple nodes read-write |
+| ReadWriteOncePod | RWOP | Single pod read-write |
 
 For shared storage between pods, you need RWX:
 
@@ -47,7 +48,7 @@ Not all storage backends support ReadWriteMany:
 | GCP Filestore | Yes | Managed NFS |
 | Azure Files | Yes | SMB/NFS |
 | Ceph FS | Yes | Distributed filesystem |
-| GlusterFS | Yes | Distributed filesystem |
+| GlusterFS | Legacy/CSI only | In-tree plugin removed in Kubernetes 1.26 |
 | AWS EBS | No | Block storage, RWO only |
 | GCP Persistent Disk | No | Block storage, RWO only |
 | Azure Disk | No | Block storage, RWO only |
@@ -75,14 +76,13 @@ spec:
     spec:
       containers:
       - name: nfs-server
-        image: k8s.gcr.io/volume-nfs:0.8
+        image: itsthenetwork/nfs-server-alpine:12
         ports:
         - name: nfs
           containerPort: 2049
-        - name: mountd
-          containerPort: 20048
-        - name: rpcbind
-          containerPort: 111
+        env:
+        - name: SHARED_DIRECTORY
+          value: /exports
         securityContext:
           privileged: true
         volumeMounts:
@@ -100,15 +100,11 @@ spec:
   ports:
   - name: nfs
     port: 2049
-  - name: mountd
-    port: 20048
-  - name: rpcbind
-    port: 111
   selector:
     app: nfs-server
 ```
 
-Create a PV and PVC for the NFS share:
+Create a PV and PVC for the NFS share. Use the Service `clusterIP` from `kubectl get svc nfs-server`, because the NFS mount is performed by the node and cluster DNS names might not resolve there:
 
 ```yaml
 # nfs-pv-pvc.yaml
@@ -122,8 +118,8 @@ spec:
   accessModes:
     - ReadWriteMany
   nfs:
-    server: nfs-server.default.svc.cluster.local
-    path: /exports
+    server: <NFS_SERVICE_CLUSTER_IP>
+    path: /
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -421,11 +417,10 @@ kubectl describe pvc shared-data
 kubectl describe pod my-pod
 
 # Check NFS server connectivity
-kubectl run test --rm -it --image=busybox -- ping nfs-server
+kubectl run test --rm -it --image=busybox:1.35 -- nc -vz nfs-server 2049
 
-# Test NFS mount manually
-kubectl run test --rm -it --image=busybox -- sh
-mount -t nfs nfs-server:/exports /mnt
+# Test NFS mount manually from a node with NFS client tools
+mount -t nfs4 <NFS_SERVICE_CLUSTER_IP>:/ /mnt
 ```
 
 ### Permission Issues

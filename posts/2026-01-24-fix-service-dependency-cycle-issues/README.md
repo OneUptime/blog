@@ -31,10 +31,10 @@ flowchart TD
 
 This creates several problems:
 
-- **Deployment complexity**: You cannot deploy services independently
-- **Testing difficulty**: Unit testing requires mocking the entire cycle
-- **Cascading failures**: One service failure brings down the entire cycle
-- **Startup ordering**: Services cannot start without each other
+- **Deployment complexity**: Independent deployments become harder because changes can require coordination across the cycle
+- **Testing difficulty**: Unit testing often requires mocking more of the cycle
+- **Cascading failures**: One service failure can propagate through the entire cycle
+- **Startup ordering**: Services may require careful startup and readiness handling
 
 ---
 
@@ -146,8 +146,6 @@ Detect cycles at runtime by analyzing trace data:
 ```python
 # cycle_detector_middleware.py
 from opentelemetry import trace
-from opentelemetry.propagate import extract, inject
-from collections import defaultdict
 import json
 
 tracer = trace.get_tracer(__name__)
@@ -232,8 +230,7 @@ flowchart TD
 ```python
 # events.py
 from dataclasses import dataclass, asdict
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 import json
 
 @dataclass
@@ -264,7 +261,7 @@ class OrderCreatedEvent(Event):
         super().__init__(
             event_id=event_id or f"evt-{order_id}",
             event_type="order.created",
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             correlation_id=correlation_id
         )
         self.order_id = order_id
@@ -293,6 +290,7 @@ class PriceCalculatedEvent(Event):
 # order_service.py
 import redis
 import json
+from events import OrderCreatedEvent, PriceCalculatedEvent
 from opentelemetry import trace
 from opentelemetry.propagate import inject
 
@@ -367,8 +365,10 @@ class OrderService:
 # inventory_service.py
 import redis
 import json
+from datetime import UTC, datetime
+from events import InventoryReservedEvent
 from opentelemetry import trace
-from opentelemetry.propagate import extract
+from opentelemetry.propagate import extract, inject
 
 tracer = trace.get_tracer(__name__)
 redis_client = redis.Redis(host='localhost', port=6379)
@@ -422,7 +422,7 @@ class InventoryService:
             event = InventoryReservedEvent(
                 event_id=f"evt-inv-{order_id}",
                 event_type="inventory.reserved",
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 correlation_id=event_data["correlation_id"],
                 order_id=order_id,
                 reserved_items=reserved,
@@ -465,7 +465,8 @@ flowchart TD
 # shared_state.py
 import redis
 import json
-from typing import Optional, Any
+from datetime import UTC, datetime
+from typing import Optional
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -489,12 +490,12 @@ class SharedStateStore:
             return None
 
     def update_order_context(self, order_id: str, updates: dict) -> dict:
-        """Update order context atomically"""
+        """Update order context and refresh its TTL"""
 
         with tracer.start_as_current_span("update_order_context") as span:
             span.set_attribute("order.id", order_id)
 
-            # Use Redis transaction for atomic update
+            # Use a Redis pipeline to apply SET and EXPIRE together
             pipe = self.redis.pipeline()
 
             key = f"order:context:{order_id}"
@@ -505,7 +506,7 @@ class SharedStateStore:
 
             # Merge updates
             context.update(updates)
-            context["last_updated"] = datetime.utcnow().isoformat()
+            context["last_updated"] = datetime.now(UTC).isoformat()
 
             # Save atomically
             pipe.set(key, json.dumps(context))
@@ -591,7 +592,7 @@ flowchart TD
     subgraph after["After: Dependency Inversion"]
         A2[Order Service] --> I1[IPricingProvider Interface]
         P2[Pricing Service] -.->|implements| I1
-        A2 --> I2[IOrderProvider Interface]
+        A2 --> I2[IOrderDataProvider Interface]
         P2 --> I2
     end
 ```
@@ -647,7 +648,7 @@ from opentelemetry import trace
 tracer = trace.get_tracer(__name__)
 
 class OrderService:
-    """Order service with injected dependencies - no cycles possible"""
+    """Order service with injected dependencies and no direct concrete-service dependencies"""
 
     def __init__(
         self,
@@ -703,6 +704,7 @@ class OrderService:
 ```python
 # pricing_service_refactored.py
 from interfaces import IPricingProvider, IOrderDataProvider
+from typing import Optional
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -940,7 +942,6 @@ flowchart TD
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 from enum import Enum
-import asyncio
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -1214,7 +1215,7 @@ class DependencyMonitor:
 ## Best Practices Summary
 
 1. **Analyze dependencies regularly**: Run dependency analysis as part of CI/CD
-2. **Prefer events over synchronous calls**: Async communication naturally prevents cycles
+2. **Prefer events over synchronous calls**: Async communication helps break synchronous call cycles
 3. **Use shared data stores**: Avoid calling services just to read data
 4. **Invert dependencies with interfaces**: Depend on abstractions, not implementations
 5. **Orchestrate at boundaries**: API gateways can coordinate without creating service coupling

@@ -84,7 +84,7 @@ az eventhubs eventhub create \
   --resource-group myEventHubRG \
   --namespace-name myEventHubNamespace \
   --partition-count 4 \
-  --message-retention 7
+  --retention-time 168
 ```
 
 ## Authentication and Authorization
@@ -128,7 +128,7 @@ The Azure Event Hub SDK provides a straightforward way to publish events.
 # producer.py - Event Hub producer example
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from azure.eventhub.aio import EventHubProducerClient
 from azure.eventhub import EventData
 
@@ -152,7 +152,7 @@ async def send_events():
         for i in range(100):
             event = {
                 "id": i,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "sensor_id": f"sensor-{i % 10}",
                 "temperature": 20.5 + (i * 0.1),
                 "humidity": 45 + (i % 20)
@@ -220,7 +220,7 @@ Event Hub consumers can read events from specific partitions or use the EventPro
 import asyncio
 import json
 from azure.eventhub.aio import EventHubConsumerClient
-from azure.eventhub.extensions.checkpointstoresblobaio import BlobCheckpointStore
+from azure.eventhub.extensions.checkpointstoreblobaio import BlobCheckpointStore
 
 # Connection strings for Event Hub and Blob Storage
 EVENTHUB_CONNECTION_STRING = "Endpoint=sb://myeventhubnamespace.servicebus.windows.net/;SharedAccessKeyName=ConsumerPolicy;SharedAccessKey=..."
@@ -296,7 +296,7 @@ async function sendEvents() {
 
     try {
         // Create a batch of events
-        const batch = await producer.createBatch();
+        let batch = await producer.createBatch();
 
         // Add events to the batch
         for (let i = 0; i < 100; i++) {
@@ -363,7 +363,9 @@ async function consumeEvents() {
                 console.log(`Event: ${event.body}`);
             }
             // Checkpoint after processing batch
-            await context.updateCheckpoint(events[events.length - 1]);
+            if (events.length > 0) {
+                await context.updateCheckpoint(events[events.length - 1]);
+            }
         },
         processError: async (error, context) => {
             console.error(`Error: ${error.message}`);
@@ -468,19 +470,19 @@ az monitor diagnostic-settings create \
 
 ```python
 # Retry logic with exponential backoff
-import time
-from azure.core.exceptions import ServiceBusyError
+import asyncio
+from azure.eventhub.exceptions import EventHubError
 
 async def send_with_retry(producer, batch, max_retries=5):
-    """Send batch with exponential backoff on throttling."""
+    """Send batch with exponential backoff on transient Event Hub errors."""
     for attempt in range(max_retries):
         try:
             await producer.send_batch(batch)
             return
-        except ServiceBusyError:
+        except EventHubError:
             wait_time = 2 ** attempt  # 1, 2, 4, 8, 16 seconds
-            print(f"Throttled, waiting {wait_time}s before retry")
-            time.sleep(wait_time)
+            print(f"Transient error, waiting {wait_time}s before retry")
+            await asyncio.sleep(wait_time)
     raise Exception("Max retries exceeded")
 ```
 

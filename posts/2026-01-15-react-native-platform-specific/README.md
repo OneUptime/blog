@@ -280,7 +280,7 @@ Create separate files for each platform:
 **DatePickerComponent.ios.tsx**
 
 ```typescript
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -302,7 +302,7 @@ const DatePickerComponent: React.FC<DatePickerProps> = ({
         value={value}
         mode="date"
         display="spinner"
-        onChange={(event, selectedDate) => {
+        onChange={(_event, selectedDate) => {
           if (selectedDate) {
             onChange(selectedDate);
           }
@@ -420,6 +420,7 @@ export default DatePickerComponent;
 
 ```typescript
 // The bundler automatically picks the right file
+import React, { useState } from 'react';
 import DatePickerComponent from './DatePickerComponent';
 
 const MyScreen: React.FC = () => {
@@ -521,7 +522,7 @@ const styles = StyleSheet.create({
 Each platform has different system fonts and font weight support:
 
 ```typescript
-import { Platform, StyleSheet, TextStyle } from 'react-native';
+import { Platform, TextStyle } from 'react-native';
 
 interface TypographyStyles {
   largeTitle: TextStyle;
@@ -611,7 +612,7 @@ Many React Native components behave differently on each platform. Understanding 
 ### TextInput Differences
 
 ```typescript
-import React, { useState } from 'react';
+import React from 'react';
 import { Platform, TextInput, View, StyleSheet } from 'react-native';
 
 interface PlatformTextInputProps {
@@ -790,9 +791,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   View,
-  TextInput,
   StyleSheet,
-  Dimensions,
 } from 'react-native';
 
 interface KeyboardAwareFormProps {
@@ -841,7 +840,7 @@ const KeyboardAwareForm: React.FC<KeyboardAwareFormProps> = ({ children }) => {
       behavior={keyboardBehavior}
       keyboardVerticalOffset={keyboardVerticalOffset}
     >
-      <View style={styles.inner}>
+      <View style={[styles.inner, Platform.OS === 'android' && { paddingBottom: keyboardHeight }]}>
         {children}
       </View>
     </KeyboardAvoidingView>
@@ -908,13 +907,10 @@ iOS and Android have distinct navigation expectations that affect user experienc
 
 ```typescript
 import React from 'react';
-import { Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Platform, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 
-const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
@@ -1048,10 +1044,12 @@ export { getScreenOptions, TabNavigator, DrawerNavigator, useBackHandler };
 Permission systems differ significantly between iOS and Android:
 
 ```typescript
-import { Platform, Alert, Linking } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import {
   request,
   check,
+  requestNotifications,
+  checkNotifications,
   PERMISSIONS,
   RESULTS,
   Permission,
@@ -1059,13 +1057,14 @@ import {
 } from 'react-native-permissions';
 
 type PermissionType = 'camera' | 'photoLibrary' | 'location' | 'notifications';
+type RuntimePermissionType = Exclude<PermissionType, 'notifications'>;
 
 interface PermissionConfig {
   ios: Permission;
   android: Permission;
 }
 
-const permissionMap: Record<PermissionType, PermissionConfig> = {
+const permissionMap: Record<RuntimePermissionType, PermissionConfig> = {
   camera: {
     ios: PERMISSIONS.IOS.CAMERA,
     android: PERMISSIONS.ANDROID.CAMERA,
@@ -1073,7 +1072,7 @@ const permissionMap: Record<PermissionType, PermissionConfig> = {
   photoLibrary: {
     ios: PERMISSIONS.IOS.PHOTO_LIBRARY,
     // Android 13+ uses different permission
-    android: Platform.Version >= 33
+    android: (Platform.Version as number) >= 33
       ? PERMISSIONS.ANDROID.READ_MEDIA_IMAGES
       : PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE,
   },
@@ -1081,18 +1080,19 @@ const permissionMap: Record<PermissionType, PermissionConfig> = {
     ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
     android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
   },
-  notifications: {
-    ios: PERMISSIONS.IOS.NOTIFICATIONS,
-    android: PERMISSIONS.ANDROID.POST_NOTIFICATIONS,
-  },
 };
 
-const getPermission = (type: PermissionType): Permission => {
+const getPermission = (type: RuntimePermissionType): Permission => {
   const config = permissionMap[type];
   return Platform.OS === 'ios' ? config.ios : config.android;
 };
 
 const checkPermission = async (type: PermissionType): Promise<boolean> => {
+  if (type === 'notifications') {
+    const { status } = await checkNotifications();
+    return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
+  }
+
   const permission = getPermission(type);
   const result = await check(permission);
 
@@ -1100,20 +1100,16 @@ const checkPermission = async (type: PermissionType): Promise<boolean> => {
 };
 
 const requestPermission = async (type: PermissionType): Promise<boolean> => {
+  if (type === 'notifications') {
+    const { status } = await requestNotifications(['alert', 'sound']);
+    return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
+  }
+
   const permission = getPermission(type);
   const currentStatus = await check(permission);
 
-  // Handle "never ask again" on Android
-  if (Platform.OS === 'android' && currentStatus === RESULTS.BLOCKED) {
-    Alert.alert(
-      'Permission Required',
-      `Please enable ${type} permission in your device settings to use this feature.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open Settings', onPress: () => openSettings() },
-      ]
-    );
-    return false;
+  if (currentStatus === RESULTS.GRANTED || currentStatus === RESULTS.LIMITED) {
+    return true;
   }
 
   // iOS shows system dialog, Android may show dialog or be blocked
@@ -1415,8 +1411,7 @@ const platformAction = {
     element: Detox.NativeElement,
     direction: 'up' | 'down'
   ): Promise<void> => {
-    const speed = Platform.OS === 'ios' ? 'fast' : 'slow';
-    await element.scroll(200, direction, NaN, speed);
+    await element.scroll(200, direction);
   },
 };
 
@@ -1564,13 +1559,14 @@ export const BOTTOM_SAFE_AREA = Platform.select({
 ```typescript
 // hooks/usePlatformBackHandler.ts
 import { useEffect, useCallback } from 'react';
+import type { DependencyList } from 'react';
 import { Platform, BackHandler } from 'react-native';
 
 type BackHandlerCallback = () => boolean;
 
 export const usePlatformBackHandler = (
   handler: BackHandlerCallback,
-  dependencies: React.DependencyList = []
+  dependencies: DependencyList = []
 ): void => {
   const memoizedHandler = useCallback(handler, dependencies);
 

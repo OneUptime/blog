@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, WebSocket, Push Notification, Real-Time, Socket.IO, TypeScript, Backend
+Tags: Node.js, WebSocket, Push Notification, Real-Time, TypeScript, Backend
 
 Description: Learn how to build a real-time push notification system using WebSockets in Node.js.
 
@@ -214,6 +214,11 @@ interface SubscribeMessage extends BaseMessage {
   channels: string[];
 }
 
+interface UnsubscribeMessage extends BaseMessage {
+  type: 'unsubscribe';
+  channels: string[];
+}
+
 interface NotificationMessage extends BaseMessage {
   type: 'notification';
   channel: string;
@@ -231,7 +236,7 @@ interface AckMessage extends BaseMessage {
   messageId: string;
 }
 
-type ClientMessage = PingMessage | SubscribeMessage | AckMessage;
+type ClientMessage = PingMessage | SubscribeMessage | UnsubscribeMessage | AckMessage;
 type ServerMessage = NotificationMessage | { type: 'pong' } | { type: 'subscribed'; channels: string[] };
 
 // Handle incoming messages from clients
@@ -252,6 +257,10 @@ function handleMessage(socket: WebSocket, message: ClientMessage): void {
         type: 'subscribed',
         channels: message.channels
       }));
+      break;
+
+    case 'unsubscribe':
+      unsubscribeFromChannels(client, message.channels);
       break;
 
     case 'ack':
@@ -333,6 +342,9 @@ function removeClient(socket: WebSocket): void {
       // Unsubscribe from all channels
       for (const [channel, subscribers] of channelSubscriptions.entries()) {
         subscribers.delete(key);
+        if (subscribers.size === 0) {
+          channelSubscriptions.delete(channel);
+        }
       }
       clients.delete(key);
       console.log(`Client removed: ${key}`);
@@ -465,7 +477,7 @@ class NotificationManager {
   }
 
   // Send notification to a specific client
-  private sendToClient(client: ConnectedClient, notification: Notification): void {
+  private sendToClient(client: ConnectedClient, notification: Notification, retryCount = 0): void {
     const message: NotificationMessage = {
       type: 'notification',
       id: notification.id,
@@ -488,7 +500,7 @@ class NotificationManager {
         notification,
         clientKey,
         sentAt: new Date(),
-        retryCount: 0
+        retryCount
       });
 
       // Set timeout for retry if not acknowledged
@@ -522,7 +534,7 @@ class NotificationManager {
       if (client && client.socket.readyState === WebSocket.OPEN) {
         pending.retryCount++;
         pending.sentAt = new Date();
-        this.sendToClient(client, pending.notification);
+        this.sendToClient(client, pending.notification, pending.retryCount);
       }
     }, RETRY_DELAY_MS);
   }
@@ -630,6 +642,7 @@ router.get('/notifications/stats', (req, res) => {
   res.json(stats);
 });
 
+app.use(express.json());
 app.use('/api', router);
 ```
 
@@ -798,7 +811,7 @@ class NotificationClient {
     });
 
     // Display notification (browser API)
-    if (Notification.permission === 'granted') {
+    if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(message.payload.title, {
         body: message.payload.body,
         data: message.payload.data
@@ -866,8 +879,8 @@ client.connect().then(() => {
   client.subscribe(['user.123', 'public.announcements']);
 });
 
-window.addEventListener('notification', (event: CustomEvent) => {
-  console.log('App received notification:', event.detail);
+window.addEventListener('notification', (event) => {
+  console.log('App received notification:', (event as CustomEvent).detail);
 });
 ```
 

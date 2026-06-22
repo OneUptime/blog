@@ -134,13 +134,13 @@ Determine whether points fall within defined geographic regions:
 -- Create a polygon representing a delivery zone
 SELECT pointInPolygon(
     (-122.4089, 37.7851),  -- Point to test (longitude, latitude)
-    [(
+    [
         (-122.4200, 37.7900),
         (-122.4000, 37.7900),
         (-122.4000, 37.7700),
         (-122.4200, 37.7700),
         (-122.4200, 37.7900)  -- Close the polygon
-    )]
+    ]
 ) AS is_in_zone;
 
 -- Check multiple points against a zone
@@ -150,13 +150,13 @@ SELECT
     longitude,
     pointInPolygon(
         (longitude, latitude),
-        [(
+        [
             (-122.4200, 37.7900),
             (-122.4000, 37.7900),
             (-122.4000, 37.7700),
             (-122.4200, 37.7700),
             (-122.4200, 37.7900)
-        )]
+        ]
     ) AS in_delivery_zone
 FROM events;
 ```
@@ -171,21 +171,21 @@ SELECT pointInPolygon(
     (longitude, latitude),
     [
         -- Outer boundary
-        (
+        [
             (-122.42, 37.79),
             (-122.40, 37.79),
             (-122.40, 37.77),
             (-122.42, 37.77),
             (-122.42, 37.79)
-        ),
+        ],
         -- Inner hole (excluded area)
-        (
+        [
             (-122.415, 37.785),
             (-122.405, 37.785),
             (-122.405, 37.775),
             (-122.415, 37.775),
             (-122.415, 37.785)
-        )
+        ]
     ]
 ) AS in_serviceable_area
 FROM events;
@@ -196,9 +196,9 @@ FROM events;
 H3 is Uber's hierarchical hexagonal grid system, perfect for spatial aggregations:
 
 ```sql
--- Convert coordinates to H3 index at resolution 9 (approximately 100m hexagons)
+-- Convert coordinates to H3 index at resolution 9 (approximately 174m average edge length)
 SELECT
-    geoToH3(longitude, latitude, 9) AS h3_index,
+    geoToH3(latitude, longitude, 9) AS h3_index,
     count() AS event_count
 FROM events
 GROUP BY h3_index
@@ -208,11 +208,12 @@ LIMIT 10;
 -- Get the center coordinates of an H3 cell
 SELECT
     h3_index,
-    h3ToGeo(h3_index) AS (center_lat, center_lon),
+    tupleElement(h3ToGeo(h3_index), 1) AS center_lat,
+    tupleElement(h3ToGeo(h3_index), 2) AS center_lon,
     event_count
 FROM (
     SELECT
-        geoToH3(longitude, latitude, 9) AS h3_index,
+        geoToH3(latitude, longitude, 9) AS h3_index,
         count() AS event_count
     FROM events
     GROUP BY h3_index
@@ -225,7 +226,7 @@ ORDER BY event_count DESC;
 Different resolutions serve different use cases:
 
 ```sql
--- Resolution comparison table
+-- Resolution comparison table (approximate average edge length)
 -- Res 0: ~1,107 km - Continental analysis
 -- Res 4: ~22 km - Regional analysis
 -- Res 7: ~1.2 km - Neighborhood analysis
@@ -235,7 +236,7 @@ Different resolutions serve different use cases:
 
 -- Create hexagonal heatmap data at city level (resolution 7)
 SELECT
-    geoToH3(longitude, latitude, 7) AS h3_cell,
+    geoToH3(latitude, longitude, 7) AS h3_cell,
     count() AS count,
     avg(amount) AS avg_transaction
 FROM transactions
@@ -253,28 +254,45 @@ SELECT
     h3_cell,
     h3kRing(h3_cell, 1) AS neighbors
 FROM (
-    SELECT DISTINCT geoToH3(longitude, latitude, 9) AS h3_cell
+    SELECT DISTINCT geoToH3(latitude, longitude, 9) AS h3_cell
     FROM events
     LIMIT 1
 );
 
 -- Aggregate data including neighboring cells
 WITH central_cells AS (
-    SELECT geoToH3(longitude, latitude, 9) AS h3_cell
+    SELECT geoToH3(latitude, longitude, 9) AS h3_cell
     FROM events
     WHERE event_type = 'purchase'
+),
+direct_counts AS (
+    SELECT
+        h3_cell,
+        count() AS direct_events
+    FROM central_cells
+    GROUP BY h3_cell
+),
+events_by_cell AS (
+    SELECT
+        geoToH3(latitude, longitude, 9) AS h3_cell,
+        count() AS event_count
+    FROM events
+    GROUP BY h3_cell
+),
+neighborhoods AS (
+    SELECT
+        h3_cell,
+        arrayJoin(h3kRing(h3_cell, 1)) AS neighbor_cell
+    FROM direct_counts
 )
 SELECT
-    h3_cell,
-    count() AS direct_events,
-    -- Count events in neighboring cells
-    (
-        SELECT count()
-        FROM events
-        WHERE geoToH3(longitude, latitude, 9) IN h3kRing(central_cells.h3_cell, 1)
-    ) AS neighborhood_events
-FROM central_cells
-GROUP BY h3_cell;
+    d.h3_cell,
+    d.direct_events,
+    sum(ifNull(e.event_count, 0)) AS neighborhood_events
+FROM direct_counts d
+LEFT JOIN neighborhoods n ON d.h3_cell = n.h3_cell
+LEFT JOIN events_by_cell e ON n.neighbor_cell = e.h3_cell
+GROUP BY d.h3_cell, d.direct_events;
 ```
 
 ## Geospatial Aggregations
@@ -301,7 +319,7 @@ ORDER BY event_count DESC;
 -- Analyze geographic patterns by hour of day
 SELECT
     toHour(event_time) AS hour,
-    geoToH3(longitude, latitude, 7) AS h3_cell,
+    geoToH3(latitude, longitude, 7) AS h3_cell,
     count() AS events,
     uniqExact(user_id) AS unique_users
 FROM events
@@ -317,16 +335,16 @@ Track entity movement between locations:
 ```sql
 -- Analyze user movement between zones
 SELECT
-    from_zone,
-    to_zone,
+    prev_zone AS from_zone,
+    zone AS to_zone,
     count() AS trip_count,
     avg(duration_minutes) AS avg_duration
 FROM (
     SELECT
         user_id,
-        geoToH3(longitude, latitude, 7) AS zone,
+        geoToH3(latitude, longitude, 7) AS zone,
         event_time,
-        lagInFrame(geoToH3(longitude, latitude, 7))
+        lagInFrame(geoToH3(latitude, longitude, 7))
             OVER (PARTITION BY user_id ORDER BY event_time) AS prev_zone,
         dateDiff('minute',
             lagInFrame(event_time) OVER (PARTITION BY user_id ORDER BY event_time),
@@ -337,8 +355,8 @@ FROM (
 )
 WHERE prev_zone != zone AND prev_zone != 0
 GROUP BY
-    prev_zone AS from_zone,
-    zone AS to_zone
+    from_zone,
+    to_zone
 ORDER BY trip_count DESC
 LIMIT 20;
 ```
@@ -354,8 +372,8 @@ CREATE TABLE geo_events (
     event_time DateTime,
     latitude Float64,
     longitude Float64,
-    h3_index_7 UInt64 MATERIALIZED geoToH3(longitude, latitude, 7),
-    h3_index_9 UInt64 MATERIALIZED geoToH3(longitude, latitude, 9),
+    h3_index_7 UInt64 MATERIALIZED geoToH3(latitude, longitude, 7),
+    h3_index_9 UInt64 MATERIALIZED geoToH3(latitude, longitude, 9),
     event_type LowCardinality(String),
     payload String
 ) ENGINE = MergeTree()
@@ -384,7 +402,7 @@ Here's a complete example for analyzing delivery performance by zone:
 CREATE TABLE delivery_zones (
     zone_id UInt32,
     zone_name String,
-    zone_polygon Array(Tuple(Float64, Float64)),
+    zone_polygon Polygon,
     zone_h3_cells Array(UInt64)
 ) ENGINE = MergeTree()
 ORDER BY zone_id;
@@ -416,7 +434,7 @@ FROM deliveries d
 CROSS JOIN delivery_zones dz
 WHERE pointInPolygon(
     (d.dropoff_lon, d.dropoff_lat),
-    [dz.zone_polygon]
+    dz.zone_polygon
 )
 AND d.order_time >= now() - INTERVAL 30 DAY
 GROUP BY dz.zone_name
@@ -430,12 +448,12 @@ ORDER BY total_deliveries DESC;
 ```sql
 -- Create a materialized view for hourly H3 aggregates
 CREATE MATERIALIZED VIEW geo_hourly_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (h3_cell, hour)
 AS SELECT
-    geoToH3(longitude, latitude, 9) AS h3_cell,
+    geoToH3(latitude, longitude, 9) AS h3_cell,
     toStartOfHour(event_time) AS hour,
-    count() AS event_count,
+    countState() AS event_count_state,
     uniqState(user_id) AS unique_users_state
 FROM events
 GROUP BY h3_cell, hour;
@@ -443,7 +461,7 @@ GROUP BY h3_cell, hour;
 -- Query the pre-aggregated data
 SELECT
     h3_cell,
-    sum(event_count) AS total_events,
+    countMerge(event_count_state) AS total_events,
     uniqMerge(unique_users_state) AS unique_users
 FROM geo_hourly_mv
 WHERE hour >= now() - INTERVAL 24 HOUR
@@ -460,7 +478,7 @@ SELECT
     event_id,
     event_time
 FROM events
-WHERE geoToH3(longitude, latitude, 7) IN (
+WHERE geoToH3(latitude, longitude, 7) IN (
     -- Pre-computed H3 cells that intersect with zone
     SELECT arrayJoin(zone_h3_cells)
     FROM delivery_zones

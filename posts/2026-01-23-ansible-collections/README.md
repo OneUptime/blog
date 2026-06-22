@@ -188,19 +188,18 @@ Configure collection paths in ansible.cfg.
 # Search path for collections
 collections_path = ./collections:~/.ansible/collections:/usr/share/ansible/collections
 
-# Default collection for short module names
-# (Use FQCNs instead for clarity)
-# collections = community.general
+# There is no ansible.cfg default collection setting for short module names.
+# Use FQCNs or the play/role-level collections keyword instead.
 
 [galaxy]
 # Custom Galaxy server
 server_list = galaxy, private_galaxy
 
 [galaxy_server.galaxy]
-url = https://galaxy.ansible.com
+url = https://galaxy.ansible.com/
 
 [galaxy_server.private_galaxy]
-url = https://galaxy.internal.company.com
+url = https://galaxy.internal.company.com/
 token = your_api_token
 ```
 
@@ -466,8 +465,7 @@ ansible-galaxy collection publish company-infrastructure-1.0.0.tar.gz --api-key 
 
 # Publish to private Galaxy server
 ansible-galaxy collection publish company-infrastructure-1.0.0.tar.gz \
-  --server private_galaxy \
-  --api-key YOUR_PRIVATE_API_KEY
+  --server private_galaxy
 ```
 
 ## Testing Collections

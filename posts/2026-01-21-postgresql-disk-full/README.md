@@ -55,21 +55,21 @@ LIMIT 10;
 
 ## Quick Fixes
 
-### Clear WAL Files (if safe)
+### Release WAL Held by Slots (if safe)
 
 ```sql
 -- Check replication slots
 SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS lag
 FROM pg_replication_slots;
 
--- Drop inactive slots holding WAL
+-- Drop only confirmed unused inactive slots holding WAL
 SELECT pg_drop_replication_slot('slot_name');
 ```
 
 ### Force Checkpoint
 
 ```sql
--- Trigger checkpoint to release WAL
+-- Trigger checkpoint to recycle or remove no-longer-needed WAL
 CHECKPOINT;
 ```
 
@@ -85,7 +85,7 @@ du -sh /var/lib/postgresql/16/main/base/pgsql_tmp/
 ### VACUUM to Reclaim Space
 
 ```sql
--- VACUUM FULL reclaims space (locks table)
+-- VACUUM FULL reclaims space (locks table, requires extra disk space)
 VACUUM FULL large_table;
 
 -- Regular VACUUM marks space for reuse
@@ -94,13 +94,14 @@ VACUUM VERBOSE;
 
 ## Prevention
 
-### Configure WAL Retention
+### Configure WAL Growth and Retention
 
 ```conf
 # postgresql.conf
 max_wal_size = 4GB
 min_wal_size = 1GB
 wal_keep_size = 1GB  # Instead of wal_keep_segments
+max_slot_wal_keep_size = 10GB  # Prevent inactive slots from retaining unlimited WAL
 ```
 
 ### Monitor Disk Usage

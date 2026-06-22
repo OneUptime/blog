@@ -8,7 +8,7 @@ Description: A practical guide to setting up comprehensive consumer lag monitori
 
 ---
 
-Consumer lag is one of the most critical metrics for monitoring Apache Kafka applications. It represents the difference between the latest message offset in a partition and the last committed offset by a consumer group. High consumer lag indicates that consumers are falling behind producers, which can lead to data processing delays and potential data loss. This guide covers multiple approaches to monitor consumer lag effectively.
+Consumer lag is one of the most critical metrics for monitoring Apache Kafka applications. It represents the difference between the log end offset in a partition and the current committed offset for a consumer group. High consumer lag indicates that consumers are falling behind producers, which can lead to data processing delays and, if the backlog exceeds topic retention, potential data loss. This guide covers multiple approaches to monitor consumer lag effectively.
 
 ## Understanding Consumer Lag
 
@@ -22,15 +22,15 @@ flowchart LR
     end
 
     subgraph Consumer["Consumer Position"]
-        CP[Committed Offset: 2]
+        CP[Committed Offset: 3]
     end
 
     subgraph Lag["Consumer Lag = 3"]
         L[Messages 3, 4, 5 not yet processed]
     end
 
-    M3 -.->|"Last Committed"| CP
-    M6 -.->|"Latest Available"| Lag
+    M3 -.->|"Last Processed"| CP
+    M6 -.->|"Log End Offset: 6"| Lag
 ```
 
 ### Why Consumer Lag Matters
@@ -85,32 +85,44 @@ LAG_OUTPUT=$(kafka-consumer-groups.sh \
     --describe 2>/dev/null)
 
 # Parse and check lag values
-echo "$LAG_OUTPUT" | tail -n +3 | while read -r line; do
-    if [ -n "$line" ]; then
-        TOPIC=$(echo "$line" | awk '{print $2}')
-        PARTITION=$(echo "$line" | awk '{print $3}')
-        LAG=$(echo "$line" | awk '{print $6}')
+echo "$LAG_OUTPUT" | awk '
+    NR == 1 {
+        for (i = 1; i <= NF; i++) {
+            if ($i == "TOPIC") topic_col = i
+            if ($i == "PARTITION") partition_col = i
+            if ($i == "LAG") lag_col = i
+        }
+        next
+    }
+    lag_col && $lag_col ~ /^[0-9]+$/ {
+        print $topic_col, $partition_col, $lag_col
+    }
+' | while read -r TOPIC PARTITION LAG; do
+    echo "Topic: $TOPIC, Partition: $PARTITION, Lag: $LAG"
 
-        # Skip if LAG is not a number (header row or error)
-        if [[ "$LAG" =~ ^[0-9]+$ ]]; then
-            echo "Topic: $TOPIC, Partition: $PARTITION, Lag: $LAG"
+    if [ "$LAG" -gt "$LAG_THRESHOLD" ]; then
+        echo "WARNING: High lag detected! $TOPIC:$PARTITION lag=$LAG"
 
-            if [ "$LAG" -gt "$LAG_THRESHOLD" ]; then
-                echo "WARNING: High lag detected! $TOPIC:$PARTITION lag=$LAG"
-
-                # Send alert if endpoint configured
-                if [ -n "$ALERT_ENDPOINT" ]; then
-                    curl -X POST "$ALERT_ENDPOINT" \
-                        -H "Content-Type: application/json" \
-                        -d "{\"group\": \"$CONSUMER_GROUP\", \"topic\": \"$TOPIC\", \"partition\": $PARTITION, \"lag\": $LAG}"
-                fi
-            fi
+        # Send alert if endpoint configured
+        if [ -n "$ALERT_ENDPOINT" ]; then
+            curl -X POST "$ALERT_ENDPOINT" \
+                -H "Content-Type: application/json" \
+                -d "{\"group\": \"$CONSUMER_GROUP\", \"topic\": \"$TOPIC\", \"partition\": $PARTITION, \"lag\": $LAG}"
         fi
     fi
 done
 
 # Calculate total lag
-TOTAL_LAG=$(echo "$LAG_OUTPUT" | tail -n +3 | awk '{sum += $6} END {print sum}')
+TOTAL_LAG=$(echo "$LAG_OUTPUT" | awk '
+    NR == 1 {
+        for (i = 1; i <= NF; i++) {
+            if ($i == "LAG") lag_col = i
+        }
+        next
+    }
+    lag_col && $lag_col ~ /^[0-9]+$/ {sum += $lag_col}
+    END {print sum + 0}
+')
 echo "Total lag for group $CONSUMER_GROUP: $TOTAL_LAG"
 ```
 
@@ -118,9 +130,9 @@ echo "Total lag for group $CONSUMER_GROUP: $TOTAL_LAG"
 
 Kafka exposes comprehensive metrics through JMX that can be collected by monitoring systems.
 
-### Enable JMX on Kafka Brokers
+### Enable JMX on Kafka Brokers or Consumers
 
-Add to your Kafka startup script or `kafka-server-start.sh`:
+Add to your Kafka broker startup script, or to the startup script for a Java consumer whose consumer JVM metrics you want to scrape:
 
 ```bash
 export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote \
@@ -141,8 +153,8 @@ kafka.consumer:type=consumer-fetch-manager-metrics,client-id=*,topic=*,partition
   - records-lag-avg                # Average lag
   - records-lag-max                # Maximum lag
 
-# Consumer group coordinator metrics (available on broker)
-kafka.server:type=FetcherLagMetrics,name=ConsumerLag,clientId=*,topic=*,partition=*
+# Consumer group lag is not exposed as a broker JMX metric.
+# Use consumer JVM metrics or an offset-based exporter such as kafka_exporter.
 ```
 
 ### Java Application with JMX Metrics Export
@@ -210,7 +222,9 @@ public class MonitoredConsumer {
         try {
             ObjectName objectName = new ObjectName(String.format(
                 "kafka.consumer:type=consumer-lag,group=%s,topic=%s,partition=%d",
-                groupId, partition.topic(), partition.partition()));
+                ObjectName.quote(groupId),
+                ObjectName.quote(partition.topic()),
+                partition.partition()));
 
             if (!mBeanServer.isRegistered(objectName)) {
                 LagMBean lagMBean = new Lag(lag);
@@ -363,8 +377,8 @@ kafka_consumergroup_lag{consumergroup="my-group", topic="my-topic"}
 # Total lag across all partitions for a consumer group
 sum(kafka_consumergroup_lag{consumergroup="my-group"}) by (consumergroup)
 
-# Lag rate of change (messages per second falling behind)
-rate(kafka_consumergroup_lag{consumergroup="my-group"}[5m])
+# Lag change rate (messages per second falling behind)
+deriv(kafka_consumergroup_lag{consumergroup="my-group"}[5m])
 
 # Consumer group current offset
 kafka_consumergroup_current_offset{consumergroup="my-group"}
@@ -393,7 +407,7 @@ groups:
       # Alert when lag is growing continuously
       - alert: KafkaConsumerLagGrowing
         expr: |
-          avg(rate(kafka_consumergroup_lag[10m])) by (consumergroup, topic) > 100
+          avg(deriv(kafka_consumergroup_lag[10m])) by (consumergroup, topic) > 100
         for: 15m
         labels:
           severity: critical
@@ -474,7 +488,7 @@ groups:
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "targets": [
           {
-            "expr": "rate(kafka_consumergroup_lag[5m])",
+            "expr": "deriv(kafka_consumergroup_lag[5m])",
             "legendFormat": "{{consumergroup}} - {{topic}}"
           }
         ]
@@ -676,7 +690,7 @@ public class KafkaLagMonitor {
 Kafka consumer lag monitor using confluent-kafka-python.
 """
 
-from confluent_kafka import Consumer, TopicPartition
+from confluent_kafka import Consumer, TopicPartition, ConsumerGroupTopicPartitions
 from confluent_kafka.admin import AdminClient
 import time
 import json
@@ -699,8 +713,8 @@ class LagMonitor:
 
     def get_consumer_groups(self) -> List[str]:
         """Get list of all consumer groups."""
-        groups = self.admin_client.list_groups(timeout=10)
-        return [g.id for g in groups]
+        result = self.admin_client.list_consumer_groups(request_timeout=10).result()
+        return [g.group_id for g in result.valid]
 
     def calculate_lag(self, group_id: str) -> Dict:
         """Calculate lag for all partitions in a consumer group."""
@@ -713,38 +727,27 @@ class LagMonitor:
         })
 
         try:
-            # Get committed offsets for the group
-            # First, we need to get the topics the group is subscribed to
-            group_metadata = self.admin_client.list_consumer_groups()
-
-            # Get topic partitions for the consumer group
-            committed_offsets = {}
-            topic_partitions = []
-
-            # Get group's committed offsets
-            topics = set()
-            cluster_metadata = self.admin_client.list_topics(timeout=10)
-
-            for topic_name in cluster_metadata.topics:
-                if topic_name.startswith('_'):  # Skip internal topics
-                    continue
-
-                topic_metadata = cluster_metadata.topics[topic_name]
-                for partition_id in topic_metadata.partitions:
-                    tp = TopicPartition(topic_name, partition_id)
-                    topic_partitions.append(tp)
-
-            # Get committed offsets
-            committed = consumer.committed(topic_partitions, timeout=10)
+            # Get the target group's committed offsets.
+            offsets_request = ConsumerGroupTopicPartitions(group_id)
+            offsets_result = self.admin_client.list_consumer_group_offsets(
+                [offsets_request],
+                request_timeout=10
+            )
+            committed = offsets_result[group_id].result().topic_partitions
 
             # Filter to only partitions with committed offsets
             active_partitions = [
                 tp for tp in committed
-                if tp is not None and tp.offset >= 0
+                if tp is not None and tp.offset >= 0 and tp.error is None
             ]
 
             if not active_partitions:
-                return {'group_id': group_id, 'partitions': [], 'total_lag': 0}
+                return {
+                    'group_id': group_id,
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'partitions': [],
+                    'total_lag': 0
+                }
 
             # Get end offsets (high watermarks)
             lag_info = []

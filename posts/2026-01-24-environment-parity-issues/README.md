@@ -66,13 +66,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install exact versions from lockfile
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy application code
 COPY . .
 
 # Build the application
 RUN npm run build
+
+# Remove development dependencies after the build
+RUN npm prune --omit=dev
 
 # Use non-root user for security
 USER node
@@ -106,7 +109,7 @@ Pin all dependency versions to avoid surprises.
 
 Define infrastructure in code so every environment is built the same way.
 
-```yaml
+```hcl
 # terraform/modules/app/main.tf
 variable "environment" {
   type        = string
@@ -116,6 +119,11 @@ variable "environment" {
 variable "instance_count" {
   type        = number
   description = "Number of application instances"
+}
+
+variable "app_version" {
+  type        = string
+  description = "Container image tag to deploy"
 }
 
 # Same module, different variables per environment
@@ -181,7 +189,7 @@ Use environment-specific variable files with the same structure.
 # terraform/environments/dev.tfvars
 environment     = "dev"
 instance_count  = 1
-app_version     = "latest"
+app_version     = "v2.3.1"
 
 # terraform/environments/staging.tfvars
 environment     = "staging"
@@ -255,7 +263,7 @@ interface Config {
 }
 
 function loadConfig(): Config {
-  const env = process.env.NODE_ENV || 'development';
+  const env = process.env.NODE_ENV || 'dev';
   const configDir = path.join(__dirname, '../config');
 
   // Load base configuration
@@ -276,6 +284,29 @@ function loadConfig(): Config {
 
   // Replace environment variable placeholders
   return replaceEnvVars(config);
+}
+
+function deepMerge<T extends Record<string, any>>(base: T, overrides: Partial<T>): T {
+  const result = { ...base };
+
+  for (const [key, value] of Object.entries(overrides)) {
+    const baseValue = result[key];
+
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      baseValue &&
+      typeof baseValue === 'object' &&
+      !Array.isArray(baseValue)
+    ) {
+      result[key] = deepMerge(baseValue, value);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
 }
 
 function replaceEnvVars(obj: any): any {
@@ -312,8 +343,6 @@ Use Docker Compose to run a production-like environment locally.
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build:
@@ -322,7 +351,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: development
+      NODE_ENV: dev
       DATABASE_HOST: postgres
       REDIS_HOST: redis
     depends_on:
@@ -330,9 +359,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      # Mount source for hot reload in development
-      - ./src:/app/src:ro
 
   postgres:
     image: postgres:16.1-alpine
@@ -402,7 +428,7 @@ Run migrations as part of deployment.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migration-${VERSION}
+  name: db-migration-v2-3-1
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -411,7 +437,7 @@ spec:
     spec:
       containers:
         - name: migrate
-          image: ghcr.io/company/api-server:${VERSION}
+          image: ghcr.io/company/api-server:v2.3.1
           command: ["npm", "run", "migrate"]
           env:
             - name: DATABASE_URL
@@ -430,6 +456,36 @@ Write tests that verify environment consistency.
 ```typescript
 // tests/environment-parity.test.ts
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as yaml from 'js-yaml';
+
+function loadYaml(filePath: string): Record<string, unknown> {
+  return yaml.load(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+}
+
+function getNestedKeys(obj: Record<string, unknown>, prefix = ''): string[] {
+  return Object.entries(obj).flatMap(([key, value]) => {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return [fullKey, ...getNestedKeys(value as Record<string, unknown>, fullKey)];
+    }
+
+    return [fullKey];
+  });
+}
+
+function getMigrationsForEnv(env: string): string[] {
+  const output = execSync(
+    `kubectl exec -n ${env} deploy/app -- npm run migrate:status --silent`,
+    { encoding: 'utf8' }
+  );
+
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith('.ts'));
+}
 
 describe('Environment Parity', () => {
   const environments = ['dev', 'staging', 'production'];
@@ -501,19 +557,24 @@ echo "Checking environment parity..."
 echo "1. Checking container images..."
 DEV_IMAGE=$(kubectl get deployment app -n dev -o jsonpath='{.spec.template.spec.containers[0].image}')
 STAGING_IMAGE=$(kubectl get deployment app -n staging -o jsonpath='{.spec.template.spec.containers[0].image}')
+PROD_IMAGE=$(kubectl get deployment app -n production -o jsonpath='{.spec.template.spec.containers[0].image}')
 
 DEV_TAG=$(echo $DEV_IMAGE | cut -d: -f2)
 STAGING_TAG=$(echo $STAGING_IMAGE | cut -d: -f2)
+PROD_TAG=$(echo $PROD_IMAGE | cut -d: -f2)
 
-if [ "$DEV_TAG" != "$STAGING_TAG" ] && [ "$STAGING_TAG" != "latest" ]; then
-    echo "WARNING: Dev ($DEV_TAG) and staging ($STAGING_TAG) have different versions"
+if [ "$DEV_TAG" != "$STAGING_TAG" ] || [ "$STAGING_TAG" != "$PROD_TAG" ]; then
+    echo "WARNING: Image tags differ across environments"
+    echo "Dev: $DEV_TAG"
+    echo "Staging: $STAGING_TAG"
+    echo "Production: $PROD_TAG"
 fi
 
 # Check 2: Verify config maps have same keys
 echo "2. Checking config structure..."
-DEV_KEYS=$(kubectl get configmap app-config -n dev -o json | jq -r '.data | keys[]' | sort)
-STAGING_KEYS=$(kubectl get configmap app-config -n staging -o json | jq -r '.data | keys[]' | sort)
-PROD_KEYS=$(kubectl get configmap app-config -n production -o json | jq -r '.data | keys[]' | sort)
+DEV_KEYS=$(kubectl get configmap app-config-dev -n dev -o json | jq -r '.data | keys[]' | sort)
+STAGING_KEYS=$(kubectl get configmap app-config-staging -n staging -o json | jq -r '.data | keys[]' | sort)
+PROD_KEYS=$(kubectl get configmap app-config-production -n production -o json | jq -r '.data | keys[]' | sort)
 
 if [ "$DEV_KEYS" != "$STAGING_KEYS" ] || [ "$STAGING_KEYS" != "$PROD_KEYS" ]; then
     echo "ERROR: Config maps have different keys across environments"

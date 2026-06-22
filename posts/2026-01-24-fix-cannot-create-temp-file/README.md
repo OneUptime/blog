@@ -194,7 +194,7 @@ cleanup_temp() {
     # Remove old temp files (older than 24 hours)
     # Only remove files, not directories
     echo "Removing files older than 24 hours..."
-    find "$TEMP_DIR" -type f -mtime +1 -delete 2>/dev/null || true
+    find "$TEMP_DIR" -type f -mmin +1440 -delete 2>/dev/null || true
 
     # Remove empty directories older than 7 days
     echo "Removing empty directories older than 7 days..."
@@ -314,9 +314,14 @@ cleanup_small_files() {
     echo "Files remaining: $after_count"
 }
 
-# Clean session files that accumulate
-cleanup_small_files "/tmp/sess_*" 1
-cleanup_small_files "/tmp/php*" 3
+# Clean directories that accumulate session files
+for dir in /tmp/sess_*; do
+    [[ -d "$dir" ]] && cleanup_small_files "$dir" 1
+done
+
+for dir in /tmp/php*; do
+    [[ -d "$dir" ]] && cleanup_small_files "$dir" 3
+done
 ```
 
 ---

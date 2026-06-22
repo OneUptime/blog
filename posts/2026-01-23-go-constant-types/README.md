@@ -133,11 +133,12 @@ func main() {
     fmt.Println(Small) // 2
     
     // Floating point precision
-    const precise = 0.1 + 0.2  // Exact 0.3 at compile time
+    const precise = 0.1 + 0.2  // Exact 0.3 until converted to a concrete type
     
     // Compare to runtime calculation
-    var runtime = 0.1 + 0.2
-    fmt.Printf("Constant: %.20f\n", precise)  // 0.30000000000000000000
+    var a, b = 0.1, 0.2
+    runtime := a + b
+    fmt.Printf("Constant: %.20f\n", precise)  // 0.29999999999999998890
     fmt.Printf("Runtime:  %.20f\n", runtime)  // 0.30000000000000004441
 }
 ```
@@ -248,7 +249,10 @@ func processStatus(s Status) {
 
 func main() {
     processStatus(StatusActive)
-    // processStatus(1)  // ERROR: cannot use 1 (type int)
+    processStatus(1)  // OK: untyped constants can be assigned to Status
+    
+    var rawStatus int = 1
+    // processStatus(rawStatus)  // ERROR: cannot use rawStatus (type int)
     
     // Explicit conversion allowed but discouraged
     processStatus(Status(2))

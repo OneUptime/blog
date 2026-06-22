@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix garbage collection pauses that cause 
 
 ---
 
-Garbage collection pauses are a common source of latency spikes in managed language runtimes like Java, Go, and .NET. During a GC pause, your application stops responding while the runtime reclaims unused memory. A poorly tuned application might experience pauses of hundreds of milliseconds or even seconds, causing request timeouts and degraded user experience. This guide covers how to diagnose GC issues and implement fixes that reduce pause times dramatically.
+Garbage collection pauses are a common source of latency spikes in managed language runtimes like Java, Go, and .NET. During a stop-the-world phase, some or all application threads stop while the runtime performs GC work. A poorly tuned application might experience pauses of hundreds of milliseconds or even seconds, causing request timeouts and degraded user experience. This guide covers how to diagnose GC issues and implement fixes that reduce pause times dramatically.
 
 ## Understanding Garbage Collection
 
-Modern garbage collectors divide memory into generations based on object lifetime. Most objects die young, so collecting the young generation frequently is efficient.
+Many JVM and .NET garbage collectors divide memory into generations based on object lifetime. Most objects die young, so collecting the young generation frequently is efficient.
 
 ```mermaid
 flowchart TB
@@ -132,7 +132,12 @@ java -XX:+UseG1GC \
      -XX:G1HeapRegionSize=16m \
      -jar myapp.jar
 
-# ZGC - Ultra-low latency (<10ms pauses), Java 15+
+# ZGC - low latency; production since Java 15
+java -XX:+UseZGC \
+     -jar myapp.jar
+
+# Generational ZGC is enabled by default in Java 23+.
+# On Java 21-22, add -XX:+ZGenerational to enable it.
 java -XX:+UseZGC \
      -XX:+ZGenerational \
      -jar myapp.jar
@@ -160,16 +165,16 @@ java -XX:InitialRAMPercentage=75.0 \
 ### G1GC Tuning
 
 ```bash
+# Target max pause time
+# Region size (1-32MB, power of 2)
+# Increase parallel GC threads
+# Concurrent GC threads (usually ParallelGCThreads/4)
+# Start marking when heap is 45% full
 java -XX:+UseG1GC \
-     # Target max pause time
      -XX:MaxGCPauseMillis=100 \
-     # Region size (1-32MB, power of 2)
      -XX:G1HeapRegionSize=16m \
-     # Increase parallel GC threads
      -XX:ParallelGCThreads=8 \
-     # Concurrent GC threads (usually ParallelGCThreads/4)
      -XX:ConcGCThreads=2 \
-     # Start marking when heap is 45% full
      -XX:InitiatingHeapOccupancyPercent=45 \
      -jar myapp.jar
 ```
@@ -181,6 +186,7 @@ The best way to reduce GC pressure is to allocate fewer objects.
 ### Object Pooling
 
 ```java
+import java.nio.ByteBuffer;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class ObjectPool<T> {
@@ -214,7 +220,7 @@ public class ObjectPool<T> {
 }
 
 // Usage for expensive objects like byte buffers
-ObjectPool<ByteBuffer> bufferPool = new ObjectPool<>(100, new ObjectFactory<>() {
+ObjectPool<ByteBuffer> bufferPool = new ObjectPool<>(100, new ObjectPool.ObjectFactory<>() {
     public ByteBuffer create() {
         return ByteBuffer.allocate(8192);
     }
@@ -235,6 +241,9 @@ try {
 ### Avoid Autoboxing
 
 ```java
+import java.util.List;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
 // BAD: Creates Integer objects
 public int sumValues(List<Integer> values) {
     int sum = 0;
@@ -245,8 +254,6 @@ public int sumValues(List<Integer> values) {
 }
 
 // GOOD: Use primitive collections (Eclipse Collections, Trove, etc.)
-import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
-
 public int sumValues(IntArrayList values) {
     int sum = 0;
     for (int i = 0; i < values.size(); i++) {
@@ -259,12 +266,12 @@ public int sumValues(IntArrayList values) {
 ### Reuse StringBuilder
 
 ```java
-// BAD: Creates new StringBuilder each call
+// BAD: Can allocate temporary formatting objects in hot paths
 public String formatMessage(String name, int count) {
-    return "User " + name + " has " + count + " items";  // Multiple allocations
+    return "User " + name + " has " + count + " items";
 }
 
-// GOOD: Reuse StringBuilder (thread-local for thread safety)
+// GOOD: For measured hot paths, reuse StringBuilder (thread-local for thread safety)
 private static final ThreadLocal<StringBuilder> STRING_BUILDER =
     ThreadLocal.withInitial(() -> new StringBuilder(256));
 
@@ -281,11 +288,12 @@ public String formatMessage(String name, int count) {
 ### GOGC Environment Variable
 
 ```bash
-# Default is 100 (GC when heap doubles)
+# Default is 100 (GC target is roughly 100% new heap growth)
 # Higher value = less frequent GC, more memory usage
 export GOGC=200
+```
 
-# Or set in code
+```go
 import "runtime/debug"
 
 func init() {
@@ -300,7 +308,7 @@ func init() {
 import "runtime/debug"
 
 func init() {
-    // Hard memory limit - GC becomes more aggressive near limit
+    // Soft memory limit - GC becomes more aggressive near limit
     debug.SetMemoryLimit(4 * 1024 * 1024 * 1024)  // 4GB
 }
 ```
@@ -308,6 +316,8 @@ func init() {
 ### Reduce Allocations in Go
 
 ```go
+import "sync"
+
 // BAD: Allocates new slice every call
 func processItems(items []Item) []Result {
     results := make([]Result, 0)  // Grows and reallocates
@@ -364,7 +374,7 @@ flowchart TD
 
     C --> H[Pre-size Collections]
     C --> I[Avoid Autoboxing]
-    C --> J[Use Value Types]
+    C --> J[Use Value Types Where Available]
 
     D --> K[Choose Right GC]
     D --> L[Set Heap Size]
@@ -407,6 +417,7 @@ import (
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
     "runtime"
+    "time"
 )
 
 var (
@@ -419,19 +430,24 @@ var (
 
 func recordGCMetrics() {
     var stats runtime.MemStats
-    var lastNumGC uint32
+    runtime.ReadMemStats(&stats)
+    lastNumGC := stats.NumGC
 
     for {
+        time.Sleep(time.Second)
         runtime.ReadMemStats(&stats)
 
         // Record new GC pauses
-        for i := lastNumGC; i < stats.NumGC; i++ {
+        start := lastNumGC
+        if stats.NumGC-start > uint32(len(stats.PauseNs)) {
+            start = stats.NumGC - uint32(len(stats.PauseNs))
+        }
+
+        for i := start; i < stats.NumGC; i++ {
             pause := stats.PauseNs[i%256]
             gcPauseHistogram.Observe(float64(pause) / 1e9)
         }
         lastNumGC = stats.NumGC
-
-        time.Sleep(time.Second)
     }
 }
 ```

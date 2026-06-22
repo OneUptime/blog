@@ -62,21 +62,23 @@ const utils = require(path.join(__dirname, '..', 'utils'));
 
 ### 3. Missing File Extension
 
-For non-JavaScript files or when using extensions.
+For file types that Node.js does not try automatically, or when using ES modules.
 
 **Problem:**
 
 ```javascript
 const config = require('./config.json');  // Works
-const data = require('./data');           // Might fail if data.json exists
+const data = require('./data');           // Works in CommonJS if data.js, data.json, or data.node exists
+const settings = require('./settings.cjs'); // Must include .cjs
 ```
 
 **Solution:**
 
 ```javascript
-// Always include extensions for non-JS files
+// Include extensions for non-JS files for clarity
 const config = require('./config.json');
 const data = require('./data.json');
+const settings = require('./settings.cjs');
 
 // For TypeScript with ts-node
 require('./module.ts');  // Include extension
@@ -91,7 +93,7 @@ Sometimes node_modules gets corrupted.
 ```bash
 # Remove node_modules and reinstall
 rm -rf node_modules
-rm package-lock.json   # Optional, but helps
+rm package-lock.json   # Optional: only if you suspect the lockfile is wrong
 
 # Reinstall dependencies
 npm install
@@ -106,7 +108,7 @@ Running the script from the wrong directory.
 ```bash
 # Wrong: Running from parent directory
 cd /projects
-node myapp/index.js   # Relative paths in index.js may break
+node myapp/index.js   # Code that reads files from process.cwd() may break
 ```
 
 **Solution:**
@@ -115,8 +117,11 @@ node myapp/index.js   # Relative paths in index.js may break
 # Run from the correct directory
 cd /projects/myapp
 node index.js
+```
 
-# Or use absolute paths in your code
+```javascript
+// Or use absolute paths in your code
+const path = require('path');
 const config = require(path.join(__dirname, 'config'));
 ```
 
@@ -160,8 +165,10 @@ const utils = require('./utils');  // Fails on Linux, works on macOS/Windows
 ```javascript
 // Match exact case
 const utils = require('./Utils');
+```
 
-// Or rename file to lowercase
+```bash
+# Or rename file to lowercase
 mv Utils.js utils.js
 ```
 
@@ -207,8 +214,10 @@ npm install tsconfig-paths
 ```javascript
 // Register at startup
 require('tsconfig-paths/register');
+```
 
-// Or use ts-node with paths
+```bash
+# Or use ts-node with paths
 ts-node -r tsconfig-paths/register src/index.ts
 ```
 
@@ -219,8 +228,9 @@ For compiled JavaScript:
 npm install module-alias
 ```
 
+package.json:
+
 ```json
-// package.json
 {
   "_moduleAliases": {
     "@utils": "dist/utils"
@@ -235,7 +245,7 @@ require('module-alias/register');
 
 ### 10. ES Modules vs CommonJS Mismatch
 
-Trying to require an ES module.
+Trying to require an ES module that cannot be loaded synchronously from CommonJS, such as one that uses top-level await or a package that does not expose a CommonJS entry point.
 
 **Problem:**
 
@@ -247,14 +257,23 @@ const chalk = require('chalk');  // chalk v5+ is ESM-only
 **Solution:**
 
 ```javascript
-// Option 1: Use dynamic import
-const chalk = await import('chalk');
+// Option 1: Use dynamic import from CommonJS
+async function main() {
+  const { default: chalk } = await import('chalk');
+  console.log(chalk.green('Success'));
+}
 
-// Option 2: Use older version
+main();
+```
+
+```bash
+# Option 2: Use older version
 npm install chalk@4
+```
 
-// Option 3: Convert your project to ESM
-// package.json
+Option 3: Convert your project to ESM:
+
+```json
 {
   "type": "module"
 }

@@ -121,6 +121,11 @@ print(f"Results: {results}")
 ## Autocomplete with Weighted Suggestions
 
 ```python
+import redis
+import json
+import time
+from typing import List, Dict
+
 class WeightedAutocomplete:
     """Autocomplete with multiple ranking factors"""
 
@@ -296,6 +301,10 @@ results = autocomplete.search('mac', limit=5)
 ## Fuzzy Search with Levenshtein Distance
 
 ```python
+import redis
+import json
+from typing import List, Dict
+
 class FuzzySearch:
     """Search with typo tolerance using phonetic matching and edit distance"""
 
@@ -454,8 +463,10 @@ print(f"Results: {results}")
 ```python
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import asyncio
-import aioredis
+import json
+from typing import List, Dict
+
+import redis.asyncio as redis
 
 app = FastAPI()
 
@@ -474,7 +485,7 @@ class AsyncSearchService:
 
     async def get_redis(self):
         if not self.redis:
-            self.redis = await aioredis.from_url('redis://localhost', decode_responses=True)
+            self.redis = redis.Redis(host='localhost', port=6379, decode_responses=True)
         return self.redis
 
     async def search(self, query: str, index: str = 'products', limit: int = 10) -> List[Dict]:
@@ -652,10 +663,12 @@ class LiveSearch {
 
         const html = results.map((item, index) => {
             const highlighted = this.highlightMatch(item.text || item.term, query);
+            const id = this.escapeHTML(item.id || '');
+            const category = item.data?.category ? this.escapeHTML(item.data.category) : '';
             return `
-                <div class="search-result" data-index="${index}" data-id="${item.id || ''}">
+                <div class="search-result" data-index="${index}" data-id="${id}">
                     <div class="result-text">${highlighted}</div>
-                    ${item.data?.category ? `<div class="result-category">${item.data.category}</div>` : ''}
+                    ${category ? `<div class="result-category">${category}</div>` : ''}
                 </div>
             `;
         }).join('');
@@ -670,12 +683,24 @@ class LiveSearch {
     }
 
     highlightMatch(text, query) {
-        const regex = new RegExp(`(${this.escapeRegex(query)})`, 'gi');
-        return text.replace(regex, '<mark>$1</mark>');
+        const safeText = this.escapeHTML(text || '');
+        const safeQuery = this.escapeHTML(query);
+        const regex = new RegExp(`(${this.escapeRegex(safeQuery)})`, 'gi');
+        return safeText.replace(regex, '<mark>$1</mark>');
     }
 
     escapeRegex(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    escapeHTML(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
     }
 
     selectResult(result) {
@@ -758,6 +783,9 @@ document.getElementById('search-input').addEventListener('search:select', (e) =>
 ### Caching Popular Searches
 
 ```python
+import json
+from typing import List, Dict
+
 class CachedSearch:
     """Search with caching for popular queries"""
 

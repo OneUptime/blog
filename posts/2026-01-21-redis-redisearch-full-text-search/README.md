@@ -149,7 +149,7 @@ FT.SEARCH product_idx "@description:noise cancellation"
 # Prefix search
 FT.SEARCH product_idx "wire*"
 
-# Suffix search (requires SUFFIX support)
+# Suffix search (Redis Search 2.6+; WITHSUFFIXTRIE optimizes suffix queries)
 FT.SEARCH product_idx "*phones"
 ```
 
@@ -220,7 +220,7 @@ Here's how to use RediSearch with Python:
 ```python
 import redis
 from redis.commands.search.field import TextField, NumericField, TagField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 # Connect to Redis
@@ -319,7 +319,7 @@ for doc in results.docs:
 ## Implementing in Node.js
 
 ```javascript
-const { createClient, SchemaFieldTypes, AggregateSteps } = require('redis');
+const { createClient, SCHEMA_FIELD_TYPE } = require('redis');
 
 async function main() {
     const client = createClient();
@@ -329,24 +329,24 @@ async function main() {
     try {
         await client.ft.create('product_idx', {
             name: {
-                type: SchemaFieldTypes.TEXT,
-                weight: 5.0
+                type: SCHEMA_FIELD_TYPE.TEXT,
+                WEIGHT: 5.0
             },
             description: {
-                type: SchemaFieldTypes.TEXT
+                type: SCHEMA_FIELD_TYPE.TEXT
             },
             category: {
-                type: SchemaFieldTypes.TAG
+                type: SCHEMA_FIELD_TYPE.TAG
             },
             price: {
-                type: SchemaFieldTypes.NUMERIC,
-                sortable: true
+                type: SCHEMA_FIELD_TYPE.NUMERIC,
+                SORTABLE: true
             },
             brand: {
-                type: SchemaFieldTypes.TAG
+                type: SCHEMA_FIELD_TYPE.TAG
             },
             in_stock: {
-                type: SchemaFieldTypes.TAG
+                type: SCHEMA_FIELD_TYPE.TAG
             }
         }, {
             ON: 'HASH',
@@ -435,7 +435,7 @@ FT.AGGREGATE product_idx "*"
 
 ```python
 from redis.commands.search.aggregation import AggregateRequest
-from redis.commands.search import reducers
+import redis.commands.search.reducers as reducers
 
 # Category statistics
 agg = AggregateRequest("*").group_by(
@@ -449,9 +449,10 @@ agg = AggregateRequest("*").group_by(
 results = r.ft("product_idx").aggregate(agg)
 
 for row in results.rows:
-    print(f"Category: {row[1]}")
-    print(f"  Count: {row[3]}")
-    print(f"  Avg Price: ${float(row[5]):.2f}")
+    row_data = dict(zip(row[::2], row[1::2]))
+    print(f"Category: {row_data['category']}")
+    print(f"  Count: {row_data['count']}")
+    print(f"  Avg Price: ${float(row_data['avg_price']):.2f}")
 ```
 
 ## Fuzzy Matching and Phonetic Search

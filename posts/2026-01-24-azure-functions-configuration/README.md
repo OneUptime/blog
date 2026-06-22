@@ -125,11 +125,9 @@ The `host.json` file controls runtime behavior for all functions in the app.
     },
     "serviceBus": {
       "prefetchCount": 100,
-      "messageHandlerOptions": {
-        "autoComplete": true,
-        "maxConcurrentCalls": 32,
-        "maxAutoRenewDuration": "00:05:00"
-      }
+      "autoCompleteMessages": true,
+      "maxConcurrentCalls": 32,
+      "maxAutoLockRenewalDuration": "00:05:00"
     },
     "cosmosDB": {
       "connectionMode": "Direct",
@@ -247,7 +245,7 @@ az functionapp config appsettings set \
 
 ```bash
 # Core runtime settings
-FUNCTIONS_WORKER_RUNTIME=node|python|dotnet|java|powershell
+FUNCTIONS_WORKER_RUNTIME=node|python|dotnet|dotnet-isolated|java|powershell
 FUNCTIONS_EXTENSION_VERSION=~4
 WEBSITE_RUN_FROM_PACKAGE=1
 
@@ -255,7 +253,7 @@ WEBSITE_RUN_FROM_PACKAGE=1
 WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT=10
 FUNCTIONS_WORKER_PROCESS_COUNT=4
 
-# Node.js specific
+# Node.js specific (Windows)
 WEBSITE_NODE_DEFAULT_VERSION=~20
 NODE_ENV=production
 
@@ -271,7 +269,7 @@ DOTNET_ENVIRONMENT=Production
 ```mermaid
 flowchart LR
     subgraph Consumption["Consumption Plan"]
-        C1[Auto-scale 0-200 instances]
+        C1[Auto-scale up to 200 Windows / 100 Linux instances]
         C2[Pay per execution]
         C3[5 min timeout default]
     end
@@ -279,7 +277,7 @@ flowchart LR
     subgraph Premium["Premium Plan"]
         P1[Pre-warmed instances]
         P2[VNET integration]
-        P3[Unlimited timeout]
+        P3[Unbounded timeout]
     end
 
     subgraph Dedicated["Dedicated Plan"]
@@ -303,7 +301,7 @@ az resource update \
   --resource-group myfunction-rg \
   --name myfunctionapp \
   --resource-type Microsoft.Web/sites \
-  --set properties.siteConfig.minimumElasticInstanceCount=2
+  --set properties.siteConfig.preWarmedInstanceCount=2
 ```
 
 ### host.json Scaling Settings
@@ -345,7 +343,7 @@ az webapp auth update \
 ### Network Security
 
 ```bash
-# Enable VNET integration (Premium/Dedicated only)
+# Enable VNET integration (Flex Consumption/Premium/Dedicated only)
 az functionapp vnet-integration add \
   --name myfunctionapp \
   --resource-group myfunction-rg \
@@ -404,19 +402,18 @@ az monitor app-insights component create \
   --location eastus \
   --resource-group myfunction-rg
 
-# Get instrumentation key
-APPINSIGHTS_KEY=$(az monitor app-insights component show \
+# Get connection string
+APPINSIGHTS_CONNECTION_STRING=$(az monitor app-insights component show \
   --app myfunction-insights \
   --resource-group myfunction-rg \
-  --query instrumentationKey -o tsv)
+  --query connectionString -o tsv)
 
 # Configure Function App
 az functionapp config appsettings set \
   --name myfunctionapp \
   --resource-group myfunction-rg \
   --settings \
-    APPINSIGHTS_INSTRUMENTATIONKEY=$APPINSIGHTS_KEY \
-    APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=$APPINSIGHTS_KEY"
+    APPLICATIONINSIGHTS_CONNECTION_STRING="$APPINSIGHTS_CONNECTION_STRING"
 ```
 
 ### Custom Metrics and Logging

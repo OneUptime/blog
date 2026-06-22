@@ -12,7 +12,7 @@ The `OutOfOrderSequenceException` occurs when Kafka's idempotent or transactiona
 
 ## Understanding the Exception
 
-Kafka assigns sequence numbers to messages from idempotent producers to detect duplicates and ensure exactly-once delivery. When sequence numbers arrive out of order, Kafka throws this exception.
+Kafka assigns sequence numbers to messages from idempotent producers to detect duplicates and ensure that a retried record is written at most once within a producer session. When sequence numbers arrive out of order, Kafka throws this exception.
 
 ```mermaid
 sequenceDiagram
@@ -35,11 +35,11 @@ sequenceDiagram
 
 | Cause | Description |
 |-------|-------------|
-| Producer restart | Producer ID changed, sequence reset |
-| Broker failover | Leader election caused state loss |
-| Network issues | Retries arrived out of order |
-| Transaction timeout | Transaction aborted mid-flight |
-| Max in-flight exceeded | Too many concurrent requests |
+| Producer restart | Transactional producer state was not recovered correctly |
+| Broker failover | Producer state was unavailable during recovery |
+| Network issues | Retries exposed a sequence gap |
+| Transaction timeout | Transaction expired or was aborted mid-flight |
+| Incompatible producer settings | Idempotence was disabled or rejected by configuration |
 
 ## Producer Configuration Analysis
 
@@ -58,12 +58,14 @@ props.put("retries", Integer.MAX_VALUE);  // Retries must be > 0
 props.put("max.in.flight.requests.per.connection", 5);  // Max 5 for idempotence
 ```
 
-### Settings That Cause OutOfOrderSequenceException
+### Settings That Break Idempotent Producer Guarantees
 
 ```java
-// DANGEROUS: This configuration will cause issues
+// DANGEROUS: These settings are incompatible with idempotence.
+// If enable.idempotence=true is explicit, Kafka throws ConfigException.
+// If idempotence is left implicit, conflicting settings can disable it.
 
-// max.in.flight > 5 with idempotence breaks ordering guarantees
+// max.in.flight > 5 is incompatible with idempotence
 props.put("max.in.flight.requests.per.connection", 10);  // BAD
 
 // acks != all breaks idempotence
@@ -77,7 +79,7 @@ props.put("retries", 0);  // BAD
 
 ### Scenario 1: Producer Restart Without State Recovery
 
-**Problem:** Producer restarts get a new Producer ID (PID), but broker expects old sequence.
+**Problem:** A stateless producer restart gets a new Producer ID (PID) and starts a fresh sequence. A transactional producer should reuse a stable `transactional.id` so Kafka can fence old instances and recover transactional state.
 
 ```mermaid
 flowchart TB
@@ -95,7 +97,7 @@ flowchart TB
     Before --> |"Restart"| After
 ```
 
-**Fix:** For stateless producers, this is expected. The new PID starts fresh. But if you need to continue a transaction:
+**Fix:** For stateless producers, this is expected. The new PID starts fresh. But if you need transaction recovery across restarts:
 
 ```java
 public class StatefulProducer {
@@ -118,7 +120,7 @@ public class StatefulProducer {
 
         this.producer = new KafkaProducer<>(props);
 
-        // Initialize transactions - recovers state from broker
+        // Initialize transactions - recovers state and fences old producer instances
         producer.initTransactions();
     }
 
@@ -145,7 +147,7 @@ public class StatefulProducer {
 
 ### Scenario 2: Transaction Timeout
 
-**Problem:** Transaction took too long, broker aborted it.
+**Problem:** Transaction took too long, and the broker may abort it after `transaction.timeout.ms`.
 
 **Error:**
 ```text
@@ -169,11 +171,11 @@ props.put("linger.ms", 5);
 
 ### Scenario 3: max.in.flight.requests Too High
 
-**Problem:** Too many in-flight requests causing sequence gaps.
+**Problem:** `max.in.flight.requests.per.connection` values above 5 are incompatible with idempotence. If idempotence is disabled, high in-flight requests with retries can reorder records.
 
 ```mermaid
 flowchart LR
-    subgraph InFlight["With max.in.flight=10"]
+    subgraph InFlight["With max.in.flight=10 and idempotence disabled"]
         R1[req seq=0] --> B
         R2[req seq=1] --> B
         R3[req seq=2] --> B
@@ -182,7 +184,7 @@ flowchart LR
 
     B[Broker]
 
-    Note["Req 5 fails, req 6-9 arrive first<br/>= Out of order!"]
+    Note["Req 5 fails, req 6-9 arrive first<br/>= records can be reordered"]
 ```
 
 **Fix:** Set `max.in.flight.requests.per.connection` to 1 for strict ordering, or max 5 for idempotence.
@@ -199,7 +201,7 @@ props.put("max.in.flight.requests.per.connection", 5);
 
 **Problem:** Network partition caused retries to arrive out of order.
 
-**Fix:** Implement proper retry handling with exponential backoff.
+**Fix:** Implement proper retry handling with backoff.
 
 ```java
 public class ResilientProducer {
@@ -230,7 +232,7 @@ public class ResilientProducer {
                 return;  // Success
             } catch (ExecutionException e) {
                 if (e.getCause() instanceof OutOfOrderSequenceException) {
-                    // Unrecoverable - recreate producer
+                    // Close and recreate to preserve ordering
                     System.err.println("OutOfOrderSequenceException, recreating producer");
                     producer.close();
                     producer = new KafkaProducer<>(baseProps);
@@ -251,7 +253,7 @@ public class ResilientProducer {
 
 ## Handling OutOfOrderSequenceException
 
-### Strategy 1: Abort and Retry (Recommended)
+### Strategy 1: Recreate and Retry (Recommended)
 
 ```java
 public class TransactionalProducer {
@@ -296,6 +298,7 @@ public class TransactionalProducer {
 
             } catch (ProducerFencedException e) {
                 // Another instance is running with same transactional.id
+                producer.close();
                 throw new RuntimeException("Producer fenced", e);
 
             } catch (KafkaException e) {
@@ -331,6 +334,10 @@ public class CircuitBreakerProducer {
 
     enum State { CLOSED, OPEN, HALF_OPEN }
     private volatile State state = State.CLOSED;
+
+    public CircuitBreakerProducer(KafkaProducer<String, String> producer) {
+        this.producer = producer;
+    }
 
     public void send(String topic, String key, String value) throws Exception {
         // Check circuit breaker state
@@ -379,21 +386,21 @@ public class CircuitBreakerProducer {
 groups:
   - name: kafka-producer
     rules:
-      - alert: KafkaProducerOutOfOrderErrors
-        expr: rate(kafka_producer_record_error_total{error="OutOfOrderSequenceException"}[5m]) > 0
+      - alert: KafkaProducerRecordErrors
+        expr: rate(kafka_producer_record_error_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Kafka producer OutOfOrderSequenceException detected"
+          summary: "Kafka producer record errors detected"
 
       - alert: KafkaTransactionAborts
-        expr: rate(kafka_producer_txn_abort_total[5m]) > 5
+        expr: rate(kafka_producer_txn_abort_time_ns_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High rate of Kafka transaction aborts"
+          summary: "Kafka producer transaction abort activity detected"
 ```
 
 ### JMX Metrics to Watch
@@ -402,8 +409,8 @@ groups:
 # Producer record error rate
 kafka.producer:type=producer-metrics,client-id=*,name=record-error-rate
 
-# Transaction abort rate
-kafka.producer:type=producer-metrics,client-id=*,name=txn-abort-rate
+# Transaction abort timing
+kafka.producer:type=producer-metrics,client-id=*,name=txn-abort-time-ns-total
 
 # In-flight request count
 kafka.producer:type=producer-metrics,client-id=*,name=requests-in-flight
@@ -417,6 +424,11 @@ import org.slf4j.LoggerFactory;
 
 public class LoggingProducer {
     private static final Logger log = LoggerFactory.getLogger(LoggingProducer.class);
+    private final KafkaProducer<String, String> producer;
+
+    public LoggingProducer(KafkaProducer<String, String> producer) {
+        this.producer = producer;
+    }
 
     public void send(ProducerRecord<String, String> record) {
         producer.send(record, (metadata, exception) -> {
@@ -427,10 +439,7 @@ public class LoggingProducer {
                         record.partition(),
                         record.key(),
                         exception);
-
-                    // Emit metric for monitoring
-                    Metrics.counter("kafka.producer.out_of_order_errors",
-                        "topic", record.topic()).increment();
+                    // Emit an application metric for monitoring here
                 } else {
                     log.error("Failed to send record", exception);
                 }
@@ -512,23 +521,23 @@ kafka-broker-api-versions.sh --bootstrap-server kafka:9092
 kafka-topics.sh --bootstrap-server kafka:9092 \
   --describe --topic affected-topic
 
-# 3. Check producer coordinator
-kafka-consumer-groups.sh --bootstrap-server kafka:9092 \
-  --describe --group __transaction_state --state
-
-# 4. Check for stuck transactions
+# 3. List active transactions
 kafka-transactions.sh --bootstrap-server kafka:9092 \
-  list --hanging
+  list --duration-filter 0
+
+# 4. Check for stuck transactions on a topic or broker
+kafka-transactions.sh --bootstrap-server kafka:9092 \
+  find-hanging --topic affected-topic
 ```
 
 ### Clearing Stuck Transactions
 
 ```bash
-# Abort hanging transactions
+# Abort a hanging transaction on Kafka 3.0+ using the topic, partition, and transaction start offset
 kafka-transactions.sh --bootstrap-server kafka:9092 \
-  abort --producer-id <pid> --start-sequence <seq>
+  abort --topic affected-topic --partition 0 --start-offset <start-offset>
 ```
 
 ---
 
-OutOfOrderSequenceException signals a serious data integrity issue. Always configure idempotent producers correctly with `max.in.flight.requests.per.connection <= 5`, implement proper error handling with producer recreation, and monitor for these errors proactively. When they occur, recreating the producer is usually the safest recovery path.
+OutOfOrderSequenceException signals a serious data integrity issue. Always configure idempotent producers correctly with `max.in.flight.requests.per.connection <= 5`, implement proper error handling, and monitor for these errors proactively. For transactional producers, close and recreate the producer. For idempotent-only producers, continuing is possible but can reorder pending records, so recreating the producer is usually the safest recovery path when ordering matters.

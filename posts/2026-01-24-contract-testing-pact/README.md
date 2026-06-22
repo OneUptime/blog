@@ -113,7 +113,7 @@ Let's set up contract testing for a consumer service that calls a user API.
 ```bash
 # For JavaScript/TypeScript projects
 
-npm install --save-dev @pact-foundation/pact
+npm install --save-dev @pact-foundation/pact @pact-foundation/pact-cli
 
 # For Python projects
 pip install pact-python
@@ -246,7 +246,7 @@ module.exports = { fetchUser };
 
 ```bash
 # Run the consumer tests to generate pact files
-npm test -- --testPathPattern=pact
+npm test -- --testPathPatterns pact
 
 # This generates: pacts/OrderService-UserService.json
 ```
@@ -413,38 +413,22 @@ volumes:
 
 ### Publishing Contracts to Broker
 
-```javascript
-// scripts/publish-pacts.js
-const { Publisher } = require('@pact-foundation/pact');
-const path = require('path');
-
-async function publishPacts() {
-  const publisher = new Publisher({
-    pactBroker: process.env.PACT_BROKER_URL || 'http://localhost:9292',
-    pactBrokerToken: process.env.PACT_BROKER_TOKEN,
-
-    // Or use basic auth
-    // pactBrokerUsername: process.env.PACT_BROKER_USERNAME,
-    // pactBrokerPassword: process.env.PACT_BROKER_PASSWORD,
-
-    pactFilesOrDirs: [path.resolve(__dirname, '../pacts')],
-    consumerVersion: process.env.GIT_COMMIT || '1.0.0',
-    branch: process.env.GIT_BRANCH || 'main',
-
-    // Tag with environment for deployment tracking
-    tags: [process.env.GIT_BRANCH || 'main']
-  });
-
-  await publisher.publishPacts();
-  console.log('Pacts published successfully');
-}
-
-publishPacts().catch(console.error);
+```bash
+pact-broker publish ./pacts \
+  --consumer-app-version ${GIT_COMMIT:-$(git rev-parse HEAD)} \
+  --branch ${GIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)} \
+  --tag ${GIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)} \
+  --broker-base-url ${PACT_BROKER_URL:-http://localhost:9292} \
+  --broker-token $PACT_BROKER_TOKEN
 ```
 
 ```bash
 # Publish pacts after consumer tests pass
-npm test && node scripts/publish-pacts.js
+npm test && pact-broker publish ./pacts \
+  --consumer-app-version $(git rev-parse HEAD) \
+  --branch $(git rev-parse --abbrev-ref HEAD) \
+  --broker-base-url $PACT_BROKER_URL \
+  --broker-token $PACT_BROKER_TOKEN
 ```
 
 ### Can-I-Deploy Check
@@ -542,10 +526,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Can I Deploy?
-        uses: pactflow/actions/can-i-deploy@v1
+        uses: pactflow/actions/can-i-deploy@v2
         with:
           broker_url: ${{ secrets.PACT_BROKER_URL }}
-          broker_token: ${{ secrets.PACT_BROKER_TOKEN }}
+          token: ${{ secrets.PACT_BROKER_TOKEN }}
           application_name: OrderService
           version: ${{ github.sha }}
           to_environment: production
@@ -559,7 +543,10 @@ jobs:
 
 ```javascript
 // Consumer side - testing message consumption
-const { MessageConsumerPact, synchronousBodyHandler } = require('@pact-foundation/pact');
+const { MessageConsumerPact, MatchersV3, asynchronousBodyHandler } = require('@pact-foundation/pact');
+const path = require('path');
+
+const { like, eachLike, integer } = MatchersV3;
 
 describe('Order Created Event Consumer', () => {
   const messagePact = new MessageConsumerPact({
@@ -584,7 +571,7 @@ describe('Order Created Event Consumer', () => {
       .withMetadata({
         'content-type': 'application/json'
       })
-      .verify(synchronousBodyHandler(async (message) => {
+      .verify(asynchronousBodyHandler(async (message) => {
         // Test your message handler
         const result = await handleOrderCreatedEvent(message);
         expect(result.success).toBe(true);
@@ -595,24 +582,20 @@ describe('Order Created Event Consumer', () => {
 
 ### Bi-Directional Contract Testing
 
-For existing OpenAPI specs, use bi-directional contract testing:
+For existing OpenAPI specs, use PactFlow/Swagger Contract Testing's bi-directional contract testing by publishing the provider contract and its self-verification result:
 
-```javascript
-// Verify provider against OpenAPI spec
-const { Verifier } = require('@pact-foundation/pact');
-
-const verifier = new Verifier({
-  provider: 'UserService',
-  providerBaseUrl: 'http://localhost:3001',
-
-  // Use OpenAPI spec as the contract
-  pactUrls: [],
-  providerStatesSetupUrl: 'http://localhost:3001/_pact/provider-states',
-
-  // Compare against OpenAPI
-  enablePending: true,
-  includeWipPactsSince: '2024-01-01'
-});
+```bash
+pactflow publish-provider-contract openapi/user-service.yml \
+  --provider UserService \
+  --provider-app-version $(git rev-parse HEAD) \
+  --branch $(git rev-parse --abbrev-ref HEAD) \
+  --content-type application/yaml \
+  --verification-exit-code 0 \
+  --verification-results test-results/provider-openapi.json \
+  --verification-results-content-type application/json \
+  --verifier schemathesis \
+  --broker-base-url https://your-broker.pactflow.io \
+  --broker-token $PACT_BROKER_TOKEN
 ```
 
 ---

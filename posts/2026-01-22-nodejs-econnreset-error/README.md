@@ -47,6 +47,7 @@ async function requestWithRetry(config, maxRetries = 3) {
       const isResetError = 
         error.code === 'ECONNRESET' ||
         error.code === 'EPIPE' ||
+        error.code === 'ECONNABORTED' ||
         error.code === 'ETIMEDOUT';
       
       if (!isResetError || attempt === maxRetries) {
@@ -55,8 +56,9 @@ async function requestWithRetry(config, maxRetries = 3) {
       
       // Exponential backoff
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-      console.log(`Connection reset, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      const jitter = Math.floor(Math.random() * 250);
+      console.log(`Connection reset, retrying in ${delay + jitter}ms (attempt ${attempt}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delay + jitter));
     }
   }
   
@@ -172,21 +174,16 @@ pool.on('error', (err) => {
 });
 
 async function query(sql, params) {
-  let connection;
   try {
-    connection = await pool.getConnection();
-    const [rows] = await connection.execute(sql, params);
+    const [rows] = await pool.execute(sql, params);
     return rows;
   } catch (error) {
     if (error.code === 'ECONNRESET') {
       // Retry once on connection reset
-      connection = await pool.getConnection();
-      const [rows] = await connection.execute(sql, params);
+      const [rows] = await pool.execute(sql, params);
       return rows;
     }
     throw error;
-  } finally {
-    if (connection) connection.release();
   }
 }
 ```
@@ -242,11 +239,7 @@ mongoose.connect('mongodb://localhost:27017/mydb', {
   serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
   
-  // Keep alive
-  keepAlive: true,
-  keepAliveInitialDelay: 300000,
-  
-  // Auto reconnect
+  // Pool settings
   maxPoolSize: 10,
   minPoolSize: 2,
 });
@@ -281,15 +274,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Handle connection errors
-app.use((err, req, res, next) => {
-  if (err.code === 'ECONNRESET') {
-    console.log('Client connection reset');
-    return;  // Don't send response
-  }
-  next(err);
-});
-
 // For long-running requests
 app.get('/long-operation', async (req, res) => {
   let cancelled = false;
@@ -311,6 +295,15 @@ app.get('/long-operation', async (req, res) => {
     res.json({ success: true });
   }
 });
+
+// Handle connection errors after routes
+app.use((err, req, res, next) => {
+  if (err.code === 'ECONNRESET') {
+    console.log('Client connection reset');
+    return;  // Don't send response
+  }
+  next(err);
+});
 ```
 
 ### Global Error Handler
@@ -319,10 +312,11 @@ app.get('/long-operation', async (req, res) => {
 process.on('uncaughtException', (err) => {
   if (err.code === 'ECONNRESET') {
     console.log('Connection reset (uncaught)');
-    return;  // Don't crash for connection resets
+  } else {
+    console.error('Uncaught exception:', err);
   }
   
-  console.error('Uncaught exception:', err);
+  // Perform synchronous cleanup, then restart with a process manager.
   process.exit(1);
 });
 ```
@@ -533,7 +527,7 @@ class CircuitBreaker {
 
 | Setting | Recommendation |
 |---------|----------------|
-| Keep-Alive | Enable with 30s interval |
+| Keep-Alive | Enable and tune agent settings |
 | Timeout | 30-60 seconds |
 | Max Retries | 3 attempts |
 | Backoff | Exponential with jitter |

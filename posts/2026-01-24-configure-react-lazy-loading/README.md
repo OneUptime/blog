@@ -72,7 +72,7 @@ Create a proper loading component:
 
 ```javascript
 // LoadingSpinner.js
-function LoadingSpinner({ message = 'Loading...' }) {
+export default function LoadingSpinner({ message = 'Loading...' }) {
   return (
     <div className="loading-container">
       <div className="spinner"></div>
@@ -82,7 +82,7 @@ function LoadingSpinner({ message = 'Loading...' }) {
 }
 
 // LoadingSkeleton.js - For content-aware loading
-function PageSkeleton() {
+export default function PageSkeleton() {
   return (
     <div className="page-skeleton">
       <div className="skeleton-header"></div>
@@ -146,14 +146,17 @@ React.lazy only works with default exports. For named exports, use this pattern:
 export const Dashboard = () => <div>Dashboard</div>;
 export const Analytics = () => <div>Analytics</div>;
 
+// App.js
+import { lazy } from 'react';
+
 // Lazy loading named exports
-const Dashboard = lazy(() =>
+const LazyDashboard = lazy(() =>
   import('./utils').then(module => ({
     default: module.Dashboard
   }))
 );
 
-const Analytics = lazy(() =>
+const LazyAnalytics = lazy(() =>
   import('./utils').then(module => ({
     default: module.Analytics
   }))
@@ -169,7 +172,7 @@ function lazyLoadNamed(importFn, componentName) {
 }
 
 // Usage
-const Dashboard = lazyLoadNamed(
+const LazyDashboardWithHelper = lazyLoadNamed(
   () => import('./utils'),
   'Dashboard'
 );
@@ -181,6 +184,9 @@ Preload components before they are needed for better UX:
 
 ```javascript
 // preloadable.js
+import { lazy } from 'react';
+import { Link } from 'react-router-dom';
+
 function preloadable(importFn) {
   const Component = lazy(importFn);
 
@@ -221,6 +227,8 @@ function NavLink({ to, children, component }) {
 
 ```javascript
 // routes.js
+import { lazy, useEffect } from 'react';
+
 const routes = [
   {
     path: '/',
@@ -414,6 +422,8 @@ function App() {
 
 ```javascript
 // retryLazy.js
+import { lazy } from 'react';
+
 function retryLazy(importFn, retries = 3, delay = 1000) {
   return lazy(() => {
     let attempts = 0;
@@ -499,7 +509,7 @@ flowchart TD
 {
   "scripts": {
     "analyze": "npm run build && npx source-map-explorer 'build/static/js/*.js'",
-    "analyze:webpack": "webpack-bundle-analyzer build/stats.json"
+    "analyze:webpack": "webpack --profile --json=stats.json && webpack-bundle-analyzer stats.json"
   }
 }
 
@@ -526,6 +536,8 @@ Track lazy loading performance:
 
 ```javascript
 // LazyLoadMetrics.js
+import { lazy } from 'react';
+
 const loadTimes = new Map();
 
 function measureLazyLoad(name, importFn) {
@@ -578,7 +590,7 @@ flowchart TD
 
 ### When to Lazy Load
 
-1. **Route-level components**: Always lazy load page components
+1. **Route-level components**: Lazy load page components that are not required for the initial view
 2. **Heavy libraries**: Charts, rich text editors, PDF viewers
 3. **Modals and dialogs**: Load only when triggered
 4. **Below-the-fold content**: Content not visible on initial load
@@ -604,7 +616,7 @@ import Footer from './components/Footer';
 import LazyLoadErrorBoundary from './components/LazyLoadErrorBoundary';
 import PageSkeleton from './components/PageSkeleton';
 
-// Lazy loaded with retry and metrics
+// Lazy loaded with metrics
 function createLazyComponent(importFn, name) {
   return lazy(() => {
     const start = performance.now();

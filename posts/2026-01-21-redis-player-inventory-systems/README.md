@@ -675,9 +675,15 @@ class TradingSystem:
         if not trade_data:
             return {"success": False, "error": "Trade not found"}
 
+        trade_data = {
+            k.decode() if isinstance(k, bytes) else k:
+            v.decode() if isinstance(v, bytes) else v
+            for k, v in trade_data.items()
+        }
+
         # Determine which side of the trade
-        initiator_id = trade_data[b"initiator_id"].decode()
-        target_id = trade_data[b"target_id"].decode()
+        initiator_id = trade_data["initiator_id"]
+        target_id = trade_data["target_id"]
 
         if player_id == initiator_id:
             items_key = "initiator_items"
@@ -710,12 +716,28 @@ class TradingSystem:
             return {"success": False, "error": "This item cannot be traded"}
 
         # Add to trade items
-        current_items = json.loads(trade_data[items_key.encode()])
-        current_items.append({
-            "instance_id": instance_id,
-            "item_id": item_found["item_id"],
-            "quantity": quantity
-        })
+        current_items = json.loads(trade_data[items_key])
+        existing_trade_item = None
+        for trade_item in current_items:
+            if trade_item["instance_id"] == instance_id:
+                existing_trade_item = trade_item
+                break
+
+        total_quantity = quantity
+        if existing_trade_item:
+            total_quantity += existing_trade_item["quantity"]
+
+        if item_found["quantity"] < total_quantity:
+            return {"success": False, "error": "Item not found or insufficient quantity"}
+
+        if existing_trade_item:
+            existing_trade_item["quantity"] = total_quantity
+        else:
+            current_items.append({
+                "instance_id": instance_id,
+                "item_id": item_found["item_id"],
+                "quantity": quantity
+            })
 
         pipe.hset(trade_key, items_key, json.dumps(current_items))
         pipe.execute()
@@ -742,6 +764,15 @@ class TradingSystem:
 
         local initiator_id = trade_data['initiator_id']
         local target_id = trade_data['target_id']
+        local status = trade_data['status']
+
+        if status == 'completed' then
+            return cjson.encode({success = false, error = "Trade already completed"})
+        end
+
+        if status == 'cancelled' then
+            return cjson.encode({success = false, error = "Trade has been cancelled"})
+        end
 
         if player_id == initiator_id then
             redis.call('HSET', trade_key, 'initiator_accepted', 'true')
@@ -794,6 +825,14 @@ class TradingSystem:
             trade_data[trade[i]] = trade[i + 1]
         end
 
+        if trade_data['status'] == 'completed' then
+            return cjson.encode({success = false, error = "Trade already completed"})
+        end
+
+        if trade_data['status'] == 'cancelled' then
+            return cjson.encode({success = false, error = "Trade has been cancelled"})
+        end
+
         -- Verify both accepted
         if trade_data['initiator_accepted'] ~= 'true' or
            trade_data['target_accepted'] ~= 'true' then
@@ -828,7 +867,7 @@ class TradingSystem:
 
         -- Execute the trade
         -- Remove from initiator, add to target
-        for _, item in ipairs(initiator_items) do
+        for item_index, item in ipairs(initiator_items) do
             local inv_item = redis.call('HGET', initiator_inv_key, item.instance_id)
             local parsed = cjson.decode(inv_item)
 
@@ -841,7 +880,7 @@ class TradingSystem:
             end
 
             -- Add to target
-            local new_instance_id = item.instance_id .. '_t'
+            local new_instance_id = item.instance_id .. '_t_' .. ARGV[1] .. '_' .. tostring(item_index)
             local new_item = {
                 instance_id = new_instance_id,
                 item_id = item.item_id,
@@ -854,7 +893,7 @@ class TradingSystem:
         end
 
         -- Remove from target, add to initiator
-        for _, item in ipairs(target_items) do
+        for item_index, item in ipairs(target_items) do
             local inv_item = redis.call('HGET', target_inv_key, item.instance_id)
             local parsed = cjson.decode(inv_item)
 
@@ -867,7 +906,7 @@ class TradingSystem:
             end
 
             -- Add to initiator
-            local new_instance_id = item.instance_id .. '_t'
+            local new_instance_id = item.instance_id .. '_t_' .. ARGV[1] .. '_' .. tostring(item_index)
             local new_item = {
                 instance_id = new_instance_id,
                 item_id = item.item_id,
@@ -890,8 +929,17 @@ class TradingSystem:
         """
 
         trade_data = self.redis.hgetall(trade_key)
-        initiator_id = trade_data[b"initiator_id"].decode()
-        target_id = trade_data[b"target_id"].decode()
+        if not trade_data:
+            return {"success": False, "error": "Trade not found"}
+
+        trade_data = {
+            k.decode() if isinstance(k, bytes) else k:
+            v.decode() if isinstance(v, bytes) else v
+            for k, v in trade_data.items()
+        }
+
+        initiator_id = trade_data["initiator_id"]
+        target_id = trade_data["target_id"]
 
         result = self.redis.eval(
             lua_script,
@@ -926,8 +974,14 @@ class TradingSystem:
         if not trade_data:
             return {"success": False, "error": "Trade not found"}
 
-        initiator_id = trade_data[b"initiator_id"].decode()
-        target_id = trade_data[b"target_id"].decode()
+        trade_data = {
+            k.decode() if isinstance(k, bytes) else k:
+            v.decode() if isinstance(v, bytes) else v
+            for k, v in trade_data.items()
+        }
+
+        initiator_id = trade_data["initiator_id"]
+        target_id = trade_data["target_id"]
 
         if player_id not in [initiator_id, target_id]:
             return {"success": False, "error": "Not part of this trade"}
@@ -1246,20 +1300,22 @@ class InventorySystem {
 }
 
 // Usage
-const inventory = new InventorySystem({ host: 'localhost', port: 6379 });
+(async () => {
+    const inventory = new InventorySystem({ host: 'localhost', port: 6379 });
 
-// Add items
-await inventory.addItem('player123', 'health_potion', 5);
+    // Add items
+    await inventory.addItem('player123', 'health_potion', 5);
 
-// Get inventory
-const inv = await inventory.getInventory('player123');
-console.log(inv);
+    // Get inventory
+    const inv = await inventory.getInventory('player123');
+    console.log(inv);
 
-// Remove items
-await inventory.removeItem('player123', 'health_potion', 2);
+    // Remove items
+    await inventory.removeItem('player123', 'health_potion', 2);
 
-// Transfer between players
-await inventory.transferItem('player123', 'player456', 'instance_abc', 1);
+    // Transfer between players
+    await inventory.transferItem('player123', 'player456', 'instance_abc', 1);
+})();
 ```
 
 ## Best Practices

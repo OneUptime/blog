@@ -46,8 +46,6 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: ''
-    folderUid: ''
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
@@ -58,9 +56,9 @@ providers:
 ```
 
 Key options:
-- **disableDeletion**: When true, dashboards cannot be deleted from UI
+- **disableDeletion**: When true, Grafana does not delete provisioned dashboards when their source files are removed
 - **updateIntervalSeconds**: How often to check for changes
-- **allowUiUpdates**: Whether UI changes are saved back to files
+- **allowUiUpdates**: Whether UI changes can be saved to Grafana's database
 - **foldersFromFilesStructure**: Create folders matching directory structure
 
 ### Dashboard JSON Format
@@ -138,7 +136,8 @@ data:
     {
       "uid": "kubernetes-cluster",
       "title": "Kubernetes Cluster Overview",
-      ...
+      "schemaVersion": 39,
+      "panels": []
     }
 ```
 
@@ -263,7 +262,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -332,8 +331,8 @@ jobs:
 
       - name: Install jsonnet
         run: |
-          wget https://github.com/google/go-jsonnet/releases/download/v0.20.0/jsonnet-go_0.20.0_linux_amd64.tar.gz
-          tar -xzf jsonnet-go_0.20.0_linux_amd64.tar.gz
+          wget https://github.com/google/go-jsonnet/releases/download/v0.22.0/go-jsonnet_0.22.0_linux_amd64.tar.gz
+          tar -xzf go-jsonnet_0.22.0_linux_amd64.tar.gz
           sudo mv jsonnet /usr/local/bin/
 
       - name: Install dependencies
@@ -362,9 +361,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install jsonnet
+        run: |
+          wget https://github.com/google/go-jsonnet/releases/download/v0.22.0/go-jsonnet_0.22.0_linux_amd64.tar.gz
+          tar -xzf go-jsonnet_0.22.0_linux_amd64.tar.gz
+          sudo mv jsonnet /usr/local/bin/
+
+      - name: Install dependencies
+        run: |
+          go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@latest
+          jb install
+
       - name: Generate dashboards
         run: |
-          # Same generation steps as above
           mkdir -p output
           for file in dashboards/*.jsonnet; do
             name=$(basename "$file" .jsonnet)
@@ -380,7 +389,7 @@ jobs:
             curl -X POST "$GRAFANA_URL/api/dashboards/db" \
               -H "Authorization: Bearer $GRAFANA_API_KEY" \
               -H "Content-Type: application/json" \
-              -d "{\"dashboard\": $(cat $file), \"overwrite\": true}"
+              -d "$(jq -n --argfile dashboard "$file" '{dashboard: $dashboard, overwrite: true}')"
           done
 ```
 

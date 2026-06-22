@@ -68,7 +68,7 @@ const helmet = require('helmet');
 
 app.use(helmet.contentSecurityPolicy({
   directives: {
-    // Default fallback for all resource types
+    // Default fallback for fetch directives
     defaultSrc: ["'self'"],
 
     // JavaScript sources
@@ -132,7 +132,7 @@ app.use(helmet.contentSecurityPolicy({
 ```mermaid
 graph TB
     subgraph "Resource Loading Directives"
-        A[default-src] --> B[Fallback for all]
+        A[default-src] --> B[Fallback for fetch directives]
         C[script-src] --> D[JavaScript files]
         E[style-src] --> F[CSS stylesheets]
         G[img-src] --> H[Images]
@@ -156,7 +156,7 @@ graph TB
 
 ## Handling Inline Scripts and Styles
 
-Inline scripts and styles are blocked by default in CSP. Here are secure ways to handle them.
+With a restrictive CSP, inline scripts and styles are blocked unless they are allowed with a nonce, hash, or `'unsafe-inline'`. Here are secure ways to handle them.
 
 ### Option 1: Use Nonces (Recommended)
 
@@ -327,8 +327,8 @@ const cspDirectives = {
     // Google Analytics
     "https://www.google-analytics.com",
     "https://www.googletagmanager.com",
-    // Stripe
-    "https://js.stripe.com",
+    // Stripe Checkout
+    "https://checkout.stripe.com",
     // reCAPTCHA
     "https://www.google.com",
     "https://www.gstatic.com"
@@ -348,8 +348,8 @@ const cspDirectives = {
   ],
 
   frameSrc: [
-    // Stripe checkout
-    "https://js.stripe.com",
+    // Stripe Checkout
+    "https://checkout.stripe.com",
     // reCAPTCHA
     "https://www.google.com"
   ],
@@ -357,7 +357,7 @@ const cspDirectives = {
   connectSrc: [
     "'self'",
     "https://www.google-analytics.com",
-    "https://api.stripe.com"
+    "https://checkout.stripe.com"
   ],
 
   fontSrc: [
@@ -446,7 +446,8 @@ server {
     # Other security headers
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Disable legacy browser XSS filters; rely on CSP instead
+    add_header X-XSS-Protection "0" always;
 
     location / {
         proxy_pass http://app:3000;

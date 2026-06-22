@@ -12,7 +12,7 @@ Securing PostgreSQL connections with SSL/TLS protects data in transit from eaves
 
 ## Prerequisites
 
-- PostgreSQL 9.4+ (TLS 1.2+ support in 12+)
+- PostgreSQL 10+ for SCRAM authentication examples (TLS protocol version settings require 12+)
 - OpenSSL installed
 - Root/sudo access to server
 - Understanding of certificate concepts
@@ -189,7 +189,7 @@ psql -h postgres.example.com -U myuser -d myapp
 |------|------------|---------------------|-------------------|
 | `disable` | No | No | No |
 | `allow` | Maybe | No | No |
-| `prefer` | Yes (if available) | No | No |
+| `prefer` | Maybe | No | No |
 | `require` | Yes | No | No |
 | `verify-ca` | Yes | Yes | No |
 | `verify-full` | Yes | Yes | Yes |
@@ -232,7 +232,7 @@ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
 hostssl all             all             10.0.0.0/8              cert
 
 # Client cert + password
-hostssl all             all             10.0.0.0/8              cert clientcert=verify-full
+hostssl all             all             10.0.0.0/8              scram-sha-256 clientcert=verify-full
 
 # Map certificate CN to database user
 hostssl all             all             10.0.0.0/8              cert map=cert_map

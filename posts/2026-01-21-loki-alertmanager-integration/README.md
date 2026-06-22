@@ -53,7 +53,7 @@ services:
       - "3100:3100"
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
-      - ./rules:/loki/rules
+      - ./rules:/loki/rules/fake
       - loki-data:/loki
     command: -config.file=/etc/loki/config.yaml
     networks:
@@ -70,7 +70,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yaml'
       - '--storage.path=/alertmanager'
-      - '--cluster.advertise-address=0.0.0.0:9093'
+      - '--cluster.listen-address='
     networks:
       - loki-alerting
 
@@ -161,8 +161,7 @@ ruler:
   alertmanager_client:
     basic_auth_username: ""
     basic_auth_password: ""
-    tls_config:
-      insecure_skip_verify: false
+    tls_insecure_skip_verify: false
   # External URL for alert links
   external_url: http://grafana:3000
   # Remote write for recording rules (optional)
@@ -196,20 +195,20 @@ route:
   repeat_interval: 4h
   receiver: 'default-receiver'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'critical-receiver'
       group_wait: 10s
       repeat_interval: 1h
       continue: true
 
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'warning-receiver'
       repeat_interval: 4h
 
-    - match_re:
-        service: (payment|order).*
+    - matchers:
+        - service=~"(payment|order).*"
       receiver: 'business-critical-receiver'
       group_by: ['alertname', 'service']
 
@@ -237,16 +236,16 @@ receivers:
         send_resolved: true
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'service']
 
-  - source_match:
-      alertname: 'ServiceDown'
-    target_match_re:
-      alertname: '.+'
+  - source_matchers:
+      - alertname="ServiceDown"
+    target_matchers:
+      - alertname=~".+"
     equal: ['service']
 ```
 
@@ -254,7 +253,7 @@ inhibit_rules:
 
 ### Rule File Structure
 
-Create `rules/application-alerts.yaml`:
+Create `rules/application-alerts.yaml`. With `auth_enabled: false`, Loki uses the single tenant ID `fake`, and the Docker Compose volume mounts this file into `/loki/rules/fake/application-alerts.yaml`:
 
 ```yaml
 groups:
@@ -436,6 +435,8 @@ curl -s http://localhost:3100/loki/api/v1/rules/application-alerts | jq
 
 ### Create or Update Rules
 
+The local ruler storage backend shown above is read-only. The write and delete API examples below require an API-capable shared backend such as S3, GCS, Azure, Swift, or COS.
+
 ```bash
 curl -X POST http://localhost:3100/loki/api/v1/rules/my-namespace \
   -H "Content-Type: application/yaml" \
@@ -460,8 +461,10 @@ curl -X DELETE http://localhost:3100/loki/api/v1/rules/my-namespace/test-rules
 
 ### Reload Rules
 
+With the local storage backend, the ruler picks up file changes on the configured `poll_interval`. To force a reload in this Docker Compose setup, restart Loki:
+
 ```bash
-curl -X POST http://localhost:3100/ruler/ring/flush
+docker restart loki
 ```
 
 ## Alert Grouping Strategies
@@ -481,8 +484,8 @@ route:
 route:
   group_by: ['alertname', 'service']
   routes:
-    - match:
-        category: business
+    - matchers:
+        - category="business"
       group_by: ['service']
       receiver: 'business-team'
 ```
@@ -492,8 +495,8 @@ route:
 ```yaml
 route:
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_by: ['...']  # Disable grouping
       group_wait: 0s
       receiver: 'critical-alerts'
@@ -521,27 +524,14 @@ ruler:
         host: consul:8500
     heartbeat_period: 5s
     heartbeat_timeout: 15s
+  enable_sharding: true
   alertmanager_url: http://alertmanager-1:9093,http://alertmanager-2:9093
-  enable_alertmanager_discovery: true
-  alertmanager_discovery_refresh_interval: 60s
+  alertmanager_refresh_interval: 60s
 ```
 
 ### Alertmanager Cluster Configuration
 
-```yaml
-# alertmanager.yaml for cluster
-global:
-  resolve_timeout: 5m
-
-# Cluster configuration
-cluster:
-  peer:
-    advertise_address: "{{ HOST_IP }}:9094"
-  peers:
-    - alertmanager-1:9094
-    - alertmanager-2:9094
-    - alertmanager-3:9094
-```
+Alertmanager clustering is configured with command-line flags, not fields in `alertmanager.yaml`.
 
 Start Alertmanager with clustering:
 

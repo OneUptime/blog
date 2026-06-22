@@ -82,7 +82,7 @@ flowchart TB
   tasks:
     # Disable server in HAProxy before deployment
     - name: Disable server in HAProxy
-      ansible.builtin.command: >
+      ansible.builtin.shell: >
         echo "disable server {{ backend_name }}/{{ inventory_hostname }}" |
         socat stdio {{ haproxy_socket }}
       delegate_to: "{{ item }}"
@@ -102,7 +102,7 @@ flowchart TB
 
     # Re-enable server in HAProxy after deployment
     - name: Enable server in HAProxy
-      ansible.builtin.command: >
+      ansible.builtin.shell: >
         echo "enable server {{ backend_name }}/{{ inventory_hostname }}" |
         socat stdio {{ haproxy_socket }}
       delegate_to: "{{ item }}"
@@ -173,7 +173,7 @@ flowchart LR
 
     # Create backup before schema changes
     - name: Create database backup
-      ansible.builtin.command: |
+      ansible.builtin.shell: |
         pg_dump {{ db_name }} > /backups/{{ db_name }}_{{ ansible_date_time.iso8601_basic }}.sql
       delegate_to: "{{ db_host }}"
       run_once: true
@@ -241,7 +241,7 @@ flowchart LR
 
   handlers:
     - name: Reload prometheus
-      ansible.builtin.command: kill -HUP $(pgrep prometheus)
+      ansible.builtin.shell: kill -HUP $(pgrep prometheus)
       delegate_to: "{{ monitoring_server }}"
 ```
 
@@ -262,7 +262,7 @@ flowchart LR
   tasks:
     # Update DNS record for the server
     - name: Update A record
-      ansible.builtin.nsupdate:
+      community.general.nsupdate:
         key_name: ansible-key
         key_secret: "{{ vault_dns_key }}"
         server: "{{ dns_server }}"
@@ -275,7 +275,7 @@ flowchart LR
 
     # Update reverse DNS
     - name: Update PTR record
-      ansible.builtin.command: |
+      ansible.builtin.shell: |
         nsupdate -k /etc/bind/keys/ansible-key.key << EOF
         server {{ dns_server }}
         update delete {{ ansible_default_ipv4.address | regex_replace('^(\d+)\.(\d+)\.(\d+)\.(\d+)$', '\\4.\\3.\\2.\\1') }}.in-addr.arpa PTR
@@ -339,7 +339,7 @@ flowchart LR
 
     # Generate files locally and distribute
     - name: Generate SSL certificate locally
-      ansible.builtin.command: |
+      ansible.builtin.shell: |
         openssl req -new -x509 -days 365 -nodes \
           -out /tmp/{{ inventory_hostname }}.crt \
           -keyout /tmp/{{ inventory_hostname }}.key \
@@ -448,6 +448,8 @@ sequenceDiagram
         url: "http://{{ lb_host }}/check/{{ inventory_hostname }}"
         status_code: 200
       delegate_to: localhost
+      register: lb_check
+      until: lb_check.status == 200
       retries: 10
       delay: 3
 ```

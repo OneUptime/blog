@@ -104,8 +104,7 @@ spec:
     - name: myapp
       # Use full registry path
       image: myregistry.azurecr.io/myapp:v1.0.0
-      # Or for Docker Hub
-      image: docker.io/library/nginx:1.25.0
+      # For Docker Hub, use: docker.io/library/nginx:1.25.0
 ```
 
 ### 2. Registry Authentication
@@ -126,10 +125,11 @@ kubectl create secret docker-registry ecr-secret \
   --docker-username=AWS \
   --docker-password=$(aws ecr get-login-password --region <region>)
 
-# For GCR
-kubectl create secret docker-registry gcr-secret \
-  --docker-server=gcr.io \
+# For Google Artifact Registry
+kubectl create secret docker-registry artifact-registry-secret \
+  --docker-server=<location>-docker.pkg.dev \
   --docker-username=_json_key \
+  --docker-email=<service-account-email> \
   --docker-password="$(cat service-account.json)"
 
 # For Azure ACR
@@ -258,7 +258,7 @@ openssl s_client -connect myregistry.example.com:443 -showcerts
 # /etc/containerd/certs.d/myregistry.example.com/hosts.toml
 ```
 
-```yaml
+```toml
 # containerd configuration
 # /etc/containerd/certs.d/myregistry.example.com/hosts.toml
 server = "https://myregistry.example.com"
@@ -370,29 +370,59 @@ spec:
           command: ["echo", "Image pulled"]
       containers:
         - name: pause
-          image: gcr.io/google-containers/pause:3.2
+          image: registry.k8s.io/pause:3.10
       imagePullSecrets:
         - name: registry-secret
 ```
 
 ### Registry Mirroring
 
-```yaml
+```toml
 # Configure containerd to use mirror
 # /etc/containerd/config.toml
 
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://myregistry-mirror.azurecr.io"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-      endpoint = ["https://myregistry-mirror.azurecr.io"]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."https://myregistry-mirror.azurecr.io"]
+  capabilities = ["pull", "resolve"]
 ```
 
 ### Automate ECR Token Refresh
 
 ```yaml
 # ecr-token-refresh.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-refresh-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-secret-writer
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-secret-writer
+subjects:
+  - kind: ServiceAccount
+    name: ecr-refresh-sa
+roleRef:
+  kind: Role
+  name: ecr-secret-writer
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -411,9 +441,12 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  yum install -y curl >/dev/null
+                  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                  chmod +x kubectl
                   TOKEN=$(aws ecr get-login-password --region us-east-1)
-                  kubectl delete secret ecr-secret --ignore-not-found
-                  kubectl create secret docker-registry ecr-secret \
+                  ./kubectl delete secret ecr-secret --ignore-not-found
+                  ./kubectl create secret docker-registry ecr-secret \
                     --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
                     --docker-password=$TOKEN

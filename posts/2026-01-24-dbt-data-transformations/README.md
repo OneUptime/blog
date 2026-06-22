@@ -52,6 +52,8 @@ my_dbt_project/
 │   └── generate_schema_name.sql
 ├── tests/
 │   └── custom_tests.sql
+├── snapshots/
+│   └── customer_snapshot.yml
 └── seeds/
     └── country_codes.csv
 ```
@@ -197,7 +199,7 @@ with orders as (
     {% if is_incremental() %}
     -- Only get records newer than the max in the current table
     where updated_at_utc > (
-        select max(updated_at_utc) from {{ this }}
+        select coalesce(max(updated_at_utc), '1900-01-01') from {{ this }}
     )
     {% endif %}
 ),
@@ -318,31 +320,34 @@ models:
     columns:
       - name: order_id
         description: "Primary key for orders"
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: customer_id
         description: "Foreign key to dim_customers"
-        tests:
+        data_tests:
           - not_null
           - relationships:
-              to: ref('dim_customers')
-              field: customer_id
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
 
       - name: order_amount
         description: "Order amount in dollars"
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 100000
+              arguments:
+                min_value: 0
+                max_value: 100000
 
       - name: order_status
         description: "Current order status"
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['pending', 'completed', 'shipped', 'refunded', 'cancelled']
+              arguments:
+                values: ['pending', 'completed', 'shipped', 'refunded', 'cancelled']
 ```
 
 ---
@@ -383,24 +388,18 @@ where c.customer_id is null
 
 Track changes over time with snapshots:
 
-```sql
--- snapshots/customer_snapshot.sql
+```yaml
+# snapshots/customer_snapshot.yml
 
-{% snapshot customer_snapshot %}
-
-{{
-    config(
-        target_schema='snapshots',
-        unique_key='customer_id',
-        strategy='timestamp',
-        updated_at='updated_at_utc',
-        invalidate_hard_deletes=True
-    )
-}}
-
-select * from {{ source('raw_db', 'customers') }}
-
-{% endsnapshot %}
+snapshots:
+  - name: customer_snapshot
+    relation: source('raw_db', 'customers')
+    config:
+      schema: snapshots
+      unique_key: customer_id
+      strategy: timestamp
+      updated_at: updated_at_utc
+      hard_deletes: invalidate
 ```
 
 ---
@@ -462,8 +461,8 @@ dbt run --select staging.stg_customers
 # Run models and their downstream dependencies
 dbt run --select stg_customers+
 
-# Run only changed models since last run
-dbt run --select state:modified+
+# Run only changed models compared with previous artifacts
+dbt run --select state:modified+ --state path/to/artifacts
 
 # Test all models
 dbt test

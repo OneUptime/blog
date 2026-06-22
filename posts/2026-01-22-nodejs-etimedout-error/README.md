@@ -44,7 +44,7 @@ const client = axios.create({
 // Per-request timeout
 async function fetchData() {
   try {
-    const response = await axios.get('/data', {
+    const response = await client.get('/data', {
       timeout: 10000,  // 10 seconds
     });
     return response.data;
@@ -78,10 +78,9 @@ function makeRequest(url, options = {}) {
       res.on('end', () => resolve(data));
     });
     
-    // Connection timeout
+    // Request timeout
     req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timed out'));
+      req.destroy(new Error('Request timed out'));
     });
     
     req.on('error', (error) => {
@@ -101,14 +100,14 @@ function makeRequest(url, options = {}) {
 
 ```javascript
 async function fetchWithTimeout(url, options = {}) {
-  const { timeout = 30000 } = options;
+  const { timeout = 30000, ...fetchOptions } = options;
   
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   
   try {
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
     });
     return response;
@@ -209,10 +208,6 @@ mongoose.connect('mongodb://localhost:27017/mydb', {
   serverSelectionTimeoutMS: 10000,
   connectTimeoutMS: 10000,
   socketTimeoutMS: 45000,
-  
-  // Keep alive
-  keepAlive: true,
-  keepAliveInitialDelay: 300000,
   
   // Pool settings
   maxPoolSize: 10,

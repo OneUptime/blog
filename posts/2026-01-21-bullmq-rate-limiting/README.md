@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Rate Limiting, Throttling, Job Queue, API Protection
 
-Description: A comprehensive guide to implementing rate limiting in BullMQ, including global rate limits, per-key rate limiting, dynamic throttling.
+Description: A comprehensive guide to implementing rate limiting in BullMQ, including global rate limits, BullMQ Pro group rate limiting, dynamic throttling.
 
 ---
 
-Rate limiting is essential when your job queue interacts with external APIs, databases, or services that have throughput limits. BullMQ provides built-in rate limiting capabilities that help you control job processing speed and prevent overwhelming downstream services. This guide covers all aspects of rate limiting in BullMQ.
+Rate limiting is essential when your job queue interacts with external APIs, databases, or services that have throughput limits. BullMQ provides built-in rate limiting capabilities that help you control job processing speed and prevent overwhelming downstream services. This guide covers common rate limiting patterns in BullMQ.
 
 ## Understanding BullMQ Rate Limiting
 
-BullMQ supports rate limiting at the worker level using a token bucket algorithm. You specify how many jobs can be processed within a time window.
+BullMQ supports queue rate limiting through worker `limiter` options. You specify how many jobs can be processed within a time window.
 
 ```typescript
 import { Queue, Worker } from 'bullmq';
@@ -85,16 +85,18 @@ const worker3 = new Worker('slow-queue', processor, {
 
 ## Group-Based Rate Limiting
 
-Rate limit jobs by a specific key (e.g., per user, per API endpoint):
+Rate limit jobs by a specific key (e.g., per user, per API endpoint) with BullMQ Pro groups. Group-key rate limiting was removed from open-source BullMQ in version 3.0, so current per-group rate limiting uses `@taskforcesh/bullmq-pro`:
 
 ```typescript
+import { QueuePro, WorkerPro } from '@taskforcesh/bullmq-pro';
+
 interface APIJobData {
   userId: string;
   endpoint: string;
   payload: Record<string, unknown>;
 }
 
-const queue = new Queue<APIJobData>('api-calls', { connection });
+const queue = new QueuePro<APIJobData>('api-calls', { connection });
 
 // Add jobs with group key
 await queue.add('call-api', {
@@ -107,14 +109,15 @@ await queue.add('call-api', {
 });
 
 // Worker with group-based rate limiting
-const worker = new Worker<APIJobData>('api-calls', async (job) => {
+const worker = new WorkerPro<APIJobData>('api-calls', async (job) => {
   return await callAPI(job.data.endpoint, job.data.payload);
 }, {
   connection,
-  limiter: {
-    max: 10,       // 10 requests per second
-    duration: 1000,
-    groupKey: 'group', // Use the group key for rate limiting
+  group: {
+    limit: {
+      max: 10,       // 10 requests per second per group
+      duration: 1000,
+    },
   },
 });
 ```
@@ -129,10 +132,10 @@ interface UserActionJobData {
 }
 
 class UserRateLimitedQueue {
-  private queue: Queue<UserActionJobData>;
+  private queue: QueuePro<UserActionJobData>;
 
-  constructor(connection: Redis) {
-    this.queue = new Queue('user-actions', { connection });
+  constructor(private connection: Redis) {
+    this.queue = new QueuePro('user-actions', { connection });
   }
 
   async addUserAction(userId: string, action: string, data: Record<string, unknown>) {
@@ -145,16 +148,17 @@ class UserRateLimitedQueue {
     );
   }
 
-  createWorker(): Worker<UserActionJobData> {
-    return new Worker('user-actions', async (job) => {
+  createWorker(): WorkerPro<UserActionJobData> {
+    return new WorkerPro('user-actions', async (job) => {
       console.log(`Processing action for user ${job.data.userId}`);
       return await processUserAction(job.data);
     }, {
-      connection: this.queue.opts.connection,
-      limiter: {
-        max: 5,          // 5 actions per user per second
-        duration: 1000,
-        groupKey: 'group',
+      connection: this.connection,
+      group: {
+        limit: {
+          max: 5,          // 5 actions per user per second
+          duration: 1000,
+        },
       },
       concurrency: 50,   // Process many users concurrently
     });
@@ -164,49 +168,38 @@ class UserRateLimitedQueue {
 
 ## Dynamic Rate Limiting
 
-Adjust rate limits based on external factors:
+Apply temporary rate limit delays based on external factors:
 
 ```typescript
+import { Job, Queue, Worker } from 'bullmq';
+
 class DynamicRateLimitedQueue {
   private queue: Queue;
   private worker: Worker | null = null;
-  private currentLimit: number = 100;
 
   constructor(private connection: Redis) {
     this.queue = new Queue('dynamic-limited', { connection });
   }
 
-  async updateRateLimit(newLimit: number) {
-    this.currentLimit = newLimit;
-
-    // Close existing worker
-    if (this.worker) {
-      await this.worker.close();
-    }
-
-    // Create new worker with updated limit
+  startWorker() {
     this.worker = new Worker('dynamic-limited', async (job) => {
       return await this.processJob(job);
     }, {
       connection: this.connection,
       limiter: {
-        max: this.currentLimit,
+        max: 100,
         duration: 1000,
       },
     });
-
-    console.log(`Rate limit updated to ${newLimit}/second`);
   }
 
   private async processJob(job: Job) {
-    // Check for rate limit headers and adjust
     const result = await callExternalAPI(job.data);
 
-    if (result.remainingRequests !== undefined) {
-      const suggestedLimit = Math.floor(result.remainingRequests / 60);
-      if (suggestedLimit < this.currentLimit * 0.8) {
-        await this.updateRateLimit(suggestedLimit);
-      }
+    if (result.rateLimited) {
+      const retryAfterMs = result.retryAfterMs ?? 60000;
+      await this.worker!.rateLimit(retryAfterMs);
+      throw Worker.RateLimitError();
     }
 
     return result;
@@ -378,14 +371,13 @@ Track rate limiting effectiveness:
 class RateLimitMonitor {
   private metrics = {
     totalProcessed: 0,
-    rateLimitedCount: 0,
+    rateLimitActiveSamples: 0,
     throughputHistory: [] as { timestamp: number; count: number }[],
   };
 
   private intervalCount = 0;
-  private intervalStart = Date.now();
 
-  constructor(private worker: Worker) {
+  constructor(private queue: Queue, private worker: Worker) {
     this.setupListeners();
     this.startThroughputTracking();
   }
@@ -395,15 +387,15 @@ class RateLimitMonitor {
       this.metrics.totalProcessed++;
       this.intervalCount++;
     });
-
-    this.worker.on('waiting', () => {
-      // Job is waiting due to rate limit
-      this.metrics.rateLimitedCount++;
-    });
   }
 
   private startThroughputTracking() {
-    setInterval(() => {
+    setInterval(async () => {
+      const ttl = await this.queue.getRateLimitTtl();
+      if (ttl > 0) {
+        this.metrics.rateLimitActiveSamples++;
+      }
+
       this.metrics.throughputHistory.push({
         timestamp: Date.now(),
         count: this.intervalCount,
@@ -518,7 +510,7 @@ class EmailService {
 
 2. **Set conservative limits** - Leave headroom for other clients or services.
 
-3. **Use group-based limiting** - When different entities have different quotas.
+3. **Use BullMQ Pro group-based limiting** - When different entities have different quotas.
 
 4. **Monitor throughput** - Track actual vs. configured rate.
 
@@ -536,4 +528,4 @@ class EmailService {
 
 ## Conclusion
 
-Rate limiting in BullMQ is essential for building respectful and reliable integrations with external services. By properly configuring rate limits at the worker level and using group-based limiting for per-entity quotas, you can maximize throughput while staying within acceptable bounds. Remember to monitor your actual throughput and adjust limits based on real-world performance.
+Rate limiting in BullMQ is essential for building respectful and reliable integrations with external services. By properly configuring rate limits at the worker level and using BullMQ Pro group-based limiting for per-entity quotas, you can maximize throughput while staying within acceptable bounds. Remember to monitor your actual throughput and adjust limits based on real-world performance.

@@ -16,8 +16,8 @@ Choosing between managed and self-hosted PostgreSQL affects operational complexi
 |---------|----------------|-------------------|-------------|
 | Management | Fully managed | Fully managed | You manage |
 | Storage | EBS-based | Distributed | Your choice |
-| Max Storage | 64 TB | 128 TB | Unlimited |
-| Read Replicas | 5 | 15 | Unlimited |
+| Max Storage | 64 TB | 256 TB | Hardware dependent |
+| Read Replicas | 15 | 15 | Unlimited |
 | Failover Time | 1-2 minutes | <30 seconds | Variable |
 | Cost | $$$ | $$$$ | $ (+ ops cost) |
 
@@ -30,9 +30,9 @@ Choosing between managed and self-hosted PostgreSQL affects operational complexi
 - Standard PostgreSQL compatibility
 
 ### Cons
-- Storage performance tied to instance
+- Storage performance depends on storage type, provisioned settings, and instance limits
 - Slower failover than Aurora
-- Limited read replicas
+- Limited read replicas compared with self-hosted
 - Cost at scale
 
 ### Best For
@@ -48,7 +48,7 @@ aws rds create-db-instance \
     --db-instance-class db.r6g.large \
     --engine postgres \
     --master-username admin \
-    --master-user-password secret \
+    --master-user-password ExamplePassword123 \
     --allocated-storage 100
 ```
 
@@ -78,7 +78,7 @@ aws rds create-db-cluster \
     --db-cluster-identifier myaurora \
     --engine aurora-postgresql \
     --master-username admin \
-    --master-user-password secret
+    --master-user-password ExamplePassword123
 
 aws rds create-db-instance \
     --db-instance-identifier myaurora-instance \
@@ -114,7 +114,7 @@ aws rds create-db-instance \
 |--------------|-----|--------|-----------------|
 | 2 vCPU, 8GB | ~$200/mo | ~$250/mo | ~$100/mo + ops |
 | 8 vCPU, 32GB | ~$800/mo | ~$1000/mo | ~$400/mo + ops |
-| HA (Multi-AZ) | 2x | 1.3x | 2x + setup |
+| HA (Multi-AZ) | ~2x | Varies (replicas add compute cost) | 2x + setup |
 
 ## Decision Matrix
 

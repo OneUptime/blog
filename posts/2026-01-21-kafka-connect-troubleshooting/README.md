@@ -19,7 +19,7 @@ Kafka Connect is powerful but can be challenging to debug when things go wrong. 
 | RUNNING | Connector is operating normally |
 | PAUSED | Connector is paused |
 | FAILED | Connector has failed |
-| UNASSIGNED | Connector tasks not assigned |
+| UNASSIGNED | Connector has not yet been assigned to a worker |
 
 ### Task States
 
@@ -28,6 +28,7 @@ Kafka Connect is powerful but can be challenging to debug when things go wrong. 
 | RUNNING | Task is processing records |
 | FAILED | Task has encountered an error |
 | PAUSED | Task is paused |
+| UNASSIGNED | Task has not yet been assigned to a worker |
 
 ## Diagnostic Commands
 
@@ -267,9 +268,9 @@ public class ConnectMetricsCollector {
     public Map<String, Object> getConnectorMetrics(String connectorName) throws Exception {
         Map<String, Object> metrics = new HashMap<>();
 
-        // Connector task metrics
+        // Task error metrics
         ObjectName taskMetrics = new ObjectName(
-            "kafka.connect:type=connector-task-metrics,connector=" + connectorName + ",task=*");
+            "kafka.connect:type=task-error-metrics,connector=" + connectorName + ",task=*");
 
         Set<ObjectName> names = mbeanConnection.queryNames(taskMetrics, null);
         for (ObjectName name : names) {
@@ -449,7 +450,8 @@ class ConnectTroubleshooter:
             'healthy': [],
             'failed_connectors': [],
             'failed_tasks': [],
-            'paused': []
+            'paused': [],
+            'unassigned': []
         }
 
         connectors = self.client.list_connectors()
@@ -462,6 +464,8 @@ class ConnectTroubleshooter:
                     logger.error(f"Connector {name} FAILED: {status.trace}")
                 elif status.state == ConnectorState.PAUSED.value:
                     results['paused'].append(name)
+                elif status.state == ConnectorState.UNASSIGNED.value:
+                    results['unassigned'].append(name)
                 else:
                     # Check tasks
                     all_tasks_running = True
@@ -469,6 +473,14 @@ class ConnectTroubleshooter:
                         if task.state == ConnectorState.FAILED.value:
                             results['failed_tasks'].append(f"{name}/task-{task.id}")
                             logger.error(f"Task {name}/{task.id} FAILED: {task.trace}")
+                            all_tasks_running = False
+                        elif task.state == ConnectorState.PAUSED.value:
+                            results['paused'].append(f"{name}/task-{task.id}")
+                            all_tasks_running = False
+                        elif task.state == ConnectorState.UNASSIGNED.value:
+                            results['unassigned'].append(f"{name}/task-{task.id}")
+                            all_tasks_running = False
+                        elif task.state != ConnectorState.RUNNING.value:
                             all_tasks_running = False
 
                     if all_tasks_running:
@@ -650,7 +662,7 @@ def build_jdbc_source_config(name: str, connection_url: str,
     return {
         "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
         "connection.url": connection_url,
-        "table.whitelist": table,
+        "table.include.list": table,
         "topic.prefix": topic_prefix,
         "mode": "incrementing",
         "incrementing.column.name": "id",
@@ -673,7 +685,6 @@ def build_elasticsearch_sink_config(name: str, connection_url: str,
         "tasks.max": "3",
         "key.ignore": "true",
         "schema.ignore": "true",
-        "type.name": "_doc",
         # Error handling
         "errors.tolerance": "all",
         "errors.log.enable": "true",
@@ -741,7 +752,7 @@ ls /usr/share/java/kafka-connect-*
 ### Issue: Out of Memory
 
 ```properties
-# In connect-distributed.properties
+# Set before starting the Connect worker
 KAFKA_HEAP_OPTS="-Xms4G -Xmx4G"
 ```
 

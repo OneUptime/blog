@@ -16,9 +16,9 @@ This guide covers configuring Ansible for Windows management and common Windows 
 
 Before Ansible can manage Windows hosts, they need:
 
-1. **PowerShell 5.1 or later** (Windows Server 2016+ includes this)
+1. **Windows Server 2016/Windows 10 or newer with PowerShell 5.1** (older supported hosts require PowerShell 3.0+ and .NET Framework 4.0+)
 2. **WinRM service** enabled and configured
-3. **.NET Framework 4.0+**
+3. **A WinRM listener** created and activated
 4. **Network connectivity** from Ansible control node
 
 ## Preparing Windows Hosts
@@ -46,7 +46,7 @@ winrm set winrm/config/service '@{AllowUnencrypted="true"}'
 # Enable basic authentication
 winrm set winrm/config/service/auth '@{Basic="true"}'
 
-# Allow connections from any IP (restrict in production)
+# Optional: trust remote WinRM hosts when this Windows host initiates outbound WinRM connections
 winrm set winrm/config/client '@{TrustedHosts="*"}'
 
 # Increase max memory per shell for large operations
@@ -88,8 +88,11 @@ ansible-galaxy collection install community.windows
 # Install Chocolatey collection (win_chocolatey is NOT in ansible.windows)
 ansible-galaxy collection install chocolatey.chocolatey
 
+# Install IIS collection
+ansible-galaxy collection install microsoft.iis
+
 # Install pywinrm for WinRM connectivity
-pip install pywinrm pywinrm[credssp]
+pip install "pywinrm>=0.4.0" "pywinrm[credssp]" "pywinrm[kerberos]"
 ```
 
 ## Inventory Configuration
@@ -140,9 +143,9 @@ all:
 Choose the appropriate authentication method.
 
 ```yaml
-# Basic Auth (HTTP only, least secure)
+# Basic Auth (local accounts only; use HTTPS unless this is a development HTTP setup)
 ansible_winrm_transport: basic
-ansible_port: 5985
+ansible_port: 5986
 
 # NTLM (most common)
 ansible_winrm_transport: ntlm
@@ -399,7 +402,7 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
         state: present
 
     - name: Create application pool
-      community.windows.win_iis_webapppool:
+      microsoft.iis.web_app_pool:
         name: MyAppPool
         state: started
         attributes:
@@ -409,28 +412,35 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
           processModel.identityType: ApplicationPoolIdentity
 
     - name: Create website
-      community.windows.win_iis_website:
+      microsoft.iis.website:
         name: MyWebsite
         state: started
-        port: 80
-        ip: "*"
-        hostname: myapp.example.com
+        bindings:
+          set:
+            - port: 80
+              ip: "*"
+              hostname: myapp.example.com
+              protocol: http
         application_pool: MyAppPool
         physical_path: C:\inetpub\myapp
 
     - name: Create virtual directory
-      community.windows.win_iis_virtualdirectory:
+      microsoft.iis.virtual_directory:
         name: static
         site: MyWebsite
         physical_path: C:\inetpub\static
 
     - name: Configure IIS binding
-      community.windows.win_iis_webbinding:
+      microsoft.iis.website:
         name: MyWebsite
-        port: 443
-        protocol: https
-        certificate_hash: ABC123...
-        certificate_store_name: My
+        bindings:
+          add:
+            - port: 443
+              ip: "*"
+              hostname: myapp.example.com
+              protocol: https
+              certificate_hash: ABC123...
+              certificate_store_name: My
 ```
 
 ### Windows Updates
@@ -460,7 +470,7 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
 
     - name: Install specific KB
       ansible.windows.win_updates:
-        whitelist:
+        accept_list:
           - KB1234567
         state: installed
 ```
@@ -518,7 +528,7 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
       - Public
 
 - name: Set timezone
-  community.windows.win_timezone:
+  ansible.windows.win_timezone:
     timezone: "{{ windows_timezone | default('UTC') }}"
 
 - name: Configure NTP
@@ -537,4 +547,4 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
 
 ---
 
-Ansible brings the same automation patterns you use for Linux to your Windows environment. The key is proper WinRM configuration and using Windows-specific modules from the ansible.windows and community.windows collections. Start with basic connectivity testing, then build out playbooks for your Windows management tasks, from software installation to IIS configuration and beyond.
+Ansible brings the same automation patterns you use for Linux to your Windows environment. The key is proper WinRM configuration and using Windows-specific modules from the ansible.windows, community.windows, and microsoft.iis collections. Start with basic connectivity testing, then build out playbooks for your Windows management tasks, from software installation to IIS configuration and beyond.

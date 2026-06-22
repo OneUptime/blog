@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve gRPC message size limit errors by
 
 ---
 
-The "Message Too Large" error in gRPC occurs when a request or response exceeds the default 4MB message size limit. This guide covers how to diagnose, fix, and prevent these errors across different languages and deployment scenarios.
+The "Message Too Large" error in gRPC commonly occurs when a request or response exceeds the default 4MB receive message size limit. This guide covers how to diagnose, fix, and prevent these errors across different languages and deployment scenarios.
 
 ## Understanding the Error
 
@@ -36,14 +36,14 @@ rpc error: code = ResourceExhausted desc = grpc: received message larger than ma
 
 ## Default Limits
 
-gRPC has these default size limits:
+In grpc-go, these are the relevant default size limits:
 
 | Setting | Default Value | Description |
 |---------|---------------|-------------|
 | MaxRecvMsgSize | 4MB (4194304 bytes) | Maximum message size server can receive |
-| MaxSendMsgSize | 4MB (4194304 bytes) | Maximum message size server can send |
+| MaxSendMsgSize | math.MaxInt32 | Maximum message size server can send |
 | MaxCallRecvMsgSize | 4MB | Maximum message size client can receive |
-| MaxCallSendMsgSize | 4MB | Maximum message size client can send |
+| MaxCallSendMsgSize | math.MaxInt32 | Maximum message size client can send |
 
 ## Solution 1: Increase Message Size Limits
 
@@ -106,7 +106,7 @@ const maxMsgSize = 50 * 1024 * 1024
 
 func main() {
     // Configure client with increased message limits
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultCallOptions(
@@ -297,7 +297,7 @@ sequenceDiagram
     Client->>Server: Send 100MB in single message
     Server--xClient: Error: Message Too Large
 
-    Note over Client,Server: Streaming (works with any size)
+    Note over Client,Server: Streaming (works when each chunk is under the limit)
     Client->>Server: Send 1MB chunk
     Client->>Server: Send 1MB chunk
     Client->>Server: Send 1MB chunk
@@ -369,7 +369,6 @@ type FileService struct {
 // UploadFile handles client streaming uploads
 func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
     var fileData []byte
-    var filename string
 
     for {
         chunk, err := stream.Recv()
@@ -381,7 +380,6 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
             return fmt.Errorf("failed to receive chunk: %w", err)
         }
 
-        filename = chunk.Filename
         fileData = append(fileData, chunk.Data...)
 
         // Log progress
@@ -397,6 +395,9 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 
     // Store file
     fileID := fmt.Sprintf("file_%s", checksum[:8])
+    if s.storage == nil {
+        s.storage = make(map[string][]byte)
+    }
     s.storage[fileID] = fileData
 
     return stream.SendAndClose(&pb.UploadResponse{
@@ -455,7 +456,6 @@ import (
     "io"
     "os"
 
-    "google.golang.org/grpc"
     pb "github.com/example/myapp/proto"
 )
 
@@ -559,7 +559,7 @@ func downloadFile(client pb.FileServiceClient, fileID, outputPath string) error 
 
 ## Solution 3: Compress Large Messages
 
-Use compression to reduce message size before transmission.
+Use compression to reduce bytes on the wire for compressible messages. Compression is not a substitute for message size limits because receivers may still enforce limits on the decompressed message.
 
 ```go
 // server with compression
@@ -567,7 +567,7 @@ package main
 
 import (
     "google.golang.org/grpc"
-    "google.golang.org/grpc/encoding/gzip"
+    _ "google.golang.org/grpc/encoding/gzip"
 )
 
 func main() {
@@ -587,28 +587,41 @@ package main
 
 import (
     "context"
+    "log"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/encoding/gzip"
+    pb "github.com/example/myapp/proto"
 )
 
 func main() {
-    conn, _ := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultCallOptions(
             grpc.UseCompressor(gzip.Name), // Enable gzip compression
             grpc.MaxCallRecvMsgSize(50*1024*1024),
             grpc.MaxCallSendMsgSize(50*1024*1024),
         ),
     )
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
+    defer conn.Close()
 
     // Make compressed requests
     client := pb.NewMyServiceClient(conn)
+    largeData := make([]byte, 10*1024*1024)
     resp, err := client.ProcessLargeData(
         context.Background(),
         &pb.LargeRequest{Data: largeData},
         grpc.UseCompressor(gzip.Name), // Per-call compression
     )
+    if err != nil {
+        log.Fatalf("Request failed: %v", err)
+    }
+    log.Printf("Response size: %d bytes", len(resp.Data))
 }
 ```
 

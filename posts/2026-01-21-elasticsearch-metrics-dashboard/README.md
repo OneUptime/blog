@@ -435,19 +435,17 @@ curl -u elastic:password -X GET "localhost:9200/metrics-*/_search?pretty" -H 'Co
           "avg": {"field": "cpu.user"}
         },
         "cpu_moving_avg": {
-          "moving_avg": {
+          "moving_fn": {
             "buckets_path": "avg_cpu",
             "window": 4,
-            "model": "simple"
+            "script": "MovingFunctions.unweightedAvg(values)"
           }
         },
         "cpu_moving_avg_exp": {
-          "moving_avg": {
+          "moving_fn": {
             "buckets_path": "avg_cpu",
-            "model": "ewma",
-            "settings": {
-              "alpha": 0.3
-            }
+            "window": 4,
+            "script": "MovingFunctions.ewma(values, 0.3)"
           }
         }
       }
@@ -702,6 +700,9 @@ curl -u elastic:password -X PUT "localhost:9200/_watcher/watch/high-cpu-alert" -
       "webhook": {
         "method": "POST",
         "url": "https://hooks.slack.com/services/xxx",
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": "{\"text\": \"High CPU alert: {{ctx.payload.aggregations.high_cpu_hosts.buckets}}\"}"
       }
     }
@@ -736,7 +737,7 @@ curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/metrics-policy" -H '
       "cold": {
         "min_age": "30d",
         "actions": {
-          "freeze": {}
+          "readonly": {}
         }
       },
       "delete": {

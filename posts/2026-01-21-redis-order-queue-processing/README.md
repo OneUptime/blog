@@ -32,6 +32,7 @@ import time
 import uuid
 from enum import Enum
 from datetime import datetime
+from decimal import Decimal
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -190,6 +191,9 @@ class OrderQueue:
         pipe.rpush(f"{order_key}:history", json.dumps(history_entry))
 
         pipe.execute()
+
+        # Publish status update for real-time trackers
+        r.publish(f"{self.prefix}:status:{order_id}", json.dumps(history_entry))
 
         # Queue notification
         self._enqueue('notification', order_id, priority='high')
@@ -696,6 +700,7 @@ class RetryManager:
 
             if retry_count >= self.max_retries:
                 # Move to dead letter queue
+                r.zrem(retry_key, order_id)
                 self._move_to_dlq(order_id, queue_name)
             else:
                 # Increment retry count and requeue
@@ -841,7 +846,7 @@ Implementing order queue processing with Redis provides reliable, scalable order
 - Implement separate queues for each processing stage
 - Track processing state to handle failures
 - Use pub/sub for real-time status updates
-- Implement retry logic with exponential backoff
+- Implement retry logic with delayed retries
 - Maintain dead letter queues for failed orders
 - Ensure idempotent processing for reliability
 

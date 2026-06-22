@@ -19,7 +19,7 @@ Before diving into the migration process, understand the benefits:
 - **Scalability**: Easy vertical and horizontal scaling
 - **Monitoring and Alerts**: Integrated monitoring dashboards
 - **Security**: Managed encryption, VPC integration, and compliance certifications
-- **Backup and Recovery**: Automated backups and point-in-time recovery
+- **Backup and Recovery**: Automated backups and snapshot-based recovery
 
 ## Migration Strategies Overview
 
@@ -143,9 +143,9 @@ aws elasticache create-replication-group \
 gsutil cp dump.rdb gs://my-bucket/redis-backup/dump.rdb
 
 # Import into Memorystore
-gcloud redis instances import my-redis-instance \
-    --region=us-central1 \
-    gs://my-bucket/redis-backup/dump.rdb
+gcloud redis instances import gs://my-bucket/redis-backup/dump.rdb \
+    my-redis-instance \
+    --region=us-central1
 ```
 
 ### Step 3: Update Application Configuration
@@ -166,11 +166,11 @@ REDIS_SSL = os.environ.get('REDIS_SSL', 'true').lower() == 'true'
 
 ## Strategy 2: Online Migration with MIGRATE
 
-For smaller datasets, use Redis's built-in MIGRATE command:
+For smaller datasets where the source can connect directly to the target, use Redis's built-in MIGRATE command. For TLS-only targets or services that block MIGRATE, use the DUMP/RESTORE script below instead:
 
 ```bash
 # Migrate keys one by one (or in batches)
-redis-cli -h source-host MIGRATE target-host 6379 "" 0 5000 COPY KEYS key1 key2 key3
+redis-cli -h source-host MIGRATE target-host 6379 "" 0 5000 COPY REPLACE AUTH your-auth-token KEYS key1 key2 key3
 
 # Script to migrate all keys in batches
 ```
@@ -369,7 +369,6 @@ def backfill_data(source_config: dict, target_config: dict, batch_size: int = 10
 
         pipe_target = target.pipeline()
         for i, key in enumerate(keys):
-            key_type = results[i * 3]
             dump_data = results[i * 3 + 1]
             ttl = results[i * 3 + 2]
 
@@ -499,35 +498,36 @@ class RedisConfig:
 
 If your managed service supports it, set up replication from self-hosted to managed:
 
-### AWS ElastiCache Global Datastore
+### AWS ElastiCache Online Migration
 
 ```bash
-# This requires the self-hosted Redis to be accessible from AWS
+# This requires the self-hosted Redis to be accessible from AWS.
 # Usually involves VPN or Direct Connect
 
-# Create a Global Datastore
-aws elasticache create-global-replication-group \
-    --global-replication-group-id-suffix my-migration \
-    --primary-replication-group-id my-existing-cluster
+# Start migration into an existing ElastiCache replication group
+aws elasticache start-migration \
+    --replication-group-id my-migrated-redis \
+    --customer-node-endpoint-list "Address='old-redis-host',Port=6379"
+
+# After validation and client cutover, complete the migration
+aws elasticache complete-migration \
+    --replication-group-id my-migrated-redis
 ```
 
 ### Using redis-shake (Open Source Tool)
 
 ```yaml
 # redis-shake configuration (shake.toml)
-[source]
-type = "standalone"
+[sync_reader]
+cluster = false
 address = "old-redis-host:6379"
 password = ""
 
-[target]
-type = "standalone"
+[redis_writer]
+cluster = false
 address = "new-managed-redis:6379"
 password = "your-auth-token"
 tls = true
-
-[sync]
-mode = "sync"  # or "restore" for one-time migration
 ```
 
 ```bash
@@ -626,9 +626,9 @@ class MigratingPubSub:
 
     def subscribe(self, *channels):
         """Subscribe to the active Redis"""
-        if self.use_new:
-            return self.new_redis.pubsub().subscribe(*channels)
-        return self.old_redis.pubsub().subscribe(*channels)
+        pubsub = self.new_redis.pubsub() if self.use_new else self.old_redis.pubsub()
+        pubsub.subscribe(*channels)
+        return pubsub
 
     def switch_to_new(self):
         """Switch to new Redis for subscriptions"""
@@ -667,6 +667,7 @@ If moving from Redis Cluster to a non-clustered managed service:
 ```python
 def migrate_from_cluster(cluster_nodes, target_config):
     """Migrate data from Redis Cluster to single instance"""
+    import redis
     from redis.cluster import RedisCluster
 
     cluster = RedisCluster(startup_nodes=cluster_nodes)

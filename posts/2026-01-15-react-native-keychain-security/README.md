@@ -79,26 +79,26 @@ const token = await AsyncStorage.getItem('userToken');
 
 ### Keychain/Keystore Advantages
 
-The native Keychain (iOS) and Keystore (Android) systems provide hardware-backed security:
+The native Keychain (iOS) and Keystore (Android) systems provide encrypted storage and can use hardware-backed key protection when the device and selected options support it:
 
 ```typescript
 // Secure storage with react-native-keychain
 import * as Keychain from 'react-native-keychain';
 
-// Data is encrypted and hardware-protected
+// Data is encrypted using native platform storage
 await Keychain.setGenericPassword('user@example.com', 'eyJhbGciOiJIUzI1NiIs...');
 
-// Only accessible with proper authentication
+// Retrieve from native secure storage
 const credentials = await Keychain.getGenericPassword();
 ```
 
 **Security Benefits:**
 
-1. **Hardware Encryption**: Data is encrypted using hardware-backed keys.
+1. **Native Encryption**: Data is encrypted using iOS Keychain or Android Keystore-backed storage. On Android, keys may be software- or hardware-backed depending on the device and options.
 2. **Access Control**: Fine-grained control over when data can be accessed.
 3. **Biometric Protection**: Optional biometric authentication for data access.
-4. **Secure Enclave**: On supported devices, keys never leave secure hardware.
-5. **Backup Protection**: Properly configured data is not included in backups.
+4. **Hardware-Backed Key Storage**: On supported devices, key material can be protected by hardware-backed storage.
+5. **Backup and Migration Controls**: Properly configured iOS items can be restricted from device migration or iCloud synchronization.
 
 ## Setting Up react-native-keychain
 
@@ -137,7 +137,7 @@ For Android, the library should auto-link. However, ensure your `android/app/bui
 ```gradle
 android {
     defaultConfig {
-        minSdkVersion 23  // Required for Keystore
+        minSdkVersion 23  // Required by react-native-keychain 10.x
     }
 }
 ```
@@ -151,60 +151,16 @@ For biometric authentication on Android, add these permissions to `AndroidManife
 
 ### TypeScript Support
 
-Create a types file if needed for better TypeScript support:
+The package ships its own TypeScript definitions. Import the built-in types instead of creating custom declarations:
 
 ```typescript
-// types/keychain.d.ts
-declare module 'react-native-keychain' {
-  export interface UserCredentials {
-    username: string;
-    password: string;
-    service: string;
-    storage: string;
-  }
+import * as Keychain from 'react-native-keychain';
+import type { SetOptions } from 'react-native-keychain';
 
-  export interface SharedWebCredentials {
-    server: string;
-    username: string;
-    password: string;
-  }
-
-  export enum ACCESSIBLE {
-    WHEN_UNLOCKED = 'AccessibleWhenUnlocked',
-    AFTER_FIRST_UNLOCK = 'AccessibleAfterFirstUnlock',
-    ALWAYS = 'AccessibleAlways',
-    WHEN_PASSCODE_SET_THIS_DEVICE_ONLY = 'AccessibleWhenPasscodeSetThisDeviceOnly',
-    WHEN_UNLOCKED_THIS_DEVICE_ONLY = 'AccessibleWhenUnlockedThisDeviceOnly',
-    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY = 'AccessibleAfterFirstUnlockThisDeviceOnly',
-  }
-
-  export enum ACCESS_CONTROL {
-    USER_PRESENCE = 'UserPresence',
-    BIOMETRY_ANY = 'BiometryAny',
-    BIOMETRY_CURRENT_SET = 'BiometryCurrentSet',
-    DEVICE_PASSCODE = 'DevicePasscode',
-    APPLICATION_PASSWORD = 'ApplicationPassword',
-    BIOMETRY_ANY_OR_DEVICE_PASSCODE = 'BiometryAnyOrDevicePasscode',
-    BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE = 'BiometryCurrentSetOrDevicePasscode',
-  }
-
-  export enum AUTHENTICATION_TYPE {
-    DEVICE_PASSCODE_OR_BIOMETRICS = 'AuthenticationWithBiometricsDevicePasscode',
-    BIOMETRICS = 'AuthenticationWithBiometrics',
-  }
-
-  export enum SECURITY_LEVEL {
-    SECURE_SOFTWARE = 'SECURE_SOFTWARE',
-    SECURE_HARDWARE = 'SECURE_HARDWARE',
-    ANY = 'ANY',
-  }
-
-  export enum STORAGE_TYPE {
-    FB = 'FacebookConceal',
-    AES = 'KeystoreAESCBC',
-    RSA = 'KeystoreRSAECB',
-  }
-}
+const secureOptions: SetOptions = {
+  accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+};
 ```
 
 ## Storing Credentials Securely
@@ -497,7 +453,6 @@ export async function storeBiometricProtectedCredentials(
     await Keychain.setGenericPassword(username, password, {
       accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      authenticationType: Keychain.AUTHENTICATION_TYPE.BIOMETRICS,
       service: 'com.yourapp.biometric',
     });
 
@@ -642,8 +597,6 @@ export async function storeHighSecurityCredentials(
       accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE,
       // Only accessible when device is unlocked
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      // Use biometric authentication
-      authenticationType: Keychain.AUTHENTICATION_TYPE.BIOMETRICS,
       // Service identifier
       service: 'com.yourapp.highsecurity',
     });
@@ -729,7 +682,7 @@ const creds = await getServerCredentials('api.yourapp.com');
 
 ### iCloud Keychain Synchronization
 
-By default, items with certain accessibility settings can sync to iCloud. To prevent this:
+Keychain items only sync to iCloud when the synchronizable attribute is explicitly enabled. To prevent migration to another device, use a `_THIS_DEVICE_ONLY` accessibility option and leave `cloudSync` disabled:
 
 ```typescript
 export async function storeLocalOnlyCredentials(
@@ -737,9 +690,10 @@ export async function storeLocalOnlyCredentials(
   password: string
 ): Promise<StorageResult> {
   try {
-    // _THIS_DEVICE_ONLY variants prevent iCloud sync
+    // _THIS_DEVICE_ONLY variants prevent migration to another device
     await Keychain.setGenericPassword(username, password, {
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      cloudSync: false,
       service: 'com.yourapp.localonly',
     });
 
@@ -809,11 +763,11 @@ export async function storeWithSpecificStorage(
   }
 }
 
-// Usage - prefer AES for Android
+// Usage - prefer AES-GCM without authentication for background access
 await storeWithSpecificStorage(
   'user',
   'password',
-  Keychain.STORAGE_TYPE.AES
+  Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH
 );
 ```
 
@@ -836,7 +790,7 @@ export async function storeWithHardwareSecurity(
 
     await Keychain.setGenericPassword(username, password, {
       securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
-      storage: Keychain.STORAGE_TYPE.AES,
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
       service: 'com.yourapp.hardware',
     });
 
@@ -937,14 +891,13 @@ export async function secureStoreWithErrorHandling(
     // Check biometric availability first
     const biometryType = await Keychain.getSupportedBiometryType();
 
-    const options: Keychain.Options = {
+    const options: Keychain.SetOptions = {
       service: 'com.yourapp.secure',
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
     };
 
     if (biometryType) {
       options.accessControl = Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE;
-      options.authenticationType = Keychain.AUTHENTICATION_TYPE.BIOMETRICS;
     }
 
     await Keychain.setGenericPassword(username, password, options);
@@ -996,35 +949,33 @@ Follow these best practices to maximize the security of your stored data.
 
 ```typescript
 // For highly sensitive data (financial, health)
-const highSecurityOptions: Keychain.Options = {
+const highSecurityOptions: Keychain.SetOptions = {
   accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE,
   accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  authenticationType: Keychain.AUTHENTICATION_TYPE.BIOMETRICS,
 };
 
 // For session tokens (needs to work in background)
-const sessionOptions: Keychain.Options = {
+const sessionOptions: Keychain.SetOptions = {
   accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
 };
 
 // For data that should persist across device transfers
-const persistentOptions: Keychain.Options = {
+const persistentOptions: Keychain.SetOptions = {
   accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK,
 };
 ```
 
-### 2. Implement Secure Key Derivation
+### 2. Implement Stable Service Identifiers
 
 ```typescript
-import { createHash } from 'crypto';
-
 export function deriveServiceKey(
   appId: string,
   userId: string,
   purpose: string
 ): string {
-  const combined = `${appId}:${userId}:${purpose}`;
-  return createHash('sha256').update(combined).digest('hex');
+  return [appId, userId, purpose]
+    .map(part => encodeURIComponent(part))
+    .join(':');
 }
 
 // Usage
@@ -1127,8 +1078,10 @@ export async function secureLogout(): Promise<void> {
 
 ### 5. Validate Data Integrity
 
+React Native does not include Node's built-in `crypto` module, so use a React Native-compatible crypto implementation for HMAC operations:
+
 ```typescript
-import { createHmac } from 'crypto';
+import QuickCrypto from 'react-native-quick-crypto';
 
 interface IntegrityProtectedData {
   data: string;
@@ -1138,7 +1091,7 @@ interface IntegrityProtectedData {
 const INTEGRITY_KEY = 'your-secret-integrity-key'; // Store securely!
 
 export function signData(data: string): string {
-  return createHmac('sha256', INTEGRITY_KEY).update(data).digest('hex');
+  return QuickCrypto.createHmac('sha256', INTEGRITY_KEY).update(data).digest('hex');
 }
 
 export function verifyData(data: string, signature: string): boolean {
@@ -1371,8 +1324,8 @@ class SecureStorageManager {
     return `${this.config.appId}.${purpose}`;
   }
 
-  private getOptions(requireAuth: boolean): Keychain.Options {
-    const options: Keychain.Options = {
+  private getOptions(requireAuth: boolean): Keychain.SetOptions {
+    const options: Keychain.SetOptions = {
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
     };
 
@@ -1380,7 +1333,6 @@ class SecureStorageManager {
       options.accessControl = this.config.allowPasscodeFallback
         ? Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE
         : Keychain.ACCESS_CONTROL.BIOMETRY_ANY;
-      options.authenticationType = Keychain.AUTHENTICATION_TYPE.BIOMETRICS;
     }
 
     return options;

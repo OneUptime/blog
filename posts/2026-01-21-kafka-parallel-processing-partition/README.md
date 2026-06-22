@@ -42,9 +42,9 @@ public class ThreadPoolConsumer {
     private final Consumer<String, String> consumer;
     private final ExecutorService executor;
     private final int parallelism;
-    private final Map<TopicPartition, Long> pendingOffsets =
+    private final Map<TopicPartition, NavigableSet<Long>> processedOffsets =
         new ConcurrentHashMap<>();
-    private final Map<TopicPartition, Long> committedOffsets =
+    private final Map<TopicPartition, Long> nextCommitOffsets =
         new ConcurrentHashMap<>();
 
     public ThreadPoolConsumer(String bootstrapServers, String groupId,
@@ -81,6 +81,8 @@ public class ThreadPoolConsumer {
                 List<Future<ProcessingResult>> futures = new ArrayList<>();
 
                 for (ConsumerRecord<String, String> record : records) {
+                    registerOffset(record);
+
                     Future<ProcessingResult> future = executor.submit(() -> {
                         try {
                             processor.process(record);
@@ -115,20 +117,32 @@ public class ThreadPoolConsumer {
 
     private void trackOffset(ConsumerRecord<String, String> record) {
         TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-        pendingOffsets.merge(tp, record.offset(), Math::max);
+        processedOffsets
+            .computeIfAbsent(tp, ignored -> new ConcurrentSkipListSet<>())
+            .add(record.offset());
+    }
+
+    private void registerOffset(ConsumerRecord<String, String> record) {
+        TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+        nextCommitOffsets.merge(tp, record.offset(), Math::min);
     }
 
     private void commitOffsets() {
         Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
 
-        for (Map.Entry<TopicPartition, Long> entry : pendingOffsets.entrySet()) {
+        for (Map.Entry<TopicPartition, NavigableSet<Long>> entry :
+                processedOffsets.entrySet()) {
             TopicPartition tp = entry.getKey();
-            long offset = entry.getValue();
-            Long committed = committedOffsets.get(tp);
+            NavigableSet<Long> offsets = entry.getValue();
+            long nextOffset = nextCommitOffsets.getOrDefault(tp, 0L);
 
-            if (committed == null || offset > committed) {
-                toCommit.put(tp, new OffsetAndMetadata(offset + 1));
-                committedOffsets.put(tp, offset);
+            while (offsets.remove(nextOffset)) {
+                nextOffset++;
+            }
+
+            if (nextOffset > nextCommitOffsets.getOrDefault(tp, 0L)) {
+                toCommit.put(tp, new OffsetAndMetadata(nextOffset));
+                nextCommitOffsets.put(tp, nextOffset);
             }
         }
 
@@ -181,6 +195,10 @@ public class PartitionParallelConsumer {
         partitionQueues = new ConcurrentHashMap<>();
     private final Map<Integer, PartitionProcessor> processors =
         new ConcurrentHashMap<>();
+    private final Map<TopicPartition, Long> completedOffsets =
+        new ConcurrentHashMap<>();
+    private final Map<TopicPartition, Long> committedOffsets =
+        new ConcurrentHashMap<>();
     private final ExecutorService executor;
     private volatile boolean running = true;
 
@@ -210,7 +228,9 @@ public class PartitionParallelConsumer {
                         if (pp != null) {
                             pp.stop();
                         }
+                        partitionQueues.remove(tp.partition());
                     }
+                    commitOffsets();
                 }
 
                 @Override
@@ -222,7 +242,7 @@ public class PartitionParallelConsumer {
                         partitionQueues.put(tp.partition(), queue);
 
                         PartitionProcessor pp = new PartitionProcessor(
-                            tp.partition(), queue, processor, consumer);
+                            tp.partition(), queue, processor);
                         processors.put(tp.partition(), pp);
                         executor.submit(pp);
                     }
@@ -241,6 +261,8 @@ public class PartitionParallelConsumer {
                         queue.put(record);
                     }
                 }
+
+                commitOffsets();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -256,22 +278,38 @@ public class PartitionParallelConsumer {
         running = false;
     }
 
+    private void commitOffsets() {
+        Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
+
+        for (Map.Entry<TopicPartition, Long> entry : completedOffsets.entrySet()) {
+            TopicPartition tp = entry.getKey();
+            long offset = entry.getValue();
+            Long committed = committedOffsets.get(tp);
+
+            if (committed == null || offset > committed) {
+                toCommit.put(tp, new OffsetAndMetadata(offset + 1));
+                committedOffsets.put(tp, offset);
+            }
+        }
+
+        if (!toCommit.isEmpty()) {
+            consumer.commitSync(toCommit);
+        }
+    }
+
     class PartitionProcessor implements Runnable {
         private final int partition;
         private final BlockingQueue<ConsumerRecord<String, String>> queue;
         private final MessageProcessor processor;
-        private final Consumer<String, String> consumer;
         private volatile boolean running = true;
         private long lastCommittedOffset = -1;
 
         PartitionProcessor(int partition,
                           BlockingQueue<ConsumerRecord<String, String>> queue,
-                          MessageProcessor processor,
-                          Consumer<String, String> consumer) {
+                          MessageProcessor processor) {
             this.partition = partition;
             this.queue = queue;
             this.processor = processor;
-            this.consumer = consumer;
         }
 
         @Override
@@ -294,13 +332,10 @@ public class PartitionParallelConsumer {
                             lastCommittedOffset = r.offset();
                         }
 
-                        // Commit batch
-                        synchronized (consumer) {
-                            consumer.commitSync(Collections.singletonMap(
-                                new TopicPartition(record.topic(), partition),
-                                new OffsetAndMetadata(lastCommittedOffset + 1)
-                            ));
-                        }
+                        completedOffsets.put(
+                            new TopicPartition(record.topic(), partition),
+                            lastCommittedOffset
+                        );
 
                         batch.clear();
                     }
@@ -310,6 +345,7 @@ public class PartitionParallelConsumer {
                 } catch (Exception e) {
                     System.err.printf("Error in partition %d: %s%n",
                         partition, e.getMessage());
+                    batch.clear();
                 }
             }
         }
@@ -329,11 +365,10 @@ public class PartitionParallelConsumer {
 
 ```python
 from confluent_kafka import Consumer, TopicPartition
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from queue import Queue
-from threading import Thread, Event
+from concurrent.futures import ThreadPoolExecutor
+from queue import Empty, Queue
+from threading import Event, Lock, Thread
 from typing import Callable, Dict
-import json
 
 class ParallelConsumer:
     def __init__(self, bootstrap_servers: str, group_id: str,
@@ -348,6 +383,9 @@ class ParallelConsumer:
         self.executor = ThreadPoolExecutor(max_workers=parallelism)
         self.parallelism = parallelism
         self.running = True
+        self.lock = Lock()
+        self.processed_offsets = {}
+        self.next_commit_offsets = {}
 
     def consume(self, topic: str, processor: Callable):
         self.consumer.subscribe([topic])
@@ -364,9 +402,10 @@ class ParallelConsumer:
                     continue
 
                 # Submit for parallel processing
+                self._register_offset(msg)
                 future = self.executor.submit(processor, msg)
                 future.add_done_callback(
-                    lambda f: self._handle_completion(f, msg))
+                    lambda f, msg=msg: self._handle_completion(f, msg))
 
         finally:
             self.executor.shutdown(wait=True)
@@ -375,11 +414,37 @@ class ParallelConsumer:
     def _handle_completion(self, future, msg):
         try:
             future.result()
-            # Commit on success
-            self.consumer.commit(msg)
+            # Commit only contiguous processed offsets per partition
+            self._mark_processed(msg)
         except Exception as e:
             print(f"Processing failed: {e}")
             # Handle error - send to DLQ
+
+    def _mark_processed(self, msg):
+        key = (msg.topic(), msg.partition())
+
+        with self.lock:
+            offsets = self.processed_offsets.setdefault(key, set())
+            offsets.add(msg.offset())
+            next_offset = self.next_commit_offsets[key]
+
+            while next_offset in offsets:
+                offsets.remove(next_offset)
+                next_offset += 1
+
+            if next_offset != self.next_commit_offsets[key]:
+                self.consumer.commit(
+                    offsets=[TopicPartition(key[0], key[1], next_offset)],
+                    asynchronous=False
+                )
+                self.next_commit_offsets[key] = next_offset
+
+    def _register_offset(self, msg):
+        key = (msg.topic(), msg.partition())
+
+        with self.lock:
+            next_offset = self.next_commit_offsets.get(key, msg.offset())
+            self.next_commit_offsets[key] = min(next_offset, msg.offset())
 
     def shutdown(self):
         self.running = False
@@ -435,8 +500,10 @@ class PartitionParallelConsumer:
 
                 # Commit offset
                 self.consumer.commit(msg)
-            except Exception:
-                pass  # Queue.get timeout
+            except Empty:
+                continue
+            except Exception as e:
+                print(f"Processing failed in partition {partition}: {e}")
 
     def consume(self, topic: str, processor: Callable):
         self.processor = processor
@@ -481,6 +548,7 @@ class PartitionParallelConsumer:
 
 ```java
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -489,6 +557,10 @@ public class AsyncConsumer {
     private final Consumer<String, String> consumer;
     private final int maxConcurrent;
     private final Semaphore semaphore;
+    private final Map<TopicPartition, NavigableSet<Long>> processedOffsets =
+        new ConcurrentHashMap<>();
+    private final Map<TopicPartition, Long> nextCommitOffsets =
+        new ConcurrentHashMap<>();
 
     public AsyncConsumer(String bootstrapServers, String groupId,
                          int maxConcurrent) {
@@ -516,6 +588,8 @@ public class AsyncConsumer {
                     consumer.poll(Duration.ofMillis(100));
 
                 for (ConsumerRecord<String, String> record : records) {
+                    registerOffset(record);
+
                     // Acquire permit (blocks if at max concurrency)
                     semaphore.acquire();
 
@@ -524,19 +598,17 @@ public class AsyncConsumer {
                             semaphore.release();
                             if (error != null) {
                                 handleError(record, error);
+                            } else {
+                                trackOffset(record);
                             }
                         });
 
                     pending.add(future);
                 }
 
-                // Remove completed futures and commit
+                // Remove completed futures and commit completed contiguous offsets
                 pending.removeIf(CompletableFuture::isDone);
-
-                // Periodic commit when no pending
-                if (pending.isEmpty() && !records.isEmpty()) {
-                    consumer.commitSync();
-                }
+                commitOffsets();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -544,8 +616,44 @@ public class AsyncConsumer {
             // Wait for pending to complete
             CompletableFuture.allOf(pending.toArray(new CompletableFuture[0]))
                 .join();
-            consumer.commitSync();
+            commitOffsets();
             consumer.close();
+        }
+    }
+
+    private void trackOffset(ConsumerRecord<String, String> record) {
+        TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+        processedOffsets
+            .computeIfAbsent(tp, ignored -> new ConcurrentSkipListSet<>())
+            .add(record.offset());
+    }
+
+    private void registerOffset(ConsumerRecord<String, String> record) {
+        TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+        nextCommitOffsets.merge(tp, record.offset(), Math::min);
+    }
+
+    private void commitOffsets() {
+        Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
+
+        for (Map.Entry<TopicPartition, NavigableSet<Long>> entry :
+                processedOffsets.entrySet()) {
+            TopicPartition tp = entry.getKey();
+            NavigableSet<Long> offsets = entry.getValue();
+            long nextOffset = nextCommitOffsets.getOrDefault(tp, 0L);
+
+            while (offsets.remove(nextOffset)) {
+                nextOffset++;
+            }
+
+            if (nextOffset > nextCommitOffsets.getOrDefault(tp, 0L)) {
+                toCommit.put(tp, new OffsetAndMetadata(nextOffset));
+                nextCommitOffsets.put(tp, nextOffset);
+            }
+        }
+
+        if (!toCommit.isEmpty()) {
+            consumer.commitSync(toCommit);
         }
     }
 
@@ -584,18 +692,20 @@ public class KeyOrderedParallelConsumer {
 
         // Chain processing to ensure order per key
         keyFutures.compute(key, (k, existingFuture) -> {
-            CompletableFuture<Void> newFuture = CompletableFuture.runAsync(() -> {
+            CompletableFuture<Void> previous =
+                existingFuture == null ? CompletableFuture.completedFuture(null)
+                    : existingFuture;
+
+            return previous.thenRunAsync(() -> {
                 ConsumerRecord<String, String> r = queue.poll();
                 if (r != null) {
-                    processor.process(r);
+                    try {
+                        processor.process(r);
+                    } catch (Exception e) {
+                        throw new CompletionException(e);
+                    }
                 }
             }, executor);
-
-            if (existingFuture == null) {
-                return newFuture;
-            } else {
-                return existingFuture.thenCompose(v -> newFuture);
-            }
         });
     }
 }

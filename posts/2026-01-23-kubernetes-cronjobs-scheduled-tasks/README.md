@@ -321,6 +321,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache openssl
                   # Check certificate expiry
                   EXPIRY=$(echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
                   EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
@@ -352,27 +353,28 @@ kubectl get cronjobs
 kubectl describe cronjob daily-backup
 
 # Get jobs created by CronJob
-kubectl get jobs -l job-name=daily-backup
+kubectl get jobs
 ```
 
 ### Trigger Manual Run
 
 ```bash
 # Create job from cronjob immediately
-kubectl create job --from=cronjob/daily-backup manual-backup-$(date +%s)
+JOB_NAME=manual-backup-$(date +%s)
+kubectl create job "$JOB_NAME" --from=cronjob/daily-backup
 
 # Check job status
-kubectl get jobs -l app=backup
+kubectl get job "$JOB_NAME"
 ```
 
 ### View Job Logs
 
 ```bash
 # Get pods from most recent job
-kubectl get pods -l job-name=daily-backup-xxxx
+kubectl get pods -l batch.kubernetes.io/job-name=daily-backup-xxxx
 
 # View logs
-kubectl logs -l job-name=daily-backup-xxxx
+kubectl logs -l batch.kubernetes.io/job-name=daily-backup-xxxx
 ```
 
 ## Troubleshooting
@@ -429,7 +431,7 @@ schedule: "0 10 * * *"    # 10 AM UTC
 schedule: "0 10 * * *"    # 2 AM PST
 ```
 
-For timezone support (Kubernetes 1.24+):
+For stable timezone support (Kubernetes 1.27+):
 
 ```yaml
 apiVersion: batch/v1

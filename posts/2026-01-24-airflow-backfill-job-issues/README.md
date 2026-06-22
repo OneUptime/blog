@@ -26,8 +26,8 @@ graph LR
     end
 
     subgraph "Backfill"
-        D[airflow dags backfill] --> E[--start-date Jan 1]
-        E --> F[--end-date Jan 15]
+        D[airflow backfill create] --> E[--from-date Jan 1]
+        E --> F[--to-date Jan 15]
         F --> G[Creates runs for date range]
     end
 
@@ -46,8 +46,8 @@ When you set `catchup=True`, Airflow creates runs for all intervals between star
 
 # This DAG will create hundreds of runs on first deployment
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 # BAD: Start date far in the past with catchup enabled
@@ -61,7 +61,7 @@ with DAG(
     dag_id='problematic_catchup',
     default_args=default_args,
     start_date=datetime(2020, 1, 1),  # 5+ years of backlog!
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=True,  # Default is True - creates all historical runs
 ) as dag:
 
@@ -79,8 +79,8 @@ with DAG(
 # catchup_fixed.py
 # Proper catchup configuration
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -94,7 +94,7 @@ with DAG(
     default_args=default_args,
     # Use a recent start date for new DAGs
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     # Disable automatic catchup - use explicit backfill instead
     catchup=False,
     # Limit concurrent backfill runs
@@ -119,12 +119,11 @@ Airflow's date parameters can be confusing during backfills.
 
 ```python
 # date_handling.py
-# Understanding execution_date vs data_interval
+# Understanding logical_date vs data_interval
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
-from airflow.models import Variable
 
 default_args = {
     'owner': 'data-team',
@@ -135,21 +134,21 @@ with DAG(
     dag_id='date_aware_backfill',
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
     def process_with_correct_dates(**context):
         """
-        Airflow 2.x date variables explained:
+        Airflow date variables explained:
 
         - data_interval_start: Start of the data interval being processed
         - data_interval_end: End of the data interval being processed
-        - ds: data_interval_start as YYYY-MM-DD string
-        - ds_nodash: data_interval_start as YYYYMMDD string
+        - ds: logical_date as YYYY-MM-DD string
+        - ds_nodash: logical_date as YYYYMMDD string
         - logical_date: When this DAG run is logically scheduled
 
-        For a daily DAG processing Jan 15:
+        For a daily data-interval DAG processing Jan 15:
         - data_interval_start = Jan 15 00:00:00
         - data_interval_end = Jan 16 00:00:00
         - The DAG actually runs on Jan 16 (after the interval completes)
@@ -162,7 +161,7 @@ with DAG(
         print(f"Processing data from {start} to {end}")
 
         # Format for common use cases
-        partition_date = context['ds']  # "2026-01-15"
+        partition_date = start.strftime("%Y-%m-%d")  # "2026-01-15"
         s3_path = f"s3://bucket/data/dt={partition_date}/"
 
         # For hourly data, use the actual timestamps
@@ -191,9 +190,8 @@ Running many backfill tasks simultaneously overwhelms databases and clusters.
 # resource_controlled_backfill.py
 # Limit parallel execution during backfills
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -208,7 +206,7 @@ with DAG(
     dag_id='resource_aware_backfill',
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
     # Limit concurrent DAG runs
     max_active_runs=2,
@@ -292,9 +290,8 @@ Backfills must be idempotent - running the same date twice should produce the sa
 # idempotent_backfill.py
 # Design tasks that can safely run multiple times
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.providers.postgres.operators.postgres import PostgresOperator
+from airflow.sdk import DAG
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -306,7 +303,7 @@ with DAG(
     dag_id='idempotent_backfill',
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
@@ -314,9 +311,9 @@ with DAG(
     # INSERT INTO daily_metrics SELECT ... FROM source WHERE dt = '{{ ds }}'
 
     # GOOD: Delete-then-insert pattern ensures idempotency
-    delete_existing = PostgresOperator(
+    delete_existing = SQLExecuteQueryOperator(
         task_id='delete_existing',
-        postgres_conn_id='warehouse',
+        conn_id='warehouse',
         sql="""
             -- Delete existing data for this partition before inserting
             DELETE FROM daily_metrics
@@ -324,9 +321,9 @@ with DAG(
         """,
     )
 
-    insert_new = PostgresOperator(
+    insert_new = SQLExecuteQueryOperator(
         task_id='insert_new',
-        postgres_conn_id='warehouse',
+        conn_id='warehouse',
         sql="""
             -- Insert fresh data for this partition
             INSERT INTO daily_metrics (metric_date, user_count, revenue)
@@ -340,9 +337,9 @@ with DAG(
     )
 
     # Alternative: Use MERGE/UPSERT for idempotency
-    upsert_metrics = PostgresOperator(
+    upsert_metrics = SQLExecuteQueryOperator(
         task_id='upsert_metrics',
-        postgres_conn_id='warehouse',
+        conn_id='warehouse',
         sql="""
             -- PostgreSQL ON CONFLICT for upsert
             INSERT INTO daily_metrics (metric_date, user_count, revenue)
@@ -371,38 +368,37 @@ Use the CLI or API to run controlled backfills.
 
 ```bash
 # Basic backfill command
-airflow dags backfill \
-    --start-date 2026-01-01 \
-    --end-date 2026-01-15 \
-    --dag-id my_daily_dag
+airflow backfill create \
+    --dag-id my_daily_dag \
+    --from-date 2026-01-01 \
+    --to-date 2026-01-15
 
 # Limit parallelism to avoid overwhelming resources
-airflow dags backfill \
-    --start-date 2026-01-01 \
-    --end-date 2026-01-15 \
+airflow backfill create \
     --dag-id my_daily_dag \
+    --from-date 2026-01-01 \
+    --to-date 2026-01-15 \
     --max-active-runs 2
 
-# Rerun only failed tasks (don't re-execute successful ones)
-airflow dags backfill \
-    --start-date 2026-01-01 \
-    --end-date 2026-01-15 \
+# Reprocess only failed DAG runs in the date range
+airflow backfill create \
     --dag-id my_daily_dag \
-    --rerun-failed-tasks
+    --from-date 2026-01-01 \
+    --to-date 2026-01-15 \
+    --reprocess-behavior failed
 
-# Reset and rerun specific tasks
-airflow dags backfill \
+# Clear and rerun specific tasks
+airflow tasks clear my_daily_dag \
     --start-date 2026-01-01 \
     --end-date 2026-01-15 \
-    --dag-id my_daily_dag \
     --task-regex "^transform.*" \
-    --reset-dagruns
+    --yes
 
 # Dry run to see what would execute
-airflow dags backfill \
-    --start-date 2026-01-01 \
-    --end-date 2026-01-15 \
+airflow backfill create \
     --dag-id my_daily_dag \
+    --from-date 2026-01-01 \
+    --to-date 2026-01-15 \
     --dry-run
 ```
 
@@ -428,8 +424,8 @@ def check_backfill_progress(dag_id, start_date, end_date, session=None):
     # Query DAG runs in the backfill range
     dag_runs = session.query(DagRun).filter(
         DagRun.dag_id == dag_id,
-        DagRun.execution_date >= start_date,
-        DagRun.execution_date <= end_date,
+        DagRun.logical_date >= start_date,
+        DagRun.logical_date <= end_date,
     ).all()
 
     total = len(dag_runs)
@@ -442,7 +438,10 @@ def check_backfill_progress(dag_id, start_date, end_date, session=None):
     print(f"Date range: {start_date} to {end_date}")
     print(f"{'='*40}")
     print(f"Total runs: {total}")
-    print(f"Succeeded:  {succeeded} ({succeeded/total*100:.1f}%)")
+    if total:
+        print(f"Succeeded:  {succeeded} ({succeeded/total*100:.1f}%)")
+    else:
+        print("Succeeded:  0 (0.0%)")
     print(f"Failed:     {failed}")
     print(f"Running:    {running}")
     print(f"Queued:     {queued}")
@@ -452,7 +451,7 @@ def check_backfill_progress(dag_id, start_date, end_date, session=None):
         print(f"\nFailed runs:")
         for dr in dag_runs:
             if dr.state == 'failed':
-                print(f"  - {dr.execution_date}")
+                print(f"  - {dr.logical_date}")
 
                 # Get failed task instances
                 failed_tasks = session.query(TaskInstance).filter(

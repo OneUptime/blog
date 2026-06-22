@@ -216,7 +216,7 @@ message = "Hello {{ user_name | default(\"Guest\") }}"
 ```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
-    "msg": "TemplateError: no filter named 'to_yaml'"
+    "msg": "TemplateError: no filter named 'custom_format'"
 }
 ```
 
@@ -227,13 +227,15 @@ fatal: [webserver]: FAILED! => {
 # templates/config.yml.j2
 {{ config_data | to_nice_yaml }}
 
+# Note: to_yaml and to_nice_yaml are built into ansible-core.
+
 # Solution 2: Ensure required collections are installed
 # Some filters require specific collections
 # requirements.yml
 collections:
   - name: ansible.utils  # Provides many useful filters
 
-# Solution 3: Use built-in Python methods
+# Solution 3: Use built-in Jinja filters
 {{ my_list | join(',') }}
 {{ my_string | lower }}
 {{ my_string | upper }}
@@ -313,25 +315,23 @@ fatal: [webserver]: FAILED! => {
 ### Solutions
 
 ```yaml
-# Solution 1: Ensure template file is UTF-8 encoded
+# Solution 1: Ensure the source template file is UTF-8 encoded
 # Check encoding on control node
 # file templates/config.conf.j2
 # Convert to UTF-8 if needed
 # iconv -f ISO-8859-1 -t UTF-8 config.conf.j2 > config.conf.j2.new
 
-# Solution 2: Specify encoding in template task
+# Solution 2: Specify output encoding in template task
 - name: Generate config with encoding
   ansible.builtin.template:
     src: config.conf.j2
     dest: /etc/myapp/config.conf
-    # Specify output encoding
-    output_encoding: utf-8
+    # Specify encoding for the rendered destination file
+    output_encoding: iso-8859-1
 ```
 
 ```jinja2
 {# templates/config.conf.j2 #}
-{# Add encoding declaration at the top #}
-{# -*- coding: utf-8 -*- #}
 # Configuration file
 
 # Handle special characters safely
@@ -434,6 +434,7 @@ fatal: [webserver]: FAILED! => {
 {% endif %}
 
 {% if depth < 3 %}
+{% set depth = depth + 1 %}
 {% include 'recursive_partial.j2' %}
 {% endif %}
 
@@ -466,10 +467,10 @@ fatal: [webserver]: FAILED! => {
 ### Solutions
 
 ```yaml
-# Problem: Template path not interpolated
+# Problem: Template path includes the wrong search directory
 - name: Deploy app config
   ansible.builtin.template:
-    src: "templates/{{ app_name }}.conf.j2"  # This might not work as expected
+    src: "templates/{{ app_name }}.conf.j2"  # Inside a role, this can look under templates/templates/
     dest: /etc/myapp/config.conf
 
 # Solution 1: Variable interpolation works in src parameter
@@ -533,8 +534,7 @@ value = {{ config.database.host }}
 value = localhost
 {% endif %}
 
-{# Solution 4: Use omit for optional values #}
-value = {{ config.database.host | default(omit) }}
+{# Note: omit is useful for optional module parameters, not literal file content. #}
 
 {# Problem: List index out of range #}
 first_item = {{ my_list[0] }}
@@ -591,30 +591,23 @@ fatal: [webserver]: FAILED! => {
     var: template_content.stdout_lines
 
 # Solution 2: Validate separately with better error handling
-- name: Generate nginx config
+- name: Generate nginx config candidate
   ansible.builtin.template:
     src: nginx.conf.j2
-    dest: /etc/nginx/nginx.conf
+    dest: /tmp/nginx.conf.candidate
   register: nginx_config
 
-- name: Validate nginx configuration
-  ansible.builtin.command: /usr/sbin/nginx -t
+- name: Validate nginx configuration candidate
+  ansible.builtin.command: /usr/sbin/nginx -t -c /tmp/nginx.conf.candidate
   register: nginx_validate
   changed_when: false
-  when: nginx_config.changed
 
-- name: Rollback on validation failure
-  block:
-    - name: Test nginx config
-      ansible.builtin.command: /usr/sbin/nginx -t
-      register: nginx_test
-
-  rescue:
-    - name: Restore backup
-      ansible.builtin.copy:
-        src: /etc/nginx/nginx.conf.bak
-        dest: /etc/nginx/nginx.conf
-        remote_src: yes
+- name: Install validated nginx configuration
+  ansible.builtin.copy:
+    src: /tmp/nginx.conf.candidate
+    dest: /etc/nginx/nginx.conf
+    remote_src: yes
+  when: nginx_validate.rc == 0
 ```
 
 ---
@@ -732,11 +725,10 @@ log_level = {{ log_level | default('INFO') }}
   hosts: localhost
   connection: local
   vars:
-    test_variables:
-      app_name: test_app
-      environment: test
-      database_host: localhost
-      database_port: 5432
+    app_name: test_app
+    environment: test
+    database_host: localhost
+    database_port: 5432
 
   tasks:
     - name: Find all templates

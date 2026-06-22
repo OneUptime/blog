@@ -67,34 +67,32 @@ ZRANGE leaderboard 0 2 WITHSCORES
 
 # Get elements by rank (descending - highest first)
 ZRANGE leaderboard 0 2 REV
-# or
-ZREVRANGE leaderboard 0 2
 
 # Get all elements
 ZRANGE leaderboard 0 -1
 
 # Top 10 leaderboard (highest scores first)
-ZREVRANGE leaderboard 0 9 WITHSCORES
+ZRANGE leaderboard 0 9 REV WITHSCORES
 ```
 
 ### Retrieving by Score
 
 ```bash
 # Get elements within score range
-ZRANGEBYSCORE leaderboard 100 200
+ZRANGE leaderboard 100 200 BYSCORE
 # Elements with scores 100-200 (inclusive)
 
-ZRANGEBYSCORE leaderboard (100 200
+ZRANGE leaderboard (100 200 BYSCORE
 # Exclusive lower bound: 100 < score <= 200
 
-ZRANGEBYSCORE leaderboard 100 +inf
+ZRANGE leaderboard 100 +inf BYSCORE
 # Scores >= 100
 
-ZRANGEBYSCORE leaderboard -inf 200
+ZRANGE leaderboard -inf 200 BYSCORE
 # Scores <= 200
 
 # With LIMIT (pagination)
-ZRANGEBYSCORE leaderboard 0 1000 LIMIT 10 20
+ZRANGE leaderboard 0 1000 BYSCORE LIMIT 10 20
 # Skip 10, return 20
 
 # Using ZRANGE with BYSCORE (Redis 6.2+)
@@ -218,7 +216,7 @@ class Leaderboard:
 
     def get_top(self, count: int = 10) -> List[Tuple[str, float]]:
         """Get top N players."""
-        return client.zrevrange(self.key, 0, count - 1, withscores=True)
+        return client.zrange(self.key, 0, count - 1, desc=True, withscores=True)
 
     def get_around_player(self, player_id: str, count: int = 5) -> List[Tuple[str, float]]:
         """Get players around a specific player."""
@@ -229,9 +227,9 @@ class Leaderboard:
         start = max(0, rank - count)
         end = rank + count
 
-        return client.zrevrange(self.key, start, end, withscores=True)
+        return client.zrange(self.key, start, end, desc=True, withscores=True)
 
-    def get_player_info(self, player_id: str) -> Dict:
+    def get_player_info(self, player_id: str) -> Optional[Dict]:
         """Get comprehensive player info."""
         pipe = client.pipeline()
         pipe.zrevrank(self.key, player_id)
@@ -254,7 +252,7 @@ class Leaderboard:
         """Get paginated leaderboard."""
         start = (page - 1) * page_size
         end = start + page_size - 1
-        return client.zrevrange(self.key, start, end, withscores=True)
+        return client.zrange(self.key, start, end, desc=True, withscores=True)
 
     def get_total_players(self) -> int:
         """Get total number of players."""
@@ -277,8 +275,8 @@ class TimedLeaderboard:
         if period == "daily":
             return f"leaderboard:{self.name}:daily:{date.strftime('%Y-%m-%d')}"
         elif period == "weekly":
-            week = date.isocalendar()[1]
-            return f"leaderboard:{self.name}:weekly:{date.year}-W{week}"
+            iso_year, week, _ = date.isocalendar()
+            return f"leaderboard:{self.name}:weekly:{iso_year}-W{week}"
         elif period == "monthly":
             return f"leaderboard:{self.name}:monthly:{date.strftime('%Y-%m')}"
         else:  # all-time
@@ -311,7 +309,7 @@ class TimedLeaderboard:
         if date is None:
             date = datetime.now()
         key = self._get_key(period, date)
-        return client.zrevrange(key, 0, count - 1, withscores=True)
+        return client.zrange(key, 0, count - 1, desc=True, withscores=True)
 
 
 # =============================================================================
@@ -337,20 +335,22 @@ class ActivityFeed:
     def get_recent(self, count: int = 20, before: float = None) -> List[Tuple[str, float]]:
         """Get recent activities."""
         if before is None:
-            return client.zrevrange(self.key, 0, count - 1, withscores=True)
+            return client.zrange(self.key, 0, count - 1, desc=True, withscores=True)
         else:
-            return client.zrevrangebyscore(
+            return client.zrange(
                 self.key,
                 before,
                 "-inf",
-                start=0,
+                desc=True,
+                byscore=True,
+                offset=0,
                 num=count,
                 withscores=True
             )
 
     def get_between(self, start_time: float, end_time: float) -> List[Tuple[str, float]]:
         """Get activities between timestamps."""
-        return client.zrangebyscore(self.key, start_time, end_time, withscores=True)
+        return client.zrange(self.key, start_time, end_time, byscore=True, withscores=True)
 
     def remove_old(self, older_than: float) -> int:
         """Remove activities older than timestamp."""
@@ -462,7 +462,7 @@ class TaskScheduler:
     def get_due_tasks(self, limit: int = 100) -> List[str]:
         """Get tasks that are due for execution."""
         now = time.time()
-        tasks = client.zrangebyscore(self.key, "-inf", now, start=0, num=limit)
+        tasks = client.zrange(self.key, "-inf", now, byscore=True, offset=0, num=limit)
         return tasks
 
     def complete_task(self, task_id: str) -> None:
@@ -497,7 +497,7 @@ class TrendingTracker:
 
     def get_trending(self, count: int = 10) -> List[Tuple[str, float]]:
         """Get top trending items."""
-        return client.zrevrange(self._get_key(), 0, count - 1, withscores=True)
+        return client.zrange(self._get_key(), 0, count - 1, desc=True, withscores=True)
 
     def decay_scores(self) -> None:
         """Apply decay to all scores (run periodically)."""
@@ -617,7 +617,7 @@ class Leaderboard {
   }
 
   async getTop(count = 10) {
-    return await redis.zrevrange(this.key, 0, count - 1, 'WITHSCORES');
+    return await redis.zrange(this.key, 0, count - 1, 'REV', 'WITHSCORES');
   }
 
   async getAroundPlayer(playerId, count = 5) {
@@ -627,7 +627,7 @@ class Leaderboard {
     const start = Math.max(0, rank - count);
     const end = rank + count;
 
-    return await redis.zrevrange(this.key, start, end, 'WITHSCORES');
+    return await redis.zrange(this.key, start, end, 'REV', 'WITHSCORES');
   }
 
   async getPlayerInfo(playerId) {
@@ -652,7 +652,7 @@ class Leaderboard {
   async getPage(page, pageSize = 20) {
     const start = (page - 1) * pageSize;
     const end = start + pageSize - 1;
-    return await redis.zrevrange(this.key, start, end, 'WITHSCORES');
+    return await redis.zrange(this.key, start, end, 'REV', 'WITHSCORES');
   }
 }
 
@@ -678,11 +678,11 @@ class ActivityFeed {
   }
 
   async getRecent(count = 20) {
-    return await redis.zrevrange(this.key, 0, count - 1, 'WITHSCORES');
+    return await redis.zrange(this.key, 0, count - 1, 'REV', 'WITHSCORES');
   }
 
   async getBetween(startTime, endTime) {
-    return await redis.zrangebyscore(this.key, startTime, endTime, 'WITHSCORES');
+    return await redis.zrange(this.key, startTime, endTime, 'BYSCORE', 'WITHSCORES');
   }
 }
 
@@ -851,7 +851,12 @@ func (l *Leaderboard) GetRank(playerID string) (int64, error) {
 }
 
 func (l *Leaderboard) GetTop(count int64) ([]redis.Z, error) {
-    return client.ZRevRangeWithScores(ctx, l.Key, 0, count-1).Result()
+    return client.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{
+        Key:   l.Key,
+        Start: 0,
+        Stop:  count - 1,
+        Rev:   true,
+    }).Result()
 }
 
 type PlayerInfo struct {
@@ -1026,8 +1031,8 @@ func main() {
 
 ## Best Practices
 
-1. **Use ZRANGEBYSCORE for time ranges** - Efficient for timestamp-based queries
-2. **Use ZREVRANGE for leaderboards** - Highest scores first
+1. **Use ZRANGE with BYSCORE for time ranges** - Efficient for timestamp-based queries
+2. **Use ZRANGE with REV for leaderboards** - Highest scores first
 3. **Implement pagination** - Use LIMIT for large result sets
 4. **Consider memory** - Sorted sets use more memory than plain sets
 5. **Use ZINCRBY for atomic updates** - Thread-safe score updates

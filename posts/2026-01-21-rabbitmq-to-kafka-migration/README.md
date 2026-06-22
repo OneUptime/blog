@@ -47,7 +47,7 @@ flowchart TB
 | Delivery | Push | Pull |
 | Retention | Until consumed | Time/size based |
 | Ordering | Per queue | Per partition |
-| Replay | Not possible | Possible |
+| Replay | Not for acknowledged queue messages | Possible within retention |
 | Routing | Exchange-based | Topic/partition |
 | Acknowledgment | Per message | Offset commit |
 
@@ -61,6 +61,8 @@ Run both systems simultaneously during migration.
 // Bridge: RabbitMQ to Kafka
 import com.rabbitmq.client.*;
 import org.apache.kafka.clients.producer.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Properties;
 
 public class RabbitToKafkaBridge {
 
@@ -92,31 +94,22 @@ public class RabbitToKafkaBridge {
 
         // Consume from RabbitMQ, produce to Kafka
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            String message = new String(delivery.getBody(), "UTF-8");
+            String message = new String(delivery.getBody(), StandardCharsets.UTF_8);
             String routingKey = delivery.getEnvelope().getRoutingKey();
 
             // Use routing key as Kafka key for partitioning
             ProducerRecord<String, String> record =
                 new ProducerRecord<>(kafkaTopic, routingKey, message);
 
-            kafkaProducer.send(record, (metadata, exception) -> {
-                if (exception == null) {
-                    // Ack RabbitMQ message after Kafka confirms
-                    try {
-                        channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    // Nack and requeue on failure
-                    try {
-                        channel.basicNack(delivery.getEnvelope().getDeliveryTag(),
-                            false, true);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
+            try {
+                // Ack RabbitMQ message only after Kafka confirms the write
+                kafkaProducer.send(record).get();
+                channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
+            } catch (Exception e) {
+                // Nack and requeue on failure
+                channel.basicNack(delivery.getEnvelope().getDeliveryTag(),
+                    false, true);
+            }
         };
 
         channel.basicConsume(rabbitQueue, false, deliverCallback, consumerTag -> {});
@@ -163,7 +156,7 @@ public class DualWriteProducer {
         if (kafkaEnabled) {
             ProducerRecord<String, String> record =
                 new ProducerRecord<>(kafkaTopic, routingKey, message);
-            kafkaProducer.send(record).get(); // Sync for consistency
+            kafkaProducer.send(record).get(); // Wait for Kafka; not atomic with RabbitMQ
         }
     }
 }
@@ -193,7 +186,7 @@ public class TopicRouter {
             // Use Kafka for migrated topics
             ProducerRecord<String, String> record =
                 new ProducerRecord<>(topic, key, message);
-            kafkaProducer.send(record);
+            kafkaProducer.send(record).get();
         } else {
             // Use RabbitMQ for non-migrated topics
             rabbitChannel.basicPublish("", topic, null, message.getBytes());
@@ -316,8 +309,10 @@ public class KafkaConsumerMigrated {
                     processMessage(record.value());
                 }
 
-                // Commit after processing (like RabbitMQ ack)
-                consumer.commitSync();
+                if (!records.isEmpty()) {
+                    // Commit after processing (like RabbitMQ ack)
+                    consumer.commitSync();
+                }
             }
         }
     }
@@ -335,7 +330,6 @@ public class KafkaConsumerMigrated {
 ```python
 import pika
 from confluent_kafka import Producer
-import json
 import threading
 from typing import Dict, Set
 
@@ -363,22 +357,27 @@ class RabbitToKafkaBridge:
         def callback(ch, method, properties, body):
             message = body.decode('utf-8')
             routing_key = method.routing_key
+            delivery_error = None
 
             def delivery_callback(err, msg):
+                nonlocal delivery_error
                 if err:
-                    # Nack on failure
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-                else:
-                    # Ack on success
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    delivery_error = err
 
             self.kafka_producer.produce(
                 topic=kafka_topic,
                 key=routing_key,
                 value=message,
-                callback=delivery_callback
+                on_delivery=delivery_callback
             )
-            self.kafka_producer.poll(0)
+            self.kafka_producer.flush()
+
+            if delivery_error:
+                # Nack on failure
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            else:
+                # Ack on success
+                ch.basic_ack(delivery_tag=method.delivery_tag)
 
         self.rabbit_channel.basic_consume(
             queue=rabbit_queue,
@@ -421,7 +420,7 @@ class DualWriteProducer:
                 key=routing_key,
                 value=message
             )
-            self.kafka_producer.poll(0)
+            self.kafka_producer.flush()
 
 
 class TopicRouter:
@@ -441,7 +440,7 @@ class TopicRouter:
                 key=key,
                 value=message
             )
-            self.kafka_producer.poll(0)
+            self.kafka_producer.flush()
         else:
             self.rabbit_channel.basic_publish(
                 exchange='',
@@ -491,7 +490,7 @@ class ConsumerMigrator:
                 process_message_fn(msg.value().decode('utf-8'))
 
                 # Commit offset (like RabbitMQ ack)
-                consumer.commit(asynchronous=False)
+                consumer.commit(message=msg, asynchronous=False)
 
             except Exception as e:
                 print(f"Processing failed: {e}")
@@ -502,6 +501,33 @@ class ConsumerMigrator:
 
 class ExchangePatternMapper:
     """Maps RabbitMQ exchange patterns to Kafka"""
+
+    @staticmethod
+    def _matches_topic_pattern(pattern: str, routing_key: str) -> bool:
+        pattern_parts = pattern.split('.')
+        key_parts = routing_key.split('.')
+
+        def match(pattern_index: int, key_index: int) -> bool:
+            if pattern_index == len(pattern_parts):
+                return key_index == len(key_parts)
+
+            part = pattern_parts[pattern_index]
+
+            if part == '#':
+                return any(
+                    match(pattern_index + 1, i)
+                    for i in range(key_index, len(key_parts) + 1)
+                )
+
+            if key_index == len(key_parts):
+                return False
+
+            if part == '*' or part == key_parts[key_index]:
+                return match(pattern_index + 1, key_index + 1)
+
+            return False
+
+        return match(0, 0)
 
     @staticmethod
     def direct_to_kafka(kafka_producer, topic: str, routing_key: str, message: str):
@@ -518,13 +544,12 @@ class ExchangePatternMapper:
                        topic_mapping: Dict[str, str]):
         """Topic exchange: map patterns to Kafka topics"""
         for pattern, kafka_topic in topic_mapping.items():
-            if routing_key.startswith(pattern.replace('*', '').replace('#', '')):
+            if ExchangePatternMapper._matches_topic_pattern(pattern, routing_key):
                 kafka_producer.produce(
                     topic=kafka_topic,
                     key=routing_key,
                     value=message
                 )
-                return
 
 
 # Example usage

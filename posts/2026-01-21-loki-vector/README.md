@@ -41,7 +41,7 @@ docker run -d \
   --name vector \
   -v $(pwd)/vector.toml:/etc/vector/vector.toml \
   -v /var/log:/var/log:ro \
-  timberio/vector:0.34.1-alpine
+  timberio/vector:0.56.0-alpine
 ```
 
 ### Kubernetes Helm Installation
@@ -188,7 +188,10 @@ if !exists(.timestamp) {
 
 # Extract trace ID
 if exists(.message) {
-  .trace_id = parse_regex(.message, r'trace_id=(?P<id>[a-f0-9]+)')?.id
+  parsed_trace, err = parse_regex(.message, r'trace_id=(?P<id>[a-f0-9]+)')
+  if err == null {
+    .trace_id = parsed_trace.id
+  }
 }
 
 # Add metadata
@@ -200,7 +203,7 @@ if exists(.message) {
   r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
   r'password\s*=\s*\S+',
   r'\b\d{16}\b'
-])
+]) ?? .message
 '''
 ```
 
@@ -217,7 +220,7 @@ condition = '.level == "error" || .level == "fatal"'
 [transforms.filter_health]
 type = "filter"
 inputs = ["parse_logs"]
-condition = '!match(.message, r"healthcheck|health_check|/health")'
+condition = "!match(.message, r'healthcheck|health_check|/health')"
 
 # Filter by namespace
 [transforms.filter_production]
@@ -268,7 +271,7 @@ cache.num_events = 5000
 [transforms.throttle]
 type = "throttle"
 inputs = ["parse_logs"]
-key_field = "service"
+key_field = "{{ service }}"
 threshold = 1000
 window_secs = 1
 ```
@@ -312,12 +315,11 @@ encoding.codec = "json"
 encoding.timestamp_format = "rfc3339"
 
 # Labels
-[sinks.loki.labels]
-job = "{{ service }}"
-level = "{{ level }}"
-environment = "production"
-host = "{{ host }}"
-namespace = "{{ kubernetes.namespace_name }}"
+labels.job = "{{ service }}"
+labels.level = "{{ level }}"
+labels.environment = "production"
+labels.host = "{{ host }}"
+labels.namespace = "{{ kubernetes.namespace_name }}"
 
 # Tenant
 tenant_id = "production"
@@ -383,13 +385,12 @@ job = "debug"
 # Vector configuration for production Kubernetes deployment
 # /etc/vector/vector.toml
 
+# Data directory for buffers and checkpoints
+data_dir = "/var/lib/vector"
+
 [api]
 enabled = true
 address = "0.0.0.0:8686"
-playground = false
-
-# Data directory for buffers and checkpoints
-data_dir = "/var/lib/vector"
 
 # Kubernetes logs source
 [sources.kubernetes_logs]
@@ -420,7 +421,7 @@ source = '''
 # Try to parse as JSON
 parsed, err = parse_json(.message)
 if err == null {
-  . = merge(., parsed)
+  . = merge!(., object!(parsed))
   del(.message)
 }
 
@@ -431,7 +432,7 @@ if err == null {
 .namespace = .kubernetes.pod_namespace
 .pod = .kubernetes.pod_name
 .container = .kubernetes.container_name
-.app = .kubernetes.pod_labels.app ?? .kubernetes.pod_labels."app.kubernetes.io/name" ?? "unknown"
+.app = get(.kubernetes.pod_labels, ["app"]) ?? get(.kubernetes.pod_labels, ["app.kubernetes.io/name"]) ?? "unknown"
 
 # Clean up kubernetes object
 del(.kubernetes.pod_labels."pod-template-hash")
@@ -448,7 +449,7 @@ type = "remap"
 inputs = ["journald"]
 source = '''
 .level = downcase(.PRIORITY) ?? "info"
-.service = ._SYSTEMD_UNIT ?? "unknown"
+.service = get(., ["_SYSTEMD_UNIT"]) ?? "unknown"
 .hostname = .host
 del(._SYSTEMD_UNIT)
 del(.PRIORITY)
@@ -459,7 +460,7 @@ del(.PRIORITY)
 type = "filter"
 inputs = ["parse_k8s"]
 condition = '''
-!match(string!(.message) ?? "", r"(healthcheck|readiness|liveness|/health|/ready|/live)") &&
+!match(to_string(.message) ?? "", r'(healthcheck|readiness|liveness|/health|/ready|/live)') &&
 .namespace != "kube-system"
 '''
 
@@ -480,7 +481,7 @@ type = "throttle"
 inputs = ["route_by_level.debug"]
 threshold = 100
 window_secs = 1
-key_field = "pod"
+key_field = "{{ pod }}"
 
 # Sample info logs (keep 1 in 5)
 [transforms.sample_info]
@@ -496,11 +497,10 @@ endpoint = "http://loki-gateway.loki.svc.cluster.local"
 tenant_id = "production"
 encoding.codec = "json"
 
-[sinks.loki_errors.labels]
-job = "kubernetes"
-level = "{{ level }}"
-namespace = "{{ namespace }}"
-app = "{{ app }}"
+labels.job = "kubernetes"
+labels.level = "{{ level }}"
+labels.namespace = "{{ namespace }}"
+labels.app = "{{ app }}"
 
 batch.max_bytes = 1048576
 batch.timeout_secs = 1
@@ -517,11 +517,10 @@ endpoint = "http://loki-gateway.loki.svc.cluster.local"
 tenant_id = "production"
 encoding.codec = "json"
 
-[sinks.loki_warnings.labels]
-job = "kubernetes"
-level = "{{ level }}"
-namespace = "{{ namespace }}"
-app = "{{ app }}"
+labels.job = "kubernetes"
+labels.level = "{{ level }}"
+labels.namespace = "{{ namespace }}"
+labels.app = "{{ app }}"
 
 batch.max_bytes = 1048576
 batch.timeout_secs = 1
@@ -534,10 +533,9 @@ endpoint = "http://loki-gateway.loki.svc.cluster.local"
 tenant_id = "production"
 encoding.codec = "json"
 
-[sinks.loki_info.labels]
-job = "kubernetes"
-level = "{{ level }}"
-namespace = "{{ namespace }}"
+labels.job = "kubernetes"
+labels.level = "{{ level }}"
+labels.namespace = "{{ namespace }}"
 
 batch.max_bytes = 2097152
 batch.timeout_secs = 2
@@ -550,10 +548,9 @@ endpoint = "http://loki-gateway.loki.svc.cluster.local"
 tenant_id = "production"
 encoding.codec = "json"
 
-[sinks.loki_debug.labels]
-job = "kubernetes"
-level = "debug"
-namespace = "{{ namespace }}"
+labels.job = "kubernetes"
+labels.level = "debug"
+labels.namespace = "{{ namespace }}"
 
 batch.max_bytes = 2097152
 batch.timeout_secs = 5
@@ -602,7 +599,7 @@ spec:
       serviceAccountName: vector
       containers:
         - name: vector
-          image: timberio/vector:0.34.1-alpine
+          image: timberio/vector:0.56.0-alpine
           args:
             - --config-dir
             - /etc/vector/

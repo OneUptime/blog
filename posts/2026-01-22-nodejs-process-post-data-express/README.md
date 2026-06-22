@@ -119,7 +119,7 @@ app.post('/submit-form', (req, res) => {
 ### Extended vs Simple Parsing
 
 ```javascript
-// extended: true (default) - uses qs library
+// extended: true - uses qs library
 // Supports nested objects and arrays
 // Form: user[name]=John&user[email]=john@example.com&tags[]=a&tags[]=b
 // Result: { user: { name: 'John', email: 'john@example.com' }, tags: ['a', 'b'] }
@@ -320,8 +320,9 @@ app.use('/api/xml', express.text({ type: 'application/xml' }));
 
 app.post('/api/xml', (req, res) => {
   // req.body is a string containing XML
-  const xmlParser = require('fast-xml-parser');
-  const parsed = xmlParser.parse(req.body);
+  const { XMLParser } = require('fast-xml-parser');
+  const parser = new XMLParser();
+  const parsed = parser.parse(req.body);
   
   res.json(parsed);
 });

@@ -240,11 +240,31 @@ Create credentials secret:
 
 ```bash
 kubectl create secret generic db-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=myuser \
   --from-literal=password=$(openssl rand -base64 24)
 ```
 
 ### Restore from Backup
+
+Define an ObjectStore for the backup location:
+
+```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: source-cluster-backup-store
+spec:
+  configuration:
+    destinationPath: s3://backup-bucket/postgres/
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: SECRET_ACCESS_KEY
+```
 
 ```yaml
 spec:
@@ -259,15 +279,11 @@ spec:
 
   externalClusters:
     - name: source-cluster
-      barmanObjectStore:
-        destinationPath: s3://backup-bucket/postgres/
-        s3Credentials:
-          accessKeyId:
-            name: s3-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: s3-credentials
-            key: SECRET_ACCESS_KEY
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: source-cluster-backup-store
+          serverName: source-cluster
 ```
 
 ### Clone from Running Cluster
@@ -329,7 +345,7 @@ spec:
         passwordSecret:
           name: admin-credentials
 
-      # Service account (no password)
+      # Monitoring user
       - name: monitoring
         ensure: present
         login: true
@@ -342,6 +358,7 @@ Create role secrets:
 
 ```bash
 kubectl create secret generic app-user-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=app_user \
   --from-literal=password=$(openssl rand -base64 24)
 ```
@@ -359,8 +376,8 @@ spec:
       postInitSQL:
         - CREATE DATABASE analytics OWNER primary_user
         - CREATE DATABASE reporting OWNER primary_user
-        - GRANT CONNECT ON DATABASE analytics TO app_user
-        - GRANT CONNECT ON DATABASE reporting TO readonly_user
+        - GRANT CONNECT ON DATABASE analytics TO primary_user
+        - GRANT CONNECT ON DATABASE reporting TO primary_user
 ```
 
 Or use ConfigMap:
@@ -377,8 +394,8 @@ data:
     CREATE DATABASE staging;
 
     -- Grant permissions
-    GRANT ALL ON DATABASE analytics TO app_user;
-    GRANT CONNECT ON DATABASE reporting TO readonly_user;
+    GRANT ALL ON DATABASE analytics TO primary_user;
+    GRANT CONNECT ON DATABASE reporting TO primary_user;
 ```
 
 Reference in cluster:
@@ -497,7 +514,8 @@ spec:
 ```yaml
 spec:
   monitoring:
-    enablePodMonitor: true
+    # PodMonitor generation is deprecated; create a PodMonitor manually for scraping.
+    # enablePodMonitor: true
 
     # Custom queries
     customQueriesConfigMap:
@@ -643,28 +661,41 @@ spec:
           - pg_read_all_data
 
   monitoring:
-    enablePodMonitor: true
+    # PodMonitor generation is deprecated; create a PodMonitor manually for scraping.
+    # enablePodMonitor: true
     customQueriesConfigMap:
       - name: postgres-custom-queries
         key: queries
 
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://company-backups/postgres/production/
-      s3Credentials:
-        accessKeyId:
-          name: backup-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: backup-credentials
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 4
-      data:
-        compression: gzip
-        jobs: 2
-    retentionPolicy: "30d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: production-postgres-backup-store
+
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-postgres-backup-store
+  namespace: production
+spec:
+  retentionPolicy: "30d"
+  configuration:
+    destinationPath: s3://company-backups/postgres/production/
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+      maxParallel: 4
+    data:
+      compression: gzip
+      jobs: 2
 
 ---
 apiVersion: postgresql.cnpg.io/v1
@@ -673,8 +704,11 @@ metadata:
   name: production-postgres-backup
   namespace: production
 spec:
-  schedule: "0 0 * * *"
+  schedule: "0 0 0 * * *"
   backupOwnerReference: self
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   cluster:
     name: production-postgres
 ```

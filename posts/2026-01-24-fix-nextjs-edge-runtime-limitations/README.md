@@ -24,14 +24,14 @@ flowchart TD
         A[Full Node.js APIs]
         B[Native modules]
         C[File system access]
-        D[Unlimited execution time]
+        D[Platform-defined execution time]
     end
 
     subgraph Edge["Edge Runtime"]
         E[Web APIs only]
         F[No native modules]
         G[No file system]
-        H[Limited execution time]
+        H[Must respond quickly; streaming limits apply]
     end
 
     I[Your Code] --> J{Which Runtime?}
@@ -43,12 +43,12 @@ flowchart TD
 
 | Feature | Node.js Runtime | Edge Runtime |
 |---------|-----------------|--------------|
-| Cold start | ~250ms | ~1ms |
-| Max duration | 5-300 seconds | 30 seconds |
+| Cold start | Higher overhead | Lower overhead |
+| Max duration | Platform/account dependent | Must start responding quickly; streaming limits apply |
 | Node.js APIs | Full support | Limited |
 | File system | Yes | No |
 | Native modules | Yes | No |
-| Global location | Single region | Edge network |
+| Global location | Region selected by platform/config | Edge network |
 
 ---
 
@@ -339,7 +339,7 @@ export async function POST(request: Request) {
 
 ### The Solution
 
-Use WebAssembly-based alternatives or process elsewhere.
+Use an external service, a pure JavaScript implementation, or process elsewhere.
 
 ```typescript
 // app/api/image/route.ts
@@ -413,20 +413,20 @@ export async function POST(request: Request) {
 
 ## Common Error: "Execution Timeout"
 
-Edge Functions have a 30-second maximum execution time.
+On Vercel, functions using the Edge runtime must begin sending a response within 25 seconds to maintain streaming, and streaming responses can continue for up to 300 seconds.
 
 ### The Problem
 
 ```typescript
 // app/api/batch/route.ts
-// ERROR: May timeout on Edge Runtime
+// ERROR: May exceed Edge Runtime response or streaming limits
 
 export const runtime = "edge";
 
 export async function POST(request: Request) {
   const { items } = await request.json();
 
-  // Processing 1000 items might exceed 30 seconds
+  // Processing 1000 items might exceed the platform's response or streaming limits
   const results = [];
   for (const item of items) {
     const result = await processItem(item); // Slow operation
@@ -470,7 +470,6 @@ export async function POST(request: Request) {
   return new Response(stream, {
     headers: {
       "Content-Type": "application/x-ndjson",
-      "Transfer-Encoding": "chunked",
     },
   });
 }
@@ -507,7 +506,7 @@ export async function POST(request: Request) {
 // Solution 3: Use Node.js runtime for long operations
 // app/api/batch-sync/route.ts
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 minutes on Pro plan
+export const maxDuration = 300; // Set an appropriate platform-supported timeout
 
 export async function POST(request: Request) {
   const { items } = await request.json();
@@ -568,9 +567,14 @@ export async function middleware(request: NextRequest) {
       // Process body (e.g., logging, validation)
       console.log("Request body:", body);
 
-      // Pass validated data via headers
-      const response = NextResponse.next();
-      response.headers.set("x-validated", "true");
+      // Pass validated data upstream via request headers
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set("x-validated", "true");
+      const response = NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
       return response;
     } catch {
       return NextResponse.json(
@@ -691,7 +695,7 @@ export function isEdgeRuntime(): boolean {
 }
 
 export function isNodeRuntime(): boolean {
-  return typeof process !== "undefined" && process.versions?.node;
+  return typeof process !== "undefined" && !!process.versions?.node;
 }
 
 // Usage in code that needs to adapt
@@ -759,9 +763,9 @@ export const maxDuration = 60; // Set appropriate timeout
 
 export async function createHash(data: string): Promise<string> {
   // Try Web Crypto first (works everywhere)
-  if (typeof crypto?.subtle?.digest === "function") {
+  if (typeof globalThis.crypto?.subtle?.digest === "function") {
     const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest(
+    const hashBuffer = await globalThis.crypto.subtle.digest(
       "SHA-256",
       encoder.encode(data)
     );
@@ -817,7 +821,7 @@ console.log("message");                    // Console
 fs.readFileSync("file.txt");               // No file system
 require("path").join();                    // No path module
 Buffer.from("text");                       // No Buffer (use Uint8Array)
-process.env.NODE_ENV;                      // Limited process
+process.cwd();                             // Limited process APIs
 eval("code");                              // No eval
 new Function("code");                      // No dynamic functions
 sharp(image);                              // No native modules

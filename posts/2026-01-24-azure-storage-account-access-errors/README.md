@@ -79,13 +79,14 @@ Update your application with the new key:
 // Use environment variables or Azure Key Vault for credentials
 public class StorageConfig
 {
-    public static BlobServiceClient CreateClient()
+    public static BlobServiceClient CreateClientWithConnectionString()
     {
-        // Option 1: Connection string from environment
         string connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
         return new BlobServiceClient(connectionString);
+    }
 
-        // Option 2: Use DefaultAzureCredential (recommended)
+    public static BlobServiceClient CreateClientWithManagedIdentity()
+    {
         string accountUrl = "https://mystorageaccount.blob.core.windows.net";
         return new BlobServiceClient(new Uri(accountUrl), new DefaultAzureCredential());
     }
@@ -272,7 +273,7 @@ public class SasTokenGenerator
         TimeSpan validFor,
         BlobSasPermissions permissions)
     {
-        // Check if we can generate SAS (requires account key or user delegation key)
+        // Check if we can generate a service SAS (requires Shared Key authentication)
         if (!container.CanGenerateSasUri)
         {
             throw new InvalidOperationException(
@@ -317,14 +318,12 @@ public class SasTokenGenerator
 
         sasBuilder.SetPermissions(BlobSasPermissions.Read | BlobSasPermissions.Write);
 
-        var blobUriBuilder = new BlobUriBuilder(
-            new Uri($"{serviceClient.Uri}{containerName}/{blobName}"))
-        {
-            Sas = sasBuilder.ToSasQueryParameters(
-                delegationKey, serviceClient.AccountName)
-        };
+        var blobClient = serviceClient
+            .GetBlobContainerClient(containerName)
+            .GetBlobClient(blobName);
 
-        return blobUriBuilder.ToUri().ToString();
+        return blobClient.GenerateUserDelegationSasUri(
+            sasBuilder, delegationKey).ToString();
     }
 }
 ```
@@ -348,15 +347,15 @@ public class SasTokenDebugger
         Console.WriteLine($"  Signed Resource Type (srt): {queryParams["srt"]}");
 
         // Check if expired
-        if (DateTime.TryParse(queryParams["se"], out DateTime expiry))
+        if (DateTimeOffset.TryParse(queryParams["se"], out DateTimeOffset expiry))
         {
-            if (expiry < DateTime.UtcNow)
+            if (expiry < DateTimeOffset.UtcNow)
             {
                 Console.WriteLine("WARNING: Token has expired!");
             }
             else
             {
-                Console.WriteLine($"  Expires in: {expiry - DateTime.UtcNow}");
+                Console.WriteLine($"  Expires in: {expiry - DateTimeOffset.UtcNow}");
             }
         }
 
@@ -407,6 +406,12 @@ az storage account network-rule add \
     --account-name mystorageaccount \
     --vnet-name myVNet \
     --subnet mySubnet
+
+# Enforce the network rules
+az storage account update \
+    --resource-group myResourceGroup \
+    --name mystorageaccount \
+    --default-action Deny
 
 # Allow Azure services to access storage
 az storage account update \
@@ -612,7 +617,7 @@ public class StorageAccessDiagnostics
 1. **Use Managed Identity**: Avoid storing keys in application configuration
 2. **Apply least privilege**: Grant only necessary permissions
 3. **Use short-lived SAS tokens**: Set appropriate expiration times
-4. **Enable storage analytics**: Monitor access patterns and failures
+4. **Enable Azure Monitor diagnostics**: Monitor access patterns and failures
 5. **Implement retry logic**: Handle transient failures gracefully
 6. **Use private endpoints**: Secure access over private network
 7. **Rotate keys regularly**: Automate key rotation with Key Vault

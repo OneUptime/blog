@@ -14,7 +14,7 @@ Deploying Apache Kafka on Kubernetes requires careful consideration of storage, 
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (version 1.21 or later)
+- A Kubernetes cluster (version 1.30 or later for Strimzi 1.0.x)
 - kubectl configured to access your cluster
 - Helm 3 installed (optional, for Helm-based installation)
 - At least 3 worker nodes for high availability
@@ -63,7 +63,7 @@ Create a simple Kafka cluster with KRaft mode (no ZooKeeper):
 
 ```yaml
 # kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: dual-role
@@ -84,18 +84,15 @@ spec:
         deleteClaim: false
         class: standard
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: my-kafka-cluster
   namespace: kafka
-  annotations:
-    strimzi.io/node-pools: enabled
-    strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.7.0
-    metadataVersion: 3.7-IV4
+    version: 4.2.0
+    metadataVersion: 4.2
     listeners:
       - name: plain
         port: 9092
@@ -111,7 +108,6 @@ spec:
       transaction.state.log.min.isr: 2
       default.replication.factor: 3
       min.insync.replicas: 2
-      inter.broker.protocol.version: "3.7"
   entityOperator:
     topicOperator: {}
     userOperator: {}
@@ -132,7 +128,7 @@ For production deployments, consider this comprehensive configuration:
 
 ```yaml
 # kafka-production.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controller
@@ -162,7 +158,7 @@ spec:
     -Xms: 1024m
     -Xmx: 1024m
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -192,18 +188,15 @@ spec:
     -Xms: 4096m
     -Xmx: 4096m
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-kafka
   namespace: kafka
-  annotations:
-    strimzi.io/node-pools: enabled
-    strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.7.0
-    metadataVersion: 3.7-IV4
+    version: 4.2.0
+    metadataVersion: 4.2
     listeners:
       - name: plain
         port: 9092
@@ -234,7 +227,10 @@ spec:
       num.recovery.threads.per.data.dir: 2
       auto.create.topics.enable: false
     rack:
+      type: topology-label
       topologyKey: topology.kubernetes.io/zone
+    authorization:
+      type: simple
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
@@ -261,6 +257,7 @@ spec:
   kafkaExporter:
     topicRegex: ".*"
     groupRegex: ".*"
+  cruiseControl: {}
 ```
 
 ## Configuring Metrics for Monitoring
@@ -329,7 +326,7 @@ kubectl apply -f kafka-metrics-config.yaml
 
 ```yaml
 # kafka-topics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -344,7 +341,7 @@ spec:
     segment.bytes: 1073741824
     min.insync.replicas: 2
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: events
@@ -363,7 +360,7 @@ spec:
 
 ```yaml
 # kafka-users.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-service
@@ -422,16 +419,18 @@ public class KubernetesKafkaProducer {
     public static void main(String[] args) {
         Properties props = new Properties();
 
-        // For internal Kubernetes clients
+        // For TLS internal Kubernetes clients
         props.put("bootstrap.servers",
-            "production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092");
+            "production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9093");
 
         // For TLS connections
         props.put("security.protocol", "SSL");
-        props.put("ssl.truststore.location", "/var/run/secrets/kafka/truststore.jks");
-        props.put("ssl.truststore.password", "password");
-        props.put("ssl.keystore.location", "/var/run/secrets/kafka/keystore.jks");
-        props.put("ssl.keystore.password", "password");
+        props.put("ssl.truststore.location", "/var/run/secrets/kafka/ca.p12");
+        props.put("ssl.truststore.type", "PKCS12");
+        props.put("ssl.truststore.password", System.getenv("KAFKA_CA_PASSWORD"));
+        props.put("ssl.keystore.location", "/var/run/secrets/kafka/user.p12");
+        props.put("ssl.keystore.type", "PKCS12");
+        props.put("ssl.keystore.password", System.getenv("KAFKA_USER_PASSWORD"));
 
         props.put("key.serializer",
             "org.apache.kafka.common.serialization.StringSerializer");
@@ -465,7 +464,7 @@ import json
 # Producer configuration
 producer = KafkaProducer(
     bootstrap_servers=[
-        'production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092'
+        'production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9093'
     ],
     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
     # For TLS
@@ -483,7 +482,7 @@ producer.flush()
 consumer = KafkaConsumer(
     'orders',
     bootstrap_servers=[
-        'production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092'
+        'production-kafka-kafka-bootstrap.kafka.svc.cluster.local:9093'
     ],
     group_id='order-processor',
     auto_offset_reset='earliest',
@@ -502,7 +501,7 @@ for message in consumer:
 
 ```yaml
 # kafka-connect.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: kafka-connect
@@ -510,18 +509,14 @@ metadata:
   annotations:
     strimzi.io/use-connector-resources: "true"
 spec:
-  version: 3.7.0
+  version: 4.2.0
   replicas: 2
-  bootstrapServers: production-kafka-kafka-bootstrap:9093
-  tls:
-    trustedCertificates:
-      - secretName: production-kafka-cluster-ca-cert
-        certificate: ca.crt
+  bootstrapServers: production-kafka-kafka-bootstrap:9092
+  groupId: connect-cluster
+  configStorageTopic: connect-configs
+  offsetStorageTopic: connect-offsets
+  statusStorageTopic: connect-status
   config:
-    group.id: connect-cluster
-    offset.storage.topic: connect-offsets
-    config.storage.topic: connect-configs
-    status.storage.topic: connect-status
     offset.storage.replication.factor: 3
     config.storage.replication.factor: 3
     status.storage.replication.factor: 3
@@ -541,18 +536,18 @@ spec:
       - name: debezium-postgres
         artifacts:
           - type: tgz
-            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.5.0.Final/debezium-connector-postgres-2.5.0.Final-plugin.tar.gz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/3.5.0.Final/debezium-connector-postgres-3.5.0.Final-plugin.tar.gz
       - name: elasticsearch-sink
         artifacts:
           - type: zip
-            url: https://d1i4a15mxbxib1.cloudfront.net/api/plugins/confluentinc/kafka-connect-elasticsearch/versions/14.0.12/confluentinc-kafka-connect-elasticsearch-14.0.12.zip
+            url: https://hub-downloads.confluent.io/api/plugins/confluentinc/kafka-connect-elasticsearch/versions/14.1.0/confluentinc-kafka-connect-elasticsearch-14.1.0.zip
 ```
 
 ## Scaling Operations
 
 ### Scaling Brokers
 
-```yaml
+```bash
 # Update the KafkaNodePool replicas
 kubectl patch kafkanodepool broker -n kafka \
   --type merge \
@@ -563,7 +558,7 @@ kubectl patch kafkanodepool broker -n kafka \
 
 ```yaml
 # kafka-rebalance.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaRebalance
 metadata:
   name: full-rebalance
@@ -623,11 +618,11 @@ spec:
 
 ## Upgrading Kafka
 
-```yaml
+```bash
 # Update Kafka version in the Kafka resource
 kubectl patch kafka production-kafka -n kafka \
   --type merge \
-  -p '{"spec": {"kafka": {"version": "3.8.0"}}}'
+  -p '{"spec": {"kafka": {"version": "4.2.0", "metadataVersion": "4.2"}}}'
 ```
 
 Monitor the rolling update:
@@ -658,7 +653,7 @@ kubectl get pods -n kafka -l strimzi.io/cluster=production-kafka
 kubectl logs deployment/strimzi-cluster-operator -n kafka
 
 # Broker logs
-kubectl logs production-kafka-broker-0 -n kafka
+kubectl logs <broker-pod-name> -n kafka
 ```
 
 ### Common Issues
@@ -667,7 +662,7 @@ kubectl logs production-kafka-broker-0 -n kafka
 
 ```bash
 kubectl get pvc -n kafka
-kubectl describe pvc data-0-production-kafka-broker-0 -n kafka
+kubectl describe pvc data-0-production-kafka-broker-<node-id> -n kafka
 ```
 
 **Cluster not ready**: Check operator logs for errors.

@@ -188,7 +188,7 @@ kind: Deployment
 metadata:
   name: critical-app
 spec:
-  replicas: 6
+  replicas: 3
   selector:
     matchLabels:
       app: critical
@@ -200,12 +200,13 @@ spec:
       affinity:
         podAntiAffinity:
           # Must be in different zones
+          # Requires at least as many zones as replicas
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app: critical
               topologyKey: topology.kubernetes.io/zone
-          # Prefer different nodes within zone
+          # Also prefer different nodes
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
@@ -318,8 +319,8 @@ kubectl get pods -l app=web -o wide
 # web-def     1/1     Running   node-2
 # web-ghi     1/1     Running   node-3
 
-# Check zone distribution
-kubectl get pods -l app=web -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.topology\.kubernetes\.io/zone
+# Check the zones for those nodes
+kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
 ### Verify Node Labels

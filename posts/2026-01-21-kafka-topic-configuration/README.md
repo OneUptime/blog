@@ -204,12 +204,12 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type topics --entity-name events \
   --alter --add-config compression.type=lz4
 
-# Compression options: none, gzip, snappy, lz4, zstd
+# Compression options: uncompressed, gzip, snappy, lz4, zstd, producer
 ```
 
 | Compression | CPU Usage | Compression Ratio | Speed |
 |-------------|-----------|-------------------|-------|
-| none | None | 1:1 | Fastest |
+| uncompressed | None | 1:1 | Fastest |
 | lz4 | Low | ~2:1 | Fast |
 | snappy | Low | ~2:1 | Fast |
 | zstd | Medium | ~3:1 | Medium |
@@ -295,7 +295,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 | Replication | 1 | 3 |
 | min.insync.replicas | 1 | 2 |
 | retention.ms | 1 day | 7+ days |
-| compression.type | none | lz4/zstd |
+| compression.type | uncompressed | lz4/zstd |
 | cleanup.policy | delete | Based on use case |
 
 Proper topic configuration balances performance, durability, and cost. Start with these best practices and adjust based on your specific requirements.

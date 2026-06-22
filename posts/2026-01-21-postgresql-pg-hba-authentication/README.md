@@ -42,7 +42,7 @@ host    all       all   ::1/128        scram-sha-256
 | host | TCP/IP (SSL or non-SSL) |
 | hostssl | TCP/IP with SSL only |
 | hostnossl | TCP/IP without SSL |
-| hostgssenc | GSSAPI encrypted |
+| hostgssenc | TCP/IP with GSSAPI encryption only |
 
 ## Authentication Methods
 
@@ -105,7 +105,7 @@ host    myapp       myapp_user  192.168.0.0/16 scram-sha-256
 host    replication replicator  10.0.0.12/32  scram-sha-256
 
 # Deny everything else
-host    all         all         0.0.0.0/0     reject
+host    all         all         all           reject
 ```
 
 ### Specific Rules

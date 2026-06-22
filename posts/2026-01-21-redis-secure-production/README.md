@@ -16,7 +16,7 @@ Redis, by default, is designed for use in trusted environments and doesn't enabl
 
 Out of the box, Redis:
 - Has no authentication
-- Listens on all interfaces (0.0.0.0)
+- Listens on all interfaces if no `bind` directive is configured; the example `redis.conf` binds to loopback by default
 - Has no encryption
 - Allows all commands
 
@@ -39,7 +39,7 @@ requirepass YourStrongPasswordHere123!
 
 # Or set via command (doesn't persist restart)
 redis-cli CONFIG SET requirepass "YourStrongPasswordHere123!"
-CONFIG REWRITE
+redis-cli -a YourStrongPasswordHere123! CONFIG REWRITE
 
 # Connect with password
 redis-cli -a YourStrongPasswordHere123!
@@ -74,8 +74,12 @@ print(f"Generated password: {password}")
 [Service]
 Environment="REDIS_PASSWORD=your-password-here"
 
-# redis.conf
+# /etc/redis/redis.conf.template
 requirepass ${REDIS_PASSWORD}
+
+# Generate redis.conf before starting Redis
+envsubst < /etc/redis/redis.conf.template > /run/redis.conf
+redis-server /run/redis.conf
 ```
 
 ## Access Control Lists (ACLs)
@@ -86,22 +90,22 @@ Redis 6.0+ includes a comprehensive ACL system.
 
 ```bash
 # Create a read-only user
-ACL SETUSER readonly on >readonlypassword ~* +@read
+redis-cli ACL SETUSER readonly on ">readonlypassword" "~*" "+@read"
 
 # Create a user with specific key patterns
-ACL SETUSER appuser on >apppassword ~app:* +@all -@dangerous
+redis-cli ACL SETUSER appuser on ">apppassword" "~app:*" "+@all" "-@dangerous"
 
 # Create an admin user
-ACL SETUSER admin on >adminpassword ~* +@all
+redis-cli ACL SETUSER admin on ">adminpassword" "~*" "+@all"
 
 # Create a user for specific commands only
-ACL SETUSER metrics on >metricspass ~* +info +dbsize +slowlog
+redis-cli ACL SETUSER metrics on ">metricspass" "~*" "+info" "+dbsize" "+slowlog"
 
 # List all users
-ACL LIST
+redis-cli ACL LIST
 
 # Get user details
-ACL GETUSER appuser
+redis-cli ACL GETUSER appuser
 ```
 
 ### ACL Rules Reference
@@ -187,7 +191,7 @@ class RedisACLManager:
             f'~{key_pattern}',
         ] + permissions
 
-        result = self.redis.acl_setuser(username, *rules)
+        result = self.redis.execute_command('ACL', 'SETUSER', username, *rules)
         return result
 
     def create_readonly_user(self, username, password, key_pattern='*'):
@@ -220,15 +224,16 @@ class RedisACLManager:
 
     def set_password(self, username, new_password):
         """Change user password."""
-        return self.redis.acl_setuser(username, f'>{new_password}')
+        return self.redis.execute_command('ACL', 'SETUSER', username,
+                                          f'>{new_password}')
 
     def disable_user(self, username):
         """Disable a user."""
-        return self.redis.acl_setuser(username, 'off')
+        return self.redis.execute_command('ACL', 'SETUSER', username, 'off')
 
     def enable_user(self, username):
         """Enable a user."""
-        return self.redis.acl_setuser(username, 'on')
+        return self.redis.execute_command('ACL', 'SETUSER', username, 'on')
 
     def audit_permissions(self):
         """Audit all user permissions."""
@@ -286,9 +291,7 @@ bind 127.0.0.1 10.0.0.5
 # redis.conf - Enable protected mode
 protected-mode yes
 
-# Protected mode blocks external connections when:
-# 1. No bind directive is specified
-# 2. No password is configured
+# Protected mode limits access to local clients when the default user has no password
 ```
 
 ### Firewall Configuration
@@ -330,7 +333,7 @@ services:
       - redis-internal
       - app-network
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 ```
 
 ### Kubernetes Network Policies
@@ -347,20 +350,11 @@ spec:
       app: redis
   policyTypes:
     - Ingress
-    - Egress
   ingress:
     - from:
         - podSelector:
             matchLabels:
               access: redis
-      ports:
-        - protocol: TCP
-          port: 6379
-  egress:
-    - to:
-        - podSelector:
-            matchLabels:
-              app: redis
       ports:
         - protocol: TCP
           port: 6379
@@ -372,9 +366,11 @@ spec:
 
 ```bash
 # Generate certificates (for testing)
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 -out ca.crt -subj "/CN=Redis Test CA"
 openssl genrsa -out redis.key 4096
 openssl req -new -key redis.key -out redis.csr -subj "/CN=redis.example.com"
-openssl x509 -req -days 365 -in redis.csr -signkey redis.key -out redis.crt
+openssl x509 -req -days 365 -in redis.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out redis.crt
 
 # redis.conf
 tls-port 6379
@@ -401,24 +397,13 @@ tls-ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
 redis-cli --tls --cert /path/to/client.crt --key /path/to/client.key --cacert /path/to/ca.crt
 
 # Verify TLS is working
-redis-cli --tls INFO server | grep tcp_port
+redis-cli --tls --cacert /path/to/ca.crt INFO server | grep tcp_port
 ```
 
 ### Python TLS Connection
 
 ```python
 import redis
-import ssl
-
-# Create SSL context
-ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-ssl_context.check_hostname = True
-ssl_context.verify_mode = ssl.CERT_REQUIRED
-ssl_context.load_cert_chain(
-    certfile='/path/to/client.crt',
-    keyfile='/path/to/client.key'
-)
-ssl_context.load_verify_locations('/path/to/ca.crt')
 
 # Connect with TLS
 r = redis.Redis(
@@ -480,13 +465,13 @@ rename-command SHUTDOWN "REDIS_SHUTDOWN_x8y4z1e5"
 
 ```bash
 # Create admin user with dangerous commands
-ACL SETUSER admin on >adminpassword ~* +@all
+redis-cli ACL SETUSER admin on ">adminpassword" "~*" "+@all"
 
 # Create app user without dangerous commands
-ACL SETUSER appuser on >apppassword ~app:* +@all -@admin -@dangerous -flushdb -flushall -keys -debug -config -shutdown
+redis-cli ACL SETUSER appuser on ">apppassword" "~app:*" "+@all" "-@admin" "-@dangerous" "-flushdb" "-flushall" "-keys" "-debug" "-config" "-shutdown"
 
 # Disable default user
-ACL SETUSER default off
+redis-cli ACL SETUSER default off
 ```
 
 ## Security Configuration Template
@@ -555,8 +540,6 @@ enable-debug-command no
 """Redis Security Audit Script"""
 
 import redis
-import ssl
-import socket
 
 class RedisSecurityAudit:
     def __init__(self, host, port=6379, password=None, use_tls=False):
@@ -602,7 +585,12 @@ class RedisSecurityAudit:
         """Check authentication configuration."""
         # Try connecting without password
         try:
-            test_client = redis.Redis(host=self.host, port=self.port, socket_timeout=2)
+            test_client = redis.Redis(
+                host=self.host,
+                port=self.port,
+                ssl=self.use_tls,
+                socket_timeout=2
+            )
             test_client.ping()
             self.issues.append("CRITICAL: No authentication required!")
         except redis.AuthenticationError:
@@ -640,7 +628,17 @@ class RedisSecurityAudit:
 
         for cmd in dangerous_commands:
             try:
-                if cmd == 'CONFIG':
+                if cmd in ('FLUSHALL', 'FLUSHDB', 'SHUTDOWN'):
+                    commands = self.redis.command_list(pattern=cmd)
+                    command_names = {
+                        c.decode().upper() if isinstance(c, bytes) else c.upper()
+                        for c in commands
+                    }
+                    if cmd in command_names:
+                        self.warnings.append(f"Command {cmd} is available")
+                    else:
+                        self.passed.append(f"Command {cmd} is disabled")
+                elif cmd == 'CONFIG':
                     self.redis.config_get('maxmemory')
                     self.warnings.append(f"Command {cmd} is available")
                 elif cmd == 'KEYS':

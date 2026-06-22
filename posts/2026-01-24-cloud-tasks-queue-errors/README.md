@@ -77,14 +77,20 @@ gcloud run services add-iam-policy-binding my-service \
     --role="roles/run.invoker"
 ```
 
-For tasks that use OIDC authentication, you also need to allow the service account to create tokens.
+For tasks that use OIDC authentication, the caller must be allowed to use the service account specified in the task, and Cloud Tasks must be allowed to generate the token.
 
 ```bash
-# Grant Service Account Token Creator role
+# Allow the enqueuer to attach the target service account to the task
 gcloud iam service-accounts add-iam-policy-binding \
     target-service@my-project.iam.gserviceaccount.com \
     --member="serviceAccount:my-service@my-project.iam.gserviceaccount.com" \
-    --role="roles/iam.serviceAccountTokenCreator"
+    --role="roles/iam.serviceAccountUser"
+
+# Allow the Cloud Tasks service agent to generate tokens for the target service account
+gcloud iam service-accounts add-iam-policy-binding \
+    target-service@my-project.iam.gserviceaccount.com \
+    --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-cloudtasks.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
 ```
 
 ## Error: RESOURCE_EXHAUSTED (Rate Limiting)
@@ -248,7 +254,7 @@ This error occurs when the task configuration is malformed or contains invalid v
 ### Symptoms
 
 ```text
-google.api_core.exceptions.InvalidArgument: 400 The task's schedule_time is in the past.
+google.api_core.exceptions.InvalidArgument: 400 The request contains an invalid argument.
 ```
 
 ### Common Causes and Fixes
@@ -264,7 +270,7 @@ def create_scheduled_task(project, location, queue, url, delay_seconds):
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project, location, queue)
 
-    # Calculate schedule time - must be in the future
+    # Calculate schedule time for delayed execution
     schedule_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
 
     # Convert to protobuf timestamp
@@ -283,8 +289,8 @@ def create_scheduled_task(project, location, queue, url, delay_seconds):
     }
 
     # Validate URL format before sending
-    if not url.startswith("https://"):
-        raise ValueError("HTTP targets must use HTTPS")
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("HTTP target URLs must start with http:// or https://")
 
     response = client.create_task(parent=parent, task=task)
     return response
@@ -383,8 +389,9 @@ def process_order():
         return jsonify({"error": str(e)}), 503
 
     except PermanentError as e:
-        # Return 400 to prevent retries - task is fundamentally broken
-        return jsonify({"error": str(e)}), 400
+        # Acknowledge permanent failures after logging so Cloud Tasks does not retry them
+        log_error(e, order_data)
+        return jsonify({"status": "discarded", "error": str(e)}), 200
 ```
 
 ## Error: Queue Does Not Exist
@@ -458,7 +465,7 @@ conditions:
       filter: |
         resource.type="cloud_tasks_queue"
         metric.type="cloudtasks.googleapis.com/queue/task_attempt_count"
-        metric.label.response_code!="200"
+        metric.labels.response_code!="ok"
       comparison: COMPARISON_GT
       thresholdValue: 100
       duration: "300s"

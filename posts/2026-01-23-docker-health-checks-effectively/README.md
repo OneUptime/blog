@@ -8,7 +8,7 @@ Description: Implement effective Docker health checks that accurately reflect co
 
 ---
 
-Docker health checks transform containers from black boxes into observable services. A well-designed health check tells Docker whether a container is ready to serve traffic, enabling automatic restarts, load balancer integration, and proper startup ordering. Poorly designed checks cause false positives, cascading failures, and debugging nightmares.
+Docker health checks transform containers from black boxes into observable services. A well-designed health check tells Docker whether a container is ready to serve traffic, enabling load balancer integration, proper startup ordering, and orchestration-driven recovery. Poorly designed checks cause false positives, cascading failures, and debugging nightmares.
 
 ## Basic Health Check Syntax
 
@@ -19,7 +19,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 COPY . .
-RUN npm ci
+RUN apk add --no-cache curl && npm ci
 
 # Health check configuration
 
@@ -39,8 +39,6 @@ Parameters explained:
 ## Health Check in Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapi:latest
@@ -84,9 +82,14 @@ Check actual dependencies, not just whether the process runs:
 // Node.js comprehensive health check
 const express = require('express');
 const { Pool } = require('pg');
+const { createClient } = require('redis');
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const redisClient = createClient({ url: process.env.REDIS_URL });
+
+redisClient.on('error', (err) => console.error('Redis error:', err));
+redisClient.connect().catch(console.error);
 
 app.get('/health', async (req, res) => {
   const checks = {
@@ -120,6 +123,8 @@ app.get('/health', async (req, res) => {
     checks
   });
 });
+
+app.listen(3000);
 ```
 
 ### Python FastAPI Example
@@ -127,11 +132,15 @@ app.get('/health', async (req, res) => {
 ```python
 from fastapi import FastAPI, Response
 from sqlalchemy import text
-import redis
+from sqlalchemy.ext.asyncio import create_async_engine
+import os
+import redis.asyncio as redis
 import time
 
 app = FastAPI()
 start_time = time.time()
+db_engine = create_async_engine(os.environ["DATABASE_URL"])
+redis_client = redis.from_url(os.environ["REDIS_URL"])
 
 @app.get("/health")
 async def health_check(response: Response):
@@ -151,7 +160,7 @@ async def health_check(response: Response):
 
     # Check Redis
     try:
-        redis_client.ping()
+        await redis_client.ping()
         checks["redis"] = "healthy"
     except Exception:
         checks["redis"] = "unhealthy"
@@ -225,7 +234,11 @@ import (
 func main() {
     client := http.Client{Timeout: 5 * time.Second}
     resp, err := client.Get("http://localhost:8080/health")
-    if err != nil || resp.StatusCode != 200 {
+    if err != nil {
+        os.Exit(1)
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
         os.Exit(1)
     }
     os.Exit(0)
@@ -238,8 +251,8 @@ FROM golang:1.22-alpine AS builder
 COPY healthcheck.go .
 RUN CGO_ENABLED=0 go build -o /healthcheck healthcheck.go
 
-# Use in your final image
-FROM scratch
+# Add to your final application image
+FROM myapp:latest
 COPY --from=builder /healthcheck /healthcheck
 HEALTHCHECK CMD ["/healthcheck"]
 ```
@@ -249,8 +262,6 @@ HEALTHCHECK CMD ["/healthcheck"]
 Use health checks to order service startup:
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -417,4 +428,4 @@ HEALTHCHECK CMD curl -f http://localhost:3000/health
 
 ---
 
-Effective health checks require balance between thoroughness and performance. Check actual dependencies, not just process existence. Use appropriate timeouts and intervals for your application's characteristics. Design health endpoints that fail fast when something is wrong, and integrate with container orchestration for automatic recovery.
+Effective health checks require balance between thoroughness and performance. Check actual dependencies, not just process existence. Use appropriate timeouts and intervals for your application's characteristics. Design health endpoints that fail fast when something is wrong, and integrate with container orchestration or monitoring for automatic recovery.

@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix IllegalStateException errors in Kafka
 
 ---
 
-> IllegalStateException in Kafka Streams indicates that the application is in an unexpected state. This error can occur during startup, processing, or shutdown. Understanding the specific causes helps you fix these issues and build more resilient streaming applications.
+> IllegalStateException and related invalid-state errors in Kafka Streams indicate that the application is in an unexpected lifecycle state. These errors can occur during startup, processing, or shutdown. Understanding the specific causes helps you fix these issues and build more resilient streaming applications.
 
 State management is critical in stream processing. Proper error handling prevents data loss and application crashes.
 
@@ -23,8 +23,8 @@ flowchart TD
     StateStore --> Processing["Stream Processing"]
     Processing --> Shutdown["Shutdown"]
 
-    Init -->|Error| E1["IllegalStateException:<br/>Store not initialized"]
-    StateStore -->|Error| E2["IllegalStateException:<br/>Store not available"]
+    Init -->|Error| E1["InvalidStateStoreException:<br/>Store not initialized"]
+    StateStore -->|Error| E2["InvalidStateStoreException:<br/>Store not available"]
     Processing -->|Error| E3["IllegalStateException:<br/>Thread not running"]
     Shutdown -->|Error| E4["IllegalStateException:<br/>Already closed"]
 
@@ -46,8 +46,8 @@ The most common cause is accessing a state store before the application is fully
 KafkaStreams streams = new KafkaStreams(topology, props);
 streams.start();
 
-// This will throw IllegalStateException because the store is not ready
-KeyValueStore<String, Long> store = streams.store(
+// This can throw InvalidStateStoreException because the store is not ready
+ReadOnlyKeyValueStore<String, Long> store = streams.store(
     StoreQueryParameters.fromNameAndType("my-store", QueryableStoreTypes.keyValueStore())
 );
 ```
@@ -82,30 +82,30 @@ if (!started) {
 }
 
 // Now it is safe to access the state store
-KeyValueStore<String, Long> store = streams.store(
+ReadOnlyKeyValueStore<String, Long> store = streams.store(
     StoreQueryParameters.fromNameAndType("my-store", QueryableStoreTypes.keyValueStore())
 );
 ```
 
 ---
 
-## 2. Accessing Store from Wrong Thread
+## 2. Accessing Store at the Wrong Lifecycle Point
 
-State stores can only be accessed from stream threads or during interactive queries:
+State stores can be accessed from stream threads or through interactive queries, but record-dependent store reads should happen during processing or punctuation:
 
 ```java
-// WRONG: Accessing store from processor init() before it is ready
+// WRONG: Querying the store from processor init()
 public class MyProcessor implements Processor<String, String, String, String> {
     private KeyValueStore<String, Long> store;
 
     @Override
     public void init(ProcessorContext<String, String> context) {
-        // This might fail if called too early in the lifecycle
+        // Getting the store handle in init() is correct
         store = context.getStateStore("my-store");
 
-        // WRONG: Do not query the store in init()
-        // The store may not be fully initialized yet
-        Long value = store.get("key");  // Can throw IllegalStateException
+        // WRONG: Do not perform record-dependent reads in init()
+        // Do reads and writes when records are processed or punctuation runs
+        Long value = store.get("key");
     }
 }
 ```
@@ -175,9 +175,9 @@ public class MyProcessor implements Processor<String, String, String, String> {
 
 ---
 
-## 3. Topology Already Started
+## 3. Topology Built Too Early
 
-Adding operations to a topology after streams.start() throws IllegalStateException:
+Build the complete topology before creating and starting the KafkaStreams instance. Calling start() twice throws IllegalStateException, and DSL operations added after build() are not part of the already-built topology:
 
 ```java
 // WRONG: Modifying topology after starting the application
@@ -188,9 +188,11 @@ Topology topology = builder.build();
 KafkaStreams streams = new KafkaStreams(topology, props);
 streams.start();
 
-// This will throw IllegalStateException
-// Topology cannot be modified after the application starts
-stream.to("output-topic");  // IllegalStateException!
+// This output topic is too late for the topology that was already built above
+stream.to("output-topic");
+
+// Calling start() again will throw IllegalStateException
+streams.start();
 ```
 
 **Fix: Build complete topology before starting**
@@ -257,7 +259,7 @@ flowchart LR
     Before --> During
     During --> After
 
-    During -->|Store Access| Error["IllegalStateException:<br/>Store not available"]
+    During -->|Store Access| Error["InvalidStateStoreException:<br/>Store not available"]
 
     style Error fill:#ff6b6b,stroke:#c92a2a
 ```
@@ -302,7 +304,7 @@ public Optional<Long> safeStoreGet(String key) {
     }
 
     try {
-        KeyValueStore<String, Long> store = streams.store(
+        ReadOnlyKeyValueStore<String, Long> store = streams.store(
             StoreQueryParameters.fromNameAndType(
                 "my-store",
                 QueryableStoreTypes.keyValueStore()
@@ -333,25 +335,28 @@ Properties props2 = new Properties();
 props2.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/kafka-streams");  // Same directory!
 props2.put(StreamsConfig.APPLICATION_ID_CONFIG, "my-app");
 
-// Second instance will fail with IllegalStateException due to lock conflict
+// Starting the second instance will fail because both instances need the same lock
 KafkaStreams streams1 = new KafkaStreams(topology, props1);
-KafkaStreams streams2 = new KafkaStreams(topology, props2);  // Fails!
+KafkaStreams streams2 = new KafkaStreams(topology, props2);
+
+streams1.start();
+streams2.start();  // Fails!
 ```
 
 **Fix: Use unique state directories for each instance**
 
 ```java
-// Generate unique state directory for each instance
-// Include hostname and process ID to ensure uniqueness
+// Generate a unique, stable state directory for each instance
+// Include hostname and an instance ID to ensure uniqueness
 String hostname = InetAddress.getLocalHost().getHostName();
-String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+String uniqueId = System.getenv().getOrDefault("INSTANCE_ID", hostname);
 
 Properties props = new Properties();
 props.put(StreamsConfig.APPLICATION_ID_CONFIG, "my-app");
 props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 
 // Create unique state directory path
-// Format: /var/lib/kafka-streams/my-app/hostname-uuid
+// Format: /var/lib/kafka-streams/my-app/hostname-instance-id
 String stateDir = String.format("/var/lib/kafka-streams/%s/%s-%s",
     "my-app", hostname, uniqueId);
 props.put(StreamsConfig.STATE_DIR_CONFIG, stateDir);
@@ -369,16 +374,16 @@ KafkaStreams streams = new KafkaStreams(topology, props);
 
 ## 6. Shutdown and Restart Issues
 
-Improper shutdown can leave state in an inconsistent condition:
+Improper shutdown can leave local state needing restoration:
 
 ```java
-// WRONG: Force stopping without proper shutdown
-// This can corrupt state stores and cause issues on restart
+// WRONG: Force stopping without waiting for graceful shutdown
+// This can leave local state needing restoration on restart
 KafkaStreams streams = new KafkaStreams(topology, props);
 streams.start();
 
-// Bad: Calling close without waiting
-streams.close();  // Does not wait for graceful shutdown
+// Bad: Calling close with a zero timeout does not wait for graceful shutdown
+streams.close(Duration.ZERO);
 
 // Bad: Starting again immediately
 streams.start();  // IllegalStateException - already closed
@@ -402,8 +407,8 @@ public class KafkaStreamsManager {
         streams = new KafkaStreams(topology, props);
 
         // Set up uncaught exception handler for stream threads
-        streams.setUncaughtExceptionHandler((thread, exception) -> {
-            System.err.println("Uncaught exception in thread " + thread.getName());
+        streams.setUncaughtExceptionHandler(exception -> {
+            System.err.println("Uncaught exception in thread " + Thread.currentThread().getName());
             exception.printStackTrace();
 
             // Return REPLACE_THREAD to restart the failed thread
@@ -572,9 +577,9 @@ props.put(StreamsConfig.REPLICATION_FACTOR_CONFIG, 3);
 // Create Kafka Streams instance
 KafkaStreams streams = new KafkaStreams(topology, props);
 
-// Set global exception handler for deserialization errors
-streams.setUncaughtExceptionHandler((thread, exception) -> {
-    System.err.println("Uncaught exception in " + thread.getName());
+// Set an exception handler for unexpected stream thread errors
+streams.setUncaughtExceptionHandler(exception -> {
+    System.err.println("Uncaught exception in " + Thread.currentThread().getName());
     exception.printStackTrace();
 
     if (exception instanceof IllegalStateException) {
@@ -633,7 +638,7 @@ public void printStreamState(KafkaStreams streams) {
 
 ## Conclusion
 
-IllegalStateException in Kafka Streams usually indicates state access at the wrong time or improper lifecycle management. Key takeaways:
+IllegalStateException and related invalid-state errors in Kafka Streams usually indicate state access at the wrong time or improper lifecycle management. Key takeaways:
 
 - **Wait for RUNNING state** before querying stores
 - **Handle rebalancing** gracefully with state listeners

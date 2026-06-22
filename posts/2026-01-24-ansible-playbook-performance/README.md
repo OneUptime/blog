@@ -17,11 +17,11 @@ Before optimizing, measure your baseline.
 ```bash
 # Enable task timing
 
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook site.yml
 
 # Or in ansible.cfg
 # [defaults]
-# callbacks_enabled = profile_tasks
+# callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Example output:
@@ -149,14 +149,15 @@ Cache facts to avoid re-gathering on subsequent runs.
 # JSON file caching (simple, no dependencies)
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
-fact_caching_timeout = 86400  # 24 hours
+# 24 hours
+fact_caching_timeout = 86400
 
-# Or use Redis for distributed caching
-# fact_caching = redis
+# Or use Redis for distributed caching (requires community.general and redis Python library)
+# fact_caching = community.general.redis
 # fact_caching_connection = localhost:6379:0
 
-# Or use memcached
-# fact_caching = memcached
+# Or use memcached (requires community.general and memcache Python library)
+# fact_caching = community.general.memcached
 # fact_caching_connection = localhost:11211
 ```
 
@@ -308,7 +309,7 @@ Native modules are faster and more reliable.
   ansible.builtin.async_status:
     jid: "{{ item.ansible_job_id }}"
   register: job_result
-  until: job_result.finished
+  until: job_result is finished
   retries: 120
   delay: 30
   loop: "{{ backup_jobs.results }}"
@@ -338,8 +339,8 @@ Native modules are faster and more reliable.
 
 ```yaml
 ---
-# Slow: Loop over file operations
-- name: Create directories (slow)
+# Fine: loop when the module has no batch option
+- name: Create directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -347,17 +348,6 @@ Native modules are faster and more reliable.
     - /opt/app
     - /opt/app/config
     - /opt/app/logs
-
-# Fast: Use with_items or combine
-- name: Create directories (fast)
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-  loop:
-    - /opt/app
-    - /opt/app/config
-    - /opt/app/logs
-  # Actually both are similar, but use file module features when possible
 ```
 
 ### Use Batch Operations
@@ -445,7 +435,7 @@ Here is an optimized `ansible.cfg`:
 forks = 50
 
 # Callback plugins for profiling
-callbacks_enabled = profile_tasks, timer
+callbacks_enabled = ansible.posix.profile_tasks, ansible.posix.timer
 
 # Fact caching
 fact_caching = jsonfile
@@ -453,12 +443,12 @@ fact_caching_connection = /tmp/ansible_facts
 fact_caching_timeout = 86400
 
 # Reduce output noise
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 display_skipped_hosts = False
 
 # Faster gathering
 gathering = smart
-gather_subset = !hardware,!facter,!ohai
 
 # Retry files in tmp
 retry_files_save_path = /tmp/ansible-retry
@@ -483,13 +473,13 @@ cache_timeout = 3600
 
 ```bash
 # Profile task execution times
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook site.yml
 
 # Profile role execution
-ANSIBLE_CALLBACKS_ENABLED=profile_roles ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_roles ansible-playbook site.yml
 
 # Show timer
-ANSIBLE_CALLBACKS_ENABLED=timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook site.yml
 ```
 
 ### ARA (Ansible Run Analysis)

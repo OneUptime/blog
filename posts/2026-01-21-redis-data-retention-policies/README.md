@@ -76,7 +76,7 @@ class TTLManager {
       // No expiry
       await this.redis.set(key, JSON.stringify(value));
     } else {
-      await this.redis.setex(key, ttl, JSON.stringify(value));
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
     }
 
     // Track for retention reporting
@@ -190,13 +190,13 @@ class RetentionPolicyEngine {
   }
 
   // Define retention policies
-  definePolicy(name, config) {
+  async definePolicy(name, config) {
     const policy = {
       name,
       keyPattern: config.keyPattern,
       retentionPeriod: config.retentionPeriod, // in seconds
       retentionType: config.retentionType || 'delete', // delete, archive, anonymize
-      condition: config.condition || null, // Optional function for conditional retention
+      condition: config.condition || null, // Optional serializable condition metadata
       archiveDestination: config.archiveDestination || null,
       enabled: config.enabled !== false,
       createdAt: new Date().toISOString()
@@ -205,7 +205,7 @@ class RetentionPolicyEngine {
     this.policies.set(name, policy);
 
     // Store in Redis for persistence
-    this.redis.hset('retention:policies', name, JSON.stringify(policy));
+    await this.redis.hset('retention:policies', name, JSON.stringify(policy));
 
     return policy;
   }
@@ -234,9 +234,9 @@ class RetentionPolicyEngine {
       return { key, policy: null };
     }
 
-    // Store with TTL
-    if (policy.retentionPeriod > 0) {
-      await this.redis.setex(key, policy.retentionPeriod, JSON.stringify(value));
+    // Store with TTL only when Redis can safely delete the key itself.
+    if (policy.retentionPeriod > 0 && policy.retentionType === 'delete') {
+      await this.redis.set(key, JSON.stringify(value), 'EX', policy.retentionPeriod);
     } else {
       await this.redis.set(key, JSON.stringify(value));
     }
@@ -251,15 +251,20 @@ class RetentionPolicyEngine {
     for (const policy of this.policies.values()) {
       if (!policy.enabled) continue;
 
-      const pattern = new RegExp(
-        policy.keyPattern.replace(/\*/g, '.*').replace(/\?/g, '.')
-      );
+      const pattern = new RegExp(`^${this.globToRegExp(policy.keyPattern)}$`);
 
       if (pattern.test(key)) {
         return policy;
       }
     }
     return null;
+  }
+
+  globToRegExp(pattern) {
+    return pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
   }
 
   async storeRetentionMetadata(key, policy) {
@@ -359,8 +364,6 @@ class RetentionPolicyEngine {
   }
 
   async archiveKey(key, policy) {
-    // Get data
-    const data = await this.redis.get(key);
     const keyType = await this.redis.type(key);
 
     let archiveData;
@@ -462,28 +465,28 @@ async function setupPolicies() {
   const engine = new RetentionPolicyEngine(process.env.REDIS_URL);
 
   // Session data - delete after 24 hours
-  engine.definePolicy('session_retention', {
+  await engine.definePolicy('session_retention', {
     keyPattern: 'session:*',
     retentionPeriod: 24 * 3600,
     retentionType: 'delete'
   });
 
   // Cache data - delete after 1 hour
-  engine.definePolicy('cache_retention', {
+  await engine.definePolicy('cache_retention', {
     keyPattern: 'cache:*',
     retentionPeriod: 3600,
     retentionType: 'delete'
   });
 
   // User activity - anonymize after 90 days
-  engine.definePolicy('activity_retention', {
+  await engine.definePolicy('activity_retention', {
     keyPattern: 'activity:*',
     retentionPeriod: 90 * 24 * 3600,
     retentionType: 'anonymize'
   });
 
   // Transaction data - archive after 7 years
-  engine.definePolicy('transaction_retention', {
+  await engine.definePolicy('transaction_retention', {
     keyPattern: 'transaction:*',
     retentionPeriod: 7 * 365 * 24 * 3600,
     retentionType: 'archive',
@@ -491,21 +494,21 @@ async function setupPolicies() {
   });
 
   // Login history - delete after 1 year
-  engine.definePolicy('login_history_retention', {
+  await engine.definePolicy('login_history_retention', {
     keyPattern: 'login:*',
     retentionPeriod: 365 * 24 * 3600,
     retentionType: 'delete'
   });
 
   // Rate limiting - short TTL
-  engine.definePolicy('rate_limit_retention', {
+  await engine.definePolicy('rate_limit_retention', {
     keyPattern: 'rate:*',
     retentionPeriod: 60,
     retentionType: 'delete'
   });
 
   // Temporary data - very short TTL
-  engine.definePolicy('temp_retention', {
+  await engine.definePolicy('temp_retention', {
     keyPattern: 'temp:*',
     retentionPeriod: 300,
     retentionType: 'delete'
@@ -719,26 +722,26 @@ class ComplianceRetentionManager {
   constructor(redisUrl) {
     this.redis = new Redis(redisUrl);
 
-    // Define compliance requirements
+    // Example compliance policy mapping. Confirm exact retention periods with legal counsel.
     this.complianceRules = {
       GDPR: {
         personalData: {
-          maxRetention: 3 * 365 * 24 * 3600, // 3 years
+          maxRetention: 3 * 365 * 24 * 3600, // Example policy; GDPR requires purpose-based storage limits
           requiresConsent: true,
           rightToErasure: true
         },
         consent: {
-          minRetention: 3 * 365 * 24 * 3600, // Must keep for 3 years
+          minRetention: 3 * 365 * 24 * 3600, // Example policy
           rightToErasure: false
         },
         auditLogs: {
-          minRetention: 6 * 365 * 24 * 3600, // 6 years
+          minRetention: 6 * 365 * 24 * 3600, // Example policy
           rightToErasure: false
         }
       },
       HIPAA: {
         phi: {
-          minRetention: 6 * 365 * 24 * 3600, // 6 years
+          minRetention: 6 * 365 * 24 * 3600, // Example policy; HIPAA itself does not set a universal PHI retention period
           requiresEncryption: true,
           rightToErasure: false
         },
@@ -749,13 +752,13 @@ class ComplianceRetentionManager {
       },
       SOX: {
         financialRecords: {
-          minRetention: 7 * 365 * 24 * 3600, // 7 years
+          minRetention: 7 * 365 * 24 * 3600, // Example policy for records subject to seven-year retention rules
           requiresAuditTrail: true
         }
       },
       CCPA: {
         personalData: {
-          maxRetention: 12 * 30 * 24 * 3600, // 12 months
+          maxRetention: 12 * 30 * 24 * 3600, // Example policy
           rightToDelete: true,
           rightToKnow: true
         }
@@ -861,9 +864,13 @@ class ComplianceRetentionManager {
     // Calculate appropriate retention based on regulations
     const retentionInfo = this.calculateRetention(dataType, regulations);
 
+    const effectiveTtl = retentionInfo.maxRetention && ttl
+      ? Math.min(retentionInfo.maxRetention, ttl)
+      : retentionInfo.maxRetention || ttl;
+
     // Store data
-    if (retentionInfo.maxRetention) {
-      await this.redis.setex(key, retentionInfo.maxRetention, JSON.stringify(data));
+    if (effectiveTtl) {
+      await this.redis.set(key, JSON.stringify(data), 'EX', effectiveTtl);
     } else {
       await this.redis.set(key, JSON.stringify(data));
     }
@@ -874,7 +881,8 @@ class ComplianceRetentionManager {
       dataType,
       regulations: JSON.stringify(regulations),
       minRetention: retentionInfo.minRetention || 0,
-      maxRetention: retentionInfo.maxRetention || -1
+      maxRetention: retentionInfo.maxRetention || -1,
+      ttl: effectiveTtl || -1
     });
 
     return retentionInfo;

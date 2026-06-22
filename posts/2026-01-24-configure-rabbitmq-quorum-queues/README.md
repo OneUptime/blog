@@ -174,8 +174,8 @@ public class RabbitMQConfig {
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `x-queue-type` | Must be set to "quorum" | N/A |
-| `x-quorum-initial-group-size` | Number of replicas | Cluster size |
-| `x-delivery-limit` | Max redeliveries before dead-letter | None |
+| `x-quorum-initial-group-size` | Number of replicas | 3 |
+| `x-delivery-limit` | Max failed deliveries before dead-letter | 20 in RabbitMQ 4.0+; unlimited in 3.x |
 | `x-dead-letter-exchange` | Exchange for dead-lettered messages | None |
 | `x-dead-letter-routing-key` | Routing key for dead-lettered messages | Original key |
 | `x-max-length` | Maximum queue length | Unlimited |
@@ -255,24 +255,22 @@ connection.close()
 default_queue_type = quorum
 
 # Quorum queue settings
-quorum_queue.default_initial_cluster_size = 3
+quorum_queue.initial_cluster_size = 3
 
-# Raft settings for quorum queues
-raft.segment_max_entries = 32768
-raft.wal_max_size_bytes = 536870912
-
-# Memory management
-quorum_queue.memory_limit = 0.4
+# Advanced Raft/WAL settings for quorum queues
+# Do not change these unless advised by RabbitMQ support
+quorum_queue.segment_max_size_bytes = 64000000
+quorum_queue.wal_max_size_bytes = 536870912
 ```
 
-### Environment Variables
+### Per-vhost Default Queue Type
 
 ```bash
-# Set via environment variables
-export RABBITMQ_DEFAULT_QUEUE_TYPE=quorum
+# Set the default queue type for a new virtual host
+rabbitmqctl add_vhost production --default-queue-type quorum
 
-# Start RabbitMQ with quorum queue defaults
-rabbitmq-server
+# Confirm virtual host defaults
+rabbitmqctl list_vhosts name default_queue_type
 ```
 
 ---
@@ -469,7 +467,7 @@ def process_message(ch, method, properties, body):
 
     except Exception as e:
         # Requeue message for retry on transient errors
-        # Delivery count is tracked by quorum queues
+        # In RabbitMQ 4.3+, basic.nack requeues do not count toward x-delivery-limit
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         print(f"Requeued message due to error: {e}")
 
@@ -547,9 +545,9 @@ def process_order(ch, method, properties, body):
 
     except Exception as e:
         print(f"Failed to process order: {e}")
-        # Negative acknowledgment - message will be requeued
+        # Reject and requeue so failed deliveries count toward x-delivery-limit
         # After x-delivery-limit attempts, it goes to DLQ
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True)
 
 def process_business_logic(order):
     """Simulate business logic that might fail"""
@@ -575,14 +573,14 @@ channel.start_consuming()
 
 ```bash
 # Check quorum queue status
-rabbitmqctl list_queues name type leader members online
+rabbitmqctl list_queues name type state messages messages_ready messages_unacknowledged
 
 # Get detailed queue info
 rabbitmqctl list_queues name messages messages_ready messages_unacknowledged \
-    type leader members
+    type state consumers memory
 
-# Monitor Raft state
-rabbitmqctl list_queues name type state leader
+# Inspect Raft/quorum state for a specific quorum queue
+rabbitmq-queues quorum_status <queue-name>
 ```
 
 ### Monitoring Script
@@ -597,7 +595,8 @@ def get_quorum_queue_status():
     # Get queue information in JSON format
     result = subprocess.run(
         ['rabbitmqctl', 'list_queues',
-         'name', 'type', 'messages', 'leader', 'members', 'online',
+         'name', 'type', 'state', 'messages', 'messages_ready',
+         'messages_unacknowledged', 'consumers',
          '--formatter=json'],
         capture_output=True,
         text=True
@@ -608,28 +607,30 @@ def get_quorum_queue_status():
     for queue in queues:
         if queue.get('type') == 'quorum':
             name = queue['name']
+            state = queue['state']
             messages = queue['messages']
-            leader = queue['leader']
-            members = queue['members']
-            online = queue['online']
-
-            # Check replica health
-            total_replicas = len(members)
-            online_replicas = len(online)
+            ready = queue['messages_ready']
+            unacked = queue['messages_unacknowledged']
+            consumers = queue['consumers']
 
             print(f"\nQueue: {name}")
+            print(f"  State: {state}")
             print(f"  Messages: {messages}")
-            print(f"  Leader: {leader}")
-            print(f"  Replicas: {online_replicas}/{total_replicas} online")
+            print(f"  Ready: {ready}")
+            print(f"  Unacknowledged: {unacked}")
+            print(f"  Consumers: {consumers}")
 
-            if online_replicas < total_replicas:
-                offline = set(members) - set(online)
-                print(f"  WARNING: Offline replicas: {offline}")
+            # rabbitmq-queues quorum_status shows leader and replica health.
+            quorum_status = subprocess.run(
+                ['rabbitmq-queues', 'quorum_status', name],
+                capture_output=True,
+                text=True
+            )
 
-            # Check if quorum is maintained
-            quorum_size = (total_replicas // 2) + 1
-            if online_replicas < quorum_size:
-                print(f"  CRITICAL: Below quorum! Need {quorum_size} replicas")
+            if quorum_status.returncode == 0:
+                print(quorum_status.stdout)
+            else:
+                print(f"  WARNING: Could not retrieve quorum status: {quorum_status.stderr}")
 
 if __name__ == '__main__':
     get_quorum_queue_status()
@@ -661,8 +662,8 @@ vm_memory_high_watermark.relative = 0.6
 # Configure disk free space limit
 disk_free_limit.relative = 2.0
 
-# Quorum queue memory limit (fraction of total memory)
-quorum_queue.memory_limit = 0.3
+# Limit quorum queue memory pressure by keeping queues short
+# with max-length or max-length-bytes policies
 ```
 
 ### 3. Network Configuration
@@ -670,13 +671,13 @@ quorum_queue.memory_limit = 0.3
 ```ini
 # rabbitmq.conf
 
-# Increase inter-node communication timeout for WAN deployments
+# Pause nodes that are in the minority side of a network partition
 cluster_partition_handling = pause_minority
 
 # Heartbeat interval
 heartbeat = 60
 
-# TCP connection timeout
+# AMQP handshake timeout
 handshake_timeout = 30000
 ```
 
@@ -696,14 +697,14 @@ handshake_timeout = 30000
 ### Checking Queue Health
 
 ```bash
-# Check if all replicas are online
-rabbitmqctl list_queues name type members online --formatter=json | \
-    jq '.[] | select(.type=="quorum") |
-        {name, members: .members|length, online: .online|length}'
+# Check a specific queue's leader and replica status
+rabbitmq-queues quorum_status <queue-name>
 
-# Force leader election (if needed)
-rabbitmq-queues delete_member <queue-name> <node-name>
-rabbitmq-queues add_member <queue-name> <node-name>
+# Check whether the local node is quorum-critical
+rabbitmq-queues check_if_node_is_quorum_critical
+
+# Rebalance quorum queue leaders across cluster nodes
+rabbitmq-queues rebalance quorum
 
 # Check Raft log status (uses rabbitmq-queues, not rabbitmqctl)
 rabbitmq-queues quorum_status <queue-name>

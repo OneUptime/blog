@@ -19,9 +19,9 @@ flowchart TD
     A[Playbook Execution] --> B{Variable Referenced}
     B --> C{Is Variable Defined?}
     C -->|Yes| D[Use Variable Value]
-    C -->|No| E{ANSIBLE_UNDEFINED_VAR_BEHAVIOR}
-    E -->|strict default| F[Error: Undefined Variable]
-    E -->|warn| G[Warning + Empty String]
+    C -->|No| E{Default or Guard Provided?}
+    E -->|Yes| G[Use Fallback or Skip Optional Argument]
+    E -->|No| F[Error: Undefined Variable]
     D --> H[Task Succeeds]
     F --> I[Task Fails]
     G --> H
@@ -83,25 +83,36 @@ Variables defined in one play or role may not be accessible in another.
 The correct approach is to use proper variable scoping:
 
 ```yaml
-# Solution 1: Define variables at the playbook level
+# Solution 1: Put shared variables in a vars file and include it in each play
+# vars/common.yml
+app_version: "2.0.0"
+
+# playbook.yml
 ---
-- name: Common variables for all plays
-  hosts: all
-  vars:
-    app_version: "2.0.0"
+- name: Play 1 - Use common variables
+  hosts: webservers
+  vars_files:
+    - vars/common.yml
+
+- name: Play 2 - Use common variables
+  hosts: dbservers
+  vars_files:
+    - vars/common.yml
 
 # Solution 2: Use group_vars or host_vars
 # group_vars/all.yml
 app_version: "2.0.0"
 
-# Solution 3: Use set_fact with cacheable
-- name: Set facts that persist
+# Solution 3: Use set_fact for host-scoped variables
+- name: Set a host-scoped fact
   hosts: webservers
   tasks:
-    - name: Set cacheable fact
+    - name: Set app version for this host
       set_fact:
         app_version: "2.0.0"
-        cacheable: yes
+
+# Add cacheable: yes only when fact caching is configured and
+# you need the value available from the fact cache in later runs.
 ```
 
 ### Cause 3: Conditional Variable Definition
@@ -165,12 +176,12 @@ api_endpoint: "{{ primary_api | default(secondary_api) | default('https://api.ex
 Use `omit` to skip optional parameters when variables are undefined.
 
 ```yaml
-# If backup_retention is undefined, the parameter is omitted entirely
-- name: Configure backup
-  backup_module:
-    path: /data
-    retention_days: "{{ backup_retention | default(omit) }}"
-    compression: "{{ backup_compression | default(omit) }}"
+# If file_mode is undefined, the mode parameter is omitted entirely
+- name: Touch a file with an optional mode
+  file:
+    path: /tmp/example
+    state: touch
+    mode: "{{ file_mode | default(omit) }}"
 ```
 
 ## Debugging Undefined Variables
@@ -230,29 +241,35 @@ Understanding variable precedence helps avoid unexpected undefined variable erro
 flowchart TB
     subgraph Lowest["Lowest Precedence"]
         A[role defaults]
-        B[inventory file vars]
+        B[inventory file/script group vars]
         C[inventory group_vars/all]
+        D[playbook group_vars/all]
     end
 
     subgraph Medium["Medium Precedence"]
-        D[inventory group_vars/*]
-        E[inventory host_vars/*]
+        E[inventory group_vars/*]
         F[playbook group_vars/*]
-        G[playbook host_vars/*]
+        G[inventory file/script host vars]
+        H[inventory host_vars/*]
+        I[playbook host_vars/*]
     end
 
     subgraph Higher["Higher Precedence"]
-        H[play vars]
-        I[play vars_prompt]
-        J[play vars_files]
-        K[role vars]
+        J[host facts and cached set_facts]
+        K[play vars]
+        L[play vars_prompt]
+        M[play vars_files]
+        N[role vars]
     end
 
     subgraph Highest["Highest Precedence"]
-        L[set_facts / registered vars]
-        M[block vars]
-        N[task vars]
-        O[extra vars -e]
+        O[block vars]
+        P[task vars]
+        Q[include_vars]
+        R[registered vars and set_fact]
+        S[role/include_role params]
+        T[include params]
+        U[extra vars -e]
     end
 
     Lowest --> Medium --> Higher --> Highest
@@ -297,7 +314,7 @@ flowchart TB
 ### Registered Variables From Skipped Tasks
 
 ```yaml
-# Problem: registered variable is undefined if task is skipped
+# Problem: stdout is undefined if the registered task is skipped
 - name: Get app status
   command: systemctl status myapp
   register: app_status
@@ -305,7 +322,7 @@ flowchart TB
 
 - name: Show status
   debug:
-    msg: "{{ app_status.stdout }}"  # Fails if task was skipped!
+    msg: "{{ app_status.stdout }}"  # Fails if the result has no stdout!
 
 # Solution: Check if variable is defined and not skipped
 - name: Show status safely

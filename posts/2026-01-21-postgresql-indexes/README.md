@@ -8,7 +8,7 @@ Description: A comprehensive guide to creating effective indexes in PostgreSQL, 
 
 ---
 
-Indexes are critical for PostgreSQL performance. Well-designed indexes can speed up queries by orders of magnitude, while poor indexing wastes storage and slows down writes. This guide covers all PostgreSQL index types and when to use each.
+Indexes are critical for PostgreSQL performance. Well-designed indexes can speed up queries by orders of magnitude, while poor indexing wastes storage and slows down writes. This guide covers the most commonly used PostgreSQL index types and when to use each.
 
 ## Prerequisites
 
@@ -43,8 +43,8 @@ CREATE INDEX idx_users_email ON users(email);
 -- Create unique index
 CREATE UNIQUE INDEX idx_users_email_unique ON users(email);
 
--- Create index concurrently (non-blocking)
-CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+-- Create index concurrently (allows normal reads/writes)
+CREATE INDEX CONCURRENTLY idx_users_email_concurrent ON users(email);
 
 -- Drop index
 DROP INDEX idx_users_email;
@@ -56,7 +56,7 @@ DROP INDEX idx_users_email;
 
 - Equality comparisons: `=`
 - Range queries: `<`, `>`, `<=`, `>=`, `BETWEEN`
-- Pattern matching (prefix): `LIKE 'abc%'`
+- Pattern matching (prefix): `LIKE 'abc%'` with a compatible collation/operator class
 - Sorting: `ORDER BY`
 - Unique constraints
 
@@ -94,7 +94,7 @@ SELECT * FROM orders WHERE customer_id = 123;
 SELECT * FROM orders WHERE created_at > '2026-01-01';
 ```
 
-Rule: Put most selective/commonly filtered columns first.
+Rule: Put columns used by equality filters and common query prefixes first; then add range or ordering columns.
 
 ## Partial Indexes
 
@@ -151,7 +151,7 @@ WHERE LOWER(email) = 'test@example.com';
 
 -- Index on date part
 CREATE INDEX idx_orders_year
-ON orders(EXTRACT(YEAR FROM created_at));
+ON orders((EXTRACT(YEAR FROM created_at)));
 
 -- Index on JSON field
 CREATE INDEX idx_users_settings_theme
@@ -165,18 +165,18 @@ ON users((settings->>'theme'));
 - Full-text search
 - Array columns
 - JSONB queries
-- Range types
 
 ### Full-Text Search
 
 ```sql
 -- Create text search index
 CREATE INDEX idx_articles_search
-ON articles USING GIN(to_tsvector('english', title || ' ' || body));
+ON articles USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(body, '')));
 
 -- Query
 SELECT * FROM articles
-WHERE to_tsvector('english', title || ' ' || body) @@ to_tsquery('postgresql & performance');
+WHERE to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(body, ''))
+  @@ to_tsquery('english', 'postgresql & performance');
 ```
 
 ### Array Columns
@@ -204,7 +204,7 @@ SELECT * FROM users WHERE metadata @> '{"type": "premium"}';
 -- Path exists
 SELECT * FROM users WHERE metadata ? 'email';
 
--- Specific path index (more efficient)
+-- Specific path index (more efficient for equality filters on that value)
 CREATE INDEX idx_users_metadata_type
 ON users USING BTREE((metadata->>'type'));
 ```
@@ -213,10 +213,10 @@ ON users USING BTREE((metadata->>'type'));
 
 ```sql
 -- jsonb_ops (default) - supports @>, ?, ?&, ?|
-CREATE INDEX idx_data ON table USING GIN(data);
+CREATE INDEX idx_data_ops ON data_table USING GIN(data);
 
--- jsonb_path_ops - faster @> only, smaller index
-CREATE INDEX idx_data ON table USING GIN(data jsonb_path_ops);
+-- jsonb_path_ops - faster for supported operators, smaller index
+CREATE INDEX idx_data_path_ops ON data_table USING GIN(data jsonb_path_ops);
 ```
 
 ## GiST Indexes (Generalized Search Tree)
@@ -231,13 +231,17 @@ CREATE INDEX idx_data ON table USING GIN(data jsonb_path_ops);
 ### Geometric Data
 
 ```sql
--- PostGIS geometry
+-- PostGIS geography index over WGS84 geometry
 CREATE INDEX idx_locations_geom
-ON locations USING GIST(geom);
+ON locations USING GIST((geom::geography));
 
 -- Spatial query
 SELECT * FROM locations
-WHERE ST_DWithin(geom, ST_Point(-73.9857, 40.7484)::geography, 1000);
+WHERE ST_DWithin(
+    geom::geography,
+    ST_SetSRID(ST_Point(-73.9857, 40.7484), 4326)::geography,
+    1000
+);
 ```
 
 ### Range Types
@@ -280,7 +284,7 @@ CREATE INDEX idx_logs_created_brin
 ON logs USING BRIN(created_at);
 
 -- With pages per range
-CREATE INDEX idx_logs_created_brin
+CREATE INDEX idx_logs_created_brin_128
 ON logs USING BRIN(created_at)
 WITH (pages_per_range = 128);
 ```
@@ -318,7 +322,7 @@ CREATE INDEX idx_orders_customer_covering
 ON orders(customer_id)
 INCLUDE (status, total, created_at);
 
--- Query uses index-only scan
+-- Query can use an index-only scan
 SELECT customer_id, status, total, created_at
 FROM orders
 WHERE customer_id = 123;
@@ -327,7 +331,7 @@ WHERE customer_id = 123;
 Benefits:
 - Index-only scan (no heap access)
 - Included columns don't affect sort order
-- Included columns can't be used in WHERE
+- Included columns are not search keys for positioning the index scan
 
 ## Index Maintenance
 
@@ -389,7 +393,7 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 |--------------|------------|
 | Equality (=) | B-tree |
 | Range (<, >, BETWEEN) | B-tree |
-| Pattern (LIKE 'abc%') | B-tree |
+| Pattern (LIKE 'abc%') | B-tree with compatible collation/operator class |
 | Pattern (LIKE '%abc%') | GIN + pg_trgm |
 | Full-text search | GIN or GiST |
 | JSON containment | GIN |
@@ -418,7 +422,7 @@ ON products(category_id, price);
 
 -- Text search
 CREATE INDEX idx_products_search
-ON products USING GIN(to_tsvector('english', name || ' ' || description));
+ON products USING GIN(to_tsvector('english', COALESCE(name, '') || ' ' || COALESCE(description, '')));
 
 -- Attribute filtering (JSONB)
 CREATE INDEX idx_products_attributes
@@ -435,10 +439,10 @@ ON users(LOWER(email));
 -- Session lookup
 CREATE INDEX idx_sessions_token ON sessions(token);
 
--- Active sessions only
+-- Active (not revoked) sessions only
 CREATE INDEX idx_sessions_user_active
 ON sessions(user_id)
-WHERE expires_at > NOW();
+WHERE revoked_at IS NULL;
 ```
 
 ### Time Series / Logs

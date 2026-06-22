@@ -65,7 +65,7 @@ Structure your API keys to include useful metadata while maintaining security.
 
 ```javascript
 // API Key structure with embedded metadata
-// Format: prefix_version_randomdata_checksum
+// Format: type_environment_version_randomdata_checksum
 
 function generateStructuredApiKey(options = {}) {
   const {
@@ -92,6 +92,10 @@ function generateStructuredApiKey(options = {}) {
 
 // Validate key format and checksum before database lookup
 function validateKeyFormat(apiKey) {
+  if (typeof apiKey !== 'string') {
+    return { valid: false, error: 'Invalid key format' };
+  }
+
   const parts = apiKey.split('_');
 
   // Expected format: type_env_version_random_checksum
@@ -138,7 +142,6 @@ function validateKeyFormat(apiKey) {
 Never store API keys in plain text. Hash them before storage, similar to passwords.
 
 ```javascript
-const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 // Store only a hash of the API key in the database
@@ -148,8 +151,8 @@ async function createApiKeyRecord(userId, keyName) {
   // Generate the actual API key
   const apiKey = generateStructuredApiKey({ environment: 'live' });
 
-  // Create a hash for secure storage
-  // We use SHA-256 first (fast) for lookup, then bcrypt for security
+  // Create a deterministic hash for secure storage and lookup
+  // High-entropy API keys can be safely looked up by SHA-256 hash
   const keyHash = crypto
     .createHash('sha256')
     .update(apiKey)
@@ -164,6 +167,7 @@ async function createApiKeyRecord(userId, keyName) {
     name: keyName,
     keyHash,           // Used for lookup and verification
     keyHint,           // Shown to user: "sk_live_..." for identification
+    environment: 'live',
     createdAt: new Date(),
     lastUsedAt: null,
     expiresAt: null,   // Optional expiration
@@ -236,10 +240,15 @@ Implement middleware that validates API keys on every request.
 // Middleware for API key authentication
 async function apiKeyAuth(req, res, next) {
   // Check multiple locations for the API key
+  const authorization = req.headers['authorization'];
+  const bearerMatch = typeof authorization === 'string'
+    ? authorization.match(/^Bearer\s+(.+)$/i)
+    : null;
+
   const apiKey =
     req.headers['x-api-key'] ||           // Custom header (preferred)
-    req.headers['authorization']?.replace('Bearer ', '') ||  // Auth header
-    req.query.api_key;                     // Query parameter (not recommended)
+    bearerMatch?.[1] ||                   // Auth header
+    req.query.api_key;                    // Query parameter (not recommended)
 
   if (!apiKey) {
     return res.status(401).json({
@@ -348,7 +357,7 @@ async function rotateApiKey(keyId, userId, gracePeriodHours = 48) {
 
   // Generate the new key
   const newApiKey = generateStructuredApiKey({
-    environment: existingKey.keyHint.includes('test') ? 'test' : 'live'
+    environment: existingKey.environment || (existingKey.keyHint.includes('test') ? 'test' : 'live')
   });
 
   const newKeyHash = crypto
@@ -362,6 +371,7 @@ async function rotateApiKey(keyId, userId, gracePeriodHours = 48) {
     name: `${existingKey.name} (rotated)`,
     keyHash: newKeyHash,
     keyHint: newApiKey.slice(0, 8),
+    environment: existingKey.environment || (existingKey.keyHint.includes('test') ? 'test' : 'live'),
     scopes: existingKey.scopes,
     rateLimit: existingKey.rateLimit,
     previousKeyId: existingKey._id,  // Link to old key
@@ -404,6 +414,7 @@ async function rotateApiKey(keyId, userId, gracePeriodHours = 48) {
 Implement per-key rate limiting to prevent abuse and ensure fair usage.
 
 ```javascript
+const crypto = require('crypto');
 const Redis = require('ioredis');
 const redis = new Redis(process.env.REDIS_URL);
 
@@ -412,31 +423,37 @@ async function checkRateLimit(keyHash, limit, windowSeconds = 3600) {
   const now = Date.now();
   const windowStart = now - (windowSeconds * 1000);
   const redisKey = `ratelimit:${keyHash}`;
+  const requestId = `${now}-${crypto.randomUUID()}`;
 
   // Use Redis sorted set for sliding window
-  const pipeline = redis.pipeline();
+  const transaction = redis.multi();
 
   // Remove old entries outside the window
-  pipeline.zremrangebyscore(redisKey, 0, windowStart);
+  transaction.zremrangebyscore(redisKey, 0, windowStart);
 
-  // Count requests in current window
-  pipeline.zcard(redisKey);
-
-  // Add current request
-  pipeline.zadd(redisKey, now, `${now}-${Math.random()}`);
+  // Add current request with a unique member
+  transaction.zadd(redisKey, now, requestId);
 
   // Set expiration on the key
-  pipeline.expire(redisKey, windowSeconds);
+  transaction.expire(redisKey, windowSeconds);
 
-  const results = await pipeline.exec();
-  const requestCount = results[1][1];
+  // Count requests in current window, including this request
+  transaction.zcard(redisKey);
+
+  // Read the oldest request timestamp to calculate when capacity resets
+  transaction.zrange(redisKey, 0, 0, 'WITHSCORES');
+
+  const results = await transaction.exec();
+  const requestCount = results[3][1];
+  const oldestRequest = results[4][1];
+  const oldestRequestTime = oldestRequest?.[1] ? Number(oldestRequest[1]) : now;
 
   return {
-    allowed: requestCount < limit,
+    allowed: requestCount <= limit,
     current: requestCount,
     limit,
     remaining: Math.max(0, limit - requestCount),
-    resetAt: new Date(now + windowSeconds * 1000)
+    resetAt: new Date(oldestRequestTime + windowSeconds * 1000)
   };
 }
 

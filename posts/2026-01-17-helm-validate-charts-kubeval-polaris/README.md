@@ -93,7 +93,7 @@ maintainers:
 
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": ["image", "service"],
   "properties": {
@@ -177,6 +177,8 @@ ajv validate -s values.schema.json -d values.yaml
 
 ## Kubeval Validation
 
+Kubeval is no longer maintained; use kubeconform for new projects and keep kubeval only when you need compatibility with an existing validation pipeline.
+
 ### Install Kubeval
 
 ```bash
@@ -224,7 +226,7 @@ ERR  - myapp/templates/ingress.yaml: missing required field "backend" in spec.ru
 brew install kubeconform
 
 # Linux
-wget https://github.com/yannh/kubeconform/releases/download/v0.6.3/kubeconform-linux-amd64.tar.gz
+wget https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz
 tar xzvf kubeconform-linux-amd64.tar.gz
 sudo mv kubeconform /usr/local/bin/
 ```
@@ -272,7 +274,7 @@ kubeconform \
 brew install fairwindsops/tap/polaris
 
 # Linux
-curl -L https://github.com/FairwindsOps/polaris/releases/download/8.5.3/polaris_linux_amd64.tar.gz | tar xzvf -
+curl -L https://github.com/FairwindsOps/polaris/releases/download/v10.2.0/polaris_linux_amd64.tar.gz | tar xzvf -
 sudo mv polaris /usr/local/bin/
 ```
 
@@ -280,15 +282,15 @@ sudo mv polaris /usr/local/bin/
 
 ```bash
 # Audit rendered templates
-helm template myapp charts/myapp | polaris audit --audit-path -
+polaris audit --helm-chart charts/myapp
 
 # Output formats
-helm template myapp charts/myapp | polaris audit --audit-path - --format json
-helm template myapp charts/myapp | polaris audit --audit-path - --format yaml
-helm template myapp charts/myapp | polaris audit --audit-path - --format score
+polaris audit --helm-chart charts/myapp --format json
+polaris audit --helm-chart charts/myapp --format yaml
+polaris audit --helm-chart charts/myapp --format score
 
 # Set failure threshold
-helm template myapp charts/myapp | polaris audit --audit-path - --set-exit-code-on-danger
+polaris audit --helm-chart charts/myapp --set-exit-code-on-danger
 ```
 
 ### Custom Polaris Configuration
@@ -314,9 +316,8 @@ checks:
   readinessProbeMissing: warning
   livenessProbeMissing: warning
   
-  # Efficiency
-  cpuRequestsMissing: warning
-  memoryRequestsMissing: warning
+  # Custom
+  imageRegistry: danger
 
 exemptions:
   - namespace: kube-system
@@ -344,8 +345,8 @@ customChecks:
 
 ```bash
 # Use custom config
-helm template myapp charts/myapp | polaris audit \
-  --audit-path - \
+polaris audit \
+  --helm-chart charts/myapp \
   --config polaris-config.yaml
 ```
 
@@ -358,8 +359,8 @@ helm template myapp charts/myapp | polaris audit \
 brew install kube-score
 
 # Linux
-wget https://github.com/zegl/kube-score/releases/download/v1.17.0/kube-score_1.17.0_linux_amd64.tar.gz
-tar xzvf kube-score_1.17.0_linux_amd64.tar.gz
+wget https://github.com/zegl/kube-score/releases/download/v1.20.0/kube-score_1.20.0_linux_amd64.tar.gz
+tar xzvf kube-score_1.20.0_linux_amd64.tar.gz
 sudo mv kube-score /usr/local/bin/
 ```
 
@@ -404,13 +405,14 @@ curl https://get.datree.io | /bin/bash
 
 ```bash
 # Test rendered templates
-helm template myapp charts/myapp | datree test -
+helm template myapp charts/myapp --output-dir rendered/
+datree test rendered/myapp/templates/*.yaml
 
 # Use specific policy
-helm template myapp charts/myapp | datree test - --policy Production
+datree test rendered/myapp/templates/*.yaml --policy Production
 
 # Output formats
-helm template myapp charts/myapp | datree test - --output json
+datree test rendered/myapp/templates/*.yaml --output json
 ```
 
 ### Custom Datree Policies
@@ -421,13 +423,13 @@ apiVersion: v1
 policies:
   - name: Production
     rules:
-      - identifier: CONTAINERS_MISSING_LIVENESS_PROBE
+      - identifier: CONTAINERS_MISSING_LIVENESSPROBE_KEY
         messageOnFailure: "Missing liveness probe"
-      - identifier: CONTAINERS_MISSING_READINESS_PROBE
+      - identifier: CONTAINERS_MISSING_READINESSPROBE_KEY
         messageOnFailure: "Missing readiness probe"
-      - identifier: CONTAINERS_MISSING_CPU_LIMIT
+      - identifier: CONTAINERS_MISSING_CPU_LIMIT_KEY
         messageOnFailure: "Missing CPU limit"
-      - identifier: CONTAINERS_MISSING_MEMORY_LIMIT
+      - identifier: CONTAINERS_MISSING_MEMORY_LIMIT_KEY
         messageOnFailure: "Missing memory limit"
       - identifier: CONTAINERS_INCORRECT_PRIVILEGED_VALUE_TRUE
         messageOnFailure: "Privileged containers not allowed"
@@ -458,9 +460,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         with:
-          version: v3.13.0
+          version: v3.18.3
 
       - name: Helm Lint
         run: |
@@ -470,7 +472,7 @@ jobs:
 
       - name: Install Kubeconform
         run: |
-          wget https://github.com/yannh/kubeconform/releases/download/v0.6.3/kubeconform-linux-amd64.tar.gz
+          wget https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz
           tar xzvf kubeconform-linux-amd64.tar.gz
           sudo mv kubeconform /usr/local/bin/
 
@@ -482,13 +484,13 @@ jobs:
 
       - name: Install Polaris
         run: |
-          curl -L https://github.com/FairwindsOps/polaris/releases/download/8.5.3/polaris_linux_amd64.tar.gz | tar xzvf -
+          curl -L https://github.com/FairwindsOps/polaris/releases/download/v10.2.0/polaris_linux_amd64.tar.gz | tar xzvf -
           sudo mv polaris /usr/local/bin/
 
       - name: Policy Audit
         run: |
           for chart in charts/*/; do
-            helm template test "$chart" | polaris audit --audit-path - --set-exit-code-on-danger
+            polaris audit --helm-chart "$chart" --set-exit-code-on-danger
           done
 ```
 
@@ -536,7 +538,7 @@ helm template myapp charts/myapp -s templates/deployment.yaml | kubeconform -str
 helm template myapp charts/myapp | kubeconform --skip CustomResourceDefinition
 
 # Verbose output
-helm template myapp charts/myapp | polaris audit --audit-path - --config polaris.yaml 2>&1
+polaris audit --helm-chart charts/myapp --config polaris.yaml 2>&1
 ```
 
 ## Wrap-up

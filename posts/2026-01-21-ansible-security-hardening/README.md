@@ -85,7 +85,6 @@ SSH is often the first target for attackers. Lock it down.
 
 # Protocol and listening
 Port {{ ssh_port | default(22) }}
-Protocol 2
 AddressFamily inet
 ListenAddress 0.0.0.0
 
@@ -100,11 +99,11 @@ Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 
 # Authentication
-PermitRootLogin {{ 'prohibit-password' if allow_root_ssh_keys else 'no' }}
+PermitRootLogin {{ 'prohibit-password' if allow_root_ssh_keys | default(false) else 'no' }}
 PubkeyAuthentication yes
-PasswordAuthentication {{ 'yes' if allow_password_auth else 'no' }}
+PasswordAuthentication {{ 'yes' if allow_password_auth | default(false) else 'no' }}
 PermitEmptyPasswords no
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 UsePAM yes
 
 # Access control
@@ -121,9 +120,9 @@ ClientAliveInterval 300
 ClientAliveCountMax 2
 
 # Forwarding
-AllowTcpForwarding {{ 'yes' if allow_tcp_forwarding else 'no' }}
+AllowTcpForwarding {{ 'yes' if allow_tcp_forwarding | default(false) else 'no' }}
 X11Forwarding no
-AllowAgentForwarding {{ 'yes' if allow_agent_forwarding else 'no' }}
+AllowAgentForwarding {{ 'yes' if allow_agent_forwarding | default(false) else 'no' }}
 
 # Security
 StrictModes yes
@@ -216,7 +215,6 @@ Defaults    mail_badpass
 Defaults    secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Defaults    logfile="/var/log/sudo.log"
 Defaults    log_input, log_output
-Defaults    requiretty
 Defaults    use_pty
 
 # Root access
@@ -251,8 +249,12 @@ Configure kernel parameters for security.
   loop: "{{ kernel_security_params }}"
 
 - name: Disable unnecessary kernel modules
-  template:
-    src: disable-modules.conf.j2
+  copy:
+    content: |
+      {% for module in disabled_kernel_modules %}
+      install {{ module }} /bin/false
+      blacklist {{ module }}
+      {% endfor %}
     dest: /etc/modprobe.d/disable-modules.conf
     owner: root
     group: root
@@ -342,12 +344,20 @@ Configure firewall rules with either iptables or firewalld.
     permanent: yes
     immediate: yes
     state: enabled
-  loop: "{{ firewall_rules }}"
+  loop: "{{ firewall_rules | default([]) }}"
+  when: firewall_backend == 'firewalld'
+
+- name: Check default zone
+  command: firewall-cmd --get-default-zone
+  register: current_firewall_default_zone
+  changed_when: false
   when: firewall_backend == 'firewalld'
 
 - name: Set default zone
   command: firewall-cmd --set-default-zone={{ firewall_default_zone }}
-  when: firewall_backend == 'firewalld'
+  when:
+    - firewall_backend == 'firewalld'
+    - current_firewall_default_zone.stdout != firewall_default_zone
 
 # iptables alternative
 - name: Configure iptables rules
@@ -358,7 +368,16 @@ Configure firewall rules with either iptables or firewalld.
     source: "{{ item.source | default(omit) }}"
     jump: "{{ item.action }}"
     comment: "{{ item.comment | default(omit) }}"
-  loop: "{{ iptables_rules }}"
+  loop: "{{ iptables_rules | default([]) }}"
+  when: firewall_backend == 'iptables'
+
+- name: Ensure iptables persistence directory exists
+  file:
+    path: /etc/iptables
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
   when: firewall_backend == 'iptables'
 
 - name: Save iptables rules
@@ -370,7 +389,7 @@ Configure firewall rules with either iptables or firewalld.
 # group_vars/all/firewall.yml
 ---
 firewall_backend: firewalld
-firewall_default_zone: drop
+firewall_default_zone: public
 
 firewall_rules:
   - zone: public
@@ -396,9 +415,7 @@ Enable and configure auditd for security monitoring.
 ---
 - name: Install auditd
   package:
-    name:
-      - auditd
-      - audispd-plugins
+    name: auditd
     state: present
 
 - name: Configure auditd
@@ -485,12 +502,19 @@ Verify compliance with security standards.
 - name: Security compliance scan
   hosts: all
   gather_facts: yes
+  become: yes
 
   tasks:
+    - name: Read SSH configuration
+      slurp:
+        src: /etc/ssh/sshd_config
+      register: sshd_config
+      tags: [ssh, cis]
+
     - name: Check SSH configuration
       assert:
         that:
-          - "'PermitRootLogin no' in lookup('file', '/etc/ssh/sshd_config') or 'PermitRootLogin prohibit-password' in lookup('file', '/etc/ssh/sshd_config')"
+          - "'PermitRootLogin no' in (sshd_config.content | b64decode) or 'PermitRootLogin prohibit-password' in (sshd_config.content | b64decode)"
         fail_msg: "Root login is not properly restricted"
         success_msg: "SSH root login is properly restricted"
       tags: [ssh, cis]
@@ -499,17 +523,20 @@ Verify compliance with security standards.
       shell: grep "^PASS_MAX_DAYS" /etc/login.defs | awk '{print $2}'
       register: pass_max_days
       changed_when: false
+      failed_when: false
+      tags: [password, cis]
 
     - name: Verify password max days
       assert:
         that:
+          - pass_max_days.stdout | length > 0
           - pass_max_days.stdout | int <= 90
         fail_msg: "Password expiration exceeds 90 days"
         success_msg: "Password expiration is compliant"
       tags: [password, cis]
 
     - name: Check for unowned files
-      shell: find / -xdev -nouser -o -nogroup 2>/dev/null | head -20
+      shell: find / -xdev \( -nouser -o -nogroup \) 2>/dev/null | head -20
       register: unowned_files
       changed_when: false
       failed_when: false
@@ -534,6 +561,7 @@ Verify compliance with security standards.
 
     - name: Verify audit daemon is running
       service_facts:
+      tags: [audit, cis]
 
     - name: Check auditd status
       assert:

@@ -10,6 +10,8 @@ Description: A comprehensive guide to deploying and configuring Azure Cache for 
 
 Azure Cache for Redis is Microsoft's fully managed Redis offering that provides a secure, dedicated Redis cache for your Azure applications. This guide covers everything you need to know to set up, configure, and optimize Azure Cache for Redis for production workloads.
 
+> **Important:** Azure Cache for Redis is on a retirement timeline. Microsoft recommends Azure Managed Redis for new deployments. As of April 1, 2026, new Azure Cache for Redis Basic, Standard, and Premium cache creation is blocked for new customers and Enterprise/Enterprise Flash cache creation is blocked for all customers. Existing Azure Cache for Redis customers can create Basic, Standard, and Premium caches only until October 1, 2026.
+
 ## Why Azure Cache for Redis?
 
 Azure Cache for Redis offers several benefits:
@@ -37,7 +39,7 @@ Before starting, ensure you have:
 - An Azure subscription
 - Azure CLI installed and configured
 - Resource group created
-- Virtual network (for Premium/Enterprise tiers)
+- Virtual network prepared if you plan to use VNet injection with Premium or private endpoints
 
 ## Creating Azure Cache for Redis
 
@@ -59,7 +61,6 @@ az redis create \
     --location eastus \
     --sku Standard \
     --vm-size c1 \
-    --enable-non-ssl-port false \
     --minimum-tls-version 1.2 \
     --redis-version 6
 ```
@@ -75,7 +76,6 @@ az redis create \
     --sku Premium \
     --vm-size p1 \
     --shard-count 3 \
-    --enable-non-ssl-port false \
     --minimum-tls-version 1.2 \
     --subnet-id /subscriptions/{subscription-id}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
 ```
@@ -110,7 +110,7 @@ resource "azurerm_redis_cache" "standard" {
   family              = "C"
   sku_name            = "Standard"
 
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 
   redis_configuration {
@@ -132,7 +132,7 @@ resource "azurerm_redis_cache" "premium" {
   sku_name            = "Premium"
   shard_count         = 3
 
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 
   subnet_id = azurerm_subnet.redis.id
@@ -326,7 +326,13 @@ example();
 ### .NET Connection Example
 
 ```csharp
+using System;
 using StackExchange.Redis;
+
+var db = RedisService.GetDatabase();
+await db.StringSetAsync("greeting", "Hello from Azure!");
+var value = await db.StringGetAsync("greeting");
+Console.WriteLine($"Value: {value}");
 
 public class RedisService
 {
@@ -345,12 +351,6 @@ public class RedisService
         return Connection.GetDatabase();
     }
 }
-
-// Usage
-var db = RedisService.GetDatabase();
-await db.StringSetAsync("greeting", "Hello from Azure!");
-var value = await db.StringGetAsync("greeting");
-Console.WriteLine($"Value: {value}");
 ```
 
 ### Go Connection Example

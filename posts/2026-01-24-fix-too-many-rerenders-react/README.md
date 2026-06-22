@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix the 'Too many re-renders' error in Re
 
 ---
 
-The dreaded "Too many re-renders. React limits the number of renders to prevent an infinite loop" error stops your React application cold. This error occurs when your component triggers state updates during render, creating an infinite loop. Understanding why this happens and how to fix it requires grasping React's render cycle.
+The dreaded "Too many re-renders. React limits the number of renders to prevent an infinite loop" error stops your React application cold. This error typically occurs when your component triggers state updates unconditionally during render, creating an infinite loop. Understanding why this happens and how to fix it requires grasping React's render cycle.
 
 ## Understanding the React Render Cycle
 
@@ -18,7 +18,7 @@ React re-renders a component whenever its state or props change. The "too many r
 graph TD
     A[Component Renders] --> B[State Update Called]
     B --> C[Component Re-renders]
-    C --> D{State Update in Render?}
+    C --> D{Unconditional State Update in Render?}
     D -->|Yes| B
     D -->|No| E[Render Complete]
 
@@ -102,11 +102,11 @@ function UserProfile({ userId }) {
 Updating state based on props without proper conditions:
 
 ```javascript
-// BAD: Always updates state when props change, even if value is same
+// BAD: Updates state during render whenever externalValue is defined
 function SyncedInput({ externalValue }) {
   const [value, setValue] = useState(externalValue);
 
-  // This runs on every render, potentially causing loops
+  // This runs during render and can cause loops
   if (externalValue !== undefined) {
     setValue(externalValue);
   }
@@ -134,63 +134,50 @@ function Parent() {
   return (
     <SyncedInput
       key={externalValue} // Forces remount when value changes
-      initialValue={externalValue}
+      externalValue={externalValue}
     />
   );
 }
 ```
 
-### 4. Inline Function Definitions with State Updates
+### 4. Functions in Effect Dependencies That Update State
 
-Creating new functions inline that update state:
+Inline event handlers like `onClick={() => setSelected(todo.id)}` are valid. The problem is using a newly-created function as an Effect dependency when that Effect updates state:
 
 ```javascript
-// BAD: New function created every render, can cause issues
+// BAD: filterTodos is new on every render, so the Effect runs after every render
 function TodoList({ todos }) {
-  const [selected, setSelected] = useState(null);
+  const [visibleTodos, setVisibleTodos] = useState([]);
 
-  return (
-    <ul>
-      {todos.map(todo => (
-        <li
-          key={todo.id}
-          // New function on every render
-          onClick={() => setSelected(todo.id)}
-        >
-          {todo.text}
-        </li>
-      ))}
-    </ul>
-  );
+  const filterTodos = () => todos.filter(todo => !todo.completed);
+
+  useEffect(() => {
+    setVisibleTodos(filterTodos());
+  }, [filterTodos]);
+
+  return <TodoItems todos={visibleTodos} />;
 }
 
-// GOOD: Use useCallback for stable function references
+// GOOD: Move the calculation into the Effect and depend on the data it reads
 function TodoList({ todos }) {
-  const [selected, setSelected] = useState(null);
+  const [visibleTodos, setVisibleTodos] = useState([]);
 
-  const handleSelect = useCallback((id) => {
-    setSelected(id);
-  }, []);
+  useEffect(() => {
+    setVisibleTodos(todos.filter(todo => !todo.completed));
+  }, [todos]);
 
-  return (
-    <ul>
-      {todos.map(todo => (
-        <TodoItem
-          key={todo.id}
-          todo={todo}
-          onSelect={handleSelect}
-        />
-      ))}
-    </ul>
-  );
+  return <TodoItems todos={visibleTodos} />;
 }
 
-// TodoItem component can use React.memo to prevent re-renders
-const TodoItem = React.memo(({ todo, onSelect }) => (
-  <li onClick={() => onSelect(todo.id)}>
-    {todo.text}
-  </li>
-));
+// BETTER: If this is just derived data, avoid state and Effect entirely
+function TodoList({ todos }) {
+  const visibleTodos = useMemo(
+    () => todos.filter(todo => !todo.completed),
+    [todos]
+  );
+
+  return <TodoItems todos={visibleTodos} />;
+}
 ```
 
 ### 5. Incorrect useEffect Dependencies
@@ -276,12 +263,11 @@ import { Profiler } from 'react';
 
 function onRenderCallback(
   id, // The "id" prop of the Profiler tree
-  phase, // "mount" or "update"
+  phase, // "mount", "update", or "nested-update"
   actualDuration, // Time spent rendering
   baseDuration, // Estimated time without memoization
   startTime,
-  commitTime,
-  interactions
+  commitTime
 ) {
   console.log({
     id,
@@ -317,7 +303,7 @@ sequenceDiagram
     S->>R: Schedule re-render
     R->>C: Re-render component
     C->>C: Return JSX
-    Note over C: No state updates during render
+    Note over C: No unconditional state updates during render
 ```
 
 ## Summary of Common Fixes
@@ -328,16 +314,16 @@ sequenceDiagram
 | State update in render body | Move to useEffect with dependencies |
 | Conditional state updates | Use useEffect or component key |
 | New objects in dependencies | Use useMemo to memoize objects |
-| New functions in dependencies | Use useCallback for stable references |
+| New functions in dependencies | Move logic into the Effect or use useCallback when identity must be stable |
 | Infinite loops in useEffect | Check and fix dependency array |
 
 ## Prevention Checklist
 
-1. Never call setState directly in the component body
+1. Never call setState unconditionally in the component body
 2. Always pass function references to event handlers, not function calls
 3. Use useEffect for any side effects that update state
 4. Memoize objects and arrays passed to useEffect dependencies
-5. Use useCallback for functions passed as props or dependencies
+5. Use useCallback for functions passed as props or dependencies when stable identity matters
 6. Enable React StrictMode in development to catch issues early
 7. Use ESLint with eslint-plugin-react-hooks for automatic detection
 

@@ -90,12 +90,10 @@ ssh_args = -o ConnectTimeout=30
 # ansible.cfg
 [ssh_connection]
 # Increase connection timeout
-ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
 
 # Use control persist for connection reuse
 control_path = %(directory)s/%%h-%%r
-control_master = auto
-control_persist = 60s
 
 # Pipelining for better performance
 pipelining = True
@@ -173,6 +171,7 @@ For specific slow tasks:
   ansible.builtin.command: /opt/app/migrate.sh
   async: 3600        # Maximum runtime in seconds
   poll: 30           # Check every 30 seconds
+  register: migration_job
 
 - name: Wait for migration to complete
   ansible.builtin.async_status:
@@ -192,12 +191,9 @@ For specific slow tasks:
 timeout = 60
 
 # Timeout for persistent connections
-persistent_connect_timeout = 60
-persistent_command_timeout = 60
-
-[privilege_escalation]
-# Timeout waiting for sudo password prompt
-become_timeout = 30
+[persistent_connection]
+connect_timeout = 60
+command_timeout = 60
 ```
 
 ### Solution 3: Module-Specific Timeouts
@@ -225,9 +221,10 @@ become_timeout = 30
   ansible.builtin.apt:
     name: "{{ packages }}"
     update_cache: yes
+    lock_timeout: 600 # Wait for apt lock on busy systems
   environment:
     DEBIAN_FRONTEND: noninteractive
-  timeout: 600       # 10 minutes for slow package installs
+  timeout: 600       # Task-level timeout for slow package installs
 ```
 
 ## Async Operations for Long-Running Tasks
@@ -289,8 +286,7 @@ sequenceDiagram
 
 - name: Wait for all tasks to complete
   ansible.builtin.async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ long_tasks.results }}"
+    jid: "{{ long_tasks.ansible_job_id }}"
   register: async_results
   until: async_results.finished
   retries: 120
@@ -334,12 +330,21 @@ fatal: [server01]: FAILED! => {
 
 ### Solution 2: Increase Fact Gathering Timeout
 
+```yaml
+# In playbook
+- name: Gather facts with custom timeout
+  hosts: all
+  gather_facts: true
+  gather_timeout: 30
+  tasks:
+    - name: Continue after facts are gathered
+      ansible.builtin.debug:
+        msg: "Facts gathered"
+```
+
 ```ini
 # ansible.cfg
 [defaults]
-# Timeout for fact gathering
-gather_timeout = 30
-
 # Fact caching to avoid repeated gathering
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
@@ -452,7 +457,7 @@ fact_caching_connection = /tmp/ansible_facts
 fact_caching_timeout = 86400
 
 # Callbacks for timing
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [ssh_connection]
 # SSH performance settings
@@ -513,9 +518,9 @@ command_timeout = 60
 | `timeout` | ansible.cfg [defaults] | 10 | General connection timeout |
 | `ansible_ssh_timeout` | variable | 10 | SSH connection timeout |
 | `ConnectTimeout` | SSH args | 10 | SSH ConnectTimeout option |
-| `gather_timeout` | ansible.cfg | 10 | Fact gathering timeout |
+| `gather_timeout` | play keyword or setup module parameter | 10 | Fact gathering timeout |
 | `async` | task | N/A | Max time for async task |
-| `poll` | task | 10 | Poll interval for async |
+| `poll` | task | 15 | Poll interval for async |
 
 ### Commands for Debugging
 
@@ -533,7 +538,7 @@ ANSIBLE_DEBUG=1 ansible-playbook playbook.yml
 ssh -vvv user@host
 
 # Profile task timing
-ansible-playbook playbook.yml --callback-whitelist=profile_tasks
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook playbook.yml
 ```
 
 ---

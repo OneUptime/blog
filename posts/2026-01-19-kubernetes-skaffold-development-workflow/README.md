@@ -67,7 +67,7 @@ skaffold version
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: my-app
@@ -79,10 +79,12 @@ build:
       docker:
         dockerfile: Dockerfile
 
+manifests:
+  rawYaml:
+    - k8s/*.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/*.yaml
+  kubectl: {}
 ```
 
 ### Project Structure
@@ -167,7 +169,7 @@ skaffold render
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -185,10 +187,12 @@ build:
           - src: "static/**/*"
             dest: /app/static
         
+manifests:
+  rawYaml:
+    - k8s/*.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/*.yaml
+  kubectl: {}
 ```
 
 ### Inferred Sync
@@ -229,7 +233,7 @@ CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--reload"]
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -257,19 +261,21 @@ build:
       docker:
         dockerfile: Dockerfile
 
+manifests:
+  rawYaml:
+    - k8s/frontend/*.yaml
+    - k8s/backend/*.yaml
+    - k8s/worker/*.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/frontend/*.yaml
-      - k8s/backend/*.yaml
-      - k8s/worker/*.yaml
+  kubectl: {}
 ```
 
 ## Helm Deployment
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -283,10 +289,9 @@ deploy:
         chartPath: ./charts/myapp
         valuesFiles:
           - values.yaml
-        setValues:
-          image.repository: myapp
         setValueTemplates:
-          image.tag: "{{.IMAGE_TAG}}"
+          image.repository: "{{.IMAGE_REPO_myapp}}"
+          image.tag: "{{.IMAGE_TAG_myapp}}@{{.IMAGE_DIGEST_myapp}}"
         namespace: development
         createNamespace: true
 ```
@@ -319,17 +324,20 @@ resources:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
   artifacts:
     - image: myapp
 
-deploy:
+manifests:
   kustomize:
     paths:
       - k8s/overlays/development
+
+deploy:
+  kubectl: {}
 ```
 
 ### Kustomize Structure
@@ -353,17 +361,19 @@ k8s/
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
   artifacts:
     - image: myapp
 
+manifests:
+  rawYaml:
+    - k8s/base/*.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/base/*.yaml
+  kubectl: {}
 
 profiles:
   # Development profile
@@ -374,10 +384,9 @@ profiles:
     build:
       local:
         push: false  # Don't push to registry
-    deploy:
-      kubectl:
-        manifests:
-          - k8s/dev/*.yaml
+    manifests:
+      rawYaml:
+        - k8s/dev/*.yaml
   
   # Staging profile
   - name: staging
@@ -391,6 +400,9 @@ profiles:
             chartPath: ./charts/myapp
             valuesFiles:
               - values-staging.yaml
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_myapp}}"
+              image.tag: "{{.IMAGE_TAG_myapp}}@{{.IMAGE_DIGEST_myapp}}"
   
   # Production profile
   - name: prod
@@ -404,6 +416,9 @@ profiles:
             chartPath: ./charts/myapp
             valuesFiles:
               - values-prod.yaml
+            setValueTemplates:
+              image.repository: "{{.IMAGE_REPO_myapp}}"
+              image.tag: "{{.IMAGE_TAG_myapp}}@{{.IMAGE_DIGEST_myapp}}"
 ```
 
 ### Using Profiles
@@ -422,17 +437,19 @@ skaffold dev -p dev,debug
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
   artifacts:
     - image: myapp
 
+manifests:
+  rawYaml:
+    - k8s/*.yaml
+
 deploy:
-  kubectl:
-    manifests:
-      - k8s/*.yaml
+  kubectl: {}
 
 portForward:
   - resourceType: service
@@ -445,7 +462,7 @@ portForward:
     port: 5432
     localPort: 5432
   
-  - resourceType: pod
+  - resourceType: deployment
     resourceName: myapp
     port: 9229  # Debug port
     localPort: 9229
@@ -457,7 +474,7 @@ portForward:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -473,7 +490,7 @@ build:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -490,7 +507,7 @@ build:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 
 build:
@@ -520,7 +537,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Skaffold
         run: |
@@ -557,7 +574,7 @@ deploy:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: fullstack-app
@@ -599,10 +616,12 @@ build:
       docker:
         dockerfile: Dockerfile
 
+manifests:
+  rawYaml:
+    - k8s/*.yaml
+
 deploy:
   kubectl:
-    manifests:
-      - k8s/*.yaml
     defaultNamespace: development
 
 portForward:

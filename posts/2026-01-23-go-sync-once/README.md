@@ -40,7 +40,7 @@ func main() {
 }
 ```
 
-**Output:**
+**Example output:**
 ```text
 Initializing...
 Done
@@ -94,7 +94,7 @@ func main() {
 }
 ```
 
-**Output:**
+**Example output:**
 ```text
 Loading configuration...
 Goroutine 0: host=localhost
@@ -565,19 +565,18 @@ func GetService1() *Service {
 // Pattern 2: init() function
 var instance2 = &Service{name: "init"}
 
-// Pattern 3: Check-lock-check (double-checked locking)
+// Pattern 3: Mutex-protected lazy initialization
 var (
     instance3 *Service
     mu3       sync.Mutex
 )
 
 func GetService3() *Service {
+    mu3.Lock()
+    defer mu3.Unlock()
+
     if instance3 == nil {
-        mu3.Lock()
-        defer mu3.Unlock()
-        if instance3 == nil {
-            instance3 = &Service{name: "check-lock-check"}
-        }
+        instance3 = &Service{name: "mutex"}
     }
     return instance3
 }
@@ -589,7 +588,7 @@ type Service struct {
 func main() {
     fmt.Println(GetService1().name)  // Lazy, thread-safe
     fmt.Println(instance2.name)       // Eager, always loaded
-    fmt.Println(GetService3().name)   // Manual, error-prone
+    fmt.Println(GetService3().name)   // Lazy, thread-safe, more manual
 }
 ```
 
@@ -612,7 +611,7 @@ func main() {
 3. Remember: runs exactly once, even on panic
 4. For retriable operations, use custom pattern
 5. Prefer `sync.OnceValue` (Go 1.21+) for value returns
-6. Don't store `sync.Once` by value - use pointer or embed
+6. Don't copy `sync.Once` after first use - storing or embedding it by value is fine
 
 **Common Mistakes:**
 

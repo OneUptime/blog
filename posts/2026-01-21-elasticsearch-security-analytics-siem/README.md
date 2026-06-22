@@ -118,11 +118,30 @@ curl -u elastic:password -X PUT "localhost:9200/security-events" -H 'Content-Typ
               "type": {"type": "keyword"},
               "ip": {"type": "ip"},
               "domain": {"type": "keyword"},
-              "file_hash": {"type": "keyword"}
+              "file": {
+                "properties": {
+                  "hash": {
+                    "properties": {
+                      "sha256": {"type": "keyword"}
+                    }
+                  }
+                }
+              },
+              "threat_type": {"type": "keyword"},
+              "confidence_score": {"type": "float"},
+              "source": {"type": "keyword"}
             }
           },
-          "tactic": {"type": "keyword"},
-          "technique": {"type": "keyword"}
+          "tactic": {
+            "properties": {
+              "name": {"type": "keyword"}
+            }
+          },
+          "technique": {
+            "properties": {
+              "name": {"type": "keyword"}
+            }
+          }
         }
       },
       "message": {"type": "text"},
@@ -209,8 +228,12 @@ curl -u elastic:password -X POST "localhost:9200/security-events/_doc" -H 'Conte
     }
   },
   "threat": {
-    "tactic": "execution",
-    "technique": "user-execution"
+    "tactic": {
+      "name": "Execution"
+    },
+    "technique": {
+      "name": "User Execution"
+    }
   },
   "message": "Malware detected: Trojan.GenericKD",
   "tags": ["malware", "high-priority"]
@@ -459,7 +482,7 @@ curl -u elastic:password -X GET "localhost:9200/security-events/_search?pretty" 
 }'
 ```
 
-### Impossible Travel Detection
+### Multi-Country Login Review
 
 ```bash
 curl -u elastic:password -X GET "localhost:9200/security-events/_search?pretty" -H 'Content-Type: application/json' -d'
@@ -519,7 +542,7 @@ curl -u elastic:password -X PUT "localhost:9200/threat-intel" -H 'Content-Type: 
       "indicator": {"type": "keyword"},
       "type": {"type": "keyword"},
       "threat_type": {"type": "keyword"},
-      "confidence": {"type": "float"},
+      "confidence_score": {"type": "float"},
       "source": {"type": "keyword"},
       "first_seen": {"type": "date"},
       "last_seen": {"type": "date"}
@@ -533,7 +556,7 @@ curl -u elastic:password -X PUT "localhost:9200/_enrich/policy/threat-intel-poli
   "match": {
     "indices": "threat-intel",
     "match_field": "indicator",
-    "enrich_fields": ["type", "threat_type", "confidence", "source"]
+    "enrich_fields": ["type", "threat_type", "confidence_score", "source"]
   }
 }'
 
@@ -590,7 +613,7 @@ curl -u elastic:password -X GET "localhost:9200/security-events/_search?pretty" 
       }
     }
   },
-  "sort": [{"threat.indicator.confidence": "desc"}]
+  "sort": [{"threat.indicator.confidence_score": "desc"}]
 }'
 ```
 
@@ -723,6 +746,9 @@ curl -u elastic:password -X PUT "localhost:9200/_watcher/watch/high-severity-ale
       "webhook": {
         "method": "POST",
         "url": "https://hooks.slack.com/services/xxx",
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": "{\"text\": \"High severity security event detected on hosts: {{#ctx.payload.aggregations.by_host.buckets}}{{key}} {{/ctx.payload.aggregations.by_host.buckets}}\"}"
       }
     }
@@ -734,15 +760,14 @@ curl -u elastic:password -X PUT "localhost:9200/_watcher/watch/high-severity-ale
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 class SecurityAnalytics:
     def __init__(self, hosts: List[str], auth: tuple):
         self.es = Elasticsearch(hosts, basic_auth=auth)
         self.index = "security-events"
 
-    def detect_brute_force(self, threshold: int = 5, window_minutes: int = 15) -> Dict:
+    def detect_brute_force(self, threshold: int = 5, window_minutes: int = 15) -> List[Dict]:
         query = {
             "size": 0,
             "query": {
@@ -767,7 +792,7 @@ class SecurityAnalytics:
         result = self.es.search(index=self.index, body=query)
         return result["aggregations"]["by_source"]["buckets"]
 
-    def detect_lateral_movement(self, threshold: int = 5) -> Dict:
+    def detect_lateral_movement(self, threshold: int = 5) -> List[Dict]:
         query = {
             "size": 0,
             "query": {
@@ -875,10 +900,10 @@ dashboard = siem.get_security_dashboard()
 
 Using Elasticsearch for SIEM involves:
 
-1. **Index design** - ECS-compliant mappings for security events
+1. **Index design** - ECS-inspired mappings for security events
 2. **Data ingestion** - Collecting logs from various security sources
 3. **Threat detection** - Queries for brute force, lateral movement, exfiltration
-4. **Correlation rules** - Multi-stage attack and impossible travel detection
+4. **Correlation rules** - Multi-stage attack and multi-location login review
 5. **Threat intelligence** - IOC matching with enrich policies
 6. **Dashboards** - Security overview and investigation queries
 7. **Alerting** - Watcher for real-time threat notifications

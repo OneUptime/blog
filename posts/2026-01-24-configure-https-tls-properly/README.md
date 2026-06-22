@@ -101,10 +101,9 @@ resolver 8.8.8.8 8.8.4.4 valid=300s;
 resolver_timeout 5s;
 
 # Security headers
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 add_header X-Frame-Options "SAMEORIGIN" always;
 add_header X-Content-Type-Options "nosniff" always;
-add_header X-XSS-Protection "1; mode=block" always;
 ```
 
 ### Complete Server Block
@@ -131,13 +130,15 @@ server {
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # Certificate files
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
 
     # Include shared SSL configuration
     include /etc/nginx/conf.d/ssl-params.conf;
@@ -184,7 +185,7 @@ SSLUseStapling on
 SSLStaplingCache "shmcb:logs/ssl_stapling(32768)"
 
 # Security headers
-Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains"
 Header always set X-Frame-Options "SAMEORIGIN"
 Header always set X-Content-Type-Options "nosniff"
 ```
@@ -269,7 +270,7 @@ const options = {
 
 // Security headers middleware
 app.use((req, res, next) => {
-    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     next();
@@ -296,7 +297,7 @@ HSTS tells browsers to always use HTTPS for your domain.
 
 ```nginx
 # Nginx
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 ```
 
 ```mermaid
@@ -334,8 +335,8 @@ For maximum security, submit your domain to the HSTS preload list.
 Certificate Transparency helps detect misissued certificates.
 
 ```nginx
-# Expect-CT header (deprecated but still useful for older browsers)
-add_header Expect-CT "max-age=86400, enforce" always;
+# Expect-CT is deprecated; do not set it on new deployments.
+# Modern browsers enforce Certificate Transparency by default for public certificates.
 ```
 
 ## Generating Strong DH Parameters
@@ -491,9 +492,9 @@ Ensure all resources are loaded over HTTPS.
 <script src="http://cdn.example.com/script.js"></script>
 <img src="http://images.example.com/logo.png">
 
-<!-- GOOD - Use HTTPS or protocol-relative URLs -->
+<!-- GOOD - Use HTTPS URLs -->
 <script src="https://cdn.example.com/script.js"></script>
-<img src="//images.example.com/logo.png">
+<img src="https://images.example.com/logo.png">
 ```
 
 ### Insecure Cookie Settings

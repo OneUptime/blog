@@ -18,7 +18,7 @@ Before diving into errors, let's understand what happens during a deployment.
 flowchart TD
     A[gcloud app deploy] --> B[Validate app.yaml]
     B --> C[Build Container Image]
-    C --> D[Push to Container Registry]
+    C --> D[Push to Artifact Registry or Container Registry]
     D --> E[Create New Version]
     E --> F[Route Traffic]
     F --> G[Deployment Complete]
@@ -60,15 +60,20 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
     --member="user:developer@example.com" \
+    --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="user:developer@example.com" \
+    --role="roles/cloudbuild.builds.editor"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="user:developer@example.com" \
+    --role="roles/storage.objectAdmin"
+
+# If this account also promotes versions or changes traffic splits
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="user:developer@example.com" \
     --role="roles/appengine.serviceAdmin"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="user:developer@example.com" \
-    --role="roles/cloudbuild.builds.builder"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="user:developer@example.com" \
-    --role="roles/storage.admin"
 ```
 
 ### Error: "The App Engine default service account needs permissions"
@@ -80,12 +85,12 @@ The default App Engine service account requires specific permissions.
 PROJECT_ID=$(gcloud config get-value project)
 SERVICE_ACCOUNT="${PROJECT_ID}@appspot.gserviceaccount.com"
 
-# Grant Cloud Build permissions
+# Grant broad permissions required for first deployments in some new projects
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
-    --role="roles/cloudbuild.builds.builder"
+    --role="roles/editor"
 
-# Grant Storage permissions
+# Grant image read permissions if App Engine cannot access the deployed image
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/storage.objectViewer"
@@ -105,30 +110,42 @@ runtime: python27
 runtime: python311
 ```
 
-Valid runtimes as of 2026:
+Valid standard environment runtimes listed by Google Cloud as of June 2026 include:
 
 ```yaml
 # Python
 runtime: python311
 runtime: python312
+runtime: python313
+runtime: python314
 
 # Node.js
 runtime: nodejs20
 runtime: nodejs22
+runtime: nodejs24
 
 # Java
 runtime: java17
 runtime: java21
+runtime: java25
 
 # Go
-runtime: go121
 runtime: go122
+runtime: go123
+runtime: go124
+runtime: go125
+runtime: go126
 
 # PHP
 runtime: php83
+runtime: php84
+runtime: php85
 
 # Ruby
 runtime: ruby32
+runtime: ruby33
+runtime: ruby34
+runtime: ruby40
 ```
 
 ### Error: "Invalid field in app.yaml"
@@ -144,7 +161,7 @@ threadsafe: true  # Deprecated for Python 3
 handlers:
   - url: /.*
     script: auto
-    login: admin  # Invalid without IAP configuration
+    login: admin  # Requires Users API/bundled services configuration
 
 # Good - Clean configuration
 runtime: python311
@@ -251,7 +268,7 @@ CMD ["gunicorn", "--bind", ":8080", "--workers", "2", "main:app"]
 
 ### Error: "Container failed to start"
 
-The container must respond to health checks on the expected port.
+The container must listen on the port in the `PORT` environment variable. If you configure forwarded health checks, the health check path must return `200 OK`.
 
 ```python
 # Python Flask example - ensure proper port binding
@@ -262,7 +279,7 @@ app = Flask(__name__)
 
 @app.route('/_ah/warmup')
 def warmup():
-    # Handle warmup requests
+    # Handle warmup requests if inbound_services: warmup is enabled
     return '', 200
 
 @app.route('/_ah/health')
@@ -291,7 +308,7 @@ app.get('/_ah/health', (req, res) => {
 
 // Warmup handler
 app.get('/_ah/warmup', (req, res) => {
-    // Initialize caches, connections, etc.
+    // Initialize caches, connections, etc. if inbound_services: warmup is enabled
     res.status(200).send('Warmed up');
 });
 
@@ -306,7 +323,7 @@ app.listen(PORT, () => {
 });
 ```
 
-Resource and Quota Errors
+## Resource and Quota Errors
 
 ### Error: "Quota exceeded for resource"
 
@@ -314,22 +331,26 @@ Resource and Quota Errors
 # Check current quotas
 gcloud compute project-info describe --project YOUR_PROJECT_ID
 
-# Request quota increase through console or
-gcloud alpha services quota update \
+# Find quota IDs for the App Engine Admin API
+gcloud beta quotas info list \
     --service=appengine.googleapis.com \
-    --consumer=projects/YOUR_PROJECT_ID \
-    --metric=appengine.googleapis.com/app/admin_api_requests \
-    --value=1000
+    --project=YOUR_PROJECT_ID
+
+# Request a quota preference after identifying the correct quota ID
+gcloud beta quotas preferences create \
+    --service=appengine.googleapis.com \
+    --project=YOUR_PROJECT_ID \
+    --quota-id=QUOTA_ID \
+    --preferred-value=1000 \
+    --email=developer@example.com \
+    --justification="Needed for deployment volume"
 ```
 
 ### Error: "Instance class not available"
 
 ```yaml
-# Available instance classes for standard environment
-# F1 (default) - 256 MB memory, 600 MHz CPU
-# F2 - 512 MB memory, 1.2 GHz CPU
-# F4 - 1024 MB memory, 2.4 GHz CPU
-# F4_1G - 2048 MB memory, 2.4 GHz CPU
+# Available instance classes for standard environment automatic scaling
+# F1 (default), F2, F4, F4_1G
 
 runtime: python311
 instance_class: F2  # Use F2 for most applications
@@ -354,6 +375,7 @@ gcloud services list --enabled
 # Enable required services
 gcloud services enable appengine.googleapis.com
 gcloud services enable cloudbuild.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 gcloud services enable containerregistry.googleapis.com
 gcloud services enable cloudresourcemanager.googleapis.com
 ```
@@ -408,7 +430,7 @@ gcloud app services set-traffic default \
 set -e
 
 PROJECT_ID=${1:-$(gcloud config get-value project)}
-VERSION=${2:-$(date +%Y%m%d%H%M%S)}
+VERSION=${2:-v$(date +%Y%m%d%H%M%S)}
 
 echo "Deploying to project: $PROJECT_ID"
 echo "Version: $VERSION"
@@ -435,10 +457,10 @@ gcloud app deploy \
     --quiet
 
 # Run smoke tests against new version
-NEW_URL="https://${VERSION}-dot-${PROJECT_ID}.appspot.com"
+NEW_URL=$(gcloud app browse --project=$PROJECT_ID --version=$VERSION --no-launch-browser)
 echo "Testing new version at $NEW_URL..."
 
-if curl -sf "${NEW_URL}/_ah/health" > /dev/null; then
+if curl -sf "${NEW_URL}/" > /dev/null; then
     echo "Health check passed!"
 else
     echo "Health check failed. Rolling back..."

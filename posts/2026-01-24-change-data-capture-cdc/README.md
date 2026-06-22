@@ -46,6 +46,7 @@ services:
   postgres:
     image: postgres:15
     environment:
+      POSTGRES_DB: myapp
       POSTGRES_PASSWORD: postgres
     command:
       - "postgres"
@@ -70,10 +71,13 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
-      - "9092:9092"
+      - "29092:29092"
 
   debezium:
     image: debezium/connect:2.4
@@ -104,16 +108,11 @@ curl -X POST http://localhost:8083/connectors \
       "database.user": "postgres",
       "database.password": "postgres",
       "database.dbname": "myapp",
-      "database.server.name": "myapp",
       "table.include.list": "public.orders,public.order_items",
       "plugin.name": "pgoutput",
       "slot.name": "debezium_slot",
       "publication.name": "dbz_publication",
-      "topic.prefix": "cdc",
-      "transforms": "unwrap",
-      "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-      "transforms.unwrap.drop.tombstones": "false",
-      "transforms.unwrap.delete.handling.mode": "rewrite"
+      "topic.prefix": "cdc"
     }
   }'
 ```
@@ -168,6 +167,19 @@ When other methods are not available, track changes with timestamps.
 ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE orders ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE;
 
+-- Keep updated_at current for UPDATE-based polling
+CREATE OR REPLACE FUNCTION set_orders_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER orders_updated_at_trigger
+    BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION set_orders_updated_at();
+
 -- Create index for efficient change queries
 CREATE INDEX idx_orders_updated_at ON orders(updated_at);
 
@@ -188,10 +200,10 @@ import json
 
 # Configure consumer
 consumer_config = {
-    'bootstrap.servers': 'localhost:9092',
+    'bootstrap.servers': 'localhost:29092',
     'group.id': 'cdc-processor',
     'auto.offset.reset': 'earliest',
-    'enable.auto.commit': False  # Manual commit for exactly-once
+    'enable.auto.commit': False  # Commit after processing for at-least-once delivery
 }
 
 consumer = Consumer(consumer_config)
@@ -201,17 +213,21 @@ def process_cdc_event(event):
     """Process a single CDC event."""
     payload = json.loads(event.value())
 
-    operation = payload.get('__op', 'r')  # r=read, c=create, u=update, d=delete
+    operation = payload.get('op', 'r')  # r=read, c=create, u=update, d=delete
+    data = payload.get('after') if operation in ('c', 'u', 'r') else payload.get('before')
+
+    if data is None:
+        return True
 
     if operation == 'c':
         # Handle insert
-        handle_insert(payload)
+        handle_insert(data)
     elif operation == 'u':
         # Handle update
-        handle_update(payload)
+        handle_update(data)
     elif operation == 'd':
         # Handle delete
-        handle_delete(payload)
+        handle_delete(data)
 
     return True
 
@@ -260,6 +276,9 @@ finally:
 ### Streaming to Data Warehouse with Flink SQL
 
 ```sql
+-- Required for Flink to interpret PostgreSQL UPDATE and DELETE events reliably
+ALTER TABLE orders REPLICA IDENTITY FULL;
+
 -- Create CDC source table
 CREATE TABLE orders_cdc (
     id BIGINT,
@@ -358,10 +377,8 @@ avro_deserializer = AvroDeserializer(
 connector_config = {
     # ... other config ...
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "transforms": "extractKey",
-    "transforms.extractKey.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
-    "transforms.extractKey.field": "id",
-    # Kafka will route same key to same partition
+    # Debezium emits the table primary key as the Kafka record key.
+    # Kafka will route the same key to the same partition.
 }
 ```
 
@@ -369,6 +386,17 @@ connector_config = {
 
 ```python
 from confluent_kafka import Producer, Consumer
+
+producer_config = {
+    'bootstrap.servers': 'localhost:29092',
+    'transactional.id': 'cdc-processor-1'
+}
+
+consumer_config = {
+    'bootstrap.servers': 'localhost:29092',
+    'group.id': 'cdc-processor',
+    'enable.auto.commit': False
+}
 
 def process_with_exactly_once(consumer, producer, process_func):
     """Process CDC events with exactly-once semantics."""

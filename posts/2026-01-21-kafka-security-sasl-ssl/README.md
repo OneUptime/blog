@@ -77,6 +77,7 @@ subjectAltName = @alt_names
 [alt_names]
 DNS.1 = ${BROKER_NAME}
 DNS.2 = localhost
+DNS.3 = broker1
 IP.1 = 127.0.0.1
 EOF
 
@@ -294,6 +295,7 @@ sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
 # SSL configuration
 ssl.keystore.location=/etc/kafka/ssl/kafka-broker.keystore.jks
 ssl.keystore.password=broker-password
+ssl.key.password=broker-password
 ssl.truststore.location=/etc/kafka/ssl/kafka-broker.truststore.jks
 ssl.truststore.password=broker-password
 
@@ -503,21 +505,21 @@ bin/kafka-acls.sh --bootstrap-server broker1:9093 \
   --command-config /etc/kafka/admin.properties \
   --add --allow-principal User:producer-user \
   --operation Write --operation Describe \
-  --topic orders
+  --topic secure-topic
 
 # Grant consumer permissions
 bin/kafka-acls.sh --bootstrap-server broker1:9093 \
   --command-config /etc/kafka/admin.properties \
   --add --allow-principal User:consumer-user \
   --operation Read --operation Describe \
-  --topic orders
+  --topic secure-topic
 
 # Grant consumer group permissions
 bin/kafka-acls.sh --bootstrap-server broker1:9093 \
   --command-config /etc/kafka/admin.properties \
   --add --allow-principal User:consumer-user \
   --operation Read \
-  --group order-processor
+  --group secure-group
 
 # Grant permissions for all topics with prefix
 bin/kafka-acls.sh --bootstrap-server broker1:9093 \
@@ -541,8 +543,8 @@ sasl.mechanism=SCRAM-SHA-512
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
   username="admin" \
   password="admin-secret";
-ssl.truststore.location=/etc/kafka/ssl/admin.truststore.jks
-ssl.truststore.password=admin-password
+ssl.truststore.location=/etc/kafka/ssl/kafka-client.truststore.jks
+ssl.truststore.password=client-password
 ```
 
 ## Docker Compose with Security
@@ -569,10 +571,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       # SSL Configuration
-      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.keystore.jks
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka-broker.keystore.jks
       KAFKA_SSL_KEYSTORE_PASSWORD: broker-password
       KAFKA_SSL_KEY_PASSWORD: broker-password
-      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka-broker.truststore.jks
       KAFKA_SSL_TRUSTSTORE_PASSWORD: broker-password
       KAFKA_SSL_CLIENT_AUTH: required
       KAFKA_SSL_ENABLED_PROTOCOLS: TLSv1.3,TLSv1.2

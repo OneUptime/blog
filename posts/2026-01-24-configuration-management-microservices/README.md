@@ -98,9 +98,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-service
+  namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: user-service
   template:
+    metadata:
+      labels:
+        app: user-service
     spec:
       containers:
       - name: user-service
@@ -182,15 +189,15 @@ spring:
           # Refresh configuration periodically
           refresh-rate: 30
 
-        # Encryption for sensitive values
-        encrypt:
-          enabled: true
+encrypt:
+  # Required for serving {cipher} encrypted values from the config repository
+  key: ${CONFIG_ENCRYPT_KEY}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,refresh,bus-refresh
+        include: health,refresh,busrefresh
 ```
 
 **Git Repository Structure:**
@@ -232,9 +239,9 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 resilience4j:
@@ -270,13 +277,14 @@ user-service:
 **Client Service Configuration:**
 
 ```yaml
-# user-service/src/main/resources/bootstrap.yml
+# user-service/src/main/resources/application.yml
 spring:
   application:
     name: user-service
+  config:
+    import: "configserver:http://config-server:8888"
   cloud:
     config:
-      uri: http://config-server:8888
       fail-fast: true
       retry:
         initial-interval: 1000
@@ -313,8 +321,7 @@ flowchart LR
 import consul
 import json
 import os
-from typing import Any, Dict, Optional
-from functools import lru_cache
+from typing import Any, Dict
 import threading
 import time
 
@@ -350,6 +357,8 @@ class ConsulConfigManager:
 
     def _load_all_config(self):
         """Load all configuration for this service from Consul."""
+        self._config_cache.clear()
+
         # Load shared configuration
         self._load_prefix("config/shared/")
 
@@ -366,7 +375,7 @@ class ConsulConfigManager:
 
         if data:
             for item in data:
-                key = item["Key"].replace(prefix, "")
+                key = item["Key"].replace(prefix, "").replace("/", ".")
                 if item["Value"]:
                     try:
                         # Try to parse as JSON
@@ -378,7 +387,7 @@ class ConsulConfigManager:
 
     def _watch_changes(self):
         """Watch for configuration changes and reload when detected."""
-        prefix = f"config/{self.service_name}/"
+        prefix = "config/"
 
         while self._running:
             try:
@@ -471,8 +480,9 @@ consul kv put config/shared/logging/level "info"
 consul kv put config/user-service/database/name "users"
 consul kv put config/user-service/cache/ttl_seconds "300"
 
-# Set feature flags as JSON
-consul kv put config/user-service/features '{"new_checkout": true, "dark_mode": false}'
+# Set feature flags
+consul kv put config/user-service/features/new_checkout "true"
+consul kv put config/user-service/features/dark_mode "false"
 
 # Set environment-specific overrides
 consul kv put config/user-service/production/database/host "prod-db.example.com"
@@ -803,8 +813,8 @@ async def checkout(user: User):
 
 ```python
 # config/validation.py
-from pydantic import BaseModel, Field, validator
-from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import List
 import os
 
 class DatabaseConfig(BaseModel):
@@ -815,7 +825,8 @@ class DatabaseConfig(BaseModel):
     password: str
     pool_size: int = Field(ge=1, le=100, default=10)
 
-    @validator("host")
+    @field_validator("host")
+    @classmethod
     def validate_host(cls, v):
         if not v or v == "":
             raise ValueError("Database host cannot be empty")
@@ -842,16 +853,18 @@ class ServiceConfig(BaseModel):
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = Field(ge=1, default=100)
 
-    allowed_origins: List[str] = ["*"]
+    allowed_origins: List[str] = Field(default_factory=lambda: ["*"])
 
-    @validator("log_level")
+    @field_validator("log_level")
+    @classmethod
     def validate_log_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"Invalid log level. Must be one of: {valid_levels}")
         return v.upper()
 
-    @validator("environment")
+    @field_validator("environment")
+    @classmethod
     def validate_environment(cls, v):
         valid_envs = ["development", "staging", "production"]
         if v not in valid_envs:

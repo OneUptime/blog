@@ -25,7 +25,7 @@ flowchart LR
         Waiting --> Restart[Restart Container]
         Restart --> Running
         
-        Crash -->|Exit Code != 0| Error[CrashLoopBackOff]
+        Crash -->|Repeated restart| Error[CrashLoopBackOff]
     end
     
     subgraph "Backoff Timing"
@@ -38,7 +38,7 @@ flowchart LR
 ```
 
 **CrashLoopBackOff** is not an error itself-it's a **state** indicating that:
-1. A container has crashed (exited with non-zero code)
+1. A container has exited and is being restarted (usually with a non-zero code, but exit code 0 can loop with `restartPolicy: Always`)
 2. Kubernetes is waiting before restarting it
 3. The wait time increases exponentially (10s, 20s, 40s, 80s, 160s, capped at 5 minutes)
 
@@ -220,7 +220,7 @@ Many CrashLoopBackOff issues are configuration problems:
 ### Check Environment Variables
 
 ```bash
-# View all environment variables the pod would receive
+# View runtime environment variables, or list declared env entries from the pod spec
 kubectl exec my-app-5f7b9d4c6-x2k8p -- env 2>/dev/null || \
   kubectl set env pod/my-app-5f7b9d4c6-x2k8p --list
 
@@ -357,7 +357,7 @@ When you need interactive debugging but the container keeps crashing:
 
 ```bash
 # Add a debug container to the running pod
-# (Requires Kubernetes 1.23+)
+# (Ephemeral containers are stable in Kubernetes 1.25+)
 kubectl debug my-app-5f7b9d4c6-x2k8p -it --image=busybox --target=my-app
 
 # Or create a copy of the pod with a different command
@@ -514,8 +514,9 @@ spec:
 # Debug: Check image details
 kubectl get pod my-app -o jsonpath='{.spec.containers[*].image}'
 
-# Verify the image has the expected entrypoint
-docker run --rm --entrypoint="" my-app:latest cat /proc/1/cmdline
+# Verify the image has the expected entrypoint and default command
+docker image inspect my-app:latest \
+  --format='Entrypoint={{json .Config.Entrypoint}} Cmd={{json .Config.Cmd}}'
 ```
 
 ```yaml

@@ -106,7 +106,7 @@ ansible-vault decrypt secrets.yml --output=secrets_decrypted.yml
 ansible-vault rekey secrets.yml
 
 # Rekey with password files
-ansible-vault rekey --old-vault-password-file=old_pass --new-vault-password-file=new_pass secrets.yml
+ansible-vault rekey --vault-password-file=old_pass --new-vault-password-file=new_pass secrets.yml
 
 # Rekey multiple files at once
 ansible-vault rekey vars/secrets1.yml vars/secrets2.yml
@@ -496,7 +496,7 @@ VAULT_FILES=$(find . -name "*.yml" -exec grep -l "^\$ANSIBLE_VAULT" {} \;)
 for file in $VAULT_FILES; do
     echo "Rekeying: $file"
     ansible-vault rekey \
-        --old-vault-password-file=.vault_pass_old \
+        --vault-password-file=.vault_pass_old \
         --new-vault-password-file=.vault_pass_new \
         "$file"
 done

@@ -18,7 +18,7 @@ When you index a document, Elasticsearch:
 2. Applies analyzers to text fields
 3. Writes to in-memory buffer
 4. Periodically refreshes to make searchable
-5. Eventually flushes to disk (segments)
+5. Eventually flushes and commits segments to disk
 
 Each step can be optimized.
 
@@ -43,9 +43,9 @@ curl -X POST "https://localhost:9200/products/_doc" \
 
 # Good: Bulk request
 curl -X POST "https://localhost:9200/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary '
 {"index": {"_index": "products"}}
 {"name": "Product 1", "price": 100}
 {"index": {"_index": "products"}}
@@ -60,7 +60,7 @@ curl -X POST "https://localhost:9200/_bulk" \
 # Start with 1000-5000 documents or 5-15 MB per batch
 
 curl -X POST "https://localhost:9200/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
   --data-binary @bulk_data.ndjson
 ```
@@ -90,26 +90,28 @@ Guidelines:
 
 ```bash
 curl -X POST "https://localhost:9200/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '...' | jq '.errors, .items[] | select(.index.error)'
+  --data-binary @bulk_data.ndjson | jq '.errors, .items[] | select((.index // .create // .update // .delete).error)'
 ```
 
 Always check for partial failures:
 
 ```python
-response = es.bulk(body=actions)
-if response['errors']:
-    for item in response['items']:
-        if 'error' in item.get('index', {}):
-            print(f"Error: {item['index']['error']}")
+from elasticsearch.helpers import bulk
+
+success_count, errors = bulk(es, actions, raise_on_error=False)
+if errors:
+    for item in errors:
+        operation = next(iter(item.values()))
+        print(f"Error: {operation['error']}")
 ```
 
 ## Refresh Interval
 
 ### Increase Refresh Interval
 
-Default is 1 second. Increase for bulk loading:
+The default is 1 second for indices that have received at least one search request in the last 30 seconds. Increase it for bulk loading:
 
 ```bash
 # Disable refresh during bulk load
@@ -181,13 +183,14 @@ curl -X PUT "https://localhost:9200/products/_settings" \
 
 ## Thread Pool Configuration
 
-### Index Thread Pool
+### Write Thread Pool
 
 ```yaml
 # elasticsearch.yml
+# Expert-level static setting; start by tuning bulk size and worker count first
 thread_pool:
   write:
-    size: 8
+    size: 30
     queue_size: 1000
 ```
 
@@ -275,7 +278,7 @@ curl -X PUT "https://localhost:9200/slow_index" \
         "analyzer": {
           "complex": {
             "tokenizer": "standard",
-            "filter": ["lowercase", "synonym", "stemmer", "ngram"]
+            "filter": ["lowercase", "asciifolding", "stemmer", "ngram"]
           }
         }
       }
@@ -311,7 +314,7 @@ from concurrent.futures import ThreadPoolExecutor
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
-es = Elasticsearch(['localhost:9200'])
+es = Elasticsearch("http://localhost:9200")
 
 def index_batch(docs):
     actions = [
@@ -330,17 +333,17 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 
 ### Routing for Parallel Indexing
 
-Distribute indexing across shards:
+Use high-cardinality routing values if you need custom routing, and monitor for hot shards:
 
 ```bash
 curl -X POST "https://localhost:9200/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
-{"index": {"_index": "products", "routing": "category_a"}}
-{"name": "Product 1", "category": "category_a"}
-{"index": {"_index": "products", "routing": "category_b"}}
-{"name": "Product 2", "category": "category_b"}
+  --data-binary '
+{"index": {"_index": "products", "routing": "customer_1001"}}
+{"name": "Product 1", "customer_id": "customer_1001"}
+{"index": {"_index": "products", "routing": "customer_1002"}}
+{"name": "Product 2", "customer_id": "customer_1002"}
 '
 ```
 
@@ -348,7 +351,7 @@ curl -X POST "https://localhost:9200/_bulk" \
 
 ### Use SSDs
 
-SSD provides 10-100x better indexing than HDD.
+SSDs usually provide significantly better indexing throughput and latency than HDDs.
 
 ### Increase File Descriptors
 
@@ -384,7 +387,7 @@ curl -X POST "https://localhost:9200/products/_forcemerge?max_num_segments=1" \
   -u elastic:password
 ```
 
-**Warning**: Force merge is resource intensive. Run during off-peak hours.
+**Warning**: Force merge is resource intensive and is recommended only for read-only indices. Run during off-peak hours.
 
 ### Monitor Segments
 
@@ -421,7 +424,7 @@ curl -X GET "https://localhost:9200/_cat/thread_pool/write?v&h=node_name,active,
   -u elastic:password
 ```
 
-If rejections occur, reduce bulk request rate or increase queue size.
+If rejections occur, reduce bulk request rate, reduce worker concurrency, or add indexing capacity.
 
 ## Complete Bulk Loading Example
 
@@ -457,7 +460,7 @@ curl -X PUT "https://localhost:9200/products" \
 
 # 2. Perform bulk indexing
 curl -X POST "https://localhost:9200/_bulk?refresh=false" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
   --data-binary @bulk_data.ndjson
 
@@ -495,7 +498,7 @@ curl -X POST "https://localhost:9200/products/_forcemerge?max_num_segments=1" \
 7. **Optimize mappings** - Disable unused features
 8. **Use SSDs** - Critical for indexing performance
 9. **Monitor rejections** - Watch thread pool queue
-10. **Force merge** - After bulk load completes
+10. **Force merge** - Optionally, after bulk load completes and the index is read-only
 
 ## Conclusion
 

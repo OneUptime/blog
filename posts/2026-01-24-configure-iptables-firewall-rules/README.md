@@ -35,9 +35,10 @@ flowchart TB
 graph LR
     subgraph "iptables Tables"
         A[filter] --> A1[INPUT/OUTPUT/FORWARD]
-        B[nat] --> B1[PREROUTING/POSTROUTING/OUTPUT]
+        B[nat] --> B1[PREROUTING/INPUT/OUTPUT/POSTROUTING]
         C[mangle] --> C1[All Chains - Packet Modification]
         D[raw] --> D1[PREROUTING/OUTPUT - Connection Tracking]
+        E[security] --> E1[INPUT/OUTPUT/FORWARD - MAC Rules]
     end
 ```
 
@@ -47,6 +48,7 @@ graph LR
 | **nat** | Network Address Translation | Port forwarding, masquerading |
 | **mangle** | Packet modification | QoS, TTL modification |
 | **raw** | Connection tracking exemption | High-performance scenarios |
+| **security** | Mandatory Access Control (MAC) networking rules | SELinux SECMARK/CONNSECMARK rules |
 
 ## Basic Commands
 
@@ -211,7 +213,8 @@ iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/second -j 
 # Log dropped packets (optional, can fill logs quickly)
 iptables -A INPUT -j LOG --log-prefix "iptables-dropped: " --log-level 4
 
-# Save rules
+# Save rules (requires /etc/iptables, typically created by iptables-persistent)
+mkdir -p /etc/iptables
 iptables-save > /etc/iptables/rules.v4
 
 echo "Firewall rules applied successfully"
@@ -232,6 +235,7 @@ sysctl -p
 # Forward external port 8080 to internal server port 80
 iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.10:80
 iptables -A FORWARD -p tcp -d 192.168.1.10 --dport 80 -j ACCEPT
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Masquerade outgoing traffic (for NAT gateway)
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
@@ -254,9 +258,8 @@ iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
 iptables -A INPUT -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
 iptables -A INPUT -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
 
-# Protection against SYN flood attacks
-iptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT
-iptables -A INPUT -p tcp --syn -j DROP
+# Protection against SYN flood attacks by dropping excessive new TCP attempts per source IP
+iptables -A INPUT -p tcp --syn -m hashlimit --hashlimit-above 25/second --hashlimit-burst 100 --hashlimit-mode srcip --hashlimit-name syn_flood -j DROP
 
 # Limit new connections per IP
 iptables -A INPUT -p tcp --syn -m connlimit --connlimit-above 20 -j DROP
@@ -380,14 +383,14 @@ iptables -I INPUT 2 -p tcp --dport 443 -j ACCEPT
 ```bash
 # Schedule rule reset in case you lock yourself out
 # This removes the DROP policy after 5 minutes
-echo "iptables -P INPUT ACCEPT" | at now + 5 minutes
+reset_job=$(echo "iptables -P INPUT ACCEPT" | at now + 5 minutes 2>&1 | awk '/job/ {print $2}')
 
 # Apply your rules
 iptables -P INPUT DROP
 # ... other rules ...
 
 # If everything works, cancel the scheduled reset
-atrm $(atq | cut -f1)
+atrm "$reset_job"
 ```
 
 ## iptables Rule Processing Order
@@ -402,16 +405,21 @@ flowchart TD
     F -->|Local| G[mangle INPUT]
     F -->|Forward| H[mangle FORWARD]
     G --> I[filter INPUT]
-    I --> J[Local Process]
-    H --> K[filter FORWARD]
-    K --> L[mangle POSTROUTING]
-    J --> M[raw OUTPUT]
-    M --> N[mangle OUTPUT]
-    N --> O[nat OUTPUT]
-    O --> P[filter OUTPUT]
-    P --> L
-    L --> Q[nat POSTROUTING]
-    Q --> R[Packet Leaves]
+    I --> J[security INPUT]
+    J --> K[nat INPUT]
+    K --> L[Local Process]
+    H --> M[filter FORWARD]
+    M --> N[security FORWARD]
+    N --> O[mangle POSTROUTING]
+    L --> P[raw OUTPUT]
+    P --> Q[Connection Tracking]
+    Q --> R[mangle OUTPUT]
+    R --> S[nat OUTPUT]
+    S --> T[filter OUTPUT]
+    T --> U[security OUTPUT]
+    U --> O
+    O --> V[nat POSTROUTING]
+    V --> W[Packet Leaves]
 ```
 
 ## Quick Reference

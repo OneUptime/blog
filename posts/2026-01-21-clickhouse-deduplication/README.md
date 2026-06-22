@@ -15,12 +15,12 @@ Deduplication in ClickHouse works differently than in traditional databases. Cli
 ### Insert Deduplication (Block Level)
 
 ```sql
--- ClickHouse deduplicates identical insert blocks
--- within insert_deduplicate_block_hash_size bytes
+-- ClickHouse can deduplicate identical insert blocks
+-- for *MergeTree tables while the block_id remains in the deduplication log
 
-INSERT INTO events VALUES (1, 'click', now());
+INSERT INTO events VALUES (1, 'click', '2026-01-21 12:00:00');
 -- Same insert again is deduplicated
-INSERT INTO events VALUES (1, 'click', now());
+INSERT INTO events VALUES (1, 'click', '2026-01-21 12:00:00');
 
 -- Check deduplication status
 SELECT
@@ -47,7 +47,7 @@ LIMIT 1 BY user_id, event_type;
 ### Basic Setup
 
 ```sql
--- ReplacingMergeTree keeps latest version
+-- ReplacingMergeTree keeps the latest version for each ORDER BY key
 CREATE TABLE users
 (
     user_id UInt64,
@@ -85,8 +85,8 @@ ORDER BY user_id;
 -- "Delete" by inserting with is_deleted = 1
 INSERT INTO users VALUES (1, '', '', now(), 1);
 
--- Query excludes deleted
-SELECT * FROM users FINAL WHERE is_deleted = 0;
+-- FINAL removes rows whose latest version is deleted
+SELECT * FROM users FINAL;
 ```
 
 ## Querying Deduplicated Data
@@ -109,6 +109,7 @@ WHERE user_id = 123;
 
 ```sql
 -- argMax returns value corresponding to max of another column
+-- If updated_at ties, the returned value is not deterministic
 SELECT
     user_id,
     argMax(email, updated_at) AS email,
@@ -226,18 +227,18 @@ SELECT * FROM events_vcmt FINAL;
 -- Enable insert deduplication (default for replicated tables)
 INSERT INTO events
 SETTINGS insert_deduplicate = 1
-VALUES (1, 'click', now());
+VALUES (1, 'click', '2026-01-21 12:00:00');
 
 -- Same block inserted again is deduplicated
 INSERT INTO events
 SETTINGS insert_deduplicate = 1
-VALUES (1, 'click', now());
+VALUES (1, 'click', '2026-01-21 12:00:00');
 ```
 
-### Custom Deduplication Key
+### Custom Deduplication Token
 
 ```sql
--- For ReplicatedMergeTree
+-- For retrying the same batch with an explicit token
 CREATE TABLE events
 (
     event_id UUID DEFAULT generateUUIDv4(),
@@ -250,6 +251,10 @@ ORDER BY (user_id, event_time)
 SETTINGS
     replicated_deduplication_window = 1000,
     replicated_deduplication_window_seconds = 600;
+
+INSERT INTO events
+SETTINGS insert_deduplicate = 1, insert_deduplication_token = 'events-batch-2026-01-21-001'
+VALUES (generateUUIDv4(), 'click', 100, '2026-01-21 12:00:00');
 ```
 
 ## Materialized Views for Deduplication
@@ -305,7 +310,7 @@ GROUP BY user_id;
 ### Force Merges
 
 ```sql
--- Trigger background merges to consolidate duplicates
+-- Request an unscheduled merge to consolidate duplicates
 OPTIMIZE TABLE users;
 
 -- Force final merge (expensive)
@@ -324,8 +329,8 @@ SELECT count() FROM users FINAL;  -- Slow
 -- Use aggregation
 SELECT count(DISTINCT user_id) FROM users;  -- Faster
 
--- Or estimate
-SELECT uniqExact(user_id) FROM users;  -- Fast, accurate
+-- Or exact distinct count
+SELECT uniqExact(user_id) FROM users;  -- Accurate, can use more memory
 ```
 
 ### Create Deduplicated View
@@ -365,15 +370,17 @@ client.execute(
 ### Upsert Pattern
 
 ```python
-# Check-then-insert pattern
+# Append-only upsert pattern
+from datetime import datetime, timezone
+
 def upsert_user(user_id, email, name):
     # Insert new version
-    client.execute("""
-        INSERT INTO users (user_id, email, name, updated_at)
-        VALUES (%s, %s, %s, now())
-    """, (user_id, email, name))
+    client.execute(
+        "INSERT INTO users (user_id, email, name, updated_at) VALUES",
+        [(user_id, email, name, datetime.now(timezone.utc))]
+    )
 
-    # Deduplication happens automatically
+    # Background merges deduplicate eventually; use FINAL for immediate correctness
 ```
 
 ## Monitoring Duplicates
@@ -419,4 +426,4 @@ ORDER BY parts DESC;
 
 ---
 
-Deduplication in ClickHouse is handled through table engines (ReplacingMergeTree, CollapsingMergeTree) and query patterns (FINAL, argMax, LIMIT BY). Choose the right approach based on your use case: ReplacingMergeTree for simple updates, CollapsingMergeTree for frequent deletes, and argMax for efficient aggregations. Force merges periodically to consolidate duplicates and improve query performance.
+Deduplication in ClickHouse is handled through table engines (ReplacingMergeTree, CollapsingMergeTree) and query patterns (FINAL, argMax, LIMIT BY). Choose the right approach based on your use case: ReplacingMergeTree for simple updates, CollapsingMergeTree for frequent deletes, and argMax for efficient aggregations. Use forced merges sparingly to consolidate duplicates when the operational cost is acceptable.

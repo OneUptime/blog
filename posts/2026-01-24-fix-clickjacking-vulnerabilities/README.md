@@ -8,7 +8,7 @@ Description: A practical guide to preventing clickjacking attacks by implementin
 
 ---
 
-Clickjacking tricks users into clicking something different from what they perceive. An attacker overlays your legitimate site with an invisible iframe and positions malicious buttons over your UI elements. When users think they are clicking your "Download" button, they are actually clicking "Transfer $10,000." Let's prevent that.
+Clickjacking tricks users into clicking something different from what they perceive. An attacker loads your legitimate site in an invisible iframe and positions your UI elements under deceptive page content. When users think they are clicking your "Download" button, they are actually clicking "Transfer $10,000." Let's prevent that.
 
 ## Understanding Clickjacking
 
@@ -55,8 +55,14 @@ app.use((req, res, next) => {
 
 // For specific routes that need different policies
 app.get('/embeddable-widget', (req, res) => {
-  // Allow specific trusted domain to embed
-  res.setHeader('X-Frame-Options', 'ALLOW-FROM https://trusted-partner.com');
+  // Allow a specific trusted domain to embed.
+  // X-Frame-Options has no working way to allow a single external origin
+  // (the old ALLOW-FROM directive is obsolete and ignored by modern browsers),
+  // so use CSP frame-ancestors instead.
+  res.setHeader(
+    'Content-Security-Policy',
+    "frame-ancestors https://trusted-partner.com"
+  );
   res.send('Widget content');
 });
 ```
@@ -109,7 +115,7 @@ flowchart LR
     subgraph XFO["X-Frame-Options"]
         D[DENY]
         S[SAMEORIGIN]
-        A[ALLOW-FROM single-url]
+        A[ALLOW-FROM obsolete]
     end
 
     subgraph CSP["CSP frame-ancestors"]
@@ -145,7 +151,7 @@ app.use(helmet({
     }
   },
   // Also set X-Frame-Options for older browsers
-  frameguard: { action: 'deny' }
+  xFrameOptions: { action: 'deny' }
 }));
 ```
 
@@ -189,13 +195,14 @@ server {
     add_header Content-Security-Policy "frame-ancestors 'none'; default-src 'self'" always;
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-XSS-Protection "0" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # For pages that can be embedded by partners
     location /partner-embed {
         add_header Content-Security-Policy "frame-ancestors 'self' https://partner.com" always;
-        add_header X-Frame-Options "ALLOW-FROM https://partner.com" always;
+        # X-Frame-Options cannot allow a specific external origin in modern browsers.
+        # Use CSP frame-ancestors for partner embedding.
         add_header X-Content-Type-Options "nosniff" always;
     }
 }
@@ -218,12 +225,11 @@ Headers can fail if not properly configured. Add JavaScript as a backup.
 
     // Option 1: Break out of the frame
     try {
-      window.top.location = window.self.location;
+      window.top.location.href = window.self.location.href;
     } catch (e) {
       // Cross-origin frame - can't redirect
       // Option 2: Make the page unusable
       document.body.innerHTML = '';
-      document.body.style.display = 'none';
 
       // Log the attempt
       console.error('Clickjacking attempt detected');
@@ -388,17 +394,16 @@ def verify_captcha(token):
 
 @app.route('/api/transfer', methods=['POST'])
 def transfer_funds():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     # Verify CAPTCHA for sensitive action
     captcha_token = data.get('captcha_token')
     if not captcha_token or not verify_captcha(captcha_token):
         return jsonify({'error': 'CAPTCHA verification failed'}), 403
 
-    # Additional clickjacking protection
-    # Check for suspicious request patterns
-    if request.headers.get('Sec-Fetch-Dest') == 'iframe':
-        return jsonify({'error': 'Request not allowed from iframe'}), 403
+    # Do not rely on Sec-Fetch-Dest to detect clicks from a framed page:
+    # a fetch/XHR from a framed same-origin document is not sent as "iframe".
+    # Use frame-ancestors on the page plus normal CSRF and authorization checks.
 
     # Proceed with transfer
     return perform_transfer(data)
@@ -430,6 +435,7 @@ def transfer_funds():
             height: 100%;
             z-index: 2;
             background: rgba(255, 255, 255, 0.01);
+            pointer-events: none;
         }
 
         .decoy button {
@@ -438,7 +444,7 @@ def transfer_funds():
             left: 300px;
             padding: 20px 40px;
             font-size: 18px;
-            cursor: pointer;
+            pointer-events: none;
         }
 
         iframe {
@@ -460,7 +466,7 @@ def transfer_funds():
     <div class="container">
         <iframe src="https://your-site.com/sensitive-page"></iframe>
         <div class="decoy">
-            <button onclick="alert('Gotcha!')">Click to Win!</button>
+            <button>Click to Win!</button>
         </div>
     </div>
 
@@ -515,7 +521,7 @@ Apply these headers to protect against clickjacking and related attacks:
 add_header X-Frame-Options "DENY" always;
 add_header Content-Security-Policy "frame-ancestors 'none'; default-src 'self'" always;
 add_header X-Content-Type-Options "nosniff" always;
-add_header X-XSS-Protection "1; mode=block" always;
+add_header X-XSS-Protection "0" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 ```

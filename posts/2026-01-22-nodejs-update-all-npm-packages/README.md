@@ -139,7 +139,7 @@ ncu --filter "eslint*"
 
 ## Method 3: Using yarn
 
-If you use yarn:
+If you use Yarn Classic (v1):
 
 ```bash
 # Check for updates
@@ -153,6 +153,16 @@ yarn upgrade-interactive
 
 # Update to latest (ignoring ranges)
 yarn upgrade-interactive --latest
+```
+
+For Yarn 2+:
+
+```bash
+# Update all packages
+yarn up
+
+# Interactive update
+yarn up -i
 ```
 
 ## Method 4: Manual Update
@@ -228,7 +238,7 @@ npm test
 // Update code as needed
 // For example, Express 4.x to 5.x requires:
 // - Remove app.del() (use app.delete())
-// - Update middleware syntax
+// - Review path route matching syntax changes
 ```
 
 ### Step 4: Commit Changes
@@ -319,14 +329,14 @@ More flexible alternative:
 ```json
 // renovate.json
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true
     },
     {
-      "matchPackagePatterns": ["eslint"],
+      "matchPackageNames": ["eslint**"],
       "groupName": "eslint"
     }
   ]
@@ -349,7 +359,7 @@ Or use a dedicated tool:
 
 ```bash
 npm install -g changelog-view
-changelog express
+changelog-view express
 ```
 
 ## Testing After Updates

@@ -168,7 +168,7 @@ sudo update-initramfs -u -k all    # Debian/Ubuntu
 sudo dracut --regenerate-all -f    # RHEL/CentOS
 
 # Verify root UUID matches GRUB config
-blkid | grep -i root
+findmnt -no SOURCE,UUID /
 cat /boot/grub/grub.cfg | grep root=
 
 # Update GRUB with correct UUIDs
@@ -303,7 +303,7 @@ GRUB_SAVEDEFAULT=true
 # Update GRUB
 sudo update-grub
 
-# Set default once using grub-set-default
+# Set saved default using grub-set-default
 sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux 5.15.0-working"
 ```
 
@@ -316,7 +316,7 @@ Kernel panics can indicate hardware problems.
 # Select "Memory test" option from GRUB
 
 # Or boot with memtest86+
-# Download from https://www.memtest86.com/
+# Download from https://www.memtest.org/
 
 # Check for memory errors in logs
 dmesg | grep -i "memory\|error\|fail"

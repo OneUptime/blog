@@ -16,8 +16,8 @@ PostgreSQL and MongoDB represent different database paradigms. This guide compar
 |---------|------------|---------|
 | Type | Relational (SQL) | Document (NoSQL) |
 | Schema | Strict | Flexible |
-| ACID | Full | Configurable |
-| Joins | Native | $lookup (limited) |
+| ACID | Full | Supported, including multi-document transactions |
+| Joins | Native | Aggregation $lookup |
 | Scaling | Vertical + Read replicas | Horizontal (sharding) |
 | JSON Support | JSONB | Native |
 
@@ -50,19 +50,19 @@ JOIN orders o ON o.user_id = u.id;
 ```javascript
 // Users collection
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439011"),
   email: "user@example.com",
   name: "John",
   orders: [
-    { total: 99.99, created_at: ISODate("...") },
-    { total: 149.99, created_at: ISODate("...") }
+    { total: 99.99, created_at: ISODate("2026-01-21T10:00:00Z") },
+    { total: 149.99, created_at: ISODate("2026-01-21T11:00:00Z") }
   ]
 }
 
 // Or separate collections with reference
 {
-  _id: ObjectId("..."),
-  user_id: ObjectId("..."),
+  _id: ObjectId("65b0f56a5f9b8f001e7a1234"),
+  user_id: ObjectId("507f1f77bcf86cd799439011"),
   total: 99.99
 }
 ```

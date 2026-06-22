@@ -12,7 +12,7 @@ Deploying Elasticsearch on Kubernetes can be challenging due to its stateful nat
 
 ## What is ECK (Elastic Cloud on Kubernetes)?
 
-ECK is the official Kubernetes operator from Elastic that automates the deployment, provisioning, management, and orchestration of Elasticsearch, Kibana, APM Server, Enterprise Search, Beats, Elastic Agent, and Elastic Maps Server on Kubernetes.
+ECK is the official Kubernetes operator from Elastic that automates the deployment, provisioning, management, and orchestration of Elasticsearch, Kibana, APM Server, Enterprise Search, Beats, Elastic Agent, Elastic Maps Server, Logstash, AutoOps Agent Policy, and Package Registry on Kubernetes.
 
 Key benefits of using ECK include:
 
@@ -26,10 +26,10 @@ Key benefits of using ECK include:
 
 Before we begin, ensure you have the following:
 
-- A running Kubernetes cluster (version 1.25 or later recommended)
+- A running Kubernetes cluster supported by your ECK version (ECK 3.4 supports Kubernetes 1.31-1.35)
 - kubectl configured to communicate with your cluster
 - Helm 3.x installed (optional, for Helm-based installation)
-- At least 4GB of RAM per Elasticsearch node
+- At least 2GB of RAM for the development example and 4GB or more per Elasticsearch node for production workloads
 - Persistent storage provisioner (for production deployments)
 
 ## Installing the ECK Operator
@@ -41,10 +41,10 @@ The simplest way to install ECK is using kubectl to apply the official manifests
 ```bash
 # Install the ECK operator CRDs
 
-kubectl create -f https://download.elastic.co/downloads/eck/2.11.1/crds.yaml
+kubectl create -f https://download.elastic.co/downloads/eck/3.4.0/crds.yaml
 
 # Install the ECK operator with RBAC rules
-kubectl apply -f https://download.elastic.co/downloads/eck/2.11.1/operator.yaml
+kubectl apply -f https://download.elastic.co/downloads/eck/3.4.0/operator.yaml
 ```
 
 Verify the operator is running:
@@ -123,7 +123,7 @@ metadata:
   name: quickstart
   namespace: default
 spec:
-  version: 8.12.0
+  version: 9.4.2
   nodeSets:
     - name: default
       count: 1
@@ -170,7 +170,7 @@ metadata:
   name: production
   namespace: elasticsearch
 spec:
-  version: 8.12.0
+  version: 9.4.2
   http:
     tls:
       selfSignedCertificate:
@@ -316,7 +316,7 @@ Expected output:
   "cluster_name": "production",
   "cluster_uuid": "abc123...",
   "version": {
-    "number": "8.12.0",
+    "number": "9.4.2",
     "build_flavor": "default",
     "build_type": "docker"
   },
@@ -357,7 +357,6 @@ metadata:
   namespace: elasticsearch
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 spec:
   ingressClassName: nginx
   tls:
@@ -389,7 +388,7 @@ metadata:
   name: production
   namespace: elasticsearch
 spec:
-  version: 8.12.0
+  version: 9.4.2
   count: 2
   elasticsearchRef:
     name: production
@@ -432,7 +431,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/gce-pd  # Adjust for your cloud provider
+provisioner: pd.csi.storage.gke.io  # Adjust for your cloud provider
 parameters:
   type: pd-ssd
 reclaimPolicy: Retain
@@ -499,7 +498,7 @@ containers:
 
 ## Upgrading Elasticsearch
 
-ECK supports rolling upgrades with zero downtime:
+ECK supports safe rolling upgrades, with no downtime for highly available clusters that meet the upgrade prerequisites:
 
 ```yaml
 # Simply update the version in your Elasticsearch spec
@@ -509,7 +508,7 @@ metadata:
   name: production
   namespace: elasticsearch
 spec:
-  version: 8.13.0  # Upgraded from 8.12.0
+  version: 9.4.2  # Upgraded from 9.4.1
   # ... rest of configuration
 ```
 
@@ -667,7 +666,7 @@ metadata:
   name: production
   namespace: elasticsearch
 spec:
-  version: 8.12.0
+  version: 9.4.2
   secureSettings:
     - secretName: gcs-credentials
   nodeSets:
@@ -721,7 +720,7 @@ curl -k -u "elastic:$PASSWORD" -X POST \
 
 ### Enabling HTTPS
 
-ECK enables TLS by default. To use custom certificates:
+ECK enables TLS by default. To use a custom HTTP certificate and a custom transport certificate authority:
 
 ```yaml
 apiVersion: elasticsearch.k8s.elastic.co/v1
@@ -730,7 +729,7 @@ metadata:
   name: production
   namespace: elasticsearch
 spec:
-  version: 8.12.0
+  version: 9.4.2
   http:
     tls:
       certificate:
@@ -738,8 +737,10 @@ spec:
   transport:
     tls:
       certificate:
-        secretName: elasticsearch-transport-cert
+        secretName: elasticsearch-transport-ca
 ```
+
+The HTTP certificate secret should contain `tls.crt` and `tls.key`. The transport CA secret should contain `ca.crt` and `ca.key`; ECK uses that CA to issue per-node transport certificates.
 
 ### Creating Additional Users
 
@@ -788,10 +789,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: elasticsearch
+              kubernetes.io/metadata.name: elasticsearch
         - namespaceSelector:
             matchLabels:
-              name: logging
+              kubernetes.io/metadata.name: logging
       ports:
         - protocol: TCP
           port: 9200
@@ -801,7 +802,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: elasticsearch
+              kubernetes.io/metadata.name: elasticsearch
       ports:
         - protocol: TCP
           port: 9300

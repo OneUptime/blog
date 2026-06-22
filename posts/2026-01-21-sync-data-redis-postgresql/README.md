@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, PostgreSQL, Data Sync, Change Data Capture, Dual-Write, Caching, Database
+Tags: Redis, PostgreSQL, Data Sync, PostgreSQL Triggers, Dual-Write, Caching, Database
 
-Description: A comprehensive guide to synchronizing data between Redis and PostgreSQL using dual-write patterns, change data capture, and event-driven synchronization strategies.
+Description: A comprehensive guide to synchronizing data between Redis and PostgreSQL using dual-write patterns, trigger-based notifications, and event-driven synchronization strategies.
 
 ---
 
@@ -59,7 +59,7 @@ class CacheAsideSync:
                 "created_at": row[3].isoformat()
             }
             # Populate cache
-            self.redis.setex(cache_key, self.default_ttl, json.dumps(user))
+            self.redis.set(cache_key, json.dumps(user), ex=self.default_ttl)
             return user
 
         return None
@@ -74,12 +74,13 @@ class CacheAsideSync:
                 "UPDATE users SET name = %s, email = %s WHERE id = %s",
                 (name, email, user_id)
             )
+            updated = cursor.rowcount
             self.pg.commit()
 
             # Invalidate cache
             self.redis.delete(cache_key)
 
-            return True
+            return updated > 0
         except Exception as e:
             self.pg.rollback()
             raise e
@@ -89,7 +90,7 @@ class CacheAsideSync:
 
 ## Pattern 2: Dual-Write Pattern
 
-Write to both systems simultaneously for stronger consistency:
+Write to both systems in one logical operation while keeping PostgreSQL as the source of truth:
 
 ```python
 import redis
@@ -120,8 +121,6 @@ class DualWriteSync:
             cursor.close()
 
     def create_user(self, user_data: Dict[str, Any]) -> int:
-        cache_key = f"user:{user_data.get('id', 'temp')}"
-
         with self.transaction() as cursor:
             # Write to PostgreSQL
             cursor.execute(
@@ -144,22 +143,25 @@ class DualWriteSync:
                 "created_at": created_at.isoformat()
             }
 
-            # Write to Redis within the same logical operation
-            cache_key = f"user:{user_id}"
-            try:
-                self.redis.setex(cache_key, 3600, json.dumps(cache_data))
-            except redis.RedisError as e:
-                # Log but do not fail - PostgreSQL is source of truth
-                logger.warning(f"Redis write failed: {e}")
+        # Write to Redis after the PostgreSQL transaction commits
+        cache_key = f"user:{user_id}"
+        try:
+            self.redis.set(cache_key, json.dumps(cache_data), ex=3600)
+        except redis.RedisError as e:
+            # Log but do not fail - PostgreSQL is source of truth
+            logger.warning(f"Redis write failed: {e}")
 
-            return user_id
+        return user_id
 
     def update_user_atomic(self, user_id: int, updates: Dict[str, Any]) -> bool:
         """Update with compensation on failure."""
         cache_key = f"user:{user_id}"
-
-        # Get current state for potential rollback
-        old_cache = self.redis.get(cache_key)
+        allowed_fields = {"name", "email"}
+        invalid_fields = set(updates) - allowed_fields
+        if invalid_fields:
+            raise ValueError(f"Unsupported update fields: {invalid_fields}")
+        if not updates:
+            return False
 
         with self.transaction() as cursor:
             # Build dynamic UPDATE query
@@ -167,7 +169,12 @@ class DualWriteSync:
             values = list(updates.values()) + [user_id]
 
             cursor.execute(
-                f"UPDATE users SET {set_clauses} WHERE id = %s RETURNING *",
+                f"""
+                UPDATE users
+                SET {set_clauses}
+                WHERE id = %s
+                RETURNING id, name, email, created_at
+                """,
                 values
             )
             row = cursor.fetchone()
@@ -183,18 +190,18 @@ class DualWriteSync:
                 "created_at": row[3].isoformat()
             }
 
-            try:
-                self.redis.setex(cache_key, 3600, json.dumps(new_cache_data))
-            except redis.RedisError as e:
-                logger.warning(f"Redis update failed: {e}")
-                # Consider compensation strategies here
+        try:
+            self.redis.set(cache_key, json.dumps(new_cache_data), ex=3600)
+        except redis.RedisError as e:
+            logger.warning(f"Redis update failed: {e}")
+            # Consider compensation strategies here
 
-            return True
+        return True
 ```
 
-## Pattern 3: Change Data Capture with PostgreSQL Listen/Notify
+## Pattern 3: Trigger-Based Sync with PostgreSQL Listen/Notify
 
-Use PostgreSQL's built-in notification system for real-time sync:
+Use PostgreSQL's built-in notification system for lightweight real-time sync:
 
 ```sql
 -- Create notification trigger in PostgreSQL
@@ -236,7 +243,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class CDCSync:
+class NotificationSync:
     def __init__(self, redis_client: redis.Redis, pg_dsn: str):
         self.redis = redis_client
         self.pg_dsn = pg_dsn
@@ -244,19 +251,19 @@ class CDCSync:
         self.listener_thread = None
 
     def start(self):
-        """Start the CDC listener in a background thread."""
+        """Start the notification listener in a background thread."""
         self.running = True
         self.listener_thread = threading.Thread(target=self._listen_loop)
         self.listener_thread.daemon = True
         self.listener_thread.start()
-        logger.info("CDC listener started")
+        logger.info("Notification listener started")
 
     def stop(self):
-        """Stop the CDC listener."""
+        """Stop the notification listener."""
         self.running = False
         if self.listener_thread:
             self.listener_thread.join(timeout=5)
-        logger.info("CDC listener stopped")
+        logger.info("Notification listener stopped")
 
     def _listen_loop(self):
         """Main listening loop for PostgreSQL notifications."""
@@ -298,7 +305,7 @@ class CDCSync:
                     "email": data.get("email"),
                     "created_at": data.get("created_at")
                 }
-                self.redis.setex(cache_key, 3600, json.dumps(cache_data))
+                self.redis.set(cache_key, json.dumps(cache_data), ex=3600)
                 logger.debug(f"Updated cache key: {cache_key}")
 
         except json.JSONDecodeError as e:
@@ -394,10 +401,10 @@ class EventDrivenSync:
 
         if event_type == "user_created":
             cache_key = f"user:{data['id']}"
-            self.redis.setex(cache_key, 3600, json.dumps(data))
+            self.redis.set(cache_key, json.dumps(data), ex=3600)
         elif event_type == "user_updated":
             cache_key = f"user:{data['id']}"
-            self.redis.setex(cache_key, 3600, json.dumps(data))
+            self.redis.set(cache_key, json.dumps(data), ex=3600)
         elif event_type == "user_deleted":
             cache_key = f"user:{data['id']}"
             self.redis.delete(cache_key)
@@ -461,7 +468,7 @@ class BatchSync:
 
             for user in users:
                 cache_key = f"user:{user['id']}"
-                pipe.setex(cache_key, 3600, json.dumps(user))
+                pipe.set(cache_key, json.dumps(user), ex=3600)
 
             pipe.execute()
 
@@ -497,7 +504,7 @@ class BatchSync:
                 "updated_at": row[4].isoformat()
             }
             cache_key = f"user:{user['id']}"
-            pipe.setex(cache_key, 3600, json.dumps(user))
+            pipe.set(cache_key, json.dumps(user), ex=3600)
             count += 1
 
             # Execute in batches
@@ -573,7 +580,7 @@ class ResilientSync:
                 "created_at": row[3].isoformat()
             }
             cache_key = f"user:{user_id}"
-            self.redis.setex(cache_key, 3600, json.dumps(user))
+            self.redis.set(cache_key, json.dumps(user), ex=3600)
 
     def sync_with_dead_letter(self, user_id: int):
         """Sync with dead letter queue for permanent failures."""
@@ -677,4 +684,4 @@ class MonitoredSync:
 
 ## Conclusion
 
-Synchronizing Redis and PostgreSQL requires careful consideration of consistency requirements, failure handling, and performance trade-offs. Start with the cache-aside pattern for simplicity, and evolve to CDC or event-driven patterns as your needs grow. Always prioritize PostgreSQL as the source of truth and design for eventual consistency in the cache layer.
+Synchronizing Redis and PostgreSQL requires careful consideration of consistency requirements, failure handling, and performance trade-offs. Start with the cache-aside pattern for simplicity, and evolve to trigger-based notifications or event-driven patterns as your needs grow. Always prioritize PostgreSQL as the source of truth and design for eventual consistency in the cache layer.

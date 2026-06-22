@@ -35,7 +35,7 @@ Docker Swarm provides built-in secret management. Secrets are encrypted at rest 
 ### Creating Secrets
 
 ```bash
-# Create secret from a file
+# Create secret from standard input
 echo "mysuperpassword" | docker secret create db_password -
 
 # Create secret from a file
@@ -67,8 +67,6 @@ cat /run/secrets/db_password
 
 ```yaml
 # docker-compose.yml (for Swarm mode)
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -143,9 +141,8 @@ FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
 
-# Mount secret during npm install, never stored in image layer
-RUN --mount=type=secret,id=npm_token \
-    NPM_TOKEN=$(cat /run/secrets/npm_token) \
+# Mount npm config during npm install, never stored in image layer
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
     npm ci
 
 COPY . .
@@ -162,7 +159,7 @@ export DOCKER_BUILDKIT=1
 
 # Build with secret
 docker build \
-  --secret id=npm_token,src=$HOME/.npmrc \
+  --secret id=npmrc,src=$HOME/.npmrc \
   -t myapp:latest .
 ```
 
@@ -174,8 +171,6 @@ For local development, Docker Compose supports file-based secrets without Swarm:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -215,14 +210,13 @@ For production, integrate with dedicated secret managers like HashiCorp Vault, A
 
 ```yaml
 # docker-compose.yml with Vault agent sidecar
-version: '3.8'
-
 services:
   vault-agent:
     image: hashicorp/vault:latest
     command: agent -config=/vault/config/agent.hcl
     volumes:
       - ./vault-config:/vault/config:ro
+      - ./vault-approle:/vault/approle:ro
       - secrets-volume:/secrets
     environment:
       VAULT_ADDR: https://vault.example.com:8200
@@ -242,9 +236,11 @@ volumes:
 # vault-config/agent.hcl
 auto_auth {
   method {
-    type = "kubernetes"
+    type = "approle"
     config = {
-      role = "myapp"
+      role_id_file_path = "/vault/approle/role_id"
+      secret_id_file_path = "/vault/approle/secret_id"
+      remove_secret_id_file_after_reading = false
     }
   }
 }
@@ -255,17 +251,16 @@ template {
 }
 ```
 
-### AWS Secrets Manager with Init Container
+### AWS Secrets Manager with Startup Service
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   secrets-init:
     image: amazon/aws-cli:latest
+    entrypoint: ["/bin/sh", "-c"]
     command: >
-      secretsmanager get-secret-value
+      aws secretsmanager get-secret-value
       --secret-id myapp/production
       --query SecretString
       --output text > /secrets/config.json
@@ -323,18 +318,20 @@ def watch_secrets(secrets_dir='/run/secrets'):
 
 ```python
 import logging
+import os
 
 # Configure logging to redact secrets
 class SecretFilter(logging.Filter):
     def __init__(self, patterns):
         super().__init__()
-        self.patterns = patterns
+        self.patterns = [pattern for pattern in patterns if pattern]
 
     def filter(self, record):
         message = record.getMessage()
         for pattern in self.patterns:
             if pattern in message:
-                record.msg = record.msg.replace(pattern, '***REDACTED***')
+                record.msg = message.replace(pattern, '***REDACTED***')
+                record.args = ()
         return True
 
 # Add filter to logger

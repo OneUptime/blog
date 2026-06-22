@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Laravel, PHP, Caching, Session, Queue, Horizon
 
-Description: A comprehensive guide to integrating Redis with Laravel applications, covering cache, sessions, queues, broadcasting, and Laravel Horizon for queue monitoring.
+Description: A comprehensive guide to integrating Redis with Laravel applications, covering cache, sessions, queues, direct Redis operations, rate limiting, and Laravel Horizon for queue monitoring.
 
 ---
 
-Laravel provides first-class Redis support out of the box. This guide covers everything from basic configuration to advanced patterns using Laravel's cache, session, queue, and broadcasting features with Redis.
+Laravel provides first-class Redis support out of the box. This guide covers everything from basic configuration to advanced patterns using Laravel's cache, session, queue, direct Redis operations, and rate limiting features with Redis.
 
 ## Installation and Configuration
 
@@ -71,7 +71,7 @@ REDIS_DB=0
 REDIS_CACHE_DB=1
 REDIS_SESSION_DB=2
 
-CACHE_DRIVER=redis
+CACHE_STORE=redis
 SESSION_DRIVER=redis
 QUEUE_CONNECTION=redis
 ```
@@ -175,6 +175,7 @@ Cache::lock('processing')->get(function () {
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class ProductController extends Controller
@@ -204,6 +205,7 @@ class ProductController extends Controller
 
         // Invalidate cache
         Cache::forget("product:{$id}");
+        Cache::forget('products:all');
         Cache::tags(['products'])->flush();
 
         return redirect()->route('products.show', $id);
@@ -331,6 +333,9 @@ class ProcessOrder implements ShouldQueue
 
 ```php
 use App\Jobs\ProcessOrder;
+use Illuminate\Bus\Batch;
+use Illuminate\Support\Facades\Bus;
+use Throwable;
 
 // Dispatch to default queue
 ProcessOrder::dispatch($order);
@@ -399,7 +404,8 @@ return [
                 'connection' => 'redis',
                 'queue' => ['default', 'emails', 'orders'],
                 'balance' => 'auto',
-                'processes' => 10,
+                'minProcesses' => 1,
+                'maxProcesses' => 10,
                 'tries' => 3,
                 'timeout' => 60,
             ],
@@ -440,7 +446,7 @@ php artisan horizon:continue
 php artisan horizon:terminate
 ```
 
-## Broadcasting with Redis
+## Broadcasting Events
 
 ### Configuration
 
@@ -448,15 +454,23 @@ php artisan horizon:terminate
 // config/broadcasting.php
 
 'connections' => [
-    'redis' => [
-        'driver' => 'redis',
-        'connection' => 'default',
+    'reverb' => [
+        'driver' => 'reverb',
+        'key' => env('REVERB_APP_KEY'),
+        'secret' => env('REVERB_APP_SECRET'),
+        'app_id' => env('REVERB_APP_ID'),
+        'options' => [
+            'host' => env('REVERB_HOST'),
+            'port' => env('REVERB_PORT', 443),
+            'scheme' => env('REVERB_SCHEME', 'https'),
+            'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+        ],
     ],
 ],
 ```
 
 ```env
-BROADCAST_DRIVER=redis
+BROADCAST_CONNECTION=reverb
 ```
 
 ### Creating Events
@@ -590,12 +604,13 @@ $redis->get('key');
 ### Configure Rate Limiter
 
 ```php
-// app/Providers/RouteServiceProvider.php
+// app/Providers/AppServiceProvider.php
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
-protected function configureRateLimiting(): void
+public function boot(): void
 {
     RateLimiter::for('api', function (Request $request) {
         return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
@@ -658,7 +673,7 @@ RateLimiter::clear('send-email:' . $user->id);
 ## Best Practices
 
 1. **Use separate databases** for cache, sessions, and queues
-2. **Configure connection pooling** for high-traffic applications
+2. **Configure persistent Redis connections** for high-traffic applications
 3. **Use cache tags** for easier invalidation
 4. **Implement proper queue retry logic**
 5. **Monitor with Horizon** in production
@@ -671,7 +686,7 @@ Laravel's Redis integration provides comprehensive support for:
 - Caching with tags and atomic locks
 - Session storage with Redis backend
 - Queue system with Horizon monitoring
-- Broadcasting for real-time features
+- Rate limiting backed by Redis cache storage
 - Direct Redis access for custom operations
 
-By following these patterns, you can build high-performance Laravel applications that leverage Redis for caching, queuing, and real-time features.
+By following these patterns, you can build high-performance Laravel applications that leverage Redis for caching, queuing, sessions, and rate limiting.

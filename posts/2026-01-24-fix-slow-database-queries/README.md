@@ -26,7 +26,7 @@ flowchart LR
     G --> H
 ```
 
-A full table scan reads every row in the table, which becomes exponentially slower as your data grows. Index scans, on the other hand, use pre-built data structures to find rows quickly.
+A full table scan reads every row in the table, so its cost generally grows linearly as your data grows. Index scans, on the other hand, use pre-built data structures to find rows quickly.
 
 ## Identifying Slow Queries
 
@@ -119,7 +119,7 @@ LIMIT 100;
 | Seq Scan | Small tables only | Large tables (>10k rows) |
 | Nested Loop | Few iterations | Many iterations on large sets |
 | Sort | In memory | On disk (sort method: external) |
-| Buffers | Low shared hit | High read count |
+| Buffers | High shared hit | High read count |
 
 ### MySQL EXPLAIN
 
@@ -173,7 +173,7 @@ for user in users:
     orders = db.query(f"SELECT * FROM orders WHERE user_id = {user.id}")
     user.orders = orders
 
-# GOOD: Single query with JOIN
+# GOOD (PostgreSQL): Single query with JOIN
 users_with_orders = db.query("""
     SELECT u.*,
            json_agg(o.*) as orders
@@ -214,7 +214,7 @@ SELECT id, title, summary, published_at
 FROM articles
 WHERE published = true;
 
--- Even better: Use a covering index
+-- Even better (PostgreSQL): Use a covering index
 CREATE INDEX idx_articles_published_covering
 ON articles(published)
 INCLUDE (id, title, summary, published_at);
@@ -226,7 +226,7 @@ INCLUDE (id, title, summary, published_at);
 -- Slow: Function prevents index usage
 SELECT * FROM users WHERE LOWER(email) = 'user@example.com';
 
--- Better: Create a functional index
+-- Better (PostgreSQL): Create a functional index
 CREATE INDEX idx_users_email_lower ON users(LOWER(email));
 
 -- Or normalize data on insert
@@ -271,6 +271,7 @@ WHERE relname = 'orders';
 UPDATE orders SET archived = true WHERE created_at < '2023-01-01';
 
 -- Better: Batch updates to avoid long locks
+-- Run this DO block outside an explicit transaction so COMMIT is allowed.
 DO $$
 DECLARE
     batch_size INTEGER := 10000;
@@ -317,8 +318,8 @@ flowchart TD
     G -->|Yes| H[Create Composite Index]
     G -->|No| I[Single Column Index]
 
-    H --> J[Order columns by selectivity]
-    J --> K[Most selective first]
+    H --> J[Order columns by query pattern]
+    J --> K[Equality first, then range or sort]
 ```
 
 ### Composite Index Guidelines

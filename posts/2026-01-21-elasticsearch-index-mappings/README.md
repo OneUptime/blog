@@ -175,6 +175,7 @@ Choose numeric types based on range:
 - `short`: -32,768 to 32,767
 - `integer`: -2^31 to 2^31-1
 - `long`: -2^63 to 2^63-1
+- `unsigned_long`: 0 to 2^64-1
 - `float`: 32-bit IEEE 754
 - `double`: 64-bit IEEE 754
 - `half_float`: 16-bit IEEE 754
@@ -222,7 +223,7 @@ Common date formats:
 }
 ```
 
-Accepted values: `true`, `false`, `"true"`, `"false"`
+Accepted values: `true`, `false`, `"true"`, `"false"`, `""` (empty string, interpreted as false)
 
 ### Object Fields
 
@@ -322,7 +323,7 @@ Geo-point formats:
 ```json
 { "location": { "lat": 41.12, "lon": -71.34 } }
 { "location": "41.12,-71.34" }
-{ "location": [41.12, -71.34] }
+{ "location": [-71.34, 41.12] }
 { "location": "drm3btev3e86" }
 ```
 
@@ -372,8 +373,8 @@ Control column-oriented storage for sorting/aggregations:
 ```json
 {
   "properties": {
-    "description": {
-      "type": "text",
+    "session_id": {
+      "type": "keyword",
       "doc_values": false
     },
     "status": {

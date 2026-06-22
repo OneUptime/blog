@@ -47,8 +47,8 @@ flowchart LR
 
 Before configuring KRaft mode, ensure you have:
 
-- Kafka 3.3 or later (3.6+ recommended for production)
-- Java 11 or later
+- Kafka 3.3 or later (3.6+ recommended for production; Kafka 4.x uses KRaft only)
+- Java version required by your Kafka release (Java 11 for Kafka 3.x brokers; Java 17 or later for Kafka 4.x brokers and tools)
 - Sufficient disk space for metadata logs
 
 ```bash
@@ -62,7 +62,7 @@ java -version
 
 ## Cluster Architecture Options
 
-KRaft supports three deployment patterns:
+KRaft supports two common deployment patterns:
 
 ```mermaid
 flowchart TB
@@ -308,19 +308,18 @@ WantedBy=multi-user.target
 After starting all nodes, verify the cluster is healthy:
 
 ```bash
-# Check cluster metadata
-kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --command "cat"
+# Check controller quorum status
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
 
 # List brokers in the cluster
 kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
-# Describe cluster metadata
-kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/*.log \
-    --command "node list"
+# Inspect cluster metadata from the metadata log directory
+kafka-metadata-shell.sh --directory /var/lib/kafka/data/__cluster_metadata-0/ ls
 
-# Check controller quorum status
-kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/*.log \
-    --command "quorum describe"
+# Decode metadata log records for debugging
+kafka-dump-log.sh --cluster-metadata-decoder \
+    --files /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log
 ```
 
 Create a test topic to verify functionality:
@@ -360,11 +359,11 @@ version: '3.8'
 
 services:
   kafka-0:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:8.3.0
     hostname: kafka-0
     container_name: kafka-0
     ports:
-      - "9092:9092"
+      - "9092:9094"
     environment:
       # KRaft configuration
       KAFKA_NODE_ID: 0
@@ -394,11 +393,11 @@ services:
       - kafka-network
 
   kafka-1:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:8.3.0
     hostname: kafka-1
     container_name: kafka-1
     ports:
-      - "9093:9092"
+      - "9093:9094"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -421,11 +420,11 @@ services:
       - kafka-network
 
   kafka-2:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:8.3.0
     hostname: kafka-2
     container_name: kafka-2
     ports:
-      - "9094:9092"
+      - "9094:9094"
     environment:
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: broker,controller
@@ -496,7 +495,7 @@ spec:
     spec:
       containers:
         - name: kafka
-          image: confluentinc/cp-kafka:7.5.0
+          image: confluentinc/cp-kafka:8.3.0
           ports:
             - containerPort: 9092
               name: broker
@@ -573,7 +572,7 @@ flowchart TB
     B --> C[Rolling Migration<br/>Recommended]
     B --> D[New Cluster<br/>MirrorMaker]
 
-    C --> C1[Upgrade to Kafka 3.5+]
+    C --> C1[Upgrade to a supported 3.x bridge release]
     C1 --> C2[Enable KRaft Controllers]
     C2 --> C3[Migrate Metadata]
     C3 --> C4[Remove ZooKeeper]
@@ -584,23 +583,28 @@ flowchart TB
     D3 --> D4[Switch Clients]
 ```
 
-For existing ZooKeeper-based clusters, Kafka provides a migration tool:
+For existing ZooKeeper-based clusters, Kafka provides a rolling migration path in supported bridge releases (Kafka 3.9 is the last Apache Kafka bridge release):
 
 ```bash
 # Step 1: Deploy KRaft controllers alongside existing cluster
 # Configure controllers to connect to ZooKeeper for migration
+zookeeper.metadata.migration.enable=true
+zookeeper.connect=localhost:2181
+controller.quorum.voters=100@controller-0:9093,101@controller-1:9093,102@controller-2:9093
 
-# Step 2: Run the migration tool
-kafka-metadata-migration.sh \
-    --bootstrap-server localhost:9092 \
-    --controller-quorum-voters 100@controller-0:9093,101@controller-1:9093,102@controller-2:9093 \
-    --zookeeper-connect localhost:2181
+# Step 2: Enable migration mode on ZooKeeper brokers and restart them rolling
+zookeeper.metadata.migration.enable=true
+controller.listener.names=CONTROLLER
+controller.quorum.voters=100@controller-0:9093,101@controller-1:9093,102@controller-2:9093
 
-# Step 3: Verify migration status
-kafka-metadata-migration.sh --status
+# Step 3: Watch controller logs for migration completion
+grep "Completed migration of metadata from Zookeeper to KRaft" /var/log/kafka/controller.log
 
-# Step 4: Complete migration (removes ZooKeeper dependency)
-kafka-metadata-migration.sh --finalize
+# Step 4: Restart brokers with KRaft broker configuration
+# Replace broker.id with node.id, add process.roles=broker, and remove zookeeper.connect
+
+# Step 5: Finalize migration by removing zookeeper.metadata.migration.enable
+# from controllers and restarting them one at a time
 ```
 
 ## Troubleshooting Common Issues
@@ -626,8 +630,8 @@ ls -la /var/lib/kafka/metadata/
 # Verify controller quorum voters configuration matches
 grep controller.quorum.voters /etc/kafka/broker.properties
 
-# Test connectivity from broker to controllers
-kafka-broker-api-versions.sh --bootstrap-server controller-0:9093
+# Test controller quorum access from the broker host
+kafka-metadata-quorum.sh --bootstrap-controller controller-0:9093 describe --status
 ```
 
 ### Issue: Cluster ID Mismatch

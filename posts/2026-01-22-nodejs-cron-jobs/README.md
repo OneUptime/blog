@@ -86,11 +86,10 @@ cron.schedule('0 8,12,18 * * *', task);  // 8 AM, 12 PM, 6 PM
 ```javascript
 const cron = require('node-cron');
 
-// Create scheduled task
-const task = cron.schedule('* * * * *', () => {
+// Create scheduled task without starting it immediately
+const task = cron.createTask('* * * * *', () => {
   console.log('Running task');
 }, {
-  scheduled: false,  // Don't start immediately
   timezone: 'America/New_York',
 });
 
@@ -187,7 +186,7 @@ schedule.scheduleJob({ hour: 14, minute: 30 }, task);  // 2:30 PM
 
 // Range of days
 schedule.scheduleJob({ 
-  dayOfWeek: { start: 1, end: 5 },  // Mon-Fri
+  dayOfWeek: new schedule.Range(1, 5),  // Mon-Fri
   hour: 9,
   minute: 0,
 }, task);
@@ -238,16 +237,17 @@ job.cancelNext();
 For persistent job scheduling with MongoDB:
 
 ```bash
-npm install agenda
+npm install agenda @agendajs/mongo-backend
 ```
 
 ### Setup
 
 ```javascript
-const Agenda = require('agenda');
+import { Agenda } from 'agenda';
+import { MongoBackend } from '@agendajs/mongo-backend';
 
 const agenda = new Agenda({
-  db: { address: 'mongodb://localhost/agenda' },
+  backend: new MongoBackend({ address: 'mongodb://localhost/agenda' }),
   processEvery: '30 seconds',
 });
 
@@ -271,10 +271,11 @@ await agenda.schedule('in 5 minutes', 'send email', {
 ### Recurring Jobs
 
 ```javascript
-const Agenda = require('agenda');
+import { Agenda } from 'agenda';
+import { MongoBackend } from '@agendajs/mongo-backend';
 
 const agenda = new Agenda({
-  db: { address: 'mongodb://localhost/agenda' },
+  backend: new MongoBackend({ address: 'mongodb://localhost/agenda' }),
 });
 
 agenda.define('daily report', async (job) => {
@@ -297,17 +298,18 @@ await agenda.every('0 0 * * 1', 'weekly backup');
 ### Job Options
 
 ```javascript
-const Agenda = require('agenda');
+import { Agenda } from 'agenda';
+import { MongoBackend } from '@agendajs/mongo-backend';
 
 const agenda = new Agenda({
-  db: { address: 'mongodb://localhost/agenda' },
+  backend: new MongoBackend({ address: 'mongodb://localhost/agenda' }),
 });
 
-agenda.define('important task', {
+agenda.define('important task', async (job) => {
+  // Task implementation
+}, {
   priority: 'high',
   concurrency: 5,  // Run 5 at a time
-}, async (job) => {
-  // Task implementation
 });
 
 // Schedule with options
@@ -322,9 +324,12 @@ await agenda.now('send email', { to: 'user@example.com' });
 ### Job Events
 
 ```javascript
-const Agenda = require('agenda');
+import { Agenda } from 'agenda';
+import { MongoBackend } from '@agendajs/mongo-backend';
 
-const agenda = new Agenda({ db: { address: 'mongodb://localhost/agenda' } });
+const agenda = new Agenda({
+  backend: new MongoBackend({ address: 'mongodb://localhost/agenda' }),
+});
 
 // Job events
 agenda.on('start', (job) => {
@@ -347,7 +352,12 @@ agenda.on('success', (job) => {
 ### Graceful Shutdown
 
 ```javascript
-const agenda = new Agenda({ db: { address: 'mongodb://localhost/agenda' } });
+import { Agenda } from 'agenda';
+import { MongoBackend } from '@agendajs/mongo-backend';
+
+const agenda = new Agenda({
+  backend: new MongoBackend({ address: 'mongodb://localhost/agenda' }),
+});
 
 async function gracefulShutdown() {
   await agenda.stop();
@@ -373,7 +383,7 @@ class TaskScheduler {
       throw new Error(`Task ${name} already exists`);
     }
     
-    const task = cron.schedule(schedule, async () => {
+    const task = cron.createTask(schedule, async () => {
       console.log(`[${new Date().toISOString()}] Running: ${name}`);
       try {
         await handler();
@@ -381,7 +391,7 @@ class TaskScheduler {
       } catch (error) {
         console.error(`[${new Date().toISOString()}] Failed: ${name}`, error);
       }
-    }, { scheduled: false });
+    });
     
     this.tasks.set(name, task);
     return this;

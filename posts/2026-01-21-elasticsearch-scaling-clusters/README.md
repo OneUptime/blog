@@ -35,7 +35,7 @@ Add more nodes:
 
 cluster.name: production
 node.name: data-node-4
-node.roles: [data, data_content, data_hot]
+node.roles: [data_content, data_hot]
 network.host: 0.0.0.0
 discovery.seed_hosts: ["master-1:9300", "master-2:9300", "master-3:9300"]
 ```
@@ -123,6 +123,7 @@ spec:
     - metadata:
         name: elasticsearch-data
       spec:
+        accessModes: [ReadWriteOnce]
         resources:
           requests:
             storage: 500Gi
@@ -135,6 +136,7 @@ spec:
     - metadata:
         name: elasticsearch-data
       spec:
+        accessModes: [ReadWriteOnce]
         resources:
           requests:
             storage: 2Ti
@@ -213,13 +215,15 @@ curl -X PUT "https://localhost:9200/products/_settings" \
 ### Set Default Replicas for New Indices
 
 ```bash
-curl -X PUT "https://localhost:9200/_template/default_replicas" \
+curl -X PUT "https://localhost:9200/_index_template/default_replicas" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "index_patterns": ["*"],
-    "settings": {
-      "number_of_replicas": 2
+    "template": {
+      "settings": {
+        "number_of_replicas": 2
+      }
     }
   }'
 ```
@@ -233,6 +237,7 @@ Dedicated master nodes improve stability:
 ```yaml
 # master-node elasticsearch.yml
 node.roles: [master]
+# Only set this while bootstrapping a brand-new cluster, then remove it.
 cluster.initial_master_nodes: ["master-1", "master-2", "master-3"]
 ```
 
@@ -339,9 +344,9 @@ curl -X GET "https://localhost:9200/_cat/indices?v&h=index,store.size&s=store.si
 
 ### Memory Planning
 
-- JVM heap: 50% of available RAM (max 31GB)
+- JVM heap: use automatic sizing by default; if overriding, set Xms and Xmx to no more than 50% of available RAM and stay below the compressed ordinary object pointer threshold
 - Leave 50% for OS file cache
-- 1GB heap per 20-30GB of data (rule of thumb)
+- Benchmark workload-specific RAM-to-data ratios
 
 ### Shard Sizing
 
@@ -428,48 +433,38 @@ curl -X PUT "https://localhost:9200/_cluster/settings" \
 
 ## Auto-Scaling (Kubernetes)
 
-### Horizontal Pod Autoscaler
+### ECK Elasticsearch Autoscaler
 
 ```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+apiVersion: autoscaling.k8s.elastic.co/v1alpha1
+kind: ElasticsearchAutoscaler
 metadata:
-  name: elasticsearch-data-hpa
+  name: elasticsearch-autoscaler
 spec:
-  scaleTargetRef:
-    apiVersion: elasticsearch.k8s.elastic.co/v1
-    kind: Elasticsearch
+  elasticsearchRef:
     name: elasticsearch
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
+  policies:
+  - name: hot
+    roles: ["data_hot", "data_content", "ingest"]
+    resources:
+      nodeCount:
+        min: 3
+        max: 10
+      cpu:
+        min: 2
+        max: 8
+      memory:
+        min: 4Gi
+        max: 32Gi
+      storage:
+        min: 500Gi
+        max: 500Gi
 ```
 
-### KEDA Scaler
+### Apply the Autoscaler
 
-```yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: elasticsearch-scaler
-spec:
-  scaleTargetRef:
-    name: elasticsearch
-  minReplicaCount: 3
-  maxReplicaCount: 10
-  triggers:
-  - type: prometheus
-    metadata:
-      serverAddress: http://prometheus:9090
-      metricName: elasticsearch_jvm_memory_used_bytes
-      query: sum(elasticsearch_jvm_memory_used_bytes{area="heap"}) / sum(elasticsearch_jvm_memory_max_bytes{area="heap"})
-      threshold: "80"
+```bash
+kubectl apply -f elasticsearch-autoscaler.yaml
 ```
 
 ## Best Practices

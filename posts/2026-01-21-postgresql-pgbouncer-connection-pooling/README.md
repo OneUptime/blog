@@ -63,9 +63,9 @@ pgbouncer --version
 sudo apt install build-essential libevent-dev libssl-dev pkg-config -y
 
 # Download and compile
-wget https://pgbouncer.github.io/downloads/files/1.22.0/pgbouncer-1.22.0.tar.gz
-tar xzf pgbouncer-1.22.0.tar.gz
-cd pgbouncer-1.22.0
+wget https://pgbouncer.github.io/downloads/files/1.25.2/pgbouncer-1.25.2.tar.gz
+tar xzf pgbouncer-1.25.2.tar.gz
+cd pgbouncer-1.25.2
 
 ./configure --prefix=/usr/local
 make
@@ -129,13 +129,14 @@ client_idle_timeout = 0
 Create `/etc/pgbouncer/userlist.txt`:
 
 ```txt
-"myuser" "md5password_hash"
-"analytics_user" "scram-sha-256$iterations:salt$StoredKey:ServerKey"
-"pgbouncer_admin" "admin_password_hash"
-"pgbouncer_stats" "stats_password_hash"
+"myuser" "SCRAM-SHA-256$iterations:salt$StoredKey:ServerKey"
+"analytics_user" "SCRAM-SHA-256$iterations:salt$StoredKey:ServerKey"
+"pgbouncer_auth" "SCRAM-SHA-256$iterations:salt$StoredKey:ServerKey"
+"pgbouncer_admin" "SCRAM-SHA-256$iterations:salt$StoredKey:ServerKey"
+"pgbouncer_stats" "SCRAM-SHA-256$iterations:salt$StoredKey:ServerKey"
 ```
 
-Generate MD5 hash:
+If you use `auth_type = md5`, generate an MD5 hash:
 
 ```bash
 # Generate MD5 password hash
@@ -146,29 +147,49 @@ echo -n "passwordusername" | md5sum
 psql -c "SELECT 'md5' || md5('password' || 'username');"
 ```
 
-Generate SCRAM-SHA-256 (PostgreSQL 14+):
+Generate SCRAM-SHA-256 (PostgreSQL 10+):
 
 ```bash
-# Generate from PostgreSQL
+# Generate from PostgreSQL as a superuser or role with catalog access
 psql -c "SELECT rolname, rolpassword FROM pg_authid WHERE rolname = 'myuser';"
 ```
 
 ### Authentication Query (Recommended)
 
-Instead of managing userlist.txt manually, query PostgreSQL:
+Instead of managing application users in userlist.txt manually, query PostgreSQL:
 
 ```ini
 [pgbouncer]
 auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
 auth_user = pgbouncer_auth
-auth_query = SELECT usename, passwd FROM pg_shadow WHERE usename=$1
+auth_query = SELECT uname, phash FROM pgbouncer.user_lookup($1)
 ```
 
 Create the auth user in PostgreSQL:
 
 ```sql
 CREATE USER pgbouncer_auth WITH PASSWORD 'secure_password';
-GRANT SELECT ON pg_shadow TO pgbouncer_auth;
+CREATE SCHEMA pgbouncer;
+
+CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(
+    IN i_username text,
+    OUT uname text,
+    OUT phash text
+) RETURNS record AS $$
+BEGIN
+    SELECT rolname, CASE WHEN rolvaliduntil < now() THEN NULL ELSE rolpassword END
+    FROM pg_authid
+    WHERE rolname = i_username AND rolcanlogin
+    INTO uname, phash;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql
+   SECURITY DEFINER
+   SET search_path = pg_catalog, pg_temp;
+
+REVOKE ALL ON FUNCTION pgbouncer.user_lookup(text) FROM public;
+GRANT EXECUTE ON FUNCTION pgbouncer.user_lookup(text) TO pgbouncer_auth;
 ```
 
 ## Pool Modes Explained
@@ -193,7 +214,7 @@ pool_mode = transaction
 - Connection assigned only during transaction
 - Most commonly used in production
 - Connections returned to pool after COMMIT/ROLLBACK
-- Limitations: No session-level state, prepared statements need workarounds
+- Limitations: No session-level state; prepared statement behavior depends on PgBouncer version and configuration
 - Use when: Short transactions, web applications
 
 ### Statement Mode
@@ -226,8 +247,9 @@ unix_socket_mode = 0777
 
 ; Authentication
 auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
 auth_user = pgbouncer_auth
-auth_query = SELECT usename, passwd FROM pg_shadow WHERE usename=$1
+auth_query = SELECT uname, phash FROM pgbouncer.user_lookup($1)
 
 ; Pool configuration
 pool_mode = transaction
@@ -255,7 +277,7 @@ server_check_query = SELECT 1
 
 ; Performance
 pkt_buf = 4096
-sbuf_lookahead = 0
+sbuf_loopcnt = 5
 suspend_timeout = 10
 tcp_defer_accept = 1
 tcp_keepalive = 1
@@ -429,7 +451,7 @@ SHOW POOLS;
 
 -- Overall statistics
 SHOW STATS;
--- Columns: database, total_requests, total_received, total_sent, total_query_time, avg_req, avg_recv, avg_sent, avg_query
+-- Columns include: database, total_xact_count, total_query_count, total_received, total_sent, total_xact_time, total_query_time, total_wait_time, avg_xact_count, avg_query_count, avg_recv, avg_sent, avg_xact_time, avg_query_time, avg_wait_time
 
 -- Lists
 SHOW LISTS;
@@ -442,8 +464,8 @@ Install pgbouncer_exporter:
 
 ```bash
 # Download
-wget https://github.com/prometheus-community/pgbouncer_exporter/releases/download/v0.7.0/pgbouncer_exporter-0.7.0.linux-amd64.tar.gz
-tar xzf pgbouncer_exporter-0.7.0.linux-amd64.tar.gz
+wget https://github.com/prometheus-community/pgbouncer_exporter/releases/download/v0.12.0/pgbouncer_exporter-0.12.0.linux-amd64.tar.gz
+tar xzf pgbouncer_exporter-0.12.0.linux-amd64.tar.gz
 
 # Run
 ./pgbouncer_exporter --pgBouncer.connectionString="postgres://pgbouncer_stats:password@localhost:6432/pgbouncer?sslmode=disable"
@@ -462,19 +484,19 @@ docker run -d --name pgbouncer-exporter \
 
 ```text
 # Client connections waiting for server connection
-pgbouncer_pools_client_waiting
+pgbouncer_pools_client_waiting_connections
 
 # Active server connections
-pgbouncer_pools_server_active
+pgbouncer_pools_server_active_connections
 
 # Available idle server connections
-pgbouncer_pools_server_idle
+pgbouncer_pools_server_idle_connections
 
 # Total query time (for calculating averages)
-pgbouncer_stats_total_query_time
+pgbouncer_stats_queries_duration_seconds_total
 
 # Total queries
-pgbouncer_stats_total_requests
+pgbouncer_stats_queries_total
 ```
 
 ### Alerting Rules
@@ -484,7 +506,7 @@ groups:
   - name: pgbouncer
     rules:
       - alert: PgBouncerClientWaiting
-        expr: pgbouncer_pools_client_waiting > 10
+        expr: pgbouncer_pools_client_waiting_connections > 10
         for: 5m
         labels:
           severity: warning
@@ -493,7 +515,7 @@ groups:
           description: "{{ $value }} clients waiting in {{ $labels.database }}"
 
       - alert: PgBouncerNoAvailableConnections
-        expr: pgbouncer_pools_server_idle == 0 AND pgbouncer_pools_server_active >= pgbouncer_pools_server_used
+        expr: pgbouncer_pools_server_idle_connections == 0 AND pgbouncer_pools_server_active_connections >= pgbouncer_pools_server_used_connections
         for: 2m
         labels:
           severity: critical
@@ -501,7 +523,7 @@ groups:
           summary: "No available connections in pool"
 
       - alert: PgBouncerHighMaxWait
-        expr: pgbouncer_pools_maxwait > 5
+        expr: pgbouncer_pools_client_maxwait_seconds > 5
         for: 1m
         labels:
           severity: warning
@@ -575,8 +597,8 @@ tail -f /var/log/pgbouncer/pgbouncer.log
 # Verify auth file format
 cat /etc/pgbouncer/userlist.txt
 
-# Test with auth query
-psql -h db-host -U pgbouncer_auth -c "SELECT usename, passwd FROM pg_shadow WHERE usename='myuser';"
+# Test with auth query function
+psql -h db-host -U pgbouncer_auth -c "SELECT uname, phash FROM pgbouncer.user_lookup('myuser');"
 
 # Check auth type matches PostgreSQL
 grep password_encryption /etc/postgresql/16/main/postgresql.conf
@@ -594,7 +616,6 @@ SHOW POOLS;
 -- Temporary fix: increase reserve
 SHOW CONFIG;
 SET reserve_pool_size = 10;
-RELOAD;
 ```
 
 ### Long-Running Queries
@@ -617,10 +638,7 @@ ORDER BY duration DESC;
 ### Configuration Errors
 
 ```bash
-# Validate configuration
-pgbouncer -d /etc/pgbouncer/pgbouncer.ini --help
-
-# Check with verbose output
+# Start in the foreground with verbose output to catch parse errors
 pgbouncer -v /etc/pgbouncer/pgbouncer.ini
 ```
 
@@ -658,27 +676,27 @@ connection_pool = psycopg2.pool.ThreadedConnectionPool(
     database="myapp",
     user="myuser",
     password="password",
-    # Important for transaction mode
-    options="-c statement_timeout=30000"
 )
 ```
 
 ### Prepared Statements in Transaction Mode
 
+PgBouncer 1.21+ supports protocol-level named prepared statements in transaction mode when `max_prepared_statements` is non-zero:
+
+```ini
+[pgbouncer]
+max_prepared_statements = 200
+```
+
+SQL-level prepared statements are not tracked by PgBouncer, so keep `PREPARE`, `EXECUTE`, and `DEALLOCATE` in the same transaction if you use them with transaction pooling:
+
 ```sql
 -- Use DEALLOCATE at end of transaction
+BEGIN;
 PREPARE my_stmt AS SELECT * FROM users WHERE id = $1;
 EXECUTE my_stmt(123);
 DEALLOCATE my_stmt;
 COMMIT;
-```
-
-Or use server-side prepared statements:
-
-```ini
-[pgbouncer]
-; Disable prepared statement tracking
-ignore_startup_parameters = extra_float_digits,options
 ```
 
 ## Conclusion

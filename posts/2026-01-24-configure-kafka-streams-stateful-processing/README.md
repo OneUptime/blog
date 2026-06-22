@@ -55,6 +55,7 @@ Stateful operations in Kafka Streams include:
 
 ```java
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
@@ -62,6 +63,7 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.Properties;
 
@@ -110,7 +112,9 @@ public class StatefulStreamProcessor {
         // Stateful aggregation: count events by key
         KTable<String, Long> eventCounts = inputStream
             .groupByKey()
-            .count(Materialized.as("event-counts-store"));
+            .count(Materialized.<String, Long, KeyValueStore<Bytes, byte[]>>as("event-counts-store")
+                .withKeySerde(Serdes.String())
+                .withValueSerde(Serdes.Long()));
 
         // Write results to output topic
         eventCounts.toStream()
@@ -143,16 +147,20 @@ flowchart LR
 ```
 
 ```java
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
+import org.apache.kafka.streams.state.WindowStore;
 
 import java.time.Duration;
 
 // Tumbling window: fixed-size, non-overlapping windows
-KTable<Windowed<String>, Long> windowedCounts = stream
+KTable<Windowed<String>, Long> windowedCounts = inputStream
     .groupByKey()
     .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
-    .count(Materialized.as("windowed-counts"));
+    .count(Materialized.<String, Long, WindowStore<Bytes, byte[]>>as("windowed-counts")
+        .withKeySerde(Serdes.String())
+        .withValueSerde(Serdes.Long()));
 ```
 
 ---

@@ -15,10 +15,12 @@ Correlating logs and traces is essential for modern observability. When investig
 Before starting, ensure you have:
 
 - Grafana 9.0 or later (trace-to-logs and logs-to-traces features)
-- Grafana Loki 2.4 or later
-- Grafana Tempo 1.0 or later
+- Grafana Loki 2.9.4 or later (for structured metadata with TSDB/v13)
+- Grafana Tempo 2.4 or later (for TraceQL metrics queries)
 - Applications instrumented with OpenTelemetry or similar tracing libraries
 - Basic understanding of distributed tracing concepts
+
+Note: Promtail is shown for existing Loki deployments. Grafana's documentation marks Promtail as end-of-life as of March 2, 2026; for new deployments, use Grafana Alloy or another supported Loki client.
 
 ## Architecture Overview
 
@@ -60,7 +62,7 @@ services:
       - observability
 
   tempo:
-    image: grafana/tempo:2.3.1
+    image: grafana/tempo:2.4.1
     container_name: tempo
     ports:
       - "3200:3200"   # Tempo API
@@ -85,6 +87,21 @@ services:
     networks:
       - observability
 
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+    networks:
+      - observability
+
   grafana:
     image: grafana/grafana:10.3.1
     container_name: grafana
@@ -101,6 +118,7 @@ services:
     depends_on:
       - loki
       - tempo
+      - prometheus
 
 networks:
   observability:
@@ -110,6 +128,7 @@ volumes:
   loki-data:
   tempo-data:
   grafana-data:
+  prometheus-data:
 ```
 
 ### Loki Configuration
@@ -201,6 +220,28 @@ metrics_generator:
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+```
+
+### Prometheus Configuration
+
+Create `prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
 ```
 
 ## Configuring Grafana Data Sources
@@ -215,6 +256,7 @@ apiVersion: 1
 datasources:
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     url: http://loki:3100
     isDefault: false
@@ -258,6 +300,13 @@ datasources:
         hide: false
       lokiSearch:
         datasourceUid: loki
+
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    uid: prometheus
+    isDefault: false
 ```
 
 ## Instrumenting Applications for Correlation
@@ -355,26 +404,23 @@ if __name__ == '__main__':
 ### Node.js Application with OpenTelemetry
 
 ```javascript
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { trace, context } = require('@opentelemetry/api');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const express = require('express');
-const pino = require('pino');
 
 // Initialize tracing
-const provider = new NodeTracerProvider();
 const exporter = new OTLPTraceExporter({
   url: 'http://tempo:4317',
 });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
-
-registerInstrumentations({
+const sdk = new NodeSDK({
+  traceExporter: exporter,
   instrumentations: [getNodeAutoInstrumentations()],
 });
+sdk.start();
+
+const express = require('express');
+const pino = require('pino');
 
 // Configure structured logging with trace context
 const logger = pino({
@@ -609,7 +655,7 @@ scrape_configs:
           level:
           service:
 
-      # Store trace_id as structured metadata (Loki 2.7+)
+      # Store trace_id as structured metadata (Loki 2.9+ with TSDB/v13 schema)
       - structured_metadata:
           trace_id:
           span_id:
@@ -657,17 +703,16 @@ scrape_configs:
 # Find all logs for a specific trace
 {job="application"} | json | trace_id="abc123def456789"
 
-# Using structured metadata (Loki 2.7+)
+# Using structured metadata (Loki 2.9+ with TSDB/v13 schema)
 {job="application"} | trace_id="abc123def456789"
 
 # Find error logs with trace context
 {job="application"} | json | level="error" | line_format "{{.trace_id}}: {{.message}}"
 
 # Aggregate errors by trace
-{job="application"}
-| json
-| level="error"
-| count_over_time({job="application"} | json | level="error" [5m]) by (trace_id)
+sum by (trace_id) (
+  count_over_time({job="application"} | json | level="error" [5m])
+)
 ```
 
 ### Finding Traces in Tempo by Service
@@ -848,7 +893,7 @@ Ensure trace IDs are formatted consistently:
 trace_id = format(ctx.trace_id, '032x')
 
 # JavaScript - ensure hex format
-const traceId = spanContext.traceId;  # Already hex string
+const traceId = spanContext.traceId;  // Already hex string
 ```
 
 ## Best Practices

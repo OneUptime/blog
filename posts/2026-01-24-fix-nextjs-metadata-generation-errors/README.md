@@ -49,8 +49,10 @@ export const metadata = {
 
 // Dynamic metadata function - CONFLICT!
 export async function generateMetadata({ params }) {
+  const { slug } = await params;
+
   return {
-    title: `Post: ${params.slug}`,
+    title: `Post: ${slug}`,
   };
 }
 ```
@@ -67,13 +69,15 @@ import { Metadata } from "next";
 
 // Define the params type for type safety
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 // Use generateMetadata for dynamic content
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+
   // Fetch post data to generate accurate metadata
-  const post = await getPost(params.slug);
+  const post = await getPost(slug);
 
   // Return null-safe metadata with fallbacks
   return {
@@ -94,19 +98,20 @@ export default function BlogPost({ params }: PageProps) {
 
 ---
 
-## Common Error: "generateMetadata must be async"
+## Common Issue: "Async metadata is not handled correctly"
 
-The `generateMetadata` function must be async when fetching data, even if you are not explicitly using await.
+The `generateMetadata` function can be synchronous when it returns a plain `Metadata` object, but data fetching is easier to handle correctly with `async` and `await`.
 
 ### The Problem
 
 ```typescript
 // app/products/[id]/page.tsx
-// ERROR: Function returns Promise but is not marked async
+// PROBLEM: Async data fetching without response or error handling
 
 export function generateMetadata({ params }) {
-  // Returning a promise without async keyword
-  return fetch(`/api/products/${params.id}`)
+  // Returning a promise chain makes error handling easy to skip
+  return params
+    .then(({ id }) => fetch(`/api/products/${id}`))
     .then((res) => res.json())
     .then((product) => ({
       title: product.name,
@@ -116,7 +121,7 @@ export function generateMetadata({ params }) {
 
 ### The Solution
 
-Always mark `generateMetadata` as async when dealing with asynchronous operations.
+Use `async` and `await` when dealing with asynchronous operations so you can handle failed responses and fallbacks clearly.
 
 ```typescript
 // app/products/[id]/page.tsx
@@ -125,14 +130,16 @@ Always mark `generateMetadata` as async when dealing with asynchronous operation
 import { Metadata } from "next";
 
 interface ProductPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 // Mark function as async and use await for clarity
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
+  const { id } = await params;
+
   try {
     // Use await for cleaner async code
-    const response = await fetch(`${process.env.API_URL}/products/${params.id}`, {
+    const response = await fetch(`${process.env.API_URL}/products/${id}`, {
       // Cache the response for better performance
       next: { revalidate: 3600 },
     });
@@ -179,7 +186,7 @@ export const metadata = {
   title: 123, // ERROR: Must be string
   description: ["Line 1", "Line 2"], // ERROR: Must be string
   openGraph: {
-    images: "https://example.com/image.png", // ERROR: Must be array
+    images: [{ url: 123 }], // ERROR: URL must be a string or URL object
   },
 };
 ```
@@ -208,7 +215,7 @@ export const metadata: Metadata = {
   authors: [
     { name: "John Doe", url: "https://johndoe.com" },
   ],
-  // OpenGraph images must be an array
+  // OpenGraph images can be a string, URL, object, or array
   openGraph: {
     title: "My Website",
     description: "Welcome to my website",
@@ -278,7 +285,6 @@ In Next.js 15+, params is a Promise that must be awaited. Always add null checks
 // CORRECT: Properly handle params and null values
 
 import { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 interface PageProps {
   params: Promise<{
@@ -476,11 +482,11 @@ export const metadata: Metadata = {
 };
 
 // app/dashboard/layout.tsx
-// CORRECT: Nested layout with its own template
+// CORRECT: Nested layout with its own template for child segments
 
 export const metadata: Metadata = {
   title: {
-    // This creates nested template: "Settings | Dashboard | My Site"
+    // This creates a dashboard template for child routes: "Settings | Dashboard"
     template: "%s | Dashboard",
     default: "Dashboard",
   },
@@ -488,7 +494,7 @@ export const metadata: Metadata = {
 
 // app/dashboard/settings/page.tsx
 export const metadata: Metadata = {
-  // Result: "Settings | Dashboard | My Site"
+  // Result: "Settings | Dashboard"
   title: "Settings",
 };
 ```

@@ -143,7 +143,7 @@ def factorial_iterative(n):
         result *= i
     return result
 
-print(factorial_iterative(10000))  # Works fine!
+result = factorial_iterative(10000)  # Computes fine without recursion depth issues
 ```
 
 ### Example: Fibonacci

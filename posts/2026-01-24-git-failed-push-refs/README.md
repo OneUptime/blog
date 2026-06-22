@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix Git's 'failed to push some refs' erro
 
 ---
 
-The error "failed to push some refs to" followed by your repository URL is Git's way of telling you the remote has changes you do not have locally. This is one of the most common Git errors, and understanding why it happens will help you fix it quickly and avoid data loss.
+The error "failed to push some refs to" followed by your repository URL is Git's way of telling you that one or more refs could not be updated. Often, the remote has changes you do not have locally. This is one of the most common Git errors, and understanding why it happens will help you fix it quickly and avoid data loss.
 
 ## Understanding the Error
 
@@ -67,7 +67,7 @@ This creates a merge commit combining your work with the remote changes.
 
 ```bash
 # Pull (fetch + merge) the remote changes
-git pull origin main
+git pull --no-rebase origin main
 
 # Git creates a merge commit if there are divergent changes
 # Merge made by the 'ort' strategy.
@@ -250,7 +250,7 @@ The safest workflow to avoid push failures:
 
 ```bash
 # 1. Before starting work, pull latest changes
-git pull origin main
+git pull --no-rebase origin main
 
 # 2. Create a feature branch
 git checkout -b feature/my-work
@@ -274,7 +274,7 @@ git push -u origin feature/my-work
 Sometimes pulling creates conflicts you need to resolve.
 
 ```bash
-git pull origin main
+git pull --no-rebase origin main
 # Auto-merging src/app.js
 # CONFLICT (content): Merge conflict in src/app.js
 # Automatic merge failed; fix conflicts and then commit the result.
@@ -346,10 +346,10 @@ git push
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 LOCAL=$(git rev-parse @)
-REMOTE=$(git rev-parse @{u} 2>/dev/null)
+UPSTREAM=$(git rev-parse --verify @{u} 2>/dev/null) || exit 0
 
-if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-    echo "Warning: Local and remote have diverged"
+if ! git merge-base --is-ancestor "$UPSTREAM" "$LOCAL"; then
+    echo "Warning: your upstream has commits not in your local branch"
     echo "Consider: git pull --rebase origin $BRANCH"
 fi
 ```
@@ -361,8 +361,8 @@ fi
 git fetch origin
 git log HEAD..origin/main --oneline
 
-# Pull with merge (creates merge commit)
-git pull origin main
+# Pull with merge (creates merge commit for divergent branches)
+git pull --no-rebase origin main
 
 # Pull with rebase (linear history)
 git pull --rebase origin main
@@ -390,7 +390,7 @@ git rebase --abort
 
 ## Summary
 
-The "failed to push some refs" error occurs when your local branch and the remote have diverged. The solution depends on the cause:
+The "failed to push some refs" error often occurs when your local branch and the remote have diverged, but it can have other causes. The solution depends on the cause:
 
 1. **Remote has new commits**: Pull (merge or rebase) then push
 2. **Branch protection**: Create a PR instead of direct push

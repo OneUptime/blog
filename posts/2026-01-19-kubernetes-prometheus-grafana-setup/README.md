@@ -144,11 +144,11 @@ alertmanager:
       repeat_interval: 12h
       receiver: 'slack-notifications'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity = "critical"
           receiver: 'pagerduty-critical'
-        - match:
-            severity: warning
+        - matchers:
+            - severity = "warning"
           receiver: 'slack-notifications'
     
     receivers:
@@ -161,7 +161,7 @@ alertmanager:
       
       - name: 'pagerduty-critical'
         pagerduty_configs:
-          - service_key: '<pagerduty-service-key>'
+          - routing_key: '<pagerduty-routing-key>'
             send_resolved: true
 
 # Grafana configuration
@@ -356,6 +356,7 @@ data:
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         relabel_configs:
           - action: labelmap
@@ -368,6 +369,7 @@ data:
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         metrics_path: /metrics/cadvisor
         relabel_configs:
@@ -588,10 +590,6 @@ spec:
               mountPath: /var/lib/grafana
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources
-            - name: grafana-dashboards-provider
-              mountPath: /etc/grafana/provisioning/dashboards
-            - name: grafana-dashboards
-              mountPath: /var/lib/grafana/dashboards
           
           readinessProbe:
             httpGet:
@@ -607,12 +605,6 @@ spec:
         - name: grafana-datasources
           configMap:
             name: grafana-datasources
-        - name: grafana-dashboards-provider
-          configMap:
-            name: grafana-dashboards-provider
-        - name: grafana-dashboards
-          configMap:
-            name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Secret
@@ -694,7 +686,7 @@ metadata:
   name: myapp-monitor
   namespace: monitoring
   labels:
-    release: prometheus  # Must match Prometheus operator selector
+    release: prometheus  # Required if you keep the chart's default ServiceMonitor selector
 spec:
   selector:
     matchLabels:
@@ -719,8 +711,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
     metadata:
+      labels:
+        app: myapp
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"

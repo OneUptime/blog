@@ -61,8 +61,10 @@ Much higher for analytics - complex sorts and aggregations:
 # Analytics: Can be much higher since fewer concurrent queries
 # Formula: (RAM - shared_buffers) / max_concurrent_queries / 2
 work_mem = 1GB  # For complex analytics queries
+```
 
-# Session-specific for heavy queries
+```sql
+-- Session-specific for heavy queries
 SET work_mem = '2GB';
 ```
 
@@ -80,7 +82,7 @@ Allow more memory for hash operations:
 
 ```conf
 # PostgreSQL 13+
-hash_mem_multiplier = 2.0  # Default is 2.0, can increase for analytics
+hash_mem_multiplier = 2.0  # Default is 1.0 in PostgreSQL 14, 2.0 in newer releases
 ```
 
 ## Parallel Query Configuration
@@ -108,7 +110,7 @@ max_worker_processes = 16
 ### Parallel Query Thresholds
 
 ```conf
-# Lower thresholds to enable parallel for more queries
+# Defaults shown; lower thresholds to enable parallel for more queries
 min_parallel_table_scan_size = 8MB   # Default: 8MB
 min_parallel_index_scan_size = 512kB  # Default: 512kB
 
@@ -311,6 +313,9 @@ GROUP BY DATE(order_date), customer_region, product_category;
 -- Create indexes on materialized view
 CREATE INDEX idx_daily_sales_date ON daily_sales_summary(sale_date);
 CREATE INDEX idx_daily_sales_region ON daily_sales_summary(customer_region);
+CREATE UNIQUE INDEX idx_daily_sales_unique ON daily_sales_summary(
+    sale_date, customer_region, product_category
+);
 
 -- Refresh periodically
 REFRESH MATERIALIZED VIEW daily_sales_summary;
@@ -373,10 +378,11 @@ WHERE order_date >= '2025-01-01';
 SELECT alter_table_set_access_method('events_2024', 'columnar');
 
 -- Better compression for analytics
-ALTER TABLE events_2024 SET (
-    columnar.compression = zstd,
-    columnar.stripe_row_limit = 150000,
-    columnar.chunk_group_row_limit = 10000
+SELECT alter_columnar_table_set(
+    'events_2024',
+    compression => 'zstd',
+    stripe_row_count => 150000,
+    chunk_row_count => 10000
 );
 ```
 
@@ -411,10 +417,14 @@ checkpoint_completion_target = 0.9
 
 ### Bulk Load Optimization
 
+```sql
+-- During bulk loads, can temporarily set per session:
+SET synchronous_commit = off;
+```
+
 ```conf
-# During bulk loads, can temporarily set:
-# (Reset after load completes)
-synchronous_commit = off
+# These require a server restart and are only safe when replication
+# and WAL archiving are not needed:
 wal_level = minimal
 max_wal_senders = 0
 ```
@@ -520,6 +530,11 @@ WHERE leader_pid IS NOT NULL;
 ```
 
 ### Monitor Resource Usage
+
+```conf
+# postgresql.conf
+shared_preload_libraries = 'pg_stat_statements'
+```
 
 ```sql
 -- Enable pg_stat_statements

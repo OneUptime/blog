@@ -26,7 +26,7 @@ import redis
 import uuid
 import time
 import threading
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 from dataclasses import dataclass
 
 @dataclass
@@ -75,16 +75,8 @@ class LeaderElection:
             self._is_leader = True
             return True
 
-        # Check if we're already the leader
-        current_leader = self.redis.get(self.key)
-        if current_leader == self.node_id:
-            self._is_leader = True
-            # Extend our leadership
-            self.redis.expire(self.key, self.ttl)
-            return True
-
-        self._is_leader = False
-        return False
+        # If we're already the leader, renew atomically.
+        return self.renew_leadership()
 
     def renew_leadership(self) -> bool:
         """Renew leader lease if we're the leader."""
@@ -179,6 +171,13 @@ class LeaderElection:
 
             except redis.RedisError as e:
                 print(f"Redis error in election loop: {e}")
+                if was_leader:
+                    was_leader = False
+                    if self._on_demoted_callback:
+                        try:
+                            self._on_demoted_callback()
+                        except Exception as callback_error:
+                            print(f"Error in demoted callback: {callback_error}")
                 self._is_leader = False
 
             # Sleep for renewal interval (1/3 of TTL)
@@ -226,7 +225,7 @@ class LeaderElectionWithFencing:
 
         return None
 
-    def execute_as_leader(self, operation: Callable[[int], any],
+    def execute_as_leader(self, operation: Callable[[int], Any],
                           ttl: int = 10):
         """
         Execute operation only if we're the leader.
@@ -320,15 +319,8 @@ class LeaderElection extends EventEmitter {
             return true;
         }
 
-        const currentLeader = await this.redis.get(this.key);
-        if (currentLeader === this.nodeId) {
-            this._isLeader = true;
-            await this.redis.expire(this.key, this.ttl);
-            return true;
-        }
-
-        this._isLeader = false;
-        return false;
+        // If we're already the leader, renew atomically.
+        return await this.renewLeadership();
     }
 
     async renewLeadership() {
@@ -349,8 +341,8 @@ class LeaderElection extends EventEmitter {
         return await this.redis.get(this.key);
     }
 
-    isLeader() {
-        return this._isLeader;
+    async isLeader() {
+        return this._isLeader && (await this.getLeader()) === this.nodeId;
     }
 
     async start() {
@@ -376,6 +368,10 @@ class LeaderElection extends EventEmitter {
                 }
             } catch (e) {
                 console.error('Election loop error:', e);
+                if (wasLeader) {
+                    wasLeader = false;
+                    this.emit('demoted');
+                }
                 this._isLeader = false;
             }
 
@@ -416,7 +412,7 @@ async function main() {
     await election.start();
 
     setInterval(async () => {
-        console.log(`Is leader: ${election.isLeader()}, ` +
+        console.log(`Is leader: ${await election.isLeader()}, ` +
                    `Current leader: ${await election.getLeader()}`);
     }, 5000);
 }

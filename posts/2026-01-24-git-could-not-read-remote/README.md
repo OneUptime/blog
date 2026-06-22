@@ -233,7 +233,7 @@ git config --global credential.helper 'cache --timeout=3600'
 git config --global credential.helper osxkeychain
 
 # On Windows, use credential manager
-git config --global credential.helper manager-core
+git config --global credential.helper manager
 ```
 
 ## Fix 5: Repository Access Denied

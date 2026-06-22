@@ -60,8 +60,9 @@ PRINCIPAL_ID=$(az vm identity show \
     --output tsv)
 
 az role assignment list \
-    --assignee $PRINCIPAL_ID \
+    --assignee-object-id $PRINCIPAL_ID \
     --all \
+    --fill-principal-name false \
     --output table
 ```
 
@@ -70,15 +71,17 @@ az role assignment list \
 ```bash
 # Check if assignment exists before creating
 EXISTING=$(az role assignment list \
-    --assignee $PRINCIPAL_ID \
+    --assignee-object-id $PRINCIPAL_ID \
     --role "Storage Blob Data Contributor" \
     --scope "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/mystorageaccount" \
+    --fill-principal-name false \
     --query "[0].id" \
     --output tsv)
 
 if [ -z "$EXISTING" ]; then
     az role assignment create \
-        --assignee $PRINCIPAL_ID \
+        --assignee-object-id $PRINCIPAL_ID \
+        --assignee-principal-type ServicePrincipal \
         --role "Storage Blob Data Contributor" \
         --scope "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/mystorageaccount"
     echo "Role assignment created"
@@ -132,7 +135,8 @@ for i in $(seq 1 $MAX_RETRIES); do
     echo "Attempt $i of $MAX_RETRIES..."
 
     if az role assignment create \
-        --assignee $PRINCIPAL_ID \
+        --assignee-object-id $PRINCIPAL_ID \
+        --assignee-principal-type ServicePrincipal \
         --role "Storage Blob Data Contributor" \
         --scope "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/mystorageaccount" \
         2>/dev/null; then
@@ -206,15 +210,16 @@ PRINCIPAL_ID=$(az vm identity show \
 
 # List all assignments
 az role assignment list \
-    --assignee $PRINCIPAL_ID \
+    --assignee-object-id $PRINCIPAL_ID \
     --all \
     --include-inherited \
+    --fill-principal-name false \
     --output table
 
 # Check what permissions a specific role provides
 az role definition list \
     --name "Storage Blob Data Reader" \
-    --query "[0].permissions[0].actions"
+    --query "[0].permissions[0].{actions:actions,dataActions:dataActions}"
 ```
 
 **Fix: Assign the correct role**
@@ -226,7 +231,8 @@ az role definition list \
 # Storage Blob Data Owner - Full control including RBAC
 
 az role assignment create \
-    --assignee $PRINCIPAL_ID \
+    --assignee-object-id $PRINCIPAL_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Storage Blob Data Contributor" \
     --scope "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/mystorageaccount"
 ```
@@ -239,7 +245,8 @@ This occurs when trying to assign a role to the identity that is running the scr
 # This will fail if run from a VM with managed identity
 # trying to give itself more permissions
 az role assignment create \
-    --assignee $(az vm identity show --name myVM --resource-group myRG --query principalId -o tsv) \
+    --assignee-object-id $(az vm identity show --name myVM --resource-group myRG --query principalId -o tsv) \
+    --assignee-principal-type ServicePrincipal \
     --role "Owner" \
     --scope "/subscriptions/xxx"
 ```
@@ -252,7 +259,8 @@ az login
 
 # Then create the role assignment
 az role assignment create \
-    --assignee $MANAGED_IDENTITY_PRINCIPAL_ID \
+    --assignee-object-id $MANAGED_IDENTITY_PRINCIPAL_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Contributor" \
     --scope "/subscriptions/xxx/resourceGroups/myRG"
 ```
@@ -376,8 +384,8 @@ TOKEN=$(curl -s -H "Metadata: true" \
     "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/" \
     | jq -r .access_token)
 
-# Decode JWT payload (base64)
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+# Decode JWT payload (base64url)
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))' "$TOKEN"
 ```
 
 ### Troubleshooting Flow
@@ -391,7 +399,7 @@ flowchart TD
     D -->|No| E[Check IMDS connectivity<br/>169.254.169.254]
     D -->|Yes| F{Role assigned?}
 
-    E --> E1[Verify NSG allows IMDS]
+    E --> E1[Bypass proxies and check host firewall]
 
     F -->|No| G[Create role assignment]
     F -->|Yes| H{Correct scope?}

@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing repeatable jobs with BullMQ, 
 
 ---
 
-Repeatable jobs in BullMQ allow you to schedule jobs that run automatically at specified intervals or cron schedules. This is perfect for tasks like sending daily reports, cleanup operations, or periodic data synchronization. This guide covers everything you need to know about implementing repeatable jobs.
+Repeatable jobs in BullMQ allow you to schedule jobs that run automatically at specified intervals or cron schedules. In BullMQ 5.16.0 and newer, use Job Schedulers to create and manage repeatable jobs. This is perfect for tasks like sending daily reports, cleanup operations, or periodic data synchronization. This guide covers everything you need to know about implementing repeatable jobs.
 
 ## Understanding Repeatable Jobs
 
@@ -27,13 +27,14 @@ const connection = new Redis({
 const queue = new Queue('scheduled-tasks', { connection });
 
 // Add a repeatable job with cron pattern
-await queue.add(
-  'daily-report',
-  { reportType: 'daily' },
+await queue.upsertJobScheduler(
+  'daily-report-scheduler',
   {
-    repeat: {
-      pattern: '0 9 * * *', // Every day at 9 AM
-    },
+    pattern: '0 9 * * *', // Every day at 9 AM
+  },
+  {
+    name: 'daily-report',
+    data: { reportType: 'daily' },
   }
 );
 ```
@@ -46,38 +47,45 @@ Use cron patterns for precise scheduling:
 // Cron pattern: minute hour day-of-month month day-of-week
 
 // Every minute
-await queue.add('check-health', {}, {
-  repeat: { pattern: '* * * * *' },
+await queue.upsertJobScheduler('check-health-scheduler', { pattern: '* * * * *' }, {
+  name: 'check-health',
+  data: {},
 });
 
 // Every hour at minute 0
-await queue.add('hourly-sync', {}, {
-  repeat: { pattern: '0 * * * *' },
+await queue.upsertJobScheduler('hourly-sync-scheduler', { pattern: '0 * * * *' }, {
+  name: 'hourly-sync',
+  data: {},
 });
 
 // Every day at midnight
-await queue.add('daily-cleanup', {}, {
-  repeat: { pattern: '0 0 * * *' },
+await queue.upsertJobScheduler('daily-cleanup-scheduler', { pattern: '0 0 * * *' }, {
+  name: 'daily-cleanup',
+  data: {},
 });
 
 // Every Monday at 9 AM
-await queue.add('weekly-report', {}, {
-  repeat: { pattern: '0 9 * * 1' },
+await queue.upsertJobScheduler('weekly-report-scheduler', { pattern: '0 9 * * 1' }, {
+  name: 'weekly-report',
+  data: {},
 });
 
 // First day of every month at 6 AM
-await queue.add('monthly-billing', {}, {
-  repeat: { pattern: '0 6 1 * *' },
+await queue.upsertJobScheduler('monthly-billing-scheduler', { pattern: '0 6 1 * *' }, {
+  name: 'monthly-billing',
+  data: {},
 });
 
 // Every 15 minutes
-await queue.add('sync-data', {}, {
-  repeat: { pattern: '*/15 * * * *' },
+await queue.upsertJobScheduler('sync-data-scheduler', { pattern: '*/15 * * * *' }, {
+  name: 'sync-data',
+  data: {},
 });
 
 // Business hours only (9 AM - 5 PM, Monday - Friday)
-await queue.add('business-check', {}, {
-  repeat: { pattern: '0 9-17 * * 1-5' },
+await queue.upsertJobScheduler('business-check-scheduler', { pattern: '0 9-17 * * 1-5' }, {
+  name: 'business-check',
+  data: {},
 });
 ```
 
@@ -87,23 +95,27 @@ Use millisecond intervals for simpler scheduling:
 
 ```typescript
 // Every 5 seconds
-await queue.add('heartbeat', {}, {
-  repeat: { every: 5000 },
+await queue.upsertJobScheduler('heartbeat-scheduler', { every: 5000 }, {
+  name: 'heartbeat',
+  data: {},
 });
 
 // Every minute
-await queue.add('quick-check', {}, {
-  repeat: { every: 60000 },
+await queue.upsertJobScheduler('quick-check-scheduler', { every: 60000 }, {
+  name: 'quick-check',
+  data: {},
 });
 
 // Every 5 minutes
-await queue.add('sync-status', {}, {
-  repeat: { every: 5 * 60 * 1000 },
+await queue.upsertJobScheduler('sync-status-scheduler', { every: 5 * 60 * 1000 }, {
+  name: 'sync-status',
+  data: {},
 });
 
 // Every hour
-await queue.add('hourly-task', {}, {
-  repeat: { every: 60 * 60 * 1000 },
+await queue.upsertJobScheduler('hourly-task-scheduler', { every: 60 * 60 * 1000 }, {
+  name: 'hourly-task',
+  data: {},
 });
 ```
 
@@ -113,30 +125,45 @@ Control how many times a job repeats:
 
 ```typescript
 // Run 10 times, every hour
-await queue.add('limited-task', {}, {
-  repeat: {
+await queue.upsertJobScheduler(
+  'limited-task-scheduler',
+  {
     every: 60 * 60 * 1000,
     limit: 10,
   },
-});
+  {
+    name: 'limited-task',
+    data: {},
+  }
+);
 
 // Run until a specific date
 const endDate = new Date('2024-12-31');
-await queue.add('until-eoy', {}, {
-  repeat: {
+await queue.upsertJobScheduler(
+  'until-eoy-scheduler',
+  {
     pattern: '0 9 * * *',
     endDate,
   },
-});
+  {
+    name: 'until-eoy',
+    data: {},
+  }
+);
 
 // Start from a specific date
 const startDate = new Date('2024-06-01');
-await queue.add('from-june', {}, {
-  repeat: {
+await queue.upsertJobScheduler(
+  'from-june-scheduler',
+  {
     pattern: '0 9 * * *',
     startDate,
   },
-});
+  {
+    name: 'from-june',
+    data: {},
+  }
+);
 ```
 
 ## Timezone Support
@@ -145,31 +172,45 @@ Schedule jobs in specific timezones:
 
 ```typescript
 // Daily at 9 AM in New York timezone
-await queue.add('ny-morning-report', {}, {
-  repeat: {
+await queue.upsertJobScheduler(
+  'ny-morning-report-scheduler',
+  {
     pattern: '0 9 * * *',
     tz: 'America/New_York',
   },
-});
+  {
+    name: 'ny-morning-report',
+    data: {},
+  }
+);
 
 // Daily at 9 AM in Tokyo timezone
-await queue.add('tokyo-morning-report', {}, {
-  repeat: {
+await queue.upsertJobScheduler(
+  'tokyo-morning-report-scheduler',
+  {
     pattern: '0 9 * * *',
     tz: 'Asia/Tokyo',
   },
-});
+  {
+    name: 'tokyo-morning-report',
+    data: {},
+  }
+);
 
 // Multiple timezone support
 const timezones = ['America/New_York', 'Europe/London', 'Asia/Tokyo'];
 for (const tz of timezones) {
-  await queue.add(`morning-report-${tz}`, { timezone: tz }, {
-    repeat: {
+  await queue.upsertJobScheduler(
+    `morning-report-${tz}-scheduler`,
+    {
       pattern: '0 9 * * *',
       tz,
     },
-    jobId: `morning-report-${tz}`,
-  });
+    {
+      name: `morning-report-${tz}`,
+      data: { timezone: tz },
+    }
+  );
 }
 ```
 
@@ -186,23 +227,22 @@ class RepeatableJobManager {
   }
 
   async listRepeatableJobs() {
-    const repeatableJobs = await this.queue.getRepeatableJobs();
+    const schedulers = await this.queue.getJobSchedulers();
 
-    return repeatableJobs.map(job => ({
-      key: job.key,
-      name: job.name,
-      id: job.id,
-      endDate: job.endDate,
-      tz: job.tz,
-      pattern: job.pattern,
-      every: job.every,
-      next: new Date(job.next).toISOString(),
+    return schedulers.map(scheduler => ({
+      id: scheduler.key,
+      name: scheduler.name,
+      endDate: scheduler.endDate,
+      tz: scheduler.tz,
+      pattern: scheduler.pattern,
+      every: scheduler.every,
+      next: new Date(scheduler.next).toISOString(),
     }));
   }
 
   async findRepeatableJob(name: string) {
-    const jobs = await this.queue.getRepeatableJobs();
-    return jobs.find(job => job.name === name);
+    const schedulers = await this.queue.getJobSchedulers();
+    return schedulers.find(scheduler => scheduler.name === name);
   }
 }
 ```
@@ -213,39 +253,37 @@ class RepeatableJobManager {
 class RepeatableJobManager {
   // ... previous code
 
-  async removeRepeatableJob(name: string, repeat: { pattern?: string; every?: number }) {
-    await this.queue.removeRepeatableByKey(
-      `${name}:${repeat.pattern || repeat.every}:::${repeat.tz || ''}`
-    );
-    console.log(`Removed repeatable job: ${name}`);
+  async removeRepeatableJob(schedulerId: string) {
+    await this.queue.removeJobScheduler(schedulerId);
+    console.log(`Removed repeatable job scheduler: ${schedulerId}`);
   }
 
   async removeAllRepeatableJobs() {
-    const jobs = await this.queue.getRepeatableJobs();
+    const schedulers = await this.queue.getJobSchedulers();
 
-    for (const job of jobs) {
-      await this.queue.removeRepeatableByKey(job.key);
+    for (const scheduler of schedulers) {
+      await this.queue.removeJobScheduler(scheduler.key);
     }
 
-    console.log(`Removed ${jobs.length} repeatable jobs`);
+    console.log(`Removed ${schedulers.length} repeatable job schedulers`);
   }
 
   async removeRepeatableJobByName(name: string) {
-    const jobs = await this.queue.getRepeatableJobs();
-    const matching = jobs.filter(job => job.name === name);
+    const schedulers = await this.queue.getJobSchedulers();
+    const matching = schedulers.filter(scheduler => scheduler.name === name);
 
-    for (const job of matching) {
-      await this.queue.removeRepeatableByKey(job.key);
+    for (const scheduler of matching) {
+      await this.queue.removeJobScheduler(scheduler.key);
     }
 
-    console.log(`Removed ${matching.length} jobs named ${name}`);
+    console.log(`Removed ${matching.length} job schedulers named ${name}`);
   }
 }
 ```
 
 ## Preventing Duplicate Repeatable Jobs
 
-Ensure jobs are registered only once:
+Use stable scheduler IDs so jobs are created or updated without duplicate schedules:
 
 ```typescript
 class SafeRepeatableJobRegistrar {
@@ -256,46 +294,29 @@ class SafeRepeatableJobRegistrar {
   }
 
   async registerRepeatable(
+    schedulerId: string,
     name: string,
     data: Record<string, unknown>,
     repeatOptions: { pattern?: string; every?: number; tz?: string }
   ) {
-    // Check if already exists
-    const existing = await this.queue.getRepeatableJobs();
-    const exists = existing.some(
-      job => job.name === name &&
-             (job.pattern === repeatOptions.pattern || job.every === repeatOptions.every)
-    );
-
-    if (exists) {
-      console.log(`Repeatable job ${name} already exists, skipping`);
-      return null;
-    }
-
-    const job = await this.queue.add(name, data, {
-      repeat: repeatOptions,
+    const job = await this.queue.upsertJobScheduler(schedulerId, repeatOptions, {
+      name,
+      data,
     });
 
-    console.log(`Registered repeatable job: ${name}`);
+    console.log(`Registered repeatable job scheduler: ${schedulerId}`);
     return job;
   }
 
   async updateRepeatable(
+    schedulerId: string,
     name: string,
     data: Record<string, unknown>,
-    oldRepeat: { pattern?: string; every?: number },
     newRepeat: { pattern?: string; every?: number; tz?: string }
   ) {
-    // Remove old job
-    const jobs = await this.queue.getRepeatableJobs();
-    const oldJob = jobs.find(j => j.name === name);
-    if (oldJob) {
-      await this.queue.removeRepeatableByKey(oldJob.key);
-    }
-
-    // Add new job
-    return this.queue.add(name, data, {
-      repeat: newRepeat,
+    return this.queue.upsertJobScheduler(schedulerId, newRepeat, {
+      name,
+      data,
     });
   }
 }
@@ -321,40 +342,55 @@ class ReportScheduler {
 
   async scheduleReports() {
     // Daily sales report at 7 AM
-    await this.queue.add('sales-report', {
-      reportType: 'daily',
-      recipients: ['sales@company.com'],
-      format: 'pdf',
-    }, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      'sales-report-scheduler',
+      {
         pattern: '0 7 * * *',
         tz: 'America/New_York',
       },
-    });
+      {
+        name: 'sales-report',
+        data: {
+          reportType: 'daily',
+          recipients: ['sales@company.com'],
+          format: 'pdf',
+        },
+      }
+    );
 
     // Weekly summary every Monday at 8 AM
-    await this.queue.add('weekly-summary', {
-      reportType: 'weekly',
-      recipients: ['management@company.com'],
-      format: 'pdf',
-    }, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      'weekly-summary-scheduler',
+      {
         pattern: '0 8 * * 1',
         tz: 'America/New_York',
       },
-    });
+      {
+        name: 'weekly-summary',
+        data: {
+          reportType: 'weekly',
+          recipients: ['management@company.com'],
+          format: 'pdf',
+        },
+      }
+    );
 
     // Monthly financial report on 1st at 6 AM
-    await this.queue.add('monthly-financial', {
-      reportType: 'monthly',
-      recipients: ['finance@company.com', 'cfo@company.com'],
-      format: 'pdf',
-    }, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      'monthly-financial-scheduler',
+      {
         pattern: '0 6 1 * *',
         tz: 'America/New_York',
       },
-    });
+      {
+        name: 'monthly-financial',
+        data: {
+          reportType: 'monthly',
+          recipients: ['finance@company.com', 'cfo@company.com'],
+          format: 'pdf',
+        },
+      }
+    );
   }
 }
 
@@ -386,35 +422,39 @@ class CleanupScheduler {
 
   async scheduleCleanupJobs() {
     // Clean old logs every night at 2 AM
-    await this.queue.add('clean-logs', {
-      type: 'logs',
-      olderThanDays: 30,
-    }, {
-      repeat: { pattern: '0 2 * * *' },
+    await this.queue.upsertJobScheduler('clean-logs-scheduler', { pattern: '0 2 * * *' }, {
+      name: 'clean-logs',
+      data: {
+        type: 'logs',
+        olderThanDays: 30,
+      },
     });
 
     // Clean temp files every 6 hours
-    await this.queue.add('clean-temp', {
-      type: 'temp-files',
-      olderThanDays: 1,
-    }, {
-      repeat: { every: 6 * 60 * 60 * 1000 },
+    await this.queue.upsertJobScheduler('clean-temp-scheduler', { every: 6 * 60 * 60 * 1000 }, {
+      name: 'clean-temp',
+      data: {
+        type: 'temp-files',
+        olderThanDays: 1,
+      },
     });
 
     // Clean expired sessions every hour
-    await this.queue.add('clean-sessions', {
-      type: 'expired-sessions',
-      olderThanDays: 0,
-    }, {
-      repeat: { pattern: '0 * * * *' },
+    await this.queue.upsertJobScheduler('clean-sessions-scheduler', { pattern: '0 * * * *' }, {
+      name: 'clean-sessions',
+      data: {
+        type: 'expired-sessions',
+        olderThanDays: 0,
+      },
     });
 
     // Archive old data weekly on Sunday at 3 AM
-    await this.queue.add('archive-old-data', {
-      type: 'old-data',
-      olderThanDays: 90,
-    }, {
-      repeat: { pattern: '0 3 * * 0' },
+    await this.queue.upsertJobScheduler('archive-old-data-scheduler', { pattern: '0 3 * * 0' }, {
+      name: 'archive-old-data',
+      data: {
+        type: 'old-data',
+        olderThanDays: 90,
+      },
     });
   }
 }
@@ -445,15 +485,19 @@ class HealthMonitor {
     ];
 
     for (const svc of services) {
-      await this.queue.add(`health-${svc.service}`, {
-        service: svc.service,
-        endpoint: svc.endpoint,
-        expectedStatus: 200,
-        timeout: 5000,
-      }, {
-        repeat: { every: svc.interval },
-        jobId: `health-check-${svc.service}`,
-      });
+      await this.queue.upsertJobScheduler(
+        `health-check-${svc.service}-scheduler`,
+        { every: svc.interval },
+        {
+          name: `health-${svc.service}`,
+          data: {
+            service: svc.service,
+            endpoint: svc.endpoint,
+            expectedStatus: 200,
+            timeout: 5000,
+          },
+        }
+      );
     }
   }
 }
@@ -480,20 +524,24 @@ const healthWorker = new Worker<HealthCheckJobData>('health-checks', async (job)
   } catch (error) {
     console.error(`Health check error for ${service}:`, error);
     // Send alert
-    return { service, healthy: false, error: error.message };
+    return {
+      service,
+      healthy: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }, { connection });
 ```
 
 ## Handling Missed Executions
 
-When a worker is down, repeatable jobs accumulate. Handle this:
+When workers are down or too slow, due jobs can wait in the queue, but BullMQ schedulers do not backfill every missed interval. Monitor waiting and active jobs so you can detect delayed processing:
 
 ```typescript
 const queue = new Queue('scheduled', {
   connection,
   defaultJobOptions: {
-    // Don't create job if previous is still waiting/active
+    // Keep completed jobs from growing unbounded
     removeOnComplete: true,
     removeOnFail: false,
   },
@@ -522,7 +570,7 @@ async function handleMissedJobs() {
 
 ## Best Practices
 
-1. **Use unique job IDs** - Prevent duplicate registrations with explicit job IDs.
+1. **Use stable scheduler IDs** - Prevent duplicate schedules by using explicit scheduler IDs with `upsertJobScheduler`.
 
 2. **Clean up old configurations** - Remove outdated repeatable jobs on deploy.
 

@@ -284,7 +284,7 @@ func main() {
     funcMap := template.FuncMap{
         "upper": strings.ToUpper,
         "lower": strings.ToLower,
-        "title": strings.Title,
+        "trim":  strings.TrimSpace,
         "formatDate": func(t time.Time) string {
             return t.Format("Jan 02, 2006")
         },
@@ -309,7 +309,7 @@ Date: {{.CreatedAt | formatDate}}
 Sum: {{add 5 3}}
 Product: {{multiply 2.5 4.0}}
 Default: {{default "N/A" .MissingField}}
-Chained: {{.Name | lower | title}}
+Chained: {{.Name | upper | lower | trim}}
 `))
     
     data := map[string]interface{}{
@@ -441,7 +441,7 @@ func main() {
     }
     
     tmpl.Execute(os.Stdout, data)
-    // The script tags and javascript: URL are escaped
+    // The script tags are escaped and the unsafe javascript: URL is filtered
 }
 ```
 
@@ -670,7 +670,7 @@ Template syntax reference:
 1. Use `html/template` for web output (auto-escaping)
 2. Use `text/template` for config files, emails
 3. Create custom functions with `FuncMap`
-4. Use `template.Must()` for compile-time validation
+4. Use `template.Must()` to fail fast when parsing templates
 5. Execute to a buffer first for error handling
 
 ---

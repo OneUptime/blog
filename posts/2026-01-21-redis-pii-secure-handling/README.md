@@ -119,8 +119,13 @@ const Redis = require('ioredis');
 
 class PIITokenizer {
   constructor(redisUrl, encryptionKey) {
+    if (!encryptionKey) {
+      throw new Error('PII_ENCRYPTION_KEY is required');
+    }
+
     this.redis = new Redis(redisUrl);
-    this.encryptionKey = crypto.scryptSync(encryptionKey, 'pii-salt', 32);
+    this.encryptionKey = crypto.scryptSync(encryptionKey, 'pii-encryption-salt', 32);
+    this.lookupKey = crypto.scryptSync(encryptionKey, 'pii-lookup-salt', 32);
     this.tokenPrefix = 'token:';
     this.vaultPrefix = 'vault:';
   }
@@ -130,7 +135,7 @@ class PIITokenizer {
   }
 
   encrypt(plaintext) {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
 
     let encrypted = cipher.update(plaintext, 'utf8', 'base64');
@@ -156,6 +161,13 @@ class PIITokenizer {
     return decrypted;
   }
 
+  getLookupHash(piiValue) {
+    return crypto
+      .createHmac('sha256', this.lookupKey)
+      .update(piiValue)
+      .digest('hex');
+  }
+
   async tokenize(piiValue, metadata = {}) {
     // Check if already tokenized
     const existingToken = await this.findExistingToken(piiValue);
@@ -171,15 +183,15 @@ class PIITokenizer {
       type: metadata.type || 'generic',
       createdAt: new Date().toISOString(),
       accessCount: 0,
-      lastAccessed: null,
+      lastAccessed: '',
       metadata: JSON.stringify(metadata)
     };
 
     // Store in vault with encryption
     await this.redis.hset(`${this.vaultPrefix}${token}`, vaultEntry);
 
-    // Create hash index for deduplication
-    const hash = crypto.createHash('sha256').update(piiValue).digest('hex');
+    // Create keyed hash index for deduplication without storing a raw PII hash
+    const hash = this.getLookupHash(piiValue);
     await this.redis.set(`${this.tokenPrefix}hash:${hash}`, token);
 
     return token;
@@ -214,7 +226,7 @@ class PIITokenizer {
   }
 
   async findExistingToken(piiValue) {
-    const hash = crypto.createHash('sha256').update(piiValue).digest('hex');
+    const hash = this.getLookupHash(piiValue);
     return this.redis.get(`${this.tokenPrefix}hash:${hash}`);
   }
 
@@ -233,7 +245,7 @@ class PIITokenizer {
       data: vaultEntry.data
     });
 
-    const hash = crypto.createHash('sha256').update(piiValue).digest('hex');
+    const hash = this.getLookupHash(piiValue);
 
     // Remove both token and hash index
     await this.redis.del(vaultKey);
@@ -291,7 +303,7 @@ async function example() {
   console.log('SSN Token:', ssnToken); // tok_a1b2c3d4e5f6...
 
   // Store user with token instead of actual SSN
-  await redis.hset('user:123', {
+  await tokenizer.redis.hset('user:123', {
     name: 'John Doe',
     email: 'john@example.com',
     ssn_token: ssnToken // Store token, not actual SSN
@@ -379,7 +391,8 @@ class PIIMasker {
     if (!dob) return null;
     // Show only year
     const date = new Date(dob);
-    return `**/**/****`;
+    if (Number.isNaN(date.getTime())) return '**/**/****';
+    return `**/**/${date.getUTCFullYear()}`;
   }
 
   maskName(name) {
@@ -756,10 +769,11 @@ class PIIAuditLogger {
 
     for (const day of days) {
       const dayKey = `audit:pii:daily:${day}`;
-      const entries = await this.redis.zrangebyscore(
+      const entries = await this.redis.zrange(
         dayKey,
         startTime,
         endTime,
+        'BYSCORE',
         'LIMIT',
         0,
         limit - results.length
@@ -878,7 +892,7 @@ class PIIMinimizer {
       billing: ['user_id', 'billing_address', 'payment_token'],
       shipping: ['user_id', 'shipping_address', 'phone'],
       support: ['user_id', 'email', 'name'],
-      analytics: ['user_id'] // No PII needed for analytics
+      analytics: [] // No PII needed for analytics
     };
   }
 
@@ -946,7 +960,6 @@ class PIIMinimizer {
 
     const anonymized = {
       _anonymized: true,
-      _original_key: key,
       _anonymized_at: new Date().toISOString()
     };
 
@@ -1041,10 +1054,11 @@ class PIIRetentionManager {
       const indexKey = `retention:${dataType}`;
 
       // Get expired keys
-      const expiredKeys = await this.redis.zrangebyscore(
+      const expiredKeys = await this.redis.zrange(
         indexKey,
         0,
-        now
+        now,
+        'BYSCORE'
       );
 
       for (const key of expiredKeys) {

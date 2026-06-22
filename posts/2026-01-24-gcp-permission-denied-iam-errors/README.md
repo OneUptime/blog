@@ -87,19 +87,20 @@ gcloud projects get-iam-policy my-project \
 
 ### Step 3: Test Permissions
 
-You can test if a principal has specific permissions without actually performing the operation:
+You can test if the currently authenticated caller has specific permissions without actually performing the operation:
 
 ```bash
-# Test permissions on a project
-gcloud projects test-iam-permissions my-project \
-    --permissions=compute.instances.create,compute.instances.delete
-
-# Test permissions on a resource using the API
+# Test project permissions using the Resource Manager API
 curl -X POST \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     -H "Content-Type: application/json" \
-    -d '{"permissions": ["storage.objects.get", "storage.objects.create"]}' \
+    -d '{"permissions": ["compute.instances.create", "compute.instances.delete"]}' \
     "https://cloudresourcemanager.googleapis.com/v1/projects/my-project:testIamPermissions"
+
+# Test Cloud Storage permissions on a bucket using the Storage JSON API
+curl -X GET \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://storage.googleapis.com/storage/v1/b/my-bucket/iam/testPermissions?permissions=storage.objects.get&permissions=storage.objects.create"
 ```
 
 ## Common Scenarios and Solutions
@@ -175,7 +176,7 @@ gcloud projects get-iam-policy my-project --format=json | jq '.bindings[] | sele
 # Grant time-limited access
 gcloud projects add-iam-policy-binding my-project \
     --member="user:contractor@example.com" \
-    --role="roles/editor" \
+    --role="roles/browser" \
     --condition="expression=request.time < timestamp('2026-03-01T00:00:00Z'),title=temporary-access,description=Access until March 2026"
 ```
 
@@ -246,8 +247,8 @@ GCP provides a built-in tool to troubleshoot access issues:
 ```bash
 # Use the Policy Troubleshooter API
 gcloud policy-troubleshoot iam \
-    --principal="serviceAccount:my-sa@my-project.iam.gserviceaccount.com" \
-    --resource="//storage.googleapis.com/projects/_/buckets/my-bucket/objects/my-file" \
+    "//storage.googleapis.com/projects/_/buckets/my-bucket/objects/my-file" \
+    --principal-email="my-sa@my-project.iam.gserviceaccount.com" \
     --permission="storage.objects.get"
 ```
 

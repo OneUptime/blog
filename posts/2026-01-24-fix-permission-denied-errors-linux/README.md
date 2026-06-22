@@ -42,8 +42,8 @@ Each category has three permission types:
 | Permission | Symbol | Numeric | File Effect | Directory Effect |
 |------------|--------|---------|-------------|------------------|
 | Read | r | 4 | View contents | List files |
-| Write | w | 2 | Modify contents | Create/delete files |
-| Execute | x | 1 | Run as program | Enter directory |
+| Write | w | 2 | Modify contents | Create/delete entries (with execute) |
+| Execute | x | 1 | Run as program | Enter/traverse directory |
 
 ## Quick Diagnosis Commands
 
@@ -55,7 +55,7 @@ ls -la /path/to/file
 # Check your current user and groups
 id
 
-# Check effective permissions for current user
+# Check permissions along the path
 namei -l /path/to/file
 
 # Check if SELinux is blocking access
@@ -138,7 +138,8 @@ sudo chmod o+x /path/to
 # Or recursively fix an entire directory tree
 # Be careful with this - only use when appropriate
 sudo chmod -R o+rX /path/to
-# Note: capital X only adds execute to directories, not files
+# Note: capital X adds execute/search to directories and to files
+# that already have execute permission for at least one user
 ```
 
 ### Scenario 3: Script Not Executable
@@ -300,7 +301,7 @@ chmod u+s /path/to/file    # or chmod 4755
 chmod g+s /path/to/dir     # or chmod 2755
 # Files created in this directory inherit the directory's group
 
-# Sticky bit (1): Only owner can delete files
+# Sticky bit (1): Only the file owner, directory owner, or root can delete/rename files
 chmod +t /path/to/dir      # or chmod 1755
 # Example: /tmp uses sticky bit
 ```
@@ -320,8 +321,8 @@ ls -la /tmp
 When standard permissions are not granular enough, use ACLs:
 
 ```bash
-# Check if filesystem supports ACLs
-mount | grep acl
+# Check the mounted filesystem and options
+findmnt -T /path/to/file -o TARGET,FSTYPE,OPTIONS
 
 # View ACLs
 getfacl /path/to/file

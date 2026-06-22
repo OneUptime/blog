@@ -43,6 +43,7 @@ Or with Gradle:
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.apache.commons:commons-pool2'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
 }
 ```
 
@@ -54,34 +55,35 @@ dependencies {
 # application.yml
 
 spring:
-  redis:
-    host: localhost
-    port: 6379
-    password: ${REDIS_PASSWORD:}
-    database: 0
-    timeout: 2000ms
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 2000ms
 
-    # Connection pooling
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 8
-        min-idle: 2
-        max-wait: -1ms
+      # Connection pooling
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
 
-    # Cluster configuration (if using cluster)
-    # cluster:
-    #   nodes:
-    #     - 192.168.1.100:6379
-    #     - 192.168.1.101:6379
-    #     - 192.168.1.102:6379
+      # Cluster configuration (if using cluster)
+      # cluster:
+      #   nodes:
+      #     - 192.168.1.100:6379
+      #     - 192.168.1.101:6379
+      #     - 192.168.1.102:6379
 
-    # Sentinel configuration (if using sentinel)
-    # sentinel:
-    #   master: mymaster
-    #   nodes:
-    #     - 192.168.1.100:26379
-    #     - 192.168.1.101:26379
+      # Sentinel configuration (if using sentinel)
+      # sentinel:
+      #   master: mymaster
+      #   nodes:
+      #     - 192.168.1.100:26379
+      #     - 192.168.1.101:26379
 ```
 
 ### Redis Configuration Class
@@ -93,7 +95,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
@@ -109,21 +112,16 @@ public class RedisConfig {
         template.setHashKeySerializer(new StringRedisSerializer());
 
         // Use JSON serializer for values
-        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
-        template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
+        template.setValueSerializer(RedisSerializer.json());
+        template.setHashValueSerializer(RedisSerializer.json());
 
         template.afterPropertiesSet();
         return template;
     }
 
     @Bean
-    public RedisTemplate<String, String> stringRedisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, String> template = new RedisTemplate<>();
-        template.setConnectionFactory(connectionFactory);
-        template.setKeySerializer(new StringRedisSerializer());
-        template.setValueSerializer(new StringRedisSerializer());
-        template.afterPropertiesSet();
-        return template;
+    public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
+        return new StringRedisTemplate(connectionFactory);
     }
 }
 ```
@@ -266,8 +264,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.RedisSerializer;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -284,7 +282,7 @@ public class CacheConfig {
                 .entryTtl(Duration.ofHours(1))
                 .serializeValuesWith(
                         RedisSerializationContext.SerializationPair.fromSerializer(
-                                new GenericJackson2JsonRedisSerializer()
+                                RedisSerializer.json()
                         )
                 )
                 .disableCachingNullValues();
@@ -555,8 +553,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
-import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
@@ -567,8 +565,7 @@ public class ReactiveRedisConfig {
             ReactiveRedisConnectionFactory connectionFactory) {
 
         StringRedisSerializer keySerializer = new StringRedisSerializer();
-        Jackson2JsonRedisSerializer<Object> valueSerializer =
-                new Jackson2JsonRedisSerializer<>(Object.class);
+        RedisSerializer<Object> valueSerializer = RedisSerializer.json();
 
         RedisSerializationContext.RedisSerializationContextBuilder<String, Object> builder =
                 RedisSerializationContext.newSerializationContext(keySerializer);
@@ -586,6 +583,8 @@ public class ReactiveRedisConfig {
 ```java
 package com.example.service;
 
+import com.example.model.User;
+import com.example.repository.ReactiveUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -598,6 +597,9 @@ public class ReactiveRedisService {
 
     @Autowired
     private ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
+
+    @Autowired
+    private ReactiveUserRepository userRepository;
 
     public Mono<Boolean> setValue(String key, Object value) {
         return reactiveRedisTemplate.opsForValue().set(key, value);
@@ -638,18 +640,20 @@ public class ReactiveRedisService {
 package com.example.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Callable;
 
 @Service
 public class DistributedLockService {
 
     @Autowired
-    private RedisTemplate<String, String> stringRedisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     private static final String LOCK_PREFIX = "lock:";
 
@@ -708,6 +712,7 @@ package com.example.config;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Component;
 
@@ -722,8 +727,8 @@ public class RedisHealthIndicator implements HealthIndicator {
 
     @Override
     public Health health() {
-        try {
-            connectionFactory.getConnection().ping();
+        try (RedisConnection connection = connectionFactory.getConnection()) {
+            connection.ping();
             return Health.up()
                     .withDetail("redis", "Available")
                     .build();

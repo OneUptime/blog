@@ -151,7 +151,7 @@ Keep rows even with empty arrays:
 
 ```sql
 -- Normal ARRAY JOIN skips rows with empty arrays
--- LEFT ARRAY JOIN includes them with NULL
+-- LEFT ARRAY JOIN includes them with the element type's default value
 SELECT
     user_id,
     tag
@@ -199,7 +199,7 @@ INSERT INTO orders VALUES
     [19.99, 49.99, 9.99]   -- items.unit_price
 );
 
--- Alternative syntax with tuples
+-- Another row with one line item
 INSERT INTO orders VALUES
 (
     1002,
@@ -611,6 +611,8 @@ For frequently-queried keys, promote them to columns:
 
 CREATE TABLE metrics
 (
+    timestamp DateTime,
+
     -- Promoted to columns for better indexing
     environment LowCardinality(String),
     region LowCardinality(String),

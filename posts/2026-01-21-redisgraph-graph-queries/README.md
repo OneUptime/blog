@@ -8,7 +8,9 @@ Description: A comprehensive guide to using RedisGraph for graph queries, coveri
 
 ---
 
-RedisGraph is a graph database module for Redis that supports property graphs with Cypher query language. It enables you to model and query complex relationships at Redis speed, making it ideal for social networks, recommendation engines, fraud detection, and knowledge graphs.
+RedisGraph is a graph database module for Redis that supports property graphs with Cypher query language. It enables you to model and query complex relationships at Redis speed, which historically made it useful for social networks, recommendation engines, fraud detection, and knowledge graphs.
+
+RedisGraph has reached end of life and is now documented by Redis as a deprecated feature. The examples in this guide target legacy RedisGraph deployments, such as RedisGraph 2.10 or Redis Stack versions that still included the Graph module.
 
 ## Why RedisGraph?
 
@@ -22,12 +24,12 @@ RedisGraph offers several advantages:
 
 ## Installation
 
-### Using Redis Stack
+### Using RedisGraph Docker Image
 
 ```bash
 # Docker
 
-docker run -d --name redis-stack -p 6379:6379 redis/redis-stack:latest
+docker run -d --name redisgraph -p 6379:6379 redislabs/redisgraph:latest
 
 # Verify
 redis-cli GRAPH.QUERY test "RETURN 1"
@@ -388,7 +390,7 @@ class ProductRecommender:
 
     def record_purchase(self, customer_id, product_id, rating=None):
         """Record a purchase with optional rating."""
-        rating_clause = f", rating: {rating}" if rating else ""
+        rating_clause = f", r.rating = {rating}" if rating is not None else ""
         self.graph.query(f"""
             MATCH (c:Customer {{id: '{customer_id}'}})
             MATCH (p:Product {{id: '{product_id}'}})

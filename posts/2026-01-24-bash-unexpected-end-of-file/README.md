@@ -61,7 +61,7 @@ echo "Done"
 ```bash
 # Method 1: Use grep to find lines with odd number of quotes
 
-grep -n '"' script.sh | awk -F'"' 'NF%2==0 {print "Line " NR ": possible unclosed quote"}'
+awk -F'"' 'NF%2==0 {print "Line " NR ": possible unclosed quote"}' script.sh
 
 # Method 2: Use syntax highlighting in vim
 vim script.sh
@@ -142,10 +142,10 @@ echo "Done"
 # Count if/fi pairs
 count_pairs() {
     local file="$1"
-    local if_count=$(grep -cE '^\s*(if|elif)\b' "$file")
-    local fi_count=$(grep -cE '^\s*fi\b' "$file")
+    local if_count=$(grep -cE '^[[:space:]]*if\b' "$file")
+    local fi_count=$(grep -cE '^[[:space:]]*fi\b' "$file")
 
-    echo "if/elif statements: $if_count"
+    echo "if statements: $if_count"
     echo "fi statements: $fi_count"
 
     if [[ $if_count -ne $fi_count ]]; then
@@ -308,17 +308,17 @@ cat <<- EOF
 ```bash
 #!/bin/bash
 
-# WRONG: Delimiter has trailing space
+# WRONG: Closing delimiter has extra characters after it
 cat << 'EOF'
 content
-EOF
+EOF # trailing text prevents this from matching
 
 # WRONG: Delimiter has different quote style
 cat << "EOF"
 content
 EOF'
 
-# WRONG: Delimiter is part of the content
+# OK: Delimiter text is fine when it is not alone on its own line
 cat << EOF
 This text mentions EOF in the middle
 EOF
@@ -329,17 +329,18 @@ This text mentions EOF in the middle
 END_OF_TEXT
 ```
 
-### Cause 8: Backslash at End of File
+### Cause 8: Backslash Before a Required Closing Keyword
 
-A trailing backslash expects a continuation.
+A trailing backslash joins the next line, which can hide a required closing keyword from the parser.
 
 #### The Problem
 
 ```bash
 #!/bin/bash
 
-echo "Hello" \
-# File ends with backslash continuation but no next line
+if true; then
+    echo "Hello" \
+fi  # This becomes an argument to echo, not the closing if keyword
 ```
 
 #### The Fix
@@ -347,8 +348,9 @@ echo "Hello" \
 ```bash
 #!/bin/bash
 
-echo "Hello"
-# Remove trailing backslash or add continuation
+if true; then
+    echo "Hello"
+fi
 ```
 
 ## Debugging Strategies
@@ -517,9 +519,9 @@ match ExtraWhitespace /\s\+$/
 ```bash
 #!/bin/bash
 
-# WRONG: Quote continues to next line
+# VALID BUT OFTEN ACCIDENTAL: Quote includes a literal newline
 message="This is a long message
-that spans multiple lines"  # Need to escape or use different approach
+that spans multiple lines"  # Use a different approach if you did not want the newline
 
 # CORRECT: Use line continuation
 message="This is a long message \
@@ -528,7 +530,7 @@ that spans multiple lines"
 # CORRECT: Use $'...' for embedded newlines
 message=$'This is a long message\nthat spans multiple lines'
 
-# CORRECT: Use here-string
+# CORRECT: Use a here-document
 read -r -d '' message << 'EOF'
 This is a long message
 that spans multiple lines

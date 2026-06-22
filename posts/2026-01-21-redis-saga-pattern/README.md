@@ -14,9 +14,9 @@ The Saga pattern manages distributed transactions across microservices by breaki
 
 Redis offers key benefits for saga implementation:
 
-- **Atomic state transitions**: Lua scripts ensure consistent state updates
+- **Atomic state coordination**: Redis commands, transactions, and Lua scripts can help coordinate consistent state updates
 - **Event pub/sub**: Coordinate saga steps across services
-- **TTL for timeouts**: Automatic saga expiration handling
+- **TTL and sorted sets for timeouts**: Track deadlines and expire stale saga state
 - **Streams for event log**: Durable event storage with consumer groups
 
 ## Saga Pattern Basics
@@ -486,7 +486,7 @@ class ChoreographySaga:
             logger.debug(f"Processed event {event_type}")
         except Exception as e:
             logger.error(f"Error processing event {event_type}: {e}")
-            # Don't ack - will be reprocessed
+            # Don't ack; it stays in the Pending Entries List for explicit recovery
 
 # Service implementations
 class OrderService:
@@ -495,7 +495,7 @@ class OrderService:
         self.orders: Dict[str, Dict] = {}
 
         # Subscribe to events
-        saga.subscribe("order_created", self._on_payment_completed)
+        saga.subscribe("payment_completed", self._on_payment_completed)
         saga.subscribe("payment_failed", self._on_payment_failed)
         saga.subscribe("stock_reserved", self._on_stock_reserved)
         saga.subscribe("stock_reservation_failed", self._on_stock_failed)
@@ -615,6 +615,8 @@ Implement saga as a state machine:
 ```python
 import redis
 import json
+import time
+import uuid
 from typing import Dict, Any, Callable, Optional, Set
 from dataclasses import dataclass
 from enum import Enum
@@ -757,9 +759,6 @@ class SagaStateMachine:
         """Run compensation chain."""
         # Implementation depends on your compensation strategy
         pass
-
-# Example usage
-import time
 
 def create_order_action(context: Dict) -> Dict:
     """Create order action."""

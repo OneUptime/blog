@@ -133,17 +133,18 @@ app.get('/search', (req, res) => {
 ### JavaScript Context Encoding
 
 ```javascript
-// SECURE - Encode for JavaScript string context
-function encodeJavaScript(str) {
-    return JSON.stringify(str);
+// SECURE - Serialize data for a script tag
+function serializeForScript(value) {
+    return JSON.stringify(value).replace(/</g, '\\u003C');
 }
 
 // When embedding data in a script tag
 app.get('/page', (req, res) => {
     const userData = { name: req.query.name };
+    const serializedUserData = serializeForScript(userData);
     res.send(`
         <script>
-            const user = ${JSON.stringify(userData)};
+            const user = ${serializedUserData};
             console.log(user.name);
         </script>
     `);
@@ -462,15 +463,15 @@ const helmet = require('helmet');
 
 app.use(helmet({
     contentSecurityPolicy: { /* ... */ },
-    xssFilter: true,  // Sets X-XSS-Protection header
-    noSniff: true,    // Prevents MIME type sniffing
+    xContentTypeOptions: true,  // Sets X-Content-Type-Options: nosniff
+    xFrameOptions: { action: 'deny' },
 }));
 
 // Or manually set headers
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('X-XSS-Protection', '0');  // Disable legacy browser XSS filters
     next();
 });
 ```

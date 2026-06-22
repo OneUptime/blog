@@ -96,7 +96,7 @@ gcloud sql instances list
 # For Cloud Run services
 gcloud run services list --region=us-central1
 
-# List all regions where you have resources
+# List available Compute Engine regions
 gcloud compute regions list
 ```
 
@@ -136,8 +136,8 @@ gcloud storage buckets describe gs://my-bucket-name
 # Step 3: Verify bucket exists with gsutil
 gsutil ls -b gs://my-bucket-name
 
-# Step 4: Check for case sensitivity issues
-# Bucket names are case-insensitive but stored as lowercase
+# Step 4: Check for spelling issues
+# Bucket names must be lowercase
 gcloud storage ls | grep -i "mybucket"
 ```
 
@@ -166,14 +166,14 @@ echo "my-project:us-central1:my-instance"
 ```bash
 # Error: "Resource not found: services/my-service"
 
-# Step 1: List services in all regions
+# Step 1: List services in the configured region
 gcloud run services list
 
 # Step 2: Check specific region
 gcloud run services describe my-service --region=us-central1
 
-# Step 3: Verify the platform (managed vs gke)
-gcloud run services list --platform=managed
+# Step 3: List available Cloud Run regions
+gcloud run regions list
 
 # Step 4: Check service name
 gcloud run services list --filter="metadata.name~my-service"
@@ -210,7 +210,7 @@ terraform state list
 terraform state show google_compute_instance.my_vm
 
 # Refresh state to match actual infrastructure
-terraform refresh
+terraform apply -refresh-only
 
 # Import existing resource into state
 terraform import google_compute_instance.my_vm projects/my-project/zones/us-central1-a/instances/my-vm
@@ -229,12 +229,7 @@ data "google_compute_instance" "existing" {
   project = "my-project"
 }
 
-# Better approach - use try() or handle the error
-locals {
-  instance_exists = try(data.google_compute_instance.existing.id, null) != null
-}
-
-# Or use count to conditionally reference
+# Use count to conditionally read the data source
 data "google_compute_instance" "existing" {
   count   = var.import_existing ? 1 : 0
   name    = "my-vm"
@@ -294,9 +289,8 @@ gcloud logging read '
 
 # General search for any deletion in the last 24 hours
 gcloud logging read '
-  protoPayload.methodName=~"delete" AND
-  timestamp>="2024-01-01T00:00:00Z"
-' --limit=50
+  protoPayload.methodName=~"delete"
+' --freshness=1d --limit=50
 ```
 
 ## Using Cloud Asset Inventory

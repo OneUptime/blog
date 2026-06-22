@@ -14,7 +14,7 @@ GraphQL provides a flexible query language for APIs that allows clients to reque
 
 ```bash
 npm install @apollo/server graphql
-npm install express cors  # If using Express integration
+npm install express cors @as-integrations/express5  # If using Express integration
 ```
 
 ## Basic Apollo Server Setup
@@ -72,7 +72,7 @@ start();
 const express = require('express');
 const cors = require('cors');
 const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
+const { expressMiddleware } = require('@as-integrations/express5');
 
 const app = express();
 
@@ -318,7 +318,7 @@ const resolvers = {
 
 ```javascript
 const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
+const { expressMiddleware } = require('@as-integrations/express5');
 const jwt = require('jsonwebtoken');
 
 const server = new ApolloServer({
@@ -326,37 +326,45 @@ const server = new ApolloServer({
   resolvers,
 });
 
-await server.start();
+async function start() {
+  await server.start();
 
-app.use(
-  '/graphql',
-  express.json(),
-  expressMiddleware(server, {
-    context: async ({ req }) => {
-      // Get token from header
-      const token = req.headers.authorization?.replace('Bearer ', '');
-      
-      let user = null;
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          user = await db.users.findByPk(decoded.userId);
-        } catch (error) {
-          // Invalid token
+  app.use(
+    '/graphql',
+    express.json(),
+    expressMiddleware(server, {
+      context: async ({ req }) => {
+        // Get token from header
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        
+        let user = null;
+        if (token) {
+          try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            user = await db.users.findByPk(decoded.userId);
+          } catch (error) {
+            // Invalid token
+          }
         }
-      }
-      
-      return {
-        db,
-        user,
-        req,
-      };
-    },
-  })
-);
+        
+        return {
+          db,
+          user,
+          req,
+        };
+      },
+    })
+  );
+}
+
+start();
 ```
 
 ### Authentication Resolver
+
+```bash
+npm install jsonwebtoken bcrypt
+```
 
 ```javascript
 const { GraphQLError } = require('graphql');
@@ -451,17 +459,22 @@ const resolvers = {
 ## Subscriptions (Real-time)
 
 ```bash
-npm install graphql-ws ws
+npm install graphql-ws ws @graphql-tools/schema graphql-subscriptions
 ```
 
 ```javascript
+const express = require('express');
 const { createServer } = require('http');
+const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@as-integrations/express5');
+const { ApolloServerPluginDrainHttpServer } = require('@apollo/server/plugin/drainHttpServer');
 const { WebSocketServer } = require('ws');
-const { useServer } = require('graphql-ws/lib/use/ws');
+const { useServer } = require('graphql-ws/use/ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const { PubSub } = require('graphql-subscriptions');
 
 const pubsub = new PubSub();
+const posts = [];
 
 const typeDefs = `
   type Post {
@@ -499,7 +512,7 @@ const resolvers = {
   },
   Subscription: {
     postCreated: {
-      subscribe: () => pubsub.asyncIterator(['POST_CREATED']),
+      subscribe: () => pubsub.asyncIterableIterator('POST_CREATED'),
     },
   },
 };
@@ -516,12 +529,36 @@ const wsServer = new WebSocketServer({
 });
 
 // Set up WebSocket server
-useServer({ schema }, wsServer);
+const serverCleanup = useServer({ schema }, wsServer);
 
-// Start server
-httpServer.listen(4000, () => {
-  console.log('Server running on http://localhost:4000/graphql');
+const server = new ApolloServer({
+  schema,
+  plugins: [
+    ApolloServerPluginDrainHttpServer({ httpServer }),
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose();
+          },
+        };
+      },
+    },
+  ],
 });
+
+async function start() {
+  await server.start();
+
+  app.use('/graphql', express.json(), expressMiddleware(server));
+
+  // Start server
+  httpServer.listen(4000, () => {
+    console.log('Server running on http://localhost:4000/graphql');
+  });
+}
+
+start();
 ```
 
 ## Error Handling
@@ -552,18 +589,19 @@ const resolvers = {
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  formatError: (error) => {
+  formatError: (formattedError) => {
     // Log error
-    console.error(error);
+    console.error(formattedError);
     
     // Hide internal errors from clients
-    if (error.extensions?.code === 'INTERNAL_SERVER_ERROR') {
-      return new GraphQLError('Internal server error', {
+    if (formattedError.extensions?.code === 'INTERNAL_SERVER_ERROR') {
+      return {
+        message: 'Internal server error',
         extensions: { code: 'INTERNAL_SERVER_ERROR' },
-      });
+      };
     }
     
-    return error;
+    return formattedError;
   },
 });
 ```
@@ -611,6 +649,8 @@ const resolvers = {
 ## Pagination
 
 ```javascript
+const { Op } = require('sequelize');
+
 const typeDefs = `
   type PageInfo {
     hasNextPage: Boolean!

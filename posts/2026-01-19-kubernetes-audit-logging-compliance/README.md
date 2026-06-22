@@ -217,7 +217,7 @@ rules:
         resources:
           - networkpolicies
 
-  # 10. Security: Pod security policies
+  # 10. Security: Pod security policies (legacy clusters before Kubernetes 1.25)
   - level: RequestResponse
     resources:
       - group: "policy"
@@ -383,7 +383,7 @@ data:
         Port            ${ELASTICSEARCH_PORT}
         Logstash_Format On
         Logstash_Prefix kubernetes-audit
-        Type            _doc
+        Suppress_Type_Name On
 
   parsers.conf: |
     [PARSER]
@@ -473,8 +473,8 @@ data:
     [sinks.elasticsearch]
     type = "elasticsearch"
     inputs = ["filter_sensitive"]
-    endpoint = "http://elasticsearch.logging.svc:9200"
-    index = "kubernetes-audit-%Y.%m.%d"
+    endpoints = ["http://elasticsearch.logging.svc:9200"]
+    bulk.index = "kubernetes-audit-%Y.%m.%d"
     
     [sinks.loki]
     type = "loki"
@@ -487,7 +487,7 @@ data:
 
 ### Elasticsearch Queries
 
-```json
+```jsonc
 // Find secret access
 {
   "query": {
@@ -552,7 +552,7 @@ spec:
       rules:
         - alert: HighAuthenticationFailures
           expr: |
-            sum(rate(apiserver_audit_event_total{response_code="401"}[5m])) > 10
+            sum(rate(apiserver_request_total{code="401"}[5m])) > 10
           for: 5m
           labels:
             severity: warning
@@ -562,7 +562,7 @@ spec:
 
         - alert: SecretAccessAnomaly
           expr: |
-            sum(rate(apiserver_audit_event_total{resource="secrets",verb="get"}[5m])) > 100
+            sum(rate(apiserver_request_total{resource="secrets",verb="get"}[5m])) > 100
           for: 5m
           labels:
             severity: warning
@@ -571,8 +571,8 @@ spec:
 
         - alert: RBACChanges
           expr: |
-            sum(increase(apiserver_audit_event_total{
-              apigroup="rbac.authorization.k8s.io",
+            sum(increase(apiserver_request_total{
+              group="rbac.authorization.k8s.io",
               verb=~"create|update|patch|delete"
             }[1h])) > 0
           labels:
@@ -702,7 +702,7 @@ spec:
       "type": "piechart",
       "targets": [
         {
-          "expr": "sum(apiserver_audit_event_total) by (verb)"
+          "expr": "sum(apiserver_request_total) by (verb)"
         }
       ]
     },
@@ -711,7 +711,7 @@ spec:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(apiserver_audit_event_total{response_code=~'4..|5..'}[5m])) by (response_code)"
+          "expr": "sum(rate(apiserver_request_total{code=~\"4..|5..\"}[5m])) by (code)"
         }
       ]
     },
@@ -720,16 +720,16 @@ spec:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(apiserver_audit_event_total{resource='secrets'}[5m])) by (verb)"
+          "expr": "sum(rate(apiserver_request_total{resource=\"secrets\"}[5m])) by (verb)"
         }
       ]
     },
     {
-      "title": "Top Users by Activity",
+      "title": "Top Resources by API Activity",
       "type": "table",
       "targets": [
         {
-          "expr": "topk(10, sum(apiserver_audit_event_total) by (user))"
+          "expr": "topk(10, sum(apiserver_request_total) by (resource))"
         }
       ]
     }

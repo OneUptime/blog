@@ -8,7 +8,7 @@ Description: Learn how to prevent, catch, and handle division by zero errors in 
 
 ---
 
-Division by zero errors in Bash can crash your scripts unexpectedly. Unlike some programming languages that return infinity or NaN, Bash treats division by zero as a fatal error. This guide shows you how to prevent, detect, and handle these errors effectively.
+Division by zero errors in Bash can crash your scripts unexpectedly. Unlike some programming languages that return infinity or NaN, Bash treats division by zero as an arithmetic error that can be fatal in scripts. This guide shows you how to prevent, detect, and handle these errors effectively.
 
 ---
 
@@ -27,7 +27,7 @@ Division by zero errors in Bash can crash your scripts unexpectedly. Unlike some
 
 ## 1. Understanding Division by Zero in Bash
 
-Bash uses integer arithmetic by default. When you attempt to divide by zero, Bash generates an error and may terminate your script.
+Bash uses integer arithmetic by default. When you attempt to divide by zero, Bash generates an error, does not complete the arithmetic expansion, and may terminate your script.
 
 ```bash
 #!/bin/bash
@@ -40,19 +40,20 @@ echo "Result: $result"  # Never reached
 
 Output:
 ```text
-bash: 10 / 0: division by zero (error token is "0")
+bash: 10 / 0: division by 0 (error token is "0")
 ```
 
 ```mermaid
 flowchart TD
     A[Arithmetic Operation] --> B{Divisor == 0?}
     B -->|Yes| C[Bash Error]
-    C --> D{set -e enabled?}
-    D -->|Yes| E[Script Terminates]
-    D -->|No| F[Error Message Only]
-    F --> G[Script Continues]
-    B -->|No| H[Normal Division]
-    H --> I[Result Returned]
+    C --> D[Expansion Fails]
+    D --> E[Associated Command Not Executed]
+    E --> F{Context?}
+    F -->|Non-interactive script| G[Script May Terminate]
+    F -->|Subshell/function wrapper| H[Return Failure]
+    B -->|No| I[Normal Division]
+    I --> J[Result Returned]
 ```
 
 ### Error Behavior with set -e
@@ -73,9 +74,8 @@ echo "After division"  # Never executed
 # No set -e
 
 echo "Before division"
-result=$((10 / 0))  # Error message printed, but script continues
-echo "After division"  # This DOES execute
-echo "Result is: $result"  # Result is empty/undefined
+result=$((10 / 0))  # Arithmetic expansion fails here
+echo "After division"  # In a non-interactive script, this may not execute
 ```
 
 ---
@@ -337,6 +337,11 @@ calculate_percentage() {
     local total=$2
     local precision="${3:-0}"  # Decimal places
 
+    if ! [[ "$part" =~ ^-?[0-9]+$ ]] || ! [[ "$total" =~ ^-?[0-9]+$ ]] || ! [[ "$precision" =~ ^[0-9]+$ ]]; then
+        echo "Error: Invalid numeric input" >&2
+        return 1
+    fi
+
     if [[ "$total" -eq 0 ]]; then
         echo "0"
         return 0
@@ -432,15 +437,21 @@ safe_divide_python() {
     local dividend=$1
     local divisor=$2
 
-    python3 -c "
+    python3 - "$dividend" "$divisor" <<'PY'
+import sys
+
 try:
-    result = $dividend / $divisor
+    dividend = float(sys.argv[1])
+    divisor = float(sys.argv[2])
+    result = dividend / divisor
     print(f'{result:.4f}')
+except ValueError:
+    print('Error: Non-numeric operand', file=sys.stderr)
+    sys.exit(1)
 except ZeroDivisionError:
-    import sys
     print('Error: Division by zero', file=sys.stderr)
     sys.exit(1)
-"
+PY
 }
 
 # Usage
@@ -491,12 +502,9 @@ try_divide() {
     local dividend=$1
     local divisor=$2
 
-    # Attempt division in subshell to catch error
+    # Attempt division in a child Bash process to catch the error
     local result
-    result=$(
-        set -e
-        echo $((dividend / divisor))
-    ) 2>/dev/null
+    result=$(bash -c 'echo $(($1 / $2))' _ "$dividend" "$divisor" 2>/dev/null)
 
     if [[ $? -eq 0 ]]; then
         echo "$result"
@@ -867,6 +875,11 @@ safe_percent() {
     local part=$1
     local total=$2
     local precision="${3:-0}"
+
+    if ! is_integer "$part" || ! is_integer "$total" || ! [[ "$precision" =~ ^[0-9]+$ ]]; then
+        echo "Error: Invalid numeric input" >&2
+        return 1
+    fi
 
     if [[ "$total" -eq 0 ]]; then
         echo "0"

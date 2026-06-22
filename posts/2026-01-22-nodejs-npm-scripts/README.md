@@ -87,7 +87,7 @@ In package.json:
 }
 ```
 
-### Parallel Execution (&)
+### POSIX Shell Parallel Execution (&)
 
 ```json
 {
@@ -96,6 +96,8 @@ In package.json:
   }
 }
 ```
+
+This works in POSIX shells. Use a tool like `npm-run-all` or `concurrently` for cross-platform parallel scripts.
 
 ### Using npm-run-all (Cross-platform)
 
@@ -206,7 +208,7 @@ npm install --save-dev cross-env
 {
   "scripts": {
     "start": "node -r dotenv/config server.js",
-    "start:dev": "node -r dotenv/config server.js dotenv_config_path=.env.development"
+    "start:dev": "cross-env DOTENV_CONFIG_PATH=.env.development node -r dotenv/config server.js"
   }
 }
 ```
@@ -234,7 +236,7 @@ npm install --save-dev cross-env
     "build:clean": "rm -rf dist",
     "build:compile": "tsc",
     "build:bundle": "webpack --mode production",
-    "build:analyze": "webpack --mode production --analyze"
+    "build:analyze": "webpack --mode production --profile --json=compilation-stats.json"
   }
 }
 ```
@@ -291,8 +293,8 @@ npm install --save-dev cross-env
     "docker:build": "docker build -t myapp .",
     "docker:run": "docker run -p 3000:3000 myapp",
     "docker:push": "docker push myapp",
-    "docker:compose:up": "docker-compose up -d",
-    "docker:compose:down": "docker-compose down"
+    "docker:compose:up": "docker compose up -d",
+    "docker:compose:down": "docker compose down"
   }
 }
 ```
@@ -364,7 +366,7 @@ Define custom config:
     "port": "3000"
   },
   "scripts": {
-    "start": "node server.js --port=$npm_package_config_port"
+    "start": "node server.js --port=${npm_config_port:-$npm_package_config_port}"
   }
 }
 ```
@@ -372,7 +374,7 @@ Define custom config:
 Override at runtime:
 
 ```bash
-npm config set my-app:port 8080
+npm start --port=8080
 ```
 
 ## Complex Scripts
@@ -454,7 +456,7 @@ Use comments in a scripts.md file or README:
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
     
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint": "eslint .",
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write .",
     
@@ -464,12 +466,13 @@ Use comments in a scripts.md file or README:
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
     
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^8.0.0",
     "npm-run-all": "^4.1.5",
-    "cross-env": "^7.0.0"
+    "cross-env": "^7.0.0",
+    "husky": "^9.0.0"
   }
 }
 ```

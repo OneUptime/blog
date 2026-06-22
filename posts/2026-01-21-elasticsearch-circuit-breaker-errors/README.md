@@ -8,11 +8,11 @@ Description: A comprehensive guide to understanding and resolving Elasticsearch 
 
 ---
 
-Circuit breakers in Elasticsearch protect the cluster from running out of memory by rejecting operations that would use too much memory. This guide covers understanding, diagnosing, and resolving circuit breaker errors.
+Circuit breakers in Elasticsearch help protect the cluster from running out of memory by rejecting operations that would use too much memory. This guide covers understanding, diagnosing, and resolving circuit breaker errors.
 
 ## Understanding Circuit Breakers
 
-Circuit breakers estimate memory usage before operations execute and reject requests that would exceed configured limits. This prevents OutOfMemoryErrors that could crash nodes.
+Circuit breakers estimate memory usage before operations execute and reject requests that would exceed configured limits. They reduce the risk of OutOfMemoryErrors that could crash nodes, but they do not track every kind of memory usage.
 
 ### Types of Circuit Breakers
 
@@ -115,13 +115,15 @@ curl -u elastic:password -X GET "localhost:9200/_stats/fielddata?pretty"
 
 **Solutions:**
 
-Use keyword fields instead of text for aggregations:
+Use keyword fields instead of text for aggregations. If a field is already mapped as `text`, create a new index with the desired mapping and reindex your data:
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/my-index/_mapping" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X PUT "localhost:9200/my-index-v2" -H 'Content-Type: application/json' -d'
 {
-  "properties": {
-    "status": {
-      "type": "keyword"
+  "mappings": {
+    "properties": {
+      "status": {
+        "type": "keyword"
+      }
     }
   }
 }'
@@ -132,14 +134,9 @@ Clear field data cache:
 curl -u elastic:password -X POST "localhost:9200/_cache/clear?fielddata=true"
 ```
 
-Limit field data cache:
-```bash
-curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
-{
-  "persistent": {
-    "indices.fielddata.cache.size": "20%"
-  }
-}'
+Limit field data cache in `elasticsearch.yml` and restart the node:
+```yaml
+indices.fielddata.cache.size: 20%
 ```
 
 ### 2. Large Aggregations
@@ -152,7 +149,7 @@ curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-T
 
 Check the failing query in logs or reproduce:
 ```bash
-# Profile a query to see memory usage
+# Profile a query to identify expensive query phases
 curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "profile": true,
@@ -201,7 +198,7 @@ Use composite aggregation for large datasets:
 }
 ```
 
-Use shard_size for better accuracy with fewer buckets:
+Increase `shard_size` for better accuracy when you only need the top buckets:
 ```json
 {
   "aggs": {
@@ -245,9 +242,9 @@ thread_pool.write.queue_size: 1000
 
 **Solutions:**
 
-Increase JVM heap (max 50% of RAM, not exceeding 31GB):
+Increase JVM heap only when the node has enough memory. Keep heap at no more than 50% of available RAM and below the compressed ordinary object pointer threshold, which is safely around 26GB on most systems and can be as high as 30GB on some systems:
 ```bash
-# /etc/elasticsearch/jvm.options
+# /etc/elasticsearch/jvm.options.d/heap.options
 -Xms16g
 -Xmx16g
 ```
@@ -312,7 +309,7 @@ curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-T
 
 ### Use Doc Values Instead of Field Data
 
-Doc values are stored on disk and don't use heap memory:
+Doc values are an on-disk data structure and are enabled by default for supported field types:
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/my-index" -H 'Content-Type: application/json' -d'
 {
@@ -345,7 +342,7 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_mapping" -H 'Content-T
 
 ### Use Filters Instead of Queries
 
-Filters are cached and don't contribute to scoring:
+Filters don't contribute to scoring and are considered for caching:
 ```json
 {
   "query": {
@@ -468,8 +465,8 @@ curl -u elastic:password -X POST "localhost:9200/_tasks/task-id/_cancel"
 
 ### 1. Right-Size JVM Heap
 
-- Set to 50% of available RAM
-- Never exceed 31GB (compressed OOPs limit)
+- Set to no more than 50% of available RAM
+- Keep heap below the compressed ordinary object pointer threshold; 26GB is safe on most systems and the threshold can be as high as 30GB
 - Leave memory for OS file cache
 
 ### 2. Use Appropriate Field Types

@@ -356,6 +356,10 @@ func StreamAuthInterceptor(validator TokenValidator, publicMethods []string) grp
         }
 
         token := strings.TrimPrefix(authHeader[0], "Bearer ")
+        if token == authHeader[0] {
+            return status.Error(codes.Unauthenticated, "invalid authorization format")
+        }
+
         claims, err := validator.Validate(token)
         if err != nil {
             return status.Error(codes.Unauthenticated, "invalid token")
@@ -471,6 +475,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/peer"
     "google.golang.org/grpc/status"
 )
 
@@ -571,18 +576,17 @@ func RateLimitInterceptor(limiter *RateLimiter, keyFunc func(context.Context) st
 // KeyFromIP extracts client IP for rate limiting
 func KeyFromIP(ctx context.Context) string {
     md, ok := metadata.FromIncomingContext(ctx)
-    if !ok {
-        return "unknown"
-    }
 
     // Check x-forwarded-for first (if behind proxy)
-    if xff := md.Get("x-forwarded-for"); len(xff) > 0 {
-        return xff[0]
+    if ok {
+        if xff := md.Get("x-forwarded-for"); len(xff) > 0 {
+            return xff[0]
+        }
     }
 
-    // Use peer address
-    if peer := md.Get(":authority"); len(peer) > 0 {
-        return peer[0]
+    // Use peer address from the RPC context
+    if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+        return p.Addr.String()
     }
 
     return "unknown"
@@ -778,9 +782,11 @@ func MetricsInterceptor() grpc.UnaryServerInterceptor {
         requestsTotal.WithLabelValues(method, code.String()).Inc()
         requestDuration.WithLabelValues(method).Observe(duration.Seconds())
 
-        // Unary requests send/receive one message each
-        messagesSent.WithLabelValues(method).Inc()
+        // Unary requests receive one message and send one response message on success
         messagesReceived.WithLabelValues(method).Inc()
+        if err == nil {
+            messagesSent.WithLabelValues(method).Inc()
+        }
 
         return resp, err
     }
@@ -861,7 +867,7 @@ flowchart TD
     H --> I[Response]
 ```
 
-### Using grpc-middleware Library
+### Using Built-in gRPC Chaining
 
 ```go
 // server/main.go
@@ -871,7 +877,6 @@ import (
     "log"
     "net"
 
-    grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
     "google.golang.org/grpc"
 
     "myapp/auth"
@@ -895,7 +900,7 @@ func main() {
     // Order matters: executed from first to last on request,
     // last to first on response
     server := grpc.NewServer(
-        grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+        grpc.ChainUnaryInterceptor(
             // 1. Recovery - catch panics first
             interceptors.RecoveryInterceptor(nil),
             // 2. Metrics - track all requests including errors
@@ -907,13 +912,13 @@ func main() {
             // 5. Authentication - validate tokens
             interceptors.AuthInterceptor(jwtValidator, publicMethods),
             // 6. Add more interceptors here...
-        )),
-        grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+        ),
+        grpc.ChainStreamInterceptor(
             interceptors.StreamRecoveryInterceptor(nil),
             interceptors.StreamMetricsInterceptor(),
             interceptors.StreamLoggingInterceptor(),
             interceptors.StreamAuthInterceptor(jwtValidator, publicMethods),
-        )),
+        ),
     )
 
     // Register services
@@ -999,11 +1004,12 @@ Implement interceptors in Python.
 
 import logging
 import time
-from typing import Any, Callable
+import contextvars
 
 import grpc
 
 logger = logging.getLogger(__name__)
+current_claims = contextvars.ContextVar('current_claims')
 
 
 class LoggingInterceptor(grpc.ServerInterceptor):
@@ -1116,40 +1122,140 @@ class AuthInterceptor(grpc.ServerInterceptor):
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
 
+        handler = continuation(handler_call_details)
+        if handler is None:
+            return None
+
         # Skip auth for public methods
         if method in self.public_methods:
-            return continuation(handler_call_details)
+            return handler
 
         # Get authorization header
         metadata = dict(handler_call_details.invocation_metadata)
         auth_header = metadata.get('authorization', '')
 
         if not auth_header.startswith('Bearer '):
-            return self._abort_handler(grpc.StatusCode.UNAUTHENTICATED, 'Missing or invalid authorization')
+            return self._abort_handler(handler, grpc.StatusCode.UNAUTHENTICATED, 'Missing or invalid authorization')
 
         token = auth_header[7:]  # Remove 'Bearer ' prefix
 
         try:
             claims = self.token_validator.validate(token)
         except Exception as e:
-            return self._abort_handler(grpc.StatusCode.UNAUTHENTICATED, str(e))
-
-        # Store claims in context
-        handler = continuation(handler_call_details)
-        if handler is None:
-            return None
+            return self._abort_handler(handler, grpc.StatusCode.UNAUTHENTICATED, str(e))
 
         return self._wrap_with_claims(handler, claims)
 
-    def _abort_handler(self, code, message):
-        def abort(request, context):
-            context.abort(code, message)
+    def _abort_handler(self, handler, code, message):
+        if handler.unary_unary:
+            def abort(request, context):
+                context.abort(code, message)
 
-        return grpc.unary_unary_rpc_method_handler(abort)
+            return grpc.unary_unary_rpc_method_handler(
+                abort,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.unary_stream:
+            def abort(request, context):
+                context.abort(code, message)
+                yield from ()
+
+            return grpc.unary_stream_rpc_method_handler(
+                abort,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_unary:
+            def abort(request_iterator, context):
+                context.abort(code, message)
+
+            return grpc.stream_unary_rpc_method_handler(
+                abort,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_stream:
+            def abort(request_iterator, context):
+                context.abort(code, message)
+                yield from ()
+
+            return grpc.stream_stream_rpc_method_handler(
+                abort,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        return handler
 
     def _wrap_with_claims(self, handler, claims):
-        # Wrap handler to inject claims
-        # In practice, you would pass claims through context
+        def set_claims():
+            return current_claims.set(claims)
+
+        def reset_claims(token):
+            current_claims.reset(token)
+
+        if handler.unary_unary:
+            def wrapper(request, context):
+                token = set_claims()
+                try:
+                    return handler.unary_unary(request, context)
+                finally:
+                    reset_claims(token)
+
+            return grpc.unary_unary_rpc_method_handler(
+                wrapper,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.unary_stream:
+            def wrapper(request, context):
+                token = set_claims()
+                try:
+                    for response in handler.unary_stream(request, context):
+                        yield response
+                finally:
+                    reset_claims(token)
+
+            return grpc.unary_stream_rpc_method_handler(
+                wrapper,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_unary:
+            def wrapper(request_iterator, context):
+                token = set_claims()
+                try:
+                    return handler.stream_unary(request_iterator, context)
+                finally:
+                    reset_claims(token)
+
+            return grpc.stream_unary_rpc_method_handler(
+                wrapper,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
+        if handler.stream_stream:
+            def wrapper(request_iterator, context):
+                token = set_claims()
+                try:
+                    for response in handler.stream_stream(request_iterator, context):
+                        yield response
+                finally:
+                    reset_claims(token)
+
+            return grpc.stream_stream_rpc_method_handler(
+                wrapper,
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer,
+            )
+
         return handler
 
 
@@ -1185,6 +1291,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/metadata"
     "google.golang.org/grpc/status"
 )
 
@@ -1315,9 +1422,8 @@ func (m *mockTokenValidator) Validate(token string) (*Claims, error) {
 }
 
 func createContextWithAuth(token string) context.Context {
-    // Create context with metadata
-    // Implementation depends on your testing approach
-    return context.Background()
+    md := metadata.Pairs("authorization", "Bearer "+token)
+    return metadata.NewIncomingContext(context.Background(), md)
 }
 ```
 

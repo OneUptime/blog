@@ -72,8 +72,9 @@ gcloud compute project-info describe \
     | grep -E "CPUS|SSD|INSTANCES"
 
 # List quotas for a specific service
-gcloud services list --enabled --filter="NAME:compute" --format="value(NAME)" | \
-    xargs -I {} gcloud alpha services quota list --service={}
+gcloud beta quotas info list \
+    --service=compute.googleapis.com \
+    --project=my-project
 ```
 
 ### Using the Cloud Console
@@ -88,11 +89,11 @@ Navigate to IAM & Admin > Quotas to see a comprehensive view of all quotas acros
 
 ```python
 # Python script to check quota usage
+import time
 from google.cloud import monitoring_v3
-from google.cloud.monitoring_v3 import query
 
-def check_quota_usage(project_id, metric_type):
-    """Check quota usage for a specific metric."""
+def check_quota_usage(project_id, quota_metric):
+    """Check quota usage for a specific consumer quota metric."""
     client = monitoring_v3.MetricServiceClient()
     project_name = f"projects/{project_id}"
 
@@ -100,7 +101,11 @@ def check_quota_usage(project_id, metric_type):
     results = client.list_time_series(
         request={
             "name": project_name,
-            "filter": f'metric.type="{metric_type}"',
+            "filter": (
+                'metric.type="serviceruntime.googleapis.com/quota/allocation/usage" '
+                'AND resource.type="consumer_quota" '
+                f'AND metric.label.quota_metric="{quota_metric}"'
+            ),
             "interval": {
                 "end_time": {"seconds": int(time.time())},
                 "start_time": {"seconds": int(time.time()) - 3600}
@@ -112,11 +117,11 @@ def check_quota_usage(project_id, metric_type):
     for result in results:
         print(f"Resource: {result.resource}")
         for point in result.points:
-            print(f"  Value: {point.value.int64_value}")
+            print(f"  Value: {point.value.int64_value or point.value.double_value}")
             print(f"  Time: {point.interval.end_time}")
 
 # Check CPU quota usage
-check_quota_usage("my-project", "compute.googleapis.com/quota/cpus_per_project/usage")
+check_quota_usage("my-project", "compute.googleapis.com/cpus")
 ```
 
 ## Requesting Quota Increases
@@ -125,19 +130,19 @@ check_quota_usage("my-project", "compute.googleapis.com/quota/cpus_per_project/u
 
 ```bash
 # Request a quota increase for CPUs
-gcloud alpha services quota update \
-    --consumer=projects/my-project \
+gcloud beta quotas preferences create \
+    --project=my-project \
     --service=compute.googleapis.com \
-    --metric=compute.googleapis.com/cpus \
-    --unit=1/project/region \
+    --quota-id=CPUS-per-project-region \
     --dimensions=region=us-central1 \
-    --value=100
+    --preferred-value=100 \
+    --email=admin@example.com \
+    --justification="Need additional CPU quota for production workloads"
 
 # Check the status of your quota increase request
-gcloud alpha services quota list \
-    --service=compute.googleapis.com \
-    --consumer=projects/my-project \
-    --filter="metric:cpus"
+gcloud beta quotas preferences list \
+    --project=my-project \
+    --reconciling-only=true
 ```
 
 ### Through the Cloud Console
@@ -204,13 +209,14 @@ def upload_with_retry(bucket_name, blob_name, data, max_retries=5):
 ### Batch API Operations
 
 ```python
+import time
 from google.cloud import compute_v1
 
 def batch_create_instances(project, zone, instance_configs):
-    """Create multiple instances with batching to avoid rate limits."""
+    """Create multiple instances in small groups to avoid rate limits."""
     client = compute_v1.InstancesClient()
 
-    # Use batch operations instead of individual calls
+    # Throttle individual insert calls in small groups
     batch_size = 10
     for i in range(0, len(instance_configs), batch_size):
         batch = instance_configs[i:i + batch_size]
@@ -283,33 +289,33 @@ gcloud monitoring metrics-scopes list
 ### Creating Monitoring Alerts
 
 ```bash
-# Create an alert policy for quota usage
-gcloud alpha monitoring policies create \
+# Create an alert policy for absolute CPU quota usage
+gcloud monitoring policies create \
     --display-name="CPU Quota Alert" \
-    --condition-display-name="CPU quota above 80%" \
-    --condition-filter='metric.type="compute.googleapis.com/quota/cpus_per_project/usage" AND resource.type="consumer_quota"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --condition-display-name="CPU quota usage above 80 vCPUs" \
+    --condition-filter='metric.type="serviceruntime.googleapis.com/quota/allocation/usage" AND resource.type="consumer_quota" AND resource.label.service="compute.googleapis.com" AND metric.label.quota_metric="compute.googleapis.com/cpus"' \
+    --if="> 80" \
+    --duration="300s" \
     --notification-channels="projects/my-project/notificationChannels/12345" \
-    --documentation="CPU quota usage is above 80%. Consider requesting an increase or optimizing resource usage."
+    --documentation="CPU quota usage is above 80 vCPUs. Consider requesting an increase or optimizing resource usage."
 ```
 
 ### Terraform Configuration for Quota Monitoring
 
 ```hcl
-# Alert when quota usage exceeds 80%
+# Alert when CPU quota usage exceeds 80 vCPUs
 resource "google_monitoring_alert_policy" "quota_alert" {
   display_name = "GCP Quota Usage Alert"
   combiner     = "OR"
 
   conditions {
-    display_name = "CPU Quota High Usage"
+    display_name = "CPU Quota Usage Above 80 vCPUs"
 
     condition_threshold {
-      filter          = "metric.type=\"compute.googleapis.com/quota/cpus_per_project/usage\" AND resource.type=\"consumer_quota\""
+      filter          = "metric.type=\"serviceruntime.googleapis.com/quota/allocation/usage\" AND resource.type=\"consumer_quota\" AND resource.label.service=\"compute.googleapis.com\" AND metric.label.quota_metric=\"compute.googleapis.com/cpus\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
-      threshold_value = 0.8
+      threshold_value = 80
 
       aggregations {
         alignment_period   = "60s"
@@ -321,7 +327,7 @@ resource "google_monitoring_alert_policy" "quota_alert" {
   notification_channels = [google_monitoring_notification_channel.email.id]
 
   documentation {
-    content   = "CPU quota usage has exceeded 80%. Review resource usage and request quota increase if needed."
+    content   = "CPU quota usage has exceeded 80 vCPUs. Review resource usage and request quota increase if needed."
     mime_type = "text/markdown"
   }
 }
@@ -379,10 +385,10 @@ When you hit a quota wall during a critical deployment:
 1. **Check other regions** - Deploy to a region with available quota
 2. **Optimize immediately** - Delete unused resources to free up quota
 3. **Contact Google Support** - Paid support plans can expedite quota increases
-4. **Use preemptible/spot VMs** - These have separate quota pools
+4. **Use spot VMs where appropriate** - These can use preemptible quota if Google Cloud has granted it for the region
 
 ```bash
-# Quick switch to spot instances if regular quota is exhausted
+# Use spot instances if preemptible quota is available in the region
 gcloud compute instances create emergency-instance \
     --zone=us-central1-a \
     --machine-type=e2-standard-4 \

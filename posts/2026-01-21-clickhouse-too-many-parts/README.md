@@ -45,7 +45,7 @@ flowchart TD
     M --> R
 ```
 
-Each INSERT creates a new part. ClickHouse merges parts in the background. If inserts are faster than merges, parts accumulate.
+Each INSERT typically creates one or more new parts, depending on the partitions touched. ClickHouse merges parts in the background. If inserts are faster than merges, parts accumulate.
 
 ### Error Messages
 
@@ -153,7 +153,7 @@ LIMIT 50;
 -- Trigger merge for specific table
 OPTIMIZE TABLE events;
 
--- Force final merge (expensive, blocks inserts)
+-- Force final merge (expensive and resource-intensive)
 OPTIMIZE TABLE events FINAL;
 
 -- Merge specific partition
@@ -171,8 +171,10 @@ OPTIMIZE TABLE events PARTITION '202401' FINAL;
     <!-- Allow more concurrent merges -->
     <background_merges_mutations_concurrency_ratio>4</background_merges_mutations_concurrency_ratio>
 
-    <!-- Increase merge memory -->
-    <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
+    <merge_tree>
+        <!-- Allow larger automatic merges when enough disk space is available -->
+        <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
+    </merge_tree>
 </clickhouse>
 ```
 
@@ -189,8 +191,8 @@ ALTER TABLE events MODIFY SETTING parts_to_throw_insert = 1000;
 
 -- Or set at query level
 INSERT INTO events
-SELECT * FROM source_data
-SETTINGS parts_to_throw_insert = 1000;
+SETTINGS parts_to_throw_insert = 1000
+SELECT * FROM source_data;
 ```
 
 ## Long-Term Solutions
@@ -218,11 +220,12 @@ ALTER USER app_user SETTINGS
     async_insert = 1,
     async_insert_busy_timeout_ms = 200,  -- Wait up to 200ms to batch
     async_insert_max_data_size = 10000000,  -- Or 10MB of data
-    async_insert_stale_timeout_ms = 1000;  -- Flush after 1s max
+    async_insert_stale_timeout_ms = 1000;  -- Flush 1s after the last query
 
 -- For specific inserts
-INSERT INTO events VALUES (...)
-SETTINGS async_insert = 1;
+INSERT INTO events
+SETTINGS async_insert = 1
+VALUES (...);
 ```
 
 ### Use Buffer Tables
@@ -275,7 +278,7 @@ ORDER BY (...);
 ```sql
 -- Adjust merge behavior per table
 ALTER TABLE events MODIFY SETTING
-    -- Merge more aggressively
+    -- Run TTL-related merges more frequently
     merge_with_ttl_timeout = 3600,
     merge_with_recompression_ttl_timeout = 3600,
 
@@ -286,22 +289,24 @@ ALTER TABLE events MODIFY SETTING
     parts_to_delay_insert = 150,  -- Start slowing inserts
     parts_to_throw_insert = 300,  -- Reject inserts
 
-    -- Merge priority
+    -- Allow more merge/mutation tasks in ReplicatedMergeTree queue
     max_replicated_merges_in_queue = 16;
 ```
 
 ### Insert Limits
 
 ```sql
--- Configure insert behavior
-ALTER TABLE events MODIFY SETTING
-    -- Minimum rows per insert (prevents tiny parts)
+-- Configure insert block formation for the application user
+ALTER USER app_user SETTINGS
+    -- Minimum rows per inserted block
     min_insert_block_size_rows = 1000000,
 
-    -- Minimum bytes per insert
-    min_insert_block_size_bytes = 268435456,  -- 256MB
+    -- Minimum bytes per inserted block
+    min_insert_block_size_bytes = 268435456;  -- 256MB
 
-    -- Max parts per insert
+-- Configure table-wide active part limit
+ALTER TABLE events MODIFY SETTING
+    -- Max active parts across all partitions in the table
     max_parts_in_total = 100000;
 ```
 
@@ -353,20 +358,20 @@ FROM inserts, merges;
 ```yaml
 # Alert when parts accumulate
 - alert: ClickHouseTooManyParts
-  expr: clickhouse_parts_count > 200
+  expr: ClickHouseAsyncMetrics_MaxPartCountForPartition > 200
   for: 10m
   labels:
     severity: warning
   annotations:
-    summary: "Table {{ $labels.table }} has {{ $value }} parts"
+    summary: "A ClickHouse partition has {{ $value }} parts"
 
 - alert: ClickHouseMergesStuck
-  expr: rate(clickhouse_merges_total[1h]) == 0
+  expr: ClickHouseAsyncMetrics_MaxPartCountForPartition > 200 and ClickHouseMetrics_Merge == 0
   for: 30m
   labels:
     severity: critical
   annotations:
-    summary: "No merges happening on ClickHouse"
+    summary: "No active ClickHouse merges while parts are elevated"
 ```
 
 ## Recovery Procedure

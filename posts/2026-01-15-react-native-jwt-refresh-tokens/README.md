@@ -56,7 +56,7 @@ JWTs offer several advantages for mobile applications:
 2. **Scalability**: Easy to scale across multiple servers
 3. **Cross-Platform**: Works seamlessly across iOS and Android
 4. **Self-Contained**: Contains all necessary user information
-5. **Tamper-Proof**: Cryptographically signed to prevent modification
+5. **Tamper-Evident**: Cryptographically signed so modification can be detected during validation
 
 ## Access Tokens vs Refresh Tokens
 
@@ -450,8 +450,10 @@ Implementing proactive token refresh improves user experience by refreshing toke
 
 ```typescript
 // src/services/tokenRefreshService.ts
+import axios from 'axios';
 import { tokenManager } from './tokenManager';
-import apiClient from './api';
+
+const API_BASE_URL = 'https://api.yourapp.com';
 
 interface RefreshResponse {
   accessToken: string;
@@ -460,7 +462,7 @@ interface RefreshResponse {
 }
 
 class TokenRefreshService {
-  private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly REFRESH_THRESHOLD = 60; // Refresh 60 seconds before expiry
 
   // Start the automatic refresh cycle
@@ -508,9 +510,13 @@ class TokenRefreshService {
         throw new Error('No refresh token available');
       }
 
-      const response = await apiClient.post<RefreshResponse>('/auth/refresh', {
-        refreshToken,
-      });
+      const response = await axios.post<RefreshResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+        {
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
       const { accessToken, refreshToken: newRefreshToken, expiresIn } = response.data;
 
@@ -704,9 +710,12 @@ Silent authentication allows the app to authenticate users without requiring cre
 
 ```typescript
 // src/services/silentAuthService.ts
+import axios from 'axios';
 import { tokenManager } from './tokenManager';
 import { tokenRefreshService } from './tokenRefreshService';
 import apiClient from './api';
+
+const API_BASE_URL = 'https://api.yourapp.com';
 
 interface UserProfile {
   id: string;
@@ -719,6 +728,12 @@ interface AuthState {
   isLoading: boolean;
   user: UserProfile | null;
   error: string | null;
+}
+
+interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
 }
 
 class SilentAuthService {
@@ -737,9 +752,13 @@ class SilentAuthService {
       }
 
       // Try to refresh the access token
-      const response = await apiClient.post('/auth/refresh', {
-        refreshToken,
-      });
+      const response = await axios.post<RefreshResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+        {
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
       const { accessToken, refreshToken: newRefreshToken, expiresIn } = response.data;
 
@@ -1001,7 +1020,7 @@ apiClient.interceptors.response.use(
               throw new Error('No refresh token');
             }
 
-            const response = await axios.post('/auth/refresh', {
+            const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
               refreshToken,
             });
 
@@ -1190,11 +1209,17 @@ describe('TokenManager', () => {
 
 ```typescript
 // __tests__/authFlow.test.ts
+import axios from 'axios';
 import { silentAuthService } from '../src/services/silentAuthService';
 import { tokenManager } from '../src/services/tokenManager';
 import { secureStorage } from '../src/services/secureStorage';
+import apiClient from '../src/services/api';
 
+jest.mock('axios');
 jest.mock('../src/services/secureStorage');
+jest.mock('../src/services/api', () => ({
+  get: jest.fn(),
+}));
 
 describe('Authentication Flow', () => {
   beforeEach(() => {
@@ -1206,14 +1231,20 @@ describe('Authentication Flow', () => {
     it('should authenticate with valid refresh token', async () => {
       (secureStorage.getRefreshToken as jest.Mock).mockResolvedValue('valid-refresh-token');
 
-      // Mock API response
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
+      // Mock API responses
+      (axios.post as jest.Mock).mockResolvedValue({
+        data: {
           accessToken: 'new-access-token',
           refreshToken: 'new-refresh-token',
           expiresIn: 3600,
-        }),
+        },
+      });
+      (apiClient.get as jest.Mock).mockResolvedValue({
+        data: {
+          id: 'user-1',
+          email: 'test@example.com',
+          name: 'Test User',
+        },
       });
 
       const result = await silentAuthService.attemptSilentAuth();

@@ -134,7 +134,7 @@ FROM numbers(1000000);
 -- Realistic log entries
 INSERT INTO logs (timestamp, level, service, message, trace_id)
 SELECT
-    now() - INTERVAL number MILLISECOND * 10 AS timestamp,
+    now() - INTERVAL (number * 10) MILLISECOND AS timestamp,
     arrayElement(
         ['DEBUG', 'INFO', 'WARN', 'ERROR'],
         -- Weighted: mostly INFO
@@ -191,9 +191,15 @@ LIFETIME(0);
 INSERT INTO user_locations (user_id, city, country)
 SELECT
     number AS user_id,
-    dictGet('city_dict', 'city_name', toUInt32((rand() % 8) + 1)) AS city,
-    dictGet('city_dict', 'country', toUInt32((rand() % 8) + 1)) AS country
-FROM numbers(100000);
+    dictGet('city_dict', 'city_name', city_id) AS city,
+    dictGet('city_dict', 'country', city_id) AS country
+FROM
+(
+    SELECT
+        number,
+        toUInt32((rand() % 8) + 1) AS city_id
+    FROM numbers(100000)
+);
 ```
 
 ## External Data Generation Tools
@@ -211,21 +217,25 @@ client = clickhouse_connect.get_client(host='localhost')
 def generate_users(count):
     data = []
     for i in range(count):
-        data.append({
-            'user_id': i + 1,
-            'name': fake.name(),
-            'email': fake.email(),
-            'address': fake.address().replace('\n', ', '),
-            'phone': fake.phone_number(),
-            'company': fake.company(),
-            'created_at': fake.date_time_between(start_date='-2y', end_date='now')
-        })
+        data.append([
+            i + 1,
+            fake.name(),
+            fake.email(),
+            fake.address().replace('\n', ', '),
+            fake.phone_number(),
+            fake.company(),
+            fake.date_time_between(start_date='-2y', end_date='now')
+        ])
     return data
 
 # Generate and insert
 
 users = generate_users(10000)
-client.insert('users', users, column_names=list(users[0].keys()))
+client.insert(
+    'users',
+    users,
+    column_names=['user_id', 'name', 'email', 'address', 'phone', 'company', 'created_at']
+)
 ```
 
 ## Performance Testing Data
@@ -245,7 +255,7 @@ CREATE TABLE benchmark_data (
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (dimension1, timestamp);
 
--- Insert 1 billion rows in batches
+-- Insert 100 million rows
 INSERT INTO benchmark_data
 SELECT
     number AS id,

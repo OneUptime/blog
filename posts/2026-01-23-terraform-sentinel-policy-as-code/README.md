@@ -8,7 +8,7 @@ Description: Learn how to enforce infrastructure policies with HashiCorp Sentine
 
 ---
 
-Sentinel is HashiCorp's policy-as-code framework that integrates with Terraform Cloud and Enterprise. It lets you define rules that every Terraform plan must pass before applying. This enables automated governance, security enforcement, and compliance checking without manual review bottlenecks.
+Sentinel is HashiCorp's policy-as-code framework that integrates with HCP Terraform and Terraform Enterprise. It lets you define rules that Terraform plans are checked against before applying. This enables automated governance, security enforcement, and compliance checking without manual review bottlenecks.
 
 ## Why Policy as Code
 
@@ -48,15 +48,15 @@ main = rule {
 # Helper rule
 all_instances_have_tags = rule {
     all tfplan.resource_changes as _, rc {
-        rc.type is "aws_instance" implies
+        rc.type is not "aws_instance" or
         rc.change.after.tags is not null
     }
 }
 ```
 
-## Setting Up Sentinel in Terraform Cloud
+## Setting Up Sentinel in HCP Terraform
 
-1. Create a policy set in Terraform Cloud
+1. Create a policy set in HCP Terraform
 2. Link it to workspaces
 3. Define enforcement levels
 
@@ -65,10 +65,9 @@ all_instances_have_tags = rule {
 ```text
 sentinel/
 |-- sentinel.hcl         # Configuration file
-|-- policies/
-|   |-- require-tags.sentinel
-|   |-- restrict-instance-types.sentinel
-|   |-- enforce-encryption.sentinel
+|-- require-tags.sentinel
+|-- restrict-instance-types.sentinel
+|-- enforce-encryption.sentinel
 |-- test/
     |-- require-tags/
     |   |-- pass.hcl
@@ -83,17 +82,17 @@ sentinel/
 ```hcl
 # sentinel.hcl
 policy "require-tags" {
-  source            = "./policies/require-tags.sentinel"
+  source            = "./require-tags.sentinel"
   enforcement_level = "hard-mandatory"
 }
 
 policy "restrict-instance-types" {
-  source            = "./policies/restrict-instance-types.sentinel"
+  source            = "./restrict-instance-types.sentinel"
   enforcement_level = "soft-mandatory"
 }
 
 policy "enforce-encryption" {
-  source            = "./policies/enforce-encryption.sentinel"
+  source            = "./enforce-encryption.sentinel"
   enforcement_level = "hard-mandatory"
 }
 ```
@@ -102,16 +101,15 @@ policy "enforce-encryption" {
 
 - **advisory** - Logged but does not block applies
 - **soft-mandatory** - Can be overridden by authorized users
-- **hard-mandatory** - Cannot be overridden; blocks applies
+- **hard-mandatory** - Blocks applies unless the policy set is configured to allow overrides
 
 ## Common Policy Patterns
 
 ### Require Tags on All Resources
 
 ```hcl
-# policies/require-tags.sentinel
+# require-tags.sentinel
 import "tfplan/v2" as tfplan
-import "strings"
 
 # Required tags for all taggable resources
 required_tags = ["Environment", "Owner", "Project"]
@@ -150,7 +148,7 @@ main = rule {
 ### Restrict Instance Types
 
 ```hcl
-# policies/restrict-instance-types.sentinel
+# restrict-instance-types.sentinel
 import "tfplan/v2" as tfplan
 
 # Allowed instance types by environment
@@ -188,7 +186,7 @@ main = rule {
 ### Enforce S3 Bucket Encryption
 
 ```hcl
-# policies/enforce-encryption.sentinel
+# enforce-encryption.sentinel
 import "tfplan/v2" as tfplan
 
 # Get S3 buckets
@@ -204,7 +202,8 @@ get_s3_buckets = func() {
 get_encryption_configs = func() {
     return filter tfplan.resource_changes as _, rc {
         rc.type is "aws_s3_bucket_server_side_encryption_configuration" and
-        rc.mode is "managed"
+        rc.mode is "managed" and
+        rc.change.actions is not ["delete"]
     }
 }
 
@@ -213,7 +212,7 @@ bucket_has_encryption = func(bucket_name) {
     configs = get_encryption_configs()
 
     for configs as _, config {
-        if config.change.after.bucket contains bucket_name {
+        if config.change.after.bucket is bucket_name {
             return true
         }
     }
@@ -233,7 +232,7 @@ main = rule {
 ### Maximum Resource Count
 
 ```hcl
-# policies/max-resources.sentinel
+# max-resources.sentinel
 import "tfplan/v2" as tfplan
 
 # Maximum allowed instances
@@ -255,14 +254,14 @@ main = rule {
 ### Restrict Expensive Resources
 
 ```hcl
-# policies/restrict-expensive-resources.sentinel
+# restrict-expensive-resources.sentinel
 import "tfplan/v2" as tfplan
 
 # Resources that require special approval
 expensive_resources = [
     "aws_db_instance",
     "aws_redshift_cluster",
-    "aws_elasticsearch_domain",
+    "aws_opensearch_domain",
     "aws_emr_cluster",
 ]
 
@@ -289,8 +288,17 @@ main = rule {
 ### Prevent Public S3 Buckets
 
 ```hcl
-# policies/no-public-s3.sentinel
+# no-public-s3.sentinel
 import "tfplan/v2" as tfplan
+
+# Get S3 buckets
+get_s3_buckets = func() {
+    return filter tfplan.resource_changes as _, rc {
+        rc.type is "aws_s3_bucket" and
+        rc.mode is "managed" and
+        rc.change.actions is not ["delete"]
+    }
+}
 
 # Get S3 bucket ACL configurations
 get_bucket_acls = func() {
@@ -305,7 +313,8 @@ get_bucket_acls = func() {
 get_public_access_blocks = func() {
     return filter tfplan.resource_changes as _, rc {
         rc.type is "aws_s3_bucket_public_access_block" and
-        rc.mode is "managed"
+        rc.mode is "managed" and
+        rc.change.actions is not ["delete"]
     }
 }
 
@@ -317,26 +326,34 @@ no_public_acls = rule {
 }
 
 # Check that public access is blocked
-public_access_blocked = rule {
+public_access_blocked = func(bucket_name) {
     blocks = get_public_access_blocks()
-    all blocks as _, block {
+
+    for blocks as _, block {
         after = block.change.after
-        after.block_public_acls is true and
-        after.block_public_policy is true and
-        after.ignore_public_acls is true and
-        after.restrict_public_buckets is true
+        if after.bucket is bucket_name {
+            return after.block_public_acls is true and
+                after.block_public_policy is true and
+                after.ignore_public_acls is true and
+                after.restrict_public_buckets is true
+        }
     }
+
+    return false
 }
 
 main = rule {
-    no_public_acls and public_access_blocked
+    no_public_acls and
+    all get_s3_buckets() as _, bucket {
+        public_access_blocked(bucket.change.after.bucket)
+    }
 }
 ```
 
 ### Require VPC for Databases
 
 ```hcl
-# policies/require-vpc-database.sentinel
+# require-vpc-database.sentinel
 import "tfplan/v2" as tfplan
 
 get_rds_instances = func() {
@@ -430,7 +447,7 @@ sentinel test
 Access Terraform configuration (HCL) alongside the plan.
 
 ```hcl
-# policies/no-hardcoded-secrets.sentinel
+# no-hardcoded-secrets.sentinel
 import "tfconfig/v2" as tfconfig
 import "strings"
 
@@ -443,11 +460,11 @@ get_sensitive_patterns = func() {
 check_variables = func() {
     violations = []
 
-    for tfconfig.variables as name, v {
+    for tfconfig.variables as _, v {
         for get_sensitive_patterns() as pattern {
-            if strings.contains(strings.to_lower(name), pattern) {
+            if strings.contains(strings.to_lower(v.name), pattern) {
                 if v.default is not null {
-                    append(violations, name)
+                    append(violations, v.name)
                 }
             }
         }
@@ -477,12 +494,18 @@ main = rule {
 
 ```hcl
 # Good: Clear error message
-main = rule when length(violations) > 0 {
-    print("ERROR: The following resources are missing required tags:")
-    print(violations)
-    false
-} else {
-    true
+validate = func() {
+    if length(violations) > 0 {
+        print("ERROR: The following resources are missing required tags:")
+        print(violations)
+        return false
+    }
+
+    return true
+}
+
+main = rule {
+    validate()
 }
 ```
 

@@ -8,7 +8,7 @@ Description: Master PostgreSQL window functions to calculate running totals, mov
 
 ---
 
-Running totals and cumulative calculations used to require painful self-joins or correlated subqueries. PostgreSQL window functions let you perform these calculations in a single pass over the data, making your queries faster and easier to read.
+Running totals and cumulative calculations used to require painful self-joins or correlated subqueries. PostgreSQL window functions let you perform these calculations in a single query, making your queries easier to read and often more efficient.
 
 ## Understanding Window Functions
 
@@ -143,7 +143,7 @@ Result:
 
 ## Moving Averages
 
-Calculate a 3-day moving average:
+Calculate a 3-row moving average:
 
 ```sql
 SELECT
@@ -160,7 +160,7 @@ FROM sales
 ORDER BY sale_date;
 ```
 
-For daily aggregates first:
+For a true 3-day moving average, aggregate daily first:
 
 ```sql
 WITH daily_totals AS (
@@ -362,7 +362,7 @@ SELECT
     region,
     amount,
     ROUND(
-        CUME_DIST() OVER (ORDER BY amount) * 100,
+        (CUME_DIST() OVER (ORDER BY amount) * 100)::numeric,
         2
     ) AS percentile,
     NTILE(4) OVER (ORDER BY amount) AS quartile
@@ -420,4 +420,4 @@ Result:
 
 ---
 
-Window functions eliminate the need for self-joins and correlated subqueries. They process data in a single pass, improving both performance and readability. Start with simple running totals, then explore rankings, moving averages, and lag/lead comparisons. Once you understand the OVER clause syntax, these calculations become second nature.
+Window functions eliminate the need for self-joins and correlated subqueries in many cumulative calculations. They let the database compute results over a defined window, improving readability and often performance. Start with simple running totals, then explore rankings, moving averages, and lag/lead comparisons. Once you understand the OVER clause syntax, these calculations become second nature.

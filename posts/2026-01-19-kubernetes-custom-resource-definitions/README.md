@@ -265,8 +265,8 @@ spec:
               x-kubernetes-validations:
                 - rule: "self.engine == 'postgres' ? (self.version.startsWith('15') || self.version.startsWith('14')) : true"
                   message: "PostgreSQL only supports versions 14.x and 15.x"
-                - rule: "!self.highAvailability.enabled || self.highAvailability.replicas >= 2"
-                  message: "High availability requires at least 2 replicas"
+                - rule: "!has(self.highAvailability) || !self.highAvailability.enabled || has(self.highAvailability.replicas)"
+                  message: "High availability requires replicas to be set"
             
             status:
               type: object
@@ -406,7 +406,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -414,8 +413,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	examplev1 "github.com/example/webapp-operator/api/v1"
@@ -445,14 +446,12 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Create or update Deployment
-	deployment := r.deploymentForWebApp(webapp)
-	if err := r.createOrUpdate(ctx, deployment, webapp); err != nil {
+	if err := r.createOrUpdateDeployment(ctx, webapp); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Create or update Service
-	service := r.serviceForWebApp(webapp)
-	if err := r.createOrUpdate(ctx, service, webapp); err != nil {
+	if err := r.createOrUpdateService(ctx, webapp); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -464,19 +463,26 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *WebAppReconciler) deploymentForWebApp(webapp *examplev1.WebApp) *appsv1.Deployment {
-	replicas := int32(webapp.Spec.Replicas)
+func (r *WebAppReconciler) createOrUpdateDeployment(ctx context.Context, webapp *examplev1.WebApp) error {
 	labels := map[string]string{
 		"app":        webapp.Name,
 		"controller": "webapp-operator",
 	}
+	replicas := int32(webapp.Spec.Replicas)
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      webapp.Name,
 			Namespace: webapp.Namespace,
 		},
-		Spec: appsv1.DeploymentSpec{
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+		if err := controllerutil.SetControllerReference(webapp, deployment, r.Scheme); err != nil {
+			return err
+		}
+
+		deployment.Spec = appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
@@ -499,28 +505,39 @@ func (r *WebAppReconciler) deploymentForWebApp(webapp *examplev1.WebApp) *appsv1
 					},
 				},
 			},
-		},
-	}
+		}
+		return nil
+	})
+
+	return err
 }
 
-func (r *WebAppReconciler) serviceForWebApp(webapp *examplev1.WebApp) *corev1.Service {
-	return &corev1.Service{
+func (r *WebAppReconciler) createOrUpdateService(ctx context.Context, webapp *examplev1.WebApp) error {
+	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      webapp.Name,
 			Namespace: webapp.Namespace,
 		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app": webapp.Name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Port:       80,
-					TargetPort: intstr.FromInt(webapp.Spec.Port),
-				},
-			},
-		},
 	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		if err := controllerutil.SetControllerReference(webapp, service, r.Scheme); err != nil {
+			return err
+		}
+
+		service.Spec.Selector = map[string]string{
+			"app": webapp.Name,
+		}
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Port:       80,
+				TargetPort: intstr.FromInt(webapp.Spec.Port),
+			},
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (r *WebAppReconciler) updateStatus(ctx context.Context, webapp *examplev1.WebApp) error {

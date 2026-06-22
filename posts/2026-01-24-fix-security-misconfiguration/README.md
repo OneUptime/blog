@@ -73,8 +73,8 @@ http {
     # Prevent MIME type sniffing
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Enable XSS filter
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Disable legacy XSS filter; rely on Content Security Policy
+    add_header X-XSS-Protection "0" always;
 
     # Control referrer information
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -99,7 +99,8 @@ http {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name example.com;
 
         # Deny access to hidden files
@@ -161,19 +162,17 @@ app.use(helmet({
         preload: true
     },
     // Prevent clickjacking
-    frameguard: { action: 'deny' },
-    // Hide X-Powered-By header
-    hidePoweredBy: true,
+    xFrameOptions: { action: 'deny' },
     // Prevent MIME sniffing
-    noSniff: true,
-    // XSS filter
-    xssFilter: true
+    xContentTypeOptions: true,
+    // Disable legacy XSS filter
+    xXssProtection: true
 }));
 
 // Rate limiting to prevent brute force
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per window
+    limit: 100, // Limit each IP to 100 requests per window
     message: 'Too many requests, please try again later.',
     standardHeaders: true,
     legacyHeaders: false
@@ -183,10 +182,21 @@ app.use(limiter);
 // Stricter rate limit for authentication endpoints
 const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // 5 failed attempts per hour
+    limit: 5, // 5 attempts per hour
     message: 'Too many login attempts, please try again later.'
 });
 app.use('/api/auth', authLimiter);
+
+// Disable X-Powered-By header
+app.disable('x-powered-by');
+
+// Parse JSON with size limit
+app.use(express.json({ limit: '10kb' }));
+
+// Trust proxy only in production behind load balancer
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
 
 // Disable debug in production
 if (process.env.NODE_ENV === 'production') {
@@ -198,17 +208,6 @@ if (process.env.NODE_ENV === 'production') {
         console.error(err); // Log internally
         res.status(500).json({ error: 'Internal server error' });
     });
-}
-
-// Disable X-Powered-By header
-app.disable('x-powered-by');
-
-// Parse JSON with size limit
-app.use(express.json({ limit: '10kb' }));
-
-// Trust proxy only in production behind load balancer
-if (process.env.NODE_ENV === 'production') {
-    app.set('trust proxy', 1);
 }
 ```
 
@@ -228,17 +227,23 @@ if (process.env.NODE_ENV === 'production') {
 -- Create application database
 CREATE DATABASE myapp_production;
 
+-- Run the remaining commands while connected to myapp_production
+
 -- Create read-only user for reporting
 CREATE USER myapp_readonly WITH PASSWORD 'strong_random_password_here';
 GRANT CONNECT ON DATABASE myapp_production TO myapp_readonly;
 GRANT USAGE ON SCHEMA public TO myapp_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO myapp_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO myapp_readonly;
 
 -- Create application user with limited privileges
 CREATE USER myapp_api WITH PASSWORD 'another_strong_password_here';
 GRANT CONNECT ON DATABASE myapp_production TO myapp_api;
 GRANT USAGE ON SCHEMA public TO myapp_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO myapp_api;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO myapp_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO myapp_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO myapp_api;
 
 -- Revoke public access
 REVOKE ALL ON DATABASE myapp_production FROM PUBLIC;

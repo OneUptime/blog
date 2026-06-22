@@ -165,7 +165,10 @@ describe('Jest Matchers', () => {
 ```javascript
 // api.js
 async function fetchUser(id) {
-  const response = await fetch(`/api/users/${id}`);
+  const response = await fetch(`https://api.example.com/users/${id}`);
+  if (!response.ok) {
+    throw new Error('Not found');
+  }
   return response.json();
 }
 
@@ -211,7 +214,7 @@ test('async/await test', async () => {
   expect(data).toBeDefined();
 });
 
-// With try/catch for errors
+// With rejects for errors
 test('async function throws', async () => {
   await expect(asyncFunctionThatThrows()).rejects.toThrow('Error message');
 });
@@ -238,7 +241,7 @@ test('mock function', () => {
 ### Mock Return Values
 
 ```javascript
-test('mock return values', () => {
+test('mock return values', async () => {
   const mock = jest.fn();
   
   mock.mockReturnValue(10);
@@ -449,11 +452,11 @@ test('user object matches snapshot', () => {
 test('inline snapshot', () => {
   const user = { name: 'John', email: 'john@example.com' };
   expect(user).toMatchInlineSnapshot(`
-    Object {
-      "email": "john@example.com",
-      "name": "John",
-    }
-  `);
+{
+  "email": "john@example.com",
+  "name": "John",
+}
+`);
 });
 ```
 

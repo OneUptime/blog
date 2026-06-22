@@ -105,13 +105,9 @@ SELECT * FROM system.clusters WHERE cluster = 'analytics_cluster';
 
 -- Verify all nodes are reachable
 SELECT
-    cluster,
-    shard_num,
-    replica_num,
-    host_name,
-    is_local
-FROM system.clusters
-WHERE cluster = 'analytics_cluster';
+    hostName() AS host,
+    version() AS version
+FROM clusterAllReplicas('analytics_cluster', system.one);
 ```
 
 ## Creating Sharded Tables
@@ -119,7 +115,7 @@ WHERE cluster = 'analytics_cluster';
 ### Step 1: Create Local Tables on Each Shard
 
 ```sql
--- Run on ALL nodes (each shard and replica)
+-- Run once from any node; ON CLUSTER creates it on each shard and replica
 CREATE TABLE events_local ON CLUSTER analytics_cluster
 (
     event_id UInt64,
@@ -183,8 +179,8 @@ ENGINE = Distributed('cluster', 'db', 'table', event_time)  -- BAD
 -- Low cardinality column - Uneven distribution
 ENGINE = Distributed('cluster', 'db', 'table', country)  -- BAD
 
--- Sequential ID - All inserts go to one shard
-ENGINE = Distributed('cluster', 'db', 'table', event_id)  -- BAD
+-- Sequential ID - Often scatters related rows across shards
+ENGINE = Distributed('cluster', 'db', 'table', event_id)  -- BAD for user-centric queries
 ```
 
 ### Checking Data Distribution
@@ -193,7 +189,7 @@ ENGINE = Distributed('cluster', 'db', 'table', event_id)  -- BAD
 -- Check how data is distributed across shards
 SELECT
     hostName() AS host,
-    count() AS rows,
+    sum(rows) AS rows,
     formatReadableSize(sum(bytes_on_disk)) AS size
 FROM clusterAllReplicas('analytics_cluster', system.parts)
 WHERE table = 'events_local' AND active
@@ -221,15 +217,15 @@ VALUES (1, 'click', 12345, now());
 
 -- Insert to shard 1
 INSERT INTO events_local SELECT * FROM source_table
-WHERE cityHash64(user_id) % 3 = 0;
+WHERE user_id % 3 = 0;
 
 -- Insert to shard 2
 INSERT INTO events_local SELECT * FROM source_table
-WHERE cityHash64(user_id) % 3 = 1;
+WHERE user_id % 3 = 1;
 
 -- Insert to shard 3
 INSERT INTO events_local SELECT * FROM source_table
-WHERE cityHash64(user_id) % 3 = 2;
+WHERE user_id % 3 = 2;
 ```
 
 ### Async Distributed Inserts
@@ -262,10 +258,13 @@ GROUP BY user_id;
 ### Optimized Queries with Sharding Key
 
 ```sql
--- Query with sharding key in WHERE - routes to single shard
+-- Query with sharding key in WHERE can route to a single shard
+-- when optimize_skip_unused_shards is enabled
+SET optimize_skip_unused_shards = 1;
+
 SELECT *
 FROM events
-WHERE user_id = 12345;  -- Only queries one shard!
+WHERE user_id = 12345;  -- Can query only one shard
 
 -- Range on sharding key - may query multiple shards
 SELECT *
@@ -376,8 +375,14 @@ ORDER BY (user_id, event_time);
 -- Option 1: Let it naturally balance (new data goes to new shard)
 
 -- Option 2: Manually move partitions
-ALTER TABLE events_local ON CLUSTER analytics_cluster
-    MOVE PARTITION '202401' TO SHARD '/clickhouse/tables/4/events';
+-- Run on a replica in the new shard to fetch from the old shard's Keeper path
+ALTER TABLE events_local
+    FETCH PARTITION '202401' FROM '/clickhouse/tables/1/events';
+
+ALTER TABLE events_local
+    ATTACH PARTITION '202401';
+
+-- After verification, drop the copied partition from the source shard only
 ```
 
 ## Resharding Existing Data
@@ -385,15 +390,17 @@ ALTER TABLE events_local ON CLUSTER analytics_cluster
 ### Full Reshard Process
 
 ```sql
--- 1. Create new table with different sharding
-CREATE TABLE events_new ON CLUSTER analytics_cluster
-ENGINE = Distributed('analytics_cluster', 'default', 'events_local_new',
-    cityHash64(tenant_id, user_id));  -- New sharding key
+-- 1. Create local tables
+CREATE TABLE events_local_new ON CLUSTER analytics_cluster AS events_local
+ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events_new', '{replica}')
+PARTITION BY toYYYYMM(event_time)
+ORDER BY (user_id, event_time)
+TTL event_time + INTERVAL 90 DAY;
 
--- 2. Create local tables
-CREATE TABLE events_local_new ON CLUSTER analytics_cluster
-ENGINE = ReplicatedMergeTree(...)
-...;
+-- 2. Create new distributed table with different sharding
+CREATE TABLE events_new ON CLUSTER analytics_cluster AS events_local_new
+ENGINE = Distributed('analytics_cluster', 'default', 'events_local_new',
+    cityHash64(user_id, event_type));  -- New sharding key
 
 -- 3. Copy data (may take hours for large tables)
 INSERT INTO events_new
@@ -430,12 +437,12 @@ WHERE cluster = 'analytics_cluster';
 ```sql
 -- Rows per shard
 SELECT
-    shard_num,
+    _shard_num AS shard_num,
     sum(rows) AS total_rows,
     formatReadableSize(sum(bytes_on_disk)) AS total_size
-FROM clusterAllReplicas('analytics_cluster', system.parts)
+FROM cluster('analytics_cluster', system.parts)
 WHERE table = 'events_local' AND active
-GROUP BY shard_num
+GROUP BY _shard_num
 ORDER BY shard_num;
 ```
 
@@ -468,7 +475,7 @@ GROUP BY shard;
 ### Cluster Design
 
 ```markdown
-1. Start with 3 shards (odd number for consensus)
+1. Choose shard count based on data volume, query load, and growth
 2. Always use replication (2+ replicas per shard)
 3. Use internal_replication for replicated tables
 4. Plan for 30% headroom before adding shards

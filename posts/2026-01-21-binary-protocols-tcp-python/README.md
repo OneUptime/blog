@@ -53,8 +53,7 @@ The most common and reliable approach is length-prefixed framing. Each message s
 
 # Length-prefixed message framing for binary protocols
 import struct
-from typing import Optional, Tuple
-import asyncio
+from typing import Optional
 
 class LengthPrefixedFramer:
     """
@@ -162,7 +161,6 @@ Python's `struct` module is essential for packing and unpacking binary data:
 # Parsing binary structures with the struct module
 import struct
 from dataclasses import dataclass
-from typing import Tuple, Any
 from enum import IntEnum
 
 class MessageType(IntEnum):
@@ -231,6 +229,9 @@ class LoginMessage:
 
     def pack(self) -> bytes:
         """Serialize complete message to bytes"""
+        if len(self.token) > 32:
+            raise ValueError(f"Token too long: {len(self.token)} bytes")
+
         header_bytes = self.header.pack()
         body_bytes = struct.pack(
             self.BODY_FORMAT,
@@ -281,6 +282,9 @@ class DataMessage:
 
         # Read payload length
         length_offset = MessageHeader.SIZE
+        if len(data) < length_offset + 4:
+            raise ValueError("Need 4 bytes for payload length")
+
         payload_length = struct.unpack(
             '>I',
             data[length_offset:length_offset + 4]
@@ -334,6 +338,9 @@ import asyncio
 from typing import Dict, Optional, Callable, Awaitable
 from dataclasses import dataclass
 import logging
+
+from binary_parser import MessageHeader, MessageType
+from framing import LengthPrefixedFramer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -558,6 +565,9 @@ import asyncio
 from typing import Optional, Callable, Awaitable
 import logging
 
+from binary_parser import DataMessage, LoginMessage, MessageHeader, MessageType
+from framing import LengthPrefixedFramer
+
 logger = logging.getLogger(__name__)
 
 class BinaryProtocolClient:
@@ -713,6 +723,10 @@ Here is how to put it all together:
 # server_example.py
 # Complete binary protocol server example
 import asyncio
+from typing import Optional
+
+from binary_parser import DataMessage, LoginMessage, MessageHeader, MessageType
+from tcp_server import BinaryProtocolServer, ClientConnection
 
 async def handle_login(
     client: ClientConnection,
@@ -788,14 +802,16 @@ if __name__ == "__main__":
 ### 1. Always Validate Input
 
 ```python
-def unpack_message(data: bytes) -> Message:
+def unpack_message(data: bytes) -> MessageHeader:
     # Check minimum size
-    if len(data) < HEADER_SIZE:
+    if len(data) < MessageHeader.SIZE:
         raise ValueError("Message too short")
 
     # Validate message type
     msg_type = data[0]
-    if msg_type not in MessageType.__members__.values():
+    try:
+        MessageType(msg_type)
+    except ValueError:
         raise ValueError(f"Unknown message type: {msg_type}")
 
     # Validate length fields before reading
@@ -806,15 +822,19 @@ def unpack_message(data: bytes) -> Message:
 
 ```python
 # Always use a framer to handle TCP stream reassembly
-framer = LengthPrefixedFramer()
+async def read_loop(reader):
+    framer = LengthPrefixedFramer()
 
-while True:
-    data = await reader.read(4096)
-    framer.feed(data)
+    while True:
+        data = await reader.read(4096)
+        if not data:
+            break
 
-    # Process all complete messages
-    for message in framer.read_all_messages():
-        await process(message)
+        framer.feed(data)
+
+        # Process all complete messages
+        for message in framer.read_all_messages():
+            await process(message)
 ```
 
 ### 3. Use Network Byte Order

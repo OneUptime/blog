@@ -21,7 +21,7 @@ Before starting, ensure you have:
 
 ## Understanding Line Filters
 
-Line filters match against the raw log line text. They are applied after stream selection and before any parsing stages.
+Line filters match against the raw log line text. They are typically placed after stream selection and before parsing stages for best performance.
 
 ### Filter Operators
 
@@ -175,15 +175,15 @@ For JSON-formatted logs, use the json parser with filters:
 ### JSON Contains
 
 ```logql
-# Check if JSON field contains text
-{job="app"} | json | message |= "timeout"
+# Check if JSON field contains text with a label regex filter
+{job="app"} | json | message =~ ".*timeout.*"
 ```
 
 ### Nested JSON
 
 ```logql
 # Access nested fields
-{job="app"} | json | json error_details from error | error_details |= "database"
+{job="app"} | json error_details="error.details" | error_details =~ ".*database.*"
 ```
 
 ## Logfmt Filters
@@ -399,7 +399,9 @@ rate(
 
 ```logql
 # For exploration
-{job="app"} |= "rare_error" | limit 100
+{job="app"} |= "rare_error"
+
+# Set the result limit in Grafana Explore, logcli --limit, or the Loki API limit parameter
 ```
 
 ## Troubleshooting Filters
@@ -408,7 +410,9 @@ rate(
 
 ```logql
 # Check if logs exist
-{job="app"} | limit 10
+{job="app"}
+
+# Set a small result limit in Grafana Explore, logcli --limit, or the Loki API limit parameter
 
 # Try broader filter
 {job="app"} |~ "(?i)err"

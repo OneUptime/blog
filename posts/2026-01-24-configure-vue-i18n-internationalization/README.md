@@ -15,7 +15,7 @@ Vue i18n is the standard internationalization plugin for Vue applications. This 
 ### Install Vue i18n
 
 ```bash
-npm install vue-i18n@9
+npm install vue-i18n@11
 ```
 
 ### Create i18n Instance
@@ -207,7 +207,7 @@ const en = {
 
 ```vue
 <template>
-  <!-- Uses $tc for plural -->
+  <!-- Uses $t for plural -->
   <p>{{ $t('items', itemCount) }}</p>
   <p>{{ $t('items', { count: itemCount }, itemCount) }}</p>
 
@@ -216,6 +216,7 @@ const en = {
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
@@ -399,7 +400,6 @@ src/i18n/
 ```
 
 ```json
-// src/i18n/locales/en.json
 {
   "greeting": "Hello",
   "welcome": "Welcome to our application",
@@ -477,8 +477,8 @@ const { t } = useI18n({
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n({
-  // Use global messages and add local ones
-  useScope: 'global',
+  // Use local messages and fall back to global ones
+  useScope: 'local',
   messages: {
     en: {
       localOnly: 'This is component-specific'
@@ -576,7 +576,7 @@ async function changeLanguage(event: Event) {
 ```typescript
 // src/router/index.ts
 import { createRouter, createWebHistory } from 'vue-router';
-import i18n, { setLocale, loadLocaleMessages } from '@/i18n';
+import { setLocale } from '@/i18n';
 
 const routes = [
   {
@@ -635,7 +635,7 @@ function localePath(path: string): string {
 ## Vite Plugin for Optimization
 
 ```bash
-npm install @intlify/unplugin-vue-i18n
+npm install @intlify/unplugin-vue-i18n -D
 ```
 
 ```typescript
@@ -643,18 +643,19 @@ npm install @intlify/unplugin-vue-i18n
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite';
-import { resolve } from 'path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [
     vue(),
     VueI18nPlugin({
       // Locale directory
-      include: resolve(__dirname, './src/i18n/locales/**'),
+      include: resolve(dirname(fileURLToPath(import.meta.url)), './src/i18n/locales/**'),
       // Strict message format
       strictMessage: false,
-      // Skip escaping
-      escapeHtml: false
+      // Escape HTML when strict message checking is disabled
+      escapeHtml: true
     })
   ]
 });

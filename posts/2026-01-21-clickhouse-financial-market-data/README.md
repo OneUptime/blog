@@ -76,60 +76,104 @@ TTL snapshot_time + INTERVAL 7 DAY;
 ### Pre-Computed OHLCV Bars
 
 ```sql
--- 1-minute OHLCV bars
-CREATE TABLE ohlcv_1m (
+-- 1-minute OHLCV aggregate states
+CREATE TABLE ohlcv_1m_state (
     symbol LowCardinality(String),
     exchange LowCardinality(String),
     bar_time DateTime,
-    open Decimal64(8),
-    high Decimal64(8),
-    low Decimal64(8),
-    close Decimal64(8),
-    volume Decimal64(8),
-    vwap Decimal64(8),
-    trade_count UInt32,
-    buy_volume Decimal64(8),
-    sell_volume Decimal64(8)
-) ENGINE = SummingMergeTree()
+    open_state AggregateFunction(argMin, Decimal64(8), DateTime64(6)),
+    high_state AggregateFunction(max, Decimal64(8)),
+    low_state AggregateFunction(min, Decimal64(8)),
+    close_state AggregateFunction(argMax, Decimal64(8), DateTime64(6)),
+    volume_state AggregateFunction(sum, Decimal64(8)),
+    turnover_state AggregateFunction(sum, Float64),
+    volume_float_state AggregateFunction(sum, Float64),
+    trade_count_state AggregateFunction(count),
+    buy_volume_state AggregateFunction(sum, Decimal64(8)),
+    sell_volume_state AggregateFunction(sum, Decimal64(8))
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(bar_time)
 ORDER BY (symbol, exchange, bar_time);
 
 -- Materialized view to generate 1-minute bars
 CREATE MATERIALIZED VIEW ohlcv_1m_mv
-TO ohlcv_1m
+TO ohlcv_1m_state
 AS SELECT
     symbol,
     exchange,
     toStartOfMinute(trade_time) AS bar_time,
-    argMin(price, trade_time) AS open,
-    max(price) AS high,
-    min(price) AS low,
-    argMax(price, trade_time) AS close,
-    sum(quantity) AS volume,
-    sum(toFloat64(price) * toFloat64(quantity)) / sum(toFloat64(quantity)) AS vwap,
-    count() AS trade_count,
-    sumIf(quantity, side = 'buy') AS buy_volume,
-    sumIf(quantity, side = 'sell') AS sell_volume
+    argMinState(price, trade_time) AS open_state,
+    maxState(price) AS high_state,
+    minState(price) AS low_state,
+    argMaxState(price, trade_time) AS close_state,
+    sumState(quantity) AS volume_state,
+    sumState(toFloat64(price) * toFloat64(quantity)) AS turnover_state,
+    sumState(toFloat64(quantity)) AS volume_float_state,
+    countState() AS trade_count_state,
+    sumIfState(quantity, side = 'buy') AS buy_volume_state,
+    sumIfState(quantity, side = 'sell') AS sell_volume_state
 FROM trades
 GROUP BY symbol, exchange, bar_time;
 
+-- Queryable 1-minute OHLCV bars
+CREATE VIEW ohlcv_1m AS
+SELECT
+    symbol,
+    exchange,
+    bar_time,
+    argMinMerge(open_state) AS open,
+    maxMerge(high_state) AS high,
+    minMerge(low_state) AS low,
+    argMaxMerge(close_state) AS close,
+    sumMerge(volume_state) AS volume,
+    sumMerge(turnover_state) / nullIf(sumMerge(volume_float_state), 0) AS vwap,
+    countMerge(trade_count_state) AS trade_count,
+    sumMerge(buy_volume_state) AS buy_volume,
+    sumMerge(sell_volume_state) AS sell_volume
+FROM ohlcv_1m_state
+GROUP BY symbol, exchange, bar_time;
+
 -- 1-hour OHLCV (aggregated from 1-minute)
+CREATE TABLE ohlcv_1h_state AS ohlcv_1m_state
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMM(bar_time)
+ORDER BY (symbol, exchange, bar_time);
+
 CREATE MATERIALIZED VIEW ohlcv_1h_mv
-ENGINE = SummingMergeTree()
-ORDER BY (symbol, exchange, bar_time)
+TO ohlcv_1h_state
 AS SELECT
     symbol,
     exchange,
     toStartOfHour(bar_time) AS bar_time,
-    argMin(open, bar_time) AS open,
-    max(high) AS high,
-    min(low) AS low,
-    argMax(close, bar_time) AS close,
-    sum(volume) AS volume,
-    sum(vwap * volume) / sum(volume) AS vwap,
-    sum(trade_count) AS trade_count
-FROM ohlcv_1m
+    argMinMergeState(open_state) AS open_state,
+    maxMergeState(high_state) AS high_state,
+    minMergeState(low_state) AS low_state,
+    argMaxMergeState(close_state) AS close_state,
+    sumMergeState(volume_state) AS volume_state,
+    sumMergeState(turnover_state) AS turnover_state,
+    sumMergeState(volume_float_state) AS volume_float_state,
+    countMergeState(trade_count_state) AS trade_count_state,
+    sumMergeState(buy_volume_state) AS buy_volume_state,
+    sumMergeState(sell_volume_state) AS sell_volume_state
+FROM ohlcv_1m_state
 GROUP BY symbol, exchange, toStartOfHour(bar_time);
+
+CREATE VIEW ohlcv_1h AS
+SELECT
+    symbol,
+    exchange,
+    bar_time,
+    argMinMerge(open_state) AS open,
+    maxMerge(high_state) AS high,
+    minMerge(low_state) AS low,
+    argMaxMerge(close_state) AS close,
+    sumMerge(volume_state) AS volume,
+    sumMerge(turnover_state) / nullIf(sumMerge(volume_float_state), 0) AS vwap,
+    countMerge(trade_count_state) AS trade_count,
+    sumMerge(buy_volume_state) AS buy_volume,
+    sumMerge(sell_volume_state) AS sell_volume
+FROM ohlcv_1h_state
+GROUP BY symbol, exchange, bar_time;
 ```
 
 ### Custom Time Bar Generation
@@ -198,7 +242,7 @@ WITH price_intervals AS (
         trade_time,
         price,
         dateDiff('microsecond', trade_time,
-            leadInFrame(trade_time, 1, trade_time + INTERVAL 1 SECOND)
+            lead(trade_time, 1, trade_time + INTERVAL 1 SECOND)
             OVER (PARTITION BY symbol ORDER BY trade_time)
         ) AS duration_us
     FROM trades
@@ -291,7 +335,7 @@ WITH price_changes AS (
     SELECT
         bar_time,
         close,
-        close - lagInFrame(close, 1) OVER (ORDER BY bar_time) AS change
+        close - lag(close, 1, close) OVER (ORDER BY bar_time) AS change
     FROM ohlcv_1m
     WHERE symbol = 'AAPL'
       AND bar_time >= now() - INTERVAL 2 DAY
@@ -340,7 +384,7 @@ SELECT
     toHour(trade_time) AS hour,
     toMinute(trade_time) AS minute,
     avg(toFloat64(quantity)) AS avg_trade_size,
-    count() AS avg_trades
+    count() / uniqExact(trade_date) AS avg_trades
 FROM trades
 WHERE symbol = 'AAPL'
   AND trade_date >= today() - 30
@@ -404,15 +448,23 @@ GROUP BY symbol;
 
 ```sql
 -- Price movement alerts
+WITH price_changes AS (
+    SELECT
+        symbol,
+        bar_time,
+        close,
+        (close - lag(close, 1, close) OVER (PARTITION BY symbol ORDER BY bar_time)) /
+            lag(close, 1, close) OVER (PARTITION BY symbol ORDER BY bar_time) * 100 AS pct_change
+    FROM ohlcv_1m
+    WHERE bar_time >= now() - INTERVAL 5 MINUTE
+)
 SELECT
     symbol,
     bar_time,
     close,
-    (close - lagInFrame(close, 1) OVER (PARTITION BY symbol ORDER BY bar_time)) /
-        lagInFrame(close, 1) OVER (PARTITION BY symbol ORDER BY bar_time) * 100 AS pct_change
-FROM ohlcv_1m
-WHERE bar_time >= now() - INTERVAL 5 MINUTE
-HAVING abs(pct_change) > 1  -- More than 1% move
+    pct_change
+FROM price_changes
+WHERE abs(pct_change) > 1  -- More than 1% move
 ORDER BY abs(pct_change) DESC;
 
 -- Volume spike detection
@@ -480,8 +532,8 @@ WHERE p.portfolio_id = 1;
 WITH daily_returns AS (
     SELECT
         trade_date,
-        (close - lagInFrame(close, 1) OVER (ORDER BY trade_date)) /
-            lagInFrame(close, 1) OVER (ORDER BY trade_date) AS daily_return
+        (close - lag(close, 1, close) OVER (ORDER BY trade_date)) /
+            lag(close, 1, close) OVER (ORDER BY trade_date) AS daily_return
     FROM (
         SELECT
             trade_date,
@@ -497,7 +549,7 @@ SELECT
     stddevPop(daily_return) * sqrt(252) AS annualized_volatility,
     -- Sharpe ratio (assuming 0 risk-free rate)
     avg(daily_return) / stddevPop(daily_return) * sqrt(252) AS sharpe_ratio,
-    -- Max drawdown
+    -- Worst day return
     min(daily_return) AS worst_day,
     -- VaR 95%
     quantile(0.05)(daily_return) AS var_95

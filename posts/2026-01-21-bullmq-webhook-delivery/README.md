@@ -348,6 +348,21 @@ class WebhookDeliveryTracker {
     this.redis = connection;
   }
 
+  async createDelivery(record: Omit<DeliveryRecord, 'attempts'>): Promise<void> {
+    const key = `webhook:delivery:${record.webhookId}`;
+
+    await this.redis.hset(key, {
+      subscriptionId: record.subscriptionId,
+      event: record.event,
+      url: record.url,
+      payload: JSON.stringify(record.payload),
+      status: record.status,
+      createdAt: record.createdAt.toISOString(),
+    });
+
+    await this.redis.expire(key, 604800); // 7 days
+  }
+
   async recordAttempt(
     webhookId: string,
     attempt: DeliveryAttempt
@@ -419,6 +434,40 @@ class WebhookDeliveryTracker {
 // Integrate with worker
 const tracker = new WebhookDeliveryTracker(connection);
 
+async function enqueueTrackedWebhook(
+  subscription: WebhookSubscription,
+  event: WebhookEvent
+): Promise<Job<WebhookJobData>> {
+  const webhookId = `${subscription.id}_${Date.now()}`;
+  const payload = {
+    event: event.event,
+    data: event.data,
+    occurredAt: event.occurredAt.toISOString(),
+  };
+
+  await tracker.createDelivery({
+    webhookId,
+    subscriptionId: subscription.id,
+    event: event.event,
+    url: subscription.url,
+    payload,
+    status: 'pending',
+    createdAt: new Date(),
+  });
+
+  return webhookQueue.add(event.event, {
+    webhookId,
+    url: subscription.url,
+    event: event.event,
+    payload,
+    secret: subscription.secret,
+    metadata: {
+      subscriptionId: subscription.id,
+      customerId: subscription.customerId,
+    },
+  });
+}
+
 const trackedWorker = new Worker<WebhookJobData>(
   'webhooks',
   async (job) => {
@@ -468,7 +517,7 @@ const trackedWorker = new Worker<WebhookJobData>(
 );
 
 trackedWorker.on('failed', async (job, err) => {
-  if (job && job.attemptsMade >= (job.opts.attempts || 1) - 1) {
+  if (job && job.attemptsMade >= (job.opts.attempts || 1)) {
     await tracker.markFailed(job.data.webhookId);
   }
 });
@@ -506,6 +555,10 @@ class WebhookSigner {
     const timestamp = parseInt(parts.t);
     const providedSignature = parts.v1;
 
+    if (!timestamp || !providedSignature) {
+      throw new Error('Invalid webhook signature');
+    }
+
     // Check timestamp tolerance
     const age = Math.abs(Date.now() - timestamp) / 1000;
     if (age > toleranceSeconds) {
@@ -518,10 +571,11 @@ class WebhookSigner {
       .update(`${timestamp}.${JSON.stringify(payload)}`)
       .digest('hex');
 
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(providedSignature),
-      Buffer.from(expectedSignature)
-    );
+    const provided = Buffer.from(providedSignature, 'hex');
+    const expected = Buffer.from(expectedSignature, 'hex');
+    const isValid =
+      provided.length === expected.length &&
+      crypto.timingSafeEqual(provided, expected);
 
     if (!isValid) {
       throw new Error('Invalid webhook signature');
@@ -677,20 +731,11 @@ class WebhookDLQHandler {
   private dlq: Queue<WebhookJobData>;
   private mainQueue: Queue<WebhookJobData>;
 
-  constructor(connection: Redis) {
+  constructor(connection: Redis, worker: Worker<WebhookJobData>) {
     this.mainQueue = new Queue('webhooks', { connection });
     this.dlq = new Queue('webhooks-dlq', { connection });
 
-    // Listen for final failures
-    const worker = new Worker<WebhookJobData>(
-      'webhooks',
-      async (job) => {
-        // Processing handled elsewhere
-        throw new Error('This worker only handles failures');
-      },
-      { connection }
-    );
-
+    // Listen for final failures from the actual delivery worker
     worker.on('failed', async (job, error) => {
       if (job && job.attemptsMade >= (job.opts.attempts || 1)) {
         // Move to DLQ

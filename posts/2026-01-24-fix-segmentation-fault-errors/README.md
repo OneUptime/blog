@@ -21,8 +21,8 @@ flowchart TD
     E --> F{Signal Handler?}
     F -->|No| G[Process Terminates]
     F -->|Yes| H[Handler Executes]
-    G --> I[Core Dump Generated]
-    I --> J[Exit Code 139]
+    G --> I[Core Dump Generated if Enabled]
+    I --> J[Shell Reports Exit Status 139]
 ```
 
 ### Common Causes
@@ -59,16 +59,17 @@ journalctl -u myservice.service | grep -i fault
 ```bash
 # Format: process[pid]: segfault at ADDRESS ip INSTRUCTION_POINTER sp STACK_POINTER error CODE in BINARY
 
-# Error codes (binary flags):
+# Error codes on x86 (binary flags):
 # Bit 0: 0 = no page found, 1 = protection fault
 # Bit 1: 0 = read, 1 = write
 # Bit 2: 0 = kernel mode, 1 = user mode
-# Bit 3: 0 = no INSTR fetch, 1 = INSTR fetch
+# Bit 3: 1 = reserved bit violation
+# Bit 4: 1 = instruction fetch
 
 # Common error codes:
 # 4 = user mode read of unmapped area
 # 6 = user mode write of unmapped area
-# 14 = user mode write protection violation
+# 14 = user mode write protection fault
 ```
 
 ## Enabling Core Dumps
@@ -119,7 +120,7 @@ chmod 1777 /var/crash
 ```bash
 # Check if systemd-coredump is configured
 cat /proc/sys/kernel/core_pattern
-# Should show: |/usr/lib/systemd/systemd-coredump ...
+# Often shows a piped handler such as: |/usr/lib/systemd/systemd-coredump ...
 
 # List stored core dumps
 coredumpctl list
@@ -155,7 +156,7 @@ debuginfo-install glibc
 gdb /path/to/executable /path/to/core
 
 # Or if using systemd-coredump
-coredumpctl gdb
+coredumpctl debug
 ```
 
 ### Essential GDB Commands
@@ -229,7 +230,7 @@ $1 = (struct DataStruct *) 0x0
 strace -f -o /tmp/strace.log ./myapp
 
 # Trace specific syscalls
-strace -e trace=memory,read,write ./myapp
+strace -e trace=%memory,read,write ./myapp
 
 # Attach to running process
 strace -p 1234
@@ -290,7 +291,7 @@ ldd /usr/bin/myapp
 ldd /usr/bin/myapp | grep -i "not found"
 
 # Check library versions
-ldd /usr/bin/myapp | xargs -I{} sh -c 'echo {}; file {}'
+ldd -v /usr/bin/myapp
 
 # Reinstall the application to fix library issues
 apt-get install --reinstall myapp
@@ -454,8 +455,8 @@ if [ "$CRASHES" -gt 0 ]; then
     dmesg | grep segfault | mail -s "Segfault detected" admin@example.com
 fi
 
-# Set up automatic core dump collection
-systemctl enable systemd-coredump
+# Check automatic core dump collection with systemd-coredump
+systemctl status systemd-coredump.socket
 ```
 
 ## Quick Reference

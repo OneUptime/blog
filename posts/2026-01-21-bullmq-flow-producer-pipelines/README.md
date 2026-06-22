@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Job Pipelines, Workflow Orchestration, DAG, Flow Producer
+Tags: BullMQ, Node.js, Redis, Job Pipelines, Workflow Orchestration, Job Trees, Flow Producer
 
 Description: A comprehensive guide to using BullMQ Flow Producer for building complex job pipelines and workflows, including parent-child dependencies, parallel execution, result aggregation.
 
@@ -15,7 +15,7 @@ BullMQ Flow Producer enables building complex job pipelines where jobs have depe
 Flow Producer creates job hierarchies where parent jobs wait for their children to complete:
 
 ```typescript
-import { FlowProducer, Queue, Worker } from 'bullmq';
+import { FlowProducer, Queue, QueueEvents, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -200,7 +200,7 @@ const aggregatorWorker = new Worker('aggregator', async (job) => {
 
 ## Complex Workflow with Multiple Dependencies
 
-Build workflows with complex dependency graphs:
+Build workflows with complex tree-shaped dependencies:
 
 ```typescript
 interface OrderProcessingData {
@@ -221,7 +221,7 @@ class OrderWorkflow {
     // Workflow:
     // 1. Validate order (parallel: validate items, validate customer)
     // 2. Process payment
-    // 3. Fulfill order (parallel: reserve inventory, prepare shipping)
+    // 3. Fulfill order (reserve inventory, then prepare shipping)
     // 4. Send confirmation
 
     return this.flowProducer.add({
@@ -230,9 +230,9 @@ class OrderWorkflow {
       data: { orderId: order.orderId },
       children: [
         {
-          name: 'fulfill-order',
-          queueName: 'order-fulfillment',
-          data: { orderId: order.orderId },
+          name: 'prepare-shipping',
+          queueName: 'shipping',
+          data: { orderId: order.orderId, address: order.shippingAddress },
           children: [
             {
               name: 'reserve-inventory',
@@ -265,19 +265,6 @@ class OrderWorkflow {
                 },
               ],
             },
-            {
-              name: 'prepare-shipping',
-              queueName: 'shipping',
-              data: { orderId: order.orderId, address: order.shippingAddress },
-              children: [
-                {
-                  name: 'process-payment',
-                  queueName: 'payment',
-                  data: { orderId: order.orderId, customerId: order.customerId },
-                  // This references the same payment job, creating a diamond dependency
-                },
-              ],
-            },
           ],
         },
       ],
@@ -285,6 +272,8 @@ class OrderWorkflow {
   }
 }
 ```
+
+BullMQ flows are trees, so a single job cannot be shared by two sibling branches as a diamond dependency. If two later jobs both need the same earlier result, either model them as a sequence in the tree, create separate child jobs, or add the additional dependency dynamically from a worker.
 
 ## Getting Results from Child Jobs
 
@@ -295,15 +284,17 @@ const parentWorker = new Worker('parent-queue', async (job) => {
   // Get all children values
   const childrenValues = await job.getChildrenValues();
 
-  // childrenValues is an object keyed by "queueName:jobId"
-  // Example: { "child-queue:123": { result: "value" } }
+  // childrenValues is an object keyed by fully qualified job keys
+  // Example: { "bull:child-queue:123": { result: "value" } }
 
   console.log('All children completed with:', childrenValues);
 
   // Process results
   const results = Object.entries(childrenValues).map(([key, value]) => {
-    const [queueName, jobId] = key.split(':');
-    return { queueName, jobId, value };
+    const parts = key.split(':');
+    const jobId = parts.pop();
+    const queueName = parts.pop();
+    return { key, queueName, jobId, value };
   });
 
   // Aggregate results
@@ -338,7 +329,7 @@ await flowProducer.add({
       opts: {
         attempts: 5,
         backoff: { type: 'exponential', delay: 2000 },
-        priority: 0, // Highest priority
+        priority: 1, // Highest prioritized value
       },
     },
     {
@@ -347,7 +338,7 @@ await flowProducer.add({
       data: { optional: true },
       opts: {
         attempts: 1,
-        failParentOnFailure: false, // Don't fail parent if this fails
+        removeDependencyOnFailure: true, // Parent can continue if this fails
       },
     },
   ],
@@ -392,7 +383,7 @@ class FlowProgressTracker {
   async getFlowProgress(parentJobId: string): Promise<{
     progress: number;
     status: string;
-    jobs: { id: string; name: string; state: string }[];
+    jobs: { key: string; state: string; result?: unknown }[];
   }> {
     const job = await this.queue.getJob(parentJobId);
     if (!job) {
@@ -457,7 +448,7 @@ await flowProducer.add({
       data: {},
       opts: {
         attempts: 5,
-        failParentOnFailure: true, // Default - parent fails if this fails
+        failParentOnFailure: true, // Fail the parent if this fails
       },
     },
     {
@@ -466,7 +457,7 @@ await flowProducer.add({
       data: {},
       opts: {
         attempts: 2,
-        failParentOnFailure: false, // Parent continues even if this fails
+        ignoreDependencyOnFailure: true, // Parent continues and can inspect the failure
       },
     },
   ],
@@ -475,21 +466,22 @@ await flowProducer.add({
 // Worker that checks for failed optional children
 const parentWorker = new Worker('parent', async (job) => {
   const childrenValues = await job.getChildrenValues();
+  const ignoredFailures = await job.getIgnoredChildrenFailures();
 
   // Check which children succeeded
   const results = Object.entries(childrenValues);
 
   // Handle partial success
-  const successful = results.filter(([_, v]) => v !== null);
-  const failed = results.filter(([_, v]) => v === null);
+  const successful = results.length;
+  const failed = Object.entries(ignoredFailures);
 
   if (failed.length > 0) {
     console.log(`Some optional children failed: ${failed.map(f => f[0]).join(', ')}`);
   }
 
   return {
-    totalChildren: results.length,
-    successful: successful.length,
+    totalChildren: successful + failed.length,
+    successful,
     failed: failed.length,
   };
 }, { connection });
@@ -532,7 +524,8 @@ class DynamicFlowBuilder {
       }];
     }
 
-    // Build destination loading children (all depend on transformations)
+    // Build destination loading children. In a flow tree, each destination gets
+    // its own transformation branch rather than sharing one child job.
     const loadChildren = config.destinations.map((dest, i) => ({
       name: `load-${dest}`,
       queueName: 'loading',
@@ -557,11 +550,11 @@ class DynamicFlowBuilder {
 
 2. **Use unique job IDs** - Makes tracking and debugging easier.
 
-3. **Handle partial failures** - Use `failParentOnFailure: false` for optional steps.
+3. **Handle partial failures** - Use `removeDependencyOnFailure` or `ignoreDependencyOnFailure` for optional steps.
 
 4. **Monitor flow progress** - Track completion across all children.
 
-5. **Set appropriate timeouts** - Long-running children need longer timeouts.
+5. **Implement appropriate timeouts** - Long-running children need worker-side timeout handling.
 
 6. **Clean up completed flows** - Configure `removeOnComplete` appropriately.
 

@@ -69,7 +69,7 @@ Start with an upload endpoint that handles the file and creates a processing job
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import aiofiles
 import os
@@ -81,11 +81,12 @@ class ProcessingJob(BaseModel):
     id: str
     filename: str
     file_size: int
-    status: str  # pending, processing, completed, failed
+    status: str  # awaiting_upload, pending, processing, completed, failed
     progress: int  # 0-100
     created_at: datetime
     completed_at: Optional[datetime] = None
     result_url: Optional[str] = None
+    result: Optional[dict] = None
     error: Optional[str] = None
 
 # In production, use a database
@@ -94,10 +95,18 @@ jobs_db = {}
 UPLOAD_DIR = "/tmp/uploads"
 PROCESSED_DIR = "/tmp/processed"
 
+async def process_file_task(job_id: str, file_path: str):
+    """Simple background task placeholder. Use Celery for production workloads."""
+    job = jobs_db[job_id]
+    job.status = "processing"
+    job.progress = 100
+    job.status = "completed"
+    job.completed_at = datetime.now(timezone.utc)
+
 @app.post("/upload", response_model=ProcessingJob)
 async def upload_file(
-    file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
 ):
     """
     Upload a file for processing.
@@ -133,6 +142,8 @@ async def upload_file(
                         detail=f"File too large. Maximum size is {MAX_SIZE} bytes"
                     )
                 await out_file.write(chunk)
+    except HTTPException:
+        raise
     except Exception as e:
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -145,7 +156,7 @@ async def upload_file(
         file_size=file_size,
         status="pending",
         progress=0,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     jobs_db[job_id] = job
 
@@ -172,10 +183,8 @@ For production workloads, use Celery for reliable background processing with ret
 # tasks.py
 # Celery tasks for file processing
 from celery import Celery
-from celery.exceptions import MaxRetriesExceededError
 import os
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Configure Celery
 celery_app = Celery(
@@ -198,7 +207,6 @@ celery_app.conf.update(
     bind=True,
     max_retries=3,
     default_retry_delay=60,  # Wait 60 seconds between retries
-    autoretry_for=(IOError, ConnectionError),  # Auto-retry on these exceptions
 )
 def process_file(self, job_id: str, file_path: str):
     """
@@ -208,9 +216,6 @@ def process_file(self, job_id: str, file_path: str):
     try:
         # Update status to processing
         update_job_status(job_id, status="processing", progress=0)
-
-        # Read file info
-        file_size = os.path.getsize(file_path)
 
         # Process file in stages
         # Stage 1: Validate file (10%)
@@ -240,30 +245,28 @@ def process_file(self, job_id: str, file_path: str):
             status="completed",
             progress=100,
             result_url=result_url,
-            completed_at=datetime.utcnow()
+            completed_at=datetime.now(timezone.utc)
         )
 
         return {"job_id": job_id, "result_url": result_url}
 
     except Exception as e:
-        # Handle failure
+        if self.request.retries < self.max_retries:
+            update_job_status(
+                job_id,
+                status="pending",
+                error=f"Retrying after error: {str(e)}"
+            )
+            raise self.retry(exc=e)
+
+        # Final failure after all retries
         update_job_status(
             job_id,
             status="failed",
-            error=str(e),
-            completed_at=datetime.utcnow()
+            error=f"Processing failed after {self.max_retries} retries: {str(e)}",
+            completed_at=datetime.now(timezone.utc)
         )
-
-        # Re-raise for Celery retry mechanism
-        try:
-            self.retry(exc=e)
-        except MaxRetriesExceededError:
-            # Final failure after all retries
-            update_job_status(
-                job_id,
-                status="failed",
-                error=f"Processing failed after {self.max_retries} retries: {str(e)}"
-            )
+        raise
 
 def update_job_status(job_id: str, **kwargs):
     """Update job status in database"""
@@ -283,8 +286,8 @@ For very large files, process them as streams to avoid loading everything into m
 # streaming.py
 # Stream processing for large files
 import aiofiles
-from typing import AsyncIterator, Callable
-import asyncio
+from typing import AsyncIterator, Awaitable, Callable
+import os
 
 async def stream_file_lines(
     file_path: str,
@@ -314,7 +317,7 @@ async def stream_file_lines(
 
 async def process_csv_streaming(
     file_path: str,
-    row_processor: Callable[[dict], None],
+    row_processor: Callable[[dict], Awaitable[None]],
     progress_callback: Callable[[int], None] = None
 ):
     """
@@ -347,7 +350,7 @@ async def process_csv_streaming(
 
         # Report progress
         if progress_callback:
-            percent = int((processed_bytes / total_size) * 100)
+            percent = min(100, int((processed_bytes / total_size) * 100))
             progress_callback(percent)
 
 # Example: Import users from CSV
@@ -404,6 +407,9 @@ import boto3
 from botocore.config import Config
 from typing import BinaryIO, Optional
 import os
+import asyncio
+import uuid
+from datetime import datetime, timezone
 
 class S3Storage:
     """S3 file storage with upload/download support"""
@@ -440,7 +446,8 @@ class S3Storage:
             extra_args['ContentType'] = content_type
 
         # Upload with multipart for large files
-        self.client.upload_file(
+        await asyncio.to_thread(
+            self.client.upload_file,
             file_path,
             self.bucket,
             s3_key,
@@ -460,7 +467,8 @@ class S3Storage:
         if content_type:
             extra_args['ContentType'] = content_type
 
-        self.client.upload_fileobj(
+        await asyncio.to_thread(
+            self.client.upload_fileobj,
             file_obj,
             self.bucket,
             s3_key,
@@ -471,7 +479,7 @@ class S3Storage:
 
     async def download_file(self, s3_key: str, local_path: str):
         """Download file from S3 to local path"""
-        self.client.download_file(self.bucket, s3_key, local_path)
+        await asyncio.to_thread(self.client.download_file, self.bucket, s3_key, local_path)
 
     async def generate_presigned_url(
         self,
@@ -482,7 +490,8 @@ class S3Storage:
         Generate a presigned URL for downloading.
         URL expires after specified seconds.
         """
-        url = self.client.generate_presigned_url(
+        url = await asyncio.to_thread(
+            self.client.generate_presigned_url,
             'get_object',
             Params={'Bucket': self.bucket, 'Key': s3_key},
             ExpiresIn=expiration
@@ -499,7 +508,8 @@ class S3Storage:
         Generate presigned URL for direct upload from client.
         Returns URL and fields needed for upload.
         """
-        response = self.client.generate_presigned_post(
+        response = await asyncio.to_thread(
+            self.client.generate_presigned_post,
             self.bucket,
             s3_key,
             Fields={'Content-Type': content_type},
@@ -536,7 +546,7 @@ async def get_upload_url(filename: str, content_type: str):
         file_size=0,  # Will be updated after upload
         status="awaiting_upload",
         progress=0,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     jobs_db[job_id] = job
 
@@ -558,7 +568,6 @@ For real-time progress updates, use WebSocket instead of polling.
 # WebSocket progress tracking
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, Set
-import json
 
 class ProgressTracker:
     """Track processing progress with WebSocket notifications"""
@@ -577,7 +586,7 @@ class ProgressTracker:
 
         # Send current status immediately
         if job_id in jobs_db:
-            await websocket.send_json(jobs_db[job_id].dict())
+            await websocket.send_json(jobs_db[job_id].model_dump(mode="json"))
 
     def unsubscribe(self, job_id: str, websocket: WebSocket):
         """Unsubscribe from job updates"""
@@ -650,7 +659,6 @@ Different file types need different processing logic.
 # File type specific processors
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
-import mimetypes
 from PIL import Image
 import fitz  # PyMuPDF for PDFs
 import pandas as pd
@@ -755,32 +763,36 @@ class CSVProcessor(FileProcessor):
     ) -> dict:
         """Validate and clean CSV data"""
         # Read in chunks for large files
-        chunks = []
         total_rows = 0
+        columns = []
+        first_chunk = True
 
         for chunk in pd.read_csv(input_path, chunksize=10000):
             # Clean data
             chunk = chunk.dropna(how='all')  # Remove empty rows
             chunk = chunk.drop_duplicates()   # Remove duplicates
 
-            chunks.append(chunk)
+            columns = list(chunk.columns)
             total_rows += len(chunk)
+            chunk.to_csv(
+                output_path,
+                mode='w' if first_chunk else 'a',
+                header=first_chunk,
+                index=False
+            )
+            first_chunk = False
 
             if progress_callback:
                 # Estimate progress based on file position
-                progress_callback(min(90, len(chunks) * 10))
-
-        # Combine and save
-        df = pd.concat(chunks, ignore_index=True)
-        df.to_csv(output_path, index=False)
+                progress_callback(min(90, total_rows // 1000))
 
         if progress_callback:
             progress_callback(100)
 
         return {
-            "rows": len(df),
-            "columns": len(df.columns),
-            "column_names": list(df.columns)
+            "rows": total_rows,
+            "columns": len(columns),
+            "column_names": columns
         }
 
 def get_processor(mime_type: str) -> FileProcessor:
@@ -811,12 +823,11 @@ Robust error handling ensures files do not accumulate and jobs do not get stuck.
 # Error handling and file cleanup
 import os
 import asyncio
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime, timedelta, timezone
 
 async def cleanup_temp_files(max_age_hours: int = 24):
     """Remove temporary files older than max_age_hours"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=max_age_hours)
 
     for directory in [UPLOAD_DIR, PROCESSED_DIR]:
@@ -827,7 +838,7 @@ async def cleanup_temp_files(max_age_hours: int = 24):
             file_path = os.path.join(directory, filename)
 
             # Get file modification time
-            mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+            mtime = datetime.fromtimestamp(os.path.getmtime(file_path), timezone.utc)
 
             if mtime < cutoff:
                 try:
@@ -837,7 +848,7 @@ async def cleanup_temp_files(max_age_hours: int = 24):
 
 async def cleanup_stuck_jobs(max_processing_hours: int = 2):
     """Mark jobs stuck in processing as failed"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=max_processing_hours)
 
     for job_id, job in jobs_db.items():
@@ -850,9 +861,8 @@ async def cleanup_stuck_jobs(max_processing_hours: int = 2):
 @celery_app.task
 def periodic_cleanup():
     """Run periodic cleanup of files and stuck jobs"""
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(cleanup_temp_files())
-    loop.run_until_complete(cleanup_stuck_jobs())
+    asyncio.run(cleanup_temp_files())
+    asyncio.run(cleanup_stuck_jobs())
 
 # Schedule with Celery Beat
 celery_app.conf.beat_schedule = {

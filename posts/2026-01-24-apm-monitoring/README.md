@@ -79,7 +79,7 @@ def setup_telemetry(app, service_name: str, service_version: str = "1.0.0"):
     resource = Resource.create({
         SERVICE_NAME: service_name,
         SERVICE_VERSION: service_version,
-        "deployment.environment": os.getenv("ENVIRONMENT", "development"),
+        "deployment.environment.name": os.getenv("ENVIRONMENT", "development"),
         "host.name": os.getenv("HOSTNAME", "unknown")
     })
 
@@ -162,14 +162,18 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+    ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions');
 
 function setupTelemetry(serviceName, serviceVersion = '1.0.0') {
-    const resource = new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-        [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-        [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development'
+    const resource = resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: serviceName,
+        [ATTR_SERVICE_VERSION]: serviceVersion,
+        [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development'
     });
 
     const traceExporter = new OTLPTraceExporter({
@@ -223,7 +227,7 @@ const { setupTelemetry } = require('./telemetry');
 setupTelemetry('user-service', '1.2.0');
 
 const express = require('express');
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const app = express();
 const tracer = trace.getTracer('user-service');
@@ -232,24 +236,25 @@ app.get('/api/users/:userId', async (req, res) => {
     const { userId } = req.params;
 
     // Create custom span for business logic
-    const span = tracer.startSpan('fetch_user_with_permissions');
-    span.setAttribute('user.id', userId);
+    return tracer.startActiveSpan('fetch_user_with_permissions', async (span) => {
+        span.setAttribute('user.id', userId);
 
-    try {
-        const user = await getUserFromDatabase(userId);
-        const permissions = await getPermissions(userId);
+        try {
+            const user = await getUserFromDatabase(userId);
+            const permissions = await getPermissions(userId);
 
-        span.setAttribute('user.found', !!user);
-        span.setAttribute('permissions.count', permissions.length);
+            span.setAttribute('user.found', !!user);
+            span.setAttribute('permissions.count', permissions.length);
 
-        res.json({ user, permissions });
-    } catch (error) {
-        span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
-        res.status(500).json({ error: 'Internal server error' });
-    } finally {
-        span.end();
-    }
+            res.json({ user, permissions });
+        } catch (error) {
+            span.recordException(error);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+            res.status(500).json({ error: 'Internal server error' });
+        } finally {
+            span.end();
+        }
+    });
 });
 
 app.listen(3000);
@@ -279,7 +284,7 @@ flowchart LR
 ### Custom Metrics Implementation
 
 ```python
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 from opentelemetry.metrics import Counter, Histogram, UpDownCounter
 import time
 
@@ -300,7 +305,7 @@ response_time = meter.create_histogram(
     unit="s"
 )
 
-# Gauge for active connections
+# UpDownCounter for active connections
 active_connections = meter.create_up_down_counter(
     name="active_connections",
     description="Number of active connections",
@@ -336,9 +341,12 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             # Record metrics
             duration = time.time() - start_time
+            route = request.scope.get("route")
+            endpoint = route.path if route else request.url.path
+
             labels = {
                 "method": request.method,
-                "endpoint": request.url.path,
+                "endpoint": endpoint,
                 "status_code": str(response.status_code)
             }
 
@@ -374,6 +382,7 @@ async def process_order(order_data):
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.propagate import inject, extract
 import httpx
 
@@ -401,7 +410,7 @@ async def call_payment_service(order_id: str, amount: float):
             span.set_attribute("http.status_code", response.status_code)
 
             if response.status_code >= 400:
-                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.set_status(Status(StatusCode.ERROR))
 
             return response.json()
 
@@ -591,7 +600,7 @@ groups:
       # Slow response time alert
       - alert: SlowResponseTime
         expr: |
-          histogram_quantile(0.95, rate(http_response_time_seconds_bucket[5m]))
+          histogram_quantile(0.95, sum by (le) (rate(http_response_time_seconds_bucket[5m])))
           > 2
         for: 5m
         labels:
@@ -604,7 +613,7 @@ groups:
       - alert: CheckoutLatencyHigh
         expr: |
           histogram_quantile(0.99,
-            rate(http_response_time_seconds_bucket{endpoint="/api/checkout"}[5m])
+            sum by (le) (rate(http_response_time_seconds_bucket{endpoint="/api/checkout"}[5m]))
           ) > 5
         for: 2m
         labels:
@@ -618,9 +627,9 @@ groups:
         expr: |
           (
             sum(rate(http_response_time_seconds_bucket{le="0.5"}[5m]))
-            + sum(rate(http_response_time_seconds_bucket{le="2.0"}[5m])) / 2
+            + sum(rate(http_response_time_seconds_bucket{le="2.0"}[5m]))
           )
-          /
+          / 2 /
           sum(rate(http_response_time_seconds_count[5m]))
           < 0.85
         for: 10m
@@ -782,15 +791,15 @@ flowchart TD
         "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(http_response_time_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(http_response_time_seconds_bucket[5m])))",
             "legendFormat": "p50"
           },
           {
-            "expr": "histogram_quantile(0.95, rate(http_response_time_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_response_time_seconds_bucket[5m])))",
             "legendFormat": "p95"
           },
           {
-            "expr": "histogram_quantile(0.99, rate(http_response_time_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(http_response_time_seconds_bucket[5m])))",
             "legendFormat": "p99"
           }
         ]
@@ -800,7 +809,7 @@ flowchart TD
         "type": "table",
         "targets": [
           {
-            "expr": "topk(10, histogram_quantile(0.95, sum by (endpoint) (rate(http_response_time_seconds_bucket[5m]))))",
+            "expr": "topk(10, histogram_quantile(0.95, sum by (endpoint, le) (rate(http_response_time_seconds_bucket[5m]))))",
             "format": "table"
           }
         ]

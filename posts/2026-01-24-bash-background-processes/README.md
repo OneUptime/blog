@@ -219,7 +219,7 @@ echo "All processes complete"
 ```bash
 #!/bin/bash
 
-# Wait with timeout (Bash 4.3+)
+# Wait with timeout
 wait_with_timeout() {
     local pid=$1
     local timeout=$2
@@ -403,6 +403,10 @@ check_process_health() {
 
     local stats
     stats=$(ps -p "$pid" -o %cpu,%mem --no-headers 2>/dev/null)
+    if [[ -z "$stats" ]]; then
+        echo "CRITICAL: Process $pid is not running"
+        return 2
+    fi
 
     read cpu mem <<< "$stats"
     cpu=${cpu%.*}  # Remove decimal
@@ -666,6 +670,8 @@ for num in 5 10 15; do
 done
 
 echo "QUIT" > "$PIPE_TO_WORKER"
+read response < "$PIPE_FROM_WORKER"
+echo "Worker responded: $response"
 wait $worker_pid
 ```
 

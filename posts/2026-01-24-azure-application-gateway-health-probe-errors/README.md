@@ -74,7 +74,7 @@ The backend server is not responding within the configured timeout period.
 **Fix: Adjust probe timeout settings**
 
 ```bash
-# Update the health probe timeout (increase from default 30s to 60s)
+# Update the health probe timeout to 60s
 az network application-gateway probe update \
     --resource-group myResourceGroup \
     --gateway-name myAppGateway \
@@ -124,8 +124,8 @@ sequenceDiagram
 
     AG->>BE: TLS Handshake
     BE->>AG: Certificate (CN=server.internal)
-    AG->>AG: Validate CN against probe host
-    Note over AG: CN mismatch! Expected: myapp.example.com
+    AG->>AG: Validate certificate name against probe host/SNI
+    Note over AG: Certificate name mismatch! Expected: myapp.example.com
     AG->>AG: Mark server Unhealthy
 ```
 
@@ -161,7 +161,7 @@ az network application-gateway root-cert create \
 Network Security Groups can block health probe traffic from the Application Gateway subnet.
 
 **Application Gateway health probes originate from:**
-- Source IP: GatewayManager service tag or 168.63.129.16
+- Source IP: Your Application Gateway subnet address space for private backends, or the Application Gateway frontend public IP for public backends
 - Source port: Random
 - Destination port: Your backend port
 
@@ -174,7 +174,7 @@ az network nsg rule create \
     --nsg-name myBackendNSG \
     --name AllowAppGatewayProbes \
     --priority 100 \
-    --source-address-prefixes GatewayManager \
+    --source-address-prefixes 10.0.0.0/24 \
     --source-port-ranges '*' \
     --destination-port-ranges 80 443 \
     --destination-address-prefixes '*' \
@@ -220,6 +220,10 @@ Your backend application needs a dedicated health endpoint that Application Gate
 const express = require('express');
 const app = express();
 
+// Use your application's configured database and cache clients here.
+// const db = ...
+// const redis = ...
+
 // Simple health check
 app.get('/health', (req, res) => {
     res.status(200).json({
@@ -260,6 +264,10 @@ app.listen(8080);
 
 ```csharp
 // Program.cs - Health check configuration
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Text.Json;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add health checks
@@ -294,11 +302,12 @@ app.Run();
 
 ## Debugging Health Probe Failures
 
-### Step 1: Test Connectivity from Gateway Subnet
+### Step 1: Test Connectivity Near the Gateway Path
 
 ```bash
-# Deploy a test VM in the Application Gateway subnet
-# Then test connectivity to your backend
+# Deploy a test VM in the same virtual network with equivalent routing and NSG access.
+# Do not deploy the VM in the dedicated Application Gateway subnet.
+# Then test connectivity to your backend.
 
 # Test HTTP connectivity
 curl -v http://10.0.1.4:80/health
@@ -314,14 +323,14 @@ curl -v --insecure https://10.0.1.4:443/health
 az monitor diagnostic-settings create \
     --name appgw-diagnostics \
     --resource "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Network/applicationGateways/myAppGW" \
-    --logs '[{"category": "ApplicationGatewayAccessLog", "enabled": true}, {"category": "ApplicationGatewayPerformanceLog", "enabled": true}]' \
+    --logs '[{"category": "ApplicationGatewayAccessLog", "enabled": true}]' \
     --workspace "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace"
 ```
 
-**Query logs for probe failures:**
+**Query logs for backend errors that often accompany probe failures:**
 
 ```kusto
-// Kusto query for health probe failures
+// Kusto query for backend errors that often accompany probe failures
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"
 | where Category == "ApplicationGatewayAccessLog"
@@ -349,7 +358,7 @@ flowchart TD
     B -->|No| C[Check NSG Rules]
     B -->|Yes| D{Is the health endpoint returning 200?}
 
-    C --> C1[Add GatewayManager inbound rule]
+    C --> C1[Allow traffic from Application Gateway subnet]
     C1 --> A
 
     D -->|No| E{What status code?}

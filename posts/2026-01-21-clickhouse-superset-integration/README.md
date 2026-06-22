@@ -87,6 +87,7 @@ echo "clickhouse-connect" >> requirements-local.txt
 ```python
 # superset_config.py
 import os
+from flask_caching.backends.rediscache import RedisCache
 
 # Basic configuration
 SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'your-secret-key')
@@ -132,13 +133,13 @@ SUPERSET_WEBSERVER_TIMEOUT = 300
 
 ```text
 # Connection String Format
-clickhousedb+connect://user:password@host:port/database
+clickhousedb://user:password@host:port/database
 
 # Example
-clickhousedb+connect://default:@clickhouse:8123/default
+clickhousedb://default:@clickhouse:8123/default
 
-# With native protocol (port 9000)
-clickhousedb+native://default:@clickhouse:9000/default
+# Equivalent explicit ClickHouse Connect dialect
+clickhousedb+connect://default:@clickhouse:8123/default
 ```
 
 ### Advanced Connection Settings
@@ -148,8 +149,7 @@ clickhousedb+native://default:@clickhouse:9000/default
     "connect_args": {
         "connect_timeout": 30,
         "send_receive_timeout": 300,
-        "sync_request_timeout": 30,
-        "compress_block_size": 1048576,
+        "compression": "zstd",
         "query_limit": 100000
     }
 }
@@ -183,13 +183,15 @@ GROUP BY order_date, product_category, region;
 
 ```sql
 -- Define virtual dataset with time grain support
+{% set time_filter = get_time_filter("order_time", remove_filter=True) %}
 SELECT
-    $__timeGroup(order_time, $__interval) AS time,
+    toStartOfInterval(order_time, INTERVAL 1 HOUR) AS time,
     product_category,
     count() AS orders,
     sum(amount) AS revenue
 FROM orders
-WHERE $__timeFilter(order_time)
+WHERE order_time >= {{ time_filter.from_expr }}
+  AND order_time < {{ time_filter.to_expr }}
 GROUP BY time, product_category
 ORDER BY time
 ```
@@ -218,21 +220,21 @@ metrics:
 
 ```python
 # In superset_config.py - Custom time grain for ClickHouse
-from superset.db_engine_specs.clickhouse import ClickHouseEngineSpec
+from superset.db_engine_specs.clickhouse import ClickHouseBaseEngineSpec
 
-ClickHouseEngineSpec.time_grain_expressions = {
+ClickHouseBaseEngineSpec._time_grain_expressions = {
     None: '{col}',
-    'PT1S': 'toStartOfSecond({col})',
-    'PT1M': 'toStartOfMinute({col})',
-    'PT5M': 'toStartOfFiveMinute({col})',
-    'PT10M': 'toStartOfTenMinutes({col})',
-    'PT15M': 'toStartOfFifteenMinutes({col})',
-    'PT1H': 'toStartOfHour({col})',
-    'P1D': 'toStartOfDay({col})',
-    'P1W': 'toStartOfWeek({col})',
-    'P1M': 'toStartOfMonth({col})',
-    'P3M': 'toStartOfQuarter({col})',
-    'P1Y': 'toStartOfYear({col})',
+    'PT1M': 'toStartOfMinute(toDateTime({col}))',
+    'PT5M': 'toDateTime(intDiv(toUInt32(toDateTime({col})), 300)*300)',
+    'PT10M': 'toDateTime(intDiv(toUInt32(toDateTime({col})), 600)*600)',
+    'PT15M': 'toDateTime(intDiv(toUInt32(toDateTime({col})), 900)*900)',
+    'PT30M': 'toDateTime(intDiv(toUInt32(toDateTime({col})), 1800)*1800)',
+    'PT1H': 'toStartOfHour(toDateTime({col}))',
+    'P1D': 'toStartOfDay(toDateTime({col}))',
+    'P1W': 'toMonday(toDateTime({col}))',
+    'P1M': 'toStartOfMonth(toDateTime({col}))',
+    'P3M': 'toStartOfQuarter(toDateTime({col}))',
+    'P1Y': 'toStartOfYear(toDateTime({col}))',
 }
 ```
 
@@ -241,15 +243,15 @@ ClickHouseEngineSpec.time_grain_expressions = {
 ```sql
 -- Pre-aggregated dataset for faster dashboard loading
 CREATE MATERIALIZED VIEW dashboard_metrics_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(day)
 ORDER BY (day, product_category, region)
 AS SELECT
     toDate(order_time) AS day,
     product_category,
     region,
-    count() AS order_count,
-    sum(amount) AS total_amount,
+    countState() AS order_count,
+    sumState(amount) AS total_amount,
     uniqState(customer_id) AS customers_state
 FROM orders
 GROUP BY day, product_category, region;
@@ -260,8 +262,8 @@ SELECT
     day,
     product_category,
     region,
-    sum(order_count) AS orders,
-    sum(total_amount) AS revenue,
+    countMerge(order_count) AS orders,
+    sumMerge(total_amount) AS revenue,
     uniqMerge(customers_state) AS customers
 FROM dashboard_metrics_mv
 GROUP BY day, product_category, region;
@@ -364,7 +366,10 @@ ORDER BY product_category
 -- Subcategory depends on category selection
 SELECT DISTINCT subcategory
 FROM products
-WHERE category = '{{ filter_values("category")[0] }}'
+WHERE 1 = 1
+  {% if filter_values("category") %}
+  AND category = '{{ filter_values("category")[0] }}'
+  {% endif %}
 ORDER BY subcategory
 ```
 
@@ -381,7 +386,7 @@ FROM events
 WHERE event_time >= '{{ from_dttm }}'
   AND event_time < '{{ to_dttm }}'
   {% if filter_values('event_type') %}
-  AND event_type IN ({{ filter_values('event_type') | join(', ', attribute='quoted') }})
+  AND event_type IN {{ filter_values('event_type') | where_in }}
   {% endif %}
 GROUP BY day
 ORDER BY day
@@ -408,7 +413,8 @@ SETTINGS max_threads = 4
 -- Always limit for exploration
 SELECT *
 FROM large_table
-WHERE $__timeFilter(timestamp)
+WHERE timestamp >= '{{ from_dttm | default("2024-01-01", true) }}'
+  AND timestamp < '{{ to_dttm | default("2024-12-31", true) }}'
 LIMIT {{ row_limit | default(1000) }}
 ```
 
@@ -444,9 +450,13 @@ FEATURE_FLAGS = {
 
 # Celery configuration
 class CeleryConfig:
-    BROKER_URL = 'redis://redis:6379/0'
-    CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
-    CELERY_ANNOTATIONS = {
+    broker_url = 'redis://redis:6379/0'
+    imports = (
+        'superset.sql_lab',
+        'superset.tasks.scheduler',
+    )
+    result_backend = 'redis://redis:6379/0'
+    task_annotations = {
         'sql_lab.get_sql_results': {
             'rate_limit': '100/s',
         },
@@ -476,12 +486,11 @@ GRANT SELECT ON analytics.* TO superset;
 
 ```python
 # In superset_config.py
-def GUEST_TOKEN_JWT_ALGO():
-    return 'HS256'
+GUEST_TOKEN_JWT_ALGO = 'HS256'
 
-# Role-based row filtering
+# Apply row-level security rules to SQL Lab queries
 FEATURE_FLAGS = {
-    'ROW_LEVEL_SECURITY': True,
+    'RLS_IN_SQLLAB': True,
 }
 ```
 

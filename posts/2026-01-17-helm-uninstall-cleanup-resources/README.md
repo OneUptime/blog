@@ -43,7 +43,7 @@ flowchart TB
   end
   subgraph "Helm Does NOT Remove"
     crds[Custom Resource Definitions]
-    pvc[Persistent Volume Claims]
+    pvc[Retained Persistent Volume Claims]
     namespaces[Namespaces]
     external[External resources]
   end
@@ -51,20 +51,22 @@ flowchart TB
 
 Resources Helm Removes
 
-By default, Helm deletes all resources created by the chart templates:
+By default, Helm deletes resources created by the chart templates, except resources annotated with `helm.sh/resource-policy: keep`:
 
 - Deployments, StatefulSets, DaemonSets
 - Services, Ingresses
 - ConfigMaps, Secrets (created by the chart)
 - ServiceAccounts, Roles, RoleBindings
-- Jobs (except those with `helm.sh/resource-policy: keep`)
+- Jobs and other templated resources
+- PersistentVolumeClaims defined as normal templated resources
 
 Resources Helm Does NOT Remove
 
 These require manual cleanup:
 
-- **CRDs** - Most charts don't delete CRDs to prevent data loss
-- **PVCs** - Persistent Volume Claims often have `helm.sh/resource-policy: keep`
+- **CRDs** - Helm does not upgrade or delete CRDs installed from a chart's `crds/` directory
+- **Hook resources** - Resources created by Helm hooks are not managed as part of the release unless hook delete policies clean them up
+- **Retained PVCs** - StatefulSet `volumeClaimTemplates` and PVCs with `helm.sh/resource-policy: keep` can remain after uninstall
 - **Namespaces** - Created with `--create-namespace` but not deleted
 - **External resources** - Cloud load balancers, DNS records, etc.
 
@@ -83,8 +85,8 @@ helm history my-app -n production
 helm get values my-app -n production --revision 3
 
 # To completely remove history later
-helm uninstall my-app -n production --keep-history
-# Then manually delete the secret:
+# Manually delete all retained release secrets for the release:
+kubectl get secrets -n production | grep sh.helm.release.v1.my-app
 kubectl delete secret sh.helm.release.v1.my-app.v3 -n production
 ```
 
@@ -125,7 +127,7 @@ kubectl delete pv pv-my-app-data
 
 ## Cleaning Up Custom Resource Definitions
 
-CRDs persist after uninstallation because deleting them also deletes all Custom Resources of that type- potentially destroying data across the entire cluster.
+CRDs installed from a chart's `crds/` directory persist after uninstallation because Helm does not delete them. Deleting a CRD also deletes all Custom Resources of that type- potentially destroying data across the entire cluster.
 
 ### Check for CRDs
 
@@ -156,13 +158,13 @@ kubectl get crd | grep prometheus
 
 ### Forcing CRD Deletion (Stuck CRDs)
 
-Sometimes CRDs get stuck due to finalizers. Here's how to force removal.
+Sometimes CRDs get stuck due to finalizers. Only remove finalizers when you understand what cleanup they protect and have handled that cleanup another way.
 
 ```bash
 # Check for finalizers on a stuck CRD
 kubectl get crd mycrd.example.com -o yaml | grep finalizers
 
-# Remove the finalizer to allow deletion
+# Remove the finalizer to allow deletion, after verifying it is safe
 kubectl patch crd mycrd.example.com -p '{"metadata":{"finalizers":[]}}' --type=merge
 
 # Now delete should work

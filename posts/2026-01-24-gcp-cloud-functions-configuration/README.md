@@ -141,18 +141,17 @@ gcloud functions deploy high-performance-function \
     --timeout=300s
 ```
 
-Memory and CPU configurations:
+Memory and CPU constraints for Gen 2 functions:
 
-| Memory | Default CPU | Max CPU |
-|--------|-------------|---------|
-| 128MB  | 0.083       | 1       |
-| 256MB  | 0.167       | 1       |
-| 512MB  | 0.333       | 1       |
-| 1GB    | 0.583       | 1       |
-| 2GB    | 1           | 2       |
-| 4GB    | 2           | 2       |
-| 8GB    | 2           | 4       |
-| 16GB   | 4           | 4       |
+| CPU | Supported memory |
+|-----|------------------|
+| 0.08 vCPU | Up to 512Mi |
+| 0.5 vCPU | Up to 1Gi |
+| 1 vCPU | Up to 4Gi |
+| 2 vCPU | Up to 8Gi |
+| 4 vCPU | 2Gi to 16Gi |
+| 6 vCPU | 4Gi to 24Gi |
+| 8 vCPU | 4Gi to 32Gi |
 
 ### Environment Variables
 
@@ -333,7 +332,7 @@ def validate_token(request):
         decoded_token = id_token.verify_oauth2_token(
             token,
             requests.Request(),
-            audience='my-project'
+            audience='https://us-central1-my-project.cloudfunctions.net/authenticated-function'
         )
         return decoded_token
     except Exception as e:
@@ -499,6 +498,11 @@ gcloud functions deploy scheduled-task \
     --entry-point=handler \
     --trigger-http \
     --no-allow-unauthenticated
+
+# Grant Cloud Scheduler permission to invoke the authenticated function
+gcloud functions add-invoker-policy-binding scheduled-task \
+    --region=us-central1 \
+    --member="serviceAccount:scheduler-sa@my-project.iam.gserviceaccount.com"
 
 # Create a Cloud Scheduler job
 gcloud scheduler jobs create http daily-cleanup \

@@ -21,7 +21,7 @@ Redis is an ideal caching solution because of its speed and features:
 - **In-memory storage** - Sub-millisecond response times
 - **Rich data structures** - Strings, hashes, lists, sets, and sorted sets
 - **TTL support** - Automatic expiration of cached data
-- **Atomic operations** - Thread-safe operations out of the box
+- **Single-command atomicity** - Redis commands execute atomically on the server
 - **Persistence options** - Optional data durability
 
 ```mermaid
@@ -44,10 +44,10 @@ Install Redis client for Python. We'll use `redis-py` which supports both synchr
 pip install redis hiredis  # hiredis for faster parsing
 ```
 
-For async support with FastAPI:
+For async FastAPI code, the same package exposes `redis.asyncio`. You can keep the `hiredis` extra for faster response parsing:
 
 ```bash
-pip install redis[hiredis]  # Includes async support
+pip install redis[hiredis]  # hiredis extra for faster parsing
 ```
 
 ---
@@ -62,9 +62,7 @@ Start with a simple synchronous caching implementation using Redis strings.
 # Basic Redis caching utilities
 import redis
 import json
-import pickle
-from typing import Any, Optional, Callable
-from functools import wraps
+from typing import Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,7 +114,7 @@ class RedisCache:
 
     def clear_prefix(self, pattern: str) -> int:
         """Delete all keys matching a pattern"""
-        keys = self.redis.keys(f"{self.prefix}{pattern}*")
+        keys = list(self.redis.scan_iter(match=f"{self.prefix}{pattern}*"))
         if keys:
             return self.redis.delete(*keys)
         return 0
@@ -171,7 +169,17 @@ class CacheDecorator:
         key_hash = hashlib.md5(key_string.encode()).hexdigest()
         return f"fn:{func.__name__}:{key_hash}"
 
-    def cached(self, ttl: int = 300, key_prefix: str = None):
+    def _clear_function_cache(self, func: Callable, key_prefix: Optional[str] = None) -> int:
+        """Clear cached values for a decorated function"""
+        pattern = f"fn:{func.__name__}:*"
+        if key_prefix:
+            pattern = f"{key_prefix}:{pattern}"
+        keys = list(self.redis.scan_iter(match=pattern))
+        if keys:
+            return self.redis.delete(*keys)
+        return 0
+
+    def cached(self, ttl: int = 300, key_prefix: Optional[str] = None):
         """Decorator that caches function results"""
         def decorator(func: Callable):
             @wraps(func)
@@ -193,9 +201,7 @@ class CacheDecorator:
                 return result
 
             # Add cache control methods to the wrapper
-            wrapper.cache_clear = lambda: self.redis.delete(
-                *self.redis.keys(f"fn:{func.__name__}:*")
-            )
+            wrapper.cache_clear = lambda: self._clear_function_cache(func, key_prefix)
             return wrapper
         return decorator
 
@@ -213,7 +219,8 @@ def get_user_profile(user_id: int) -> dict:
 @cached(ttl=3600, key_prefix="products")
 def get_product_catalog(category: str) -> list:
     """Get products in a category (cached for 1 hour)"""
-    return db.query(Product).filter(Product.category == category).all()
+    products = db.query(Product).filter(Product.category == category).all()
+    return [product.to_dict() for product in products]
 
 # Clear cache for a specific function
 get_user_profile.cache_clear()
@@ -223,16 +230,16 @@ get_user_profile.cache_clear()
 
 ## Async Caching for FastAPI
 
-FastAPI uses async functions, so we need an async-compatible cache implementation.
+FastAPI supports async functions, so async endpoints need an async-compatible cache implementation.
 
 ```python
 # cache/async_cache.py
 # Async Redis cache for FastAPI applications
 import redis.asyncio as redis
+import asyncio
 import json
 from typing import Any, Optional, Callable
 from functools import wraps
-import hashlib
 
 class AsyncRedisCache:
     """Async Redis cache for FastAPI and other async frameworks"""
@@ -249,7 +256,8 @@ class AsyncRedisCache:
     async def disconnect(self):
         """Close Redis connection"""
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
+            self._redis = None
 
     async def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""
@@ -350,7 +358,7 @@ async def get_products(
 
     # Try cache
     cached = await cache.get(cache_key)
-    if cached:
+    if cached is not None:
         return {"products": cached, "cached": True}
 
     # Fetch and cache
@@ -394,7 +402,7 @@ class UserRepository:
         """Get user with cache"""
         cache_key = f"user:{user_id}"
         cached = await self.cache.get(cache_key)
-        if cached:
+        if cached is not None:
             return cached
 
         user = await self.db.get_user(user_id)
@@ -425,6 +433,9 @@ Group related cache entries with tags for batch invalidation.
 
 ```python
 # Strategy 3: Tag-based invalidation
+import json
+from typing import Any
+
 class TaggedCache:
     """Cache with tag support for grouped invalidation"""
 
@@ -434,7 +445,7 @@ class TaggedCache:
     async def set_with_tags(self, key: str, value: Any, tags: list, ttl: int = 300):
         """Set a value with associated tags"""
         # Store the value
-        await self.redis.setex(key, ttl, json.dumps(value))
+        await self.redis.setex(key, ttl, json.dumps(value, default=str))
 
         # Add key to each tag's set
         for tag in tags:
@@ -506,6 +517,9 @@ The cache itself handles loading data from the source.
 ```python
 # patterns/read_through.py
 # Read-through cache implementation
+import json
+from typing import Any, Callable
+
 class ReadThroughCache:
     """Cache that automatically loads from source on miss"""
 
@@ -522,7 +536,7 @@ class ReadThroughCache:
         # Load from source
         data = await self.loader(key)
         if data is not None:
-            await self.redis.setex(key, ttl, json.dumps(data))
+            await self.redis.setex(key, ttl, json.dumps(data, default=str))
 
         return data
 
@@ -544,6 +558,9 @@ Prevent multiple requests from hitting the database simultaneously when cache ex
 # patterns/stampede_prevention.py
 # Prevent cache stampede with locking
 import asyncio
+import json
+import uuid
+from typing import Any, Callable
 
 class StampedeProtectedCache:
     """Cache with stampede prevention using distributed locks"""
@@ -566,22 +583,39 @@ class StampedeProtectedCache:
 
         # Try to acquire lock
         lock_key = f"lock:{key}"
+        lock_token = str(uuid.uuid4())
         lock_acquired = await self.redis.set(
             lock_key,
-            "1",
+            lock_token,
             nx=True,  # Only set if not exists
             ex=self.lock_timeout
         )
 
         if lock_acquired:
             try:
+                # Re-check after acquiring the lock in case another worker filled the cache
+                cached = await self.redis.get(key)
+                if cached is not None:
+                    return json.loads(cached)
+
                 # We got the lock, compute the value
                 result = await compute_func()
-                await self.redis.setex(key, ttl, json.dumps(result))
+                await self.redis.setex(key, ttl, json.dumps(result, default=str))
                 return result
             finally:
-                # Release lock
-                await self.redis.delete(lock_key)
+                # Release only the lock owned by this worker
+                await self.redis.eval(
+                    """
+                    if redis.call("get", KEYS[1]) == ARGV[1] then
+                        return redis.call("del", KEYS[1])
+                    else
+                        return 0
+                    end
+                    """,
+                    1,
+                    lock_key,
+                    lock_token
+                )
         else:
             # Another process is computing, wait and retry
             for _ in range(10):  # Retry up to 10 times
@@ -604,7 +638,8 @@ Track cache hit rates and latency to optimize your caching strategy.
 # monitoring/cache_metrics.py
 # Cache wrapper with metrics collection
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 @dataclass
 class CacheMetrics:

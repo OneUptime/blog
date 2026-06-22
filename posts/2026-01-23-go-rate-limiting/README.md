@@ -130,6 +130,10 @@ func (tb *TokenBucket) Allow() bool {
 }
 
 func (tb *TokenBucket) AllowN(n int) bool {
+    if n <= 0 {
+        return false
+    }
+    
     tb.mu.Lock()
     defer tb.mu.Unlock()
     
@@ -161,7 +165,7 @@ func main() {
 
 ## Sliding Window Rate Limiter
 
-More accurate for distributed systems:
+More accurate than fixed windows:
 
 ```go
 package main
@@ -425,6 +429,7 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "net"
     "net/http"
     "sync"
 
@@ -460,7 +465,10 @@ func (rl *RateLimitMiddleware) getLimiter(ip string) *rate.Limiter {
 
 func (rl *RateLimitMiddleware) Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        ip := r.RemoteAddr
+        ip, _, err := net.SplitHostPort(r.RemoteAddr)
+        if err != nil {
+            ip = r.RemoteAddr
+        }
         
         limiter := rl.getLimiter(ip)
         
@@ -515,6 +523,22 @@ type RedisRateLimiter struct {
     window time.Duration
 }
 
+var slidingWindowScript = redis.NewScript(`
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "0", ARGV[2])
+local count = redis.call("ZCARD", KEYS[1])
+
+if count < tonumber(ARGV[3]) then
+    local sequence = redis.call("INCR", KEYS[2])
+    redis.call("ZADD", KEYS[1], ARGV[1], ARGV[1] .. "-" .. sequence)
+    redis.call("PEXPIRE", KEYS[1], ARGV[4])
+    redis.call("PEXPIRE", KEYS[2], ARGV[4])
+    return 1
+end
+
+redis.call("PEXPIRE", KEYS[1], ARGV[4])
+return 0
+`)
+
 func NewRedisRateLimiter(client *redis.Client, limit int, window time.Duration) *RedisRateLimiter {
     return &RedisRateLimiter{
         client: client,
@@ -525,37 +549,26 @@ func NewRedisRateLimiter(client *redis.Client, limit int, window time.Duration) 
 
 func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
     now := time.Now().UnixNano()
-    windowStart := now - int64(rl.window)
+    windowStart := now - rl.window.Nanoseconds()
     
-    pipe := rl.client.Pipeline()
-    
-    // Remove old entries
-    pipe.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart))
-    
-    // Count current entries
-    countCmd := pipe.ZCard(ctx, key)
-    
-    // Add new entry
-    pipe.ZAdd(ctx, key, redis.Z{Score: float64(now), Member: now})
-    
-    // Set expiration
-    pipe.Expire(ctx, key, rl.window)
-    
-    _, err := pipe.Exec(ctx)
+    allowed, err := slidingWindowScript.Run(ctx, rl.client, []string{key, key + ":seq"},
+        now, windowStart, rl.limit, rl.window.Milliseconds()).Int()
     if err != nil {
         return false, err
     }
     
-    count := countCmd.Val()
-    return count < int64(rl.limit), nil
+    return allowed == 1, nil
 }
 
 func (rl *RedisRateLimiter) Remaining(ctx context.Context, key string) (int, error) {
     now := time.Now().UnixNano()
-    windowStart := now - int64(rl.window)
+    windowStart := now - rl.window.Nanoseconds()
     
     // Remove old and count
-    rl.client.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart))
+    if err := rl.client.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart)).Err(); err != nil {
+        return 0, err
+    }
+    
     count, err := rl.client.ZCard(ctx, key).Result()
     if err != nil {
         return 0, err
@@ -610,7 +623,7 @@ graph TD
 |-----------|---------------|--------|----------|
 | Token Bucket | Allows burst | O(1) | API rate limiting |
 | Leaky Bucket | Smooths traffic | O(queue) | Traffic shaping |
-| Sliding Window | No burst | O(n) | Accurate counting |
+| Sliding Window | Restricts bursts | O(n) | Accurate counting |
 | Fixed Window | Boundary issues | O(1) | Simple use cases |
 
 **Best Practices:**

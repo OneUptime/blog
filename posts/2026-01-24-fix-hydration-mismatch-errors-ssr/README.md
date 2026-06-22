@@ -28,7 +28,7 @@ sequenceDiagram
 
 ### Browser-Only APIs
 
-```typescript
+```tsx
 // BAD: window undefined on server
 function BadComponent() {
   const width = window.innerWidth;
@@ -52,34 +52,52 @@ function GoodComponent() {
 
 ### Random Values
 
-```typescript
+```tsx
 // BAD: Different on server vs client
-const id = Math.random().toString();
+function BadComponent() {
+  const id = Math.random().toString();
+  return <label htmlFor={id}>Name</label>;
+}
 
 // GOOD: Use useId
 import { useId } from 'react';
-const id = useId();
+
+function GoodComponent() {
+  const id = useId();
+  return <label htmlFor={id}>Name</label>;
+}
 ```
 
 ### Date/Time Differences
 
-```typescript
+```tsx
 // BAD
-const now = new Date().toISOString();
+function BadComponent() {
+  const now = new Date().toISOString();
+  return <time>{now}</time>;
+}
 
 // GOOD
-const [timestamp, setTimestamp] = useState('');
-useEffect(() => {
-  setTimestamp(new Date().toISOString());
-}, []);
+import { useState, useEffect } from 'react';
+
+function GoodComponent() {
+  const [timestamp, setTimestamp] = useState('');
+
+  useEffect(() => {
+    setTimestamp(new Date().toISOString());
+  }, []);
+
+  return <time>{timestamp}</time>;
+}
 ```
 
 ## Client-Only Component Pattern
 
-```typescript
+```tsx
 'use client';
 
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 
 function ClientOnly({ children, fallback = null }: { children: ReactNode; fallback?: ReactNode }) {
   const [mounted, setMounted] = useState(false);

@@ -54,28 +54,27 @@ curl -X GET "https://localhost:9200/articles/_search" \
 
 Title matches score 3x, summary 2x, content 1x.
 
-### At Index Time
+### Mapping Boost
+
+Older versions of Elasticsearch documented field mapping boosts, but index-time boosting was deprecated and the mapping `boost` parameter is not available in current Elasticsearch versions. Use query-time boosting instead:
 
 ```bash
-curl -X PUT "https://localhost:9200/articles" \
+curl -X GET "https://localhost:9200/articles/_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "mappings": {
-      "properties": {
+    "query": {
+      "match": {
         "title": {
-          "type": "text",
+          "query": "elasticsearch performance",
           "boost": 3
-        },
-        "content": {
-          "type": "text"
         }
       }
     }
   }'
 ```
 
-Note: Query-time boosting is preferred for flexibility.
+Note: Query-time boosting is preferred for flexibility and compatibility with current Elasticsearch versions.
 
 ## Function Score Query
 
@@ -156,10 +155,12 @@ curl -X GET "https://localhost:9200/articles/_search" \
 
 ### Modifiers
 
+The `factor` is multiplied with the field value before the modifier is applied.
+
 - `none`: No modification (default)
-- `log`: log(value)
-- `log1p`: log(1 + value)
-- `log2p`: log(2 + value)
+- `log`: Common logarithm of the value
+- `log1p`: Common logarithm of 1 + value
+- `log2p`: Common logarithm of 2 + value
 - `ln`: Natural log
 - `ln1p`: ln(1 + value)
 - `ln2p`: ln(2 + value)
@@ -291,7 +292,8 @@ curl -X GET "https://localhost:9200/articles/_search" \
           "script": {
             "source": "_score * Math.log(2 + doc[\"views\"].value) * (doc[\"premium\"].value ? 2 : 1)"
           }
-        }
+        },
+        "boost_mode": "replace"
       }
     }
   }'
@@ -314,7 +316,8 @@ curl -X GET "https://localhost:9200/articles/_search" \
               "preferred": "technology"
             }
           }
-        }
+        },
+        "boost_mode": "replace"
       }
     }
   }'

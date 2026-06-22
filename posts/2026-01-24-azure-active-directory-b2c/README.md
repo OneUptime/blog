@@ -8,7 +8,7 @@ Description: A step-by-step guide to setting up Azure Active Directory B2C for c
 
 ---
 
-Azure Active Directory B2C (Azure AD B2C) is a customer identity management service that lets you add authentication to your applications. Unlike regular Azure AD which is for employees, B2C is designed for external users like customers and partners. This guide walks you through setting it up properly.
+Azure Active Directory B2C (Azure AD B2C) is a customer identity management service that lets you add authentication to your applications. Unlike regular Azure AD which is for employees, B2C is designed for external users like customers and partners. Effective May 1, 2025, Azure AD B2C is no longer available to purchase for new customers, but existing customers can continue using it. This guide walks you through setting it up properly for an existing Azure AD B2C tenant.
 
 ## Understanding Azure AD B2C Architecture
 
@@ -60,11 +60,11 @@ flowchart TB
 First, create a dedicated B2C tenant. This is separate from your main Azure AD.
 
 ```bash
-# You cannot create B2C tenant via CLI - use Azure Portal
+# Use the Azure Portal to create and link the B2C tenant
 
 # Go to: Azure Portal > Create a resource > Azure Active Directory B2C
 
-# After creation, link it to your subscription
+# After creation and subscription linking, select the subscription
 az account set --subscription "Your Subscription"
 
 # Verify tenant exists
@@ -76,7 +76,7 @@ In the Azure Portal:
 1. Search for "Azure AD B2C"
 2. Click "Create a new Azure AD B2C Tenant"
 3. Enter organization name and domain (e.g., contosob2c.onmicrosoft.com)
-4. Select your subscription and create a new resource group
+4. Link the tenant to your subscription and create a new resource group for billing
 
 ## Step 2: Register Your Application
 
@@ -105,7 +105,7 @@ In Azure Portal under your B2C tenant:
 1. Go to **App registrations** > **New registration**
 2. Enter name: "My Web App"
 3. Select account type: "Accounts in any identity provider or organizational directory"
-4. Add redirect URI: `https://myapp.com/auth/callback`
+4. Add redirect URI: `https://myapp.com/signin-oidc`
 
 After registration, configure additional settings:
 
@@ -297,6 +297,8 @@ Configuration in appsettings.json:
 
 Use MSAL.js for frontend applications:
 
+Register the SPA redirect URI, such as `http://localhost:3000`, under the app registration's **Single-page application** platform before using it in MSAL.
+
 ```javascript
 // authConfig.js
 import { PublicClientApplication } from "@azure/msal-browser";
@@ -324,7 +326,7 @@ export const loginRequest = {
 
 ```jsx
 // App.jsx
-import { MsalProvider, useMsal, useIsAuthenticated } from "@azure/msal-react";
+import { MsalProvider, useMsal } from "@azure/msal-react";
 import { msalInstance, loginRequest } from "./authConfig";
 
 function LoginButton() {
@@ -417,7 +419,9 @@ Configure custom UI in user flow:
 
 ## Monitoring and Troubleshooting
 
-### Enable Audit Logs
+### View Sign-In Logs
+
+The signed-in admin or application must have Microsoft Graph `AuditLog.Read.All` permission and an appropriate Microsoft Entra role, such as Reports Reader or Security Reader.
 
 ```bash
 # View sign-in logs

@@ -8,7 +8,7 @@ Description: Learn how to fix the 'declared and not used' error in Go by underst
 
 ---
 
-Go enforces that all declared variables must be used. This error occurs when you declare a variable but never reference it in your code.
+Go enforces that local variables declared inside functions must be used. This error occurs when you declare a local variable but never reference it in your code.
 
 ---
 
@@ -196,7 +196,7 @@ func main() {
 func complexCalculation() int { return 42 }
 ```
 
-### Conditional Compilation
+### Conditional Debug Code
 
 ```go
 package main

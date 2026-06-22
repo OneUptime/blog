@@ -77,7 +77,9 @@ helm install external-dns bitnami/external-dns \
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ChangeResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources"
       ],
       "Resource": [
         "arn:aws:route53:::hostedzone/*"
@@ -86,8 +88,7 @@ helm install external-dns bitnami/external-dns \
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets"
+        "route53:ListHostedZones"
       ],
       "Resource": [
         "*"
@@ -105,6 +106,8 @@ provider: aws
 
 aws:
   region: us-west-2
+  # Zone type filter
+  zoneType: public  # or private
   # If using IAM Roles for Service Accounts (IRSA)
   # credentials will be injected automatically
   
@@ -117,9 +120,6 @@ aws:
 # Domain filters - only manage these domains
 domainFilters:
   - example.com
-
-# Zone type filter
-zoneType: public  # or private
 
 # Ownership tracking
 txtOwnerId: "external-dns"
@@ -175,13 +175,19 @@ metadata:
   name: external-dns
 rules:
   - apiGroups: [""]
-    resources: ["services", "endpoints", "pods", "nodes"]
+    resources: ["services", "pods", "nodes"]
     verbs: ["get", "watch", "list"]
-  - apiGroups: ["extensions", "networking.k8s.io"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "watch", "list"]
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gateways", "httproutes", "grpcroutes", "tlsroutes", "tcproutes", "udproutes"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
     verbs: ["get", "watch", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -217,7 +223,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=service
             - --source=ingress
@@ -253,13 +259,13 @@ gcloud iam service-accounts create external-dns \
   --display-name "External DNS"
 
 # Grant DNS admin role
-gcloud projects add-iam-policy-binding my-project \
-  --member serviceAccount:external-dns@my-project.iam.gserviceaccount.com \
+gcloud projects add-iam-policy-binding my-gcp-project \
+  --member serviceAccount:external-dns@my-gcp-project.iam.gserviceaccount.com \
   --role roles/dns.admin
 
 # Create key and store as secret
 gcloud iam service-accounts keys create credentials.json \
-  --iam-account external-dns@my-project.iam.gserviceaccount.com
+  --iam-account external-dns@my-gcp-project.iam.gserviceaccount.com
 
 kubectl create secret generic external-dns-gcp-credentials \
   --from-file=credentials.json \
@@ -303,6 +309,12 @@ resources:
 az ad sp create-for-rbac --name external-dns \
   --role "DNS Zone Contributor" \
   --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/dnszones/<zone-name>
+
+# Grant Reader on the resource group that contains the DNS zone
+az role assignment create \
+  --role "Reader" \
+  --assignee <client-id> \
+  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
 
 # Create secret
 cat <<EOF > azure.json
@@ -450,8 +462,6 @@ kind: Gateway
 metadata:
   name: main-gateway
   namespace: gateway-system
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: "*.example.com"
 spec:
   gatewayClassName: nginx
   listeners:
@@ -508,13 +518,11 @@ kind: Service
 metadata:
   name: internal-api
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: internal-api.internal.example.com
-    # Specify zone for private DNS
-    external-dns.alpha.kubernetes.io/aws-zone-type: private
+    # For Route53 private zones, run External DNS with --aws-zone-type=private
+    external-dns.alpha.kubernetes.io/internal-hostname: internal-api.internal.example.com
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 spec:
   type: LoadBalancer
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
   # ...
 ```
 
@@ -581,6 +589,21 @@ args:
   - --metrics-address=:7979
 
 # ServiceMonitor
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-dns
+  namespace: external-dns
+  labels:
+    app: external-dns
+spec:
+  selector:
+    app: external-dns
+  ports:
+    - name: metrics
+      port: 7979
+      targetPort: 7979
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

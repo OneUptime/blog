@@ -21,7 +21,7 @@ Policies in RabbitMQ allow you to set queue parameters like TTL, max length, and
 ```mermaid
 flowchart TD
     P1[Policy 1: Priority 10<br/>Pattern: orders.*]
-    P2[Policy 2: Priority 5<br/>Pattern: *.queue]
+    P2[Policy 2: Priority 5<br/>Pattern: .*\.queue]
     P3[Policy 3: Priority 1<br/>Pattern: .*]
 
     Q[Queue: orders.queue]
@@ -43,7 +43,7 @@ flowchart TD
 | Pattern | Regex pattern to match queue/exchange names |
 | Definition | Configuration to apply (TTL, max-length, etc.) |
 | Priority | Higher number wins when multiple policies match |
-| Apply-to | queues, exchanges, or all |
+| Apply-to | queues, classic_queues, quorum_queues, streams, exchanges, or all |
 
 ---
 
@@ -73,7 +73,7 @@ def test_policy_pattern(pattern, queue_name):
     """
     try:
         regex = re.compile(pattern)
-        if regex.match(queue_name):
+        if regex.search(queue_name):
             print(f"Pattern '{pattern}' MATCHES queue '{queue_name}'")
             return True
         else:
@@ -109,7 +109,7 @@ rabbitmqctl set_policy low-priority ".*" '{"max-length":1000}' --priority 1
 
 ### 3. Apply-to Mismatch
 
-Policies can target queues, exchanges, or both:
+Policies can target queues, specific queue types, streams, exchanges, or all supported resource types:
 
 ```bash
 # Policy only for queues - will not affect exchanges
@@ -118,7 +118,7 @@ rabbitmqctl set_policy queue-policy "^orders" '{"max-length":1000}' --apply-to q
 # Policy only for exchanges - will not affect queues
 rabbitmqctl set_policy exchange-policy "^orders" '{"alternate-exchange":"ae"}' --apply-to exchanges
 
-# Policy for both
+# Policy for all supported resource types
 rabbitmqctl set_policy all-policy "^orders" '{"max-length":1000}' --apply-to all
 ```
 
@@ -181,7 +181,7 @@ rabbitmqctl list_queues -p "$VHOST" name policy | grep "^$QUEUE_NAME"
 # Step 4: Get queue details
 echo
 echo "4. Getting queue effective arguments..."
-curl -s -u guest:guest "http://localhost:15672/api/queues/$(echo $VHOST | sed 's/\//%2F/g')/$QUEUE_NAME" | jq '{
+curl -s -u guest:guest "http://localhost:15672/api/queues/$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$VHOST")/$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$QUEUE_NAME")" | jq '{
     name: .name,
     policy: .policy,
     effective_policy_definition: .effective_policy_definition,
@@ -261,12 +261,12 @@ class PolicyDiagnostics:
             priority = policy.get('priority', 0)
 
             # Check if policy applies to queues
-            if apply_to not in ['queues', 'all']:
+            if apply_to not in ['queues', 'classic_queues', 'quorum_queues', 'streams', 'all']:
                 continue
 
             # Check if pattern matches
             try:
-                if re.match(pattern, queue_name):
+                if re.search(pattern, queue_name):
                     matching_policies.append({
                         'name': policy['name'],
                         'pattern': pattern,
@@ -344,7 +344,7 @@ rabbitmqctl set_policy queue-policy "^orders.*" '{"max-length":1000}' --apply-to
 # For exchanges:
 rabbitmqctl set_policy exchange-policy "^orders.*" '{"alternate-exchange":"ae"}' --apply-to exchanges
 
-# For both:
+# For all supported resource types:
 rabbitmqctl set_policy combined-policy "^orders.*" '{"max-length":1000}' --apply-to all
 ```
 
@@ -367,7 +367,7 @@ rabbitmqctl set_policy -p my-vhost my-policy "^orders.*" '{"max-length":1000}'
 
 ```bash
 # Use descriptive, hierarchical names
-rabbitmqctl set_policy queues.orders.retention "^orders\." '{"x-message-ttl":86400000}'
+rabbitmqctl set_policy queues.orders.retention "^orders\." '{"message-ttl":86400000}'
 rabbitmqctl set_policy queues.logs.limits "^logs\." '{"max-length":100000}'
 rabbitmqctl set_policy queues.default.dlx ".*" '{"dead-letter-exchange":"dlx"}'
 ```
@@ -385,10 +385,8 @@ class PolicyManager:
 
     # Common policy templates
     TEMPLATES = {
-        'high-availability': {
-            'ha-mode': 'exactly',
-            'ha-params': 2,
-            'ha-sync-mode': 'automatic'
+        'quorum-delivery-limit': {
+            'delivery-limit': 20
         },
         'message-ttl-1h': {
             'message-ttl': 3600000
@@ -408,8 +406,8 @@ class PolicyManager:
             'dead-letter-exchange': 'dlx',
             'dead-letter-routing-key': 'dead-letter'
         },
-        'lazy-queue': {
-            'queue-mode': 'lazy'
+        'queue-ttl-1h': {
+            'expires': 3600000
         }
     }
 
@@ -453,23 +451,23 @@ class PolicyManager:
         """
         policies = [
             # Dead letter for all queues
-            ('default-dlx', '.*', 'dead-letter', 1),
+            ('default-dlx', '.*', 'dead-letter', 1, 'queues'),
 
-            # Lazy queues for logs
-            ('logs-lazy', '^logs\\.', 'lazy-queue', 10),
+            # Queue expiration for temporary logs
+            ('logs-expire', '^logs\\.', 'queue-ttl-1h', 10, 'queues'),
 
             # TTL for temporary queues
-            ('temp-ttl', '^temp\\.', 'message-ttl-1h', 10),
+            ('temp-ttl', '^temp\\.', 'message-ttl-1h', 10, 'queues'),
 
-            # High availability for critical queues
-            ('critical-ha', '^critical\\.', 'high-availability', 20),
+            # Delivery limit for critical quorum queues
+            ('critical-delivery-limit', '^critical\\.', 'quorum-delivery-limit', 20, 'quorum_queues'),
 
             # Length limits for event queues
-            ('events-limit', '^events\\.', 'max-length-100k', 10),
+            ('events-limit', '^events\\.', 'max-length-100k', 10, 'queues'),
         ]
 
-        for name, pattern, template, priority in policies:
-            self.create_policy(name, pattern, template, priority, vhost)
+        for name, pattern, template, priority, apply_to in policies:
+            self.create_policy(name, pattern, template, priority, vhost, apply_to)
 
 # Usage
 manager = PolicyManager()
@@ -555,7 +553,7 @@ flowchart TD
     M1 --> W[Policy A Wins]
     M2 --> T{Same Priority?}
     M3 --> T
-    T -->|"Yes"| N[Alphabetically First Wins]
+    T -->|"Yes"| N[Winner is Undetermined<br/>Avoid Equal Priorities]
 
     W --> A[Apply Policy A]
     N --> A
@@ -566,7 +564,7 @@ flowchart TD
 ### Resolution Rules
 
 1. **Highest priority wins** - Policy with highest priority number is applied
-2. **Same priority** - Alphabetically first policy name wins
+2. **Same priority** - The effective policy is chosen non-deterministically, so avoid equal priorities for policies that can match the same resource
 3. **Queue arguments override** - Some settings in queue arguments cannot be overridden by policies
 
 ```bash
@@ -575,7 +573,7 @@ flowchart TD
 # These two policies have same priority
 rabbitmqctl set_policy alpha-policy "^orders" '{"max-length":100}' --priority 10
 rabbitmqctl set_policy beta-policy "^orders" '{"max-length":200}' --priority 10
-# Result: alpha-policy wins (alphabetically first)
+# Result: the effective policy is not deterministic
 
 # Fix by increasing priority
 rabbitmqctl set_policy beta-policy "^orders" '{"max-length":200}' --priority 11
@@ -596,7 +594,7 @@ rabbitmqctl set_policy beta-policy "^orders" '{"max-length":200}' --priority 11
     - Use regex tester with queue name
 
 [ ] 3. Verify policy applies to correct type
-    - Check --apply-to setting (queues/exchanges/all)
+    - Check --apply-to setting (queues/classic_queues/quorum_queues/streams/exchanges/all)
 
 [ ] 4. Check for higher priority conflicting policies
     - rabbitmqctl list_policies

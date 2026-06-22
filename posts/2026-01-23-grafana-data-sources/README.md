@@ -22,7 +22,7 @@ A data source in Grafana is a connection to a database or service that stores yo
 
 ## Adding Your First Data Source
 
-Navigate to Configuration > Data Sources > Add data source. Select the data source type from the list.
+Navigate to Connections > Data sources > Add new data source. Select the data source type from the list.
 
 ### Prometheus Configuration
 
@@ -71,7 +71,7 @@ Access: Server
 Derived fields:
   - Name: TraceID
     Regex: traceID=(\w+)
-    URL: http://tempo:3100/trace/${__value.raw}
+    URL: ${__value.raw}
     Data source: Tempo
 ```
 
@@ -211,6 +211,7 @@ datasources:
   # Loki for logs
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     url: http://loki-gateway:3100
     editable: false
@@ -218,22 +219,20 @@ datasources:
       derivedFields:
         - name: TraceID
           matcherRegex: "traceID=(\\w+)"
-          url: "${__value.raw}"
+          url: "$${__value.raw}"
           datasourceUid: tempo
 
   # Tempo for traces
   - name: Tempo
     type: tempo
     access: proxy
-    url: http://tempo:3100
+    url: http://tempo:3200
     uid: tempo
     editable: false
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ["service"]
-        mappedTags: [{ key: "service.name", value: "service" }]
-        mapTagNamesEnabled: true
+        tags: [{ key: "service.name", value: "service" }]
         filterByTraceID: true
 
   # PostgreSQL for application data
@@ -340,8 +339,9 @@ kubectl exec -it grafana-pod -n monitoring -- \
   curl -s http://loki-gateway:3100/ready
 
 # Test PostgreSQL
-kubectl exec -it grafana-pod -n monitoring -- \
-  psql "postgres://grafana_reader:password@postgres:5432/app_db" -c "SELECT 1"
+kubectl run -it --rm pg-client -n monitoring \
+  --image=postgres:16 --restart=Never -- \
+  psql "postgres://grafana_reader:password@postgres:5432/application_db" -c "SELECT 1"
 ```
 
 ## Working with Multiple Data Sources
@@ -381,7 +381,7 @@ Slow data sources can make dashboards unresponsive. Configure appropriate timeou
 ```yaml
 jsonData:
   timeInterval: "15s"    # Minimum scrape interval
-  queryTimeout: "60s"    # Maximum query execution time
+  timeout: 60            # HTTP request timeout in seconds
   httpMethod: POST       # POST handles larger queries
 ```
 
@@ -389,7 +389,7 @@ For complex queries, increase the timeout:
 
 ```yaml
 jsonData:
-  queryTimeout: "120s"
+  timeout: 120
 ```
 
 ## Monitoring Data Source Health

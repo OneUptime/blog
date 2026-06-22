@@ -24,8 +24,8 @@ stateDiagram-v2
     Failed --> [*]
     Success --> [*]
 
-    Running --> Skipped
-    Running --> Upstream_Failed
+    Scheduled --> Skipped
+    Scheduled --> Upstream_Failed
 ```
 
 ## Diagnosing Task Failures
@@ -33,20 +33,21 @@ stateDiagram-v2
 ### Step 1: Check the Logs
 
 ```bash
-# View task logs from CLI
+# View task logs in the Airflow UI from the task instance's Logs tab.
+# With the default FileTaskHandler, logs are also stored under $AIRFLOW_HOME/logs:
 
-airflow tasks logs <dag_id> <task_id> <execution_date>
+cat "$AIRFLOW_HOME/logs/dag_id=<dag_id>/run_id=<run_id>/task_id=<task_id>/attempt=<try_number>.log"
 
 # Example
-airflow tasks logs sales_etl extract 2026-01-24
+cat "$AIRFLOW_HOME/logs/dag_id=sales_etl/run_id=scheduled__2026-01-24T00:00:00+00:00/task_id=extract/attempt=1.log"
 
 # View logs with attempt number
-airflow tasks logs sales_etl extract 2026-01-24 --try-number 2
+cat "$AIRFLOW_HOME/logs/dag_id=sales_etl/run_id=scheduled__2026-01-24T00:00:00+00:00/task_id=extract/attempt=2.log"
 ```
 
 ### Step 2: Check Task Instance Details
 
-```python
+```bash
 # In Airflow UI: Browse > Task Instances
 # Look for:
 # - State: What happened to the task
@@ -55,7 +56,7 @@ airflow tasks logs sales_etl extract 2026-01-24 --try-number 2
 # - Log: Detailed execution logs
 
 # Via CLI
-airflow tasks state <dag_id> <task_id> <execution_date>
+airflow tasks state <dag_id> <task_id> <logical_date_or_run_id>
 ```
 
 ### Step 3: Common Error Patterns
@@ -88,7 +89,7 @@ airflow tasks state <dag_id> <task_id> <execution_date>
 ### Connection Failures
 
 ```python
-from airflow.hooks.base import BaseHook
+from airflow.sdk import BaseHook
 from airflow.exceptions import AirflowException
 import time
 
@@ -120,13 +121,14 @@ def my_task(**context):
 ### Verify Connection Before Task Runs
 
 ```python
-from airflow.sensors.base import BaseSensorOperator
-from airflow.utils.decorators import apply_defaults
+from datetime import datetime
+
+from airflow.sdk import BaseHook, BaseSensorOperator, DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 class ConnectionSensor(BaseSensorOperator):
     """Sensor that waits for a connection to be available."""
 
-    @apply_defaults
     def __init__(self, conn_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.conn_id = conn_id
@@ -141,7 +143,7 @@ class ConnectionSensor(BaseSensorOperator):
             return False
 
 # Use in DAG
-with DAG('connection_check_dag', ...) as dag:
+with DAG('connection_check_dag', start_date=datetime(2026, 1, 1), schedule=None) as dag:
 
     wait_for_db = ConnectionSensor(
         task_id='wait_for_db',
@@ -162,6 +164,11 @@ with DAG('connection_check_dag', ...) as dag:
 ### Timeout Failures
 
 ```python
+from datetime import datetime, timedelta
+
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+
 # Task-level timeout
 slow_task = PythonOperator(
     task_id='slow_task',
@@ -172,8 +179,9 @@ slow_task = PythonOperator(
 # DAG-level timeout
 with DAG(
     dag_id='timeout_dag',
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
     dagrun_timeout=timedelta(hours=4),  # Entire DAG run timeout
-    ...
 ) as dag:
     pass
 
@@ -204,6 +212,9 @@ def task_with_timeout(**context):
 ### Memory Failures
 
 ```python
+import gc
+import pandas as pd
+
 # Process data in chunks to avoid memory issues
 def process_large_file(**context):
     """Process large file in memory-efficient chunks."""
@@ -243,10 +254,14 @@ def memory_efficient_task(**context):
 
 ```python
 # Check if upstream data exists before processing
-from airflow.sensors.filesystem import FileSensor
+from datetime import datetime
+
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.sensors.filesystem import FileSensor
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 
-with DAG('dependency_check_dag', ...) as dag:
+with DAG('dependency_check_dag', start_date=datetime(2026, 1, 1), schedule=None) as dag:
 
     # Wait for file to exist
     wait_for_file = FileSensor(
@@ -289,7 +304,7 @@ def task_with_imports(**context):
     df = pd.DataFrame()
 
 # Create virtualenv for isolated dependencies
-from airflow.operators.python import PythonVirtualenvOperator
+from airflow.providers.standard.operators.python import PythonVirtualenvOperator
 
 virtualenv_task = PythonVirtualenvOperator(
     task_id='virtualenv_task',
@@ -304,10 +319,15 @@ virtualenv_task = PythonVirtualenvOperator(
 ### Retry Configuration
 
 ```python
+from datetime import timedelta
+import time
+
+from airflow.exceptions import AirflowException
+
 default_args = {
     'retries': 3,
     'retry_delay': timedelta(minutes=5),
-    'retry_exponential_backoff': True,
+    'retry_exponential_backoff': 2.0,
     'max_retry_delay': timedelta(hours=1),
 }
 
@@ -343,11 +363,16 @@ def task_with_custom_retry(**context):
 ### Failure Callbacks
 
 ```python
+from datetime import datetime
+
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+
 def task_failure_callback(context):
     """Handle task failure."""
     dag_id = context['dag'].dag_id
     task_id = context['task_instance'].task_id
-    execution_date = context['execution_date']
+    logical_date = context['dag_run'].logical_date
     exception = context.get('exception')
 
     # Send alert
@@ -355,7 +380,7 @@ def task_failure_callback(context):
     Task Failed!
     DAG: {dag_id}
     Task: {task_id}
-    Execution Date: {execution_date}
+    Logical Date: {logical_date}
     Error: {exception}
     """
     send_slack_alert(message)
@@ -371,8 +396,9 @@ def dag_failure_callback(context):
 
 with DAG(
     dag_id='callbacks_dag',
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
     on_failure_callback=dag_failure_callback,
-    ...
 ) as dag:
 
     task = PythonOperator(
@@ -385,6 +411,8 @@ with DAG(
 ### Dead Letter Queue Pattern
 
 ```python
+from airflow.exceptions import AirflowException
+
 def process_with_dlq(**context):
     """Process records, sending failures to dead letter queue."""
     records = get_records()
@@ -405,7 +433,8 @@ def process_with_dlq(**context):
     context['ti'].xcom_push(key='failure_count', value=failure_count)
 
     # Fail task if too many failures
-    failure_rate = failure_count / (success_count + failure_count)
+    total_count = success_count + failure_count
+    failure_rate = failure_count / total_count if total_count else 0
     if failure_rate > 0.1:  # More than 10% failures
         raise AirflowException(
             f"Too many failures: {failure_count}/{success_count + failure_count}"
@@ -420,7 +449,7 @@ def process_with_dlq(**context):
 
 ```bash
 # Test task without scheduler
-airflow tasks test <dag_id> <task_id> <execution_date>
+airflow tasks test <dag_id> <task_id> [logical_date_or_run_id]
 
 # Example
 airflow tasks test sales_etl extract 2026-01-24
@@ -433,13 +462,15 @@ airflow tasks test sales_etl extract 2026-01-24 -v
 
 ```python
 # Add debug mode for local testing
+import os
+
 DEBUG = os.getenv('AIRFLOW_DEBUG', 'false').lower() == 'true'
 
 def my_task(**context):
     if DEBUG:
         print("Debug mode enabled")
         print(f"Context: {context}")
-        print(f"Execution date: {context['ds']}")
+        print(f"Logical date: {context['ds']}")
 
     # Regular task logic
     result = process_data()
@@ -467,7 +498,6 @@ grep -i "error\|exception\|failed" $AIRFLOW_HOME/logs/scheduler/latest/*.log
 
 ```python
 # Add task-level metrics
-from airflow.models import Variable
 import time
 
 def instrumented_task(**context):
@@ -489,17 +519,30 @@ def instrumented_task(**context):
         record_metric(f'airflow.task.{task_id}.failure', 1)
         raise
 
-# SLA monitoring
+# Deadline alert monitoring
+from datetime import datetime, timedelta
+
+from airflow.sdk import AsyncCallback, DAG, DeadlineAlert, DeadlineReference
+from airflow.providers.slack.notifications.slack_webhook import SlackWebhookNotifier
+from airflow.providers.standard.operators.python import PythonOperator
+
 with DAG(
-    dag_id='sla_monitored_dag',
-    sla_miss_callback=sla_alert_function,
-    ...
+    dag_id='deadline_monitored_dag',
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
+    deadline=DeadlineAlert(
+        reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
+        interval=timedelta(hours=1),
+        callback=AsyncCallback(
+            SlackWebhookNotifier,
+            kwargs={"text": "Deadline missed for {{ dag_run.dag_id }}"},
+        ),
+    ),
 ) as dag:
 
     critical_task = PythonOperator(
         task_id='critical_task',
         python_callable=critical_function,
-        sla=timedelta(hours=1),  # Alert if not complete within 1 hour
     )
 ```
 

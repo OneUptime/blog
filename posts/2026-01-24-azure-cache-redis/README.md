@@ -10,7 +10,7 @@ Description: Learn how to configure, manage, and troubleshoot Azure Cache for Re
 
 ## Introduction
 
-Azure Cache for Redis provides an in-memory data store based on the Redis software. It offers high throughput and low-latency access to data for applications, making it ideal for caching, session management, and real-time analytics. This guide covers essential techniques for handling Azure Cache for Redis effectively in production environments.
+Azure Cache for Redis provides an in-memory data store based on the Redis software. It offers high throughput and low-latency access to data for applications, making it ideal for caching, session management, and real-time analytics. Microsoft has announced retirement timelines for Azure Cache for Redis, so evaluate Azure Managed Redis for new deployments. This guide covers essential techniques for handling Azure Cache for Redis effectively in production environments.
 
 ## Understanding Azure Cache for Redis Tiers
 
@@ -18,8 +18,9 @@ Before diving into implementation, it is important to understand the available t
 
 - **Basic**: Single node, no SLA, suitable for development and testing
 - **Standard**: Two-node replicated cache with SLA
-- **Premium**: Enterprise features including clustering, persistence, and virtual network support
+- **Premium**: Advanced features including clustering, persistence, and virtual network support
 - **Enterprise**: Redis Enterprise with active geo-replication and RediSearch modules
+- **Enterprise Flash**: Redis Enterprise with SSD-backed storage for larger cache sizes
 
 ## Architecture Overview
 
@@ -103,8 +104,8 @@ public class RedisConnectionManager : IDisposable
             configOptions.Ssl = true;
             configOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
 
-            // Set reasonable defaults for connection pooling
-            configOptions.PoolSize = 10;
+            // Set a client name for diagnostics
+            configOptions.ClientName = _options.InstanceName;
 
             var connection = ConnectionMultiplexer.Connect(configOptions);
 
@@ -138,7 +139,10 @@ public class RedisConnectionManager : IDisposable
     {
         if (!_disposed)
         {
-            _connection.Value?.Dispose();
+            if (_connection.IsValueCreated)
+            {
+                _connection.Value.Dispose();
+            }
             _disposed = true;
         }
     }
@@ -183,7 +187,7 @@ const redis = new Redis({
         const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
         return targetErrors.some(e => err.message.includes(e));
     },
-    // Connection pool settings
+    // Request retry settings
     maxRetriesPerRequest: 3,
     enableReadyCheck: true,
     lazyConnect: false
@@ -263,16 +267,20 @@ public class ProductService
 }
 ```
 
-### Write-Through Pattern with Transactions
+### Updating Cache After Writes with Transactions
 
-For scenarios where cache consistency is critical:
+For scenarios where you need to update cached values after a database write:
 
 ```csharp
 public async Task UpdateProductAsync(Product product)
 {
     string cacheKey = $"product:{product.Id}";
 
-    // Use Redis transaction to ensure atomicity
+    // Update the database first
+    await _repository.UpdateAsync(product);
+
+    // Use a Redis transaction to make the cache commands atomic.
+    // This does not make the database update and cache update one transaction.
     var transaction = _cache.CreateTransaction();
 
     // Condition: only proceed if key exists in cache
@@ -284,9 +292,6 @@ public async Task UpdateProductAsync(Product product)
 
     // Execute transaction
     bool committed = await transaction.ExecuteAsync();
-
-    // Always update the database
-    await _repository.UpdateAsync(product);
 
     // If transaction failed (key did not exist), that is fine
     // The cache-aside pattern will populate it on next read
@@ -304,9 +309,9 @@ For Premium tier with clustering enabled, your application needs to handle multi
 ```mermaid
 graph LR
     subgraph "Azure Redis Cluster"
-        S0[Shard 0<br/>Keys 0-5460]
-        S1[Shard 1<br/>Keys 5461-10922]
-        S2[Shard 2<br/>Keys 10923-16383]
+        S0[Shard 0<br/>Slots 0-5460]
+        S1[Shard 1<br/>Slots 5461-10922]
+        S2[Shard 2<br/>Slots 10923-16383]
     end
 
     A[Application] --> S0
@@ -336,49 +341,26 @@ public class ClusterAwareCacheService
 
         // These operations can be batched since keys are on same shard
         var batch = _cache.CreateBatch();
-        batch.StringSetAsync(sessionKey, serializedSession, TimeSpan.FromHours(1));
-        batch.StringSetAsync(prefsKey, serializedPrefs, TimeSpan.FromHours(24));
+        var sessionTask = batch.StringSetAsync(sessionKey, serializedSession, TimeSpan.FromHours(1));
+        var prefsTask = batch.StringSetAsync(prefsKey, serializedPrefs, TimeSpan.FromHours(24));
         batch.Execute();
+        await Task.WhenAll(sessionTask, prefsTask);
     }
 
-    // Avoid cross-slot operations in transactions
+    // Avoid cross-slot multi-key commands unless the keys share a hash tag
     public async Task<Dictionary<string, string>> GetMultipleKeysAsync(string[] keys)
     {
-        var results = new Dictionary<string, string>();
-
-        // Group keys by slot for efficient retrieval
-        var keysBySlot = keys.GroupBy(k => HashSlot(k));
-
-        foreach (var group in keysBySlot)
+        var tasks = keys.Select(async key => new
         {
-            var redisKeys = group.Select(k => (RedisKey)k).ToArray();
-            var values = await _cache.StringGetAsync(redisKeys);
+            Key = key,
+            Value = await _cache.StringGetAsync(key)
+        });
 
-            for (int i = 0; i < redisKeys.Length; i++)
-            {
-                if (values[i].HasValue)
-                {
-                    results[redisKeys[i]] = values[i];
-                }
-            }
-        }
+        var values = await Task.WhenAll(tasks);
 
-        return results;
-    }
-
-    private int HashSlot(string key)
-    {
-        // Extract hash tag if present
-        int start = key.IndexOf('{');
-        int end = key.IndexOf('}');
-
-        if (start >= 0 && end > start + 1)
-        {
-            key = key.Substring(start + 1, end - start - 1);
-        }
-
-        // CRC16 implementation for slot calculation
-        return Crc16(key) % 16384;
+        return values
+            .Where(item => item.Value.HasValue)
+            .ToDictionary(item => item.Key, item => item.Value.ToString());
     }
 }
 ```
@@ -441,8 +423,16 @@ Track cache performance metrics:
 ```csharp
 public class RedisCacheMetrics
 {
-    private readonly IDatabase _cache;
+    private readonly RedisConnectionManager _redis;
     private readonly ILogger<RedisCacheMetrics> _logger;
+
+    public RedisCacheMetrics(
+        RedisConnectionManager redis,
+        ILogger<RedisCacheMetrics> logger)
+    {
+        _redis = redis;
+        _logger = logger;
+    }
 
     public async Task<CacheStatistics> GetStatisticsAsync()
     {
@@ -453,7 +443,7 @@ public class RedisCacheMetrics
         {
             ConnectedClients = GetInfoValue(info, "connected_clients"),
             UsedMemoryBytes = GetInfoValue(info, "used_memory"),
-            TotalKeysCount = GetInfoValue(info, "db0", "keys"),
+            TotalKeysCount = GetDatabaseKeyCount(info, "db0"),
             CacheHits = GetInfoValue(info, "keyspace_hits"),
             CacheMisses = GetInfoValue(info, "keyspace_misses"),
             EvictedKeys = GetInfoValue(info, "evicted_keys")
@@ -473,6 +463,42 @@ public class RedisCacheMetrics
 
         return stats;
     }
+
+    private static long GetInfoValue(
+        IGrouping<string, KeyValuePair<string, string>>[] info,
+        string key)
+    {
+        var value = info.SelectMany(group => group)
+            .FirstOrDefault(item => item.Key == key)
+            .Value;
+
+        return long.TryParse(value, out var parsed) ? parsed : 0;
+    }
+
+    private static long GetDatabaseKeyCount(
+        IGrouping<string, KeyValuePair<string, string>>[] info,
+        string database)
+    {
+        var value = info.SelectMany(group => group)
+            .FirstOrDefault(item => item.Key == database)
+            .Value;
+
+        if (string.IsNullOrEmpty(value))
+        {
+            return 0;
+        }
+
+        foreach (var part in value.Split(','))
+        {
+            if (part.StartsWith("keys=", StringComparison.Ordinal)
+                && long.TryParse(part.Substring("keys=".Length), out var keys))
+            {
+                return keys;
+            }
+        }
+
+        return 0;
+    }
 }
 ```
 
@@ -488,7 +514,6 @@ var config = ConfigurationOptions.Parse(connectionString);
 config.SyncTimeout = 10000;      // 10 seconds for sync operations
 config.AsyncTimeout = 10000;     // 10 seconds for async operations
 config.ConnectTimeout = 10000;   // 10 seconds for initial connection
-config.ResponseTimeout = 10000;  // 10 seconds for command response
 
 // Enable connection keep-alive
 config.KeepAlive = 60;  // Send keepalive every 60 seconds
@@ -500,16 +525,15 @@ When Redis is running low on memory:
 
 ```csharp
 // Implement key expiration policies
-public async Task SetWithSlidingExpirationAsync<T>(
+public async Task SetWithExpirationAsync<T>(
     string key,
     T value,
-    TimeSpan slidingExpiration)
+    TimeSpan expiration)
 {
     var serialized = JsonSerializer.Serialize(value);
 
-    // Use sliding expiration to remove inactive keys
-    await _cache.StringSetAsync(key, serialized);
-    await _cache.KeyExpireAsync(key, slidingExpiration);
+    // Use expiration to remove old keys
+    await _cache.StringSetAsync(key, serialized, expiration);
 }
 
 // Implement LRU eviction by setting maxmemory-policy
@@ -518,7 +542,7 @@ public async Task SetWithSlidingExpirationAsync<T>(
 
 ## Best Practices
 
-1. **Use connection pooling**: Never create a new connection per request
+1. **Reuse a ConnectionMultiplexer**: Never create a new connection per request
 2. **Set appropriate TTLs**: Always set expiration on cached items
 3. **Use hash tags for related data**: Ensure related keys are on the same shard
 4. **Implement circuit breaker**: Fail fast when Redis is unavailable

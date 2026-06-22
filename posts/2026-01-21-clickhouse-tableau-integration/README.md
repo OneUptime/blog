@@ -26,7 +26,6 @@ graph TB
     end
 
     subgraph ClickHouse
-        F[Native Protocol]
         G[HTTP Interface]
         H[Analytics Tables]
     end
@@ -35,9 +34,8 @@ graph TB
     A --> E
     B --> D
     C --> D
-    D --> F
+    D --> G
     E --> G
-    F --> H
     G --> H
 ```
 
@@ -48,35 +46,37 @@ graph TB
 ```bash
 # Download ClickHouse JDBC driver
 
-wget https://github.com/ClickHouse/clickhouse-java/releases/download/v0.6.0/clickhouse-jdbc-0.6.0-all.jar
+wget https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc-all/0.9.8/clickhouse-jdbc-all-0.9.8.jar
+wget https://github.com/ClickHouse/clickhouse-tableau-connector-jdbc/releases/download/v0.3.1/clickhouse_jdbc_0.3.1.taco
 
 # For Tableau Desktop (macOS)
-cp clickhouse-jdbc-0.6.0-all.jar ~/Library/Tableau/Drivers/
+cp clickhouse-jdbc-all-0.9.8.jar ~/Library/Tableau/Drivers/
+cp clickhouse_jdbc_0.3.1.taco ~/Documents/My\ Tableau\ Repository/Connectors/
 
 # For Tableau Desktop (Windows)
-copy clickhouse-jdbc-0.6.0-all.jar "C:\Program Files\Tableau\Drivers\"
+copy clickhouse-jdbc-all-0.9.8.jar "C:\Program Files\Tableau\Drivers\"
+copy clickhouse_jdbc_0.3.1.taco "%USERPROFILE%\Documents\My Tableau Repository\Connectors\"
 
 # For Tableau Server (Linux)
-cp clickhouse-jdbc-0.6.0-all.jar /opt/tableau/tableau_driver/jdbc/
+cp clickhouse-jdbc-all-0.9.8.jar /opt/tableau/tableau_driver/jdbc/
+cp clickhouse_jdbc_0.3.1.taco /opt/tableau/connectors/
+tsm restart
 ```
 
-### Tableau Properties File
+### Optional JDBC Properties File
 
 ```properties
-# clickhouse.properties
+# clickhouse_jdbc.properties
 # Place in Tableau Datasources folder
 
-[ClickHouse]
-vendor = ClickHouse
-driver = com.clickhouse.jdbc.ClickHouseDriver
-port = 8123
-protocol = http
+socket_timeout=300000
+client_name=tableau-enterprise-analytics
 ```
 
 ### Connection String
 
 ```text
-jdbc:clickhouse://clickhouse.example.com:8443/analytics?ssl=true&sslmode=strict
+jdbc:clickhouse:https://clickhouse.example.com:8443/analytics
 ```
 
 ## ODBC Driver Setup
@@ -99,13 +99,11 @@ apt-get install clickhouse-odbc
 # /etc/odbc.ini (Linux/macOS)
 [ClickHouse]
 Description = ClickHouse ODBC
-Driver = /usr/lib/libclickhouseodbc.so
-Server = clickhouse.example.com
-Port = 8443
+Driver = ClickHouse ODBC Driver (Unicode)
+Url = https://clickhouse.example.com:8443/
 Database = analytics
 Username = tableau_user
 Password = secure_password
-SSLMode = require
 ```
 
 ### Windows DSN Configuration
@@ -113,7 +111,7 @@ SSLMode = require
 ```text
 1. Open ODBC Data Sources (64-bit)
 2. Add new System DSN
-3. Select "ClickHouse ODBC Driver"
+3. Select "ClickHouse ODBC Driver (Unicode)"
 4. Configure:
    - Data Source Name: ClickHouse_Analytics
    - Host: clickhouse.example.com
@@ -133,7 +131,7 @@ SETTINGS
     max_execution_time = 600,
     max_memory_usage = 20000000000,
     max_rows_to_read = 1000000000,
-    readonly = 1,
+    readonly = 2,
     max_result_rows = 1000000;
 
 -- Grant read access
@@ -152,18 +150,18 @@ GRANT SELECT ON system.databases TO tableau_user;
 ```sql
 -- Pre-aggregated table for faster Tableau queries
 CREATE TABLE analytics.sales_summary
-ENGINE = SummingMergeTree()
+(
+    date Date,
+    region String,
+    product_category String,
+    order_count SimpleAggregateFunction(sum, UInt64),
+    total_quantity SimpleAggregateFunction(sum, UInt64),
+    total_revenue SimpleAggregateFunction(sum, Float64),
+    unique_customers AggregateFunction(uniq, UInt64)
+)
+ENGINE = AggregatingMergeTree()
 ORDER BY (date, region, product_category)
-AS SELECT
-    toDate(order_date) AS date,
-    region,
-    product_category,
-    count() AS order_count,
-    sum(quantity) AS total_quantity,
-    sum(amount) AS total_revenue,
-    uniq(customer_id) AS unique_customers
-FROM analytics.orders
-GROUP BY date, region, product_category;
+;
 
 -- Materialized view for continuous updates
 CREATE MATERIALIZED VIEW analytics.sales_summary_mv
@@ -175,9 +173,21 @@ AS SELECT
     count() AS order_count,
     sum(quantity) AS total_quantity,
     sum(amount) AS total_revenue,
-    uniq(customer_id) AS unique_customers
+    uniqState(customer_id) AS unique_customers
 FROM analytics.orders
-WHERE order_date > now() - INTERVAL 1 DAY
+GROUP BY date, region, product_category;
+
+-- Tableau-friendly view over finalized aggregate states
+CREATE VIEW analytics.sales_summary_tableau AS
+SELECT
+    date,
+    region,
+    product_category,
+    sum(order_count) AS order_count,
+    sum(total_quantity) AS total_quantity,
+    sum(total_revenue) AS total_revenue,
+    uniqMerge(unique_customers) AS unique_customers
+FROM analytics.sales_summary
 GROUP BY date, region, product_category;
 ```
 
@@ -222,7 +232,7 @@ SELECT
 FROM analytics.orders_tableau
 WHERE order_date >= <Parameters.Start Date>
   AND order_date <= <Parameters.End Date>
-  AND region IN (<Parameters.Selected Regions>)
+  AND region = <Parameters.Selected Region>
 GROUP BY "Order Date", "Region", "Category"
 ```
 
@@ -283,6 +293,11 @@ ADD INDEX idx_category product_category TYPE set(100) GRANULARITY 4;
 
 ALTER TABLE analytics.orders
 ADD INDEX idx_date order_date TYPE minmax GRANULARITY 4;
+
+-- Backfill indexes for existing parts
+ALTER TABLE analytics.orders MATERIALIZE INDEX idx_region;
+ALTER TABLE analytics.orders MATERIALIZE INDEX idx_category;
+ALTER TABLE analytics.orders MATERIALIZE INDEX idx_date;
 ```
 
 ### Query Caching
@@ -305,16 +320,14 @@ WHERE metric LIKE '%QueryCache%';
 
 ### Data Source Publishing
 
-```yaml
-# tableau-server-config.yml
-datasources:
-  clickhouse_analytics:
-    connection_type: jdbc
-    server: clickhouse.example.com
-    port: 8443
-    database: analytics
-    ssl: true
-    extract_refresh_schedule: "0 */4 * * *"  # Every 4 hours
+```bash
+# Publish a prepared Tableau data source package
+tabcmd login --server https://tableau.example.com --site analytics --username publisher
+tabcmd publish clickhouse_analytics.tdsx \
+  --project "Enterprise Analytics" \
+  --db-username tableau_user \
+  --db-password secure_password \
+  --save-db-password
 ```
 
 ### User Filters for Row-Level Security
@@ -332,12 +345,17 @@ INSERT INTO analytics.tableau_user_filters VALUES
     ('john@company.com', ['North America', 'EMEA'], ['Enterprise', 'SMB']),
     ('jane@company.com', ['APAC'], ['Enterprise']);
 
--- Create filtered view
+-- Create filtered view when Tableau connects with per-user database credentials
 CREATE VIEW analytics.orders_filtered AS
 SELECT o.*
 FROM analytics.orders_tableau o
 WHERE region IN (
     SELECT arrayJoin(allowed_regions)
+    FROM analytics.tableau_user_filters
+    WHERE tableau_username = currentUser()
+)
+AND customer_segment IN (
+    SELECT arrayJoin(allowed_segments)
     FROM analytics.tableau_user_filters
     WHERE tableau_username = currentUser()
 );
@@ -354,9 +372,10 @@ SELECT
     count() AS total_orders,
     uniq(customer_id) AS total_customers,
     sum(amount) / count() AS avg_order_value,
-    sum(amount) - sumIf(amount, order_date < today() - 30) AS revenue_change
+    sumIf(amount, order_date >= today() - 30)
+      - sumIf(amount, order_date >= today() - 60 AND order_date < today() - 30) AS revenue_change
 FROM analytics.orders_tableau
-WHERE order_date >= today() - 30;
+WHERE order_date >= today() - 60;
 ```
 
 ### Time Series with Comparison
@@ -364,11 +383,21 @@ WHERE order_date >= today() - 30;
 ```sql
 -- Revenue comparison with previous period
 SELECT
-    toDate(order_date) AS date,
-    sum(amount) AS current_revenue,
-    sumIf(amount, order_date BETWEEN today() - 60 AND today() - 31) AS previous_revenue
-FROM analytics.orders_tableau
-WHERE order_date >= today() - 60
+    date,
+    sumIf(revenue, period = 'current') AS current_revenue,
+    sumIf(revenue, period = 'previous') AS previous_revenue
+FROM
+(
+    SELECT toDate(order_date) AS date, amount AS revenue, 'current' AS period
+    FROM analytics.orders_tableau
+    WHERE order_date >= today() - 30
+
+    UNION ALL
+
+    SELECT toDate(order_date) + 30 AS date, amount AS revenue, 'previous' AS period
+    FROM analytics.orders_tableau
+    WHERE order_date >= today() - 60 AND order_date < today() - 30
+)
 GROUP BY date
 ORDER BY date;
 ```
@@ -380,12 +409,19 @@ ORDER BY date;
 SELECT
     region,
     product_name,
-    sum(amount) AS revenue,
-    row_number() OVER (PARTITION BY region ORDER BY sum(amount) DESC) AS rank
-FROM analytics.orders_tableau
-WHERE order_date >= today() - 30
-GROUP BY region, product_name
-HAVING rank <= 10
+    revenue,
+    row_number() OVER (PARTITION BY region ORDER BY revenue DESC) AS rank
+FROM
+(
+    SELECT
+        region,
+        product_name,
+        sum(amount) AS revenue
+    FROM analytics.orders_tableau
+    WHERE order_date >= today() - 30
+    GROUP BY region, product_name
+)
+QUALIFY rank <= 10
 ORDER BY region, rank;
 ```
 

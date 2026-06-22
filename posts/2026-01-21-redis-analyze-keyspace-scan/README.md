@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, SCAN, Keyspace, Analysis, Performance, Operation
 
-Description: A comprehensive guide to analyzing Redis keyspace using SCAN command, covering techniques for finding large keys, expired keys, key patterns.
+Description: A comprehensive guide to analyzing Redis keyspace using SCAN command, covering techniques for finding large keys, keys expiring soon, key patterns.
 
 ---
 
-Understanding what data lives in your Redis instance is crucial for optimization, debugging, and capacity planning. The SCAN command family provides a non-blocking way to iterate through keys without impacting production performance. In this guide, we will explore how to effectively analyze your Redis keyspace using SCAN.
+Understanding what data lives in your Redis instance is crucial for optimization, debugging, and capacity planning. The SCAN command family provides an incremental way to iterate through keys with less production impact than blocking commands like KEYS. In this guide, we will explore how to effectively analyze your Redis keyspace using SCAN.
 
 ## Why Use SCAN Instead of KEYS?
 
@@ -20,7 +20,8 @@ The KEYS command returns all matching keys at once, but it:
 SCAN provides cursor-based iteration that:
 - Returns results incrementally
 - Doesn't block for extended periods
-- Is safe for production use
+- Is safer for production use when rate limited and monitored
+- May return duplicate keys, so processing should be idempotent
 
 ```bash
 # NEVER do this in production
@@ -247,7 +248,7 @@ class RedisKeyspaceAnalyzer:
 
         return keys_without_ttl
 
-    def find_expired_keys(self, pattern='*', threshold_seconds=3600):
+    def find_expiring_keys(self, pattern='*', threshold_seconds=3600):
         """Find keys expiring within threshold."""
         expiring_soon = []
 
@@ -308,7 +309,7 @@ class RedisKeyspaceAnalyzer:
             ttl = self.redis.ttl(key)
             if ttl == -1:
                 stats['ttl_not_set'] += 1
-            else:
+            elif ttl >= 0:
                 stats['ttl_set'] += 1
 
         if stats['sizes']:
@@ -414,7 +415,7 @@ class RedisKeyspaceAnalyzer {
     }
 
     async *scanKeys(pattern = '*', count = 1000) {
-        let cursor = 0;
+        let cursor = '0';
         do {
             const result = await this.client.scan(cursor, {
                 MATCH: pattern,
@@ -424,7 +425,7 @@ class RedisKeyspaceAnalyzer {
             for (const key of result.keys) {
                 yield key;
             }
-        } while (cursor !== 0);
+        } while (String(cursor) !== '0');
     }
 
     async analyzeKeyspace(pattern = '*', sampleSize = 10000) {
@@ -473,6 +474,8 @@ class RedisKeyspaceAnalyzer {
             const ttl = await this.client.ttl(key);
             if (ttl === -1) {
                 stats.ttlDistribution.noTtl++;
+            } else if (ttl === -2) {
+                continue;
             } else if (ttl > 0 && ttl < 3600) {
                 stats.ttlDistribution.expiringSoon++;
             } else if (ttl < 86400) {
@@ -680,7 +683,7 @@ def safe_scan(redis_client, pattern='*', delay=0.01):
 ### 3. Use TYPE Filter (Redis 6.0+)
 
 ```python
-# Only scan hashes - much more efficient than filtering after
+# Only scan hashes - avoids separate TYPE calls in your application
 for key in r.scan_iter(match='*', _type='hash'):
     process(key)
 ```
@@ -691,7 +694,7 @@ for key in r.scan_iter(match='*', _type='hash'):
 2. **Sample large keyspaces** - You don't always need 100% coverage
 3. **Add rate limiting** - Prevent overwhelming Redis
 4. **Schedule during low traffic** - Run comprehensive scans off-peak
-5. **Use TYPE filter** - Filter at the Redis level when possible
+5. **Use TYPE filter** - Avoid separate TYPE calls when possible
 6. **Cache results** - Don't repeatedly analyze the same data
 7. **Monitor while scanning** - Watch for latency spikes
 
@@ -705,4 +708,4 @@ Effective keyspace analysis with SCAN enables:
 4. **Pattern discovery** - Detect unexpected key patterns
 5. **Capacity planning** - Plan for future growth
 
-With these techniques, you can maintain full visibility into your Redis keyspace without impacting production performance.
+With these techniques, you can maintain visibility into your Redis keyspace while keeping production impact manageable.

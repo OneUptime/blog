@@ -68,6 +68,8 @@ spark.conf.set("spark.metrics.conf.*.sink.console.class", "org.apache.spark.metr
 
 ```python
 # Start with more executor memory
+from pyspark.sql import SparkSession
+
 spark = SparkSession.builder \
     .appName("FixOOM") \
     .config("spark.executor.memory", "8g") \
@@ -122,12 +124,12 @@ df.groupBy("key").agg(
 ### Solution 4: Spill to Disk
 
 ```python
-# Configure memory fraction to allow more spilling
+# Keep the defaults unless metrics show a clear need to tune them
 spark.conf.set("spark.memory.fraction", "0.6")  # Default is 0.6
 spark.conf.set("spark.memory.storageFraction", "0.5")  # Default is 0.5
 
-# This leaves more room for execution memory and allows disk spill
-# Lower storageFraction means cached data will be evicted more aggressively
+# Lower memory.fraction causes more frequent spills and cached data eviction
+# Lower storageFraction means less cached data is immune to eviction
 ```
 
 ### Solution 5: Handle Skewed Data
@@ -151,7 +153,7 @@ spark.conf.set("spark.sql.adaptive.skewJoin.skewedPartitionFactor", "5")
 spark.conf.set("spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes", "256m")
 
 # Manual fix: Salt skewed keys
-from pyspark.sql.functions import concat, lit, floor, rand
+from pyspark.sql.functions import col, concat, lit, floor, rand
 
 def fix_skew_with_salting(df, skewed_key_col, num_salts=10):
     """Add salt to distribute skewed keys across partitions."""
@@ -187,6 +189,8 @@ summary = df.groupBy("category").count().collect()  # Much smaller
 # spark-submit --driver-memory 8g --conf spark.driver.maxResultSize=4g ...
 
 # For SparkSession
+from pyspark.sql import SparkSession
+
 spark = SparkSession.builder \
     .appName("DriverOOM") \
     .config("spark.driver.memory", "8g") \
@@ -291,7 +295,8 @@ df1.join(df2, "key")  # Both tables shuffled
 
 # Solution 1: Broadcast small table
 from pyspark.sql.functions import broadcast
-df1.join(broadcast(df2), "key")  # Only if df2 < 1GB
+df1.join(broadcast(df2), "key")  # Only if df2 is small enough to fit on each executor
+# Spark's default automatic broadcast threshold is 10MB unless configured
 
 # Solution 2: Increase shuffle partitions
 spark.conf.set("spark.sql.shuffle.partitions", "1000")
@@ -299,16 +304,18 @@ spark.conf.set("spark.sql.shuffle.partitions", "1000")
 # Solution 3: Use bucketing for repeated joins
 df1.write.bucketBy(100, "key").saveAsTable("table1")
 df2.write.bucketBy(100, "key").saveAsTable("table2")
-# Bucketed tables don't shuffle on join
+# Compatible bucketed tables can reduce or avoid shuffle on joins
 ```
 
 ### Scenario 2: OOM During GroupBy
 
 ```python
 # Problem: Group has too many rows
+from pyspark.sql.functions import collect_list
+
 df.groupBy("skewed_key").agg(collect_list("value"))
 
-# Solution 1: Use streaming aggregation
+# Solution 1: Allow object aggregation to fall back to sort-based aggregation sooner
 spark.conf.set("spark.sql.objectHashAggregate.sortBased.fallbackThreshold", "128")
 
 # Solution 2: Limit collection size
@@ -373,7 +380,7 @@ spark.conf.set(
 1. **Set appropriate memory configs** before running jobs
 2. **Never use collect() on large datasets** - use take(), head(), or write to storage
 3. **Check partition sizes** - target 128-256MB per partition
-4. **Use broadcast joins** for small tables (< 1GB)
+4. **Use broadcast joins** for tables small enough to fit on each executor
 5. **Enable adaptive query execution** for automatic optimizations
 6. **Monitor memory in Spark UI** during job execution
 7. **Test with realistic data volumes** before production

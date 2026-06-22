@@ -220,6 +220,8 @@ spec:
     spec:
       containers:
         - name: ingester
+          args:
+            - -config.expand-env=true
           env:
             - name: CONSUL_ACL_TOKEN
               valueFrom:
@@ -232,24 +234,23 @@ spec:
 
 ### Consul TLS
 
+Loki's Consul ring client does not expose per-client TLS certificate settings in `loki.yaml`. If your Consul API only accepts HTTPS, terminate TLS in a local proxy or sidecar and point Loki at that local HTTP endpoint.
+
 ```yaml
 common:
   ring:
     kvstore:
       store: consul
       consul:
-        host: consul.consul.svc:8501  # HTTPS port
-        ca_path: /etc/consul/ca.crt
-        cert_path: /etc/consul/client.crt
-        key_path: /etc/consul/client.key
+        host: consul-proxy.loki.svc:8500
 ```
 
-### Mount Certificates
+### Mount Certificates for the Proxy
 
 ```yaml
 spec:
   containers:
-    - name: ingester
+    - name: consul-proxy
       volumeMounts:
         - name: consul-certs
           mountPath: /etc/consul
@@ -324,12 +325,15 @@ data:
     }
 ```
 
-### Service Discovery for Promtail
+### Service Discovery for Grafana Alloy
 
-```yaml
-# Promtail using Consul for Loki discovery
-clients:
-  - url: http://loki-gateway.service.consul:3100/loki/api/v1/push
+```alloy
+// Grafana Alloy sending logs to a Loki gateway resolved through Consul DNS.
+loki.write "default" {
+  endpoint {
+    url = "http://loki-gateway.service.consul:3100/loki/api/v1/push"
+  }
+}
 ```
 
 ## Monitoring
@@ -338,7 +342,7 @@ clients:
 
 ```promql
 # Consul health checks
-consul_health_service_status{service="loki"}
+consul_health_service_status{service="loki-gateway"}
 
 # KV operations
 rate(consul_kvs_apply_count[5m])
@@ -364,7 +368,7 @@ groups:
   - name: loki-consul
     rules:
       - alert: ConsulUnhealthy
-        expr: consul_health_service_status{service="loki"} == 0
+        expr: consul_health_service_status{service="loki-gateway"} == 0
         for: 5m
         labels:
           severity: critical
@@ -391,7 +395,7 @@ consul members
 
 # Check service health
 consul catalog services
-consul health service loki
+consul health service loki-gateway
 
 # Check KV entries
 consul kv get -recurse loki/
@@ -416,7 +420,7 @@ kubectl logs -n consul consul-server-0
 consul kv put -token=<token> loki/test "test"
 
 # Check ACL policy
-consul acl policy read loki
+consul acl policy read -name loki
 ```
 
 #### 3. Ring Not Syncing
@@ -434,7 +438,8 @@ curl http://loki:3100/ring
 ### Step 1: Deploy Consul
 
 ```bash
-helm install consul hashicorp/consul -n consul
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm install consul hashicorp/consul -n consul --create-namespace
 ```
 
 ### Step 2: Update Configuration

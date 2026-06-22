@@ -13,7 +13,7 @@ GraphQL's flexible query nature creates unique caching challenges. Redis provide
 ## Installation
 
 ```bash
-npm install @apollo/server graphql dataloader ioredis
+npm install @apollo/server @as-integrations/express4 express graphql dataloader ioredis @graphql-tools/utils keyv @keyv/redis @apollo/utils.keyvadapter graphql-redis-subscriptions graphql-subscriptions graphql-ws ws
 ```
 
 ## Redis Client Setup
@@ -174,7 +174,7 @@ export function createLoaders(): Loaders {
 interface CachedLoaderOptions<T> {
   keyPrefix: string;
   ttl: number;
-  batchFn: (ids: string[]) => Promise<(T | null)[]>;
+  batchFn: (ids: readonly string[]) => Promise<(T | null)[]>;
 }
 
 function createCachedLoader<T>(options: CachedLoaderOptions<T>) {
@@ -240,14 +240,14 @@ export async function invalidatePost(postId: string, authorId: string) {
 ```typescript
 // src/server.ts
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express4';
 import express from 'express';
 import { createLoaders, Loaders } from './dataloaders';
 import redis from './redis';
 import { typeDefs } from './schema';
 import { resolvers } from './resolvers';
 
-interface Context {
+export interface Context {
   loaders: Loaders;
   redis: typeof redis;
   user?: { id: string };
@@ -406,13 +406,21 @@ export function cacheControlDirective(directiveName: string) {
     `,
 
     cacheControlDirectiveTransformer: (schema: GraphQLSchema) => {
+      const typeDirectiveArgumentMaps: Record<string, any> = {};
+
       return mapSchema(schema, {
-        [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
-          const directive = getDirective(
-            schema,
-            fieldConfig,
-            directiveName
-          )?.[0];
+        [MapperKind.TYPE]: (type) => {
+          const directive = getDirective(schema, type, directiveName)?.[0];
+          if (directive) {
+            typeDirectiveArgumentMaps[type.name] = directive;
+          }
+          return undefined;
+        },
+
+        [MapperKind.OBJECT_FIELD]: (fieldConfig, _fieldName, typeName) => {
+          const directive =
+            getDirective(schema, fieldConfig, directiveName)?.[0] ??
+            typeDirectiveArgumentMaps[typeName];
 
           if (directive) {
             const { maxAge, scope } = directive;
@@ -433,7 +441,7 @@ export function cacheControlDirective(directiveName: string) {
 
               // Cache result
               if (result !== null && result !== undefined) {
-                await redis.setex(cacheKey, maxAge, JSON.stringify(result));
+                await redis.setex(cacheKey, maxAge ?? 300, JSON.stringify(result));
               }
 
               return result;
@@ -519,41 +527,53 @@ export function responseCache(
 
   return {
     async requestDidStart({ request, contextValue }) {
-      // Skip mutations
-      if (request.query?.includes('mutation')) {
-        return {};
-      }
-
-      // Generate cache key
-      const session = sessionId(contextValue);
-      const keyParts = [
-        'response',
-        request.query,
-        JSON.stringify(request.variables || {}),
-        session || 'public',
-      ];
-      const cacheKey = crypto
-        .createHash('md5')
-        .update(keyParts.join(':'))
-        .digest('hex');
-
-      // Check cache
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return {
-          async willSendResponse({ response }) {
-            response.body = {
-              kind: 'single',
-              singleResult: JSON.parse(cached),
-            };
-            response.http?.headers.set('X-Cache', 'HIT');
-          },
-        };
-      }
+      let cacheKey: string | null = null;
+      let cacheHit = false;
 
       return {
+        async responseForOperation({ operation }) {
+          // Skip mutations and subscriptions
+          if (operation.operation !== 'query') {
+            return null;
+          }
+
+          // Generate cache key
+          const session = sessionId(contextValue);
+          const keyParts = [
+            'response',
+            request.query,
+            request.operationName || '',
+            JSON.stringify(request.variables || {}),
+            session || 'public',
+          ];
+          cacheKey = crypto
+            .createHash('md5')
+            .update(keyParts.join(':'))
+            .digest('hex');
+
+          // Check cache before resolver execution
+          const cached = await redis.get(cacheKey);
+          if (cached) {
+            cacheHit = true;
+            return {
+              body: {
+                kind: 'single',
+                singleResult: JSON.parse(cached),
+              },
+            };
+          }
+
+          return null;
+        },
+
         async willSendResponse({ response }) {
+          if (cacheHit) {
+            response.http?.headers.set('X-Cache', 'HIT');
+            return;
+          }
+
           if (
+            cacheKey &&
             response.body.kind === 'single' &&
             !response.body.singleResult.errors &&
             shouldCache(contextValue, response.body.singleResult)
@@ -591,46 +611,24 @@ const server = new ApolloServer({
 ## Persisted Queries with Redis
 
 ```typescript
-// src/plugins/persistedQueries.ts
-import type { ApolloServerPlugin } from '@apollo/server';
-import crypto from 'crypto';
-import redis from '../redis';
+// src/server.ts
+import { ApolloServer } from '@apollo/server';
+import Keyv from 'keyv';
+import KeyvRedis from '@keyv/redis';
+import { KeyvAdapter } from '@apollo/utils.keyvadapter';
 
-export function persistedQueries(): ApolloServerPlugin {
-  return {
-    async requestDidStart({ request }) {
-      // Check for persisted query
-      const persistedQuery = request.extensions?.persistedQuery;
+const persistedQueryCache = new KeyvAdapter(
+  new Keyv(new KeyvRedis(process.env.REDIS_URL || 'redis://localhost:6379'))
+);
 
-      if (persistedQuery) {
-        const { sha256Hash } = persistedQuery;
-
-        if (!request.query) {
-          // Client sent hash only - retrieve from cache
-          const query = await redis.get(`pq:${sha256Hash}`);
-
-          if (query) {
-            request.query = query;
-          } else {
-            throw new Error('PersistedQueryNotFound');
-          }
-        } else {
-          // Client sent both - store for future use
-          const hash = crypto
-            .createHash('sha256')
-            .update(request.query)
-            .digest('hex');
-
-          if (hash === sha256Hash) {
-            await redis.set(`pq:${sha256Hash}`, request.query);
-          }
-        }
-      }
-
-      return {};
-    },
-  };
-}
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  persistedQueries: {
+    cache: persistedQueryCache,
+    ttl: 900, // 15 minutes
+  },
+});
 ```
 
 ## Subscriptions with Redis Pub/Sub
@@ -713,7 +711,7 @@ export async function publishCommentAdded(comment: Comment) {
 // src/server.ts
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { ApolloServer } from '@apollo/server';
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 

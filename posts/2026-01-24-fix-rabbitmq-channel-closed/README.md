@@ -78,7 +78,7 @@ import pika
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
 
-def safe_consume(queue_name):
+def safe_consume(queue_name, callback):
     """
     Safely start consuming from a queue.
     Creates the queue if it doesn't exist.
@@ -162,7 +162,7 @@ class RabbitMQClient:
             host=host,
             port=port,
             credentials=credentials or pika.PlainCredentials('guest', 'guest'),
-            # Enable automatic connection recovery
+            # Retry the initial connection attempt
             connection_attempts=3,
             retry_delay=5
         )
@@ -260,7 +260,7 @@ class RabbitMQClient {
     }
 
     async connect() {
-        // Establish connection with automatic reconnection handling
+        // Establish connection; reconnects are handled by ensureChannel()
         this.connection = await amqp.connect(this.url);
 
         // Handle connection errors
@@ -286,7 +286,7 @@ class RabbitMQClient {
             throw new Error('No connection available');
         }
 
-        this.channel = await this.connection.createChannel();
+        this.channel = await this.connection.createConfirmChannel();
 
         // Handle channel errors
         this.channel.on('error', (err) => {
@@ -317,12 +317,15 @@ class RabbitMQClient {
             try {
                 await this.ensureChannel();
 
-                this.channel.publish(
-                    exchange,
-                    routingKey,
-                    Buffer.from(content),
-                    { persistent: true, ...options }
-                );
+                await new Promise((resolve, reject) => {
+                    this.channel.publish(
+                        exchange,
+                        routingKey,
+                        Buffer.from(content),
+                        { persistent: true, ...options },
+                        (err) => err ? reject(err) : resolve()
+                    );
+                });
 
                 console.log(`Published to ${routingKey}`);
                 return true;
@@ -387,12 +390,11 @@ flowchart TD
 
 ```python
 import pika
-import threading
 from queue import Queue, Empty
 
 class ChannelPool:
     """
-    Pool of RabbitMQ channels for concurrent operations.
+    Pool of RabbitMQ channels for single-threaded reuse.
     Reuses channels efficiently and handles closures.
     """
 
@@ -400,7 +402,6 @@ class ChannelPool:
         self.connection = connection
         self.pool_size = pool_size
         self.pool = Queue(maxsize=pool_size)
-        self.lock = threading.Lock()
 
         # Pre-create channels
         for _ in range(pool_size):
@@ -468,12 +469,9 @@ def publish_message(message):
     finally:
         pool.release(channel)
 
-# Publish multiple messages concurrently
-import concurrent.futures
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-    futures = [executor.submit(publish_message, f"Message {i}") for i in range(100)]
-    concurrent.futures.wait(futures)
+# Publish multiple messages
+for i in range(100):
+    publish_message(f"Message {i}")
 
 pool.close_all()
 connection.close()
@@ -500,7 +498,8 @@ def validate_queue_params(channel, queue_name, **desired_params):
 
     except pika.exceptions.ChannelClosedByBroker as e:
         if e.reply_code == 404:
-            # Queue doesn't exist, safe to create
+            # Queue doesn't exist. The channel is now closed, so open a new
+            # channel before declaring the queue.
             return True
         raise
 ```
@@ -512,13 +511,14 @@ connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
 
 # Enable publisher confirms
-# This makes publish() raise an exception if the message can't be routed
+# With mandatory=True, this makes basic_publish() raise an exception
+# if the message can't be routed.
 channel.confirm_delivery()
 
 try:
     channel.basic_publish(
-        exchange='nonexistent',  # This exchange doesn't exist
-        routing_key='test',
+        exchange='',
+        routing_key='missing_queue',  # No queue is bound with this routing key
         body=b'Hello',
         mandatory=True  # Return message if not routed
     )
@@ -581,8 +581,8 @@ flowchart TD
 | 404 NOT_FOUND | Queue/exchange doesn't exist | Declare before using |
 | 406 PRECONDITION_FAILED | Parameter mismatch | Match existing parameters |
 | 403 ACCESS_REFUSED | Permission denied | Grant user permissions |
-| 320 CONNECTION_FORCED | Admin closed connection | Check for maintenance |
-| 505 UNEXPECTED_FRAME | Protocol violation | Check client library version |
+| 405 RESOURCE_LOCKED | Exclusive queue is locked by another connection | Use the declaring connection or a different queue |
+| 320 CONNECTION_FORCED | Connection was closed by an administrator or broker policy | Check for maintenance or policy changes |
 
 ---
 

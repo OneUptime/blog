@@ -27,7 +27,7 @@ flowchart TD
     NODE --> PROXY[kube-proxy]
     
     POL --> RBAC[RBAC]
-    POL --> PSP[Pod Security]
+    POL --> PSS[Pod Security Standards]
     POL --> NET[Network Policies]
     POL --> SEC[Secrets]
 ```
@@ -53,9 +53,9 @@ spec:
       hostPID: true
       containers:
         - name: kube-bench
-          image: aquasec/kube-bench:v0.7.1
+          image: aquasec/kube-bench:v0.15.6
           command: ["kube-bench"]
-          args: ["run", "--targets", "node,policies", "--json"]
+          args: ["run", "--targets", "master,controlplane,etcd,policies", "--json"]
           volumeMounts:
             - name: var-lib-kubelet
               mountPath: /var/lib/kubelet
@@ -113,7 +113,7 @@ spec:
       hostPID: true
       containers:
         - name: kube-bench
-          image: aquasec/kube-bench:v0.7.1
+          image: aquasec/kube-bench:v0.15.6
           command: ["sh", "-c"]
           args:
             - |
@@ -126,6 +126,9 @@ spec:
             - name: etc-systemd
               mountPath: /etc/systemd
               readOnly: true
+            - name: etc-kubernetes
+              mountPath: /etc/kubernetes
+              readOnly: true
             - name: results
               mountPath: /results
           securityContext:
@@ -137,6 +140,9 @@ spec:
         - name: etc-systemd
           hostPath:
             path: /etc/systemd
+        - name: etc-kubernetes
+          hostPath:
+            path: /etc/kubernetes
         - name: results
           hostPath:
             path: /var/log/kube-bench
@@ -148,7 +154,7 @@ spec:
 
 ```bash
 # On control plane node
-kube-bench run --targets master
+kube-bench run --targets master,controlplane,etcd
 
 # On worker node
 kube-bench run --targets node
@@ -157,13 +163,13 @@ kube-bench run --targets node
 kube-bench run
 
 # Output as JSON
-kube-bench run --json --outputfile results.json
+kube-bench --json --outputfile results.json
 
 # Run specific CIS version
-kube-bench run --benchmark cis-1.8
+kube-bench --benchmark cis-1.8
 
-# Check specific section
-kube-bench run --targets master --check 1.1,1.2
+# Check specific sections
+kube-bench run --targets master --group 1.1,1.2
 ```
 
 ## Understand Results
@@ -248,14 +254,14 @@ spec:
         # 1.2.1 - Ensure anonymous auth is disabled
         - --anonymous-auth=false
         
-        # 1.2.5 - Ensure kubelet HTTPS
-        - --kubelet-https=true
+        # 1.2.5 - Ensure kubelet certificate authority is set
+        - --kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt
         
         # 1.2.6 - Ensure proper authorization mode
         - --authorization-mode=Node,RBAC
         
         # 1.2.10 - Ensure admission plugins enabled
-        - --enable-admission-plugins=NodeRestriction,PodSecurityPolicy
+        - --enable-admission-plugins=NodeRestriction,PodSecurity
         
         # 1.2.16 - Ensure audit logging enabled
         - --audit-log-path=/var/log/kubernetes/audit.log
@@ -440,7 +446,7 @@ spec:
           serviceAccountName: kube-bench
           containers:
             - name: kube-bench
-              image: aquasec/kube-bench:v0.7.1
+              image: aquasec/kube-bench:v0.15.6
               command: ["/bin/sh", "-c"]
               args:
                 - |
@@ -453,6 +459,9 @@ spec:
                 - name: var-lib-kubelet
                   mountPath: /var/lib/kubelet
                   readOnly: true
+                - name: etc-systemd
+                  mountPath: /etc/systemd
+                  readOnly: true
                 - name: etc-kubernetes
                   mountPath: /etc/kubernetes
                   readOnly: true
@@ -464,6 +473,9 @@ spec:
             - name: var-lib-kubelet
               hostPath:
                 path: /var/lib/kubelet
+            - name: etc-systemd
+              hostPath:
+                path: /etc/systemd
             - name: etc-kubernetes
               hostPath:
                 path: /etc/kubernetes

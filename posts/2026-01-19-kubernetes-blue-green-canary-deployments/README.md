@@ -147,14 +147,38 @@ echo "Service now pointing to: $NEW_CURRENT"
 
 ### Blue-Green with Ingress
 
+These examples use the community ingress-nginx controller annotations. As of March 2026, ingress-nginx is retired and no longer receives upstream fixes; use these examples for existing clusters or migration testing, and prefer Gateway API or another maintained ingress controller for new production deployments.
+
 ```yaml
 # blue-green-ingress.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-blue
+spec:
+  selector:
+    app: myapp
+    version: blue
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-green
+spec:
+  selector:
+    app: myapp
+    version: green
+  ports:
+    - port: 80
+      targetPort: 8080
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: myapp
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "false"
 spec:
   ingressClassName: nginx
   rules:
@@ -200,7 +224,7 @@ kind: Deployment
 metadata:
   name: myapp-stable
 spec:
-  replicas: 9  # 90% of traffic
+  replicas: 9  # Approximately 90% of traffic
   selector:
     matchLabels:
       app: myapp
@@ -223,7 +247,7 @@ kind: Deployment
 metadata:
   name: myapp-canary
 spec:
-  replicas: 1  # 10% of traffic
+  replicas: 1  # Approximately 10% of traffic
   selector:
     matchLabels:
       app: myapp
@@ -240,7 +264,9 @@ spec:
           ports:
             - containerPort: 8080
 ---
-# service.yaml - Routes to both stable and canary
+# service.yaml - Routes to both stable and canary pods.
+# Kubernetes Services balance across endpoints, so replica counts provide
+# approximate weighting only.
 apiVersion: v1
 kind: Service
 metadata:
@@ -598,9 +624,9 @@ spec:
   analysis:
     # Schedule interval
     interval: 1m
-    # Max traffic weight
+    # Max number of failed metric checks before rollback
     threshold: 10
-    # Max failures before rollback
+    # Max traffic percentage routed to canary
     maxWeight: 50
     # Increment step
     stepWeight: 10

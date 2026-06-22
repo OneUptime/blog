@@ -17,7 +17,7 @@ Before starting, ensure you have:
 - Grafana Loki deployed and accessible
 - Application development environment
 - Understanding of your application's logging requirements
-- Promtail or alternative log shipper configured
+- Grafana Alloy or another supported log shipper configured. Legacy Promtail examples below apply only to existing Promtail installations.
 
 ## Structured Logging Fundamentals
 
@@ -141,7 +141,7 @@ app.use(pino({
     res: 'response',
     responseTime: 'duration_ms'
   },
-  redact: ['req.headers.authorization', 'req.headers.cookie']
+  redact: ['request.headers.authorization', 'request.headers.cookie']
 }));
 ```
 
@@ -168,6 +168,7 @@ def configure_logging(service_name: str, log_level: str = "INFO"):
     # Configure structlog
     structlog.configure(
         processors=[
+            structlog.contextvars.merge_contextvars,
             structlog.stdlib.filter_by_level,
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
@@ -209,12 +210,19 @@ logger.error("payment_failed",
 # json_logger.py
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+
+RESERVED_ATTRS = {
+    "args", "asctime", "created", "exc_info", "exc_text", "filename",
+    "funcName", "levelname", "levelno", "lineno", "module", "msecs",
+    "message", "msg", "name", "pathname", "process", "processName",
+    "relativeCreated", "stack_info", "thread", "threadName", "service",
+}
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         log_obj = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname.lower(),
             "logger": record.name,
             "message": record.getMessage(),
@@ -222,8 +230,9 @@ class JSONFormatter(logging.Formatter):
         }
 
         # Add extra fields
-        if hasattr(record, 'extra'):
-            log_obj.update(record.extra)
+        for key, value in record.__dict__.items():
+            if key not in RESERVED_ATTRS and not key.startswith("_"):
+                log_obj[key] = value
 
         # Add exception info
         if record.exc_info:
@@ -277,7 +286,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             request_id=request_id,
             method=request.method,
             path=request.url.path,
-            client_ip=request.client.host
+            client_ip=request.client.host if request.client else None
         )
 
         logger.info("request_started")
@@ -311,10 +320,11 @@ app.add_middleware(LoggingMiddleware)
 ### Zerolog Configuration
 
 ```go
-// logger/logger.go
-package logger
+// main.go
+package main
 
 import (
+    "errors"
     "os"
     "time"
 
@@ -322,7 +332,7 @@ import (
     "github.com/rs/zerolog/log"
 )
 
-func Init(serviceName, version string) zerolog.Logger {
+func initLogger(serviceName, version string) zerolog.Logger {
     zerolog.TimeFieldFormat = time.RFC3339Nano
 
     logger := zerolog.New(os.Stdout).With().
@@ -337,9 +347,8 @@ func Init(serviceName, version string) zerolog.Logger {
     return logger
 }
 
-// Usage
 func main() {
-    logger := logger.Init("order-service", "1.0.0")
+    logger := initLogger("order-service", "1.0.0")
 
     logger.Info().
         Str("order_id", "12345").
@@ -357,10 +366,13 @@ func main() {
 ### Zap Configuration
 
 ```go
-// logger/logger.go
-package logger
+// main.go
+package main
 
 import (
+    "errors"
+    "time"
+
     "go.uber.org/zap"
     "go.uber.org/zap/zapcore"
 )
@@ -383,10 +395,11 @@ func NewLogger(serviceName, version string) (*zap.Logger, error) {
     return logger, nil
 }
 
-// Usage
 func main() {
-    logger, _ := logger.NewLogger("api-gateway", "2.0.0")
+    logger, _ := NewLogger("api-gateway", "2.0.0")
     defer logger.Sync()
+
+    err := errors.New("connection timeout")
 
     logger.Info("Request processed",
         zap.String("request_id", "req-123"),
@@ -478,7 +491,8 @@ public class LoggingConfig {
 }
 
 // RequestLoggingFilter.java
-@Component
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(RequestLoggingFilter.class);
@@ -486,7 +500,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain) {
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
         String requestId = UUID.randomUUID().toString();
         MDC.put("requestId", requestId);
 
@@ -529,7 +544,7 @@ class LokiClient {
   }
 
   log(level, message, extraLabels = {}) {
-    const timestamp = Date.now() * 1000000; // nanoseconds
+    const timestamp = BigInt(Date.now()) * 1000000n; // nanoseconds
     const labels = { ...this.defaultLabels, level, ...extraLabels };
 
     this.buffer.push({
@@ -666,7 +681,7 @@ logger.addHandler(handler)
 logger.info(json.dumps({"event": "user_login", "user_id": "123"}))
 ```
 
-## Promtail Configuration for Applications
+## Legacy Promtail Configuration for Applications
 
 ### File-Based Collection
 
@@ -749,10 +764,15 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
-        # Promtail annotations
+        # Example annotations for Promtail relabeling-based configurations
         promtail.io/scrape: "true"
         promtail.io/parser: "json"
     spec:
@@ -774,7 +794,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -784,7 +810,7 @@ spec:
               mountPath: /var/log/app
 
         - name: promtail
-          image: grafana/promtail:2.9.4
+          image: grafana/promtail:3.6.0
           args:
             - -config.file=/etc/promtail/config.yaml
           volumeMounts:
@@ -870,7 +896,7 @@ Collecting application logs with Loki requires proper structured logging impleme
 
 - Use structured JSON logging in all applications
 - Include request context (IDs, timestamps, metadata)
-- Configure Promtail pipelines for JSON parsing
+- Configure supported log shipper pipelines for JSON parsing
 - Use appropriate labels for efficient querying
 - Follow logging best practices for performance and security
 

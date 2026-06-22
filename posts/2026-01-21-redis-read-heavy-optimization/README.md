@@ -46,7 +46,7 @@ Primary (Writes) -----> Replica 1 (Reads)
 
 replicaof <master-ip> <master-port>
 
-# For read-only replicas (default in Redis 7+)
+# For read-only replicas (default since Redis 2.6)
 replica-read-only yes
 
 # Replica priority for failover (lower = higher priority)
@@ -63,9 +63,8 @@ repl-timeout 60
 
 ```python
 import redis
-from redis import sentinel
 import random
-from typing import List, Optional, Any
+from typing import List, Optional
 import time
 import logging
 
@@ -85,12 +84,12 @@ class ReadReplicaClient:
         replica_hosts: List[tuple],  # [(host, port), ...]
         password: str = None,
         load_balance_strategy: str = 'round_robin',  # round_robin, random, least_connections
-        max_lag_ms: int = 1000,
+        max_lag_bytes: int = 1024 * 1024,
         health_check_interval: int = 5
     ):
         self.password = password
         self.load_balance_strategy = load_balance_strategy
-        self.max_lag_ms = max_lag_ms
+        self.max_lag_bytes = max_lag_bytes
 
         # Master connection for writes
         self.master = redis.Redis(
@@ -162,17 +161,15 @@ class ReadReplicaClient:
                 replica_offset = info.get('master_repl_offset', 0)
 
                 lag_bytes = master_offset - replica_offset
-                # Rough estimate: 1 byte = 1ms at moderate write rate
-                estimated_lag_ms = lag_bytes / 1000 if lag_bytes > 0 else 0
 
-                replica['healthy'] = latency < 100 and estimated_lag_ms < self.max_lag_ms
-                replica['lag_ms'] = estimated_lag_ms
+                replica['healthy'] = latency < 100 and lag_bytes < self.max_lag_bytes
+                replica['lag_bytes'] = lag_bytes
                 replica['last_check'] = time.time()
 
                 if not replica['healthy']:
                     logger.warning(
                         f"Replica {replica['host']}:{replica['port']} unhealthy: "
-                        f"latency={latency:.1f}ms, lag={estimated_lag_ms:.1f}ms"
+                        f"latency={latency:.1f}ms, lag={lag_bytes} bytes"
                     )
 
             except redis.RedisError as e:
@@ -298,7 +295,7 @@ class ReadReplicaClient:
                     'host': r['host'],
                     'port': r['port'],
                     'healthy': r['healthy'],
-                    'lag_ms': r.get('lag_ms', 0)
+                    'lag_bytes': r.get('lag_bytes', 0)
                 }
                 for r in self.replicas
             ],
@@ -317,7 +314,7 @@ def main():
             ('localhost', 6382)
         ],
         load_balance_strategy='round_robin',
-        max_lag_ms=1000
+        max_lag_bytes=1024 * 1024
     )
 
     # Check replica health
@@ -358,7 +355,7 @@ class ReadReplicaClient {
         this.masterConfig = options.master;
         this.replicaConfigs = options.replicas;
         this.loadBalanceStrategy = options.loadBalanceStrategy || 'round-robin';
-        this.maxLagMs = options.maxLagMs || 1000;
+        this.maxLagBytes = options.maxLagBytes || 1024 * 1024;
 
         // Master connection
         this.master = new Redis({
@@ -381,7 +378,7 @@ class ReadReplicaClient {
             host: config.host,
             port: config.port,
             healthy: true,
-            lagMs: 0
+            lagBytes: 0
         }));
 
         this.roundRobinIndex = 0;
@@ -415,7 +412,7 @@ class ReadReplicaClient {
 
             case 'least-lag':
                 const leastLag = healthyReplicas.reduce((a, b) =>
-                    a.lagMs < b.lagMs ? a : b
+                    a.lagBytes < b.lagBytes ? a : b
                 );
                 return leastLag.client;
 
@@ -441,15 +438,14 @@ class ReadReplicaClient {
                     const replicaInfo = await replica.client.info('replication');
                     const replicaOffset = this.parseReplicationOffset(replicaInfo);
 
-                    const lagBytes = masterOffset - replicaOffset;
-                    replica.lagMs = lagBytes > 0 ? lagBytes / 1000 : 0;
+                    replica.lagBytes = Math.max(masterOffset - replicaOffset, 0);
 
-                    replica.healthy = latency < 100 && replica.lagMs < this.maxLagMs;
+                    replica.healthy = latency < 100 && replica.lagBytes < this.maxLagBytes;
 
                     if (!replica.healthy) {
                         console.warn(
                             `Replica ${replica.host}:${replica.port} unhealthy: ` +
-                            `latency=${latency}ms, lag=${replica.lagMs.toFixed(1)}ms`
+                            `latency=${latency}ms, lag=${replica.lagBytes} bytes`
                         );
                     }
                 } catch (err) {
@@ -557,7 +553,7 @@ class ReadReplicaClient {
                 host: r.host,
                 port: r.port,
                 healthy: r.healthy,
-                lagMs: r.lagMs
+                lagBytes: r.lagBytes
             })),
             loadBalanceStrategy: this.loadBalanceStrategy
         };
@@ -579,7 +575,7 @@ async function main() {
             { host: 'localhost', port: 6381 }
         ],
         loadBalanceStrategy: 'round-robin',
-        maxLagMs: 1000,
+        maxLagBytes: 1024 * 1024,
         healthCheckInterval: 5000
     });
 
@@ -614,14 +610,13 @@ Redis 6+ supports server-assisted client-side caching with tracking.
 ```python
 import redis
 import threading
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional
 import time
 from collections import OrderedDict
 
 class ClientSideCache:
     """
-    Client-side caching with Redis server-assisted invalidation.
-    Uses RESP3 protocol and client tracking.
+    Client-side caching with local TTL-based invalidation.
     """
 
     def __init__(
@@ -806,7 +801,7 @@ class ServerAssistedCache:
         """Start the tracking subscriber."""
         # Enable client tracking with BCAST mode
         # This makes Redis broadcast invalidations for all tracked keys
-        client_id = self.redis.client_id()
+        tracking_client_id = self.tracking_conn.client_id()
 
         # Subscribe to invalidation channel
         self.pubsub = self.tracking_conn.pubsub()
@@ -815,8 +810,8 @@ class ServerAssistedCache:
         # Enable tracking
         self.redis.execute_command(
             'CLIENT', 'TRACKING', 'ON',
-            'REDIRECT', client_id,
-            'BCAST', 'PREFIX', ''  # Track all keys
+            'REDIRECT', tracking_client_id,
+            'BCAST'  # Track all keys
         )
 
         self._running = True
@@ -832,9 +827,17 @@ class ServerAssistedCache:
             try:
                 message = self.pubsub.get_message(timeout=1)
                 if message and message['type'] == 'message':
-                    # message['data'] contains the invalidated key
-                    key = message['data']
-                    if key:
+                    # message['data'] contains a list of invalidated keys.
+                    # A None payload means FLUSHDB or FLUSHALL invalidated everything.
+                    keys = message['data']
+                    if keys is None:
+                        self.clear()
+                    elif isinstance(keys, (list, tuple, set)):
+                        for key in keys:
+                            self._invalidate(key)
+                    else:
+                        # Some clients may expose a single-key invalidation directly.
+                        key = keys
                         self._invalidate(key)
             except Exception as e:
                 print(f"Invalidation listener error: {e}")
@@ -869,6 +872,11 @@ class ServerAssistedCache:
         if self._tracking_thread:
             self._tracking_thread.join(timeout=5)
         self.pubsub.close()
+
+    def clear(self):
+        """Clear the local cache."""
+        with self._lock:
+            self._cache.clear()
 
 
 # Usage example
@@ -1191,9 +1199,9 @@ def monitor_read_performance(client: redis.Redis, duration: int = 60) -> Dict:
     # Get final stats
     final_info = client.info()
 
-    # Calculate metrics
-    reads = final_info['total_reads_processed'] - initial_info.get('total_reads_processed', 0)
-    writes = final_info['total_writes_processed'] - initial_info.get('total_writes_processed', 0)
+    # Calculate metrics. These counters are network bytes, not command-level reads/writes.
+    input_bytes = final_info['total_net_input_bytes'] - initial_info.get('total_net_input_bytes', 0)
+    output_bytes = final_info['total_net_output_bytes'] - initial_info.get('total_net_output_bytes', 0)
 
     keyspace_hits = final_info['keyspace_hits'] - initial_info['keyspace_hits']
     keyspace_misses = final_info['keyspace_misses'] - initial_info['keyspace_misses']
@@ -1202,7 +1210,8 @@ def monitor_read_performance(client: redis.Redis, duration: int = 60) -> Dict:
 
     return {
         'duration_seconds': duration,
-        'read_write_ratio': reads / max(writes, 1),
+        'network_input_bytes_per_second': input_bytes / duration,
+        'network_output_bytes_per_second': output_bytes / duration,
         'ops_per_second': total_commands / duration,
         'hit_rate': keyspace_hits / max(keyspace_hits + keyspace_misses, 1),
         'keyspace_hits': keyspace_hits,

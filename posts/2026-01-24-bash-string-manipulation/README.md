@@ -277,11 +277,6 @@ echo "${text,}"    # Output: hello World (first char only)
 echo "${text^^}"   # Output: HELLO WORLD
 echo "${text^}"    # Output: Hello World (first char only)
 
-# Toggle case
-# Single character: ${var~}
-# Entire string: ${var~~}
-echo "${text~~}"   # Output: hELLO wORLD
-
 # Practical example: Case-insensitive comparison
 compare_case_insensitive() {
     local str1="${1,,}"
@@ -339,7 +334,7 @@ if [[ "$str1" != "$str2" ]]; then
     echo "$str1 does not equal $str2"
 fi
 
-# Lexicographic comparison (alphabetical order)
+# Lexicographic comparison (alphabetical order, using the current locale)
 if [[ "$str1" < "$str2" ]]; then
     echo "$str1 comes before $str2"
 fi
@@ -374,8 +369,8 @@ if [[ "$filename" == *.pdf || "$filename" == *.doc ]]; then
     echo "This is a document file"
 fi
 
-# Extended glob patterns (requires shopt -s extglob)
-shopt -s extglob
+# Extended glob patterns
+# In [[ ... == pattern ]], Bash matches as if extglob were enabled
 if [[ "$filename" == *.@(pdf|doc|docx) ]]; then
     echo "This is a document file"
 fi
@@ -412,7 +407,7 @@ fi
 # Method 1: Using IFS (Internal Field Separator)
 csv_line="apple,banana,cherry,date"
 
-# Save original IFS and set new delimiter
+# Temporarily set IFS for this read command
 IFS=',' read -ra fruits <<< "$csv_line"
 
 # Access individual elements

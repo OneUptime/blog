@@ -77,7 +77,7 @@ Create `turbo.json`:
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env.*local"],
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
@@ -325,7 +325,7 @@ export interface StandardJobOptions {
 Create the queue-client package:
 
 ```bash
-mkdir -p packages/queue-client/src
+mkdir -p packages/queue-client/src/services
 ```
 
 `packages/queue-client/package.json`:
@@ -346,6 +346,7 @@ mkdir -p packages/queue-client/src
     "@monorepo/queue-types": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.3.0"
   }
 }
@@ -628,8 +629,26 @@ mkdir -p packages/queue-worker/src
     "@monorepo/queue-client": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.3.0"
   }
+}
+```
+
+`packages/queue-worker/tsconfig.json`:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../queue-types" },
+    { "path": "../queue-client" }
+  ]
 }
 ```
 
@@ -837,6 +856,22 @@ mkdir -p apps/api/src
 }
 ```
 
+`apps/api/tsconfig.json`:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/queue-client" }
+  ]
+}
+```
+
 `apps/api/src/index.ts`:
 
 ```typescript
@@ -924,6 +959,7 @@ mkdir -p apps/worker-email/src
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "bullmq": "^5.0.0",
     "@monorepo/queue-types": "workspace:*",
     "@monorepo/queue-worker": "workspace:*"
   },
@@ -932,6 +968,23 @@ mkdir -p apps/worker-email/src
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.0"
   }
+}
+```
+
+`apps/worker-email/tsconfig.json`:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/queue-types" },
+    { "path": "../../packages/queue-worker" }
+  ]
 }
 ```
 

@@ -46,13 +46,16 @@ az vm extension show \
   --resource-group myResourceGroup \
   --vm-name myVM \
   --name CustomScriptExtension \
+  --instance-view \
   --query "instanceView.statuses" \
   --output json
 
 # View extension logs from within the VM (Linux)
 # Extensions store logs in /var/log/azure/
 sudo ls -la /var/log/azure/
-sudo cat /var/log/azure/custom-script/handler.log
+sudo cat /var/log/azure/Microsoft.Azure.Extensions.CustomScript/handler.log
+# Older Custom Script Extension versions used:
+# sudo cat /var/log/azure/custom-script/handler.log
 ```
 
 ## Error 1: Extension Download Timeout
@@ -88,7 +91,7 @@ flowchart TD
 # These URLs must be accessible for extensions to work
 curl -v https://management.azure.com
 curl -v https://packages.microsoft.com
-curl -v https://azureedge.net
+curl -v https://catalogartifact.azureedge.net
 
 # Check NSG rules that might block outbound traffic
 az network nsg rule list \
@@ -114,8 +117,9 @@ az network nsg rule create \
 
 ```bash
 # Set proxy environment variables for the VM agent (Linux)
-sudo mkdir -p /etc/systemd/system/waagent.service.d
-sudo tee /etc/systemd/system/waagent.service.d/proxy.conf << EOF
+# Use walinuxagent.service.d on distributions where the service is named walinuxagent.
+sudo mkdir -p /etc/systemd/system/walinuxagent.service.d
+sudo tee /etc/systemd/system/walinuxagent.service.d/proxy.conf << EOF
 [Service]
 Environment="http_proxy=http://proxy.example.com:8080"
 Environment="https_proxy=http://proxy.example.com:8080"
@@ -123,7 +127,7 @@ Environment="no_proxy=169.254.169.254,localhost"
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl restart waagent
+sudo systemctl restart walinuxagent || sudo systemctl restart waagent
 ```
 
 ## Error 2: Custom Script Extension Failures
@@ -143,13 +147,12 @@ Custom Script Extension is one of the most commonly used extensions and has spec
 
 ```bash
 # View Custom Script Extension logs (Linux)
-sudo cat /var/log/azure/custom-script/handler.log
+sudo cat /var/log/azure/Microsoft.Azure.Extensions.CustomScript/handler.log
 sudo cat /var/lib/waagent/custom-script/download/0/stderr
 sudo cat /var/lib/waagent/custom-script/download/0/stdout
 
 # View Custom Script Extension logs (Windows)
-# Check: C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension\
-# Logs are in the status folder
+# Check: C:\WindowsAzure\Logs\Plugins\Microsoft.Compute.CustomScriptExtension\<version>\
 ```
 
 **Fix common script issues:**
@@ -232,20 +235,25 @@ Many extension failures stem from problems with the Azure VM Agent.
 
 ```bash
 # Check VM Agent status (Linux)
-sudo systemctl status waagent
-sudo waagent -version
+# The service name is commonly walinuxagent on Ubuntu/Debian and waagent on RHEL/CentOS.
+sudo systemctl status walinuxagent || sudo systemctl status waagent
+sudo waagent --version
 
 # Check VM Agent status (Windows)
 # Run in PowerShell
 Get-Service WindowsAzureGuestAgent
 
 # Restart the VM Agent (Linux)
-sudo systemctl restart waagent
+sudo systemctl restart walinuxagent || sudo systemctl restart waagent
 
 # View agent logs
 sudo tail -100 /var/log/waagent.log
 
-# Reinstall VM Agent if corrupted (Linux - Ubuntu/Debian)
+# Reinstall VM Agent if corrupted (Linux - Ubuntu)
+sudo apt-get update
+sudo apt-get install --reinstall walinuxagent
+
+# Reinstall VM Agent if corrupted (Linux - Debian)
 sudo apt-get update
 sudo apt-get install --reinstall waagent
 
@@ -262,10 +270,10 @@ az vm update \
   --name myVM \
   --set osProfile.linuxConfiguration.provisionVMAgent=true
 
-# Reset the VM Agent to factory state
-sudo waagent -deprovision+user -force
+# Enable Azure Linux Agent auto-update
+sudo sed -i 's/.*AutoUpdate.Enabled=.*/AutoUpdate.Enabled=y/' /etc/waagent.conf
 
-# Then redeploy or restart the VM
+# Then restart the VM
 az vm restart \
   --resource-group myResourceGroup \
   --name myVM
@@ -351,8 +359,7 @@ az vm extension set \
   --resource-group myResourceGroup \
   --vm-name myVM \
   --name AzureMonitorLinuxAgent \
-  --publisher Microsoft.Azure.Monitor \
-  --version 1.0
+  --publisher Microsoft.Azure.Monitor
 ```
 
 ## Error 6: Permission and Authentication Issues
@@ -393,10 +400,8 @@ az vm extension set \
   --vm-name myVM \
   --name CustomScript \
   --publisher Microsoft.Azure.Extensions \
-  --settings '{
-    "fileUris": ["https://mystorageaccount.blob.core.windows.net/scripts/install.sh?sv=2021-06-08&se=...&sp=r&sig=..."]
-  }' \
   --protected-settings '{
+    "fileUris": ["https://mystorageaccount.blob.core.windows.net/scripts/install.sh?sv=2021-06-08&se=...&sp=r&sig=..."],
     "commandToExecute": "bash install.sh"
   }'
 ```
@@ -415,7 +420,8 @@ az vm extension set \
   --name CustomScript \
   --publisher Microsoft.Azure.Extensions \
   --settings '{
-    "commandToExecute": "nohup bash /var/lib/waagent/custom-script/download/0/long-install.sh > /var/log/long-install.log 2>&1 &"
+    "fileUris": ["https://mystorageaccount.blob.core.windows.net/scripts/long-install.sh"],
+    "commandToExecute": "nohup bash long-install.sh > /var/log/long-install.log 2>&1 &"
   }'
 ```
 
@@ -468,12 +474,11 @@ When extensions are stuck or corrupted, follow these recovery steps.
 az vm extension delete \
   --resource-group myResourceGroup \
   --vm-name myVM \
-  --name StuckExtension \
-  --force-deletion
+  --name StuckExtension
 
-# Clean up extension state on the VM (Linux)
-sudo rm -rf /var/lib/waagent/Microsoft.*Extension*
-sudo systemctl restart waagent
+# Clean up stale state for that specific extension on the VM (Linux)
+sudo rm -rf /var/lib/waagent/Microsoft.Azure.Extensions.CustomScript-*
+sudo systemctl restart walinuxagent || sudo systemctl restart waagent
 
 # Reset all extensions by redeploying the VM
 az vm redeploy \
@@ -503,12 +508,12 @@ az vm extension set \
 4. **Monitor extension health** - Set up alerts for extension failures.
 
 ```bash
-# Create alert rule for extension failures
-az monitor metrics alert create \
+# Create an activity log alert rule for failed extension write operations
+az monitor activity-log alert create \
   --name ExtensionFailureAlert \
   --resource-group myResourceGroup \
-  --scopes /subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM \
-  --condition "count VMExtensionStatusCode < 0" \
+  --scope /subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM \
+  --condition category=Administrative and resourceType=Microsoft.Compute/virtualMachines/extensions and operationName=Microsoft.Compute/virtualMachines/extensions/write and status=Failed \
   --description "Alert when VM extension fails"
 ```
 

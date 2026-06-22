@@ -71,9 +71,9 @@ except pika.exceptions.ChannelClosedByBroker as e:
     # Error: RESOURCE_LOCKED - cannot obtain exclusive access to locked queue
 ```
 
-### 2. Consumer Tag Conflicts
+### 2. Related: Consumer Tag Conflicts
 
-Multiple consumers cannot use the same consumer tag on a queue:
+Consumer tag conflicts do not produce `RESOURCE_LOCKED`; they produce a separate consumer registration error. Consumer tags are scoped to a channel, so the same channel cannot reuse a tag for two active consumers:
 
 ```python
 import pika
@@ -94,21 +94,21 @@ channel.basic_consume(
     on_message_callback=callback
 )
 
-# Second consumer tries to use the same tag (FAILS)
+# Second consumer on the same channel tries to use the same tag (FAILS)
 try:
     channel.basic_consume(
         queue='tasks',
         consumer_tag='worker-1',  # Duplicate tag!
         on_message_callback=callback
     )
-except Exception as e:
+except pika.exceptions.DuplicateConsumerTag as e:
     print(f"Error: {e}")
-    # Cannot use duplicate consumer tag
+    # Cannot reuse a consumer tag that is already active on this channel
 ```
 
 ### 3. Single Active Consumer Mode
 
-Queues with single active consumer only allow one consumer at a time:
+Queues with single active consumer allow multiple consumers to register, but only one consumer receives messages at a time:
 
 ```python
 import pika
@@ -144,17 +144,17 @@ rabbitmqctl list_queues name exclusive owner_pid
 # Sample output:
 # name                    exclusive  owner_pid
 # session_abc123          true       <rabbit@host.1.234.0>
-# tasks                   false      none
+# tasks                   false
 ```
 
 ### Check Active Consumers
 
 ```bash
 # List consumers and their details
-rabbitmqctl list_consumers queue_name channel_pid consumer_tag
+rabbitmqctl list_consumers
 
 # Check for exclusive consumers
-rabbitmqctl list_consumers queue_name exclusive ack_required
+rabbitmqctl list_queues name exclusive_consumer_pid exclusive_consumer_tag
 
 # Via Management API
 curl -u guest:guest \
@@ -164,11 +164,11 @@ curl -u guest:guest \
 ### Check Connections Holding Locks
 
 ```bash
-# List connections with their locked resources
-rabbitmqctl list_connections name state channel_max
+# List connections; match owner_pid from queues to a connection pid
+rabbitmqctl list_connections pid name state channel_max
 
 # Find which connection owns an exclusive queue
-rabbitmqctl list_queues name owner_pid | grep -v "none"
+rabbitmqctl list_queues --no-table-headers name owner_pid | awk 'NF > 1'
 ```
 
 ---
@@ -227,7 +227,7 @@ def create_exclusive_callback_queue():
     result = channel.queue_declare(
         queue=queue_name,
         exclusive=True,
-        auto_delete=True  # Clean up when connection closes
+        auto_delete=True  # Also delete after the last consumer cancels
     )
 
     return channel, result.method.queue
@@ -407,7 +407,7 @@ class RabbitMQConnectionPool:
         self.host = host
         self.max_connections = max_connections
         self._lock = threading.Lock()
-        self._exclusive_queues = {}  # queue_name -> connection
+        self._exclusive_queues = {}  # base_name -> (connection, channel, queue_name)
 
     @contextmanager
     def get_exclusive_queue(self, base_name):
@@ -417,37 +417,35 @@ class RabbitMQConnectionPool:
         with self._lock:
             if base_name in self._exclusive_queues:
                 # Return existing exclusive queue
-                channel, queue_name = self._exclusive_queues[base_name]
-                yield channel, queue_name
-                return
+                _, channel, queue_name = self._exclusive_queues[base_name]
+            else:
+                # Create new exclusive queue with unique name
+                connection = pika.BlockingConnection(
+                    pika.ConnectionParameters(self.host)
+                )
+                channel = connection.channel()
 
-            # Create new exclusive queue with unique name
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(self.host)
-            )
-            channel = connection.channel()
+                result = channel.queue_declare(
+                    queue='',  # Auto-generate name
+                    exclusive=True
+                )
 
-            result = channel.queue_declare(
-                queue='',  # Auto-generate name
-                exclusive=True
-            )
-
-            queue_name = result.method.queue
-            self._exclusive_queues[base_name] = (channel, queue_name)
+                queue_name = result.method.queue
+                self._exclusive_queues[base_name] = (connection, channel, queue_name)
 
         try:
             yield channel, queue_name
         finally:
-            # Cleanup handled by exclusive queue auto-delete
+            # Cleanup happens when release_exclusive_queue closes the owning connection
             pass
 
     def release_exclusive_queue(self, base_name):
         """Release an exclusive queue."""
         with self._lock:
             if base_name in self._exclusive_queues:
-                channel, _ = self._exclusive_queues.pop(base_name)
+                connection, _, _ = self._exclusive_queues.pop(base_name)
                 try:
-                    channel.close()
+                    connection.close()
                 except:
                     pass
 ```
@@ -511,6 +509,7 @@ flowchart LR
 ```python
 import pika
 import uuid
+import time
 
 class RPCClient:
     """
@@ -591,18 +590,20 @@ watch -n 5 'rabbitmqctl list_queues name exclusive owner_pid | grep true'
 tail -f /var/log/rabbitmq/rabbit@hostname.log | grep -i "resource_locked"
 
 # List all consumers with exclusive access
-rabbitmqctl list_consumers queue_name exclusive | grep true
+rabbitmqctl list_queues --no-table-headers name exclusive_consumer_pid exclusive_consumer_tag | awk 'NF > 1'
 ```
 
 ### Alert Configuration
 
 ```yaml
-# Prometheus alert for resource lock errors
+# Prometheus alert for resource lock errors exported by your application or log pipeline
+# The built-in RabbitMQ Prometheus plugin tracks channel-close totals but does not expose
+# RESOURCE_LOCKED as a standard reason label.
 groups:
   - name: rabbitmq_alerts
     rules:
       - alert: RabbitMQResourceLocked
-        expr: increase(rabbitmq_channel_closed_total{reason="resource_locked"}[5m]) > 0
+        expr: increase(rabbitmq_resource_locked_errors_total[5m]) > 0
         for: 1m
         labels:
           severity: warning

@@ -8,7 +8,7 @@ Description: A systematic guide to diagnosing and resolving Kubernetes pods stuc
 
 ---
 
-A pod in "Pending" status means Kubernetes accepted it but cannot schedule it to a node. This is one of the most common issues in Kubernetes clusters. This guide walks through the systematic diagnosis and resolution of pending pods.
+A pod in "Pending" status means Kubernetes accepted it, but one or more containers have not been created yet. This often means the scheduler cannot place it on a node, but it can also include time spent pulling images after a node is assigned. This guide walks through the systematic diagnosis and resolution of pending pods caused by scheduling and storage issues.
 
 ## Understanding Pending Status
 
@@ -73,9 +73,9 @@ resources:
 
 Option 2: Add more nodes or larger nodes
 
-Option 3: Remove unused pods to free resources
+Option 3: Scale down or delete unused running workloads to free resources
 ```bash
-kubectl delete pods --field-selector=status.phase=Succeeded
+kubectl scale deployment unused-app --replicas=0
 ```
 
 ### Cause 2: Node Selector Mismatch
@@ -251,7 +251,9 @@ kubectl cordon node-2
 kubectl drain node-2 --ignore-daemonsets --delete-emptydir-data
 ```
 
-### Cause 7: ResourceQuota Exceeded
+### Cause 7: ResourceQuota Preventing Pod Creation
+
+ResourceQuota violations are normally rejected by the API server during admission, so you may see the owning workload fail to create a pod instead of seeing a pod stuck in Pending.
 
 ```bash
 # Check ResourceQuota in namespace
@@ -270,7 +272,7 @@ kubectl describe resourcequota -n my-namespace
 
 **Solutions:**
 
-Option 1: Delete unused pods to free quota
+Option 1: Delete unused workloads or completed objects to free quota
 
 Option 2: Request quota increase
 ```yaml
@@ -294,7 +296,7 @@ kubectl get pod pending-pod -o jsonpath='{.spec.priorityClassName}'
 kubectl get pod pending-pod -o jsonpath='{.spec.priority}'
 ```
 
-Low-priority pods wait for high-priority pods first.
+Higher-priority pods are scheduled before lower-priority pods, and a pending high-priority pod can preempt lower-priority pods when preemption is enabled.
 
 **Solution:**
 ```yaml
@@ -318,10 +320,10 @@ kubectl describe pod pending-pod | tail -20
 kubectl logs -n kube-system -l component=kube-scheduler
 ```
 
-### Step 3: Simulate Scheduling
+### Step 3: Validate the Manifest
 
 ```bash
-# Dry-run to see where pod would schedule
+# Server-side dry-run validates the object and admission checks, but does not simulate scheduler placement
 kubectl get pod pending-pod -o yaml | kubectl apply --dry-run=server -f -
 ```
 
@@ -381,16 +383,7 @@ affinity:
 
 ### 3. Set Up Cluster Autoscaler
 
-```yaml
-apiVersion: autoscaling.k8s.io/v1
-kind: ClusterAutoscaler
-metadata:
-  name: cluster-autoscaler
-spec:
-  scaleDown:
-    enabled: true
-    delayAfterAdd: 10m
-```
+Install Cluster Autoscaler using the deployment, Helm chart, or managed-service integration for your cloud provider. Upstream Kubernetes does not provide a built-in `ClusterAutoscaler` API object.
 
 ### 4. Monitor Available Resources
 

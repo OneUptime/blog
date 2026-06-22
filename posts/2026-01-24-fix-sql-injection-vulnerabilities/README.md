@@ -48,7 +48,7 @@ def get_user(username):
 
 # If username is: ' OR '1'='1
 # The query becomes: SELECT * FROM users WHERE username = '' OR '1'='1'
-# This returns all users!
+# This matches all users; fetchone() returns the first matching row.
 ```
 
 ### Vulnerable Code in Node.js
@@ -337,8 +337,9 @@ GRANT SELECT, INSERT, UPDATE ON myapp.users TO 'webapp'@'localhost';
 GRANT SELECT, INSERT ON myapp.orders TO 'webapp'@'localhost';
 
 -- Never grant these to application users:
--- GRANT DROP, ALTER, CREATE, DELETE, TRUNCATE
+-- GRANT DROP, ALTER, CREATE, DELETE
 -- GRANT FILE, PROCESS, SUPER
+-- In MySQL, TRUNCATE TABLE requires the DROP privilege.
 ```
 
 ### Stored Procedures
@@ -346,11 +347,11 @@ GRANT SELECT, INSERT ON myapp.orders TO 'webapp'@'localhost';
 Stored procedures can provide an additional layer of abstraction, though they must also use parameterization internally.
 
 ```sql
--- PostgreSQL stored procedure with parameterized query
+-- PostgreSQL function with a parameterized query
 CREATE OR REPLACE FUNCTION get_user_by_username(p_username VARCHAR)
 RETURNS TABLE (id INT, username VARCHAR, email VARCHAR) AS $$
 BEGIN
-    -- Parameters are automatically safe in PL/pgSQL
+    -- The function parameter is used as a value in this static query
     RETURN QUERY SELECT u.id, u.username, u.email
                  FROM users u
                  WHERE u.username = p_username;

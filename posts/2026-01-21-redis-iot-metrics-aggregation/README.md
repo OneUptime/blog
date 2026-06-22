@@ -388,7 +388,6 @@ class PercentileAggregator:
     def __init__(self, redis_client: redis.Redis):
         self.redis = redis_client
         self.window_seconds = 60
-        self.max_samples = 1000  # Keep up to 1000 samples per window
 
     def record_value(
         self,
@@ -404,10 +403,7 @@ class PercentileAggregator:
         pipe = self.redis.pipeline()
 
         # Add to sorted set (score = value for sorting)
-        pipe.zadd(samples_key, {f"{timestamp}:{value}": value})
-
-        # Trim to max samples
-        pipe.zremrangebyrank(samples_key, 0, -self.max_samples - 1)
+        pipe.zadd(samples_key, {f"{timestamp}:{time.time_ns()}:{value}": value})
 
         # Set TTL
         pipe.expire(samples_key, self.window_seconds * 5)
@@ -620,20 +616,24 @@ class MultiLevelAggregator {
 }
 
 // Usage
-const aggregator = new MetricsAggregator({ host: 'localhost', port: 6379 });
+async function main() {
+    const aggregator = new MetricsAggregator({ host: 'localhost', port: 6379 });
 
-// Record readings (simulating high frequency)
-for (let i = 0; i < 100; i++) {
-    await aggregator.recordReading(
-        'sensor-001',
-        'temperature',
-        20 + Math.random() * 10
-    );
+    // Record readings (simulating high frequency)
+    for (let i = 0; i < 100; i++) {
+        await aggregator.recordReading(
+            'sensor-001',
+            'temperature',
+            20 + Math.random() * 10
+        );
+    }
+
+    // Get aggregation
+    const agg = await aggregator.getCurrentAggregation('sensor-001', 'temperature');
+    console.log(agg);
 }
 
-// Get aggregation
-const agg = await aggregator.getCurrentAggregation('sensor-001', 'temperature');
-console.log(agg);
+main().catch(console.error);
 ```
 
 ## Best Practices

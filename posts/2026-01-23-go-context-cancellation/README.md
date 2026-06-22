@@ -74,10 +74,12 @@ func main() {
     rootCtx, rootCancel := context.WithCancel(context.Background())
     
     // Child context from root
-    childCtx, _ := context.WithCancel(rootCtx)
+    childCtx, childCancel := context.WithCancel(rootCtx)
+    defer childCancel()
     
     // Grandchild context from child
-    grandchildCtx, _ := context.WithCancel(childCtx)
+    grandchildCtx, grandchildCancel := context.WithCancel(childCtx)
+    defer grandchildCancel()
     
     // Start workers at each level
     go worker(rootCtx, "Root-Worker")
@@ -192,9 +194,9 @@ func worker(ctx context.Context, name string) {
 **Output:**
 ```text
 Starting workers...
-Grandchild cancelled after 1000ms: context deadline exceeded
-Parent cancelled after 3000ms: context deadline exceeded
-Child cancelled after 3000ms: context deadline exceeded
+Grandchild cancelled after 1s: context deadline exceeded
+Parent cancelled after 3s: context deadline exceeded
+Child cancelled after 3s: context deadline exceeded
 ```
 
 ---

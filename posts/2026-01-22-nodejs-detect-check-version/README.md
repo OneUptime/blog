@@ -141,6 +141,14 @@ class NodeVersion {
   static isBelow(major, minor = 0, patch = 0) {
     return !this.isAtLeast(major, minor, patch);
   }
+
+  static compareTo(major, minor = 0, patch = 0) {
+    const [currentMajor, currentMinor, currentPatch] = this.tuple;
+
+    if (currentMajor !== major) return currentMajor - major;
+    if (currentMinor !== minor) return currentMinor - minor;
+    return currentPatch - patch;
+  }
   
   static check(requirement) {
     // Parse requirement like ">=18.0.0" or "^16.0.0"
@@ -151,6 +159,8 @@ class NodeVersion {
     }
     
     const [, operator, major, minor = '0', patch = '0'] = match;
+    const minorSpecified = match[3] !== undefined;
+    const patchSpecified = match[4] !== undefined;
     const reqMajor = parseInt(major, 10);
     const reqMinor = parseInt(minor, 10);
     const reqPatch = parseInt(patch, 10);
@@ -159,18 +169,37 @@ class NodeVersion {
       case '>=':
         return this.isAtLeast(reqMajor, reqMinor, reqPatch);
       case '>':
-        return this.tuple.join('.') > `${reqMajor}.${reqMinor}.${reqPatch}`;
+        return this.compareTo(reqMajor, reqMinor, reqPatch) > 0;
       case '<=':
-        return !this.isAtLeast(reqMajor, reqMinor, reqPatch + 1);
+        return this.compareTo(reqMajor, reqMinor, reqPatch) <= 0;
       case '<':
         return this.isBelow(reqMajor, reqMinor, reqPatch);
-      case '^':
-        return this.isAtLeast(reqMajor, reqMinor, reqPatch) && 
-               this.major === reqMajor;
-      case '~':
-        return this.isAtLeast(reqMajor, reqMinor, reqPatch) && 
-               this.major === reqMajor && 
-               this.minor === reqMinor;
+      case '^': {
+        let upperBound;
+
+        if (reqMajor > 0) {
+          upperBound = [reqMajor + 1, 0, 0];
+        } else if (reqMinor > 0) {
+          upperBound = [0, reqMinor + 1, 0];
+        } else if (patchSpecified) {
+          upperBound = [0, 0, reqPatch + 1];
+        } else if (minorSpecified) {
+          upperBound = [0, 1, 0];
+        } else {
+          upperBound = [1, 0, 0];
+        }
+
+        return this.isAtLeast(reqMajor, reqMinor, reqPatch) &&
+               this.compareTo(...upperBound) < 0;
+      }
+      case '~': {
+        const upperBound = minorSpecified
+          ? [reqMajor, reqMinor + 1, 0]
+          : [reqMajor + 1, 0, 0];
+
+        return this.isAtLeast(reqMajor, reqMinor, reqPatch) &&
+               this.compareTo(...upperBound) < 0;
+      }
       default:
         return this.major === reqMajor && 
                this.minor === reqMinor && 

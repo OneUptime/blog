@@ -14,7 +14,7 @@ Stale closures are one of the most common bugs in React applications using hooks
 
 A closure is a function that remembers variables from its outer scope. In React hooks, this becomes problematic when a callback captures a state value at creation time but continues to use that old value after state updates.
 
-```typescript
+```tsx
 import React, { useState, useEffect } from 'react';
 
 function StaleClosureExample(): React.ReactElement {
@@ -66,7 +66,7 @@ sequenceDiagram
 
 Include all referenced values in the dependency array. This causes the effect to re-run when values change.
 
-```typescript
+```tsx
 import React, { useState, useEffect } from 'react';
 
 function FixedWithDependencies(): React.ReactElement {
@@ -95,7 +95,7 @@ export default FixedWithDependencies;
 
 When updating state based on previous value, use the functional form of setState.
 
-```typescript
+```tsx
 import React, { useState, useEffect } from 'react';
 
 function FixedWithFunctionalUpdate(): React.ReactElement {
@@ -128,7 +128,7 @@ export default FixedWithFunctionalUpdate;
 
 When you need to read the latest state value inside a callback, use a ref.
 
-```typescript
+```tsx
 import React, { useState, useEffect, useRef } from 'react';
 
 function FixedWithRef(): React.ReactElement {
@@ -162,10 +162,10 @@ export default FixedWithRef;
 
 ## Custom Hook for Latest Value
 
-```typescript
+```tsx
 import React, { useState, useEffect, useRef } from 'react';
 
-function useLatest<T>(value: T): React.MutableRefObject<T> {
+function useLatest<T>(value: T): React.RefObject<T> {
   const ref = useRef(value);
 
   useEffect(() => {
@@ -185,7 +185,7 @@ function ComponentWithCustomHook(): React.ReactElement {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [latestCount]);
 
   return (
     <div>

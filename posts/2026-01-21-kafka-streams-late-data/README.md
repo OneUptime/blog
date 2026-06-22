@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Late Data, Event Time, Watermark, Grace Periods
+Tags: Apache Kafka, Kafka Streams, Late Data, Event Time, Stream Time, Grace Periods
 
-Description: Learn how to handle late-arriving data in Kafka Streams, including grace periods, watermarks, out-of-order event processing, and strategies for maintaining accuracy in windowed aggregations.
+Description: Learn how to handle late-arriving data in Kafka Streams, including grace periods, stream time, out-of-order event processing, and strategies for maintaining accuracy in windowed aggregations.
 
 ---
 
-Late-arriving data is a common challenge in stream processing when events arrive after their processing window has closed. Kafka Streams provides several mechanisms to handle this, ensuring accurate results while managing resource constraints.
+Late-arriving data is a common challenge in stream processing when events arrive after stream time has advanced beyond their window. Kafka Streams provides several mechanisms to handle this, ensuring accurate results while managing resource constraints.
 
 ## Understanding Late Data
 
@@ -21,7 +21,7 @@ Event created: 10:00:00 (event time)
 Network delay: 5 minutes
 Processing time: 10:05:00
 
-If window closes at 10:04:00, event is "late"
+If stream time has advanced past the window end plus grace, the event is "late"
 ```
 
 Common causes:
@@ -79,12 +79,12 @@ Window: [10:00 - 10:05) with 2-minute grace
 Timeline:
 10:00 - Window opens
 10:05 - Window ends (logically)
-10:07 - Grace period ends, window closes
+10:07 - Grace period ends; the window is closed once stream time passes this point
 
 Events:
-- 10:03 event arrives at 10:04 -> included (within window)
-- 10:03 event arrives at 10:06 -> included (within grace)
-- 10:03 event arrives at 10:08 -> dropped (after grace)
+- 10:03 event processed while stream time is 10:04 -> included (within window)
+- 10:03 event processed while stream time is 10:06 -> included (within grace)
+- 10:03 event processed after stream time passes 10:07 -> dropped (after grace)
 ```
 
 ## Custom Timestamp Extractors
@@ -117,8 +117,11 @@ public class EventTimeExtractor implements TimestampExtractor {
             // Log error
         }
 
-        // Fallback to partition time (last known time)
-        return partitionTime;
+        // Fallback to partition time (last known time), then record timestamp
+        if (partitionTime >= 0) {
+            return partitionTime;
+        }
+        return record.timestamp() >= 0 ? record.timestamp() : System.currentTimeMillis();
     }
 }
 
@@ -142,26 +145,37 @@ public class SafeTimestampExtractor implements TimestampExtractor {
         long eventTime = extractEventTime(record);
         long now = System.currentTimeMillis();
 
+        if (eventTime <= 0) {
+            return fallbackTimestamp(record, partitionTime);
+        }
+
         // Reject future timestamps
         if (eventTime > now + MAX_FUTURE_MS) {
             log.warn("Future timestamp detected: {}, using partition time", eventTime);
-            return partitionTime;
+            return fallbackTimestamp(record, partitionTime);
         }
 
         // Reject very old timestamps
         if (eventTime < now - MAX_PAST_MS) {
             log.warn("Old timestamp detected: {}, using partition time", eventTime);
-            return partitionTime;
+            return fallbackTimestamp(record, partitionTime);
         }
 
         return eventTime;
+    }
+
+    private long fallbackTimestamp(ConsumerRecord<Object, Object> record, long partitionTime) {
+        if (partitionTime >= 0) {
+            return partitionTime;
+        }
+        return record.timestamp() >= 0 ? record.timestamp() : System.currentTimeMillis();
     }
 }
 ```
 
 ## Tracking Late Data
 
-Monitor and handle dropped late events:
+Monitor event latency and route events that are likely to be late before windowed processing:
 
 ```java
 public class LateDataTracker {
@@ -170,7 +184,7 @@ public class LateDataTracker {
 
         KStream<String, Event> events = builder.stream("events");
 
-        // Branch into on-time and potentially late
+        // Branch into application-defined latency tiers
         Map<String, KStream<String, Event>> branches = events.split(Named.as("branch-"))
             .branch(
                 (key, event) -> isOnTime(event),
@@ -253,11 +267,11 @@ public class SuppressedWindowsExample {
 ### Suppression with Buffer Limits
 
 ```java
-// Emit early if buffer fills
+// Keep final-results guarantee; shut down if buffer fills
 .suppress(Suppressed.untilWindowCloses(
     BufferConfig.maxRecords(100000)
-        .maxBytes(64 * 1024 * 1024)  // 64MB
-        .emitEarlyWhenFull()
+        .withMaxBytes(64 * 1024 * 1024)  // 64MB
+        .shutDownWhenFull()
 ))
 
 // Emit periodically for long windows
@@ -318,7 +332,7 @@ public class HistoricalReprocessing {
         Properties props = getConfig();
 
         // Configure for reprocessing
-        props.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 0);
+        props.put(StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG, 0);
         props.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 100);
 
         StreamsBuilder builder = new StreamsBuilder();
@@ -343,6 +357,7 @@ public class HistoricalReprocessing {
         // Suppress to get final counts
         counts.suppress(Suppressed.untilWindowCloses(
             BufferConfig.maxBytes(256 * 1024 * 1024)  // 256MB buffer
+                .shutDownWhenFull()
         ))
         .toStream()
         .to("historical-counts-output");
@@ -410,13 +425,13 @@ public class LateDataMetrics {
     private final Counter onTimeEvents;
     private final Counter lateEvents;
     private final Counter droppedEvents;
-    private final Histogram eventLatency;
+    private final DistributionSummary eventLatency;
 
     public LateDataMetrics(MeterRegistry registry) {
         onTimeEvents = registry.counter("kafka.streams.events.ontime");
         lateEvents = registry.counter("kafka.streams.events.late");
         droppedEvents = registry.counter("kafka.streams.events.dropped");
-        eventLatency = registry.histogram("kafka.streams.event.latency");
+        eventLatency = registry.summary("kafka.streams.event.latency");
     }
 
     public void recordEvent(Event event, boolean wasLate, boolean wasDropped) {

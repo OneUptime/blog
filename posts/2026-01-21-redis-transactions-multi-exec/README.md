@@ -194,30 +194,31 @@ def safe_increment(key, max_value):
     Increment a counter only if it doesn't exceed max_value.
     Uses WATCH for optimistic locking.
     """
-    while True:
-        try:
-            # Watch the key
-            r.watch(key)
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                # Watch the key
+                pipe.watch(key)
 
-            # Read current value
-            current = int(r.get(key) or 0)
+                # Read current value
+                current = int(pipe.get(key) or 0)
 
-            if current >= max_value:
-                r.unwatch()
-                return None  # Already at max
+                if current >= max_value:
+                    pipe.unwatch()
+                    return None  # Already at max
 
-            # Start transaction
-            pipe = r.pipeline(True)
-            pipe.incr(key)
+                # Start transaction
+                pipe.multi()
+                pipe.incr(key)
 
-            # Execute - returns None if key changed
-            result = pipe.execute()
+                # Execute - raises WatchError if key changed
+                result = pipe.execute()
 
-            return result[0]  # New value
+                return result[0]  # New value
 
-        except redis.WatchError:
-            # Key was modified, retry
-            continue
+            except redis.WatchError:
+                # Key was modified, retry
+                continue
 
 # Usage
 r.set("counter", 0)
@@ -264,9 +265,6 @@ async function safeIncrement(key, maxValue) {
             return result[0][1];  // New value
 
         } catch (error) {
-            if (error.message.includes('EXECABORT')) {
-                continue;  // Retry on watch error
-            }
             throw error;
         }
     }
@@ -285,24 +283,25 @@ def compare_and_swap(key, expected_value, new_value):
     Set key to new_value only if current value equals expected_value.
     Returns True if swap succeeded, False otherwise.
     """
-    while True:
-        try:
-            r.watch(key)
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch(key)
 
-            current = r.get(key)
+                current = pipe.get(key)
 
-            if current != expected_value:
-                r.unwatch()
-                return False
+                if current != expected_value:
+                    pipe.unwatch()
+                    return False
 
-            pipe = r.pipeline(True)
-            pipe.set(key, new_value)
-            result = pipe.execute()
+                pipe.multi()
+                pipe.set(key, new_value)
+                pipe.execute()
 
-            return True
+                return True
 
-        except redis.WatchError:
-            continue
+            except redis.WatchError:
+                continue
 
 # Usage: Only update if value is what we expect
 r.set("status", "pending")
@@ -322,31 +321,34 @@ else:
 ### Atomic Counter with Limit
 
 ```python
+import time
+
 def increment_with_limit(key, limit, expire_seconds=None):
     """
     Increment counter atomically, respecting a limit.
     Useful for rate limiting.
     """
-    while True:
-        try:
-            r.watch(key)
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch(key)
 
-            current = int(r.get(key) or 0)
+                current = int(pipe.get(key) or 0)
 
-            if current >= limit:
-                r.unwatch()
-                return None  # Limit reached
+                if current >= limit:
+                    pipe.unwatch()
+                    return None  # Limit reached
 
-            pipe = r.pipeline(True)
-            pipe.incr(key)
-            if expire_seconds and current == 0:
-                pipe.expire(key, expire_seconds)
+                pipe.multi()
+                pipe.incr(key)
+                if expire_seconds and current == 0:
+                    pipe.expire(key, expire_seconds)
 
-            result = pipe.execute()
-            return result[0]
+                result = pipe.execute()
+                return result[0]
 
-        except redis.WatchError:
-            continue
+            except redis.WatchError:
+                continue
 
 # Rate limiting example
 def check_rate_limit(user_id, limit=100, window=60):
@@ -365,26 +367,27 @@ def reserve_inventory(product_id, quantity):
     stock_key = f"inventory:{product_id}"
     reserved_key = f"reserved:{product_id}"
 
-    while True:
-        try:
-            r.watch(stock_key)
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch(stock_key)
 
-            available = int(r.get(stock_key) or 0)
+                available = int(pipe.get(stock_key) or 0)
 
-            if available < quantity:
-                r.unwatch()
-                return False, "Insufficient stock"
+                if available < quantity:
+                    pipe.unwatch()
+                    return False, "Insufficient stock"
 
-            pipe = r.pipeline(True)
-            pipe.decrby(stock_key, quantity)
-            pipe.incrby(reserved_key, quantity)
+                pipe.multi()
+                pipe.decrby(stock_key, quantity)
+                pipe.incrby(reserved_key, quantity)
 
-            result = pipe.execute()
+                pipe.execute()
 
-            return True, f"Reserved {quantity} units"
+                return True, f"Reserved {quantity} units"
 
-        except redis.WatchError:
-            continue
+            except redis.WatchError:
+                continue
 
 # Usage
 r.set("inventory:SKU123", 100)
@@ -396,6 +399,8 @@ print(message)  # "Reserved 5 units"
 ### Leaderboard Update
 
 ```python
+import time
+
 def update_score_with_history(user_id, new_score):
     """
     Update leaderboard score and maintain history atomically.
@@ -403,31 +408,32 @@ def update_score_with_history(user_id, new_score):
     leaderboard_key = "leaderboard:global"
     history_key = f"scores:history:{user_id}"
 
-    while True:
-        try:
-            r.watch(leaderboard_key)
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch(leaderboard_key)
 
-            # Get current score
-            current_score = r.zscore(leaderboard_key, user_id)
+                # Get current score
+                current_score = pipe.zscore(leaderboard_key, user_id)
 
-            pipe = r.pipeline(True)
+                pipe.multi()
 
-            # Update leaderboard
-            pipe.zadd(leaderboard_key, {user_id: new_score})
+                # Update leaderboard
+                pipe.zadd(leaderboard_key, {user_id: new_score})
 
-            # Add to history
-            pipe.lpush(history_key, f"{time.time()}:{new_score}")
-            pipe.ltrim(history_key, 0, 99)  # Keep last 100
+                # Add to history
+                pipe.lpush(history_key, f"{time.time()}:{new_score}")
+                pipe.ltrim(history_key, 0, 99)  # Keep last 100
 
-            # Track if it's a new high score
-            if current_score is None or new_score > current_score:
-                pipe.sadd(f"high_scores:{user_id}", new_score)
+                # Track if it's a new high score
+                if current_score is None or new_score > current_score:
+                    pipe.sadd(f"high_scores:{user_id}", new_score)
 
-            result = pipe.execute()
-            return True
+                pipe.execute()
+                return True
 
-        except redis.WatchError:
-            continue
+            except redis.WatchError:
+                continue
 ```
 
 ---
@@ -534,12 +540,13 @@ def transaction_with_retry(func, max_retries=5, base_delay=0.1):
 
 # Usage
 def update_balance():
-    r.watch("balance")
-    balance = int(r.get("balance") or 0)
+    with r.pipeline() as pipe:
+        pipe.watch("balance")
+        balance = int(pipe.get("balance") or 0)
 
-    pipe = r.pipeline(True)
-    pipe.set("balance", balance + 100)
-    return pipe.execute()
+        pipe.multi()
+        pipe.set("balance", balance + 100)
+        return pipe.execute()
 
 result = transaction_with_retry(update_balance)
 ```
@@ -646,7 +653,7 @@ for i in range(10000):
 pipe.execute()
 
 # Use transaction for:
-# - Related operations that must succeed together
+# - Related operations that must execute without interleaving
 # - Maintaining data consistency
 
 # Balance transfer - must be atomic
@@ -686,28 +693,29 @@ def robust_update(key, update_func, max_retries=10):
     """
     Robust pattern for WATCH-based updates.
     """
-    for attempt in range(max_retries):
-        try:
-            r.watch(key)
+    with r.pipeline() as pipe:
+        for attempt in range(max_retries):
+            try:
+                pipe.watch(key)
 
-            current = r.get(key)
-            new_value = update_func(current)
+                current = pipe.get(key)
+                new_value = update_func(current)
 
-            if new_value is None:
-                r.unwatch()
-                return None  # No update needed
+                if new_value is None:
+                    pipe.unwatch()
+                    return None  # No update needed
 
-            pipe = r.pipeline(True)
-            pipe.set(key, new_value)
-            result = pipe.execute()
+                pipe.multi()
+                pipe.set(key, new_value)
+                result = pipe.execute()
 
-            return result[0]
+                return result[0]
 
-        except redis.WatchError:
-            # Log retry for monitoring
-            if attempt > 3:
-                print(f"High contention on {key}, attempt {attempt}")
-            continue
+            except redis.WatchError:
+                # Log retry for monitoring
+                if attempt > 3:
+                    print(f"High contention on {key}, attempt {attempt}")
+                continue
 
     raise Exception(f"Failed to update {key} after {max_retries} attempts")
 ```

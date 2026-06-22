@@ -18,7 +18,6 @@ Go 1.13 introduced error wrapping with the `%w` verb, allowing you to add contex
 package main
 
 import (
-    "errors"
     "fmt"
     "os"
 )
@@ -173,7 +172,7 @@ func main() {
             fmt.Printf("Field: %s, Message: %s\n", valErr.Field, valErr.Message)
         }
         
-        // Works with standard library types too
+        // This pattern works with standard library types too, if present in the chain
         var pathErr *os.PathError
         if errors.As(err, &pathErr) {
             fmt.Println("Path:", pathErr.Path)

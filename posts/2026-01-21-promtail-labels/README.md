@@ -10,6 +10,8 @@ Description: A comprehensive guide to adding and managing labels in Promtail for
 
 Labels in Loki are the primary mechanism for indexing and querying logs. Proper labeling strategy is crucial for query performance and storage efficiency. This guide covers how to effectively add and manage labels in Promtail.
 
+Note: Promtail reached end-of-life on March 2, 2026. These examples are useful for maintaining existing Promtail deployments, but new deployments should use a supported collector such as Grafana Alloy.
+
 ## Prerequisites
 
 Before starting, ensure you have:
@@ -95,8 +97,25 @@ scrape_configs:
           __path__: /var/log/*/*.log
     relabel_configs:
       - source_labels: [__path__]
-        regex: '/var/log/(.*)/.*.log'
+        regex: '/var/log/(.*)/.*\.log'
         target_label: app
+```
+
+This works when `__path__` is a concrete path. If `__path__` contains wildcards, extract from Promtail's `filename` label in a pipeline stage instead:
+
+```yaml
+scrape_configs:
+  - job_name: apps
+    static_configs:
+      - targets: [localhost]
+        labels:
+          __path__: /var/log/*/*.log
+    pipeline_stages:
+      - regex:
+          source: filename
+          expression: '/var/log/(?P<app>[^/]+)/.*\.log'
+      - labels:
+          app:
 ```
 
 ### Multiple Path Components
@@ -104,25 +123,24 @@ scrape_configs:
 ```yaml
 # Path: /var/log/production/order-service/app.log
 
-relabel_configs:
-  - source_labels: [__path__]
-    regex: '/var/log/([^/]+)/([^/]+)/.*'
-    target_label: env
-    replacement: '$1'
-
-  - source_labels: [__path__]
-    regex: '/var/log/([^/]+)/([^/]+)/.*'
-    target_label: service
-    replacement: '$2'
+pipeline_stages:
+  - regex:
+      source: filename
+      expression: '/var/log/(?P<env>[^/]+)/(?P<service>[^/]+)/.*'
+  - labels:
+      env:
+      service:
 ```
 
 ### Filename as Label
 
 ```yaml
-relabel_configs:
-  - source_labels: [__path__]
-    regex: '.*/([^/]+)\\.log'
-    target_label: filename
+pipeline_stages:
+  - regex:
+      source: filename
+      expression: '.*/(?P<log_file>[^/]+)\.log'
+  - labels:
+      log_file:
 ```
 
 ## Dynamic Labels from Log Content
@@ -177,6 +195,8 @@ scrape_configs:
   - job_name: kubernetes-pods
     kubernetes_sd_configs:
       - role: pod
+        attach_metadata:
+          node: true
     relabel_configs:
       # Namespace as label
       - source_labels: [__meta_kubernetes_namespace]
@@ -229,13 +249,9 @@ pipeline_stages:
   - json:
       expressions:
         loglevel: level
-  - labelmap:
+  - template:
       source: loglevel
-      mapping:
-        ERROR: error
-        WARN: warning
-        INFO: info
-        DEBUG: debug
+      template: '{{ if eq .Value "ERROR" }}error{{ else if eq .Value "WARN" }}warning{{ else if eq .Value "INFO" }}info{{ else if eq .Value "DEBUG" }}debug{{ else }}{{ .Value }}{{ end }}'
   - labels:
       level: loglevel
 ```
@@ -243,21 +259,17 @@ pipeline_stages:
 ### Label Drop
 
 ```yaml
-pipeline_stages:
-  - labeldrop:
-      - __meta_kubernetes_pod_label_pod_template_hash
-      - __meta_kubernetes_pod_label_controller_revision_hash
+relabel_configs:
+  - action: labeldrop
+    regex: __meta_kubernetes_pod_label_(pod_template_hash|controller_revision_hash)
 ```
 
 ### Label Keep
 
 ```yaml
-pipeline_stages:
-  - labelkeep:
-      - job
-      - namespace
-      - pod
-      - container
+relabel_configs:
+  - action: labelkeep
+    regex: (job|namespace|pod|container)
 ```
 
 ### Label Allow
@@ -371,10 +383,10 @@ labels:
 
 ```promql
 # Stream count
-count(count by (__name__) ({job="app"}))
+count(count_over_time({job="app"}[1h]))
 
-# Streams by label
-sum by (label_name) (
+# Streams by level label
+count by (level) (
   count_over_time({job="app"}[1h])
 )
 ```
@@ -467,18 +479,14 @@ scrape_configs:
             level: level
             component: component
 
+      # Normalize level values
+      - template:
+          source: level
+          template: '{{ ToLower .Value }}'
+
       # Add level as label
       - labels:
           level:
-
-      # Normalize level values
-      - match:
-          selector: '{level=~"ERROR|error"}'
-          stages:
-            - labeldrop:
-                - level
-            - labels:
-                level: error
 
       # Keep only allowed labels
       - labelallow:
@@ -517,7 +525,7 @@ relabel_configs:
 
 ```logql
 # Check if labels are applied
-{job="app"} | label_format all_labels="{{__name__}}"
+{job="app", level="error"}
 ```
 
 ## Conclusion

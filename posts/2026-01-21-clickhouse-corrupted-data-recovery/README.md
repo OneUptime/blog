@@ -30,8 +30,9 @@ WHERE database = 'default'
 ORDER BY modification_time DESC;
 
 -- Verify checksums manually
-CHECK TABLE events;
--- Returns number of parts checked and any errors
+CHECK TABLE events
+SETTINGS check_query_single_value_result = 0;
+-- Returns one row per checked part with pass/fail status and messages
 ```
 
 ### Common Corruption Signs
@@ -40,11 +41,10 @@ CHECK TABLE events;
 -- Queries failing with checksum errors
 -- "Checksum doesn't match: corrupted data."
 
--- Parts marked as broken
+-- Parts detached by ClickHouse because of a problem
 SELECT *
-FROM system.parts
-WHERE name LIKE '%broken%'
-   OR active = 0;
+FROM system.detached_parts
+WHERE reason != '';
 
 -- Errors in ClickHouse logs
 -- grep -i "checksum\|corrupt\|broken" /var/log/clickhouse-server/clickhouse-server.err.log
@@ -93,10 +93,10 @@ SELECT
 FROM system.replicas
 WHERE table = 'events';
 
--- Force sync from healthy replica
+-- Wait for the replication queue to catch up
 SYSTEM SYNC REPLICA events;
 
--- Or restore entire replica
+-- If replica metadata in Keeper/ZooKeeper was lost and the table is read-only
 SYSTEM RESTORE REPLICA events;
 ```
 
@@ -131,9 +131,9 @@ clickhouse-backup restore backup_name --table events --partitions '202401'
 ```
 
 ```sql
--- Or restore from remote
-ALTER TABLE events FETCH PARTITION '202401'
-FROM 'clickhouse://backup-server/production/events';
+-- Or restore a built-in ClickHouse backup from a configured disk
+RESTORE TABLE events AS events_recovery
+FROM Disk('backups', 'backup_name');
 ```
 
 ### Option 4: Rebuild from Source
@@ -170,20 +170,16 @@ ls -la /var/lib/clickhouse/data/default/events/all_1_1_0/
 # *.mrk2         - Mark files
 ```
 
-### Verify Individual Files
+### Verify Individual Parts
 
-```bash
-# Check if part is readable
-clickhouse-local --query "
-SELECT count()
-FROM file('/var/lib/clickhouse/data/default/events/all_1_1_0/*.bin', 'Native')
-"
+```sql
+-- Check a specific part and show detailed status
+CHECK TABLE events PART 'all_1_1_0'
+SETTINGS check_query_single_value_result = 0;
 
-# Verify checksums
-clickhouse-local --query "
-SELECT *
-FROM file('/var/lib/clickhouse/data/default/events/all_1_1_0/checksums.txt', 'TSV')
-"
+-- Check a specific partition
+CHECK TABLE events PARTITION ID '202401'
+SETTINGS check_query_single_value_result = 0;
 ```
 
 ### Manual Part Recovery
@@ -267,10 +263,13 @@ sudo systemctl stop clickhouse-server
 # 2. Remove all data for the table
 rm -rf /var/lib/clickhouse/data/default/events/*
 
-# 3. Start ClickHouse
+# 3. Allow ClickHouse to restore data from replicas even if many parts differ
+sudo -u clickhouse touch /var/lib/clickhouse/flags/force_restore_data
+
+# 4. Start ClickHouse
 sudo systemctl start clickhouse-server
 
-# Data will automatically sync from healthy replicas
+# Data should sync from healthy replicas
 ```
 
 ```sql
@@ -285,19 +284,12 @@ WHERE table = 'events';
 
 ## Prevention Strategies
 
-### Enable Checksums
+### Run Checksum Checks
 
-```xml
-<!-- /etc/clickhouse-server/config.d/checksums.xml -->
-<clickhouse>
-    <merge_tree>
-        <!-- Verify checksums on read -->
-        <check_parts_every_row>0</check_parts_every_row>
-
-        <!-- Verify on merge -->
-        <check_parts_columns_assume_identical_header>0</check_parts_columns_assume_identical_header>
-    </merge_tree>
-</clickhouse>
+```sql
+-- Run during maintenance windows; CHECK TABLE can read all table data
+CHECK TABLE events
+SETTINGS check_query_single_value_result = 0;
 ```
 
 ### Regular Backup Schedule
@@ -311,11 +303,11 @@ if [ $(date +%u) -eq 1 ]; then
     clickhouse-backup create --tables 'default.*'
 fi
 
-# Upload to remote
-clickhouse-backup upload $(clickhouse-backup list | head -1)
+# Upload latest local backup to remote
+clickhouse-backup upload "$(clickhouse-backup list | awk 'NR==1 {print $1}')"
 
 # Clean old backups
-clickhouse-backup delete local $(clickhouse-backup list | tail -n +8)
+clickhouse-backup list | awk 'NR>7 {print $1}' | xargs -r -n1 clickhouse-backup delete local
 ```
 
 ### Disk Health Monitoring
@@ -398,13 +390,13 @@ SELECT count() AS detached_parts
 FROM system.detached_parts
 WHERE reason != '';
 
--- Monitor part mutations
+-- Monitor parts detached due to problems
 SELECT
     database,
     table,
     count() AS broken_parts
-FROM system.parts
-WHERE name LIKE '%broken%'
+FROM system.detached_parts
+WHERE reason != ''
 GROUP BY database, table;
 
 -- Check for CHECK TABLE failures

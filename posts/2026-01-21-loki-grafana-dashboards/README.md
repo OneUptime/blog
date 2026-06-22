@@ -552,10 +552,7 @@ Create a variable to filter by service:
         "enable": true,
         "expr": "{service=~\"$service\"} | json | level=\"error\" | line_format \"{{.error_type}}: {{.message}}\"",
         "iconColor": "red",
-        "name": "Errors",
-        "tagKeys": "service,error_type",
-        "textFormat": "{{message}}",
-        "titleFormat": "Error in {{service}}"
+        "name": "Errors"
       }
     ]
   }
@@ -576,9 +573,7 @@ Create a variable to filter by service:
         "enable": true,
         "expr": "{job=\"deployments\"} |= \"deployed\"",
         "iconColor": "blue",
-        "name": "Deployments",
-        "titleFormat": "Deployment",
-        "textFormat": "{{message}}"
+        "name": "Deployments"
       }
     ]
   }

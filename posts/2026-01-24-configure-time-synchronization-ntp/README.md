@@ -60,14 +60,17 @@ timedatectl
 ### Check Time Service Status
 
 ```bash
-# Check if chronyd is running
-systemctl status chronyd
+# Check if chrony is running
+systemctl status chrony      # Debian/Ubuntu
+systemctl status chronyd     # RHEL/CentOS/Rocky/Arch
 
 # Check if systemd-timesyncd is running
 systemctl status systemd-timesyncd
 
 # Check if ntpd is running
-systemctl status ntpd
+systemctl status ntpd      # RHEL/CentOS
+systemctl status ntp       # Debian/Ubuntu legacy ntp
+systemctl status ntpsec    # Debian/Ubuntu NTPsec
 ```
 
 ## Method 1: Using chrony (Recommended)
@@ -103,7 +106,6 @@ Basic configuration:
 
 # Use public NTP servers
 pool pool.ntp.org iburst
-pool time.google.com iburst
 pool time.cloudflare.com iburst
 
 # Allow NTP client access from local network
@@ -132,13 +134,16 @@ makestep 1.0 3
 
 ```bash
 # Start the service
-sudo systemctl start chronyd
+sudo systemctl start chrony      # Debian/Ubuntu
+sudo systemctl start chronyd     # RHEL/CentOS/Rocky/Arch
 
 # Enable on boot
-sudo systemctl enable chronyd
+sudo systemctl enable chrony     # Debian/Ubuntu
+sudo systemctl enable chronyd    # RHEL/CentOS/Rocky/Arch
 
 # Check status
-sudo systemctl status chronyd
+sudo systemctl status chrony     # Debian/Ubuntu
+sudo systemctl status chronyd    # RHEL/CentOS/Rocky/Arch
 ```
 
 ### Verify chrony Synchronization
@@ -148,7 +153,7 @@ sudo systemctl status chronyd
 chronyc tracking
 
 # Example output:
-# Reference ID    : A29FC801 (time.google.com)
+# Reference ID    : A29FC801 (time.cloudflare.com)
 # Stratum         : 2
 # Ref time (UTC)  : Fri Jan 24 10:15:30 2026
 # System time     : 0.000001234 seconds fast of NTP time
@@ -193,7 +198,7 @@ sudo nano /etc/systemd/timesyncd.conf
 ```ini
 # /etc/systemd/timesyncd.conf
 [Time]
-NTP=pool.ntp.org time.google.com time.cloudflare.com
+NTP=pool.ntp.org time.cloudflare.com
 FallbackNTP=0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org
 RootDistanceMaxSec=5
 PollIntervalMinSec=32
@@ -204,12 +209,13 @@ PollIntervalMaxSec=2048
 
 ```bash
 # Disable other NTP services first
-sudo systemctl stop chronyd
-sudo systemctl disable chronyd
+sudo systemctl stop chrony      # Debian/Ubuntu
+sudo systemctl disable chrony   # Debian/Ubuntu
+sudo systemctl stop chronyd     # RHEL/CentOS/Rocky/Arch
+sudo systemctl disable chronyd  # RHEL/CentOS/Rocky/Arch
 
 # Enable timesyncd
-sudo systemctl enable systemd-timesyncd
-sudo systemctl start systemd-timesyncd
+sudo timedatectl set-ntp true
 
 # Check status
 timedatectl timesync-status
@@ -232,8 +238,11 @@ The classic ntpd is still used on some systems, especially older ones.
 ### Install ntpd
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu (legacy ntp package)
 sudo apt install ntp
+
+# Debian/Ubuntu (modern NTPsec package)
+sudo apt install ntpsec
 
 # RHEL/CentOS (older versions)
 sudo yum install ntp
@@ -243,7 +252,8 @@ sudo yum install ntp
 
 ```bash
 # Edit configuration
-sudo nano /etc/ntp.conf
+sudo nano /etc/ntp.conf           # traditional ntpd
+sudo nano /etc/ntpsec/ntp.conf    # NTPsec on Debian/Ubuntu
 ```
 
 ```ini
@@ -274,8 +284,12 @@ restrict ::1
 
 ```bash
 # Start and enable
-sudo systemctl start ntpd
-sudo systemctl enable ntpd
+sudo systemctl start ntpd      # RHEL/CentOS
+sudo systemctl enable ntpd     # RHEL/CentOS
+sudo systemctl start ntp       # Debian/Ubuntu legacy ntp
+sudo systemctl enable ntp      # Debian/Ubuntu legacy ntp
+sudo systemctl start ntpsec    # Debian/Ubuntu NTPsec
+sudo systemctl enable ntpsec   # Debian/Ubuntu NTPsec
 
 # Check status
 ntpq -p
@@ -291,7 +305,7 @@ flowchart TD
     end
 
     subgraph "Stratum 1"
-        B1[time.google.com]
+        B1[Stratum 1 Time Server]
         B2[time.nist.gov]
     end
 
@@ -327,7 +341,7 @@ For larger networks, set up an internal NTP server to reduce external traffic an
 
 # Upstream NTP sources
 pool pool.ntp.org iburst maxsources 4
-pool time.google.com iburst maxsources 2
+pool time.cloudflare.com iburst maxsources 2
 
 # Allow clients from your network
 allow 192.168.0.0/16
@@ -462,9 +476,11 @@ nc -zuv pool.ntp.org 123
 sudo chronyc -a makestep
 
 # Or stop chrony and set time manually
-sudo systemctl stop chronyd
+sudo systemctl stop chrony      # Debian/Ubuntu
+sudo systemctl stop chronyd     # RHEL/CentOS/Rocky/Arch
 sudo date -s "2026-01-24 10:15:30"
-sudo systemctl start chronyd
+sudo systemctl start chrony     # Debian/Ubuntu
+sudo systemctl start chronyd    # RHEL/CentOS/Rocky/Arch
 ```
 
 ### Time Drift Debugging
@@ -486,11 +502,11 @@ watch -n 10 'chronyc tracking | grep "System time"'
 
 ```bash
 # Generate NTP key
-sudo sh -c 'echo "1 SHA1 $(openssl rand -hex 20)" >> /etc/chrony/chrony.keys'
+sudo sh -c 'echo "1 SHA256 HEX:$(openssl rand -hex 32)" >> /etc/chrony/chrony.keys'
 
 # Set permissions
 sudo chmod 640 /etc/chrony/chrony.keys
-sudo chown root:chrony /etc/chrony/chrony.keys
+sudo chown root:chrony /etc/chrony/chrony.keys  # use root:_chrony on Debian/Ubuntu if needed
 ```
 
 Configure authenticated server in chrony.conf:
@@ -564,7 +580,7 @@ flowchart TD
     A --> E[Use chrony over ntpd]
 
     B --> B1[At least 3 sources]
-    B --> B2[Mix providers]
+    B --> B2[Do not mix leap-smearing and non-smearing sources]
 
     C --> C1[Reduces external traffic]
     C --> C2[Consistent time across network]

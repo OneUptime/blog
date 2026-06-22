@@ -17,8 +17,9 @@ Install the required packages:
 ```bash
 npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
 npm install @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http
-npm install @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics
-npm install bullmq ioredis
+npm install @opentelemetry/sdk-trace-base @opentelemetry/sdk-metrics @opentelemetry/resources @opentelemetry/semantic-conventions
+npm install bullmq ioredis express
+npm install --save-dev @types/express
 ```
 
 ## Basic Tracing Setup
@@ -32,21 +33,25 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'bullmq-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'bullmq-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
 const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
+  url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
 const sdk = new NodeSDK({
@@ -269,7 +274,11 @@ class InstrumentedWorker {
               try {
                 // Remove trace context from data before processing
                 const { _traceContext, ...cleanData } = jobData;
-                const cleanJob = { ...job, data: cleanData };
+                const cleanJob = Object.assign(
+                  Object.create(Object.getPrototypeOf(job)),
+                  job,
+                  { data: cleanData }
+                );
 
                 const result = await processor(cleanJob as Job, span);
 
@@ -337,13 +346,13 @@ Full application with tracing:
 import './tracing'; // Must be first import
 import express from 'express';
 import { Redis } from 'ioredis';
-import { trace, SpanKind, context } from '@opentelemetry/api';
+import { trace, SpanStatusCode, context } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('bullmq-app');
 
 const connection = new Redis({
-  host: 'localhost',
-  port: 6379,
+  host: process.env.REDIS_HOST || 'localhost',
+  port: Number(process.env.REDIS_PORT || 6379),
   maxRetriesPerRequest: null,
 });
 
@@ -438,7 +447,7 @@ process.on('SIGTERM', async () => {
 Add custom metrics:
 
 ```typescript
-import { metrics, ValueType } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('bullmq-metrics');
 
@@ -586,7 +595,7 @@ services:
     ports:
       - '3000:3000'
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4318/v1/traces
       - REDIS_HOST=redis
     depends_on:
       - redis
@@ -612,7 +621,8 @@ services:
 Add custom processing to spans:
 
 ```typescript
-import { SpanProcessor, ReadableSpan } from '@opentelemetry/sdk-trace-node';
+import { Context } from '@opentelemetry/api';
+import { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 class BullMQSpanProcessor implements SpanProcessor {
   forceFlush(): Promise<void> {
@@ -623,7 +633,7 @@ class BullMQSpanProcessor implements SpanProcessor {
     return Promise.resolve();
   }
 
-  onStart(span: Span): void {
+  onStart(span: Span, _parentContext: Context): void {
     // Add common attributes to all BullMQ spans
     if (span.name.startsWith('bullmq.')) {
       span.setAttribute('service.component', 'bullmq');
@@ -650,7 +660,7 @@ class BullMQSpanProcessor implements SpanProcessor {
 Pass additional context through jobs:
 
 ```typescript
-import { propagation, baggage, context } from '@opentelemetry/api';
+import { propagation, context } from '@opentelemetry/api';
 
 class ContextAwareQueue extends InstrumentedQueue {
   async addWithBaggage(
@@ -660,13 +670,12 @@ class ContextAwareQueue extends InstrumentedQueue {
     options?: any
   ): Promise<Job> {
     // Create baggage
-    const baggageEntries = Object.entries(baggageItems).map(([key, value]) => [
-      key,
-      { value },
-    ]);
-    const bag = baggage.setEntries(baggage.getBaggage(context.active()) || baggage.createBaggage(), baggageEntries);
+    let bag = propagation.getBaggage(context.active()) || propagation.createBaggage();
+    Object.entries(baggageItems).forEach(([key, value]) => {
+      bag = bag.setEntry(key, { value });
+    });
 
-    const ctx = baggage.setBaggage(context.active(), bag);
+    const ctx = propagation.setBaggage(context.active(), bag);
 
     return context.with(ctx, () => {
       // Serialize baggage into job data
@@ -706,8 +715,13 @@ class BaggageAwareWorker extends InstrumentedWorker {
 
         // Remove baggage from data
         const { _baggage, ...cleanData } = job.data;
+        const cleanJob = Object.assign(
+          Object.create(Object.getPrototypeOf(job)),
+          job,
+          { data: cleanData }
+        );
 
-        return processor({ ...job, data: cleanData } as Job, span, jobBaggage);
+        return processor(cleanJob as Job, span, jobBaggage);
       },
       options
     );

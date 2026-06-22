@@ -64,7 +64,7 @@ sequenceDiagram
 cat /var/log/syslog | head -n 5
 
 # The error happens because:
-# - cat reads the entire file
+# - cat writes file data until the pipe closes
 # - head only needs 5 lines then exits
 # - cat tries to write remaining data to closed pipe
 
@@ -107,10 +107,11 @@ long_running_command > >(head -n 1)
 
 # SIGPIPE results in exit code 128 + 13 = 141
 yes | head -n 1
-echo "Exit code: ${PIPESTATUS[0]}"  # Shows 141
+status=("${PIPESTATUS[@]}")
+echo "Exit code: ${status[0]}"  # Shows 141
 
 # Check for broken pipe in scripts
-if [ "${PIPESTATUS[0]}" -eq 141 ]; then
+if [ "${status[0]}" -eq 141 ]; then
     echo "Broken pipe occurred (expected)"
 fi
 ```
@@ -156,9 +157,10 @@ echo "Third: ${PIPESTATUS[2]}"   # 0
 # Trap and ignore SIGPIPE
 trap '' PIPE
 
-# Now broken pipe will not terminate commands
-yes | head -n 1
-echo "Completed without signal"
+# Now SIGPIPE is ignored by this shell and inherited by child processes.
+# Writers can still report write errors when the pipe closes.
+printf '%s\n' {1..100000} | head -n 1
+echo "Completed; check the writer status if errors matter"
 
 # Reset trap
 trap - PIPE
@@ -183,27 +185,14 @@ quiet_pipe() {
 ```bash
 #!/bin/bash
 
-# Function to handle pipefail correctly
-safe_pipeline() {
-    local result
-    set +o pipefail  # Temporarily disable
+# Capture PIPESTATUS immediately after the pipeline.
+yes | head -n 1
+codes=("${PIPESTATUS[@]}")
 
-    result=$("$@")
-    local exit_code=$?
-
-    set -o pipefail  # Re-enable
-
-    # Return result, ignoring broken pipe (141)
-    echo "$result"
-
-    if [ $exit_code -ne 0 ] && [ $exit_code -ne 141 ]; then
-        return $exit_code
-    fi
-    return 0
-}
-
-# Usage
-output=$(safe_pipeline bash -c 'yes | head -n 1')
+if [ "${codes[0]}" -ne 0 ] && [ "${codes[0]}" -ne 141 ]; then
+    echo "Producer failed with exit code ${codes[0]}" >&2
+    exit "${codes[0]}"
+fi
 ```
 
 ### Method 4: Use Process Substitution
@@ -211,12 +200,12 @@ output=$(safe_pipeline bash -c 'yes | head -n 1')
 ```bash
 #!/bin/bash
 
-# Process substitution can avoid some broken pipe issues
-# Because it runs in a subshell
+# Process substitution can keep the main command's status separate
+# from the producer's SIGPIPE status.
 
 head -n 10 < <(yes "hello")
 
-# This works because the subshell handles SIGPIPE
+# yes may still receive SIGPIPE, but the head command exits successfully
 ```
 
 ## Pipeline Error Handling Flow
@@ -224,10 +213,10 @@ head -n 10 < <(yes "hello")
 ```mermaid
 flowchart TD
     A[Start Pipeline] --> B{set -o pipefail?}
-    B -->|Yes| C[Track all exit codes]
+    B -->|Yes| C[Use rightmost non-zero status]
     B -->|No| D[Only track last exit code]
 
-    C --> E{Any command fails?}
+    C --> E{Pipeline status non-zero?}
     E -->|Yes| F{Exit code 141?}
     F -->|Yes| G{Broken pipe acceptable?}
     G -->|Yes| H[Continue execution]
@@ -282,7 +271,7 @@ grep -m 1 "pattern" file.txt
 awk '/pattern/ {print; exit}' file.txt
 
 # Use sed to process and quit
-sed -n '/pattern/p;q' file.txt
+sed -n '/pattern/{p;q;}' file.txt
 ```
 
 ### Practice 3: Handle SIGPIPE in Long-Running Scripts
@@ -305,7 +294,7 @@ trap '' PIPE  # Ignore SIGPIPE
 process_data() {
     while true; do
         generate_data | consumer_that_might_exit_early
-        # Script continues even if consumer exits
+        # The loop continues; producers may still report write errors
     done
 }
 ```
@@ -315,26 +304,18 @@ process_data() {
 ```bash
 #!/bin/bash
 
-# Function to run pipeline with proper error handling
+# Function to run a pipeline string with aggregate error handling
 run_pipeline() {
     local description="$1"
     shift
 
-    # Run the pipeline
-    eval "$@"
+    # Run the pipeline. eval exposes the pipeline's aggregate status,
+    # not every stage's PIPESTATUS from inside the evaluated string.
+    ( set -o pipefail; eval "$@" )
+    local code=$?
 
-    # Check all exit codes
-    local codes=("${PIPESTATUS[@]}")
-    local failed=false
-
-    for i in "${!codes[@]}"; do
-        if [ "${codes[$i]}" -ne 0 ] && [ "${codes[$i]}" -ne 141 ]; then
-            echo "ERROR: Pipeline '$description' failed at command $i with exit code ${codes[$i]}" >&2
-            failed=true
-        fi
-    done
-
-    if [ "$failed" = true ]; then
+    if [ "$code" -ne 0 ] && [ "$code" -ne 141 ]; then
+        echo "ERROR: Pipeline '$description' failed with exit code $code" >&2
         return 1
     fi
     return 0
@@ -352,19 +333,19 @@ run_pipeline "extract data" 'cat data.txt | grep "pattern" | head -n 10'
 #!/bin/bash
 
 # Process large log files efficiently
-# This avoids broken pipe by not reading entire files
+# This limits the number of matching lines returned
 
 process_recent_errors() {
     local logfile="$1"
     local count="${2:-10}"
 
-    # Use tac to read from end, avoiding need to read entire file
-    # tail with -n is more efficient than head in pipelines
+    # Use tac to read from the end; tac may still receive SIGPIPE
+    # when grep exits after enough matches
     tac "$logfile" 2>/dev/null | grep -m "$count" "ERROR" | tac
 }
 
 # Alternative: use tail -f for continuous monitoring
-# This naturally handles the pipeline
+# Downstream head exits after 5 matches; upstream commands should tolerate SIGPIPE
 tail -f /var/log/app.log | grep --line-buffered "ERROR" | head -n 5
 ```
 
@@ -394,14 +375,13 @@ process_data() {
     fi
 
     # Stage 3: Load (might exit early)
-    # Ignore broken pipe here as it is expected
-    load_data < "$checkpoint.stage2" 2>/dev/null || {
-        local code=$?
-        if [ $code -ne 141 ]; then
-            echo "Load stage failed with code $code" >&2
-            return 1
-        fi
-    }
+    # Ignore broken pipe from the producer here as it is expected
+    cat "$checkpoint.stage2" | load_data 2>/dev/null
+    local code=$?
+    if [ $code -ne 0 ] && [ $code -ne 141 ]; then
+        echo "Load stage failed with code $code" >&2
+        return 1
+    fi
 
     # Cleanup
     rm -f "$checkpoint".stage*
@@ -420,22 +400,24 @@ interactive_search() {
     local pattern="$1"
     local file="$2"
 
-    # Use a pager that handles SIGPIPE gracefully
-    grep "$pattern" "$file" 2>/dev/null | {
+    # Use a pager; if the user quits early, grep may receive SIGPIPE
+    (
+        set -o pipefail
+        grep "$pattern" "$file" 2>/dev/null | {
         # Check if we are connected to a terminal
         if [ -t 1 ]; then
             less
         else
             cat
         fi
-    } || {
-        local code=$?
-        # Ignore broken pipe from less (user quit early)
-        if [ $code -eq 141 ]; then
-            return 0
-        fi
-        return $code
-    }
+        }
+    )
+    local code=$?
+    # Ignore broken pipe from grep when the pager exits early
+    if [ $code -eq 141 ]; then
+        return 0
+    fi
+    return $code
 }
 ```
 
@@ -493,7 +475,7 @@ strace -f -e trace=write,signal bash -c 'yes | head -n 1' 2>&1 | tail -20
 ```bash
 #!/bin/bash
 
-# A complete pipeline wrapper with proper error handling
+# A complete pipeline wrapper with aggregate error handling
 
 # Configuration
 IGNORE_SIGPIPE=true
@@ -512,33 +494,28 @@ execute_pipeline() {
 
     log "Starting pipeline: $name"
 
-    # Execute and capture all exit codes
-    eval "$pipeline"
-    local codes=("${PIPESTATUS[@]}")
+    # Execute and capture the aggregate pipeline status.
+    # eval does not preserve per-stage PIPESTATUS from inside the string.
+    ( set -o pipefail; eval "$pipeline" )
+    local code=$?
 
     # Analyze results
     local success=true
-    local details=""
 
-    for i in "${!codes[@]}"; do
-        local code="${codes[$i]}"
-        details+="stage$i=$code "
-
-        if [ "$code" -ne 0 ]; then
-            if [ "$code" -eq 141 ] && [ "$ignore_broken_pipe" = true ]; then
-                log "Stage $i: Broken pipe (ignored)"
-            else
-                success=false
-                log "Stage $i: Failed with exit code $code"
-            fi
+    if [ "$code" -ne 0 ]; then
+        if [ "$code" -eq 141 ] && [ "$ignore_broken_pipe" = true ]; then
+            log "Pipeline returned broken pipe (ignored)"
+        else
+            success=false
+            log "Pipeline failed with exit code $code"
         fi
-    done
+    fi
 
     if [ "$success" = true ]; then
-        log "Pipeline '$name' completed successfully ($details)"
+        log "Pipeline '$name' completed successfully (status=$code)"
         return 0
     else
-        log "Pipeline '$name' failed ($details)"
+        log "Pipeline '$name' failed (status=$code)"
         return 1
     fi
 }
@@ -574,7 +551,7 @@ Broken pipe errors are a normal part of pipeline operation in Bash. Understandin
 
 Key strategies for handling broken pipes:
 
-- Trap SIGPIPE if you want to ignore it completely
+- Trap SIGPIPE only when you are prepared to handle write errors from commands that inherit the ignored signal
 - Check PIPESTATUS for fine-grained error handling
 - Use tools that read directly from files when possible
 - Consider if broken pipe is actually an error in your context

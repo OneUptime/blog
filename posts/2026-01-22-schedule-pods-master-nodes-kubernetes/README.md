@@ -261,22 +261,16 @@ resources:
 Ensure control plane components always have priority:
 
 ```yaml
-# System-critical pods get highest priority
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
-metadata:
-  name: system-critical
-value: 1000000000
-globalDefault: false
-description: "Critical system pods"
----
+# Kubernetes already provides system-node-critical and
+# system-cluster-critical for critical system pods.
+
 # Your workloads get lower priority
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: low-priority
 value: 100
-globalDefault: true
+globalDefault: false
 description: "Default low priority for workloads"
 ```
 
@@ -306,11 +300,13 @@ Verify which nodes accept pods:
 # List nodes with taints
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
-# Check if a specific pod can schedule
-kubectl auth can-i create pods --as=system:serviceaccount:default:default
+# Create a test pod and inspect scheduling events
+kubectl run test --image=nginx
+kubectl describe pod test
 
-# See where a pod would schedule (dry run)
-kubectl run test --image=nginx --dry-run=server -o yaml
+# See where the pod was scheduled
+kubectl get pod test -o wide
+kubectl delete pod test
 ```
 
 ## Summary

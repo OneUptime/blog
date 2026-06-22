@@ -81,7 +81,7 @@ Several services provide feature flag management for React Native applications. 
 
 ### LaunchDarkly
 
-LaunchDarkly is a feature management platform offering real-time flag updates, sophisticated targeting rules, and comprehensive SDKs. It provides excellent React Native support with their JavaScript SDK.
+LaunchDarkly is a feature management platform offering real-time flag updates, sophisticated targeting rules, and comprehensive SDKs. It provides excellent React Native support with its React Native SDK.
 
 **Pros:**
 - Real-time flag updates via streaming
@@ -127,16 +127,16 @@ Let us implement LaunchDarkly in a React Native application step by step.
 ### Installation
 
 ```bash
-npm install launchdarkly-react-native-client-sdk
+npm install @launchdarkly/react-native-client-sdk @react-native-async-storage/async-storage
 # or
 
-yarn add launchdarkly-react-native-client-sdk
+yarn add @launchdarkly/react-native-client-sdk @react-native-async-storage/async-storage
 ```
 
 For iOS, install the pods:
 
 ```bash
-cd ios && pod install
+npx pod-install
 ```
 
 ### Configuration
@@ -145,19 +145,21 @@ Create a configuration file to manage your LaunchDarkly setup:
 
 ```typescript
 // src/config/featureFlags.ts
-import LDClient, {
-  LDConfig,
+import {
+  AutoEnvAttributes,
+  LDOptions,
   LDContext,
-} from 'launchdarkly-react-native-client-sdk';
+  ReactNativeLDClient,
+} from '@launchdarkly/react-native-client-sdk';
 
 const LAUNCHDARKLY_MOBILE_KEY = 'your-mobile-key';
 
-export const ldConfig: LDConfig = {
-  mobileKey: LAUNCHDARKLY_MOBILE_KEY,
-  debugMode: __DEV__,
-  connectionTimeoutMillis: 10000,
-  backgroundPollingIntervalMillis: 3600000, // 1 hour
-  disableBackgroundUpdating: false,
+export const ldOptions: LDOptions = {
+  debug: __DEV__,
+  applicationInfo: {
+    id: 'your-app',
+    version: getAppVersion(),
+  },
 };
 
 export const createLDContext = (user: User): LDContext => ({
@@ -173,19 +175,19 @@ export const createLDContext = (user: User): LDContext => ({
   },
 });
 
-let ldClientInstance: LDClient | null = null;
+const ldClientInstance = new ReactNativeLDClient(
+  LAUNCHDARKLY_MOBILE_KEY,
+  AutoEnvAttributes.Enabled,
+  ldOptions
+);
 
 export const initializeLaunchDarkly = async (user: User): Promise<void> => {
   const context = createLDContext(user);
 
-  ldClientInstance = new LDClient();
-  await ldClientInstance.configure(ldConfig, context);
+  await ldClientInstance.identify(context);
 };
 
-export const getLDClient = (): LDClient => {
-  if (!ldClientInstance) {
-    throw new Error('LaunchDarkly client not initialized');
-  }
+export const getLDClient = (): ReactNativeLDClient => {
   return ldClientInstance;
 };
 ```
@@ -204,7 +206,6 @@ import React, {
   useCallback,
   ReactNode,
 } from 'react';
-import LDClient from 'launchdarkly-react-native-client-sdk';
 import { initializeLaunchDarkly, getLDClient } from '../config/featureFlags';
 
 interface FeatureFlagContextValue {
@@ -214,7 +215,7 @@ interface FeatureFlagContextValue {
   getAllFlags: () => Record<string, unknown>;
 }
 
-const FeatureFlagContext = createContext<FeatureFlagContextValue | null>(null);
+export const FeatureFlagContext = createContext<FeatureFlagContextValue | null>(null);
 
 interface FeatureFlagProviderProps {
   children: ReactNode;
@@ -229,20 +230,20 @@ export const FeatureFlagProvider: React.FC<FeatureFlagProviderProps> = ({
   const [flagValues, setFlagValues] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
+    const client = getLDClient();
+    const handleFlagChanges = () => setFlagValues(client.allFlags());
+
     const initialize = async () => {
       try {
         await initializeLaunchDarkly(user);
-        const client = getLDClient();
 
         // Get all flag values
-        const allFlags = await client.allFlags();
+        const allFlags = client.allFlags();
         setFlagValues(allFlags);
         setIsInitialized(true);
 
         // Listen for flag changes
-        client.registerAllFlagsListener('all-flags-listener', (updatedFlags) => {
-          setFlagValues((prev) => ({ ...prev, ...updatedFlags }));
-        });
+        client.on('change', handleFlagChanges);
       } catch (error) {
         console.error('Failed to initialize feature flags:', error);
         setIsInitialized(true); // Continue with defaults
@@ -252,9 +253,7 @@ export const FeatureFlagProvider: React.FC<FeatureFlagProviderProps> = ({
     initialize();
 
     return () => {
-      const client = getLDClient();
-      client?.unregisterAllFlagsListener('all-flags-listener');
-      client?.close();
+      client.off('change', handleFlagChanges);
     };
   }, [user]);
 
@@ -352,9 +351,9 @@ Firebase Remote Config offers a cost-effective alternative with good React Nativ
 ### Installation
 
 ```bash
-npm install @react-native-firebase/app @react-native-firebase/remote-config
+npm install @react-native-firebase/app @react-native-firebase/analytics @react-native-firebase/remote-config
 # or
-yarn add @react-native-firebase/app @react-native-firebase/remote-config
+yarn add @react-native-firebase/app @react-native-firebase/analytics @react-native-firebase/remote-config
 ```
 
 ### Configuration
@@ -432,11 +431,14 @@ import React, {
   useCallback,
   ReactNode,
 } from 'react';
-import remoteConfig from '@react-native-firebase/remote-config';
+import remoteConfig, {
+  activate,
+  getRemoteConfig,
+  onConfigUpdate,
+} from '@react-native-firebase/remote-config';
 import {
   initializeRemoteConfig,
   getRemoteConfigValue,
-  getAllRemoteConfigValues,
 } from '../config/firebaseRemoteConfig';
 
 interface FirebaseFlagContextValue {
@@ -469,9 +471,15 @@ export const FirebaseFeatureFlagProvider: React.FC<{ children: ReactNode }> = ({
     initialize();
 
     // Listen for config updates when app is in foreground
-    const unsubscribe = remoteConfig().onConfigUpdated(async () => {
-      await remoteConfig().activate();
-      setUpdateTrigger((prev) => prev + 1);
+    const remoteConfigInstance = getRemoteConfig();
+    const unsubscribe = onConfigUpdate(remoteConfigInstance, {
+      next: async () => {
+        await activate(remoteConfigInstance);
+        setUpdateTrigger((prev) => prev + 1);
+      },
+      error: (error) => {
+        console.error('Remote Config update listener failed:', error);
+      },
     });
 
     return () => unsubscribe();
@@ -586,7 +594,8 @@ class CustomFeatureFlagService {
   private defaultFlags: Record<string, FlagValue> = {};
   private apiUrl: string;
   private isInitialized = false;
-  private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private userContext: Record<string, unknown> | null = null;
   private listeners: Set<(flags: Record<string, FlagValue>) => void> = new Set();
 
   constructor(apiUrl: string, defaults: Record<string, FlagValue>) {
@@ -596,6 +605,8 @@ class CustomFeatureFlagService {
   }
 
   async initialize(userContext: Record<string, unknown>): Promise<void> {
+    this.userContext = userContext;
+
     // Load cached flags first for instant startup
     await this.loadFromCache();
 
@@ -606,6 +617,14 @@ class CustomFeatureFlagService {
 
     // Set up periodic refresh
     this.startPeriodicRefresh(userContext);
+  }
+
+  async refresh(): Promise<void> {
+    if (!this.userContext) {
+      throw new Error('Feature flag service has not been initialized');
+    }
+
+    await this.fetchFlags(this.userContext);
   }
 
   private async loadFromCache(): Promise<void> {

@@ -56,7 +56,13 @@ metadata:
   name: loki-distributor
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: loki-distributor
   template:
+    metadata:
+      labels:
+        app: loki-distributor
     spec:
       containers:
         - name: distributor
@@ -96,9 +102,16 @@ kind: StatefulSet
 metadata:
   name: loki-ingester
 spec:
+  serviceName: loki-ingester
   replicas: 6
   podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: loki-ingester
   template:
+    metadata:
+      labels:
+        app: loki-ingester
     spec:
       containers:
         - name: ingester
@@ -132,7 +145,13 @@ metadata:
   name: loki-querier
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: loki-querier
   template:
+    metadata:
+      labels:
+        app: loki-querier
     spec:
       containers:
         - name: querier
@@ -200,7 +219,6 @@ ingester:
   chunk_idle_period: 30m
   chunk_block_size: 262144
   chunk_retain_period: 1m
-  max_transfer_retries: 0
   wal:
     enabled: true
     dir: /loki/wal
@@ -220,7 +238,7 @@ limits_config:
 query_scheduler:
   max_outstanding_requests_per_tenant: 4096
 
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 4096
   compress_responses: true
   log_queries_longer_than: 10s
@@ -257,7 +275,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: s3
 ```
 
 ## Read Path Optimization
@@ -265,12 +282,15 @@ storage_config:
 ### Query Frontend Configuration
 
 ```yaml
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 4096
   compress_responses: true
   tail_proxy_url: http://loki-querier:3100
 
   # Query scheduling
+  scheduler_address: loki-query-scheduler:9095
+
+frontend_worker:
   scheduler_address: loki-query-scheduler:9095
 
 query_scheduler:
@@ -380,7 +400,6 @@ distributor:
       store: memberlist
 
 limits_config:
-  enforce_metric_name: false
   ingestion_rate_mb: 64
   ingestion_burst_size_mb: 128
   per_stream_rate_limit: 10MB
@@ -394,14 +413,16 @@ limits_config:
 ```yaml
 common:
   replication_factor: 3
-  ring:
-    zone_awareness_enabled: true
 
 ingester:
   lifecycler:
     ring:
       replication_factor: 3
     availability_zone: ${ZONE}  # Set from environment
+
+distributor:
+  ring:
+    zone_awareness_enabled: true
 ```
 
 ### Kubernetes Zone Configuration
@@ -412,8 +433,17 @@ kind: StatefulSet
 metadata:
   name: loki-ingester-zone-a
 spec:
+  serviceName: loki-ingester
   replicas: 2
+  selector:
+    matchLabels:
+      app: loki-ingester
+      zone: zone-a
   template:
+    metadata:
+      labels:
+        app: loki-ingester
+        zone: zone-a
     spec:
       affinity:
         nodeAffinity:
@@ -440,7 +470,9 @@ spec:
 sum by (pod) (rate(loki_distributor_bytes_received_total[5m])) / 1024 / 1024
 
 # Ingester memory pressure
-sum by (pod) (loki_ingester_memory_chunks) * 100 / sum by (pod) (loki_ingester_chunks_stored_total)
+sum by (pod) (container_memory_working_set_bytes{container="ingester"})
+/
+sum by (pod) (container_spec_memory_limit_bytes{container="ingester"})
 
 # Query queue depth
 loki_query_scheduler_queue_length

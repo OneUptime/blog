@@ -529,9 +529,9 @@ curl -u elastic:password -X GET "localhost:9200/site-content/_search?pretty" -H 
   "aggs": {
     "paths": {
       "terms": {
-        "field": "path",
+        "field": "path.keyword",
         "size": 20,
-        "include": "/[^/]+/[^/]+"
+        "include": "/[^/]+/[^/]+.*"
       }
     }
   }
@@ -589,48 +589,7 @@ curl -u elastic:password -X PUT "localhost:9200/_scripts/site-search" -H 'Conten
 {
   "script": {
     "lang": "mustache",
-    "source": {
-      "query": {
-        "function_score": {
-          "query": {
-            "bool": {
-              "must": [
-                {
-                  "multi_match": {
-                    "query": "{{query}}",
-                    "fields": ["title^3", "content", "excerpt^2", "tags"],
-                    "fuzziness": "AUTO"
-                  }
-                }
-              ],
-              "filter": [
-                {{#content_type}}
-                {"term": {"content_type": "{{content_type}}"}}
-                {{/content_type}}
-              ]
-            }
-          },
-          "functions": [
-            {
-              "field_value_factor": {
-                "field": "popularity",
-                "factor": 0.01,
-                "modifier": "log1p",
-                "missing": 1
-              }
-            }
-          ]
-        }
-      },
-      "from": "{{from}}{{^from}}0{{/from}}",
-      "size": "{{size}}{{^size}}20{{/size}}",
-      "_source": ["url", "title", "excerpt", "content_type", "published_at"],
-      "highlight": {
-        "fields": {
-          "content": {"fragment_size": 150, "number_of_fragments": 2}
-        }
-      }
-    }
+    "source": "{ \"query\": { \"function_score\": { \"query\": { \"bool\": { \"must\": [ { \"multi_match\": { \"query\": \"{{query}}\", \"fields\": [\"title^3\", \"content\", \"excerpt^2\", \"tags\"], \"fuzziness\": \"AUTO\" } } ], \"filter\": [ {{#content_type}} { \"term\": { \"content_type\": \"{{content_type}}\" } } {{/content_type}} ] } }, \"functions\": [ { \"field_value_factor\": { \"field\": \"popularity\", \"factor\": 0.01, \"modifier\": \"log1p\", \"missing\": 1 } } ] } }, \"from\": {{from}}{{^from}}0{{/from}}, \"size\": {{size}}{{^size}}20{{/size}}, \"_source\": [\"url\", \"title\", \"excerpt\", \"content_type\", \"published_at\"], \"highlight\": { \"fields\": { \"content\": { \"fragment_size\": 150, \"number_of_fragments\": 2 } } } }"
   }
 }'
 

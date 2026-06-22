@@ -12,7 +12,7 @@ Row-Level Security (RLS) in PostgreSQL enables fine-grained access control at th
 
 ## Prerequisites
 
-- PostgreSQL 9.5+ (RLS introduced)
+- PostgreSQL 9.5+ (RLS introduced; use a currently supported PostgreSQL version in production)
 - Understanding of PostgreSQL roles and privileges
 - Multi-tenant or data isolation requirements
 
@@ -163,7 +163,7 @@ SET app.tenant_id = '42';
 -- All queries now filtered by tenant_id = 42
 SELECT * FROM tenant_data;
 
--- Reset for admin operations (if allowed)
+-- Reset before switching to a separate admin role or BYPASSRLS connection
 RESET app.tenant_id;
 ```
 
@@ -177,7 +177,7 @@ import psycopg
 def get_connection(tenant_id):
     conn = psycopg.connect("dbname=myapp user=appuser")
     with conn.cursor() as cur:
-        cur.execute("SET app.tenant_id = %s", (tenant_id,))
+        cur.execute("SELECT set_config('app.tenant_id', %s, false)", (str(tenant_id),))
     return conn
 
 # Each tenant gets isolated view
@@ -194,8 +194,14 @@ const pool = new Pool();
 async function queryForTenant(tenantId, query, params) {
   const client = await pool.connect();
   try {
-    await client.query('SET app.tenant_id = $1', [tenantId]);
-    return await client.query(query, params);
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [String(tenantId)]);
+    const result = await client.query(query, params);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
   } finally {
     client.release();
   }
@@ -441,7 +447,7 @@ CREATE TABLE audit_log (
     timestamp TIMESTAMP DEFAULT NOW()
 );
 
--- Audit trigger (runs with table owner privileges)
+-- Audit trigger (runs with function owner privileges)
 CREATE OR REPLACE FUNCTION audit_trigger()
 RETURNS TRIGGER AS $$
 BEGIN

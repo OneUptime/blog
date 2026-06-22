@@ -23,9 +23,9 @@ flowchart TD
 
     subgraph Auth0[Auth0 Platform]
         Universal[Universal Login]
-        AuthAPI[Authentication API]
+        JWKS[JWKS Endpoint]
         MgmtAPI[Management API]
-        Rules[Rules/Actions]
+        Actions[Actions]
     end
 
     subgraph IdPs[Identity Providers]
@@ -38,7 +38,7 @@ flowchart TD
     Universal -->|2. Authenticate| IdPs
     Universal -->|3. Tokens| Frontend
     Frontend -->|4. API Call| Backend
-    Backend -->|5. Verify Token| AuthAPI
+    Backend -->|5. Verify JWT/JWKS| JWKS
 ```
 
 ## Step 1: Create and Configure Auth0 Application
@@ -71,13 +71,12 @@ const { ManagementClient } = require('auth0');
 const management = new ManagementClient({
     domain: 'your-tenant.auth0.com',
     clientId: 'MANAGEMENT_API_CLIENT_ID',
-    clientSecret: 'MANAGEMENT_API_CLIENT_SECRET',
-    scope: 'create:clients update:clients read:clients'
+    clientSecret: 'MANAGEMENT_API_CLIENT_SECRET'
 });
 
 // Create a Single Page Application
 async function createSPAApplication() {
-    const client = await management.createClient({
+    const client = await management.clients.create({
         name: 'My React App',
         app_type: 'spa',
 
@@ -125,7 +124,7 @@ async function createSPAApplication() {
 
 // Create a Machine-to-Machine Application
 async function createM2MApplication() {
-    const client = await management.createClient({
+    const client = await management.clients.create({
         name: 'My Backend Service',
         app_type: 'non_interactive',
 
@@ -138,7 +137,7 @@ async function createM2MApplication() {
     });
 
     // Grant access to an API
-    await management.createClientGrant({
+    await management.clientGrants.create({
         client_id: client.client_id,
         audience: 'https://api.example.com',
         scope: ['read:users', 'write:users']
@@ -158,7 +157,7 @@ Register your API in Auth0 to protect it with OAuth2.
 // Configure Auth0 API (Resource Server)
 
 async function createAPI() {
-    const api = await management.createResourceServer({
+    const api = await management.resourceServers.create({
         name: 'My API',
         identifier: 'https://api.example.com',  // This becomes the audience
 
@@ -169,6 +168,7 @@ async function createAPI() {
 
         // Enable RBAC
         enforce_policies: true,
+        token_dialect: 'access_token_authz',
 
         // Scopes/permissions
         scopes: [
@@ -186,14 +186,14 @@ async function createAPI() {
 // Create permissions and assign to roles
 async function setupRBAC() {
     // Create a role
-    const adminRole = await management.createRole({
+    const adminRole = await management.roles.create({
         name: 'Admin',
         description: 'Full access to all resources'
     });
 
     // Assign permissions to role
-    await management.addPermissionsInRole(
-        { id: adminRole.id },
+    await management.roles.permissions.add(
+        adminRole.id,
         {
             permissions: [
                 { resource_server_identifier: 'https://api.example.com', permission_name: 'read:users' },
@@ -224,7 +224,7 @@ export const auth0Config = {
         audience: 'https://api.example.com',
 
         // Request offline_access for refresh tokens
-        scope: 'openid profile email offline_access',
+        scope: 'openid profile email offline_access read:users',
 
         // Redirect after login
         redirect_uri: window.location.origin + '/callback'
@@ -307,7 +307,7 @@ function Dashboard() {
         <div>
             <h1>Welcome, {user.name}</h1>
             <button onClick={fetchProtectedData}>Load Data</button>
-            <button onClick={() => logout({ returnTo: window.location.origin })}>
+            <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>
                 Logout
             </button>
             {data && <pre>{JSON.stringify(data, null, 2)}</pre>}
@@ -363,7 +363,7 @@ app.get('/api/users', checkJwt, requiredScopes('read:users'), (req, res) => {
 // Endpoint with multiple required scopes
 app.delete('/api/users/:id',
     checkJwt,
-    requiredScopes('read:users', 'delete:users'),
+    requiredScopes(['read:users', 'delete:users']),
     (req, res) => {
         res.json({ message: `User ${req.params.id} deleted` });
     }
@@ -524,10 +524,11 @@ exports.onExecutePostLogin = async (event, api) => {
     });
 
     // Check for suspicious activity
-    const logs = await management.getLogs({
+    const logsPage = await management.logs.list({
         q: `type:f AND user_id:"${event.user.user_id}" AND date:[${getOneHourAgo()} TO *]`,
         per_page: 10
     });
+    const logs = logsPage.data || [];
 
     if (logs.length >= 5) {
         // Too many failed attempts
@@ -561,7 +562,7 @@ function isNewDevice(event) {
 // Configure social and enterprise connections
 
 async function setupGoogleConnection() {
-    await management.createConnection({
+    await management.connections.create({
         name: 'google-oauth2',
         strategy: 'google-oauth2',
 
@@ -588,7 +589,7 @@ async function setupGoogleConnection() {
 }
 
 async function setupSAMLConnection() {
-    await management.createConnection({
+    await management.connections.create({
         name: 'enterprise-saml',
         strategy: 'samlp',
 
@@ -690,6 +691,7 @@ flowchart TD
 const tokenSettings = {
     // Use asymmetric signing
     signing_alg: 'RS256',
+    token_dialect: 'access_token_authz',
 
     // Short access token lifetime
     token_lifetime: 3600,  // 1 hour

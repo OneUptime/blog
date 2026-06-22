@@ -143,9 +143,9 @@ const documents = new Map<string, Y.Doc>();
 // Track connected clients per document
 const documentClients = new Map<string, Set<ws.WebSocket>>();
 
-// Message types for the sync protocol
+// Message types for this simple custom sync protocol
 interface SyncMessage {
-  type: 'sync-step-1' | 'sync-step-2' | 'update' | 'awareness';
+  type: 'initial-state' | 'update' | 'awareness';
   documentId: string;
   data?: Uint8Array;
   clientId?: string;
@@ -214,7 +214,7 @@ function handleConnection(socket: ws.WebSocket, documentId: string): void {
   // Send initial document state to the new client
   const initialState = Y.encodeStateAsUpdate(doc);
   const initMessage: SyncMessage = {
-    type: 'sync-step-1',
+    type: 'initial-state',
     documentId,
     data: initialState,
     clientId,
@@ -316,6 +316,7 @@ export class CollabClient {
   private options: CollabClientOptions;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private isConnected = false;
+  private shouldReconnect = true;
 
   constructor(options: CollabClientOptions) {
     this.options = options;
@@ -334,6 +335,7 @@ export class CollabClient {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = `${this.options.serverUrl}/doc/${this.options.documentId}`;
+      this.shouldReconnect = true;
 
       this.socket = new WebSocket(url);
 
@@ -353,7 +355,7 @@ export class CollabClient {
           this.handleMessage(message);
 
           // Resolve on first sync
-          if (message.type === 'sync-step-1') {
+          if (message.type === 'initial-state') {
             resolve();
           }
         } catch (error) {
@@ -365,7 +367,9 @@ export class CollabClient {
         console.log('Disconnected from server');
         this.isConnected = false;
         this.options.onDisconnect?.();
-        this.scheduleReconnect();
+        if (this.shouldReconnect) {
+          this.scheduleReconnect();
+        }
       });
 
       this.socket.on('error', (error) => {
@@ -383,9 +387,11 @@ export class CollabClient {
     const update = new Uint8Array(message.data);
 
     switch (message.type) {
-      case 'sync-step-1':
+      case 'initial-state':
         // Initial state from server
         Y.applyUpdate(this.doc, update, 'remote');
+        // Send our current state back so local offline edits can merge after reconnecting.
+        this.sendUpdate(Y.encodeStateAsUpdate(this.doc));
         console.log('Received initial document state');
         this.options.onSync?.();
         break;
@@ -449,8 +455,11 @@ export class CollabClient {
 
   // Disconnect from the server
   disconnect(): void {
+    this.shouldReconnect = false;
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
     if (this.socket) {
@@ -467,12 +476,10 @@ export class CollabClient {
 
 ## Adding Awareness for User Presence
 
-Awareness lets users see who else is editing and where their cursors are.
+Awareness lets users see who else is editing and where their cursors are. In production, you can use Yjs awareness utilities from `y-protocols/awareness`; this simplified example keeps user presence state locally so it can be sent over your own WebSocket messages.
 
 ```typescript
 // src/client/awareness.ts
-import * as Y from 'yjs';
-
 export interface UserState {
   id: string;
   name: string;
@@ -734,13 +741,13 @@ When deploying collaborative editing to production, consider these aspects:
 3. **Authentication**: Verify user identity and document access permissions
 4. **Rate limiting**: Prevent abuse by limiting update frequency
 5. **Compression**: Yjs updates can be compressed for bandwidth efficiency
-6. **Offline support**: Yjs works offline and syncs when reconnected
+6. **Offline support**: Yjs can merge offline edits, but your client must persist local updates and exchange state after reconnecting
 
 ---
 
 ## Conclusion
 
-Building real-time collaborative editing is complex, but libraries like Yjs handle the hardest parts. CRDTs provide automatic conflict resolution that works reliably across network partitions and high-latency connections.
+Building real-time collaborative editing is complex, but libraries like Yjs handle the hardest parts. CRDTs provide automatic conflict resolution that can merge changes created during network partitions and high-latency connections when your sync layer exchanges the missing updates.
 
 The key components are:
 - A CRDT library (Yjs) for conflict-free data synchronization

@@ -36,9 +36,9 @@ flowchart LR
     Events --> B
 ```
 
-## Built-in Callback Plugins
+## Built-in and Collection Callback Plugins
 
-Ansible includes several useful callback plugins out of the box.
+Ansible and common collections include several useful callback plugins.
 
 ### Listing Available Callbacks
 
@@ -48,22 +48,27 @@ Ansible includes several useful callback plugins out of the box.
 ansible-doc -t callback -l
 
 # Get details about a specific callback
-ansible-doc -t callback json
-ansible-doc -t callback yaml
-ansible-doc -t callback log_plays
+ansible-doc -t callback ansible.posix.json
+ansible-doc -t callback ansible.builtin.default
+ansible-doc -t callback community.general.log_plays
 ```
 
-### Common Built-in Callbacks
+If you install only `ansible-core`, install the collections used in these examples first:
+
+```bash
+ansible-galaxy collection install ansible.posix community.general
+```
+
+### Common Callbacks
 
 | Callback | Purpose |
 |----------|---------|
-| default | Standard terminal output |
-| json | JSON formatted output |
-| yaml | YAML formatted output |
-| minimal | Minimal output |
-| timer | Adds timing information |
-| profile_tasks | Shows task timing |
-| log_plays | Logs to files |
+| ansible.builtin.default | Standard terminal output |
+| ansible.posix.json | JSON formatted stdout output |
+| ansible.builtin.minimal | Minimal output |
+| ansible.posix.timer | Adds timing information |
+| ansible.posix.profile_tasks | Shows task timing |
+| community.general.log_plays | Logs to files |
 
 ## Configuring Callbacks in ansible.cfg
 
@@ -73,10 +78,11 @@ ansible-doc -t callback log_plays
 # ansible.cfg
 [defaults]
 # Set the stdout callback (only one can be active)
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 
 # Enable additional callbacks (can enable multiple)
-callbacks_enabled = timer, profile_tasks, log_plays
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, community.general.log_plays
 
 # Set callback plugin path for custom plugins
 callback_plugins = ./plugins/callbacks:/usr/share/ansible/plugins/callback
@@ -90,10 +96,10 @@ verbosity = 1
 
 ```bash
 # Set stdout callback via environment
-export ANSIBLE_STDOUT_CALLBACK=json
+export ANSIBLE_STDOUT_CALLBACK=ansible.posix.json
 
 # Enable additional callbacks
-export ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks
 
 # Run playbook with these settings
 ansible-playbook playbook.yml
@@ -106,7 +112,7 @@ The `log_plays` callback writes playbook output to log files.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = log_plays
+callbacks_enabled = community.general.log_plays
 
 [callback_log_plays]
 # Directory to store log files
@@ -139,10 +145,7 @@ For structured logging, use the JSON callback.
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = json
-
-# Or for non-stdout JSON logging
-callbacks_enabled = json
+stdout_callback = ansible.posix.json
 ```
 
 ```bash
@@ -160,7 +163,7 @@ Get timing information for performance analysis.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 
 [callback_profile_tasks]
 # Show task timing in output
@@ -197,12 +200,21 @@ DOCUMENTATION = '''
     short_description: Custom logging callback
     description:
         - This callback logs playbook events to a custom file format
+    options:
+        log_file:
+            description: File to write JSON lines to
+            default: /var/log/ansible/custom.log
+            env:
+                - name: ANSIBLE_CUSTOM_LOG_FILE
+            ini:
+                - section: callback_custom_logger
+                  key: log_file
     requirements:
-        - whitelisting in configuration
+        - enable in configuration
 '''
 
 from ansible.plugins.callback import CallbackBase
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 
@@ -222,17 +234,23 @@ class CallbackModule(CallbackBase):
 
     def __init__(self):
         super(CallbackModule, self).__init__()
-        self.log_file = os.environ.get(
-            'ANSIBLE_CUSTOM_LOG_FILE',
-            '/var/log/ansible/custom.log'
-        )
+        self.log_file = None
         self.playbook_name = None
         self.play_name = None
+
+    def set_options(self, task_keys=None, var_options=None, direct=None):
+        """Load options from configuration."""
+        super(CallbackModule, self).set_options(
+            task_keys=task_keys,
+            var_options=var_options,
+            direct=direct
+        )
+        self.log_file = self.get_option('log_file')
 
     def _log(self, category, data):
         """Write a log entry to the log file."""
         entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'category': category,
             'playbook': self.playbook_name,
             'play': self.play_name,
@@ -310,6 +328,9 @@ DOCUMENTATION = '''
     short_description: Send notifications to webhook
     description:
         - Sends playbook events to a webhook endpoint
+    requirements:
+        - requests
+        - enable in configuration
     options:
         webhook_url:
             description: URL to send notifications to
@@ -330,8 +351,7 @@ DOCUMENTATION = '''
 
 from ansible.plugins.callback import CallbackBase
 import requests
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class CallbackModule(CallbackBase):
@@ -375,7 +395,7 @@ class CallbackModule(CallbackBase):
 
         payload = {
             'event': event_type,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'playbook': self.playbook_name,
             'data': data
         }
@@ -551,20 +571,22 @@ flowchart TD
 # ansible.cfg - Complete callback configuration
 [defaults]
 # Primary output format (choose one)
-stdout_callback = yaml
-# Options: default, json, yaml, minimal, dense, unixy, null
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+# Other stdout callback examples: ansible.posix.json, ansible.builtin.minimal, community.general.dense, community.general.unixy, community.general.null
 
 # Enable multiple notification callbacks
-callbacks_enabled = timer, profile_tasks, log_plays, custom_logger
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, community.general.log_plays, custom_logger
 
 # Custom callback plugins location
 callback_plugins = ./plugins/callbacks
 
-# Show diffs for file changes
-diff = True
-
 # Number of parallel processes
 forks = 10
+
+[diff]
+# Show diffs for file changes
+always = True
 
 [callback_log_plays]
 # Log plays callback settings
@@ -582,7 +604,6 @@ task_output_limit = 20
 [callback_custom_logger]
 # Custom callback settings
 log_file = /var/log/ansible/detailed.log
-log_level = info
 
 [callback_webhook_notifier]
 # Webhook notification settings
@@ -598,8 +619,8 @@ events = playbook_start,playbook_stats,task_failed
 # .gitlab-ci.yml
 ansible_deploy:
   script:
-    - export ANSIBLE_STDOUT_CALLBACK=json
-    - export ANSIBLE_CALLBACKS_ENABLED=log_plays,profile_tasks
+    - export ANSIBLE_STDOUT_CALLBACK=ansible.posix.json
+    - export ANSIBLE_CALLBACKS_ENABLED=community.general.log_plays,ansible.posix.profile_tasks
     - ansible-playbook deploy.yml | tee ansible_output.json
     - python parse_results.py ansible_output.json
   artifacts:
@@ -651,4 +672,4 @@ ansible_deploy:
 
 ---
 
-Proper logging transforms Ansible from a manual tool into an auditable automation platform. Start with the built-in callbacks like `log_plays` and `profile_tasks`, then build custom callbacks for your specific needs. Always capture JSON output in CI/CD pipelines for structured analysis, and integrate with your existing logging infrastructure for complete observability.
+Proper logging transforms Ansible from a manual tool into an auditable automation platform. Start with common callbacks like `community.general.log_plays` and `ansible.posix.profile_tasks`, then build custom callbacks for your specific needs. Always capture JSON output in CI/CD pipelines for structured analysis, and integrate with your existing logging infrastructure for complete observability.

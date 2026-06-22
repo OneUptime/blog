@@ -134,6 +134,7 @@ Run both systems in parallel:
 // dual-queue-processor.ts
 import OldQueue from 'bull';
 import { Queue as NewQueue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 
 interface DualQueueConfig {
   queueName: string;
@@ -145,6 +146,7 @@ class DualQueueProcessor {
   private oldQueue: OldQueue.Queue | null = null;
   private newQueue: NewQueue | null = null;
   private newWorker: Worker | null = null;
+  private newConnection: IORedis | null = null;
   private config: DualQueueConfig;
 
   constructor(config: DualQueueConfig) {
@@ -154,7 +156,9 @@ class DualQueueProcessor {
   async initialize(): Promise<void> {
     if (this.config.useBullMQ) {
       // New BullMQ setup
-      const connection = { url: this.config.redisUrl };
+      const connection = new IORedis(this.config.redisUrl, {
+        maxRetriesPerRequest: null,
+      });
 
       this.newQueue = new NewQueue(this.config.queueName, { connection });
 
@@ -163,6 +167,7 @@ class DualQueueProcessor {
         async (job) => this.processJob(job.data),
         { connection }
       );
+      this.newConnection = connection;
 
       console.log('Using BullMQ');
     } else {
@@ -199,8 +204,9 @@ class DualQueueProcessor {
 
   async close(): Promise<void> {
     await this.oldQueue?.close();
-    await this.newQueue?.close();
     await this.newWorker?.close();
+    await this.newQueue?.close();
+    await this.newConnection?.quit();
   }
 }
 
@@ -392,12 +398,12 @@ interface BullMQJobOptions {
   priority?: number;
   delay?: number;
   attempts?: number;
-  backoff?: {
+  backoff?: number | {
     type: 'fixed' | 'exponential';
     delay: number;
   };
   lifo?: boolean;
-  // timeout is now in worker options, not job options
+  // BullMQ does not provide a built-in timeout option; implement timeouts in the worker processor
   jobId?: string;
   removeOnComplete?: boolean | number | { count: number; age: number };
   removeOnFail?: boolean | number | { count: number; age: number };
@@ -440,7 +446,8 @@ function migrateJobOptions(bullOptions: any): any {
     };
   }
 
-  // Remove timeout (handled differently in BullMQ)
+  // Remove timeout; BullMQ does not provide a built-in timeout option
+  // Use custom timeout logic in the worker instead
   delete bullmqOptions.timeout;
 
   return bullmqOptions;
@@ -498,6 +505,7 @@ const heavyWorker = new Worker('concurrent', async (job) => {
 // migrate-jobs.ts
 import OldQueue from 'bull';
 import { Queue as NewQueue } from 'bullmq';
+import IORedis from 'ioredis';
 
 interface MigrationResult {
   migrated: number;
@@ -510,8 +518,9 @@ async function migrateJobs(
   redisUrl: string
 ): Promise<MigrationResult> {
   const oldQueue = new OldQueue(queueName, redisUrl);
+  const connection = new IORedis(redisUrl);
   const newQueue = new NewQueue(`${queueName}-v2`, {
-    connection: { url: redisUrl },
+    connection,
   });
 
   const result: MigrationResult = {
@@ -549,7 +558,10 @@ async function migrateJobs(
     for (const job of delayedJobs) {
       try {
         const options = migrateJobOptions(job.opts);
-        const delay = job.opts.delay || 0;
+        const delay = Math.max(
+          (job.timestamp + (job.opts.delay || 0)) - Date.now(),
+          0
+        );
 
         await newQueue.add(job.name || 'default', job.data, {
           ...options,
@@ -590,6 +602,7 @@ async function migrateJobs(
   } finally {
     await oldQueue.close();
     await newQueue.close();
+    await connection.quit();
   }
 
   return result;
@@ -625,6 +638,7 @@ async function runMigration(): Promise<void> {
 // migrate-repeatables.ts
 import OldQueue from 'bull';
 import { Queue as NewQueue } from 'bullmq';
+import IORedis from 'ioredis';
 
 interface RepeatableJobConfig {
   name: string;
@@ -639,8 +653,9 @@ async function migrateRepeatableJobs(
   redisUrl: string
 ): Promise<void> {
   const oldQueue = new OldQueue(queueName, redisUrl);
+  const connection = new IORedis(redisUrl);
   const newQueue = new NewQueue(queueName, {
-    connection: { url: redisUrl },
+    connection,
   });
 
   try {
@@ -653,7 +668,7 @@ async function migrateRepeatableJobs(
       // Remove from old queue
       await oldQueue.removeRepeatableByKey(repeatJob.key);
 
-      // Add to new queue with BullMQ syntax
+      // Add to new queue with the current BullMQ Job Scheduler API
       const repeatOptions: any = {};
 
       if (repeatJob.cron) {
@@ -668,10 +683,13 @@ async function migrateRepeatableJobs(
         repeatOptions.tz = repeatJob.tz;
       }
 
-      await newQueue.add(
-        repeatJob.name || 'default',
-        {}, // Repeatable jobs usually don't have data
-        { repeat: repeatOptions }
+      await newQueue.upsertJobScheduler(
+        `migrated-${repeatJob.key}`,
+        repeatOptions,
+        {
+          name: repeatJob.name || 'default',
+          data: {}, // Bull repeatable metadata does not include the original job data
+        }
       );
 
       console.log(`Migrated repeatable job: ${repeatJob.name}`);
@@ -680,6 +698,7 @@ async function migrateRepeatableJobs(
   } finally {
     await oldQueue.close();
     await newQueue.close();
+    await connection.quit();
   }
 }
 ```
@@ -815,7 +834,7 @@ export class BullJobRepository implements JobRepository {
   constructor(private queue: Queue.Queue) {}
 
   async create(name: string, data: any, options?: any): Promise<string> {
-    const job = await this.queue.add(data, { ...options, jobId: name });
+    const job = await this.queue.add(name, data, options);
     return job.id.toString();
   }
 
@@ -880,26 +899,32 @@ export class BullMQJobRepository implements JobRepository {
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import OldQueue from 'bull';
 import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 
 describe('Migration Compatibility Tests', () => {
   const redisUrl = 'redis://localhost:6379';
   let oldQueue: OldQueue.Queue;
   let newQueue: Queue;
   let newWorker: Worker;
+  let connection: IORedis;
 
   beforeAll(async () => {
     oldQueue = new OldQueue('test-migration', redisUrl);
+    connection = new IORedis(redisUrl, {
+      maxRetriesPerRequest: null,
+    });
     newQueue = new Queue('test-migration-v2', {
-      connection: { url: redisUrl },
+      connection,
     });
   });
 
   afterAll(async () => {
     await oldQueue.empty();
     await oldQueue.close();
-    await newQueue.obliterate({ force: true });
     await newWorker?.close();
+    await newQueue.obliterate({ force: true });
     await newQueue.close();
+    await connection.quit();
   });
 
   it('should migrate job data correctly', async () => {
@@ -934,7 +959,7 @@ describe('Migration Compatibility Tests', () => {
         processedJobs.push(job.data);
         return { success: true };
       },
-      { connection: { url: redisUrl } }
+      { connection }
     );
 
     await newQueue.add('test', { id: 1 });
@@ -952,14 +977,16 @@ describe('Migration Compatibility Tests', () => {
       repeat: { cron: '0 * * * *' },
     });
 
-    // Add equivalent to new queue
-    await newQueue.add('hourly', {}, {
-      repeat: { pattern: '0 * * * *' },
-    });
+    // Add equivalent to new queue with the current BullMQ Job Scheduler API
+    await newQueue.upsertJobScheduler(
+      'hourly',
+      { pattern: '0 * * * *' },
+      { name: 'hourly', data: {} }
+    );
 
-    const repeatableJobs = await newQueue.getRepeatableJobs();
-    expect(repeatableJobs).toHaveLength(1);
-    expect(repeatableJobs[0].pattern).toBe('0 * * * *');
+    const schedulers = await newQueue.getJobSchedulers(0, 9, true);
+    expect(schedulers).toHaveLength(1);
+    expect(schedulers[0].pattern).toBe('0 * * * *');
   });
 });
 ```
@@ -970,6 +997,7 @@ describe('Migration Compatibility Tests', () => {
 // rollback-manager.ts
 import OldQueue from 'bull';
 import { Queue as NewQueue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 
 interface RollbackConfig {
   queueName: string;
@@ -980,6 +1008,7 @@ export class RollbackManager {
   private oldQueue: OldQueue.Queue | null = null;
   private newQueue: NewQueue | null = null;
   private newWorker: Worker | null = null;
+  private newConnection: IORedis | null = null;
   private config: RollbackConfig;
   private isRolledBack = false;
 
@@ -990,14 +1019,18 @@ export class RollbackManager {
   async initializeBullMQ(
     processor: (job: any) => Promise<any>
   ): Promise<void> {
+    this.newConnection = new IORedis(this.config.redisUrl, {
+      maxRetriesPerRequest: null,
+    });
+
     this.newQueue = new NewQueue(this.config.queueName, {
-      connection: { url: this.config.redisUrl },
+      connection: this.newConnection,
     });
 
     this.newWorker = new Worker(
       this.config.queueName,
       processor,
-      { connection: { url: this.config.redisUrl } }
+      { connection: this.newConnection }
     );
 
     // Monitor for critical failures
@@ -1038,6 +1071,7 @@ export class RollbackManager {
     // Close BullMQ
     await this.newWorker?.close();
     await this.newQueue?.close();
+    await this.newConnection?.quit();
 
     console.log('Rollback complete. Jobs migrated to Bull queue.');
   }
@@ -1046,6 +1080,7 @@ export class RollbackManager {
     await this.oldQueue?.close();
     await this.newWorker?.close();
     await this.newQueue?.close();
+    await this.newConnection?.quit();
   }
 }
 ```
@@ -1054,7 +1089,7 @@ export class RollbackManager {
 
 ```typescript
 // cleanup.ts
-import { Redis } from 'ioredis';
+import Redis from 'ioredis';
 
 async function cleanupOldBullKeys(
   redisUrl: string,

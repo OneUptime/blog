@@ -80,7 +80,7 @@ metadata:
   name: {{ .Release.Name }}-{{ .Chart.Name }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    app: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
@@ -259,12 +259,12 @@ yq -i '.spec.template.spec.containers[0].image = "myregistry/web-api:v1.2.3"' de
 # Update replicas
 yq -i '.spec.replicas = 5' deployment.yaml
 
-# Add or update environment variable
+# Add environment variable
 yq -i '.spec.template.spec.containers[0].env += {"name": "LOG_LEVEL", "value": "debug"}' deployment.yaml
 
 # Use environment variable
 export NEW_TAG=v1.2.3
-yq -i '.spec.template.spec.containers[0].image = "myregistry/web-api:" + env(NEW_TAG)' deployment.yaml
+yq -i '.spec.template.spec.containers[0].image = "myregistry/web-api:" + strenv(NEW_TAG)' deployment.yaml
 ```
 
 ## Method 6: ConfigMap and Secret References
@@ -287,7 +287,13 @@ kind: Deployment
 metadata:
   name: web-api
 spec:
+  selector:
+    matchLabels:
+      app: web-api
   template:
+    metadata:
+      labels:
+        app: web-api
     spec:
       containers:
       - name: web-api
@@ -314,11 +320,11 @@ kubectl rollout restart deployment/web-api
 
 | Method | Best For | Pros | Cons |
 |--------|----------|------|------|
-| envsubst | Simple CI/CD | No dependencies | No logic, no loops |
+| envsubst | Simple CI/CD | Simple substitution | No logic, no loops |
 | Helm | Complex apps | Full templating, charts | Learning curve |
 | Kustomize | Environment overlays | Built into kubectl | Verbose patches |
 | yq | One-off edits | YAML-aware | Manual scripting |
-| ConfigMaps | Runtime config | No redeploy | Pod restart needed |
+| ConfigMaps | Runtime config | No manifest rebuild | Pod restart needed for environment variables |
 
 ## CI/CD Pipeline Example
 
@@ -349,12 +355,12 @@ deploy-staging:
 deploy-production:
   stage: deploy
   script:
-    # Method 2: Kustomize with image override
+    # Method 3: Kustomize with image override
     - cd k8s/overlays/prod
-    - kustomize edit set image myregistry/web-api:$IMAGE_TAG
+    - kustomize edit set image myregistry/web-api=myregistry/web-api:$IMAGE_TAG
     - kubectl apply -k .
 ```
 
 ## Summary
 
-There is no single best way to inject dynamic values into Kubernetes manifests. Use `envsubst` for simple variable substitution in CI/CD. Use Helm for complex applications with many configurable options. Use Kustomize for environment-specific overlays without templating complexity. Use yq for programmatic YAML editing. Use ConfigMaps and Secrets when values should change at runtime without redeploying. Choose based on your team's needs and complexity level.
+There is no single best way to inject dynamic values into Kubernetes manifests. Use `envsubst` for simple variable substitution in CI/CD. Use Helm for complex applications with many configurable options. Use Kustomize for environment-specific overlays without templating complexity. Use yq for programmatic YAML editing. Use ConfigMaps and Secrets when values should change at runtime without rebuilding manifests; pods may need a restart depending on how values are consumed. Choose based on your team's needs and complexity level.

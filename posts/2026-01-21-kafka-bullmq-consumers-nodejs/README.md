@@ -58,7 +58,7 @@ services:
 Start the services:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Project Setup for Kafka
@@ -123,8 +123,7 @@ export class KafkaConsumerService {
       // Control how often offsets are committed
       sessionTimeout: 30000,
       heartbeatInterval: 3000,
-      // Start from the earliest message if no offset exists
-      // Use 'latest' to only receive new messages
+      // fromBeginning is configured when subscribing to a topic
     });
   }
 
@@ -188,8 +187,7 @@ export class KafkaConsumerService {
         `Message ${messageId} processed in ${Date.now() - startTime}ms`
       );
     } catch (error) {
-      // Log the error but do not crash
-      // Kafka will automatically retry based on your configuration
+      // Log the error and re-throw so the offset is not committed
       console.error(`Error processing message ${messageId}:`, error);
 
       // For critical errors, you might want to:
@@ -197,7 +195,7 @@ export class KafkaConsumerService {
       // 2. Alert the team
       // 3. Pause the consumer
 
-      // Re-throw to trigger Kafka's retry mechanism
+      // Implement explicit retry and dead letter handling for poison messages
       throw error;
     }
   }
@@ -209,8 +207,7 @@ export class KafkaConsumerService {
     console.log('Stopping Kafka consumer...');
     this.isRunning = false;
 
-    // Disconnect gracefully
-    // This commits any pending offsets and leaves the consumer group
+    // Disconnect gracefully and leave the consumer group
     await this.consumer.disconnect();
     console.log('Kafka consumer stopped');
   }
@@ -510,7 +507,7 @@ export class BullMQWorkerService<T extends JobData, R extends JobResult> {
 
 ```typescript
 // src/bullmq/queue.ts
-import { Queue, QueueOptions, JobsOptions } from 'bullmq';
+import { Queue, JobsOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 
 interface QueueConfig {
@@ -571,21 +568,27 @@ export class BullMQQueueService<T> {
 
   // Add a scheduled job using cron
   async addRepeatingJob(
+    schedulerId: string,
     name: string,
     data: T,
     cronPattern: string
   ): Promise<void> {
-    await this.queue.add(name, data, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      schedulerId,
+      {
         pattern: cronPattern,
       },
-    });
+      {
+        name,
+        data,
+      }
+    );
     console.log(`Added repeating job (${name}) with pattern: ${cronPattern}`);
   }
 
   // Add multiple jobs in bulk
   async addBulk(
-    jobs: Array<{ name: string; data: T; options?: JobsOptions }>
+    jobs: Array<{ name: string; data: T; opts?: JobsOptions }>
   ): Promise<string[]> {
     const result = await this.queue.addBulk(jobs);
     console.log(`Added ${result.length} jobs to queue`);
@@ -651,30 +654,23 @@ interface EmailJobResult {
 async function processEmailJob(
   job: Job<EmailJobData>
 ): Promise<EmailJobResult> {
-  const { to, subject, body, templateId, variables } = job.data;
+  const { to, subject, body } = job.data;
 
   console.log(`Sending email to ${to}: ${subject}`);
 
   // Update progress as we go
   await job.updateProgress(10);
 
-  try {
-    // Simulate email sending
-    // Replace with actual email service integration
-    await sendEmail(to, subject, body);
+  // Simulate email sending
+  // Replace with actual email service integration
+  await sendEmail(to, subject, body);
 
-    await job.updateProgress(100);
+  await job.updateProgress(100);
 
-    return {
-      success: true,
-      messageId: `msg_${Date.now()}`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: (error as Error).message,
-    };
-  }
+  return {
+    success: true,
+    messageId: `msg_${Date.now()}`,
+  };
 }
 
 async function sendEmail(to: string, subject: string, body: string): Promise<void> {
@@ -909,9 +905,9 @@ export async function checkRedisHealth(url: string): Promise<{
 | Feature | Kafka | BullMQ |
 |---------|-------|--------|
 | Throughput | Millions of messages/sec | Thousands of jobs/sec |
-| Message retention | Configurable (days/weeks) | Until processed |
+| Message retention | Configurable (days/weeks) | Configurable job cleanup |
 | Ordering | Per partition | Per queue |
-| Consumer groups | Native support | Single worker per queue |
+| Consumer groups | Native support | Workers compete for jobs |
 | Delayed jobs | Not native | Built-in |
 | Scheduled jobs | External tool needed | Built-in cron |
 | Setup complexity | High (Zookeeper/KRaft) | Low (just Redis) |

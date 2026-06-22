@@ -14,7 +14,7 @@ Redis RDB (Redis Database) snapshots provide point-in-time backups of your Redis
 
 RDB persistence works by forking the Redis process and writing the dataset to a binary file on disk. This approach has several advantages:
 
-- **Compact Storage**: RDB files are highly compressed, making them efficient for storage and transfer
+- **Compact Storage**: RDB files use a compact binary format and can compress string values, making them efficient for storage and transfer
 - **Fast Recovery**: Loading RDB files on startup is faster than replaying AOF logs
 - **Minimal Performance Impact**: The parent process continues serving requests while the child writes to disk
 
@@ -112,14 +112,16 @@ class RedisSnapshotManager:
 
     def wait_for_save_completion(self, timeout=300):
         """Wait for a background save to complete."""
-        initial_timestamp = self.client.lastsave()
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            current_timestamp = self.client.lastsave()
-            if current_timestamp > initial_timestamp:
-                print(f"Save completed at {datetime.fromtimestamp(current_timestamp)}")
-                return True
+            info = self.client.info('persistence')
+            if int(info.get('rdb_bgsave_in_progress', 0)) == 0:
+                if info.get('rdb_last_bgsave_status') == 'ok':
+                    current_timestamp = int(info.get('rdb_last_save_time', self.client.lastsave()))
+                    print(f"Save completed at {datetime.fromtimestamp(current_timestamp)}")
+                    return True
+                raise RuntimeError("Background save failed")
             time.sleep(1)
 
         raise TimeoutError("Background save did not complete within timeout")
@@ -183,14 +185,17 @@ class RedisSnapshotManager {
     }
 
     async waitForSaveCompletion(timeoutMs = 300000) {
-        const initialTimestamp = await this.client.lastsave();
         const startTime = Date.now();
 
         while (Date.now() - startTime < timeoutMs) {
-            const currentTimestamp = await this.client.lastsave();
-            if (currentTimestamp > initialTimestamp) {
-                console.log(`Save completed at ${new Date(currentTimestamp * 1000)}`);
-                return true;
+            const info = await this.getRdbInfo();
+            if (Number(info.rdb_bgsave_in_progress || 0) === 0) {
+                if (info.rdb_last_bgsave_status === 'ok') {
+                    const currentTimestamp = Number(info.rdb_last_save_time || await this.client.lastsave());
+                    console.log(`Save completed at ${new Date(currentTimestamp * 1000)}`);
+                    return true;
+                }
+                throw new Error('Background save failed');
             }
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -319,7 +324,7 @@ If using the Redis Exporter for Prometheus, monitor these metrics:
 
 # Alert when no save in 24 hours
 - alert: RedisNoRecentSave
-  expr: time() - redis_rdb_last_save_timestamp > 86400
+  expr: time() - redis_rdb_last_save_timestamp_seconds > 86400
   for: 5m
   labels:
     severity: warning
@@ -347,15 +352,26 @@ RETENTION_DAYS=7
 mkdir -p "$BACKUP_DIR"
 
 # Trigger background save
-$REDIS_CLI -h $REDIS_HOST -p $REDIS_PORT BGSAVE
+if ! $REDIS_CLI -h "$REDIS_HOST" -p "$REDIS_PORT" BGSAVE; then
+    echo "Failed to start background save"
+    exit 1
+fi
 
 # Wait for save to complete
-while [ "$($REDIS_CLI -h $REDIS_HOST -p $REDIS_PORT LASTSAVE)" == "$(cat /tmp/redis_lastsave 2>/dev/null)" ]; do
+while true; do
+    PERSISTENCE_INFO=$($REDIS_CLI -h "$REDIS_HOST" -p "$REDIS_PORT" INFO persistence)
+    BGSAVE_IN_PROGRESS=$(printf '%s\n' "$PERSISTENCE_INFO" | awk -F: '/^rdb_bgsave_in_progress:/ {gsub(/\r/, "", $2); print $2}')
+    BGSAVE_STATUS=$(printf '%s\n' "$PERSISTENCE_INFO" | awk -F: '/^rdb_last_bgsave_status:/ {gsub(/\r/, "", $2); print $2}')
+
+    if [ "$BGSAVE_IN_PROGRESS" = "0" ]; then
+        if [ "$BGSAVE_STATUS" = "ok" ]; then
+            break
+        fi
+        echo "Background save failed"
+        exit 1
+    fi
     sleep 1
 done
-
-# Store current timestamp
-$REDIS_CLI -h $REDIS_HOST -p $REDIS_PORT LASTSAVE > /tmp/redis_lastsave
 
 # Copy RDB file with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -406,7 +422,7 @@ redis-cli INFO persistence
 
 ### Fork Time
 
-The fork operation copies the process memory pages. Monitor fork time:
+The fork operation creates a child process using copy-on-write memory semantics. Monitor fork time:
 
 ```bash
 redis-cli INFO | grep latest_fork_usec
@@ -420,7 +436,7 @@ For large datasets, fork can take significant time. Consider:
 
 ### Copy-on-Write Memory
 
-During a background save, Redis uses copy-on-write. If many keys are modified during the save, memory usage can temporarily double. Monitor this:
+During a background save, Redis uses copy-on-write. If many keys are modified during the save, memory usage can increase significantly, in worst cases approaching double the dataset size. Monitor this:
 
 ```bash
 redis-cli INFO memory | grep used_memory

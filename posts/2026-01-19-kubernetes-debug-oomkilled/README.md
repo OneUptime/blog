@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix OOMKilled errors in Kubernetes by ana
 
 ---
 
-OOMKilled (Out of Memory Killed) occurs when a container exceeds its memory limit or the node runs out of memory. This guide covers diagnosing, fixing, and preventing OOM issues in Kubernetes.
+OOMKilled (Out of Memory Killed) occurs when a container uses more memory than its configured limit and the kernel terminates it. Node-level memory pressure can also evict pods, so this guide covers diagnosing, fixing, and preventing both OOM kills and related memory-pressure issues in Kubernetes.
 
 ## Understanding OOMKilled
 
@@ -32,7 +32,7 @@ flowchart TD
 
 | Exit Code | Meaning |
 |-----------|---------|
-| 137 | Container killed by SIGKILL (OOMKilled) |
+| 137 | Container killed by SIGKILL (often OOMKilled, but confirm the termination reason) |
 | 143 | Container killed by SIGTERM (graceful) |
 
 ## Diagnosing OOMKilled
@@ -57,7 +57,7 @@ kubectl describe pod <pod-name> | grep -A 5 "Last State"
 ### Examine Container Exit Code
 
 ```bash
-# Check exit code (137 = OOMKilled)
+# Check exit code (137 = SIGKILL; often OOMKilled)
 kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[*].lastState.terminated.exitCode}'
 
 # Full container status
@@ -87,6 +87,7 @@ kubectl describe node <node-name> | grep -A 10 "Allocated resources"
 ```bash
 # If using Prometheus
 kubectl exec -it prometheus-pod -- promtool query instant \
+  http://localhost:9090 \
   'container_memory_usage_bytes{pod="<pod-name>"}'
 
 # Query for memory spikes
@@ -100,13 +101,18 @@ kubectl exec -it prometheus-pod -- promtool query instant \
 kubectl exec -it <pod-name> -- /bin/sh
 
 # Check memory from inside container
-cat /sys/fs/cgroup/memory/memory.usage_in_bytes
-cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+if [ -f /sys/fs/cgroup/memory.current ]; then
+  cat /sys/fs/cgroup/memory.current
+  cat /sys/fs/cgroup/memory.max
+else
+  cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+  cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+fi
 
 # View processes by memory
 ps aux --sort=-%mem | head -20
 
-# For Java applications
+# For Java applications started with -XX:NativeMemoryTracking=summary
 jcmd 1 VM.native_memory summary
 
 # For Node.js
@@ -134,7 +140,7 @@ spec:
       env:
         # Java heap dump on OOM
         - name: JAVA_OPTS
-          value: "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/heapdump.hprof"
+          value: "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/heapdump.hprof -XX:NativeMemoryTracking=summary"
         # Node.js memory debugging
         - name: NODE_OPTIONS
           value: "--max-old-space-size=400 --expose-gc"
@@ -233,7 +239,7 @@ spec:
 #### Python Applications
 
 ```yaml
-# Python with memory optimization
+# Python with optional interpreter optimization
 apiVersion: v1
 kind: Pod
 metadata:
@@ -248,11 +254,9 @@ spec:
         requests:
           memory: "256Mi"
       env:
-        # Optimize Python memory
+        # Optional Python optimization; profile before enabling
         - name: PYTHONOPTIMIZE
           value: "1"
-        - name: PYTHONHASHSEED
-          value: "0"
 ```
 
 ### 3. Implement Memory-Aware Scaling
@@ -288,7 +292,7 @@ spec:
 ### 4. Configure QoS Classes
 
 ```yaml
-# Guaranteed QoS (highest priority, won't be evicted first)
+# Guaranteed QoS (lowest eviction risk from QoS, but Priority and usage still matter)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -324,7 +328,7 @@ spec:
           memory: "256Mi"
           cpu: "100m"
 ---
-# BestEffort QoS (lowest priority, evicted first)
+# BestEffort QoS (highest eviction risk under memory pressure)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -535,7 +539,7 @@ OOMKilled errors can be resolved by:
 2. **Configure application** - Java heap, Node.js V8 settings
 3. **Monitor proactively** - Alert before OOM occurs
 4. **Use VPA** - Automatic right-sizing recommendations
-5. **Implement QoS** - Protect critical pods from eviction
+5. **Implement QoS and Priority** - Reduce eviction risk for critical pods
 
 For monitoring memory usage and OOM events, check out [OneUptime's container monitoring](https://oneuptime.com/product/metrics).
 

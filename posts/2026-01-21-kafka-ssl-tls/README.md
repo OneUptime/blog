@@ -203,7 +203,8 @@ consumer = Consumer({
     'security.protocol': 'SSL',
     'ssl.ca.location': '/path/to/ca-cert.pem',
     'ssl.certificate.location': '/path/to/client-cert.pem',
-    'ssl.key.location': '/path/to/client-key.pem'
+    'ssl.key.location': '/path/to/client-key.pem',
+    'ssl.key.password': 'key-password'
 })
 ```
 
@@ -213,17 +214,21 @@ consumer = Consumer({
 version: '3.8'
 services:
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:8.3.0
     ports:
       - "9093:9093"
     volumes:
       - ./ssl:/var/kafka/ssl
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: SSL://0.0.0.0:9093
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9094
+      KAFKA_LISTENERS: SSL://0.0.0.0:9093,CONTROLLER://0.0.0.0:9094
       KAFKA_ADVERTISED_LISTENERS: SSL://localhost:9093
-      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SSL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SSL:SSL,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_SSL_KEYSTORE_LOCATION: /var/kafka/ssl/kafka.server.keystore.jks
       KAFKA_SSL_KEYSTORE_PASSWORD: keystore-password
       KAFKA_SSL_KEY_PASSWORD: keystore-password
@@ -231,6 +236,9 @@ services:
       KAFKA_SSL_TRUSTSTORE_PASSWORD: truststore-password
       KAFKA_SSL_CLIENT_AUTH: required
       KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 ```
 
 ## Verification

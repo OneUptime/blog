@@ -81,7 +81,8 @@ MICROSOFT_SCOPES = [
 SCOPES = [
     'openid',
     'profile',
-    'admin.directory.user.readonly'  # Requires admin consent and special setup
+    'https://www.googleapis.com/auth/admin.directory.user.readonly',
+    # Requires Google Workspace admin setup and app verification
 ]
 
 # Fix: Only request scopes your app is configured for
@@ -148,7 +149,8 @@ def get_google_scopes(requested_features):
             else:
                 scopes.append(scope)
 
-    return list(set(scopes))  # Remove duplicates
+    # Remove duplicates while preserving order
+    return list(dict.fromkeys(scopes))
 
 # Usage
 scopes = get_google_scopes(['calendar_readonly', 'drive_file'])
@@ -157,37 +159,34 @@ scopes = get_google_scopes(['calendar_readonly', 'drive_file'])
 #           'https://www.googleapis.com/auth/drive.file']
 ```
 
-#### Checking Google Scope Validity
+#### Checking Google Scope Format
 
 ```python
-import requests
+def validate_google_scope_format(scopes):
+    """Catch obvious Google OAuth2 scope formatting mistakes before use."""
 
-def validate_google_scopes(scopes):
-    """Validate Google OAuth2 scopes before use."""
-    # Google's scope validation endpoint
-    validation_url = 'https://www.googleapis.com/oauth2/v1/tokeninfo'
-
-    valid_prefixes = [
+    valid_simple_scopes = {
         'openid',
         'email',
-        'profile',
-        'https://www.googleapis.com/auth/'
-    ]
+        'profile'
+    }
 
     invalid_scopes = []
     for scope in scopes:
-        is_valid = any(scope.startswith(prefix) or scope == prefix
-                      for prefix in valid_prefixes)
+        is_valid = (
+            scope in valid_simple_scopes or
+            scope.startswith('https://www.googleapis.com/auth/')
+        )
         if not is_valid:
             invalid_scopes.append(scope)
 
     if invalid_scopes:
         return False, f"Invalid scopes: {', '.join(invalid_scopes)}"
 
-    return True, "All scopes valid"
+    return True, "All scope formats look valid"
 
 # Check scopes before authorization
-is_valid, message = validate_google_scopes(['openid', 'invalid_scope'])
+is_valid, message = validate_google_scope_format(['openid', 'invalid_scope'])
 if not is_valid:
     print(f"Error: {message}")
 ```
@@ -339,7 +338,7 @@ class ScopeManager:
         },
         'microsoft': {
             'separator': ' ',
-            'case_sensitive': False,
+            'case_sensitive': True,
             'url_format': True,
             'base_scopes': ['openid', 'profile', 'email', 'offline_access']
         },
@@ -359,10 +358,6 @@ class ScopeManager:
 
     def format_scopes(self, scopes):
         """Format scopes for the authorization URL."""
-        # Normalize case if not case sensitive
-        if not self.config['case_sensitive']:
-            scopes = [s.lower() for s in scopes]
-
         # Remove duplicates while preserving order
         seen = set()
         unique_scopes = []

@@ -99,7 +99,7 @@ class ClusterShardingManager:
                 for node in nodes
             ],
             decode_responses=True,
-            skip_full_coverage_check=True
+            require_full_coverage=False
         )
 
     def get_slot(self, key: str) -> int:
@@ -110,12 +110,13 @@ class ClusterShardingManager:
         """Get the node that stores a specific key."""
         slot = self.get_slot(key)
         # Get node for slot
-        nodes = self.cluster.cluster_slots()
-        for slot_range in nodes:
-            if slot_range[0] <= slot <= slot_range[1]:
+        slots = self.cluster.cluster_slots()
+        for (start, end), nodes in slots.items():
+            if start <= slot <= end:
+                host, port = nodes['primary']
                 return {
-                    'host': slot_range[2][0],
-                    'port': slot_range[2][1]
+                    'host': host,
+                    'port': port
                 }
         return None
 
@@ -305,14 +306,20 @@ class ClusterShardingManager {
      * Get the slot for a key
      */
     getSlot(key) {
-        // Extract hash tag if present
-        const match = key.match(/\{([^}]+)\}/);
-        const hashKey = match ? match[1] : key;
+        const start = key.indexOf('{');
+        let hashKey = key;
+
+        if (start !== -1) {
+            const end = key.indexOf('}', start + 1);
+            if (end !== -1 && end > start + 1) {
+                hashKey = key.slice(start + 1, end);
+            }
+        }
 
         // CRC16 implementation
         let crc = 0;
-        for (let i = 0; i < hashKey.length; i++) {
-            crc ^= hashKey.charCodeAt(i) << 8;
+        for (const byte of Buffer.from(hashKey, 'utf8')) {
+            crc ^= byte << 8;
             for (let j = 0; j < 8; j++) {
                 if (crc & 0x8000) {
                     crc = (crc << 1) ^ 0x1021;
@@ -555,7 +562,7 @@ class CrossSlotHandler:
     def multi_get(self, keys: List[str]) -> Dict[str, Any]:
         """
         Get values for keys that may be on different slots.
-        Groups keys by slot and executes in parallel.
+        Groups keys by slot and executes one multi-key command per slot.
         """
         # Group keys by slot
         slot_groups = {}
@@ -662,10 +669,10 @@ class CrossSlotHandler:
 
         return results
 
-    def atomic_transfer(self, source_key: str, dest_key: str, amount: int) -> bool:
+    def transfer(self, source_key: str, dest_key: str, amount: int) -> bool:
         """
-        Atomic transfer between keys on different slots.
-        Uses optimistic locking with WATCH.
+        Transfer between keys.
+        Same-slot transfers use Lua and are atomic; cross-slot transfers are best-effort.
         """
         source_slot = self.cluster.cluster_keyslot(source_key)
         dest_slot = self.cluster.cluster_keyslot(dest_key)
@@ -683,17 +690,17 @@ class CrossSlotHandler:
             redis.call('DECRBY', KEYS[1], amount)
             redis.call('INCRBY', KEYS[2], amount)
 
-            return {ok = 'Transfer complete'}
+            return 1
             """
-            return self.cluster.eval(lua_script, 2, source_key, dest_key, amount)
+            return bool(self.cluster.eval(lua_script, 2, source_key, dest_key, amount))
         else:
-            # Different slots - use two-phase approach
-            return self._two_phase_transfer(source_key, dest_key, amount)
+            # Different slots - use a best-effort, compensating approach
+            return self._best_effort_transfer(source_key, dest_key, amount)
 
-    def _two_phase_transfer(self, source_key: str, dest_key: str, amount: int) -> bool:
+    def _best_effort_transfer(self, source_key: str, dest_key: str, amount: int) -> bool:
         """
-        Two-phase transfer for cross-slot operations.
-        Not truly atomic but provides eventual consistency.
+        Best-effort transfer for cross-slot operations.
+        Not atomic; use idempotency and reconciliation in production.
         """
         import uuid
         transfer_id = str(uuid.uuid4())
@@ -705,7 +712,7 @@ class CrossSlotHandler:
             if source_val < amount:
                 return False
 
-            # Use pipeline for efficiency (keys might still be different slots)
+            # Keys are in different slots, so these commands are separate operations.
             self.cluster.decrby(source_key, amount)
             self.cluster.hset(pending_key, mapping={
                 'source': source_key,
@@ -902,12 +909,19 @@ class ScatterGatherClient {
     }
 
     getSlot(key) {
-        const match = key.match(/\{([^}]+)\}/);
-        const hashKey = match ? match[1] : key;
+        const start = key.indexOf('{');
+        let hashKey = key;
+
+        if (start !== -1) {
+            const end = key.indexOf('}', start + 1);
+            if (end !== -1 && end > start + 1) {
+                hashKey = key.slice(start + 1, end);
+            }
+        }
 
         let crc = 0;
-        for (let i = 0; i < hashKey.length; i++) {
-            crc ^= hashKey.charCodeAt(i) << 8;
+        for (const byte of Buffer.from(hashKey, 'utf8')) {
+            crc ^= byte << 8;
             for (let j = 0; j < 8; j++) {
                 if (crc & 0x8000) {
                     crc = (crc << 1) ^ 0x1021;
@@ -1088,6 +1102,7 @@ for key in ['user:1001', 'user:1002', 'product:101', 'order:5001']:
 ### Hybrid Sharding (Cluster + Application)
 
 ```python
+import redis
 from redis.cluster import RedisCluster
 from typing import Dict, Any, List
 import json
@@ -1174,18 +1189,10 @@ class HybridShardingManager:
         prefix = f"{{tenant:{shard}}}:{tenant_id}:"
 
         keys = []
-        cursor = '0'
 
-        # SCAN on the specific slot
-        while True:
-            cursor, batch = self.cluster.scan(
-                cursor=cursor,
-                match=f"{prefix}*",
-                count=100
-            )
-            keys.extend(batch)
-            if cursor == 0:
-                break
+        # scan_iter handles the per-node cursors returned by Redis Cluster.
+        for key in self.cluster.scan_iter(match=f"{prefix}{pattern}", count=100):
+            keys.append(key)
 
         # Count by type
         counts = {}
@@ -1263,10 +1270,10 @@ good_order_keys = [
 
 # GOOD: Use meaningful prefixes
 good_prefixes = [
-    "{session}:abc123:data",     # Session data
-    "{cart}:user1001:items",     # Shopping cart
-    "{cache}:api:users:list",    # API cache
-    "{lock}:resource:xyz"        # Distributed lock
+    "{session:abc123}:data",     # Session data
+    "{cart:user1001}:items",     # Shopping cart
+    "{cache:api:users}:list",    # API cache
+    "{lock:resource:xyz}:owner"  # Distributed lock
 ]
 ```
 

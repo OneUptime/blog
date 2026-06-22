@@ -115,6 +115,14 @@ class CountdownLatch:
     def count_down(self) -> int:
         """Decrement the count and return new value."""
         lua_script = """
+        local current = redis.call('get', KEYS[1])
+        if not current then
+            return redis.error_reply('Latch is not initialized')
+        end
+        if tonumber(current) <= 0 then
+            return 0
+        end
+
         local count = redis.call('decr', KEYS[1])
         if count <= 0 then
             redis.call('set', KEYS[2], '1', 'EX', ARGV[1])
@@ -340,6 +348,14 @@ class CountdownLatch {
         this.triggeredKey = `latch:${this.name}:triggered`;
 
         this.countDownScript = `
+        local current = redis.call('get', KEYS[1])
+        if not current then
+            return redis.error_reply('Latch is not initialized')
+        end
+        if tonumber(current) <= 0 then
+            return 0
+        end
+
         local count = redis.call('decr', KEYS[1])
         if count <= 0 then
             redis.call('set', KEYS[2], '1', 'EX', ARGV[1])

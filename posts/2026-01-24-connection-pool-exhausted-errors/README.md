@@ -383,6 +383,8 @@ sequenceDiagram
 // Java - Connection pool with query timeout
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import javax.sql.DataSource;
@@ -420,8 +422,8 @@ public class DatabasePool {
         config.setConnectionTestQuery("SELECT 1");
         config.setValidationTimeout(5000);       // 5 seconds validation timeout
 
-        // Statement timeout (prevents long-running queries from holding connections)
-        config.addDataSourceProperty("socketTimeout", "300"); // 5 minutes max query time
+        // PostgreSQL JDBC socket read timeout (driver-specific; seconds)
+        config.addDataSourceProperty("socketTimeout", "300"); // 5 minutes
 
         // Metrics
         config.setMetricRegistry(meterRegistry);
@@ -483,10 +485,7 @@ public class DatabasePool {
 }
 
 // Usage with circuit breaker for pool exhaustion
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-
-public class ResilientDatabasePool {
+class ResilientDatabasePool {
     private final DatabasePool pool;
     private final CircuitBreaker circuitBreaker;
 
@@ -507,9 +506,19 @@ public class ResilientDatabasePool {
 
     public <T> T execute(String sql, DatabasePool.ResultSetHandler<T> handler)
             throws SQLException {
-        return CircuitBreaker.decorateCheckedSupplier(circuitBreaker, () ->
-            pool.executeWithTimeout(sql, Duration.ofSeconds(30), handler)
-        ).get();
+        try {
+            return CircuitBreaker.decorateCheckedSupplier(circuitBreaker, () ->
+                pool.executeWithTimeout(sql, Duration.ofSeconds(30), handler)
+            ).get();
+        } catch (Throwable t) {
+            if (t instanceof SQLException) {
+                throw (SQLException) t;
+            }
+            if (t instanceof RuntimeException) {
+                throw (RuntimeException) t;
+            }
+            throw new SQLException("Database operation failed", t);
+        }
     }
 }
 ```
@@ -670,7 +679,6 @@ interface PoolConfig {
     maxConnections: number;
     minIdleConnections: number;
     connectionTimeout: number;
-    idleTimeout: number;
     retryStrategy?: (times: number) => number | null;
 }
 
@@ -679,6 +687,7 @@ class RedisPool {
     private readonly available: Redis[];
     private readonly config: PoolConfig;
     private readonly redisOptions: RedisOptions;
+    private pendingCreates = 0;
     private waitQueue: Array<{
         resolve: (conn: Redis) => void;
         reject: (err: Error) => void;
@@ -691,7 +700,6 @@ class RedisPool {
             maxConnections: 10,
             minIdleConnections: 2,
             connectionTimeout: 5000,
-            idleTimeout: 30000,
             ...config,
         };
         this.pool = [];
@@ -701,13 +709,15 @@ class RedisPool {
     async initialize(): Promise<void> {
         // Create minimum idle connections
         const promises = [];
-        for (let i = 0; i < this.config.minIdleConnections; i++) {
+        const idleCount = Math.min(this.config.minIdleConnections, this.config.maxConnections);
+        for (let i = 0; i < idleCount; i++) {
             promises.push(this.createConnection());
         }
         await Promise.all(promises);
     }
 
     private async createConnection(): Promise<Redis> {
+        this.pendingCreates++;
         const client = new Redis({
             ...this.redisOptions,
             lazyConnect: true,
@@ -731,9 +741,13 @@ class RedisPool {
             if (availIndex > -1) this.available.splice(availIndex, 1);
         });
 
-        await client.connect();
-        this.pool.push(client);
-        this.available.push(client);
+        try {
+            await client.connect();
+            this.pool.push(client);
+            this.available.push(client);
+        } finally {
+            this.pendingCreates--;
+        }
 
         return client;
     }
@@ -756,7 +770,7 @@ class RedisPool {
         }
 
         // Can we create a new connection?
-        if (this.pool.length < this.config.maxConnections) {
+        if (this.pool.length + this.pendingCreates < this.config.maxConnections) {
             const conn = await this.createConnection();
             // Remove from available since we're returning it
             const availIndex = this.available.indexOf(conn);

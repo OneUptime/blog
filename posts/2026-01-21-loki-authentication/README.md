@@ -57,8 +57,14 @@ upstream loki {
     keepalive 32;
 }
 
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    "" close;
+}
+
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name loki.example.com;
 
     # TLS Configuration
@@ -105,11 +111,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Connection "";
 
         # WebSocket support for tail endpoint
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
 
         proxy_connect_timeout 60s;
         proxy_send_timeout 300s;
@@ -269,7 +274,8 @@ environment:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name loki.example.com;
 
     ssl_certificate /etc/nginx/ssl/loki.crt;
@@ -339,7 +345,8 @@ map $http_x_api_key $api_key_valid {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name loki.example.com;
 
     ssl_certificate /etc/nginx/ssl/loki.crt;
@@ -409,6 +416,7 @@ positions:
 
 clients:
   - url: https://loki.example.com/loki/api/v1/push
+    # Start Promtail with -config.expand-env=true when using ${...} values.
     basic_auth:
       username: promtail
       password: ${LOKI_PASSWORD}
@@ -432,6 +440,7 @@ scrape_configs:
 ```yaml
 clients:
   - url: https://loki.example.com/loki/api/v1/push
+    # Start Promtail with -config.expand-env=true when using ${...} values.
     headers:
       X-API-Key: ${LOKI_API_KEY}
     tls_config:
@@ -494,7 +503,8 @@ map $http_x_api_key $tenant_id {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name loki.example.com;
 
     ssl_certificate /etc/nginx/ssl/loki.crt;
@@ -528,11 +538,12 @@ server:
 # ... other configuration
 
 limits_config:
-  enforce_metric_name: false
   reject_old_samples: true
   reject_old_samples_max_age: 168h
-  # Per-tenant limits
-  per_tenant_override_config: /etc/loki/overrides.yaml
+
+# Per-tenant limits
+runtime_config:
+  file: /etc/loki/overrides.yaml
 ```
 
 ## Security Best Practices

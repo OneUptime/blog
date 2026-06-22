@@ -159,6 +159,9 @@ def monitor_key_growth(host='localhost', port=6379, interval=60):
 ```python
 def detect_memory_leak(host='localhost', port=6379):
     """Detect memory leaks - memory grows but keys don't."""
+    import redis
+    import time
+
     r = redis.Redis(host=host, port=port, decode_responses=True)
 
     # Get initial state
@@ -204,6 +207,8 @@ def detect_memory_leak(host='localhost', port=6379):
 ```python
 def check_client_buffers(host='localhost', port=6379):
     """Check for large client buffers."""
+    import redis
+
     r = redis.Redis(host=host, port=port, decode_responses=True)
 
     clients = r.client_list()
@@ -243,8 +248,8 @@ def check_client_buffers(host='localhost', port=6379):
 ### Understanding Fragmentation
 
 Memory fragmentation occurs when:
-- `mem_fragmentation_ratio > 1.5`: Redis has allocated more memory than it's using
-- `mem_fragmentation_ratio < 1`: Redis is using swap (critical!)
+- `mem_fragmentation_ratio > 1.5`: Redis RSS is much higher than Redis allocated memory; check `allocator_frag_ratio` and `mem_fragmentation_bytes` to confirm allocator fragmentation
+- `mem_fragmentation_ratio < 1`: Redis memory may have been swapped out by the operating system (critical!)
 
 ```bash
 # Check fragmentation
@@ -259,6 +264,8 @@ redis-cli INFO memory | grep fragmentation
 ```python
 def analyze_fragmentation(host='localhost', port=6379):
     """Analyze memory fragmentation."""
+    import redis
+
     r = redis.Redis(host=host, port=port, decode_responses=True)
     info = r.info('memory')
 
@@ -275,8 +282,8 @@ def analyze_fragmentation(host='localhost', port=6379):
     print(f"Fragmentation Bytes: {frag_bytes / 1024 / 1024:.2f} MB")
 
     if ratio < 1:
-        print("\nCRITICAL: Using swap memory! Performance severely impacted.")
-        print("Action: Add more RAM or reduce data size immediately.")
+        print("\nCRITICAL: Redis memory may be swapped out! Performance can be severely impacted.")
+        print("Action: Check OS swap usage, add more RAM, or reduce data size immediately.")
     elif ratio > 1.5:
         print("\nWARNING: High fragmentation detected.")
         print("Possible causes:")
@@ -309,7 +316,7 @@ CONFIG SET active-defrag-threshold-upper 100
 CONFIG SET active-defrag-cycle-min 5
 CONFIG SET active-defrag-cycle-max 75
 
-# Manual memory purge (immediately release pages)
+# Manual memory purge (ask the allocator to release reclaimable pages)
 MEMORY PURGE
 
 # Check defrag stats
@@ -321,10 +328,10 @@ INFO stats | grep defrag
 ### Using redis-cli
 
 ```bash
-# Find big keys (samples random keys)
+# Find the biggest keys per data type by scanning the keyspace
 redis-cli --bigkeys
 
-# More thorough scan
+# Add a delay between SCAN calls to reduce load on the server
 redis-cli --bigkeys -i 0.1
 ```
 
@@ -404,13 +411,16 @@ def scan_big_keys(host='localhost', port=6379, threshold_bytes=1024*1024):
 ```python
 def suggest_optimizations(host='localhost', port=6379):
     """Suggest memory optimizations based on data analysis."""
+    import redis
+    from collections import defaultdict
+
     r = redis.Redis(host=host, port=port, decode_responses=True)
 
     suggestions = []
 
-    # Check hash-max-ziplist settings
-    hash_max_entries = int(r.config_get('hash-max-ziplist-entries')['hash-max-ziplist-entries'])
-    hash_max_value = int(r.config_get('hash-max-ziplist-value')['hash-max-ziplist-value'])
+    # Check hash listpack settings (Redis 7.0+)
+    hash_max_entries = int(r.config_get('hash-max-listpack-entries')['hash-max-listpack-entries'])
+    hash_max_value = int(r.config_get('hash-max-listpack-value')['hash-max-listpack-value'])
 
     # Sample hashes
     cursor = 0
@@ -426,9 +436,9 @@ def suggest_optimizations(host='localhost', port=6379):
 
     if large_hashes:
         suggestions.append({
-            'issue': 'Large hashes exceeding ziplist threshold',
+            'issue': 'Large hashes exceeding listpack threshold',
             'detail': f"Found {len(large_hashes)} hashes with > {hash_max_entries} fields",
-            'action': 'Consider increasing hash-max-ziplist-entries or splitting hashes'
+            'action': 'Consider increasing hash-max-listpack-entries or splitting hashes'
         })
 
     # Check for key patterns
@@ -469,7 +479,7 @@ CONFIG SET maxmemory 2gb
 CONFIG SET maxmemory-policy volatile-lru  # Evict keys with TTL
 # Other options: allkeys-lru, volatile-ttl, allkeys-random, noeviction
 
-# Set warning threshold
+# Tune eviction sampling
 CONFIG SET maxmemory-samples 10  # More samples = better eviction accuracy
 ```
 
@@ -494,9 +504,11 @@ class CompressedRedis:
             # Only use compression if it actually reduces size
             if len(compressed) < len(data) * 0.9:
                 self.redis.set(f"z:{key}", compressed, ex=ex)
+                self.redis.delete(key)
                 return
 
         self.redis.set(key, data, ex=ex)
+        self.redis.delete(f"z:{key}")
 
     def get(self, key):
         """Get value with automatic decompression."""
@@ -518,6 +530,8 @@ class CompressedRedis:
 ```python
 def add_ttl_to_keys(host='localhost', port=6379, pattern='*', ttl_seconds=86400):
     """Add TTL to keys without expiration."""
+    import redis
+
     r = redis.Redis(host=host, port=port, decode_responses=True)
 
     cursor = 0
@@ -614,7 +628,7 @@ class RedisMemoryAudit:
         print(f"Fragmentation Bytes: {frag_bytes / 1024 / 1024:.2f} MB")
 
         if ratio < 1:
-            print("  CRITICAL: Ratio < 1 indicates swap usage!")
+            print("  CRITICAL: Ratio < 1 may indicate swap usage!")
         elif ratio > 1.5:
             print("  WARNING: High fragmentation - consider defragmentation")
         else:

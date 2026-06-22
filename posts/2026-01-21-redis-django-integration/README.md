@@ -15,7 +15,7 @@ Django has excellent Redis support for caching, session storage, and background 
 Install the required packages:
 
 ```bash
-pip install django-redis redis celery
+python -m pip install django-redis "celery[redis]"
 ```
 
 ## Cache Configuration
@@ -31,12 +31,11 @@ CACHES = {
         'LOCATION': 'redis://localhost:6379/0',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'RETRY_ON_TIMEOUT': True,
-            'MAX_CONNECTIONS': 50,
-            'CONNECTION_POOL_CLASS_KWARGS': {
+            'CONNECTION_POOL_KWARGS': {
                 'max_connections': 50,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+                'retry_on_timeout': True,
             },
         },
         'KEY_PREFIX': 'myapp',
@@ -81,7 +80,7 @@ CACHES = {
 }
 ```
 
-### Redis Cluster Configuration
+### Redis Primary/Replica Configuration
 
 ```python
 # settings.py
@@ -251,16 +250,6 @@ def expensive_query(user_id, include_details=False):
 # Use Redis for sessions
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 SESSION_CACHE_ALIAS = 'sessions'
-
-# Or use django-redis session backend directly
-SESSION_ENGINE = 'django_redis.session.SessionStore'
-SESSION_REDIS = {
-    'host': 'localhost',
-    'port': 6379,
-    'db': 1,
-    'prefix': 'session',
-    'socket_timeout': 1,
-}
 
 # Session settings
 SESSION_COOKIE_AGE = 86400  # 24 hours
@@ -436,10 +425,11 @@ def process_order(self, order_id):
         self.retry(exc=exc, countdown=60)
 
 @shared_task
-def cleanup_expired_sessions():
+def cleanup_expired_database_sessions():
     from django.contrib.sessions.models import Session
     from django.utils import timezone
 
+    # Only needed when using Django's database-backed or cached_db sessions.
     Session.objects.filter(expire_date__lt=timezone.now()).delete()
 ```
 
@@ -455,8 +445,10 @@ send_welcome_email.delay(user.id)
 send_welcome_email.apply_async(args=[user.id], countdown=60)
 
 # With ETA
-from datetime import datetime, timedelta
-eta = datetime.utcnow() + timedelta(hours=1)
+from datetime import timedelta
+from django.utils import timezone
+
+eta = timezone.now() + timedelta(hours=1)
 send_welcome_email.apply_async(args=[user.id], eta=eta)
 
 # Get result
@@ -471,13 +463,14 @@ print(result.get(timeout=10))  # Wait for result
 ### Installation and Configuration
 
 ```bash
-pip install channels channels-redis
+python -m pip install "channels[daphne]" channels-redis
 ```
 
 ```python
 # settings.py
 
 INSTALLED_APPS = [
+    'daphne',
     # ...
     'channels',
 ]
@@ -504,12 +497,14 @@ import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
-import myapp.routing
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+django_asgi_app = get_asgi_application()
+
+import myapp.routing
 
 application = ProtocolTypeRouter({
-    'http': get_asgi_application(),
+    'http': django_asgi_app,
     'websocket': AuthMiddlewareStack(
         URLRouter(
             myapp.routing.websocket_urlpatterns

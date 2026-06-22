@@ -30,10 +30,11 @@ flowchart TB
     AuthServer --> UserStore
     AuthServer --> MFA
     AuthServer -->|3. Auth Code| Client
-    Client -->|4. Code + Verifier| Backend
-    Backend -->|5. Token Exchange| AuthServer
-    AuthServer -->|6. Tokens| Backend
-    Backend -->|7. User Data| Client
+    Client -->|4. Code + Verifier| AuthServer
+    AuthServer -->|5. Tokens| Client
+    Client -->|6. Access Token| Backend
+    Backend -->|7. Validate Token| AuthServer
+    Backend -->|8. User Data| Client
 ```
 
 ## Step 1: Create an Okta Application
@@ -60,7 +61,7 @@ const oktaConfig = {
 
 1. Select OIDC - OpenID Connect
 2. Select Web Application
-3. Enable Client Credentials grant if needed
+3. Enable Authorization Code and Refresh Token grants as needed for user sign-in. Use an API Services app with Client Credentials only for machine-to-machine flows.
 
 ```javascript
 // Okta server-side configuration
@@ -247,8 +248,14 @@ class OktaAuth {
 
     decodeJwt(token) {
         const parts = token.split('.');
-        const payload = JSON.parse(atob(parts[1]));
-        return payload;
+        const payload = parts[1]
+            .replace(/-/g, '+')
+            .replace(/_/g, '/')
+            .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
+
+        return JSON.parse(new TextDecoder().decode(
+            Uint8Array.from(atob(payload), c => c.charCodeAt(0))
+        ));
     }
 }
 
@@ -448,7 +455,7 @@ Configuring OAuth2 with Okta involves:
 1. Creating the appropriate application type in Okta Admin Console
 2. Configuring redirect URIs for each environment
 3. Implementing Authorization Code Flow with PKCE for SPAs
-4. Using client credentials for server-side applications
+4. Using Authorization Code for server-side user sign-in, and Client Credentials only for machine-to-machine applications
 5. Validating tokens using Okta's JWKS endpoint
 6. Implementing proper token refresh and logout flows
 

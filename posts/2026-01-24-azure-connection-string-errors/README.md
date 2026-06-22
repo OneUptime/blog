@@ -93,7 +93,7 @@ connection_string = (
 # SAS token connection string
 sas_connection = (
     "BlobEndpoint=https://mystorageaccount.blob.core.windows.net/;"
-    "SharedAccessSignature=sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2024-12-31..."
+    "SharedAccessSignature=sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2027-12-31..."
 )
 
 # Do NOT include the leading '?' from the SAS token
@@ -107,6 +107,7 @@ sas_connection = (
 
 ```python
 from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
 
 def ensure_container_exists(connection_string, container_name):
     """Create container if it doesn't exist."""
@@ -115,7 +116,7 @@ def ensure_container_exists(connection_string, container_name):
 
     try:
         container_client.get_container_properties()
-    except Exception:
+    except ResourceNotFoundError:
         container_client.create_container()
         print(f"Created container: {container_name}")
 
@@ -127,7 +128,7 @@ def ensure_container_exists(connection_string, container_name):
 # - No consecutive hyphens
 ```
 
-### Error: The specified resource does not exist (403)
+### Error: Authorization failure or network access denied (403)
 
 This often means firewall rules are blocking access.
 
@@ -169,12 +170,9 @@ az sql server update \
   --resource-group rg-myapp \
   --admin-password "NewSecurePassword123!"
 
-# Or create new user with proper permissions
-az sql db execute \
-  --name mydb \
-  --server mysqlserver \
-  --resource-group rg-myapp \
-  --query "CREATE USER [appuser] WITH PASSWORD = 'SecurePass123!'; ALTER ROLE db_datareader ADD MEMBER [appuser]; ALTER ROLE db_datawriter ADD MEMBER [appuser];"
+# Or create a contained database user with proper permissions
+sqlcmd -S mysqlserver.database.windows.net -d mydb -U myadmin -P "AdminPassword123!" \
+  -Q "CREATE USER [appuser] WITH PASSWORD = 'SecurePass123!'; ALTER ROLE db_datareader ADD MEMBER [appuser]; ALTER ROLE db_datawriter ADD MEMBER [appuser];"
 ```
 
 **Correct Connection String Format:**
@@ -200,7 +198,7 @@ aad_connection = (
 )
 
 # Common mistakes:
-# - Using 'Database' instead of 'Initial Catalog'
+# - Omitting the database name ('Database' and 'Initial Catalog' are both accepted)
 # - Missing 'tcp:' prefix
 # - Wrong port (default is 1433)
 # - Missing 'Encrypt=True' (required for Azure SQL)
@@ -311,23 +309,22 @@ queue_connection = (
 ### Error: The messaging entity could not be found
 
 ```python
-from azure.servicebus import ServiceBusClient
-from azure.servicebus.exceptions import ServiceBusError
+from azure.servicebus.management import ServiceBusAdministrationClient
+from azure.core.exceptions import ResourceNotFoundError
 
 def validate_queue_exists(connection_string, queue_name):
-    """Check if queue exists before sending."""
+    """Check if queue exists before sending.
+
+    Use a namespace-level connection string with Manage rights.
+    """
     try:
-        with ServiceBusClient.from_connection_string(connection_string) as client:
-            with client.get_queue_sender(queue_name) as sender:
-                # Try to get queue properties
-                sender._handler.message_handler  # Triggers connection
-                print(f"Queue {queue_name} exists")
-                return True
-    except ServiceBusError as e:
-        if "could not be found" in str(e):
-            print(f"Queue {queue_name} does not exist")
-            return False
-        raise
+        with ServiceBusAdministrationClient.from_connection_string(connection_string) as admin_client:
+            admin_client.get_queue(queue_name)
+            print(f"Queue {queue_name} exists")
+            return True
+    except ResourceNotFoundError:
+        print(f"Queue {queue_name} does not exist")
+        return False
 ```
 
 ## Cosmos DB Connection String Errors
@@ -472,7 +469,7 @@ def debug_connection_string(connection_string: str, service_type: str):
     print(f"Connection string parts for {service_type}:")
     for key, value in parts.items():
         # Mask sensitive values
-        if "key" in key.lower() or "password" in key.lower():
+        if any(secret in key.lower() for secret in ("key", "password", "signature", "secret")):
             print(f"  {key}: {'*' * 10}")
         else:
             print(f"  {key}: {value}")

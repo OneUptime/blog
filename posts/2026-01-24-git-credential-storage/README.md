@@ -126,13 +126,13 @@ On Windows, Git for Windows includes the manager helper that uses Windows Creden
 ```bash
 # Check current credential helper
 git config --global credential.helper
-# manager-core or manager
+# manager
 
 # Set the Windows credential manager
-git config --global credential.helper manager-core
-
-# Or for older Git versions
 git config --global credential.helper manager
+
+# Older Git for Windows installations may show manager-core
+git config --global credential.helper manager-core
 ```
 
 To manage stored credentials:
@@ -160,10 +160,9 @@ git config --global credential.helper /usr/share/doc/git/contrib/credential/libs
 For KDE systems with KWallet:
 
 ```bash
-# Install the KDE credential helper
-sudo apt-get install ksshaskpass
+# Install libsecret and use a Secret Service implementation such as KWallet
 
-# Configure git to use it
+# Configure Git to use the libsecret helper
 git config --global credential.helper /usr/lib/git-core/git-credential-libsecret
 ```
 
@@ -193,8 +192,8 @@ git push origin main
 ```bash
 # Configure credential helper first
 git config --global credential.helper osxkeychain  # macOS
-git config --global credential.helper manager-core  # Windows
-git config --global credential.helper cache --timeout=43200  # Linux (12 hours)
+git config --global credential.helper manager  # Windows
+git config --global credential.helper 'cache --timeout=43200'  # Linux (12 hours)
 
 # Then trigger credential storage by pushing/pulling
 git fetch origin
@@ -237,9 +236,10 @@ git config credential.helper store
 If you have personal and work GitHub accounts, configure them separately.
 
 ```bash
-# Use different credentials based on repository URL
-git config --global credential.https://github.com/personal.helper osxkeychain
-git config --global credential.https://github.com/work.helper 'store --file=~/.git-credentials-work'
+# Use different credentials based on repository path
+git config --global credential.useHttpPath true
+git config --global credential.https://github.com/your-user.helper osxkeychain
+git config --global credential.https://github.com/company.helper 'store --file ~/.git-credentials-work'
 
 # Or use SSH with different keys instead (often easier)
 # ~/.ssh/config
@@ -298,13 +298,12 @@ secret-tool clear server github.com protocol https
 For CI/CD pipelines, use environment variables instead of stored credentials.
 
 ```bash
-# Set credentials via environment variables
+# Use an askpass script that reads credentials from environment variables
 export GIT_ASKPASS=/path/to/credential-script.sh
-# or
 export GIT_USERNAME=myuser
 export GIT_PASSWORD=mytoken
 
-# Use in clone URL
+# Or use variables in the clone URL
 git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/user/repo.git
 ```
 
@@ -401,7 +400,7 @@ git config --global credential.helper
 
 # Common helpers by platform
 git config --global credential.helper osxkeychain    # macOS
-git config --global credential.helper manager-core   # Windows
+git config --global credential.helper manager        # Windows
 git config --global credential.helper cache          # Linux temporary
 git config --global credential.helper store          # Plaintext file
 
@@ -429,7 +428,7 @@ Git credential storage eliminates repetitive password entry while keeping your c
 - **cache**: Temporary memory storage, good for shared/temporary access
 - **store**: Plaintext file, simple but less secure
 - **osxkeychain**: macOS Keychain, secure and convenient
-- **manager-core**: Windows Credential Manager, secure and integrated
+- **manager**: Git Credential Manager on Windows, secure and integrated
 - **libsecret**: Linux system keyring, secure with GUI integration
 
 For modern workflows, use Personal Access Tokens instead of passwords, and choose a credential helper appropriate for your security needs. On personal machines, platform keychains provide the best balance of security and convenience. For CI/CD, use environment variables or short-lived tokens.

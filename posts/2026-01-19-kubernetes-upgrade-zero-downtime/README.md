@@ -66,7 +66,7 @@ ETCDCTL_API=3 etcdctl snapshot save /backup/etcd-$(date +%Y%m%d).db \
   --key=/etc/kubernetes/pki/etcd/server.key
 
 # Verify backup
-ETCDCTL_API=3 etcdctl snapshot status /backup/etcd-$(date +%Y%m%d).db
+etcdutl --write-out=table snapshot status /backup/etcd-$(date +%Y%m%d).db
 
 # Backup Kubernetes PKI
 cp -r /etc/kubernetes/pki /backup/pki-$(date +%Y%m%d)
@@ -102,8 +102,8 @@ done
 # Check node status
 kubectl get nodes
 
-# Check component status (deprecated but useful)
-kubectl get componentstatuses
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 
 # Check critical pods
 kubectl get pods -n kube-system
@@ -143,19 +143,20 @@ apt update
 apt-cache madison kubeadm
 
 # Upgrade kubeadm
+# Replace x in 1.36.x-* with the latest available patch version
 apt-mark unhold kubeadm
-apt-get update && apt-get install -y kubeadm=1.28.0-00
+apt-get update && apt-get install -y kubeadm='1.36.x-*'
 apt-mark hold kubeadm
 
 # Verify upgrade plan
 kubeadm upgrade plan
 
 # Apply upgrade
-kubeadm upgrade apply v1.28.0
+kubeadm upgrade apply v1.36.x
 
 # Upgrade kubelet and kubectl
 apt-mark unhold kubelet kubectl
-apt-get update && apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+apt-get update && apt-get install -y kubelet='1.36.x-*' kubectl='1.36.x-*'
 apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -170,8 +171,9 @@ kubectl get nodes
 
 ```bash
 # On each additional control plane node
+# Replace x in 1.36.x-* with the latest available patch version
 apt-mark unhold kubeadm
-apt-get update && apt-get install -y kubeadm=1.28.0-00
+apt-get update && apt-get install -y kubeadm='1.36.x-*'
 apt-mark hold kubeadm
 
 # Apply upgrade (different command for additional nodes)
@@ -179,7 +181,7 @@ kubeadm upgrade node
 
 # Upgrade kubelet and kubectl
 apt-mark unhold kubelet kubectl
-apt-get update && apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+apt-get update && apt-get install -y kubelet='1.36.x-*' kubectl='1.36.x-*'
 apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -195,8 +197,8 @@ systemctl restart kubelet
 #!/bin/bash
 # upgrade-workers.sh
 
-VERSION="1.28.0-00"
-NODES=$(kubectl get nodes -l 'node-role.kubernetes.io/control-plane!=' -o name)
+VERSION="1.36.x-*"
+NODES=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane,!node-role.kubernetes.io/master' -o name)
 
 for NODE in $NODES; do
   NODE_NAME=$(echo $NODE | cut -d'/' -f2)
@@ -226,7 +228,7 @@ for NODE in $NODES; do
   ssh $NODE_NAME << EOF
     apt-mark unhold kubeadm kubelet kubectl
     apt-get update
-    apt-get install -y kubeadm=$VERSION kubelet=$VERSION kubectl=$VERSION
+    apt-get install -y kubeadm="$VERSION" kubelet="$VERSION" kubectl="$VERSION"
     apt-mark hold kubeadm kubelet kubectl
     kubeadm upgrade node
     systemctl daemon-reload
@@ -235,9 +237,7 @@ EOF
   
   # 4. Wait for node to be ready
   echo "Waiting for $NODE_NAME to be Ready..."
-  until kubectl get node $NODE_NAME | grep -q "Ready"; do
-    sleep 10
-  done
+  kubectl wait --for=condition=Ready node/$NODE_NAME --timeout=300s
   
   # 5. Uncordon the node
   echo "Uncordoning $NODE_NAME..."
@@ -264,10 +264,10 @@ echo "All nodes upgraded!"
 # upgrade-workers-parallel.sh
 # Upgrade multiple nodes at once while maintaining capacity
 
-VERSION="1.28.0-00"
+VERSION="1.36.x-*"
 MAX_UNAVAILABLE=2  # Maximum nodes to upgrade simultaneously
 
-NODES=$(kubectl get nodes -l 'node-role.kubernetes.io/control-plane!=' -o name)
+NODES=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane,!node-role.kubernetes.io/master' -o name)
 NODE_COUNT=$(echo "$NODES" | wc -l)
 
 echo "Upgrading $NODE_COUNT nodes, max $MAX_UNAVAILABLE at a time"
@@ -295,7 +295,14 @@ for ((i=0; i<$NODE_COUNT; i+=$MAX_UNAVAILABLE)); do
       --force \
       --timeout=300s &
   done
-  wait
+  if ! wait; then
+    echo "Failed to drain one or more nodes in the batch, aborting"
+    for NODE in "${BATCH[@]}"; do
+      NODE_NAME=$(echo $NODE | cut -d'/' -f2)
+      kubectl uncordon $NODE_NAME
+    done
+    exit 1
+  fi
   
   # Upgrade all nodes in batch (in parallel)
   for NODE in "${BATCH[@]}"; do
@@ -303,7 +310,7 @@ for ((i=0; i<$NODE_COUNT; i+=$MAX_UNAVAILABLE)); do
     (
       ssh $NODE_NAME "apt-mark unhold kubeadm kubelet kubectl && \
         apt-get update && \
-        apt-get install -y kubeadm=$VERSION kubelet=$VERSION kubectl=$VERSION && \
+        apt-get install -y kubeadm=\"$VERSION\" kubelet=\"$VERSION\" kubectl=\"$VERSION\" && \
         apt-mark hold kubeadm kubelet kubectl && \
         kubeadm upgrade node && \
         systemctl daemon-reload && \
@@ -315,9 +322,7 @@ for ((i=0; i<$NODE_COUNT; i+=$MAX_UNAVAILABLE)); do
   # Wait for all nodes to be ready
   for NODE in "${BATCH[@]}"; do
     NODE_NAME=$(echo $NODE | cut -d'/' -f2)
-    until kubectl get node $NODE_NAME | grep -q "Ready"; do
-      sleep 10
-    done
+    kubectl wait --for=condition=Ready node/$NODE_NAME --timeout=300s
     kubectl uncordon $NODE_NAME
   done
   
@@ -334,10 +339,12 @@ done
 # Check current version
 aws eks describe-cluster --name my-cluster --query "cluster.version"
 
+TARGET_VERSION="1.36"
+
 # Update control plane
 aws eks update-cluster-version \
   --name my-cluster \
-  --kubernetes-version 1.28
+  --kubernetes-version "$TARGET_VERSION"
 
 # Wait for upgrade
 aws eks wait cluster-active --name my-cluster
@@ -346,7 +353,7 @@ aws eks wait cluster-active --name my-cluster
 aws eks update-nodegroup-version \
   --cluster-name my-cluster \
   --nodegroup-name my-nodegroup \
-  --kubernetes-version 1.28
+  --kubernetes-version "$TARGET_VERSION"
 
 # Or with managed node groups, use launch template update
 ```
@@ -357,16 +364,18 @@ aws eks update-nodegroup-version \
 # Check available versions
 gcloud container get-server-config --zone us-central1-a
 
+TARGET_GKE_VERSION="1.36.0-gke.100"
+
 # Upgrade control plane
 gcloud container clusters upgrade my-cluster \
   --master \
-  --cluster-version 1.28.0-gke.100 \
+  --cluster-version "$TARGET_GKE_VERSION" \
   --zone us-central1-a
 
 # Upgrade node pools
 gcloud container clusters upgrade my-cluster \
   --node-pool default-pool \
-  --cluster-version 1.28.0-gke.100 \
+  --cluster-version "$TARGET_GKE_VERSION" \
   --zone us-central1-a
 ```
 
@@ -379,11 +388,13 @@ az aks get-upgrades \
   --name myAKSCluster \
   --output table
 
+TARGET_VERSION="1.36.0"
+
 # Upgrade cluster
 az aks upgrade \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --kubernetes-version 1.28.0 \
+  --kubernetes-version "$TARGET_VERSION" \
   --yes
 ```
 
@@ -399,12 +410,18 @@ metadata:
   name: my-app
 spec:
   replicas: 3  # Multiple replicas
+  selector:
+    matchLabels:
+      app: my-app
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0  # Never reduce below desired
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       affinity:
         podAntiAffinity:
@@ -423,6 +440,11 @@ spec:
           labelSelector:
             matchLabels:
               app: my-app
+      containers:
+        - name: my-app
+          image: my-app:1.0.0
+          ports:
+            - containerPort: 8080
 ```
 
 ### Pod Disruption Budget
@@ -446,10 +468,13 @@ spec:
 # Ensure pods can terminate gracefully
 apiVersion: v1
 kind: Pod
+metadata:
+  name: my-app
 spec:
   terminationGracePeriodSeconds: 60
   containers:
     - name: app
+      image: my-app:1.0.0
       lifecycle:
         preStop:
           exec:
@@ -469,9 +494,7 @@ spec:
 
 ```bash
 # Restore etcd from backup
-ETCDCTL_API=3 etcdctl snapshot restore /backup/etcd-backup.db \
-  --data-dir=/var/lib/etcd-restored \
-  --skip-hash-check
+etcdutl --data-dir=/var/lib/etcd-restored snapshot restore /backup/etcd-backup.db
 
 # Update etcd to use restored data
 # Edit /etc/kubernetes/manifests/etcd.yaml to point to restored data
@@ -491,7 +514,7 @@ systemctl restart kubelet
 
 # If absolutely necessary:
 apt-mark unhold kubeadm kubelet kubectl
-apt-get install -y kubeadm=1.27.0-00 kubelet=1.27.0-00 kubectl=1.27.0-00
+apt-get install -y kubeadm='1.35.x-*' kubelet='1.35.x-*' kubectl='1.35.x-*'
 apt-mark hold kubeadm kubelet kubectl
 
 kubeadm upgrade node
@@ -517,7 +540,7 @@ histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket[5m])
 histogram_quantile(0.99, sum(rate(etcd_request_duration_seconds_bucket[5m])) by (le))
 
 # Scheduler latency
-scheduler_e2e_scheduling_duration_seconds_bucket
+scheduler_scheduling_attempt_duration_seconds_bucket
 ```
 
 ### Upgrade Monitoring Dashboard
@@ -538,7 +561,7 @@ scheduler_e2e_scheduling_duration_seconds_bucket
 
 1. **Always backup etcd** before upgrading
 2. **Test in staging first** with production-like workloads
-3. **Upgrade one minor version at a time** (1.27 → 1.28, not 1.27 → 1.29)
+3. **Upgrade one minor version at a time** (1.35 → 1.36, not 1.34 → 1.36)
 4. **Use PDBs** to protect application availability
 5. **Monitor continuously** during the upgrade
 6. **Have rollback plan** ready before starting
@@ -558,5 +581,5 @@ For monitoring your cluster health during upgrades, check out [OneUptime's Kuber
 ## Related Resources
 
 - [How to Drain and Cordon Nodes for Maintenance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-drain-cordon-node-maintenance/view)
-- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)
+- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/2026-02-09-descheduler-lownodeutilization-redistribute/view)
 - [How to Backup and Restore with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view)

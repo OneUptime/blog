@@ -19,7 +19,7 @@ The fastest way to get started is with Docker:
 
 docker run -d --name redis -p 6379:6379 redis:7
 
-# Redis Stack (includes Search, JSON, TimeSeries, Graph, Bloom)
+# Redis Stack (includes Search, JSON, TimeSeries, and Bloom)
 docker run -d --name redis-stack \
   -p 6379:6379 \
   -p 8001:8001 \
@@ -36,8 +36,6 @@ For a complete development environment, use Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -97,8 +95,6 @@ enable-debug-command yes
 
 ```yaml
 # docker-compose.full.yml
-version: '3.8'
-
 services:
   redis-stack:
     image: redis/redis-stack:latest
@@ -118,12 +114,13 @@ services:
       retries: 5
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: ghcr.io/joeferner/redis-commander:latest
     container_name: redis-commander
     ports:
       - "8081:8081"
     environment:
       - REDIS_HOSTS=local:redis-stack:6379
+    user: redis
     depends_on:
       - redis-stack
 
@@ -144,7 +141,7 @@ volumes:
 Start the environment:
 
 ```bash
-docker-compose -f docker-compose.full.yml up -d
+docker compose -f docker-compose.full.yml up -d
 ```
 
 ## Redis Cluster for Development
@@ -153,16 +150,14 @@ For testing cluster behavior locally:
 
 ```yaml
 # docker-compose.cluster.yml
-version: '3.8'
-
 services:
   redis-node-1:
     image: redis:7-alpine
     container_name: redis-node-1
     ports:
-      - "7001:6379"
-      - "17001:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7001:7001"
+      - "17001:17001"
+    command: redis-server --port 7001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-1 --cluster-announce-port 7001 --cluster-announce-bus-port 17001
     volumes:
       - redis-cluster-1:/data
 
@@ -170,9 +165,9 @@ services:
     image: redis:7-alpine
     container_name: redis-node-2
     ports:
-      - "7002:6379"
-      - "17002:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7002:7002"
+      - "17002:17002"
+    command: redis-server --port 7002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-2 --cluster-announce-port 7002 --cluster-announce-bus-port 17002
     volumes:
       - redis-cluster-2:/data
 
@@ -180,9 +175,9 @@ services:
     image: redis:7-alpine
     container_name: redis-node-3
     ports:
-      - "7003:6379"
-      - "17003:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7003:7003"
+      - "17003:17003"
+    command: redis-server --port 7003 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-3 --cluster-announce-port 7003 --cluster-announce-bus-port 17003
     volumes:
       - redis-cluster-3:/data
 
@@ -190,9 +185,9 @@ services:
     image: redis:7-alpine
     container_name: redis-node-4
     ports:
-      - "7004:6379"
-      - "17004:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7004:7004"
+      - "17004:17004"
+    command: redis-server --port 7004 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-4 --cluster-announce-port 7004 --cluster-announce-bus-port 17004
     volumes:
       - redis-cluster-4:/data
 
@@ -200,9 +195,9 @@ services:
     image: redis:7-alpine
     container_name: redis-node-5
     ports:
-      - "7005:6379"
-      - "17005:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7005:7005"
+      - "17005:17005"
+    command: redis-server --port 7005 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-5 --cluster-announce-port 7005 --cluster-announce-bus-port 17005
     volumes:
       - redis-cluster-5:/data
 
@@ -210,9 +205,9 @@ services:
     image: redis:7-alpine
     container_name: redis-node-6
     ports:
-      - "7006:6379"
-      - "17006:16379"
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+      - "7006:7006"
+      - "17006:17006"
+    command: redis-server --port 7006 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --cluster-announce-hostname redis-node-6 --cluster-announce-port 7006 --cluster-announce-bus-port 17006
     volumes:
       - redis-cluster-6:/data
 
@@ -229,12 +224,12 @@ services:
     command: >
       sh -c "sleep 5 &&
              redis-cli --cluster create
-             redis-node-1:6379
-             redis-node-2:6379
-             redis-node-3:6379
-             redis-node-4:6379
-             redis-node-5:6379
-             redis-node-6:6379
+             redis-node-1:7001
+             redis-node-2:7002
+             redis-node-3:7003
+             redis-node-4:7004
+             redis-node-5:7005
+             redis-node-6:7006
              --cluster-replicas 1 --cluster-yes"
 
 volumes:
@@ -257,7 +252,7 @@ RedisInsight is the official Redis GUI:
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 
 # Or standalone
-docker run -d --name redisinsight -p 8001:8001 redislabs/redisinsight:latest
+docker run -d --name redisinsight -p 5540:5540 redis/redisinsight:latest
 ```
 
 Features:
@@ -266,7 +261,7 @@ Features:
 - Slow log analysis
 - Memory analysis
 - Pub/Sub monitoring
-- Workbench for RediSearch, RedisGraph, etc.
+- Workbench for Redis Query Engine, JSON, Time Series, etc.
 
 ### Redis Commander
 
@@ -275,8 +270,9 @@ Web-based Redis management tool:
 ```bash
 docker run -d --name redis-commander \
   -p 8081:8081 \
-  -e REDIS_HOSTS=local:localhost:6379 \
-  rediscommander/redis-commander:latest
+  --add-host=host.docker.internal:host-gateway \
+  -e REDIS_HOSTS=local:host.docker.internal:6379 \
+  ghcr.io/joeferner/redis-commander:latest
 ```
 
 ### TablePlus (macOS/Windows/Linux)
@@ -289,24 +285,8 @@ Download from [tableplus.com](https://tableplus.com/) - native application with 
 
 Install these extensions for Redis development:
 
-1. **Redis** by cweijan - Database client
-2. **Redis Explorer** - Key browser
-
-Configuration in `.vscode/settings.json`:
-
-```json
-{
-  "redis.connections": [
-    {
-      "name": "Local Redis",
-      "host": "localhost",
-      "port": 6379,
-      "auth": "",
-      "database": 0
-    }
-  ]
-}
-```
+1. **Redis for VS Code** by Redis - Official Redis database browser and CLI
+2. Use the extension's **Connect database** dialog with Host: localhost, Port: 6379, Database: 0
 
 ### PyCharm/IntelliJ
 
@@ -342,6 +322,9 @@ my-redis-project/
 import os
 import redis
 from functools import lru_cache
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import TimeoutError
+from redis.retry import Retry
 
 @lru_cache()
 def get_redis_client():
@@ -350,11 +333,11 @@ def get_redis_client():
         host=os.getenv('REDIS_HOST', 'localhost'),
         port=int(os.getenv('REDIS_PORT', 6379)),
         db=int(os.getenv('REDIS_DB', 0)),
-        password=os.getenv('REDIS_PASSWORD', None),
+        password=os.getenv('REDIS_PASSWORD') or None,
         decode_responses=True,
         socket_timeout=5,
         socket_connect_timeout=5,
-        retry_on_timeout=True,
+        retry=Retry(ExponentialBackoff(), 3, supported_errors=(TimeoutError,)),
     )
 
 def get_redis_pool():
@@ -363,7 +346,7 @@ def get_redis_pool():
         host=os.getenv('REDIS_HOST', 'localhost'),
         port=int(os.getenv('REDIS_PORT', 6379)),
         db=int(os.getenv('REDIS_DB', 0)),
-        password=os.getenv('REDIS_PASSWORD', None),
+        password=os.getenv('REDIS_PASSWORD') or None,
         decode_responses=True,
         max_connections=10,
     )
@@ -575,15 +558,15 @@ if __name__ == "__main__":
 
 # Start Redis
 redis-up:
-	docker-compose up -d
+	docker compose up -d
 
 # Stop Redis
 redis-down:
-	docker-compose down
+	docker compose down
 
 # View logs
 redis-logs:
-	docker-compose logs -f redis
+	docker compose logs -f redis
 
 # Open Redis CLI
 redis-cli:
@@ -595,9 +578,9 @@ redis-reset:
 
 # Run tests with Redis
 redis-test:
-	docker-compose up -d
+	docker compose up -d
 	pytest tests/
-	docker-compose down
+	docker compose down
 
 # Backup data
 redis-backup:

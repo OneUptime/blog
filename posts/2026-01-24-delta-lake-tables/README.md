@@ -20,7 +20,7 @@ Start with proper table design by choosing appropriate partitioning and data typ
 
 ```python
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, year, month, to_date
+from pyspark.sql.functions import col, year, month, to_date, lit
 from delta.tables import DeltaTable
 
 spark = SparkSession.builder \
@@ -50,7 +50,7 @@ df_with_partitions.write \
 ### Using SQL DDL
 
 ```sql
--- Create managed Delta table
+-- Create external Delta table
 CREATE TABLE transactions (
     transaction_id STRING,
     customer_id STRING,
@@ -109,8 +109,8 @@ def analyze_partition_strategy(df, candidate_columns):
         avg_rows_per_partition = total_rows / distinct_values
         avg_size_per_partition_mb = (total_size_gb * 1024) / distinct_values
 
-        # Ideal partition size is 128MB - 1GB
-        if avg_size_per_partition_mb < 32:
+        # Delta partitioning works best when each partition has at least 1GB of data
+        if avg_size_per_partition_mb < 1024:
             status = "TOO_SMALL - will create too many small files"
         elif avg_size_per_partition_mb > 2048:
             status = "TOO_LARGE - consider adding secondary partition"
@@ -168,7 +168,7 @@ from delta.tables import DeltaTable
 delta_table = DeltaTable.forPath(spark, "/delta/transactions")
 
 # Optimize with Z-ORDER on frequently filtered columns
-delta_table.optimize().zOrderBy("customer_id", "category").executeCompaction()
+delta_table.optimize().executeZOrderBy("customer_id", "category")
 
 # Or use SQL
 spark.sql("""
@@ -207,14 +207,11 @@ spark.sql("""
 # - Columns frequently used together in WHERE clauses
 
 # Good Z-ORDER strategy
-delta_table.optimize() \
-    .zOrderBy("customer_id") \  # Primary filter column
-    .executeCompaction()
+# Primary filter column
+delta_table.optimize().executeZOrderBy("customer_id")
 
 # For multiple columns commonly filtered together
-delta_table.optimize() \
-    .zOrderBy("customer_id", "transaction_date") \
-    .executeCompaction()
+delta_table.optimize().executeZOrderBy("customer_id", "transaction_date")
 ```
 
 ---
@@ -377,7 +374,7 @@ def run_table_maintenance(table_path: str, z_order_columns: list = None):
 
     # Run optimize with optional Z-ORDER
     if z_order_columns:
-        delta_table.optimize().zOrderBy(*z_order_columns).executeCompaction()
+        delta_table.optimize().executeZOrderBy(*z_order_columns)
     else:
         delta_table.optimize().executeCompaction()
 
@@ -424,11 +421,7 @@ spark.sql("""
 
         -- Retention
         'delta.logRetentionDuration' = 'interval 30 days',
-        'delta.deletedFileRetentionDuration' = 'interval 7 days',
-
-        -- Compatibility
-        'delta.minReaderVersion' = '1',
-        'delta.minWriterVersion' = '2'
+        'delta.deletedFileRetentionDuration' = 'interval 7 days'
     )
 """)
 ```
@@ -496,7 +489,7 @@ for warning in health['warnings']:
 
 ## Best Practices Summary
 
-1. **Partition wisely** - Target 128MB-1GB partition sizes
+1. **Partition wisely** - Use low-cardinality columns with at least 1GB per partition
 2. **Use Z-ORDER** - For high-cardinality filter columns
 3. **Enable auto-optimize** - Keep files well-sized automatically
 4. **Schedule maintenance** - Regular OPTIMIZE and VACUUM

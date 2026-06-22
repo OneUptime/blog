@@ -54,9 +54,11 @@ CREATE TABLE otel_traces
     SpanName LowCardinality(String) CODEC(ZSTD(1)),
     SpanKind LowCardinality(String) CODEC(ZSTD(1)),
     ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion String CODEC(ZSTD(1)),
 
     -- Timing
-    Duration Int64 CODEC(ZSTD(1)),
+    Duration UInt64 CODEC(ZSTD(1)),
 
     -- Status
     StatusCode LowCardinality(String) CODEC(ZSTD(1)),
@@ -82,15 +84,18 @@ CREATE TABLE otel_traces
         Attributes Map(LowCardinality(String), String)
     ) CODEC(ZSTD(1)),
 
-    INDEX idx_trace_id TraceId TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_service ServiceName TYPE set(100) GRANULARITY 4,
-    INDEX idx_span_name SpanName TYPE set(1000) GRANULARITY 4
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_key mapKeys(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_value mapValues(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_duration Duration TYPE minmax GRANULARITY 1
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SpanName, toUnixTimestamp(Timestamp), TraceId)
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDateTime(Timestamp) + INTERVAL 30 DAY
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 ### Trace Search Materialized View
@@ -101,70 +106,118 @@ Pre-aggregate for trace list queries:
 CREATE TABLE otel_traces_trace_id_ts
 (
     TraceId String,
-    Start DateTime64(9),
-    End DateTime64(9),
-    ServiceName LowCardinality(String),
-    RootSpanName String,
-    Duration Int64,
-    SpanCount UInt32,
-    HasError UInt8
+    Start DateTime,
+    End DateTime,
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.01) GRANULARITY 1
 )
-ENGINE = ReplacingMergeTree()
-ORDER BY (TraceId)
-TTL toDateTime(Start) + INTERVAL 30 DAY;
+ENGINE = MergeTree()
+PARTITION BY toDate(Start)
+ORDER BY (TraceId, Start)
+TTL Start + INTERVAL 30 DAY
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
 CREATE MATERIALIZED VIEW otel_traces_trace_id_mv TO otel_traces_trace_id_ts AS
 SELECT
     TraceId,
     min(Timestamp) AS Start,
-    max(Timestamp) AS End,
-    any(ServiceName) AS ServiceName,
-    anyIf(SpanName, ParentSpanId = '') AS RootSpanName,
-    toInt64(dateDiff('microsecond', min(Timestamp), max(Timestamp))) AS Duration,
-    count() AS SpanCount,
-    max(StatusCode = 'Error') AS HasError
+    max(Timestamp) AS End
 FROM otel_traces
+WHERE TraceId != ''
 GROUP BY TraceId;
 ```
 
 ## Schema Design: Metrics
 
-### Metrics Table
+### Metrics Tables
 
-Store all metric types in one table:
+The ClickHouse exporter stores metrics in separate tables by metric type. For example, gauges and histograms use compatible but different schemas:
 
 ```sql
-CREATE TABLE otel_metrics
+CREATE TABLE otel_metrics_gauge
 (
-    -- Time and identity
-    Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    MetricName LowCardinality(String) CODEC(ZSTD(1)),
-    MetricType LowCardinality(String) CODEC(ZSTD(1)),  -- gauge, sum, histogram
-
-    -- Dimensions
-    ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-    Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ResourceSchemaUrl String CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion String CODEC(ZSTD(1)),
+    ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+    ScopeSchemaUrl String CODEC(ZSTD(1)),
+    ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+    MetricName String CODEC(ZSTD(1)),
+    MetricDescription String CODEC(ZSTD(1)),
+    MetricUnit String CODEC(ZSTD(1)),
+    Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    StartTimeUnix DateTime64(9) CODEC(Delta, ZSTD(1)),
+    TimeUnix DateTime64(9) CODEC(Delta, ZSTD(1)),
+    Value Float64 CODEC(ZSTD(1)),
+    Flags UInt32 CODEC(ZSTD(1)),
+    Exemplars Nested
+    (
+        FilteredAttributes Map(LowCardinality(String), String),
+        TimeUnix DateTime64(9),
+        Value Float64,
+        SpanId String,
+        TraceId String
+    ) CODEC(ZSTD(1)),
 
-    -- Values (use appropriate column based on type)
-    Value Float64 CODEC(Gorilla, ZSTD(1)),
-    Count UInt64 CODEC(T64, ZSTD(1)),
-    Sum Float64 CODEC(Gorilla, ZSTD(1)),
-    Min Float64 CODEC(Gorilla, ZSTD(1)),
-    Max Float64 CODEC(Gorilla, ZSTD(1)),
-
-    -- Histogram buckets
-    BucketCounts Array(UInt64) CODEC(ZSTD(1)),
-    ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
-
-    INDEX idx_metric_name MetricName TYPE set(1000) GRANULARITY 4,
-    INDEX idx_service ServiceName TYPE set(100) GRANULARITY 4
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
 )
 ENGINE = MergeTree()
-PARTITION BY toDate(Timestamp)
-ORDER BY (MetricName, ServiceName, toUnixTimestamp(Timestamp))
-TTL toDateTime(Timestamp) + INTERVAL 90 DAY
-SETTINGS index_granularity = 8192;
+PARTITION BY toDate(TimeUnix)
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + INTERVAL 90 DAY
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+CREATE TABLE otel_metrics_histogram
+(
+    ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ResourceSchemaUrl String CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion String CODEC(ZSTD(1)),
+    ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+    ScopeSchemaUrl String CODEC(ZSTD(1)),
+    ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+    MetricName String CODEC(ZSTD(1)),
+    MetricDescription String CODEC(ZSTD(1)),
+    MetricUnit String CODEC(ZSTD(1)),
+    Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    StartTimeUnix DateTime64(9) CODEC(Delta, ZSTD(1)),
+    TimeUnix DateTime64(9) CODEC(Delta, ZSTD(1)),
+    Count UInt64 CODEC(T64, ZSTD(1)),
+    Sum Float64 CODEC(ZSTD(1)),
+    BucketCounts Array(UInt64) CODEC(ZSTD(1)),
+    ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
+    Exemplars Nested
+    (
+        FilteredAttributes Map(LowCardinality(String), String),
+        TimeUnix DateTime64(9),
+        Value Float64,
+        SpanId String,
+        TraceId String
+    ) CODEC(ZSTD(1)),
+    Flags UInt32 CODEC(ZSTD(1)),
+    Min Float64 CODEC(ZSTD(1)),
+    Max Float64 CODEC(ZSTD(1)),
+    AggregationTemporality Int32 CODEC(ZSTD(1)),
+
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
+)
+ENGINE = MergeTree()
+PARTITION BY toDate(TimeUnix)
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + INTERVAL 90 DAY
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 ### Pre-Aggregated Metrics
@@ -175,12 +228,12 @@ Create rollups for dashboard queries:
 CREATE TABLE otel_metrics_hourly
 (
     Hour DateTime,
-    MetricName LowCardinality(String),
+    MetricName String,
     ServiceName LowCardinality(String),
     Attributes Map(LowCardinality(String), String),
 
     ValueSum AggregateFunction(sum, Float64),
-    ValueCount AggregateFunction(count, UInt64),
+    ValueCount AggregateFunction(count),
     ValueMin AggregateFunction(min, Float64),
     ValueMax AggregateFunction(max, Float64),
     ValueAvg AggregateFunction(avg, Float64)
@@ -192,7 +245,7 @@ TTL Hour + INTERVAL 1 YEAR;
 
 CREATE MATERIALIZED VIEW otel_metrics_hourly_mv TO otel_metrics_hourly AS
 SELECT
-    toStartOfHour(Timestamp) AS Hour,
+    toStartOfHour(TimeUnix) AS Hour,
     MetricName,
     ServiceName,
     Attributes,
@@ -201,8 +254,7 @@ SELECT
     minState(Value) AS ValueMin,
     maxState(Value) AS ValueMax,
     avgState(Value) AS ValueAvg
-FROM otel_metrics
-WHERE MetricType = 'gauge'
+FROM otel_metrics_gauge
 GROUP BY Hour, MetricName, ServiceName, Attributes;
 ```
 
@@ -215,9 +267,9 @@ CREATE TABLE otel_logs
 (
     -- Time and identity
     Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    ObservedTimestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
     TraceId String CODEC(ZSTD(1)),
     SpanId String CODEC(ZSTD(1)),
+    TraceFlags UInt8,
 
     -- Log info
     SeverityText LowCardinality(String) CODEC(ZSTD(1)),
@@ -226,19 +278,29 @@ CREATE TABLE otel_logs
 
     -- Context
     ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-    Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ResourceSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
     ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion LowCardinality(String) CODEC(ZSTD(1)),
+    ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    EventName String CODEC(ZSTD(1)),
 
-    INDEX idx_trace_id TraceId TYPE bloom_filter GRANULARITY 4,
-    INDEX idx_service ServiceName TYPE set(100) GRANULARITY 4,
-    INDEX idx_severity SeverityText TYPE set(10) GRANULARITY 4,
-    INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SeverityText, toUnixTimestamp(Timestamp))
+ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + INTERVAL 14 DAY
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 ## OpenTelemetry Collector Configuration
@@ -263,10 +325,21 @@ exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000?dial_timeout=10s&compress=lz4
     database: otel
-    ttl_days: 30
+    ttl: 720h
+    create_schema: true
     logs_table_name: otel_logs
     traces_table_name: otel_traces
-    metrics_table_name: otel_metrics
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      summary:
+        name: otel_metrics_summary
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exp_histogram
     timeout: 30s
     retry_on_failure:
       enabled: true
@@ -323,12 +396,17 @@ exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000?dial_timeout=10s&compress=lz4&max_execution_time=60
     database: otel
-    ttl_days: 30
+    ttl: 720h
+    create_schema: true
     timeout: 60s
     sending_queue:
       enabled: true
       num_consumers: 10
       queue_size: 10000
+      batch:
+        flush_timeout: 10s
+        min_size: 1000
+        max_size: 100000
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -338,7 +416,12 @@ exporters:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -404,23 +487,35 @@ ORDER BY Timestamp;
 ```sql
 -- Request rate by service
 SELECT
-    toStartOfMinute(Timestamp) AS minute,
+    toStartOfMinute(TimeUnix) AS minute,
     ServiceName,
     sum(Value) AS requests
-FROM otel_metrics
+FROM otel_metrics_sum
 WHERE MetricName = 'http_requests_total'
-  AND Timestamp >= now() - INTERVAL 1 HOUR
+  AND TimeUnix >= now() - INTERVAL 1 HOUR
 GROUP BY minute, ServiceName
 ORDER BY minute;
 
 -- P99 latency from histogram
 SELECT
-    toStartOfMinute(Timestamp) AS minute,
+    minute,
     ServiceName,
-    histogramQuantile(0.99, BucketCounts, ExplicitBounds) AS p99_ms
-FROM otel_metrics
-WHERE MetricName = 'http_request_duration_seconds'
-  AND Timestamp >= now() - INTERVAL 1 HOUR
+    quantilePrometheusHistogram(0.99)(upper_bound, cumulative_count) * 1000 AS p99_ms
+FROM
+(
+    SELECT
+        toStartOfMinute(TimeUnix) AS minute,
+        ServiceName,
+        arrayJoin(arrayZip(
+            arrayConcat(ExplicitBounds, [CAST('Inf', 'Float64')]),
+            arrayCumSum(BucketCounts)
+        )) AS bucket,
+        bucket.1 AS upper_bound,
+        bucket.2 AS cumulative_count
+    FROM otel_metrics_histogram
+    WHERE MetricName = 'http_request_duration_seconds'
+      AND TimeUnix >= now() - INTERVAL 1 HOUR
+)
 GROUP BY minute, ServiceName;
 ```
 
@@ -443,7 +538,7 @@ LIMIT 100;
 SELECT
     Timestamp,
     Body,
-    Attributes
+    LogAttributes
 FROM otel_logs
 WHERE TraceId = 'abc123...'
 ORDER BY Timestamp;
@@ -497,26 +592,25 @@ LIMIT 20
 ### Collector Tuning
 
 ```yaml
-# Increase batch size for throughput
+# Increase exporter batch size for throughput
 
-processors:
-  batch:
-    send_batch_size: 500000
-    timeout: 10s
-
-# Add sending queue for backpressure
 exporters:
   clickhouse:
     sending_queue:
       enabled: true
       num_consumers: 10
+      queue_size: 10000
+      batch:
+        flush_timeout: 10s
+        min_size: 1000
+        max_size: 100000
 ```
 
 ### ClickHouse Tuning
 
 ```sql
 -- Async inserts for high volume
-ALTER TABLE otel_traces MODIFY SETTING
+ALTER USER default SETTINGS
     async_insert = 1,
     async_insert_max_data_size = 100000000;
 

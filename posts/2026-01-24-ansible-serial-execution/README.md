@@ -8,7 +8,7 @@ Description: Learn how to use Ansible serial execution for rolling updates, batc
 
 ---
 
-By default, Ansible runs tasks on all hosts in parallel. While this is fast, it can cause service outages during deployments. Serial execution lets you update hosts in batches, maintaining service availability throughout the process.
+By default, Ansible runs each task across hosts in parallel, limited by the configured number of forks. While this is fast, it can cause service outages during deployments. Serial execution lets you update hosts in batches, maintaining service availability throughout the process.
 
 ## Understanding Serial Execution
 
@@ -146,8 +146,8 @@ sequenceDiagram
   hosts: webservers
   serial:
     - 1          # First: 1 host (canary)
-    - "10%"      # Second: 10% of remaining
-    - "25%"      # Third+: 25% of remaining
+    - "10%"      # Second: 10% of total hosts
+    - "25%"      # Third+: 25% of total hosts
 
   tasks:
     - name: Deploy application
@@ -349,7 +349,6 @@ Coordinate database migrations with rolling application updates.
       ansible.builtin.set_fact:
         db_version: "{{ migration.stdout | regex_search('version: (\\d+)', '\\1') | first }}"
 
----
 # Step 2: Rolling update application servers
 - name: Application update
   hosts: app_servers
@@ -579,7 +578,7 @@ Control the order hosts are processed.
 
     # Backup current version
     - name: Backup current deployment
-      ansible.builtin.archive:
+      community.general.archive:
         path: /opt/myapp
         dest: "/opt/backups/myapp-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
       ignore_errors: true
@@ -628,6 +627,7 @@ Control the order hosts are processed.
     - name: Verify receiving traffic
       ansible.builtin.uri:
         url: "http://localhost:8080/metrics"
+        return_content: true
       register: metrics
       until: "'requests_total' in metrics.content"
       retries: 10

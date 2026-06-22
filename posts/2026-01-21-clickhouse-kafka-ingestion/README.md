@@ -44,7 +44,7 @@ CREATE TABLE events
     user_id UInt64,
     properties Map(String, String),
     _kafka_topic String,
-    _kafka_partition UInt32,
+    _kafka_partition UInt64,
     _kafka_offset UInt64
 )
 ENGINE = MergeTree()
@@ -139,15 +139,20 @@ SETTINGS
 ```sql
 SETTINGS
     -- SASL authentication
-    kafka_security_protocol = 'SASL_SSL',
+    kafka_security_protocol = 'sasl_ssl',
     kafka_sasl_mechanism = 'PLAIN',
     kafka_sasl_username = 'user',
-    kafka_sasl_password = 'password',
+    kafka_sasl_password = 'password';
+```
 
-    -- SSL/TLS
-    kafka_ssl_ca_location = '/path/to/ca.pem',
-    kafka_ssl_certificate_location = '/path/to/client.pem',
-    kafka_ssl_key_location = '/path/to/client.key';
+Configure additional librdkafka TLS options in the ClickHouse server config:
+
+```xml
+<kafka>
+  <ssl_ca_location>/path/to/ca.pem</ssl_ca_location>
+  <ssl_certificate_location>/path/to/client.pem</ssl_certificate_location>
+  <ssl_key_location>/path/to/client.key</ssl_key_location>
+</kafka>
 ```
 
 ## Message Formats
@@ -178,7 +183,7 @@ For Protocol Buffer messages:
 ```sql
 kafka_format = 'Protobuf'
 SETTINGS
-    format_schema = 'events.proto:Event';
+    kafka_schema = 'events.proto:Event';
 ```
 
 ### CSV/TSV
@@ -202,13 +207,20 @@ CREATE TABLE raw_kafka
 )
 ENGINE = Kafka
 SETTINGS
+    kafka_broker_list = 'broker1:9092',
+    kafka_topic_list = 'raw-events',
+    kafka_group_name = 'clickhouse-raw-consumer',
     kafka_format = 'RawBLOB';
 
 CREATE MATERIALIZED VIEW raw_mv TO events AS
 SELECT
-    JSONExtractString(message, 'event_time') AS event_time,
+    parseDateTimeBestEffort(JSONExtractString(message, 'event_time')) AS event_time,
     JSONExtractString(message, 'event_type') AS event_type,
-    JSONExtractUInt(message, 'user_id') AS user_id
+    JSONExtractUInt(message, 'user_id') AS user_id,
+    CAST(map(), 'Map(String, String)') AS properties,
+    _topic AS _kafka_topic,
+    _partition AS _kafka_partition,
+    _offset AS _kafka_offset
 FROM raw_kafka;
 ```
 
@@ -219,19 +231,24 @@ FROM raw_kafka;
 ```sql
 CREATE TABLE multi_topic_kafka
 (
-    message String,
-    _topic String  -- Virtual column identifies source topic
+    message String
 )
 ENGINE = Kafka
 SETTINGS
+    kafka_broker_list = 'broker1:9092',
     kafka_topic_list = 'events,clicks,pageviews',
+    kafka_group_name = 'clickhouse-multi-topic-consumer',
     kafka_format = 'JSONAsString';
 
 CREATE MATERIALIZED VIEW multi_topic_mv TO events AS
 SELECT
-    JSONExtractString(message, 'timestamp') AS event_time,
+    parseDateTimeBestEffort(JSONExtractString(message, 'timestamp')) AS event_time,
     _topic AS event_type,  -- Use topic name as event type
-    JSONExtractUInt(message, 'user_id') AS user_id
+    JSONExtractUInt(message, 'user_id') AS user_id,
+    CAST(map(), 'Map(String, String)') AS properties,
+    _topic AS _kafka_topic,
+    _partition AS _kafka_partition,
+    _offset AS _kafka_offset
 FROM multi_topic_kafka;
 ```
 
@@ -239,15 +256,41 @@ FROM multi_topic_kafka;
 
 ```sql
 -- Events topic
-CREATE TABLE events_kafka ENGINE = Kafka
-SETTINGS kafka_topic_list = 'events', ...;
+CREATE TABLE events_kafka
+(
+    event_time DateTime,
+    event_type String,
+    user_id UInt64,
+    properties Map(String, String)
+)
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'broker1:9092',
+    kafka_topic_list = 'events',
+    kafka_group_name = 'clickhouse-events-consumer',
+    kafka_format = 'JSONEachRow';
 
 CREATE MATERIALIZED VIEW events_mv TO events AS
-SELECT * FROM events_kafka;
+SELECT
+    *,
+    _topic AS _kafka_topic,
+    _partition AS _kafka_partition,
+    _offset AS _kafka_offset
+FROM events_kafka;
 
 -- Clicks topic
-CREATE TABLE clicks_kafka ENGINE = Kafka
-SETTINGS kafka_topic_list = 'clicks', ...;
+CREATE TABLE clicks_kafka
+(
+    click_time DateTime,
+    user_id UInt64,
+    url String
+)
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'broker1:9092',
+    kafka_topic_list = 'clicks',
+    kafka_group_name = 'clickhouse-clicks-consumer',
+    kafka_format = 'JSONEachRow';
 
 CREATE MATERIALIZED VIEW clicks_mv TO clicks AS
 SELECT * FROM clicks_kafka;
@@ -315,19 +358,20 @@ Increase parallelism with multiple consumers:
 kafka_num_consumers = 8  -- For a topic with 8 partitions
 ```
 
-Each consumer runs in its own thread. Don't exceed the partition count.
+Enable `kafka_thread_per_consumer = 1` if each consumer should flush independently in its own thread. Don't exceed the partition count or the number of physical CPU cores.
 
 ### Consumer Group Management
 
 ```sql
--- Check consumer lag
+-- Check current consumer assignments and offsets
 SELECT
-    consumer_group,
-    topic,
-    partition,
-    current_offset,
-    end_offset,
-    end_offset - current_offset AS lag
+    database,
+    table,
+    consumer_id,
+    assignments.topic,
+    assignments.partition_id,
+    assignments.current_offset,
+    last_poll_time
 FROM system.kafka_consumers;
 
 -- Reset consumer offset (drop and recreate)
@@ -339,8 +383,8 @@ DROP TABLE events_kafka;
 ### Handling Consumer Failures
 
 ```sql
--- Enable automatic offset reset
-kafka_auto_offset_reset = 'earliest'  -- or 'latest'
+-- Configure automatic offset reset in ClickHouse server config
+-- <kafka><consumer><auto_offset_reset>earliest</auto_offset_reset></consumer></kafka>
 
 -- Skip broken messages
 kafka_skip_broken_messages = 100  -- Skip up to 100 bad messages per block
@@ -362,13 +406,13 @@ CREATE TABLE events
     event_id UUID,
     event_time DateTime,
     event_type String,
-    ...
+    user_id UInt64
 )
 ENGINE = ReplacingMergeTree()
 ORDER BY event_id;
 
 -- Or use FINAL in queries
-SELECT * FROM events FINAL WHERE ...;
+SELECT * FROM events FINAL WHERE event_id = '00000000-0000-0000-0000-000000000000';
 ```
 
 ### Dead Letter Queue
@@ -376,37 +420,43 @@ SELECT * FROM events FINAL WHERE ...;
 Handle failed messages:
 
 ```sql
--- Create error table
-CREATE TABLE events_errors
+-- Enable the built-in dead letter queue for parse errors
+CREATE TABLE events_kafka
 (
-    raw_message String,
-    error String,
-    _topic String,
-    _partition UInt32,
-    _offset UInt64,
-    error_time DateTime DEFAULT now()
+    event_time DateTime,
+    event_type String,
+    user_id UInt64,
+    properties Map(String, String)
 )
-ENGINE = MergeTree()
-ORDER BY error_time;
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'broker1:9092',
+    kafka_topic_list = 'events',
+    kafka_group_name = 'clickhouse-events-consumer',
+    kafka_format = 'JSONEachRow',
+    kafka_handle_error_mode = 'dead_letter_queue';
 
 -- Main processing
 CREATE MATERIALIZED VIEW events_mv TO events AS
 SELECT
-    parseDateTimeBestEffortOrNull(event_time) AS event_time,
-    ...
-FROM events_kafka
-WHERE parseDateTimeBestEffortOrNull(event_time) IS NOT NULL;
+    event_time,
+    event_type,
+    user_id,
+    properties,
+    _topic AS _kafka_topic,
+    _partition AS _kafka_partition,
+    _offset AS _kafka_offset
+FROM events_kafka;
 
--- Error handling (catches parse failures)
-CREATE MATERIALIZED VIEW events_error_mv TO events_errors AS
+-- Inspect failed messages
 SELECT
-    _raw_message AS raw_message,
-    'Parse error' AS error,
-    _topic,
-    _partition,
-    _offset
-FROM events_kafka
-WHERE parseDateTimeBestEffortOrNull(event_time) IS NULL;
+    raw_message,
+    error,
+    kafka_topic_name,
+    kafka_partition,
+    kafka_offset
+FROM system.dead_letter_queue
+WHERE table = 'events_kafka';
 ```
 
 ### Backpressure Handling
@@ -420,7 +470,7 @@ kafka_max_block_size = 262144
 -- Reduce poll frequency if overloaded
 kafka_poll_timeout_ms = 5000
 
--- Monitor lag
+-- Monitor consumer offsets and exceptions
 SELECT * FROM system.kafka_consumers;
 ```
 
@@ -445,34 +495,36 @@ WHERE name LIKE '%kafka%';
 ### Key Metrics to Monitor
 
 ```sql
--- Messages consumed per second
-SELECT
-    table,
-    sum(ProfileEvents['KafkaMessagesRead']) AS messages
-FROM system.query_log
-WHERE event_time > now() - INTERVAL 1 HOUR
-GROUP BY table;
-
--- Consumer lag trend
+-- Rows inserted per minute
 SELECT
     toStartOfMinute(event_time) AS minute,
-    sum(lag) AS total_lag
-FROM (
-    SELECT
-        now() AS event_time,
-        end_offset - current_offset AS lag
-    FROM system.kafka_consumers
-)
-GROUP BY minute;
+    table,
+    sum(written_rows) AS rows
+FROM system.query_log
+ARRAY JOIN tables AS table
+WHERE event_time > now() - INTERVAL 1 HOUR
+  AND type = 'QueryFinish'
+GROUP BY minute, table;
+
+-- Current consumer offsets by assignment
+SELECT
+    database,
+    table,
+    consumer_id,
+    tupleElement(assignment, 1) AS topic,
+    tupleElement(assignment, 2) AS partition,
+    tupleElement(assignment, 3) AS current_offset
+FROM system.kafka_consumers
+ARRAY JOIN arrayZip(assignments.topic, assignments.partition_id, assignments.current_offset) AS assignment;
 ```
 
 ### Alerting Queries
 
 ```sql
--- Alert if lag exceeds threshold
-SELECT count() > 0 AS lag_alert
+-- Alert if consumers have recent exceptions
+SELECT count() > 0 AS consumer_error_alert
 FROM system.kafka_consumers
-WHERE end_offset - current_offset > 1000000;
+WHERE notEmpty(exceptions.text);
 
 -- Alert if no recent inserts
 SELECT count() = 0 AS no_data_alert
@@ -498,8 +550,8 @@ SELECT * FROM events_kafka LIMIT 1;
 ### Parsing Errors
 
 ```sql
--- Enable verbose logging
-SET kafka_handle_error_mode = 'stream';
+-- Recreate the Kafka table with stream error handling
+kafka_handle_error_mode = 'stream';
 
 -- Check for parse errors
 SELECT _error, count()
@@ -523,11 +575,11 @@ LIMIT 10;
 
 -- Verify partition balance
 SELECT
-    partition,
-    current_offset,
-    end_offset
+    consumer_id,
+    assignments.partition_id,
+    assignments.current_offset
 FROM system.kafka_consumers
-WHERE topic = 'events';
+WHERE has(assignments.topic, 'events');
 ```
 
 ### Offset Issues
@@ -545,11 +597,11 @@ SELECT * FROM system.kafka_consumers;
 1. **Match consumers to partitions**: Set `kafka_num_consumers` equal to or less than topic partitions
 2. **Batch appropriately**: Larger batches = higher throughput, but more memory usage
 3. **Use dedicated consumer groups**: Each Kafka table should have its own consumer group
-4. **Monitor lag continuously**: Set up alerts for consumer lag
+4. **Monitor offsets continuously**: Use `system.kafka_consumers` for assignments and current offsets, and Kafka tooling or exporters for consumer lag
 5. **Handle errors gracefully**: Use dead letter queues for failed messages
 6. **Deduplicate when needed**: Use ReplacingMergeTree or handle in queries
 7. **Separate concerns**: Use different tables for different message types
 
 ---
 
-The Kafka-ClickHouse combination provides real-time analytics at scale. Use the three-table pattern (Kafka engine, materialized view, MergeTree), tune your consumer settings for throughput, and monitor lag to ensure your pipeline keeps up with incoming data.
+The Kafka-ClickHouse combination provides real-time analytics at scale. Use the three-table pattern (Kafka engine, materialized view, MergeTree), tune your consumer settings for throughput, and monitor offsets and lag to ensure your pipeline keeps up with incoming data.

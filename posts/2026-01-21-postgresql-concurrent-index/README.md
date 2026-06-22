@@ -8,7 +8,7 @@ Description: A guide to creating PostgreSQL indexes without blocking queries usi
 
 ---
 
-Standard index creation locks the table. CONCURRENTLY allows index creation without blocking reads or writes.
+Standard index creation locks the table against writes. CONCURRENTLY allows index creation without blocking reads or writes.
 
 ## Standard vs Concurrent Index Creation
 
@@ -16,7 +16,7 @@ Standard index creation locks the table. CONCURRENTLY allows index creation with
 -- Standard (blocks writes)
 CREATE INDEX idx_users_email ON users(email);
 
--- Concurrent (no blocking)
+-- Concurrent (does not block reads or writes)
 CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 ```
 
@@ -24,15 +24,15 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 
 ```text
 Standard Index:
-1. Lock table (ACCESS EXCLUSIVE)
+1. Lock table with SHARE lock (blocks writes, allows reads)
 2. Scan table, build index
 3. Release lock
 
 Concurrent Index:
-1. Scan table (snapshot 1)
-2. Build initial index
-3. Scan again for changes (snapshot 2)
-4. Merge changes
+1. Wait for existing writers
+2. Scan table and build initial index
+3. Scan again to validate changes
+4. Wait for old snapshots
 5. Mark index valid
 ```
 
@@ -50,7 +50,7 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 
 ```sql
 SELECT
-    relname,
+    relid::regclass AS relname,
     phase,
     blocks_total,
     blocks_done,
@@ -74,7 +74,7 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 ## Reindex Concurrently
 
 ```sql
--- Rebuild index without locking (PostgreSQL 12+)
+-- Rebuild index without blocking normal reads or writes (PostgreSQL 12+)
 REINDEX INDEX CONCURRENTLY idx_users_email;
 
 -- Rebuild all indexes on table
@@ -110,4 +110,4 @@ SELECT * FROM pg_locks WHERE relation = 'users'::regclass;
 
 ## Conclusion
 
-Always use CONCURRENTLY for index operations on production tables. Monitor progress and handle failures gracefully.
+Use CONCURRENTLY for index operations on production tables where blocking writes is not acceptable. Monitor progress and handle failures gracefully.

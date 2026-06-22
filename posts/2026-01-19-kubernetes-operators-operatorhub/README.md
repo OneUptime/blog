@@ -34,8 +34,9 @@ flowchart LR
 
 ```bash
 # Install OLM (required for OperatorHub)
-
-curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.27.0/install.sh | bash -s v0.27.0
+curl -L https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.45.0/install.sh -o install.sh
+chmod +x install.sh
+./install.sh v0.45.0
 
 # Verify installation
 kubectl get pods -n olm
@@ -95,6 +96,16 @@ kind: Namespace
 metadata:
   name: postgres-operator
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
@@ -123,7 +134,7 @@ spec:
   sourceNamespace: olm
   
   # Optional: Pin to specific version
-  # startingCSV: postgresql.v5.4.0
+  # startingCSV: postgresoperator.v5.8.4
   
   # Optional: Approval strategy
   installPlanApproval: Automatic  # or Manual
@@ -139,8 +150,8 @@ kubectl get csv -n postgres-operator -w
 
 # Check if operator is ready
 kubectl get csv -n postgres-operator
-# NAME                 DISPLAY              VERSION   PHASE
-# postgresql.v5.4.0    PostgreSQL           5.4.0     Succeeded
+# NAME                      DISPLAY                          VERSION   PHASE
+# postgresoperator.v5.8.4   Crunchy Postgres for Kubernetes  5.8.4     Succeeded
 ```
 
 ### Step 3: Verify Installation
@@ -170,7 +181,7 @@ metadata:
   name: production-db
   namespace: production
 spec:
-  postgresVersion: 15
+  postgresVersion: 17
   
   instances:
     - name: primary
@@ -284,7 +295,7 @@ kubectl delete postgrescluster --all -n production
 kubectl delete subscription postgresql -n postgres-operator
 
 # 3. Delete the CSV (ClusterServiceVersion)
-kubectl delete csv postgresql.v5.4.0 -n postgres-operator
+kubectl delete csv postgresoperator.v5.8.4 -n postgres-operator
 
 # 4. Clean up CRDs (optional, affects all namespaces)
 kubectl delete crds postgresclusters.postgres-operator.crunchydata.com
@@ -353,11 +364,25 @@ make bundle IMG=myregistry.io/my-operator:v1
 
 ```yaml
 # Install Prometheus Operator
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: prometheus-operatorgroup
+  namespace: monitoring
+spec:
+  targetNamespaces:
+    - monitoring
+---
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: prometheus
-  namespace: operators
+  namespace: monitoring
 spec:
   channel: beta
   name: prometheus
@@ -372,7 +397,6 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 2
-  serviceAccountName: prometheus
   serviceMonitorSelector:
     matchLabels:
       monitoring: enabled
@@ -385,6 +409,18 @@ spec:
 
 ```yaml
 # Install cert-manager
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: cert-manager-operatorgroup
+  namespace: cert-manager
+spec: {}
+---
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:

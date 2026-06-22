@@ -287,7 +287,6 @@ server {
 ### NGINX Error Response Files
 
 ```json
-// /etc/nginx/errors/service_unavailable.json
 {
   "error": {
     "code": "SERVICE_UNAVAILABLE",
@@ -327,7 +326,7 @@ paths:
         connectionType: VPC_LINK
         connectionId: ${vpc_link_id}
         requestParameters:
-          integration.request.header.X-Request-Id: context.requestId
+          integration.request.header.X-Request-Id: $context.requestId
         responses:
           default:
             statusCode: "200"
@@ -582,8 +581,8 @@ plugins:
     config:
       add:
         headers:
-          - X-Request-ID:$(uuid)
           - X-Forwarded-Service:user-service
+          - X-Gateway-Version:1.0
         querystring:
           - version:v1
       remove:
@@ -602,30 +601,28 @@ plugins:
           - Server
       add:
         headers:
-          - X-Response-Time:$(latency)
           - X-Gateway-Version:1.0
 ```
 
 ## Circuit Breaker Configuration
 
 ```yaml
-# Kong circuit breaker using the circuit-breaker plugin
-plugins:
-  - name: circuit-breaker
-    service: user-service
-    config:
-      # Open circuit after this many failures
-      failure_count_threshold: 5
-      # Check window in seconds
-      failure_count_window: 60
-      # Time to wait before trying again
-      recovery_time: 30
-      # HTTP status codes to count as failures
-      upstream_codes_considered_failure:
-        - 500
-        - 502
-        - 503
-        - 504
+# Kong circuit breaker behavior using passive health checks
+upstreams:
+  - name: user-service-upstream
+    healthchecks:
+      passive:
+        healthy:
+          successes: 5
+        unhealthy:
+          http_statuses:
+            - 500
+            - 502
+            - 503
+            - 504
+          http_failures: 5
+          tcp_failures: 3
+          timeouts: 3
 ```
 
 ## Health Check and Service Discovery

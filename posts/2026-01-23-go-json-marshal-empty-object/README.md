@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, JSON, Marshaling, Struct, Common Errors
 
-Description: Discover why json.Marshal returns an empty object for your Go structs and learn the fixes for unexported fields, nil pointers, and other common causes.
+Description: Discover why json.Marshal returns an empty object for your Go structs and learn the fixes for unexported fields, omitempty, and other common causes.
 
 ---
 
@@ -71,7 +71,7 @@ func main() {
     user := User{ID: 1, Name: "John", Email: "john@example.com"}
     data, _ := json.Marshal(user)
     fmt.Println(string(data))
-    // {"id":1,"name":"john@example.com","email":"john@example.com"}
+    // {"id":1,"name":"John","email":"john@example.com"}
 }
 ```
 
@@ -79,7 +79,7 @@ func main() {
 
 ## Nil Pointers in Nested Structs
 
-If you have pointer fields that are nil, they serialize as `null`, but if the entire struct is a nil pointer, you might get unexpected results:
+If you have pointer fields that are nil, they serialize as `null`. If the entire value passed to `json.Marshal` is a nil pointer, the result is also `null`, not `"{}"`:
 
 ```go
 package main
@@ -162,8 +162,9 @@ func main() {
 - `int`, `float`: 0
 - `string`: ""
 - `bool`: false
-- `slice`, `map`, `pointer`: nil
-- `array`: not omitted (even if all zeros)
+- `slice`, `map`: nil or length 0
+- `pointer`, `interface`: nil
+- `array`: omitted only when length 0; non-empty arrays are not omitted just because all elements are zero
 
 ---
 
@@ -225,8 +226,10 @@ type User struct {
     Email string
 }
 
+type BadUser User
+
 // BROKEN: Returns empty JSON
-func (u User) MarshalJSONBroken() ([]byte, error) {
+func (u BadUser) MarshalJSON() ([]byte, error) {
     // Forgetting to actually marshal anything
     return []byte("{}"), nil
 }
@@ -254,7 +257,7 @@ func main() {
 
 ---
 
-## Interface{} Fields with Unexported Concrete Types
+## Interface{} Fields with Unexported Concrete Fields
 
 When using `interface{}` fields, the concrete type must have exported fields:
 
@@ -281,7 +284,7 @@ type Container struct {
 }
 
 func main() {
-    // Using unexported type - produces empty object for data
+    // Using a type with unexported fields - produces empty object for data
     c1 := Container{Data: secretData{value: "secret"}}
     data, _ := json.Marshal(c1)
     fmt.Println("Unexported:", string(data))
@@ -299,7 +302,7 @@ func main() {
 
 ## Maps with Non-String Keys
 
-Maps are only marshaled if the key type can be represented as a JSON string:
+Maps are only marshaled if the key type is a string type, an integer type, or implements `encoding.TextMarshaler`:
 
 ```go
 package main
@@ -369,7 +372,11 @@ func debugJSONFields(v interface{}) {
         fmt.Printf("    Exported: %v\n", exported)
         fmt.Printf("    Type: %s\n", field.Type)
         fmt.Printf("    JSON tag: %q\n", jsonTag)
-        fmt.Printf("    Value: %v\n", value.Interface())
+        if value.CanInterface() {
+            fmt.Printf("    Value: %v\n", value.Interface())
+        } else {
+            fmt.Printf("    Value: <unexported>\n")
+        }
         fmt.Printf("    Is Zero: %v\n", value.IsZero())
         
         if !exported {
@@ -406,11 +413,11 @@ func main() {
 When `json.Marshal` returns `"{}"`, check these in order:
 
 1. **Are all fields exported?** Field names must start with uppercase
-2. **Are you marshaling a pointer to nil?** Check for nil pointers
+2. **Are you expecting nil pointers to become objects?** Nil pointers encode as `null`
 3. **Is omitempty hiding zero values?** Remove omitempty to see all fields
 4. **Do you have a custom MarshalJSON?** Check its implementation
 5. **Are embedded structs conflicting?** Check for duplicate field names
-6. **Is the concrete type of interface{} exported?** Check the actual type stored
+6. **Does the concrete type inside interface{} have exported fields?** Check the actual value stored
 
 ---
 

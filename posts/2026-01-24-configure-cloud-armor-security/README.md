@@ -42,6 +42,7 @@ flowchart LR
 # Create a new security policy
 
 gcloud compute security-policies create my-security-policy \
+    --type=CLOUD_ARMOR \
     --description="Security policy for production application"
 
 # View policy details
@@ -73,49 +74,49 @@ Cloud Armor provides preconfigured rules based on OWASP ModSecurity Core Rule Se
 # Enable SQL injection protection
 gcloud compute security-policies rules create 1000 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('sqli-v422-stable')" \
     --action=deny-403 \
     --description="Block SQL injection attacks"
 
 # Enable XSS protection
 gcloud compute security-policies rules create 1001 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('xss-v422-stable')" \
     --action=deny-403 \
     --description="Block cross-site scripting attacks"
 
 # Enable Local File Inclusion protection
 gcloud compute security-policies rules create 1002 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('lfi-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('lfi-v422-stable')" \
     --action=deny-403 \
     --description="Block local file inclusion attacks"
 
 # Enable Remote File Inclusion protection
 gcloud compute security-policies rules create 1003 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('rfi-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('rfi-v422-stable')" \
     --action=deny-403 \
     --description="Block remote file inclusion attacks"
 
 # Enable Remote Code Execution protection
 gcloud compute security-policies rules create 1004 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('rce-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('rce-v422-stable')" \
     --action=deny-403 \
     --description="Block remote code execution attacks"
 
 # Enable Protocol Attack protection
 gcloud compute security-policies rules create 1005 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('protocolattack-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('protocolattack-v422-stable')" \
     --action=deny-403 \
     --description="Block protocol attacks"
 
 # Enable Scanner Detection
 gcloud compute security-policies rules create 1006 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('scannerdetection-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('scannerdetection-v422-stable')" \
     --action=deny-403 \
     --description="Block vulnerability scanners"
 ```
@@ -129,12 +130,12 @@ gcloud compute security-policies rules create 1006 \
 # High sensitivity (more strict, may have false positives)
 gcloud compute security-policies rules update 1000 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable', ['owasp-crs-v030301-id942251-sqli', 'owasp-crs-v030301-id942420-sqli'])"
+    --expression="evaluatePreconfiguredWaf('sqli-v422-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v042200-id942251-sqli', 'owasp-crs-v042200-id942420-sqli']})"
 
 # Or use sensitivity level parameter
 gcloud compute security-policies rules create 1010 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable', {'sensitivity': 1})" \
+    --expression="evaluatePreconfiguredWaf('sqli-v422-stable', {'sensitivity': 1})" \
     --action=deny-403 \
     --description="SQL injection with sensitivity level 1"
 ```
@@ -183,7 +184,7 @@ gcloud compute security-policies rules create 300 \
 # Allow only specific countries
 gcloud compute security-policies rules create 301 \
     --security-policy=my-security-policy \
-    --expression="!origin.region_code.matches('US|CA|GB|DE|FR')" \
+    --expression="!origin.region_code.matches('^(US|CA|GB|DE|FR)$')" \
     --action=deny-403 \
     --description="Only allow traffic from US, Canada, UK, Germany, France"
 ```
@@ -241,21 +242,21 @@ Cloud Armor uses Common Expression Language (CEL) for advanced rules.
 # Block requests with suspicious user agents
 gcloud compute security-policies rules create 500 \
     --security-policy=my-security-policy \
-    --expression="request.headers['user-agent'].lower().contains('sqlmap') || request.headers['user-agent'].lower().contains('nikto')" \
+    --expression="has(request.headers['user-agent']) && request.headers['user-agent'].matches('(?i:sqlmap|nikto)')" \
     --action=deny-403 \
     --description="Block known attack tools"
 
-# Block requests with excessive query parameters
+# Block requests with long query strings
 gcloud compute security-policies rules create 501 \
     --security-policy=my-security-policy \
-    --expression="request.query.size() > 50" \
+    --expression="size(request.query) > 2048" \
     --action=deny-403 \
-    --description="Block requests with too many query parameters"
+    --description="Block requests with long query strings"
 
 # Protect specific API endpoints
 gcloud compute security-policies rules create 502 \
     --security-policy=my-security-policy \
-    --expression="request.path.startsWith('/api/v1/admin') && !request.headers['x-admin-token'].matches('[a-f0-9]{64}')" \
+    --expression="request.path.startsWith('/api/v1/admin') && (!has(request.headers['x-admin-token']) || !request.headers['x-admin-token'].matches('[a-f0-9]{64}'))" \
     --action=deny-403 \
     --description="Require valid admin token for admin endpoints"
 
@@ -275,11 +276,12 @@ gcloud compute security-policies rules create 503 \
 resource "google_compute_security_policy" "policy" {
   name        = "production-security-policy"
   description = "Security policy for production workloads"
+  type        = "CLOUD_ARMOR"
 
   # Default rule - allow all traffic
   rule {
     action   = "allow"
-    priority = "2147483647"
+    priority = 2147483647
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
@@ -292,10 +294,10 @@ resource "google_compute_security_policy" "policy" {
   # SQL Injection Protection
   rule {
     action   = "deny(403)"
-    priority = "1000"
+    priority = 1000
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('sqli-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('sqli-v422-stable')"
       }
     }
     description = "Block SQL injection"
@@ -304,10 +306,10 @@ resource "google_compute_security_policy" "policy" {
   # XSS Protection
   rule {
     action   = "deny(403)"
-    priority = "1001"
+    priority = 1001
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v422-stable')"
       }
     }
     description = "Block XSS attacks"
@@ -316,7 +318,7 @@ resource "google_compute_security_policy" "policy" {
   # Rate Limiting
   rule {
     action   = "throttle"
-    priority = "2000"
+    priority = 2000
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
@@ -338,7 +340,7 @@ resource "google_compute_security_policy" "policy" {
   # Geographic Blocking
   rule {
     action   = "deny(403)"
-    priority = "3000"
+    priority = 3000
     match {
       expr {
         expression = "origin.region_code == 'CN'"
@@ -347,7 +349,7 @@ resource "google_compute_security_policy" "policy" {
     description = "Block traffic from China"
   }
 
-  # Adaptive Protection (requires Cloud Armor Managed Protection Plus)
+  # Adaptive Protection (full alerts require Cloud Armor Enterprise)
   adaptive_protection_config {
     layer_7_ddos_defense_config {
       enable = true
@@ -385,18 +387,8 @@ jsonPayload.enforcedSecurityPolicy.name="my-security-policy"
 
 ```bash
 # Alert on high rate of blocked requests
-gcloud monitoring alert-policies create \
-    --display-name="High Cloud Armor Block Rate" \
-    --condition-display-name="Blocked requests > 1000/min" \
-    --condition-filter='
-        resource.type="http_load_balancer"
-        AND metric.type="loadbalancing.googleapis.com/https/request_count"
-        AND metric.labels.response_code_class="400"
-    ' \
-    --condition-threshold-value=1000 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --aggregation-period=60s \
-    --notification-channels=CHANNEL_ID
+gcloud monitoring policies create \
+    --policy-from-file=cloud-armor-block-alert.json
 ```
 
 ### Dashboard Query Examples

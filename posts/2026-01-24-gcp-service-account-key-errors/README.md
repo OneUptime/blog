@@ -159,10 +159,14 @@ gcloud iam service-accounts keys list \
 # IAM & Admin > Service Accounts > [Your SA] > Keys
 ```
 
-Unfortunately, you cannot re-enable a disabled key via gcloud. You need to use the Console or create a new key.
+If a key was disabled, you can re-enable it with the `keys enable` command (you need the key ID from the list above).
 
 ```bash
-# Create a new key to replace the disabled one
+# Re-enable a disabled key
+gcloud iam service-accounts keys enable KEY_ID \
+    --iam-account=my-service-account@my-project.iam.gserviceaccount.com
+
+# Or create a new key to replace the disabled one
 gcloud iam service-accounts keys create replacement-key.json \
     --iam-account=my-service-account@my-project.iam.gserviceaccount.com
 ```
@@ -189,12 +193,12 @@ gcloud projects get-iam-policy my-project \
     --format="table(bindings.role)"
 
 # Grant a role (example: Storage Object Viewer)
-gcloud projects add-iam-binding my-project \
+gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:my-service-account@my-project.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer"
 
 # For BigQuery access
-gcloud projects add-iam-binding my-project \
+gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:my-service-account@my-project.iam.gserviceaccount.com" \
     --role="roles/bigquery.dataViewer"
 ```
@@ -221,7 +225,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: app
@@ -239,9 +249,9 @@ spec:
           secretName: gcp-sa-key
 ```
 
-## Best Practice: Use Workload Identity Instead of Keys
+## Best Practice: Use Workload Identity Federation for GKE Instead of Keys
 
-Service account keys are a security risk. They can be leaked, never expire by default, and are hard to rotate. Workload Identity eliminates these issues.
+Service account keys are a security risk. They can be leaked, never expire by default, and are hard to rotate. Workload Identity Federation for GKE eliminates these issues.
 
 ```mermaid
 flowchart TB
@@ -257,13 +267,19 @@ flowchart TB
     end
 ```
 
-### Enable Workload Identity
+### Enable Workload Identity Federation for GKE
 
 ```bash
-# Enable Workload Identity on the cluster
+# Enable Workload Identity Federation for GKE on the cluster
 gcloud container clusters update my-cluster \
     --zone=us-central1-a \
     --workload-pool=my-project.svc.id.goog
+
+# For existing Standard cluster node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+    --cluster=my-cluster \
+    --zone=us-central1-a \
+    --workload-metadata=GKE_METADATA
 
 # Create a Kubernetes service account
 kubectl create serviceaccount my-k8s-sa --namespace default

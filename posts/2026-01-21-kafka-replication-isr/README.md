@@ -17,8 +17,8 @@ Replication is Kafka's core mechanism for fault tolerance and durability. Unders
 - **Replication Factor**: Number of copies of each partition
 - **Leader**: Handles all reads and writes for a partition
 - **Follower**: Passively replicates from leader
-- **ISR (In-Sync Replicas)**: Followers that are caught up with leader
-- **Min ISR**: Minimum replicas that must acknowledge writes
+- **ISR (In-Sync Replicas)**: Replicas, including the leader, that are caught up with the leader
+- **Min ISR**: Minimum number of in-sync replicas required for `acks=all` writes to succeed
 
 ### Replication Flow
 
@@ -45,7 +45,6 @@ min.insync.replicas=2
 
 # Replica lag settings
 replica.lag.time.max.ms=30000
-replica.lag.max.messages=10000
 
 # Number of fetcher threads for replication
 num.replica.fetchers=4
@@ -86,10 +85,10 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 Properties props = new Properties();
 props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 
-// Wait for all ISR to acknowledge
+// Wait for all in-sync replicas to acknowledge
 props.put(ProducerConfig.ACKS_CONFIG, "all");
 
-// Enable idempotence for exactly-once
+// Enable idempotence to avoid duplicate writes from producer retries
 props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
 // Retries on failure
@@ -103,9 +102,8 @@ props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
 A replica stays in ISR if it:
 
-1. Has fetched messages within `replica.lag.time.max.ms`
-2. Has an active session with ZooKeeper/Controller
-3. Has not exceeded `replica.lag.max.messages` (deprecated)
+1. Continues fetching from the leader within `replica.lag.time.max.ms`
+2. Has caught up to the leader's log end offset within `replica.lag.time.max.ms`
 
 ### ISR Shrink and Expand
 
@@ -134,7 +132,9 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.TopicPartitionInfo;
 import java.util.*;
 
 public class ReplicationMonitor {
@@ -262,11 +262,11 @@ min.insync.replicas = 2
 acks = all
 
 Scenario 1: All brokers healthy
-- Write succeeds when 2+ replicas acknowledge
-- Full durability
+- Write succeeds when all 3 in-sync replicas acknowledge
+- Strong durability across the full ISR
 
 Scenario 2: One broker down
-- Write succeeds (2 remaining brokers >= min.insync.replicas)
+- Write succeeds when both remaining in-sync replicas acknowledge
 - Reduced but acceptable durability
 
 Scenario 3: Two brokers down
@@ -388,7 +388,7 @@ Check:
 ```bash
 # Check leader distribution
 kafka-topics.sh --bootstrap-server localhost:9092 --describe | \
-  grep "Leader:" | awk '{print $4}' | sort | uniq -c
+  awk '{for (i=1; i<=NF; i++) if ($i == "Leader:") print $(i+1)}' | sort | uniq -c
 
 # Trigger preferred leader election
 kafka-leader-election.sh --bootstrap-server localhost:9092 \
@@ -401,14 +401,15 @@ kafka-leader-election.sh --bootstrap-server localhost:9092 \
 
 ```bash
 # Creates 3 copies of data
-kafka-topics.sh --create --topic critical-data \
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic critical-data \
   --replication-factor 3 --partitions 12
 ```
 
 ### 2. Set min.insync.replicas to 2
 
 ```properties
-# Ensures at least 2 replicas acknowledge
+# Requires at least 2 in-sync replicas for acks=all writes
 min.insync.replicas=2
 ```
 

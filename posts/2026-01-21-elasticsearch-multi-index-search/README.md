@@ -148,17 +148,12 @@ curl -X GET "https://localhost:9200/logs-*,metrics-*/_search" \
   }'
 ```
 
-### Type Coercion Settings
+### Field Capabilities Check
 
 ```bash
-curl -X PUT "https://localhost:9200/_cluster/settings" \
+curl -X GET "https://localhost:9200/logs-*,metrics-*/_field_caps?fields=message,metric_name,@timestamp" \
   -H "Content-Type: application/json" \
-  -u elastic:password \
-  -d '{
-    "persistent": {
-      "search.allow_expensive_queries": true
-    }
-  }'
+  -u elastic:password
 ```
 
 ## Index Boost
@@ -244,14 +239,13 @@ curl -X GET "https://localhost:9200/logs-*,cluster_west:logs-*,cluster_east:logs
 ### Cross-Cluster Search Options
 
 ```bash
-curl -X GET "https://localhost:9200/logs-*,cluster_west:logs-*/_search" \
+curl -X GET "https://localhost:9200/logs-*,cluster_west:logs-*/_search?ccs_minimize_roundtrips=true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "query": {
       "match": { "message": "error" }
-    },
-    "ccs_minimize_roundtrips": true
+    }
   }'
 ```
 

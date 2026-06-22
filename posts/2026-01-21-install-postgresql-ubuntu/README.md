@@ -12,7 +12,7 @@ PostgreSQL is one of the most powerful and feature-rich open-source relational d
 
 ## Prerequisites
 
-- Ubuntu 20.04, 22.04, or 24.04 LTS
+- Ubuntu 22.04 or 24.04 LTS (Ubuntu 20.04 is in extended security maintenance and is no longer supported by the current PostgreSQL APT repository)
 - Root or sudo access
 - Basic familiarity with the command line
 
@@ -39,13 +39,20 @@ For production environments, you may need a specific PostgreSQL version. The off
 
 ```bash
 # Install prerequisites
-sudo apt install curl ca-certificates gnupg -y
+sudo apt install curl ca-certificates -y
 
 # Add PostgreSQL signing key
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
 
 # Add repository
-echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+sudo tee /etc/apt/sources.list.d/pgdg.sources > /dev/null <<EOF
+Types: deb
+URIs: https://apt.postgresql.org/pub/repos/apt
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg
+Components: main
+Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+EOF
 
 # Update package index
 sudo apt update

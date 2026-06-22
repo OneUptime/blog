@@ -29,7 +29,8 @@ import redis
 import time
 import json
 import uuid
-from datetime import datetime
+import zlib
+from datetime import datetime, timedelta, timezone
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -47,7 +48,7 @@ class EventTracker:
             'user_id': user_id,
             'type': event_type,
             'timestamp': timestamp,
-            'properties': properties or {}
+            'properties': json.dumps(properties or {})
         }
 
         # Store event in user's activity stream
@@ -62,7 +63,7 @@ class EventTracker:
         r.hset(f"user:last_activity", user_id, timestamp)
 
         # Add to daily active users set
-        day_key = datetime.utcnow().strftime('%Y-%m-%d')
+        day_key = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         r.sadd(f"dau:{day_key}", user_id)
         r.expire(f"dau:{day_key}", 86400 * 30)  # 30-day retention
 
@@ -244,6 +245,7 @@ class SessionTracker:
         if page:
             pipe.hincrby(session_key, 'pages_viewed', 1)
             pipe.rpush(f"session:{session_id}:pages", page)
+            pipe.expire(f"session:{session_id}:pages", self.session_timeout)
 
         # Update last activity
         pipe.hset(session_key, 'last_activity', int(time.time() * 1000))
@@ -435,14 +437,14 @@ class UserAnalytics:
 
     def mark_active(self, user_id):
         """Mark user as active for DAU/MAU tracking."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         day_key = now.strftime('%Y-%m-%d')
         month_key = now.strftime('%Y-%m')
 
         pipe = r.pipeline()
 
         # Daily active users (bitmap)
-        user_bit = hash(user_id) % (10 ** 8)  # Map to bit position
+        user_bit = zlib.crc32(str(user_id).encode('utf-8')) % (10 ** 8)
         pipe.setbit(f"dau:bitmap:{day_key}", user_bit, 1)
         pipe.expire(f"dau:bitmap:{day_key}", 86400 * 90)
 
@@ -463,7 +465,7 @@ class UserAnalytics:
     def get_dau(self, date=None):
         """Get daily active user count."""
         if date is None:
-            date = datetime.utcnow().strftime('%Y-%m-%d')
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         # Exact count from set
         return r.scard(f"dau:{date}")
@@ -471,7 +473,7 @@ class UserAnalytics:
     def get_mau(self, month=None):
         """Get monthly active user count."""
         if month is None:
-            month = datetime.utcnow().strftime('%Y-%m')
+            month = datetime.now(timezone.utc).strftime('%Y-%m')
 
         return r.scard(f"mau:{month}")
 
@@ -532,7 +534,7 @@ class FeatureAnalytics:
     def track_feature_use(self, user_id, feature_name, metadata=None):
         """Track when a user uses a feature."""
         timestamp = time.time()
-        day_key = datetime.utcnow().strftime('%Y-%m-%d')
+        day_key = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         pipe = r.pipeline()
 
@@ -553,7 +555,7 @@ class FeatureAnalytics:
     def get_feature_stats(self, feature_name, date=None):
         """Get usage stats for a feature."""
         if date is None:
-            date = datetime.utcnow().strftime('%Y-%m-%d')
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         count = r.hget(f"features:count:{date}", feature_name)
         unique_users = r.scard(f"features:users:{feature_name}:{date}")
@@ -568,7 +570,7 @@ class FeatureAnalytics:
     def get_top_features(self, date=None, limit=10):
         """Get most used features."""
         if date is None:
-            date = datetime.utcnow().strftime('%Y-%m-%d')
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         counts = r.hgetall(f"features:count:{date}")
 
@@ -586,7 +588,7 @@ class FeatureAnalytics:
     def get_user_features(self, user_id, date=None):
         """Get features used by a user."""
         if date is None:
-            date = datetime.utcnow().strftime('%Y-%m-%d')
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         return list(r.smembers(f"user:features:{user_id}:{date}"))
 
@@ -658,7 +660,7 @@ class ClickstreamProcessor:
         """Handle page view events."""
         properties = json.loads(event.get('properties', '{}'))
         page = properties.get('page', 'unknown')
-        day_key = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d')
+        day_key = datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime('%Y-%m-%d')
 
         pipe = r.pipeline()
 
@@ -679,7 +681,7 @@ class ClickstreamProcessor:
         properties = json.loads(event.get('properties', '{}'))
         element = properties.get('element', 'unknown')
         page = properties.get('page', 'unknown')
-        day_key = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d')
+        day_key = datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime('%Y-%m-%d')
 
         # Count clicks per element
         r.hincrby(f"clicks:{day_key}:{page}", element, 1)
@@ -708,7 +710,7 @@ class PathAnalyzer:
     def get_exit_pages(self, date=None):
         """Find pages where users commonly leave."""
         if date is None:
-            date = datetime.utcnow().strftime('%Y-%m-%d')
+            date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
         # This requires session end tracking
         exit_counts = r.hgetall(f"exit_pages:{date}")
@@ -725,11 +727,14 @@ class PathAnalyzer:
 
 ```python
 # Use HyperLogLog for approximate unique counts
-def track_unique_visitors(page):
-    day = datetime.utcnow().strftime('%Y-%m-%d')
+def track_unique_visitors(page, user_id):
+    day = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     r.pfadd(f"visitors:hll:{page}:{day}", user_id)
 
 # Use bitmaps for boolean states
+def user_id_to_bit(user_id):
+    return zlib.crc32(str(user_id).encode('utf-8'))
+
 def mark_feature_seen(user_id, feature_id):
     r.setbit(f"feature:seen:{feature_id}", user_id_to_bit(user_id), 1)
 ```
@@ -739,7 +744,7 @@ def mark_feature_seen(user_id, feature_id):
 ```python
 def cleanup_old_activity_data(retention_days=30):
     """Remove activity data older than retention period."""
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     cutoff_str = cutoff.strftime('%Y-%m-%d')
 
     # Find and delete old keys
@@ -757,7 +762,7 @@ def cleanup_old_activity_data(retention_days=30):
 ### 3. Batch Operations for Performance
 
 ```python
-async def track_events_batch(events):
+def track_events_batch(events):
     """Track multiple events efficiently."""
     pipe = r.pipeline()
 
@@ -766,13 +771,19 @@ async def track_events_batch(events):
         event_type = event['type']
 
         # Add to streams
-        pipe.xadd(f"events:user:{user_id}", event, maxlen=10000)
+        event_fields = {
+            **event,
+            'properties': json.dumps(event.get('properties', {}))
+            if isinstance(event.get('properties'), dict)
+            else event.get('properties', '{}')
+        }
+        pipe.xadd(f"events:user:{user_id}", event_fields, maxlen=10000)
 
         # Update counters
-        day = datetime.utcnow().strftime('%Y-%m-%d')
+        day = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         pipe.hincrby(f"events:count:{day}", event_type, 1)
 
-    await pipe.execute()
+    pipe.execute()
 ```
 
 ## Conclusion

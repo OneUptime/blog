@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CloudNativePG, Kubernetes, PostgreSQL, Upgrade, Rolling Update, Migration
 
-Description: A comprehensive guide to upgrading PostgreSQL clusters with CloudNativePG, covering minor version updates, major version upgrades, rolling updates, and in-place upgrades with minimal downtime.
+Description: A comprehensive guide to upgrading PostgreSQL clusters with CloudNativePG, covering minor version updates, major version upgrades, rolling updates, and in-place upgrades.
 
 ---
 
-Keeping PostgreSQL up to date is essential for security, performance, and new features. CloudNativePG supports multiple upgrade strategies including rolling updates for minor versions and in-place upgrades for major versions. This guide covers all upgrade scenarios.
+Keeping PostgreSQL up to date is essential for security, performance, and new features. CloudNativePG supports multiple upgrade strategies including rolling updates for minor versions and offline in-place upgrades for major versions. This guide covers all upgrade scenarios.
 
 ## Prerequisites
 
@@ -21,13 +21,13 @@ Keeping PostgreSQL up to date is essential for security, performance, and new fe
 
 ### Minor Version Upgrade (e.g., 16.0 to 16.1)
 
-- Rolling update with zero downtime
+- Rolling update with brief reconnection during primary update
 - Binary compatible - no data migration needed
 - Automatic with image change
 
 ### Major Version Upgrade (e.g., 15.x to 16.x)
 
-- Requires data migration (pg_upgrade)
+- Requires data migration or pg_upgrade
 - May require application changes
 - More planning and testing needed
 
@@ -76,11 +76,8 @@ spec:
   primaryUpdateStrategy: unsupervised  # or supervised
   primaryUpdateMethod: switchover       # or restart
 
-  # Minimum wait between updates
-  minReadySeconds: 0
-
   # Maximum time for switchover
-  switchoverDelay: 40000000  # microseconds (40s)
+  switchoverDelay: 40  # seconds
 ```
 
 ### Supervised Updates
@@ -96,11 +93,10 @@ With supervised mode:
 
 1. Replicas update automatically
 2. Primary waits for manual approval
-3. Approve with annotation:
+3. Complete the update with a manual switchover:
 
 ```bash
-kubectl annotate cluster postgres-cluster \
-  cnpg.io/primaryUpdateStrategy=unsupervised
+kubectl cnpg promote postgres-cluster postgres-cluster-2
 ```
 
 ### Monitor Rolling Update
@@ -125,7 +121,7 @@ kubectl get pods -l cnpg.io/cluster=postgres-cluster -o jsonpath='{.items[*].spe
 
 Major upgrades require special handling:
 
-1. **In-Place Upgrade**: Using pg_upgrade within cluster
+1. **In-Place Upgrade**: Use pg_upgrade offline within the existing cluster
 2. **Import Method**: Create new cluster, import from old
 3. **Logical Replication**: Set up replication between versions
 
@@ -167,39 +163,19 @@ spec:
 
 ### Method 2: pg_upgrade In-Place
 
-For in-place upgrade, use the import bootstrap with same storage:
+For in-place upgrade, update the existing cluster to a higher PostgreSQL major version image:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: postgres-upgraded
+  name: postgres-cluster
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17-minimal-trixie  # Updated from 16
 
   storage:
     size: 100Gi
-
-  bootstrap:
-    initdb:
-      import:
-        type: monolith  # Import entire cluster
-        databases:
-          - "*"  # All databases
-        roles:
-          - "*"  # All roles
-        source:
-          externalCluster: old-cluster
-
-  externalClusters:
-    - name: old-cluster
-      connectionParameters:
-        host: postgres-v15-rw
-        user: postgres
-      password:
-        name: postgres-v15-superuser
-        key: password
 ```
 
 ### Method 3: Logical Replication
@@ -345,7 +321,7 @@ helm upgrade cnpg cloudnative-pg/cloudnative-pg \
 
 # Using kubectl
 kubectl apply --server-side -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.22.0/releases/cnpg-1.22.0.yaml
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/releases/cnpg-1.29.1.yaml
 ```
 
 ### Operator Upgrade Considerations
@@ -400,7 +376,7 @@ spec:
             key: SECRET_ACCESS_KEY
 ```
 
-## Zero-Downtime Upgrades
+## Minimal-Downtime Upgrades
 
 ### Configure for Minimal Disruption
 
@@ -409,7 +385,7 @@ spec:
   instances: 3  # Minimum 3 for HA during upgrade
 
   # Fast switchover
-  switchoverDelay: 10000000  # 10 seconds
+  switchoverDelay: 10  # seconds
 
   # Quick health checks
   startDelay: 30
@@ -452,16 +428,17 @@ Applications should:
 # Watch these in Prometheus/Grafana:
 
 # Cluster health
-cnpg_cluster_ready_instances
+cnpg_collector_up
 
 # Replication lag
 cnpg_pg_replication_lag
 
-# Connection count
-pg_stat_activity_count
+# Streaming replicas
+cnpg_pg_replication_streaming_replicas
 
-# WAL position
-cnpg_pg_stat_replication_sent_lag_bytes
+# WAL usage and activity
+cnpg_collector_pg_wal
+cnpg_collector_wal_bytes
 ```
 
 ### Alert During Upgrade
@@ -496,8 +473,7 @@ kubectl delete pod postgres-cluster-2
 kubectl describe cluster postgres-cluster
 
 # Manual switchover
-kubectl annotate cluster postgres-cluster \
-  cnpg.io/targetPrimary=postgres-cluster-2
+kubectl cnpg promote postgres-cluster postgres-cluster-2
 ```
 
 ### Import Failed
@@ -520,7 +496,7 @@ kubectl exec postgres-v15-1 -- psql -c "SELECT * FROM pg_hba_file_rules;"
 1. **Test in staging** - Always test upgrade path first
 2. **Create backup** - Verify backup before upgrade
 3. **Check compatibility** - Review release notes
-4. **Plan maintenance window** - Even for zero-downtime upgrades
+4. **Plan maintenance window** - Even for minimal-downtime upgrades
 5. **Monitor closely** - Watch metrics during upgrade
 6. **Have rollback plan** - Know how to revert
 7. **Validate after** - Test application functionality
@@ -538,7 +514,7 @@ kubectl exec postgres-v15-1 -- psql -c "SELECT * FROM pg_hba_file_rules;"
 PostgreSQL upgrades with CloudNativePG are straightforward:
 
 1. **Minor versions** - Simple image change with rolling update
-2. **Major versions** - Use import or logical replication
+2. **Major versions** - Use import, logical replication, or offline in-place upgrade
 3. **Always backup** - Before any upgrade
 4. **Test first** - In staging environment
 5. **Monitor** - During and after upgrade

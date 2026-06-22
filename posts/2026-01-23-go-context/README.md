@@ -8,25 +8,48 @@ Description: Master Go's context package for handling cancellation, timeouts, an
 
 ---
 
-The `context` package is essential for managing cancellation, deadlines, and request-scoped values in Go applications. Every HTTP handler, database query, and long-running operation should accept a context.
+The `context` package is essential for managing cancellation, deadlines, and request-scoped values in Go applications. HTTP handlers should use the request context, and database queries and long-running operations should accept a context.
 
 ---
 
 ## Why Context Matters
 
 ```go
-// WITHOUT context: Operation can't be cancelled
-func fetchData() ([]byte, error) {
+package main
+
+import (
+    "context"
+    "io"
+    "net/http"
+)
+
+// WITHOUT context: Operation can't be cancelled by the caller
+func fetchDataWithoutContext() ([]byte, error) {
     // If the user disconnects, this keeps running!
     resp, err := http.Get("https://slow-api.example.com/data")
-    // ...
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    return io.ReadAll(resp.Body)
 }
 
 // WITH context: Operation respects cancellation
 func fetchData(ctx context.Context) ([]byte, error) {
-    req, _ := http.NewRequestWithContext(ctx, "GET", "https://slow-api.example.com/data", nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", "https://slow-api.example.com/data", nil)
+    if err != nil {
+        return nil, err
+    }
+    
     resp, err := http.DefaultClient.Do(req)
-    // If ctx is cancelled, this returns immediately
+    // If ctx is cancelled, Do returns an error
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    return io.ReadAll(resp.Body)
 }
 ```
 
@@ -47,6 +70,7 @@ func main() {
     
     // TODO: Placeholder when unsure which context to use
     ctx = context.TODO()
+    _ = ctx
 }
 ```
 
@@ -235,8 +259,8 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 }
 
 func GetRequestID(ctx context.Context) string {
-    if v := ctx.Value(requestIDKey); v != nil {
-        return v.(string)
+    if requestID, ok := ctx.Value(requestIDKey).(string); ok {
+        return requestID
     }
     return ""
 }
@@ -269,6 +293,7 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
     "net/http"
     "time"
@@ -276,8 +301,8 @@ import (
 
 func handler(w http.ResponseWriter, r *http.Request) {
     // r.Context() is cancelled when:
-    // - Client disconnects
-    // - Request times out
+    // - Client connection closes
+    // - Request is cancelled over HTTP/2
     // - Handler returns
     ctx := r.Context()
     
@@ -287,11 +312,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
     
     result, err := slowDatabaseQuery(ctx)
     if err != nil {
-        if err == context.DeadlineExceeded {
+        if errors.Is(err, context.DeadlineExceeded) {
             http.Error(w, "Request timed out", http.StatusGatewayTimeout)
             return
         }
-        if err == context.Canceled {
+        if errors.Is(err, context.Canceled) {
             // Client disconnected, just return
             return
         }
@@ -331,6 +356,12 @@ import (
     
     _ "github.com/lib/pq"
 )
+
+type User struct {
+    ID    int
+    Name  string
+    Email string
+}
 
 func getUserByID(ctx context.Context, db *sql.DB, id int) (*User, error) {
     // Context controls query timeout and cancellation
@@ -481,6 +512,19 @@ func main() {
 ### Pattern 1: Timeout with Cleanup
 
 ```go
+package main
+
+import (
+    "context"
+    "io"
+    "net/http"
+    "time"
+)
+
+type Result struct {
+    Body []byte
+}
+
 func fetchWithCleanup(ctx context.Context, url string) (*Result, error) {
     ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()  // ALWAYS defer cancel
@@ -497,13 +541,25 @@ func fetchWithCleanup(ctx context.Context, url string) (*Result, error) {
     defer resp.Body.Close()
     
     // Process response...
-    return result, nil
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    return &Result{Body: body}, nil
 }
 ```
 
 ### Pattern 2: Graceful Shutdown
 
 ```go
+package main
+
+import (
+    "context"
+    "net/http"
+    "time"
+)
+
 func runServer(ctx context.Context) error {
     server := &http.Server{Addr: ":8080"}
     
@@ -512,16 +568,29 @@ func runServer(ctx context.Context) error {
         <-ctx.Done()
         shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
         defer cancel()
-        server.Shutdown(shutdownCtx)
+        _ = server.Shutdown(shutdownCtx)
     }()
     
-    return server.ListenAndServe()
+    err := server.ListenAndServe()
+    if err != nil && err != http.ErrServerClosed {
+        return err
+    }
+    return nil
 }
 ```
 
 ### Pattern 3: First Successful Result
 
 ```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "io"
+    "net/http"
+)
+
 func fetchFirst(ctx context.Context, urls []string) (string, error) {
     ctx, cancel := context.WithCancel(ctx)
     defer cancel()  // Cancel other goroutines when we get first result
@@ -543,12 +612,39 @@ func fetchFirst(ctx context.Context, urls []string) (string, error) {
         }(url)
     }
     
-    select {
-    case result := <-results:
-        return result, nil
-    case <-ctx.Done():
-        return "", ctx.Err()
+    for range urls {
+        select {
+        case result := <-results:
+            return result, nil
+        case err := <-errs:
+            if len(urls) == 1 {
+                return "", err
+            }
+        case <-ctx.Done():
+            return "", ctx.Err()
+        }
     }
+    
+    return "", fmt.Errorf("all requests failed")
+}
+
+func fetchURL(ctx context.Context, url string) (string, error) {
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return "", err
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return "", err
+    }
+    return string(body), nil
 }
 ```
 

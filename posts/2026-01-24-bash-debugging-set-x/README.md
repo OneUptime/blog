@@ -115,7 +115,7 @@ debug_level="${DEBUG_LEVEL:-0}"
 case "$debug_level" in
     0) ;;  # No debugging
     1) set -x ;;  # Basic trace
-    2) set -x; PS4='+ ${BASH_SOURCE}:${LINENO}: ' ;;  # With file and line
+    2) PS4='+ ${BASH_SOURCE}:${LINENO}: '; set -x ;;  # With file and line
     *) set -xv ;;  # Maximum verbosity
 esac
 
@@ -370,6 +370,7 @@ set -x
 echo "This goes to stdout"
 # Trace output goes to fd 5 (debug log)
 set +x
+BASH_XTRACEFD=
 exec 5>&-
 
 # Method 3: Tee debug output

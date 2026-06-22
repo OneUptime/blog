@@ -223,6 +223,10 @@ export function UserProfile({ userId }: UserProfileProps) {
     );
   }
 
+  if (!user) {
+    return null;
+  }
+
   // Render user data once available
   return (
     <div className="user-profile">
@@ -244,6 +248,17 @@ Structure query keys hierarchically for effective cache invalidation:
 
 ```typescript
 // src/lib/queryKeys.ts
+
+interface UserFilters {
+  role?: string;
+  search?: string;
+}
+
+interface PostFilters {
+  status?: 'draft' | 'published';
+  category?: string;
+  page?: number;
+}
 
 // Query key factory pattern for consistent key generation
 export const queryKeys = {
@@ -296,10 +311,32 @@ export const queryKeys = {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../lib/queryKeys';
 
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+}
+
 interface PostFilters {
   status?: 'draft' | 'published';
   category?: string;
   page?: number;
+}
+
+async function fetchPosts(filters: PostFilters): Promise<Post[]> {
+  const params = new URLSearchParams();
+
+  if (filters.status) params.set('status', filters.status);
+  if (filters.category) params.set('category', filters.category);
+  if (filters.page) params.set('page', String(filters.page));
+
+  const response = await fetch(`/api/posts?${params.toString()}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch posts');
+  }
+
+  return response.json();
 }
 
 export function usePosts(filters: PostFilters = {}) {
@@ -410,7 +447,7 @@ export function useCreatePost() {
 
 ```tsx
 // src/components/CreatePostForm.tsx
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useCreatePost } from '../hooks/useCreatePost';
 
 export function CreatePostForm() {
@@ -420,7 +457,7 @@ export function CreatePostForm() {
   // Get mutation function and state
   const createPost = useCreatePost();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     // Call the mutation
@@ -487,6 +524,26 @@ interface UpdatePostData {
   content?: string;
 }
 
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+}
+
+async function updatePost(data: UpdatePostData): Promise<Post> {
+  const response = await fetch(`/api/posts/${data.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update post');
+  }
+
+  return response.json();
+}
+
 export function useUpdatePost() {
   const queryClient = useQueryClient();
 
@@ -508,7 +565,8 @@ export function useUpdatePost() {
       // Optimistically update the cache with new data
       queryClient.setQueryData(
         queryKeys.posts.detail(updatedPost.id),
-        (old: Post) => ({ ...old, ...updatedPost })
+        (old: Post | undefined) =>
+          old ? { ...old, ...updatedPost } : old
       );
 
       // Return context with previous value for rollback
@@ -549,6 +607,12 @@ Handle paginated data with keepPreviousData:
 // src/hooks/usePaginatedPosts.ts
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+}
+
 interface PaginatedResponse<T> {
   data: T[];
   meta: {
@@ -556,6 +620,19 @@ interface PaginatedResponse<T> {
     totalPages: number;
     totalItems: number;
   };
+}
+
+async function fetchPaginatedPosts(
+  page: number,
+  pageSize: number
+): Promise<PaginatedResponse<Post>> {
+  const response = await fetch(`/api/posts?page=${page}&pageSize=${pageSize}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch posts');
+  }
+
+  return response.json();
 }
 
 export function usePaginatedPosts(page: number, pageSize: number = 10) {
@@ -579,15 +656,22 @@ Implement infinite scroll with useInfiniteQuery:
 // src/hooks/useInfinitePosts.ts
 import { useInfiniteQuery } from '@tanstack/react-query';
 
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+}
+
 interface InfinitePostsResponse {
   posts: Post[];
   nextCursor: number | null;
+  previousCursor?: number | null;
 }
 
 async function fetchInfinitePosts(
   cursor: number | null
 ): Promise<InfinitePostsResponse> {
-  const url = cursor
+  const url = cursor !== null
     ? `/api/posts?cursor=${cursor}`
     : '/api/posts';
 
@@ -618,6 +702,7 @@ export function useInfinitePosts() {
 ```tsx
 // src/components/InfinitePostList.tsx
 import { useInfinitePosts } from '../hooks/useInfinitePosts';
+import { PostCard } from './PostCard';
 import { useInView } from 'react-intersection-observer';
 import { useEffect } from 'react';
 
@@ -643,6 +728,7 @@ export function InfinitePostList() {
 
   if (isLoading) return <div>Loading posts...</div>;
   if (isError) return <div>Error loading posts</div>;
+  if (!data) return null;
 
   return (
     <div className="post-list">
@@ -681,6 +767,22 @@ import { Link } from 'react-router-dom';
 
 interface PostListItemProps {
   post: Post;
+}
+
+interface Post {
+  id: number;
+  title: string;
+  excerpt: string;
+}
+
+async function fetchPost(postId: number): Promise<Post> {
+  const response = await fetch(`/api/posts/${postId}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch post');
+  }
+
+  return response.json();
 }
 
 export function PostListItem({ post }: PostListItemProps) {
@@ -726,8 +828,8 @@ export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     // Global handler for query errors
     onError: (error, query) => {
-      // Only show toast for queries that have already failed
-      // This prevents showing errors during background refetches
+      // Only show toast for queries that already have data
+      // This limits global toasts to background refetch failures
       if (query.state.data !== undefined) {
         toast.error(`Background update failed: ${error.message}`);
       }
@@ -744,8 +846,10 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000,
       retry: (failureCount, error) => {
+        const status = (error as Error & { status?: number }).status;
+
         // Do not retry on 4xx errors (client errors)
-        if (error instanceof Error && error.message.includes('4')) {
+        if (status && status >= 400 && status < 500) {
           return false;
         }
         // Retry up to 3 times for other errors

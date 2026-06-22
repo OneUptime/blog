@@ -62,7 +62,20 @@ For React Native specific functionality, you may also need:
 
 ```bash
 npm install @react-native-async-storage/async-storage
+npm install @react-native-community/netinfo
 npm install react-native-device-info
+```
+
+If Metro cannot resolve OpenTelemetry package exports, enable package exports in your `metro.config.js`:
+
+```javascript
+// metro.config.js
+const { getDefaultConfig } = require('@react-native/metro-config');
+
+const config = getDefaultConfig(__dirname);
+config.resolver.unstable_enablePackageExports = true;
+
+module.exports = config;
 ```
 
 ### Basic Configuration
@@ -71,18 +84,19 @@ Create a telemetry configuration file that initializes OpenTelemetry when your a
 
 ```typescript
 // src/telemetry/opentelemetry.ts
-import { Resource } from '@opentelemetry/resources';
+import { type Resource, resourceFromAttributes } from '@opentelemetry/resources';
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import {
-  SemanticResourceAttributes,
-  SemanticAttributes,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
 import {
-  BasicTracerProvider,
   BatchSpanProcessor,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import DeviceInfo from 'react-native-device-info';
 import { Platform } from 'react-native';
 
@@ -98,7 +112,7 @@ interface TelemetryConfig {
 }
 
 class TelemetryService {
-  private provider: BasicTracerProvider | null = null;
+  private provider: WebTracerProvider | null = null;
   private isInitialized: boolean = false;
 
   async initialize(config: TelemetryConfig): Promise<void> {
@@ -110,11 +124,6 @@ class TelemetryService {
     try {
       // Build resource attributes
       const resource = await this.buildResource(config);
-
-      // Create the tracer provider
-      this.provider = new BasicTracerProvider({
-        resource,
-      });
 
       // Configure the exporter
       const exporter = new OTLPTraceExporter({
@@ -133,7 +142,11 @@ class TelemetryService {
           })
         : new SimpleSpanProcessor(exporter);
 
-      this.provider.addSpanProcessor(processor);
+      // Create the tracer provider
+      this.provider = new WebTracerProvider({
+        resource,
+        spanProcessors: [processor],
+      });
 
       // Register the provider globally
       this.provider.register();
@@ -154,16 +167,16 @@ class TelemetryService {
     const appVersion = DeviceInfo.getVersion();
     const buildNumber = DeviceInfo.getBuildNumber();
 
-    return new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: config.serviceName,
-      [SemanticResourceAttributes.SERVICE_VERSION]: config.serviceVersion,
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: config.environment,
+    return resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: config.serviceName,
+      [ATTR_SERVICE_VERSION]: config.serviceVersion,
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: config.environment,
 
       // Device attributes
-      [SemanticResourceAttributes.DEVICE_ID]: deviceId,
-      [SemanticResourceAttributes.DEVICE_MODEL_IDENTIFIER]: deviceModel,
-      [SemanticResourceAttributes.OS_TYPE]: Platform.OS,
-      [SemanticResourceAttributes.OS_VERSION]: systemVersion,
+      'device.id': deviceId,
+      'device.model.identifier': deviceModel,
+      'os.name': Platform.OS,
+      'os.version': systemVersion,
 
       // App attributes
       'app.version': appVersion,
@@ -225,7 +238,9 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    // Your app components
+    <>
+      {/* Your app components */}
+    </>
   );
 };
 
@@ -464,7 +479,13 @@ import {
   SpanStatusCode,
   propagation,
 } from '@opentelemetry/api';
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_SERVER_ADDRESS,
+  ATTR_SERVER_PORT,
+  ATTR_URL_FULL,
+} from '@opentelemetry/semantic-conventions';
 
 interface RequestConfig {
   url: string;
@@ -497,15 +518,13 @@ class NetworkTracer {
     const span = tracer.startSpan(`HTTP ${method}`, {
       kind: SpanKind.CLIENT,
       attributes: {
-        [SemanticAttributes.HTTP_METHOD]: method,
-        [SemanticAttributes.HTTP_URL]: config.url,
-        [SemanticAttributes.HTTP_HOST]: url.host,
-        [SemanticAttributes.HTTP_SCHEME]: url.protocol.replace(':', ''),
-        [SemanticAttributes.HTTP_TARGET]: url.pathname + url.search,
-        [SemanticAttributes.NET_PEER_NAME]: url.hostname,
-        [SemanticAttributes.NET_PEER_PORT]: url.port || (url.protocol === 'https:' ? 443 : 80),
+        [ATTR_HTTP_REQUEST_METHOD]: method,
+        [ATTR_URL_FULL]: config.url,
+        [ATTR_SERVER_ADDRESS]: url.hostname,
+        [ATTR_SERVER_PORT]: Number(url.port) || (url.protocol === 'https:' ? 443 : 80),
       },
     });
+    const requestContext = trace.setSpan(context.active(), span);
 
     const startTime = performance.now();
 
@@ -516,21 +535,23 @@ class NetworkTracer {
       };
 
       // Propagate trace context
-      propagation.inject(context.active(), headers);
+      propagation.inject(requestContext, headers);
 
       span.addEvent('request_start');
 
-      const response = await fetch(config.url, {
-        method,
-        headers,
-        body: config.body ? JSON.stringify(config.body) : undefined,
-      });
+      const response = await context.with(requestContext, () =>
+        fetch(config.url, {
+          method,
+          headers,
+          body: config.body ? JSON.stringify(config.body) : undefined,
+        })
+      );
 
       const duration = performance.now() - startTime;
 
       // Set response attributes
       span.setAttributes({
-        [SemanticAttributes.HTTP_STATUS_CODE]: response.status,
+        [ATTR_HTTP_RESPONSE_STATUS_CODE]: response.status,
         'http.response_content_length': response.headers.get('content-length') || 0,
         'http.duration_ms': duration,
       });
@@ -765,7 +786,7 @@ Tracking screen views provides insights into user navigation patterns:
 
 ```typescript
 // src/telemetry/screens.ts
-import { trace, SpanKind, Span, context } from '@opentelemetry/api';
+import { trace, SpanKind, Span } from '@opentelemetry/api';
 
 interface ScreenViewOptions {
   screenName: string;
@@ -891,7 +912,7 @@ const AppNavigationContainer: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
-  const routeNameRef = useRef<string>();
+  const routeNameRef = useRef<string | undefined>(undefined);
 
   const handleStateChange = () => {
     const previousRouteName = routeNameRef.current;
@@ -935,8 +956,12 @@ Resource attributes provide context about the application and device:
 
 ```typescript
 // src/telemetry/resources.ts
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { type Resource, resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import DeviceInfo from 'react-native-device-info';
 import { Platform, Dimensions, PixelRatio } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
@@ -960,10 +985,12 @@ interface DeviceResources {
 async function gatherDeviceResources(): Promise<DeviceResources> {
   const [
     deviceId,
+    deviceManufacturer,
     isEmulator,
     hasNotch,
   ] = await Promise.all([
     DeviceInfo.getUniqueId(),
+    DeviceInfo.getManufacturer(),
     DeviceInfo.isEmulator(),
     DeviceInfo.hasNotch(),
   ]);
@@ -973,7 +1000,7 @@ async function gatherDeviceResources(): Promise<DeviceResources> {
   return {
     deviceId,
     deviceModel: DeviceInfo.getModel(),
-    deviceManufacturer: DeviceInfo.getManufacturer(),
+    deviceManufacturer,
     systemName: DeviceInfo.getSystemName(),
     systemVersion: DeviceInfo.getSystemVersion(),
     appVersion: DeviceInfo.getVersion(),
@@ -995,21 +1022,20 @@ export async function createMobileResource(
   const device = await gatherDeviceResources();
   const networkState = await NetInfo.fetch();
 
-  return new Resource({
+  return resourceFromAttributes({
     // Service identification
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: environment,
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
 
     // Device information
-    [SemanticResourceAttributes.DEVICE_ID]: device.deviceId,
-    [SemanticResourceAttributes.DEVICE_MODEL_IDENTIFIER]: device.deviceModel,
-    [SemanticResourceAttributes.DEVICE_MANUFACTURER]: device.deviceManufacturer,
+    'device.id': device.deviceId,
+    'device.model.identifier': device.deviceModel,
+    'device.manufacturer': device.deviceManufacturer,
 
     // OS information
-    [SemanticResourceAttributes.OS_TYPE]: Platform.OS,
-    [SemanticResourceAttributes.OS_NAME]: device.systemName,
-    [SemanticResourceAttributes.OS_VERSION]: device.systemVersion,
+    'os.name': device.systemName,
+    'os.version': device.systemVersion,
 
     // App information
     'app.version': device.appVersion,
@@ -1119,9 +1145,9 @@ OneUptime provides a comprehensive observability platform. Here is how to config
 
 ```typescript
 // src/telemetry/oneuptime.ts
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
 import { trace } from '@opentelemetry/api';
 import { createMobileResource } from './resources';
 
@@ -1134,7 +1160,7 @@ interface OneUptimeConfig {
 }
 
 class OneUptimeTelemetry {
-  private provider: BasicTracerProvider | null = null;
+  private provider: WebTracerProvider | null = null;
 
   async initialize(config: OneUptimeConfig): Promise<void> {
     // Create resource with mobile-specific attributes
@@ -1143,11 +1169,6 @@ class OneUptimeTelemetry {
       config.serviceVersion,
       config.environment
     );
-
-    // Create provider
-    this.provider = new BasicTracerProvider({
-      resource,
-    });
 
     // Configure OneUptime exporter
     const exporter = new OTLPTraceExporter({
@@ -1166,7 +1187,12 @@ class OneUptimeTelemetry {
       exportTimeoutMillis: 30000,
     });
 
-    this.provider.addSpanProcessor(processor);
+    // Create provider
+    this.provider = new WebTracerProvider({
+      resource,
+      spanProcessors: [processor],
+    });
+
     this.provider.register();
 
     console.log('OneUptime telemetry initialized');

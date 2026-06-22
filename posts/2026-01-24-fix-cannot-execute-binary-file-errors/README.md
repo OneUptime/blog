@@ -18,6 +18,7 @@ flowchart TD
     B --> C[Exec format error]
     B --> D[Permission denied]
     B --> E[No such file or directory]
+    B --> M[Shared library error]
 
     C --> F[Architecture Mismatch]
     C --> G[Wrong File Type]
@@ -26,8 +27,9 @@ flowchart TD
     D --> I[Missing Execute Bit]
     D --> J[SELinux/AppArmor]
 
-    E --> K[Missing Interpreter]
-    E --> L[Missing Library]
+    E --> K[Missing Script Interpreter]
+    E --> L[Missing ELF Loader]
+    M --> N[Missing Library]
 ```
 
 ### Common Error Messages
@@ -173,7 +175,7 @@ file ./script
 
 # View the first line
 head -1 ./script
-# Missing or wrong shebang line
+# Missing shebang can cause Exec format error when launched outside shell fallback
 ```
 
 ### Solution
@@ -517,7 +519,7 @@ flowchart LR
 | Exec format error | Wrong architecture | Check `file` and `uname -m` |
 | Permission denied | Missing +x | `chmod +x binary` |
 | bad interpreter | CRLF endings | `dos2unix script.sh` |
-| No such file | Missing shebang | Add `#!/bin/bash` |
+| No such file | Missing interpreter or ELF loader | Check the shebang path or install the loader/libraries |
 | cannot open shared object | Missing library | Install with package manager |
 
 ---

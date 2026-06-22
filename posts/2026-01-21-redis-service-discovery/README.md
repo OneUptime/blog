@@ -80,7 +80,7 @@ class ServiceRegistry:
         pipe = self.redis.pipeline()
 
         # Store instance data with TTL
-        pipe.setex(instance_key, self.ttl, json.dumps(asdict(instance)))
+        pipe.set(instance_key, json.dumps(asdict(instance)), ex=self.ttl)
 
         # Add to service set
         pipe.sadd(service_key, instance_id)
@@ -125,7 +125,7 @@ class ServiceRegistry:
         instance_data["last_heartbeat"] = time.time()
 
         # Update with new TTL
-        self.redis.setex(instance_key, self.ttl, json.dumps(instance_data))
+        self.redis.set(instance_key, json.dumps(instance_data), ex=self.ttl)
 
         return True
 
@@ -432,6 +432,7 @@ Add health check support to service discovery:
 ```python
 import redis
 import requests
+import json
 import time
 import threading
 from typing import Dict, Any, List, Callable, Optional
@@ -493,13 +494,13 @@ class HealthChecker:
 
         # Store health status
         health_key = self._health_key(service_name, instance.instance_id)
-        self.redis.setex(
+        self.redis.set(
             health_key,
-            self.check_interval * 3,
             json.dumps({
                 "status": status.value,
                 "checked_at": time.time()
-            })
+            }),
+            ex=self.check_interval * 3
         )
 
         return status

@@ -137,7 +137,7 @@ flowchart TD
     A[Variable Scope] --> B[Global Variables]
     A --> C[Local Variables]
     B --> D[Accessible everywhere]
-    C --> F[Only inside function]
+    C --> F[Inside function and child calls]
     C --> G[Use 'local' keyword]
 ```
 
@@ -182,7 +182,7 @@ backup_database() {
     mkdir -p "$backup_dir" || return 2
     
     local backup_file="$backup_dir/${db_name}_$(date +%Y%m%d_%H%M%S).sql"
-    echo "Backing up to $backup_file..."
+    echo "Backing up to $backup_file..." >&2
     
     # Simulated backup
     echo "-- Backup of $db_name" > "$backup_file" || return 3

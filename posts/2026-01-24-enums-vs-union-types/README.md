@@ -94,7 +94,7 @@ graph TD
     B -->|Yes| C[Inlined at Compile Time]
     B -->|No| D[Runtime Object Created]
     C --> E[No Runtime Cost]
-    D --> F[Reverse Mapping Available]
+    D --> F[Numeric Reverse Mapping Available]
     D --> G[Can Iterate Values]
 ```
 
@@ -122,6 +122,11 @@ type Result<T> =
     | { success: true; data: T }
     | { success: false; error: string };
 
+interface User {
+    id: number;
+    name: string;
+}
+
 function fetchUser(id: number): Result<User> {
     if (id <= 0) {
         return { success: false, error: "Invalid user ID" };
@@ -143,7 +148,7 @@ if (result.success) {
 graph LR
     subgraph "Enums"
         A1[Runtime Object]
-        A2[Reverse Mapping]
+        A2[Numeric Reverse Mapping]
         A3[Iteration Support]
         A4[Numeric Values]
     end
@@ -187,14 +192,15 @@ type Status = "PENDING" | "ACTIVE" | "COMPLETED";
 Both provide type safety, but with different characteristics:
 
 ```typescript
-// Enum - allows any number assignment with numeric enums
+// Numeric enum - strict for known enum values
 enum NumericStatus {
     Pending,
     Active
 }
 
 function processNumeric(status: NumericStatus): void {}
-processNumeric(999);  // No error! TypeScript allows any number
+processNumeric(NumericStatus.Pending);  // Works
+processNumeric(999);  // Error: not assignable to NumericStatus
 
 // String enum - stricter
 enum StringStatus {

@@ -88,7 +88,7 @@ Ensure the consuming component is a descendant of the provider:
 <script setup>
 import { provide, ref } from 'vue';
 
-// Provide at app level so all components can access
+// Provide at the root component level so all descendants can access
 const theme = ref('dark');
 provide('theme', theme);
 </script>
@@ -113,7 +113,7 @@ const theme = inject('theme', 'light');
 const config = inject('config', () => ({
   apiUrl: '/api',
   timeout: 5000
-}));
+}), true);
 </script>
 ```
 
@@ -296,7 +296,7 @@ provide(ThemeKey, theme);
 ```vue
 <!-- Consumer.vue -->
 <script setup lang="ts">
-import { inject } from 'vue';
+import { inject, ref } from 'vue';
 import { ThemeKey } from '@/keys';
 
 // Type is automatically: Ref<'light' | 'dark'> | undefined
@@ -438,11 +438,12 @@ import { provide, inject, ref, onMounted } from 'vue';
 const parentData = inject('parentData', null);
 const childData = ref(null);
 
-// Provide after mount when parent data is available
+// Provide synchronously, then populate it when parent data is available
+provide('childData', childData);
+
 onMounted(() => {
   if (parentData) {
     childData.value = processParentData(parentData.value);
-    provide('childData', childData);
   }
 });
 </script>

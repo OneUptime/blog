@@ -150,6 +150,7 @@ APT lock errors occur when another process is using the package manager.
         name: nginx
         state: present
         update_cache: yes
+        lock_timeout: 300
       retries: 3
       delay: 30
       register: install_result
@@ -236,18 +237,16 @@ Missing or misconfigured repositories cause package installation failures.
     # Add missing repository (Debian/Ubuntu)
     - name: Add nginx official repository (Debian)
       block:
-        # Add repository signing key
-        - name: Add nginx GPG key
-          ansible.builtin.apt_key:
-            url: https://nginx.org/keys/nginx_signing.key
-            state: present
-
-        # Add repository
+        # Add repository and signing key
         - name: Add nginx repository
-          ansible.builtin.apt_repository:
-            repo: "deb http://nginx.org/packages/{{ ansible_distribution | lower }}/ {{ ansible_distribution_release }} nginx"
-            state: present
-            filename: nginx
+          ansible.builtin.deb822_repository:
+            name: nginx
+            types: deb
+            uris: "https://nginx.org/packages/{{ 'ubuntu' if ansible_distribution == 'Ubuntu' else 'debian' }}"
+            suites: "{{ ansible_distribution_release }}"
+            components:
+              - nginx
+            signed_by: https://nginx.org/keys/nginx_signing.key
 
         # Update cache after adding repo
         - name: Update apt cache
@@ -267,10 +266,11 @@ Missing or misconfigured repositories cause package installation failures.
       ansible.builtin.yum_repository:
         name: nginx
         description: Nginx Official Repository
-        baseurl: http://nginx.org/packages/rhel/$releasever/$basearch/
+        baseurl: https://nginx.org/packages/centos/$releasever/$basearch/
         gpgcheck: yes
         gpgkey: https://nginx.org/keys/nginx_signing.key
         enabled: yes
+        module_hotfixes: yes
       when: ansible_os_family == "RedHat"
 
     # Now install the package
@@ -413,14 +413,13 @@ GPG signature verification failures block package installation.
   hosts: all
   become: yes
   tasks:
-    # Fix expired GPG keys (Debian)
-    - name: Update expired GPG keys (Debian)
-      ansible.builtin.shell: |
-        apt-key adv --keyserver keyserver.ubuntu.com --recv-keys {{ item }}
-      loop:
-        - "ABF5BD827BD9BF62"  # Example key ID
+    # Refresh repository GPG keys (Debian)
+    - name: Refresh nginx GPG key (Debian)
+      ansible.builtin.get_url:
+        url: https://nginx.org/keys/nginx_signing.key
+        dest: /usr/share/keyrings/nginx-archive-keyring.asc
+        mode: '0644'
       when: ansible_os_family == "Debian"
-      ignore_errors: yes
 
     # Import GPG key from URL
     - name: Import repository GPG key
@@ -439,15 +438,17 @@ GPG signature verification failures block package installation.
         - ansible_os_family == "RedHat"
         - gpg_emergency | default(false)
 
-    # Use modern apt_key replacement (Debian 12+)
-    - name: Add GPG key using modern method
-      ansible.builtin.get_url:
-        url: https://nginx.org/keys/nginx_signing.key
-        dest: /usr/share/keyrings/nginx-archive-keyring.gpg
-        mode: '0644'
-      when:
-        - ansible_os_family == "Debian"
-        - ansible_distribution_major_version | int >= 12
+    # Use modern apt_key replacement
+    - name: Add repository with GPG key using modern method
+      ansible.builtin.deb822_repository:
+        name: nginx
+        types: deb
+        uris: "https://nginx.org/packages/{{ 'ubuntu' if ansible_distribution == 'Ubuntu' else 'debian' }}"
+        suites: "{{ ansible_distribution_release }}"
+        components:
+          - nginx
+        signed_by: https://nginx.org/keys/nginx_signing.key
+      when: ansible_os_family == "Debian"
 ```
 
 ---

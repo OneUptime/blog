@@ -98,31 +98,37 @@ for batch in fetch_in_batches(conn_string, "SELECT * FROM large_table", batch_si
 
 ```java
 public void processBatches(Connection conn, String query, int batchSize) throws SQLException {
-    // Enable streaming result set
-    PreparedStatement stmt = conn.prepareStatement(query,
-        ResultSet.TYPE_FORWARD_ONLY,
-        ResultSet.CONCUR_READ_ONLY);
-    stmt.setFetchSize(batchSize);  // Critical for streaming
+    boolean previousAutoCommit = conn.getAutoCommit();
+    conn.setAutoCommit(false);  // Required for PostgreSQL cursor-based fetching
 
-    ResultSet rs = stmt.executeQuery();
-    List<Row> batch = new ArrayList<>(batchSize);
+    try {
+        // Enable streaming result set
+        try (PreparedStatement stmt = conn.prepareStatement(query,
+                ResultSet.TYPE_FORWARD_ONLY,
+                ResultSet.CONCUR_READ_ONLY)) {
+            stmt.setFetchSize(batchSize);  // Hint rows to fetch per round trip
 
-    while (rs.next()) {
-        batch.add(extractRow(rs));
+            try (ResultSet rs = stmt.executeQuery()) {
+                List<Row> batch = new ArrayList<>(batchSize);
 
-        if (batch.size() >= batchSize) {
-            processBatch(batch);
-            batch.clear();
+                while (rs.next()) {
+                    batch.add(extractRow(rs));
+
+                    if (batch.size() >= batchSize) {
+                        processBatch(batch);
+                        batch.clear();
+                    }
+                }
+
+                // Process remaining rows
+                if (!batch.isEmpty()) {
+                    processBatch(batch);
+                }
+            }
         }
+    } finally {
+        conn.setAutoCommit(previousAutoCommit);
     }
-
-    // Process remaining rows
-    if (!batch.isEmpty()) {
-        processBatch(batch);
-    }
-
-    rs.close();
-    stmt.close();
 }
 ```
 
@@ -251,15 +257,19 @@ Writing one row at a time is extremely slow. Batch your inserts.
 
 ```python
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import execute_values
 
 def bulk_insert(connection, table_name, records, batch_size=1000):
     """Insert records in batches using execute_values for best performance"""
+    if not records:
+        return
+
     cursor = connection.cursor()
 
     # Prepare column names from first record
     columns = list(records[0].keys())
-    columns_str = ', '.join(columns)
+    columns_sql = sql.SQL(', ').join(map(sql.Identifier, columns))
 
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
@@ -268,7 +278,10 @@ def bulk_insert(connection, table_name, records, batch_size=1000):
         values = [tuple(record[col] for col in columns) for record in batch]
 
         # execute_values is much faster than executemany
-        query = f"INSERT INTO {table_name} ({columns_str}) VALUES %s"
+        query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
+            sql.Identifier(table_name),
+            columns_sql
+        ).as_string(connection)
         execute_values(cursor, query, values, page_size=batch_size)
 
         connection.commit()
@@ -282,17 +295,28 @@ def bulk_insert(connection, table_name, records, batch_size=1000):
 ```python
 def bulk_upsert(connection, table_name, records, conflict_columns, update_columns, batch_size=1000):
     """Bulk upsert with ON CONFLICT handling"""
+    if not records:
+        return
+
     cursor = connection.cursor()
 
     columns = list(records[0].keys())
-    columns_str = ', '.join(columns)
-    conflict_str = ', '.join(conflict_columns)
-    update_str = ', '.join(f"{col} = EXCLUDED.{col}" for col in update_columns)
+    columns_sql = sql.SQL(', ').join(map(sql.Identifier, columns))
+    conflict_sql = sql.SQL(', ').join(map(sql.Identifier, conflict_columns))
+    update_sql = sql.SQL(', ').join(
+        sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(col), sql.Identifier(col))
+        for col in update_columns
+    )
 
-    query = f"""
-        INSERT INTO {table_name} ({columns_str}) VALUES %s
-        ON CONFLICT ({conflict_str}) DO UPDATE SET {update_str}
-    """
+    query = sql.SQL("""
+        INSERT INTO {} ({}) VALUES %s
+        ON CONFLICT ({}) DO UPDATE SET {}
+    """).format(
+        sql.Identifier(table_name),
+        columns_sql,
+        conflict_sql,
+        update_sql
+    ).as_string(connection)
 
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]

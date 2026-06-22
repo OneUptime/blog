@@ -52,6 +52,7 @@ metadata:
   namespace: auth
 data:
   OIDC_ISSUER: "https://auth.example.com/realms/production"
+  OIDC_JWKS_URI: "https://auth.example.com/realms/production/protocol/openid-connect/certs"
   OIDC_CLIENT_ID: "my-application"
   OIDC_SCOPES: "openid profile email groups"
   OIDC_AUDIENCE: "my-application"
@@ -62,16 +63,19 @@ data:
 ```python
 # Python middleware for Zero Trust token validation
 import jwt
-import requests
 from functools import wraps
-from flask import request, jsonify, g
-from datetime import datetime
+from flask import Flask, request, jsonify, g
+
+app = Flask(__name__)
+
+class AuthError(Exception):
+    pass
 
 class ZeroTrustAuth:
-    def __init__(self, issuer, audience):
+    def __init__(self, issuer, audience, jwks_uri):
         self.issuer = issuer
         self.audience = audience
-        self.jwks_client = jwt.PyJWKClient(f"{issuer}/.well-known/jwks.json")
+        self.jwks_client = jwt.PyJWKClient(jwks_uri)
 
     def validate_token(self, token):
         """Validate JWT token with full verification"""
@@ -104,6 +108,12 @@ class ZeroTrustAuth:
             raise AuthError("Invalid token issuer")
         except Exception as e:
             raise AuthError(f"Token validation failed: {str(e)}")
+
+auth = ZeroTrustAuth(
+    issuer="https://auth.example.com/realms/production",
+    audience="my-application",
+    jwks_uri="https://auth.example.com/realms/production/protocol/openid-connect/certs"
+)
 
 def require_zero_trust(required_scopes=None, required_groups=None):
     """Decorator for Zero Trust protected endpoints"""
@@ -216,10 +226,30 @@ REQUIRED_POSTURE = {
     'firewall_required': True
 }
 
+def fetch_device_posture(device_id):
+    """Fetch posture from a trusted MDM/EDR inventory, not from self-reported client data"""
+    # Replace with your MDM/EDR API call.
+    return {
+        'last_os_patch': '2026-01-01',
+        'antivirus_active': True,
+        'disk_encrypted': True,
+        'firewall_enabled': True
+    }
+
+def generate_device_token(device_id, expires_in):
+    """Issue a short-lived device token using your trusted token service"""
+    # Replace with a signed token from your IdP or token service.
+    return f"device-token-for-{device_id}"
+
 @app.route('/api/device/posture-check', methods=['POST'])
 def check_device_posture():
     """Validate device meets security requirements"""
-    device_info = request.get_json()
+    request_body = request.get_json()
+    if not request_body or 'device_id' not in request_body:
+        return jsonify({'error': 'device_id is required'}), 400
+
+    device_id = request_body['device_id']
+    device_info = fetch_device_posture(device_id)
 
     issues = []
 
@@ -250,7 +280,7 @@ def check_device_posture():
 
     # Device is compliant - issue a short-lived device token
     device_token = generate_device_token(
-        device_id=device_info['device_id'],
+        device_id=device_id,
         expires_in=timedelta(hours=8)
     )
 
@@ -294,12 +324,12 @@ spec:
     - Ingress
   ingress:
     - from:
-        - podSelector:
-            matchLabels:
-              app: api
         - namespaceSelector:
             matchLabels:
-              name: production
+              kubernetes.io/metadata.name: production
+          podSelector:
+            matchLabels:
+              app: api
       ports:
         - protocol: TCP
           port: 5432
@@ -321,7 +351,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
@@ -358,7 +388,20 @@ flowchart TB
 
 ```yaml
 # Istio authorization policy for Zero Trust
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: api-jwt
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: api
+  jwtRules:
+    - issuer: "https://auth.example.com/realms/production"
+      jwksUri: "https://auth.example.com/realms/production/protocol/openid-connect/certs"
+---
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz
@@ -389,8 +432,8 @@ spec:
         - key: request.auth.claims[groups]
           values: ["admin-group"]
 ---
-# Enforce mTLS between all services
-apiVersion: security.istio.io/v1beta1
+# Enforce mTLS between services in this namespace
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -409,8 +452,15 @@ Zero Trust requires continuous monitoring, not just authentication at the door.
 import redis
 from datetime import datetime, timedelta
 
+class SessionError(Exception):
+    pass
+
+class RateLimitError(Exception):
+    pass
+
 class ContinuousVerification:
     def __init__(self, redis_client):
+        # Configure redis_client with decode_responses=True so hash keys and values are strings.
         self.redis = redis_client
         self.session_ttl = timedelta(minutes=15)
         self.max_requests_per_minute = 100
@@ -464,6 +514,10 @@ class ContinuousVerification:
         self.redis.ltrim(history_key, 0, 999)
 
         return False  # Implement actual anomaly detection logic
+
+    def flag_for_review(self, user_id, session_id):
+        """Record suspicious sessions for investigation"""
+        self.redis.sadd("sessions:review", f"{user_id}:{session_id}")
 ```
 
 ## Implementation Checklist

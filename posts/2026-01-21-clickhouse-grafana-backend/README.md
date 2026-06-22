@@ -60,12 +60,11 @@ apiVersion: 1
 datasources:
   - name: ClickHouse
     type: grafana-clickhouse-datasource
-    url: http://clickhouse:8123
     jsonData:
       defaultDatabase: default
       protocol: http
       port: 8123
-      server: clickhouse
+      host: clickhouse
       username: default
     secureJsonData:
       password: ""
@@ -101,17 +100,17 @@ ORDER BY time
 ```sql
 -- $__timeFilter: Filters by Grafana's time range
 WHERE $__timeFilter(event_time)
--- Expands to: event_time BETWEEN '2024-01-01 00:00:00' AND '2024-01-01 23:59:59'
+-- Expands to: event_time >= toDateTime(1415792726) AND event_time <= toDateTime(1447328726)
 
 -- $__timeInterval: Groups by dashboard interval
 $__timeInterval(event_time)
--- Expands to: toStartOfInterval(event_time, INTERVAL 1 minute)
+-- Expands to: toStartOfInterval(toDateTime(event_time), INTERVAL 20 second)
 
--- $__fromTime and $__toTime: Raw timestamps
+-- $__fromTime and $__toTime: Time range boundaries as DateTime values
 WHERE event_time >= $__fromTime AND event_time <= $__toTime
 
--- $__interval: Current interval as string
--- $__interval_ms: Current interval in milliseconds
+-- $__interval_s: Current interval in seconds
+-- $__timeInterval_ms: Groups DateTime64 data by dashboard interval in milliseconds
 ```
 
 ### Table Queries
@@ -146,7 +145,7 @@ SELECT
     count() AS count
 FROM events
 WHERE $__timeFilter(event_time)
-    AND event_type IN ($event_type)
+    AND event_type IN (${event_type:singlequote})
 GROUP BY time
 ORDER BY time
 ```
@@ -170,7 +169,7 @@ SELECT DISTINCT region FROM servers
 -- Second variable: Get servers in selected region
 SELECT DISTINCT server_name
 FROM servers
-WHERE region IN ($region)
+WHERE region IN (${region:singlequote})
 
 -- Dashboard query using both
 SELECT
@@ -178,8 +177,8 @@ SELECT
     avg(cpu_usage) AS cpu
 FROM metrics
 WHERE $__timeFilter(timestamp)
-    AND region IN ($region)
-    AND server_name IN ($server_name)
+    AND region IN (${region:singlequote})
+    AND server_name IN (${server_name:singlequote})
 GROUP BY time
 ORDER BY time
 ```
@@ -530,9 +529,9 @@ GROUP BY user;
 ```yaml
 # Grafana connection settings
 jsonData:
-  maxOpenConnections: 10
-  maxIdleConnections: 5
-  connMaxLifetimeSeconds: 14400
+  maxOpenConns: '10'
+  maxIdleConns: '5'
+  connMaxLifetime: '240'
 ```
 
 ---

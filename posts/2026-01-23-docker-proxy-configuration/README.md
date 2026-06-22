@@ -51,8 +51,9 @@ sudo systemctl show --property=Environment docker
 
 Alternative approach using daemon configuration:
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "proxies": {
     "http-proxy": "http://proxy.example.com:8080",
@@ -72,10 +73,11 @@ Configure through Docker Desktop settings:
 4. Enable "Manual proxy configuration"
 5. Enter proxy details
 
-Or edit the configuration file directly:
+For automatic build and container proxy environment variables, edit the Docker CLI configuration file:
+
+`~/.docker/config.json`:
 
 ```json
-// ~/.docker/config.json (for Docker Desktop)
 {
   "proxies": {
     "default": {
@@ -96,23 +98,8 @@ Proxy settings for building images that need to download packages.
 ```dockerfile
 FROM node:20-alpine
 
-# Accept proxy settings as build arguments
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG NO_PROXY
-
-# Set environment variables for package managers
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
-
-# Now package installations use the proxy
+# Docker provides proxy build arguments to RUN instructions when passed
 RUN npm install -g typescript
-
-# Clear proxy from final image (optional but recommended)
-ENV HTTP_PROXY=
-ENV HTTPS_PROXY=
-ENV NO_PROXY=
 ```
 
 Build with proxy arguments:
@@ -129,8 +116,9 @@ docker build \
 
 Configure Docker to automatically inject proxy variables:
 
+`~/.docker/config.json`:
+
 ```json
-// ~/.docker/config.json
 {
   "proxies": {
     "default": {
@@ -151,12 +139,6 @@ Clear proxy settings in the final stage:
 ```dockerfile
 # Build stage with proxy
 FROM node:20-alpine AS builder
-
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
 
 WORKDIR /app
 COPY package*.json ./
@@ -192,8 +174,6 @@ docker run -d \
 ### Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -265,6 +245,9 @@ Corporate proxies often perform SSL inspection, requiring custom CA certificates
 ```dockerfile
 FROM ubuntu:22.04
 
+# Install ca-certificates package first
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
+
 # Copy corporate CA certificate
 COPY corporate-ca.crt /usr/local/share/ca-certificates/
 
@@ -272,7 +255,7 @@ COPY corporate-ca.crt /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 
 # Now HTTPS through proxy works
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl
 ```
 
 ### For Alpine-Based Images
@@ -296,7 +279,7 @@ FROM node:20-alpine
 COPY corporate-ca.crt /usr/local/share/ca-certificates/
 RUN apk add --no-cache ca-certificates && update-ca-certificates
 
-# Tell Node.js to use system certificates
+# Tell Node.js to include the system certificate bundle
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ```
 
@@ -305,6 +288,7 @@ ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ```dockerfile
 FROM python:3.12-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY corporate-ca.crt /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 

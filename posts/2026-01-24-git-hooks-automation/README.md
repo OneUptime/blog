@@ -381,8 +381,8 @@ if echo "$CHANGED_FILES" | grep -qE "package(-lock)?\.json"; then
     npm install
 fi
 
-# Check for Python dependency changes
-if echo "$CHANGED_FILES" | grep -qE "requirements.*\.txt|Pipfile"; then
+# Check for Python requirements changes
+if echo "$CHANGED_FILES" | grep -qE "requirements.*\.txt"; then
     echo "Python dependencies changed. Running pip install..."
     pip install -r requirements.txt
 fi
@@ -480,12 +480,9 @@ while read OLDREV NEWREV REFNAME; do
 
     # Prevent direct pushes to main
     if [ "$BRANCH" == "main" ] || [ "$BRANCH" == "master" ]; then
-        # Check if push is from CI/CD or merge
-        if [ -z "$GITHUB_ACTIONS" ] && [ -z "$GITLAB_CI" ]; then
-            echo "ERROR: Direct push to $BRANCH is not allowed"
-            echo "Please create a pull request instead"
-            exit 1
-        fi
+        echo "ERROR: Direct push to $BRANCH is not allowed"
+        echo "Please create a pull request instead"
+        exit 1
     fi
 
     # Prevent force pushes

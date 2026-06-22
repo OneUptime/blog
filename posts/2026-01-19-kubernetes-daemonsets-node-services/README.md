@@ -44,8 +44,8 @@ flowchart TD
 
 | Feature | Deployment | DaemonSet |
 |---------|------------|-----------|
-| Replicas | Specified count | One per node |
-| Scheduling | Scheduler decides | Guaranteed per node |
+| Replicas | Specified count | One per eligible node |
+| Scheduling | Scheduler decides placement | DaemonSet controller targets eligible nodes |
 | Scale | Manual/HPA | Automatic with nodes |
 | Use case | Stateless apps | Node-level services |
 
@@ -161,7 +161,7 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/containers/*.log
-        Parser            docker
+        Parser            cri
         Tag               kube.*
         Refresh_Interval  5
         Mem_Buf_Limit     50MB
@@ -188,10 +188,11 @@ data:
   
   parsers.conf: |
     [PARSER]
-        Name        docker
-        Format      json
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
         Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
         Time_Keep   On
 ```
 
@@ -629,7 +630,13 @@ kind: DaemonSet
 metadata:
   name: log-collector
 spec:
+  selector:
+    matchLabels:
+      app: log-collector
   template:
+    metadata:
+      labels:
+        app: log-collector
     spec:
       affinity:
         nodeAffinity:
@@ -740,8 +747,9 @@ spec:
         - alert: DaemonSetNotScheduled
           expr: |
             kube_daemonset_status_desired_number_scheduled
-            !=
+            -
             kube_daemonset_status_current_number_scheduled
+            > 0
           for: 10m
           labels:
             severity: warning

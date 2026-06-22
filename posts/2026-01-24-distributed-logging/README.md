@@ -87,10 +87,9 @@ flowchart LR
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from contextvars import ContextVar
-import uuid
 
 # Context variables for request-scoped data
 correlation_id: ContextVar[str] = ContextVar("correlation_id", default="")
@@ -111,7 +110,7 @@ class StructuredLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
             # Timestamp in ISO format
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
 
             # Log level
             "level": record.levelname,
@@ -168,6 +167,9 @@ class ContextLogger(logging.LoggerAdapter):
         for key, value in kwargs.items():
             if key not in ("exc_info", "stack_info", "stacklevel", "extra"):
                 extra["extra_fields"][key] = value
+
+        for key in list(extra["extra_fields"].keys()):
+            kwargs.pop(key, None)
 
         kwargs["extra"] = extra
         return msg, kwargs
@@ -232,14 +234,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Generate or extract correlation ID
         corr_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
-        correlation_id.set(corr_id)
+        corr_token = correlation_id.set(corr_id)
 
         # Extract user ID if present
         uid = request.headers.get("X-User-ID") or ""
-        user_id.set(uid)
+        user_token = user_id.set(uid)
 
         # Set request path
-        request_path.set(request.url.path)
+        path_token = request_path.set(request.url.path)
 
         # Log request start
         start_time = time.time()
@@ -279,6 +281,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 exc_info=True
             )
             raise
+        finally:
+            correlation_id.reset(corr_token)
+            user_id.reset(user_token)
+            request_path.reset(path_token)
 
 
 app = FastAPI()
@@ -301,6 +307,7 @@ async def get_order(order_id: str):
 ```python
 # http_client.py
 import httpx
+import time
 from logging_config import correlation_id, logger
 
 class TracedHttpClient:
@@ -308,7 +315,7 @@ class TracedHttpClient:
     HTTP client that propagates correlation ID and logs requests.
     """
 
-    def __init__(self, base_url: str = None):
+    def __init__(self, base_url: str = ""):
         self.base_url = base_url
         self.client = httpx.AsyncClient(base_url=base_url)
 
@@ -403,7 +410,7 @@ class TracedHttpClient:
   bind 0.0.0.0
 </source>
 
-<!-- Parse JSON logs from containers -->
+<!-- Parse CRI logs from containers -->
 <source>
   @type tail
   path /var/log/containers/*.log
@@ -412,8 +419,9 @@ class TracedHttpClient:
   read_from_head true
 
   <parse>
-    @type json
-    time_key timestamp
+    @type regexp
+    expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$/
+    time_key time
     time_format %Y-%m-%dT%H:%M:%S.%NZ
   </parse>
 </source>
@@ -433,6 +441,10 @@ class TracedHttpClient:
 
   <parse>
     @type json
+    time_key timestamp
+    time_type string
+    time_format %Y-%m-%dT%H:%M:%S.%NZ
+    keep_time_key true
   </parse>
 </filter>
 
@@ -489,9 +501,11 @@ spec:
       tolerations:
       - key: node-role.kubernetes.io/master
         effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
       containers:
       - name: fluentd
-        image: fluent/fluentd-kubernetes-daemonset:v1.14-debian-elasticsearch7
+        image: fluent/fluentd-kubernetes-daemonset:v1.19-debian-elasticsearch8-1
         env:
         - name: FLUENT_ELASTICSEARCH_HOST
           value: "elasticsearch.logging.svc.cluster.local"
@@ -508,9 +522,6 @@ spec:
         volumeMounts:
         - name: varlog
           mountPath: /var/log
-        - name: dockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
         - name: config
           mountPath: /fluentd/etc/fluent.conf
           subPath: fluent.conf
@@ -518,9 +529,6 @@ spec:
       - name: varlog
         hostPath:
           path: /var/log
-      - name: dockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
       - name: config
         configMap:
           name: fluentd-config
@@ -573,7 +581,7 @@ spec:
 
 ### Index Lifecycle Policy
 
-```json
+```jsonc
 // PUT _ilm/policy/logs-policy
 {
   "policy": {
@@ -581,10 +589,6 @@ spec:
       "hot": {
         "min_age": "0ms",
         "actions": {
-          "rollover": {
-            "max_size": "50GB",
-            "max_age": "1d"
-          },
           "set_priority": {
             "priority": 100
           }
@@ -625,7 +629,7 @@ spec:
 
 ### Index Template
 
-```json
+```jsonc
 // PUT _index_template/logs-template
 {
   "index_patterns": ["logs-*"],
@@ -633,8 +637,7 @@ spec:
     "settings": {
       "number_of_shards": 3,
       "number_of_replicas": 1,
-      "index.lifecycle.name": "logs-policy",
-      "index.lifecycle.rollover_alias": "logs"
+      "index.lifecycle.name": "logs-policy"
     },
     "mappings": {
       "properties": {
@@ -729,7 +732,7 @@ spec:
 
 ### Common Kibana Queries
 
-```json
+```jsonc
 // Find all logs for a specific correlation ID
 {
   "query": {
@@ -1106,7 +1109,7 @@ alert_rules = [
     ),
     AlertRule(
         name="Slow Requests",
-        query="duration_ms:>5000",
+        query="duration_ms:[5000 TO *]",
         threshold=50,
         window_minutes=10,
         severity="warning",
@@ -1158,6 +1161,7 @@ logger.error(
 
 ```python
 # sensitive_filter.py
+import logging
 import re
 
 SENSITIVE_PATTERNS = [

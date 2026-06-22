@@ -224,7 +224,10 @@ class FieldEncryption:
 
 # Usage with SQLAlchemy
 
-from sqlalchemy import TypeDecorator, String
+from sqlalchemy import Column, Integer, TypeDecorator, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
 
 class EncryptedString(TypeDecorator):
     impl = String
@@ -262,12 +265,11 @@ TDE encrypts the entire database at the storage level without requiring applicat
 ### PostgreSQL TDE Setup
 
 ```sql
--- PostgreSQL 16+ supports TDE
--- Configure in postgresql.conf:
--- encryption_method = 'AES256'
--- encryption_key_command = 'your-key-retrieval-command'
+-- Stock PostgreSQL does not provide built-in TDE in PostgreSQL 16.
+-- Use filesystem/cloud volume encryption for transparent at-rest encryption,
+-- or a PostgreSQL distribution/extension that explicitly supports TDE.
 
--- For older versions, use pgcrypto for column encryption
+-- For column encryption, use pgcrypto
 CREATE EXTENSION pgcrypto;
 
 -- Encrypt data using pgcrypto
@@ -288,10 +290,15 @@ FROM users;
 
 ```sql
 -- Enable InnoDB tablespace encryption
--- my.cnf configuration:
--- [mysqld]
--- early-plugin-load=keyring_file.so
--- keyring_file_data=/var/lib/mysql-keyring/keyring
+-- Configure a keyring component first. For component_keyring_file,
+-- create mysqld.my next to the mysqld binary:
+-- { "components": "file://component_keyring_file" }
+--
+-- Then create component_keyring_file.cnf in the plugin directory:
+-- {
+--   "path": "/usr/local/mysql/keyring/component_keyring_file.keys",
+--   "read_only": false
+-- }
 
 -- Create encrypted tablespace
 CREATE TABLESPACE encrypted_ts

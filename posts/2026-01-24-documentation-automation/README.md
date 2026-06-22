@@ -119,6 +119,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -191,11 +193,22 @@ def extract_code_symbols(src_dir: Path) -> set:
 
         module_path = py_file.relative_to(src_dir).with_suffix('')
         module_name = str(module_path).replace('/', '.')
+        if module_name.endswith('.__init__'):
+            module_name = module_name[:-9]
 
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-                if not node.name.startswith('_'):
-                    symbols.add(f"{module_name}.{node.name}")
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name.startswith('_'):
+                    continue
+
+                qualified_name = f"{module_name}.{node.name}"
+                symbols.add(qualified_name)
+
+                if isinstance(node, ast.ClassDef):
+                    for child in node.body:
+                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            if not child.name.startswith('_'):
+                                symbols.add(f"{qualified_name}.{child.name}")
 
     return symbols
 
@@ -269,7 +282,7 @@ nav:
 
 Write docstrings that generate useful documentation.
 
-```python
+````python
 # src/client.py
 # Example code with documentation-ready docstrings
 
@@ -306,7 +319,7 @@ class PaymentClient:
             customer_id="cust_123"
         )
         print(f"Transaction: {result.transaction_id}")
-        ```bash
+        ```
 
     Attributes:
         base_url: Base URL for the payment API.
@@ -363,7 +376,7 @@ class PaymentClient:
         """
         # Implementation here
         pass
-```text
+````
 
 ### Solution: Auto-Update Changelogs
 
@@ -382,18 +395,21 @@ on:
 jobs:
   changelog:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Generate changelog
-        uses: orhun/git-cliff-action@v3
+        uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --verbose
         env:
           OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
 
       - name: Commit changelog
         run: |
@@ -467,6 +483,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -502,23 +520,17 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Documentation deployment failed!",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "Documentation deployment failed for commit ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Documentation deployment failed!"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "Documentation deployment failed for commit ${{ github.sha }}"
 ```
 
 ## Problem 4: Search Not Working
@@ -532,10 +544,10 @@ Documentation search often breaks when indices are not updated or configuration 
 
 plugins:
   - search:
-      # Boost title matches
+      # Treat dots as word separators for symbols like module.function
       separator: '[\s\-\.]+'
 
-      # Include code blocks in search
+      # Set the language used when building the search index
       lang:
         - en
 
@@ -563,7 +575,7 @@ extra:
 For larger documentation sites, use Algolia for better search.
 
 ```yaml
-# mkdocs.yml with Algolia search
+# mkdocs.yml when replacing built-in search with a custom Algolia DocSearch integration
 
 plugins:
   - search:
@@ -571,11 +583,11 @@ plugins:
       enabled: false
 
 extra:
-  search:
-    provider: algolia
+  # Values read by your custom DocSearch theme override
+  algolia:
     index_name: acme_docs
     app_id: YOUR_APP_ID
-    api_key: YOUR_SEARCH_API_KEY
+    search_api_key: YOUR_SEARCH_API_KEY
 ```
 
 ## Monitoring Documentation Health

@@ -8,7 +8,7 @@ Description: A comprehensive guide to getting started with Kafka Streams, coveri
 
 ---
 
-Kafka Streams is a client library for building real-time streaming applications. Unlike other stream processing frameworks, it requires no separate cluster - your application is the processing cluster. This guide covers Kafka Streams fundamentals and practical implementation patterns.
+Kafka Streams is a client library for building real-time streaming applications. Unlike other stream processing frameworks, it requires no separate processing cluster - your application is the processing cluster. This guide covers Kafka Streams fundamentals and practical implementation patterns.
 
 ## What is Kafka Streams?
 
@@ -29,12 +29,12 @@ Kafka Streams is a Java library that provides:
     <dependency>
         <groupId>org.apache.kafka</groupId>
         <artifactId>kafka-streams</artifactId>
-        <version>3.7.0</version>
+        <version>4.3.0</version>
     </dependency>
     <dependency>
         <groupId>org.apache.kafka</groupId>
         <artifactId>kafka-clients</artifactId>
-        <version>3.7.0</version>
+        <version>4.3.0</version>
     </dependency>
     <!-- For JSON serialization -->
     <dependency>
@@ -48,8 +48,8 @@ Kafka Streams is a Java library that provides:
 ### Gradle
 
 ```groovy
-implementation 'org.apache.kafka:kafka-streams:3.7.0'
-implementation 'org.apache.kafka:kafka-clients:3.7.0'
+implementation 'org.apache.kafka:kafka-streams:4.3.0'
+implementation 'org.apache.kafka:kafka-clients:4.3.0'
 implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
 ```
 
@@ -193,9 +193,10 @@ KStream<String, Order> byCustomer = orders
 orders.peek((key, order) ->
     System.out.println("Processing order: " + order.getId()));
 
-// Through - write to topic and continue
-KStream<String, Order> throughStream = orders
-    .through("intermediate-topic");
+// Write to topic and continue by reading the intermediate topic
+orders.to("intermediate-topic", Produced.with(Serdes.String(), orderSerde));
+KStream<String, Order> throughStream = builder.stream("intermediate-topic",
+    Consumed.with(Serdes.String(), orderSerde));
 
 // Repartition - explicit repartition
 KStream<String, Order> repartitioned = orders
@@ -459,24 +460,24 @@ public class StreamsRestService {
 ```java
 Properties props = StreamsConfiguration.getConfig();
 
-// Default deserialization exception handler
-props.put(StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
+// Deserialization exception handler
+props.put(StreamsConfig.DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
     LogAndContinueExceptionHandler.class.getName());
 
 // Production exception handler
-props.put(StreamsConfig.DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
+props.put(StreamsConfig.PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
     DefaultProductionExceptionHandler.class.getName());
 
 // Custom exception handler
 public class CustomExceptionHandler implements DeserializationExceptionHandler {
     @Override
-    public DeserializationHandlerResponse handle(ProcessorContext context,
+    public DeserializationExceptionHandler.Response handleError(ErrorHandlerContext context,
             ConsumerRecord<byte[], byte[]> record, Exception exception) {
         // Log error and continue
         System.err.println("Deserialization error: " + exception.getMessage());
         // Send to DLQ
         sendToDLQ(record);
-        return DeserializationHandlerResponse.CONTINUE;
+        return DeserializationExceptionHandler.Response.resume();
     }
 
     @Override
@@ -484,9 +485,8 @@ public class CustomExceptionHandler implements DeserializationExceptionHandler {
 }
 
 // Uncaught exception handler
-streams.setUncaughtExceptionHandler((thread, exception) -> {
-    System.err.println("Uncaught exception in thread " + thread.getName() +
-        ": " + exception.getMessage());
+streams.setUncaughtExceptionHandler(exception -> {
+    System.err.println("Uncaught exception: " + exception.getMessage());
     return StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.REPLACE_THREAD;
 });
 ```
@@ -526,7 +526,7 @@ public class GracefulStreamsApp {
 
 Kafka Streams provides a powerful yet simple way to build stream processing applications:
 
-1. **No external dependencies**: Runs within your application
+1. **No separate processing cluster**: Runs within your application
 2. **Rich DSL**: Expressive API for common operations
 3. **Stateful processing**: Built-in state management with fault tolerance
 4. **Exactly-once semantics**: Strong processing guarantees

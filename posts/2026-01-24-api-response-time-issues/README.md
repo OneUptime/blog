@@ -178,11 +178,11 @@ LIMIT 20;
 
 -- Find missing indexes
 SELECT
-  schemaname || '.' || relname as table,
+  schemaname || '.' || relname as table_name,
   seq_scan,
   seq_tup_read,
   idx_scan,
-  seq_tup_read / seq_scan as avg_seq_tup_read
+  seq_tup_read::numeric / NULLIF(seq_scan, 0) as avg_seq_tup_read
 FROM pg_stat_user_tables
 WHERE seq_scan > 0
 ORDER BY seq_tup_read DESC
@@ -207,7 +207,7 @@ class QueryAnalyzer {
           `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`,
           params
         );
-        this.analyzeExplain(sql, explain.rows[0]);
+        this.analyzeExplain(sql, explain.rows[0]['QUERY PLAN'][0].Plan);
       }
 
       return await this.pool.query(sql, params);
@@ -224,10 +224,14 @@ class QueryAnalyzer {
   }
 
   analyzeExplain(sql, plan) {
-    const { 'Seq Scan': seqScans, 'Index Scan': indexScans } =
-      this.countNodeTypes(plan['QUERY PLAN'][0]);
+    const {
+      'Seq Scan': seqScans = 0,
+      'Index Scan': indexScans = 0,
+      'Index Only Scan': indexOnlyScans = 0,
+      'Bitmap Index Scan': bitmapIndexScans = 0
+    } = this.countNodeTypes(plan);
 
-    if (seqScans > 0 && indexScans === 0) {
+    if (seqScans > 0 && indexScans + indexOnlyScans + bitmapIndexScans === 0) {
       console.warn('Query using sequential scan (missing index?):', {
         sql: sql.substring(0, 100)
       });
@@ -331,8 +335,6 @@ app.get('/users', async (req, res) => {
 });
 
 // GOOD: Use streaming JSON for large responses
-const { Transform } = require('stream');
-
 app.get('/users', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.write('[');
@@ -487,10 +489,10 @@ function cacheMiddleware(options = {}) {
     res.send = async (body) => {
       // Cache successful responses
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        await client.setex(cacheKey, ttl, JSON.stringify({
+        await client.set(cacheKey, JSON.stringify({
           data: body,
           contentType: res.getHeader('Content-Type')
-        }));
+        }), 'EX', ttl);
       }
 
       res.setHeader('X-Cache', 'MISS');

@@ -17,7 +17,7 @@ Kafka stores data in log segments on disk. Without encryption, anyone with files
 | Approach | Pros | Cons |
 |----------|------|------|
 | Filesystem encryption (LUKS, dm-crypt) | Transparent, no app changes | Full disk, key management |
-| Cloud provider encryption (EBS, GCS) | Easy setup, managed keys | Cloud-specific |
+| Cloud provider encryption (EBS, Persistent Disk) | Easy setup, managed keys | Cloud-specific |
 | Client-side encryption | Field-level control | Application changes needed |
 | Kafka interceptors | Centralized, transparent | Performance overhead |
 
@@ -57,6 +57,7 @@ echo "/dev/mapper/kafka-data /var/kafka-logs ext4 defaults 0 2" >> /etc/fstab
 import hvac
 import subprocess
 import os
+import tempfile
 
 class VaultLuksManager:
     def __init__(self, vault_addr: str, vault_token: str):
@@ -65,23 +66,21 @@ class VaultLuksManager:
     def get_luks_key(self, key_path: str) -> bytes:
         """Retrieve LUKS key from Vault."""
         secret = self.client.secrets.kv.v2.read_secret_version(path=key_path)
-        return secret['data']['data']['key'].encode()
+        return bytes.fromhex(secret['data']['data']['key'])
 
     def unlock_volume(self, device: str, mapper_name: str, key_path: str):
         """Unlock LUKS volume using key from Vault."""
         key = self.get_luks_key(key_path)
 
         # Pass key to cryptsetup via stdin
-        process = subprocess.Popen(
-            ['cryptsetup', 'luksOpen', device, mapper_name],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+        process = subprocess.run(
+            ['cryptsetup', 'luksOpen', '--key-file', '-', device, mapper_name],
+            input=key,
+            capture_output=True
         )
-        stdout, stderr = process.communicate(input=key)
 
         if process.returncode != 0:
-            raise Exception(f"Failed to unlock volume: {stderr.decode()}")
+            raise Exception(f"Failed to unlock volume: {process.stderr.decode()}")
 
         print(f"Volume {device} unlocked as {mapper_name}")
 
@@ -98,12 +97,27 @@ class VaultLuksManager:
             secret={'key': new_key.hex()}
         )
 
-        # Add new key to LUKS
-        process = subprocess.Popen(
-            ['cryptsetup', 'luksAddKey', device],
-            stdin=subprocess.PIPE
-        )
-        process.communicate(input=old_key + b'\n' + new_key)
+        # Add new key to LUKS using key files for binary key material
+        with tempfile.NamedTemporaryFile() as old_key_file, tempfile.NamedTemporaryFile() as new_key_file:
+            old_key_file.write(old_key)
+            old_key_file.flush()
+            new_key_file.write(new_key)
+            new_key_file.flush()
+
+            process = subprocess.run(
+                [
+                    'cryptsetup',
+                    'luksAddKey',
+                    '--key-file',
+                    old_key_file.name,
+                    device,
+                    new_key_file.name
+                ],
+                capture_output=True
+            )
+
+        if process.returncode != 0:
+            raise Exception(f"Failed to add new key: {process.stderr.decode()}")
 
         print(f"New key added to {device}")
 
@@ -132,6 +146,8 @@ if __name__ == '__main__':
 
 ```yaml
 # Terraform configuration for encrypted EBS
+data "aws_caller_identity" "current" {}
+
 resource "aws_ebs_volume" "kafka_data" {
   availability_zone = "us-east-1a"
   size              = 1000
@@ -170,6 +186,11 @@ resource "aws_kms_key" "kafka_key" {
 
 ```yaml
 # Terraform for encrypted GCP disk
+resource "google_kms_key_ring" "kafka_ring" {
+  name     = "kafka-key-ring"
+  location = "us-central1"
+}
+
 resource "google_compute_disk" "kafka_data" {
   name = "kafka-data-disk"
   type = "pd-ssd"
@@ -197,8 +218,9 @@ resource "google_kms_crypto_key" "kafka_key" {
 ### Java Encryption Serializer
 
 ```java
+package com.example;
+
 import org.apache.kafka.common.serialization.Serializer;
-import org.apache.kafka.common.serialization.Deserializer;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -266,6 +288,19 @@ public class EncryptingSerializer implements Serializer<String> {
         return data;
     }
 }
+
+```
+
+```java
+package com.example;
+
+import org.apache.kafka.common.serialization.Deserializer;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.ByteBuffer;
+import java.util.Map;
 
 public class DecryptingDeserializer implements Deserializer<String> {
 
@@ -367,7 +402,7 @@ public class EncryptedKafkaClient {
     }
 
     public static void main(String[] args) throws Exception {
-        String encryptionKey = "0123456789abcdef0123456789abcdef"; // 256-bit key
+        String encryptionKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // 256-bit key
 
         // Producer
         try (KafkaProducer<String, String> producer =

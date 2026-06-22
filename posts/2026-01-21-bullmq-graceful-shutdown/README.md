@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing graceful shutdown for BullMQ 
 
 ---
 
-Graceful shutdown is critical for production BullMQ applications. When a worker needs to stop - whether for deployment, scaling, or maintenance - you must ensure in-flight jobs complete successfully and no jobs are lost. This guide covers everything you need to implement reliable graceful shutdown.
+Graceful shutdown is critical for production BullMQ applications. When a worker needs to stop - whether for deployment, scaling, or maintenance - you should let in-flight jobs complete successfully and minimize stalled jobs. This guide covers everything you need to implement reliable graceful shutdown.
 
 ## Understanding Graceful Shutdown
 
@@ -19,7 +19,7 @@ Graceful shutdown involves:
 4. Exiting the process
 
 ```typescript
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -53,13 +53,12 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 A production-ready implementation with timeout and status tracking:
 
 ```typescript
-import { Worker, Queue, Job } from 'bullmq';
+import { Worker, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 
 interface ShutdownConfig {
   timeout: number;        // Maximum time to wait for jobs
   forceAfter: number;     // Force exit after this time
-  drainDelay: number;     // Delay before starting drain
 }
 
 class GracefulWorker {
@@ -77,7 +76,6 @@ class GracefulWorker {
     this.config = {
       timeout: config.timeout || 30000,
       forceAfter: config.forceAfter || 60000,
-      drainDelay: config.drainDelay || 1000,
     };
 
     this.connection = new Redis({
@@ -157,17 +155,17 @@ class GracefulWorker {
     }, this.config.forceAfter);
 
     try {
-      // Step 1: Pause worker (stop accepting new jobs)
+      // Step 1: Pause worker without waiting here so our timeout controls the drain
       console.log('Pausing worker...');
-      await this.worker.pause();
+      await this.worker.pause(true);
 
       // Step 2: Wait for active jobs with timeout
       console.log(`Waiting for ${this.activeJobs.size} active jobs...`);
-      await this.waitForActiveJobs();
+      const allJobsCompleted = await this.waitForActiveJobs();
 
       // Step 3: Close worker
       console.log('Closing worker...');
-      await this.worker.close();
+      await this.worker.close(!allJobsCompleted);
 
       // Step 4: Close Redis connection
       console.log('Closing Redis connection...');
@@ -184,7 +182,7 @@ class GracefulWorker {
     }
   }
 
-  private async waitForActiveJobs(): Promise<void> {
+  private async waitForActiveJobs(): Promise<boolean> {
     const startTime = Date.now();
 
     while (this.activeJobs.size > 0) {
@@ -193,7 +191,7 @@ class GracefulWorker {
       if (elapsed > this.config.timeout) {
         console.warn(`Timeout waiting for jobs. ${this.activeJobs.size} jobs still active.`);
         console.warn('Active job IDs:', [...this.activeJobs]);
-        break;
+        return false;
       }
 
       console.log(`Waiting for ${this.activeJobs.size} active jobs... (${Math.round(elapsed / 1000)}s)`);
@@ -203,6 +201,8 @@ class GracefulWorker {
     if (this.activeJobs.size === 0) {
       console.log('All active jobs completed');
     }
+
+    return true;
   }
 
   async start() {
@@ -232,6 +232,9 @@ worker.start();
 Gracefully shutdown workers for multiple queues:
 
 ```typescript
+import { Worker, Job, WorkerOptions } from 'bullmq';
+import { Redis } from 'ioredis';
+
 class MultiQueueWorkerManager {
   private workers: Map<string, Worker> = new Map();
   private connection: Redis;
@@ -295,6 +298,12 @@ class MultiQueueWorkerManager {
 }
 
 // Usage
+const connection = new Redis({
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+  maxRetriesPerRequest: null,
+});
+
 const manager = new MultiQueueWorkerManager(connection);
 
 manager.addWorker('emails', async (job) => {
@@ -315,6 +324,8 @@ manager.addWorker('reports', async (job) => {
 Handle Kubernetes termination properly:
 
 ```typescript
+import { Worker, Job } from 'bullmq';
+import { Redis } from 'ioredis';
 import express from 'express';
 
 class KubernetesGracefulWorker {
@@ -322,6 +333,7 @@ class KubernetesGracefulWorker {
   private connection: Redis;
   private isShuttingDown = false;
   private isReady = false;
+  private activeJobs = new Set<string>();
   private app: express.Application;
 
   constructor(queueName: string, processor: (job: Job) => Promise<any>) {
@@ -331,7 +343,15 @@ class KubernetesGracefulWorker {
       maxRetriesPerRequest: null,
     });
 
-    this.worker = new Worker(queueName, processor, {
+    this.worker = new Worker(queueName, async (job) => {
+      this.activeJobs.add(job.id!);
+
+      try {
+        return await processor(job);
+      } finally {
+        this.activeJobs.delete(job.id!);
+      }
+    }, {
       connection: this.connection,
       concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5'),
     });
@@ -404,7 +424,7 @@ class KubernetesGracefulWorker {
     const forceTimeout = setTimeout(() => {
       console.error('Force exit before Kubernetes SIGKILL');
       process.exit(1);
-    }, gracePeriod - 5000);
+    }, Math.max(gracePeriod - 5000, 1000));
 
     try {
       // Wait a moment for load balancer to stop sending traffic
@@ -412,15 +432,17 @@ class KubernetesGracefulWorker {
       console.log(`Waiting ${preStopDelay}ms for traffic to drain...`);
       await new Promise(resolve => setTimeout(resolve, preStopDelay));
 
-      // Pause worker
-      await this.worker.pause();
+      // Pause worker without waiting here so our timeout controls the drain
+      await this.worker.pause(true);
       console.log('Worker paused');
 
       // Wait for active jobs
-      await this.waitForActiveJobs(gracePeriod - preStopDelay - 10000);
+      const allJobsCompleted = await this.waitForActiveJobs(
+        Math.max(gracePeriod - preStopDelay - 10000, 0)
+      );
 
       // Close worker
-      await this.worker.close();
+      await this.worker.close(!allJobsCompleted);
       console.log('Worker closed');
 
       // Close Redis
@@ -438,20 +460,20 @@ class KubernetesGracefulWorker {
     }
   }
 
-  private async waitForActiveJobs(timeout: number) {
+  private async waitForActiveJobs(timeout: number): Promise<boolean> {
     const startTime = Date.now();
 
     while (true) {
-      const activeCount = await this.worker.getActiveCount?.() || 0;
+      const activeCount = this.activeJobs.size;
 
       if (activeCount === 0) {
         console.log('All jobs completed');
-        break;
+        return true;
       }
 
       if (Date.now() - startTime > timeout) {
         console.warn(`Timeout reached with ${activeCount} active jobs`);
-        break;
+        return false;
       }
 
       console.log(`Waiting for ${activeCount} active jobs...`);
@@ -470,6 +492,9 @@ class KubernetesGracefulWorker {
 Save job state for resumption after restart:
 
 ```typescript
+import { Worker, Job } from 'bullmq';
+import { Redis } from 'ioredis';
+
 interface ResumableJobData {
   taskId: string;
   checkpoint?: {
@@ -590,10 +615,20 @@ Test your shutdown implementation:
 
 ```typescript
 import { Worker, Queue } from 'bullmq';
+import { Redis } from 'ioredis';
 
 describe('Graceful Shutdown', () => {
+  let connection: Redis;
   let queue: Queue;
   let worker: Worker;
+
+  beforeAll(async () => {
+    connection = new Redis({
+      host: 'localhost',
+      port: 6379,
+      maxRetriesPerRequest: null,
+    });
+  });
 
   beforeEach(async () => {
     queue = new Queue('test-shutdown', { connection });
@@ -602,6 +637,10 @@ describe('Graceful Shutdown', () => {
   afterEach(async () => {
     await worker?.close();
     await queue.close();
+  });
+
+  afterAll(async () => {
+    await connection.quit();
   });
 
   it('should complete active jobs before shutdown', async () => {
@@ -681,4 +720,4 @@ describe('Graceful Shutdown', () => {
 
 ## Conclusion
 
-Graceful shutdown is essential for reliable BullMQ deployments. By properly handling termination signals, waiting for active jobs, and saving state when needed, you can ensure zero job loss during deployments and scaling operations. Always test your shutdown implementation and monitor for any issues in production.
+Graceful shutdown is essential for reliable BullMQ deployments. By properly handling termination signals, waiting for active jobs, and saving state when needed, you can reduce interrupted work during deployments and scaling operations. Always test your shutdown implementation and monitor for any issues in production.

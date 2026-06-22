@@ -52,12 +52,12 @@ flowchart TB
 ### Check Stream Count
 
 ```bash
-# Current stream count per tenant
-
-curl -s 'http://loki:3100/loki/api/v1/label/__name__/values' | jq
+# Estimate stream count for a selector
+curl -G -s 'http://loki:3100/loki/api/v1/index/stats' \
+  --data-urlencode 'query={job=~".+"}' | jq '.streams'
 
 # Active streams metric
-curl -s http://loki:3100/metrics | grep "loki_ingester_streams_created_total"
+curl -s http://loki:3100/metrics | grep "loki_ingester_memory_streams"
 ```
 
 ### Prometheus Queries for Cardinality
@@ -107,7 +107,7 @@ docker logs loki 2>&1 | grep "max streams"
 |------------|---------|---------|
 | Request IDs | request_id, trace_id | Unique per request |
 | User IDs | user_id, customer_id | Unbounded growth |
-| Timestamps | log_time, event_time | Already indexed by Loki |
+| Timestamps | log_time, event_time | Loki already stores timestamps for log entries |
 | Session IDs | session_id | Short-lived, unique |
 | IP Addresses | client_ip, source_ip | Many unique values |
 | Full Paths | file_path, url | Many variations |
@@ -124,6 +124,8 @@ docker logs loki 2>&1 | grep "max streams"
 | Region | region, datacenter | Fixed set |
 
 ## Remediation Strategies
+
+The Promtail examples below apply to existing Promtail deployments. Promtail is deprecated and reached end-of-life on March 2, 2026; use Grafana Alloy for new deployments.
 
 ### Move High-Cardinality Data to Log Content
 
@@ -149,7 +151,7 @@ pipeline_stages:
   # Query with: {job="app"} | json | user_id="12345"
 ```
 
-### Use Structured Metadata (Loki 2.7+)
+### Use Structured Metadata (Loki 2.9+)
 
 ```yaml
 # promtail-config.yaml
@@ -176,7 +178,7 @@ Query with structured metadata:
 # Filter by structured metadata
 {job="app"} | trace_id="abc123"
 
-# Structured metadata is indexed but doesn't create streams
+# Structured metadata is not indexed and doesn't create streams
 ```
 
 ### Aggregate or Bucket Values
@@ -260,8 +262,6 @@ limits_config:
   # Maximum label value length
   max_label_value_length: 2048
 
-  # Maximum labels size
-  max_labels_size_bytes: 4096
 ```
 
 ### Per-Tenant Overrides
@@ -309,7 +309,7 @@ groups:
 
       - alert: LokiMaxStreamsReached
         expr: |
-          loki_discarded_samples_total{reason="per_user_series_limit"} > 0
+          loki_discarded_samples_total{reason="stream_limit"} > 0
         for: 1m
         labels:
           severity: critical
@@ -358,7 +358,7 @@ groups:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(loki_discarded_samples_total{reason=\"per_user_series_limit\"}[5m]))",
+            "expr": "sum(rate(loki_discarded_samples_total{reason=\"stream_limit\"}[5m]))",
             "legendFormat": "Rejected"
           }
         ]
@@ -421,7 +421,7 @@ sum by (user_id) (
 ### Identify Problematic Labels
 
 ```bash
-# Find highest cardinality labels
+# List known labels
 curl -s 'http://loki:3100/loki/api/v1/labels' | jq
 
 # For each label, check cardinality
@@ -443,7 +443,7 @@ done
 
 1. **Think before labeling**: Ask "Will this have bounded values?"
 2. **Use content filtering**: Query high-cardinality values from log content
-3. **Structured metadata**: Use for trace IDs, request IDs (Loki 2.7+)
+3. **Structured metadata**: Use for trace IDs, request IDs (Loki 2.9+)
 4. **Set limits**: Configure max_streams_per_user appropriately
 5. **Monitor cardinality**: Alert on stream count and creation rate
 6. **Regular audits**: Review label usage periodically

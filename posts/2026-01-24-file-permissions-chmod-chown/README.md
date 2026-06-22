@@ -23,7 +23,7 @@ flowchart TD
     end
 
     subgraph "User Categories"
-        U[User/Owner<br/>File creator]
+        U[User/Owner<br/>File owner]
         G[Group<br/>Associated group]
         O[Others<br/>Everyone else]
     end
@@ -155,13 +155,13 @@ flowchart TD
     subgraph "Special Permission Bits"
         A["SUID (4xxx)<br/>Run as file owner"]
         B["SGID (2xxx)<br/>Run as file group /<br/>Inherit directory group"]
-        C["Sticky Bit (1xxx)<br/>Only owner can delete"]
+        C["Sticky Bit (1xxx)<br/>Restricted deletion"]
     end
 
     A --> D["Example: passwd<br/>-rwsr-xr-x<br/>Runs as root"]
     B --> E["Example: /usr/bin/wall<br/>-rwxr-sr-x<br/>Runs as group tty"]
     B --> F["Example: /var/shared/<br/>drwxrwsr-x<br/>Files inherit group"]
-    C --> G["Example: /tmp<br/>drwxrwxrwt<br/>Users can't delete<br/>others' files"]
+    C --> G["Example: /tmp<br/>drwxrwxrwt<br/>Users can't delete or rename<br/>others' files"]
 ```
 
 ```bash
@@ -175,7 +175,7 @@ chmod g+s shared_directory
 chmod 2775 shared_directory
 # Shows as: drwxrwsr-x
 
-# Set sticky bit - only owner can delete their files
+# Set sticky bit - only file owner, directory owner, or root can delete files
 chmod +t /tmp
 chmod 1777 /tmp
 # Shows as: drwxrwxrwt
@@ -234,8 +234,8 @@ sudo chown www-data:www-data /var/www/html/index.html
 # Change ownership recursively
 sudo chown -R www-data:www-data /var/www/html/
 
-# Change ownership following symbolic links
-sudo chown -H user:group link
+# Change ownership of a symbolic link's target (the default)
+sudo chown --dereference user:group link
 
 # Change ownership without following links
 sudo chown -h user:group link
@@ -276,7 +276,7 @@ sudo find /var/www/html -type d -exec chmod 775 {} \;
 # Files: owner and group can read/write, others read
 sudo find /var/www/html -type f -exec chmod 664 {} \;
 
-# Allow group to write new files (SGID)
+# Make new files inherit the webdevs group (SGID)
 sudo chmod g+s /var/www/html
 ```
 
@@ -336,7 +336,7 @@ sudo chmod 2775 /projects/shared
 
 # Now all files created in /projects/shared will:
 # - Belong to 'developers' group
-# - Be writable by group members
+# - Be writable by group members if the creator's umask or default ACL allows it
 ```
 
 ### Temporary and Log Files
@@ -345,7 +345,7 @@ sudo chmod 2775 /projects/shared
 # Temporary directory (world writable with sticky bit)
 sudo chmod 1777 /tmp
 
-# Log files (owner write, group/others read)
+# Log files (owner read/write, group read, others no access)
 sudo chown root:adm /var/log/myapp.log
 sudo chmod 640 /var/log/myapp.log
 ```
@@ -418,8 +418,8 @@ chmod +x script.sh
 chmod +x directory/
 
 # Problem: Cannot create files in directory
-# Solution: Need write permission on directory
-chmod +w directory/
+# Solution: Need write and execute permissions on directory
+chmod +wx directory/
 
 # Problem: Web server cannot read files
 # Solution: Check ownership and permissions

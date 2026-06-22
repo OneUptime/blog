@@ -48,11 +48,16 @@ SELECT * FROM lock_tree ORDER BY depth;
 
 ```sql
 -- Terminate blocking session
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-WHERE pid IN (SELECT unnest(pg_blocking_pids(waiting_pid)));
+SELECT pg_terminate_backend(blocking_pid)
+FROM (
+    SELECT DISTINCT unnest(pg_blocking_pids(pid)) AS blocking_pid
+    FROM pg_stat_activity
+    WHERE cardinality(pg_blocking_pids(pid)) > 0
+) blockers
+WHERE blocking_pid <> pg_backend_pid();
 
 -- Or cancel query
-SELECT pg_cancel_backend(pid);
+SELECT pg_cancel_backend(12345);
 ```
 
 ## Analyze Deadlocks

@@ -65,7 +65,7 @@ SELECT
     query,
     state
 FROM pg_stat_activity
-WHERE state != 'idle'
+WHERE state = 'active'
   AND query NOT ILIKE '%pg_stat_activity%'
 ORDER BY duration DESC;
 ```
@@ -103,7 +103,7 @@ CREATE INDEX idx_orders_customer ON orders(customer_id);
 
 Bad:
 ```sql
--- Cannot use index on email
+-- Cannot use a plain index on email
 SELECT * FROM users WHERE LOWER(email) = 'test@example.com';
 ```
 
@@ -133,7 +133,7 @@ SELECT * FROM products
 WHERE to_tsvector('english', name) @@ to_tsquery('phone');
 
 -- Or use trigram index
-CREATE EXTENSION pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX idx_products_name_trgm ON products USING GIN(name gin_trgm_ops);
 ```
 
@@ -157,6 +157,7 @@ SELECT * FROM orders WHERE status = 'pending';
 
 Bad:
 ```sql
+-- Problematic if orders.user_id can contain NULL
 SELECT * FROM users
 WHERE id NOT IN (SELECT user_id FROM orders);
 ```
@@ -245,7 +246,7 @@ Alternatives:
 -- Approximate count (fast)
 SELECT reltuples::bigint AS estimate
 FROM pg_class
-WHERE relname = 'orders';
+WHERE oid = 'public.orders'::regclass;
 
 -- With filters, ensure proper indexing
 SELECT COUNT(*) FROM orders WHERE status = 'pending';
@@ -301,7 +302,7 @@ WHERE customer_id = 123;
 ```sql
 -- Ensure join columns are indexed
 CREATE INDEX idx_orders_customer ON orders(customer_id);
-CREATE INDEX idx_customers_pkey ON customers(id);  -- Usually exists
+-- customers(id) is usually indexed by the primary key
 
 -- Check join order
 EXPLAIN ANALYZE
@@ -328,7 +329,7 @@ WHERE status = 'pending'
 ### Materialize CTEs When Needed
 
 ```sql
--- PostgreSQL 12+ - CTE not materialized by default
+-- PostgreSQL 12+ - single-use, side-effect-free CTEs can be folded into the parent query
 WITH recent_orders AS (
     SELECT * FROM orders
     WHERE created_at > '2026-01-01'
@@ -347,12 +348,12 @@ SELECT * FROM recent_orders WHERE customer_id = 123;
 
 ```sql
 -- Bad: Many small queries
-FOR each_id IN 1..1000 LOOP
-    SELECT * FROM users WHERE id = each_id;
-END LOOP;
+SELECT * FROM users WHERE id = 1;
+SELECT * FROM users WHERE id = 2;
+SELECT * FROM users WHERE id = 3;
 
 -- Good: Single query with IN
-SELECT * FROM users WHERE id = ANY(ARRAY[1, 2, 3, ..., 1000]);
+SELECT * FROM users WHERE id = ANY(ARRAY[1, 2, 3]);
 
 -- Or batch processing
 SELECT * FROM users WHERE id BETWEEN 1 AND 1000;
@@ -449,7 +450,7 @@ WHERE name ILIKE '%john%'
 After (20ms):
 ```sql
 -- Add trigram index
-CREATE EXTENSION pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX idx_users_name_trgm ON users USING GIN(name gin_trgm_ops);
 CREATE INDEX idx_users_email_trgm ON users USING GIN(email gin_trgm_ops);
 

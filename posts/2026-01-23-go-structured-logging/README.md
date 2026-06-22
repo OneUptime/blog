@@ -56,6 +56,7 @@ func main() {
 package main
 
 import (
+    "errors"
     "log/slog"
     "os"
 )
@@ -68,6 +69,8 @@ func main() {
     logger.Debug("debug message", "key", "value")
     logger.Info("info message", "key", "value")
     logger.Warn("warning message", "key", "value")
+    
+    err := errors.New("example error")
     logger.Error("error message", "key", "value", "error", err)
 }
 ```
@@ -308,11 +311,19 @@ func main() {
 package main
 
 import (
+    "context"
     "log/slog"
     "net/http"
-    "os"
     "time"
 )
+
+type contextKey string
+
+const loggerKey contextKey = "logger"
+
+func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+    return context.WithValue(ctx, loggerKey, logger)
+}
 
 func loggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
@@ -519,9 +530,9 @@ func main() {
 | Library | Performance | Features | Go Version |
 |---------|-------------|----------|------------|
 | `log/slog` | Good | Standard library, groups, levels | 1.21+ |
-| `zerolog` | Excellent | Zero allocation, chaining | 1.15+ |
-| `zap` | Excellent | Structured, sugared mode | 1.17+ |
-| `logrus` | Moderate | Hooks, formatters | 1.13+ |
+| `zerolog` | Excellent | Low to zero allocation, chaining | Check the module version |
+| `zap` | Excellent | Structured, sugared mode | Two most recent Go minor versions |
+| `logrus` | Moderate | Hooks, formatters | Check the module version |
 
 **Best Practices:**
 

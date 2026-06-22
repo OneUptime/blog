@@ -15,7 +15,7 @@ flowchart TB
   subgraph "Velero Components"
     server[Velero Server]
     plugins[Storage Plugins]
-    restic[Restic/Kopia]
+    restic[Node Agent/Kopia]
   end
   
   subgraph "Kubernetes Resources"
@@ -98,16 +98,17 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.8.0
+    image: velero/velero-plugin-for-aws:v1.14.1
     volumeMounts:
       - mountPath: /target
         name: plugins
 
-# Enable restic for PV backup
+# Enable the node-agent for file system PV backup
 deployNodeAgent: true
 nodeAgent:
   podVolumePath: /var/lib/kubelet/pods
-  privileged: true
+  containerSecurityContext:
+    privileged: true
   resources:
     requests:
       cpu: 500m
@@ -164,12 +165,19 @@ credentials:
       {
         "type": "service_account",
         "project_id": "your-project-id",
-        ...
+        "private_key_id": "YOUR_PRIVATE_KEY_ID",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
+        "client_email": "velero@project-id.iam.gserviceaccount.com",
+        "client_id": "YOUR_CLIENT_ID",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/velero%40project-id.iam.gserviceaccount.com"
       }
 
 initContainers:
   - name: velero-plugin-for-gcp
-    image: velero/velero-plugin-for-gcp:v1.8.0
+    image: velero/velero-plugin-for-gcp:v1.14.1
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -211,7 +219,7 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-microsoft-azure
-    image: velero/velero-plugin-for-microsoft-azure:v1.8.0
+    image: velero/velero-plugin-for-microsoft-azure:v1.14.1
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -244,7 +252,7 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.8.0
+    image: velero/velero-plugin-for-aws:v1.14.1
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -301,12 +309,8 @@ serviceAccount:
 credentials:
   useSecret: false  # Using IRSA instead
 
-# High availability
-replicaCount: 2
-
-# Pod disruption budget
-podDisruptionBudget:
-  minAvailable: 1
+# Velero server deployment
+# The VMware Tanzu Helm chart deploys the Velero server as a single replica.
 
 # Resources
 resources:
@@ -317,11 +321,12 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
-# Node agent (restic/kopia)
+# Node agent (Kopia file system backup)
 deployNodeAgent: true
 nodeAgent:
   podVolumePath: /var/lib/kubelet/pods
-  privileged: true
+  containerSecurityContext:
+    privileged: true
   tolerations:
     - operator: Exists
   resources:
@@ -335,12 +340,7 @@ nodeAgent:
 # Plugins
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.8.0
-    volumeMounts:
-      - mountPath: /target
-        name: plugins
-  - name: velero-plugin-for-csi
-    image: velero/velero-plugin-for-csi:v0.6.0
+    image: velero/velero-plugin-for-aws:v1.14.1
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -603,7 +603,7 @@ spec:
     production: production-restored
 ```
 
-### Restore with Transformations
+### Restore with Hooks
 
 ```yaml
 # restore-with-hooks.yaml
@@ -628,16 +628,16 @@ spec:
           matchLabels:
             app: postgresql
         postHooks:
-          - init:
-              initContainers:
-                - name: restore-data
-                  image: postgres:15
-                  command:
-                    - /bin/bash
-                    - -c
-                    - |
-                      until pg_isready -h localhost; do sleep 2; done
-                      psql -U postgres -c "VACUUM ANALYZE;"
+          - exec:
+              container: postgresql
+              waitTimeout: 5m
+              execTimeout: 1m
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  until pg_isready -h localhost; do sleep 2; done
+                  psql -U postgres -c "VACUUM ANALYZE;"
 ```
 
 ## Cross-Cluster Migration

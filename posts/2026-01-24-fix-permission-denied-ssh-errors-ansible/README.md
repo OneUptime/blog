@@ -72,8 +72,8 @@ ls -la ~/.ssh/
 
 # Expected output:
 # drwx------  .ssh           (700 - owner only)
-# -rw-------  id_rsa         (600 - owner read/write only)
-# -rw-r--r--  id_rsa.pub     (644 - readable by all)
+# -rw-------  id_ed25519     (600 - owner read/write only)
+# -rw-r--r--  id_ed25519.pub (644 - readable by all)
 # -rw-r--r--  known_hosts    (644 - readable by all)
 # -rw-------  authorized_keys (600 - owner only)
 ```
@@ -84,10 +84,10 @@ ls -la ~/.ssh/
 chmod 700 ~/.ssh
 
 # Set private key to be readable only by owner
-chmod 600 ~/.ssh/id_rsa
+chmod 600 ~/.ssh/id_ed25519
 
 # Set public key to be readable by all
-chmod 644 ~/.ssh/id_rsa.pub
+chmod 644 ~/.ssh/id_ed25519.pub
 
 # Set authorized_keys to owner only
 chmod 600 ~/.ssh/authorized_keys
@@ -107,8 +107,8 @@ chmod 700 ~
 flowchart LR
     subgraph "Control Node"
         A[~/.ssh/ 700]
-        B[id_rsa 600]
-        C[id_rsa.pub 644]
+        B[id_ed25519 600]
+        C[id_ed25519.pub 644]
         D[known_hosts 644]
     end
 
@@ -117,7 +117,7 @@ flowchart LR
         F[authorized_keys 600]
     end
 
-    B -->|"Public key must be in"| F
+    C -->|"Public key must be in"| F
     A --> B
     A --> C
     A --> D
@@ -141,10 +141,10 @@ ssh-keygen -t rsa -b 4096 -C "ansible@control-node"
 ```bash
 # Copy public key to target host
 # This adds your key to ~/.ssh/authorized_keys on the target
-ssh-copy-id -i ~/.ssh/id_rsa.pub user@target-host
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@target-host
 
 # If ssh-copy-id is not available, do it manually
-cat ~/.ssh/id_rsa.pub | ssh user@target-host "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+cat ~/.ssh/id_ed25519.pub | ssh user@target-host "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
 
 ```bash
@@ -152,7 +152,7 @@ cat ~/.ssh/id_rsa.pub | ssh user@target-host "mkdir -p ~/.ssh && chmod 700 ~/.ss
 ssh user@target-host "cat ~/.ssh/authorized_keys"
 
 # Test SSH connection with verbose output
-ssh -vvv -i ~/.ssh/id_rsa user@target-host
+ssh -vvv -i ~/.ssh/id_ed25519 user@target-host
 ```
 
 ## Step 3: Check Ansible Configuration
@@ -169,7 +169,7 @@ web02 ansible_host=192.168.1.11 ansible_user=deploy
 
 [webservers:vars]
 # Path to the SSH private key for this group
-ansible_ssh_private_key_file=/home/ansible/.ssh/id_rsa
+ansible_ssh_private_key_file=/home/ansible/.ssh/id_ed25519
 # Disable host key checking (use with caution)
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ```
@@ -186,7 +186,7 @@ all:
           ansible_host: 192.168.1.11
       vars:
         ansible_user: deploy
-        ansible_ssh_private_key_file: /home/ansible/.ssh/id_rsa
+        ansible_ssh_private_key_file: /home/ansible/.ssh/id_ed25519
         ansible_become: true
         ansible_become_method: sudo
 ```
@@ -201,7 +201,7 @@ inventory = ./inventory/hosts.ini
 # Default remote user
 remote_user = deploy
 # Default private key file
-private_key_file = /home/ansible/.ssh/id_rsa
+private_key_file = /home/ansible/.ssh/id_ed25519
 # Disable host key checking (not recommended for production)
 host_key_checking = False
 # Increase connection timeout
@@ -239,7 +239,7 @@ PasswordAuthentication no
 # Disable root login for security
 PermitRootLogin no
 # Or allow only with keys
-PermitRootLogin prohibit-password
+# PermitRootLogin prohibit-password
 
 # Allow specific users
 AllowUsers deploy ansible admin
@@ -250,8 +250,11 @@ AllowGroups sshusers wheel
 
 ```bash
 # After modifying sshd_config, restart SSH service
-# On systemd-based systems
+# On RHEL/CentOS/Fedora
 sudo systemctl restart sshd
+
+# On Debian/Ubuntu
+sudo systemctl restart ssh
 
 # On older systems
 sudo service ssh restart
@@ -288,9 +291,9 @@ ansible webservers -m ping -u admin
 ssh -vvv user@target-host 2>&1 | grep "Trying private key"
 
 # Output shows which keys SSH is attempting:
-# debug1: Trying private key: /home/ansible/.ssh/id_rsa
-# debug1: Trying private key: /home/ansible/.ssh/id_ecdsa
 # debug1: Trying private key: /home/ansible/.ssh/id_ed25519
+# debug1: Trying private key: /home/ansible/.ssh/id_ecdsa
+# debug1: Trying private key: /home/ansible/.ssh/id_rsa
 ```
 
 ```bash
@@ -316,13 +319,13 @@ ansible webservers -m ping --private-key=/path/to/specific/key
 eval $(ssh-agent -s)
 
 # Add your key to the agent
-ssh-add ~/.ssh/id_rsa
+ssh-add ~/.ssh/id_ed25519
 
 # List keys currently loaded in agent
 ssh-add -l
 
 # If you have passphrase-protected keys, add them
-ssh-add ~/.ssh/id_rsa
+ssh-add ~/.ssh/id_ed25519
 # Enter passphrase when prompted
 ```
 
@@ -518,14 +521,14 @@ ansible webservers -m debug -a "var=ansible_ssh_private_key_file"
 flowchart TB
     subgraph "Key Permission Issues"
         A1[chmod 700 ~/.ssh]
-        A2[chmod 600 ~/.ssh/id_rsa]
+        A2[chmod 600 ~/.ssh/id_ed25519]
         A3[chmod 600 ~/.ssh/authorized_keys]
     end
 
     subgraph "Key Configuration Issues"
         B1[ssh-copy-id to add key]
         B2[Verify key format ed25519/rsa]
-        B3[Check key is not expired]
+        B3[Check key has not been revoked]
     end
 
     subgraph "SSH Server Issues"
@@ -546,19 +549,19 @@ flowchart TB
 ```bash
 # Fix all common permission issues at once
 chmod 700 ~/.ssh && \
-chmod 600 ~/.ssh/id_rsa && \
-chmod 644 ~/.ssh/id_rsa.pub && \
+chmod 600 ~/.ssh/id_ed25519 && \
+chmod 644 ~/.ssh/id_ed25519.pub && \
 chmod 600 ~/.ssh/authorized_keys 2>/dev/null; \
 chmod 644 ~/.ssh/known_hosts 2>/dev/null
 
 # Test SSH connection
-ssh -vvv -i ~/.ssh/id_rsa user@host
+ssh -vvv -i ~/.ssh/id_ed25519 user@host
 
 # Test Ansible connection
 ansible all -m ping -vvvv
 
 # Copy SSH key to new host
-ssh-copy-id -i ~/.ssh/id_rsa.pub user@newhost
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@newhost
 
 # Check SSH server configuration
 sudo sshd -T | grep -E "pubkey|password|permitroot"

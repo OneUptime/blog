@@ -142,6 +142,10 @@ db-replica2.prod.example.com
 redis1.prod.example.com
 redis2.prod.example.com
 
+[loadbalancers]
+lb1.prod.example.com
+lb2.prod.example.com
+
 # Group of groups - frontend tier
 [frontend:children]
 webservers
@@ -437,24 +441,30 @@ Ansible variables have a specific order of precedence.
 ```mermaid
 flowchart TB
     A[Variable Precedence - Highest to Lowest] --> B[1. Extra vars via -e]
-    B --> C[2. Task vars and include_vars]
-    C --> D[3. Block vars]
-    D --> E[4. Role and include params]
-    E --> F[5. set_fact / registered vars]
-    F --> G[6. Play vars_files]
-    G --> H[7. Play vars_prompt]
-    H --> I[8. Play vars]
-    I --> J[9. Host facts]
-    J --> K[10. host_vars/*]
-    K --> L[11. Playbook group_vars/*]
-    L --> M[12. Inventory group_vars/*]
-    M --> N[13. Inventory host_vars/*]
-    N --> O[14. Inventory vars]
-    O --> P[15. Role defaults]
+    B --> C[2. Include params]
+    C --> D[3. Role and include_role params]
+    D --> E[4. Registered vars and set_fact]
+    E --> F[5. include_vars]
+    F --> G[6. Task vars]
+    G --> H[7. Block vars]
+    H --> I[8. Role vars]
+    I --> J[9. Play vars_files]
+    J --> K[10. Play vars_prompt]
+    K --> L[11. Play vars]
+    L --> M[12. Host facts and cached set_facts]
+    M --> N[13. Playbook host_vars/*]
+    N --> O[14. Inventory host_vars/*]
+    O --> P[15. Inventory file or script host vars]
+    P --> Q[16. Playbook group_vars/*]
+    Q --> R[17. Inventory group_vars/*]
+    R --> S[18. Playbook group_vars/all]
+    S --> T[19. Inventory group_vars/all]
+    T --> U[20. Inventory file or script group vars]
+    U --> V[21. Role defaults]
 
     style A fill:#f9f
     style B fill:#9f9
-    style P fill:#ff9
+    style V fill:#ff9
 ```
 
 ## Inventory Patterns and Targeting
@@ -506,7 +516,6 @@ ansible 'webservers[0:2]' -m ping  # First three hosts
       debug:
         msg: "Deploying to {{ inventory_hostname }}"
 
----
 # Update all servers except databases
 - name: System Update (Non-Database)
   hosts: all:!dbservers
@@ -517,7 +526,6 @@ ansible 'webservers[0:2]' -m ping  # First three hosts
         update_cache: true
         upgrade: safe
 
----
 # Configure only primary database
 - name: Configure Primary Database
   hosts: dbservers
@@ -664,7 +672,7 @@ filters:
 # Keyed groups based on tags
 keyed_groups:
   # Group by Environment tag
-  - key: tags.Environment
+  - key: ec2_tags.Environment
     prefix: env
     separator: "_"
 
@@ -678,13 +686,14 @@ keyed_groups:
 
 # Compose variables
 compose:
-  # Use Name tag as hostname
-  ansible_host: public_ip_address
-  # Set connection user based on AMI
+  # Use the private IP address for connections
+  ansible_host: private_ip_address
+  # Set connection user based on an OS tag
   ansible_user: >-
-    {%- if 'ubuntu' in image_id -%}
+    {%- set os_name = ec2_tags.OS | default('') | lower -%}
+    {%- if 'ubuntu' in os_name -%}
     ubuntu
-    {%- elif 'amazon' in image_id -%}
+    {%- elif 'amazon' in os_name -%}
     ec2-user
     {%- else -%}
     admin
@@ -693,8 +702,8 @@ compose:
 # Group by tags
 groups:
   # Create webservers group from Role tag
-  webservers: "'webserver' in tags.Role"
-  dbservers: "'database' in tags.Role"
+  webservers: "ec2_tags.Role | default('') == 'webserver'"
+  dbservers: "ec2_tags.Role | default('') == 'database'"
 
 # Hostnames preference
 hostnames:
@@ -706,6 +715,9 @@ hostnames:
 ```bash
 # Install AWS collection
 ansible-galaxy collection install amazon.aws
+
+# Install required Python libraries
+pip install boto3 botocore
 
 # Configure AWS credentials
 export AWS_ACCESS_KEY_ID='your_access_key'

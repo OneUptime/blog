@@ -49,12 +49,12 @@ az container logs \
   --resource-group myResourceGroup \
   --name myContainer
 
-# Get previous container logs if the container restarted
+# Stream container logs while the container is running
 # Useful when the container is in a restart loop
 az container logs \
   --resource-group myResourceGroup \
   --name myContainer \
-  --previous
+  --follow
 ```
 
 ## Error 1: Image Pull Failures
@@ -105,9 +105,22 @@ az container create \
 A cleaner approach uses managed identity instead of storing credentials.
 
 ```bash
-# Enable admin user on ACR (not recommended for production)
-# Better to use managed identity as shown below
-az acr update --name myregistry --admin-enabled true
+# Create a user-assigned managed identity
+USERID=$(az identity create \
+  --resource-group myResourceGroup \
+  --name myAcrPullIdentity \
+  --query id \
+  --output tsv)
+
+SPID=$(az identity show \
+  --resource-group myResourceGroup \
+  --name myAcrPullIdentity \
+  --query principalId \
+  --output tsv)
+
+# Grant the identity pull access to the registry
+ACR_ID=$(az acr show --name myregistry --query id --output tsv)
+az role assignment create --assignee $SPID --scope $ACR_ID --role acrpull
 
 # Create container with managed identity for ACR access
 # This is the recommended approach for production workloads
@@ -115,8 +128,8 @@ az container create \
   --resource-group myResourceGroup \
   --name myContainer \
   --image myregistry.azurecr.io/myapp:v1.0.0 \
-  --acr-identity [system] \
-  --assign-identity
+  --acr-identity $USERID \
+  --assign-identity $USERID
 ```
 
 ## Error 2: Resource Constraint Errors
@@ -127,8 +140,8 @@ Resource errors occur when your container requests more CPU or memory than avail
 
 ```json
 {
-  "code": "InaccessibleImage",
-  "message": "The requested resource of '8' CPUs is not available in the location 'eastus'"
+  "code": "ServiceUnavailable",
+  "message": "The requested resource is not available in the location 'eastus' at this moment. Please retry with a different resource request or in another location."
 }
 ```
 
@@ -137,7 +150,7 @@ Resource errors occur when your container requests more CPU or memory than avail
 ```mermaid
 flowchart TD
     A[Resource Request] --> B{Within Region Limits?}
-    B -->|No| C[InaccessibleImage Error]
+    B -->|No| C[ServiceUnavailable Error]
     B -->|Yes| D{Quota Available?}
     D -->|No| E[QuotaExceeded Error]
     D -->|Yes| F[Container Starts]
@@ -150,7 +163,8 @@ flowchart TD
 
 ```bash
 # Create container with specific resource limits
-# Standard ACI supports up to 4 CPUs and 16 GB memory per container
+# Standard ACI supports up to 31 CPUs and 240 GB memory per container group
+# Deployments over 4 CPUs and 16 GB memory can still fail in regions with limited capacity
 az container create \
   --resource-group myResourceGroup \
   --name myContainer \
@@ -158,17 +172,13 @@ az container create \
   --cpu 2 \
   --memory 4
 
-# For GPU workloads, use dedicated SKU
-# GPU containers require specific regions that support GPU instances
+# For larger workloads, reduce CPU or memory, retry later, or deploy in another supported region
 az container create \
   --resource-group myResourceGroup \
-  --name myGpuContainer \
-  --image myregistry.azurecr.io/ml-model:v1.0.0 \
-  --cpu 4 \
-  --memory 14 \
-  --sku Dedicated \
-  --gpu-count 1 \
-  --gpu-sku K80
+  --name myLargerContainer \
+  --image myregistry.azurecr.io/myapp:v1.0.0 \
+  --cpu 8 \
+  --memory 32
 ```
 
 **Check quota in your subscription:**
@@ -323,33 +333,19 @@ az container create \
 
 **Using Azure Key Vault for secrets:**
 
-```yaml
-# deploy.yaml - Container group with Key Vault integration
-apiVersion: 2021-09-01
-location: eastus
-name: myContainerGroup
-properties:
-  containers:
-  - name: myapp
-    properties:
-      image: myregistry.azurecr.io/myapp:v1.0.0
-      resources:
-        requests:
-          cpu: 1.0
-          memoryInGB: 1.5
-      environmentVariables:
-      - name: DATABASE_URL
-        secureValue: ${DATABASE_URL}
-      volumeMounts:
-      - name: secrets
-        mountPath: /secrets
-        readOnly: true
-  volumes:
-  - name: secrets
-    secret:
-      mysecret: $(az keyvault secret show --vault-name myVault --name mySecret --query value -o tsv | base64)
-  osType: Linux
-type: Microsoft.ContainerInstance/containerGroups
+```bash
+# Retrieve the secret at deployment time, then pass it as a secure environment variable
+DATABASE_URL=$(az keyvault secret show \
+  --vault-name myVault \
+  --name database-url \
+  --query value \
+  --output tsv)
+
+az container create \
+  --resource-group myResourceGroup \
+  --name myContainer \
+  --image myregistry.azurecr.io/myapp:v1.0.0 \
+  --secure-environment-variables DATABASE_URL="$DATABASE_URL"
 ```
 
 ## Error 6: Volume Mount Failures
@@ -399,15 +395,47 @@ flowchart TD
 
 3. **Implement health probes** - Use liveness and readiness probes to detect and recover from failures.
 
+```yaml
+# deploy.yaml - Container group with health probes
+apiVersion: 2021-10-01
+location: eastus
+name: myContainerGroup
+properties:
+  containers:
+  - name: myapp
+    properties:
+      image: myregistry.azurecr.io/myapp:v1.0.0
+      ports:
+      - port: 80
+      resources:
+        requests:
+          cpu: 1.0
+          memoryInGB: 1.5
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 80
+        initialDelaySeconds: 30
+        periodSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 80
+        initialDelaySeconds: 10
+        periodSeconds: 5
+  ipAddress:
+    type: Public
+    ports:
+    - port: 80
+  osType: Linux
+  restartPolicy: OnFailure
+type: Microsoft.ContainerInstance/containerGroups
+```
+
 ```bash
-# Create container with health probes
 az container create \
   --resource-group myResourceGroup \
-  --name myContainer \
-  --image myregistry.azurecr.io/myapp:v1.0.0 \
-  --cpu 1 \
-  --memory 1.5 \
-  --restart-policy OnFailure
+  --file deploy.yaml
 ```
 
 4. **Use restart policies** - Configure appropriate restart behavior for your workload type.

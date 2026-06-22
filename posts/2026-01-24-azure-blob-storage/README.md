@@ -15,18 +15,10 @@ Azure Blob Storage is the backbone of data storage in Azure. From serving static
 ```mermaid
 flowchart TB
     subgraph Account["Storage Account"]
-        subgraph Hot["Hot Tier"]
-            C1[Container: images]
-            C2[Container: documents]
-        end
-
-        subgraph Cool["Cool Tier"]
-            C3[Container: archives]
-        end
-
-        subgraph Archive["Archive Tier"]
-            C4[Container: backups]
-        end
+        C1[Container: images]
+        C2[Container: documents]
+        C3[Container: archives]
+        C4[Container: backups]
     end
 
     App[Application] --> C1
@@ -34,8 +26,13 @@ flowchart TB
     CDN[Azure CDN] --> C1
     Backup[Backup Service] --> C4
 
-    C1 --> |Lifecycle Policy| C3
-    C3 --> |Lifecycle Policy| C4
+    C1 -.-> HotTier[Blob Access Tier: Hot]
+    C2 -.-> HotTier
+    C3 -.-> CoolTier[Blob Access Tier: Cool]
+    C4 -.-> ArchiveTier[Blob Access Tier: Archive]
+
+    HotTier --> |Lifecycle Policy| CoolTier
+    CoolTier --> |Lifecycle Policy| ArchiveTier
 ```
 
 ### Access Tiers
@@ -143,13 +140,13 @@ resource "azurerm_storage_account" "main" {
 
 resource "azurerm_storage_container" "images" {
   name                  = "images"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 ```
@@ -298,7 +295,8 @@ BLOB_SAS=$(az storage blob generate-sas \
 
 ```python
 from azure.storage.blob import generate_blob_sas, BlobSasPermissions
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import os
 
 def generate_upload_sas(container_name: str, blob_name: str, hours: int = 1) -> str:
     """Generate a SAS token for uploading a specific blob."""
@@ -308,7 +306,7 @@ def generate_upload_sas(container_name: str, blob_name: str, hours: int = 1) -> 
         blob_name=blob_name,
         account_key=os.getenv("STORAGE_ACCOUNT_KEY"),
         permission=BlobSasPermissions(write=True, create=True),
-        expiry=datetime.utcnow() + timedelta(hours=hours)
+        expiry=datetime.now(timezone.utc) + timedelta(hours=hours)
     )
 
     return f"https://myappstorage2026.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
@@ -351,7 +349,7 @@ az storage account management-policy create \
       "definition": {
         "filters": {
           "blobTypes": ["blockBlob"],
-          "prefixMatch": ["images/", "documents/"]
+          "prefixMatch": ["images/", "documents/reports/"]
         },
         "actions": {
           "baseBlob": {
@@ -400,7 +398,7 @@ az storage account management-policy create \
 # Enable static website
 az storage blob service-properties update \
     --account-name $STORAGE_ACCOUNT \
-    --static-website \
+    --static-website true \
     --index-document index.html \
     --404-document 404.html
 
@@ -423,13 +421,18 @@ az storage account show \
 ### Parallel Upload for Large Files
 
 ```python
-from azure.storage.blob import BlobClient
-from concurrent.futures import ThreadPoolExecutor
-import os
+from azure.storage.blob import BlobServiceClient
 
 def upload_large_file(container_name: str, blob_name: str, file_path: str):
     """Upload large file with parallel transfer."""
-    blob_client = blob_service_client.get_blob_client(
+    tuned_client = BlobServiceClient(
+        account_url,
+        credential=credential,
+        max_single_put_size=64 * 1024 * 1024,  # 64 MB
+        max_block_size=4 * 1024 * 1024  # 4 MB blocks
+    )
+
+    blob_client = tuned_client.get_blob_client(
         container=container_name,
         blob=blob_name
     )
@@ -443,9 +446,7 @@ def upload_large_file(container_name: str, blob_name: str, file_path: str):
         blob_client.upload_blob(
             data,
             overwrite=True,
-            max_concurrency=8,
-            max_single_put_size=64 * 1024 * 1024,  # 64 MB
-            max_block_size=4 * 1024 * 1024  # 4 MB blocks
+            max_concurrency=8
         )
 ```
 
@@ -461,7 +462,7 @@ sudo cp ./azcopy_linux_amd64_*/azcopy /usr/bin/
 azcopy login
 
 # Sync local directory to blob (like rsync)
-azcopy sync ./local-data "https://$STORAGE_ACCOUNT.blob.core.windows.net/data" --recursive
+azcopy sync ./local-data "https://$STORAGE_ACCOUNT.blob.core.windows.net/documents" --recursive
 
 # Copy between storage accounts
 azcopy copy \
@@ -471,7 +472,7 @@ azcopy copy \
 
 # Copy with specific concurrency
 azcopy copy ./large-files/* \
-    "https://$STORAGE_ACCOUNT.blob.core.windows.net/uploads/" \
+    "https://$STORAGE_ACCOUNT.blob.core.windows.net/documents/uploads/" \
     --cap-mbps 500 \
     --block-size-mb 8
 ```
@@ -481,22 +482,24 @@ azcopy copy ./large-files/* \
 ### Enable Diagnostic Logging
 
 ```bash
-# Enable blob logging
-az storage logging update \
-    --account-name $STORAGE_ACCOUNT \
-    --account-key $STORAGE_KEY \
-    --services b \
-    --log rwd \
-    --retention 30
+# Enable blob resource logs in Azure Monitor
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+BLOB_RESOURCE_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT/blobServices/default"
+WORKSPACE_ID=$(az monitor log-analytics workspace show \
+    --resource-group $RESOURCE_GROUP \
+    --workspace-name storage-logs \
+    --query id -o tsv)
 
-# Check metrics
-az storage metrics show \
-    --account-name $STORAGE_ACCOUNT \
-    --account-key $STORAGE_KEY \
-    --services b
+az monitor diagnostic-settings create \
+    --name blob-logs \
+    --resource $BLOB_RESOURCE_ID \
+    --workspace $WORKSPACE_ID \
+    --export-to-resource-specific true \
+    --logs '[{"category":"StorageRead","enabled":true},{"category":"StorageWrite","enabled":true},{"category":"StorageDelete","enabled":true}]' \
+    --metrics '[{"category":"Transaction","enabled":true}]'
 ```
 
-### Query Storage Analytics Logs
+### Query Azure Monitor Logs
 
 ```kusto
 // KQL query for storage access patterns

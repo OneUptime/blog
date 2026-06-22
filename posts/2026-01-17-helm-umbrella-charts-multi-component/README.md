@@ -85,23 +85,25 @@ dependencies:
   # Local subcharts
   - name: frontend
     version: "1.x.x"
+    repository: file://charts/frontend
     condition: frontend.enabled
     
   - name: backend
     version: "1.x.x"
+    repository: file://charts/backend
     condition: backend.enabled
     
   # External charts
   - name: postgresql
     version: "13.x.x"
     repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
+    condition: database.enabled
     alias: database
     
   - name: redis
     version: "18.x.x"
     repository: https://charts.bitnami.com/bitnami
-    condition: redis.enabled
+    condition: cache.enabled
     alias: cache
     
   # Common library
@@ -132,7 +134,7 @@ global:
   
   # Database connection (shared)
   database:
-    host: myapp-database-postgresql
+    host: myapp-database
     port: 5432
     name: myapp
     username: myapp
@@ -141,7 +143,7 @@ global:
     
   # Redis connection
   redis:
-    host: myapp-cache-redis-master
+    host: myapp-cache-master
     port: 6379
     
   # Monitoring
@@ -163,7 +165,7 @@ frontend:
   ingress:
     enabled: true
     hosts:
-      - host: "{{ .Values.global.domain }}"
+      - host: example.com
         paths:
           - path: /
   resources:
@@ -181,7 +183,7 @@ backend:
   ingress:
     enabled: true
     hosts:
-      - host: "api.{{ .Values.global.domain }}"
+      - host: api.example.com
         paths:
           - path: /
   resources:
@@ -247,6 +249,8 @@ cache:
 global:
   environment: production
   domain: example.com
+  database:
+    host: myapp-database-primary
   
 frontend:
   replicaCount: 5
@@ -269,6 +273,7 @@ backend:
     minAvailable: 5
 
 database:
+  architecture: replication
   primary:
     persistence:
       size: 100Gi
@@ -521,9 +526,11 @@ dependencies:
   - name: postgresql
     repository: https://charts.bitnami.com/bitnami
     version: 13.2.24
+    alias: database
   - name: redis
     repository: https://charts.bitnami.com/bitnami
     version: 18.4.0
+    alias: cache
 digest: sha256:abc123...
 generated: "2024-01-15T10:30:00.000Z"
 ```

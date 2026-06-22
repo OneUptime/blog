@@ -94,8 +94,8 @@ source.copy(target);
 console.log(target.toString());  // 'Hello' + nulls
 
 // Slice buffer (creates a view, not a copy)
-const buf = Buffer.from('Hello World');
-const slice = buf.slice(0, 5);
+const sliceBuf = Buffer.from('Hello World');
+const slice = sliceBuf.slice(0, 5);
 console.log(slice.toString());  // 'Hello'
 
 // Compare buffers
@@ -107,9 +107,9 @@ console.log(a.compare(c));    // -1 (a < c)
 console.log(Buffer.compare(a, c));  // -1
 
 // Find in buffer
-const buf = Buffer.from('Hello World');
-console.log(buf.indexOf('World'));  // 6
-console.log(buf.includes('World')); // true
+const findBuf = Buffer.from('Hello World');
+console.log(findBuf.indexOf('World'));  // 6
+console.log(findBuf.includes('World')); // true
 ```
 
 ### Buffer and JSON
@@ -375,6 +375,13 @@ const server = http.createServer((req, res) => {
       });
       
       fs.createReadStream('video.mp4', { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': stat.size,
+      });
+      
+      fs.createReadStream('video.mp4').pipe(res);
     }
   }
 });
@@ -474,8 +481,6 @@ async function copyFile(source, destination) {
 }
 
 // With progress
-const fs = require('fs');
-
 function copyWithProgress(source, destination) {
   const stat = fs.statSync(source);
   const totalSize = stat.size;

@@ -60,7 +60,7 @@ az monitor metrics alert create \
     --window-size 5m \
     --evaluation-frequency 1m \
     --severity 2 \
-    --action-group "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/myActionGroup" \
+    --action "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/myActionGroup" \
     --description "Alert when CPU exceeds 80% for 5 minutes"
 ```
 
@@ -77,7 +77,7 @@ az monitor metrics alert create \
     --window-size 5m \
     --evaluation-frequency 1m \
     --severity 1 \
-    --action-group $ACTION_GROUP_ID
+    --action $ACTION_GROUP_ID
 ```
 
 ### Log Search Alerts
@@ -90,8 +90,8 @@ az monitor scheduled-query create \
     --name "Application Errors Alert" \
     --resource-group myResourceGroup \
     --scopes "/subscriptions/xxx/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
-    --condition "count 'Heartbeat | where Computer == \"myVM\"' > 0" \
-    --condition-query "AppExceptions | where severityLevel >= 3 | summarize count() by bin(TimeGenerated, 5m)" \
+    --condition "count 'AppExceptionsQuery' > 0" \
+    --condition-query AppExceptionsQuery="AppExceptions | where severityLevel >= 3" \
     --evaluation-frequency 5m \
     --window-size 5m \
     --severity 2 \
@@ -155,7 +155,7 @@ az monitor activity-log alert create \
     --name "Resource Deletion Alert" \
     --resource-group myResourceGroup \
     --scope "/subscriptions/xxx" \
-    --condition category=Administrative and operationName=Microsoft.Resources/subscriptions/resourceGroups/delete \
+    --condition "category=Administrative and operationName=Microsoft.Resources/subscriptions/resourceGroups/delete" \
     --action-group $ACTION_GROUP_ID
 ```
 
@@ -169,10 +169,10 @@ az monitor action-group create \
     --name "OnCallTeam" \
     --resource-group myResourceGroup \
     --short-name "OnCall" \
-    --email-receiver name="TeamLead" email-address="lead@company.com" \
-    --email-receiver name="Backup" email-address="backup@company.com" \
-    --sms-receiver name="Primary" country-code="1" phone-number="5551234567" \
-    --webhook-receiver name="PagerDuty" uri="https://events.pagerduty.com/integration/xxx/enqueue"
+    --action email TeamLead lead@company.com usecommonalertschema \
+    --action email Backup backup@company.com usecommonalertschema \
+    --action sms Primary 1 5551234567 \
+    --action webhook PagerDuty https://events.pagerduty.com/integration/xxx/enqueue usecommonalertschema
 ```
 
 **Using Terraform:**
@@ -196,15 +196,17 @@ resource "azurerm_monitor_action_group" "critical" {
   }
 
   webhook_receiver {
-    name        = "pagerduty"
-    uri         = "https://events.pagerduty.com/integration/${var.pagerduty_key}/enqueue"
+    name                    = "pagerduty"
+    service_uri             = "https://events.pagerduty.com/integration/${var.pagerduty_key}/enqueue"
+    use_common_alert_schema = true
   }
 
   azure_function_receiver {
     name                     = "auto-remediation"
-    function_app_resource_id = azurerm_function_app.remediation.id
+    function_app_resource_id = azurerm_linux_function_app.remediation.id
     function_name            = "HandleAlert"
     http_trigger_url         = "https://myfunction.azurewebsites.net/api/HandleAlert"
+    use_common_alert_schema  = true
   }
 }
 
@@ -224,6 +226,8 @@ resource "azurerm_monitor_action_group" "warning" {
 
 ### PagerDuty Integration
 
+When using middleware such as Logic Apps or Azure Functions, map the Azure Monitor common alert schema to the PagerDuty Events API v2 payload:
+
 ```json
 {
     "routing_key": "YOUR_ROUTING_KEY",
@@ -231,8 +235,8 @@ resource "azurerm_monitor_action_group" "warning" {
     "dedup_key": "{{data.essentials.alertId}}",
     "payload": {
         "summary": "{{data.essentials.alertRule}} - {{data.essentials.monitorCondition}}",
-        "severity": "{{data.essentials.severity}}",
-        "source": "{{data.essentials.firedDateTime}}",
+        "severity": "warning",
+        "source": "{{data.essentials.alertTargetIDs[0]}}",
         "custom_details": {
             "alert_context": "{{data.alertContext}}"
         }
@@ -315,6 +319,14 @@ def handle_high_cpu(alert_data):
         return func.HttpResponse(f"Scaled VM to {new_size}", status_code=200)
 
     return func.HttpResponse(f"VM already at maximum size: {current_size}", status_code=200)
+
+
+def handle_disk_space(alert_data):
+    """Acknowledge disk space alerts for manual remediation."""
+
+    resource_id = alert_data.get("data", {}).get("essentials", {}).get("alertTargetIDs", [None])[0]
+    logging.warning(f"Disk space alert requires manual remediation for {resource_id}")
+    return func.HttpResponse("Disk space alert received", status_code=200)
 ```
 
 ## Alert Suppression and Maintenance Windows
@@ -329,9 +341,11 @@ az monitor alert-processing-rule create \
     --scopes "/subscriptions/xxx/resourceGroups/myRG" \
     --rule-type RemoveAllActionGroups \
     --schedule-recurrence-type Daily \
-    --schedule-start-time "2024-01-15T02:00:00" \
-    --schedule-end-time "2024-01-15T04:00:00" \
-    --schedule-time-zone "America/New_York"
+    --schedule-start-datetime "2024-01-15 00:00:00" \
+    --schedule-end-datetime "2024-12-31 23:59:59" \
+    --schedule-recurrence-start-time "02:00:00" \
+    --schedule-recurrence-end-time "04:00:00" \
+    --schedule-time-zone "Eastern Standard Time"
 ```
 
 **Using Terraform:**
@@ -352,7 +366,7 @@ resource "azurerm_monitor_alert_processing_rule_suppression" "maintenance" {
   schedule {
     effective_from  = "2024-01-01T00:00:00"
     effective_until = "2024-12-31T23:59:59"
-    time_zone       = "America/New_York"
+    time_zone       = "Eastern Standard Time"
 
     recurrence {
       weekly {
@@ -443,9 +457,9 @@ resource "azurerm_monitor_metric_alert" "memory" {
   }
 }
 
-# Disk Space Alert
+# Disk I/O Alert
 resource "azurerm_monitor_metric_alert" "disk" {
-  name                = "low-disk-alert"
+  name                = "high-os-disk-iops-alert"
   resource_group_name = azurerm_resource_group.main.name
   scopes              = local.vm_ids
   severity            = 1
@@ -454,7 +468,7 @@ resource "azurerm_monitor_metric_alert" "disk" {
 
   criteria {
     metric_namespace = "Microsoft.Compute/virtualMachines"
-    metric_name      = "OS Disk Used Percentage"
+    metric_name      = "OS Disk IOPS Consumed Percentage"
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 90
@@ -470,14 +484,14 @@ resource "azurerm_monitor_metric_alert" "disk" {
 
 ```bash
 # List fired alerts in the last 24 hours
-az monitor activity-log alert list-fired \
-    --start-time $(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ') \
+az graph query \
+    --query "alertsmanagementresources | where properties.essentials.startDateTime > ago(24h) | where tostring(properties.essentials.monitorCondition) == 'Fired' | project TimeGenerated=todatetime(properties.essentials.startDateTime), AlertName=name, Severity=tostring(properties.essentials.severity), Target=tostring(properties.essentials.targetResource)" \
     --output table
 
-# Get alert history from Log Analytics
-az monitor log-analytics query \
-    --workspace $WORKSPACE_ID \
-    --analytics-query "AlertsManagementResources | where properties.essentials.monitorCondition == 'Fired' | project TimeGenerated, AlertName=properties.essentials.alertRule, Severity=properties.essentials.severity"
+# Get recent alert history from Azure Resource Graph
+az graph query \
+    --query "alertsmanagementresources | where properties.essentials.lastModifiedDateTime > ago(24h) | project TimeGenerated=todatetime(properties.essentials.startDateTime), AlertName=name, Severity=tostring(properties.essentials.severity), MonitorCondition=tostring(properties.essentials.monitorCondition), AlertState=tostring(properties.essentials.alertState)" \
+    --output table
 ```
 
 ## Best Practices

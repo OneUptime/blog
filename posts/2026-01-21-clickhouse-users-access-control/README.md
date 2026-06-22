@@ -52,7 +52,7 @@ Or create an admin user with access management enabled:
 -- Create a user with password
 CREATE USER analyst IDENTIFIED BY 'secure_password_123';
 
--- Create user with SHA256 hash
+-- Create user with SHA256 password hashing
 CREATE USER analyst IDENTIFIED WITH sha256_password BY 'password';
 
 -- Create user with double SHA1 (MySQL compatible)
@@ -214,10 +214,10 @@ REVOKE SELECT(email, phone) ON analytics.users FROM analyst;
 
 ```sql
 -- Access to distributed queries
-GRANT CLUSTER ON cluster_name TO role_name;
+GRANT CLUSTER ON *.* TO role_name;
 
--- Remote server access
-GRANT REMOTE ON 'remote_host:9000' TO role_name;
+-- Remote table function access
+GRANT REMOTE ON *.* TO role_name;
 ```
 
 ### Dictionary Access
@@ -251,7 +251,7 @@ SETTINGS
 
 -- Create profile with inheritance
 CREATE SETTINGS PROFILE senior_analyst_profile
-SETTINGS INHERIT analyst_profile,
+SETTINGS INHERIT 'analyst_profile',
     max_memory_usage = 20000000000,
     readonly = 0;
 ```
@@ -260,15 +260,13 @@ SETTINGS INHERIT analyst_profile,
 
 ```sql
 -- Assign profile to user
-ALTER USER analyst SETTINGS PROFILE analyst_profile;
+ALTER USER analyst ADD PROFILES 'analyst_profile';
 
 -- Assign profile to role
-ALTER ROLE data_reader SETTINGS PROFILE analyst_profile;
+ALTER ROLE data_reader ADD PROFILES 'analyst_profile';
 
 -- Override specific settings
-ALTER USER analyst SETTINGS
-    PROFILE analyst_profile,
-    max_execution_time = 600;
+ALTER USER analyst ADD SETTINGS max_execution_time = 600;
 ```
 
 ### Profile Constraints
@@ -366,10 +364,11 @@ FOR SELECT
 USING region IN ('us-east', 'us-west')
 TO us_analysts;
 
--- Policy based on user settings
+-- Policy based on a custom user setting
+-- Requires SQL_ to be allowed in custom_settings_prefixes on self-managed deployments
 CREATE ROW POLICY tenant_policy ON analytics.events
 FOR SELECT
-USING tenant_id = getSetting('tenant_id')
+USING tenant_id = getSetting('SQL_tenant_id')
 TO multi_tenant_role;
 ```
 
@@ -377,17 +376,17 @@ TO multi_tenant_role;
 
 ```sql
 -- PERMISSIVE: rows match if ANY policy allows (OR)
-CREATE ROW POLICY policy1 ON table
-AS PERMISSIVE
+CREATE ROW POLICY policy1 ON db.table
 FOR SELECT
 USING condition1
+AS PERMISSIVE
 TO role1;
 
 -- RESTRICTIVE: rows must match ALL restrictive policies (AND)
-CREATE ROW POLICY policy2 ON table
-AS RESTRICTIVE
+CREATE ROW POLICY policy2 ON db.table
 FOR SELECT
 USING condition2
+AS RESTRICTIVE
 TO role1;
 ```
 
@@ -431,7 +430,7 @@ CREATE USER bcrypt_user IDENTIFIED WITH bcrypt_password BY 'password';
         <company_ldap>
             <host>ldap.company.com</host>
             <port>636</port>
-            <bind_dn>cn=admin,dc=company,dc=com</bind_dn>
+            <bind_dn>uid={user_name},ou=users,dc=company,dc=com</bind_dn>
             <verification_cooldown>300</verification_cooldown>
             <enable_tls>yes</enable_tls>
         </company_ldap>
@@ -501,8 +500,8 @@ USING tenant_id = 'tenant_b'
 TO tenant_b_role;
 
 -- Create users for each tenant
-CREATE USER tenant_a_user IDENTIFIED BY 'pass' DEFAULT ROLE tenant_a_role;
-CREATE USER tenant_b_user IDENTIFIED BY 'pass' DEFAULT ROLE tenant_b_role;
+CREATE USER tenant_a_user IDENTIFIED BY 'pass' ROLE tenant_a_role DEFAULT ROLE tenant_a_role;
+CREATE USER tenant_b_user IDENTIFIED BY 'pass' ROLE tenant_b_role DEFAULT ROLE tenant_b_role;
 
 -- Set tenant quotas
 CREATE QUOTA tenant_a_quota
@@ -515,13 +514,14 @@ TO tenant_a_role;
 ### Dynamic Tenant Context
 
 ```sql
--- Set tenant context via settings
-SET tenant_id = 'tenant_a';
+-- Set tenant context via a custom setting
+-- Requires SQL_ to be allowed in custom_settings_prefixes on self-managed deployments
+SET SQL_tenant_id = 'tenant_a';
 
 -- Row policy uses this setting
 CREATE ROW POLICY dynamic_tenant ON shared_data
 FOR SELECT
-USING tenant_id = getSetting('tenant_id')
+USING tenant_id = getSetting('SQL_tenant_id')
 TO multi_tenant_role;
 ```
 
@@ -585,7 +585,7 @@ HOST IP '10.0.0.0/8';
 -- 3. Create application users with minimal permissions
 CREATE USER app_readonly IDENTIFIED BY 'password'
 HOST NAME 'app-server.company.com'
-DEFAULT ROLE app_reader;
+ROLE app_reader DEFAULT ROLE app_reader;
 
 -- 4. Set up quotas for all users
 CREATE QUOTA default_quota

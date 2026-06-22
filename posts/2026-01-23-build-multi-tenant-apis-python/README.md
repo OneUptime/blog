@@ -63,7 +63,7 @@ The foundation of multi-tenancy is tracking which tenant is making each request.
 # tenant_context.py
 
 # Core tenant context management for multi-tenant API
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import Request, HTTPException
 from contextvars import ContextVar
 from typing import Optional
 from dataclasses import dataclass
@@ -77,6 +77,7 @@ class TenantContext:
     tenant_id: str
     tenant_name: str
     plan: str  # e.g., 'free', 'pro', 'enterprise'
+    is_active: bool
     settings: dict  # Tenant-specific configuration
 
 def get_current_tenant() -> str:
@@ -137,18 +138,26 @@ Middleware runs on every request to set up the tenant context before route handl
 ```python
 # tenant_middleware.py
 # Middleware to establish tenant context for each request
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Callable
+from typing import Callable, Optional
+from tenant_context import (
+    TenantContext,
+    current_tenant_var,
+    extract_tenant_from_header
+)
 
 class TenantMiddleware(BaseHTTPMiddleware):
     """Middleware that sets tenant context for each request"""
 
-    def __init__(self, app: FastAPI, tenant_extractor: Callable):
+    def __init__(self, app: FastAPI, tenant_extractor: Callable, db, cache):
         super().__init__(app)
         self.tenant_extractor = tenant_extractor
+        self.db = db
+        self.cache = cache
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable):
         # Skip tenant check for health endpoints
         if request.url.path in ["/health", "/metrics", "/docs", "/openapi.json"]:
             return await call_next(request)
@@ -160,17 +169,15 @@ class TenantMiddleware(BaseHTTPMiddleware):
             # Validate tenant exists and is active
             tenant = await self.validate_tenant(tenant_id)
             if not tenant:
-                return Response(
-                    content='{"detail": "Tenant not found"}',
-                    status_code=404,
-                    media_type="application/json"
+                return JSONResponse(
+                    content={"detail": "Tenant not found"},
+                    status_code=404
                 )
 
             if not tenant.is_active:
-                return Response(
-                    content='{"detail": "Tenant account suspended"}',
-                    status_code=403,
-                    media_type="application/json"
+                return JSONResponse(
+                    content={"detail": "Tenant account suspended"},
+                    status_code=403
                 )
 
             # Set tenant in context variable
@@ -187,37 +194,42 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 current_tenant_var.reset(token)
 
         except HTTPException as e:
-            return Response(
-                content=f'{{"detail": "{e.detail}"}}',
-                status_code=e.status_code,
-                media_type="application/json"
+            return JSONResponse(
+                content={"detail": e.detail},
+                status_code=e.status_code
             )
 
     async def validate_tenant(self, tenant_id: str) -> Optional[TenantContext]:
         """Look up and validate tenant from database or cache"""
         # Check cache first for performance
-        cached = await cache.get(f"tenant:{tenant_id}")
+        cached = await self.cache.get(f"tenant:{tenant_id}")
         if cached:
             return TenantContext(**cached)
 
         # Query database
-        tenant = await db.tenants.find_one({"_id": tenant_id})
+        tenant = await self.db.tenants.find_one({"_id": tenant_id})
         if tenant:
             context = TenantContext(
                 tenant_id=tenant["_id"],
                 tenant_name=tenant["name"],
                 plan=tenant["plan"],
+                is_active=tenant["is_active"],
                 settings=tenant.get("settings", {})
             )
             # Cache for future requests
-            await cache.set(f"tenant:{tenant_id}", context.__dict__, ttl=300)
+            await self.cache.set(f"tenant:{tenant_id}", context.__dict__, ttl=300)
             return context
 
         return None
 
 # Apply middleware to FastAPI app
 app = FastAPI()
-app.add_middleware(TenantMiddleware, tenant_extractor=extract_tenant_from_header)
+app.add_middleware(
+    TenantMiddleware,
+    tenant_extractor=extract_tenant_from_header,
+    db=db,
+    cache=cache
+)
 ```
 
 ---
@@ -229,42 +241,46 @@ The database layer must automatically filter queries by tenant to prevent data l
 ```python
 # tenant_db.py
 # Database layer with automatic tenant filtering
-from sqlalchemy import Column, String, ForeignKey, event
-from sqlalchemy.orm import Session, Query
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import String, ForeignKey, Select, delete, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from fastapi import Depends
 from typing import TypeVar, Generic, List, Optional
+from tenant_context import get_current_tenant
+from app.database import get_db_session
 
-Base = declarative_base()
 T = TypeVar('T')
+
+class Base(DeclarativeBase):
+    pass
 
 class TenantMixin:
     """Mixin that adds tenant_id to models"""
-    tenant_id = Column(String(36), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
 
 class TenantModel(Base, TenantMixin):
     """Base class for tenant-scoped models"""
     __abstract__ = True
 
     @classmethod
-    def query_for_tenant(cls, session: Session, tenant_id: str) -> Query:
-        """Get query pre-filtered by tenant"""
-        return session.query(cls).filter(cls.tenant_id == tenant_id)
+    def query_for_tenant(cls, tenant_id: str) -> Select:
+        """Get select statement pre-filtered by tenant"""
+        return select(cls).where(cls.tenant_id == tenant_id)
 
 # Example tenant-scoped models
 class Project(TenantModel):
     __tablename__ = 'projects'
 
-    id = Column(String(36), primary_key=True)
-    name = Column(String(255), nullable=False)
-    description = Column(String)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 class Task(TenantModel):
     __tablename__ = 'tasks'
 
-    id = Column(String(36), primary_key=True)
-    project_id = Column(String(36), ForeignKey('projects.id'))
-    title = Column(String(255), nullable=False)
-    status = Column(String(50), default='pending')
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey('projects.id'))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default='pending')
 
 class TenantRepository(Generic[T]):
     """Generic repository with automatic tenant scoping"""
@@ -274,19 +290,21 @@ class TenantRepository(Generic[T]):
         self.session = session
         self.tenant_id = tenant_id
 
-    def _base_query(self) -> Query:
-        """Get query with tenant filter applied"""
-        return self.session.query(self.model).filter(
+    def _base_stmt(self) -> Select:
+        """Get select statement with tenant filter applied"""
+        return select(self.model).where(
             self.model.tenant_id == self.tenant_id
         )
 
     def get_by_id(self, id: str) -> Optional[T]:
         """Get single record by ID (tenant-scoped)"""
-        return self._base_query().filter(self.model.id == id).first()
+        stmt = self._base_stmt().where(self.model.id == id)
+        return self.session.execute(stmt).scalars().first()
 
     def get_all(self, limit: int = 100, offset: int = 0) -> List[T]:
         """Get all records for tenant with pagination"""
-        return self._base_query().offset(offset).limit(limit).all()
+        stmt = self._base_stmt().offset(offset).limit(limit)
+        return list(self.session.execute(stmt).scalars().all())
 
     def create(self, **kwargs) -> T:
         """Create new record with tenant_id automatically set"""
@@ -299,8 +317,12 @@ class TenantRepository(Generic[T]):
     def delete(self, id: str) -> bool:
         """Delete record by ID (tenant-scoped)"""
         # Important: filter by both ID and tenant_id
-        result = self._base_query().filter(self.model.id == id).delete()
-        return result > 0
+        stmt = delete(self.model).where(
+            self.model.id == id,
+            self.model.tenant_id == self.tenant_id
+        )
+        result = self.session.execute(stmt)
+        return result.rowcount > 0
 
 # Dependency for FastAPI routes
 async def get_project_repo(
@@ -322,7 +344,10 @@ Routes use dependency injection to ensure all operations are tenant-scoped.
 # API routes with tenant isolation
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import List
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from tenant_db import Project, TenantRepository, get_project_repo
+from app.database import get_db_session
 import uuid
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -336,9 +361,10 @@ class ProjectResponse(BaseModel):
     name: str
     description: Optional[str]
     tenant_id: str
+    model_config = {"from_attributes": True}
 
 @router.get("/", response_model=List[ProjectResponse])
-async def list_projects(
+def list_projects(
     repo: TenantRepository[Project] = Depends(get_project_repo),
     limit: int = 50,
     offset: int = 0
@@ -349,7 +375,7 @@ async def list_projects(
     return projects
 
 @router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(
+def get_project(
     project_id: str,
     repo: TenantRepository[Project] = Depends(get_project_repo)
 ):
@@ -364,7 +390,7 @@ async def get_project(
     return project
 
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_project(
+def create_project(
     data: ProjectCreate,
     repo: TenantRepository[Project] = Depends(get_project_repo),
     session: Session = Depends(get_db_session)
@@ -380,7 +406,7 @@ async def create_project(
     return project
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_project(
+def delete_project(
     project_id: str,
     repo: TenantRepository[Project] = Depends(get_project_repo),
     session: Session = Depends(get_db_session)
@@ -404,9 +430,9 @@ Different tenants may have different rate limits based on their plan.
 ```python
 # tenant_rate_limit.py
 # Per-tenant rate limiting
-from fastapi import Request, HTTPException
-from datetime import datetime, timedelta
-import asyncio
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from datetime import datetime, timedelta, timezone
 
 class TenantRateLimiter:
     """Rate limiter with per-tenant and per-plan limits"""
@@ -451,11 +477,11 @@ class TenantRateLimiter:
 
     def _current_minute(self) -> str:
         """Get current minute as string for key"""
-        return datetime.utcnow().strftime("%Y%m%d%H%M")
+        return datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
 
     def _seconds_until_reset(self) -> int:
         """Seconds until rate limit resets"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
         return int((next_minute - now).total_seconds())
 
@@ -474,9 +500,9 @@ async def rate_limit_middleware(request: Request, call_next):
     if not allowed:
         # Get rate limit info for headers
         headers = await limiter.get_remaining(tenant.tenant_id, tenant.plan)
-        raise HTTPException(
+        return JSONResponse(
+            content={"detail": "Rate limit exceeded"},
             status_code=429,
-            detail="Rate limit exceeded",
             headers=headers
         )
 
@@ -499,9 +525,10 @@ Tenants often need custom settings like feature flags, integrations, or branding
 ```python
 # tenant_config.py
 # Tenant-specific configuration management
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 from enum import Enum
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 class FeatureFlag(str, Enum):
     ADVANCED_ANALYTICS = "advanced_analytics"
@@ -512,7 +539,7 @@ class FeatureFlag(str, Enum):
 class TenantSettings(BaseModel):
     """Tenant-specific settings"""
     # Feature flags
-    features: Dict[str, bool] = {}
+    features: Dict[str, bool] = Field(default_factory=dict)
 
     # Resource limits
     max_projects: int = 10
@@ -572,7 +599,10 @@ class TenantConfigService:
     async def get_settings(self, tenant_id: str, plan: str) -> TenantSettings:
         """Get merged settings (defaults + overrides)"""
         # Start with plan defaults
-        defaults = self.PLAN_DEFAULTS.get(plan, self.PLAN_DEFAULTS['free'])
+        defaults = self.PLAN_DEFAULTS.get(
+            plan,
+            self.PLAN_DEFAULTS['free']
+        ).model_copy(deep=True)
 
         # Get tenant-specific overrides from database
         overrides = await self.db.tenant_settings.find_one(
@@ -581,16 +611,21 @@ class TenantConfigService:
 
         if overrides:
             # Merge overrides into defaults
-            return TenantSettings(**{**defaults.dict(), **overrides})
+            overrides.pop("_id", None)
+            return TenantSettings(**{**defaults.model_dump(), **overrides})
 
         return defaults
 
     def has_feature(self, settings: TenantSettings, feature: FeatureFlag) -> bool:
         """Check if tenant has access to a feature"""
-        return settings.features.get(feature, False)
+        return settings.features.get(feature.value, False)
+
+async def get_config_service() -> TenantConfigService:
+    """Get tenant configuration service"""
+    return TenantConfigService(db, cache)
 
 # Dependency for feature checks
-async def require_feature(feature: FeatureFlag):
+def require_feature(feature: FeatureFlag):
     """Dependency that requires a specific feature"""
     async def check(
         request: Request,
@@ -613,6 +648,8 @@ async def require_feature(feature: FeatureFlag):
     return check
 
 # Usage in routes
+router = APIRouter()
+
 @router.get("/analytics/advanced")
 async def advanced_analytics(
     settings: TenantSettings = Depends(require_feature(FeatureFlag.ADVANCED_ANALYTICS))

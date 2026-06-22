@@ -17,7 +17,7 @@ The Downward API lets your applications access information about themselves and 
 | Pod | name, namespace, uid, labels, annotations |
 | Container | resource limits, resource requests |
 | Node | name, IP |
-| Cluster | service account name |
+| Pod spec | service account name |
 
 ## Environment Variables
 
@@ -359,6 +359,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: HOST_IP
           valueFrom:
             fieldRef:
@@ -422,6 +426,7 @@ spec:
 Add labels to metrics:
 
 ```python
+import os
 from prometheus_client import Counter, Info
 
 # Create info metric with pod details
@@ -519,8 +524,9 @@ print(f"Config: {app_config}")
 | spec.nodeName | Node name |
 | spec.serviceAccountName | Service account |
 | status.hostIP | Node IP |
+| status.hostIPs | Node IPs (environment variable only) |
 | status.podIP | Pod IP |
-| status.podIPs | Pod IPs (volume only) |
+| status.podIPs | Pod IPs (environment variable only) |
 
 ### resourceFieldRef Fields
 
@@ -528,9 +534,11 @@ print(f"Config: {app_config}")
 |-------|-------------|
 | limits.cpu | CPU limit |
 | limits.memory | Memory limit |
+| limits.hugepages-* | Huge pages limit |
 | limits.ephemeral-storage | Ephemeral storage limit |
 | requests.cpu | CPU request |
 | requests.memory | Memory request |
+| requests.hugepages-* | Huge pages request |
 | requests.ephemeral-storage | Ephemeral storage request |
 
 ## Best Practices

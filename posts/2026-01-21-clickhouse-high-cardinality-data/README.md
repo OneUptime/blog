@@ -132,8 +132,8 @@ SELECT count(DISTINCT user_id) FROM events;
 -- FAST: Approximate unique count (typically < 2% error)
 SELECT uniq(user_id) FROM events;
 
--- FASTER: Even more approximate (< 4% error, but faster)
-SELECT uniqHLL12(user_id) FROM events;
+-- For very large UInt64 cardinalities, use uniqCombined64
+SELECT uniqCombined64(user_id) FROM events;
 
 -- For combining across time periods, use state functions
 SELECT uniqMerge(user_count)
@@ -169,12 +169,26 @@ ORDER BY events DESC
 LIMIT 100;
 ```
 
-## Strategy 6: Probabilistic Data Structures
-
-Use HyperLogLog for cardinality estimation:
+For `SAMPLE` to work, the table must be created with a `SAMPLE BY` expression that is included in the primary key:
 
 ```sql
--- Store pre-computed HLL sketches
+CREATE TABLE events_sampled
+(
+    event_time DateTime,
+    user_id UInt64,
+    event_type LowCardinality(String)
+)
+ENGINE = MergeTree()
+ORDER BY (event_type, event_time, intHash32(user_id))
+SAMPLE BY intHash32(user_id);
+```
+
+## Strategy 6: Probabilistic Data Structures
+
+Store aggregate states for cardinality estimation:
+
+```sql
+-- Store pre-computed unique-count states
 CREATE TABLE daily_uniques
 (
     date Date,
@@ -193,7 +207,7 @@ SELECT
 FROM events
 GROUP BY date, segment;
 
--- Query merges HLL sketches (very fast)
+-- Query merges unique-count states (very fast)
 SELECT
     segment,
     uniqMerge(unique_users) AS total_unique_users
@@ -249,7 +263,7 @@ Query the appropriate level:
 - Segment-level dashboards: Use `segment_daily`
 - Raw event analysis: Use `events` with sampling
 
-## Strategy 8: Bitmap Indexes for Set Operations
+## Strategy 8: Bitmaps for Set Operations
 
 Use bitmaps for efficient set operations on high-cardinality integer columns:
 
@@ -273,18 +287,28 @@ SELECT
 FROM events
 GROUP BY date, segment;
 
--- Query: Count users active in multiple days
+-- Query: Count users active on both days
 SELECT
-    segment,
-    bitmapCardinality(
-        bitmapAnd(
-            groupBitmapMergeState(user_bitmap),
-            -- Compare with another day's bitmap
-        )
-    ) AS retained_users
-FROM daily_active_users
-WHERE date IN ('2024-01-01', '2024-01-08')
-GROUP BY segment;
+    day1.segment,
+    bitmapAndCardinality(day1.users, day2.users) AS retained_users
+FROM
+(
+    SELECT
+        segment,
+        groupBitmapMergeState(user_bitmap) AS users
+    FROM daily_active_users
+    WHERE date = '2024-01-01'
+    GROUP BY segment
+) AS day1
+INNER JOIN
+(
+    SELECT
+        segment,
+        groupBitmapMergeState(user_bitmap) AS users
+    FROM daily_active_users
+    WHERE date = '2024-01-08'
+    GROUP BY segment
+) AS day2 USING (segment);
 ```
 
 ## Strategy 9: External Dictionaries for Lookups
@@ -337,9 +361,9 @@ Dictionary definition:
 </dictionary>
 ```
 
-## Strategy 10: Partition by High-Cardinality Prefix
+## Strategy 10: Partition by a Bounded Hash Bucket
 
-For very large tables, partition by a hash of the high-cardinality column:
+For very large tables, a bounded hash bucket can be part of the partition key, but keep the total partition count low:
 
 ```sql
 CREATE TABLE events
@@ -353,7 +377,7 @@ PARTITION BY (toYYYYMM(event_time), user_id % 100)
 ORDER BY (user_id, event_time);
 ```
 
-This creates 100 sub-partitions per month, allowing parallel processing and better pruning for user-specific queries.
+This creates 100 partitions per month. ClickHouse documentation recommends low-cardinality partition keys because too many partitions hurt query performance and can cause "too many parts" errors, so use this only when the partition count is still manageable. For user-specific lookups, putting `user_id` in `ORDER BY` is usually the more important optimization.
 
 ## Query Optimization Tips
 
@@ -367,7 +391,7 @@ GROUP BY user_id
 ORDER BY cnt DESC
 LIMIT 100;
 
--- BETTER: Use LIMIT BY for approximate top-N
+-- BETTER: Bound memory for an approximate top-N
 SELECT user_id, count() AS cnt
 FROM events
 GROUP BY user_id

@@ -52,6 +52,7 @@ sudo apt install curl gpg lsb-release -y
 
 # Add Redis GPG key
 curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
 
 # Add Redis repository
 echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
@@ -86,10 +87,11 @@ make test  # Optional but recommended
 # Install Redis
 sudo make install
 
-# Create Redis user and directories
+# Create Redis user, configuration, and directories
 sudo adduser --system --group --no-create-home redis
-sudo mkdir -p /var/lib/redis /var/log/redis
-sudo chown redis:redis /var/lib/redis /var/log/redis
+sudo mkdir -p /etc/redis /var/lib/redis /var/log/redis
+sudo cp redis.conf /etc/redis/redis.conf
+sudo chown redis:redis /var/lib/redis /var/log/redis /etc/redis/redis.conf
 ```
 
 ## Basic Configuration
@@ -121,8 +123,11 @@ port 6379
 # Protected mode - keeps Redis secure when no password is set
 protected-mode yes
 
-# Daemonize - run Redis in the background
-daemonize yes
+# Daemonize - keep this disabled when Redis is managed by systemd
+daemonize no
+
+# Systemd supervision - use this for a custom systemd service
+supervised systemd
 
 # PID file location
 pidfile /var/run/redis/redis-server.pid
@@ -170,7 +175,7 @@ requirepass Kj8mN2pQ5vX9yB4cT7eH1iL6oU3rA0wD
 
 ## Systemd Service Setup
 
-If you installed from repositories, Redis is already configured as a systemd service. For source installations, create a service file:
+If you installed from repositories, Redis is already configured as the `redis-server` systemd service. For source installations, create a service file:
 
 ```bash
 sudo nano /etc/systemd/system/redis.service
@@ -187,8 +192,7 @@ After=network.target
 User=redis
 Group=redis
 ExecStart=/usr/local/bin/redis-server /etc/redis/redis.conf
-ExecStop=/usr/local/bin/redis-cli shutdown
-Restart=always
+Restart=on-failure
 RestartSec=3
 Type=notify
 RuntimeDirectory=redis
@@ -216,24 +220,26 @@ sudo systemctl status redis
 
 ## Managing Redis Service
 
-Common service management commands:
+Common service management commands for package installations:
 
 ```bash
 # Start Redis
-sudo systemctl start redis
+sudo systemctl start redis-server
 
 # Stop Redis
-sudo systemctl stop redis
+sudo systemctl stop redis-server
 
 # Restart Redis
-sudo systemctl restart redis
+sudo systemctl restart redis-server
 
 # Check status
-sudo systemctl status redis
+sudo systemctl status redis-server
 
 # View logs
-sudo journalctl -u redis -f
+sudo journalctl -u redis-server -f
 ```
+
+If you created the custom source-install service above, replace `redis-server` with `redis` in these commands.
 
 ## Verifying Installation
 
@@ -410,6 +416,7 @@ func main() {
 Install the Go client:
 
 ```bash
+go mod init redis-example  # Skip if you already have a Go module
 go get github.com/redis/go-redis/v9
 ```
 
@@ -478,20 +485,30 @@ Optimize system settings for Redis:
 
 ```bash
 # Disable Transparent Huge Pages (THP)
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
-echo never > /sys/kernel/mm/transparent_hugepage/defrag
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 # Make persistent across reboots
-echo 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' >> /etc/rc.local
-echo 'echo never > /sys/kernel/mm/transparent_hugepage/defrag' >> /etc/rc.local
+sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<'EOF'
+[Unit]
+Description=Disable Transparent Huge Pages for Redis
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "echo never > /sys/kernel/mm/transparent_hugepage/enabled; echo never > /sys/kernel/mm/transparent_hugepage/defrag"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable --now disable-thp.service
 
 # Increase max connections
-echo "net.core.somaxconn = 65535" >> /etc/sysctl.conf
-sysctl -p
+echo "net.core.somaxconn = 65535" | sudo tee /etc/sysctl.d/99-redis.conf
+sudo sysctl --system
 
 # Set vm.overcommit_memory
-echo "vm.overcommit_memory = 1" >> /etc/sysctl.conf
-sysctl -p
+echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.d/99-redis.conf
+sudo sysctl --system
 ```
 
 ### Redis Configuration for Performance
@@ -560,7 +577,7 @@ redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
 Check logs for errors:
 
 ```bash
-sudo journalctl -u redis -n 50
+sudo journalctl -u redis-server -n 50
 cat /var/log/redis/redis-server.log
 ```
 
@@ -573,10 +590,10 @@ Common causes:
 
 ```bash
 # Check if Redis is running
-sudo systemctl status redis
+sudo systemctl status redis-server
 
 # Check if Redis is listening
-sudo netstat -tlnp | grep 6379
+sudo ss -tlnp | grep 6379
 
 # Test local connection
 redis-cli ping
@@ -601,10 +618,10 @@ If you need to remove Redis:
 
 ```bash
 # Stop the service
-sudo systemctl stop redis
+sudo systemctl stop redis-server
 
 # Remove Redis packages
-sudo apt remove --purge redis-server redis-tools -y
+sudo apt remove --purge redis redis-server redis-tools -y
 
 # Remove data and configuration (careful!)
 sudo rm -rf /var/lib/redis /etc/redis

@@ -33,6 +33,8 @@ flowchart TD
 
 ### Common Server Error Response
 
+Some authorization servers include an OAuth-style JSON body with a 5xx response:
+
 ```json
 {
   "error": "server_error",
@@ -113,14 +115,14 @@ class OAuth2ClientWithRetry {
     async withRetry(operation) {
         let lastError;
 
-        for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+        for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
             try {
                 return await operation();
             } catch (error) {
                 lastError = error;
 
                 // Only retry on server errors (5xx) or network errors
-                if (!this.isRetryable(error)) {
+                if (!this.isRetryable(error) || attempt === this.maxRetries) {
                     throw error;
                 }
 
@@ -137,7 +139,7 @@ class OAuth2ClientWithRetry {
 
     isRetryable(error) {
         // Retry on network errors
-        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        if (error instanceof TypeError) {
             return true;
         }
 
@@ -326,7 +328,7 @@ class OAuth2ErrorHandler {
             }
         }
 
-        // OAuth2 specific errors
+        // OAuth-style provider errors
         if (error.error) {
             switch (error.error) {
                 case 'server_error':

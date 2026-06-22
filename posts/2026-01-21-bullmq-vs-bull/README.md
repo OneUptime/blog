@@ -91,13 +91,13 @@ const comparisonTable: FeatureComparison[] = [
   },
   {
     feature: 'Job Batching',
-    bull: 'Limited',
-    bullmq: 'addBulk() optimized',
+    bull: 'addBulk() supported',
+    bullmq: 'addBulk() supported',
   },
   {
     feature: 'Rate Limiting',
-    bull: 'Basic limiter option',
-    bullmq: 'Advanced rate limiting with groups',
+    bull: 'Queue limiter with optional groupKey',
+    bullmq: 'Global worker limiter; groups in BullMQ Pro',
   },
   {
     feature: 'Sandboxed Processors',
@@ -112,12 +112,12 @@ const comparisonTable: FeatureComparison[] = [
   {
     feature: 'Repeatable Jobs',
     bull: 'cron option',
-    bullmq: 'pattern option with more features',
+    bullmq: 'Job Schedulers with pattern/every options',
   },
   {
     feature: 'Job Groups',
-    bull: 'Not supported',
-    bullmq: 'Native support',
+    bull: 'Rate-limiter groupKey only',
+    bullmq: 'BullMQ Pro feature',
   },
   {
     feature: 'Maintenance',
@@ -309,7 +309,7 @@ console.log('Children:', flow.children);
 ### Bull Rate Limiting
 
 ```typescript
-// Bull - basic rate limiting
+// Bull - rate limiting
 import Queue from 'bull';
 
 const queue = new Queue('rate-limited', {
@@ -320,16 +320,31 @@ const queue = new Queue('rate-limited', {
   },
 });
 
-// Global limiter only - no per-group limiting
+// Queue-wide limiter for this example
 queue.process(async (job) => {
   return processJob(job.data);
+});
+
+// Bull also supports groupKey-based rate limiting from job data
+const groupedQueue = new Queue('grouped-rate-limited', {
+  redis: 'redis://localhost:6379',
+  limiter: {
+    max: 10,
+    duration: 60000,
+    groupKey: 'customerId',
+  },
+});
+
+await groupedQueue.add({
+  customerId: 'customer-123',
+  endpoint: '/users',
 });
 ```
 
 ### BullMQ Rate Limiting
 
 ```typescript
-// BullMQ - advanced rate limiting
+// BullMQ - global and manual rate limiting
 import { Queue, Worker } from 'bullmq';
 
 const connection = { host: 'localhost', port: 6379 };
@@ -347,43 +362,17 @@ const worker = new Worker('rate-limited', async (job) => {
   },
 });
 
-// Group-based rate limiting (new in BullMQ)
-const groupedQueue = new Queue('grouped', {
-  connection,
-});
+// Check whether the queue is currently rate limited
+const ttl = await queue.getRateLimitTtl(100);
+if (ttl > 0) {
+  console.log(`Queue is rate limited for ${ttl}ms`);
+}
 
-// Add jobs with group IDs for per-group rate limiting
-await groupedQueue.add(
-  'api-call',
-  { endpoint: '/users' },
-  {
-    group: {
-      id: 'customer-123', // Rate limit per customer
-    },
-  }
-);
+// Reset the current rate limit key if needed
+await queue.removeRateLimitKey();
 
-await groupedQueue.add(
-  'api-call',
-  { endpoint: '/orders' },
-  {
-    group: {
-      id: 'customer-456', // Different rate limit group
-    },
-  }
-);
-
-// Worker with group rate limiting
-const groupedWorker = new Worker('grouped', async (job) => {
-  return callAPI(job.data);
-}, {
-  connection,
-  limiter: {
-    max: 10,       // 10 per minute
-    duration: 60000,
-    groupKey: 'group', // Enable group-based limiting
-  },
-});
+// Note: open-source BullMQ removed groupKey support in v3.
+// Per-group rate limiting is available in BullMQ Pro groups.
 ```
 
 ## Event Handling
@@ -532,86 +521,72 @@ const repeatableJobs = await queue.getRepeatableJobs();
 await queue.removeRepeatableByKey(repeatableJobs[0].key);
 ```
 
-### BullMQ Repeatable Jobs
+### BullMQ Job Schedulers
 
 ```typescript
-// BullMQ - enhanced repeatable with 'pattern' instead of 'cron'
-import { Queue, Worker } from 'bullmq';
+// BullMQ v5.16+ - Job Schedulers replace legacy repeatable jobs
+import { Queue } from 'bullmq';
 
 const connection = { host: 'localhost', port: 6379 };
 const queue = new Queue('scheduled', { connection });
 
-// Cron pattern (renamed from 'cron' to 'pattern')
-await queue.add(
-  'cleanup', // Job name is required
-  { task: 'cleanup' },
+// Cron pattern
+await queue.upsertJobScheduler(
+  'cleanup-scheduler',
   {
-    repeat: {
-      pattern: '0 0 * * *', // Daily at midnight
-      tz: 'America/New_York',
-    },
+    pattern: '0 0 * * *', // Daily at midnight
+    tz: 'America/New_York',
+  },
+  {
+    name: 'cleanup',
+    data: { task: 'cleanup' },
   }
 );
 
 // Every X milliseconds
-await queue.add(
-  'heartbeat',
-  { task: 'heartbeat' },
+await queue.upsertJobScheduler(
+  'heartbeat-scheduler',
   {
-    repeat: {
-      every: 5000, // Every 5 seconds
-    },
+    every: 5000, // Every 5 seconds
+  },
+  {
+    name: 'heartbeat',
+    data: { task: 'heartbeat' },
   }
 );
 
-// New: Run immediately and then repeat
-await queue.add(
-  'immediate-repeat',
-  { task: 'sync' },
+// Limit number of repetitions
+await queue.upsertJobScheduler(
+  'limited-scheduler',
   {
-    repeat: {
-      pattern: '0 * * * *', // Hourly
-      immediately: true, // Run once immediately
-    },
+    every: 60000, // Every minute
+    limit: 10, // Only 10 times total
+  },
+  {
+    name: 'limited-repeat',
+    data: { task: 'trial' },
   }
 );
 
-// New: Limit number of repetitions
-await queue.add(
-  'limited-repeat',
-  { task: 'trial' },
+// Start and end dates
+await queue.upsertJobScheduler(
+  'time-bounded-scheduler',
   {
-    repeat: {
-      every: 60000, // Every minute
-      limit: 10, // Only 10 times total
-    },
+    pattern: '0 9 * * *', // Daily at 9 AM
+    startDate: new Date('2024-01-01'),
+    endDate: new Date('2024-12-31'),
+  },
+  {
+    name: 'time-bounded',
+    data: { task: 'campaign' },
   }
 );
 
-// New: Start and end dates
-await queue.add(
-  'time-bounded',
-  { task: 'campaign' },
-  {
-    repeat: {
-      pattern: '0 9 * * *', // Daily at 9 AM
-      startDate: new Date('2024-01-01'),
-      endDate: new Date('2024-12-31'),
-    },
-  }
-);
+// Get and manage job schedulers
+const schedulers = await queue.getJobSchedulers(0, 9, true);
 
-// Get and manage repeatable jobs
-const repeatableJobs = await queue.getRepeatableJobs();
-
-// Remove by key
-await queue.removeRepeatableByKey(repeatableJobs[0].key);
-
-// Remove by job name and pattern
-await queue.removeRepeatable('cleanup', {
-  pattern: '0 0 * * *',
-  tz: 'America/New_York',
-});
+// Remove by scheduler ID
+await queue.removeJobScheduler('cleanup-scheduler');
 ```
 
 ## Performance Comparison
@@ -637,11 +612,12 @@ async function benchmarkBull(): Promise<number> {
     return { id: job.id };
   });
 
-  // Add jobs
+  // Add jobs using addBulk for a fairer comparison
   const addStart = Date.now();
-  for (let i = 0; i < JOBS_COUNT; i++) {
-    await queue.add({ index: i });
-  }
+  const jobs = Array.from({ length: JOBS_COUNT }, (_, i) => ({
+    data: { index: i },
+  }));
+  await queue.addBulk(jobs);
   console.log(`Bull - Adding ${JOBS_COUNT} jobs: ${Date.now() - addStart}ms`);
 
   // Wait for completion
@@ -672,7 +648,7 @@ async function benchmarkBullMQ(): Promise<number> {
     return { id: job.id };
   }, { connection, concurrency: 100 });
 
-  // Add jobs using addBulk (optimized)
+  // Add jobs using addBulk
   const addStart = Date.now();
   const jobs = Array.from({ length: JOBS_COUNT }, (_, i) => ({
     name: 'job',
@@ -709,32 +685,34 @@ async function runBenchmarks(): Promise<void> {
   console.log(`BullMQ total time: ${bullmqTime}ms`);
   console.log(`BullMQ throughput: ${Math.round(JOBS_COUNT / (bullmqTime / 1000))} jobs/sec\n`);
 
-  console.log(`BullMQ is ${((bullTime - bullmqTime) / bullTime * 100).toFixed(1)}% faster`);
+  const difference = ((bullTime - bullmqTime) / bullTime * 100).toFixed(1);
+  console.log(`BullMQ difference: ${difference}% compared with Bull in this run`);
 }
 
 runBenchmarks();
 ```
 
-### Typical Results
+### Interpreting Results
 
 ```typescript
-// Typical benchmark results:
+// Benchmark results depend on Redis latency, Node.js version,
+// hardware, job payload size, and whether both libraries use bulk APIs.
 const benchmarkResults = {
   jobCount: 10000,
   bull: {
-    addTime: 4200, // ms
-    totalTime: 8500, // ms
-    throughput: 1176, // jobs/sec
+    addTime: 'measure in your environment',
+    totalTime: 'measure in your environment',
+    throughput: 'measure in your environment',
   },
   bullmq: {
-    addTime: 850, // ms (5x faster with addBulk)
-    totalTime: 3200, // ms
-    throughput: 3125, // jobs/sec
+    addTime: 'measure in your environment',
+    totalTime: 'measure in your environment',
+    throughput: 'measure in your environment',
   },
   improvement: {
-    addSpeed: '5x faster job addition',
-    throughput: '2.7x higher throughput',
-    memoryUsage: '30% less memory',
+    addSpeed: 'compare measured add times',
+    throughput: 'compare measured throughput',
+    memoryUsage: 'profile with production-like payloads',
   },
 };
 ```
@@ -808,17 +786,20 @@ const queue2 = new Queue('queue2', {
   connection: sharedConnection,
 });
 
-// Connection with cluster support
-const clusterConnection = {
-  host: 'cluster-endpoint.redis.com',
-  port: 6379,
-  // Cluster options
-  enableReadyCheck: false,
-  maxRetriesPerRequest: null,
-};
+// Connection with Redis Cluster support
+const clusterConnection = new Redis.Cluster(
+  [{ host: 'cluster-endpoint.redis.com', port: 6379 }],
+  {
+    redisOptions: {
+      enableReadyCheck: false,
+      maxRetriesPerRequest: null,
+    },
+  }
+);
 
 const clusterQueue = new Queue('cluster-queue', {
   connection: clusterConnection,
+  prefix: '{cluster-queue}',
 });
 ```
 
@@ -1047,7 +1028,7 @@ function recommendQueue(requirements: ProjectRequirements): string {
   }
 
   if (requirements.needsGroupRateLimiting) {
-    return 'BullMQ - group-based rate limiting only in BullMQ';
+    return 'BullMQ Pro - group-based rate limiting is a Pro groups feature';
   }
 
   if (requirements.needsTypeScript) {
@@ -1055,7 +1036,7 @@ function recommendQueue(requirements: ProjectRequirements): string {
   }
 
   if (requirements.needsMaxPerformance) {
-    return 'BullMQ - better performance with addBulk';
+    return 'BullMQ - benchmark with your workload and Redis topology';
   }
 
   // Existing Bull code
@@ -1074,8 +1055,8 @@ BullMQ is the clear choice for new projects:
 1. **Better Architecture** - Separation of Queue, Worker, and QueueEvents provides cleaner code
 2. **TypeScript First** - Built-in types without external dependencies
 3. **Job Flows** - Native support for complex job dependencies
-4. **Better Performance** - Optimized operations like addBulk
+4. **Modern Performance Model** - Benchmark with your workload and Redis topology
 5. **Active Development** - Bull is in maintenance mode
-6. **Advanced Features** - Group rate limiting, enhanced repeatable jobs
+6. **Advanced Features** - Job Schedulers and optional BullMQ Pro groups
 
 For existing Bull projects, consider migrating to BullMQ to take advantage of these improvements and ensure long-term support.

@@ -168,9 +168,10 @@ flowchart TB
         L["1. Local (current function)"]
         P["2. Parent function locals"]
         G["3. Global variables"]
-        E["4. Environment variables"]
+        E["4. Inherited environment variables"]
 
-        L --> P --> G --> E
+        L --> P --> G
+        E --> G
     end
 
     subgraph "Example"
@@ -309,7 +310,7 @@ echo "Subshell var: ${subshell_only:-does not exist}"
 
 ```bash
 #!/bin/bash
-# Commands in pipelines run in subshells
+# Commands in pipelines run in subshells by default
 
 count=0
 
@@ -328,7 +329,7 @@ done < <(echo -e "a\nb\nc")
 
 echo "Count: $count"  # Now 3
 
-# Solution 2: Use lastpipe (Bash 4.2+)
+# Solution 2: Use lastpipe (Bash 4.2+, when job control is not active)
 shopt -s lastpipe
 
 count=0
@@ -336,7 +337,7 @@ echo -e "a\nb\nc" | while read -r line; do
     count=$((count + 1))
 done
 
-echo "Count: $count"  # Now 3
+echo "Count: $count"  # Now 3 when job control is not active
 ```
 
 ### Subshell Detection
@@ -363,6 +364,7 @@ echo -e "\n=== Parentheses Subshell ==="
 ( is_subshell )
 
 echo -e "\n=== Pipeline Subshell ==="
+shopt -u lastpipe
 echo "" | is_subshell
 ```
 
@@ -679,10 +681,11 @@ echo "  After subshell: subshell_test=$subshell_test"
 # Test 4: Pipeline scope
 echo -e "\nTest 4: Pipeline scope"
 pipeline_count=0
+shopt -u lastpipe
 echo "a b c" | while read -r word; do
     pipeline_count=$((pipeline_count + 1))
 done
-echo "  After pipeline: pipeline_count=$pipeline_count (expected: 0)"
+echo "  After pipeline: pipeline_count=$pipeline_count (expected: 0 with lastpipe disabled)"
 
 echo -e "\n=== All tests complete ==="
 ```
@@ -707,7 +710,7 @@ Variable scoping in Bash differs significantly from most programming languages:
 
 - **Variables are global by default** - always use `local` in functions
 - **Subshells create isolated copies** - changes don't propagate to parent
-- **Pipelines run in subshells** - use process substitution for variable modification
+- **Pipelines run in subshells by default** - use process substitution for variable modification
 - **Namerefs provide safe indirection** - for passing variable names to functions
 
 Understanding these behaviors helps you write more reliable and maintainable shell scripts.

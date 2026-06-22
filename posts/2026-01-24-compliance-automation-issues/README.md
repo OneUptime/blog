@@ -106,13 +106,11 @@ why_it_matters: |
 how_to_fix: |
   Add the required labels to your deployment metadata:
 
-  ```yaml
   metadata:
     labels:
       team: platform       # Your team name
       environment: prod    # dev, staging, or prod
       app: api-server     # Application name
-  ```bash
 
 exceptions: |
   System namespaces (kube-system, monitoring) are exempt.
@@ -121,7 +119,7 @@ exceptions: |
 references:
   - https://wiki.company.com/labeling-standards
   - https://wiki.company.com/cost-allocation
-```text
+```
 
 ## Automated Security Scanning
 
@@ -140,6 +138,9 @@ on:
 jobs:
   container-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -153,16 +154,20 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
           exit-code: '1'  # Fail on critical/high vulnerabilities
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
   infrastructure-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -176,7 +181,7 @@ jobs:
           soft_fail: false
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'checkov-results.sarif'
@@ -200,6 +205,9 @@ Scanning at build time is not enough. Monitor runtime for compliance drift.
 
 ```yaml
 # falco-rules.yaml
+- list: allowed_egress_ips
+  items: [10.0.1.10, 10.0.1.11, 192.0.2.10]
+
 - rule: Unauthorized Process in Container
   desc: Detect when a process not in the allowed list runs in container
   condition: >

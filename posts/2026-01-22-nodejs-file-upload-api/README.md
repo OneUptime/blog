@@ -57,9 +57,7 @@ const crypto = require('crypto');
 
 // Disk storage with custom filename
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
+  destination: 'uploads/',
   filename: (req, file, cb) => {
     // Generate unique filename
     const uniqueSuffix = crypto.randomBytes(16).toString('hex');
@@ -120,6 +118,7 @@ const uploadImage = multer({
 
 ```javascript
 const multer = require('multer');
+const path = require('path');
 
 const createUploader = (options) => {
   const { allowedTypes, maxSize, maxFiles } = options;
@@ -129,7 +128,7 @@ const createUploader = (options) => {
       destination: 'uploads/',
       filename: (req, file, cb) => {
         const ext = path.extname(file.originalname);
-        cb(null, `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`);
+        cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 11)}${ext}`);
       },
     }),
     fileFilter: (req, file, cb) => {
@@ -274,14 +273,14 @@ app.post('/upload', upload.single('file'), (req, res) => {
 ### AWS S3 Upload
 
 ```bash
-npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
+npm install @aws-sdk/client-s3
 ```
 
 ```javascript
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { Upload } = require('@aws-sdk/lib-storage');
 const multer = require('multer');
 const crypto = require('crypto');
+const path = require('path');
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -295,7 +294,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const key = `uploads/${crypto.randomUUID()}-${req.file.originalname}`;
+    const safeOriginalName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const key = `uploads/${crypto.randomUUID()}-${safeOriginalName}`;
     
     const uploadParams = {
       Bucket: process.env.S3_BUCKET,
@@ -325,6 +325,7 @@ npm install @google-cloud/storage
 ```javascript
 const { Storage } = require('@google-cloud/storage');
 const multer = require('multer');
+const path = require('path');
 
 const storage = new Storage({
   keyFilename: './service-account.json',
@@ -335,7 +336,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const filename = `${Date.now()}-${req.file.originalname}`;
+    const safeOriginalName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${Date.now()}-${safeOriginalName}`;
     const blob = bucket.file(filename);
     
     const blobStream = blob.createWriteStream({
@@ -349,11 +351,15 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     });
     
     blobStream.on('finish', async () => {
-      // Make file public (optional)
-      await blob.makePublic();
-      
-      const publicUrl = `https://storage.googleapis.com/${process.env.GCS_BUCKET}/${filename}`;
-      res.json({ url: publicUrl });
+      try {
+        // Make file public (optional)
+        await blob.makePublic();
+        
+        const publicUrl = `https://storage.googleapis.com/${process.env.GCS_BUCKET}/${filename}`;
+        res.json({ url: publicUrl });
+      } catch (error) {
+        res.status(500).json({ error: 'Upload failed' });
+      }
     });
     
     blobStream.end(req.file.buffer);
@@ -367,33 +373,60 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
 ### Server-Side Streaming
 
+```bash
+npm install busboy
+```
+
 ```javascript
 const express = require('express');
 const busboy = require('busboy');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+fs.mkdirSync('uploads', { recursive: true });
 
 app.post('/upload-progress', (req, res) => {
   const bb = busboy({ headers: req.headers });
   const totalSize = parseInt(req.headers['content-length'], 10);
   let uploadedSize = 0;
+  const fileWrites = [];
   
   bb.on('file', (name, file, info) => {
     const { filename, mimeType } = info;
-    const savePath = path.join('uploads', filename);
+    const ext = path.extname(filename || '');
+    const safeFilename = `${crypto.randomUUID()}${ext}`;
+    const savePath = path.join('uploads', safeFilename);
     const writeStream = fs.createWriteStream(savePath);
+    const writePromise = new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+      file.on('error', reject);
+    });
+    fileWrites.push(writePromise);
     
     file.on('data', (chunk) => {
       uploadedSize += chunk.length;
-      const progress = Math.round((uploadedSize / totalSize) * 100);
-      console.log(`Progress: ${progress}%`);
+      if (totalSize) {
+        const progress = Math.round((uploadedSize / totalSize) * 100);
+        console.log(`Progress: ${progress}%`);
+      }
     });
     
     file.pipe(writeStream);
   });
   
-  bb.on('finish', () => {
-    res.json({ message: 'Upload complete' });
+  bb.on('close', async () => {
+    try {
+      await Promise.all(fileWrites);
+      res.json({ message: 'Upload complete' });
+    } catch (error) {
+      res.status(500).json({ error: 'Upload failed' });
+    }
+  });
+
+  bb.on('error', () => {
+    res.status(400).json({ error: 'Invalid upload request' });
   });
   
   req.pipe(bb);
@@ -410,8 +443,10 @@ npm install sharp
 const sharp = require('sharp');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 
 const upload = multer({ storage: multer.memoryStorage() });
+fs.mkdirSync('uploads', { recursive: true });
 
 app.post('/upload-image', upload.single('image'), async (req, res) => {
   try {
@@ -448,13 +483,14 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 
 const app = express();
 
 // Ensure upload directory exists
 const uploadDir = 'uploads';
-fs.mkdir(uploadDir, { recursive: true });
+fs.mkdirSync(uploadDir, { recursive: true });
 
 // Storage configuration
 const storage = multer.diskStorage({
@@ -528,8 +564,9 @@ app.use('/uploads', express.static(uploadDir));
 // Delete file
 app.delete('/api/files/:filename', async (req, res) => {
   try {
-    const filepath = path.join(uploadDir, req.params.filename);
-    await fs.unlink(filepath);
+    const filename = path.basename(req.params.filename);
+    const filepath = path.join(uploadDir, filename);
+    await fsPromises.unlink(filepath);
     res.json({ success: true });
   } catch (error) {
     res.status(404).json({ error: 'File not found' });

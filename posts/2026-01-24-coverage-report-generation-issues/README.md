@@ -82,8 +82,11 @@ module.exports = {
   // Wrong: This excludes everything in src/
   collectCoverageFrom: [
     '!src/**/*.js'  // The ! negates the pattern
-  ],
+  ]
+};
 
+// jest.config.js - Correct configuration
+module.exports = {
   // Correct: Include src files, exclude tests
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
@@ -221,7 +224,6 @@ module.exports = {
 ```javascript
 // jest.config.js for TypeScript projects
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   collectCoverage: true,
   collectCoverageFrom: [
@@ -231,12 +233,15 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
 
   // Important: Map coverage back to TypeScript source
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json',
-      // Enable source maps for accurate coverage
-      diagnostics: false
-    }
+  transform: {
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        tsconfig: 'tsconfig.json',
+        // Enable source maps for accurate coverage
+        diagnostics: false
+      }
+    ]
   }
 };
 ```
@@ -272,12 +277,6 @@ NYC is commonly used with Mocha, Ava, and other test runners.
 
 **Issue: NYC with ES modules**
 
-```bash
-# Use the experimental loader for ES modules
-
-node --experimental-vm-modules node_modules/.bin/nyc mocha
-```
-
 ```json
 {
   "nyc": {
@@ -296,24 +295,21 @@ node --experimental-vm-modules node_modules/.bin/nyc mocha
 
 ### Pytest Coverage Issues (Python)
 
-**Issue: Coverage missing dynamically loaded modules**
+**Issue: Coverage missing subprocess coverage**
 
-```ini
-# pytest.ini or pyproject.toml
+```toml
+# pyproject.toml
 [tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=html --cov-report=xml"
+addopts = "--cov --cov-context=test --cov-report=html --cov-report=xml"
 
 [tool.coverage.run]
 source = ["src"]
 branch = true
-# Important: Enable dynamic context
-dynamic_context = "test_function"
-# Measure coverage of subprocesses
-parallel = true
+# Measure coverage of subprocesses with coverage.py 7.10+
+patch = ["subprocess"]
 
 [tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
+exclude_also = [
     "def __repr__",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
@@ -371,10 +367,11 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/lcov.info
           fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
 ```
 
@@ -391,12 +388,13 @@ jobs:
     echo "Coverage file size: $(wc -c < coverage/lcov.info) bytes"
 
 - name: Upload coverage
-  uses: codecov/codecov-action@v4
+  uses: codecov/codecov-action@v5
   with:
     files: ./coverage/lcov.info
     flags: unittests
     name: codecov-umbrella
     fail_ci_if_error: true
+    token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ---
@@ -408,15 +406,15 @@ When you have multiple test suites (unit, integration, e2e), you need to merge c
 ### Merging with NYC
 
 ```bash
-# Run different test suites with separate coverage outputs
-nyc --reporter=json --report-dir=coverage/unit npm run test:unit
-nyc --reporter=json --report-dir=coverage/integration npm run test:integration
+# Run different test suites and keep raw coverage from each run
+nyc --silent npm run test:unit
+nyc --silent --no-clean npm run test:integration
 
-# Merge the coverage reports
-nyc merge coverage coverage/merged.json
+# Optional: merge raw coverage data into one JSON file
+nyc merge .nyc_output coverage/merged.json
 
-# Generate final report from merged data
-nyc report --reporter=lcov --reporter=text --temp-dir=coverage
+# Generate final reports from the combined raw data
+nyc report --reporter=lcov --reporter=text
 ```
 
 ### Merging with Jest
@@ -424,19 +422,17 @@ nyc report --reporter=lcov --reporter=text --temp-dir=coverage
 ```javascript
 // jest.config.js
 module.exports = {
+  collectCoverage: true,
   projects: [
     {
       displayName: 'unit',
-      testMatch: ['<rootDir>/src/**/*.test.js'],
-      coverageDirectory: 'coverage/unit'
+      testMatch: ['<rootDir>/src/**/*.test.js']
     },
     {
       displayName: 'integration',
-      testMatch: ['<rootDir>/integration/**/*.test.js'],
-      coverageDirectory: 'coverage/integration'
+      testMatch: ['<rootDir>/integration/**/*.test.js']
     }
   ],
-  // Merge coverage from all projects
   collectCoverageFrom: ['src/**/*.js'],
   coverageDirectory: 'coverage/merged'
 };
@@ -452,22 +448,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
-      - run: npm run test:unit -- --coverage
+      - run: npx nyc --silent npm run test:unit
       - uses: actions/upload-artifact@v4
         with:
           name: unit-coverage
-          path: coverage/
+          path: .nyc_output/
 
   integration-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
-      - run: npm run test:integration -- --coverage
+      - run: npx nyc --silent npm run test:integration
       - uses: actions/upload-artifact@v4
         with:
           name: integration-coverage
-          path: coverage/
+          path: .nyc_output/
 
   merge-coverage:
     needs: [unit-tests, integration-tests]
@@ -481,12 +477,14 @@ jobs:
       - name: Merge coverage reports
         run: |
           npm ci
-          npx nyc merge coverage-parts coverage/merged.json
-          npx nyc report --reporter=lcov --temp-dir=coverage
+          mkdir -p .nyc_output
+          find coverage-parts -name '*.json' -exec cp {} .nyc_output/ \;
+          npx nyc report --reporter=lcov --temp-dir=.nyc_output
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           files: coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ---

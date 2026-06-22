@@ -26,16 +26,16 @@ When integrating with OAuth providers (Google, GitHub, Salesforce, etc.), you ne
 ```python
 import redis
 import json
+import os
 import time
 import requests
 from cryptography.fernet import Fernet
-from datetime import datetime, timedelta
+from datetime import datetime
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
-# Generate with: Fernet.generate_key()
-
-ENCRYPTION_KEY = b'your-32-byte-encryption-key-here='
+# Generate with: Fernet.generate_key() and store securely, e.g., in env vars.
+ENCRYPTION_KEY = os.environ['OAUTH_TOKEN_ENCRYPTION_KEY'].encode()
 
 class OAuthTokenCache:
     def __init__(self, prefix='oauth_token'):
@@ -82,7 +82,7 @@ class OAuthTokenCache:
 
         # Set TTL slightly longer than token expiry to allow refresh
         ttl = tokens.get('expires_in', 3600) + 300  # +5 min buffer
-        r.setex(key, ttl, encrypted)
+        r.set(key, encrypted, ex=ttl)
 
         # Track user's OAuth connections
         r.sadd(f"{self.prefix}:connections:{user_id}", provider)
@@ -105,6 +105,8 @@ class OAuthTokenCache:
             if token_data.get('refresh_token'):
                 new_tokens = self._refresh_token(provider, token_data['refresh_token'])
                 if new_tokens:
+                    if 'refresh_token' not in new_tokens:
+                        new_tokens['refresh_token'] = token_data['refresh_token']
                     self.store_tokens(user_id, provider, new_tokens)
                     return new_tokens['access_token']
 
@@ -168,14 +170,30 @@ class OAuthTokenCache:
 
     def _revoke_with_provider(self, provider, access_token):
         """Revoke token with the OAuth provider."""
-        revoke_urls = {
-            'google': 'https://oauth2.googleapis.com/revoke',
-            'github': f'https://api.github.com/applications/CLIENT_ID/token'
+        revoke_configs = {
+            'google': {
+                'url': 'https://oauth2.googleapis.com/revoke'
+            },
+            'github': {
+                'url': 'https://api.github.com/applications/YOUR_GITHUB_CLIENT_ID/token',
+                'client_id': 'YOUR_GITHUB_CLIENT_ID',
+                'client_secret': 'YOUR_GITHUB_CLIENT_SECRET'
+            }
         }
 
-        url = revoke_urls.get(provider)
-        if url and provider == 'google':
-            requests.post(url, params={'token': access_token})
+        config = revoke_configs.get(provider)
+        if not config:
+            return
+
+        if provider == 'google':
+            requests.post(config['url'], params={'token': access_token})
+        elif provider == 'github':
+            requests.delete(
+                config['url'],
+                auth=(config['client_id'], config['client_secret']),
+                json={'access_token': access_token},
+                headers={'Accept': 'application/vnd.github+json'}
+            )
 
     def get_user_connections(self, user_id):
         """Get all OAuth providers connected by a user."""
@@ -235,21 +253,24 @@ const redis = new Redis();
 
 // Encryption setup
 const ENCRYPTION_KEY = crypto.scryptSync('your-secret-password', 'salt', 32);
-const IV_LENGTH = 16;
+const IV_LENGTH = 12;
 
 function encrypt(text) {
   const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
   let encrypted = cipher.update(text);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
+  const authTag = cipher.getAuthTag();
+  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted.toString('hex');
 }
 
 function decrypt(text) {
   const parts = text.split(':');
   const iv = Buffer.from(parts[0], 'hex');
-  const encryptedText = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encryptedText = Buffer.from(parts[2], 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  decipher.setAuthTag(authTag);
   let decrypted = decipher.update(encryptedText);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
   return decrypted.toString();
@@ -291,7 +312,7 @@ class OAuthTokenCache {
     const ttl = (tokens.expires_in || 3600) + 300;
 
     await redis.pipeline()
-      .setex(key, ttl, encrypted)
+      .set(key, encrypted, 'EX', ttl)
       .sadd(`${this.prefix}:connections:${userId}`, provider)
       .exec();
 
@@ -314,6 +335,9 @@ class OAuthTokenCache {
       if (tokenData.refresh_token) {
         const newTokens = await this.refreshToken(provider, tokenData.refresh_token);
         if (newTokens) {
+          if (!newTokens.refresh_token) {
+            newTokens.refresh_token = tokenData.refresh_token;
+          }
           await this.storeTokens(userId, provider, newTokens);
           return newTokens.access_token;
         }
@@ -416,7 +440,7 @@ class ScopedOAuthCache(OAuthTokenCache):
 
         encrypted = self._encrypt(token_data)
         ttl = tokens.get('expires_in', 3600) + 300
-        r.setex(key, ttl, encrypted)
+        r.set(key, encrypted, ex=ttl)
 
         # Track scopes for this provider
         r.sadd(f"{self.prefix}:scopes:{user_id}:{provider}", scope_key)
@@ -460,6 +484,8 @@ class ScopedOAuthCache(OAuthTokenCache):
             if token_data.get('refresh_token'):
                 new_tokens = self._refresh_token(provider, token_data['refresh_token'])
                 if new_tokens:
+                    if 'refresh_token' not in new_tokens:
+                        new_tokens['refresh_token'] = token_data['refresh_token']
                     self.store_tokens(user_id, provider, new_tokens, scope_key)
                     return new_tokens['access_token']
             return None
@@ -544,6 +570,8 @@ class DistributedOAuthCache(OAuthTokenCache):
                 new_tokens = self._refresh_token(provider, token_data['refresh_token'])
 
                 if new_tokens:
+                    if 'refresh_token' not in new_tokens:
+                        new_tokens['refresh_token'] = token_data['refresh_token']
                     self.store_tokens(user_id, provider, new_tokens)
                     return new_tokens['access_token']
 
@@ -586,6 +614,7 @@ class ServiceAccountTokenCache:
 
     def __init__(self, prefix='service_token'):
         self.prefix = prefix
+        self.cipher = Fernet(ENCRYPTION_KEY)
 
     def get_token(self, service_name, token_endpoint, client_id, client_secret, scope=None):
         """Get or fetch a service account token."""
@@ -594,7 +623,7 @@ class ServiceAccountTokenCache:
         # Check cache
         cached = r.get(cache_key)
         if cached:
-            token_data = json.loads(cached)
+            token_data = json.loads(self.cipher.decrypt(cached.encode()))
             if token_data['expires_at'] > int(time.time()) + 60:
                 return token_data['access_token']
 
@@ -610,7 +639,8 @@ class ServiceAccountTokenCache:
             }
 
             ttl = max(1, expires_at - int(time.time()) - 60)
-            r.setex(cache_key, ttl, json.dumps(cache_data))
+            encrypted = self.cipher.encrypt(json.dumps(cache_data).encode()).decode()
+            r.set(cache_key, encrypted, ex=ttl)
 
             return token_data['access_token']
 

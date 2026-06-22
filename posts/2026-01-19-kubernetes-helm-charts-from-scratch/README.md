@@ -429,6 +429,24 @@ spec:
       {{- end }}
 ```
 
+### serviceaccount.yaml
+
+```yaml
+# templates/serviceaccount.yaml
+{{- if .Values.serviceAccount.create -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "myapp.serviceAccountName" . }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+```
+
 ### service.yaml
 
 ```yaml
@@ -533,6 +551,29 @@ data:
   {{- range $key, $value := .Values.secrets }}
   {{ $key }}: {{ $value | b64enc | quote }}
   {{- end }}
+{{- end }}
+```
+
+### pvc.yaml
+
+```yaml
+# templates/pvc.yaml
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "myapp.fullname" . }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
 {{- end }}
 ```
 

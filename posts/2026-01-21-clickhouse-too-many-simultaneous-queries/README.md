@@ -64,15 +64,25 @@ ORDER BY elapsed DESC;
 SELECT
     name,
     value
-FROM system.settings
+FROM system.server_settings
 WHERE name LIKE '%concurrent%'
    OR name LIKE '%connection%';
 
--- User-specific limits
+-- Current session limits for this user
 SELECT
+    name,
+    value
+FROM system.settings
+WHERE name IN ('max_concurrent_queries_for_user', 'max_concurrent_queries_for_all_users');
+
+-- Explicit limits assigned directly to users or settings profiles
+SELECT
+    profile_name,
     user_name,
-    max_concurrent_queries_for_user
-FROM system.users;
+    setting_name,
+    value
+FROM system.settings_profile_elements
+WHERE setting_name IN ('max_concurrent_queries_for_user', 'max_concurrent_queries_for_all_users');
 ```
 
 ### Query Patterns Analysis
@@ -111,11 +121,20 @@ LIMIT 20;
     <!-- Maximum concurrent queries -->
     <max_concurrent_queries>200</max_concurrent_queries>
 
-    <!-- Maximum concurrent queries from single user -->
-    <max_concurrent_queries_for_user>50</max_concurrent_queries_for_user>
-
     <!-- Maximum connections -->
     <max_connections>4096</max_connections>
+</clickhouse>
+```
+
+```xml
+<!-- /etc/clickhouse-server/users.d/query-limits.xml -->
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Maximum concurrent queries from single user -->
+            <max_concurrent_queries_for_user>50</max_concurrent_queries_for_user>
+        </default>
+    </profiles>
 </clickhouse>
 ```
 
@@ -132,7 +151,7 @@ SETTINGS
     max_execution_time = 60;
 
 -- Apply to user
-ALTER USER dashboard_user SETTINGS PROFILE high_concurrency;
+ALTER USER dashboard_user ADD PROFILES 'high_concurrency';
 ```
 
 ### Kill Long-Running Queries
@@ -166,7 +185,7 @@ KILL QUERY WHERE query LIKE '%expensive_table%';
             <!-- Enable queuing instead of immediate rejection -->
             <queue_max_wait_ms>5000</queue_max_wait_ms>
 
-            <!-- Maximum queries in queue -->
+            <!-- Global per-profile concurrent query limit -->
             <max_concurrent_queries_for_all_users>1000</max_concurrent_queries_for_all_users>
         </default>
     </profiles>
@@ -212,12 +231,13 @@ with pool.pull() as conn:
 ```javascript
 // Node.js with connection pooling
 const { createPool } = require('generic-pool');
-const ClickHouse = require('@clickhouse/client');
+const { createClient } = require('@clickhouse/client');
 
 const pool = createPool({
     create: async () => {
         return createClient({
-            host: 'http://clickhouse:8123'
+            url: 'http://clickhouse:8123',
+            max_open_connections: 1
         });
     },
     destroy: async (client) => {
@@ -283,7 +303,7 @@ class QueryCoalescer:
                     self._execute_after_delay(sql, timeout)
                 )
 
-            return await future
+        return await future
 
     async def _execute_after_delay(self, sql, delay):
         await asyncio.sleep(delay)
@@ -302,8 +322,8 @@ class QueryCoalescer:
 
 ```python
 # Cache query results
-from functools import lru_cache
 import hashlib
+import time
 
 class CachedClickHouse:
     def __init__(self, client, cache_ttl=60):
@@ -426,7 +446,7 @@ FROM system.processes;
 ```yaml
 # Prometheus alert
 - alert: ClickHouseHighConcurrency
-  expr: clickhouse_processes_count > 80
+  expr: ClickHouseMetrics_Query > 80
   for: 5m
   labels:
     severity: warning

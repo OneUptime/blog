@@ -43,8 +43,8 @@ log_disconnections = on
 log_lock_waits = on
 log_temp_files = 0  # Log all temp file usage
 
-# Auto-explain for slow queries
-shared_preload_libraries = 'auto_explain'
+# Query statistics and auto-explain for slow queries
+shared_preload_libraries = 'pg_stat_statements, auto_explain'
 auto_explain.log_min_duration = '1s'
 auto_explain.log_analyze = on
 auto_explain.log_buffers = on
@@ -78,7 +78,7 @@ sudo apt install pgbadger
 pgbadger /var/log/postgresql/*.log -o report.html
 
 # Incremental analysis
-pgbadger --incremental /var/log/postgresql/*.log
+pgbadger --incremental /var/log/postgresql/*.log -O /var/www/pg_reports/
 ```
 
 ## Optimization Workflow
@@ -96,12 +96,12 @@ pgbadger --incremental /var/log/postgresql/*.log
 ```yaml
 # Prometheus alert rule
 - alert: PostgreSQLSlowQueries
-  expr: rate(pg_stat_statements_seconds_total[5m]) > 1
+  expr: sum(rate(pg_stat_statements_seconds_total[5m])) > 1
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "High slow query rate detected"
+    summary: "High query execution time detected"
 ```
 
 ## Best Practices

@@ -20,7 +20,7 @@ Common reasons for migration:
 - **Pub/Sub**: Require real-time messaging
 - **Atomic Operations**: Need complex atomic transactions
 - **Lua Scripting**: Want server-side logic
-- **TTL per Field**: Need more granular expiration
+- **Hash Field TTL**: Need more granular expiration for hash fields (Redis 7.4+)
 
 ## Migration Planning
 
@@ -69,11 +69,11 @@ patterns = [
 | `set key value` | `SET key value` | Direct mapping |
 | `get key` | `GET key` | Direct mapping |
 | `delete key` | `DEL key` | Direct mapping |
-| `incr key delta` | `INCRBY key delta` | Direct mapping |
-| `decr key delta` | `DECRBY key delta` | Direct mapping |
+| `incr key delta` | `INCRBY key delta` | Similar, but Redis initializes missing keys to 0 |
+| `decr key delta` | `DECRBY key delta` | Similar, but Redis can go below 0 |
 | `add key value` | `SET key value NX` | Only if not exists |
 | `replace key value` | `SET key value XX` | Only if exists |
-| `append key value` | `APPEND key value` | Direct mapping |
+| `append key value` | `APPEND key value` | Similar, but Redis creates missing keys |
 | `prepend key value` | Custom Lua script | No direct equivalent |
 | `cas key value cas_token` | `WATCH/MULTI/EXEC` | Different approach |
 | `gets key` | `GET` + application logic | No CAS token |
@@ -105,7 +105,7 @@ def cold_migrate():
         try:
             value = mc.get(key)
             if value is not None:
-                # Preserve TTL if possible (Memcached doesn't expose TTL)
+                # TTL cannot be preserved unless you track it separately
                 r.set(key, value)
                 migrated += 1
         except Exception as e:
@@ -141,7 +141,7 @@ class DualWriteCache:
         if self.mode in ('redis', 'dual'):
             try:
                 if ttl > 0:
-                    self.r.setex(key, ttl, value)
+                    self.r.set(key, value, ex=ttl)
                 else:
                     self.r.set(key, value)
             except Exception as e:
@@ -180,8 +180,8 @@ class DualWriteCache:
 
 
 # Migration phases:
-# Phase 1: mode='dual' - Write to both, read from Memcached
-# Phase 2: mode='dual' with Redis read preference
+# Phase 1: mode='dual' - Write to both, read from Redis with Memcached fallback
+# Phase 2: Validate Redis hit rate and mismatch metrics
 # Phase 3: mode='redis' - Full Redis
 ```
 
@@ -191,7 +191,6 @@ Best for: High-risk migrations, validation needed
 
 ```python
 import logging
-import hashlib
 
 class ShadowModeCache:
     """Compare results between Memcached and Redis."""
@@ -206,7 +205,7 @@ class ShadowModeCache:
         # Write to both
         self.mc.set(key, value, time=ttl)
         if ttl > 0:
-            self.r.setex(key, ttl, value)
+            self.r.set(key, value, ex=ttl)
         else:
             self.r.set(key, value)
 
@@ -223,27 +222,26 @@ class ShadowModeCache:
             self.mismatches += 1
             self.logger.warning(
                 f"Mismatch for key {key}: "
-                f"MC={mc_value[:50] if mc_value else None}, "
-                f"Redis={redis_value[:50] if redis_value else None}"
+                f"MC={repr(mc_value)[:50] if mc_value is not None else None}, "
+                f"Redis={repr(redis_value)[:50] if redis_value is not None else None}"
             )
 
         # Return Memcached value (source of truth during shadow mode)
         return mc_value
 
-    def get_mismatch_rate(self):
+    def get_mismatch_count(self):
         return self.mismatches
 ```
 
-### Strategy 4: Live Sync with Replication
+### Strategy 4: Proxy-Assisted Routing
 
-Use a tool to replicate Memcached to Redis in real-time:
+Use proxy or routing tools where they fit your rollout. Note that twemproxy can proxy either Memcached or Redis protocol, but it does not translate or replicate writes from Memcached to Redis by itself:
 
-```python
+```yaml
 # Using a proxy-based approach
-# Configure mcrouter or twemproxy to write to both
+# Configure separate pools while application code handles dual writes
 
 # twemproxy configuration (nutcracker.yml)
-"""
 alpha:
   listen: 127.0.0.1:22121
   hash: fnv1a_64
@@ -261,7 +259,6 @@ beta:
   redis: true
   servers:
    - 127.0.0.1:6379:1
-"""
 ```
 
 ## Client Code Changes
@@ -296,12 +293,12 @@ results = mc.get_multi(['key1', 'key2', 'key3'])
 
 ```python
 import redis
+from redis.exceptions import WatchError
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Set with TTL
-r.setex('user:123', 3600, '{"name": "Alice"}')
-# Or: r.set('user:123', '{"name": "Alice"}', ex=3600)
+r.set('user:123', '{"name": "Alice"}', ex=3600)
 
 # Get
 user = r.get('user:123')
@@ -320,7 +317,7 @@ with r.pipeline() as pipe:
             pipe.set('key', 'new_value')
             pipe.execute()
             break
-        except redis.WatchError:
+        except WatchError:
             continue
 
 # Multi-get
@@ -365,8 +362,7 @@ const Redis = require('ioredis');
 const redis = new Redis({ host: 'localhost', port: 6379 });
 
 // Set (async/await)
-await redis.setex('key', 3600, 'value');
-// Or: await redis.set('key', 'value', 'EX', 3600);
+await redis.set('key', 'value', 'EX', 3600);
 
 // Get
 const value = await redis.get('key');
@@ -386,6 +382,8 @@ const values = await redis.mget('key1', 'key2');
 
 ```java
 import net.spy.memcached.MemcachedClient;
+import java.net.InetSocketAddress;
+import java.util.concurrent.Future;
 
 MemcachedClient mc = new MemcachedClient(
     new InetSocketAddress("localhost", 11211));
@@ -405,12 +403,15 @@ Future<Object> future = mc.asyncGet("key");
 ```java
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.params.SetParams;
+import java.util.List;
 
 JedisPool pool = new JedisPool("localhost", 6379);
 
 try (Jedis jedis = pool.getResource()) {
     // Set
-    jedis.setex("key", 3600, "value");
+    jedis.set("key", "value", SetParams.setParams().ex(3600));
 
     // Get
     String value = jedis.get("key");
@@ -428,6 +429,11 @@ try (Jedis jedis = pool.getResource()) {
 Create a drop-in replacement layer for gradual migration:
 
 ```python
+import hashlib
+import json
+import redis
+from redis.exceptions import ResponseError, WatchError
+
 class RedisMemcacheCompat:
     """
     Redis client with Memcached-compatible interface.
@@ -437,6 +443,11 @@ class RedisMemcacheCompat:
     def __init__(self, servers=None, host='localhost', port=6379, **kwargs):
         self.r = redis.Redis(host=host, port=port, decode_responses=True, **kwargs)
 
+    def _cas_token(self, value):
+        if value is None:
+            return None
+        return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
     def set(self, key, value, time=0, min_compress_len=0):
         """Memcached-style set."""
         if isinstance(value, (dict, list)):
@@ -445,7 +456,7 @@ class RedisMemcacheCompat:
             value = str(value)
 
         if time > 0:
-            return self.r.setex(key, time, value)
+            return self.r.set(key, value, ex=time)
         return self.r.set(key, value)
 
     def get(self, key):
@@ -460,14 +471,14 @@ class RedisMemcacheCompat:
         """Increment a value."""
         try:
             return self.r.incrby(key, delta)
-        except redis.ResponseError:
+        except ResponseError:
             return None
 
     def decr(self, key, delta=1):
         """Decrement a value."""
         try:
             return self.r.decrby(key, delta)
-        except redis.ResponseError:
+        except ResponseError:
             return None
 
     def add(self, key, value, time=0):
@@ -490,7 +501,9 @@ class RedisMemcacheCompat:
 
     def append(self, key, value):
         """Append to a value."""
-        return self.r.append(key, value)
+        if not self.r.exists(key):
+            return False
+        return self.r.append(key, value) > 0
 
     def get_multi(self, keys):
         """Get multiple keys at once."""
@@ -504,7 +517,7 @@ class RedisMemcacheCompat:
             if isinstance(value, (dict, list)):
                 value = json.dumps(value)
             if time > 0:
-                pipe.setex(key, time, value)
+                pipe.set(key, value, ex=time)
             else:
                 pipe.set(key, value)
         return pipe.execute()
@@ -522,8 +535,8 @@ class RedisMemcacheCompat:
     def gets(self, key):
         """Get with CAS token (not directly supported, returns mock)."""
         value = self.r.get(key)
-        # Return value with a mock CAS token
-        return value, hash(value) if value else None
+        # Return value with a stable mock CAS token
+        return value, self._cas_token(value)
 
     def cas(self, key, value, cas_token, time=0):
         """CAS operation (implemented via WATCH)."""
@@ -531,17 +544,17 @@ class RedisMemcacheCompat:
             with self.r.pipeline() as pipe:
                 pipe.watch(key)
                 current = pipe.get(key)
-                if hash(current) != cas_token:
+                if current is None or self._cas_token(current) != cas_token:
                     pipe.unwatch()
                     return False
                 pipe.multi()
                 if time > 0:
-                    pipe.setex(key, time, value)
+                    pipe.set(key, value, ex=time)
                 else:
                     pipe.set(key, value)
                 pipe.execute()
                 return True
-        except redis.WatchError:
+        except WatchError:
             return False
 
 

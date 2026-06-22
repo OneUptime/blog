@@ -15,7 +15,7 @@ Autocomplete (search-as-you-type) improves user experience by suggesting relevan
 Three main approaches:
 
 1. **Completion Suggester** - Fastest, prefix-based
-2. **Edge N-grams** - Flexible, supports infix matching
+2. **Edge N-grams** - Flexible, supports prefix matching on each token
 3. **Search-as-you-type field** - Built-in, balanced approach
 
 ## Completion Suggester
@@ -217,7 +217,7 @@ curl -X GET "https://localhost:9200/products-context/_search" \
 
 ## Edge N-grams Approach
 
-Edge n-grams allow matching from the beginning of each word.
+Edge n-grams allow matching from the beginning of each token.
 
 ### Create Index with Edge N-gram Analyzer
 
@@ -489,7 +489,7 @@ Limitations:
 ### Edge N-grams
 
 Best for:
-- Infix matching needs
+- Prefix matching across tokenized text
 - Complex scoring requirements
 - Integration with full search
 
@@ -503,7 +503,8 @@ Considerations:
 Add caching layer:
 
 ```bash
-# Request cache is automatic for common queries
+# The shard request cache is enabled by default, but only caches size=0 searches.
+# Use an application cache for autocomplete APIs that return hits.
 curl -X PUT "https://localhost:9200/search-index/_settings" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -564,12 +565,12 @@ document.getElementById('search-input').addEventListener('input', async (e) => {
 Implementing autocomplete in Elasticsearch requires choosing the right approach for your use case:
 
 1. **Completion suggester** - For fastest prefix-based autocomplete
-2. **Edge n-grams** - For flexible matching with full query support
+2. **Edge n-grams** - For flexible token-prefix matching with full query support
 3. **Search-as-you-type** - For balanced, easy-to-implement solution
 
 Key takeaways:
 - Use completion suggester for high-performance prefix matching
-- Use edge n-grams when you need infix matching or complex scoring
+- Use edge n-grams when you need token-prefix matching or complex scoring
 - Always debounce client-side requests
 - Cache common queries
 - Monitor and optimize for sub-100ms response times

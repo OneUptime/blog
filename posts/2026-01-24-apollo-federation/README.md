@@ -48,10 +48,11 @@ mkdir apollo-gateway && cd apollo-gateway
 
 # Initialize the project
 npm init -y
+npm pkg set type=module
 
 # Install gateway dependencies
 # @apollo/gateway: The federation gateway runtime
-# @apollo/server: Apollo Server v4 for running the gateway
+# @apollo/server: Apollo Server for running the gateway
 # graphql: The GraphQL JavaScript reference implementation
 npm install @apollo/gateway @apollo/server graphql
 ```
@@ -64,12 +65,14 @@ mkdir users-subgraph && cd users-subgraph
 
 # Initialize the project
 npm init -y
+npm pkg set type=module
 
 # Install subgraph dependencies
 # @apollo/subgraph: Enables federation features in your schema
 # @apollo/server: Apollo Server for running the subgraph
 # graphql: Required peer dependency
-npm install @apollo/subgraph @apollo/server graphql
+# graphql-tag: Converts schema strings into DocumentNode objects for buildSubgraphSchema
+npm install @apollo/subgraph @apollo/server graphql graphql-tag
 ```
 
 ## Step 2: Create a Subgraph Service
@@ -81,11 +84,17 @@ Each subgraph needs to extend the base schema with federation directives. Here i
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { buildSubgraphSchema } from '@apollo/subgraph';
-import { gql } from 'graphql-tag';
+import gql from 'graphql-tag';
 
 // Define the schema using federation directives
 // The @key directive marks User as an entity that can be referenced by other subgraphs
 const typeDefs = gql`
+  extend schema
+    @link(
+      url: "https://specs.apollo.dev/federation/v2.0"
+      import: ["@key"]
+    )
+
   # Extend the Query type to add user-related queries
   type Query {
     # Get a user by their ID
@@ -150,9 +159,15 @@ The real power of federation comes from extending types defined in other subgrap
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { buildSubgraphSchema } from '@apollo/subgraph';
-import { gql } from 'graphql-tag';
+import gql from 'graphql-tag';
 
 const typeDefs = gql`
+  extend schema
+    @link(
+      url: "https://specs.apollo.dev/federation/v2.0"
+      import: ["@key", "@external"]
+    )
+
   type Query {
     # Get a product by ID
     product(id: ID!): Product
@@ -248,8 +263,6 @@ const gateway = new ApolloGateway({
 // Create the Apollo Server with the gateway
 const server = new ApolloServer({
   gateway,
-  // Disable subscriptions in the gateway (handled differently in federation)
-  subscriptions: false,
 });
 
 // Start the gateway server
@@ -346,13 +359,17 @@ Federation 2 introduces several useful directives for controlling schema composi
 
 ```graphql
 # products-subgraph/schema.graphql
+extend schema
+  @link(
+    url: "https://specs.apollo.dev/federation/v2.0"
+    import: ["@key", "@shareable", "@inaccessible", "@override", "@provides", "@requires", "@external"]
+  )
 
 # @shareable allows multiple subgraphs to resolve the same field
-type Product @key(fields: "id") {
-  id: ID!
+type ProductSummary @shareable {
+  upc: ID!
   name: String!
-  # Both subgraphs can resolve this field
-  price: Float! @shareable
+  price: Float!
 }
 
 # @inaccessible hides a field from the public API
@@ -364,10 +381,19 @@ type InternalProduct @key(fields: "id") {
 }
 
 # @override takes ownership of a field from another subgraph
-extend type User @key(fields: "id") {
-  id: ID! @external
+type User @key(fields: "id") {
+  id: ID!
   # This subgraph now owns the email field instead of users-subgraph
   email: String! @override(from: "users")
+}
+
+# Product is an entity owned by another subgraph
+extend type Product @key(fields: "id") {
+  id: ID! @external
+  name: String! @external
+  price: Float! @external
+  # Need the price to calculate the discount
+  discountedPrice: Float! @requires(fields: "price")
 }
 
 # @provides specifies which fields this subgraph can resolve
@@ -376,14 +402,6 @@ type Order @key(fields: "id") {
   id: ID!
   # When resolving product, this subgraph can also provide name and price
   product: Product! @provides(fields: "name price")
-}
-
-# @requires specifies fields needed from the entity to resolve a field
-extend type Product @key(fields: "id") {
-  id: ID! @external
-  price: Float! @external
-  # Need the price to calculate the discount
-  discountedPrice: Float! @requires(fields: "price")
 }
 ```
 
@@ -396,6 +414,7 @@ Proper error handling ensures failures in one subgraph do not crash the entire q
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { ApolloGateway, IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
+import { randomUUID } from 'node:crypto';
 
 // Custom data source with error handling and retry logic
 class AuthenticatedDataSource extends RemoteGraphQLDataSource {
@@ -470,7 +489,7 @@ const { url } = await startStandaloneServer(server, {
   // Build context for each request
   context: async ({ req }) => ({
     authToken: req.headers.authorization,
-    requestId: req.headers['x-request-id'] || crypto.randomUUID(),
+    requestId: req.headers['x-request-id'] || randomUUID(),
     startTime: Date.now(),
   }),
 });

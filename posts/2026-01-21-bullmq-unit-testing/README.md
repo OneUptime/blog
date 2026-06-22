@@ -86,11 +86,12 @@ export async function processOrder(
 
 ```typescript
 // workers/orderWorker.ts - Queue integration
-import { Worker, Job } from 'bullmq';
+import { Worker } from 'bullmq';
+import IORedis from 'ioredis';
 import { processOrder, OrderData, OrderDependencies } from '../processors/orderProcessor';
 
 export function createOrderWorker(
-  connection: Redis,
+  connection: IORedis,
   dependencies: OrderDependencies
 ): Worker {
   return new Worker<OrderData>(
@@ -303,7 +304,15 @@ Create realistic mock job objects for testing:
 
 ```typescript
 // __tests__/helpers/mockJob.ts
-import { Job } from 'bullmq';
+import { vi } from 'vitest';
+import type { Job } from 'bullmq';
+
+type MockJob<T> = Partial<Job<T>> & {
+  data: T;
+  opts: Job['opts'];
+  attemptsMade: number;
+  progress: number | object;
+};
 
 interface MockJobOptions<T> {
   id?: string;
@@ -317,8 +326,8 @@ interface MockJobOptions<T> {
   stacktrace?: string[];
 }
 
-export function createMockJob<T>(options: MockJobOptions<T>): Partial<Job<T>> {
-  const job: Partial<Job<T>> = {
+export function createMockJob<T>(options: MockJobOptions<T>): MockJob<T> {
+  const job = {
     id: options.id || `job-${Date.now()}`,
     name: options.name || 'test-job',
     data: options.data,
@@ -336,7 +345,7 @@ export function createMockJob<T>(options: MockJobOptions<T>): Partial<Job<T>> {
     getState: vi.fn().mockResolvedValue('active'),
     remove: vi.fn().mockResolvedValue(undefined),
     retry: vi.fn().mockResolvedValue(undefined),
-  };
+  } as MockJob<T>;
 
   if (options.returnvalue !== undefined) {
     (job as any).returnvalue = options.returnvalue;
@@ -479,11 +488,11 @@ describe('processor with job states', () => {
 
 ## Testing Async Patterns
 
-Test complex async scenarios:
+Test async operation ordering and timer scenarios:
 
 ```typescript
 describe('async patterns', () => {
-  it('should handle concurrent operations', async () => {
+  it('should preserve operation order', async () => {
     const processingOrder: string[] = [];
 
     mockDependencies.inventoryService.checkAvailability = vi.fn().mockImplementation(

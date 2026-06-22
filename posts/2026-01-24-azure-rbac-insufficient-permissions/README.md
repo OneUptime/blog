@@ -23,7 +23,7 @@ flowchart TB
 
     subgraph Role["Role Definition"]
         Actions[Allowed Actions]
-        NotActions[Denied Actions]
+        NotActions[Excluded Actions]
         DataActions[Data Actions]
     end
 
@@ -94,9 +94,9 @@ Extract:
 ### Find Roles That Include the Action
 
 ```bash
-# Search for roles that allow the specific action
+# Search for roles that explicitly allow or wildcard-match the specific action
 az role definition list \
-  --query "[?contains(permissions[0].actions, 'Microsoft.Compute/virtualMachines/start')].{Name:roleName, Description:description}" \
+  --query "[?contains(to_string(permissions[].actions[]), 'Microsoft.Compute/virtualMachines/start/action') || contains(to_string(permissions[].actions[]), 'Microsoft.Compute/virtualMachines/*') || contains(to_string(permissions[].actions[]), 'Microsoft.Compute/*') || contains(to_string(permissions[].actions[]), '*')].{Name:roleName, Description:description}" \
   --output table
 
 # Get details of a specific role
@@ -142,7 +142,7 @@ az role assignment create \
 | Owner | Any | Full access including RBAC |
 | Contributor | Any | Full access except RBAC |
 | Reader | Any | View all resources |
-| User Access Administrator | Any | Manage RBAC only |
+| User Access Administrator | Any | Manage user access and role assignments |
 | Virtual Machine Contributor | Compute | Manage VMs |
 | Storage Blob Data Contributor | Storage | Read/write blobs |
 | Key Vault Secrets User | Key Vault | Read secrets |
@@ -282,10 +282,10 @@ az keyvault set-policy \
 ```bash
 # Error: AuthorizationFailed for Microsoft.Authorization/roleAssignments/write
 
-# Solution: Assign User Access Administrator or Owner
+# Solution: Assign Role Based Access Control Administrator, User Access Administrator, or Owner
 az role assignment create \
   --assignee admin@domain.com \
-  --role "User Access Administrator" \
+  --role "Role Based Access Control Administrator" \
   --scope "/subscriptions/<subscription-id>"
 ```
 
@@ -318,7 +318,7 @@ az role assignment list \
   --assignee "$PRINCIPAL_ID" \
   --scope "$SCOPE" \
   --include-inherited \
-  --query "[].{Role:roleDefinitionName, Scope:scope, Inherited:condition}" \
+  --query "[].{Role:roleDefinitionName, Scope:scope}" \
   --output table
 
 echo -e "\n=== All Role Assignments ==="
@@ -339,7 +339,7 @@ done
 
 ## Permission Propagation Delay
 
-RBAC changes can take up to 5 minutes to propagate:
+RBAC changes can take up to 10 minutes to propagate:
 
 ```bash
 # After assigning a role, wait before testing
@@ -349,7 +349,7 @@ az role assignment create \
   --scope "/subscriptions/<subscription-id>"
 
 echo "Waiting for RBAC propagation..."
-sleep 300  # Wait 5 minutes
+sleep 600  # Wait 10 minutes
 
 # Now test the operation
 az vm list --resource-group mygroup

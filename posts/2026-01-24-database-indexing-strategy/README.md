@@ -80,8 +80,8 @@ LIMIT 100;
 ```
 
 ```sql
--- Find missing indexes based on sequential scans
--- PostgreSQL: Check which tables need indexes
+-- Find tables that may need indexes based on sequential scans
+-- PostgreSQL: Check which tables need closer query-plan review
 
 SELECT
     schemaname,
@@ -104,6 +104,7 @@ LIMIT 20;
 -- Look for:
 -- - High seq_scan count with low idx_scan
 -- - High avg_rows_per_seq_scan (means scanning many rows)
+-- Then confirm with EXPLAIN; sequential scans are sometimes the right plan.
 ```
 
 ```sql
@@ -130,7 +131,7 @@ LIMIT 20;
 -- PostgreSQL: Create indexes for the example query
 
 -- 1. Composite index for the WHERE clause
--- Column order matters: most selective first, or match query order
+-- Column order matters: equality columns first, then range/sort columns
 CREATE INDEX CONCURRENTLY idx_orders_status_created
 ON orders (status, created_at DESC)
 WHERE status = 'completed';  -- Partial index for common filter
@@ -140,10 +141,10 @@ WHERE status = 'completed';  -- Partial index for common filter
 CREATE INDEX CONCURRENTLY idx_order_items_order_id
 ON order_items (order_id);
 
--- 3. Covering index to avoid table lookups
--- Includes all columns needed by the query
+-- 3. Covering index to enable index-only scans for order columns
+-- Includes columns needed from orders; visibility and joins still affect the final plan
 CREATE INDEX CONCURRENTLY idx_orders_covering
-ON orders (status, created_at DESC)
+ON orders (created_at DESC)
 INCLUDE (id, customer_id)
 WHERE status = 'completed';
 
@@ -162,9 +163,9 @@ WHERE status = 'completed';
 ### Composite Index Column Order
 
 ```sql
--- Rule: Order columns by selectivity and query patterns
+-- Rule: Order columns by query patterns; equality columns usually come before ranges
 
--- Good: High selectivity column first
+-- Good: Equality column first, then range/sort column
 CREATE INDEX idx_good ON events (user_id, created_at);
 -- Supports: WHERE user_id = X
 -- Supports: WHERE user_id = X AND created_at > Y
@@ -185,9 +186,9 @@ CREATE INDEX idx_range ON sales (region, sale_date);
 CREATE INDEX idx_active_users ON users (email)
 WHERE status = 'active';
 
--- Index only recent orders
+-- Index orders after a fixed cutoff date
 CREATE INDEX idx_recent_orders ON orders (customer_id, created_at)
-WHERE created_at > CURRENT_DATE - INTERVAL '90 days';
+WHERE created_at >= DATE '2025-10-26';
 
 -- Index only non-null values
 CREATE INDEX idx_phone ON customers (phone)
@@ -231,7 +232,7 @@ WHERE idx_scan = 0
   )
 ORDER BY pg_relation_size(indexrelid) DESC;
 
--- Find duplicate indexes
+-- Find indexes with the same key columns (review opclasses, predicates, and INCLUDE columns before dropping)
 SELECT
     a.indrelid::regclass as table_name,
     a.indexrelid::regclass as index_a,
@@ -243,7 +244,7 @@ JOIN pg_index b ON a.indrelid = b.indrelid
   AND a.indexrelid < b.indexrelid
   AND a.indkey = b.indkey;
 
--- Check index bloat
+-- Find large indexes for deeper bloat analysis
 SELECT
     schemaname,
     relname as table_name,
@@ -259,7 +260,7 @@ LIMIT 20;
 ```
 
 ```sql
--- Rebuild bloated indexes (PostgreSQL)
+-- Rebuild indexes after confirming bloat with a dedicated bloat query or extension
 -- Use CONCURRENTLY to avoid locking
 
 REINDEX INDEX CONCURRENTLY idx_orders_status_created;

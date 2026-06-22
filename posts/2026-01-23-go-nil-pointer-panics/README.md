@@ -14,7 +14,7 @@ Nil pointer dereference is one of the most common runtime panics in Go. This gui
 
 ## Understanding the Panic
 
-A nil pointer dereference happens when you try to access a field or method on a nil pointer:
+A nil pointer dereference happens when you try to dereference a nil pointer, such as accessing a field through it:
 
 ```go
 package main
@@ -74,11 +74,20 @@ type Logger interface {
     Log(string)
 }
 
-var logger Logger  // nil interface
+type ConsoleLogger struct {
+    Prefix string
+}
 
-// This check passes but method call panics
+func (l *ConsoleLogger) Log(msg string) {
+    println(l.Prefix, msg)
+}
+
+var concrete *ConsoleLogger = nil
+var logger Logger = concrete  // non-nil interface containing nil pointer
+
+// This check passes, but the method can still panic
 if logger != nil {
-    // Wait, this CAN still panic in some cases!
+    logger.Log("hello")  // PANIC when Log dereferences l
 }
 ```
 
@@ -123,7 +132,7 @@ func processUser(user *User) {
 // Instead of returning nil
 func findUser(id string) (*User, error) {
     user, exists := db[id]
-    if !exists {
+    if !exists || user == nil {
         return nil, fmt.Errorf("user not found: %s", id)
     }
     return user, nil
@@ -158,12 +167,12 @@ type Config struct {
 
 ```go
 type Service struct {
-    logger *Logger
+    logger Logger
     db     *Database
 }
 
 // NewService ensures all fields are initialized
-func NewService(logger *Logger, db *Database) (*Service, error) {
+func NewService(logger Logger, db *Database) (*Service, error) {
     if logger == nil {
         return nil, errors.New("logger is required")
     }
@@ -347,11 +356,11 @@ func main() {
     if err != nil {
         fmt.Println("Error is not nil!")  // This prints!
         
-        // This would panic
-        // fmt.Println(err.Error())  // Works but confusing
+        // This would panic because Error dereferences a nil receiver
+        // fmt.Println(err.Error())
         
         // The interface has a type (*MyError) but nil value
-        fmt.Printf("err type: %T, value: %v\n", err, err)
+        fmt.Printf("err type: %T, value: %#v\n", err, err)
     }
 }
 ```
@@ -397,14 +406,9 @@ func IsNil[T any](p *T) bool {
     return p == nil
 }
 
-// Usage
-func main() {
-    var name *string
-    
-    // Safe access
-    safeName := safe.Deref(name)  // Returns ""
-    namedDefault := safe.DerefOr(name, "Anonymous")  // Returns "Anonymous"
-}
+// Usage from another package:
+// safeName := safe.Deref(name)  // Returns ""
+// namedDefault := safe.DerefOr(name, "Anonymous")  // Returns "Anonymous"
 ```
 
 ---
@@ -455,8 +459,8 @@ nilaway ./...
 go install honnef.co/go/tools/cmd/staticcheck@latest
 staticcheck ./...
 
-# golangci-lint (includes multiple checkers)
-golangci-lint run --enable=nilness
+# golangci-lint (run govet analyzers, including nilness when enabled)
+golangci-lint run --enable=govet
 ```
 
 ---

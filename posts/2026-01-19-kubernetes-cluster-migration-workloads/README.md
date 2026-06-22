@@ -17,7 +17,7 @@ flowchart TD
     subgraph "Migration Approaches"
         A[Redeployment] --> |GitOps| SIMPLE[Simple<br/>Stateless Apps]
         B[Velero Backup/Restore] --> |With PVs| STATEFUL[Stateful<br/>Applications]
-        C[Live Migration] --> |Zero Downtime| CRITICAL[Critical<br/>Services]
+        C[Live Migration] --> |Near-Zero Downtime| CRITICAL[Critical<br/>Services]
         D[Blue-Green Clusters] --> |Traffic Switch| ENTERPRISE[Enterprise<br/>Migration]
     end
 ```
@@ -26,7 +26,7 @@ flowchart TD
 |----------|----------|------------|----------|
 | GitOps Redeployment | Minutes | Low | Stateless apps with external data |
 | Velero Backup/Restore | Minutes-Hours | Medium | Full cluster or namespace migration |
-| Live Migration | Zero | High | Critical production workloads |
+| Live Migration | Near-zero | High | Critical production workloads |
 | Blue-Green Clusters | Seconds | High | Enterprise-grade migrations |
 
 ## Pre-Migration Assessment
@@ -120,7 +120,7 @@ kubectl get svc --all-namespaces -o json | \
 # Check for cluster-specific annotations
 echo "Checking for cloud-specific annotations..."
 kubectl get ingress --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.annotations | 
+  jq -r '.items[] | select((.metadata.annotations // {}) | 
     keys[] | test("aws|gcp|azure")) | 
     "\(.metadata.namespace)/\(.metadata.name)"'
 ```
@@ -195,19 +195,21 @@ argocd app sync myapp-new
 # Install Velero on source cluster
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.12.0 \
   --bucket velero-migration-bucket \
   --backup-location-config region=us-west-2 \
   --snapshot-location-config region=us-west-2 \
+  --use-node-agent \
   --secret-file ./credentials-velero
 
 # Install on destination cluster (same bucket for shared backups)
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.12.0 \
   --bucket velero-migration-bucket \
   --backup-location-config region=us-west-2 \
   --snapshot-location-config region=us-west-2 \
+  --use-node-agent \
   --secret-file ./credentials-velero
 ```
 
@@ -265,8 +267,8 @@ velero restore logs myapp-restore
 ### Cross-Cloud Migration with Velero
 
 ```yaml
-# velero-restic-config.yaml
-# Use Restic for portable PV backup (filesystem-level)
+# velero-fsb-config.yaml
+# Use Velero File System Backup for portable PV backup (filesystem-level)
 apiVersion: velero.io/v1
 kind: BackupStorageLocation
 metadata:
@@ -288,16 +290,16 @@ spec:
   includedNamespaces:
     - myapp
   storageLocation: cross-cloud
-  # Use Restic for portable backups
-  defaultVolumesToRestic: true
+  # Use File System Backup for portable backups
+  defaultVolumesToFsBackup: true
   ttl: 720h  # 30 days
 ```
 
 ```bash
-# Create backup with Restic (portable across clouds)
+# Create backup with File System Backup (portable across clouds)
 velero backup create cross-cloud-migration \
   --include-namespaces myapp \
-  --default-volumes-to-restic \
+  --default-volumes-to-fs-backup \
   --storage-location cross-cloud \
   --wait
 
@@ -307,33 +309,34 @@ velero restore create cross-cloud-restore \
   --wait
 ```
 
-## Strategy 3: Live Migration (Zero Downtime)
+## Strategy 3: Live Migration (Near-Zero Downtime)
 
 ### Step 1: Set Up Cross-Cluster Networking
 
-```yaml
+```bash
 # Using Submariner for cross-cluster connectivity
-# Install on both clusters
-apiVersion: submariner.io/v1alpha1
-kind: Broker
-metadata:
-  name: submariner-broker
-  namespace: submariner-broker
-spec:
-  globalnetEnabled: true
----
-apiVersion: submariner.io/v1alpha1
-kind: Submariner
-metadata:
-  name: submariner
-  namespace: submariner-operator
-spec:
-  broker: k8s
-  brokerK8sApiServer: https://broker-cluster.example.com
-  brokerK8sApiServerToken: <token>
-  clusterID: cluster-a
-  serviceCIDR: 10.96.0.0/12
-  clusterCIDR: 10.244.0.0/16
+# Install subctl
+curl -Ls https://get.submariner.io | bash
+export PATH=$PATH:~/.local/bin
+
+# Deploy the broker on a cluster reachable from both workload clusters
+subctl deploy-broker --context broker-cluster --globalnet
+
+# Join both workload clusters to the broker
+subctl join broker-info.subm \
+  --context old-cluster \
+  --clusterid old-cluster \
+  --clustercidr 10.244.0.0/16 \
+  --servicecidr 10.96.0.0/12
+
+subctl join broker-info.subm \
+  --context new-cluster \
+  --clusterid new-cluster \
+  --clustercidr 10.245.0.0/16 \
+  --servicecidr 10.97.0.0/12
+
+# Verify cross-cluster connectivity
+subctl verify --context old-cluster --tocontext new-cluster --verbose
 ```
 
 ### Step 2: Deploy to Both Clusters
@@ -374,7 +377,7 @@ spec:
 ```yaml
 # Using Istio for traffic management
 # istio-traffic-split.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp
@@ -516,7 +519,7 @@ spec:
       restartPolicy: Never
 ```
 
-### Streaming Replication for Zero-Downtime DB Migration
+### Streaming Replication for Near-Zero-Downtime DB Migration
 
 ```yaml
 # postgres-streaming-replica.yaml

@@ -317,16 +317,16 @@ class VulnerableExamples:
 
     @staticmethod
     def vulnerable_stdlib():
-        """VULNERABLE: Standard library without protection"""
-        import xml.etree.ElementTree as ET  # Vulnerable to XXE
-        # ET.fromstring(malicious_xml)  # DON'T DO THIS
+        """RISKY: Standard library without protection against XML bombs"""
+        import xml.etree.ElementTree as ET  # Risky for untrusted XML
+        # ET.fromstring(malicious_xml)  # DON'T DO THIS for untrusted XML
         pass
 
     @staticmethod
     def vulnerable_lxml():
         """VULNERABLE: lxml with default settings"""
         from lxml import etree
-        # Default lxml parser resolves entities
+        # Older lxml defaults resolved entities; configure the parser explicitly
         # etree.fromstring(malicious_xml)  # DON'T DO THIS
         pass
 
@@ -407,35 +407,59 @@ if __name__ == '__main__':
  */
 class SecureXMLParser {
 
+    private static function rejectDoctype(string $xmlString): void {
+        if (preg_match('/<!DOCTYPE|<!ENTITY/i', $xmlString)) {
+            throw new InvalidArgumentException('DOCTYPE and ENTITY declarations are not allowed');
+        }
+    }
+
+    private static function secureOptions(): int {
+        $options = LIBXML_NONET;
+
+        if (defined('LIBXML_NO_XXE')) {
+            $options |= LIBXML_NO_XXE;
+        }
+
+        return $options;
+    }
+
     /**
      * Parse XML string securely
      */
     public static function parseString(string $xmlString): SimpleXMLElement {
-        // CRITICAL: Disable external entity loading BEFORE parsing
-        $previousValue = libxml_disable_entity_loader(true);
-
         // Disable error output to prevent information leakage
         libxml_use_internal_errors(true);
+        self::rejectDoctype($xmlString);
+
+        $previousLoader = null;
+        if (PHP_VERSION_ID < 80000) {
+            $previousLoader = libxml_get_external_entity_loader();
+            libxml_set_external_entity_loader(function () {
+                return null;
+            });
+        }
 
         try {
             // Parse with secure options
             $xml = simplexml_load_string(
                 $xmlString,
                 'SimpleXMLElement',
-                LIBXML_NONET | LIBXML_NOENT  // Disable network and entity substitution
+                self::secureOptions()
             );
 
             if ($xml === false) {
                 $errors = libxml_get_errors();
                 libxml_clear_errors();
-                throw new InvalidArgumentException('Invalid XML: ' . $errors[0]->message);
+                $message = $errors[0]->message ?? 'Unknown parsing error';
+                throw new InvalidArgumentException('Invalid XML: ' . $message);
             }
 
             return $xml;
 
         } finally {
-            // Restore previous setting
-            libxml_disable_entity_loader($previousValue);
+            if (PHP_VERSION_ID < 80000) {
+                libxml_set_external_entity_loader($previousLoader);
+            }
         }
     }
 
@@ -455,14 +479,22 @@ class SecureXMLParser {
      * Parse with DOMDocument securely
      */
     public static function parseDOM(string $xmlString): DOMDocument {
-        $previousValue = libxml_disable_entity_loader(true);
         libxml_use_internal_errors(true);
+        self::rejectDoctype($xmlString);
+
+        $previousLoader = null;
+        if (PHP_VERSION_ID < 80000) {
+            $previousLoader = libxml_get_external_entity_loader();
+            libxml_set_external_entity_loader(function () {
+                return null;
+            });
+        }
 
         try {
             $dom = new DOMDocument();
 
             // Secure loading options
-            $options = LIBXML_NONET | LIBXML_NOENT | LIBXML_DTDLOAD;
+            $options = self::secureOptions();
 
             $success = $dom->loadXML($xmlString, $options);
 
@@ -475,7 +507,9 @@ class SecureXMLParser {
             return $dom;
 
         } finally {
-            libxml_disable_entity_loader($previousValue);
+            if (PHP_VERSION_ID < 80000) {
+                libxml_set_external_entity_loader($previousLoader);
+            }
         }
     }
 
@@ -657,18 +691,28 @@ function secureXmlParser(maxSize = 1024 * 1024) {
         }
 
         let body = '';
+        let tooLarge = false;
 
         req.on('data', chunk => {
+            if (tooLarge) {
+                return;
+            }
+
             body += chunk;
 
             // Check size during streaming
             if (body.length > maxSize) {
-                req.destroy();
+                tooLarge = true;
                 res.status(413).json({ error: 'Request too large' });
+                req.destroy();
             }
         });
 
         req.on('end', () => {
+            if (tooLarge) {
+                return;
+            }
+
             try {
                 req.xmlBody = parser.parse(body);
                 next();
@@ -678,7 +722,9 @@ function secureXmlParser(maxSize = 1024 * 1024) {
         });
 
         req.on('error', error => {
-            res.status(400).json({ error: 'Error reading request' });
+            if (!tooLarge && !res.headersSent) {
+                res.status(400).json({ error: 'Error reading request' });
+            }
         });
     };
 }
@@ -732,10 +778,10 @@ graph TD
 |----------|-------------------|---------------|
 | Java | DocumentBuilderFactory | disallow-doctype-decl = true |
 | Python | defusedxml | Use instead of stdlib |
-| PHP | libxml_disable_entity_loader | Call before parsing |
+| PHP | SimpleXML/DOM with safe libxml options | Reject DOCTYPE and avoid LIBXML_NOENT/LIBXML_DTDLOAD |
 | Node.js | fast-xml-parser | processEntities = false |
 | .NET | XmlReaderSettings | DtdProcessing.Prohibit |
-| Ruby | Nokogiri | NONET, NOENT flags |
+| Ruby | Nokogiri | NONET, avoid NOENT/DTDLOAD |
 
 ---
 

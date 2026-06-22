@@ -39,7 +39,7 @@ Most production systems use a hybrid approach, which we will explore in detail.
 import redis
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Optional, Set
 
 # Connect to Redis
@@ -85,32 +85,37 @@ class SocialFeedManager:
 
     def follow_user(self, follower_id: str, followee_id: str) -> bool:
         """Create a follow relationship."""
-        pipe = r.pipeline()
-
         # Add to follower's following set
-        pipe.sadd(f"user:{follower_id}:following", followee_id)
+        added = r.sadd(f"user:{follower_id}:following", followee_id)
+        if not added:
+            return False
+
+        pipe = r.pipeline()
 
         # Add to followee's followers set
         pipe.sadd(f"user:{followee_id}:followers", follower_id)
 
-        # Update counts
+        # Update counts only for new follow relationships
         pipe.hincrby(f"user:{follower_id}:stats", "following_count", 1)
         pipe.hincrby(f"user:{followee_id}:stats", "followers_count", 1)
 
-        results = pipe.execute()
-        return results[0] == 1  # Returns 1 if newly added
+        pipe.execute()
+        return True
 
     def unfollow_user(self, follower_id: str, followee_id: str) -> bool:
         """Remove a follow relationship."""
+        removed = r.srem(f"user:{follower_id}:following", followee_id)
+        if not removed:
+            return False
+
         pipe = r.pipeline()
 
-        pipe.srem(f"user:{follower_id}:following", followee_id)
         pipe.srem(f"user:{followee_id}:followers", follower_id)
         pipe.hincrby(f"user:{follower_id}:stats", "following_count", -1)
         pipe.hincrby(f"user:{followee_id}:stats", "followers_count", -1)
 
-        results = pipe.execute()
-        return results[0] == 1
+        pipe.execute()
+        return True
 
     def get_followers(self, user_id: str) -> Set[str]:
         """Get all followers of a user."""
@@ -167,6 +172,7 @@ class SocialFeedManager:
 
         # Remove from user's posts
         pipe.zrem(f"user:{user_id}:posts", post_id)
+        pipe.zrem(f"feed:{user_id}", post_id)
 
         # Remove from followers' feeds
         followers = self.get_followers(user_id)
@@ -181,21 +187,22 @@ class SocialFeedManager:
         followers = self.get_followers(post.user_id)
         timestamp = post.created_at.timestamp()
 
-        if not followers:
-            return
-
         # Use pipelining for efficiency
         pipe = r.pipeline()
+
+        # Also add to author's own feed
+        pipe.zadd(f"feed:{post.user_id}", {post.post_id: timestamp})
+        pipe.zremrangebyrank(f"feed:{post.user_id}", 0, -(self.MAX_FEED_SIZE + 1))
+
+        if not followers:
+            pipe.execute()
+            return
 
         for follower_id in followers:
             # Add to follower's feed
             pipe.zadd(f"feed:{follower_id}", {post.post_id: timestamp})
             # Trim feed to max size
             pipe.zremrangebyrank(f"feed:{follower_id}", 0, -(self.MAX_FEED_SIZE + 1))
-
-        # Also add to author's own feed
-        pipe.zadd(f"feed:{post.user_id}", {post.post_id: timestamp})
-        pipe.zremrangebyrank(f"feed:{post.user_id}", 0, -(self.MAX_FEED_SIZE + 1))
 
         pipe.execute()
 
@@ -209,7 +216,7 @@ class SocialFeedManager:
         end = start + limit - 1
 
         # Get post IDs from feed sorted set
-        post_ids = r.zrevrange(f"feed:{user_id}", start, end)
+        post_ids = r.zrange(f"feed:{user_id}", start, end, desc=True)
 
         if not post_ids:
             return []
@@ -240,11 +247,13 @@ class SocialFeedManager:
             cursor = datetime.now().timestamp() + 1  # Start from now
 
         # Get posts older than cursor
-        post_ids_with_scores = r.zrevrangebyscore(
+        post_ids_with_scores = r.zrange(
             f"feed:{user_id}",
-            cursor,
+            f"({cursor}",
             "-inf",
-            start=0,
+            desc=True,
+            byscore=True,
+            offset=0,
             num=limit + 1,  # Get one extra to check if there are more
             withscores=True
         )
@@ -342,15 +351,15 @@ class HybridFeedManager(SocialFeedManager):
         start = (page - 1) * limit
         end = start + limit - 1
 
-        pushed_posts = r.zrevrange(
+        pushed_posts = r.zrange(
             f"feed:{user_id}",
             start,
             end,
+            desc=True,
             withscores=True
         )
 
         # Get celebrities the user follows
-        following = self.get_following(user_id)
         celebrities = r.sinter("celebrity_users", f"user:{user_id}:following")
 
         # Pull recent posts from celebrities
@@ -358,10 +367,11 @@ class HybridFeedManager(SocialFeedManager):
         if celebrities:
             pipe = r.pipeline()
             for celeb_id in celebrities:
-                pipe.zrevrange(
+                pipe.zrange(
                     f"user:{celeb_id}:posts",
                     0,
                     limit - 1,
+                    desc=True,
                     withscores=True
                 )
 
@@ -684,7 +694,7 @@ def handle_connect():
     join_room(f"user:{user_id}")
 
     def send_update(data):
-        socketio.emit('feed_update', data, room=f"user:{user_id}")
+        socketio.emit('feed_update', data, to=f"user:{user_id}")
 
     real_time.subscribe_to_feed(user_id, send_update)
 
@@ -733,10 +743,11 @@ class ActivityFeed:
     def get_activity_feed(self, target_type: str, target_id: str,
                          limit: int = 20) -> List[Dict]:
         """Get aggregated activity feed."""
-        activity_ids = r.zrevrange(
+        activity_ids = r.zrange(
             f"activity_feed:{target_type}:{target_id}",
             0,
-            limit - 1
+            limit - 1,
+            desc=True
         )
 
         if not activity_ids:

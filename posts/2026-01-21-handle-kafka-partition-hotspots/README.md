@@ -135,7 +135,7 @@ public class PartitionHotspotDetector {
         System.out.printf("Average per partition: %.0f%n", average);
         System.out.printf("Standard Deviation: %.2f%n", stdDev);
         System.out.printf("Coefficient of Variation: %.2f%%%n",
-            (stdDev / average) * 100);
+            average > 0 ? (stdDev / average) * 100 : 0);
 
         // Identify hotspots
         System.out.println("\nHOTSPOT SUMMARY:");
@@ -260,7 +260,11 @@ class HotspotDetector:
             tp = TopicPartition(topic, partition_id)
 
             # Get watermarks
-            low, high = consumer.get_watermark_offsets(tp)
+            low, high = consumer.get_watermark_offsets(
+                tp,
+                timeout=10,
+                cached=False
+            )
             message_count = high - low
 
             # Get leader
@@ -374,6 +378,8 @@ if __name__ == '__main__':
 ### Key Design Principles
 
 ```java
+import java.util.concurrent.ThreadLocalRandom;
+
 public class KeyDesignExamples {
 
     // BAD: Low cardinality key
@@ -472,6 +478,7 @@ public class SaltedKeyProducer {
 import org.apache.kafka.clients.producer.Partitioner;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.utils.Utils;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -515,8 +522,8 @@ public class PowerOfTwoChoicesPartitioner implements Partitioner {
             return chosen;
         }
 
-        // With key: use standard hash partitioning
-        return Math.abs(Arrays.hashCode(keyBytes) % numPartitions);
+        // With key: match Kafka's standard Murmur2 key partitioning
+        return Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
     }
 
     @Override
@@ -534,6 +541,7 @@ public class PowerOfTwoChoicesPartitioner implements Partitioner {
 ```java
 import org.apache.kafka.clients.producer.Partitioner;
 import org.apache.kafka.common.Cluster;
+import org.apache.kafka.common.utils.Utils;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -567,8 +575,8 @@ public class WeightedRoundRobinPartitioner implements Partitioner {
         int numPartitions = cluster.partitionsForTopic(topic).size();
 
         if (keyBytes != null) {
-            // Key-based partitioning
-            return Math.abs(Arrays.hashCode(keyBytes) % numPartitions);
+            // Key-based partitioning, matching Kafka's standard Murmur2 hash
+            return Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
         }
 
         if (weights == null || weights.length != numPartitions) {
@@ -647,22 +655,27 @@ class HotspotAwareProducer:
 
         self.producer.produce(
             topic,
-            key=key.encode() if key else None,
+            key=key.encode() if key is not None else None,
             value=value.encode(),
             partition=partition
         )
+        self.producer.poll(0)
 
     def produce_with_salted_key(self, topic: str, base_key: str,
                                 value: str, salt_buckets: int = 10):
         """Produce with salted key to spread hot keys."""
         salt = random.randint(0, salt_buckets - 1)
         salted_key = f"{base_key}#{salt}"
+        partition = self._hash_partition(salted_key.encode())
+        self.partition_counts[partition] += 1
 
         self.producer.produce(
             topic,
             key=salted_key.encode(),
-            value=value.encode()
+            value=value.encode(),
+            partition=partition
         )
+        self.producer.poll(0)
 
     def flush(self):
         self.producer.flush()
@@ -716,9 +729,9 @@ groups:
       - alert: KafkaPartitionHotspot
         expr: |
           (
-            kafka_server_brokertopicmetrics_messagesinpersec{partition!=""}
+            rate(kafka_log_logendoffset{topic!="",partition!=""}[5m])
             / ignoring(partition)
-            group_left avg without(partition)(kafka_server_brokertopicmetrics_messagesinpersec)
+            group_left avg without(partition)(rate(kafka_log_logendoffset{topic!="",partition!=""}[5m]))
           ) > 2
         for: 10m
         labels:
@@ -730,8 +743,8 @@ groups:
       # Alert on high partition skew
       - alert: KafkaPartitionSkew
         expr: |
-          stddev by(topic)(kafka_server_brokertopicmetrics_messagesinpersec{partition!=""})
-          / avg by(topic)(kafka_server_brokertopicmetrics_messagesinpersec{partition!=""})
+          stddev by(topic)(rate(kafka_log_logendoffset{topic!="",partition!=""}[5m]))
+          / avg by(topic)(rate(kafka_log_logendoffset{topic!="",partition!=""}[5m]))
           > 0.5
         for: 15m
         labels:
@@ -755,10 +768,19 @@ bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 
 ```java
 // Migration strategy: dual-write during transition
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
 public class KeyMigrationProducer {
 
     private final KafkaProducer<String, String> producer;
     private final boolean useLegacyKey;
+
+    public KeyMigrationProducer(KafkaProducer<String, String> producer,
+                                boolean useLegacyKey) {
+        this.producer = producer;
+        this.useLegacyKey = useLegacyKey;
+    }
 
     public void send(String topic, String legacyKey, String userId, String value) {
         String key;
@@ -776,8 +798,9 @@ public class KeyMigrationProducer {
 ### 3. Consumer-Side Aggregation
 
 ```python
-# If hotspot is unavoidable, add more consumers for hot partitions
-# using manual partition assignment
+# If a hotspot is unavoidable, isolate hot partitions on dedicated consumers
+# using manual partition assignment. A single partition is still processed
+# by only one consumer in a consumer group.
 
 from confluent_kafka import Consumer, TopicPartition
 

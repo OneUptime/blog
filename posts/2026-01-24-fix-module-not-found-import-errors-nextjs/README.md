@@ -59,10 +59,10 @@ import Button from '../../components/Button';
 ```
 
 ```javascript
-// Wrong: Missing file extension for non-JS files
-import styles from './styles.css';  // May fail
+// Wrong: Importing a plain CSS file as a CSS Module object
+import styles from './styles.css';  // styles.button will be undefined
 
-// Correct: Use proper module syntax
+// Correct: Use the .module.css naming convention for CSS Modules
 import styles from './styles.module.css';
 ```
 
@@ -123,7 +123,7 @@ flowchart LR
 
 Path aliases simplify imports but require proper configuration.
 
-```json
+```jsonc
 // tsconfig.json or jsconfig.json
 {
   "compilerOptions": {
@@ -178,8 +178,8 @@ import Button from '@components/Button/index';  // Explicit
 
 // For named exports from index
 // components/index.js
-export { Button } from './Button';
-export { Input } from './Input';
+export { default as Button } from './Button';
+export { default as Input } from './Input';
 
 // Import multiple components
 import { Button, Input } from '@components';
@@ -232,7 +232,7 @@ import mainFunction, { helperOne, helperTwo } from '@lib/utils';
 
 TypeScript has specific requirements for module resolution.
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
@@ -265,8 +265,8 @@ TypeScript has specific requirements for module resolution.
 // Requires "resolveJsonModule": true in tsconfig.json
 import config from './config.json';
 
-// Importing with type assertions
-import data from './data.json' assert { type: 'json' };
+// Importing with import attributes in runtimes that require them
+import data from './data.json' with { type: 'json' };
 ```
 
 ### Error 8: Server vs Client Module Imports
@@ -320,11 +320,11 @@ const MapComponent = dynamic(
 CSS modules and global styles have specific import rules.
 
 ```javascript
-// Global CSS - only import in _app.js
+// Pages Router: import global CSS in _app.js
 // pages/_app.js
 import '../styles/globals.css';
 
-// Wrong: Importing global CSS in a component
+// Wrong in the Pages Router: importing global CSS in a component
 // components/Button.js
 import '../styles/globals.css';  // Error!
 ```
@@ -465,6 +465,12 @@ import Button from '@/app/components/Button';  // Alias works
 ```
 
 ```javascript
+// App Router: import global CSS in the root layout
+// app/layout.js
+import './globals.css';
+```
+
+```javascript
 // Server Components (default in App Router)
 // Can import server-only modules directly
 import { headers } from 'next/headers';
@@ -479,7 +485,7 @@ import { useState } from 'react';
 
 ## Package.json Configuration
 
-Ensure your package.json has correct module settings.
+Ensure your package.json has compatible dependency and script settings.
 
 ```json
 {
@@ -490,17 +496,19 @@ Ensure your package.json has correct module settings.
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint"
   },
   "dependencies": {
-    "next": "14.0.0",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "next": "^16.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@types/node": "20.0.0",
-    "@types/react": "18.2.0",
-    "typescript": "5.0.0"
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.2.0",
+    "typescript": "^5.1.0"
   }
 }
 ```
@@ -509,7 +517,7 @@ Ensure your package.json has correct module settings.
 
 Ensure your IDE recognizes path aliases.
 
-```json
+```jsonc
 // .vscode/settings.json
 {
   "typescript.preferences.importModuleSpecifier": "non-relative",

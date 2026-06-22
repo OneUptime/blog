@@ -23,7 +23,7 @@ Effective monitoring is crucial for PostgreSQL operations. Prometheus and Grafan
 PostgreSQL --> postgres_exporter --> Prometheus --> Grafana
                     |
                     v
-              Alert Manager --> Notifications
+              Alertmanager --> Notifications
 ```
 
 ## Install postgres_exporter
@@ -33,11 +33,14 @@ PostgreSQL --> postgres_exporter --> Prometheus --> Grafana
 ```bash
 # Download latest release
 
-wget https://github.com/prometheus-community/postgres_exporter/releases/download/v0.15.0/postgres_exporter-0.15.0.linux-amd64.tar.gz
+wget https://github.com/prometheus-community/postgres_exporter/releases/download/v0.19.1/postgres_exporter-0.19.1.linux-amd64.tar.gz
 
 # Extract
-tar xzf postgres_exporter-0.15.0.linux-amd64.tar.gz
-sudo mv postgres_exporter-0.15.0.linux-amd64/postgres_exporter /usr/local/bin/
+tar xzf postgres_exporter-0.19.1.linux-amd64.tar.gz
+sudo mv postgres_exporter-0.19.1.linux-amd64/postgres_exporter /usr/local/bin/
+
+# Create a system user for the service
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin postgres_exporter
 
 # Verify
 postgres_exporter --version
@@ -47,9 +50,11 @@ postgres_exporter --version
 
 ```sql
 CREATE USER postgres_exporter WITH PASSWORD 'secure_password';
+GRANT CONNECT ON DATABASE postgres TO postgres_exporter;
 GRANT pg_monitor TO postgres_exporter;
 GRANT SELECT ON pg_stat_database TO postgres_exporter;
 GRANT SELECT ON pg_stat_user_tables TO postgres_exporter;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 GRANT SELECT ON pg_stat_statements TO postgres_exporter;
 ```
 
@@ -57,13 +62,17 @@ GRANT SELECT ON pg_stat_statements TO postgres_exporter;
 
 ```bash
 # Environment variable
-export DATA_SOURCE_NAME="postgresql://postgres_exporter:password@localhost:5432/postgres?sslmode=disable"
+export DATA_SOURCE_NAME="postgresql://postgres_exporter:secure_password@localhost:5432/postgres?sslmode=disable"
 
-# Or connection string file
-echo "postgresql://postgres_exporter:password@localhost:5432/postgres?sslmode=disable" > /etc/postgres_exporter/datasource
+# Or datasource files
+sudo install -d -m 0750 -o postgres_exporter -g postgres_exporter /etc/postgres_exporter
+echo "localhost:5432/postgres?sslmode=disable" | sudo tee /etc/postgres_exporter/datasource-uri
+export DATA_SOURCE_URI_FILE=/etc/postgres_exporter/datasource-uri
+export DATA_SOURCE_USER=postgres_exporter
+export DATA_SOURCE_PASS=secure_password
 
 # Run exporter
-postgres_exporter --web.listen-address=":9187"
+postgres_exporter --web.listen-address=":9187" --collector.database_wraparound
 ```
 
 ### Systemd Service
@@ -78,8 +87,8 @@ After=network.target
 Type=simple
 User=postgres_exporter
 Group=postgres_exporter
-Environment=DATA_SOURCE_NAME=postgresql://postgres_exporter:password@localhost:5432/postgres?sslmode=disable
-ExecStart=/usr/local/bin/postgres_exporter --web.listen-address=:9187
+Environment=DATA_SOURCE_NAME=postgresql://postgres_exporter:secure_password@localhost:5432/postgres?sslmode=disable
+ExecStart=/usr/local/bin/postgres_exporter --web.listen-address=:9187 --collector.database_wraparound
 Restart=always
 
 [Install]
@@ -150,7 +159,7 @@ pg_stat_activity_count{state="active"}
 sum(pg_stat_activity_count)
 
 # Connection utilization
-pg_stat_activity_count / pg_settings_max_connections * 100
+sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections) * 100
 
 # Transactions per second
 rate(pg_stat_database_xact_commit[5m]) + rate(pg_stat_database_xact_rollback[5m])
@@ -178,13 +187,13 @@ rate(pg_stat_database_temp_bytes[5m])
 
 ```promql
 # Replication lag (bytes)
-pg_replication_lag_bytes
+pg_stat_replication_pg_wal_lsn_diff
 
 # Replication lag (seconds)
 pg_replication_lag_seconds
 
-# WAL position difference
-pg_wal_position_diff
+# Current WAL position in bytes
+pg_stat_replication_pg_current_wal_lsn_bytes
 ```
 
 ### Table Metrics
@@ -294,7 +303,7 @@ groups:
     rules:
       # High connections
       - alert: PostgreSQLHighConnections
-        expr: pg_stat_activity_count > (pg_settings_max_connections * 0.8)
+        expr: sum by (instance) (pg_stat_activity_count) > (max by (instance) (pg_settings_max_connections) * 0.8)
         for: 5m
         labels:
           severity: warning
@@ -304,7 +313,7 @@ groups:
 
       # Connection exhaustion
       - alert: PostgreSQLConnectionExhaustion
-        expr: pg_stat_activity_count > (pg_settings_max_connections * 0.95)
+        expr: sum by (instance) (pg_stat_activity_count) > (max by (instance) (pg_settings_max_connections) * 0.95)
         for: 2m
         labels:
           severity: critical
@@ -372,7 +381,7 @@ groups:
 
       # Transaction ID wraparound warning
       - alert: PostgreSQLXIDWraparound
-        expr: pg_database_age > 1500000000
+        expr: pg_database_wraparound_age_datfrozenxid_seconds > 1500000000
         for: 5m
         labels:
           severity: warning
@@ -422,7 +431,7 @@ pg_stat_statements:
         usage: "COUNTER"
         description: "Rows returned"
 
-pg_locks:
+custom_pg_locks:
   query: |
     SELECT
       database,

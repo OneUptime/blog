@@ -15,7 +15,7 @@ Worker concurrency determines how many jobs a single worker can process simultan
 Concurrency in BullMQ specifies the maximum number of jobs a worker will process in parallel:
 
 ```typescript
-import { Worker, Queue } from 'bullmq';
+import { Worker, Queue, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -151,7 +151,7 @@ class AdaptiveConcurrencyWorker {
   private worker: Worker;
   private baseConcurrency: number;
   private currentConcurrency: number;
-  private monitorInterval?: NodeJS.Timer;
+  private monitorInterval?: NodeJS.Timeout;
 
   constructor(
     queueName: string,
@@ -237,7 +237,7 @@ class AdaptiveConcurrencyWorker {
   private getMemoryUsage(): number {
     const used = process.memoryUsage();
     const total = os.totalmem();
-    return (used.heapUsed / total) * 100;
+    return (used.rss / total) * 100;
   }
 
   private getEventLoopLag(): Promise<number> {
@@ -372,7 +372,7 @@ class MemoryAwareWorker {
 
   private canAcceptJob(): boolean {
     const currentMemory = process.memoryUsage().heapUsed / 1024 / 1024;
-    const projectedMemory = currentMemory + this.memoryPerJobMB;
+    const projectedMemory = currentMemory + ((this.activeJobs + 1) * this.memoryPerJobMB);
 
     if (projectedMemory > this.maxMemoryMB) {
       console.log(`Memory limit reached: ${currentMemory.toFixed(0)}MB / ${this.maxMemoryMB}MB`);
@@ -431,6 +431,7 @@ Track concurrency metrics:
 ```typescript
 class ConcurrencyMonitor {
   private worker: Worker;
+  private queue: Queue;
   private metrics = {
     currentActive: 0,
     peakActive: 0,
@@ -439,15 +440,16 @@ class ConcurrencyMonitor {
   };
   private samples: number[] = [];
 
-  constructor(worker: Worker) {
+  constructor(worker: Worker, queue: Queue) {
     this.worker = worker;
+    this.queue = queue;
     this.startTracking();
   }
 
   private startTracking() {
     // Sample active count every second
     setInterval(async () => {
-      const activeCount = await this.worker.getActiveCount?.() || 0;
+      const activeCount = await this.queue.getActiveCount();
       this.samples.push(activeCount);
 
       // Keep last 60 samples (1 minute)
@@ -506,7 +508,7 @@ class ConcurrencyMonitor {
 
 9. **Monitor utilization** - Low utilization may indicate room to increase.
 
-10. **Set connection limits** - Ensure Redis connections match total concurrency.
+10. **Plan Redis connections** - Each worker uses Redis connections, including an internal blocking connection, so account for worker count when sizing Redis connection limits.
 
 ## Conclusion
 

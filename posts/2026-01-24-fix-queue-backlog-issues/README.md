@@ -39,11 +39,15 @@ A backlog forms when:
 
 ```javascript
 // CloudWatch alarm for SQS queue depth
-const AWS = require('aws-sdk');
-const cloudwatch = new AWS.CloudWatch();
+const {
+    CloudWatchClient,
+    GetMetricStatisticsCommand
+} = require('@aws-sdk/client-cloudwatch');
+
+const cloudwatch = new CloudWatchClient({ region: 'us-east-1' });
 
 async function checkQueueDepth(queueName) {
-    const metrics = await cloudwatch.getMetricStatistics({
+    const metrics = await cloudwatch.send(new GetMetricStatisticsCommand({
         Namespace: 'AWS/SQS',
         MetricName: 'ApproximateNumberOfMessagesVisible',
         Dimensions: [
@@ -53,11 +57,19 @@ async function checkQueueDepth(queueName) {
         EndTime: new Date(),
         Period: 60,
         Statistics: ['Average', 'Maximum']
-    }).promise();
+    }));
 
-    const latest = metrics.Datapoints.sort(
+    const latest = (metrics.Datapoints || []).sort(
         (a, b) => b.Timestamp - a.Timestamp
     )[0];
+
+    if (!latest) {
+        return {
+            average: 0,
+            maximum: 0,
+            timestamp: new Date()
+        };
+    }
 
     return {
         average: latest.Average,
@@ -209,12 +221,16 @@ spec:
 ### Dynamic Consumer Scaling in Code
 
 ```javascript
-const { Worker } = require('bullmq');
+const { Queue, Worker } = require('bullmq');
 
 class AdaptiveWorkerPool {
     constructor(queueName, processor, options = {}) {
         this.queueName = queueName;
         this.processor = processor;
+        this.connection = options.connection || { host: 'redis', port: 6379 };
+        this.queue = new Queue(this.queueName, {
+            connection: this.connection
+        });
         this.minWorkers = options.minWorkers || 2;
         this.maxWorkers = options.maxWorkers || 20;
         this.targetLatency = options.targetLatency || 1000; // 1 second
@@ -248,7 +264,7 @@ class AdaptiveWorkerPool {
                 this.metrics.totalLatency += Date.now() - start;
             }
         }, {
-            connection: { host: 'redis', port: 6379 },
+            connection: this.connection,
             concurrency: 5
         });
 
@@ -273,8 +289,7 @@ class AdaptiveWorkerPool {
         this.metrics = { processed: 0, totalLatency: 0 };
 
         // Get queue depth
-        const queue = new Queue(this.queueName);
-        const waiting = await queue.getWaitingCount();
+        const waiting = await this.queue.getWaitingCount();
 
         console.log(`Queue depth: ${waiting}, Avg latency: ${avgLatency}ms`);
 
@@ -299,6 +314,7 @@ class AdaptiveWorkerPool {
     async stop() {
         clearInterval(this.scaleInterval);
         await Promise.all(this.workers.map(w => w.close()));
+        await this.queue.close();
     }
 }
 ```
@@ -458,19 +474,29 @@ flowchart LR
 ```javascript
 const { Queue, Worker } = require('bullmq');
 
+const connection = { host: 'redis', port: 6379 };
+
 // Main processing queue
 const mainQueue = new Queue('orders', {
-    connection: { host: 'redis', port: 6379 }
+    connection,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 1000
+        }
+    }
 });
 
 // Dead letter queue for failed messages
 const dlq = new Queue('orders-dlq', {
-    connection: { host: 'redis', port: 6379 }
+    connection
 });
 
 const worker = new Worker('orders', async (job) => {
     // Track retry count
     const retryCount = job.attemptsMade;
+    const maxAttempts = job.opts.attempts || 3;
 
     try {
         await processOrder(job.data);
@@ -479,7 +505,7 @@ const worker = new Worker('orders', async (job) => {
         console.error(`Job ${job.id} failed (attempt ${retryCount + 1}):`, error);
 
         // Check if max retries exceeded
-        if (retryCount >= 3) {
+        if (retryCount + 1 >= maxAttempts) {
             // Move to dead letter queue
             await dlq.add('failed-order', {
                 originalJob: job.data,
@@ -505,13 +531,7 @@ const worker = new Worker('orders', async (job) => {
         throw error;
     }
 }, {
-    connection: { host: 'redis', port: 6379 },
-    settings: {
-        backoffStrategy: (attemptsMade) => {
-            // Exponential backoff: 1s, 4s, 9s, 16s...
-            return Math.pow(attemptsMade, 2) * 1000;
-        }
-    }
+    connection
 });
 ```
 
@@ -519,7 +539,7 @@ const worker = new Worker('orders', async (job) => {
 
 ```python
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class DLQProcessor:
     def __init__(self, dlq_client, main_queue_client):

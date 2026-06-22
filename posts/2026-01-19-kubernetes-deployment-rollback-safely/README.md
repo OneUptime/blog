@@ -212,13 +212,13 @@ git log --oneline -10
 # Revert the problematic commit
 git revert <commit-sha>
 
-# Or revert multiple commits
-git revert <oldest-commit>..<newest-commit>
+# Or revert multiple commits, including the oldest commit in the range
+git revert <oldest-commit>^..<newest-commit>
 
 # Push the revert
 git push origin main
 
-# ArgoCD will automatically sync the reverted state
+# If automated sync is enabled, ArgoCD will sync the reverted state
 ```
 
 ### Flux CD Rollback
@@ -248,14 +248,8 @@ StatefulSet rollbacks require extra care due to persistent data.
 # Check rollout history
 kubectl rollout history statefulset/mysql -n database
 
-# Pause the rollout first (if in progress)
-kubectl rollout pause statefulset/mysql -n database
-
 # Rollback
 kubectl rollout undo statefulset/mysql -n database
-
-# Resume (if paused)
-kubectl rollout resume statefulset/mysql -n database
 ```
 
 ### Handling Data Compatibility
@@ -270,7 +264,13 @@ metadata:
 spec:
   serviceName: mysql
   replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
   template:
+    metadata:
+      labels:
+        app: mysql
     spec:
       initContainers:
         # Check data compatibility before starting
@@ -386,18 +386,20 @@ spec:
     webhooks:
       - name: abort-check
         type: rollback
-        url: http://flagger-loadtester/gate/halt
+        url: http://flagger-loadtester/gate/check
 ```
 
 ```bash
-# Manual abort of Flagger canary
+# Suspend Flagger reconciliation (pauses analysis; it does not roll back)
 kubectl patch canary myapp -n production --type=merge \
   -p '{"spec":{"suspend":true}}'
 
-# Or via Flagger CLI
-# Set the canary status to failed
-kubectl annotate canary myapp -n production \
-  flagger.app/halt="Manual rollback triggered"
+# Trigger rollback when using a rollback webhook backed by Flagger loadtester gate/check
+kubectl -n production port-forward svc/flagger-loadtester 8080:80 &
+PF_PID=$!
+sleep 2
+curl -X POST -d '{"name":"myapp","namespace":"production"}' http://localhost:8080/gate/open
+kill $PF_PID
 ```
 
 ### Istio Traffic Shift Rollback
@@ -548,7 +550,7 @@ data:
           - query: 'sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))'
             threshold: 0.05
             operator: ">"
-          - query: 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))'
+          - query: 'histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))'
             threshold: 2.0
             operator: ">"
         action: rollback
@@ -574,7 +576,7 @@ ERROR_RATE=$(curl -s "$PROMETHEUS/api/v1/query" \
 
 # Query p99 latency
 LATENCY=$(curl -s "$PROMETHEUS/api/v1/query" \
-  --data-urlencode "query=histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace=\"$NAMESPACE\",deployment=\"$DEPLOYMENT\"}[5m]))" \
+  --data-urlencode "query=histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{namespace=\"$NAMESPACE\",deployment=\"$DEPLOYMENT\"}[5m])))" \
   | jq -r '.data.result[0].value[1] // 0')
 
 echo "Error rate: $ERROR_RATE (threshold: $ERROR_THRESHOLD)"

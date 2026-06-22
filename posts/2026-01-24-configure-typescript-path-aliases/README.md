@@ -40,7 +40,7 @@ flowchart LR
 
 ## Basic TypeScript Configuration
 
-Start with the `tsconfig.json` file. The two key options are `baseUrl` and `paths`:
+Start with the `tsconfig.json` file. The key option is `paths`, often paired with `baseUrl` to make path targets relative to the project root:
 
 ```json
 {
@@ -48,6 +48,7 @@ Start with the `tsconfig.json` file. The two key options are `baseUrl` and `path
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@components": ["src/components/index"],
       "@components/*": ["src/components/*"],
       "@utils/*": ["src/utils/*"],
       "@hooks/*": ["src/hooks/*"],
@@ -62,7 +63,7 @@ Start with the `tsconfig.json` file. The two key options are `baseUrl` and `path
 ### Understanding the Configuration
 
 ```typescript
-// baseUrl: The root directory for module resolution
+// baseUrl: A base directory for non-relative module resolution
 // "." means the directory containing tsconfig.json
 
 // paths: Maps import patterns to file locations
@@ -91,6 +92,7 @@ Start with the `tsconfig.json` file. The two key options are `baseUrl` and `path
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@components": ["src/components/index"],
       "@components/*": ["src/components/*"],
       "@utils/*": ["src/utils/*"],
       "@hooks/*": ["src/hooks/*"],
@@ -298,6 +300,7 @@ module.exports = {
   moduleNameMapper: {
     // Map path aliases to their actual locations
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@components$': '<rootDir>/src/components/index',
     '^@components/(.*)$': '<rootDir>/src/components/$1',
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@hooks/(.*)$': '<rootDir>/src/hooks/$1',
@@ -473,17 +476,17 @@ flowchart TD
 ```typescript
 // Error: Cannot find module '@utils/format'
 
-// Check 1: Verify baseUrl is set
+// Check 1: Verify paths are relative to the location you expect
 {
   "compilerOptions": {
-    "baseUrl": "."  // Must be present
+    "baseUrl": "."  // Often used so "src/*" means "<project-root>/src/*"
   }
 }
 
 // Check 2: Verify path pattern matches
 {
   "paths": {
-    "@utils/*": ["src/utils/*"]  // Pattern must end with /*
+    "@utils/*": ["src/utils/*"]  // Wildcard imports need a matching /* pattern
   }
 }
 

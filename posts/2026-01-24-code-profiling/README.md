@@ -189,10 +189,10 @@ Run with: `python -m cProfile -s cumulative profiling_example.py`
 package main
 
 import (
+    "fmt"
     "log"
     "net/http"
     _ "net/http/pprof"  // Import for side effects
-    "time"
 )
 
 // Simulate CPU-intensive work
@@ -216,7 +216,7 @@ func memoryIntensiveTask() []byte {
 func handler(w http.ResponseWriter, r *http.Request) {
     cpuIntensiveTask()
     data := memoryIntensiveTask()
-    w.Write([]byte("Done: " + string(len(data))))
+    w.Write([]byte(fmt.Sprintf("Done: %d bytes", len(data))))
 }
 
 func main() {
@@ -342,7 +342,6 @@ function processData(data) {
 
 ```yaml
 # docker-compose.yml for continuous profiling
-version: '3.8'
 services:
   app:
     build: .
@@ -354,11 +353,9 @@ services:
 
   # Pyroscope for continuous profiling
   pyroscope:
-    image: pyroscope/pyroscope:latest
+    image: grafana/pyroscope:latest
     ports:
       - "4040:4040"
-    command:
-      - "server"
 
   # Grafana for visualization
   grafana:

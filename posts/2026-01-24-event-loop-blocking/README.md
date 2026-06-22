@@ -206,7 +206,7 @@ function checkBlocking() {
     if (delta > threshold) {
         console.warn(`Event loop was blocked for ${delta}ms`);
 
-        // Capture stack trace (requires --enable-source-maps)
+        // This stack shows where the delayed check ran; use a profiler to find the blocking call site
         const stack = new Error().stack;
         console.warn('Stack trace:', stack);
     }
@@ -435,7 +435,7 @@ processMultipleTasks();
 
 ```javascript
 // streaming-json.js
-const { createReadStream } = require('fs');
+const { createReadStream, createWriteStream } = require('fs');
 const { pipeline } = require('stream/promises');
 const JSONStream = require('JSONStream');
 

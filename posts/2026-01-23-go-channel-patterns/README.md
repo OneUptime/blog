@@ -296,29 +296,41 @@ Return first successful result:
 
 ```go
 func first(ctx context.Context, fns ...func() (int, error)) (int, error) {
-    results := make(chan int, len(fns))
-    errs := make(chan error, len(fns))
+    if len(fns) == 0 {
+        return 0, fmt.Errorf("no functions provided")
+    }
+    
+    type result struct {
+        value int
+        err   error
+    }
+    
+    results := make(chan result, len(fns))
     
     ctx, cancel := context.WithCancel(ctx)
     defer cancel()
     
     for _, fn := range fns {
         go func(f func() (int, error)) {
-            result, err := f()
-            if err != nil {
-                errs <- err
-                return
-            }
-            results <- result
+            value, err := f()
+            results <- result{value: value, err: err}
         }(fn)
     }
     
-    select {
-    case result := <-results:
-        return result, nil
-    case <-ctx.Done():
-        return 0, ctx.Err()
+    var lastErr error
+    for range fns {
+        select {
+        case result := <-results:
+            if result.err == nil {
+                return result.value, nil
+            }
+            lastErr = result.err
+        case <-ctx.Done():
+            return 0, ctx.Err()
+        }
     }
+    
+    return 0, lastErr
 }
 ```
 
@@ -498,7 +510,7 @@ func producer(out chan<- int) {
 
 // Receive-only channel  
 func consumer(in <-chan int) {
-    value := <-in
+    _ = <-in
     // in <- 1  // Compile error!
 }
 
@@ -538,4 +550,4 @@ func main() {
 
 ---
 
-*Building concurrent Go applications? [OneUptime](https://oneuptime.com) helps you monitor goroutine behavior and channel throughput in production.*
+*Building concurrent Go applications? [OneUptime](https://oneuptime.com) helps you monitor application reliability and performance in production.*

@@ -28,6 +28,8 @@ CloudNativePG exports metrics via:
 
 ### Basic Monitoring Configuration
 
+CloudNativePG exposes metrics for each PostgreSQL instance on port `9187` by default. With Prometheus Operator, create a `PodMonitor` that targets the cluster pods:
+
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -37,10 +39,23 @@ spec:
   instances: 3
   storage:
     size: 10Gi
-
-  monitoring:
-    enablePodMonitor: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: postgres-monitor
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: postgres-monitored
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
 ```
+
+> Note: `.spec.monitoring.enablePodMonitor` still exists in CloudNativePG but is deprecated. The current recommendation is to create and manage the `PodMonitor` yourself.
 
 ### Advanced Monitoring Configuration
 
@@ -55,9 +70,6 @@ spec:
     size: 100Gi
 
   monitoring:
-    # Create PodMonitor for Prometheus Operator
-    enablePodMonitor: true
-
     # Disable default queries (if using only custom)
     disableDefaultQueries: false
 
@@ -85,9 +97,10 @@ CloudNativePG exports these metrics by default:
 | Metric | Description |
 |--------|-------------|
 | `cnpg_collector_up` | Whether the collector is up |
-| `cnpg_cluster_instances` | Number of instances in cluster |
-| `cnpg_cluster_ready_instances` | Number of ready instances |
-| `cnpg_cluster_instances_reported_state` | Instance states |
+| `cnpg_collector_nodes_used` | Number of distinct nodes hosting instances |
+| `cnpg_collector_sync_replicas` | Synchronous replica configuration and observed values |
+| `cnpg_collector_pg_wal` | WAL file count, size, and configured limits |
+| `cnpg_collector_pg_wal_archive_status` | Number of WAL files in `.ready` and `.done` archive states |
 
 ### PostgreSQL Metrics
 
@@ -104,10 +117,15 @@ CloudNativePG exports these metrics by default:
 | Metric | Description |
 |--------|-------------|
 | `cnpg_pg_replication_lag` | Replication lag in seconds |
-| `cnpg_pg_stat_replication_sent_lag_bytes` | WAL sent lag |
-| `cnpg_pg_stat_replication_write_lag_bytes` | WAL write lag |
-| `cnpg_pg_stat_replication_flush_lag_bytes` | WAL flush lag |
-| `cnpg_pg_stat_replication_replay_lag_bytes` | WAL replay lag |
+| `cnpg_pg_replication_in_recovery` | Whether the instance is in recovery |
+| `cnpg_pg_replication_is_wal_receiver_up` | Whether the WAL receiver is running |
+| `cnpg_pg_stat_replication_sent_diff_bytes` | WAL sent difference |
+| `cnpg_pg_stat_replication_write_diff_bytes` | WAL write difference |
+| `cnpg_pg_stat_replication_flush_diff_bytes` | WAL flush difference |
+| `cnpg_pg_stat_replication_replay_diff_bytes` | WAL replay difference |
+| `cnpg_pg_stat_replication_write_lag_seconds` | Write lag in seconds |
+| `cnpg_pg_stat_replication_flush_lag_seconds` | Flush lag in seconds |
+| `cnpg_pg_stat_replication_replay_lag_seconds` | Replay lag in seconds |
 
 ## Custom Queries
 
@@ -263,6 +281,7 @@ data:
 
     # Checkpoint statistics
     pg_stat_bgwriter:
+      runonserver: "<17.0.0"
       query: |
         SELECT
           checkpoints_timed,
@@ -307,6 +326,50 @@ data:
         - buffers_alloc:
             usage: "COUNTER"
             description: "Buffers allocated"
+
+    # Checkpoint statistics for PostgreSQL 17+
+    pg_stat_checkpointer:
+      runonserver: ">=17.0.0"
+      query: |
+        SELECT
+          num_timed AS checkpoints_timed,
+          num_requested AS checkpoints_req,
+          restartpoints_timed,
+          restartpoints_req,
+          restartpoints_done,
+          write_time,
+          sync_time,
+          buffers_written,
+          EXTRACT(EPOCH FROM stats_reset) AS stats_reset_time
+        FROM pg_stat_checkpointer
+      metrics:
+        - checkpoints_timed:
+            usage: "COUNTER"
+            description: "Scheduled checkpoints"
+        - checkpoints_req:
+            usage: "COUNTER"
+            description: "Requested checkpoints"
+        - restartpoints_timed:
+            usage: "COUNTER"
+            description: "Scheduled restartpoints"
+        - restartpoints_req:
+            usage: "COUNTER"
+            description: "Requested restartpoints"
+        - restartpoints_done:
+            usage: "COUNTER"
+            description: "Completed restartpoints"
+        - write_time:
+            usage: "COUNTER"
+            description: "Checkpoint and restartpoint write time (ms)"
+        - sync_time:
+            usage: "COUNTER"
+            description: "Checkpoint and restartpoint sync time (ms)"
+        - buffers_written:
+            usage: "COUNTER"
+            description: "Buffers written by checkpoints and restartpoints"
+        - stats_reset_time:
+            usage: "GAUGE"
+            description: "Statistics reset timestamp"
 ```
 
 ### pg_stat_statements Metrics
@@ -375,7 +438,7 @@ data:
 
 ### PodMonitor (Prometheus Operator)
 
-CloudNativePG creates PodMonitor automatically when enabled. Manual configuration:
+Create a `PodMonitor` for each cluster:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -395,11 +458,11 @@ spec:
       path: /metrics
 ```
 
-### ServiceMonitor for Operator
+### PodMonitor for Operator
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: cnpg-controller-manager
   namespace: cnpg-system
@@ -407,7 +470,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudnative-pg
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -456,12 +519,12 @@ CloudNativePG provides official dashboards:
   "type": "stat",
   "targets": [
     {
-      "expr": "cnpg_cluster_ready_instances{cluster=\"postgres-monitored\"}",
-      "legendFormat": "Ready"
+      "expr": "sum(cnpg_collector_up{cluster=\"postgres-monitored\"})",
+      "legendFormat": "Instances up"
     },
     {
-      "expr": "cnpg_cluster_instances{cluster=\"postgres-monitored\"}",
-      "legendFormat": "Total"
+      "expr": "count(cnpg_collector_up{cluster=\"postgres-monitored\"})",
+      "legendFormat": "Instances scraped"
     }
   ]
 }
@@ -515,11 +578,11 @@ CloudNativePG provides official dashboards:
   "type": "timeseries",
   "targets": [
     {
-      "expr": "sum(pg_stat_activity_count{cluster=\"postgres-monitored\", state=\"active\"})",
+      "expr": "sum(cnpg_pg_stat_activity_count_count{cluster=\"postgres-monitored\", state=\"active\"})",
       "legendFormat": "Active"
     },
     {
-      "expr": "sum(pg_stat_activity_count{cluster=\"postgres-monitored\", state=\"idle\"})",
+      "expr": "sum(cnpg_pg_stat_activity_count_count{cluster=\"postgres-monitored\", state=\"idle\"})",
       "legendFormat": "Idle"
     }
   ]
@@ -543,16 +606,16 @@ spec:
       rules:
         # Cluster Health
         - alert: CNPGClusterNotHealthy
-          expr: cnpg_cluster_ready_instances < cnpg_cluster_instances
+          expr: cnpg_collector_up == 0
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "PostgreSQL cluster not healthy"
-            description: "Cluster {{ $labels.cluster }} has {{ $value }} ready instances out of expected"
+            description: "Instance {{ $labels.pod }} in cluster {{ $labels.cluster }} is not reporting PostgreSQL as up"
 
         - alert: CNPGClusterDown
-          expr: cnpg_cluster_ready_instances == 0
+          expr: sum by (cluster) (cnpg_collector_up) == 0
           for: 1m
           labels:
             severity: critical
@@ -599,18 +662,18 @@ spec:
             description: "Archive failures on {{ $labels.cluster }}"
 
         # Storage
-        - alert: CNPGDiskSpaceLow
-          expr: cnpg_pg_database_size_bytes / on (persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes) > 0.8
+        - alert: CNPGWalVolumeUsageHigh
+          expr: cnpg_collector_pg_wal{value="size"} / ignoring(value) cnpg_collector_pg_wal{value="volume_size"} > 0.8
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "PostgreSQL disk space low"
-            description: "Database {{ $labels.datname }} is using {{ $value | humanizePercentage }} of disk"
+            summary: "PostgreSQL WAL volume usage high"
+            description: "WAL volume usage is {{ $value | humanizePercentage }} for {{ $labels.cluster }}"
 
         # Connections
         - alert: CNPGConnectionsHigh
-          expr: sum by (cluster) (pg_stat_activity_count) / on (cluster) cnpg_pg_settings_max_connections * 100 > 80
+          expr: sum by (cluster) (cnpg_pg_stat_activity_count_count) / on (cluster) cnpg_pg_settings_setting{name="max_connections"} * 100 > 80
           for: 10m
           labels:
             severity: warning
@@ -620,7 +683,7 @@ spec:
 
         # Dead Tuples
         - alert: CNPGHighDeadTuples
-          expr: sum by (cluster, relname) (pg_stat_user_tables_n_dead_tup) > 100000
+          expr: sum by (cluster, relname) (cnpg_pg_stat_user_tables_n_dead_tup) > 100000
           for: 30m
           labels:
             severity: warning
@@ -630,7 +693,7 @@ spec:
 
         # Locks
         - alert: CNPGLongRunningLocks
-          expr: pg_locks_count{mode="ExclusiveLock"} > 10
+          expr: cnpg_pg_locks_count_count{mode="ExclusiveLock"} > 10
           for: 5m
           labels:
             severity: warning
@@ -640,7 +703,7 @@ spec:
 
         # Failover
         - alert: CNPGFailoverOccurred
-          expr: changes(cnpg_collector_up{role="primary"}[5m]) > 0
+          expr: changes(cnpg_pg_replication_in_recovery[5m]) > 0
           for: 1m
           labels:
             severity: warning
@@ -673,7 +736,7 @@ kubectl port-forward svc/prometheus 9090:9090 -n monitoring
 
 # Query metrics in browser
 # http://localhost:9090
-# Try: cnpg_cluster_instances
+# Try: cnpg_collector_up
 ```
 
 ### Check PodMonitor
@@ -719,7 +782,7 @@ kubectl exec postgres-monitored-1 -- psql -c "SELECT * FROM pg_stat_user_tables 
 
 Comprehensive monitoring is essential for PostgreSQL clusters:
 
-1. **Enable built-in metrics** with `enablePodMonitor: true`
+1. **Scrape built-in metrics** with a Prometheus Operator `PodMonitor`
 2. **Add custom queries** for application-specific metrics
 3. **Create dashboards** for visibility
 4. **Configure alerts** for proactive issue detection

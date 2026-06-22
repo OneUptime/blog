@@ -109,8 +109,8 @@ check_replication_lag('192.168.1.100', ['192.168.1.101', '192.168.1.102'])
 
 ping -c 10 192.168.1.101
 
-# Check TCP connection quality
-redis-cli -h 192.168.1.101 DEBUG SLEEP 0 && echo "Connection OK"
+# Check Redis connection responsiveness
+redis-cli -h 192.168.1.101 PING
 
 # Test bandwidth
 iperf3 -c 192.168.1.101 -t 10
@@ -223,8 +223,8 @@ print(f"Recommended backlog: {size / (1024*1024):.0f} MB")
 # Check current limits
 redis-cli CONFIG GET client-output-buffer-limit
 
-# Increase buffer for slaves (format: class hard-limit soft-limit soft-seconds)
-redis-cli CONFIG SET client-output-buffer-limit "slave 512mb 128mb 60"
+# Increase buffer for replicas (format: class hard-limit soft-limit soft-seconds)
+redis-cli CONFIG SET client-output-buffer-limit "replica 512mb 128mb 60"
 
 # This means:
 # - Disconnect if buffer exceeds 512MB
@@ -262,10 +262,10 @@ redis-cli CONFIG SET repl-diskless-load on-empty-db
 
 ```bash
 # Allow replica to serve stale data during sync
-redis-cli CONFIG SET slave-serve-stale-data yes
+redis-cli CONFIG SET replica-serve-stale-data yes
 
 # On replica, set lower priority for failover
-redis-cli CONFIG SET slave-priority 100
+redis-cli CONFIG SET replica-priority 100
 ```
 
 ## Step 6: Handle Full Resync Issues
@@ -414,7 +414,7 @@ r = redis.Redis(host='localhost', port=6379)
 # Use pipelining to reduce round trips
 def bulk_write_optimized(data_dict):
     """Write multiple keys efficiently"""
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
 
     for key, value in data_dict.items():
         pipe.set(key, value)
@@ -453,7 +453,7 @@ def write_with_replication_guarantee(key, value, min_replicas=1, timeout_ms=1000
 
     Returns number of replicas that acknowledged
     """
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
     pipe.set(key, value)
     pipe.wait(min_replicas, timeout_ms)
 

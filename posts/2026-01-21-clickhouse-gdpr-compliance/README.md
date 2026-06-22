@@ -15,8 +15,8 @@ GDPR compliance requires specific data handling capabilities. This guide covers 
 ### Using Lightweight Deletes
 
 ```sql
--- Enable lightweight deletes
-SET allow_experimental_lightweight_delete = 1;
+-- Enable lightweight deletes (rows are physically removed later during merges)
+SET enable_lightweight_delete = 1;
 
 -- Delete user data
 DELETE FROM events WHERE user_id = 12345;
@@ -55,7 +55,7 @@ SELECT
     -- Remove or hash PII
     sipHash64(email) AS email_hash,
     country,  -- Keep non-PII
-    substring(ip_address, 1, position(ip_address, '.', 3)) || '.0' AS ip_masked
+    concat(arrayStringConcat(arraySlice(splitByChar('.', ip_address), 1, 3), '.'), '.0') AS ip_masked
 FROM events;
 
 -- Anonymize existing data
@@ -104,9 +104,9 @@ MODIFY TTL timestamp + INTERVAL 3 YEAR DELETE;
 -- Different retention for different data types
 ALTER TABLE logs
 MODIFY TTL
-    timestamp + INTERVAL 30 DAY DELETE,  -- Default
-    timestamp + INTERVAL 7 DAY TO VOLUME 'cold'  -- Move to cold storage first
-WHERE level != 'ERROR';  -- Keep errors longer
+    timestamp + INTERVAL 7 DAY TO VOLUME 'cold',  -- Move to cold storage first
+    timestamp + INTERVAL 30 DAY DELETE WHERE level != 'ERROR',  -- Default
+    timestamp + INTERVAL 90 DAY DELETE WHERE level = 'ERROR';  -- Keep errors longer
 ```
 
 ## Data Subject Access Request (DSAR)
@@ -120,28 +120,20 @@ INTO OUTFILE '/tmp/user_12345_events.json'
 FORMAT JSONEachRow;
 
 -- Comprehensive data export
-CREATE VIEW user_data_export AS
-SELECT
-    'events' AS source_table,
-    *
+SELECT 'events' AS source_table, *
 FROM events
 WHERE user_id = {user_id:UInt64}
+FORMAT JSONEachRow;
 
-UNION ALL
-
-SELECT
-    'profiles' AS source_table,
-    *
+SELECT 'profiles' AS source_table, *
 FROM user_profiles
 WHERE id = {user_id:UInt64}
+FORMAT JSONEachRow;
 
-UNION ALL
-
-SELECT
-    'orders' AS source_table,
-    *
+SELECT 'orders' AS source_table, *
 FROM orders
-WHERE customer_id = {user_id:UInt64};
+WHERE customer_id = {user_id:UInt64}
+FORMAT JSONEachRow;
 ```
 
 ## Consent Tracking
@@ -163,7 +155,21 @@ ORDER BY (user_id, consent_type);
 SELECT
     e.*
 FROM events e
-INNER JOIN user_consent c ON e.user_id = c.user_id
+INNER JOIN (
+    SELECT
+        user_id,
+        consent_type,
+        tupleElement(latest_consent, 1) AS granted,
+        tupleElement(latest_consent, 2) AS revoked_at
+    FROM (
+        SELECT
+            user_id,
+            consent_type,
+            argMax((granted, revoked_at), granted_at) AS latest_consent
+        FROM user_consent
+        GROUP BY user_id, consent_type
+    )
+) c ON e.user_id = c.user_id
 WHERE c.consent_type = 'analytics'
   AND c.granted = 1
   AND c.revoked_at IS NULL;

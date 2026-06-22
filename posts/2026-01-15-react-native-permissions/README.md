@@ -67,22 +67,34 @@ Update your `ios/Podfile` to specify which permissions your app needs:
 ```ruby
 # ios/Podfile
 
+def node_require(script)
+  # Resolve scripts with node to allow for hoisting
+  require Pod::Executable.execute_command('node', ['-p',
+    "require.resolve(
+      '#{script}',
+      {paths: [process.argv[1]]},
+    )", __dir__]).strip
+end
+
+node_require('react-native/scripts/react_native_pods.rb')
+node_require('react-native-permissions/scripts/setup.rb')
+
 target 'YourApp' do
   # ... other configurations
 
-  permissions_path = '../node_modules/react-native-permissions/ios'
-
   # Add only the permissions you need
-  pod 'Permission-Camera', :path => "#{permissions_path}/Camera"
-  pod 'Permission-PhotoLibrary', :path => "#{permissions_path}/PhotoLibrary"
-  pod 'Permission-Microphone', :path => "#{permissions_path}/Microphone"
-  pod 'Permission-LocationWhenInUse', :path => "#{permissions_path}/LocationWhenInUse"
-  pod 'Permission-LocationAlways', :path => "#{permissions_path}/LocationAlways"
-  pod 'Permission-Notifications', :path => "#{permissions_path}/Notifications"
-  pod 'Permission-Contacts', :path => "#{permissions_path}/Contacts"
-  pod 'Permission-BluetoothPeripheral', :path => "#{permissions_path}/BluetoothPeripheral"
-  pod 'Permission-MediaLibrary', :path => "#{permissions_path}/MediaLibrary"
-  pod 'Permission-Motion', :path => "#{permissions_path}/Motion"
+  setup_permissions([
+    'Camera',
+    'PhotoLibrary',
+    'Microphone',
+    'LocationWhenInUse',
+    'LocationAlways',
+    'Notifications',
+    'Contacts',
+    'Bluetooth',
+    'MediaLibrary',
+    'Motion',
+  ])
 end
 ```
 
@@ -116,8 +128,6 @@ iOS requires usage description strings for each permission. Add these to your `i
   <string>We need your location to show nearby places and provide directions.</string>
   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
   <string>We need continuous location access to track your workouts and provide navigation.</string>
-  <key>NSLocationAlwaysUsageDescription</key>
-  <string>We need background location access to track your trips.</string>
 
   <!-- Microphone -->
   <key>NSMicrophoneUsageDescription</key>
@@ -128,14 +138,14 @@ iOS requires usage description strings for each permission. Add these to your `i
   <string>We need access to your contacts to help you connect with friends.</string>
 
   <!-- Calendars -->
-  <key>NSCalendarsUsageDescription</key>
-  <string>We need calendar access to schedule and manage your events.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>We need full calendar access to schedule and manage your events.</string>
+  <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+  <string>We need calendar write access to add events you create in the app.</string>
 
   <!-- Bluetooth -->
   <key>NSBluetoothAlwaysUsageDescription</key>
   <string>We need Bluetooth access to connect to nearby devices.</string>
-  <key>NSBluetoothPeripheralUsageDescription</key>
-  <string>We need Bluetooth access to communicate with accessories.</string>
 
   <!-- Motion -->
   <key>NSMotionUsageDescription</key>
@@ -172,9 +182,13 @@ For Android, declare permissions in `android/app/src/main/AndroidManifest.xml`:
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- Storage (for Android 12 and below) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Storage / media compatibility for older Android versions -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!-- Media (for Android 13+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -285,17 +299,18 @@ The library returns these possible states:
 | `UNAVAILABLE` | Yes | Yes | Feature not available on device |
 | `DENIED` | Yes | Yes | Permission not yet requested or denied but can request again |
 | `GRANTED` | Yes | Yes | Permission granted |
-| `LIMITED` | Yes | No | Limited access (iOS 14+ photo library) |
-| `BLOCKED` | Yes | Yes | Denied permanently, must go to settings |
+| `LIMITED` | Yes | No | Limited access (iOS Contacts, Photo Library, Photo Library Add Only, and Notifications) |
+| `BLOCKED` | Yes | Yes | Denied permanently, must go to settings. On Android, `check` never returns `BLOCKED`; call `request` to obtain that status. |
 
 ## Requesting Permissions at Runtime
 
 Here is how to properly request permissions:
 
 ```typescript
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import {
   request,
+  requestMultiple,
   check,
   PERMISSIONS,
   RESULTS,
@@ -393,7 +408,7 @@ const requestMultiplePermissions = async (): Promise<void> => {
 When users deny permissions, provide helpful guidance:
 
 ```typescript
-import { Alert, Linking, Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { openSettings } from 'react-native-permissions';
 
 // Show alert to guide user to settings
@@ -444,13 +459,13 @@ const showDetailedSettingsAlert = (permissionName: string): void => {
 On Android, users can select "Don't ask again" when denying a permission. Here is how to handle this:
 
 ```typescript
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Alert, Platform, PermissionsAndroid } from 'react-native';
 import {
   check,
   request,
   PERMISSIONS,
   RESULTS,
-  openSettings,
+  Permission,
 } from 'react-native-permissions';
 
 interface PermissionState {
@@ -898,7 +913,7 @@ describe('Permission handling', () => {
     jest.clearAllMocks();
   });
 
-  it('should return true when permission is already granted', async () => {
+  it('should return granted when permission is already granted', async () => {
     (check as jest.Mock).mockResolvedValue(RESULTS.GRANTED);
 
     const result = await checkCameraPermission();
@@ -942,6 +957,10 @@ describe('Permission handling', () => {
 // e2e/permissions.e2e.ts
 describe('Permissions', () => {
   beforeAll(async () => {
+    if (device.getPlatform() !== 'ios') {
+      return;
+    }
+
     await device.launchApp({
       permissions: { camera: 'unset', location: 'unset' },
     });
@@ -957,6 +976,10 @@ describe('Permissions', () => {
   });
 
   it('should show permission denied screen when camera blocked', async () => {
+    if (device.getPlatform() !== 'ios') {
+      return;
+    }
+
     await device.launchApp({
       permissions: { camera: 'never' },
       newInstance: true,
@@ -969,8 +992,12 @@ describe('Permissions', () => {
   });
 
   it('should work correctly when permission is granted', async () => {
+    if (device.getPlatform() !== 'ios') {
+      return;
+    }
+
     await device.launchApp({
-      permissions: { camera: 'yes' },
+      permissions: { camera: 'YES' },
       newInstance: true,
     });
 
@@ -992,8 +1019,15 @@ const checkPermission = async (): Promise<boolean> => {
   return result === RESULTS.GRANTED;
 };
 
+interface CheckedPermissionState {
+  canUse: boolean;
+  needsRequest: boolean;
+  blocked?: boolean;
+  unavailable?: boolean;
+}
+
 // GOOD: Handle all states
-const checkPermission = async (): Promise<PermissionState> => {
+const checkPermission = async (): Promise<CheckedPermissionState> => {
   const result = await check(permission);
 
   switch (result) {

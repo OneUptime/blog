@@ -44,10 +44,11 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
@@ -59,7 +60,7 @@ services:
     ports:
       - "8083:8083"
     environment:
-      BOOTSTRAP_SERVERS: kafka:9092
+      BOOTSTRAP_SERVERS: kafka:29092
       GROUP_ID: connect-cluster
       CONFIG_STORAGE_TOPIC: connect-configs
       OFFSET_STORAGE_TOPIC: connect-offsets
@@ -155,10 +156,9 @@ SELECT pg_create_logical_replication_slot('debezium_slot', 'pgoutput');
     "time.precision.mode": "connect",
 
     "heartbeat.interval.ms": "10000",
-    "heartbeat.topics.prefix": "__debezium-heartbeat",
+    "topic.heartbeat.prefix": "__debezium-heartbeat",
 
-    "tombstones.on.delete": "true",
-    "delete.handling.mode": "rewrite"
+    "tombstones.on.delete": "true"
   }
 }
 ```
@@ -210,7 +210,7 @@ FLUSH PRIVILEGES;
     "topic.prefix": "myapp",
     "database.include.list": "mydb",
     "table.include.list": "mydb.orders,mydb.customers",
-    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
     "schema.history.internal.kafka.topic": "schema-changes.mydb",
 
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
@@ -233,7 +233,7 @@ FLUSH PRIVILEGES;
 
 ```json
 {
-  "schema": { ... },
+  "schema": {},
   "payload": {
     "before": {
       "id": 1,
@@ -308,8 +308,15 @@ public class CDCConsumer {
 
             for (ConsumerRecord<String, String> record : records) {
                 try {
+                    if (record.value() == null) {
+                        continue; // tombstone record
+                    }
+
                     JsonNode event = mapper.readTree(record.value());
                     JsonNode payload = event.get("payload");
+                    if (payload == null || payload.isNull()) {
+                        continue;
+                    }
 
                     String operation = payload.get("op").asText();
                     JsonNode before = payload.get("before");
@@ -376,6 +383,9 @@ class CDCConsumer:
                     continue
 
                 try:
+                    if msg.value() is None:
+                        continue  # tombstone record
+
                     event = json.loads(msg.value().decode())
                     payload = event.get('payload', {})
 
@@ -437,7 +447,7 @@ if __name__ == '__main__':
 | initial_only | Snapshot only, no streaming |
 | never | No snapshot, only stream changes |
 | when_needed | Snapshot if offsets unavailable |
-| schema_only | Snapshot schema only |
+| no_data | Snapshot schema only, no table data |
 
 ### Single Message Transforms (SMTs)
 
@@ -446,13 +456,17 @@ if __name__ == '__main__':
   "name": "postgres-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    ...
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "postgres",
+    "database.dbname": "mydb",
+    "topic.prefix": "myapp",
 
     "transforms": "unwrap,route",
 
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
-    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.delete.tombstone.handling.mode": "rewrite-with-tombstone",
     "transforms.unwrap.add.fields": "op,source.ts_ms",
 
     "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
@@ -463,6 +477,8 @@ if __name__ == '__main__':
 ```
 
 ### Filtering
+
+The Debezium Filter SMT requires the Debezium scripting artifact and a JSR-223 engine such as Groovy to be installed in the Kafka Connect plugin path.
 
 ```json
 {
@@ -550,6 +566,7 @@ kafka.connect:type=connector-task-metrics
 curl http://localhost:8083/connectors/postgres-connector/offsets
 
 # Reset offset (connector must be stopped)
+curl -X PUT http://localhost:8083/connectors/postgres-connector/stop
 curl -X DELETE http://localhost:8083/connectors/postgres-connector/offsets
 
 # Recreate connector with new snapshot
@@ -580,7 +597,7 @@ curl -X POST -H "Content-Type: application/json" \
 {
   "config": {
     "heartbeat.interval.ms": "10000",
-    "heartbeat.topics.prefix": "__debezium-heartbeat",
+    "topic.heartbeat.prefix": "__debezium-heartbeat",
     "heartbeat.action.query": "INSERT INTO heartbeat (ts) VALUES (NOW())"
   }
 }
@@ -594,7 +611,7 @@ SELECT slot_name, pg_current_wal_lsn() - confirmed_flush_lsn AS lag_bytes
 FROM pg_replication_slots;
 ```
 
-### 4. Handle Schema Changes
+### 4. Handle MySQL Schema Changes
 
 ```json
 {

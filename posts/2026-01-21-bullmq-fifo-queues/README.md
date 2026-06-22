@@ -8,11 +8,11 @@ Description: A comprehensive guide to implementing FIFO (First-In-First-Out) que
 
 ---
 
-FIFO (First-In-First-Out) queues ensure jobs are processed in the exact order they were added. While BullMQ is designed for high-throughput parallel processing, many use cases require strict ordering - such as processing user events in sequence, maintaining transaction order, or handling dependent operations. This guide covers how to implement FIFO behavior with BullMQ.
+FIFO (First-In-First-Out) queues start jobs in the order they were added. While BullMQ is designed for high-throughput parallel processing, many use cases require strict ordering - such as processing user events in sequence, maintaining transaction order, or handling dependent operations. This guide covers how to implement FIFO behavior with BullMQ.
 
 ## Understanding FIFO in BullMQ
 
-By default, BullMQ processes jobs in FIFO order when using a single worker with concurrency of 1. However, multiple workers or higher concurrency can break this ordering. Here's how to ensure strict FIFO processing.
+By default, BullMQ uses FIFO order for normal jobs. However, multiple workers or higher concurrency can make jobs complete in a different order because later jobs may finish first. Here's how to ensure strict FIFO completion.
 
 ```typescript
 import { Queue, Worker, Job } from 'bullmq';
@@ -67,7 +67,7 @@ class StrictFIFOQueue {
     this.worker = new Worker('strict-fifo', this.processJob.bind(this), {
       connection,
       concurrency: 1, // Single job at a time
-      lockDuration: 60000, // Long lock to prevent other workers
+      lockDuration: 60000, // Long enough for expected processing time
     });
   }
 
@@ -78,7 +78,7 @@ class StrictFIFOQueue {
       payload,
       timestamp: Date.now(),
     }, {
-      // Use timestamp to ensure proper ordering
+      // Timestamp is metadata; FIFO order comes from the queue and single worker
       timestamp: Date.now(),
       // Custom job ID for predictable ordering
       jobId: `seq_${sequence.toString().padStart(10, '0')}`,
@@ -110,7 +110,7 @@ class StrictFIFOQueue {
 
 ## FIFO by Key (Ordered per Entity)
 
-Process jobs in order per key while allowing parallel processing across keys:
+Process jobs in order per key within one worker instance while allowing parallel processing across keys:
 
 ```typescript
 interface KeyedJobData {
@@ -147,8 +147,6 @@ class KeyedFIFOQueue {
   createWorker(connection: Redis) {
     // Track currently processing keys
     const processingKeys = new Set<string>();
-    const pendingJobs = new Map<string, Job<KeyedJobData>[]>();
-
     return new Worker<KeyedJobData>('keyed-fifo', async (job) => {
       const { key } = job.data;
 
@@ -263,7 +261,16 @@ class OrderedEventProcessor {
   private pendingEvents: Map<string, EventJobData> = new Map();
 
   constructor(connection: Redis) {
-    this.queue = new Queue('ordered-events', { connection });
+    this.queue = new Queue('ordered-events', {
+      connection,
+      defaultJobOptions: {
+        attempts: 100,
+        backoff: {
+          type: 'fixed',
+          delay: 100,
+        },
+      },
+    });
     this.createWorker(connection);
   }
 
@@ -286,7 +293,7 @@ class OrderedEventProcessor {
         console.log(`Event ${event.eventId} waiting for ${event.previousEventId}`);
         this.pendingEvents.set(event.eventId, event);
 
-        // Requeue for later processing
+        // Retry later; attempts and backoff are configured on the queue
         throw new Error('DEPENDENCY_NOT_MET');
       }
 
@@ -297,16 +304,12 @@ class OrderedEventProcessor {
       // Mark as processed
       this.processedEvents.add(event.eventId);
 
-      // Check for pending events that depend on this one
-      await this.processDependentEvents(event.eventId);
+      this.pendingEvents.delete(event.eventId);
 
       return result;
     }, {
       connection,
       concurrency: 1,
-      settings: {
-        backoffStrategy: () => 100, // Quick retry for dependency issues
-      },
     });
   }
 
@@ -315,18 +318,6 @@ class OrderedEventProcessor {
     return { eventId: event.eventId, processed: true };
   }
 
-  private async processDependentEvents(processedEventId: string) {
-    for (const [eventId, event] of this.pendingEvents) {
-      if (event.previousEventId === processedEventId) {
-        this.pendingEvents.delete(eventId);
-        // Requeue the dependent event
-        await this.queue.add('event', event, {
-          jobId: eventId,
-          priority: 1, // High priority
-        });
-      }
-    }
-  }
 }
 ```
 
@@ -435,15 +426,22 @@ class TransactionLogProcessor {
   private accountSequences: Map<string, number> = new Map();
 
   constructor(connection: Redis) {
-    this.queue = new Queue('transaction-log', { connection });
+    this.queue = new Queue('transaction-log', {
+      connection,
+      defaultJobOptions: {
+        attempts: 100,
+        backoff: {
+          type: 'fixed',
+          delay: 100,
+        },
+      },
+    });
     this.createWorker(connection);
   }
 
   async addTransaction(entry: TransactionLogEntry) {
     return this.queue.add('transaction', entry, {
       jobId: `${entry.accountId}_${entry.sequenceNumber}`,
-      // Use sequence number for ordering
-      timestamp: entry.sequenceNumber,
     });
   }
 

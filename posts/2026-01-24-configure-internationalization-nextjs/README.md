@@ -24,11 +24,11 @@ flowchart TD
     C --> F[Locale-based Routing]
     C --> G[Domain Routing]
 
-    D --> H[Middleware-based Routing]
+    D --> H[Proxy-based Routing]
     D --> I[Dynamic Route Segments]
     D --> J[Third-party Libraries]
 
-    E --> K[/en/about, /fr/about]
+    E --> K[Localized URLs]
     F --> K
     H --> K
     I --> K
@@ -131,7 +131,6 @@ project/
 ```
 
 ```json
-// locales/en/common.json
 {
   "nav": {
     "home": "Home",
@@ -154,7 +153,6 @@ project/
 ```
 
 ```json
-// locales/fr/common.json
 {
   "nav": {
     "home": "Accueil",
@@ -181,7 +179,7 @@ project/
 ```javascript
 // lib/i18n.js
 import { useRouter } from 'next/router';
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 
 // Import all translations
 import enCommon from '../locales/en/common.json';
@@ -291,11 +289,11 @@ export default function Header() {
 
 ## App Router: Manual i18n Implementation
 
-For the App Router, you need to implement i18n manually using middleware and dynamic segments:
+For the App Router, you need to implement i18n manually using Proxy and dynamic segments:
 
 ```mermaid
 flowchart TD
-    A[Request] --> B[Middleware]
+    A[Request] --> B[Proxy]
     B --> C{Has Locale?}
     C -->|Yes| D[Proceed to Page]
     C -->|No| E[Detect Locale]
@@ -315,16 +313,21 @@ app/
       page.js
     products/
       page.js
-  middleware.js
-  i18n/
-    config.js
-    dictionaries.js
+i18n/
+  config.js
+  dictionaries.js
+  dictionaries/
+    en.json
+    fr.json
+    de.json
+    es.json
+proxy.js
 ```
 
-### Middleware Configuration
+### Proxy Configuration
 
 ```javascript
-// middleware.js
+// proxy.js
 import { NextResponse } from 'next/server';
 
 const locales = ['en', 'fr', 'de', 'es'];
@@ -359,7 +362,7 @@ function getLocale(request) {
   return defaultLocale;
 }
 
-export function middleware(request) {
+export function proxy(request) {
   const { pathname } = request.nextUrl;
 
   // Check if pathname already has a locale
@@ -502,12 +505,21 @@ npm install next-intl
 ```
 
 ```javascript
-// i18n.js (configuration)
+// i18n/request.js (configuration)
 import { getRequestConfig } from 'next-intl/server';
 
-export default getRequestConfig(async ({ locale }) => ({
-  messages: (await import(`./messages/${locale}.json`)).default,
-}));
+const locales = ['en', 'fr', 'de', 'es'];
+const defaultLocale = 'en';
+
+export default getRequestConfig(async ({ requestLocale }) => {
+  const requested = await requestLocale;
+  const locale = locales.includes(requested) ? requested : defaultLocale;
+
+  return {
+    locale,
+    messages: (await import(`../messages/${locale}.json`)).default,
+  };
+});
 ```
 
 ```jsx
@@ -633,8 +645,11 @@ export function formatDate(date, locale, options = {}) {
     month: 'long',
     day: 'numeric',
   };
+  const formatOptions = options.dateStyle || options.timeStyle
+    ? options
+    : { ...defaultOptions, ...options };
 
-  return new Intl.DateTimeFormat(locale, { ...defaultOptions, ...options }).format(
+  return new Intl.DateTimeFormat(locale, formatOptions).format(
     new Date(date)
   );
 }
@@ -704,6 +719,7 @@ export default function LocalizedContent({ locale }) {
 ```jsx
 // app/[locale]/layout.js
 import { i18n } from '../../i18n/config';
+import { getDictionary } from '../../i18n/dictionaries';
 
 export async function generateMetadata({ params }) {
   const { locale } = await params;

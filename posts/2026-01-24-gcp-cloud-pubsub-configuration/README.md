@@ -56,7 +56,7 @@ Publishers send messages to topics. Subscriptions receive copies of messages fro
 gcloud pubsub topics create orders-topic
 
 # Create a topic with message retention (keeps messages even after ack)
-gcloud pubsub topics create orders-topic \
+gcloud pubsub topics create orders-retained-topic \
     --message-retention-duration=7d
 
 # List all topics
@@ -137,7 +137,7 @@ except TimeoutError:
 
 ### Exactly-Once Delivery
 
-Enable exactly-once delivery for subscriptions that need deduplication.
+Enable exactly-once delivery for subscriptions that need stronger redelivery guarantees after messages are acknowledged.
 
 ```bash
 # Create subscription with exactly-once delivery
@@ -149,11 +149,12 @@ gcloud pubsub subscriptions create critical-orders-subscription \
 
 ```mermaid
 flowchart TB
-    A[Message Published] --> B{Already Processed?}
-    B -->|Yes| C[Skip - Deduplicated]
-    B -->|No| D[Process Message]
-    D --> E[Acknowledge]
-    E --> F[Mark as Processed]
+    A[Message Published] --> B[Delivered to Subscriber]
+    B --> C[Process Message]
+    C --> D[Acknowledge]
+    D --> E{Ack Succeeds?}
+    E -->|Yes| F[Not Redelivered]
+    E -->|No| G[May Be Redelivered]
 ```
 
 ## Dead Letter Queues
@@ -194,12 +195,12 @@ Reduce processing overhead by filtering messages at the subscription level.
 # Create a subscription that only receives high-priority orders
 gcloud pubsub subscriptions create high-priority-orders \
     --topic=orders-topic \
-    --filter='attributes.priority="high"'
+    --message-filter='attributes.priority="high"'
 
 # Create a subscription for specific regions
 gcloud pubsub subscriptions create us-orders \
     --topic=orders-topic \
-    --filter='attributes.region="us"'
+    --message-filter='attributes.region="us"'
 ```
 
 When publishing, include attributes for filtering.
@@ -270,13 +271,13 @@ EOF
 
 # Create the schema in Pub/Sub
 gcloud pubsub schemas create order-schema \
-    --type=AVRO \
+    --type=avro \
     --definition-file=order-schema.avsc
 
 # Create topic with schema validation
 gcloud pubsub topics create validated-orders-topic \
     --schema=order-schema \
-    --message-encoding=JSON
+    --message-encoding=json
 ```
 
 ```mermaid
@@ -294,7 +295,8 @@ flowchart LR
 
 ```bash
 # View subscription metrics
-gcloud monitoring metrics list --filter="metric.type=pubsub.googleapis.com"
+gcloud monitoring metrics list \
+    --filter='metric.type = starts_with("pubsub.googleapis.com")'
 
 # Key metrics to watch:
 # - subscription/num_undelivered_messages (backlog)
@@ -311,9 +313,8 @@ gcloud alpha monitoring policies create \
     --display-name="Pub/Sub Backlog Alert" \
     --condition-display-name="High backlog" \
     --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-    --condition-threshold-value=10000 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
+    --if="> 10000" \
+    --duration=300s \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -323,6 +324,8 @@ For infrastructure as code, here is a complete Terraform setup.
 
 ```hcl
 # main.tf - Pub/Sub infrastructure
+
+data "google_project" "current" {}
 
 resource "google_pubsub_schema" "order_schema" {
   name       = "order-schema"
@@ -370,6 +373,18 @@ resource "google_pubsub_subscription" "orders_subscription" {
   }
 }
 
+resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
+  topic  = google_pubsub_topic.orders_dead_letter.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "dead_letter_subscriber" {
+  subscription = google_pubsub_subscription.orders_subscription.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
 resource "google_pubsub_subscription" "high_priority" {
   name   = "high-priority-orders"
   topic  = google_pubsub_topic.orders.name
@@ -394,9 +409,12 @@ gcloud pubsub subscriptions pull orders-subscription \
     --auto-ack \
     --limit=10
 
-# Check subscription backlog
-gcloud pubsub subscriptions describe orders-subscription \
-    --format='value(numUndeliveredMessages)'
+# Check subscription backlog metric
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+START_TIME=$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?filter=metric.type%3D%22pubsub.googleapis.com%2Fsubscription%2Fnum_undelivered_messages%22%20AND%20resource.type%3D%22pubsub_subscription%22%20AND%20resource.labels.subscription_id%3D%22orders-subscription%22&interval.endTime=${END_TIME}&interval.startTime=${START_TIME}"
 ```
 
 ## Summary

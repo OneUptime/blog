@@ -41,7 +41,7 @@ What happened? `slice1` shared the same underlying array as `original`, and `app
 
 ## Understanding Slice Internals
 
-A slice is a struct with three fields:
+A slice can be thought of as a descriptor with three fields:
 
 ```go
 type slice struct {
@@ -322,15 +322,14 @@ func filterPositive(nums []int) []int {
 
 **Safe Patterns:**
 
-1. **Full slice expression**: `a[low:high:max]` - limits capacity
+1. **Full slice expression**: `a[low:high:max]` - limits capacity before append
 2. **Copy**: `copy(dst, src)` - creates independent slice
-3. **nil slice**: `var s []T` then append - always new array
+3. **nil slice**: `var s []T` then append - starts with a new array
 4. **make**: `make([]T, len)` - pre-allocate new array
 
-**Key Rule**: If you need an independent slice, either:
+**Key Rule**: If you need to append without overwriting nearby elements, use a full slice expression to limit capacity. If you need a fully independent slice, copy the data.
 
-- Use full slice expression to limit capacity, or
-- Copy the data to a new slice
+Full slice expressions do not copy existing elements; they only force a later append to allocate when it would exceed the limited capacity.
 
 ---
 

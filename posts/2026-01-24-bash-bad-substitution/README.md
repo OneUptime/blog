@@ -76,9 +76,8 @@ echo "$lower"      # Output: hello
 
 ```bash
 #!/bin/bash
-# Check which shell is running
+# Check whether Bash is running
 
-echo "Shell: $SHELL"
 echo "Bash version: ${BASH_VERSION:-Not Bash}"
 
 # Check if running as Bash
@@ -351,6 +350,7 @@ echo "${var}"              # Hello World
 # Default values
 echo "${empty_var:-default}"   # default (use default if unset/empty)
 echo "${empty_var:=default}"   # default (set to default if unset/empty)
+unset empty_var
 echo "${empty_var:+alternate}" # (empty - var is unset)
 echo "${var:+alternate}"       # alternate (var is set)
 echo "${undefined:?error}"     # Exits with error
@@ -430,6 +430,7 @@ bash_minor="${bash_minor%%.*}"
 echo "Major: $bash_major, Minor: $bash_minor"
 
 # Check for features
+name="HELLO"
 if ((bash_major >= 4)); then
     echo "Case modification supported"
     echo "${name,,}"

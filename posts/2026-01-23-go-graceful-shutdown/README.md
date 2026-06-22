@@ -29,7 +29,6 @@ Without graceful shutdown:
 package main
 
 import (
-    "context"
     "fmt"
     "os"
     "os/signal"
@@ -147,6 +146,8 @@ import (
     "sync"
     "syscall"
     "time"
+
+    _ "github.com/lib/pq" // PostgreSQL driver
 )
 
 type Application struct {
@@ -173,6 +174,7 @@ func (app *Application) Start() error {
     // Initialize HTTP server
     mux := http.NewServeMux()
     mux.HandleFunc("/", app.handleRequest)
+    mux.HandleFunc("/slow", app.handleSlowRequest)
     mux.HandleFunc("/health", app.handleHealth)
     
     app.server = &http.Server{
@@ -197,6 +199,11 @@ func (app *Application) Start() error {
 
 func (app *Application) handleRequest(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintln(w, "Hello!")
+}
+
+func (app *Application) handleSlowRequest(w http.ResponseWriter, r *http.Request) {
+    time.Sleep(5 * time.Second)
+    fmt.Fprintln(w, "Slow response")
 }
 
 func (app *Application) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -387,12 +394,24 @@ Kubernetes deployment:
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: app
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
       - name: app
+        image: example/app:latest
+        ports:
+        - containerPort: 8080
         livenessProbe:
           httpGet:
             path: /healthz

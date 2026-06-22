@@ -12,7 +12,7 @@ Apache Airflow is a powerful workflow orchestration platform, but DAG scheduling
 
 ## Understanding Airflow Scheduling
 
-Before diving into fixes, let us understand how Airflow scheduling works. The scheduler continuously loops through all DAGs, checking if any task instances should be created based on the schedule interval and execution date.
+Before diving into fixes, let us understand how Airflow scheduling works. The scheduler continuously loops through all DAGs, checking if any task instances should be created based on the DAG schedule and logical date.
 
 ```mermaid
 flowchart TD
@@ -56,9 +56,9 @@ def create_dag():
 dag = DAG('my_dag', ...)
 
 # Or use dag decorator
-from airflow.decorators import dag
+from airflow.sdk import dag
 
-@dag(schedule_interval='@daily', start_date=datetime(2026, 1, 1))
+@dag(schedule='@daily', start_date=datetime(2026, 1, 1))
 def my_pipeline():
     pass
 
@@ -67,7 +67,7 @@ my_dag = my_pipeline()  # Instantiate at module level
 
 **Check File Location:**
 
-```python
+```bash
 # In airflow.cfg or environment
 # Ensure your DAG file is in the correct folder
 AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
@@ -89,31 +89,31 @@ from datetime import datetime, timedelta
 dag = DAG(
     'my_dag',
     start_date=datetime(2027, 1, 1),  # Future date
-    schedule_interval='@daily'
+    schedule='@daily'
 )
 
 # Bad: Dynamic start_date causes issues
 dag = DAG(
     'my_dag',
     start_date=datetime.now(),  # Changes on every parse!
-    schedule_interval='@daily'
+    schedule='@daily'
 )
 
 # Good: Fixed start_date in the past
 dag = DAG(
     'my_dag',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False  # Prevent backfill of all past runs
 )
 ```
 
-**Understand Execution Date vs Run Time:**
+**Understand Logical Date vs Run Time:**
 
 ```mermaid
 timeline
     title Airflow Scheduling Timeline
-    2026-01-24 00:00 : execution_date = 2026-01-24
+    2026-01-24 00:00 : logical_date = 2026-01-24
                      : Data interval start
     2026-01-25 00:00 : Actual run time
                      : Data interval end
@@ -122,9 +122,9 @@ timeline
 
 ```python
 # A daily DAG scheduled for midnight actually runs at the END of the interval
-# execution_date 2026-01-24 runs on 2026-01-25 00:00
+# logical_date 2026-01-24 runs on 2026-01-25 00:00
 
-# To run immediately at start_date, use schedule_interval=None for manual
+# To run immediately at start_date, use schedule=None for manual
 # or @once for a single immediate run
 ```
 
@@ -137,31 +137,30 @@ Tasks are queued but take a long time to start.
 ```ini
 # airflow.cfg optimizations
 
-[scheduler]
+[dag_processor]
 # Increase parsing speed
 min_file_process_interval = 30
-dag_dir_list_interval = 60
+refresh_interval = 60
 
-# More scheduler processes
+# More DAG parser processes
 parsing_processes = 4
 
+[scheduler]
 # Faster task scheduling
 scheduler_heartbeat_sec = 5
-orphaned_tasks_check_interval = 60
+task_queued_timeout_check_interval = 60
 
 [core]
 # Increase parallelism
 parallelism = 32
-dag_concurrency = 16
+max_active_tasks_per_dag = 16
 max_active_runs_per_dag = 16
 ```
 
 **Check Database Performance:**
 
-```python
+```ini
 # Monitor scheduler performance
-from airflow.utils.log.logging_mixin import LoggingMixin
-
 # Enable scheduler health metrics
 # In airflow.cfg
 [metrics]
@@ -186,11 +185,8 @@ Tasks show as queued but never execute.
 **Check Worker Availability:**
 
 ```bash
-# For Celery executor, check workers
-celery -A airflow.executors.celery_executor inspect active
-
-# Check if workers are connected
-celery -A airflow.executors.celery_executor inspect ping
+# For Celery executor, check active workers
+airflow celery list-workers
 ```
 
 **Check Pool Slots:**
@@ -217,10 +213,9 @@ task = BashOperator(
 
 **Verify Executor Configuration:**
 
-```python
-# Check which executor is running
-from airflow.configuration import conf
-print(conf.get('core', 'executor'))
+```bash
+# Check which executor is configured
+airflow config get-value core executor
 
 # For LocalExecutor, check parallelism
 # For CeleryExecutor, check worker concurrency
@@ -236,7 +231,7 @@ Some DAG runs are skipped entirely.
 dag = DAG(
     'my_dag',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@hourly',
+    schedule='@hourly',
     catchup=True,  # Will backfill all missed runs
     max_active_runs=3,  # Limits concurrent backfill
 )
@@ -249,10 +244,11 @@ dag = DAG(
 
 ```bash
 # Manually trigger missed runs
-airflow dags backfill my_dag \
-    --start-date 2026-01-20 \
-    --end-date 2026-01-24 \
-    --reset-dagruns
+airflow backfill create \
+    --dag-id my_dag \
+    --from-date 2026-01-20 \
+    --to-date 2026-01-24 \
+    --reprocess-behavior failed
 ```
 
 ### 6. Timezone Issues
@@ -268,9 +264,11 @@ import pendulum
 dag = DAG(
     'my_dag',
     start_date=pendulum.datetime(2026, 1, 1, tz='America/New_York'),
-    schedule_interval='0 9 * * *',  # 9 AM Eastern
+    schedule='0 9 * * *',  # 9 AM Eastern
 )
+```
 
+```ini
 # Configure default timezone in airflow.cfg
 [core]
 default_timezone = America/New_York
@@ -283,7 +281,7 @@ from airflow.timetables.trigger import CronTriggerTimetable
 dag = DAG(
     'my_dag',
     start_date=datetime(2026, 1, 1),
-    timetable=CronTriggerTimetable(
+    schedule=CronTriggerTimetable(
         '0 9 * * *',
         timezone='America/New_York'
     ),
@@ -297,7 +295,7 @@ Tasks run out of order or skip dependencies.
 **Debug Dependency Issues:**
 
 ```python
-# Visualize dependencies
+# Test a task and its dependency checks
 # In terminal
 airflow tasks test my_dag task_id 2026-01-24
 
@@ -311,7 +309,7 @@ task_a >> task_b >> task_c >> task_a  # This will fail!
 **Correct Dependency Patterns:**
 
 ```python
-from airflow.operators.empty import EmptyOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 
 start = EmptyOperator(task_id='start')
 end = EmptyOperator(task_id='end')
@@ -332,7 +330,7 @@ flowchart TD
     B --> |No| C[Check import errors<br/>Check file location]
     B --> |Yes| D{Tasks queued?}
 
-    D --> |No| E[Check start_date<br/>Check schedule_interval<br/>Check is_paused]
+    D --> |No| E[Check start_date<br/>Check schedule<br/>Check is_paused]
     D --> |Yes| F{Tasks running?}
 
     F --> |No| G[Check executor<br/>Check pools<br/>Check workers]
@@ -348,15 +346,16 @@ flowchart TD
 
 ```python
 # Create a DAG to monitor scheduling health
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
+import pendulum
 
 def check_scheduler_lag(**context):
     """Alert if execution is too far behind schedule."""
-    execution_date = context['execution_date']
-    now = datetime.utcnow()
-    lag = now - execution_date
+    logical_date = context['dag_run'].logical_date
+    now = pendulum.now('UTC')
+    lag = now - logical_date
 
     if lag > timedelta(hours=1):
         raise ValueError(f"Scheduler lag too high: {lag}")
@@ -366,7 +365,7 @@ def check_scheduler_lag(**context):
 with DAG(
     'scheduler_health_check',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='*/15 * * * *',  # Every 15 minutes
+    schedule='*/15 * * * *',  # Every 15 minutes
     catchup=False,
     tags=['monitoring'],
 ) as dag:

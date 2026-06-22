@@ -50,8 +50,8 @@ Key concepts:
 | minmax | Ranges, inequalities | Low | Very Low |
 | set(N) | Low-cardinality equality | None (up to N) | Medium |
 | bloom_filter | High-cardinality equality | Possible | Low |
-| tokenbf_v1 | Text search (words) | Possible | Medium |
-| ngrambf_v1 | Substring search | Possible | High |
+| tokenbf_v1 | Text search (words, deprecated in ClickHouse >= 26.2) | Possible | Medium |
+| ngrambf_v1 | Substring search (deprecated in ClickHouse >= 26.2) | Possible | High |
 
 ## minmax Index
 
@@ -167,8 +167,8 @@ Probabilistic data structure that can tell if a value definitely doesn't exist o
 
 ### When to Use
 
-- High-cardinality equality checks: `WHERE user_id = 12345`
-- String columns with many unique values
+- Equality checks for sparse values: `WHERE user_id = 12345`
+- String columns with many unique values, especially when values are clustered within blocks
 - When false positives are acceptable for significant skip rates
 
 ### Creating bloom_filter Indexes
@@ -190,8 +190,8 @@ ORDER BY (service, timestamp);
 
 ### Parameters
 
-- **bloom_filter()**: Default false positive rate (~0.01)
-- **bloom_filter(fp_rate)**: Custom false positive rate (0.001 to 0.1)
+- **bloom_filter()**: Default false positive rate (0.025)
+- **bloom_filter(fp_rate)**: Custom false positive rate between 0 and 1
 
 Lower fp_rate = larger index but fewer false positives.
 
@@ -222,7 +222,7 @@ ORDER BY timestamp;
 
 ## tokenbf_v1 Index
 
-Token-based bloom filter for full-text search on word boundaries.
+Token-based bloom filter for word-boundary search. In ClickHouse 26.2 and newer, `tokenbf_v1` is deprecated for full-text search in favor of the `text` index.
 
 ### When to Use
 
@@ -250,7 +250,7 @@ ORDER BY created_at;
 
 ### Parameters
 
-- **size_of_bloom_filter**: Number of bits in filter
+- **size_of_bloom_filter**: Size of the filter in bytes
 - **number_of_hash_functions**: Hash functions (usually 2-5)
 - **random_seed**: Seed for hash (usually 0)
 
@@ -258,7 +258,7 @@ ORDER BY created_at;
 
 ```sql
 -- Text: "ClickHouse is a fast analytical database"
--- Tokenizes to: ['clickhouse', 'is', 'a', 'fast', 'analytical', 'database']
+-- Tokenizes to: ['ClickHouse', 'is', 'a', 'fast', 'analytical', 'database']
 -- Each token added to bloom filter
 
 -- Query: WHERE content LIKE '%database%'
@@ -273,7 +273,7 @@ SELECT * FROM articles WHERE hasToken(content, 'database');
 
 -- Multiple words (AND)
 SELECT * FROM articles
-WHERE hasToken(content, 'clickhouse') AND hasToken(content, 'performance');
+WHERE hasToken(content, 'ClickHouse') AND hasToken(content, 'performance');
 
 -- Works with LIKE for word boundaries
 SELECT * FROM articles WHERE content LIKE '%database%';
@@ -281,7 +281,7 @@ SELECT * FROM articles WHERE content LIKE '%database%';
 
 ## ngrambf_v1 Index
 
-N-gram bloom filter for substring search anywhere in text.
+N-gram bloom filter for substring search anywhere in text. In ClickHouse 26.2 and newer, `ngrambf_v1` is deprecated for full-text search in favor of the `text` index.
 
 ### When to Use
 
@@ -310,7 +310,7 @@ ORDER BY created_at;
 ### Parameters
 
 - **n**: N-gram size (3-4 recommended)
-- **size_of_bloom_filter**: Bits in filter
+- **size_of_bloom_filter**: Size of the filter in bytes
 - **number_of_hash_functions**: Usually 2-5
 - **random_seed**: Usually 0
 
@@ -407,7 +407,7 @@ WHERE table = 'comprehensive_logs';
 ### Benchmark Queries
 
 ```sql
--- Without index (force skip)
+-- With skip indexes disabled
 SELECT count()
 FROM comprehensive_logs
 WHERE trace_id = 'abc-123'
@@ -478,10 +478,13 @@ SELECT * FROM logs WHERE trace_id = '...' FORMAT Null;
 -- 2. Add index
 ALTER TABLE logs ADD INDEX idx_trace_id trace_id TYPE bloom_filter GRANULARITY 4;
 
--- 3. Wait for index to build
+-- 3. Materialize index for existing data
+ALTER TABLE logs MATERIALIZE INDEX idx_trace_id;
+
+-- 4. Wait for index to build
 SELECT * FROM system.mutations WHERE table = 'logs' AND is_done = 0;
 
--- 4. Test again
+-- 5. Test again
 SELECT * FROM logs WHERE trace_id = '...' FORMAT Null;
 ```
 

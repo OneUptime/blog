@@ -55,8 +55,9 @@ kubectl get svc -n ingress-nginx
 ### Fix: Install Ingress Controller
 
 ```bash
-# Install NGINX Ingress Controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
+# ingress-nginx is retired after March 2026; prefer a supported controller for new installs.
+# If you maintain an existing ingress-nginx deployment, use a final patched release.
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for controller to be ready
 kubectl wait --namespace ingress-nginx \
@@ -98,17 +99,17 @@ kind: Ingress
 metadata:
   name: myapp-ingress
   annotations:
-    # Specify ingress class if multiple controllers exist
-    kubernetes.io/ingress.class: nginx
-    # Or use ingressClassName in spec (preferred)
+    # Legacy ingress class annotation (deprecated); use ingressClassName in spec instead
+    # kubernetes.io/ingress.class: nginx
     
     # Rewrite paths if needed
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
     
     # SSL redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
-  ingressClassName: nginx  # Required in newer versions!
+  ingressClassName: nginx  # Recommended; required if there is no default IngressClass
   
   tls:
     - hosts:
@@ -134,10 +135,13 @@ spec:
 # Check service exists
 kubectl get svc api-service
 
-# Verify endpoints exist (critical!)
+# Verify EndpointSlices exist (critical!)
+kubectl get endpointslice -l kubernetes.io/service-name=api-service
+
+# For older clusters, you may also see the legacy Endpoints object
 kubectl get endpoints api-service
 
-# If endpoints empty, check:
+# If EndpointSlices are empty, check:
 # 1. Service selector matches pod labels
 # 2. Pods are ready
 
@@ -372,6 +376,7 @@ echo -e "\n=== Backend Services ==="
 for svc in $(kubectl get ingress $INGRESS -n $NAMESPACE -o jsonpath='{.spec.rules[*].http.paths[*].backend.service.name}'); do
     echo "--- Service: $svc ---"
     kubectl get svc $svc -n $NAMESPACE
+    kubectl get endpointslice -n $NAMESPACE -l kubernetes.io/service-name=$svc
     kubectl get endpoints $svc -n $NAMESPACE
 done
 

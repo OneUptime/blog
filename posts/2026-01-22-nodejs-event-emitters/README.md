@@ -199,6 +199,11 @@ emitter.emit('orderObject', {
 const EventEmitter = require('events');
 const emitter = new EventEmitter();
 
+async function saveToDatabase(data) {
+  // Simulate saving data
+  await Promise.resolve(data);
+}
+
 // Async listener
 emitter.on('save', async (data) => {
   await saveToDatabase(data);
@@ -210,7 +215,7 @@ emitter.emit('save', { name: 'John' });
 console.log('This logs before "Saved to database"');
 ```
 
-### Waiting for Async Listeners
+### Waiting for Events
 
 ```javascript
 const EventEmitter = require('events');
@@ -269,8 +274,11 @@ const EventEmitter = require('events');
 const emitter = new EventEmitter();
 
 // Without error listener, error event throws
-emitter.emit('error', new Error('Something went wrong'));
-// Throws: Error: Something went wrong
+try {
+  emitter.emit('error', new Error('Something went wrong'));
+} catch (err) {
+  console.error('Thrown:', err.message);
+}
 
 // With error listener, error is handled
 emitter.on('error', (err) => {
@@ -312,7 +320,11 @@ class SafeEmitter extends EventEmitter {
     try {
       return super.emit(event, ...args);
     } catch (error) {
-      this.emit('error', error);
+      if (event === 'error' || this.listenerCount('error') === 0) {
+        throw error;
+      }
+      
+      super.emit('error', error);
       return false;
     }
   }
@@ -542,8 +554,14 @@ db.on('connected', () => console.log('Database connected'));
 db.on('query', (sql) => console.log('Executing:', sql));
 db.on('error', (err) => console.error('Database error:', err));
 
-await db.connect();
-await db.query('SELECT * FROM users');
+async function main() {
+  await db.connect();
+  await db.query('SELECT * FROM users');
+}
+
+main().catch((err) => {
+  console.error('Unexpected database error:', err);
+});
 ```
 
 ## TypeScript Support
@@ -564,7 +582,7 @@ interface User {
 }
 
 // Type-safe emitter
-class TypedEmitter<T extends Record<string, (...args: any[]) => void>> {
+class TypedEmitter<T extends { [K in keyof T]: (...args: any[]) => void }> {
   private emitter = new EventEmitter();
   
   on<K extends keyof T>(event: K, listener: T[K]): this {

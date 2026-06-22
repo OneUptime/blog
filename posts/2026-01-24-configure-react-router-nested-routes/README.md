@@ -186,6 +186,8 @@ function SettingsLayout() {
     </div>
   );
 }
+
+export default SettingsLayout;
 ```
 
 ## Protected Routes with Nested Layout
@@ -370,7 +372,10 @@ For large applications, define routes as data:
 // routes/dashboardRoutes.js
 import Overview from '../pages/Overview';
 import Analytics from '../pages/Analytics';
-import Settings from '../pages/Settings';
+import SettingsLayout from '../layouts/SettingsLayout';
+import GeneralSettings from '../pages/GeneralSettings';
+import ProfileSettings from '../pages/ProfileSettings';
+import SecuritySettings from '../pages/SecuritySettings';
 import Users from '../pages/Users';
 
 export const dashboardRoutes = [
@@ -384,7 +389,7 @@ export const dashboardRoutes = [
   },
   {
     path: 'settings',
-    element: <Settings />,
+    element: <SettingsLayout />,
     children: [
       { index: true, element: <GeneralSettings /> },
       { path: 'profile', element: <ProfileSettings /> },
@@ -398,10 +403,10 @@ export const dashboardRoutes = [
 ];
 
 // App.jsx - Using useRoutes hook
-import { useRoutes } from 'react-router-dom';
+import { BrowserRouter, useRoutes } from 'react-router-dom';
 import { dashboardRoutes } from './routes/dashboardRoutes';
 
-function App() {
+function AppRoutes() {
   const routes = useRoutes([
     {
       path: '/dashboard',
@@ -415,6 +420,14 @@ function App() {
   ]);
 
   return routes;
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  );
 }
 ```
 

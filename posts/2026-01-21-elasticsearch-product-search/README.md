@@ -476,7 +476,8 @@ curl -u elastic:password -X GET "localhost:9200/products/_search?pretty" -H 'Con
       ],
       "filter": [
         {"term": {"in_stock": true}}
-      ]
+      ],
+      "minimum_should_match": 1
     }
   },
   "highlight": {
@@ -541,8 +542,10 @@ curl -u elastic:password -X GET "localhost:9200/products/_search?pretty" -H 'Con
 {
   "query": {
     "bool": {
-      "must": [{"match": {"category": "electronics"}}],
-      "filter": [{"term": {"in_stock": true}}]
+      "filter": [
+        {"prefix": {"category": "electronics/"}},
+        {"term": {"in_stock": true}}
+      ]
     }
   },
   "sort": [
@@ -653,7 +656,7 @@ curl -u elastic:password -X GET "localhost:9200/products/_search?request_cache=t
   "size": 0,
   "query": {
     "bool": {
-      "filter": [{"term": {"category": "electronics"}}]
+      "filter": [{"prefix": {"category": "electronics/"}}]
     }
   },
   "aggs": {
@@ -785,7 +788,8 @@ class ProductSearch:
                         {"match": {"name.autocomplete": {"query": prefix, "operator": "and"}}},
                         {"match_phrase_prefix": {"name": {"query": prefix}}}
                     ],
-                    "filter": [{"term": {"in_stock": True}}]
+                    "filter": [{"term": {"in_stock": True}}],
+                    "minimum_should_match": 1
                 }
             }
         }

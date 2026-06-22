@@ -35,7 +35,7 @@ interface ImageJobData {
 }
 
 interface ImageOperation {
-  type: 'resize' | 'format' | 'quality' | 'watermark' | 'blur' | 'rotate';
+  type: 'resize' | 'format' | 'quality' | 'blur' | 'rotate';
   options: Record<string, any>;
 }
 
@@ -71,9 +71,10 @@ const imageWorker = new Worker<ImageJobData, ProcessedImage>(
       pipeline = applyOperation(pipeline, operation);
     }
 
+    const outputExtension = getOutputExtension(inputPath, operations);
     const outputPath = path.join(
       outputDir,
-      `processed_${Date.now()}${path.extname(inputPath)}`
+      `processed_${Date.now()}${outputExtension}`
     );
 
     await pipeline.toFile(outputPath);
@@ -122,6 +123,18 @@ function applyOperation(pipeline: sharp.Sharp, operation: ImageOperation): sharp
     default:
       return pipeline;
   }
+}
+
+function getOutputExtension(inputPath: string, operations: ImageOperation[]): string {
+  const formatOperation = operations.find((operation) => operation.type === 'format');
+  const format = formatOperation?.options.format;
+
+  if (format === 'jpeg') return '.jpg';
+  if (format === 'png') return '.png';
+  if (format === 'webp') return '.webp';
+  if (format === 'avif') return '.avif';
+
+  return path.extname(inputPath);
 }
 ```
 
@@ -324,9 +337,9 @@ class ImageOptimizer {
     // Auto-rotate based on EXIF
     pipeline = pipeline.rotate();
 
-    // Strip metadata if requested
-    if (stripMetadata) {
-      pipeline = pipeline.withMetadata({ orientation: undefined });
+    // Preserve metadata only when requested. Sharp removes metadata by default.
+    if (!stripMetadata) {
+      pipeline = pipeline.withMetadata();
     }
 
     // Determine output format
@@ -427,13 +440,17 @@ class WatermarkService {
     if (watermark.type === 'image') {
       // Load and resize watermark image
       const watermarkWidth = Math.round(width * (watermark.scale || 0.2));
+      const opacity = watermark.opacity ?? 1;
       watermarkBuffer = await sharp(watermark.content)
         .resize(watermarkWidth)
+        .removeAlpha()
+        .ensureAlpha(opacity)
         .toBuffer();
     } else {
       // Create text watermark using SVG
       const fontSize = watermark.fontSize || 48;
-      const color = watermark.color || 'rgba(255,255,255,0.5)';
+      const color = watermark.color || 'white';
+      const opacity = watermark.opacity ?? 0.5;
 
       const svg = `
         <svg width="${width}" height="${fontSize * 1.5}">
@@ -443,9 +460,10 @@ class WatermarkService {
             font-family="${watermark.font || 'Arial'}"
             font-size="${fontSize}"
             fill="${color}"
+            fill-opacity="${opacity}"
             text-anchor="middle"
             dominant-baseline="middle"
-          >${watermark.content}</text>
+          >${escapeXml(watermark.content)}</text>
         </svg>
       `;
 
@@ -495,6 +513,15 @@ class WatermarkService {
         return { gravity: 'southeast' };
     }
   }
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 ```
 
@@ -555,7 +582,13 @@ class ImagePipelineService {
     // Thumbnail worker
     new Worker('image-thumbnails', async (job) => {
       const { inputPath, outputDir, imageId } = job.data;
-      const thumbnails = [];
+      const childValues = await job.getChildrenValues();
+      const optimizedPath =
+        (Object.values(childValues)[0] as { optimizedPath?: string } | undefined)?.optimizedPath ||
+        inputPath;
+      const thumbnails: Array<{ name: string; path: string }> = [
+        { name: 'optimized', path: optimizedPath },
+      ];
 
       const sizes = [
         { name: 'thumb', width: 150, height: 150 },
@@ -565,7 +598,7 @@ class ImagePipelineService {
 
       for (const size of sizes) {
         const thumbPath = path.join(outputDir, `${imageId}_${size.name}.jpg`);
-        await sharp(inputPath)
+        await sharp(optimizedPath)
           .resize(size.width, size.height, { fit: 'cover' })
           .jpeg({ quality: 80 })
           .toFile(thumbPath);
@@ -578,7 +611,11 @@ class ImagePipelineService {
 
     // CDN upload worker
     new Worker('image-upload-cdn', async (job) => {
-      const { files, imageId } = job.data;
+      const { imageId } = job.data;
+      const childValues = await job.getChildrenValues();
+      const files =
+        (Object.values(childValues)[0] as { thumbnails?: Array<{ name: string; path: string }> } | undefined)
+          ?.thumbnails || [];
       const urls: Record<string, string> = {};
 
       for (const file of files) {

@@ -8,7 +8,7 @@ Description: Learn how to resolve Git divergent branches errors when your local 
 
 ---
 
-The "You have divergent branches" error appears when Git cannot automatically reconcile differences between your local branch and its remote counterpart. This happens when both branches have commits that the other does not have. Starting with Git 2.27, this warning became more prominent to help developers understand the situation before blindly running git pull.
+The "You have divergent branches" error appears when Git cannot automatically reconcile differences between your local branch and its remote counterpart. This happens when both branches have commits that the other does not have. Starting with Git 2.27, this warning became more prominent to help developers understand the situation before blindly running git pull. In newer Git versions, pulling divergent branches without an explicit reconciliation strategy may fail instead of falling back to a merge.
 
 This guide explains why divergent branches happen and shows you multiple ways to fix them based on your workflow.
 
@@ -50,7 +50,7 @@ hint: invocation.
 fatal: Need to specify how to reconcile divergent branches.
 ```
 
-## Solution 1: Merge (Default Git Behavior)
+## Solution 1: Merge (Explicit Reconciliation)
 
 Merging combines both histories and creates a merge commit. This preserves the exact history of both branches.
 
@@ -175,7 +175,7 @@ git pull --no-rebase origin main
 To avoid the warning message every time, set a global preference:
 
 ```bash
-# Option 1: Always merge (traditional default)
+# Option 1: Merge divergent histories
 git config --global pull.rebase false
 
 # Option 2: Always rebase (cleaner history)
@@ -257,8 +257,8 @@ git log origin/main..HEAD --oneline
 # Visual representation of divergence
 git log --oneline --graph --all
 
-# Compare the two branches
-git diff HEAD...origin/main
+# Compare the two branch tips
+git diff HEAD..origin/main
 ```
 
 Example output:

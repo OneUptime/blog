@@ -63,7 +63,6 @@ export function createMockJob<T = any>(
 export class MockQueue<T = any> {
   name: string;
   jobs: Map<string, MockJob<T>> = new Map();
-  private jobCounter = 0;
 
   add = vi.fn();
   addBulk = vi.fn();
@@ -162,27 +161,27 @@ export class MockQueueEvents extends EventEmitter {
 
   // Simulate events
   simulateWaiting(jobId: string): void {
-    this.emit('waiting', { jobId });
-  }
-
-  simulateActive(jobId: string, prev?: string): void {
-    this.emit('active', { jobId, prev });
+    this.emit('waiting', { jobId }, `event-${jobId}`);
   }
 
   simulateCompleted(jobId: string, returnvalue?: any): void {
-    this.emit('completed', { jobId, returnvalue: JSON.stringify(returnvalue) });
+    this.emit(
+      'completed',
+      { jobId, returnvalue: JSON.stringify(returnvalue ?? null) },
+      `event-${jobId}`
+    );
   }
 
   simulateFailed(jobId: string, failedReason: string): void {
-    this.emit('failed', { jobId, failedReason });
+    this.emit('failed', { jobId, failedReason }, `event-${jobId}`);
   }
 
   simulateProgress(jobId: string, data: any): void {
-    this.emit('progress', { jobId, data });
+    this.emit('progress', { jobId, data }, `event-${jobId}`);
   }
 
   simulateStalled(jobId: string): void {
-    this.emit('stalled', { jobId });
+    this.emit('stalled', { jobId }, `event-${jobId}`);
   }
 
   reset(): void {
@@ -247,14 +246,14 @@ export class MockWorker extends EventEmitter {
       throw new Error('No processor defined');
     }
 
-    this.emit('active', job);
+    this.emit('active', job, 'waiting');
 
     try {
       const result = await this.processor(job);
-      this.emit('completed', job, result);
+      this.emit('completed', job, result, 'active');
       return result;
     } catch (error) {
-      this.emit('failed', job, error);
+      this.emit('failed', job, error, 'active');
       throw error;
     }
   }
@@ -266,7 +265,7 @@ export class MockWorker extends EventEmitter {
 
   // Simulate stalled job
   simulateStalled(jobId: string): void {
-    this.emit('stalled', jobId);
+    this.emit('stalled', jobId, 'active');
   }
 
   // Simulate worker error
@@ -332,11 +331,17 @@ export const QueueEvents = vi.fn().mockImplementation((name: string) => {
 });
 
 // Mock FlowProducer
-export const FlowProducer = vi.fn().mockImplementation(() => ({
-  add: vi.fn().mockResolvedValue({ job: createMockQueue('flow').add('job', {}) }),
-  addBulk: vi.fn().mockResolvedValue([]),
-  close: vi.fn().mockResolvedValue(undefined),
-}));
+export const FlowProducer = vi.fn().mockImplementation(() => {
+  const flowQueue = createMockQueue('flow');
+
+  return {
+    add: vi.fn().mockImplementation(async (flow: { name: string; data?: any; opts?: any }) => ({
+      job: await flowQueue.add(flow.name, flow.data ?? {}, flow.opts),
+    })),
+    addBulk: vi.fn().mockResolvedValue([]),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 // Helper functions for tests
 export function getMockQueue(name: string): MockQueue | undefined {
@@ -379,7 +384,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('bullmq', () => import('../mocks/bullmq'));
 
 import { OrderService } from '../../services/orderService';
-import { getMockQueue, getMockWorker, resetAllMocks, createMockJob } from '../mocks/bullmq';
+import { getMockQueue, resetAllMocks } from '../mocks/bullmq';
 
 describe('OrderService', () => {
   let orderService: OrderService;
@@ -614,7 +619,11 @@ describe('Order Worker Processor', () => {
 
     await mockWorker.processJob(mockJob);
 
-    expect(completedHandler).toHaveBeenCalledWith(mockJob, expect.any(Object));
+    expect(completedHandler).toHaveBeenCalledWith(
+      mockJob,
+      expect.any(Object),
+      expect.any(String)
+    );
   });
 
   it('should emit failed event on error', async () => {
@@ -628,7 +637,11 @@ describe('Order Worker Processor', () => {
 
     await expect(mockWorker.processJob(mockJob)).rejects.toThrow();
 
-    expect(failedHandler).toHaveBeenCalledWith(mockJob, expect.any(Error));
+    expect(failedHandler).toHaveBeenCalledWith(
+      mockJob,
+      expect.any(Error),
+      expect.any(String)
+    );
   });
 
   it('should reject orders without items', async () => {

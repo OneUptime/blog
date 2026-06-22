@@ -57,12 +57,11 @@ flowchart LR
 
 ## Log Collector Service
 
-Create a service that receives logs over HTTP and TCP:
+Create a service that receives logs over HTTP:
 
 ```typescript
 // collector.ts
 import express, { Request, Response } from 'express';
-import net from 'net';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define the structure of a log entry
@@ -168,7 +167,7 @@ app.listen(3000, () => {
 
 ## TCP Syslog Receiver
 
-Accept logs via syslog protocol for legacy systems:
+Accept newline-delimited syslog messages over TCP for legacy systems:
 
 ```typescript
 // syslog-receiver.ts
@@ -220,8 +219,8 @@ const syslogServer = net.createServer((socket) => {
 
 // Parse RFC 5424 syslog message
 function parseSyslogMessage(message: string): LogEntry | null {
-  // Example: <134>1 2024-01-25T10:30:00.000Z hostname app - - message
-  const syslogRegex = /^<(\d+)>(\d+)?\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)?\s*(\S+)?\s*(.*)$/;
+  // Example: <134>1 2024-01-25T10:30:00.000Z hostname app - - - message
+  const syslogRegex = /^<(\d{1,3})>(\d)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$/;
   const match = message.match(syslogRegex);
 
   if (!match) {
@@ -229,7 +228,7 @@ function parseSyslogMessage(message: string): LogEntry | null {
     return parseSimpleSyslog(message);
   }
 
-  const [, priorityStr, , timestamp, hostname, appName, , , msg] = match;
+  const [, priorityStr, , timestamp, hostname, appName, , , structuredData, msg = ''] = match;
   const priority = parseInt(priorityStr, 10);
   const severity = priority & 7;  // Last 3 bits are severity
 
@@ -243,6 +242,7 @@ function parseSyslogMessage(message: string): LogEntry | null {
     metadata: {
       facility: Math.floor(priority / 8),
       severity,
+      structuredData,
       raw: message
     }
   };
@@ -271,8 +271,8 @@ function parseSimpleSyslog(message: string): LogEntry | null {
   };
 }
 
-syslogServer.listen(514, () => {
-  console.log('Syslog server running on port 514');
+syslogServer.listen(5514, () => {
+  console.log('Syslog server running on port 5514');
 });
 ```
 
@@ -356,7 +356,7 @@ function parseJsonFields(entry: LogEntry): Partial<ParsedLog['parsed']> {
       try {
         const parsed = JSON.parse(match);
         // Merge parsed fields into metadata
-        Object.assign(entry.metadata || {}, parsed);
+        entry.metadata = { ...(entry.metadata || {}), ...parsed };
       } catch {
         // Not valid JSON, skip
       }
@@ -651,6 +651,16 @@ async function initializeElasticsearch(): Promise<void> {
       name: 'logs-template',
       ...indexTemplate
     });
+
+    await esClient.indices.create({
+      index: 'logs-000001',
+      aliases: {
+        logs: {
+          is_write_index: true
+        }
+      }
+    }, { ignore: [400] });
+
     console.log('Elasticsearch index template created');
   } catch (error) {
     console.error('Failed to create index template:', error);
@@ -659,13 +669,9 @@ async function initializeElasticsearch(): Promise<void> {
 
 // Store batch of logs
 async function storeLogs(logs: ParsedLog[]): Promise<void> {
-  // Generate index name based on date
-  const today = new Date().toISOString().split('T')[0];
-  const indexName = `logs-${today}`;
-
-  // Prepare bulk operations
+  // Prepare bulk operations against the ILM rollover alias
   const operations = logs.flatMap(log => [
-    { index: { _index: indexName } },
+    { index: { _index: 'logs' } },
     {
       ...log,
       '@timestamp': log.timestamp.toISOString()
@@ -747,7 +753,7 @@ async function searchLogs(params: SearchQuery) {
     must.push({
       query_string: {
         query: params.query,
-        fields: ['message', 'parsed.path', 'metadata.*'],
+        fields: ['message', 'parsed.path'],
         default_operator: 'AND'
       }
     });
@@ -894,7 +900,7 @@ const lifecyclePolicy = {
         actions: {
           rollover: {
             max_age: '1d',
-            max_size: '50gb'
+            max_primary_shard_size: '50gb'
           }
         }
       },
@@ -935,26 +941,25 @@ async function setupRetentionPolicy(): Promise<void> {
 // Archive old logs to cold storage
 async function archiveLogs(olderThan: string): Promise<void> {
   // Find indices older than threshold
-  const response = await esClient.cat.indices({
+  const response = await esClient.indices.get({
     index: 'logs-*',
-    format: 'json'
+    expand_wildcards: 'open'
   });
 
   const cutoffDate = new Date(olderThan);
 
-  for (const index of response) {
-    // Extract date from index name
-    const dateStr = index.index?.replace('logs-', '');
-    if (!dateStr) continue;
+  for (const [indexName, indexInfo] of Object.entries(response)) {
+    const creationDate = indexInfo.settings?.index?.creation_date;
+    if (!creationDate) continue;
 
-    const indexDate = new Date(dateStr);
+    const indexDate = new Date(Number(creationDate));
     if (indexDate < cutoffDate) {
       // Export to S3 or other cold storage
-      await archiveToS3(index.index!);
+      await archiveToS3(indexName);
 
       // Delete from Elasticsearch
-      await esClient.indices.delete({ index: index.index! });
-      console.log(`Archived and deleted index: ${index.index}`);
+      await esClient.indices.delete({ index: indexName });
+      console.log(`Archived and deleted index: ${indexName}`);
     }
   }
 }

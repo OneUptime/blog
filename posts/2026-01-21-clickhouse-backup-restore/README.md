@@ -32,8 +32,8 @@ wget https://github.com/Altinity/clickhouse-backup/releases/latest/download/clic
 tar -xzf clickhouse-backup-linux-amd64.tar.gz
 sudo mv clickhouse-backup /usr/local/bin/
 
-# Or install from package
-sudo apt install clickhouse-backup
+# Or install a downloaded Debian package from the releases page
+sudo dpkg -i clickhouse-backup_*.deb
 ```
 
 ### Configuration
@@ -51,7 +51,6 @@ clickhouse:
   port: 9000
   username: backup_user
   password: backup_password
-  data_path: /var/lib/clickhouse
   skip_tables:
     - system.*
     - INFORMATION_SCHEMA.*
@@ -112,10 +111,10 @@ clickhouse-backup restore daily-20240115
 
 ```bash
 # Restore single table
-clickhouse-backup restore --table default.events daily-20240115
+clickhouse-backup restore --tables default.events daily-20240115
 
 # Restore with different name (use --restore-table-mapping source:destination)
-clickhouse-backup restore --table default.events --restore-table-mapping "default.events:default.events_restored" daily-20240115
+clickhouse-backup restore --tables default.events --restore-table-mapping "default.events:default.events_restored" daily-20240115
 ```
 
 ### Automated Backups with Cron
@@ -142,6 +141,10 @@ ClickHouse 22.8+ includes built-in backup commands.
 --     </backups>
 --   </disks>
 -- </storage_configuration>
+-- <backups>
+--   <allowed_disk>backups</allowed_disk>
+--   <allowed_path>/var/lib/clickhouse/backups/</allowed_path>
+-- </backups>
 
 -- Create backup
 BACKUP DATABASE default TO Disk('backups', 'daily-20240115');
@@ -205,6 +208,9 @@ ALTER TABLE events FREEZE;
 # Copy frozen data
 cp -r /var/lib/clickhouse/shadow/1/data/default/events /backup/events-$(date +%Y%m%d)
 
+# Copy table metadata
+cp /var/lib/clickhouse/metadata/default/events.sql /backup/events-$(date +%Y%m%d).sql
+
 # Clean up shadow directory
 rm -rf /var/lib/clickhouse/shadow/1
 ```
@@ -212,24 +218,19 @@ rm -rf /var/lib/clickhouse/shadow/1
 ### Restore from Files
 
 ```bash
-# Stop ClickHouse
-sudo systemctl stop clickhouse-server
+# Create the table first if needed, using the saved metadata
 
-# Copy data back
-cp -r /backup/events-20240115/* /var/lib/clickhouse/data/default/events/
+# Copy data into the detached directory
+mkdir -p /var/lib/clickhouse/data/default/events/detached
+cp -r /backup/events-20240115/* /var/lib/clickhouse/data/default/events/detached/
 
 # Fix permissions
 chown -R clickhouse:clickhouse /var/lib/clickhouse/data/default/events/
-
-# Start ClickHouse
-sudo systemctl start clickhouse-server
-
-# Attach table if needed
 ```
 
 ```sql
 -- Reattach restored parts
-ALTER TABLE events ATTACH PARTITION ID 'all';
+ALTER TABLE events ATTACH PARTITION ALL;
 ```
 
 ## Backup Strategies
@@ -247,7 +248,7 @@ general:
 0 2 * * 1-6 clickhouse-backup create_remote incr-$(date +%Y%m%d) --diff-from-remote full-$(date +%Y%m%d -d 'last sunday')
 ```
 
-### Strategy 2: Continuous WAL Archiving (Replicated Tables)
+### Strategy 2: Replication for High Availability (Replicated Tables)
 
 ```xml
 <!-- Use ZooKeeper/Keeper for built-in replication -->
@@ -297,7 +298,7 @@ clickhouse-backup list
 # List remote backups
 clickhouse-backup list remote
 
-# Download and check a backup by attempting a dry-run restore
+# Download a backup before a test restore
 clickhouse-backup download daily-20240115
 ```
 
@@ -363,7 +364,7 @@ ORDER BY start_time DESC;
    ```
 3. **Restore from backup:**
    ```bash
-   clickhouse-backup restore --table default.events daily-20240115
+   clickhouse-backup restore --tables default.events daily-20240115
    ```
 
 ### Point-in-Time Recovery
@@ -409,15 +410,12 @@ fi
 ### 3. Encrypt Backups
 
 ```yaml
-# clickhouse-backup encryption
-general:
-  encryption_key: "32-byte-encryption-key-here!!!!!"
-
-# Or use S3 server-side encryption
+# S3 server-side encryption
 s3:
   sse: AES256
   # Or KMS
-  sse_kms_key_id: arn:aws:kms:...
+  # sse: aws:kms
+  # sse_kms_key_id: arn:aws:kms:...
 ```
 
 ### 4. Document Recovery Procedures

@@ -44,7 +44,7 @@ flowchart TD
     C3 --> DB
 ```
 
-The cache layer distributes data across multiple nodes using consistent hashing. This ensures that adding or removing nodes only affects a portion of the cached keys.
+The cache layer distributes data across multiple nodes. Redis Cluster, for example, maps keys to 16,384 hash slots using `CRC16(key) mod 16384`, and each primary node owns a subset of those slots. Adding or removing nodes moves slot ownership, so only the keys in the moved slots are affected.
 
 ## Implementing a Redis Cluster Cache Client
 
@@ -355,16 +355,17 @@ class CacheInvalidator:
     - Tag-based invalidation
     """
 
-    def __init__(self, cache: 'DistributedCache', pubsub_client):
+    def __init__(self, cache: 'DistributedCache', redis_client):
         """
         Initialize cache invalidator.
 
         Args:
             cache: Distributed cache instance
-            pubsub_client: Redis pubsub client for events
+            redis_client: Redis client for publishing and subscribing to events
         """
         self._cache = cache
-        self._pubsub = pubsub_client
+        self._redis = redis_client
+        self._pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
         self._channel = "cache:invalidation"
         self._tag_index: Dict[str, Set[str]] = {}
         self._running = False
@@ -396,6 +397,9 @@ class CacheInvalidator:
                 message = self._pubsub.get_message(timeout=1.0)
                 if message and message["type"] == "message":
                     event_data = json.loads(message["data"])
+                    event_data["invalidation_type"] = InvalidationType(
+                        event_data["invalidation_type"]
+                    )
                     event = InvalidationEvent(**event_data)
                     self._handle_event(event)
             except Exception as e:
@@ -417,18 +421,11 @@ class CacheInvalidator:
 
     def _invalidate_pattern(self, pattern: str) -> None:
         """Invalidate keys matching a pattern."""
-        # Use SCAN to find matching keys (cluster-safe)
-        cursor = 0
-        while True:
-            cursor, keys = self._cache._client.scan(
-                cursor=cursor,
-                match=pattern,
-                count=100
-            )
-            for key in keys:
+        # Scan each primary because Redis Cluster keeps independent cursors per node.
+        for node in self._cache._client.get_primaries():
+            node_client = self._cache._client.get_redis_connection(node)
+            for key in node_client.scan_iter(match=pattern, count=100):
                 self._cache.delete(key)
-            if cursor == 0:
-                break
         logger.debug(f"Invalidated pattern: {pattern}")
 
     def _invalidate_tag(self, tag: str) -> None:
@@ -460,7 +457,7 @@ class CacheInvalidator:
             source=source,
             timestamp=time.time()
         )
-        self._pubsub.publish(
+        self._redis.publish(
             self._channel,
             json.dumps({
                 "invalidation_type": event.invalidation_type.value,
@@ -748,6 +745,7 @@ Implement thundering herd protection with distributed locking.
 # thundering_herd.py - Protection against cache stampede
 import time
 import logging
+import uuid
 from typing import Callable, Optional, TypeVar
 from contextlib import contextmanager
 
@@ -757,6 +755,13 @@ T = TypeVar('T')
 
 class DistributedLock:
     """Distributed lock using Redis."""
+
+    _RELEASE_SCRIPT = """
+    if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("DEL", KEYS[1])
+    end
+    return 0
+    """
 
     def __init__(self, redis_client, lock_timeout: int = 10):
         """
@@ -782,7 +787,7 @@ class DistributedLock:
             True if lock was acquired
         """
         lock_key = f"lock:{lock_name}"
-        token = str(time.time())
+        token = uuid.uuid4().hex
         acquired = False
         start_time = time.time()
 
@@ -808,11 +813,9 @@ class DistributedLock:
 
         finally:
             if acquired:
-                # Only release if we still hold the lock
-                current_token = self._redis.get(lock_key)
-                if current_token == token:
-                    self._redis.delete(lock_key)
-                    logger.debug(f"Lock released: {lock_name}")
+                # Atomically release only if we still hold the lock.
+                self._redis.eval(self._RELEASE_SCRIPT, 1, lock_key, token)
+                logger.debug(f"Lock released: {lock_name}")
 
 
 class ThunderingHerdProtector:
@@ -987,9 +990,8 @@ class CacheHealthMonitor:
 
         try:
             # Ping the node
-            node_client = self._cache._client.get_node(
-                node.host, node.port
-            )
+            node_client = self._cache._client.get_redis_connection(node)
+            node_client.ping()
 
             # Get node info
             info = node_client.info()

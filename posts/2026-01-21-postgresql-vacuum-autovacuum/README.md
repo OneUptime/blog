@@ -26,7 +26,7 @@ PostgreSQL uses Multi-Version Concurrency Control (MVCC):
 VACUUM:
 1. Removes dead tuples
 2. Updates visibility map
-3. Updates statistics
+3. Updates table metadata (and planner statistics when run with ANALYZE)
 4. Prevents transaction ID wraparound
 
 ## Types of VACUUM
@@ -55,10 +55,10 @@ VACUUM FULL users;
 
 | Type | Table Lock | Reclaims Space to OS | Speed |
 |------|------------|---------------------|-------|
-| VACUUM | No (concurrent) | No* | Fast |
-| VACUUM FULL | Yes (exclusive) | Yes | Slow |
+| VACUUM | SHARE UPDATE EXCLUSIVE (allows normal reads/writes) | No* | Fast |
+| VACUUM FULL | ACCESS EXCLUSIVE | Yes | Slow |
 
-*Regular VACUUM allows space reuse but doesn't shrink files.
+*Regular VACUUM allows space reuse and usually doesn't shrink files, except when it can truncate empty pages at the end of a table.
 
 ## Understanding Dead Tuples
 
@@ -79,20 +79,20 @@ ORDER BY n_dead_tup DESC
 LIMIT 20;
 ```
 
-### Check Table Bloat
+### Check Table Size
 
 ```sql
--- Estimate table bloat
+-- Check table and total relation size
 SELECT
     schemaname,
     tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-    pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS table_size,
-    round(100.0 * pg_relation_size(schemaname || '.' || tablename) /
-        nullif(pg_total_relation_size(schemaname || '.' || tablename), 0), 2) AS table_pct
+    pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+    pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS table_size,
+    round(100.0 * pg_relation_size(format('%I.%I', schemaname, tablename)::regclass) /
+        nullif(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass), 0), 2) AS table_pct
 FROM pg_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 20;
 ```
 
@@ -124,11 +124,11 @@ autovacuum_naptime = 1min                # Default: 1min
 autovacuum_vacuum_threshold = 50         # Default: 50
 
 # Scale factor (fraction of table)
-autovacuum_vacuum_scale_factor = 0.1     # Default: 0.1 (10%)
+autovacuum_vacuum_scale_factor = 0.2     # Default: 0.2 (20%)
 
 # Minimum rows to trigger analyze
 autovacuum_analyze_threshold = 50        # Default: 50
-autovacuum_analyze_scale_factor = 0.05   # Default: 0.05 (5%)
+autovacuum_analyze_scale_factor = 0.1    # Default: 0.1 (10%)
 ```
 
 Vacuum triggers when:
@@ -151,7 +151,7 @@ autovacuum_vacuum_cost_limit = -1        # Default: uses vacuum_cost_limit
 Cost values:
 ```conf
 vacuum_cost_page_hit = 1                 # Page found in buffer
-vacuum_cost_page_miss = 10               # Page read from disk
+vacuum_cost_page_miss = 2                # Page read from disk
 vacuum_cost_page_dirty = 20              # Page modified
 ```
 
@@ -163,9 +163,9 @@ autovacuum_max_workers = 4
 
 # Lower thresholds for more frequent vacuuming
 autovacuum_vacuum_threshold = 50
-autovacuum_vacuum_scale_factor = 0.05    # 5% instead of 10%
+autovacuum_vacuum_scale_factor = 0.05    # 5% instead of 20%
 autovacuum_analyze_threshold = 50
-autovacuum_analyze_scale_factor = 0.025  # 2.5% instead of 5%
+autovacuum_analyze_scale_factor = 0.025  # 2.5% instead of 10%
 
 # Reduce throttling for faster vacuuming
 autovacuum_vacuum_cost_delay = 2ms
@@ -231,12 +231,13 @@ ORDER BY age(datfrozenxid) DESC;
 
 -- Table age
 SELECT
-    schemaname,
-    relname,
-    age(relfrozenxid) AS xid_age,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS size
-FROM pg_stat_user_tables
-ORDER BY age(relfrozenxid) DESC
+    s.schemaname,
+    s.relname,
+    age(c.relfrozenxid) AS xid_age,
+    pg_size_pretty(pg_total_relation_size(s.relid)) AS size
+FROM pg_stat_user_tables s
+JOIN pg_class c ON c.oid = s.relid
+ORDER BY age(c.relfrozenxid) DESC
 LIMIT 20;
 ```
 
@@ -277,7 +278,8 @@ SELECT
     heap_blks_total,
     heap_blks_scanned,
     index_vacuum_count,
-    max_dead_tuples
+    max_dead_tuple_bytes,
+    dead_tuple_bytes
 FROM pg_stat_progress_vacuum;
 ```
 
@@ -358,7 +360,7 @@ VACUUM (TRUNCATE) users;
 -- Use only when necessary
 VACUUM FULL users;
 
--- Alternative: pg_repack (no locks)
+-- Alternative: pg_repack (minimal locking)
 -- pg_repack --table=users dbname
 ```
 
@@ -399,7 +401,7 @@ SELECT * FROM pg_stat_progress_vacuum;
 ### High Dead Tuple Count
 
 ```sql
--- Check for long-running transactions (prevent vacuum)
+-- Check for long-running transactions (prevent cleanup of dead tuples)
 SELECT
     pid,
     now() - xact_start AS xact_duration,
@@ -410,8 +412,13 @@ WHERE xact_start IS NOT NULL
 ORDER BY xact_start
 LIMIT 10;
 
--- Check for old replication slots
-SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS lag
+-- Check for replication slots holding back cleanup or WAL removal
+SELECT
+    slot_name,
+    active,
+    xmin,
+    catalog_xmin,
+    pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_lag
 FROM pg_replication_slots;
 ```
 
@@ -422,7 +429,7 @@ FROM pg_replication_slots;
 1. **Keep autovacuum enabled** - Never disable it
 2. **Monitor dead tuple counts** - Alert when high
 3. **Tune per table** - High-churn tables need lower thresholds
-4. **Avoid long transactions** - They block vacuum
+4. **Avoid long transactions** - They can prevent cleanup of dead tuples
 5. **Monitor XID age** - Prevent wraparound
 
 ### Maintenance Schedule

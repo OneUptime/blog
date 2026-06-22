@@ -12,8 +12,8 @@ PostgreSQL extensions add powerful functionality to your database without modify
 
 ## Prerequisites
 
-- PostgreSQL 12+ installed
-- Superuser access for extension installation
+- PostgreSQL 14+ installed
+- Superuser access for untrusted extension installation
 - Understanding of your specific needs
 
 ## Managing Extensions
@@ -318,17 +318,17 @@ CREATE EXTENSION vector;
 CREATE TABLE documents (
     id SERIAL PRIMARY KEY,
     content TEXT,
-    embedding VECTOR(1536)  -- OpenAI embedding size
+    embedding VECTOR(3)  -- Match dimensions to your embedding model
 );
 
 -- Insert embedding
 INSERT INTO documents (content, embedding)
-VALUES ('Sample text', '[0.1, 0.2, ...]');  -- 1536 dimensions
+VALUES ('Sample text', '[0.1, 0.2, 0.3]');  -- 3 dimensions
 
 -- Similarity search
-SELECT content, embedding <=> '[0.1, 0.2, ...]' AS distance
+SELECT content, embedding <=> '[0.2, 0.1, 0.4]' AS distance
 FROM documents
-ORDER BY embedding <=> '[0.1, 0.2, ...]'
+ORDER BY embedding <=> '[0.2, 0.1, 0.4]'
 LIMIT 10;
 
 -- Create index
@@ -376,11 +376,11 @@ CREATE TABLE events (
 ) PARTITION BY RANGE (created_at);
 
 -- Configure partitioning
-SELECT partman.create_parent(
-    'public.events',
-    'created_at',
-    'native',
-    'monthly'
+SELECT partman.create_partition(
+    p_parent_table := 'public.events',
+    p_control := 'created_at',
+    p_interval := '1 month',
+    p_type := 'range'
 );
 
 -- Run maintenance
@@ -429,18 +429,22 @@ SELECT my_custom_function('World');
 
 ```sql
 -- Install extension with dependencies
-CREATE EXTENSION postgis_topology;  -- Requires postgis
+CREATE EXTENSION postgis_topology CASCADE;  -- Requires postgis
 
 -- Check dependencies
-SELECT e.extname, d.refobjid::regclass
+SELECT e.extname, dep.extname AS depends_on
 FROM pg_extension e
 JOIN pg_depend d ON d.objid = e.oid
-WHERE e.extname = 'postgis_topology';
+JOIN pg_extension dep ON dep.oid = d.refobjid
+WHERE d.classid = 'pg_extension'::regclass
+AND d.refclassid = 'pg_extension'::regclass
+AND d.deptype = 'n'
+AND e.extname = 'postgis_topology';
 ```
 
 ## Best Practices
 
-1. **Install in schema** - Organize extensions in dedicated schema
+1. **Install in schema** - Organize extensions in dedicated schema when the extension supports it
 2. **Version control** - Track extension versions
 3. **Test upgrades** - Test extension updates in staging
 4. **Monitor performance** - Some extensions add overhead

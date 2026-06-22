@@ -15,7 +15,7 @@ A Write-Ahead Log (WAL) records changes before they are applied to the primary d
 Redis offers unique advantages for WAL implementations:
 
 - **Low latency**: Sub-millisecond writes for high-throughput systems
-- **Built-in persistence**: AOF provides durable storage
+- **Built-in persistence**: AOF can provide durable storage, depending on the configured fsync policy
 - **Consumer groups**: Native support for distributed log consumption
 - **Automatic trimming**: Control log size with MAXLEN
 - **Rich data model**: Store structured events with multiple fields
@@ -169,7 +169,8 @@ class StreamWAL:
             "timestamp": str(time.time())
         }
 
-        # XADD with MAXLEN for automatic trimming
+        # XADD with approximate MAXLEN for efficient automatic trimming.
+        # The stream may temporarily contain slightly more than max_len entries.
         stream_id = self.redis.xadd(
             self.stream_name,
             entry,
@@ -665,28 +666,27 @@ class RecoverableWAL:
 
     def commit_operation(self, operation_id: str, stream_id: str):
         """Mark operation as committed."""
-        # Move to committed stream
-        self.redis.xadd(self.committed_stream, {
+        pipe = self.redis.pipeline(transaction=True)
+        pipe.xadd(self.committed_stream, {
             "operation_id": operation_id,
             "stream_id": stream_id,
             "committed_at": str(time.time())
         })
-
-        # Remove from pending
-        self.redis.xdel(self.pending_stream, stream_id)
+        pipe.xdel(self.pending_stream, stream_id)
+        pipe.execute()
 
     def rollback_operation(self, operation_id: str, stream_id: str,
                            reason: str = ""):
         """Mark operation as rolled back."""
-        # Update status in pending stream or move to separate rollback log
-        self.redis.xadd(f"{self.wal_prefix}:rollbacks", {
+        pipe = self.redis.pipeline(transaction=True)
+        pipe.xadd(f"{self.wal_prefix}:rollbacks", {
             "operation_id": operation_id,
             "stream_id": stream_id,
             "reason": reason,
             "rolled_back_at": str(time.time())
         })
-
-        self.redis.xdel(self.pending_stream, stream_id)
+        pipe.xdel(self.pending_stream, stream_id)
+        pipe.execute()
 
     def get_pending_operations(self) -> list:
         """Get all pending operations for recovery."""
@@ -744,6 +744,7 @@ class WALTransaction:
         self.operation_type = operation_type
         self.operation_id: Optional[str] = None
         self.stream_id: Optional[str] = None
+        self.committed = False
 
     def __enter__(self):
         import uuid
@@ -751,7 +752,7 @@ class WALTransaction:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
+        if exc_type is not None and not self.committed:
             # Exception occurred - rollback
             if self.stream_id:
                 self.wal.rollback_operation(
@@ -773,6 +774,7 @@ class WALTransaction:
         """Commit the operation."""
         if self.stream_id:
             self.wal.commit_operation(self.operation_id, self.stream_id)
+            self.committed = True
 
 # Usage example
 def transfer_funds(wal: RecoverableWAL, from_account: str,
@@ -813,7 +815,7 @@ save 60 10000
 ## Best Practices
 
 1. **Use Streams over Lists** - Streams provide better semantics for WAL with IDs and consumer groups
-2. **Enable AOF with appendfsync** - Ensures writes survive Redis restarts
+2. **Enable AOF with appendfsync** - Improves durability across Redis restarts; `appendfsync everysec` can still lose about one second of writes, while `appendfsync always` is safer but slower
 3. **Implement idempotency** - Handle duplicate events during recovery
 4. **Set maximum WAL size** - Use MAXLEN to prevent unbounded growth
 5. **Monitor WAL lag** - Track pending operations and consumer lag

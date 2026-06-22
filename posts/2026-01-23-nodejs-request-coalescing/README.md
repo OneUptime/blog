@@ -63,46 +63,24 @@ The core idea is simple: track in-flight requests by key and have subsequent req
 
 ```typescript
 // request-coalescer.ts
-type PendingRequest<T> = {
-  promise: Promise<T>;
-  resolver: (value: T) => void;
-  rejecter: (error: Error) => void;
-};
-
 export class RequestCoalescer {
-  private pending = new Map<string, PendingRequest<any>>();
+  private pending = new Map<string, Promise<any>>();
 
   async coalesce<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
     // Check if there is already a pending request for this key
     const existing = this.pending.get(key);
     if (existing) {
       // Wait for the existing request to complete
-      return existing.promise;
+      return existing;
     }
 
-    // Create a new pending request
-    let resolver: (value: T) => void;
-    let rejecter: (error: Error) => void;
-
-    const promise = new Promise<T>((resolve, reject) => {
-      resolver = resolve;
-      rejecter = reject;
+    // Execute the actual fetch and clean up after completion
+    const promise = fetcher().finally(() => {
+      this.pending.delete(key);
     });
 
-    this.pending.set(key, { promise, resolver: resolver!, rejecter: rejecter! });
-
-    try {
-      // Execute the actual fetch
-      const result = await fetcher();
-      resolver!(result);
-      return result;
-    } catch (error) {
-      rejecter!(error as Error);
-      throw error;
-    } finally {
-      // Clean up after completion
-      this.pending.delete(key);
-    }
+    this.pending.set(key, promise);
+    return promise;
   }
 }
 
@@ -200,14 +178,20 @@ export class EnhancedCoalescer {
   }
 
   private async executeWithTimeout<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
-    return Promise.race([
-      fetcher(),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Request timeout for key: ${key}`));
-        }, this.options.maxPendingTime);
-      }),
-    ]);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`Request timeout for key: ${key}`));
+      }, this.options.maxPendingTime);
+    });
+
+    try {
+      return await Promise.race([fetcher(), timeoutPromise]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
   }
 
   // Invalidate cached entry
@@ -236,7 +220,7 @@ export class EnhancedCoalescer {
     };
   }
 
-  // Clear all state
+  // Clear cached results and reset statistics
   clear(): void {
     this.cache.clear();
     this.stats = { hits: 0, misses: 0, coalesced: 0, errors: 0 };
@@ -413,7 +397,7 @@ const responseCoalescer = new EnhancedCoalescer({ cacheTTL: 1000 });
 
 interface CachedResponse {
   statusCode: number;
-  headers: Record<string, string>;
+  headers: Record<string, number | string | readonly string[]>;
   body: any;
 }
 
@@ -450,9 +434,16 @@ function executeRequest(req: Request, res: Response, next: NextFunction): Promis
   return new Promise((resolve, reject) => {
     // Capture the response
     const originalJson = res.json.bind(res);
-    const headers: Record<string, string> = {};
+    const originalSetHeader = res.setHeader.bind(res);
+    const headers: Record<string, number | string | readonly string[]> = {};
+
+    const restoreResponse = () => {
+      res.json = originalJson;
+      res.setHeader = originalSetHeader;
+    };
 
     res.json = function (body: any) {
+      restoreResponse();
       resolve({
         statusCode: res.statusCode,
         headers,
@@ -461,14 +452,16 @@ function executeRequest(req: Request, res: Response, next: NextFunction): Promis
       return res;
     };
 
-    const originalSetHeader = res.setHeader.bind(res);
     res.setHeader = function (name: string, value: any) {
       headers[name] = value;
       return originalSetHeader(name, value);
     };
 
     // Handle errors
-    res.on('error', reject);
+    res.on('error', (error) => {
+      restoreResponse();
+      reject(error);
+    });
 
     next();
   });

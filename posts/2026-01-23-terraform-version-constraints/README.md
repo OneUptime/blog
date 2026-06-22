@@ -99,7 +99,7 @@ terraform {
 
 ### Why Pin Provider Versions
 
-Without version constraints, `terraform init` downloads the latest provider version. This can break your configuration when:
+Without version constraints, `terraform init` downloads the latest provider version when there is no existing lock file selection. This can break your configuration when:
 
 - A provider releases a breaking change
 - A new version deprecates resources you use
@@ -111,7 +111,7 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # No version specified - uses latest
+      # No version specified - uses latest unless locked
     }
   }
 }
@@ -384,7 +384,7 @@ terraform {
 }
 ```
 
-2. **Use provider aliases for different versions** (not recommended)
+2. **Do not use provider aliases for different versions** - aliases configure multiple instances of the same selected provider version, not separate provider versions.
 
 3. **Update modules to use compatible versions**
 
@@ -430,7 +430,7 @@ updates:
 
 1. **Always specify Terraform version** - Avoid surprises from version differences.
 
-2. **Use pessimistic constraints (~>)** - Allow patches but prevent major/minor surprises.
+2. **Use pessimistic constraints (~>) carefully** - `~> 1.5.0` allows patch updates, while `~> 1.5` allows minor updates.
 
 3. **Commit the lock file** - Ensures everyone uses the same versions.
 

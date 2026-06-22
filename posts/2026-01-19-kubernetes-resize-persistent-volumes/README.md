@@ -8,9 +8,9 @@ Description: Learn how to expand Kubernetes Persistent Volumes without downtime 
 
 ---
 
-Running out of disk space is one of the most common operational issues in Kubernetes. Fortunately, modern Kubernetes supports online volume expansion, allowing you to resize Persistent Volumes without downtime or pod restarts.
+Running out of disk space is one of the most common operational issues in Kubernetes. Fortunately, modern Kubernetes supports online volume expansion when the storage driver and filesystem support it, allowing you to resize Persistent Volumes without downtime or pod restarts.
 
-This guide covers everything you need to know about expanding PVs in Kubernetes.
+This guide covers everything you need to know about expanding PVCs in Kubernetes.
 
 ## Prerequisites for Volume Expansion
 
@@ -18,7 +18,7 @@ Volume expansion requires:
 
 1. **Kubernetes 1.24+** (stable feature)
 2. **StorageClass with `allowVolumeExpansion: true`**
-3. **CSI driver that supports expansion** (most modern drivers do)
+3. **CSI driver that supports expansion** and a supported filesystem such as XFS, Ext3, or Ext4
 
 ```mermaid
 flowchart LR
@@ -156,7 +156,7 @@ flowchart TB
     end
 ```
 
-**Supported CSI drivers for online expansion:**
+**Common CSI drivers with volume expansion support include:**
 - AWS EBS CSI Driver
 - GCP PD CSI Driver
 - Azure Disk CSI Driver
@@ -165,11 +165,13 @@ flowchart TB
 - OpenEBS
 - Portworx
 
+Check your driver's documentation to confirm whether it supports online filesystem expansion for your Kubernetes version, filesystem, and volume mode.
+
 ### Offline Expansion (Requires Pod Restart)
 
 Some storage backends only support offline expansion:
 
-```yaml
+```bash
 # Check if your PVC needs offline expansion
 kubectl describe pvc my-data -n my-namespace | grep -i "FileSystemResizePending"
 
@@ -215,7 +217,7 @@ spec:
 # Instead, expand each PVC individually
 
 # List all PVCs for the StatefulSet
-kubectl get pvc -l app=postgres -n database
+kubectl get pvc -n database | grep '^data-postgres-'
 
 # Output:
 # NAME              STATUS   VOLUME        CAPACITY   STORAGECLASS
@@ -230,7 +232,7 @@ for i in 0 1 2; do
 done
 
 # Monitor expansion
-kubectl get pvc -l app=postgres -n database -w
+kubectl get pvc -n database -w
 ```
 
 ### Update StatefulSet for Future Pods
@@ -333,7 +335,9 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Script to check and expand PVCs above threshold
+                  # Script to check and expand PVCs above threshold.
+                  # Requires Prometheus scraping kubelet_volume_stats_* metrics.
+                  PROMETHEUS_URL=http://prometheus-k8s.monitoring.svc:9090
                   THRESHOLD=80
                   EXPANSION_FACTOR=1.5
                   
@@ -341,15 +345,19 @@ spec:
                     NS=$(echo $pvc | cut -d'/' -f1)
                     NAME=$(echo $pvc | cut -d'/' -f2)
                     
-                    # Get usage percentage from metrics
-                    USAGE=$(kubectl get --raw "/apis/metrics.k8s.io/v1beta1/namespaces/$NS/pods" 2>/dev/null | \
-                      jq -r '.items[] | .containers[].usage.storage' | head -1)
+                    QUERY="100 * kubelet_volume_stats_used_bytes{namespace=\"$NS\",persistentvolumeclaim=\"$NAME\"} / kubelet_volume_stats_capacity_bytes{namespace=\"$NS\",persistentvolumeclaim=\"$NAME\"}"
+                    USAGE=$(curl -sG --data-urlencode "query=$QUERY" "$PROMETHEUS_URL/api/v1/query" | \
+                      jq -r '.data.result[0].value[1] // empty')
                     
-                    if [ "$USAGE" -gt "$THRESHOLD" ]; then
+                    if [ -n "$USAGE" ] && awk -v usage="$USAGE" -v threshold="$THRESHOLD" 'BEGIN { exit !(usage > threshold) }'; then
                       CURRENT=$(kubectl get pvc $NAME -n $NS -o jsonpath='{.spec.resources.requests.storage}')
-                      NEW_SIZE=$(echo "$CURRENT * $EXPANSION_FACTOR" | bc)
+                      case "$CURRENT" in
+                        *Gi) CURRENT_GI=${CURRENT%Gi} ;;
+                        *) echo "Skipping $NS/$NAME: current size $CURRENT is not in Gi"; continue ;;
+                      esac
+                      NEW_SIZE=$(awk -v current="$CURRENT_GI" -v factor="$EXPANSION_FACTOR" 'BEGIN { printf "%dGi", int(current * factor + 0.999) }')
                       echo "Expanding $NS/$NAME from $CURRENT to $NEW_SIZE"
-                      kubectl patch pvc $NAME -n $NS -p "{\"spec\":{\"resources\":{\"requests\":{\"storage\":\"${NEW_SIZE}Gi\"}}}}"
+                      kubectl patch pvc $NAME -n $NS -p "{\"spec\":{\"resources\":{\"requests\":{\"storage\":\"${NEW_SIZE}\"}}}}"
                     fi
                   done
           restartPolicy: OnFailure
@@ -373,14 +381,15 @@ kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}'
 #### 2. CSI Driver Doesn't Support Online Expansion
 
 ```bash
-# Check CSI driver capabilities
-kubectl get csidrivers
+# List installed CSI drivers
+kubectl get csidrivers.storage.k8s.io
 
-# Output shows supported features
+# Output shows registered CSI drivers, but not expansion support
 # NAME                  ATTACHREQUIRED   PODINFOONMOUNT   STORAGECAPACITY   TOKENREQUESTS   MODES
 # ebs.csi.aws.com       true             false            false             <unset>         Persistent
 
-kubectl describe csidriver ebs.csi.aws.com | grep -i "Volume Expansion"
+# Check which provisioner your StorageClass uses, then confirm expansion support in that driver's documentation
+kubectl get storageclass gp2 -o jsonpath='{.provisioner}{"\n"}'
 ```
 
 #### 3. Expansion Stuck in Pending State

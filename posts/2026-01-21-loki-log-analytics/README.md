@@ -24,7 +24,7 @@ Before starting, ensure you have:
 ```mermaid
 flowchart TB
     subgraph Pipeline["Log Analytics Pipeline"]
-        Collection["Collection<br/>(Promtail)"]
+        Collection["Collection<br/>(Grafana Alloy or supported clients)"]
         Processing["Processing<br/>(Parsing)"]
         Storage["Storage<br/>(Loki)"]
 
@@ -174,19 +174,25 @@ sum(count_over_time({job="application"} [1h] offset 168h))
 avg_over_time(
   {job="application"}
   | json
-  | unwrap duration [5m]
+  | unwrap duration
+  | __error__="" [5m]
 ) by (endpoint)
 
 # P50, P95, P99 latency
-quantile_over_time(0.50, {job="application"} | json | unwrap duration [5m]) by (service)
-quantile_over_time(0.95, {job="application"} | json | unwrap duration [5m]) by (service)
-quantile_over_time(0.99, {job="application"} | json | unwrap duration [5m]) by (service)
+quantile_over_time(0.50, {job="application"} | json | unwrap duration | __error__="" [5m]) by (service)
+quantile_over_time(0.95, {job="application"} | json | unwrap duration | __error__="" [5m]) by (service)
+quantile_over_time(0.99, {job="application"} | json | unwrap duration | __error__="" [5m]) by (service)
 
-# Latency distribution buckets
+# Latency distribution bucket
 sum by (le) (
-  {job="application"}
-  | json
-  | duration <= 100 | __error__="" | le="100ms"
+  count_over_time(
+    {job="application"}
+    | json
+    | duration <= 100
+    | __error__=""
+    | label_format le="100ms"
+    [$__range]
+  )
 )
 ```
 
@@ -477,15 +483,15 @@ count_over_time(
         "type": "timeseries",
         "targets": [
           {
-            "expr": "quantile_over_time(0.50, {job=\"application\"} | json | unwrap duration [$__interval])",
+            "expr": "quantile_over_time(0.50, {job=\"application\"} | json | unwrap duration | __error__=\"\" [$__interval])",
             "legendFormat": "P50"
           },
           {
-            "expr": "quantile_over_time(0.95, {job=\"application\"} | json | unwrap duration [$__interval])",
+            "expr": "quantile_over_time(0.95, {job=\"application\"} | json | unwrap duration | __error__=\"\" [$__interval])",
             "legendFormat": "P95"
           },
           {
-            "expr": "quantile_over_time(0.99, {job=\"application\"} | json | unwrap duration [$__interval])",
+            "expr": "quantile_over_time(0.99, {job=\"application\"} | json | unwrap duration | __error__=\"\" [$__interval])",
             "legendFormat": "P99"
           }
         ]
@@ -495,7 +501,7 @@ count_over_time(
         "type": "table",
         "targets": [
           {
-            "expr": "topk(10, avg by (endpoint) (avg_over_time({job=\"application\"} | json | unwrap duration [$__range])))",
+            "expr": "topk(10, avg by (endpoint) (avg_over_time({job=\"application\"} | json | unwrap duration | __error__=\"\" [$__range])))",
             "instant": true
           }
         ]
@@ -543,7 +549,7 @@ groups:
       - record: log:latency_p95:5m
         expr: |
           quantile_over_time(0.95,
-            {job="application"} | json | unwrap duration [5m]
+            {job="application"} | json | unwrap duration | __error__="" [5m]
           ) by (service)
 
       # Error percentage
@@ -563,7 +569,7 @@ curl -G 'http://localhost:3100/loki/api/v1/query_range' \
   --data-urlencode 'start=2024-01-01T00:00:00Z' \
   --data-urlencode 'end=2024-01-07T00:00:00Z' \
   --data-urlencode 'step=1h' | \
-  jq -r '.data.result[] | [.metric.service, .values[]] | @csv' > errors.csv
+  jq -r '.data.result[] as $series | $series.values[] | [$series.metric.service, .[0], .[1]] | @csv' > errors.csv
 ```
 
 ### Analytics API Queries

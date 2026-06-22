@@ -19,7 +19,7 @@ flowchart TD
         A --> A2[Max 2TB Disk Size]
         A --> A3[Legacy BIOS Compatible]
 
-        B[GPT - GUID Partition Table] --> B1[Unlimited Partitions - 128 default]
+        B[GPT - GUID Partition Table] --> B1[Configurable Partitions - 128 common default]
         B --> B2[Max 9.4 ZB Disk Size]
         B --> B3[UEFI Compatible]
         B --> B4[Redundant Table Backup]
@@ -29,8 +29,8 @@ flowchart TD
 | Feature | MBR | GPT |
 |---------|-----|-----|
 | Maximum disk size | 2 TB | 9.4 ZB |
-| Maximum partitions | 4 primary (or 3 primary + 1 extended) | 128 (default) |
-| Boot compatibility | BIOS | UEFI (and BIOS with hybrid) |
+| Maximum partitions | 4 primary (or 3 primary + 1 extended) | Configurable; 128 is a common default |
+| Boot compatibility | BIOS | UEFI (and BIOS with boot loader support) |
 | Redundancy | None | Backup table at end of disk |
 | Use case | Legacy systems, small disks | Modern systems, large disks |
 
@@ -135,14 +135,14 @@ n
 
 +500M
 t
-1
+uefi
 n
 2
 
 +8G
 t
 2
-19
+swap
 n
 3
 
@@ -150,8 +150,8 @@ n
 w
 EOF
 
-# Partition 1: 500MB for /boot (type 1 = EFI System)
-# Partition 2: 8GB for swap (type 19 = Linux swap)
+# Partition 1: 500MB for /boot (type uefi = EFI System)
+# Partition 2: 8GB for swap (type swap = Linux swap)
 # Partition 3: Remainder for root (default Linux filesystem)
 
 echo "Partitioning complete. Creating filesystems..."
@@ -277,7 +277,7 @@ umount /dev/sdb3
 # Resize partition to use all available space
 parted /dev/sdb resizepart 3 100%
 
-# Or resize to specific size
+# Or set a specific new end position
 parted /dev/sdb resizepart 3 80GiB
 
 # After resizing partition, resize the filesystem
@@ -300,7 +300,11 @@ e2fsck -f /dev/sdb3
 resize2fs /dev/sdb3 40G  # Shrink filesystem to 40GB
 
 # Step 2: Shrink the partition
-parted /dev/sdb resizepart 3 40GiB
+# resizepart takes a new end position, not a filesystem size.
+# Check the partition start first and choose an end that keeps the partition
+# at least as large as the resized filesystem.
+parted /dev/sdb unit GiB print
+parted /dev/sdb resizepart 3 48.5GiB  # Example: 8.5GiB start + 40GiB filesystem
 
 # Step 3: Remount
 mount /dev/sdb3 /mnt/data
@@ -329,7 +333,7 @@ Command: t
 Partition number: 1
 Hex code: 8e  # Linux LVM (MBR)
 # or
-Hex code: 31  # Linux LVM (GPT)
+Hex code or alias: lvm  # Linux LVM (GPT)
 
 # Using parted
 parted -s /dev/sdb set 1 lvm on
@@ -527,7 +531,7 @@ echo "Proceeding..."
 | Create MBR table | `fdisk /dev/sda` then `o` | `parted /dev/sda mklabel msdos` |
 | Create partition | `fdisk /dev/sda` then `n` | `parted /dev/sda mkpart ...` |
 | Delete partition | `fdisk /dev/sda` then `d` | `parted /dev/sda rm 1` |
-| Resize partition | N/A | `parted /dev/sda resizepart 1 50G` |
+| Resize partition | N/A | `parted /dev/sda resizepart 1 50GiB` |
 | Set boot flag | `fdisk /dev/sda` then `a` | `parted /dev/sda set 1 boot on` |
 
 ## Conclusion

@@ -62,10 +62,10 @@ class DualWriteSync:
             )
 
             # Write to Redis cache
-            self.redis.setex(
+            self.redis.set(
                 cache_key,
-                self.cache_ttl,
-                json.dumps(product)
+                json.dumps(product),
+                ex=self.cache_ttl
             )
 
             logger.info(f"Created product {product_id} in both systems")
@@ -137,7 +137,7 @@ class DualWriteSync:
             product = result["_source"]
 
             # Populate cache
-            self.redis.setex(cache_key, self.cache_ttl, json.dumps(product))
+            self.redis.set(cache_key, json.dumps(product), ex=self.cache_ttl)
 
             return product
 
@@ -210,7 +210,7 @@ class EventDrivenSync:
         cache_key = f"product:{product_id}"
 
         # Write to Redis cache
-        self.redis.setex(cache_key, 3600, json.dumps(product))
+        self.redis.set(cache_key, json.dumps(product), ex=3600)
 
         # Emit event for Elasticsearch sync
         event_id = self.emit_event("created", "product", product_id, product)
@@ -513,7 +513,7 @@ class BatchSynchronizer:
             product = doc["_source"]
             cache_key = f"product:{product_id}"
 
-            self.redis.setex(cache_key, 3600, json.dumps(product))
+            self.redis.set(cache_key, json.dumps(product), ex=3600)
             synced += 1
 
             if synced % 1000 == 0:
@@ -612,7 +612,7 @@ class BatchSynchronizer:
                 result = self.es.get(index=self.index_name, id=product_id)
                 product = result["_source"]
                 cache_key = f"product:{product_id}"
-                self.redis.setex(cache_key, 3600, json.dumps(product))
+                self.redis.set(cache_key, json.dumps(product), ex=3600)
                 stats["synced"] += 1
             except Exception:
                 pass
@@ -659,11 +659,12 @@ class CachedSearch:
                 return json.loads(cached)
 
         # Execute search
-        result = self.es.search(index=self.index_name, body=query)
+        response = self.es.search(index=self.index_name, body=query)
+        result = response.body
 
         # Cache result
         if use_cache:
-            self.redis.setex(cache_key, self.cache_ttl, json.dumps(result))
+            self.redis.set(cache_key, json.dumps(result), ex=self.cache_ttl)
 
         return result
 
@@ -703,7 +704,7 @@ class CachedSearch:
             cache_key = f"product:{product_id}"
 
             # Cache individual product
-            pipe.setex(cache_key, 3600, json.dumps(product))
+            pipe.set(cache_key, json.dumps(product), ex=3600)
             products.append(product)
 
         pipe.execute()

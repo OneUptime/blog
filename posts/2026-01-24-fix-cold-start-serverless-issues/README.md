@@ -96,9 +96,12 @@ Only load modules when needed, not at initialization time.
 
 ```javascript
 // Bad: Loads AWS SDK at init time even if not needed
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const { S3Client } = require('@aws-sdk/client-s3');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+
+const s3 = new S3Client({});
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Good: Lazy load only what is needed
 let s3Client;
@@ -106,23 +109,22 @@ let dynamoClient;
 
 function getS3() {
     if (!s3Client) {
-        const { S3 } = require('@aws-sdk/client-s3');
-        s3Client = new S3();
+        const { S3Client } = require('@aws-sdk/client-s3');
+        s3Client = new S3Client({});
     }
     return s3Client;
 }
 
 function getDynamo() {
     if (!dynamoClient) {
-        const { DynamoDB } = require('@aws-sdk/lib-dynamodb');
-        dynamoClient = DynamoDB.from(
-            new (require('@aws-sdk/client-dynamodb')).DynamoDBClient()
-        );
+        const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+        const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+        dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
     }
     return dynamoClient;
 }
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
     // Only initializes S3 client if this path is hit
     if (event.path === '/upload') {
         const s3 = getS3();
@@ -150,10 +152,10 @@ esbuild.build({
     bundle: true,
     minify: true,
     platform: 'node',
-    target: 'node18',
+    target: 'node22',
     outfile: 'dist/handler.js',
     external: [
-        // Keep AWS SDK external (included in Lambda runtime)
+        // Only externalize if you intentionally use Lambda's runtime-included SDK
         '@aws-sdk/*'
     ],
     // Tree shaking removes unused code
@@ -236,7 +238,7 @@ service: my-api
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
 
 functions:
   api:
@@ -269,8 +271,9 @@ Resources:
     Properties:
       MaxCapacity: 50
       MinCapacity: 5
-      ResourceId: !Sub function:${ApiLambdaFunction}:${ApiLambdaFunction.Version}
-      RoleARN: !GetAtt AutoScalingRole.Arn
+      # Use a published version or alias, not $LATEST
+      ResourceId: !Sub function:${ApiLambdaFunction}:live
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/lambda.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_LambdaConcurrency
       ScalableDimension: lambda:function:ProvisionedConcurrency
       ServiceNamespace: lambda
 
@@ -291,7 +294,7 @@ Resources:
 
 ### Scheduled Warming
 
-Use scheduled events to keep functions warm during expected traffic:
+Use scheduled events to reduce occasional cold starts during expected traffic. This does not guarantee warm capacity during scale-out; use provisioned concurrency for that.
 
 ```yaml
 # serverless.yml - Schedule warming events
@@ -302,7 +305,7 @@ functions:
       - http:
           path: /api/{proxy+}
           method: any
-      # Warm the function every 5 minutes during business hours
+      # Warm the function every 5 minutes
       - schedule:
           rate: rate(5 minutes)
           enabled: true
@@ -337,10 +340,10 @@ gantt
 
     section Runtimes
     Python 3.x     :0, 200
-    Node.js 18.x   :0, 250
-    Go 1.x         :0, 100
-    Java 17        :0, 800
-    .NET 6         :0, 400
+    Node.js 22.x   :0, 250
+    Go on provided.al2023 :0, 100
+    Java 21        :0, 800
+    .NET 8         :0, 400
 ```
 
 ### Optimizing Node.js
@@ -351,7 +354,7 @@ gantt
 
 // Use specific imports instead of full SDK
 // Bad
-import AWS from 'aws-sdk';
+import { S3 } from '@aws-sdk/client-s3';
 // Good
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -371,7 +374,7 @@ async function getConfig() {
 
 ### Optimizing Java
 
-Java has the highest cold start times, but several techniques can help:
+Java functions often have higher cold start times, but several techniques can help:
 
 ```java
 // Use GraalVM native image for faster startup
@@ -433,7 +436,8 @@ Enable connection reuse for downstream services:
 
 ```javascript
 import https from 'https';
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 
 // Configure keep-alive for AWS SDK
 const httpHandler = new NodeHttpHandler({
@@ -473,32 +477,34 @@ Resources:
 Custom metric for cold start tracking:
 
 ```javascript
-import { CloudWatch } from '@aws-sdk/client-cloudwatch';
+import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
 
-const cloudwatch = new CloudWatch();
+const cloudwatch = new CloudWatchClient({});
 
 async function reportColdStart(functionName, initDuration) {
-    await cloudwatch.putMetricData({
-        Namespace: 'Custom/Lambda',
-        MetricData: [
-            {
-                MetricName: 'ColdStarts',
-                Value: 1,
-                Unit: 'Count',
-                Dimensions: [
-                    { Name: 'FunctionName', Value: functionName }
-                ]
-            },
-            {
-                MetricName: 'InitDuration',
-                Value: initDuration,
-                Unit: 'Milliseconds',
-                Dimensions: [
-                    { Name: 'FunctionName', Value: functionName }
-                ]
-            }
-        ]
-    });
+    await cloudwatch.send(
+        new PutMetricDataCommand({
+            Namespace: 'Custom/Lambda',
+            MetricData: [
+                {
+                    MetricName: 'ColdStarts',
+                    Value: 1,
+                    Unit: 'Count',
+                    Dimensions: [
+                        { Name: 'FunctionName', Value: functionName }
+                    ]
+                },
+                {
+                    MetricName: 'InitDuration',
+                    Value: initDuration,
+                    Unit: 'Milliseconds',
+                    Dimensions: [
+                        { Name: 'FunctionName', Value: functionName }
+                    ]
+                }
+            ]
+        })
+    );
 }
 ```
 
@@ -509,7 +515,7 @@ async function reportColdStart(functionName, initDuration) {
 3. **Lazy load dependencies** - Initialize expensive resources only when needed
 4. **Reuse connections** - Keep database and HTTP connections outside the handler
 5. **Consider provisioned concurrency** - For latency-sensitive workloads
-6. **Choose the right runtime** - Go and Python have the fastest cold starts
+6. **Choose the right runtime** - Node.js and Python often initialize quickly for simple functions; custom runtimes and compiled languages vary by workload
 7. **Monitor continuously** - Track cold start frequency and duration
 
 ---

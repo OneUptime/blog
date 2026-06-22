@@ -153,9 +153,8 @@ git config --global core.autocrlf true
 # For Linux/Mac (converts CRLF to LF on commit)
 git config --global core.autocrlf input
 
-# To fix files already in the repo
-git rm --cached -r .
-git reset --hard
+# To normalize files already in the repo after changing attributes
+git add --renormalize .
 ```
 
 Create a `.gitattributes` file for consistent handling:
@@ -245,7 +244,7 @@ Always review changes before staging:
 # See unstaged changes
 git diff
 
-# See what would be staged
+# See what is staged
 git diff --cached
 
 # See both staged and unstaged

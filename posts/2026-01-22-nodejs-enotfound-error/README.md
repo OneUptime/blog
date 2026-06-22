@@ -37,14 +37,13 @@ This error means the DNS lookup failed to find the specified hostname.
 
 ```javascript
 const dns = require('dns');
-const url = require('url');
 
 // Validate hostname before making request
 async function validateHostname(hostname) {
   return new Promise((resolve, reject) => {
     dns.lookup(hostname, (err, address, family) => {
       if (err) {
-        reject(new Error(`Cannot resolve hostname: ${hostname}`));
+        reject(err);
       } else {
         resolve({ address, family });
       }
@@ -161,9 +160,9 @@ async function makeRequestWithCustomDNS(url) {
   
   try {
     const addresses = await resolveWithCustomDNS(hostname);
-    console.log(`Using IP: ${addresses[0]}`);
+    console.log(`Resolved with custom DNS: ${addresses[0]}`);
     
-    // Make request using resolved IP
+    // Make the request after confirming the hostname resolves
     const response = await fetch(url);
     return response.json();
   } catch (error) {
@@ -180,15 +179,41 @@ async function makeRequestWithCustomDNS(url) {
 ```javascript
 const axios = require('axios');
 const dns = require('dns');
+const http = require('http');
 const https = require('https');
 
 // Create axios instance with custom DNS
 function createClientWithDNSFallback() {
   const customDNSServers = ['8.8.8.8', '1.1.1.1'];
   let currentDNSIndex = 0;
+
+  function createLookup(server) {
+    const resolver = new dns.Resolver();
+    resolver.setServers([server]);
+
+    return (hostname, options, callback) => {
+      if (typeof options === 'function') {
+        callback = options;
+      }
+
+      resolver.resolve4(hostname, (err, addresses) => {
+        if (err) {
+          callback(err);
+        } else {
+          callback(null, addresses[0], 4);
+        }
+      });
+    };
+  }
   
   const client = axios.create({
-    timeout: 30000
+    timeout: 30000,
+    httpAgent: new http.Agent({
+      lookup: createLookup(customDNSServers[currentDNSIndex])
+    }),
+    httpsAgent: new https.Agent({
+      lookup: createLookup(customDNSServers[currentDNSIndex])
+    })
   });
   
   // Retry interceptor
@@ -197,11 +222,15 @@ function createClientWithDNSFallback() {
     async error => {
       if (error.code === 'ENOTFOUND') {
         // Try with next DNS server
-        if (currentDNSIndex < customDNSServers.length) {
+        const nextDNSIndex = currentDNSIndex + 1;
+
+        if (error.config && nextDNSIndex < customDNSServers.length) {
+          currentDNSIndex = nextDNSIndex;
           console.log(`Trying DNS server: ${customDNSServers[currentDNSIndex]}`);
           
-          dns.setServers([customDNSServers[currentDNSIndex]]);
-          currentDNSIndex++;
+          const lookup = createLookup(customDNSServers[currentDNSIndex]);
+          error.config.httpAgent = new http.Agent({ lookup });
+          error.config.httpsAgent = new https.Agent({ lookup });
           
           // Retry the request
           return client.request(error.config);
@@ -307,7 +336,9 @@ const config = {
 
 const env = process.env.NODE_ENV || 'development';
 module.exports = config[env];
+```
 
+```javascript
 // api-client.js
 const config = require('./config');
 const axios = require('axios');

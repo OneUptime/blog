@@ -26,7 +26,7 @@ First, let's create a table structure optimized for sequence analysis:
 ```sql
 CREATE TABLE user_events (
     user_id UInt64,
-    event_time DateTime64(3),
+    event_time DateTime,
     event_name LowCardinality(String),
     event_properties Map(String, String),
     session_id String,
@@ -84,7 +84,6 @@ The pattern uses a regex-like syntax:
 -- (?N) - matches condition N
 -- (?1)(?2) - condition 1 followed by condition 2
 -- (?1).*(?2) - condition 1, any events, then condition 2
--- (?1)(?!2)(?3) - condition 1, NOT condition 2, then condition 3
 -- (?t<=3600) - time constraint (within 3600 seconds)
 
 -- Example: Check if add_to_cart happened within 5 minutes of page_view
@@ -101,7 +100,13 @@ GROUP BY user_id;
 -- Example: Purchase without cart abandonment
 SELECT
     user_id,
-    sequenceMatch('(?1)(?2)(?!3)(?4)')(
+    sequenceMatch('(?1)(?2)(?3)')(
+        event_time,
+        event_name = 'add_to_cart',
+        event_name = 'checkout_start',
+        event_name = 'purchase'
+    )
+    AND NOT sequenceMatch('(?1)(?2)(?3)(?4)')(
         event_time,
         event_name = 'add_to_cart',
         event_name = 'checkout_start',
@@ -158,10 +163,7 @@ GROUP BY user_id;
 -- Count repeated behaviors (e.g., multiple add-to-cart actions)
 SELECT
     user_id,
-    sequenceCount('(?1)')(
-        event_time,
-        event_name = 'add_to_cart'
-    ) AS total_add_to_cart
+    countIf(event_name = 'add_to_cart') AS total_add_to_cart
 FROM user_events
 GROUP BY user_id;
 ```
@@ -173,32 +175,41 @@ GROUP BY user_id;
 ```sql
 -- E-commerce conversion funnel
 SELECT
-    countIf(sequenceMatch('(?1)')(event_time, event_name = 'page_view')) AS step1_visitors,
-    countIf(sequenceMatch('(?1)(?2)')(event_time,
-        event_name = 'page_view',
-        event_name = 'product_view'
-    )) AS step2_product_views,
-    countIf(sequenceMatch('(?1)(?2)(?3)')(event_time,
-        event_name = 'page_view',
-        event_name = 'product_view',
-        event_name = 'add_to_cart'
-    )) AS step3_add_to_cart,
-    countIf(sequenceMatch('(?1)(?2)(?3)(?4)')(event_time,
-        event_name = 'page_view',
-        event_name = 'product_view',
-        event_name = 'add_to_cart',
-        event_name = 'checkout_start'
-    )) AS step4_checkout,
-    countIf(sequenceMatch('(?1)(?2)(?3)(?4)(?5)')(event_time,
-        event_name = 'page_view',
-        event_name = 'product_view',
-        event_name = 'add_to_cart',
-        event_name = 'checkout_start',
-        event_name = 'purchase'
-    )) AS step5_purchase
-FROM user_events
-GROUP BY user_id
-HAVING step1_visitors > 0;
+    sum(reached_step1) AS step1_visitors,
+    sum(reached_step2) AS step2_product_views,
+    sum(reached_step3) AS step3_add_to_cart,
+    sum(reached_step4) AS step4_checkout,
+    sum(reached_step5) AS step5_purchase
+FROM (
+    SELECT
+        user_id,
+        max(toUInt8(event_name = 'page_view')) AS reached_step1,
+        sequenceMatch('(?1)(?2)')(event_time,
+            event_name = 'page_view',
+            event_name = 'product_view'
+        ) AS reached_step2,
+        sequenceMatch('(?1)(?2)(?3)')(event_time,
+            event_name = 'page_view',
+            event_name = 'product_view',
+            event_name = 'add_to_cart'
+        ) AS reached_step3,
+        sequenceMatch('(?1)(?2)(?3)(?4)')(event_time,
+            event_name = 'page_view',
+            event_name = 'product_view',
+            event_name = 'add_to_cart',
+            event_name = 'checkout_start'
+        ) AS reached_step4,
+        sequenceMatch('(?1)(?2)(?3)(?4)(?5)')(event_time,
+            event_name = 'page_view',
+            event_name = 'product_view',
+            event_name = 'add_to_cart',
+            event_name = 'checkout_start',
+            event_name = 'purchase'
+        ) AS reached_step5
+    FROM user_events
+    GROUP BY user_id
+)
+WHERE reached_step1 > 0;
 ```
 
 ### Funnel with Conversion Rates
@@ -207,7 +218,7 @@ HAVING step1_visitors > 0;
 WITH funnel AS (
     SELECT
         user_id,
-        sequenceMatch('(?1)')(event_time, event_name = 'page_view') AS reached_step1,
+        max(toUInt8(event_name = 'page_view')) AS reached_step1,
         sequenceMatch('(?1)(?2)')(event_time,
             event_name = 'page_view',
             event_name = 'add_to_cart'
@@ -245,23 +256,27 @@ FROM funnel;
 -- Funnel by device type
 SELECT
     device_type,
-    count(DISTINCT user_id) AS total_users,
-    countIf(sequenceMatch('(?1)(?2)')(event_time,
-        event_name = 'page_view',
-        event_name = 'add_to_cart'
-    )) AS added_to_cart,
-    countIf(sequenceMatch('(?1)(?2)(?3)')(event_time,
-        event_name = 'page_view',
-        event_name = 'add_to_cart',
-        event_name = 'purchase'
-    )) AS purchased,
-    round(countIf(sequenceMatch('(?1)(?2)(?3)')(event_time,
-        event_name = 'page_view',
-        event_name = 'add_to_cart',
-        event_name = 'purchase'
-    )) / count(DISTINCT user_id) * 100, 2) AS conversion_rate
-FROM user_events
-WHERE event_time >= now() - INTERVAL 7 DAY
+    count() AS total_users,
+    sum(added_to_cart) AS added_to_cart,
+    sum(purchased) AS purchased,
+    round(sum(purchased) / count() * 100, 2) AS conversion_rate
+FROM (
+    SELECT
+        device_type,
+        user_id,
+        sequenceMatch('(?1)(?2)')(event_time,
+            event_name = 'page_view',
+            event_name = 'add_to_cart'
+        ) AS added_to_cart,
+        sequenceMatch('(?1)(?2)(?3)')(event_time,
+            event_name = 'page_view',
+            event_name = 'add_to_cart',
+            event_name = 'purchase'
+        ) AS purchased
+    FROM user_events
+    WHERE event_time >= now() - INTERVAL 7 DAY
+    GROUP BY device_type, user_id
+)
 GROUP BY device_type
 ORDER BY conversion_rate DESC;
 ```

@@ -14,7 +14,7 @@ Effective retention and compaction configuration is essential for managing stora
 
 Before starting, ensure you have:
 
-- Grafana Loki 2.4 or later deployed
+- Grafana Loki 2.8 or later deployed with TSDB or BoltDB Shipper index storage
 - Object storage backend configured (S3, GCS, Azure Blob, or MinIO)
 - Understanding of Loki's storage architecture
 - Access to modify Loki configuration
@@ -26,19 +26,35 @@ Loki stores data in two forms:
 - **Chunks**: Compressed log data
 - **Index**: Metadata mapping labels to chunks
 
-Both have independent retention considerations.
+Retention is applied by compacting and rewriting the index, then deleting expired chunks asynchronously.
 
 ## Retention Configuration
 
 ### Basic Retention Setup
 
 ```yaml
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  aws:
+    s3: s3://us-east-1/loki-bucket
+
 limits_config:
   retention_period: 720h  # 30 days global default
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -51,9 +67,12 @@ compactor:
 Configure different retention periods for different tenants:
 
 ```yaml
+# loki.yaml
 limits_config:
   retention_period: 720h  # 30 days default
+  per_tenant_override_config: /etc/loki/overrides.yaml
 
+# /etc/loki/overrides.yaml
 overrides:
   production:
     retention_period: 2160h  # 90 days for production
@@ -99,9 +118,6 @@ compactor:
   # Working directory for temporary files
   working_directory: /loki/compactor
 
-  # Storage backend for chunks
-  shared_store: s3
-
   # How often to run compaction
   compaction_interval: 10m
 
@@ -132,17 +148,26 @@ compactor:
 ```yaml
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   retention_enabled: true
+  delete_request_store: s3
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
   aws:
     s3: s3://us-east-1/loki-bucket
     s3forcepathstyle: false
-  boltdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/cache
-    shared_store: s3
 ```
 
 ### GCS Configuration
@@ -150,10 +175,23 @@ storage_config:
 ```yaml
 compactor:
   working_directory: /loki/compactor
-  shared_store: gcs
   retention_enabled: true
+  delete_request_store: gcs
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
   gcs:
     bucket_name: loki-bucket
 ```
@@ -170,7 +208,7 @@ compactor:
   delete_request_store: s3
 
 limits_config:
-  allow_deletes: true
+  deletion_mode: filter-and-delete
 ```
 
 ### Create Delete Request
@@ -178,16 +216,11 @@ limits_config:
 ```bash
 # Delete logs matching selector
 
-curl -X POST "http://loki:3100/loki/api/v1/delete" \
+curl -G -X POST "http://loki:3100/loki/api/v1/delete" \
   -H "X-Scope-OrgID: production" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "match": {
-      "selector": "{namespace=\"test\"}",
-      "start": "2024-01-01T00:00:00Z",
-      "end": "2024-01-31T23:59:59Z"
-    }
-  }'
+  --data-urlencode 'query={namespace="test"}' \
+  --data-urlencode 'start=2024-01-01T00:00:00Z' \
+  --data-urlencode 'end=2024-01-31T23:59:59Z'
 ```
 
 ### List Delete Requests
@@ -209,23 +242,23 @@ curl -X DELETE "http://loki:3100/loki/api/v1/delete?request_id=abc123" \
 ### How Compaction Works
 
 1. **Index Compaction**: Combines small index files into larger ones
-2. **Chunk Compaction**: Merges small chunks
-3. **Retention Enforcement**: Deletes expired data
+2. **Retention Enforcement**: Removes expired chunk references from the index
+3. **Chunk Deletion**: Deletes expired chunks asynchronously after the retention delete delay
 
 ### Monitoring Compaction
 
 ```promql
 # Compactor running status
-loki_compactor_running
+loki_boltdb_shipper_compactor_running
 
 # Compaction duration
-histogram_quantile(0.99, sum(rate(loki_compactor_compact_tables_operation_duration_seconds_bucket[5m])) by (le))
+loki_boltdb_shipper_compact_tables_operation_duration_seconds
 
 # Delete requests processed
 loki_compactor_delete_requests_processed_total
 
-# Retention bytes deleted
-loki_compactor_retention_bytes_deleted_total
+# Retention duration
+loki_compactor_apply_retention_operation_duration_seconds
 ```
 
 ### Compaction Troubleshooting
@@ -235,7 +268,7 @@ loki_compactor_retention_bytes_deleted_total
 kubectl logs -n loki -l app=loki-compactor --tail=100
 
 # Verify compactor is running
-curl http://loki-compactor:3100/metrics | grep loki_compactor_running
+curl http://loki-compactor:3100/metrics | grep loki_boltdb_shipper_compactor_running
 ```
 
 ## Table Manager (Legacy)
@@ -262,7 +295,7 @@ table_manager:
 
 ### Hot/Warm/Cold Storage
 
-Configure different storage backends for different data ages:
+Use object store lifecycle policies to move chunks to colder storage classes:
 
 ```yaml
 schema_config:
@@ -356,7 +389,7 @@ groups:
   - name: loki-compaction-alerts
     rules:
       - alert: LokiCompactorNotRunning
-        expr: loki_compactor_running == 0
+        expr: loki_boltdb_shipper_compactor_running == 0
         for: 30m
         labels:
           severity: critical
@@ -364,7 +397,7 @@ groups:
           summary: "Loki compactor not running"
 
       - alert: LokiRetentionBacklog
-        expr: loki_compactor_retention_bytes_to_delete > 1e12
+        expr: loki_compactor_pending_delete_requests_count > 1000
         for: 1h
         labels:
           severity: warning
@@ -372,10 +405,7 @@ groups:
           summary: "Large retention backlog"
 
       - alert: LokiCompactionSlow
-        expr: |
-          histogram_quantile(0.99,
-            sum(rate(loki_compactor_compact_tables_operation_duration_seconds_bucket[5m])) by (le)
-          ) > 600
+        expr: loki_boltdb_shipper_compact_tables_operation_duration_seconds > 600
         for: 30m
         labels:
           severity: warning
@@ -406,7 +436,7 @@ spec:
     spec:
       containers:
         - name: compactor
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.2
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=compactor

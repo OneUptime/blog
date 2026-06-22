@@ -12,10 +12,10 @@ Arena is a lightweight, interactive dashboard for monitoring Bull and BullMQ que
 
 ## Installing Arena
 
-Install Arena and BullMQ:
+Install Arena, BullMQ, and the runtime packages used in the examples:
 
 ```bash
-npm install bull-arena bullmq ioredis
+npm install bull-arena bullmq ioredis express express-basic-auth express-session passport passport-local socket.io
 ```
 
 ## Basic Setup
@@ -26,7 +26,6 @@ Set up Arena with Express:
 import express from 'express';
 import Arena from 'bull-arena';
 import { Queue } from 'bullmq';
-import { Redis } from 'ioredis';
 
 const app = express();
 
@@ -69,7 +68,7 @@ const arenaConfig = Arena(
 );
 
 // Mount Arena
-app.use('/arena', arenaConfig);
+app.use('/', arenaConfig);
 
 app.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
@@ -211,7 +210,8 @@ const authMiddleware = basicAuth({
 });
 
 // Apply authentication
-app.use('/arena', authMiddleware, arenaConfig);
+app.use('/arena', authMiddleware);
+app.use('/', arenaConfig);
 ```
 
 ## Session-Based Authentication
@@ -222,6 +222,8 @@ More robust authentication with sessions:
 import session from 'express-session';
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
+
+app.use(express.urlencoded({ extended: false }));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'arena-secret',
@@ -278,7 +280,8 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
   res.redirect('/login');
 }
 
-app.use('/arena', requireAuth, arenaConfig);
+app.use('/arena', requireAuth);
+app.use('/', arenaConfig);
 ```
 
 ## Dynamic Queue Discovery
@@ -339,7 +342,7 @@ async function setupDynamicArena() {
   });
 
   const arenaConfig = await dynamicArena.createArenaConfig('Main Server');
-  app.use('/arena', arenaConfig);
+  app.use('/', arenaConfig);
 }
 
 setupDynamicArena();
@@ -350,7 +353,8 @@ setupDynamicArena();
 Add custom job actions with API endpoints:
 
 ```typescript
-import { Queue, Job } from 'bullmq';
+import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
 
 const connection = new Redis({
   host: 'localhost',
@@ -359,6 +363,8 @@ const connection = new Redis({
 });
 
 const queues: Map<string, Queue> = new Map();
+
+app.use(express.json());
 
 // Initialize queues
 ['emails', 'orders', 'notifications'].forEach((name) => {
@@ -608,7 +614,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -621,8 +627,6 @@ CMD ["node", "dist/server.js"]
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   arena:
@@ -716,6 +720,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/auth-type: basic
     nginx.ingress.kubernetes.io/auth-secret: arena-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Arena'
 spec:
   rules:
     - host: arena.example.com

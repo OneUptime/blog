@@ -17,13 +17,14 @@ Before diving into implementation details, let's understand why caching is cruci
 ### Performance Benefits
 
 ```typescript
-// Without caching - network request every time
+// Without an explicit caching strategy
 const ProfileImage: React.FC<{ uri: string }> = ({ uri }) => {
-  // This fetches from network on every render
+  // React Native may still use platform HTTP caches, but this component
+  // does not control cache policy, preloading, or offline fallback behavior.
   return <Image source={{ uri }} style={styles.image} />;
 };
 
-// Problem: Slow initial load, repeated downloads, wasted bandwidth
+// Problem: Slow initial load and inconsistent offline behavior
 ```
 
 Caching provides several key advantages:
@@ -59,31 +60,30 @@ React Native's built-in `Image` component provides basic caching capabilities on
 
 ```typescript
 import React from 'react';
-import { Image, ImageProps, Platform } from 'react-native';
+import { Image } from 'react-native';
 
-// The default Image component has platform-specific caching
+// The default Image component supports cache control on network sources
 const BasicCachedImage: React.FC<{ uri: string }> = ({ uri }) => {
   return (
     <Image
       source={{
         uri,
-        // iOS-specific cache control
-        cache: Platform.OS === 'ios' ? 'default' : undefined,
+        cache: 'default',
       }}
       style={{ width: 200, height: 200 }}
     />
   );
 };
 
-// iOS cache policies
-type IOSCachePolicy =
+// Cache policies
+type ImageCachePolicy =
   | 'default'      // Use URL cache settings
   | 'reload'       // Ignore cache, always fetch
   | 'force-cache'  // Use cache if available, otherwise fetch
   | 'only-if-cached'; // Only use cache, fail if not available
 ```
 
-### iOS Cache Configuration
+### Cache Configuration
 
 ```typescript
 import React from 'react';
@@ -96,7 +96,7 @@ interface CachedImageProps {
   height: number;
 }
 
-const IOSCachedImage: React.FC<CachedImageProps> = ({
+const CachedImage: React.FC<CachedImageProps> = ({
   uri,
   cachePolicy = 'force-cache',
   width,
@@ -123,7 +123,7 @@ const ImageGallery: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Force cache - best for static images */}
-      <IOSCachedImage
+      <CachedImage
         uri="https://example.com/profile.jpg"
         cachePolicy="force-cache"
         width={100}
@@ -131,7 +131,7 @@ const ImageGallery: React.FC = () => {
       />
 
       {/* Default - respects server cache headers */}
-      <IOSCachedImage
+      <CachedImage
         uri="https://example.com/dynamic-content.jpg"
         cachePolicy="default"
         width={200}
@@ -154,17 +154,17 @@ const styles = StyleSheet.create({
 ```typescript
 // Built-in Image limitations:
 const limitations = {
-  // 1. No persistent disk caching on Android
-  android: 'Only memory cache, cleared when app closes',
+  // 1. Platform-managed caches are not a complete offline storage API
+  offlineGuarantee: 'HTTP/native image caches can evict entries at any time',
 
-  // 2. Limited cache size control
-  sizeControl: 'No API to set maximum cache size',
+  // 2. Limited cache size control from JavaScript
+  sizeControl: 'React Native exposes iOS cache limits in native code, but not a cross-platform JS size API',
 
   // 3. No cache invalidation API
   invalidation: 'Cannot manually clear specific cached images',
 
-  // 4. No progress callbacks
-  progress: 'Cannot track download progress',
+  // 4. Limited cache observability
+  observability: 'Cannot reliably tell whether a rendered image came from memory, disk, or network',
 
   // 5. No priority system
   priority: 'Cannot prioritize certain images over others',
@@ -173,7 +173,7 @@ const limitations = {
 
 ## react-native-fast-image Setup and Usage
 
-For production applications requiring robust caching, `react-native-fast-image` is the de facto standard library.
+For production applications requiring more explicit caching controls, `react-native-fast-image` is a popular library.
 
 ### Installation
 
@@ -193,8 +193,8 @@ cd ios && pod install && cd ..
 
 ```typescript
 import React from 'react';
-import FastImage, { Priority, ResizeMode } from 'react-native-fast-image';
-import { StyleSheet, View } from 'react-native';
+import FastImage, { Priority } from 'react-native-fast-image';
+import { StyleSheet } from 'react-native';
 
 interface FastCachedImageProps {
   uri: string;
@@ -211,7 +211,7 @@ const FastCachedImage: React.FC<FastCachedImageProps> = ({
 }) => {
   return (
     <FastImage
-      style={{ width, height }}
+      style={[{ width, height }, styles.image]}
       source={{
         uri,
         priority,
@@ -267,7 +267,6 @@ const AdvancedCachedImage: React.FC<AdvancedImageProps> = ({
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(false);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const handleLoadStart = useCallback(() => {
     setLoading(true);
@@ -283,7 +282,7 @@ const AdvancedCachedImage: React.FC<AdvancedImageProps> = ({
 
   const handleLoad = useCallback((event: OnLoadEvent) => {
     const { width, height } = event.nativeEvent;
-    setDimensions({ width, height });
+    console.log(`Loaded image: ${width}x${height}`);
     setLoading(false);
   }, []);
 
@@ -378,6 +377,7 @@ Different scenarios require different caching approaches. Here are the most effe
 ### Strategy 1: Cache-First
 
 ```typescript
+import React, { useCallback, useEffect, useState } from 'react';
 import FastImage from 'react-native-fast-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -425,9 +425,11 @@ const CacheFirstImage: React.FC<CacheFirstConfig> = ({ uri, maxAge }) => {
   useEffect(() => {
     const checkCache = async () => {
       const shouldRefetch = await CacheFirstStrategy.shouldRefetch(uri, maxAge);
-      if (shouldRefetch) {
-        setCacheControl(FastImage.cacheControl.web);
-      }
+      setCacheControl(
+        shouldRefetch
+          ? FastImage.cacheControl.web
+          : FastImage.cacheControl.immutable
+      );
     };
     checkCache();
   }, [uri, maxAge]);
@@ -466,12 +468,14 @@ const NetworkFirstImage: React.FC<NetworkFirstImageProps> = ({
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
+    setHasError(false);
+
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       setIsOnline(state.isConnected ?? false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [uri]);
 
   const getCacheControl = () => {
     if (!isOnline) {
@@ -537,12 +541,13 @@ const StaleWhileRevalidateImage: React.FC<SWRImageProps> = ({
       setIsRevalidating(true);
 
       // Add cache-busting parameter for revalidation
-      const revalidateUri = `${uri}?t=${now}`;
+      const revalidateUri = `${uri}${uri.includes('?') ? '&' : '?'}t=${now}`;
 
-      // Prefetch new version
+      // Give the new version a head start in the cache
       FastImage.preload([{ uri: revalidateUri }]);
 
-      // Update to new version after prefetch
+      // FastImage.preload() does not return a completion promise, so switch
+      // after a short delay or replace this with your own download pipeline
       setTimeout(() => {
         setCurrentUri(revalidateUri);
         setIsRevalidating(false);
@@ -627,8 +632,8 @@ const preloadCriticalImages = () => {
 ### Smart Preloading Based on User Behavior
 
 ```typescript
-import React, { useEffect, useCallback } from 'react';
-import { FlatList, View, Dimensions } from 'react-native';
+import React, { useCallback } from 'react';
+import { FlatList, Dimensions } from 'react-native';
 import FastImage from 'react-native-fast-image';
 
 interface ImageItem {
@@ -722,6 +727,7 @@ Managing cache size prevents your app from consuming excessive storage.
 
 ```typescript
 import { Platform } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import RNFS from 'react-native-fs';
 
 interface CacheInfo {
@@ -731,10 +737,33 @@ interface CacheInfo {
 }
 
 class CacheManager {
+  // FastImage uses SDWebImage on iOS and Glide on Android. These directories
+  // reflect common defaults, but they are implementation details and can change.
   private static getCacheDirectory(): string {
     return Platform.OS === 'ios'
-      ? `${RNFS.CachesDirectoryPath}/com.hackemist.SDImageCache/default`
+      ? `${RNFS.CachesDirectoryPath}/com.hackemist.SDImageCache`
       : `${RNFS.CachesDirectoryPath}/image_manager_disk_cache`;
+  }
+
+  private static async getDirectoryInfo(
+    directory: string
+  ): Promise<{ totalSize: number; fileCount: number }> {
+    const files = await RNFS.readDir(directory);
+    let totalSize = 0;
+    let fileCount = 0;
+
+    for (const file of files) {
+      if (file.isDirectory()) {
+        const nested = await this.getDirectoryInfo(file.path);
+        totalSize += nested.totalSize;
+        fileCount += nested.fileCount;
+      } else if (file.isFile()) {
+        totalSize += Number(file.size);
+        fileCount++;
+      }
+    }
+
+    return { totalSize, fileCount };
   }
 
   static async getCacheInfo(): Promise<CacheInfo> {
@@ -746,18 +775,11 @@ class CacheManager {
         return { totalSize: 0, fileCount: 0, formattedSize: '0 B' };
       }
 
-      const files = await RNFS.readDir(cacheDir);
-      let totalSize = 0;
-
-      for (const file of files) {
-        if (file.isFile()) {
-          totalSize += file.size;
-        }
-      }
+      const { totalSize, fileCount } = await this.getDirectoryInfo(cacheDir);
 
       return {
         totalSize,
-        fileCount: files.filter((f) => f.isFile()).length,
+        fileCount,
         formattedSize: this.formatBytes(totalSize),
       };
     } catch (error) {
@@ -796,26 +818,35 @@ class CacheManager {
 
       if (!exists) return 0;
 
-      const files = await RNFS.readDir(cacheDir);
-      const now = Date.now();
-      let clearedCount = 0;
-
-      for (const file of files) {
-        if (file.isFile()) {
-          const fileAge = now - new Date(file.mtime).getTime();
-
-          if (fileAge > maxAgeMs) {
-            await RNFS.unlink(file.path);
-            clearedCount++;
-          }
-        }
-      }
-
-      return clearedCount;
+      return this.clearOldFilesInDirectory(cacheDir, maxAgeMs);
     } catch (error) {
       console.error('Error clearing old cache:', error);
       return 0;
     }
+  }
+
+  private static async clearOldFilesInDirectory(
+    directory: string,
+    maxAgeMs: number
+  ): Promise<number> {
+    const files = await RNFS.readDir(directory);
+    const now = Date.now();
+    let clearedCount = 0;
+
+    for (const file of files) {
+      if (file.isDirectory()) {
+        clearedCount += await this.clearOldFilesInDirectory(file.path, maxAgeMs);
+      } else if (file.isFile()) {
+        const fileAge = now - new Date(file.mtime).getTime();
+
+        if (fileAge > maxAgeMs) {
+          await RNFS.unlink(file.path);
+          clearedCount++;
+        }
+      }
+    }
+
+    return clearedCount;
   }
 }
 
@@ -919,9 +950,12 @@ Proper cache invalidation ensures users see fresh content when needed.
 ### URL-Based Invalidation
 
 ```typescript
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import FastImage from 'react-native-fast-image';
+
 interface ImageVersionManager {
   getVersionedUrl(baseUrl: string): string;
-  invalidateUrl(baseUrl: string): void;
+  invalidateUrl(baseUrl: string): Promise<void>;
 }
 
 class ImageVersionService implements ImageVersionManager {
@@ -946,16 +980,16 @@ class ImageVersionService implements ImageVersionManager {
     return `${baseUrl}${separator}v=${version}`;
   }
 
-  invalidateUrl(baseUrl: string): void {
+  async invalidateUrl(baseUrl: string): Promise<void> {
     const currentVersion = this.versions.get(baseUrl) || 0;
     this.versions.set(baseUrl, currentVersion + 1);
-    this.persistVersions();
+    await this.persistVersions();
   }
 
-  invalidatePattern(pattern: RegExp): void {
+  async invalidatePattern(pattern: RegExp): Promise<void> {
     for (const [url] of this.versions) {
       if (pattern.test(url)) {
-        this.invalidateUrl(url);
+        await this.invalidateUrl(url);
       }
     }
   }
@@ -983,7 +1017,7 @@ const VersionedImage: React.FC<{ baseUri: string }> = ({ baseUri }) => {
 
 // When content updates
 const handleProfileUpdate = async () => {
-  imageVersionService.invalidateUrl('https://example.com/profile/123.jpg');
+  await imageVersionService.invalidateUrl('https://example.com/profile/123.jpg');
 };
 ```
 
@@ -1049,7 +1083,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import NetInfo from '@react-native-community/netinfo';
-import RNFS from 'react-native-fs';
 
 interface OfflineImageProps {
   uri: string;
@@ -1090,8 +1123,9 @@ const OfflineImage: React.FC<OfflineImageProps> = ({
     return FastImage.cacheControl.immutable;
   };
 
-  // Show local fallback if offline with no cache or on error
-  if (((!isOnline && !isCached) || loadError) && localFallback) {
+  // Show local fallback after the cache-only request fails, or after any
+  // online load error. FastImage will attempt the disk cache first offline.
+  if (loadError && localFallback) {
     return (
       <View style={styles.container}>
         <FastImage
@@ -1182,7 +1216,7 @@ Progressive loading improves perceived performance by showing low-quality previe
 
 ```typescript
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Image } from 'react-native';
 import FastImage from 'react-native-fast-image';
 
 interface ProgressiveImageProps {
@@ -1216,15 +1250,15 @@ const ProgressiveImage: React.FC<ProgressiveImageProps> = ({
   return (
     <View style={[styles.container, style]}>
       {/* Thumbnail with blur effect */}
-      <FastImage
+      <Image
         source={{
           uri: thumbnailUri,
-          cache: FastImage.cacheControl.immutable,
+          cache: 'force-cache',
         }}
         style={[styles.image, { opacity: fullLoaded ? 0 : 1 }]}
         resizeMode={FastImage.resizeMode.cover}
         onLoad={handleThumbnailLoad}
-        blurRadius={thumbnailLoaded && !fullLoaded ? 0 : 10}
+        blurRadius={thumbnailLoaded && !fullLoaded ? 10 : 0}
       />
 
       {/* Full resolution image */}
@@ -1268,7 +1302,7 @@ export default ProgressiveImage;
 
 ```typescript
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Animated } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -1413,13 +1447,15 @@ export const getAsset = (key: AssetKey) => BundledAssets[key];
 
 ```typescript
 import React from 'react';
-import FastImage, { Source } from 'react-native-fast-image';
+import FastImage from 'react-native-fast-image';
 import { BundledAssets } from '../assets';
+
+type BundledAssetKey = Exclude<keyof typeof BundledAssets, 'icons'>;
 
 interface HybridImageProps {
   remoteUri?: string;
-  localAsset?: keyof typeof BundledAssets;
-  fallbackAsset: keyof typeof BundledAssets;
+  localAsset?: BundledAssetKey;
+  fallbackAsset: BundledAssetKey;
   style?: object;
 }
 
@@ -1456,7 +1492,7 @@ const HybridImage: React.FC<HybridImageProps> = ({
 
   return (
     <FastImage
-      source={localSource as Source}
+      source={localSource}
       style={style}
       resizeMode={FastImage.resizeMode.cover}
     />
@@ -1480,13 +1516,14 @@ Track and optimize image loading performance in production.
 ### Image Performance Tracker
 
 ```typescript
-import { PerformanceObserver, performance } from 'react-native-performance';
+import React from 'react';
+import FastImage from 'react-native-fast-image';
+import { performance } from 'react-native-performance';
 
 interface ImageLoadMetrics {
   uri: string;
   loadTime: number;
   size?: number;
-  cached: boolean;
   timestamp: number;
 }
 
@@ -1496,19 +1533,12 @@ class ImagePerformanceTracker {
 
   startTracking(uri: string): () => void {
     const startTime = performance.now();
-    let cached = true;
-
-    // Detect if this is a cache miss
-    const detectCacheMiss = () => {
-      cached = false;
-    };
 
     return () => {
       const loadTime = performance.now() - startTime;
       this.recordMetric({
         uri,
         loadTime,
-        cached,
         timestamp: Date.now(),
       });
     };
@@ -1529,12 +1559,6 @@ class ImagePerformanceTracker {
     return total / this.metrics.length;
   }
 
-  getCacheHitRate(): number {
-    if (this.metrics.length === 0) return 0;
-    const cached = this.metrics.filter((m) => m.cached).length;
-    return (cached / this.metrics.length) * 100;
-  }
-
   getSlowestLoads(count: number = 10): ImageLoadMetrics[] {
     return [...this.metrics]
       .sort((a, b) => b.loadTime - a.loadTime)
@@ -1543,13 +1567,11 @@ class ImagePerformanceTracker {
 
   getReport(): {
     averageLoadTime: number;
-    cacheHitRate: number;
     totalLoads: number;
     slowestLoads: ImageLoadMetrics[];
   } {
     return {
       averageLoadTime: this.getAverageLoadTime(),
-      cacheHitRate: this.getCacheHitRate(),
       totalLoads: this.metrics.length,
       slowestLoads: this.getSlowestLoads(5),
     };
@@ -1633,9 +1655,6 @@ const ImageDebugDashboard: React.FC = () => {
         <Text style={styles.sectionTitle}>Load Performance</Text>
         <Text style={styles.stat}>
           Average Load: {report.averageLoadTime.toFixed(2)}ms
-        </Text>
-        <Text style={styles.stat}>
-          Cache Hit Rate: {report.cacheHitRate.toFixed(1)}%
         </Text>
         <Text style={styles.stat}>Total Loads: {report.totalLoads}</Text>
       </View>

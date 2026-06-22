@@ -61,12 +61,12 @@ Example: 1ms * 2 + 10 * 0.1ms = 3ms
 - Executing multiple independent commands
 - Bulk data loading
 - Batch updates (incrementing counters, setting flags)
-- Read-modify-write patterns (when atomicity not required)
+- Write batches that do not depend on previous command results
 
 ### When NOT to Use Pipelining
 
 - Commands that depend on previous results
-- When you need atomicity (use transactions instead)
+- When you need atomicity (use transactions or Lua scripts instead)
 - Single commands (no benefit)
 
 ---
@@ -89,7 +89,7 @@ def set_without_pipeline(keys_values):
 
 # With pipelining - fast
 def set_with_pipeline(keys_values):
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
     for key, value in keys_values.items():
         pipe.set(key, value)
     return pipe.execute()
@@ -114,7 +114,7 @@ print(f"With pipeline: {time.time() - start:.3f}s")
 
 ```python
 # Pipeline returns list of results in order
-pipe = r.pipeline()
+pipe = r.pipeline(transaction=False)
 pipe.set("name", "John")
 pipe.get("name")
 pipe.incr("counter")
@@ -205,7 +205,7 @@ def chunked_pipeline(r, operations, chunk_size=1000):
     for i in range(0, len(operations), chunk_size):
         chunk = operations[i:i + chunk_size]
 
-        pipe = r.pipeline()
+        pipe = r.pipeline(transaction=False)
         for cmd, args, kwargs in chunk:
             getattr(pipe, cmd)(*args, **kwargs)
 
@@ -228,7 +228,7 @@ print(f"Set {len(results)} keys")
 ```python
 def pipeline_chunks(r, operations, chunk_size=1000):
     """Generator that yields results as chunks complete"""
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
     count = 0
 
     for cmd, args, kwargs in operations:
@@ -237,7 +237,7 @@ def pipeline_chunks(r, operations, chunk_size=1000):
 
         if count >= chunk_size:
             yield pipe.execute()
-            pipe = r.pipeline()
+            pipe = r.pipeline(transaction=False)
             count = 0
 
     # Execute remaining
@@ -266,7 +266,7 @@ def bulk_set(r, data_generator, chunk_size=5000):
 ```python
 def bulk_load_users(r, users):
     """Load many users efficiently"""
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
 
     for user in users:
         user_key = f"user:{user['id']}"
@@ -288,10 +288,10 @@ def bulk_load_users(r, users):
         if user.get('temporary'):
             pipe.expire(user_key, 3600)
 
-    results = pipe.execute()
+    pipe.execute()
 
-    # Count successful operations
-    return sum(1 for r in results if r)
+    # execute() raises on Redis/client errors by default
+    return len(users)
 
 # Usage
 users = [
@@ -309,7 +309,7 @@ print(f"Loaded {loaded} users")
 ```python
 def increment_counters(r, counter_updates):
     """
-    Increment multiple counters atomically.
+    Increment multiple counters atomically using a transaction pipeline.
 
     Args:
         counter_updates: Dict of {counter_key: increment_value}
@@ -338,7 +338,7 @@ new_values = increment_counters(r, updates)
 ```python
 def mget_with_pipeline(r, keys):
     """Get multiple keys using pipeline (alternative to MGET)"""
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
 
     for key in keys:
         pipe.get(key)
@@ -347,7 +347,7 @@ def mget_with_pipeline(r, keys):
 
 def mhgetall_with_pipeline(r, keys):
     """Get multiple hashes"""
-    pipe = r.pipeline()
+    pipe = r.pipeline(transaction=False)
 
     for key in keys:
         pipe.hgetall(key)
@@ -377,7 +377,7 @@ def batch_set_if_not_exists(r, keys_values, chunk_size=1000):
     for i in range(0, len(items), chunk_size):
         chunk = items[i:i + chunk_size]
 
-        pipe = r.pipeline()
+        pipe = r.pipeline(transaction=False)
         for key, value in chunk:
             pipe.setnx(key, value)
 
@@ -434,7 +434,8 @@ pipe.execute()
 
 # Use transaction pipeline for:
 # - Atomic multi-key updates
-# - When you need all-or-nothing semantics
+# - When commands must execute without interleaving from other clients
+# - Use WATCH or Lua when writes depend on previously read values
 
 pipe = r.pipeline(transaction=True)
 pipe.decrby("account:A", 100)
@@ -565,17 +566,17 @@ def find_optimal_chunk_size(r, num_operations=10000):
 # Depends on value size, network latency, etc.
 ```
 
-### Disable Response Parsing
+### Ignore Results When Not Needed
 
 ```python
-# For fire-and-forget operations
+# For write batches where you do not need per-command results
 pipe = r.pipeline(transaction=False)
 for i in range(10000):
     pipe.set(f"key:{i}", f"value:{i}")
 pipe.execute()  # Returns all results
 
-# If you don't need results, still need to execute
-# but can ignore return value
+# Redis still sends replies; if you don't need results,
+# you can ignore the return value.
 ```
 
 ---

@@ -41,13 +41,13 @@ TimescaleDB Architecture:
 - Hypertables with automatic partitioning
 - Chunk-based storage
 - PostgreSQL-compatible
-- Shared-disk or shared-nothing deployment
+- Single-primary PostgreSQL deployment with PostgreSQL replication options
 ```
 
 Key characteristics:
 - Full SQL and PostgreSQL compatibility
 - Automatic time-based partitioning (chunks)
-- Built-in compression with type-specific algorithms
+- Built-in columnstore compression through Hypercore
 - Leverages PostgreSQL ecosystem
 
 ## Feature Comparison
@@ -57,10 +57,10 @@ Key characteristics:
 | Storage Model | Columnar | Row-based (with columnar compression) |
 | SQL Compatibility | ANSI SQL subset | Full PostgreSQL SQL |
 | JOINs | Limited optimization | Full PostgreSQL JOINs |
-| Transactions | Limited (async inserts) | Full ACID |
+| Transactions | Limited ACID support for inserts | Full PostgreSQL ACID |
 | Updates/Deletes | Async mutations | Real-time |
 | Compression | 10-40x | 10-20x |
-| Clustering | Native sharding | Multi-node (Enterprise) |
+| Clustering | Native sharding | PostgreSQL HA/read replicas; distributed hypertables removed after 2.13 |
 | Replication | Native | PostgreSQL streaming |
 
 ## Query Performance Comparison
@@ -93,9 +93,9 @@ GROUP BY hour
 ORDER BY hour;
 ```
 
-Typical performance:
-- ClickHouse: ~100ms for 1B rows
-- TimescaleDB: ~500ms-2s for 1B rows (with continuous aggregates: ~100ms)
+Typical performance depends heavily on schema design, hardware, indexes, compression settings, and whether results are pre-aggregated:
+- ClickHouse: Often fastest for raw scans and large GROUP BY queries over wide analytical datasets
+- TimescaleDB: Can be competitive when queries use appropriate indexes, compression, and continuous aggregates for precomputed rollups
 
 ### Point Queries
 
@@ -152,9 +152,9 @@ SETTINGS async_insert = 1
 VALUES (1, now(), 25.5);
 ```
 
-Ingestion rates:
-- Batch inserts: 1-2M rows/second per node
-- Async inserts: 100K+ rows/second per node
+Ingestion characteristics:
+- Batch inserts provide the best throughput and are the recommended default
+- Async inserts help when clients cannot batch efficiently, because ClickHouse batches on the server side
 
 ### TimescaleDB Ingestion
 
@@ -174,10 +174,10 @@ VALUES
     (3, NOW(), 24.8);
 ```
 
-Ingestion rates:
-- COPY: 200-500K rows/second
-- Multi-row INSERT: 50-100K rows/second
-- Single INSERT: 10-30K rows/second
+Ingestion characteristics:
+- COPY is usually the fastest built-in PostgreSQL ingestion path
+- Multi-row INSERTs are generally much more efficient than single-row INSERTs
+- Actual throughput depends on indexes, constraints, WAL settings, hardware, chunk sizing, and concurrent workload
 
 ## Compression Comparison
 
@@ -208,15 +208,15 @@ Typical compression: 10-40x depending on data patterns
 ### TimescaleDB Compression
 
 ```sql
--- Enable native compression
+-- Enable Hypercore columnstore compression
 ALTER TABLE metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
-    timescaledb.compress_orderby = 'timestamp DESC'
+    timescaledb.enable_columnstore,
+    timescaledb.segmentby = 'device_id',
+    timescaledb.orderby = 'timestamp DESC'
 );
 
--- Set compression policy
-SELECT add_compression_policy('metrics', INTERVAL '7 days');
+-- Set columnstore policy
+CALL add_columnstore_policy('metrics', after => INTERVAL '7 days');
 
 -- Check compression
 SELECT
@@ -224,10 +224,10 @@ SELECT
     pg_size_pretty(after_compression_total_bytes) AS after,
     round(before_compression_total_bytes::numeric /
           after_compression_total_bytes, 1) AS ratio
-FROM hypertable_compression_stats('metrics');
+FROM hypertable_columnstore_stats('metrics');
 ```
 
-Typical compression: 10-20x
+Typical compression: often 10-20x or higher depending on data patterns, ordering, and segmenting choices
 
 ## Scaling Comparison
 
@@ -251,28 +251,20 @@ WHERE timestamp >= now() - INTERVAL 1 DAY;
 
 Scaling characteristics:
 - Linear horizontal scaling
-- No single point of failure
+- Can avoid single points of failure when replication and ClickHouse Keeper are configured correctly
 - Automatic query distribution
 - Built-in replication
 
 ### TimescaleDB Scaling
 
 ```sql
--- TimescaleDB multi-node (Enterprise feature)
-SELECT add_data_node('node1', host => 'host1');
-SELECT add_data_node('node2', host => 'host2');
-
--- Create distributed hypertable
-SELECT create_distributed_hypertable(
-    'metrics',
-    'timestamp',
-    'device_id',  -- Partition key
-    data_nodes => ARRAY['node1', 'node2']
-);
+-- Current TimescaleDB versions do not support distributed hypertables.
+-- Use PostgreSQL streaming replication/read replicas for HA and read scaling,
+-- and application-level sharding when write scaling beyond one primary is required.
 ```
 
 Scaling characteristics:
-- Multi-node requires Enterprise license
+- Distributed hypertables were deprecated in TimescaleDB 2.13 and removed starting in 2.14
 - PostgreSQL streaming replication (free)
 - Read replicas for scaling reads
 - Connection pooling (PgBouncer)
@@ -337,16 +329,16 @@ WHERE ds.avg_temp > l.threshold;
 
 ### From TimescaleDB to ClickHouse
 
-```python
+```bash
 # Export from TimescaleDB
 
-# psql -c "COPY metrics TO '/tmp/metrics.csv' WITH CSV HEADER"
+psql -c "\COPY metrics TO '/tmp/metrics.csv' WITH CSV HEADER"
 
 # Import to ClickHouse
 clickhouse-client --query "
     INSERT INTO metrics
-    SELECT *
-    FROM file('/tmp/metrics.csv', CSVWithNames)
+    FROM INFILE '/tmp/metrics.csv'
+    FORMAT CSVWithNames
 "
 ```
 
@@ -358,12 +350,12 @@ Key considerations:
 
 ### From ClickHouse to TimescaleDB
 
-```python
+```bash
 # Export from ClickHouse
-# clickhouse-client --query "SELECT * FROM metrics FORMAT CSVWithNames" > metrics.csv
+clickhouse-client --query "SELECT * FROM metrics FORMAT CSVWithNames" > metrics.csv
 
 # Import to TimescaleDB
-# psql -c "\COPY metrics FROM 'metrics.csv' WITH CSV HEADER"
+psql -c "\COPY metrics FROM 'metrics.csv' WITH CSV HEADER"
 ```
 
 Key considerations:
@@ -378,9 +370,9 @@ Key considerations:
 
 | Metric | ClickHouse | TimescaleDB |
 |--------|------------|-------------|
-| Compression Ratio | 20-40x | 10-20x |
-| Storage per 1B rows | ~10-20 GB | ~30-50 GB |
-| Cloud storage cost (1TB) | ~$20/mo | ~$40-60/mo |
+| Compression Ratio | Often 10-40x | Often 10-20x or higher with Hypercore |
+| Storage per 1B rows | Highly schema-dependent | Highly schema-dependent |
+| Cloud storage cost | Depends on compressed size and provider pricing | Depends on compressed size and provider pricing |
 
 ### Compute Costs
 

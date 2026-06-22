@@ -247,7 +247,7 @@ module.exports = notificationConfig;
 
 Runbooks provide step-by-step guides for common incidents. Store them where your team can access them quickly:
 
-```markdown
+````markdown
 # Database Connection Pool Exhaustion
 
 ## Symptoms
@@ -264,7 +264,7 @@ psql -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
 
 ## Check connection pool metrics
 curl -s localhost:9090/metrics | grep 'db_pool'
-```bash
+```
 
 ### 2. Immediate Mitigation
 ```bash
@@ -274,7 +274,7 @@ psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
 
 ## Restart affected service pods
 kubectl rollout restart deployment/api-server -n production
-```bash
+```
 
 ### 3. Investigate Root Cause
 - Check recent deployments for connection leak
@@ -283,7 +283,7 @@ kubectl rollout restart deployment/api-server -n production
 
 ## Escalation
 If connections don't stabilize after restart, escalate to database team.
-```text
+````
 
 ## Implement Status Page Integration
 

@@ -28,7 +28,6 @@ flowchart TD
         DEPLOY[Deployment]
         SVC[Service]
         CM[ConfigMap]
-        SECRET[Secret]
     end
     
     CR --> |Watch| CTRL
@@ -37,7 +36,6 @@ flowchart TD
     RECONCILE --> |Create/Update| DEPLOY
     RECONCILE --> |Create/Update| SVC
     RECONCILE --> |Create/Update| CM
-    RECONCILE --> |Create/Update| SECRET
 ```
 
 | Concept | Description |
@@ -57,8 +55,10 @@ brew install operator-sdk
 # Or download directly
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.32.0
+export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.42.2
 curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
+curl -LO ${OPERATOR_SDK_DL_URL}/checksums.txt
+grep operator-sdk_${OS}_${ARCH} checksums.txt | sha256sum -c -
 chmod +x operator-sdk_${OS}_${ARCH}
 sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
 
@@ -199,7 +199,6 @@ package controllers
 
 import (
     "context"
-    "fmt"
     "time"
 
     appsv1 "k8s.io/api/apps/v1"
@@ -311,6 +310,11 @@ func (r *MyAppReconciler) reconcileConfigMap(ctx context.Context, myapp *appsv1a
     }
 
     _, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
+        cm.Labels = map[string]string{
+            "app":                          myapp.Name,
+            "app.kubernetes.io/name":       myapp.Name,
+            "app.kubernetes.io/managed-by": "myapp-operator",
+        }
         cm.Data = myapp.Spec.Config
         return controllerutil.SetControllerReference(myapp, cm, r.Scheme)
     })
@@ -341,6 +345,7 @@ func (r *MyAppReconciler) reconcileDeployment(ctx context.Context, myapp *appsv1
             "app.kubernetes.io/managed-by": "myapp-operator",
         }
 
+        deploy.Labels = labels
         deploy.Spec = appsv1.DeploymentSpec{
             Replicas: &myapp.Spec.Size,
             Selector: &metav1.LabelSelector{
@@ -440,6 +445,11 @@ func (r *MyAppReconciler) reconcileService(ctx context.Context, myapp *appsv1alp
     }
 
     _, err := controllerutil.CreateOrUpdate(ctx, r.Client, svc, func() error {
+        svc.Labels = map[string]string{
+            "app":                          myapp.Name,
+            "app.kubernetes.io/name":       myapp.Name,
+            "app.kubernetes.io/managed-by": "myapp-operator",
+        }
         svc.Spec = corev1.ServiceSpec{
             Selector: map[string]string{
                 "app": myapp.Name,
@@ -601,7 +611,6 @@ import (
     . "github.com/onsi/ginkgo/v2"
     . "github.com/onsi/gomega"
     appsv1 "k8s.io/api/apps/v1"
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
 

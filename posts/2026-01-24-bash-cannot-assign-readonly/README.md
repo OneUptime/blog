@@ -107,7 +107,7 @@ is_readonly() {
     local attrs
     attrs=$(declare -p "$var_name" 2>/dev/null)
 
-    if [[ "$attrs" == *"declare -"*"r"* ]]; then
+    if [[ "$attrs" =~ ^declare\ -[^[:space:]]*r[^[:space:]]*[[:space:]] ]]; then
         echo "$var_name is read-only"
         return 0
     else
@@ -157,13 +157,13 @@ assign_if_writable() {
     local value="$2"
 
     # Check if variable is read-only
-    if declare -p "$var_name" 2>/dev/null | grep -q 'declare -[a-z]*r'; then
+    if declare -p "$var_name" 2>/dev/null | grep -q '^declare -[^[:space:]]*r[^[:space:]]* '; then
         echo "Warning: $var_name is read-only, skipping assignment" >&2
         return 1
     fi
 
     # Safe to assign
-    eval "$var_name='$value'"
+    printf -v "$var_name" '%s' "$value"
     return 0
 }
 
@@ -229,7 +229,7 @@ readonly BASE_URL="https://api.example.com"
 
 # Function that needs flexibility
 make_request() {
-    # Use local variable that shadows the global
+    # Use a separate local variable initialized from the global
     local url="${1:-$BASE_URL}"
 
     echo "Making request to: $url"
@@ -388,19 +388,18 @@ debug_readonly() {
             var_name="${BASH_REMATCH[1]}"
             echo "  - $var_name" >&2
         fi
-    done < <(declare -p 2>/dev/null | grep 'declare -[a-z]*r')
+    done < <(declare -p 2>/dev/null | grep '^declare -[^[:space:]]*r[^[:space:]]* ')
 
     echo "" >&2
     echo "Total read-only variables: $(readonly -p | wc -l)" >&2
 }
 
-# Call this function when debugging
-set -e
-trap 'debug_readonly' ERR
+# Call this function before risky assignments when debugging
 
 # Your script logic here
 readonly TEST="value"
-TEST="new"  # This will trigger the debug output on error
+debug_readonly
+TEST="new"  # This will exit with a read-only variable error
 ```
 
 ---
@@ -412,7 +411,7 @@ To avoid "cannot assign to read-only variable" errors:
 1. **Check variable status** before assignment with `declare -p`
 2. **Use naming conventions** to distinguish constants from variables
 3. **Leverage local variables** in functions for flexibility
-4. **Use subshells** when you need temporary overrides
+4. **Use subshells** when you need temporary alternate values
 5. **Document read-only variables** and their purpose
 6. **Only use read-only** for true constants that should never change
 

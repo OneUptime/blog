@@ -271,7 +271,8 @@ app.use((err, req, res, next) => {
 ### Async Handler Wrapper
 
 ```javascript
-// Wrapper to catch async errors
+// Wrapper to catch async errors in Express 4
+// Express 5 forwards rejected promises automatically
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
@@ -372,7 +373,12 @@ process.on('uncaughtException', async (error) => {
   
   try {
     // Give time to finish current requests
-    await server.close();
+    await new Promise((resolve, reject) => {
+      server.close((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
     await database.disconnect();
     
     process.exit(1);

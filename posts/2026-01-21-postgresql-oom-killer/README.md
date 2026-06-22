@@ -16,7 +16,7 @@ The Linux OOM (Out of Memory) killer can terminate PostgreSQL processes, causing
 # Check system logs
 
 dmesg | grep -i "out of memory"
-journalctl | grep -i "oom"
+journalctl -k --grep='out of memory|oom-killer|Killed process' --case-sensitive=no
 
 # Check PostgreSQL logs
 grep -i "server process.*was terminated" /var/log/postgresql/*.log
@@ -27,13 +27,17 @@ grep -i "server process.*was terminated" /var/log/postgresql/*.log
 ### Protect PostgreSQL from OOM
 
 ```bash
-# Set OOM score adjustment for PostgreSQL
-echo -1000 > /proc/$(pgrep -f "postgres:.*main")/oom_score_adj
+# Set OOM score adjustment for running PostgreSQL processes
+for pid in $(pgrep -u postgres -x postgres); do
+    echo -1000 | sudo tee /proc/$pid/oom_score_adj
+done
 
 # Permanent via systemd
-# /etc/systemd/system/postgresql.service.d/oom.conf
-[Service]
-OOMScoreAdjust=-1000
+# Use the active PostgreSQL service name on your system.
+sudo install -d /etc/systemd/system/postgresql.service.d
+printf "[Service]\nOOMScoreAdjust=-1000\n" | sudo tee /etc/systemd/system/postgresql.service.d/oom.conf
+sudo systemctl daemon-reload
+sudo systemctl restart postgresql
 ```
 
 ### Configure PostgreSQL Memory
@@ -45,20 +49,20 @@ work_mem = 64MB               # Per-operation memory
 maintenance_work_mem = 512MB
 effective_cache_size = 6GB    # For planner, not allocation
 
-# Limit connections (each uses ~10MB)
+# Limit connections; each backend has its own memory overhead
 max_connections = 100
 ```
 
 ### Memory Calculation
 
 ```text
-Total PostgreSQL memory =
+Worst-case PostgreSQL memory estimate =
     shared_buffers +
-    (max_connections * work_mem * 2) +
-    (autovacuum_max_workers * maintenance_work_mem)
+    (active_connections * work_mem * active_operations_per_query) +
+    (autovacuum_max_workers * autovacuum_work_mem or maintenance_work_mem)
 
 Example:
-2GB + (100 * 64MB * 2) + (3 * 512MB) = 2GB + 12.8GB + 1.5GB = 16.3GB
+2GB + (100 * 64MB * 2) + (3 * 512MB) = about 16GB
 ```
 
 ## System Configuration
@@ -66,14 +70,13 @@ Example:
 ### Overcommit Settings
 
 ```bash
-# Disable memory overcommit
-echo 2 > /proc/sys/vm/overcommit_memory
-echo 80 > /proc/sys/vm/overcommit_ratio
+# Use strict memory overcommit accounting
+echo 2 | sudo tee /proc/sys/vm/overcommit_memory
+echo 80 | sudo tee /proc/sys/vm/overcommit_ratio
 
 # Permanent
-echo "vm.overcommit_memory = 2" >> /etc/sysctl.conf
-echo "vm.overcommit_ratio = 80" >> /etc/sysctl.conf
-sysctl -p
+printf "vm.overcommit_memory = 2\nvm.overcommit_ratio = 80\n" | sudo tee /etc/sysctl.d/99-postgresql-memory.conf
+sudo sysctl --system
 ```
 
 ### Swap Configuration
@@ -95,11 +98,17 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ## Monitoring Memory
 
 ```sql
--- PostgreSQL memory usage
+-- Current backend memory context usage
 SELECT
-    pg_size_pretty(pg_database_size(current_database())) as db_size,
-    pg_size_pretty(sum(pg_total_relation_size(oid))) as total_size
-FROM pg_class WHERE relkind = 'r';
+    pg_size_pretty(sum(total_bytes)) AS total_allocated,
+    pg_size_pretty(sum(used_bytes)) AS total_used
+FROM pg_backend_memory_contexts;
+
+-- Log memory contexts for a specific backend
+SELECT pg_log_backend_memory_contexts(pid)
+FROM pg_stat_activity
+WHERE pid <> pg_backend_pid()
+LIMIT 1;
 ```
 
 ```bash

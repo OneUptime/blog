@@ -8,7 +8,7 @@ Description: A practical guide to handling the 'temporarily_unavailable' OAuth2 
 
 ---
 
-The "temporarily_unavailable" error in OAuth2 indicates that the authorization server is currently unable to handle the request due to temporary overloading or maintenance. Unlike permanent errors, this is recoverable with the right approach.
+The "temporarily_unavailable" error in OAuth2 indicates that the authorization server is currently unable to handle an authorization request due to temporary overloading or maintenance. Unlike permanent errors, this is recoverable with the right approach.
 
 ## Understanding the Error
 
@@ -27,14 +27,14 @@ flowchart TD
     D -->|Fallback Auth| H[Alternative Flow]
 ```
 
-### Standard Error Response
+### Standard Authorization Endpoint Error Response
 
-```json
-{
-  "error": "temporarily_unavailable",
-  "error_description": "The authorization server is currently unable to handle the request due to a temporary overloading or maintenance of the server."
-}
+```http
+HTTP/1.1 302 Found
+Location: https://client.example.com/cb?error=temporarily_unavailable&error_description=The%20authorization%20server%20is%20currently%20unable%20to%20handle%20the%20request
 ```
+
+For token endpoint calls, providers commonly expose the same temporary condition as an HTTP 503 response with a `Retry-After` header and, sometimes, a provider-specific JSON error body.
 
 ## Common Causes
 
@@ -62,9 +62,14 @@ sequenceDiagram
 ```javascript
 // Auth server response during maintenance
 const maintenanceResponse = {
-    error: 'temporarily_unavailable',
-    error_description: 'Scheduled maintenance in progress. Expected completion: 2024-01-15T03:00:00Z',
-    retry_after: 3600, // Retry after 1 hour
+    status: 503,
+    headers: {
+        'Retry-After': '3600', // Retry after 1 hour
+    },
+    body: {
+        error: 'temporarily_unavailable',
+        error_description: 'Scheduled maintenance in progress. Expected completion: 2026-01-15T03:00:00Z',
+    },
 };
 ```
 
@@ -153,8 +158,9 @@ class OAuth2RetryHandler {
             result.reason = 'temporarily_unavailable';
 
             // Check for retry-after hint
-            if (error.retry_after) {
-                result.retryAfter = error.retry_after * 1000;
+            const retryAfter = this.parseRetryAfter(error.retry_after ?? error.retryAfter);
+            if (retryAfter !== null) {
+                result.retryAfter = retryAfter;
             }
         }
 
@@ -164,6 +170,7 @@ class OAuth2RetryHandler {
                 case 503: // Service Unavailable
                     result.shouldRetry = true;
                     result.reason = 'service_unavailable';
+                    result.retryAfter = this.parseRetryAfter(error.retryAfter) ?? result.retryAfter;
                     break;
                 case 502: // Bad Gateway
                     result.shouldRetry = true;
@@ -176,9 +183,7 @@ class OAuth2RetryHandler {
                 case 429: // Too Many Requests
                     result.shouldRetry = true;
                     result.reason = 'rate_limited';
-                    if (error.retryAfter) {
-                        result.retryAfter = parseInt(error.retryAfter, 10) * 1000;
-                    }
+                    result.retryAfter = this.parseRetryAfter(error.retryAfter) ?? result.retryAfter;
                     break;
             }
         }
@@ -190,6 +195,24 @@ class OAuth2RetryHandler {
         }
 
         return result;
+    }
+
+    parseRetryAfter(value) {
+        if (!value) {
+            return null;
+        }
+
+        const seconds = Number(value);
+        if (Number.isFinite(seconds) && seconds >= 0) {
+            return seconds * 1000;
+        }
+
+        const date = Date.parse(value);
+        if (!Number.isNaN(date)) {
+            return Math.max(0, date - Date.now());
+        }
+
+        return null;
     }
 
     calculateDelay(attempt) {
@@ -327,7 +350,7 @@ async function authenticateWithUI(code, codeVerifier) {
 ```mermaid
 flowchart TD
     A[Primary Auth Server] -->|temporarily_unavailable| B{Fallback Strategy}
-    B -->|Option 1| C[Secondary Auth Server]
+    B -->|Option 1| C[Secondary Auth Server Region]
     B -->|Option 2| D[Cached Session]
     B -->|Option 3| E[Degraded Mode]
     B -->|Option 4| F[Queue Request]
@@ -343,7 +366,7 @@ flowchart TD
 ```javascript
 class MultiRegionOAuth2Client {
     constructor(config) {
-        this.regions = config.regions; // Array of auth endpoints
+        this.regions = config.regions; // Compatible regional endpoints for the same OAuth issuer
         this.currentRegionIndex = 0;
     }
 
@@ -389,6 +412,7 @@ class MultiRegionOAuth2Client {
             const err = new Error(error.error_description || error.error || 'Auth failed');
             err.status = response.status;
             err.error = error.error;
+            err.retryAfter = response.headers.get('Retry-After');
             throw err;
         }
 
@@ -405,6 +429,7 @@ class MultiRegionOAuth2Client {
 
 // Configuration
 const multiRegionClient = new MultiRegionOAuth2Client({
+    // Regions must share client registration, issuer metadata, and authorization code state.
     regions: [
         {
             name: 'us-east',

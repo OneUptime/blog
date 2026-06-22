@@ -105,7 +105,6 @@ async function withTimeoutAndCleanup<T>(
   timeoutMs: number
 ): Promise<T> {
   const abortController = new AbortController();
-  let cleanupFn: (() => Promise<void>) | null = null;
   let timeoutId: NodeJS.Timeout;
 
   const ctx: TimeoutContext = {
@@ -113,21 +112,13 @@ async function withTimeoutAndCleanup<T>(
     cleanup: async () => {},
   };
 
-  // Allow executor to register cleanup
-  const setCleanup = (fn: () => Promise<void>) => {
-    cleanupFn = fn;
-    ctx.cleanup = fn;
-  };
-
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(async () => {
       abortController.abort();
-      if (cleanupFn) {
-        try {
-          await cleanupFn();
-        } catch (error) {
-          console.error('Cleanup error:', error);
-        }
+      try {
+        await ctx.cleanup();
+      } catch (error) {
+        console.error('Cleanup error:', error);
       }
       reject(new Error('Operation timed out'));
     }, timeoutMs);
@@ -410,18 +401,18 @@ function createTimedWorker(
         timeout = Math.min(job.data.timeout, config.maxTimeout);
       }
 
-      // Extend lock to match timeout
-      if (job.token && timeout > 30000) {
-        await job.extendLock(job.token, timeout + 10000);
-      }
-
       return withTimeout(
         processor(job),
         timeout,
         `Job ${job.name} (${job.id}) timed out after ${timeout}ms`
       );
     },
-    { connection }
+    {
+      connection,
+      // Standard workers renew locks automatically; set the lock duration high
+      // enough for the longest configured timeout so jobs are not marked stalled.
+      lockDuration: config.maxTimeout + 10000,
+    }
   );
 }
 
@@ -575,6 +566,8 @@ const worker = new Worker('adaptive-timeout', async (job) => {
   },
 });
 ```
+
+Use this worker with jobs configured with `attempts` greater than 1 and a `backoff` option so BullMQ will actually retry failed timeout attempts.
 
 ## Timeout with Progress Checkpoint
 

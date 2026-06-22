@@ -96,9 +96,10 @@ storage_config:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
     cache_ttl: 24h
+    index_gateway_client:
+      server_address: loki-index-gateway:9095
 
 limits_config:
-  enforce_metric_name: false
   reject_old_samples: true
   reject_old_samples_max_age: 168h
   max_cache_freshness_per_query: 10m
@@ -135,11 +136,15 @@ query_range:
 
 frontend:
   max_outstanding_per_tenant: 4096
+  scheduler_address: loki-query-scheduler:9095
   compress_responses: true
-  downstream_url: http://loki-querier:3100
+  tail_proxy_url: http://loki-querier:3100
 
 query_scheduler:
   max_outstanding_requests_per_tenant: 4096
+
+frontend_worker:
+  scheduler_address: loki-query-scheduler:9095
 
 querier:
   max_concurrent: 16
@@ -161,7 +166,6 @@ ingester:
   chunk_idle_period: 30m
   chunk_block_size: 262144
   chunk_retain_period: 1m
-  max_transfer_retries: 0
   wal:
     enabled: true
     dir: /loki/wal
@@ -169,7 +173,6 @@ ingester:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
@@ -258,7 +261,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: distributor
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=distributor
@@ -344,7 +347,7 @@ spec:
       terminationGracePeriodSeconds: 300
       containers:
         - name: ingester
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=ingester
@@ -433,7 +436,7 @@ spec:
     spec:
       containers:
         - name: query-frontend
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=query-frontend
@@ -512,7 +515,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: querier
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=querier
@@ -586,7 +589,7 @@ spec:
     spec:
       containers:
         - name: query-scheduler
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=query-scheduler
@@ -657,7 +660,7 @@ spec:
     spec:
       containers:
         - name: compactor
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=compactor
@@ -735,7 +738,7 @@ spec:
     spec:
       containers:
         - name: index-gateway
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.0
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=index-gateway
@@ -832,7 +835,7 @@ data:
       }
 
       upstream querier {
-        server loki-query-frontend:3100;
+        server loki-querier:3100;
       }
 
       upstream query-frontend {
@@ -1028,7 +1031,7 @@ kubectl logs -n loki -l app=loki-query-frontend --tail=100
 **Ingesters Not Joining Ring**:
 ```bash
 # Check memberlist connectivity
-kubectl exec -n loki -it loki-ingester-0 -- wget -q -O- http://localhost:7946/memberlist
+kubectl run -n loki memberlist-check --rm -it --restart=Never --image=nicolaka/netshoot -- nc -vz loki-memberlist 7946
 ```
 
 **High Query Latency**:

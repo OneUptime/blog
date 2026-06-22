@@ -18,7 +18,8 @@ Before diving into solutions, let us understand how Next.js handles style import
 flowchart TD
     A[Style Import] --> B{Import Location}
     B -->|_app.js or layout.js| C[Global Styles]
-    B -->|Component File| D{File Extension}
+    B -->|Pages Router Component File| D{File Extension}
+    B -->|App Router Component File| J[Global Styles Allowed]
     D -->|.module.css/.module.scss| E[CSS Modules]
     D -->|.css/.scss| F[Error: Must be Global]
     C --> G[Applied to All Pages]
@@ -62,7 +63,7 @@ For App Router (app directory):
 
 ```javascript
 // app/layout.js
-// Import global styles in the root layout
+// Import global styles in the root layout so they apply to every route
 import '../styles/globals.css';
 
 // If using SCSS
@@ -77,6 +78,8 @@ export default function RootLayout({ children }) {
 }
 ```
 
+Global styles can also be imported into other layouts, pages, or components inside the app directory, but keeping truly global styles in the root layout helps avoid ordering conflicts as users navigate between routes.
+
 ## Common Error 2: SCSS Module Not Found
 
 When SCSS files fail to import, the error typically looks like:
@@ -90,13 +93,13 @@ Module not found: Can't resolve './styles.scss'
 
 ```bash
 # Install sass package - Next.js will automatically configure it
-npm install sass
+npm install -D sass
 
 # Or with yarn
-yarn add sass
+yarn add -D sass
 
 # Or with pnpm
-pnpm add sass
+pnpm add -D sass
 ```
 
 Verify your next.config.js has proper configuration:
@@ -114,7 +117,7 @@ const nextConfig = {
     includePaths: ['./styles'],
 
     // Add global variables or mixins to all SCSS files
-    prependData: `@import "variables.scss";`,
+    additionalData: `@use "variables" as *;`,
   },
 };
 
@@ -198,7 +201,7 @@ Error: Your custom PostCSS configuration must export a `plugins` key.
 module.exports = {
   plugins: {
     // Tailwind CSS (if using)
-    tailwindcss: {},
+    '@tailwindcss/postcss': {},
 
     // Autoprefixer for browser compatibility
     autoprefixer: {},
@@ -222,7 +225,7 @@ Alternative array format:
 // Array format also works
 module.exports = {
   plugins: [
-    'tailwindcss',
+    '@tailwindcss/postcss',
     'autoprefixer',
     process.env.NODE_ENV === 'production' && [
       'cssnano',
@@ -241,7 +244,7 @@ flowchart TD
     A[_variables.scss] --> B[Shared Variables]
     B --> C{Import Method}
     C -->|Manual Import| D[Each File Imports Variables]
-    C -->|Prepend Data| E[Auto-inject in next.config.js]
+    C -->|additionalData| E[Auto-inject in next.config.js]
 
     D --> F[Maintenance Heavy]
     E --> G[Cleaner Solution]
@@ -287,9 +290,9 @@ const nextConfig = {
   sassOptions: {
     includePaths: [path.join(__dirname, 'styles')],
     // Prepend variables and mixins to every SCSS file
-    prependData: `
-      @import "variables";
-      @import "mixins";
+    additionalData: `
+      @use "variables" as *;
+      @use "mixins" as *;
     `,
   },
 };
@@ -367,46 +370,36 @@ When Tailwind classes are not working:
 ```mermaid
 flowchart TD
     A[Tailwind Not Working] --> B{Check Configuration}
-    B --> C[tailwind.config.js]
+    B --> C[postcss.config.mjs]
     B --> D[postcss.config.js]
     B --> E[CSS Import]
 
-    C --> F[content paths correct?]
-    D --> G[tailwindcss plugin present?]
-    E --> H[directives imported?]
+    C --> F["@tailwindcss/postcss plugin present?"]
+    D --> G[plugin name current?]
+    E --> H[tailwind import present?]
 
-    F --> I[Fix content array]
-    G --> J[Add plugin]
+    F --> I[Add plugin]
+    G --> J[Update plugin]
     H --> K[Add to globals.css]
 ```
 
 ### Solution: Proper Tailwind Configuration
 
 ```javascript
-// tailwind.config.js
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-  // Ensure content paths cover all your files
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    // Include any other directories with Tailwind classes
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {},
+// postcss.config.mjs
+const config = {
+  plugins: {
+    '@tailwindcss/postcss': {},
   },
-  plugins: [],
 };
+
+export default config;
 ```
 
 ```css
 /* styles/globals.css */
-/* These directives must be present */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* This import must be present */
+@import "tailwindcss";
 
 /* Your custom styles below */
 ```
@@ -435,12 +428,12 @@ function checkStyleImports(dir) {
       } else if (file.match(/\.(js|jsx|ts|tsx)$/)) {
         const content = fs.readFileSync(filePath, 'utf8');
 
-        // Check for global CSS imports outside _app or layout
-        const globalCSSImport = content.match(/import\s+['"][^'"]+\.css['"]/g);
-        if (globalCSSImport && !filePath.includes('_app') && !filePath.includes('layout')) {
+        // Check for global CSS or SCSS imports outside _app in the Pages Router
+        const globalCSSImport = content.match(/import\s+['"][^'"]+\.(css|scss)['"]/g);
+        if (globalCSSImport && filePath.includes(`${path.sep}pages${path.sep}`) && !filePath.includes('_app')) {
           // Check if it is not a module
           globalCSSImport.forEach(imp => {
-            if (!imp.includes('.module.css')) {
+            if (!imp.includes('.module.css') && !imp.includes('.module.scss')) {
               issues.push({
                 file: filePath,
                 issue: `Global CSS import found: ${imp}`,
@@ -479,11 +472,17 @@ project/
     _app.js
     index.js
   next.config.js
-  postcss.config.js
+  postcss.config.mjs
 ```
 
 ```scss
 // styles/_variables.scss
+@use "sass:map";
+
+$font-family: 'Inter', sans-serif;
+$border-radius: 8px;
+$spacing-unit: 8px;
+
 $colors: (
   primary: #0070f3,
   secondary: #1a1a1a,
@@ -492,7 +491,7 @@ $colors: (
 );
 
 @function color($key) {
-  @return map-get($colors, $key);
+  @return map.get($colors, $key);
 }
 ```
 
@@ -563,11 +562,11 @@ export default function Button({ variant = 'primary', children, ...props }) {
 CSS and SCSS import errors in Next.js typically stem from a few common issues:
 
 1. **Global CSS in wrong location** - Move to _app.js or layout.js
-2. **Missing sass package** - Install with npm install sass
+2. **Missing sass package** - Install with npm install -D sass
 3. **Incorrect module syntax** - Use .module.css extension and proper imports
 4. **PostCSS configuration** - Ensure plugins key is exported
-5. **Variable sharing** - Use prependData in sassOptions
+5. **Variable sharing** - Use additionalData in sassOptions
 6. **Import order** - Load third-party styles before custom styles
-7. **Content paths** - Verify Tailwind content configuration
+7. **Tailwind setup** - Verify the PostCSS plugin and Tailwind import
 
 Following the patterns and solutions in this guide will help you resolve most CSS and SCSS import issues in your Next.js applications.

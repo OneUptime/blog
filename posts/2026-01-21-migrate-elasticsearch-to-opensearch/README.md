@@ -16,9 +16,9 @@ Migrating from Elasticsearch to OpenSearch requires careful planning due to API 
 
 | Elasticsearch Version | OpenSearch Version | Notes |
 |-----------------------|-------------------|-------|
-| 7.10.x | OpenSearch 1.x | High compatibility |
-| 7.11+ | OpenSearch 1.x | Some API changes |
-| 8.x | OpenSearch 2.x | Significant changes |
+| Elasticsearch OSS 6.8.x-7.10.2 | OpenSearch 1.x | Direct upgrade or snapshot migration supported for compatible indexes |
+| 7.11+ | OpenSearch 1.x/2.x | Direct upgrade and snapshot restore are not supported; use remote reindex, Logstash, or application-level migration |
+| 8.x | OpenSearch 2.x/3.x | Direct upgrade and snapshot restore are not supported; use remote reindex, Logstash, or Migration Assistant |
 
 ### Check Current Version
 
@@ -98,14 +98,16 @@ curl -X POST "https://opensearch:9200/_snapshot/migration_repo/migration_snapsho
 
 ### Strategy 2: Reindex from Remote
 
-Best for: Zero downtime migration, data transformation
+Best for: Low-downtime migration with a catch-up plan, data transformation
 
 ```bash
 # 1. Configure OpenSearch to allow remote reindex
 # opensearch.yml
-reindex.remote.whitelist: "old-es-cluster:9200"
+reindex.remote.allowlist: "old-es-cluster:9200"
 
-# 2. Reindex from Elasticsearch to OpenSearch
+# 2. Create the destination index with the required settings and mappings first
+
+# 3. Reindex from Elasticsearch to OpenSearch
 curl -X POST "https://opensearch:9200/_reindex?wait_for_completion=false" -H 'Content-Type: application/json' -d'
 {
   "source": {
@@ -124,7 +126,7 @@ curl -X POST "https://opensearch:9200/_reindex?wait_for_completion=false" -H 'Co
   }
 }'
 
-# 3. Monitor reindex progress
+# 4. Monitor reindex progress
 curl -X GET "https://opensearch:9200/_tasks?detailed=true&actions=*reindex"
 ```
 
@@ -293,12 +295,14 @@ client.index(request, RequestOptions.DEFAULT);
 
 **After (OpenSearch):**
 ```java
-final OpenSearchClient client = new OpenSearchClient(
-    ApacheHttpClient5TransportBuilder
-        .builder(HttpHost.create("https://localhost:9200"))
-        .setMapper(new JacksonJsonpMapper())
-        .build()
-);
+final HttpHost[] hosts = new HttpHost[] {
+    new HttpHost("https", "localhost", 9200)
+};
+final OpenSearchTransport transport = ApacheHttpClient5TransportBuilder
+    .builder(hosts)
+    .setMapper(new JacksonJsonpMapper())
+    .build();
+final OpenSearchClient client = new OpenSearchClient(transport);
 
 IndexRequest<Map> request = new IndexRequest.Builder<Map>()
     .index("my-index")

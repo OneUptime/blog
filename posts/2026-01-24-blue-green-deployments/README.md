@@ -421,9 +421,9 @@ resource "aws_lb_listener" "web" {
 #!/bin/bash
 # aws-blue-green-switch.sh
 
-LISTENER_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/web-api/abc123/def456"
-BLUE_TG="arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/web-api-blue/abc123"
-GREEN_TG="arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/web-api-green/def456"
+LISTENER_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/web-api/abc123/def456"
+BLUE_TG="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/web-api-blue/abc123"
+GREEN_TG="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/web-api-green/def456"
 
 switch_to_green() {
   aws elbv2 modify-listener --listener-arn $LISTENER_ARN \

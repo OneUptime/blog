@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hash, Data Structure, Object Storage, HSET, HGET, Memory Optimization
 
-Description: A comprehensive guide to using Redis Hashes for efficient object storage, covering HSET, HGET, HMSET commands, memory optimization techniques, and practical examples in Python, Node.
+Description: A comprehensive guide to using Redis Hashes for efficient object storage, covering HSET, HGET, HMGET commands, memory optimization techniques, and practical examples in Python, Node.
 
 ---
 
@@ -440,7 +440,7 @@ if ProductCatalog.reserve_stock("SKU001", 5):
 print(f"New stock: {ProductCatalog.get_stock('SKU001')}")
 
 # Session Storage
-session = SessionStore(ttl=3600)
+session = SessionStore(session_ttl=3600)
 session.create_session("sess_abc123", user_id=1, ip_address="192.168.1.1")
 session.set_data("sess_abc123", "cart_items", "5")
 print(session.get_session("sess_abc123"))
@@ -740,9 +740,7 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "fmt"
-    "log"
     "strconv"
     "time"
 
@@ -1018,17 +1016,17 @@ func main() {
 
 ## Memory Optimization
 
-### Ziplist Encoding
+### Listpack Encoding
 
-Redis uses memory-efficient ziplist encoding for small hashes:
+Redis 7.0 and later use memory-efficient listpack encoding for small hashes:
 
 ```bash
 # Check current encoding
-DEBUG OBJECT user:1
+OBJECT ENCODING user:1
 
 # Configuration (redis.conf)
-hash-max-ziplist-entries 512    # Max number of entries for ziplist
-hash-max-ziplist-value 64       # Max value size for ziplist
+hash-max-listpack-entries 512   # Max number of entries for listpack
+hash-max-listpack-value 64      # Max value size for listpack
 ```
 
 ### Memory Tips
@@ -1044,7 +1042,7 @@ hash-max-ziplist-value 64       # Max value size for ziplist
 2. **Field Types**: Store numbers as strings, they'll be converted automatically for HINCRBY
 3. **Atomic Operations**: Use HINCRBY/HINCRBYFLOAT for counters
 4. **Batch Operations**: Use HSET with multiple fields instead of multiple HSET calls
-5. **Expiration**: Hashes don't support per-field TTL - use EXPIRE on the entire hash
+5. **Expiration**: Redis 7.4 and later support per-field TTL with HEXPIRE; for older versions, use EXPIRE on the entire hash
 
 ## Conclusion
 
@@ -1052,7 +1050,7 @@ Redis Hashes provide an efficient way to store and manipulate objects in Redis. 
 
 - Use hashes when you need to access individual fields frequently
 - Take advantage of atomic numeric operations
-- Keep hashes small to benefit from ziplist encoding
+- Keep hashes small to benefit from compact listpack encoding
 - Use consistent key naming conventions
 - Combine with pipelines for batch operations
 

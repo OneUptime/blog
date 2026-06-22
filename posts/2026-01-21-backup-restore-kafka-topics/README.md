@@ -77,10 +77,12 @@ tasks.max = 10
 ### Starting MirrorMaker 2
 
 ```bash
-# Start MM2 as a distributed connector
+# Start MM2 in dedicated mode
 bin/connect-mirror-maker.sh config/mm2.properties
 
-# Or run as a Connect worker
+# If you use a shared Connect cluster instead, start workers first and
+# create the MirrorSourceConnector, MirrorCheckpointConnector, and
+# MirrorHeartbeatConnector through the Connect REST API.
 bin/connect-distributed.sh config/connect-distributed.properties
 ```
 
@@ -203,13 +205,14 @@ For archival backups, consuming messages and storing them in object storage is e
 ### Python Implementation
 
 ```python
-from confluent_kafka import Consumer, KafkaError, KafkaException
+from confluent_kafka import Consumer, KafkaError, KafkaException, TopicPartition
 from confluent_kafka.admin import AdminClient
+import base64
 import json
 import gzip
 import boto3
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 import os
 
 class KafkaBackup:
@@ -219,11 +222,23 @@ class KafkaBackup:
             'group.id': group_id,
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': False,
+            'enable.partition.eof': True,
             'max.poll.interval.ms': 300000
         }
         self.admin_client = AdminClient({
             'bootstrap.servers': bootstrap_servers
         })
+
+    def _encode_bytes(self, value: bytes) -> Optional[str]:
+        return base64.b64encode(value).decode('ascii') if value is not None else None
+
+    def _encode_headers(self, headers):
+        if not headers:
+            return []
+        return [
+            {'key': key, 'value': self._encode_bytes(value)}
+            for key, value in headers
+        ]
 
     def backup_topic_to_file(self, topic: str, output_dir: str,
                              max_messages: int = 1000000) -> str:
@@ -266,9 +281,9 @@ class KafkaBackup:
                         'partition': msg.partition(),
                         'offset': msg.offset(),
                         'timestamp': msg.timestamp()[1],
-                        'key': msg.key().decode('utf-8') if msg.key() else None,
-                        'value': msg.value().decode('utf-8') if msg.value() else None,
-                        'headers': dict(msg.headers()) if msg.headers() else {}
+                        'key_base64': self._encode_bytes(msg.key()),
+                        'value_base64': self._encode_bytes(msg.value()),
+                        'headers': self._encode_headers(msg.headers())
                     }
 
                     f.write(json.dumps(record) + '\n')
@@ -295,17 +310,18 @@ class KafkaBackup:
         return filename
 
     def backup_topic_to_s3(self, topic: str, bucket: str,
-                           prefix: str = 'kafka-backup') -> str:
+                           prefix: str = 'kafka-backup') -> List[str]:
         """Backup a topic directly to S3."""
         s3_client = boto3.client('s3')
         consumer = Consumer(self.consumer_config)
         consumer.subscribe([topic])
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        s3_key = f"{prefix}/{topic}/{timestamp}.json.gz"
+        s3_prefix = f"{prefix}/{topic}/{timestamp}"
 
         messages = []
         messages_backed_up = 0
+        uploaded_keys = []
 
         try:
             while True:
@@ -323,28 +339,29 @@ class KafkaBackup:
                     'partition': msg.partition(),
                     'offset': msg.offset(),
                     'timestamp': msg.timestamp()[1],
-                    'key': msg.key().decode('utf-8') if msg.key() else None,
-                    'value': msg.value().decode('utf-8') if msg.value() else None
+                    'key_base64': self._encode_bytes(msg.key()),
+                    'value_base64': self._encode_bytes(msg.value())
                 }
                 messages.append(record)
                 messages_backed_up += 1
 
                 # Upload in batches of 100k messages
                 if len(messages) >= 100000:
-                    self._upload_batch_to_s3(s3_client, bucket, s3_key,
-                                            messages, messages_backed_up)
+                    uploaded_keys.append(self._upload_batch_to_s3(
+                        s3_client, bucket, s3_prefix, messages, messages_backed_up))
                     messages = []
 
             # Upload remaining messages
             if messages:
-                self._upload_batch_to_s3(s3_client, bucket, s3_key,
-                                        messages, messages_backed_up)
+                uploaded_keys.append(self._upload_batch_to_s3(
+                    s3_client, bucket, s3_prefix, messages, messages_backed_up))
 
         finally:
             consumer.close()
 
-        print(f"Backup complete: {messages_backed_up} messages to s3://{bucket}/{s3_key}")
-        return f"s3://{bucket}/{s3_key}"
+        s3_uris = [f"s3://{bucket}/{key}" for key in uploaded_keys]
+        print(f"Backup complete: {messages_backed_up} messages to {len(s3_uris)} S3 objects")
+        return s3_uris
 
     def _upload_batch_to_s3(self, s3_client, bucket: str, key: str,
                            messages: list, total_count: int):
@@ -357,9 +374,10 @@ class KafkaBackup:
                 gz.write((json.dumps(msg) + '\n').encode('utf-8'))
 
         buffer.seek(0)
-        part_key = key.replace('.json.gz', f'_part{total_count}.json.gz')
+        part_key = f"{key}/part-{total_count}.json.gz"
         s3_client.upload_fileobj(buffer, bucket, part_key)
         print(f"Uploaded batch to {part_key}")
+        return part_key
 
     def get_topic_offsets(self, topic: str) -> Dict[int, Dict[str, int]]:
         """Get current offsets for a topic."""
@@ -404,7 +422,6 @@ def main():
 
 
 if __name__ == '__main__':
-    from confluent_kafka import TopicPartition
     main()
 ```
 
@@ -414,9 +431,10 @@ if __name__ == '__main__':
 
 ```java
 import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.common.serialization.StringSerializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 
 import java.io.*;
+import java.util.Base64;
 import java.util.Properties;
 import java.util.zip.GZIPInputStream;
 import com.google.gson.Gson;
@@ -424,14 +442,14 @@ import com.google.gson.JsonObject;
 
 public class KafkaRestore {
 
-    private final KafkaProducer<String, String> producer;
+    private final KafkaProducer<byte[], byte[]> producer;
     private final Gson gson = new Gson();
 
     public KafkaRestore(String bootstrapServers) {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
         props.put(ProducerConfig.ACKS_CONFIG, "all");
         props.put(ProducerConfig.RETRIES_CONFIG, 3);
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
@@ -440,11 +458,17 @@ public class KafkaRestore {
         this.producer = new KafkaProducer<>(props);
     }
 
+    private byte[] decodeBase64(JsonObject record, String field) {
+        if (!record.has(field) || record.get(field).isJsonNull()) {
+            return null;
+        }
+        return Base64.getDecoder().decode(record.get(field).getAsString());
+    }
+
     public void restoreFromFile(String backupFile, String targetTopic)
             throws IOException {
 
         long restoredCount = 0;
-        long skippedCount = 0;
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(
@@ -464,18 +488,11 @@ public class KafkaRestore {
                 }
 
                 // Extract message data
-                String key = record.has("key") && !record.get("key").isJsonNull() ?
-                    record.get("key").getAsString() : null;
-                String value = record.has("value") && !record.get("value").isJsonNull() ?
-                    record.get("value").getAsString() : null;
-
-                if (value == null) {
-                    skippedCount++;
-                    continue;
-                }
+                byte[] key = decodeBase64(record, "key_base64");
+                byte[] value = decodeBase64(record, "value_base64");
 
                 // Send to target topic
-                ProducerRecord<String, String> producerRecord =
+                ProducerRecord<byte[], byte[]> producerRecord =
                     new ProducerRecord<>(targetTopic, key, value);
 
                 producer.send(producerRecord, (metadata, exception) -> {
@@ -493,8 +510,7 @@ public class KafkaRestore {
         }
 
         producer.flush();
-        System.out.printf("Restore complete: %d messages restored, %d skipped%n",
-            restoredCount, skippedCount);
+        System.out.printf("Restore complete: %d messages restored%n", restoredCount);
     }
 
     public void close() {
@@ -521,9 +537,9 @@ public class KafkaRestore {
 
 ```python
 from confluent_kafka import Producer
+import base64
 import json
 import gzip
-from typing import Optional
 
 class KafkaRestore:
     def __init__(self, bootstrap_servers: str):
@@ -540,11 +556,13 @@ class KafkaRestore:
         if err:
             print(f"Delivery failed: {err}")
 
+    def _decode_bytes(self, value):
+        return base64.b64decode(value) if value is not None else None
+
     def restore_from_file(self, backup_file: str, target_topic: str,
                          preserve_partitions: bool = False) -> int:
         """Restore messages from a backup file to a topic."""
         restored_count = 0
-        skipped_count = 0
 
         with gzip.open(backup_file, 'rt', encoding='utf-8') as f:
             for line in f:
@@ -554,16 +572,9 @@ class KafkaRestore:
                 if record.get('type') in ['kafka_backup_v1', 'backup_footer']:
                     continue
 
-                key = record.get('key')
-                value = record.get('value')
-
-                if value is None:
-                    skipped_count += 1
-                    continue
-
                 # Prepare message
-                key_bytes = key.encode('utf-8') if key else None
-                value_bytes = value.encode('utf-8')
+                key_bytes = self._decode_bytes(record.get('key_base64'))
+                value_bytes = self._decode_bytes(record.get('value_base64'))
 
                 # Optionally preserve original partition
                 partition = record.get('partition') if preserve_partitions else None
@@ -591,7 +602,7 @@ class KafkaRestore:
                     print(f"Restored {restored_count} messages...")
 
         self.producer.flush()
-        print(f"Restore complete: {restored_count} restored, {skipped_count} skipped")
+        print(f"Restore complete: {restored_count} restored")
         return restored_count
 
     def restore_from_s3(self, bucket: str, key: str, target_topic: str) -> int:
@@ -674,47 +685,34 @@ curl http://localhost:8083/connectors/s3-backup-sink/status
 
 ## Consumer Offset Backup
 
-Do not forget to backup consumer offsets for proper restore:
+Do not forget to backup consumer offsets for proper restore. Restore offsets while the consumer group is stopped so active members do not overwrite the restored positions:
 
 ```python
 from confluent_kafka.admin import AdminClient
-from confluent_kafka import Consumer
+from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
 import json
+from datetime import datetime
 
 class ConsumerOffsetBackup:
     def __init__(self, bootstrap_servers: str):
+        self.bootstrap_servers = bootstrap_servers
         self.admin_client = AdminClient({
             'bootstrap.servers': bootstrap_servers
         })
 
     def backup_consumer_offsets(self, group_id: str, output_file: str):
         """Backup consumer group offsets."""
-        consumer = Consumer({
-            'bootstrap.servers': self.admin_client._conf.get('bootstrap.servers'),
-            'group.id': group_id,
-            'enable.auto.commit': False
-        })
-
-        # Get committed offsets for all topics
         offsets = {}
+        request = ConsumerGroupTopicPartitions(group_id)
+        futures = self.admin_client.list_consumer_group_offsets([request])
+        group_offsets = futures[group_id].result()
 
-        try:
-            # List all topics the group has committed offsets for
-            group_metadata = self.admin_client.list_consumer_groups()
-
-            # Get committed offsets
-            committed = consumer.committed([])  # Would need topic partitions
-
-            for tp, offset in committed.items() if committed else []:
-                topic = tp.topic
-                partition = tp.partition
-
-                if topic not in offsets:
-                    offsets[topic] = {}
-                offsets[topic][partition] = offset.offset
-
-        finally:
-            consumer.close()
+        for tp in group_offsets.topic_partitions:
+            if tp.offset < 0:
+                continue
+            if tp.topic not in offsets:
+                offsets[tp.topic] = {}
+            offsets[tp.topic][tp.partition] = tp.offset
 
         # Save to file
         backup_data = {
@@ -737,28 +735,16 @@ class ConsumerOffsetBackup:
         group_id = backup_data['group_id']
         offsets = backup_data['offsets']
 
-        consumer = Consumer({
-            'bootstrap.servers': self.admin_client._conf.get('bootstrap.servers'),
-            'group.id': group_id,
-            'enable.auto.commit': False
-        })
+        topic_partitions = []
+        for topic, partitions in offsets.items():
+            for partition, offset in partitions.items():
+                tp = TopicPartition(topic, int(partition), int(offset))
+                topic_partitions.append(tp)
 
-        try:
-            topic_partitions = []
-            for topic, partitions in offsets.items():
-                for partition, offset in partitions.items():
-                    tp = TopicPartition(topic, int(partition), offset)
-                    topic_partitions.append(tp)
-
-            consumer.commit(offsets=topic_partitions)
-            print(f"Restored offsets for group {group_id}")
-
-        finally:
-            consumer.close()
-
-
-from datetime import datetime
-from confluent_kafka import TopicPartition
+        request = ConsumerGroupTopicPartitions(group_id, topic_partitions)
+        futures = self.admin_client.alter_consumer_group_offsets([request])
+        futures[group_id].result()
+        print(f"Restored offsets for group {group_id}")
 ```
 
 ## Automated Backup Script
@@ -779,6 +765,7 @@ mkdir -p $BACKUP_DIR
 
 # Backup each topic
 for topic in $TOPICS; do
+    # Assumes kafka_backup.py exposes a CLI wrapper around the KafkaBackup class.
     python3 kafka_backup.py \
         --bootstrap-server $BOOTSTRAP_SERVER \
         --topic $topic \
@@ -796,6 +783,10 @@ echo "Backup completed at $(date)"
 ### 1. Test Restores Regularly
 
 ```python
+from confluent_kafka import Consumer
+import gzip
+import json
+
 def verify_restore(original_backup: str, restored_topic: str,
                    bootstrap_servers: str) -> bool:
     """Verify restore by comparing message counts."""
@@ -858,6 +849,6 @@ def encrypt_backup(input_file: str, output_file: str, key: bytes):
 
 ## Conclusion
 
-Kafka backup and restore requires a multi-faceted approach depending on your requirements. MirrorMaker 2 provides continuous replication for disaster recovery with near-zero RPO. Consumer-based backups offer flexibility for archival and compliance needs. Kafka Connect S3 Sink enables continuous archival to object storage. Choose the strategy that best fits your recovery time objective (RTO), recovery point objective (RPO), and operational capabilities.
+Kafka backup and restore requires a multi-faceted approach depending on your requirements. MirrorMaker 2 provides continuous replication for disaster recovery with near-real-time RPO. Consumer-based backups offer flexibility for archival and compliance needs. Kafka Connect S3 Sink enables continuous archival to object storage. Choose the strategy that best fits your recovery time objective (RTO), recovery point objective (RPO), and operational capabilities.
 
 Always test your backup and restore procedures regularly, and document your disaster recovery runbooks to ensure smooth recovery when needed.

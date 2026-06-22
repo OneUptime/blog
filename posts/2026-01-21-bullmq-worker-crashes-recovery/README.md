@@ -19,7 +19,7 @@ When a BullMQ worker crashes, several things happen:
 - Other workers can recover stalled jobs
 
 ```typescript
-import { Worker, Queue, QueueEvents } from 'bullmq';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -81,13 +81,16 @@ worker.on('failed', (job, error) => {
 Prevent false stall detection for long-running jobs:
 
 ```typescript
-const worker = new Worker('long-tasks', async (job) => {
+const worker = new Worker('long-tasks', async (job, token) => {
   const lockExtensionMs = 30000;
 
-  // Set up periodic lock extension
+  // Standard workers renew locks automatically, but you can extend the
+  // current lock explicitly if you manage long critical sections yourself.
   const lockExtender = setInterval(async () => {
     try {
-      await job.extendLock(job.token!, lockExtensionMs);
+      if (token) {
+        await job.extendLock(token, lockExtensionMs);
+      }
       console.log(`Extended lock for job ${job.id}`);
     } catch (error) {
       console.error(`Failed to extend lock for job ${job.id}:`, error);
@@ -116,6 +119,9 @@ const worker = new Worker('long-tasks', async (job) => {
 Design jobs to handle crashes gracefully:
 
 ```typescript
+import { Job, Queue } from 'bullmq';
+import { Redis } from 'ioredis';
+
 interface CrashSafeJobData {
   taskId: string;
   items: string[];
@@ -204,19 +210,14 @@ class CrashSafeProcessor {
 
 ## Automatic Worker Restart
 
-Implement automatic restart after crashes:
+Use a process supervisor to restart the worker process after fatal crashes:
 
 ```typescript
-import cluster from 'cluster';
-import { Worker as BullMQWorker } from 'bullmq';
+import { Job, Worker as BullMQWorker } from 'bullmq';
+import { Redis } from 'ioredis';
 
 class ResilientWorkerManager {
   private workerProcess: BullMQWorker | null = null;
-  private restartCount = 0;
-  private maxRestarts = 10;
-  private restartDelay = 5000;
-  private lastCrashTime = 0;
-  private resetWindow = 60000; // Reset restart count after 1 minute of stability
 
   constructor(
     private queueName: string,
@@ -237,7 +238,6 @@ class ResilientWorkerManager {
 
     this.workerProcess.on('error', (error) => {
       console.error('Worker error:', error);
-      this.handleCrash(error);
     });
 
     this.workerProcess.on('closed', () => {
@@ -249,55 +249,21 @@ class ResilientWorkerManager {
 
   private setupCrashHandling() {
     // Handle uncaught exceptions
-    process.on('uncaughtException', async (error) => {
+    process.on('uncaughtException', (error) => {
       console.error('Uncaught exception:', error);
-      await this.handleCrash(error);
+      this.fatalExit(1);
     });
 
     // Handle unhandled promise rejections
-    process.on('unhandledRejection', async (reason) => {
+    process.on('unhandledRejection', (reason) => {
       console.error('Unhandled rejection:', reason);
-      await this.handleCrash(reason instanceof Error ? reason : new Error(String(reason)));
+      this.fatalExit(1);
     });
   }
 
-  private async handleCrash(error: Error) {
-    const now = Date.now();
-
-    // Reset restart count if stable for a while
-    if (now - this.lastCrashTime > this.resetWindow) {
-      this.restartCount = 0;
-    }
-
-    this.lastCrashTime = now;
-    this.restartCount++;
-
-    console.log(`Crash detected (${this.restartCount}/${this.maxRestarts}):`, error.message);
-
-    if (this.restartCount >= this.maxRestarts) {
-      console.error('Max restarts exceeded. Exiting.');
-      process.exit(1);
-    }
-
-    // Close existing worker
-    if (this.workerProcess) {
-      try {
-        await this.workerProcess.close();
-      } catch (e) {
-        console.error('Error closing worker:', e);
-      }
-      this.workerProcess = null;
-    }
-
-    // Wait before restart
-    console.log(`Restarting in ${this.restartDelay}ms...`);
-    await new Promise(resolve => setTimeout(resolve, this.restartDelay));
-
-    // Exponential backoff
-    this.restartDelay = Math.min(this.restartDelay * 1.5, 60000);
-
-    // Restart
-    await this.createWorker();
+  private fatalExit(exitCode: number) {
+    // Let PM2, systemd, Docker, Kubernetes, or another supervisor restart the process.
+    process.exit(exitCode);
   }
 
   async stop() {
@@ -411,6 +377,9 @@ process.on('message', async (message) => {
 Handle jobs that repeatedly fail after crashes:
 
 ```typescript
+import { Job, Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
+
 class CrashRecoveryService {
   private mainQueue: Queue;
   private dlq: Queue;
@@ -431,27 +400,7 @@ class CrashRecoveryService {
   }
 
   private async processWithCrashProtection(job: Job) {
-    // Track job attempts due to crashes
-    const crashAttempts = parseInt(job.data._crashAttempts || '0');
-
-    if (crashAttempts >= 3) {
-      // Too many crash-related failures, move to DLQ
-      await this.moveToDLQ(job, 'Too many crash recoveries');
-      throw new Error('Job moved to DLQ due to repeated crashes');
-    }
-
-    try {
-      return await this.processJob(job);
-    } catch (error) {
-      // Update crash attempts for next retry
-      if (error.message.includes('stalled')) {
-        await this.mainQueue.add(job.name, {
-          ...job.data,
-          _crashAttempts: crashAttempts + 1,
-        });
-      }
-      throw error;
-    }
+    return await this.processJob(job);
   }
 
   private async processJob(job: Job) {
@@ -479,7 +428,10 @@ class CrashRecoveryService {
     });
 
     this.worker.on('failed', async (job, error) => {
-      if (job && job.attemptsMade >= (job.opts.attempts || 1)) {
+      const exhaustedAttempts = job && job.attemptsMade >= (job.opts.attempts || 1);
+      const exceededStallLimit = error.message.includes('job stalled more than allowable limit');
+
+      if (job && (exhaustedAttempts || exceededStallLimit)) {
         await this.moveToDLQ(job, error.message);
       }
     });
@@ -494,7 +446,6 @@ class CrashRecoveryService {
       const originalJob = job.data.originalJob;
       await this.mainQueue.add(originalJob.name, {
         ...originalJob.data,
-        _crashAttempts: 0, // Reset crash attempts
       });
       await job.remove();
       retried++;
@@ -553,7 +504,7 @@ class CrashMonitor {
 
 ## Best Practices
 
-1. **Configure stall detection appropriately** - Match lockDuration to your job duration.
+1. **Configure stall detection appropriately** - Set lockDuration long enough for the worker to renew the lock reliably.
 
 2. **Extend locks for long jobs** - Prevent false stall detection.
 

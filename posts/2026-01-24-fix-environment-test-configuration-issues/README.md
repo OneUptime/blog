@@ -68,13 +68,20 @@ const configSchema = z.object({
   // Database
   databaseUrl: z.string().url(),
   databasePoolSize: z.coerce.number().default(10),
+  redisUrl: z.string().url().optional(),
 
   // External Services
   stripeApiKey: z.string().min(1),
   sendgridApiKey: z.string().min(1),
+  mockExternalServices: z.stringbool().default(false),
 
   // Feature Flags
-  enableNewFeature: z.coerce.boolean().default(false),
+  enableNewFeature: z.stringbool().default(false),
+  enableRateLimiting: z.stringbool().default(true),
+  enableStripeWebhooks: z.stringbool().default(false),
+
+  // Timeouts
+  requestTimeout: z.coerce.number().default(30000),
 });
 
 // Parse and validate configuration
@@ -85,9 +92,14 @@ function loadConfig() {
     host: process.env.HOST,
     databaseUrl: process.env.DATABASE_URL,
     databasePoolSize: process.env.DATABASE_POOL_SIZE,
+    redisUrl: process.env.REDIS_URL,
     stripeApiKey: process.env.STRIPE_API_KEY,
     sendgridApiKey: process.env.SENDGRID_API_KEY,
+    mockExternalServices: process.env.MOCK_EXTERNAL_SERVICES,
     enableNewFeature: process.env.ENABLE_NEW_FEATURE,
+    enableRateLimiting: process.env.ENABLE_RATE_LIMITING,
+    enableStripeWebhooks: process.env.ENABLE_STRIPE_WEBHOOKS,
+    requestTimeout: process.env.REQUEST_TIMEOUT,
   });
 
   if (!result.success) {
@@ -164,7 +176,7 @@ Allow tests to override configuration:
 
 ```typescript
 // test/helpers/config.ts
-import { Config } from '../../src/config';
+import type { Config } from '../../src/config';
 
 // Default test configuration overrides
 const testDefaults: Partial<Config> = {
@@ -177,6 +189,8 @@ const testDefaults: Partial<Config> = {
 };
 
 export function getTestConfig(overrides: Partial<Config> = {}): Config {
+  delete require.cache[require.resolve('../../src/config')];
+
   return {
     ...require('../../src/config').config,
     ...testDefaults,
@@ -191,13 +205,23 @@ export function withConfig(overrides: Partial<Config>) {
   return {
     setup() {
       Object.entries(overrides).forEach(([key, value]) => {
+        if (value === undefined) {
+          return;
+        }
+
         const envKey = key.replace(/([A-Z])/g, '_$1').toUpperCase();
         process.env[envKey] = String(value);
       });
     },
 
     teardown() {
-      process.env = originalEnv;
+      Object.keys(process.env).forEach(key => {
+        if (!(key in originalEnv)) {
+          delete process.env[key];
+        }
+      });
+
+      Object.assign(process.env, originalEnv);
     },
   };
 }
@@ -208,7 +232,7 @@ Using configuration overrides in tests:
 ```typescript
 // test/services/payment.test.ts
 import { describe, it, beforeEach, afterEach, expect } from 'vitest';
-import { withConfig } from '../helpers/config';
+import { getTestConfig, withConfig } from '../helpers/config';
 
 describe('Payment Service', () => {
   describe('with Stripe enabled', () => {
@@ -221,6 +245,8 @@ describe('Payment Service', () => {
     afterEach(() => configOverride.teardown());
 
     it('should process payment', async () => {
+      const config = getTestConfig();
+      expect(config.enableStripeWebhooks).toBe(true);
       // Test uses the overridden config
     });
   });
@@ -234,6 +260,8 @@ describe('Payment Service', () => {
     afterEach(() => configOverride.teardown());
 
     it('should skip webhook verification', async () => {
+      const config = getTestConfig();
+      expect(config.enableStripeWebhooks).toBe(false);
       // Test uses different config
     });
   });
@@ -332,8 +360,6 @@ Use Docker Compose for consistent environments:
 
 ```yaml
 # docker-compose.test.yml
-version: '3.8'
-
 services:
   app:
     build:
@@ -377,10 +403,10 @@ Run tests with Docker:
 
 ```bash
 # Run all tests
-docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from app
 
 # Run specific test file
-docker-compose -f docker-compose.test.yml run app npm test -- --filter "user.test.ts"
+docker compose -f docker-compose.test.yml run app npm test -- user.test.ts
 ```
 
 ## Strategy 6: Environment Validation on Startup
@@ -389,7 +415,7 @@ Fail fast if configuration is invalid:
 
 ```typescript
 // src/config/validate.ts
-import { config, Config } from './index';
+import { config } from './index';
 
 interface ValidationResult {
   valid: boolean;

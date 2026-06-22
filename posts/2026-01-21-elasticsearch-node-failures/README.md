@@ -103,12 +103,12 @@ dmesg | grep -i "killed process"
 
 ### Step 3: Prevent Unnecessary Shard Movement
 
-If the failure is temporary, delay shard reallocation:
+If the failure is temporary, prevent replica shard allocation until the node returns:
 
 ```bash
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
-  "transient": {
+  "persistent": {
     "cluster.routing.allocation.enable": "primaries"
   }
 }'
@@ -163,11 +163,11 @@ curl -X GET "localhost:9200/_cluster/health?wait_for_status=green&timeout=30m"
 When replacing a failed node:
 
 ```bash
-# Remove allocation exclusion for old node
+# Remove any allocation exclusion for the old node
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
-  "transient": {
-    "cluster.routing.allocation.exclude._name": "failed-node"
+  "persistent": {
+    "cluster.routing.allocation.exclude._name": null
   }
 }'
 
@@ -178,7 +178,7 @@ curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/jso
 # Re-enable allocation
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
-  "transient": {
+  "persistent": {
     "cluster.routing.allocation.enable": "all"
   }
 }'
@@ -262,7 +262,7 @@ curl -X POST "localhost:9200/_cluster/reroute" -H 'Content-Type: application/jso
 ```bash
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
-  "transient": {
+  "persistent": {
     "indices.recovery.max_bytes_per_sec": "500mb",
     "cluster.routing.allocation.node_concurrent_recoveries": 4,
     "cluster.routing.allocation.node_initial_primaries_recoveries": 8
@@ -285,7 +285,7 @@ curl -X GET "localhost:9200/_nodes/stats/indices/recovery?pretty"
 ```bash
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
-  "transient": {
+  "persistent": {
     "indices.recovery.max_bytes_per_sec": "50mb",
     "cluster.routing.allocation.node_concurrent_recoveries": 2
   }
@@ -334,7 +334,7 @@ sudo systemctl start elasticsearch
 # Check JVM heap usage
 curl -X GET "localhost:9200/_nodes/stats/jvm?pretty"
 
-# Increase heap size (max 50% of RAM, not exceeding 31GB)
+# Increase heap size (max 50% of RAM, and stay below the compressed ordinary object pointer threshold; 26GB is safe on most systems)
 # Edit /etc/elasticsearch/jvm.options:
 # -Xms16g
 # -Xmx16g

@@ -8,15 +8,15 @@ Description: A comprehensive guide to building a scheduled task system with Bull
 
 ---
 
-Scheduled tasks are essential for automating background operations like reports, cleanups, notifications, and data synchronization. BullMQ's repeatable jobs feature provides a powerful foundation for building a flexible task scheduling system. This guide covers building a complete scheduled task system.
+Scheduled tasks are essential for automating background operations like reports, cleanups, notifications, and data synchronization. BullMQ's Job Schedulers API provides a powerful foundation for building a flexible task scheduling system. This guide covers building a complete scheduled task system.
 
 ## Basic Scheduled Tasks
 
 Create simple scheduled tasks:
 
 ```typescript
-import { Queue, Worker, QueueScheduler } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Queue, Worker } from 'bullmq';
+import Redis from 'ioredis';
 
 const connection = new Redis({
   host: 'localhost',
@@ -25,6 +25,7 @@ const connection = new Redis({
 });
 
 interface ScheduledTaskData {
+  taskId?: string;
   taskType: string;
   params: Record<string, any>;
   scheduledBy?: string;
@@ -46,27 +47,35 @@ await schedulerQueue.add(
 );
 
 // Add a recurring task (every hour)
-await schedulerQueue.add(
+await schedulerQueue.upsertJobScheduler(
   'hourly-cleanup',
-  { taskType: 'cleanup', params: { type: 'temp-files' } },
   {
-    repeat: {
-      pattern: '0 * * * *', // Every hour at minute 0
+    pattern: '0 * * * *', // Every hour at minute 0
+  },
+  {
+    name: 'hourly-cleanup',
+    data: {
+      taskId: 'hourly-cleanup',
+      taskType: 'cleanup',
+      params: { type: 'temp-files' },
     },
-    jobId: 'hourly-cleanup', // Unique ID for this repeatable job
   }
 );
 
 // Add a daily task
-await schedulerQueue.add(
+await schedulerQueue.upsertJobScheduler(
   'daily-report',
-  { taskType: 'report', params: { reportType: 'daily-summary' } },
   {
-    repeat: {
-      pattern: '0 9 * * *', // Every day at 9 AM
-      tz: 'America/New_York',
+    pattern: '0 9 * * *', // Every day at 9 AM
+    tz: 'America/New_York',
+  },
+  {
+    name: 'daily-report',
+    data: {
+      taskId: 'daily-report',
+      taskType: 'report',
+      params: { reportType: 'daily-summary' },
     },
-    jobId: 'daily-report',
   }
 );
 
@@ -162,6 +171,7 @@ class TaskSchedulerService {
 
   private async scheduleTask(task: TaskDefinition): Promise<void> {
     const jobData: ScheduledTaskData = {
+      taskId: task.id,
       taskType: task.taskType,
       params: task.params,
       scheduledBy: task.createdBy,
@@ -179,13 +189,17 @@ class TaskSchedulerService {
         task.nextRunAt = task.schedule.runAt;
       }
     } else if (task.schedule.type === 'recurring' && task.schedule.pattern) {
-      await this.queue.add(task.name, jobData, {
-        repeat: {
+      await this.queue.upsertJobScheduler(
+        `task_${task.id}`,
+        {
           pattern: task.schedule.pattern,
           tz: task.schedule.timezone,
         },
-        jobId: `task_${task.id}`,
-      });
+        {
+          name: task.name,
+          data: jobData,
+        }
+      );
 
       // Calculate next run time
       task.nextRunAt = this.getNextRunTime(task.schedule.pattern, task.schedule.timezone);
@@ -202,12 +216,7 @@ class TaskSchedulerService {
       await job.remove();
     }
 
-    // Remove repeatable job if exists
-    const repeatableJobs = await this.queue.getRepeatableJobs();
-    const repeatable = repeatableJobs.find((j) => j.id === `task_${taskId}`);
-    if (repeatable) {
-      await this.queue.removeRepeatableByKey(repeatable.key);
-    }
+    await this.queue.removeJobScheduler(`task_${taskId}`);
 
     task.enabled = false;
     await this.persistTask(task);
@@ -232,9 +241,10 @@ class TaskSchedulerService {
   ): Promise<TaskDefinition> {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
+    const wasEnabled = task.enabled;
 
     // Unschedule current task
-    if (task.enabled) {
+    if (wasEnabled) {
       await this.unscheduleTask(taskId);
     }
 
@@ -242,7 +252,8 @@ class TaskSchedulerService {
     Object.assign(task, updates);
 
     // Reschedule if enabled
-    if (task.enabled) {
+    if (updates.enabled ?? wasEnabled) {
+      task.enabled = true;
       await this.scheduleTask(task);
     }
 
@@ -289,6 +300,7 @@ class TaskSchedulerService {
       `${task.name}_manual`,
       {
         taskType: task.taskType,
+        taskId: task.id,
         params: task.params,
         scheduledBy: 'manual',
       },
@@ -319,6 +331,10 @@ class TaskSchedulerService {
       const data = await this.redis.get(key);
       if (data) {
         const task = JSON.parse(data) as TaskDefinition;
+        task.createdAt = new Date(task.createdAt);
+        task.lastRunAt = task.lastRunAt ? new Date(task.lastRunAt) : undefined;
+        task.nextRunAt = task.nextRunAt ? new Date(task.nextRunAt) : undefined;
+        task.schedule.runAt = task.schedule.runAt ? new Date(task.schedule.runAt) : undefined;
         this.tasks.set(task.id, task);
 
         if (task.enabled) {
@@ -454,7 +470,7 @@ const tracker = new TaskExecutionTracker(connection);
 const trackedWorker = new Worker<ScheduledTaskData>(
   'scheduled-tasks',
   async (job) => {
-    const taskId = job.opts.jobId?.replace('task_', '') || job.id!;
+    const taskId = job.data.taskId || job.id!;
     const executionId = await tracker.recordStart(taskId, job.name);
 
     try {
@@ -563,15 +579,17 @@ class TaskGroupScheduler {
   async registerGroup(group: TaskGroup): Promise<void> {
     this.groups.set(group.id, group);
 
-    await this.queue.add(
+    await this.queue.upsertJobScheduler(
       group.name,
-      { groupId: group.id },
       {
-        repeat: {
-          pattern: group.schedule.pattern,
-          tz: group.schedule.timezone,
+        pattern: group.schedule.pattern,
+        tz: group.schedule.timezone,
+      },
+      {
+        name: group.name,
+        data: {
+          groupId: group.id,
         },
-        jobId: `group_${group.id}`,
       }
     );
   }

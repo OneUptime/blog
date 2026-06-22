@@ -143,10 +143,16 @@ app.use('/api', (req, res, next) => {
 // Edge worker for custom caching logic
 
 addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request));
+    event.respondWith(handleRequest(event));
 });
 
-async function handleRequest(request) {
+async function handleRequest(event) {
+    const request = event.request;
+
+    if (request.method !== 'GET') {
+        return fetch(request);
+    }
+
     const url = new URL(request.url);
 
     // Define cache key
@@ -175,7 +181,9 @@ async function handleRequest(request) {
         }
 
         // Store in edge cache
-        event.waitUntil(cache.put(cacheKey, response.clone()));
+        if (response.ok && !response.headers.has('Set-Cookie')) {
+            event.waitUntil(cache.put(cacheKey, response.clone()));
+        }
     }
 
     return response;
@@ -230,6 +238,14 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/pagerules" \
 AWSTemplateFormatVersion: '2010-09-09'
 Description: CloudFront distribution with optimized caching
 
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name for static assets
+  CloudFrontOAIId:
+    Type: String
+    Description: CloudFront origin access identity ID
+
 Resources:
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -241,9 +257,9 @@ Resources:
 
         Origins:
           - Id: S3Origin
-            DomainName: !Sub "${S3Bucket}.s3.amazonaws.com"
+            DomainName: !Sub "${S3BucketName}.s3.amazonaws.com"
             S3OriginConfig:
-              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAIId}"
 
           - Id: APIOrigin
             DomainName: api.example.com
@@ -271,7 +287,8 @@ Resources:
           - PathPattern: "/api/*"
             TargetOriginId: APIOrigin
             ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: !Ref APICachePolicy
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader
             AllowedMethods:
               - GET
               - HEAD
@@ -298,26 +315,6 @@ Resources:
             QueryStringBehavior: none
           EnableAcceptEncodingGzip: true
           EnableAcceptEncodingBrotli: true
-
-  APICachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: APIPolicy
-        DefaultTTL: 0
-        MaxTTL: 1
-        MinTTL: 0
-        ParametersInCacheKeyAndForwardedToOrigin:
-          CookiesConfig:
-            CookieBehavior: all
-          HeadersConfig:
-            HeaderBehavior: whitelist
-            Headers:
-              - Authorization
-              - Accept
-          QueryStringsConfig:
-            QueryStringBehavior: all
-          EnableAcceptEncodingGzip: true
 ```
 
 ## Step 3: Cache Invalidation Strategies
@@ -478,12 +475,21 @@ async function handleRequest(request) {
 }
 
 function getPricingForRegion(country) {
+    const euCountries = new Set([
+        'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+        'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+        'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'
+    ]);
+
     const pricing = {
         'US': { price: '99', currency: 'USD' },
         'GB': { price: '79', currency: 'GBP' },
-        'EU': { price: '89', currency: 'EUR' },
         'default': { price: '99', currency: 'USD' }
     };
+
+    if (euCountries.has(country)) {
+        return { price: '89', currency: 'EUR' };
+    }
 
     return pricing[country] || pricing['default'];
 }
@@ -501,6 +507,11 @@ addEventListener('fetch', event => {
 
 async function handleRequest(event) {
     const request = event.request;
+
+    if (request.method !== 'GET') {
+        return fetch(request);
+    }
+
     const cache = caches.default;
 
     // Try to get from cache
@@ -533,7 +544,9 @@ async function fetchAndCache(request, cache) {
     responseToCache.headers.set('x-cached-at', new Date().toISOString());
 
     // Store in cache
-    await cache.put(request, responseToCache.clone());
+    if (responseToCache.ok && !responseToCache.headers.has('Set-Cookie')) {
+        await cache.put(request, responseToCache.clone());
+    }
 
     return responseToCache;
 }
@@ -543,7 +556,9 @@ async function revalidateCache(request, cache) {
         const freshResponse = await fetch(request);
         const responseToCache = new Response(freshResponse.body, freshResponse);
         responseToCache.headers.set('x-cached-at', new Date().toISOString());
-        await cache.put(request, responseToCache);
+        if (responseToCache.ok && !responseToCache.headers.has('Set-Cookie')) {
+            await cache.put(request, responseToCache);
+        }
     } catch (error) {
         console.error('Background revalidation failed:', error);
     }
@@ -569,8 +584,9 @@ function trackCDNMetrics() {
             decodedBodySize: resource.decodedBodySize,
 
             // Cache hit indicator
-            // transferSize = 0 usually means cache hit
-            cacheHit: resource.transferSize === 0,
+            // transferSize = 0 and decodedBodySize > 0 usually means a local browser cache hit.
+            // Cross-origin resources without Timing-Allow-Origin can also report transferSize = 0.
+            cacheHit: resource.transferSize === 0 && resource.decodedBodySize > 0,
 
             // Timing breakdown
             dns: resource.domainLookupEnd - resource.domainLookupStart,

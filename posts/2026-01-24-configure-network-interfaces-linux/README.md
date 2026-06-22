@@ -341,7 +341,7 @@ network:
       parameters:
         mode: active-backup       # Failover mode
         primary: eth0             # Preferred interface
-        mii-monitoring-interval: 100    # Check link every 100ms
+        mii-monitor-interval: 100        # Check link every 100ms
 ```
 
 ### Bonding with systemd-networkd
@@ -359,9 +359,19 @@ MIIMonitorSec=100ms
 ```
 
 ```ini
-# /etc/systemd/network/20-bond0-slaves.network
+# /etc/systemd/network/20-bond0-eth0.network
 [Match]
-Name=eth0 eth1
+Name=eth0
+
+[Network]
+Bond=bond0
+PrimarySlave=true
+```
+
+```ini
+# /etc/systemd/network/21-bond0-eth1.network
+[Match]
+Name=eth1
 
 [Network]
 Bond=bond0

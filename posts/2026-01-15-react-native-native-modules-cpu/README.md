@@ -68,7 +68,7 @@ flowchart TB
         Android[Android Modules<br/>Kotlin/Java]
     end
     
-    App -->|JSON Serialization| MQ
+    App -->|Serializable Values| MQ
     MQ -->|Native Calls| iOS
     MQ -->|Native Calls| Android
 ```
@@ -76,7 +76,7 @@ flowchart TB
 ### Key Concepts
 
 1. **Asynchronous Communication**: All bridge communication is asynchronous by default
-2. **JSON Serialization**: Data is serialized to JSON when crossing the bridge
+2. **Serializable Data**: Values crossing the legacy bridge must use React Native-supported serializable types
 3. **Batched Calls**: Multiple calls are batched together for efficiency
 4. **Thread Safety**: Native modules must handle thread safety appropriately
 
@@ -94,6 +94,8 @@ First, create a new Swift file in your iOS project:
 import Foundation
 import UIKit
 import Accelerate
+import CommonCrypto
+import React
 
 @objc(ImageProcessor)
 class ImageProcessor: NSObject {
@@ -123,7 +125,7 @@ class ImageProcessor: NSObject {
         return
       }
 
-      // Use Accelerate framework for optimized image processing
+      // Prepare a raw pixel buffer for image processing
       let width = cgImage.width
       let height = cgImage.height
       let bytesPerPixel = 4
@@ -147,7 +149,7 @@ class ImageProcessor: NSObject {
 
       context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-      // Apply grayscale using vectorized operations
+      // Apply grayscale using a scalar loop
       for i in stride(from: 0, to: rawData.count, by: 4) {
         let r = Float(rawData[i])
         let g = Float(rawData[i + 1])
@@ -297,8 +299,8 @@ For those preferring Objective-C:
 // ImageProcessorObjC.m
 
 #import "ImageProcessorObjC.h"
-#import <Accelerate/Accelerate.h>
 #import <CommonCrypto/CommonCrypto.h>
+#import <UIKit/UIKit.h>
 
 @implementation ImageProcessorObjC
 
@@ -385,8 +387,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.*
-import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
@@ -418,7 +420,10 @@ class ImageProcessorModule(reactContext: ReactApplicationContext) :
                 bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
                 // Process in parallel chunks for better performance
-                val chunkSize = pixels.size / Runtime.getRuntime().availableProcessors()
+                val chunkSize = maxOf(
+                    1,
+                    pixels.size / Runtime.getRuntime().availableProcessors()
+                )
                 val jobs = pixels.indices.chunked(chunkSize).map { range ->
                     async {
                         for (i in range) {
@@ -539,13 +544,15 @@ class ImageProcessorModule(reactContext: ReactApplicationContext) :
                 val pixels = IntArray(totalPixels)
                 bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
+                val progressInterval = maxOf(1, totalPixels / 10)
+
                 for (i in pixels.indices) {
                     val pixel = pixels[i]
                     val gray = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
                     pixels[i] = Color.argb(Color.alpha(pixel), gray, gray, gray)
 
                     processed++
-                    if (processed % (totalPixels / 10) == 0) {
+                    if (processed % progressInterval == 0) {
                         val progress = (processed * 100) / totalPixels
                         // Send progress event
                         sendProgressEvent(progress)
@@ -585,6 +592,16 @@ class ImageProcessorModule(reactContext: ReactApplicationContext) :
         reactApplicationContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
             .emit("ImageProcessorProgress", params)
+    }
+
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Required for NativeEventEmitter subscriptions on Android.
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Required for NativeEventEmitter subscriptions on Android.
     }
 
     private fun ReadableArray.toDoubleMatrix(): Array<DoubleArray> {
@@ -641,13 +658,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 
-import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.ReadableArray;
-import com.facebook.react.bridge.WritableArray;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -758,7 +772,7 @@ Now let's create the TypeScript interface to use our native modules.
 ```typescript
 // src/native/ImageProcessor.ts
 
-import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
 
 const { ImageProcessor } = NativeModules;
 
@@ -895,7 +909,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { ImageProcessorAPI, subscribeToProgress } from '../native/ImageProcessor';
+import { ImageProcessorAPI } from '../native/ImageProcessor';
 
 export const ImageProcessingScreen: React.FC = () => {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
@@ -1321,21 +1335,24 @@ class SafeImageProcessor {
 
     fun process(input: String): String {
         // Use atomic operations
-        val count = processingCount.incrementAndGet()
+        processingCount.incrementAndGet()
+        try {
 
-        // Check cache first (thread-safe)
-        cache[input]?.let { return String(it) }
-
-        // Lock for critical sections
-        return lock.withLock {
-            // Double-check pattern
+            // Check cache first (thread-safe)
             cache[input]?.let { return String(it) }
 
-            val result = doExpensiveOperation(input)
-            cache[input] = result.toByteArray()
+            // Lock for critical sections
+            return lock.withLock {
+                // Double-check pattern
+                cache[input]?.let { return String(it) }
 
+                val result = doExpensiveOperation(input)
+                cache[input] = result.toByteArray()
+
+                result
+            }
+        } finally {
             processingCount.decrementAndGet()
-            result
         }
     }
 }
@@ -1348,8 +1365,8 @@ Turbo Modules are the next generation of native modules in React Native, offerin
 ### Key Benefits of Turbo Modules
 
 1. **Lazy Loading**: Modules are loaded only when first accessed
-2. **Direct JavaScript-Native Communication**: Bypasses the bridge JSON serialization
-3. **Synchronous Methods**: True synchronous native calls without blocking
+2. **Direct JavaScript-Native Communication**: Uses JSI-based bindings instead of the legacy batched bridge
+3. **Synchronous Methods**: Supports synchronous native calls for small, fast operations
 4. **Type Safety**: Codegen ensures type consistency between JS and native
 5. **Faster Startup**: Reduced app startup time
 
@@ -1442,7 +1459,6 @@ package com.yourapp.nativemodules
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableArray
-import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.module.annotations.ReactModule
 import com.yourapp.codegen.NativeImageProcessorSpec
 
@@ -1484,7 +1500,7 @@ class ImageProcessorTurboModule(reactContext: ReactApplicationContext) :
 
 ## Performance Benefits
 
-Let's quantify the performance benefits of native modules with real benchmarks.
+Let's quantify the performance benefits of native modules with representative benchmark numbers.
 
 ### Benchmark: Image Processing
 
@@ -1542,25 +1558,23 @@ const matrixBenchmark = {
 import Accelerate
 
 func optimizedGrayscale(_ pixels: inout [Float], count: Int) {
-  // Convert RGB to grayscale using vDSP
-  var red = [Float](repeating: 0, count: count)
-  var green = [Float](repeating: 0, count: count)
-  var blue = [Float](repeating: 0, count: count)
-  var gray = [Float](repeating: 0, count: count)
+  // pixels contains interleaved RGBA Float values.
+  var red = stride(from: 0, to: count * 4, by: 4).map { pixels[$0] }
+  var green = stride(from: 1, to: count * 4, by: 4).map { pixels[$0] }
+  var blue = stride(from: 2, to: count * 4, by: 4).map { pixels[$0] }
 
-  // Deinterleave
-  vDSP_vgathra(pixels, 4, &red, 1, vDSP_Length(count))
-  vDSP_vgathra(pixels + 1, 4, &green, 1, vDSP_Length(count))
-  vDSP_vgathra(pixels + 2, 4, &blue, 1, vDSP_Length(count))
+  red = vDSP.multiply(0.299, red)
+  green = vDSP.multiply(0.587, green)
+  blue = vDSP.multiply(0.114, blue)
 
-  // Apply luminosity weights
-  var redWeight: Float = 0.299
-  var greenWeight: Float = 0.587
-  var blueWeight: Float = 0.114
+  let gray = vDSP.add(vDSP.add(red, green), blue)
 
-  vDSP_vsmul(red, 1, &redWeight, &gray, 1, vDSP_Length(count))
-  vDSP_vsmsa(green, 1, &greenWeight, gray, &gray, 1, vDSP_Length(count))
-  vDSP_vsmsa(blue, 1, &blueWeight, gray, &gray, 1, vDSP_Length(count))
+  for i in 0..<count {
+    let base = i * 4
+    pixels[base] = gray[i]
+    pixels[base + 1] = gray[i]
+    pixels[base + 2] = gray[i]
+  }
 }
 ```
 
@@ -1829,7 +1843,7 @@ describe('Image Processor Native Module', () => {
 ```typescript
 // src/native/SafeNativeModule.ts
 
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
 class NativeModuleError extends Error {
   constructor(
@@ -2074,10 +2088,10 @@ func processLargeFile(
     var processedData = Data()
 
     while true {
-      autoreleasepool {
-        let chunk = fileHandle.readData(ofLength: chunkSize)
-        if chunk.isEmpty { break }
+      let chunk = fileHandle.readData(ofLength: chunkSize)
+      if chunk.isEmpty { break }
 
+      autoreleasepool {
         let processed = processChunk(chunk)
         processedData.append(processed)
       }
@@ -2108,7 +2122,7 @@ Key takeaways:
 
 6. **Handle Errors Gracefully**: Always provide meaningful error messages and handle failures gracefully.
 
-7. **Optimize for Platform**: Use platform-specific optimizations like Accelerate on iOS or RenderScript on Android.
+7. **Optimize for Platform**: Use platform-specific optimizations like Accelerate on iOS or the Android NDK, Vulkan, RenderEffect, or the RenderScript Intrinsics Replacement Toolkit on Android.
 
 By following the patterns and best practices outlined in this guide, you'll be able to create efficient, maintainable native modules that significantly improve your React Native app's performance.
 

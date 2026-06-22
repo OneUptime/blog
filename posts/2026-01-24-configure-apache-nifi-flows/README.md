@@ -69,8 +69,6 @@ Let's start with a simple flow that reads files from a directory and writes them
 Most flows need to transform data. Here's how to add a JoltTransformJSON processor for JSON transformation.
 
 ```json
-// Jolt specification for transforming JSON
-// Converts flat structure to nested
 [
   {
     "operation": "shift",
@@ -196,8 +194,7 @@ flowchart TB
     end
 
     subgraph Load
-        G --> H[ConvertJSONToSQL]
-        H --> I[PutDatabaseRecord]
+        G --> I[PutDatabaseRecord]
         I --> |success| J[LogSuccess]
         I --> |failure| K[RetryOrDLQ]
     end
@@ -264,7 +261,7 @@ flowchart TB
         <property name="Table Name">records</property>
         <property name="Translate Field Names">true</property>
         <!-- Batch size for performance -->
-        <property name="Max Batch Size">1000</property>
+        <property name="Maximum Batch Size">1000</property>
     </properties>
 </processor>
 ```

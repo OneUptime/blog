@@ -47,11 +47,11 @@ sequenceDiagram
 ### Node.js with passport-saml
 
 ```javascript
-// Install: npm install passport passport-saml express-session
+// Install: npm install passport @node-saml/passport-saml express-session
 
 const express = require('express');
 const passport = require('passport');
-const SamlStrategy = require('passport-saml').Strategy;
+const SamlStrategy = require('@node-saml/passport-saml').Strategy;
 const session = require('express-session');
 
 const app = express();
@@ -76,19 +76,20 @@ const samlStrategy = new SamlStrategy(
         issuer: 'https://yourapp.com',
 
         // IdP certificate (from IdP metadata)
-        cert: `-----BEGIN CERTIFICATE-----
+        idpCert: `-----BEGIN CERTIFICATE-----
 MIICpDCCAYwCCQDU+pQ4P2...
 -----END CERTIFICATE-----`,
 
         // Optional: Sign requests
         privateKey: process.env.SAML_PRIVATE_KEY,
+        publicCert: process.env.SAML_PUBLIC_CERT,
         signatureAlgorithm: 'sha256',
 
         // Identity provider settings
         identifierFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
 
         // Validation settings
-        validateInResponseTo: true,
+        validateInResponseTo: 'always',
         disableRequestedAuthnContext: true
     },
     // Verify callback
@@ -142,7 +143,7 @@ app.post('/auth/saml/callback',
 // SP Metadata endpoint
 app.get('/auth/saml/metadata', (req, res) => {
     res.type('application/xml');
-    res.send(samlStrategy.generateServiceProviderMetadata());
+    res.send(samlStrategy.generateServiceProviderMetadata(null, process.env.SAML_PUBLIC_CERT));
 });
 
 // Logout
@@ -374,37 +375,40 @@ Group Attribute Statements:
 ### Azure AD Configuration
 
 ```powershell
-# Azure AD SAML Configuration via PowerShell
-# Install: Install-Module AzureAD
+# Microsoft Entra SAML Configuration via PowerShell
+# Install: Install-Module Microsoft.Graph -Scope CurrentUser
 
-Connect-AzureAD
+Connect-MgGraph -Scopes "Application.ReadWrite.All"
 
 # Create SAML application
 $appName = "Your Application"
 $replyUrl = "https://yourapp.com/saml/acs"
 $identifierUri = "https://yourapp.com"
 
-# Create application
-$app = New-AzureADApplication `
-    -DisplayName $appName `
-    -ReplyUrls @($replyUrl) `
-    -IdentifierUris @($identifierUri)
+# Instantiate the non-gallery application template
+$templateId = "8adf8e6e-67b2-4cf2-a259-e3dc5476c621"
+$params = @{ displayName = $appName }
+$appAndSp = Invoke-MgInstantiateApplicationTemplate `
+    -ApplicationTemplateId $templateId `
+    -BodyParameter $params
 
-# Create service principal
-$sp = New-AzureADServicePrincipal -AppId $app.AppId
+$applicationId = $appAndSp.Application.Id
+$servicePrincipalId = $appAndSp.ServicePrincipal.Id
 
-# Configure SAML signing certificate
-$certPath = "C:\path\to\certificate.pfx"
-$certPassword = ConvertTo-SecureString -String "password" -AsPlainText -Force
-$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath, $certPassword)
+# Set SAML SSO mode on the service principal
+Update-MgServicePrincipal `
+    -ServicePrincipalId $servicePrincipalId `
+    -BodyParameter @{ preferredSingleSignOnMode = "saml" }
 
-# Add certificate to application
-New-AzureADApplicationKeyCredential `
-    -ObjectId $app.ObjectId `
-    -CustomKeyIdentifier "SAMLSigningCert" `
-    -Type AsymmetricX509Cert `
-    -Usage Sign `
-    -Value ([System.Convert]::ToBase64String($cert.GetRawCertData()))
+# Configure Entity ID and Reply URL
+Update-MgApplication `
+    -ApplicationId $applicationId `
+    -BodyParameter @{
+        identifierUris = @($identifierUri)
+        web = @{
+            redirectUris = @($replyUrl)
+        }
+    }
 ```
 
 Azure Portal configuration:
@@ -556,9 +560,7 @@ const samlStrategy = new SamlStrategy(
     {
         ...config,
         // Allow unsolicited responses (IdP-initiated)
-        validateInResponseTo: false,
-        // Or use 'never' to explicitly allow
-        // validateInResponseTo: 'never'
+        validateInResponseTo: 'never'
     },
     (profile, done) => {
         // Process user profile
@@ -567,16 +569,18 @@ const samlStrategy = new SamlStrategy(
 );
 
 // Alternative: Conditional validation
+const conditionalSamlStrategy = new SamlStrategy(
+    {
+        ...config,
+        // Validate InResponseTo for SP-initiated responses, but allow IdP-initiated responses without it
+        validateInResponseTo: 'ifPresent'
+    },
+    (profile, done) => done(null, profile)
+);
+passport.use('saml-conditional', conditionalSamlStrategy);
+
 app.post('/auth/saml/callback', (req, res, next) => {
-    // Check if this is IdP-initiated (no InResponseTo)
-    const samlResponse = req.body.SAMLResponse;
-    const decoded = Buffer.from(samlResponse, 'base64').toString('utf8');
-    const isIdpInitiated = !decoded.includes('InResponseTo');
-
-    // Configure strategy based on flow type
-    samlStrategy.options.validateInResponseTo = !isIdpInitiated;
-
-    passport.authenticate('saml', (err, user) => {
+    passport.authenticate('saml-conditional', (err, user) => {
         if (err) return next(err);
         if (!user) return res.redirect('/login-failed');
 
@@ -685,6 +689,9 @@ function handleSAMLError(error, samlResponse) {
     return { message: error.message, solution: 'Check SAML response and configuration' };
 }
 
+// Install for this helper: npm install @xmldom/xmldom
+const { DOMParser } = require('@xmldom/xmldom');
+
 // Debug SAML response
 function debugSAMLResponse(samlResponse) {
     const decoded = Buffer.from(samlResponse, 'base64').toString('utf8');
@@ -780,8 +787,9 @@ flowchart TB
 ```javascript
 // Secure SAML configuration
 const secureConfig = {
-    // Always sign requests
-    authnRequestsSigned: true,
+    // Sign requests with your SP private key
+    privateKey: process.env.SAML_PRIVATE_KEY,
+    publicCert: process.env.SAML_PUBLIC_CERT,
 
     // Require signed assertions
     wantAssertionsSigned: true,
@@ -790,7 +798,7 @@ const secureConfig = {
     signatureAlgorithm: 'sha256',
 
     // Validate InResponseTo to prevent replay
-    validateInResponseTo: true,
+    validateInResponseTo: 'always',
 
     // Short validity window
     acceptedClockSkewMs: 60000,  // 1 minute
@@ -798,7 +806,8 @@ const secureConfig = {
     // Audience validation
     audience: 'https://yourapp.com',
 
-    // Certificate validation
+    // IdP certificate validation
+    idpCert: process.env.SAML_IDP_CERT,
     wantAuthnResponseSigned: true
 };
 

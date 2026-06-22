@@ -273,7 +273,7 @@ class ConsumerGroup:
                             id=msg_id,
                             stream=self.stream_name,
                             data=json.loads(fields.get('data', '{}')),
-                            attempts=int(fields.get('attempts', 0)) + 1,
+                            attempts=entry['times_delivered'] + 1,
                             created_at=float(fields.get('created_at', time.time()))
                         ))
 
@@ -337,7 +337,7 @@ class Worker:
             self.consumer.acknowledge(message.id)
             logger.warning(f"Message {message.id} moved to dead letter queue")
         else:
-            # Update attempt count (will be retried on next claim)
+            # Leave it pending; Redis will increment the delivery count on claim.
             logger.info(f"Message {message.id} will be retried "
                        f"(attempt {message.attempts + 1}/{self.max_retries})")
 
@@ -648,7 +648,7 @@ class ConsumerGroup {
                     claimed.push({
                         id: msgId,
                         data: JSON.parse(fieldObj.data || '{}'),
-                        attempts: parseInt(fieldObj.attempts || '0') + 1,
+                        attempts: deliveries + 1,
                         createdAt: parseFloat(fieldObj.created_at || Date.now())
                     });
                 }

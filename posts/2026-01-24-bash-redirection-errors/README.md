@@ -111,6 +111,12 @@ if [[ ! -d "$parent_dir" ]]; then
     }
 fi
 
+# Check if parent directory is writable
+if [[ ! -w "$parent_dir" ]]; then
+    echo "Cannot write to directory: $parent_dir" >&2
+    exit 1
+fi
+
 # Check if file is writable (or can be created)
 if [[ -e "$output_file" && ! -w "$output_file" ]]; then
     echo "Cannot write to: $output_file" >&2
@@ -369,11 +375,11 @@ EOF
 # Here strings (<<<) pass a string as stdin
 grep "pattern" <<< "string to search"
 
-# PROBLEM: Trying to use here string with multiple words unquoted
-# Wrong - word splitting occurs
+# PROBLEM: Leaving variables unquoted in here strings is confusing
+# Bash does not split here-string input, but quoting makes intent clear
 grep pattern <<< $variable_with_spaces
 
-# SOLUTION: Always quote
+# SOLUTION: Quote variables for clarity and consistency
 variable="word1 word2 word3"
 grep "word2" <<< "$variable"
 
@@ -404,11 +410,14 @@ diff <(sort file1) <(sort file2)
 #!/bin/bash
 diff <(sort file1) <(sort file2)  # Works in Bash
 
-# PROBLEM: Writing to process substitution incorrectly
-# This does not work as expected
+# PROBLEM: Forgetting that output process substitution runs asynchronously
+# This is valid, but the process may still be finishing after echo returns
 echo "data" > >(cat)
 
-# SOLUTION: Process substitution for input works reliably
+# SOLUTION: Use output process substitution when a command should receive output
+printf '%s\n' "data" > >(tee /tmp/data.log)
+
+# Process substitution for input works reliably
 while read -r line; do
     echo "Processing: $line"
 done < <(find . -name "*.txt")
@@ -564,7 +573,9 @@ atomic_write() {
     local temp_file
 
     # Create temp file in same directory (for atomic rename)
-    temp_file=$(mktemp "$(dirname "$target")/.tmp.XXXXXX")
+    if ! temp_file=$(mktemp "$(dirname "$target")/.tmp.XXXXXX"); then
+        return 1
+    fi
 
     # Write to temp file
     if ! echo "$content" > "$temp_file"; then
@@ -600,13 +611,7 @@ multi_tee() {
     shift
     local files=("$@")
 
-    # Build tee command
-    local tee_cmd="tee"
-    for file in "${files[@]:1}"; do
-        tee_cmd="$tee_cmd | tee"
-    done
-
-    # Simpler approach: use tee with process substitution
+    # tee can write to multiple files directly
     echo "$input" | tee "${files[@]}"
 }
 ```

@@ -35,7 +35,7 @@ ulimit -n
 kafka soft nofile 128000
 kafka hard nofile 128000
 
-# Or set system-wide in /etc/sysctl.conf
+# Also ensure the kernel-wide file handle limit is high enough in /etc/sysctl.conf
 fs.file-max = 500000
 ```
 
@@ -215,7 +215,7 @@ log.segment.bytes=1073741824
 log.roll.hours=168
 
 # Log cleanup settings
-log.cleaner.enable=true
+# log.cleaner.enable is true by default and deprecated in Kafka 4.x; leave it enabled
 log.cleanup.policy=delete
 
 ############################# Network Settings #############################
@@ -285,9 +285,10 @@ replica.fetch.max.bytes=52428800
 # Larger log segments
 log.segment.bytes=2147483648
 
-# Flush settings - let OS handle most flushing
-log.flush.interval.messages=50000
-log.flush.interval.ms=10000
+# Flush settings - leave unset so Kafka can rely on replication for durability
+# and the operating system's background flush behavior for efficiency
+# log.flush.interval.messages=9223372036854775807
+# log.flush.interval.ms=9223372036854775807
 ```
 
 ## Java Monitoring and Tuning Code
@@ -547,13 +548,10 @@ public class KafkaPerformanceBenchmark {
 ## Python Performance Tuning Script
 
 ```python
-from confluent_kafka import Producer, Consumer
+from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 import time
-import threading
-import statistics
 from typing import List, Dict
-import json
 
 class KafkaBenchmark:
     def __init__(self, bootstrap_servers: str):
@@ -582,7 +580,6 @@ class KafkaBenchmark:
 
         delivered = [0]
         errors = [0]
-        latencies = []
 
         def delivery_callback(err, msg):
             if err:
@@ -593,8 +590,12 @@ class KafkaBenchmark:
         start_time = time.time()
 
         for i in range(num_messages):
-            send_time = time.time()
-            producer.produce(topic, payload, callback=delivery_callback)
+            while True:
+                try:
+                    producer.produce(topic, payload, callback=delivery_callback)
+                    break
+                except BufferError:
+                    producer.poll(0.1)
 
             if i % 10000 == 0:
                 producer.poll(0)
@@ -765,13 +766,13 @@ groups:
         annotations:
           summary: High produce latency
 
-      - alert: LowDiskThroughput
+      - alert: LowBrokerIngress
         expr: rate(kafka_server_brokertopicmetrics_bytesinpersec[5m]) < 10000000
         for: 10m
         labels:
           severity: info
         annotations:
-          summary: Low disk throughput detected
+          summary: Low broker ingress detected
 ```
 
 ## Best Practices Summary
@@ -792,8 +793,9 @@ num.io.threads=16
 num.replica.fetchers=4
 socket.send.buffer.bytes=102400
 socket.receive.buffer.bytes=102400
-log.flush.interval.messages=10000
-log.flush.interval.ms=1000
+# Leave forced flush settings unset for throughput-oriented brokers
+# log.flush.interval.messages=9223372036854775807
+# log.flush.interval.ms=9223372036854775807
 ```
 
 ### 3. Regular Performance Testing

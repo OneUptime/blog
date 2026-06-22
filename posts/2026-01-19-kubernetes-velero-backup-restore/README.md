@@ -40,7 +40,7 @@ flowchart TB
         end
         
         subgraph "Backup Storage"
-            S3[S3-Compatible Storage<br/>AWS S3 / MinIO / GCS]
+            S3[Object Storage<br/>AWS S3 / MinIO / GCS / Azure Blob]
             Snapshots[Volume Snapshots<br/>CSI / Cloud Provider]
         end
         
@@ -67,7 +67,7 @@ flowchart TB
 
 1. A Kubernetes cluster (1.16+)
 2. kubectl configured to access the cluster
-3. An S3-compatible storage bucket (AWS S3, MinIO, GCS, Azure Blob)
+3. An object storage bucket (AWS S3, MinIO, GCS, Azure Blob, or another supported provider)
 4. Velero CLI installed locally
 
 ### Installing Velero CLI
@@ -78,7 +78,7 @@ flowchart TB
 brew install velero
 
 # Linux (download binary)
-VELERO_VERSION=v1.13.0
+VELERO_VERSION=v1.18.0
 wget https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz
 tar -xvf velero-${VELERO_VERSION}-linux-amd64.tar.gz
 sudo mv velero-${VELERO_VERSION}-linux-amd64/velero /usr/local/bin/
@@ -101,10 +101,11 @@ EOF
 # This creates the velero namespace and deploys all components
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.9.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket my-velero-backups \
     --backup-location-config region=us-east-1 \
     --snapshot-location-config region=us-east-1 \
+    --use-node-agent \
     --secret-file ./credentials-velero
 
 # Verify installation
@@ -119,6 +120,12 @@ For air-gapped or on-premises environments, MinIO provides S3-compatible storage
 ```yaml
 # minio-deployment.yaml
 # Deploy MinIO for backup storage (production should use distributed mode)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -161,6 +168,19 @@ spec:
 
 ---
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: velero
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: minio
@@ -179,26 +199,28 @@ spec:
 # Install Velero with MinIO
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.9.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket velero \
     --secret-file ./credentials-velero \
     --use-volume-snapshots=false \
+    --use-node-agent \
     --backup-location-config region=minio,s3ForcePathStyle="true",s3Url=http://minio.velero.svc:9000
 ```
 
 ### Installing with CSI Snapshots
 
-For persistent volume backups using CSI snapshots:
+For persistent volume backups using CSI snapshots, use Kubernetes 1.20 or later with a CSI driver that supports `snapshot.storage.k8s.io/v1` VolumeSnapshots:
 
 ```bash
-# Install Velero with CSI plugin
+# Install Velero with CSI snapshot support
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket my-velero-backups \
     --backup-location-config region=us-east-1 \
     --snapshot-location-config region=us-east-1 \
     --secret-file ./credentials-velero \
+    --use-node-agent \
     --features=EnableCSI
 
 # Verify CSI snapshot classes exist
@@ -211,8 +233,7 @@ kubectl get volumesnapshotclass
 
 ```bash
 # Back up the entire cluster (all namespaces)
-# This captures all Kubernetes resources except cluster-scoped resources
-# that are managed by the system (nodes, persistent volumes, etc.)
+# This captures all namespaces and includes cluster-scoped resources by default.
 velero backup create full-cluster-backup \
     --wait
 
@@ -272,10 +293,8 @@ spec:
   # Include persistent volumes (default is true)
   snapshotVolumes: true
   
-  # Default volume backup strategy
-  # opt-in: Only back up volumes with backup annotation
-  # opt-out: Back up all volumes except those with exclusion annotation
-  defaultVolumesToFsBackup: true
+  # Use snapshots rather than defaulting all pod volumes to file system backup
+  defaultVolumesToFsBackup: false
   
   # Time to live for this backup
   ttl: 720h  # 30 days
@@ -308,12 +327,12 @@ spec:
               timeout: 300s
 ```
 
-### File System Backup (Restic/Kopia)
+### File System Backup (Kopia/Restic)
 
-For volumes that don't support CSI snapshots, Velero can use file system backup:
+For volumes that don't support CSI snapshots, Velero can use file system backup. Kopia is the default uploader in current Velero releases; Restic is in the deprecation process.
 
 ```bash
-# Enable file system backup for a deployment
+# Enable file system backup for a pod
 kubectl annotate pod/my-pod backup.velero.io/backup-volumes=data-volume
 
 # Or use the defaultVolumesToFsBackup option in backup spec
@@ -698,7 +717,7 @@ velero_restore_success_total
 velero_restore_partial_failure_total
 
 # Backup storage location status
-velero_backup_storage_location_last_reconciliation_status
+velero_backup_last_status
 ```
 
 ```yaml

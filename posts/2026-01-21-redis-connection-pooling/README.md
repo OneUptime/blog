@@ -289,6 +289,9 @@ from redis.backoff import ExponentialBackoff
 from redis.retry import Retry
 from redis import ConnectionPool
 import ssl
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AdvancedRedisPool:
     """
@@ -305,27 +308,6 @@ class AdvancedRedisPool:
         self._last_failure_time = 0
         self._circuit_threshold = 5
         self._circuit_timeout = 30
-
-    def _create_ssl_context(self) -> ssl.SSLContext:
-        """Create SSL context for secure connections."""
-        ctx = ssl.create_default_context()
-
-        if self.config.get('ssl_certfile'):
-            ctx.load_cert_chain(
-                certfile=self.config['ssl_certfile'],
-                keyfile=self.config.get('ssl_keyfile')
-            )
-
-        if self.config.get('ssl_ca_certs'):
-            ctx.load_verify_locations(self.config['ssl_ca_certs'])
-
-        if self.config.get('ssl_check_hostname', True):
-            ctx.check_hostname = True
-        else:
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-
-        return ctx
 
     def _create_retry_strategy(self) -> Retry:
         """Create retry strategy with exponential backoff."""
@@ -367,8 +349,13 @@ class AdvancedRedisPool:
 
         # Add SSL if configured
         if self.config.get('use_ssl'):
-            pool_kwargs['ssl'] = True
-            pool_kwargs['ssl_context'] = self._create_ssl_context()
+            pool_kwargs['connection_class'] = redis.SSLConnection
+            pool_kwargs['ssl_certfile'] = self.config.get('ssl_certfile')
+            pool_kwargs['ssl_keyfile'] = self.config.get('ssl_keyfile')
+            pool_kwargs['ssl_ca_certs'] = self.config.get('ssl_ca_certs')
+            pool_kwargs['ssl_check_hostname'] = self.config.get('ssl_check_hostname', True)
+            if not pool_kwargs['ssl_check_hostname']:
+                pool_kwargs['ssl_cert_reqs'] = ssl.CERT_NONE
 
         self._pool = ConnectionPool(**pool_kwargs)
 
@@ -445,6 +432,8 @@ pool.initialize()
 ```
 
 ## Node.js Implementation
+
+Note: Redis currently recommends `node-redis` for new Node.js projects, while `ioredis` remains maintained and widely used. The following examples are most useful when you already use `ioredis` or need its cluster behavior.
 
 ### Using ioredis with Connection Pooling
 
@@ -932,7 +921,7 @@ async function clusterExample() {
 
 ```python
 def calculate_pool_size(
-    concurrent_requests: int,
+    requests_per_second: int,
     avg_command_time_ms: float,
     target_utilization: float = 0.7,
     safety_margin: float = 1.2
@@ -941,7 +930,7 @@ def calculate_pool_size(
     Calculate optimal connection pool size.
 
     Args:
-        concurrent_requests: Expected concurrent requests
+        requests_per_second: Expected request rate
         avg_command_time_ms: Average command execution time in ms
         target_utilization: Target pool utilization (0.0-1.0)
         safety_margin: Safety multiplier for peak loads
@@ -954,8 +943,6 @@ def calculate_pool_size(
     # lambda = arrival rate (requests per second)
     # W = average time in system (command time)
 
-    # Assuming requests arrive evenly distributed
-    requests_per_second = concurrent_requests
     avg_time_seconds = avg_command_time_ms / 1000
 
     # Average connections in use
@@ -989,7 +976,7 @@ from typing import Optional
 
 class DynamicPoolManager:
     """
-    Dynamically adjusts pool size based on load.
+    Dynamically recommends pool size based on load.
     """
 
     def __init__(
@@ -1240,8 +1227,8 @@ class RedisHealthChecker:
                 status = HealthStatus.HEALTHY
 
             # Check for warning signs
-            if details['rejected_connections'] > 0:
-                status = max(status, HealthStatus.DEGRADED, key=lambda x: x.value)
+            if details['rejected_connections'] > 0 and status == HealthStatus.HEALTHY:
+                status = HealthStatus.DEGRADED
 
             self._consecutive_failures = 0
 

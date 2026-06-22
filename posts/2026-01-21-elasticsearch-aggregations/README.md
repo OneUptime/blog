@@ -113,7 +113,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
     "aggs": {
       "unique_customers": {
         "cardinality": {
-          "field": "customer_id",
+          "field": "customer_id.keyword",
           "precision_threshold": 10000
         }
       }
@@ -155,7 +155,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
     "aggs": {
       "by_category": {
         "terms": {
-          "field": "category",
+          "field": "category.keyword",
           "size": 10,
           "order": { "_count": "desc" }
         }
@@ -334,7 +334,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
     "size": 0,
     "aggs": {
       "by_category": {
-        "terms": { "field": "category" },
+        "terms": { "field": "category.keyword" },
         "aggs": {
           "total_sales": { "sum": { "field": "amount" } },
           "avg_order": { "avg": { "field": "amount" } },
@@ -369,7 +369,8 @@ curl -X GET "https://localhost:9200/orders/_search" \
       "sales_over_time": {
         "date_histogram": {
           "field": "order_date",
-          "calendar_interval": "month"
+          "calendar_interval": "month",
+          "min_doc_count": 0
         },
         "aggs": {
           "sales": { "sum": { "field": "amount" } },
@@ -398,7 +399,8 @@ curl -X GET "https://localhost:9200/orders/_search" \
       "daily_sales": {
         "date_histogram": {
           "field": "order_date",
-          "calendar_interval": "day"
+          "calendar_interval": "day",
+          "min_doc_count": 0
         },
         "aggs": {
           "sales": { "sum": { "field": "amount" } },
@@ -429,7 +431,8 @@ curl -X GET "https://localhost:9200/orders/_search" \
       "monthly_sales": {
         "date_histogram": {
           "field": "order_date",
-          "calendar_interval": "month"
+          "calendar_interval": "month",
+          "min_doc_count": 0
         },
         "aggs": {
           "sales": { "sum": { "field": "amount" } },
@@ -457,7 +460,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
     "aggs": {
       "top_categories": {
         "terms": {
-          "field": "category",
+          "field": "category.keyword",
           "size": 100
         },
         "aggs": {
@@ -488,13 +491,13 @@ curl -X GET "https://localhost:9200/orders/_search" \
       "bool": {
         "filter": [
           { "range": { "order_date": { "gte": "2024-01-01" } } },
-          { "term": { "status": "completed" } }
+          { "term": { "status.keyword": "completed" } }
         ]
       }
     },
     "aggs": {
       "by_category": {
-        "terms": { "field": "category" },
+        "terms": { "field": "category.keyword" },
         "aggs": {
           "revenue": { "sum": { "field": "amount" } }
         }
@@ -514,7 +517,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
   -d '{
     "size": 0,
     "query": {
-      "term": { "category": "electronics" }
+      "term": { "category.keyword": "electronics" }
     },
     "aggs": {
       "filtered_stats": {
@@ -553,7 +556,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
         "stats": { "field": "amount" }
       },
       "unique_customers": {
-        "cardinality": { "field": "customer_id" }
+        "cardinality": { "field": "customer_id.keyword" }
       },
       "monthly_trend": {
         "date_histogram": {
@@ -562,24 +565,26 @@ curl -X GET "https://localhost:9200/orders/_search" \
         },
         "aggs": {
           "revenue": { "sum": { "field": "amount" } },
-          "orders": { "value_count": { "field": "_id" } },
+          "orders": { "value_count": { "field": "amount" } },
           "avg_order_value": { "avg": { "field": "amount" } }
         }
       },
       "top_categories": {
         "terms": {
-          "field": "category",
+          "field": "category.keyword",
           "size": 5,
           "order": { "revenue": "desc" }
         },
         "aggs": {
           "revenue": { "sum": { "field": "amount" } },
-          "percentage": {
+          "orders": { "value_count": { "field": "amount" } },
+          "avg_order_value": {
             "bucket_script": {
               "buckets_path": {
-                "categoryRevenue": "revenue"
+                "categoryRevenue": "revenue",
+                "orderCount": "orders"
               },
-              "script": "params.categoryRevenue"
+              "script": "params.orderCount > 0 ? params.categoryRevenue / params.orderCount : 0"
             }
           }
         }

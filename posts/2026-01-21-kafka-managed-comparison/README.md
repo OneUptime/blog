@@ -16,11 +16,11 @@ Choosing the right Kafka deployment option is crucial for your streaming platfor
 |---------|----------------|---------|-------------|
 | Management | Fully managed | Managed brokers | Full control |
 | Setup time | Minutes | Hours | Days/Weeks |
-| Schema Registry | Included | Separate (Glue) | Deploy separately |
-| Kafka Connect | Managed connectors | Self-managed | Self-managed |
-| ksqlDB | Included | Not available | Deploy separately |
+| Schema Registry | Managed service | Separate (Glue) | Deploy separately |
+| Kafka Connect | Managed connectors | MSK Connect or self-managed | Self-managed |
+| ksqlDB | Managed on supported cluster types | Not available | Deploy separately |
 | Multi-cloud | Yes | AWS only | Yes |
-| Cost model | Pay per use | Per broker hour | Infrastructure |
+| Cost model | Consumption based | Broker-hour or usage based | Infrastructure |
 
 ## Architecture Comparison
 
@@ -53,8 +53,8 @@ flowchart TB
             B2["Broker<br/>AZ-b"]
             B3["Broker<br/>AZ-c"]
         end
-        ZK["ZooKeeper (Managed)<br/>or KRaft for Serverless"]
-        SM["Self-managed: Schema Registry, Connect, ksqlDB"]
+        ZK["ZooKeeper or KRaft<br/>(Managed metadata)"]
+        SM["Separate services:<br/>Glue Schema Registry, MSK Connect, Replicator"]
         Brokers --> ZK
         ZK --> SM
     end
@@ -94,10 +94,11 @@ cluster_types:
   - standard: "Multi-zone, higher throughput"
   - dedicated: "Single-tenant, highest performance"
 
-included_services:
+available_services:
   - schema_registry: "Fully managed"
-  - kafka_connect: "Managed connectors (200+)"
-  - ksqldb: "Managed stream processing"
+  - kafka_connect: "Managed connectors (100+)"
+  - ksqldb: "Managed stream processing on supported cluster types"
+  - flink: "Managed stream processing"
   - cluster_linking: "Cross-cluster replication"
   - audit_logs: "Compliance logging"
 
@@ -119,8 +120,10 @@ cluster_types:
 
 included_services:
   - kafka_brokers: "Managed"
-  - zookeeper: "Managed"
+  - metadata_management: "Managed ZooKeeper or KRaft"
   - storage: "Auto-scaling EBS"
+  - msk_connect: "Managed Kafka Connect workers"
+  - msk_replicator: "Managed replication between MSK clusters"
 
 integrations:
   - iam_authentication: true
@@ -253,6 +256,9 @@ public class AWSMSKClient {
 ### Self-Hosted
 
 ```java
+import org.apache.kafka.clients.producer.ProducerConfig;
+import java.util.Properties;
+
 public class SelfHostedKafkaClient {
 
     public static Properties getProducerConfig() {
@@ -290,7 +296,12 @@ public class SelfHostedKafkaClient {
 
 ```python
 from confluent_kafka import Producer, Consumer
-import json
+from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
+
+
+def oauth_cb(oauth_config):
+    auth_token, expiry_ms = MSKAuthTokenProvider.generate_auth_token('us-east-1')
+    return auth_token, expiry_ms / 1000
 
 # Confluent Cloud
 def get_confluent_cloud_config():
@@ -308,7 +319,7 @@ def get_msk_iam_config():
         'bootstrap.servers': 'b-1.mycluster.xxxxx.kafka.us-east-1.amazonaws.com:9098',
         'security.protocol': 'SASL_SSL',
         'sasl.mechanisms': 'OAUTHBEARER',
-        # Use aws-msk-iam-sasl-signer-python
+        'oauth_cb': oauth_cb
     }
 
 # AWS MSK with SASL/SCRAM
@@ -369,47 +380,45 @@ def consume_messages(config, topic, group_id):
 ### Confluent Cloud Pricing
 
 ```text
-Basic Cluster:
-- $0.0096 per partition hour
-- $0.10 per GB data in
-- $0.05 per GB data out
+Basic/Standard/Enterprise Clusters:
+- Billed by eCKU usage, ingress, egress, and storage
+- Legacy Basic/Standard clusters may still include partition-hour billing
 
 Dedicated Cluster:
-- Starting at $1.50/hour (1 CKU)
-- Additional networking costs
+- Billed by provisioned CKUs per hour
+- Additional networking and storage costs
 
 Schema Registry:
-- $0.004 per schema hour
-- $0.10 per 1M requests
+- Billed by Schema Registry usage dimensions
 
-ksqlDB:
-- Starting at $0.17 per CSU hour
+Stream processing:
+- ksqlDB is billed by CSU where available
+- Flink is billed by CFU-minute
 
 Example (moderate workload):
-- 100 partitions: $70/month
-- 500 GB in: $50/month
-- 1 TB out: $50/month
-- Total: ~$200/month
+- eCKU/CKU capacity, storage, networking, and add-on services all affect total cost
+- Use the Confluent Cloud Cost Estimator for current region-specific pricing
 ```
 
 ### AWS MSK Pricing
 
 ```text
 Provisioned:
-- kafka.m5.large: $0.21/hour per broker (~$150/month)
-- kafka.m5.xlarge: $0.42/hour per broker (~$300/month)
-- Storage: $0.10 per GB-month
+- Broker-hour pricing varies by broker type and region
+- Standard broker storage is billed per GB-month
+- Optional provisioned storage throughput and private connectivity may add cost
 
 Serverless:
-- $0.75 per partition hour (active)
-- $0.015 per GB data in
-- $0.0024 per GB data out
+- Cluster-hour charge
+- Partition-hour charge
+- Storage GB-month charge
+- Data in and data out charges
 
 Example (3-broker m5.large cluster):
-- Broker cost: $450/month
-- Storage (500 GB): $50/month
-- Data transfer: Variable
-- Total: ~$500-600/month
+- Broker cost: broker hourly rate x 3 x monthly hours
+- Storage: provisioned GB-months
+- Data transfer and optional features: Variable
+- Use the AWS Pricing Calculator for current region-specific pricing
 ```
 
 ### Self-Hosted Pricing
@@ -440,7 +449,7 @@ managed_tasks:
   - scaling: "Automatic or manual"
   - monitoring: "Built-in"
   - security_patches: "Automatic"
-  - backup: "Automatic"
+  - replication_and_durability: "Built-in"
 
 your_responsibility:
   - topic_management: true
@@ -454,15 +463,16 @@ your_responsibility:
 ```yaml
 managed_tasks:
   - broker_provisioning: "Automatic"
-  - zookeeper_management: "Automatic"
+  - metadata_management: "Automatic"
   - broker_patching: "Configurable window"
   - storage_scaling: "Automatic (if enabled)"
+  - connect_workers: "Managed by MSK Connect"
 
 your_responsibility:
   - broker_sizing: true
   - kafka_configuration: true
-  - schema_registry: true
-  - kafka_connect: true
+  - schema_registry: "Separate service"
+  - connector_plugins_and_configuration: true
   - monitoring_setup: true
   - version_upgrades: "Manual trigger"
 ```
@@ -517,7 +527,7 @@ your_responsibility:
 # Use Cluster Linking for live migration
 confluent kafka link create source-link \
   --cluster lkc-xxxxx \
-  --source-cluster-id lkc-yyyyy \
+  --source-cluster lkc-yyyyy \
   --source-bootstrap-server source.example.com:9092
 
 # Create mirror topic
@@ -548,4 +558,4 @@ source->target.topics = .*
 
 ## Conclusion
 
-Each Kafka deployment option has its strengths. Confluent Cloud offers the most complete managed experience, AWS MSK provides good AWS integration at lower cost, and self-hosted gives maximum control. Choose based on your team's expertise, budget, and operational requirements.
+Each Kafka deployment option has its strengths. Confluent Cloud offers the most complete managed experience, AWS MSK provides deep AWS integration, and self-hosted gives maximum control. Choose based on your team's expertise, budget, and operational requirements.

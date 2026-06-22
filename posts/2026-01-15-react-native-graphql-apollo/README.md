@@ -69,23 +69,27 @@ Let us start by creating a new React Native project and installing the necessary
 ### Initialize the Project
 
 ```bash
-npx react-native init GraphQLApp --template react-native-template-typescript
+npx @react-native-community/cli@latest init GraphQLApp
 cd GraphQLApp
 ```
 
 ### Install Apollo Client Dependencies
 
 ```bash
-npm install @apollo/client graphql
-# For React Native specific requirements
-npm install @apollo/client @react-native-async-storage/async-storage
+npm install @apollo/client graphql rxjs @react-native-async-storage/async-storage
 ```
 
 For TypeScript code generation:
 
 ```bash
 npm install -D @graphql-codegen/cli @graphql-codegen/typescript \
-  @graphql-codegen/typescript-operations @graphql-codegen/typescript-react-apollo
+  @graphql-codegen/typescript-operations @graphql-codegen/typed-document-node
+```
+
+For subscriptions, cache persistence, and network status monitoring:
+
+```bash
+npm install graphql-ws apollo3-cache-persist @react-native-community/netinfo
 ```
 
 ## Configuring Apollo Client
@@ -103,9 +107,11 @@ import {
   ApolloLink,
   from,
 } from '@apollo/client';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 import { setContext } from '@apollo/client/link/context';
-import { onError } from '@apollo/client/link/error';
+import { ErrorLink } from '@apollo/client/link/error';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { tap } from 'rxjs';
 
 // HTTP Link for GraphQL endpoint
 const httpLink = createHttpLink({
@@ -124,9 +130,9 @@ const authLink = setContext(async (_, { headers }) => {
 });
 
 // Error Handling Link
-const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
-  if (graphQLErrors) {
-    graphQLErrors.forEach(({ message, locations, path, extensions }) => {
+const errorLink = new ErrorLink(({ error }) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    error.errors.forEach(({ message, locations, path, extensions }) => {
       console.error(
         `[GraphQL error]: Message: ${message}, Location: ${locations}, Path: ${path}`
       );
@@ -137,10 +143,8 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
         handleAuthError();
       }
     });
-  }
-
-  if (networkError) {
-    console.error(`[Network error]: ${networkError}`);
+  } else if (error) {
+    console.error(`[Network error]: ${error}`);
     // Handle network errors (offline state, server down, etc.)
   }
 });
@@ -150,11 +154,14 @@ const loggingLink = new ApolloLink((operation, forward) => {
   console.log(`GraphQL Request: ${operation.operationName}`);
   const startTime = Date.now();
 
-  return forward(operation).map((response) => {
-    const duration = Date.now() - startTime;
-    console.log(`GraphQL Response: ${operation.operationName} (${duration}ms)`);
-    return response;
-  });
+  return forward(operation).pipe(
+    tap({
+      next() {
+        const duration = Date.now() - startTime;
+        console.log(`GraphQL Response: ${operation.operationName} (${duration}ms)`);
+      },
+    })
+  );
 });
 
 // Configure Cache
@@ -165,8 +172,15 @@ const cache = new InMemoryCache({
         // Configure field-level caching policies
         posts: {
           keyArgs: ['filter', 'orderBy'],
-          merge(existing = [], incoming) {
-            return [...existing, ...incoming];
+          merge(existing = { edges: [] }, incoming, { args }) {
+            if (!args?.after) {
+              return incoming;
+            }
+
+            return {
+              ...incoming,
+              edges: [...(existing.edges || []), ...(incoming.edges || [])],
+            };
           },
         },
       },
@@ -180,9 +194,9 @@ const cache = new InMemoryCache({
         // Custom field read policies
         isLikedByMe: {
           read(_, { readField }) {
-            const likes = readField('likes') as Array<{ id: string }>;
+            const likes = readField('likes') as readonly unknown[] | undefined;
             const currentUserId = getCurrentUserId();
-            return likes?.some((like) => like.id === currentUserId) ?? false;
+            return likes?.some((like) => readField('id', like) === currentUserId) ?? false;
           },
         },
       },
@@ -229,7 +243,7 @@ Wrap your application with the Apollo Provider:
 ```typescript
 // App.tsx
 import React from 'react';
-import { ApolloProvider } from '@apollo/client';
+import { ApolloProvider } from '@apollo/client/react';
 import { apolloClient } from './src/apollo/client';
 import { NavigationContainer } from '@react-navigation/native';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -265,13 +279,12 @@ const config: CodegenConfig = {
       plugins: [
         'typescript',
         'typescript-operations',
-        'typescript-react-apollo',
+        'typed-document-node',
       ],
       config: {
-        withHooks: true,
-        withHOC: false,
-        withComponent: false,
         skipTypename: false,
+        nonOptionalTypename: true,
+        skipTypeNameForRoot: true,
         dedupeFragments: true,
         enumsAsTypes: true,
         avoidOptionals: {
@@ -369,9 +382,9 @@ query GetPost($id: ID!) {
 }
 ```
 
-### Using Generated Hooks
+### Using Generated Documents with Hooks
 
-After running code generation, use the generated hooks:
+After running code generation, use the generated typed documents with Apollo Client hooks:
 
 ```typescript
 // src/screens/PostsScreen.tsx
@@ -383,16 +396,16 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  TouchableOpacity,
 } from 'react-native';
-import { useGetPostsQuery, PostFieldsFragment } from '../generated/graphql';
+import { useQuery } from '@apollo/client/react';
+import { GetPostsDocument, PostFieldsFragment } from '../generated/graphql';
 import { PostCard } from '../components/PostCard';
 import { ErrorView } from '../components/ErrorView';
 
 const POSTS_PER_PAGE = 10;
 
 export const PostsScreen: React.FC = () => {
-  const { data, loading, error, refetch, fetchMore } = useGetPostsQuery({
+  const { data, loading, error, refetch, fetchMore } = useQuery(GetPostsDocument, {
     variables: {
       first: POSTS_PER_PAGE,
       filter: { published: true },
@@ -559,16 +572,16 @@ mutation AddComment($postId: ID!, $text: String!) {
 ```typescript
 // src/hooks/usePostMutations.ts
 import { useCallback } from 'react';
+import { gql } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
 import {
-  useCreatePostMutation,
-  useUpdatePostMutation,
-  useDeletePostMutation,
-  useLikePostMutation,
-  useAddCommentMutation,
-  GetPostsDocument,
-  GetPostsQuery,
-  GetPostDocument,
+  AddCommentDocument,
   CreatePostInput,
+  CreatePostDocument,
+  DeletePostDocument,
+  LikePostDocument,
+  PostFieldsFragmentDoc,
+  UpdatePostDocument,
   UpdatePostInput,
 } from '../generated/graphql';
 import { useCurrentUser } from './useCurrentUser';
@@ -576,7 +589,7 @@ import { useCurrentUser } from './useCurrentUser';
 export function usePostMutations() {
   const { user } = useCurrentUser();
 
-  const [createPost, { loading: creating }] = useCreatePostMutation({
+  const [createPost, { loading: creating }] = useMutation(CreatePostDocument, {
     update(cache, { data }) {
       if (!data?.createPost) return;
 
@@ -602,7 +615,7 @@ export function usePostMutations() {
     },
   });
 
-  const [updatePost, { loading: updating }] = useUpdatePostMutation({
+  const [updatePost, { loading: updating }] = useMutation(UpdatePostDocument, {
     // Optimistic response for instant UI feedback
     optimisticResponse: ({ id, input }) => ({
       __typename: 'Mutation',
@@ -615,7 +628,7 @@ export function usePostMutations() {
     }),
   });
 
-  const [deletePost, { loading: deleting }] = useDeletePostMutation({
+  const [deletePost, { loading: deleting }] = useMutation(DeletePostDocument, {
     update(cache, { data }) {
       if (!data?.deletePost) return;
 
@@ -632,7 +645,7 @@ export function usePostMutations() {
     }),
   });
 
-  const [likePost, { loading: liking }] = useLikePostMutation({
+  const [likePost, { loading: liking }] = useMutation(LikePostDocument, {
     optimisticResponse: ({ postId }) => ({
       __typename: 'Mutation',
       likePost: {
@@ -644,7 +657,7 @@ export function usePostMutations() {
     }),
   });
 
-  const [addComment, { loading: commenting }] = useAddCommentMutation({
+  const [addComment, { loading: commenting }] = useMutation(AddCommentDocument, {
     update(cache, { data }, { variables }) {
       if (!data?.addComment || !variables?.postId) return;
 
@@ -790,9 +803,9 @@ import { TypePolicies, FieldPolicy } from '@apollo/client';
 function cursorPagination<T = any>(): FieldPolicy<T> {
   return {
     keyArgs: ['filter', 'orderBy'],
-    merge(existing: any = { edges: [], pageInfo: {} }, incoming: any) {
+    merge(existing: any = { edges: [], pageInfo: {} }, incoming: any, { args }) {
       // If it's a refresh (no cursor), replace entirely
-      if (!incoming.pageInfo?.startCursor) {
+      if (!args?.after) {
         return incoming;
       }
 
@@ -892,9 +905,9 @@ export const typePolicies: TypePolicies = {
 
 ```typescript
 // src/apollo/cachePersistence.ts
-import { InMemoryCache, NormalizedCacheObject } from '@apollo/client';
+import { InMemoryCache } from '@apollo/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { persistCache } from 'apollo3-cache-persist';
+import { AsyncStorageWrapper, persistCache } from 'apollo3-cache-persist';
 
 const CACHE_KEY = 'apollo-cache';
 
@@ -904,7 +917,7 @@ export async function setupCachePersistence(
   try {
     await persistCache({
       cache,
-      storage: AsyncStorage,
+      storage: new AsyncStorageWrapper(AsyncStorage),
       key: CACHE_KEY,
       maxSize: 1024 * 1024 * 10, // 10 MB
       debug: __DEV__,
@@ -1022,18 +1035,19 @@ subscription OnNotification {
 ```typescript
 // src/hooks/useRealTimeUpdates.ts
 import { useEffect } from 'react';
+import { gql } from '@apollo/client';
+import { useApolloClient, useSubscription } from '@apollo/client/react';
 import {
-  useOnPostCreatedSubscription,
-  useOnNewCommentSubscription,
-  useOnNotificationSubscription,
-  GetPostsDocument,
+  OnPostCreatedDocument,
+  OnNewCommentDocument,
+  OnNotificationDocument,
+  PostFieldsFragmentDoc,
 } from '../generated/graphql';
-import { useApolloClient } from '@apollo/client';
 
 export function useRealTimePostUpdates() {
   const client = useApolloClient();
 
-  const { data: newPost } = useOnPostCreatedSubscription();
+  const { data: newPost } = useSubscription(OnPostCreatedDocument);
 
   useEffect(() => {
     if (!newPost?.postCreated) return;
@@ -1074,7 +1088,7 @@ export function useRealTimePostUpdates() {
 export function useRealTimeComments(postId: string) {
   const client = useApolloClient();
 
-  const { data: newComment } = useOnNewCommentSubscription({
+  const { data: newComment } = useSubscription(OnNewCommentDocument, {
     variables: { postId },
     skip: !postId,
   });
@@ -1120,7 +1134,7 @@ export function useRealTimeComments(postId: string) {
 
 // Real-time notifications hook
 export function useNotifications() {
-  const { data, loading } = useOnNotificationSubscription();
+  const { data, loading } = useSubscription(OnNotificationDocument);
 
   useEffect(() => {
     if (data?.notificationReceived) {
@@ -1139,8 +1153,11 @@ Implement robust error handling for better user experience.
 
 ```typescript
 // src/apollo/errorHandling.ts
-import { ApolloError } from '@apollo/client';
-import { GraphQLError } from 'graphql';
+import { CombinedGraphQLErrors, ErrorLike } from '@apollo/client/errors';
+import { useCallback } from 'react';
+import { Alert } from 'react-native';
+import { navigationRef } from '../navigation/navigationRef';
+import { showErrorToast } from '../utils/toast';
 
 export enum ErrorCode {
   UNAUTHENTICATED = 'UNAUTHENTICATED',
@@ -1159,12 +1176,12 @@ interface ParsedError {
   retryable: boolean;
 }
 
-export function parseGraphQLError(error: ApolloError): ParsedError[] {
+export function parseGraphQLError(error: ErrorLike): ParsedError[] {
   const errors: ParsedError[] = [];
 
   // Handle GraphQL errors
-  if (error.graphQLErrors) {
-    error.graphQLErrors.forEach((graphQLError: GraphQLError) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    error.errors.forEach((graphQLError) => {
       const code = (graphQLError.extensions?.code as ErrorCode) || ErrorCode.INTERNAL_ERROR;
       const field = graphQLError.extensions?.field as string | undefined;
 
@@ -1177,8 +1194,8 @@ export function parseGraphQLError(error: ApolloError): ParsedError[] {
     });
   }
 
-  // Handle network errors
-  if (error.networkError) {
+  // Handle network and other non-GraphQL errors
+  if (!CombinedGraphQLErrors.is(error)) {
     errors.push({
       code: ErrorCode.NETWORK_ERROR,
       message: 'Unable to connect to the server. Please check your internet connection.',
@@ -1217,7 +1234,7 @@ function isRetryable(code: ErrorCode): boolean {
 
 // Error boundary hook for components
 export function useErrorHandler() {
-  const handleError = useCallback((error: ApolloError) => {
+  const handleError = useCallback((error: ErrorLike) => {
     const parsedErrors = parseGraphQLError(error);
 
     parsedErrors.forEach((parsedError) => {
@@ -1327,16 +1344,19 @@ Implement offline-first capabilities for your React Native app.
 
 ```typescript
 // src/apollo/offlineSupport.ts
-import { ApolloClient, NormalizedCacheObject } from '@apollo/client';
-import { QueueLink } from '@apollo/client/link/queue';
+import { ApolloClient, NormalizedCacheObject, gql } from '@apollo/client';
 import { RetryLink } from '@apollo/client/link/retry';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
 
 const OFFLINE_MUTATIONS_KEY = 'offline-mutations';
 
-// Queue link for offline mutations
-export const queueLink = new QueueLink();
+interface OfflineMutation {
+  document: string;
+  variables?: Record<string, unknown>;
+  timestamp: number;
+}
 
 // Retry link with exponential backoff
 export const retryLink = new RetryLink({
@@ -1366,8 +1386,8 @@ export function setupNetworkStatusListener(
 
     if (!wasOnline && isOnline) {
       // Coming back online
-      console.log('Network restored - processing offline queue');
-      queueLink.open();
+      console.log('Network restored - replaying persisted offline mutations');
+      replayOfflineMutations(client);
 
       // Refetch active queries
       client.refetchQueries({
@@ -1375,8 +1395,7 @@ export function setupNetworkStatusListener(
       });
     } else if (wasOnline && !isOnline) {
       // Going offline
-      console.log('Network lost - queuing mutations');
-      queueLink.close();
+      console.log('Network lost - mutations can be persisted for replay');
     }
   });
 
@@ -1384,12 +1403,16 @@ export function setupNetworkStatusListener(
 }
 
 // Persist offline mutations
-export async function persistOfflineMutation(mutation: any): Promise<void> {
+export async function persistOfflineMutation(
+  document: string,
+  variables?: Record<string, unknown>
+): Promise<void> {
   try {
     const existing = await AsyncStorage.getItem(OFFLINE_MUTATIONS_KEY);
-    const mutations = existing ? JSON.parse(existing) : [];
+    const mutations: OfflineMutation[] = existing ? JSON.parse(existing) : [];
     mutations.push({
-      ...mutation,
+      document,
+      variables,
       timestamp: Date.now(),
     });
     await AsyncStorage.setItem(OFFLINE_MUTATIONS_KEY, JSON.stringify(mutations));
@@ -1406,12 +1429,12 @@ export async function replayOfflineMutations(
     const stored = await AsyncStorage.getItem(OFFLINE_MUTATIONS_KEY);
     if (!stored) return;
 
-    const mutations = JSON.parse(stored);
+    const mutations: OfflineMutation[] = JSON.parse(stored);
 
     for (const mutation of mutations) {
       try {
         await client.mutate({
-          mutation: mutation.query,
+          mutation: gql(mutation.document),
           variables: mutation.variables,
         });
       } catch (error) {
@@ -1446,7 +1469,7 @@ export function useNetworkStatus() {
 
 ```typescript
 // src/components/OfflineIndicator.tsx
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useNetworkStatus } from '../apollo/offlineSupport';
 
@@ -1508,7 +1531,8 @@ Implement efficient pagination for large data sets.
 ```typescript
 // src/hooks/usePaginatedQuery.ts
 import { useCallback, useMemo } from 'react';
-import { DocumentNode, useQuery, QueryHookOptions } from '@apollo/client';
+import { DocumentNode } from '@apollo/client';
+import { useQuery, QueryHookOptions } from '@apollo/client/react';
 
 interface PaginationConfig {
   first?: number;
@@ -1649,9 +1673,11 @@ export const batchLink = new BatchHttpLink({
 
 ```typescript
 // src/hooks/usePrefetch.ts
-import { useApolloClient } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
 import { useCallback } from 'react';
-import { GetPostDocument, GetPostQueryVariables } from '../generated/graphql';
+import { TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { GetPostDocument, GetPostQuery, GetPostQueryVariables, Post } from '../generated/graphql';
 
 export function usePrefetch() {
   const client = useApolloClient();
@@ -1699,21 +1725,26 @@ const PostListItem: React.FC<{ post: Post }> = ({ post }) => {
 ```typescript
 // src/__tests__/PostsScreen.test.tsx
 import React from 'react';
-import { render, waitFor, fireEvent } from '@testing-library/react-native';
-import { MockedProvider } from '@apollo/client/testing';
+import { render, waitFor } from '@testing-library/react-native';
+import { MockedProvider } from '@apollo/client/testing/react';
 import { PostsScreen } from '../screens/PostsScreen';
 import { GetPostsDocument } from '../generated/graphql';
 
 const mockPosts = {
   posts: {
+    __typename: 'PostConnection',
     edges: [
       {
+        __typename: 'PostEdge',
         node: {
+          __typename: 'Post',
           id: '1',
           title: 'Test Post',
           content: 'Test content',
           createdAt: '2024-01-01',
+          updatedAt: '2024-01-01',
           author: {
+            __typename: 'User',
             id: '1',
             name: 'John Doe',
             avatar: null,
@@ -1725,6 +1756,7 @@ const mockPosts = {
       },
     ],
     pageInfo: {
+      __typename: 'PageInfo',
       hasNextPage: false,
       endCursor: '1',
     },
@@ -1750,7 +1782,7 @@ const mocks = [
 describe('PostsScreen', () => {
   it('renders posts correctly', async () => {
     const { getByText, queryByText } = render(
-      <MockedProvider mocks={mocks} addTypename={false}>
+      <MockedProvider mocks={mocks}>
         <PostsScreen />
       </MockedProvider>
     );
@@ -1780,7 +1812,7 @@ describe('PostsScreen', () => {
     ];
 
     const { getByText } = render(
-      <MockedProvider mocks={errorMocks} addTypename={false}>
+      <MockedProvider mocks={errorMocks}>
         <PostsScreen />
       </MockedProvider>
     );
@@ -1796,7 +1828,7 @@ describe('PostsScreen', () => {
 
 Implementing GraphQL with Apollo Client in React Native provides a powerful, type-safe, and efficient data layer for your mobile applications. Key takeaways from this guide:
 
-1. **Type Safety**: Use GraphQL Code Generator to automatically generate TypeScript types and hooks from your schema.
+1. **Type Safety**: Use GraphQL Code Generator to automatically generate TypeScript types and typed documents from your schema.
 
 2. **Caching**: Leverage Apollo's intelligent caching with custom type policies to minimize network requests.
 

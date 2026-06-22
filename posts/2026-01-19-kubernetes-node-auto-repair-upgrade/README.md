@@ -69,8 +69,8 @@ gcloud container node-pools update default-pool \
 # Configure maintenance window
 gcloud container clusters update my-cluster \
   --zone=us-central1-a \
-  --maintenance-window-start=2024-01-01T04:00:00Z \
-  --maintenance-window-end=2024-01-01T08:00:00Z \
+  --maintenance-window-start=2026-07-04T04:00:00Z \
+  --maintenance-window-end=2026-07-04T08:00:00Z \
   --maintenance-window-recurrence='FREQ=WEEKLY;BYDAY=SA,SU'
 ```
 
@@ -104,15 +104,15 @@ resource "google_container_cluster" "primary" {
   # Maintenance policy
   maintenance_policy {
     recurring_window {
-      start_time = "2024-01-01T04:00:00Z"
-      end_time   = "2024-01-01T08:00:00Z"
+      start_time = "2026-07-04T04:00:00Z"
+      end_time   = "2026-07-04T08:00:00Z"
       recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
     }
     
     maintenance_exclusion {
       exclusion_name = "black-friday"
-      start_time     = "2024-11-28T00:00:00Z"
-      end_time       = "2024-12-01T00:00:00Z"
+      start_time     = "2026-11-26T00:00:00Z"
+      end_time       = "2026-11-30T00:00:00Z"
       exclusion_options {
         scope = "NO_UPGRADES"
       }
@@ -143,7 +143,7 @@ resource "google_container_cluster" "primary" {
 ### Create Self-Healing Node Group
 
 ```bash
-# Create managed node group with auto-upgrade
+# Create managed node group with node auto-repair
 eksctl create nodegroup \
   --cluster=my-cluster \
   --name=self-healing-ng \
@@ -152,9 +152,10 @@ eksctl create nodegroup \
   --nodes-min=3 \
   --nodes-max=6 \
   --managed \
+  --enable-node-repair \
   --asg-access
 
-# Node groups automatically handle unhealthy node replacement
+# Managed node groups can update AMIs and Kubernetes versions through eksctl upgrade nodegroup
 ```
 
 ### Terraform for EKS Managed Nodes
@@ -176,8 +177,12 @@ resource "aws_eks_node_group" "managed" {
   update_config {
     max_unavailable = 1
   }
+
+  node_repair_config {
+    enabled = true
+  }
   
-  # Force replacement on AMI updates
+  # Force an update if pods cannot be drained due to PDBs
   force_update_version = true
   
   # Launch template for custom configuration
@@ -213,7 +218,7 @@ resource "aws_autoscaling_group" "nodes" {
 }
 ```
 
-### EKS Add-on Auto-Updates
+### EKS Add-on Updates with Terraform
 
 ```hcl
 # eks-addon-autoupdate.tf
@@ -225,7 +230,7 @@ resource "aws_eks_addon" "vpc_cni" {
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
   
-  # Use latest compatible version
+  # Select the latest compatible version during Terraform plan/apply
   addon_version = data.aws_eks_addon_version.vpc_cni.version
 }
 
@@ -259,14 +264,15 @@ az aks update \
 
 ```bash
 # Set maintenance window
-az aks maintenancewindow add \
+az aks maintenanceconfiguration add \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
-  --name default \
+  --name aksManagedAutoUpgradeSchedule \
   --schedule-type Weekly \
   --day-of-week Saturday \
-  --start-hour 4 \
-  --duration 4
+  --start-time 04:00 \
+  --duration 4 \
+  --utc-offset +00:00
 ```
 
 ### Terraform for AKS
@@ -280,25 +286,36 @@ resource "azurerm_kubernetes_cluster" "main" {
   dns_prefix          = "selfhealing"
   
   # Automatic channel upgrade
-  automatic_channel_upgrade = "stable"
+  automatic_upgrade_channel = "stable"
   
   # Node OS auto-upgrade
-  node_os_channel_upgrade = "NodeImage"
+  node_os_upgrade_channel = "NodeImage"
   
-  # Maintenance window
-  maintenance_window {
-    allowed {
-      day   = "Saturday"
-      hours = [4, 5, 6, 7]
-    }
-    allowed {
-      day   = "Sunday"
-      hours = [4, 5, 6, 7]
-    }
+  # Maintenance window for Kubernetes version auto-upgrades
+  maintenance_window_auto_upgrade {
+    frequency   = "Weekly"
+    interval    = 1
+    duration    = 4
+    day_of_week = "Saturday"
+    start_time  = "04:00"
+    utc_offset  = "+00:00"
+    start_date  = "2026-07-04"
+
     not_allowed {
-      start = "2024-11-28T00:00:00Z"
-      end   = "2024-12-01T00:00:00Z"
+      start = "2026-11-26T00:00:00Z"
+      end   = "2026-11-30T00:00:00Z"
     }
+  }
+
+  # Maintenance window for node OS image upgrades
+  maintenance_window_node_os {
+    frequency   = "Weekly"
+    interval    = 1
+    duration    = 4
+    day_of_week = "Sunday"
+    start_time  = "04:00"
+    utc_offset  = "+00:00"
+    start_date  = "2026-07-05"
   }
   
   default_node_pool {
@@ -341,7 +358,7 @@ spec:
       hostPID: true
       containers:
         - name: node-problem-detector
-          image: registry.k8s.io/node-problem-detector/node-problem-detector:v0.8.14
+          image: registry.k8s.io/node-problem-detector/node-problem-detector:v1.35.2
           command:
             - /node-problem-detector
             - --logtostderr
@@ -497,7 +514,8 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
         - name: cluster-autoscaler
-          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+          # Match the Cluster Autoscaler minor version to your Kubernetes minor version.
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
           command:
             - ./cluster-autoscaler
             - --v=4
@@ -512,7 +530,7 @@ spec:
             - --scale-down-unneeded-time=10m
             - --scale-down-unready-time=20m
             - --scale-down-utilization-threshold=0.5
-            # Node replacement for unhealthy nodes
+            # Timing for provisioning and graceful node termination
             - --max-node-provision-time=15m
             - --max-graceful-termination-sec=600
             - --balance-similar-node-groups=true
@@ -528,7 +546,7 @@ spec:
 
 ```bash
 # Install Draino for automatic node draining
-kubectl apply -f https://raw.githubusercontent.com/planetlabs/draino/master/manifest/draino.yaml
+kubectl apply -f https://raw.githubusercontent.com/planetlabs/draino/master/manifest.yml
 ```
 
 ```yaml
@@ -551,12 +569,10 @@ spec:
       serviceAccountName: draino
       containers:
         - name: draino
-          image: planetlabs/draino:latest
+          image: planetlabs/draino:5e07e93
           command:
             - /draino
             - --dry-run=false
-            # Drain nodes with these conditions
-            - --node-conditions=KernelDeadlock,ReadonlyFilesystem,DiskPressure
             # Respect PDBs
             - --eviction-headroom=30s
             - --drain-buffer=10m
@@ -564,6 +580,10 @@ spec:
             - --skip-drain=false
             # Grace period for pod termination
             - --max-grace-period=5m0s
+            # Drain nodes with these conditions
+            - KernelDeadlock
+            - ReadonlyFilesystem
+            - DiskPressure
           resources:
             requests:
               cpu: 50m
@@ -593,7 +613,7 @@ spec:
       restartPolicy: Always
       containers:
         - name: kured
-          image: ghcr.io/kubereboot/kured:1.14.0
+          image: ghcr.io/kubereboot/kured:1.22.1
           command:
             - /usr/bin/kured
             - --reboot-sentinel=/var/run/reboot-required
@@ -604,8 +624,7 @@ spec:
             # Reboot on specific days only
             - --reboot-days=sat,sun
             # Slack notification
-            - --slack-hook-url=https://hooks.slack.com/services/xxx
-            - --slack-channel=#alerts
+            - --notify-url=slack://xoxb:123456789012-1234567890123-token@alerts
             # Lock to prevent concurrent reboots
             - --period=1h
             - --ds-namespace=kube-system
@@ -659,24 +678,24 @@ spec:
             description: "Node {{ $labels.node }} has been not ready for 5 minutes"
         
         - alert: NodeAutoRepairTriggered
-          expr: increase(node_auto_repair_total[1h]) > 0
+          expr: sum(increase(draino_drained_nodes_total{result="succeeded"}[1h])) > 0
           labels:
             severity: info
           annotations:
-            summary: "Auto-repair triggered for node"
-            description: "Auto-repair was triggered for a node in the last hour"
+            summary: "Automated node drain completed"
+            description: "Draino completed at least one node drain in the last hour"
         
-        - alert: NodeUpgradePending
-          expr: kube_node_status_condition{condition="Ready"} and on(node) kube_node_labels{label_upgrade_pending="true"}
+        - alert: NodeVersionSkew
+          expr: count(count by (kubelet_version) (kube_node_info)) > 1
           for: 24h
           labels:
             severity: warning
           annotations:
-            summary: "Node upgrade pending for over 24 hours"
-            description: "Node {{ $labels.node }} has a pending upgrade for over 24 hours"
+            summary: "Nodes have mixed kubelet versions"
+            description: "The cluster has reported more than one kubelet version for over 24 hours"
         
         - alert: TooManyNodeReplacements
-          expr: increase(node_replacement_total[24h]) > 3
+          expr: count(changes(kube_node_created[24h]) > 0) > 3
           labels:
             severity: critical
           annotations:
@@ -691,13 +710,13 @@ spec:
 sum by (condition) (kube_node_status_condition{condition=~"Ready|DiskPressure|MemoryPressure|PIDPressure"} == 1)
 
 # Node age distribution
-histogram_quantile(0.95, sum(rate(kube_node_created_bucket[24h])) by (le))
+quantile(0.95, time() - kube_node_created)
 
-# Auto-repair events (from audit logs)
-count by (node) (kube_audit_events{verb="delete",resource="nodes"})
+# Automated drains from Draino
+sum by (result) (increase(draino_drained_nodes_total[24h]))
 
 # Upgrade progress
-count(kube_node_info{kubelet_version=~"v1.28.*"}) / count(kube_node_info)
+count(kube_node_info{kubelet_version=~"v1\\.35\\..*"}) / count(kube_node_info)
 ```
 
 ## Best Practices

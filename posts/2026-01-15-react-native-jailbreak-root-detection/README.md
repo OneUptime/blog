@@ -77,7 +77,7 @@ flowchart TB
 
 ## Setting Up jail-monkey Library
 
-The most popular library for jailbreak and root detection in React Native is `jail-monkey`. Let's walk through the setup process.
+A commonly used library for jailbreak and root detection in React Native is `jail-monkey`. Let's walk through the setup process.
 
 ### Installation
 
@@ -94,13 +94,13 @@ yarn add jail-monkey
 
 ### iOS Configuration
 
-For iOS, you need to link the native module. If you're using React Native 0.60+, autolinking should handle this automatically. Otherwise:
+For iOS, React Native 0.60+ autolinking should handle the native module automatically. After installing the package, run CocoaPods:
 
 ```bash
 cd ios && pod install && cd ..
 ```
 
-If autolinking doesn't work, manually link the library:
+For React Native versions before 0.60, manually link the library:
 
 ```bash
 react-native link jail-monkey
@@ -149,14 +149,14 @@ import JailMonkey from 'jail-monkey';
 // Check if device is jailbroken/rooted
 const isCompromised = JailMonkey.isJailBroken();
 
-// Check if running on an emulator/simulator
-const isEmulator = JailMonkey.isOnExternalStorage();
+// Check if the Android app is running on external storage
+const isOnExternalStorage = JailMonkey.isOnExternalStorage();
 
 // Check if mock location is enabled (Android)
 const hasMockLocation = JailMonkey.canMockLocation();
 
 // Check if app is running in debug mode
-const isDebuggedMode = JailMonkey.isDebuggedMode();
+const isDebuggedMode = await JailMonkey.isDebuggedMode();
 
 // Get the ADB (Android Debug Bridge) status
 const adbEnabled = JailMonkey.AdbEnabled();
@@ -206,11 +206,15 @@ const jailbreakPaths = [
 The library attempts to open Cydia's URL scheme:
 
 ```typescript
+import { Linking } from 'react-native';
+
 // Checking if Cydia URL scheme is available
 const canOpenCydia = () => {
     return Linking.canOpenURL('cydia://package/com.example.package');
 };
 ```
+
+If you perform this check in your own React Native code, add `cydia` to `LSApplicationQueriesSchemes` in `Info.plist` on iOS; otherwise `canOpenURL()` resolves to `false`.
 
 ### Sandbox Integrity Check
 
@@ -270,11 +274,11 @@ Rooted devices often have modified build tags:
 
 ```typescript
 // Checking for test-keys in build tags
-import { NativeModules } from 'react-native';
+import JailMonkey from 'jail-monkey';
 
 const checkBuildTags = () => {
-    const buildTags = NativeModules.JailMonkey.getBuildTags();
-    return buildTags.includes('test-keys');
+    const methods = (JailMonkey as any).rootedDetectionMethods?.();
+    return Boolean(methods?.rootBeer?.detectTestKeys);
 };
 ```
 
@@ -321,7 +325,7 @@ Sophisticated attackers use bypass tools to hide the jailbreak/root status from 
 Frida is a dynamic instrumentation toolkit commonly used to bypass security checks:
 
 ```typescript
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 const detectFrida = async (): Promise<boolean> => {
     if (Platform.OS === 'android') {
@@ -431,13 +435,13 @@ Now let's create a complete security check module that combines all detection me
 ```typescript
 // security/DeviceIntegrity.ts
 import JailMonkey from 'jail-monkey';
-import { Platform, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
 
 export interface SecurityCheckResult {
     isCompromised: boolean;
     isJailbroken: boolean;
     isRooted: boolean;
-    isEmulator: boolean;
+    isOnExternalStorage: boolean;
     isDebugMode: boolean;
     hasMockLocation: boolean;
     hasAdbEnabled: boolean;
@@ -450,8 +454,8 @@ export const performSecurityCheck = async (): Promise<SecurityCheckResult> => {
 
     // Basic jail-monkey checks
     const isJailbroken = JailMonkey.isJailBroken();
-    const isEmulator = JailMonkey.isOnExternalStorage();
-    const isDebugMode = JailMonkey.isDebuggedMode();
+    const isOnExternalStorage = Platform.OS === 'android' && JailMonkey.isOnExternalStorage();
+    const isDebugMode = await JailMonkey.isDebuggedMode();
     const hasMockLocation = Platform.OS === 'android' && JailMonkey.canMockLocation();
     const hasAdbEnabled = Platform.OS === 'android' && JailMonkey.AdbEnabled();
 
@@ -459,8 +463,8 @@ export const performSecurityCheck = async (): Promise<SecurityCheckResult> => {
         detectedThreats.push('Device is jailbroken/rooted');
     }
 
-    if (isEmulator) {
-        detectedThreats.push('Running on emulator/simulator');
+    if (isOnExternalStorage) {
+        detectedThreats.push('App is running from external storage');
     }
 
     if (isDebugMode) {
@@ -479,10 +483,10 @@ export const performSecurityCheck = async (): Promise<SecurityCheckResult> => {
     const riskLevel = calculateRiskLevel(detectedThreats);
 
     return {
-        isCompromised: isJailbroken || isEmulator,
+        isCompromised: isJailbroken,
         isJailbroken: Platform.OS === 'ios' && isJailbroken,
         isRooted: Platform.OS === 'android' && isJailbroken,
-        isEmulator,
+        isOnExternalStorage,
         isDebugMode,
         hasMockLocation,
         hasAdbEnabled,
@@ -622,7 +626,11 @@ For analytics purposes, silently log compromised device usage:
 ```typescript
 // security/SecurityAnalytics.ts
 import { performSecurityCheck } from './DeviceIntegrity';
-import analytics from '@segment/analytics-react-native';
+import { createClient } from '@segment/analytics-react-native';
+
+const analytics = createClient({
+    writeKey: 'SEGMENT_WRITE_KEY',
+});
 
 export const logSecurityStatus = async (userId?: string) => {
     const securityCheck = await performSecurityCheck();
@@ -632,7 +640,7 @@ export const logSecurityStatus = async (userId?: string) => {
             userId,
             isJailbroken: securityCheck.isJailbroken,
             isRooted: securityCheck.isRooted,
-            isEmulator: securityCheck.isEmulator,
+            isOnExternalStorage: securityCheck.isOnExternalStorage,
             riskLevel: securityCheck.riskLevel,
             detectedThreats: securityCheck.detectedThreats,
             timestamp: new Date().toISOString(),
@@ -737,7 +745,7 @@ Create a configuration system for different security policies:
 ```typescript
 // security/SecurityPolicy.ts
 export interface SecurityPolicy {
-    allowEmulators: boolean;
+    allowExternalStorage: boolean;
     allowDebugMode: boolean;
     allowMockLocation: boolean;
     blockOnJailbreak: boolean;
@@ -750,7 +758,7 @@ export interface SecurityPolicy {
 export const SecurityPolicies: Record<string, SecurityPolicy> = {
     // Strict policy for banking apps
     strict: {
-        allowEmulators: false,
+        allowExternalStorage: false,
         allowDebugMode: false,
         allowMockLocation: false,
         blockOnJailbreak: true,
@@ -762,7 +770,7 @@ export const SecurityPolicies: Record<string, SecurityPolicy> = {
 
     // Moderate policy for general apps
     moderate: {
-        allowEmulators: true,
+        allowExternalStorage: true,
         allowDebugMode: false,
         allowMockLocation: false,
         blockOnJailbreak: false,
@@ -774,7 +782,7 @@ export const SecurityPolicies: Record<string, SecurityPolicy> = {
 
     // Relaxed policy for content apps
     relaxed: {
-        allowEmulators: true,
+        allowExternalStorage: true,
         allowDebugMode: true,
         allowMockLocation: true,
         blockOnJailbreak: false,
@@ -820,7 +828,7 @@ export class SecurityManager {
             return true;
         }
 
-        if (!this.policy.allowEmulators && this.securityStatus.isEmulator) {
+        if (!this.policy.allowExternalStorage && this.securityStatus.isOnExternalStorage) {
             return true;
         }
 
@@ -870,6 +878,7 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
+    Platform,
 } from 'react-native';
 
 interface SecurityAppealProps {
@@ -1084,7 +1093,7 @@ flowchart TB
     subgraph Defense["DEFENSE IN DEPTH LAYERS"]
         subgraph L1["Layer 1: Device Integrity"]
             L1A[Jailbreak/Root Detection]
-            L1B[Emulator Detection]
+            L1B[External Storage Detection]
             L1C[Debug Mode Detection]
         end
         

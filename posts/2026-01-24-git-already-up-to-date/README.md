@@ -323,7 +323,7 @@ git compare # Show commits you are missing
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Pull says up to date, changes exist on GitHub | Stale local remote ref | `git fetch origin && git merge origin/main` |
+| Merge says up to date, changes exist on GitHub | Stale local remote ref | `git fetch origin && git merge origin/main` |
 | Cannot see colleague's commits | Wrong branch | `git checkout correct-branch && git pull` |
 | Pull from fork shows nothing | Wrong remote | `git fetch upstream && git merge upstream/main` |
 | Just merged but changes missing | Merged wrong branch | Check branch name in merge command |
@@ -349,6 +349,6 @@ flowchart TD
     P[git pull] --> |Fetch + Merge into local branch| LM
 ```
 
-When Git says "Already up to date," it is comparing your local branch with `refs/remotes/origin/main`, which might be outdated until you run `git fetch`.
+When Git says "Already up to date," it is comparing your local branch with the branch or commit you asked it to integrate. For example, `git merge origin/main` compares against your local `refs/remotes/origin/main` reference, which might be outdated until you run `git fetch`.
 
 The "Already up to date" message is technically correct but often misleading. Git is telling you the truth about what it knows locally. The key is making sure your local knowledge matches reality by fetching before comparing or merging.

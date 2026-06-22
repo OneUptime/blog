@@ -166,10 +166,10 @@ Sometimes traces exist but are missing spans for certain operations.
 
 ### Async Context Loss
 
-JavaScript async operations can lose trace context:
+JavaScript async operations can lose trace context at custom async boundaries, especially when callbacks are stored and invoked outside the request's active context:
 
 ```javascript
-// BAD: Context is lost in setTimeout
+// BAD: Context may be missing in a delayed callback
 const { trace } = require('@opentelemetry/api');
 
 app.get('/process', async (req, res) => {
@@ -178,7 +178,7 @@ app.get('/process', async (req, res) => {
 
   setTimeout(() => {
     const innerSpan = trace.getActiveSpan();
-    console.log('Timeout span:', innerSpan?.spanContext().spanId);  // undefined!
+    console.log('Timeout span:', innerSpan?.spanContext().spanId);  // May be undefined
     processData();
   }, 100);
 
@@ -210,7 +210,7 @@ app.get('/process', async (req, res) => {
 For async/await, context usually propagates automatically, but verify with manual spans:
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('my-service');
 
 async function processOrder(orderId) {
@@ -272,14 +272,16 @@ class TracedDatabase {
   async query(sql, params) {
     return tracer.startActiveSpan('db.query', {
       attributes: {
-        'db.system': 'postgresql',
-        'db.statement': sql,
-        'db.operation': sql.split(' ')[0].toUpperCase(),
+        'db.system.name': 'postgresql',
+        'db.query.text': sql,
+        'db.operation.name': sql.trim().split(/\s+/)[0].toUpperCase(),
       },
     }, async (span) => {
       try {
         const result = await this.client.query(sql, params);
-        span.setAttribute('db.rows_affected', result.rowCount);
+        if (Array.isArray(result.rows)) {
+          span.setAttribute('db.response.returned_rows', result.rows.length);
+        }
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
@@ -403,7 +405,7 @@ Aggressive sampling can cause traces to be incomplete.
 Ensure child services respect parent sampling decisions:
 
 ```javascript
-const { ParentBasedSampler, AlwaysOnSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
+const { ParentBasedSampler, AlwaysOnSampler, NeverSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
 const sdk = new NodeSDK({
   sampler: new ParentBasedSampler({
@@ -467,7 +469,7 @@ Check exporter configuration:
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
 const exporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {
     // Some backends require authentication
     'Authorization': `Bearer ${process.env.OTEL_AUTH_TOKEN}`,

@@ -62,9 +62,9 @@ function isTokenExpired(token) {
 
     console.log('Token expiration:', new Date(payload.exp * 1000));
     console.log('Current time:', new Date(now * 1000));
-    console.log('Expired:', payload.exp < now);
+    console.log('Expired:', payload.exp <= now);
 
-    return payload.exp < now;
+    return payload.exp <= now;
 }
 
 // Example usage
@@ -95,9 +95,9 @@ def is_token_expired(token):
 
     print(f"Token expiration: {datetime.fromtimestamp(exp)}")
     print(f"Current time: {datetime.fromtimestamp(now)}")
-    print(f"Expired: {exp < now}")
+    print(f"Expired: {exp <= now}")
 
-    return exp < now
+    return exp <= now
 
 # Example
 token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -235,6 +235,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 const app = express();
+app.use(express.json());
 
 // Token configuration
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -436,13 +437,19 @@ let isRefreshing = false;
 let refreshSubscribers = [];
 
 // Subscribe to token refresh
-function subscribeTokenRefresh(callback) {
-    refreshSubscribers.push(callback);
+function subscribeTokenRefresh(resolve, reject) {
+    refreshSubscribers.push({ resolve, reject });
 }
 
 // Notify all subscribers with new token
 function onTokenRefreshed(token) {
-    refreshSubscribers.forEach(callback => callback(token));
+    refreshSubscribers.forEach(({ resolve }) => resolve(token));
+    refreshSubscribers = [];
+}
+
+// Reject all queued requests if refresh fails
+function onTokenRefreshFailed(error) {
+    refreshSubscribers.forEach(({ reject }) => reject(error));
     refreshSubscribers = [];
 }
 
@@ -468,11 +475,11 @@ api.interceptors.response.use(
 
         // If already refreshing, queue this request
         if (isRefreshing) {
-            return new Promise(resolve => {
+            return new Promise((resolve, reject) => {
                 subscribeTokenRefresh(token => {
                     originalRequest.headers.Authorization = `Bearer ${token}`;
                     resolve(api(originalRequest));
-                });
+                }, reject);
             });
         }
 
@@ -494,6 +501,7 @@ api.interceptors.response.use(
             return api(originalRequest);
         } catch (refreshError) {
             // Refresh failed, logout user
+            onTokenRefreshFailed(refreshError);
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             window.location.href = '/login';

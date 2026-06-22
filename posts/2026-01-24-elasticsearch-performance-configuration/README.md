@@ -10,7 +10,7 @@ Description: Learn how to configure Elasticsearch for optimal performance includ
 
 > Elasticsearch can handle massive amounts of data and queries, but achieving optimal performance requires careful configuration. This guide covers the essential settings and strategies for getting the best performance from your Elasticsearch cluster.
 
-Default Elasticsearch settings are designed for development, not production. Without proper tuning, you might see slow queries, high memory usage, or cluster instability under load.
+Default Elasticsearch settings are designed to get you started safely, but production workloads still need sizing, monitoring, and workload-specific tuning. Without proper tuning, you might see slow queries, high memory usage, or cluster instability under load.
 
 ---
 
@@ -71,30 +71,18 @@ The JVM heap is critical for Elasticsearch performance:
 
 # Elasticsearch JVM configuration for a 64GB RAM server
 
-# Set heap size to 50% of available RAM, max 31GB
+# Elasticsearch automatically sizes the heap in modern versions.
+# If you override it, keep it below the compressed ordinary object pointer threshold
+# (26GB is safe on most systems; some support up to about 30GB).
 # Both values must be the same to avoid resizing pauses
--Xms31g
--Xmx31g
-
-# Use G1 garbage collector for heaps larger than 6GB
--XX:+UseG1GC
-
-# G1 tuning for Elasticsearch
--XX:G1HeapRegionSize=32m
--XX:InitiatingHeapOccupancyPercent=75
--XX:G1ReservePercent=25
-
-# Reduce GC pause times
--XX:MaxGCPauseMillis=200
+-Xms30g
+-Xmx30g
 
 # Enable GC logging for troubleshooting
 -Xlog:gc*,gc+age=trace,safepoint:file=/var/log/elasticsearch/gc.log:utctime,pid,tags:filecount=32,filesize=64m
 
-# Disable swapping (critical for performance)
+# Pre-touch heap memory on startup
 -XX:+AlwaysPreTouch
-
-# Pre-allocate memory pages
--XX:+UseTransparentHugePages
 ```
 
 ```yaml
@@ -118,22 +106,15 @@ discovery.seed_hosts:
   - master-2:9300
   - master-3:9300
 
+# Use only during initial cluster bootstrapping; remove after the cluster forms
 cluster.initial_master_nodes:
   - master-1
   - master-2
   - master-3
 
-# Thread pools for different operations
-thread_pool:
-  search:
-    size: 25
-    queue_size: 1000
-  write:
-    size: 12
-    queue_size: 1000
-  analyze:
-    size: 5
-    queue_size: 100
+# Thread pools are automatically sized from allocated processors.
+# Override node.processors only after load testing or when CPU detection is wrong.
+node.processors: 8
 
 # Circuit breakers to prevent OOM
 indices.breaker.total.limit: 70%
@@ -153,7 +134,7 @@ indices.queries.cache.size: 15%
 
 Proper shard configuration is essential:
 
-```json
+```jsonc
 // Create index with optimized settings
 // PUT /logs-2026.01
 {
@@ -165,7 +146,7 @@ Proper shard configuration is essential:
       "number_of_replicas": 1,
 
       // Refresh interval (tradeoff: freshness vs performance)
-      // Default 1s is too aggressive for high-volume indexing
+      // Regularly searched indices refresh every 1s by default, which can be too aggressive for high-volume indexing
       "refresh_interval": "30s",
 
       // Translog settings for durability vs performance
@@ -250,7 +231,7 @@ Proper shard configuration is essential:
 
 Automate index management for time-series data:
 
-```json
+```jsonc
 // PUT _ilm/policy/logs-policy
 {
   "policy": {
@@ -275,10 +256,7 @@ Automate index management for time-series data:
           },
           // Reduce replicas on warm nodes
           "allocate": {
-            "number_of_replicas": 0,
-            "require": {
-              "data": "warm"
-            }
+            "number_of_replicas": 0
           },
           // Force merge for better query performance
           "forcemerge": {
@@ -295,11 +273,6 @@ Automate index management for time-series data:
         "actions": {
           "set_priority": {
             "priority": 0
-          },
-          "allocate": {
-            "require": {
-              "data": "cold"
-            }
           },
           // Use searchable snapshots for cold data
           "searchable_snapshot": {
@@ -384,7 +357,15 @@ def search_logs_optimized(
         "track_total_hits": 1000
     }
 
-    return es.search(index="logs-*", body=query)
+    return es.search(
+        index="logs-*",
+        routing=service,
+        size=query["size"],
+        source=query["_source"],
+        query=query["query"],
+        sort=query["sort"],
+        track_total_hits=query["track_total_hits"]
+    )
 
 
 def aggregate_response_times(
@@ -437,7 +418,13 @@ def aggregate_response_times(
         }
     }
 
-    return es.search(index="logs-*", body=query)
+    return es.search(
+        index="logs-*",
+        routing=service,
+        size=query["size"],
+        query=query["query"],
+        aggregations=query["aggs"]
+    )
 
 
 def bulk_index_optimized(documents: list, index_name: str) -> dict:
@@ -456,14 +443,14 @@ def bulk_index_optimized(documents: list, index_name: str) -> dict:
             yield {
                 "_index": index_name,
                 "_source": doc,
-                # Route by service for better query performance
+                # Route by service when related searches use the same routing key
                 "_routing": doc.get("service", "default")
             }
 
     # Temporarily increase refresh interval
     es.indices.put_settings(
         index=index_name,
-        body={"index": {"refresh_interval": "-1"}}
+        settings={"index": {"refresh_interval": "-1"}}
     )
 
     try:
@@ -481,7 +468,7 @@ def bulk_index_optimized(documents: list, index_name: str) -> dict:
         # Restore refresh interval and force refresh
         es.indices.put_settings(
             index=index_name,
-            body={"index": {"refresh_interval": "30s"}}
+            settings={"index": {"refresh_interval": "30s"}}
         )
         es.indices.refresh(index=index_name)
 ```
@@ -518,8 +505,8 @@ echo "net.core.wmem_max=16777216" >> /etc/sysctl.conf
 echo "net.ipv4.tcp_rmem=4096 87380 16777216" >> /etc/sysctl.conf
 echo "net.ipv4.tcp_wmem=4096 65536 16777216" >> /etc/sysctl.conf
 
-# Transparent huge pages (optional, test in your environment)
-echo "always" > /sys/kernel/mm/transparent_hugepage/enabled
+# Disable transparent huge pages for more predictable latency
+echo "never" > /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
 ---
@@ -533,7 +520,7 @@ Key metrics to monitor:
 | JVM Heap Used | < 75% | Increase heap or add nodes |
 | Search Latency (p99) | < 500ms | Optimize queries, add replicas |
 | Indexing Rate | Consistent | Check bulk queue, refresh interval |
-| Merge Time | < 10% of time | Reduce merge threads |
+| Merge Time | < 10% of time | Review indexing rate, shard size, and merge pressure |
 | Query Cache Hit Rate | > 20% | Review filter usage |
 | Field Data Size | < heap * 0.4 | Use doc_values, avoid text aggregations |
 
@@ -565,7 +552,7 @@ curl -X GET "localhost:9200/_stats?pretty"
 
 | Area | Recommendation |
 |------|----------------|
-| **Heap** | 50% of RAM, max 31GB |
+| **Heap** | Default auto-sizing, or no more than 50% of RAM and below the compressed ordinary object pointer threshold |
 | **Shards** | 10-50GB per shard, avoid over-sharding |
 | **Replicas** | 1 for HA, 0 for warm/cold data |
 | **Refresh** | 30s-60s for write-heavy workloads |

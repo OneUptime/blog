@@ -87,23 +87,25 @@ OpenLineage is the open standard for lineage metadata. Here's how to integrate i
 
 # Configure Airflow to emit OpenLineage events
 
-# In airflow.cfg or environment variables:
-# OPENLINEAGE_URL=http://marquez:5000
-# OPENLINEAGE_API_KEY=your-api-key
+# In airflow.cfg:
+# [openlineage]
+# transport = {"type": "http", "url": "http://marquez:5000", "endpoint": "api/v1/lineage"}
+#
+# Or with an environment variable:
+# AIRFLOW__OPENLINEAGE__TRANSPORT='{"type": "http", "url": "http://marquez:5000", "endpoint": "api/v1/lineage"}'
 
 from airflow import DAG
-from airflow.providers.openlineage.extractors import ExtractorManager
 from airflow.operators.python import PythonOperator
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Airflow 2.7+ has built-in OpenLineage support
-# Just configure the URL and extractors will emit events automatically
+# Configure the provider transport and supported operators will emit events automatically
 
 with DAG(
     dag_id='lineage_tracked_pipeline',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
-    # Enable OpenLineage (default when URL is configured)
+    schedule='@daily',
+    # Enable OpenLineage (default when provider transport is configured)
     tags=['lineage-enabled'],
 ) as dag:
 
@@ -115,13 +117,15 @@ with DAG(
 
     def transform_data(**context):
         """For custom Python, we need to emit lineage manually"""
-        from openlineage.client import OpenLineageClient
+        from openlineage.client.client import OpenLineageClient
         from openlineage.client.run import (
-            RunEvent, RunState, Run, Job, Dataset,
+            RunEvent, RunState, Run, Job,
             InputDataset, OutputDataset
         )
         from openlineage.client.uuid import generate_new_uuid
         import os
+
+        producer = 'https://github.com/your-org/your-repo'
 
         # Create OpenLineage client
         client = OpenLineageClient(
@@ -159,7 +163,8 @@ with DAG(
         client.emit(
             RunEvent(
                 eventType=RunState.START,
-                eventTime=datetime.utcnow().isoformat() + 'Z',
+                eventTime=datetime.now(timezone.utc).isoformat(),
+                producer=producer,
                 run=run,
                 job=job,
                 inputs=inputs,
@@ -175,7 +180,8 @@ with DAG(
             client.emit(
                 RunEvent(
                     eventType=RunState.COMPLETE,
-                    eventTime=datetime.utcnow().isoformat() + 'Z',
+                    eventTime=datetime.now(timezone.utc).isoformat(),
+                    producer=producer,
                     run=run,
                     job=job,
                     inputs=inputs,
@@ -190,7 +196,8 @@ with DAG(
             client.emit(
                 RunEvent(
                     eventType=RunState.FAIL,
-                    eventTime=datetime.utcnow().isoformat() + 'Z',
+                    eventTime=datetime.now(timezone.utc).isoformat(),
+                    producer=producer,
                     run=run,
                     job=job,
                     inputs=inputs,
@@ -219,11 +226,13 @@ with DAG(
 # Track column-level transformations for detailed lineage
 
 from openlineage.client.facet import (
-    ColumnLineageDatasetFacet,
-    ColumnLineageDatasetFacetFieldsAdditional,
-    InputField,
     SchemaDatasetFacet,
     SchemaField,
+)
+from openlineage.client.generated.column_lineage_dataset import (
+    ColumnLineageDatasetFacet,
+    Fields,
+    InputField,
 )
 from openlineage.client.run import OutputDataset
 
@@ -244,7 +253,7 @@ def create_output_with_column_lineage():
     # This shows exactly which input columns feed each output column
     column_lineage_facet = ColumnLineageDatasetFacet(
         fields={
-            'date': ColumnLineageDatasetFacetFieldsAdditional(
+            'date': Fields(
                 inputFields=[
                     InputField(
                         namespace='postgres',
@@ -255,7 +264,7 @@ def create_output_with_column_lineage():
                 transformationType='IDENTITY',
                 transformationDescription='Direct mapping from order_date'
             ),
-            'total_revenue': ColumnLineageDatasetFacetFieldsAdditional(
+            'total_revenue': Fields(
                 inputFields=[
                     InputField(
                         namespace='postgres',
@@ -266,7 +275,7 @@ def create_output_with_column_lineage():
                 transformationType='AGGREGATION',
                 transformationDescription='SUM(amount) grouped by date'
             ),
-            'order_count': ColumnLineageDatasetFacetFieldsAdditional(
+            'order_count': Fields(
                 inputFields=[
                     InputField(
                         namespace='postgres',
@@ -277,7 +286,7 @@ def create_output_with_column_lineage():
                 transformationType='AGGREGATION',
                 transformationDescription='COUNT(order_id) grouped by date'
             ),
-            'avg_order_value': ColumnLineageDatasetFacetFieldsAdditional(
+            'avg_order_value': Fields(
                 inputFields=[
                     InputField(
                         namespace='postgres',
@@ -312,10 +321,9 @@ If you need a lightweight solution without a full lineage platform:
 # Simple lineage tracking with metadata storage
 
 import json
-import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import psycopg2
 
 @dataclass
@@ -520,7 +528,7 @@ def run_pipeline_with_lineage():
         outputs=[
             DatasetReference('warehouse', 'analytics.daily_revenue'),
         ],
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
     )
 
     tracker.start_run(event)
@@ -545,6 +553,8 @@ Use lineage data to understand what will be affected by changes.
 ```python
 # impact_analysis.py
 # Analyze impact of changes using lineage data
+
+from __future__ import annotations
 
 def impact_analysis(tracker: LineageTracker, namespace: str, name: str):
     """

@@ -78,8 +78,8 @@ wal_level = replica
 ```
 
 ```bash
-# Test connection from replica
-psql "host=primary port=5432 user=replicator dbname=postgres"
+# Test replication connection from replica
+pg_basebackup -h primary -U replicator -D /tmp/replication-test --target=blackhole -X none
 ```
 
 ## WAL Not Available
@@ -186,8 +186,8 @@ max_standby_streaming_delay = 300s
 # Option 2: Enable feedback
 hot_standby_feedback = on
 
-# Option 3: Use old_snapshot_threshold
-old_snapshot_threshold = 60min
+# Option 3: Increase archive replay delay tolerance
+max_standby_archive_delay = 300s
 ```
 
 ## Synchronous Replication Issues
@@ -201,7 +201,7 @@ old_snapshot_threshold = 60min
 ```sql
 -- Check waiting transactions
 SELECT * FROM pg_stat_activity
-WHERE wait_event_type = 'Client'
+WHERE wait_event_type = 'IPC'
 AND wait_event = 'SyncRep';
 
 -- Check sync status
@@ -254,7 +254,7 @@ iperf3 -c primary
 wal_sender_timeout = 120s
 wal_receiver_timeout = 120s
 
-# Use compression over slow links
+# Reduce WAL volume, at the cost of extra CPU
 wal_compression = on
 ```
 
@@ -277,9 +277,7 @@ ALTER SUBSCRIPTION mysub REFRESH PUBLICATION;
 
 ```sql
 -- Skip conflicting transaction
-ALTER SUBSCRIPTION mysub DISABLE;
-SELECT pg_replication_origin_advance('pg_xxxxx', 'lsn_value');
-ALTER SUBSCRIPTION mysub ENABLE;
+ALTER SUBSCRIPTION mysub SKIP (lsn = '0/14C0378');
 ```
 
 ## Troubleshooting Checklist

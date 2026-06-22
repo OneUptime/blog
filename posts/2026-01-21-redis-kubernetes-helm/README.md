@@ -84,6 +84,11 @@ auth:
   password: "your-secure-password"
 
 master:
+  service:
+    type: ClusterIP
+    ports:
+      redis: 6379
+
   persistence:
     enabled: true
     size: 8Gi
@@ -102,10 +107,6 @@ master:
     maxmemory-policy allkeys-lru
     appendonly yes
     appendfsync everysec
-
-service:
-  type: ClusterIP
-  port: 6379
 
 metrics:
   enabled: true
@@ -248,10 +249,10 @@ helm install my-redis bitnami/redis -f redis-sentinel-values.yaml
 
 ```bash
 # Get Sentinel service
-kubectl get svc -l app.kubernetes.io/component=sentinel
+kubectl get svc my-redis
 
 # Port forward to Sentinel
-kubectl port-forward svc/my-redis-sentinel 26379:26379
+kubectl port-forward svc/my-redis 26379:26379
 
 # Connect using redis-cli
 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
@@ -268,20 +269,20 @@ cluster:
   nodes: 6
   replicas: 1
 
-auth:
-  password: "your-secure-password"
+password: "your-secure-password"
 
 persistence:
   enabled: true
   size: 8Gi
 
-resources:
-  requests:
-    memory: 256Mi
-    cpu: 100m
-  limits:
-    memory: 1Gi
-    cpu: 500m
+redis:
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
 
 metrics:
   enabled: true
@@ -374,6 +375,10 @@ master:
     runAsUser: 1001
     runAsNonRoot: true
 
+  pdb:
+    create: true
+    minAvailable: 1
+
 replica:
   replicaCount: 2
 
@@ -400,6 +405,10 @@ replica:
       operator: "Equal"
       value: "stateful"
       effect: "NoSchedule"
+
+  pdb:
+    create: true
+    minAvailable: 1
 
 sentinel:
   enabled: true
@@ -450,9 +459,6 @@ metrics:
           summary: "Redis memory usage is high"
           description: "Redis memory usage is above 90%"
 
-pdb:
-  create: true
-  minAvailable: 1
 ```
 
 Install:
@@ -475,7 +481,7 @@ my-redis-master.default.svc.cluster.local:6379
 my-redis-replicas.default.svc.cluster.local:6379
 
 # Sentinel
-my-redis-sentinel.default.svc.cluster.local:26379
+my-redis.default.svc.cluster.local:26379
 ```
 
 ### Python Application
@@ -501,9 +507,11 @@ spec:
       containers:
         - name: app
           image: python:3.11-slim
-          command: ["python", "-c"]
+          command: ["/bin/sh", "-c"]
           args:
             - |
+              pip install redis &&
+              python - <<'PY'
               import redis
               import os
               import time
@@ -512,7 +520,7 @@ spec:
               from redis.sentinel import Sentinel
 
               sentinel = Sentinel([
-                  ('my-redis-sentinel', 26379)
+                  ('my-redis', 26379)
               ], socket_timeout=0.5)
 
               master = sentinel.master_for(
@@ -528,6 +536,7 @@ spec:
                   except Exception as e:
                       print(f"Error: {e}")
                   time.sleep(5)
+              PY
           env:
             - name: REDIS_PASSWORD
               valueFrom:
@@ -557,7 +566,7 @@ def get_redis_client():
 # Sentinel connection for HA
 def get_sentinel_client():
     sentinel = Sentinel([
-        (os.getenv('SENTINEL_HOST', 'my-redis-sentinel'), 26379)
+        (os.getenv('SENTINEL_HOST', 'my-redis'), 26379)
     ], socket_timeout=0.5)
 
     # Get master for writes
@@ -597,7 +606,7 @@ const redis = new Redis({
 // Sentinel connection for HA
 const redisSentinel = new Redis({
   sentinels: [
-    { host: process.env.SENTINEL_HOST || 'my-redis-sentinel', port: 26379 },
+    { host: process.env.SENTINEL_HOST || 'my-redis', port: 26379 },
   ],
   name: 'mymaster',
   password: process.env.REDIS_PASSWORD,
@@ -606,9 +615,9 @@ const redisSentinel = new Redis({
 
 // Cluster connection
 const cluster = new Redis.Cluster([
-  { host: 'my-redis-cluster-0', port: 6379 },
-  { host: 'my-redis-cluster-1', port: 6379 },
-  { host: 'my-redis-cluster-2', port: 6379 },
+  { host: 'my-redis-cluster-0.my-redis-cluster-headless', port: 6379 },
+  { host: 'my-redis-cluster-1.my-redis-cluster-headless', port: 6379 },
+  { host: 'my-redis-cluster-2.my-redis-cluster-headless', port: 6379 },
 ], {
   redisOptions: {
     password: process.env.REDIS_PASSWORD,
@@ -641,10 +650,18 @@ import (
 
 func main() {
     ctx := context.Background()
+    redisHost := os.Getenv("REDIS_HOST")
+    if redisHost == "" {
+        redisHost = "my-redis-master"
+    }
+    sentinelHost := os.Getenv("SENTINEL_HOST")
+    if sentinelHost == "" {
+        sentinelHost = "my-redis"
+    }
 
     // Simple connection
     client := redis.NewClient(&redis.Options{
-        Addr:         os.Getenv("REDIS_HOST") + ":6379",
+        Addr:         redisHost + ":6379",
         Password:     os.Getenv("REDIS_PASSWORD"),
         DB:           0,
         DialTimeout:  5 * time.Second,
@@ -657,7 +674,7 @@ func main() {
     sentinelClient := redis.NewFailoverClient(&redis.FailoverOptions{
         MasterName: "mymaster",
         SentinelAddrs: []string{
-            os.Getenv("SENTINEL_HOST") + ":26379",
+            sentinelHost + ":26379",
         },
         Password:         os.Getenv("REDIS_PASSWORD"),
         SentinelPassword: os.Getenv("REDIS_PASSWORD"),
@@ -667,9 +684,9 @@ func main() {
     // Cluster connection
     clusterClient := redis.NewClusterClient(&redis.ClusterOptions{
         Addrs: []string{
-            "my-redis-cluster-0:6379",
-            "my-redis-cluster-1:6379",
-            "my-redis-cluster-2:6379",
+            "my-redis-cluster-0.my-redis-cluster-headless:6379",
+            "my-redis-cluster-1.my-redis-cluster-headless:6379",
+            "my-redis-cluster-2.my-redis-cluster-headless:6379",
         },
         Password: os.Getenv("REDIS_PASSWORD"),
     })
@@ -697,7 +714,7 @@ The metrics are already enabled in the production configuration. Access them:
 
 ```bash
 # Port forward to metrics
-kubectl port-forward svc/my-redis-metrics 9121:9121
+kubectl port-forward svc/redis-prod-metrics 9121:9121
 
 # View metrics
 curl http://localhost:9121/metrics

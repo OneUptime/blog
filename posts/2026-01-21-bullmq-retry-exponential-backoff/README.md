@@ -44,11 +44,10 @@ Delay increases exponentially with each retry:
 
 ```typescript
 // Exponential backoff
-// Attempt 1: 1000ms
-// Attempt 2: 2000ms
-// Attempt 3: 4000ms
-// Attempt 4: 8000ms
-// Attempt 5: 16000ms
+// Retry after attempt 1: 1000ms
+// Retry after attempt 2: 2000ms
+// Retry after attempt 3: 4000ms
+// Retry after attempt 4: 8000ms
 
 await queue.add('api-call', { url: 'https://api.example.com' }, {
   attempts: 5,
@@ -90,6 +89,12 @@ const queue = new Queue('custom-backoff', {
       type: 'custom',
     },
   },
+});
+
+const worker = new Worker('custom-backoff', async (job: Job) => {
+  return await processJob(job.data);
+}, {
+  connection,
   settings: {
     backoffStrategy: (attemptsMade: number) => {
       // Custom strategy: exponential with jitter
@@ -175,17 +180,12 @@ const worker = new Worker('api-calls', async (job: Job) => {
 Decide whether to retry based on error type:
 
 ```typescript
+import { UnrecoverableError } from 'bullmq';
+
 class RetryableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'RetryableError';
-  }
-}
-
-class NonRetryableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NonRetryableError';
   }
 }
 
@@ -199,7 +199,7 @@ const worker = new Worker('smart-retry', async (job: Job) => {
       throw new RetryableError(error.message);
     } else if (isValidationError(error)) {
       // No point retrying - mark as failed immediately
-      throw new NonRetryableError(error.message);
+      throw new UnrecoverableError(error.message);
     }
     throw error;
   }
@@ -315,6 +315,16 @@ interface RateLimitedJobData {
   payload: Record<string, unknown>;
 }
 
+function extractRateLimitReset(error: Error): number | null {
+  // Parse rate limit headers from error
+  // This depends on how your HTTP client reports errors
+  const match = error.message.match(/retry-after[:\s]+(\d+)/i);
+  if (match) {
+    return parseInt(match[1]) * 1000; // Convert to milliseconds
+  }
+  return null;
+}
+
 class RateLimitAwareQueue {
   private queue: Queue<RateLimitedJobData>;
 
@@ -325,30 +335,7 @@ class RateLimitAwareQueue {
         attempts: 10,
         backoff: { type: 'custom' },
       },
-      settings: {
-        backoffStrategy: (attemptsMade: number, type: string, error: Error) => {
-          // Check for rate limit response
-          const rateLimitReset = this.extractRateLimitReset(error);
-          if (rateLimitReset) {
-            // Wait until rate limit resets
-            return rateLimitReset;
-          }
-
-          // Default exponential backoff
-          return Math.min(1000 * Math.pow(2, attemptsMade), 60000);
-        },
-      },
     });
-  }
-
-  private extractRateLimitReset(error: Error): number | null {
-    // Parse rate limit headers from error
-    // This depends on how your HTTP client reports errors
-    const match = error.message.match(/retry-after[:\s]+(\d+)/i);
-    if (match) {
-      return parseInt(match[1]) * 1000; // Convert to milliseconds
-    }
-    return null;
   }
 
   async addAPICall(data: RateLimitedJobData) {
@@ -379,7 +366,22 @@ const worker = new Worker<RateLimitedJobData>('rate-limited-api', async (job) =>
     console.error(`API call failed (attempt ${job.attemptsMade + 1}):`, error);
     throw error;
   }
-}, { connection });
+}, {
+  connection,
+  settings: {
+    backoffStrategy: (attemptsMade: number, type: string, error: Error) => {
+      // Check for rate limit response
+      const rateLimitReset = extractRateLimitReset(error);
+      if (rateLimitReset) {
+        // Wait until rate limit resets
+        return rateLimitReset;
+      }
+
+      // Default exponential backoff
+      return Math.min(1000 * Math.pow(2, attemptsMade - 1), 60000);
+    },
+  },
+});
 ```
 
 ## Progressive Backoff with Circuit Breaker
@@ -538,7 +540,7 @@ class RetryMetrics {
 ## Complete Retry System Example
 
 ```typescript
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue, Worker, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 
 interface WebhookJobData {

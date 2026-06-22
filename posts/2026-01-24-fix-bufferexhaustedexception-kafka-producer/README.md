@@ -60,8 +60,9 @@ The default `buffer.memory` is 32MB, which may be too small for high-throughput 
 
 ```java
 import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.common.errors.BufferExhaustedException;
+import org.apache.kafka.clients.producer.BufferExhaustedException;
 import org.apache.kafka.common.errors.TimeoutException;
+import java.util.Properties;
 
 public class BufferConfiguredProducer {
 
@@ -103,6 +104,9 @@ public class BufferConfiguredProducer {
 If brokers are slow to acknowledge records, the buffer fills up while waiting for confirmations.
 
 ```java
+import org.apache.kafka.clients.producer.ProducerConfig;
+import java.util.Properties;
+
 public class SlowBrokerHandler {
 
     public static Properties configureForSlowBrokers() {
@@ -121,8 +125,9 @@ public class SlowBrokerHandler {
         props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 180000);
 
         // Allow more in-flight requests
-        // This helps maintain throughput despite latency
-        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 10);
+        // This helps maintain throughput despite latency, but keep this <= 5
+        // when enable.idempotence=true
+        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
         // Larger buffer for slow broker scenarios
         props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 268435456); // 256MB
@@ -167,6 +172,11 @@ sequenceDiagram
 ### Strategy 1: Block with Timeout and Retry
 
 ```java
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.clients.producer.BufferExhaustedException;
+import org.apache.kafka.common.errors.TimeoutException;
+import java.time.Duration;
+import java.util.Properties;
 import java.util.concurrent.*;
 
 public class BackpressureProducer {
@@ -230,6 +240,9 @@ public class BackpressureProducer {
 ### Strategy 2: Rate Limiting with Semaphore
 
 ```java
+import org.apache.kafka.clients.producer.*;
+import java.time.Duration;
+import java.util.Properties;
 import java.util.concurrent.Semaphore;
 
 public class RateLimitedProducer {
@@ -253,15 +266,20 @@ public class RateLimitedProducer {
         // This blocks if too many records are in flight
         rateLimiter.acquire();
 
-        producer.send(record, (metadata, exception) -> {
-            // Release permit when send completes (success or failure)
-            rateLimiter.release();
+        try {
+            producer.send(record, (metadata, exception) -> {
+                // Release permit when send completes (success or failure)
+                rateLimiter.release();
 
-            if (exception != null) {
-                System.err.println("Send failed: " + exception.getMessage());
-                // Handle failed record (e.g., dead letter queue, retry logic)
-            }
-        });
+                if (exception != null) {
+                    System.err.println("Send failed: " + exception.getMessage());
+                    // Handle failed record (e.g., dead letter queue, retry logic)
+                }
+            });
+        } catch (RuntimeException e) {
+            rateLimiter.release();
+            throw e;
+        }
     }
 
     // Get current buffer pressure
@@ -279,6 +297,9 @@ public class RateLimitedProducer {
 ### Strategy 3: Async Processing with Bounded Queue
 
 ```java
+import org.apache.kafka.clients.producer.*;
+import java.time.Duration;
+import java.util.Properties;
 import java.util.concurrent.*;
 
 public class BoundedAsyncProducer {
@@ -316,21 +337,20 @@ public class BoundedAsyncProducer {
 
     private void senderLoop() {
         while (running || !queue.isEmpty()) {
+            ProducerRecord<String, String> record = null;
             try {
-                ProducerRecord<String, String> record = queue.poll(100, TimeUnit.MILLISECONDS);
+                record = queue.poll(100, TimeUnit.MILLISECONDS);
 
                 if (record != null) {
-                    // Send with callback for error handling
-                    producer.send(record, (metadata, exception) -> {
-                        if (exception != null) {
-                            handleSendError(record, exception);
-                        }
-                    });
+                    // Wait for completion so the bounded queue reflects producer backpressure
+                    producer.send(record).get();
                 }
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
+            } catch (ExecutionException e) {
+                handleSendError(record, e);
             }
         }
     }
@@ -360,6 +380,7 @@ public class BoundedAsyncProducer {
 Track buffer metrics to detect issues before they cause exceptions:
 
 ```java
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import java.util.Map;
@@ -371,7 +392,7 @@ public class BufferHealthMonitor {
         this.producer = producer;
     }
 
-    // Get current buffer utilization percentage
+    // Get current buffer utilization as a fraction from 0.0 to 1.0
     public double getBufferUtilization() {
         Map<MetricName, ? extends Metric> metrics = producer.metrics();
 
@@ -424,6 +445,10 @@ public class BufferHealthMonitor {
 
 ```java
 import io.micrometer.core.instrument.*;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
+import java.util.Map;
 
 public class BufferMetricsExporter {
     private final KafkaProducer<String, String> producer;
@@ -435,15 +460,15 @@ public class BufferMetricsExporter {
 
         // Register gauges for buffer metrics
         Gauge.builder("kafka.producer.buffer.utilization", this, BufferMetricsExporter::getBufferUtilization)
-            .description("Producer buffer utilization percentage")
+            .description("Producer buffer utilization as a fraction from 0.0 to 1.0")
             .register(registry);
 
         Gauge.builder("kafka.producer.buffer.available.bytes", this, BufferMetricsExporter::getBufferAvailable)
             .description("Available buffer memory in bytes")
             .register(registry);
 
-        Gauge.builder("kafka.producer.batch.queue.size", this, BufferMetricsExporter::getBatchQueueSize)
-            .description("Number of batches waiting to be sent")
+        Gauge.builder("kafka.producer.record.queue.time.avg", this, BufferMetricsExporter::getRecordQueueTimeAvg)
+            .description("Average time record batches spent in the send buffer")
             .register(registry);
     }
 
@@ -456,7 +481,7 @@ public class BufferMetricsExporter {
         return getMetricValue("buffer-available-bytes");
     }
 
-    private double getBatchQueueSize() {
+    private double getRecordQueueTimeAvg() {
         return getMetricValue("record-queue-time-avg");
     }
 
@@ -589,6 +614,7 @@ public class ResilientKafkaProducer {
     // Send with comprehensive error handling
     public CompletableFuture<RecordMetadata> send(String topic, String key, String value) {
         CompletableFuture<RecordMetadata> future = new CompletableFuture<>();
+        boolean permitAcquired = false;
 
         try {
             // Check buffer health before sending
@@ -602,6 +628,7 @@ public class ResilientKafkaProducer {
                     new BufferExhaustedException("Too many in-flight requests"));
                 return future;
             }
+            permitAcquired = true;
 
             ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, value);
 
@@ -618,7 +645,15 @@ public class ResilientKafkaProducer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.completeExceptionally(e);
-        } catch (BufferExhaustedException | TimeoutException e) {
+        } catch (TimeoutException e) {
+            if (permitAcquired) {
+                inflightLimiter.release();
+            }
+            future.completeExceptionally(e);
+        } catch (RuntimeException e) {
+            if (permitAcquired) {
+                inflightLimiter.release();
+            }
             future.completeExceptionally(e);
         }
 

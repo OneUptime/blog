@@ -33,7 +33,7 @@ cat .git/HEAD
 
 # The branch points to a commit
 cat .git/refs/heads/main
-# a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0
+# a1b2c3d4e5f678901234567890abcdef12345678
 ```
 
 ## What is Detached HEAD?
@@ -54,7 +54,7 @@ flowchart LR
 ```bash
 # Detached state: HEAD points directly to a commit
 cat .git/HEAD
-# a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0
+# a1b2c3d4e5f678901234567890abcdef12345678
 
 # Git warns you about this
 git status
@@ -83,7 +83,7 @@ state without impacting any branches by switching back to a branch.
 # Checkout a release tag
 git checkout v2.0.0
 
-# Tags point to commits, not branches
+# Tags identify commits, not branches
 # Result: detached HEAD at the tagged commit
 ```
 
@@ -119,14 +119,14 @@ git checkout a1b2c3d
 
 # You make some changes and commit
 git commit -m "Important fix"
-# New commit: x1y2z3w
+# New commit: f1e2d3c
 
 # You switch back to main
 git checkout main
 
-# The commit x1y2z3w is now orphaned!
+# The commit f1e2d3c is now orphaned!
 # No branch points to it
-# Git's garbage collection will eventually delete it
+# Git's garbage collection can eventually delete it after reflog entries expire
 ```
 
 ```mermaid
@@ -134,7 +134,7 @@ flowchart LR
     HEAD --> main
     main --> C3[Commit C3]
     C3 --> C2[Commit C2]
-    orphan[x1y2z3w<br/>ORPHANED] --> C2
+    orphan[f1e2d3c<br/>ORPHANED] --> C2
 
     style orphan fill:#FF6B6B
     style HEAD fill:#FFD700
@@ -181,15 +181,15 @@ If you already switched branches and lost commits:
 git reflog
 
 # Output shows recent HEAD positions
-# x1y2z3w HEAD@{1}: commit: Important fix
+# f1e2d3c HEAD@{1}: commit: Important fix
 # a1b2c3d HEAD@{2}: checkout: moving from main to a1b2c3d
 # ...
 
 # Create a branch at the lost commit
-git branch recovered-work x1y2z3w
+git branch recovered-work f1e2d3c
 
 # Or checkout directly
-git checkout x1y2z3w
+git checkout f1e2d3c
 git checkout -b recovered-work
 ```
 
@@ -205,7 +205,7 @@ git reflog
 git checkout main
 
 # Apply the lost commit
-git cherry-pick x1y2z3w
+git cherry-pick f1e2d3c
 
 # The changes are now on main
 ```
@@ -287,7 +287,7 @@ git checkout feature-branch
 
 ### Use `git switch` Instead of `git checkout`
 
-The newer `git switch` command is designed specifically for switching branches and will warn you more clearly:
+The newer `git switch` command is designed specifically for switching branches and requires you to be explicit when detaching HEAD:
 
 ```bash
 # switch is for branches
@@ -340,18 +340,18 @@ git stash pop
 
 # Step 1: Find the commits
 git reflog
-# x1y2z3w HEAD@{1}: commit: Fix bug
-# y2z3w4x HEAD@{2}: commit: Add feature
+# f1e2d3c HEAD@{1}: commit: Fix bug
+# e4d5c6b HEAD@{2}: commit: Add feature
 # a1b2c3d HEAD@{3}: checkout: moving from main to a1b2c3d
 
 # Step 2: Create a branch at the most recent commit
-git branch recovery x1y2z3w
+git branch recovery f1e2d3c
 
 # Step 3: Merge or cherry-pick to main
 git checkout main
 git merge recovery
 # or
-git cherry-pick y2z3w4x x1y2z3w
+git cherry-pick e4d5c6b f1e2d3c
 ```
 
 ### Scenario 3: Rebase Went Wrong

@@ -15,8 +15,8 @@ Apache Avro is a data serialization framework that provides compact binary encod
 Avro offers several advantages over JSON or other formats:
 
 - **Compact binary format**: Smaller message sizes than JSON
-- **Schema evolution**: Add/remove fields without breaking consumers
-- **Strong typing**: Catch errors at compile time
+- **Schema evolution**: Make compatible schema changes without breaking consumers
+- **Strong typing**: Catch errors at compile time when using generated classes
 - **Schema Registry integration**: Centralized schema management
 
 ## Setting Up Schema Registry
@@ -34,10 +34,15 @@ services:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
+    ports:
+      - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   schema-registry:
@@ -48,7 +53,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
 ```
 
 ## Defining Avro Schemas
@@ -64,7 +69,7 @@ services:
     {"name": "id", "type": "string"},
     {"name": "name", "type": "string"},
     {"name": "email", "type": "string"},
-    {"name": "createdAt", "type": "long", "logicalType": "timestamp-millis"},
+    {"name": "createdAt", "type": {"type": "long", "logicalType": "timestamp-millis"}},
     {"name": "metadata", "type": {"type": "map", "values": "string"}, "default": {}}
   ]
 }
@@ -91,7 +96,7 @@ services:
       ]
     }}},
     {"name": "totalAmount", "type": {"type": "bytes", "logicalType": "decimal", "precision": 12, "scale": 2}},
-    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
   ]
 }
 ```
@@ -242,6 +247,8 @@ public class AvroConsumer {
 import com.example.User;  // Generated class
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.kafka.clients.producer.*;
+
+import java.util.*;
 
 public class SpecificAvroProducer {
 
@@ -410,7 +417,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ## Best Practices
 
-1. **Use specific record types**: Generate Java/Python classes for type safety
+1. **Use specific record types**: Generate Java classes or use typed data models in Python for type safety
 2. **Set appropriate compatibility**: BACKWARD is recommended for most cases
 3. **Version your schemas**: Use Schema Registry for centralized management
 4. **Include default values**: For optional fields to support evolution
@@ -418,4 +425,4 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ## Conclusion
 
-Avro with Kafka provides efficient, schema-based serialization with excellent support for schema evolution. Combined with Schema Registry, it enables robust data contracts between producers and consumers while maintaining backward and forward compatibility.
+Avro with Kafka provides efficient, schema-based serialization with excellent support for schema evolution. Combined with Schema Registry, it enables robust data contracts between producers and consumers while enforcing the compatibility rules you configure.

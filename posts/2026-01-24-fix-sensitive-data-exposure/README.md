@@ -10,7 +10,7 @@ Description: Learn how to identify and fix sensitive data exposure vulnerabiliti
 
 > Sensitive data exposure occurs when applications fail to adequately protect confidential information such as passwords, credit card numbers, health records, and personal data. This guide shows you how to identify vulnerable data and implement proper protection mechanisms.
 
-Sensitive data exposure is consistently ranked in the OWASP Top 10 because the consequences of exposing user data can be severe, including identity theft, financial fraud, and regulatory penalties.
+Sensitive data exposure is covered in the OWASP Top 10 under cryptographic failures because the consequences of exposing user data can be severe, including identity theft, financial fraud, and regulatory penalties.
 
 ---
 
@@ -230,7 +230,7 @@ async function hashPassword(password) {
  * @returns {Promise<boolean>} - True if password matches
  */
 async function verifyPassword(password, hash) {
-    // Use constant-time comparison (bcrypt does this internally)
+    // bcrypt hashes the supplied password and compares full bcrypt digests internally
     return await bcrypt.compare(password, hash);
 }
 
@@ -458,7 +458,7 @@ class SensitiveDataFilter(logging.Filter):
         # SSN
         (r'\b\d{3}-\d{2}-\d{4}\b', '[SSN]'),
         # Email addresses
-        (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]'),
+        (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '[EMAIL]'),
         # Phone numbers
         (r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', '[PHONE]'),
         # API keys (common formats)
@@ -551,7 +551,7 @@ logger = setup_secure_logging()
 # These will be automatically masked
 logger.info("User login attempt for john.doe@example.com")  # Email masked
 logger.info("Processing payment for card 4111-1111-1111-1111")  # Card masked
-logger.info("API request with token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")  # JWT masked
+logger.info("API request with token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature")  # JWT masked
 
 # Structured logging with masking
 request_data = {
@@ -572,7 +572,8 @@ logger.info("Request data: %s", json.dumps(mask_dict(request_data)))
 # Secure TLS configuration
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Modern TLS configuration
@@ -590,6 +591,8 @@ server {
     ssl_stapling on;
     ssl_stapling_verify on;
     ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+    resolver 1.1.1.1 1.0.0.1 valid=300s;
+    resolver_timeout 5s;
 
     # Session settings
     ssl_session_cache shared:SSL:10m;

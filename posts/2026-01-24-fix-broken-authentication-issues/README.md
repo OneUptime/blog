@@ -8,7 +8,7 @@ Description: Learn how to identify and fix broken authentication vulnerabilities
 
 ---
 
-Broken authentication consistently ranks in the OWASP Top 10 security risks. It occurs when authentication mechanisms are improperly implemented, allowing attackers to compromise passwords, session tokens, or exploit other flaws to assume user identities. This guide covers common broken authentication issues and how to fix them.
+Authentication failures consistently rank in the OWASP Top 10 security risks. This category was previously known as broken authentication and occurs when authentication mechanisms are improperly implemented, allowing attackers to compromise passwords, session tokens, or exploit other flaws to assume user identities. This guide covers common broken authentication issues and how to fix them.
 
 ## Common Authentication Vulnerabilities
 
@@ -50,7 +50,7 @@ const https = require('https');
 
 class PasswordValidator {
     constructor(options = {}) {
-        this.minLength = options.minLength || 12;
+        this.minLength = options.minLength || 15;
         this.minScore = options.minScore || 3;  // zxcvbn score 0-4
         this.checkBreached = options.checkBreached !== false;
     }
@@ -142,7 +142,7 @@ Sessions that are predictable, never expire, or transmitted insecurely allow ses
 ```javascript
 // secure-session.js
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 const Redis = require('ioredis');
 const crypto = require('crypto');
 
@@ -165,8 +165,7 @@ const sessionConfig = {
         httpOnly: true,         // No JavaScript access
         sameSite: 'strict',     // CSRF protection
         maxAge: 3600000,        // 1 hour
-        path: '/',
-        domain: process.env.COOKIE_DOMAIN
+        path: '/'               // Required for __Host- cookies; do not set Domain
     }
 };
 
@@ -179,24 +178,29 @@ function sessionSecurityMiddleware(req, res, next) {
     // Regenerate session ID on privilege changes
     const originalLogin = req.login;
     req.login = function(user, options, callback) {
+        if (typeof options === 'function') {
+            callback = options;
+            options = {};
+        }
+
         req.session.regenerate((err) => {
             if (err) return callback(err);
             originalLogin.call(req, user, options, callback);
         });
     };
 
-    // Track session metadata
+    // Detect session anomalies
     if (req.session.userId) {
+        if (req.session.ip && req.session.ip !== req.ip) {
+            console.log(`Session anomaly: IP changed from ${req.session.ip} to ${req.ip}`);
+            // Optionally invalidate session
+            // return req.session.destroy(() => res.status(401).json({ error: 'Session invalidated' }));
+        }
+
+        // Track session metadata
         req.session.lastActivity = Date.now();
         req.session.ip = req.ip;
         req.session.userAgent = req.get('User-Agent');
-    }
-
-    // Detect session anomalies
-    if (req.session.ip && req.session.ip !== req.ip) {
-        console.log(`Session anomaly: IP changed from ${req.session.ip} to ${req.ip}`);
-        // Optionally invalidate session
-        // return req.session.destroy(() => res.status(401).json({ error: 'Session invalidated' }));
     }
 
     next();
@@ -523,7 +527,7 @@ class CredentialStuffingProtection {
 
 | Check | Status |
 |-------|--------|
-| Passwords minimum 12 characters | Required |
+| Passwords minimum 15 characters when MFA is not enabled | Required |
 | Check passwords against breach databases | Required |
 | Secure session ID generation | Required |
 | Session regeneration on login | Required |

@@ -111,15 +111,18 @@ spec:
 
   # Failover behavior
   failoverDelay: 0
-  switchoverDelay: 40000000  # 40 seconds in microseconds
+  switchoverDelay: 40  # seconds
 
   # Primary update strategy
   primaryUpdateStrategy: unsupervised
   primaryUpdateMethod: switchover
 
-  # Minimum sync replicas (for sync replication)
-  # minSyncReplicas: 1
-  # maxSyncReplicas: 2
+  # Synchronous replication (if required)
+  # postgresql:
+  #   synchronous:
+  #     method: any
+  #     number: 1
+  #     dataDurability: required
 ```
 
 ## Pod Anti-Affinity Configuration
@@ -210,13 +213,11 @@ For zero data loss (RPO = 0):
 spec:
   instances: 3
 
-  # Minimum replicas that must confirm writes
-  minSyncReplicas: 1
-
-  # Maximum replicas in sync group
-  maxSyncReplicas: 2
-
   postgresql:
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
     parameters:
       # Synchronous commit level
       synchronous_commit: "remote_apply"  # Strongest durability
@@ -238,11 +239,11 @@ spec:
 spec:
   instances: 5
 
-  # Require 2 out of 4 replicas to confirm
-  minSyncReplicas: 2
-  maxSyncReplicas: 4
-
   postgresql:
+    synchronous:
+      method: any
+      number: 2
+      dataDurability: required
     parameters:
       synchronous_commit: "on"
 ```
@@ -253,14 +254,14 @@ spec:
 
 ```yaml
 spec:
-  # Delay before failover (microseconds, 0 = immediate)
+  # Delay before failover (seconds, 0 = immediate)
   failoverDelay: 0
 
-  # Maximum lag allowed for failover candidate (bytes)
-  # Replicas with more lag won't be promoted
-  postgresql:
-    parameters:
-      # Patroni-like settings handled by operator
+  # Optional: keep lagging replicas out of failover/read-only service eligibility
+  probes:
+    readiness:
+      type: streaming
+      maximumLag: 64Mi
 ```
 
 ### Monitoring Failover
@@ -271,7 +272,7 @@ spec:
 kubectl get cluster postgres-ha -w
 
 # Check current primary
-kubectl get pods -l cnpg.io/cluster=postgres-ha -L role
+kubectl get pods -l cnpg.io/cluster=postgres-ha -L cnpg.io/instanceRole
 
 # View events during failover
 kubectl get events --field-selector involvedObject.name=postgres-ha --sort-by='.lastTimestamp'
@@ -282,21 +283,17 @@ kubectl get events --field-selector involvedObject.name=postgres-ha --sort-by='.
 Trigger planned switchover to specific instance:
 
 ```bash
-# Using kubectl annotation
-kubectl annotate cluster postgres-ha \
-  cnpg.io/targetPrimary=postgres-ha-2
-
-# Or using cnpg plugin
+# Using cnpg plugin
 kubectl cnpg promote postgres-ha postgres-ha-2
 ```
 
-### Demote Primary (Emergency)
+### Fence Primary (Emergency)
 
-Force demote the primary:
+Fence the primary instance without promoting a new primary:
 
 ```bash
 kubectl annotate cluster postgres-ha \
-  cnpg.io/forceLegacyBackup=true
+  cnpg.io/fencedInstances='["postgres-ha-1"]'
 ```
 
 ## Replication Slots
@@ -339,9 +336,8 @@ CloudNativePG creates PDB automatically. Customize:
 
 ```yaml
 spec:
-  # Minimum available pods
-  # Default: instances - 1 (allows 1 pod to be unavailable)
-  minSyncReplicas: 1
+  # Disable operator-managed PDBs only for non-production cases
+  enablePDB: false
 ```
 
 ### Instance Recovery
@@ -453,11 +449,11 @@ spec:
         matchLabels:
           cnpg.io/cluster: postgres-multi-zone
 
-  # Synchronous replication for cross-zone durability
-  minSyncReplicas: 1
-  maxSyncReplicas: 2
-
   postgresql:
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
     parameters:
       synchronous_commit: "on"
 ```
@@ -491,7 +487,7 @@ kubectl get cluster postgres-ha
 kubectl describe cluster postgres-ha
 
 # Pod roles
-kubectl get pods -l cnpg.io/cluster=postgres-ha -L role,status
+kubectl get pods -l cnpg.io/cluster=postgres-ha -L cnpg.io/instanceRole
 
 # Check replication lag
 kubectl exec postgres-ha-1 -- psql -c "SELECT * FROM pg_stat_replication;"
@@ -501,20 +497,18 @@ kubectl exec postgres-ha-1 -- psql -c "SELECT * FROM pg_stat_replication;"
 
 Key HA metrics to monitor:
 
-```yaml
+```text
 # Replication lag (seconds)
 cnpg_pg_replication_lag
 
-# Instance role (1=primary, 0=replica)
-cnpg_collector_up{role="primary"}
+# Replica recovery status
+cnpg_pg_replication_in_recovery
 
-# WAL position
-cnpg_pg_stat_replication_sent_lag_bytes
-cnpg_pg_stat_replication_write_lag_bytes
+# Streaming replicas connected to the instance
+cnpg_pg_replication_streaming_replicas
 
-# Cluster status
-cnpg_cluster_instances
-cnpg_cluster_ready_instances
+# PostgreSQL availability
+cnpg_collector_up
 ```
 
 ### Alert Rules
@@ -524,13 +518,13 @@ groups:
   - name: cloudnativepg-ha
     rules:
       - alert: PostgreSQLClusterDegraded
-        expr: cnpg_cluster_ready_instances < cnpg_cluster_instances
+        expr: cnpg_collector_up == 0
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "PostgreSQL cluster degraded"
-          description: "Cluster {{ $labels.cluster }} has {{ $value }} ready instances"
+          description: "PostgreSQL is down on {{ $labels.pod }}"
 
       - alert: PostgreSQLHighReplicationLag
         expr: cnpg_pg_replication_lag > 30
@@ -541,21 +535,13 @@ groups:
           summary: "High replication lag"
           description: "Replication lag is {{ $value }}s on {{ $labels.instance }}"
 
-      - alert: PostgreSQLNoReplicas
-        expr: count(cnpg_collector_up{role="replica"}) == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "No PostgreSQL replicas available"
-
-      - alert: PostgreSQLFailover
-        expr: changes(cnpg_collector_up{role="primary"}[5m]) > 0
+      - alert: ReplicaFailingReplication
+        expr: cnpg_pg_replication_in_recovery > cnpg_pg_replication_is_wal_receiver_up
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "PostgreSQL failover occurred"
+          summary: "Replica is failing to replicate"
 ```
 
 ## Testing HA
@@ -570,7 +556,7 @@ kubectl delete pod postgres-ha-1
 kubectl get pods -l cnpg.io/cluster=postgres-ha -w
 
 # Check new primary
-kubectl get pods -l cnpg.io/cluster=postgres-ha -L role
+kubectl get pods -l cnpg.io/cluster=postgres-ha -L cnpg.io/instanceRole
 ```
 
 ### Simulate Node Failure
@@ -605,7 +591,7 @@ kubectl get cluster postgres-ha -w
 
 ```yaml
 spec:
-  instances: 3  # Minimum for quorum
+  instances: 3  # Minimum for HA with failover
   affinity:
     enablePodAntiAffinity: true
     topologyKey: kubernetes.io/hostname
@@ -614,7 +600,7 @@ spec:
 
 ### Production HA Checklist
 
-1. **Minimum 3 instances** for quorum-based decisions
+1. **Minimum 3 instances** for stronger HA and maintenance flexibility
 2. **Pod anti-affinity** across nodes or zones
 3. **Separate WAL storage** for better I/O
 4. **Synchronous replication** if zero data loss required

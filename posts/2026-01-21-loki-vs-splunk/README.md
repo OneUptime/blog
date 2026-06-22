@@ -17,8 +17,8 @@ Choosing between Grafana Loki and Splunk represents a fundamental decision betwe
 | Aspect | Grafana Loki | Splunk |
 |--------|--------------|--------|
 | License | Open Source (AGPLv3) | Commercial |
-| Pricing | Free (infrastructure costs) | Per GB ingested |
-| Architecture | Index-free (labels only) | Full-text indexing |
+| Pricing | Free (infrastructure costs) | Quote-based; workload-based or ingest-based options |
+| Architecture | Minimal index (labels/chunk metadata) | Full-text searchable indexes |
 | Query Language | LogQL | SPL |
 | Learning Curve | Moderate | Steep |
 | Setup Complexity | DIY/Self-managed | Managed options available |
@@ -31,10 +31,10 @@ Choosing between Grafana Loki and Splunk represents a fundamental decision betwe
 flowchart TB
     subgraph Loki["Grafana Loki"]
         direction LR
-        Promtail["Promtail<br/>(Collector)"]
+        Alloy["Grafana Alloy / OTel Collector<br/>(Collector)"]
         LokiCore["Loki<br/>(Labels + Chunks)"]
         Grafana["Grafana<br/>(Query UI)"]
-        Promtail --> LokiCore --> Grafana
+        Alloy --> LokiCore --> Grafana
     end
 
     subgraph Splunk["Splunk"]
@@ -48,7 +48,7 @@ flowchart TB
 
 **Loki**: Only indexes labels, stores compressed log chunks. Cheaper storage, slower arbitrary searches.
 
-**Splunk**: Indexes every word. Faster arbitrary searches, higher storage costs.
+**Splunk**: Builds searchable indexes over ingested events. Faster arbitrary searches, higher storage costs.
 
 ## Cost Comparison
 
@@ -56,12 +56,12 @@ flowchart TB
 
 ```text
 Splunk Pricing (Approximate):
-- Splunk Cloud: $15-20+ per GB/day ingested
-- Splunk Enterprise: License-based, roughly $1,800-2,000 per GB/day annually
+- Splunk Cloud: Quote-based; commonly sold with workload-based or ingest-based pricing
+- Splunk Enterprise: License-based; traditional licenses are often based on daily indexing volume
 
 Example - 100 GB/day:
-- Splunk Cloud: ~$1,500-2,000/month
-- Annual cost: ~$18,000-24,000/year
+- Splunk Cloud: Contract-dependent
+- Annual cost: Contract-dependent
 ```
 
 ### Loki Cost Model
@@ -74,12 +74,12 @@ Loki Costs (Self-Hosted):
   - Storage: S3/GCS costs only
   - No per-GB licensing
 
-Example - 100 GB/day (30-day retention):
+Example - 100 GB/day (30-day retention, illustrative only):
 - S3 storage (90% compression): ~300 GB = ~$7/month
 - EC2/GKE compute: ~$200-500/month
-- Total: ~$200-500/month vs $1,500-2,000/month
+- Total: ~$200-500/month plus operational overhead
 
-Annual savings: $15,000-20,000+
+Annual savings: Depends on Splunk contract, retention, search workload, and operations costs
 ```
 
 ### Total Cost of Ownership
@@ -88,11 +88,11 @@ Annual savings: $15,000-20,000+
 # TCO Comparison - 100 GB/day, 30-day retention
 
 Splunk Enterprise:
-  license_annual: $180,000
+  license_annual: "quote-based"
   infrastructure: $24,000
   admin_fte: 0.5  # Easier management
   training: $5,000
-  total_annual: ~$210,000
+  total_annual: "contract-dependent"
 
 Loki Self-Hosted:
   license: $0
@@ -100,9 +100,9 @@ Loki Self-Hosted:
   admin_fte: 1.0  # More DIY work
   training: $2,000
   grafana_enterprise: $0  # Optional
-  total_annual: ~$80,000
+  total_annual: ~$80,000  # Includes estimated admin time
 
-Savings with Loki: ~$130,000/year (62%)
+Savings with Loki: "Often significant at high volume, but contract-dependent"
 ```
 
 ## Query Language Comparison
@@ -203,7 +203,7 @@ index=application
 
 # Advanced ML-based analysis
 index=application
-| anomalydetection field=response_time
+| anomalydetection method=zscore action=filter response_time
 ```
 
 ## Feature Comparison
@@ -300,7 +300,7 @@ splunk_components:
   indexers: 3-50+     # Store and index
   search_heads: 3-20  # Query processing
   forwarders: unlimited  # Collection
-  cluster_master: 1   # Coordination
+  manager_node: 1     # Coordination
 ```
 
 ## Use Case Fit
@@ -445,7 +445,7 @@ hybrid_strategy:
 
 # Integration via forwarding
 architecture:
-  - Application logs -> Promtail -> Loki
+  - Application logs -> Grafana Alloy or OpenTelemetry Collector -> Loki
   - Security logs -> Splunk Forwarder -> Splunk
   - Both visualized in Grafana (Splunk data source available)
 ```

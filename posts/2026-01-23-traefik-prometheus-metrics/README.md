@@ -118,8 +118,7 @@ traefik_router_request_duration_seconds_bucket{...}
 traefik_service_request_duration_seconds_bucket{...}
 
 # Open connections
-traefik_entrypoint_open_connections{entrypoint, method, protocol}
-traefik_service_open_connections{method, protocol, service}
+traefik_open_connections{entrypoint, protocol}
 
 # TLS metrics
 traefik_tls_certs_not_after{cn, sans, serial}
@@ -226,10 +225,10 @@ sum(rate(traefik_service_request_duration_seconds_count[5m])) by (service)
 
 ```promql
 # Current open connections by entrypoint
-traefik_entrypoint_open_connections
+sum(traefik_open_connections) by (entrypoint)
 
-# Connection count over time
-sum(traefik_service_open_connections) by (service)
+# Current open connections by protocol
+sum(traefik_open_connections) by (protocol)
 ```
 
 ## Setting Up Alerts
@@ -320,7 +319,7 @@ Create a dashboard for visualizing Traefik metrics:
   "panels": [
     {
       "title": "Request Rate",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "sum(rate(traefik_service_requests_total[5m])) by (service)",
@@ -330,7 +329,7 @@ Create a dashboard for visualizing Traefik metrics:
     },
     {
       "title": "Error Rate",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "sum(rate(traefik_service_requests_total{code=~\"5..\"}[5m])) by (service) / sum(rate(traefik_service_requests_total[5m])) by (service)",
@@ -340,7 +339,7 @@ Create a dashboard for visualizing Traefik metrics:
     },
     {
       "title": "P95 Latency",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le, service))",
@@ -385,8 +384,8 @@ data:
         addServicesLabels: true
         # These increase cardinality - use carefully
         # headerLabels:
-        #   X-Tenant-ID: tenant
-        #   X-API-Version: api_version
+        #   tenant: X-Tenant-ID
+        #   api_version: X-API-Version
 ```
 
 ## Metrics Cardinality Management

@@ -72,7 +72,12 @@ curl -X PUT "https://localhost:9200/products-nested" \
   -d '{
     "mappings": {
       "properties": {
-        "name": { "type": "text" },
+        "name": {
+          "type": "text",
+          "fields": {
+            "keyword": { "type": "keyword" }
+          }
+        },
         "reviews": {
           "type": "nested",
           "properties": {
@@ -447,7 +452,7 @@ A document with 100 nested objects counts as 101 Lucene documents.
 
 ### Set Limits for Nested Objects
 
-Prevent mapping explosion:
+Prevent excessive nested mappings and documents:
 
 ```bash
 curl -X PUT "https://localhost:9200/products-nested/_settings" \

@@ -263,7 +263,7 @@ ingress:
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
   hosts:
     - host: myapp.example.com
       paths:
@@ -371,7 +371,7 @@ kubectl create secret generic myapp-db-credentials \
 
 ### Method 2: helm-secrets Plugin
 
-The helm-secrets plugin encrypts values files using SOPS, Mozilla's secrets management tool.
+The helm-secrets plugin decrypts encrypted values files on the fly using SOPS.
 
 ```bash
 # Install helm-secrets plugin
@@ -481,19 +481,19 @@ cat rendered-manifests.yaml
 # Or use dry-run with upgrade
 helm upgrade --install myapp ./my-app \
   -f environments/values-prod.yaml \
-  --dry-run
+  --dry-run=client
 ```
 
-### Validate Against Kubernetes API
+### Validate Against Kubernetes Schemas
 
-Use tools like `kubeval` or `kubeconform` to validate rendered manifests.
+Use tools like `kubeconform` or `kubeval` to validate rendered manifests against Kubernetes schemas.
 
 ```bash
-# Render templates and validate
-helm template myapp ./my-app -f environments/values-prod.yaml | kubeval
-
-# Or with kubeconform (faster, supports newer APIs)
+# Render templates and validate with kubeconform
 helm template myapp ./my-app -f environments/values-prod.yaml | kubeconform
+
+# Or with kubeval for legacy setups
+helm template myapp ./my-app -f environments/values-prod.yaml | kubeval
 ```
 
 ## Environment Parity Checklist

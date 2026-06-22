@@ -8,7 +8,7 @@ Description: Learn how to fix 'ambiguous import' errors in Go when multiple modu
 
 ---
 
-Ambiguous import errors occur when Go finds multiple modules that could provide the same package. This typically happens with module replacements, forks, or vendored dependencies.
+Ambiguous import errors occur when Go finds multiple modules in the build list that provide the same package path. This typically happens with overlapping module paths, split modules, workspace replacements, forks, or stale vendored dependencies.
 
 ---
 
@@ -16,16 +16,16 @@ Ambiguous import errors occur when Go finds multiple modules that could provide 
 
 ```text
 ambiguous import: found package github.com/user/pkg in multiple modules:
-    github.com/user/pkg v1.0.0
-    github.com/user/pkg/v2 v2.0.0
+    github.com/user v1.0.0
+    github.com/user/pkg v0.3.0
 ```
 
 Or:
 
 ```text
-ambiguous import: found package example.com/pkg in multiple directories:
-    /path/to/vendor/example.com/pkg
-    /home/user/go/pkg/mod/example.com/pkg@v1.0.0
+ambiguous import: found package example.com/pkg in multiple modules:
+    example.com/pkg v1.0.0
+    example.com/monorepo v0.9.0
 ```
 
 ---
@@ -34,15 +34,17 @@ ambiguous import: found package example.com/pkg in multiple directories:
 
 ```mermaid
 graph TD
-    A[Ambiguous Import] --> B[Multiple Module Versions]
+    A[Ambiguous Import] --> B[Overlapping Module Paths]
     A --> C[Replace Directives Conflict]
-    A --> D[Vendor vs Module Cache]
+    A --> D[Stale Vendor Directory]
     A --> E[Fork Coexisting with Original]
 ```
 
 ---
 
 ## Solution 1: Clean Module Cache
+
+Use this only when you suspect a corrupted module cache. If two modules really provide the same package path, clearing the cache will not remove the ambiguity.
 
 ```bash
 # Clear module cache
@@ -58,19 +60,19 @@ go mod tidy
 
 ---
 
-## Solution 2: Fix Conflicting Versions
+## Solution 2: Fix Overlapping Modules
 
-Check what's requiring different versions:
+Check what's requiring overlapping module paths:
 
 ```bash
 # Show module graph
-go mod graph | grep problematic/package
+go mod graph | grep github.com/user
 
 # Show why a module is needed
 go mod why -m github.com/user/pkg
 ```
 
-Update `go.mod` to use consistent version:
+Update `go.mod` so only one selected module provides the imported package path:
 
 ```go
 module myproject
@@ -78,7 +80,8 @@ module myproject
 go 1.21
 
 require (
-    github.com/user/pkg v1.5.0  // Use single version
+    github.com/user v1.5.0
+    // Remove github.com/user/pkg if github.com/user already provides github.com/user/pkg
 )
 
 // Remove or update conflicting replace
@@ -90,20 +93,28 @@ require (
 ## Solution 3: Resolve Replace Conflicts
 
 ```go
-// go.mod with conflict
+// go.work with a workspace-level fix
+go 1.21
+
+use (
+    ./module-a
+    ./module-b
+)
+
+// Conflicting replace directives across workspace modules are disallowed.
+// Override them once at the workspace level.
+replace github.com/original/pkg => ../local/pkg
+```
+
+```go
+// go.mod
 module myproject
 
 go 1.21
 
-require (
-    github.com/original/pkg v1.0.0
-)
+require github.com/original/pkg v1.0.0
 
-// This creates ambiguity:
-replace github.com/original/pkg => github.com/fork/pkg v1.1.0
-replace github.com/original/pkg => ../local/pkg
-
-// FIX: Remove duplicate replace, keep one
+// Keep one replacement target for the module.
 replace github.com/original/pkg => github.com/fork/pkg v1.1.0
 ```
 
@@ -116,11 +127,9 @@ replace github.com/original/pkg => github.com/fork/pkg v1.1.0
 go build -mod=vendor ./...
 
 # Option B: Use module cache only
-rm -rf vendor/
-go build ./...
+go build -mod=mod ./...
 
 # Option C: Regenerate vendor
-rm -rf vendor/
 go mod vendor
 go build -mod=vendor ./...
 ```
@@ -129,7 +138,7 @@ go build -mod=vendor ./...
 
 ## Solution 5: Fix Major Version Conflicts
 
-When both v1 and v2 are imported:
+Major versions v2 and higher use a `/vN` module path suffix, so v1 and v2 can coexist when the imports are explicit:
 
 ```go
 // go.mod
@@ -162,24 +171,26 @@ func main() {
 }
 ```
 
+If a v2 module still declares the old module path or code imports v2 packages without the `/v2` suffix, fix the module path and imports instead of trying to force both versions onto the same package path.
+
 ---
 
 ## Solution 6: Fix Transitive Dependency Conflicts
 
-When dependencies require different versions:
+When dependencies require modules that both contain the same package path:
 
 ```bash
 # Find the conflict
-go mod graph | grep conflicting/pkg
+go mod graph | grep example.com/mono
 
 # Output might show:
 # myproject github.com/dep-a@v1.0.0
-# github.com/dep-a@v1.0.0 github.com/conflicting/pkg@v1.0.0
+# github.com/dep-a@v1.0.0 example.com/mono@v1.0.0
 # myproject github.com/dep-b@v1.0.0
-# github.com/dep-b@v1.0.0 github.com/conflicting/pkg@v2.0.0
+# github.com/dep-b@v1.0.0 example.com/mono/sub@v0.2.0
 ```
 
-Force a specific version:
+Upgrade, downgrade, or replace dependencies so only one module in the build list provides the package:
 
 ```go
 // go.mod
@@ -188,10 +199,10 @@ module myproject
 go 1.21
 
 require (
-    github.com/dep-a v1.0.0
+    // dep-a v1.1.0 no longer requires example.com/mono
+    github.com/dep-a v1.1.0
     github.com/dep-b v1.0.0
-    // Explicitly require the version you want
-    github.com/conflicting/pkg v2.0.0
+    example.com/mono/sub v0.2.0
 )
 ```
 
@@ -209,7 +220,7 @@ require (
     github.com/user/pkg v1.5.0
 )
 
-// Exclude versions causing issues
+// Exclude versions causing issues so MVS selects another allowed version.
 exclude (
     github.com/user/pkg v1.3.0
     github.com/user/pkg v1.4.0
@@ -230,7 +241,7 @@ go list -m all | grep pkg-name
 # Show module location
 go list -m -f '{{.Dir}}' github.com/user/pkg
 
-# Check for duplicate packages
+# Check for module files that mention the package path
 find . -name "go.mod" -exec grep -l "github.com/user/pkg" {} \;
 ```
 
@@ -249,7 +260,7 @@ use (
     ./module-b
 )
 
-// If both modules define the same package, use replace
+// If workspace modules have conflicting replacements, override them here.
 replace github.com/shared/pkg => ./shared-pkg
 ```
 
@@ -272,8 +283,8 @@ require (
 // Replace with your fork
 replace github.com/original/pkg => github.com/yourfork/pkg v1.0.1-fixed
 
-// Do NOT also require the fork directly
-// require github.com/yourfork/pkg v1.0.1-fixed  // WRONG - creates ambiguity
+// Do NOT also require or import the fork under a second module path.
+// require github.com/yourfork/pkg v1.0.1-fixed  // WRONG - keep one module identity
 ```
 
 ### Pattern 2: Local Development
@@ -349,20 +360,20 @@ go mod verify
 
 | Cause | Solution |
 |-------|----------|
-| Multiple versions | Pin specific version |
+| Overlapping modules | Keep one provider for the package path |
 | Replace conflicts | Remove duplicate replaces |
-| Vendor + cache | Choose one build mode |
+| Stale vendor directory | Regenerate vendor or use `-mod=mod` |
 | Major versions | Use explicit import paths |
-| Transitive deps | Explicitly require version |
+| Transitive deps | Upgrade or replace dependencies |
 
 **Quick Fix Commands:**
 
 ```bash
-# Nuclear option
+# Cleanup after fixing the module graph
 go clean -modcache
-rm -rf vendor/
 go mod tidy
 go mod download
+go mod vendor
 go mod verify
 ```
 

@@ -79,18 +79,19 @@ gcloud dns managed-zones describe my-zone \
 # Update these at your domain registrar (GoDaddy, Namecheap, etc.)
 ```
 
-### Fix: Missing Trailing Dot
+### Fix: Missing or Inconsistent Trailing Dot
 
-DNS records require fully qualified domain names with a trailing dot.
+Cloud DNS stores fully qualified domain names. Using the trailing dot consistently avoids ambiguity, especially in Terraform and zone-file style tooling.
 
 ```bash
-# Wrong - missing trailing dot
+# Avoid - missing trailing dot can be ambiguous in some tools
 gcloud dns record-sets create api.example.com \
     --zone=my-zone \
     --type=A \
+    --ttl=300 \
     --rrdatas="10.0.0.1"
 
-# Correct - with trailing dot
+# Prefer - explicit fully qualified domain name
 gcloud dns record-sets create "api.example.com." \
     --zone=my-zone \
     --type=A \
@@ -287,12 +288,13 @@ delv @8.8.8.8 example.com A +rtrace
 gcloud dns managed-zones update my-zone \
     --dnssec-state=on
 
-# Step 2: Get the DS records
-gcloud dns managed-zones describe my-zone \
-    --format="value(dnssecConfig.defaultKeySpecs)"
-
-# Get DS record to add to registrar
+# Step 2: Find the key-signing key (KSK) ID
 gcloud dns dns-keys list --zone=my-zone
+
+# Get the DS record for the KSK to add to your registrar
+gcloud dns dns-keys describe 0 \
+    --zone=my-zone \
+    --format="value(ds_record())"
 
 # Step 3: Add DS record at your domain registrar
 # Key Tag: 12345
@@ -339,6 +341,9 @@ gcloud compute ssh my-vm --command="dig internal.example.local A"
 
 # Check VM's DNS configuration
 gcloud compute ssh my-vm --command="cat /etc/resolv.conf"
+
+# Query the metadata server directly
+gcloud compute ssh my-vm --command="dig @169.254.169.254 internal.example.local A"
 ```
 
 ### Fix: Authorize Networks for Private Zone
@@ -353,16 +358,17 @@ gcloud dns managed-zones update my-private-zone \
     --networks=my-vpc-network,other-vpc-network
 ```
 
-### Fix: Configure VPC DNS Policy
+### Fix: Configure VPC DNS Policy for Hybrid DNS
 
 ```bash
-# Create a DNS policy to use Cloud DNS for resolution
+# Cloud DNS private zones normally resolve from VMs through the metadata server.
+# Create an inbound policy only when on-premises systems need to query VPC DNS.
 gcloud dns policies create my-dns-policy \
     --networks=my-vpc-network \
     --enable-inbound-forwarding \
-    --description="Enable Cloud DNS for VPC"
+    --description="Allow inbound DNS forwarding to the VPC"
 
-# For hybrid environments, add forwarding
+# For hybrid environments where VMs should query on-premises DNS, add outbound forwarding
 gcloud dns policies update my-dns-policy \
     --networks=my-vpc-network \
     --alternative-name-servers=10.0.0.53,10.0.0.54

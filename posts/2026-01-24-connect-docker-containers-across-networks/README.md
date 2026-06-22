@@ -12,7 +12,7 @@ As applications grow into microservices, containers often need to communicate ac
 
 ## Docker Network Basics
 
-Docker creates isolated networks where containers can communicate using container names as hostnames. By default, each Docker Compose project gets its own network:
+Docker creates isolated networks. On user-defined networks, including Docker Compose's default project network, containers can communicate using service names or container names as hostnames. By default, each Docker Compose project gets its own network:
 
 ```bash
 # List existing networks
@@ -58,8 +58,6 @@ When you have multiple Compose projects that need to communicate, use external n
 
 ```yaml
 # database/docker-compose.yml
-version: '3.8'
-
 networks:
   database-net:
     name: shared-database-network
@@ -77,8 +75,6 @@ services:
 
 ```yaml
 # application/docker-compose.yml
-version: '3.8'
-
 networks:
   database-net:
     external: true
@@ -117,8 +113,6 @@ cd ../application && docker compose up -d
 Give containers multiple names on different networks:
 
 ```yaml
-version: '3.8'
-
 networks:
   frontend:
   backend:
@@ -146,8 +140,6 @@ Now other containers can reach the API using different names:
 Create networks with specific IP ranges for predictable addressing:
 
 ```yaml
-version: '3.8'
-
 networks:
   app-network:
     driver: bridge
@@ -181,11 +173,10 @@ services:
 Separate public-facing services from internal services:
 
 ```yaml
-version: '3.8'
-
 networks:
   dmz:           # Public-facing network
   internal:      # Protected internal network
+    internal: true
 
 services:
   nginx:
@@ -205,7 +196,7 @@ services:
     image: postgres:16
     networks:
       - internal           # Only internal access
-    # No port mapping - completely isolated
+    # No port mapping - not published to the host
 ```
 
 ```mermaid
@@ -228,8 +219,6 @@ graph LR
 Control which services can communicate:
 
 ```yaml
-version: '3.8'
-
 networks:
   user-services:
   order-services:
@@ -237,24 +226,29 @@ networks:
 
 services:
   user-api:
+    image: myorg/user-api:latest
     networks:
       - user-services
       - shared-services
 
   order-api:
+    image: myorg/order-api:latest
     networks:
       - order-services
       - shared-services
 
   auth-service:
+    image: myorg/auth-service:latest
     networks:
       - shared-services    # Both APIs can reach auth
 
   user-db:
+    image: postgres:16
     networks:
       - user-services      # Only user-api can reach
 
   order-db:
+    image: postgres:16
     networks:
       - order-services     # Only order-api can reach
 ```
@@ -315,11 +309,11 @@ docker network connect target-network source-container
 # In the container's application, bind to 0.0.0.0
 ```
 
-**Issue: Network already exists**
+**Issue: External network not found**
 
 ```bash
-# When external network creation conflicts
-docker network create mynetwork --driver bridge
+# Create the network first, then reference it as external in Compose
+docker network create --driver bridge mynetwork
 # Then reference as external in compose
 ```
 

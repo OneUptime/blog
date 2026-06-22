@@ -12,14 +12,14 @@ Artillery is a modern, powerful load testing toolkit built on Node.js. It lets y
 
 ## Installing Artillery
 
-Artillery runs on Node.js and can be installed globally or as a project dependency. For CI/CD integration, installing as a dev dependency is recommended so your tests run with a consistent version.
+Artillery runs on Node.js and can be installed globally or run with `npx`. For CI/CD integration, keep your performance tests in a dedicated project or repository so your tests run with a consistent version.
 
 ```bash
 # Install globally for quick testing
 
-npm install -g artillery
+npm install -g artillery@latest
 
-# Or as a dev dependency (recommended for projects)
+# Or install in a dedicated performance test project
 npm install --save-dev artillery
 
 # Verify installation
@@ -71,9 +71,8 @@ Run the test:
 # Execute the load test
 npx artillery run load-test.yaml
 
-# Generate HTML report
+# Save a JSON report for later analysis
 npx artillery run load-test.yaml --output results.json
-npx artillery report results.json
 ```
 
 ## Understanding Test Phases
@@ -131,6 +130,8 @@ Real users don't just hit a single endpoint. They browse, search, add items to c
 ```yaml
 config:
   target: "https://shop.example.com"
+  plugins:
+    expect: {}
   phases:
     - duration: 300
       arrivalRate: 10
@@ -238,10 +239,15 @@ When YAML isn't enough, Artillery supports custom JavaScript functions for compl
 
 ```javascript
 // processor.js
+function generateToken(userId) {
+  // Replace this with your real token generation or lookup logic.
+  return `test-token-for-${userId || 'anonymous'}`;
+}
+
 module.exports = {
   // Generate unique order ID for each request
   generateOrderId: function(context, events, done) {
-    context.vars.orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    context.vars.orderId = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     return done();
   },
 
@@ -309,22 +315,20 @@ Define acceptable performance criteria and fail the test if they aren't met. Thi
 ```yaml
 config:
   target: "https://api.example.com"
+  plugins:
+    ensure:
+      thresholds:
+        # 95th percentile response time under 500ms
+        - "http.response_time.p95": 500
+        # 99th percentile under 1000ms
+        - "http.response_time.p99": 1000
+        # Median response time under 200ms
+        - "http.response_time.median": 200
+        # Maximum response time under 3000ms
+        - "http.response_time.max": 3000
   phases:
     - duration: 300
       arrivalRate: 50
-
-  # Define performance thresholds
-  ensure:
-    # 95th percentile response time under 500ms
-    p95: 500
-    # 99th percentile under 1000ms
-    p99: 1000
-    # Median response time under 200ms
-    median: 200
-    # Maximum response time under 3000ms
-    max: 3000
-    # Error rate below 1%
-    maxErrorRate: 1
 
 scenarios:
   - flow:
@@ -398,37 +402,24 @@ jobs:
             --output results.json \
             --quiet
 
-      - name: Generate report
-        if: always()
-        run: artillery report results.json --output report.html
-
-      - name: Upload report
+      - name: Upload JSON report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: load-test-report
-          path: report.html
-
-      - name: Check thresholds
-        run: |
-          # Artillery exits with non-zero code if thresholds fail
-          artillery run tests/load-test.yaml --ensure
+          name: artillery-report
+          path: results.json
 ```
 
 ## Distributed Load Testing
 
-For large-scale tests, Artillery Pro supports distributed testing across multiple workers. For the open-source version, you can run multiple instances manually.
+For large-scale tests, Artillery supports distributed testing across multiple workers on AWS Lambda, AWS Fargate, or Azure Container Instances.
 
 ```bash
-# Run test on multiple machines
-# Machine 1
-artillery run load-test.yaml --output results-1.json
+# Run a distributed test on AWS Lambda
+artillery run-lambda --region eu-west-1 load-test.yaml
 
-# Machine 2
-artillery run load-test.yaml --output results-2.json
-
-# Combine results
-artillery report results-1.json results-2.json --output combined-report.html
+# Run a distributed test on AWS Fargate with five workers
+artillery run-fargate --region us-east-1 --count 5 load-test.yaml
 ```
 
 ## Best Practices

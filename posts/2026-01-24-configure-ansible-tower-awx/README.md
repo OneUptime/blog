@@ -58,19 +58,30 @@ AWX is designed to run on Kubernetes. The AWX Operator is the recommended instal
 ### Install AWX Operator
 
 ```bash
-# Create namespace for AWX
+# Choose a released AWX Operator version
+export VERSION=2.19.1
 
-kubectl create namespace awx
+# Create kustomization.yaml for the operator
+cat > kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - github.com/ansible/awx-operator/config/default?ref=${VERSION}
+images:
+  - name: quay.io/ansible/awx-operator
+    newTag: ${VERSION}
+namespace: awx
+EOF
 
-# Install AWX Operator using kubectl
-kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/main/deploy/awx-operator.yaml
+# Install AWX Operator using kubectl and Kustomize
+kubectl apply -k .
 ```
 
 Alternatively, use Helm:
 
 ```bash
 # Add the AWX Operator Helm repository
-helm repo add awx-operator https://ansible.github.io/awx-operator/
+helm repo add awx-operator https://ansible-community.github.io/awx-operator-helm/
 helm repo update
 
 # Install the operator
@@ -94,7 +105,7 @@ metadata:
   namespace: awx
 spec:
   # Basic configuration
-  service_type: ClusterIP
+  service_type: clusterip
 
   # Resource allocation
   web_resource_requirements:
@@ -113,7 +124,7 @@ spec:
       cpu: 2000m
       memory: 4Gi
 
-  # PostgreSQL database configuration
+  # External PostgreSQL database configuration
   postgres_configuration_secret: awx-postgres-configuration
 
   # Persistent storage
@@ -155,7 +166,8 @@ stringData:
   username: "awx"
   password: "PostgresPassword123!"
   sslmode: "prefer"
-  type: "managed"
+  target_session_attrs: "read-write"
+  type: "unmanaged"
 ```
 
 Apply the configuration:
@@ -400,11 +412,16 @@ curl -k -X POST https://awx.example.com/api/v2/job_templates/ \
     "inventory": 1,
     "project": 1,
     "playbook": "deploy-webapp.yml",
-    "credential": 1,
     "ask_variables_on_launch": true,
     "extra_vars": "app_version: latest",
     "verbosity": 1
   }'
+
+# Attach a machine credential to the job template
+curl -k -X POST https://awx.example.com/api/v2/job_templates/1/credentials/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id": 1}'
 ```
 
 ### Survey for User Input
@@ -412,35 +429,40 @@ curl -k -X POST https://awx.example.com/api/v2/job_templates/ \
 Surveys allow users to provide input when launching jobs:
 
 ```bash
-# Add survey to job template
+# Save the survey specification on the job template
+curl -k -X POST https://awx.example.com/api/v2/job_templates/1/survey_spec/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Deployment Survey",
+    "description": "Parameters for deployment",
+    "spec": [
+      {
+        "question_name": "Application Version",
+        "question_description": "Version to deploy",
+        "variable": "app_version",
+        "type": "text",
+        "required": true,
+        "default": "latest"
+      },
+      {
+        "question_name": "Environment",
+        "question_description": "Target environment",
+        "variable": "target_env",
+        "type": "multiplechoice",
+        "choices": "development\nstaging\nproduction",
+        "required": true,
+        "default": "staging"
+      }
+    ]
+  }'
+
+# Enable surveys on the job template
 curl -k -X PATCH https://awx.example.com/api/v2/job_templates/1/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "survey_enabled": true,
-    "survey_spec": {
-      "name": "Deployment Survey",
-      "description": "Parameters for deployment",
-      "spec": [
-        {
-          "question_name": "Application Version",
-          "question_description": "Version to deploy",
-          "variable": "app_version",
-          "type": "text",
-          "required": true,
-          "default": "latest"
-        },
-        {
-          "question_name": "Environment",
-          "question_description": "Target environment",
-          "variable": "target_env",
-          "type": "multiplechoice",
-          "choices": ["development", "staging", "production"],
-          "required": true,
-          "default": "staging"
-        }
-      ]
-    }
+    "survey_enabled": true
   }'
 ```
 
@@ -513,12 +535,11 @@ Schedule jobs to run automatically.
 
 ```bash
 # Create schedule for nightly backup
-curl -k -X POST https://awx.example.com/api/v2/schedules/ \
+curl -k -X POST https://awx.example.com/api/v2/job_templates/1/schedules/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Nightly Backup",
-    "unified_job_template": 1,
     "rrule": "DTSTART:20240101T020000Z RRULE:FREQ=DAILY;INTERVAL=1",
     "enabled": true
   }'
@@ -689,7 +710,7 @@ curl -k -X POST https://awx.example.com/api/v2/credential_types/ \
 
 ```bash
 # Export AWX configuration using awx-manage (run inside AWX container)
-kubectl exec -it deployment/awx-task -n awx -- awx-manage dumpdata \
+kubectl exec -it deployment/awx -c awx-task -n awx -- awx-manage dumpdata \
   --natural-foreign \
   --natural-primary \
   -e contenttypes \
@@ -699,7 +720,7 @@ kubectl exec -it deployment/awx-task -n awx -- awx-manage dumpdata \
 
 ### Monitor AWX Health
 
-```yaml
+```bash
 # Kubernetes liveness and readiness probes are configured by operator
 # Additional monitoring via API
 

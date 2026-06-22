@@ -56,26 +56,25 @@ Zombies consume minimal resources (just a process table entry), but large number
 
 ```bash
 # List all zombie processes
-
-ps aux | grep -w Z
+ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /^Z/'
 
 # Count zombie processes
-ps aux | awk '$8 ~ /Z/ {count++} END {print count}'
+ps -eo stat= | grep -c '^Z'
 
 # Or use ps directly with state filter
-ps -eo pid,ppid,stat,comm | grep -w Z
+ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 
 # Check for zombies with detailed info
-ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /Z/'
+ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /^Z/'
 ```
 
 ### Example Output
 
 ```bash
-$ ps aux | grep -w Z
-USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
-root      1234  0.0  0.0      0     0 ?        Z    10:00   0:00 [myapp] <defunct>
-root      1235  0.0  0.0      0     0 ?        Z    10:01   0:00 [myapp] <defunct>
+$ ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /^Z/'
+    PID    PPID STAT USER     COMMAND             TIME
+   1234    1200 Z    root     myapp           00:00:00
+   1235    1200 Z    root     myapp           00:00:00
 ```
 
 Key indicators:
@@ -103,7 +102,7 @@ ps -eo pid,ppid,stat,comm | grep -E "PPID|<parent-pid>|<zombie-pid>"
 
 ```bash
 # Watch zombie count
-watch -n 1 'ps aux | grep -c " Z "'
+watch -n 1 "ps -eo stat= | grep -c '^Z'"
 
 # Monitor with top (shows zombie count in header)
 top
@@ -123,8 +122,8 @@ flowchart TD
     C --> D[Zombie Reaped]
     D --> E[Process Table Entry Freed]
 
-    B --> F[Parent ignores SIGCHLD]
-    F --> G[Zombie Remains]
+    B --> F[Parent explicitly ignores SIGCHLD]
+    F --> D
 
     B --> H[Parent busy/blocked]
     H --> G
@@ -135,16 +134,16 @@ flowchart TD
     G --> J{Solution}
     J --> K[Fix Parent Code]
     J --> L[Kill Parent]
-    J --> M[Reparent to init]
+    J --> M[Reparent to init or subreaper]
 ```
 
 ### Common Causes
 
 1. **Parent not calling wait()**: The parent process should call `wait()` or `waitpid()` to read child exit status
-2. **Ignoring SIGCHLD**: Parent ignores the signal that indicates child termination
+2. **Mishandling SIGCHLD**: Parent receives the signal that indicates child termination but does not reap the child
 3. **Parent too busy**: Parent is blocked or too busy to handle child termination
 4. **Buggy application**: Programming error in the parent process
-5. **Orphaned children**: Parent dies, children become orphans (init adopts them)
+5. **Orphaned zombies**: Parent dies before reaping, so init or a subreaper adopts and reaps them
 
 ## Fixing Zombie Processes
 
@@ -161,7 +160,7 @@ kill -9 <zombie-pid>
 
 ### Solution 1: Kill the Parent Process
 
-The most effective solution is to terminate the parent, which causes the zombies to be inherited by init (PID 1), which will immediately reap them.
+The most effective solution is to terminate the parent, which causes the zombies to be inherited by init (PID 1) or the nearest subreaper, which should reap them.
 
 ```bash
 # Find the parent PID
@@ -174,7 +173,7 @@ kill <parent-pid>
 kill -9 <parent-pid>
 
 # Verify zombies are gone
-ps aux | grep -w Z
+ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /^Z/'
 ```
 
 **Warning**: Only kill the parent if it's safe to do so. Critical system processes should not be killed.
@@ -185,16 +184,13 @@ Sometimes the parent just needs a reminder to reap its children.
 
 ```bash
 # Find parent PID
-PPID=$(ps -o ppid= -p <zombie-pid>)
+parent_pid=$(ps -o ppid= -p <zombie-pid>)
 
 # Send SIGCHLD to parent
-kill -SIGCHLD $PPID
-
-# Or use signal number
-kill -17 $PPID
+kill -SIGCHLD "$parent_pid"
 
 # Check if zombies were reaped
-ps aux | grep -w Z
+ps -eo pid,ppid,stat,user,comm,time | awk '$3 ~ /^Z/'
 ```
 
 ### Solution 3: Wait for Parent to Handle Zombies
@@ -203,7 +199,7 @@ If the parent is just slow, zombies may be reaped eventually.
 
 ```bash
 # Monitor zombie count over time
-watch -n 5 'ps aux | grep -c " Z "'
+watch -n 5 "ps -eo stat= | grep -c '^Z'"
 
 # Give the parent time to catch up
 # If count decreases, parent is working
@@ -216,20 +212,22 @@ If you have access to the source code, ensure proper child handling:
 ```c
 /* C example: proper child handling */
 #include <signal.h>
+#include <stddef.h>
 #include <sys/wait.h>
 
 /* Option 1: Handle SIGCHLD */
 void sigchld_handler(int signum) {
+    (void)signum;
     /* Reap all terminated children */
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-int main() {
-    /* Set up signal handler */
+int main(void) {
+    /* Option 1: Set up signal handler */
     signal(SIGCHLD, sigchld_handler);
 
-    /* Or ignore SIGCHLD to auto-reap (System V) */
-    signal(SIGCHLD, SIG_IGN);
+    /* Option 2: Instead, explicitly ignore SIGCHLD to auto-reap on POSIX/Linux */
+    /* signal(SIGCHLD, SIG_IGN); */
 
     /* ... rest of program ... */
 }
@@ -272,7 +270,7 @@ wait $task_pid
 
 ## Handling Orphan Processes
 
-When a parent dies, its children become orphans and are adopted by init (PID 1).
+When a parent dies, its children become orphans and are adopted by init (PID 1) or the nearest subreaper.
 
 ```mermaid
 flowchart LR
@@ -299,15 +297,11 @@ Modern systems use PR_SET_CHILD_SUBREAPER to designate a process to adopt orphan
 /* Set current process as subreaper */
 #include <sys/prctl.h>
 
-prctl(PR_SET_CHILD_SUBREAPER, 1);
-```
-
-Systemd services can use this:
-
-```ini
-[Service]
-# Systemd acts as subreaper for service
-Delegate=yes
+int main(void) {
+    if (prctl(PR_SET_CHILD_SUBREAPER, 1) == -1) {
+        /* handle error */
+    }
+}
 ```
 
 ## Preventing Zombie Accumulation
@@ -324,7 +318,7 @@ ls -d /proc/[0-9]* | wc -l
 # Set up monitoring alert
 cat << 'EOF' > /usr/local/bin/check_zombies.sh
 #!/bin/bash
-ZOMBIE_COUNT=$(ps aux | grep -c " Z ")
+ZOMBIE_COUNT=$(ps -eo stat= | grep -c '^Z')
 if [ "$ZOMBIE_COUNT" -gt 10 ]; then
     echo "Warning: $ZOMBIE_COUNT zombie processes detected"
     # Send alert
@@ -342,6 +336,7 @@ ExecStart=/usr/bin/myapp
 
 # Restart service if it becomes unresponsive
 WatchdogSec=30
+Restart=on-failure
 
 # Kill all child processes when service stops
 KillMode=control-group
@@ -379,7 +374,7 @@ echo "Generated: $(date)"
 echo
 
 # Count zombies
-ZOMBIE_COUNT=$(ps aux | awk '$8 ~ /Z/ {count++} END {print count+0}')
+ZOMBIE_COUNT=$(ps -eo stat= | grep -c '^Z')
 echo "Total zombie processes: $ZOMBIE_COUNT"
 echo
 
@@ -390,30 +385,30 @@ fi
 
 echo "=== Zombie Process Details ==="
 ps aux | head -1
-ps aux | awk '$8 ~ /Z/'
+ps aux | awk '$8 ~ /^Z/'
 echo
 
 echo "=== Parent Process Analysis ==="
 # Get unique parent PIDs of zombies
-ps -eo pid,ppid,stat | awk '$3 ~ /Z/ {print $2}' | sort -u | while read PPID; do
-    echo "--- Parent PID: $PPID ---"
-    ps -p $PPID -o pid,ppid,stat,user,comm,time 2>/dev/null || echo "Parent no longer exists"
+ps -eo pid,ppid,stat | awk '$3 ~ /^Z/ {print $2}' | sort -u | while read parent_pid; do
+    echo "--- Parent PID: $parent_pid ---"
+    ps -p "$parent_pid" -o pid,ppid,stat,user,comm,time 2>/dev/null || echo "Parent no longer exists"
 
     # Count zombies for this parent
-    CHILD_ZOMBIES=$(ps --ppid $PPID -o stat | grep -c Z)
+    CHILD_ZOMBIES=$(ps --ppid "$parent_pid" -o stat= | grep -c '^Z')
     echo "Zombie children: $CHILD_ZOMBIES"
 
     # Show process tree
     echo "Process tree:"
-    pstree -p $PPID 2>/dev/null | head -10
+    pstree -p "$parent_pid" 2>/dev/null | head -10
     echo
 done
 
 echo "=== System Process Statistics ==="
 echo "Total processes: $(ps aux | wc -l)"
-echo "Running: $(ps aux | awk '$8 ~ /R/ {count++} END {print count+0}')"
-echo "Sleeping: $(ps aux | awk '$8 ~ /S/ {count++} END {print count+0}')"
-echo "Stopped: $(ps aux | awk '$8 ~ /T/ {count++} END {print count+0}')"
+echo "Running: $(ps -eo stat= | grep -c '^R')"
+echo "Sleeping: $(ps -eo stat= | grep -c '^S')"
+echo "Stopped: $(ps -eo stat= | grep -c '^T')"
 echo "Zombie: $ZOMBIE_COUNT"
 echo
 
@@ -428,13 +423,13 @@ fi
 
 echo
 echo "=== Quick Fixes ==="
-ps -eo pid,ppid,stat | awk '$3 ~ /Z/ {print $2}' | sort -u | while read PPID; do
-    if [ "$PPID" != "1" ]; then
-        echo "# Send SIGCHLD to parent $PPID:"
-        echo "kill -SIGCHLD $PPID"
+ps -eo pid,ppid,stat | awk '$3 ~ /^Z/ {print $2}' | sort -u | while read parent_pid; do
+    if [ "$parent_pid" != "1" ]; then
+        echo "# Send SIGCHLD to parent $parent_pid:"
+        echo "kill -SIGCHLD $parent_pid"
         echo
-        echo "# If that doesn't work, kill parent $PPID (if safe):"
-        echo "kill $PPID"
+        echo "# If that doesn't work, kill parent $parent_pid (if safe):"
+        echo "kill $parent_pid"
         echo
     fi
 done
@@ -449,7 +444,7 @@ flowchart TD
     B -->|Yes| D[Identify Parent]
 
     D --> E{Parent Alive?}
-    E -->|No| F[Zombies Will Be Reaped by Init]
+    E -->|No| F[Zombies Will Be Reaped by Init or Subreaper]
     E -->|Yes| G[Try SIGCHLD]
 
     G --> H{Zombies Gone?}
@@ -467,13 +462,13 @@ flowchart TD
 
 | Task | Command |
 |------|---------|
-| Find zombies | `ps aux \| grep -w Z` |
-| Count zombies | `ps aux \| awk '$8 ~ /Z/ {c++} END {print c}'` |
+| Find zombies | `ps -eo pid,ppid,stat,comm \| awk '$3 ~ /^Z/'` |
+| Count zombies | `ps -eo stat= \| grep -c '^Z'` |
 | Find parent | `ps -o ppid= -p <pid>` |
 | Signal parent | `kill -SIGCHLD <ppid>` |
 | Kill parent | `kill <ppid>` |
 | Process tree | `pstree -p <ppid>` |
-| Monitor zombies | `watch 'ps aux \| grep -c " Z "'` |
+| Monitor zombies | `watch "ps -eo stat= \| grep -c '^Z'"` |
 
 ## Common Misconceptions
 

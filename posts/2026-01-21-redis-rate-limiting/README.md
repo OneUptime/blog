@@ -108,7 +108,8 @@ class SlidingWindowLogRateLimiter:
         pipe.zcard(redis_key)
 
         # Add current request (will be rolled back if not allowed)
-        pipe.zadd(redis_key, {f"{now}:{id(now)}": now})
+        request_id = f"{now}:{id(now)}"
+        pipe.zadd(redis_key, {request_id: now})
 
         # Set expiry
         pipe.expire(redis_key, self.window_seconds)
@@ -118,7 +119,7 @@ class SlidingWindowLogRateLimiter:
 
         if current_count >= self.limit:
             # Remove the entry we just added
-            self.redis.zremrangebyscore(redis_key, now, now)
+            self.redis.zrem(redis_key, request_id)
             allowed = False
         else:
             allowed = True
@@ -270,8 +271,8 @@ class TokenBucketRateLimiter:
         end
 
         -- Save state
-        redis.call('HMSET', key, 'tokens', tokens, 'last_refill', last_refill)
-        redis.call('EXPIRE', key, capacity / refill_rate * refill_interval * 2)
+        redis.call('HSET', key, 'tokens', tokens, 'last_refill', last_refill)
+        redis.call('EXPIRE', key, math.ceil(capacity / refill_rate * refill_interval * 2))
 
         return {allowed, tokens, last_refill}
         """
@@ -377,7 +378,7 @@ class LeakyBucketRateLimiter:
         end
 
         -- Save state
-        redis.call('HMSET', key, 'water', water, 'last_leak', last_leak)
+        redis.call('HSET', key, 'water', water, 'last_leak', last_leak)
         redis.call('EXPIRE', key, math.ceil(capacity / leak_rate) * 2)
 
         return {allowed, water, capacity - water}
@@ -448,7 +449,7 @@ class TokenBucketRateLimiter {
             allowed = 1
         end
 
-        redis.call('HMSET', key, 'tokens', tokens, 'last_refill', last_refill)
+        redis.call('HSET', key, 'tokens', tokens, 'last_refill', last_refill)
         redis.call('EXPIRE', key, math.ceil(capacity / refill_rate * refill_interval * 2))
 
         return {allowed, tokens, last_refill}
@@ -501,7 +502,8 @@ class SlidingWindowRateLimiter {
         const pipe = this.redis.pipeline();
         pipe.zremrangebyscore(redisKey, '-inf', windowStart);
         pipe.zcard(redisKey);
-        pipe.zadd(redisKey, now, `${now}:${Math.random()}`);
+        const requestId = `${now}:${Math.random()}`;
+        pipe.zadd(redisKey, now, requestId);
         pipe.expire(redisKey, this.windowSeconds);
 
         const results = await pipe.exec();
@@ -509,7 +511,7 @@ class SlidingWindowRateLimiter {
 
         if (currentCount >= this.limit) {
             // Remove the entry we just added
-            await this.redis.zremrangebyscore(redisKey, now, now);
+            await this.redis.zrem(redisKey, requestId);
             return {
                 allowed: false,
                 limit: this.limit,
@@ -591,11 +593,12 @@ test().catch(console.error);
 
 ## HTTP Rate Limiting Headers
 
-Implement standard rate limit headers:
+Implement common rate limit headers:
 
 ```python
 from flask import Flask, request, jsonify, make_response
 from functools import wraps
+import time
 
 app = Flask(__name__)
 limiter = TokenBucketRateLimiter(capacity=100, refill_rate=10)

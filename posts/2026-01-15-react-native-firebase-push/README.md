@@ -278,6 +278,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function checkNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'android') {
+    if (Platform.Version >= 33) {
+      return PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+      );
+    }
+    return true;
+  }
+
   const authStatus = await messaging().hasPermission();
   return (
     authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
@@ -536,18 +545,28 @@ Data-only messages are useful when you want complete control over how notificati
 
 ### Sending Data-Only Messages
 
-When sending from your server or Firebase Console, omit the `notification` payload and only include `data`:
+When sending from your server with the FCM HTTP v1 API, omit the `notification` payload and only include `data`:
 
 ```json
 {
-  "to": "<FCM_TOKEN>",
-  "data": {
-    "type": "silent_update",
-    "action": "refresh_data",
-    "timestamp": "1705276800"
-  },
-  "content_available": true,
-  "priority": "high"
+  "message": {
+    "token": "<FCM_TOKEN>",
+    "data": {
+      "type": "silent_update",
+      "action": "refresh_data",
+      "timestamp": "1705276800"
+    },
+    "android": {
+      "priority": "HIGH"
+    },
+    "apns": {
+      "payload": {
+        "aps": {
+          "content-available": 1
+        }
+      }
+    }
+  }
 }
 ```
 
@@ -725,7 +744,7 @@ export async function getNotificationChannels(): Promise<string[]> {
 
 ```typescript
 // src/services/notifications/channelGroups.ts
-import notifee from '@notifee/react-native';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 import { Platform } from 'react-native';
 
 export async function createChannelGroups(): Promise<void> {
@@ -748,14 +767,14 @@ export async function createChannelGroups(): Promise<void> {
     id: 'friend_requests',
     name: 'Friend Requests',
     groupId: 'social',
-    importance: notifee.AndroidImportance.HIGH,
+    importance: AndroidImportance.HIGH,
   });
 
   await notifee.createChannel({
     id: 'order_updates',
     name: 'Order Updates',
     groupId: 'commerce',
-    importance: notifee.AndroidImportance.HIGH,
+    importance: AndroidImportance.HIGH,
   });
 }
 ```
@@ -774,6 +793,7 @@ First, set up deep linking in your React Navigation:
 // src/navigation/linking.ts
 import { LinkingOptions } from '@react-navigation/native';
 import messaging from '@react-native-firebase/messaging';
+import { Linking } from 'react-native';
 
 type RootStackParamList = {
   Home: undefined;
@@ -800,9 +820,13 @@ export const linking: LinkingOptions<RootStackParamList> = {
       return remoteMessage.data.deepLink as string;
     }
 
-    return null;
+    return Linking.getInitialURL();
   },
   subscribe(listener: (url: string) => void): () => void {
+    const linkingSubscription = Linking.addEventListener('url', ({ url }) => {
+      listener(url);
+    });
+
     // Listen for notification opens
     const unsubscribeNotification = messaging().onNotificationOpenedApp(
       (remoteMessage) => {
@@ -814,6 +838,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
     );
 
     return () => {
+      linkingSubscription.remove();
       unsubscribeNotification();
     };
   },

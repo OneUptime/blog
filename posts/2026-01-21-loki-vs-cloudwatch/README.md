@@ -31,7 +31,7 @@ Choosing between Grafana Loki (self-hosted) and AWS CloudWatch Logs (managed ser
 flowchart LR
     subgraph Loki["Grafana Loki (Self-Hosted on AWS)"]
         direction LR
-        P1["Promtail<br/>/OTel"] --> L1["Loki<br/>(EKS/EC2)"] --> S1["S3<br/>(Storage)"]
+        P1["Grafana Alloy<br/>/OTel"] --> L1["Loki<br/>(EKS/EC2)"] --> S1["S3<br/>(Storage)"]
         L1 --> G1["Grafana<br/>(Query)"]
     end
     
@@ -56,10 +56,10 @@ flowchart LR
 ### CloudWatch Logs Pricing
 
 ```yaml
-# AWS CloudWatch Logs Pricing (us-east-1, 2024)
+# AWS CloudWatch Logs Pricing (us-east-1, current public pricing)
 
 cloudwatch_costs:
-  ingestion: $0.50 per GB
+  ingestion: $0.50 per GB for the first 10 TB/month, lower tiers above that
   storage: $0.03 per GB/month
   insights_queries: $0.005 per GB scanned
   live_tail: $0.01 per minute
@@ -111,8 +111,8 @@ Daily Volume | CloudWatch/month | Loki/month | Savings
 10 GB        | $165            | $150       | 9%
 50 GB        | $825            | $200       | 76%
 100 GB       | $1,665          | $300       | 82%
-500 GB       | $8,325          | $800       | 90%
-1 TB         | $16,650         | $1,500     | 91%
+500 GB       | $7,100          | $800       | 89%
+1 TB         | $11,900         | $1,500     | 87%
 ```
 
 ## Query Language Comparison
@@ -229,7 +229,7 @@ fields @timestamp, @message
 fields @timestamp
 | stats count() as total,
         sum(strcontains(@message, 'error')) as errors
-| display errors / total * 100 as error_rate
+| fields errors / total * 100 as error_rate
 
 # Parse and aggregate
 fields @timestamp, @message
@@ -263,7 +263,7 @@ loki_strengths:
   features:
     - Recording rules
     - Structured metadata
-    - Custom pipelines (Promtail)
+    - Custom pipelines (Grafana Alloy / OpenTelemetry Collector)
     - LogQL is powerful and flexible
 ```
 
@@ -345,12 +345,14 @@ loki_ha:
     - S3 for durable storage
 
   configuration:
-    ingester:
-      lifecycler:
-        ring:
-          replication_factor: 3
-          kvstore:
-            store: consul  # or etcd
+    common:
+      ring:
+        kvstore:
+          store: memberlist  # or consul/etcd
+        replication_factor: 3
+    memberlist:
+      join_members:
+        - loki-memberlist
 ```
 
 **CloudWatch HA:**
@@ -443,7 +445,7 @@ migration_phases:
     duration: 2-4 weeks
     actions:
       - Deploy Loki on EKS/EC2
-      - Configure Promtail alongside CloudWatch agent
+      - Configure Grafana Alloy or the OpenTelemetry Collector alongside CloudWatch agent
       - Send logs to both systems
       - Validate log completeness
 
@@ -526,7 +528,7 @@ hybrid_architecture:
 
 ```yaml
 # Forward CloudWatch Logs to Loki
-# Using Lambda or Kinesis Firehose
+# Using Lambda or Amazon Data Firehose
 
 # Option 1: Lambda forwarder
 lambda_forwarder:
@@ -534,8 +536,8 @@ lambda_forwarder:
   destination: Loki push endpoint
   code: Process and forward logs
 
-# Option 2: Kinesis Firehose
-kinesis_firehose:
+# Option 2: Amazon Data Firehose
+data_firehose:
   source: CloudWatch Logs subscription filter
   destination: HTTP endpoint (Loki)
   transformation: Lambda for formatting
@@ -556,7 +558,7 @@ Multi-cloud Support      | 10%    | 10   | 2
 Grafana Integration      | 10%    | 10   | 6
 Vendor Independence      | 5%     | 10   | 2
 
-Weighted Score:                   | 7.5  | 6.4
+Weighted Score:                   | 7.7  | 6.5
 ```
 
 ### Decision Tree

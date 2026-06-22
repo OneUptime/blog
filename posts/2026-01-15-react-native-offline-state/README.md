@@ -40,7 +40,7 @@ The foundation of any offline-first app is accurate network state detection. Rea
 
 ```typescript
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
 interface NetworkStatus {
   isConnected: boolean;
@@ -96,7 +96,7 @@ interface NetworkQuality {
 export const assessNetworkQuality = async (): Promise<NetworkQuality> => {
   const state: NetInfoState = await NetInfo.fetch();
 
-  if (!state.isConnected) {
+  if (!state.isConnected || state.isInternetReachable === false) {
     return {
       quality: 'offline',
       shouldSync: false,
@@ -383,7 +383,8 @@ class ActionQueue {
   private findInsertIndex(priority: 'high' | 'normal' | 'low'): number {
     if (priority === 'high') {
       // Find first non-high priority item
-      return this.queue.findIndex((a) => a.priority !== 'high');
+      const firstNonHighIndex = this.queue.findIndex((a) => a.priority !== 'high');
+      return firstNonHighIndex === -1 ? this.queue.length : firstNonHighIndex;
     }
 
     if (priority === 'low') {
@@ -752,10 +753,49 @@ class LocalFirstStore<T> {
     );
   }
 
-  async markSynced(id: string, serverTimestamp: number): Promise<void> {
+  async upsertFromServer(
+    id: string,
+    data: T,
+    serverTimestamp: number,
+    version: number
+  ): Promise<LocalRecord<T>> {
+    const existing = this.cache.get(id);
+    const record: LocalRecord<T> = {
+      id,
+      data,
+      createdAt: existing?.createdAt ?? serverTimestamp,
+      updatedAt: serverTimestamp,
+      syncedAt: serverTimestamp,
+      deleted: false,
+      version,
+    };
+
+    this.cache.set(id, record);
+    this.syncMetadata.lastSyncTimestamp = Math.max(
+      this.syncMetadata.lastSyncTimestamp,
+      serverTimestamp
+    );
+    await this.persistToStorage();
+    this.updatePendingCount();
+
+    return record;
+  }
+
+  async markSynced(
+    id: string,
+    serverTimestamp: number,
+    serverVersion?: number
+  ): Promise<void> {
     const record = this.cache.get(id);
     if (record) {
       record.syncedAt = serverTimestamp;
+      if (serverVersion !== undefined) {
+        record.version = serverVersion;
+      }
+      this.syncMetadata.lastSyncTimestamp = Math.max(
+        this.syncMetadata.lastSyncTimestamp,
+        serverTimestamp
+      );
       await this.persistToStorage();
       this.updatePendingCount();
     }
@@ -917,7 +957,11 @@ class SyncService<T> {
               serverRecord: response.serverData,
             });
           } else {
-            await this.store.markSynced(record.id, response.serverTimestamp);
+            await this.store.markSynced(
+              record.id,
+              response.serverTimestamp,
+              response.serverVersion
+            );
             synced++;
           }
         } catch (error) {
@@ -932,11 +976,10 @@ class SyncService<T> {
 
   private async pushRecord(
     record: LocalRecord<T>
-  ): Promise<{
-    conflict: boolean;
-    serverData?: T;
-    serverTimestamp: number;
-  }> {
+  ): Promise<
+    | { conflict: true; serverData: T; serverTimestamp: number }
+    | { conflict: false; serverTimestamp: number; serverVersion?: number }
+  > {
     const endpoint = record.deleted
       ? `${this.apiEndpoint}/${record.id}`
       : record.syncedAt === null
@@ -949,7 +992,7 @@ class SyncService<T> {
       method,
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': record.version.toString(),
+        'If-Match': `"${record.version}"`,
       },
       body: !record.deleted ? JSON.stringify(record.data) : undefined,
     });
@@ -972,6 +1015,7 @@ class SyncService<T> {
     return {
       conflict: false,
       serverTimestamp: result.serverTimestamp,
+      serverVersion: result.version,
     };
   }
 
@@ -1009,13 +1053,21 @@ class SyncService<T> {
               serverRecord: serverRecord.data,
             });
           } else if (serverRecord.version > localRecord.version) {
-            await this.store.update(serverRecord.id, serverRecord.data as Partial<T>);
-            await this.store.markSynced(serverRecord.id, serverRecord.serverTimestamp);
+            await this.store.upsertFromServer(
+              serverRecord.id,
+              serverRecord.data,
+              serverRecord.serverTimestamp,
+              serverRecord.version
+            );
             synced++;
           }
         } else {
-          await this.store.create(serverRecord.id, serverRecord.data);
-          await this.store.markSynced(serverRecord.id, serverRecord.serverTimestamp);
+          await this.store.upsertFromServer(
+            serverRecord.id,
+            serverRecord.data,
+            serverRecord.serverTimestamp,
+            serverRecord.version
+          );
           synced++;
         }
       }
@@ -1057,7 +1109,7 @@ Integrating with Redux Offline for a comprehensive offline-first Redux solution.
 ### Redux Offline Configuration
 
 ```typescript
-import { createStore, applyMiddleware, combineReducers, Store, AnyAction } from 'redux';
+import { createStore, combineReducers, Store, AnyAction } from 'redux';
 import { offline } from '@redux-offline/redux-offline';
 import offlineConfig from '@redux-offline/redux-offline/lib/defaults';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1081,13 +1133,6 @@ interface OfflineAction extends AnyAction {
       };
     };
   };
-}
-
-interface OfflineState {
-  online: boolean;
-  busy: boolean;
-  lastTransaction: number;
-  outbox: OfflineAction[];
 }
 
 // Custom effect handler
@@ -1375,16 +1420,28 @@ async function syncDatabase(): Promise<void> {
       const response = await fetch(
         `/api/sync/pull?lastPulledAt=${lastPulledAt || 0}`
       );
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
       const { changes, timestamp }: SyncPullResult = await response.json();
 
       return { changes, timestamp };
     },
-    pushChanges: async ({ changes }: { changes: SyncPushChanges }): Promise<void> => {
-      await fetch('/api/sync/push', {
+    pushChanges: async ({
+      changes,
+      lastPulledAt,
+    }: {
+      changes: SyncPushChanges;
+      lastPulledAt: number | null;
+    }): Promise<void> => {
+      const response = await fetch(`/api/sync/push?lastPulledAt=${lastPulledAt || 0}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes),
       });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
     },
     migrationsEnabledAtVersion: 1,
   });
@@ -1420,11 +1477,13 @@ class TaskRepository {
     return database.write(async () => {
       return this.collection.create((task) => {
         task.title = data.title;
-        task.description = data.description;
+        if (data.description !== undefined) {
+          task.description = data.description;
+        }
         task.priority = data.priority;
-        task._raw.project_id = data.projectId;
+        task.project.id = data.projectId;
         if (data.dueDate) {
-          task._raw.due_date = data.dueDate.getTime();
+          task.dueDate = data.dueDate;
         }
         task.completed = false;
       });

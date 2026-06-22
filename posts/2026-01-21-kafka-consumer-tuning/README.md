@@ -124,6 +124,7 @@ public class ParallelConsumer {
     private final KafkaConsumer<String, String> consumer;
     private final ExecutorService executor;
     private final int numThreads;
+    private volatile boolean running = true;
 
     public ParallelConsumer(Properties props, int numThreads) {
         this.consumer = new KafkaConsumer<>(props);
@@ -162,6 +163,10 @@ public class ParallelConsumer {
     private void processRecord(ConsumerRecord<String, String> record) {
         // Processing logic
     }
+
+    private void handleError(Exception e) {
+        // Error handling logic
+    }
 }
 ```
 
@@ -171,6 +176,7 @@ public class ParallelConsumer {
 public class ConsumerPool {
     private final List<KafkaConsumer<String, String>> consumers;
     private final ExecutorService executor;
+    private volatile boolean running = true;
 
     public ConsumerPool(Properties baseProps, String groupId, int numConsumers) {
         this.consumers = new ArrayList<>();
@@ -205,10 +211,10 @@ public class ConsumerPool {
 ## Session and Heartbeat
 
 ```java
-// Session timeout (default 45s in newer versions)
+// Session timeout (default 45s with the classic group protocol)
 props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 30000);
 
-// Heartbeat interval (should be 1/3 of session timeout)
+// Heartbeat interval for the classic group protocol (typically no higher than 1/3 of session timeout)
 props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000);
 ```
 
@@ -243,9 +249,9 @@ metrics.forEach((name, metric) -> {
 |--------|-------------|--------|
 | records-consumed-rate | Records/sec consumed | Maximize |
 | bytes-consumed-rate | Bytes/sec consumed | Maximize |
-| records-lag-max | Maximum lag | Minimize (< 1000) |
+| records-lag-max | Maximum lag | Keep within SLA |
 | fetch-latency-avg | Avg fetch latency | Minimize |
-| poll-idle-ratio-avg | Time idle between polls | > 0.5 |
+| poll-idle-ratio-avg | Time idle between polls | Maintain headroom |
 
 ## Performance Testing
 
@@ -293,7 +299,7 @@ public class ConsumerBenchmark {
 | Mistake | Impact | Solution |
 |---------|--------|----------|
 | Too many records per poll | Rebalancing issues | Reduce max.poll.records |
-| Long processing time | Session timeouts | Increase max.poll.interval.ms |
+| Long processing time | max.poll.interval.ms rebalances | Increase max.poll.interval.ms |
 | Single-threaded processing | Low throughput | Use thread pool or multiple consumers |
 
 Tune consumers based on your specific workload, balancing throughput, latency, and resource utilization.

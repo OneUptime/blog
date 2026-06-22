@@ -13,7 +13,8 @@
     "validate-posts": "npx ts-node src/scripts/validate-posts.ts",
     "validate-posts:codex": "npx ts-node src/scripts/validate-posts.ts --codex",
     "count": "echo \"Total blogs: $(node -e \"console.log(require('./Blogs.json').length)\")\"",
-    "count-validation": "npx ts-node src/scripts/count-validation.ts"
+    "count-validation": "npx ts-node src/scripts/count-validation.ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65"

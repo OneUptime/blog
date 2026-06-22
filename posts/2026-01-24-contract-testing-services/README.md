@@ -59,24 +59,24 @@ sequenceDiagram
 ```python
 # tests/contract/test_user_service_consumer.py
 
+import os
 import pytest
-import atexit
-from pact import Consumer, Provider, Like, EachLike, Term
+from pathlib import Path
+from typing import Generator
+from pact import Pact, match
 
 # Set up Pact
-pact = Consumer('order-service').has_pact_with(
-    Provider('user-service'),
-    pact_dir='./pacts',
-    log_dir='./logs'
-)
-pact.start_service()
-atexit.register(pact.stop_service)
+@pytest.fixture
+def pact() -> Generator[Pact, None, None]:
+    pact = Pact('order-service', 'user-service').with_specification('V4')
+    yield pact
+    pact.write_file(Path('./pacts'))
 
 
 class TestUserServiceContract:
     """Contract tests for user-service from order-service perspective."""
 
-    def test_get_user_by_id(self):
+    def test_get_user_by_id(self, pact):
         """Verify we can fetch user details."""
         # Define expected interaction
         expected_user = {
@@ -87,89 +87,105 @@ class TestUserServiceContract:
             "created_at": "2026-01-15T10:00:00Z"
         }
 
-        pact.given(
-            'a user with ID user-123 exists'
-        ).upon_receiving(
+        pact.upon_receiving(
             'a request for user details'
+        ).given(
+            'a user with ID user-123 exists'
         ).with_request(
-            method='GET',
-            path='/api/users/user-123',
-            headers={'Authorization': 'Bearer token123'}
+            'GET',
+            '/api/users/user-123'
+        ).with_header(
+            'Authorization',
+            'Bearer token123',
+            part='Request'
         ).will_respond_with(
-            status=200,
-            headers={'Content-Type': 'application/json'},
-            body=Like(expected_user)
+            200
+        ).with_body(
+            match.like(expected_user),
+            content_type='application/json',
+            part='Response'
         )
 
         # Execute test against mock
-        with pact:
+        with pact.serve() as srv:
             from myapp.clients import UserServiceClient
-            client = UserServiceClient(base_url=pact.uri)
+            client = UserServiceClient(base_url=str(srv.url))
 
             user = client.get_user('user-123', token='token123')
 
             assert user['id'] == 'user-123'
             assert user['email'] == 'john@example.com'
 
-    def test_get_user_not_found(self):
+    def test_get_user_not_found(self, pact):
         """Verify 404 handling for missing user."""
-        pact.given(
-            'user with ID unknown-user does not exist'
-        ).upon_receiving(
+        pact.upon_receiving(
             'a request for non-existent user'
+        ).given(
+            'user with ID unknown-user does not exist'
         ).with_request(
-            method='GET',
-            path='/api/users/unknown-user',
-            headers={'Authorization': 'Bearer token123'}
+            'GET',
+            '/api/users/unknown-user'
+        ).with_header(
+            'Authorization',
+            'Bearer token123',
+            part='Request'
         ).will_respond_with(
-            status=404,
-            headers={'Content-Type': 'application/json'},
-            body={
+            404
+        ).with_body(
+            {
                 "error": "not_found",
-                "message": Like("User not found")
-            }
+                "message": match.str("User not found")
+            },
+            content_type='application/json',
+            part='Response'
         )
 
-        with pact:
-            from myapp.clients import UserServiceClient
-            client = UserServiceClient(base_url=pact.uri)
+        with pact.serve() as srv:
+            from myapp.clients import UserNotFoundError, UserServiceClient
+            client = UserServiceClient(base_url=str(srv.url))
 
             with pytest.raises(UserNotFoundError):
                 client.get_user('unknown-user', token='token123')
 
-    def test_list_users_with_pagination(self):
+    def test_list_users_with_pagination(self, pact):
         """Verify paginated user listing."""
-        pact.given(
-            'multiple users exist'
-        ).upon_receiving(
+        pact.upon_receiving(
             'a request for paginated user list'
+        ).given(
+            'multiple users exist'
         ).with_request(
-            method='GET',
-            path='/api/users',
-            query={'page': '1', 'limit': '10'},
-            headers={'Authorization': 'Bearer token123'}
+            'GET',
+            '/api/users'
+        ).with_query_parameters(
+            {'page': '1', 'limit': '10'}
+        ).with_header(
+            'Authorization',
+            'Bearer token123',
+            part='Request'
         ).will_respond_with(
-            status=200,
-            headers={'Content-Type': 'application/json'},
-            body={
-                "users": EachLike({
-                    "id": Like("user-1"),
-                    "email": Term(r'.+@.+\..+', 'user@example.com'),
-                    "name": Like("User Name"),
-                    "status": Term(r'active|inactive|suspended', 'active')
+            200
+        ).with_body(
+            {
+                "users": match.each_like({
+                    "id": match.str("user-1"),
+                    "email": match.regex('user@example.com', regex=r'.+@.+\..+'),
+                    "name": match.str("User Name"),
+                    "status": match.regex('active', regex=r'active|inactive|suspended')
                 }),
                 "pagination": {
                     "page": 1,
                     "limit": 10,
-                    "total": Like(100),
-                    "has_more": Like(True)
+                    "total": match.int(100),
+                    "has_more": match.bool(True)
                 }
-            }
+            },
+            content_type='application/json',
+            part='Response'
         )
 
-        with pact:
+        with pact.serve() as srv:
             from myapp.clients import UserServiceClient
-            client = UserServiceClient(base_url=pact.uri)
+            client = UserServiceClient(base_url=str(srv.url))
 
             result = client.list_users(page=1, limit=10, token='token123')
 
@@ -194,9 +210,9 @@ def publish_pacts():
 
 ```python
 # tests/contract/test_user_service_provider.py
+import os
 import pytest
 from pact import Verifier
-import subprocess
 
 class TestUserServiceProvider:
     """Verify user-service meets all consumer contracts."""
@@ -210,24 +226,26 @@ class TestUserServiceProvider:
 
     def test_verify_contracts(self, provider_url):
         """Verify all consumer contracts."""
-        verifier = Verifier(
-            provider='user-service',
-            provider_base_url=provider_url
+        verifier = (
+            Verifier('user-service')
+            .add_transport(url=provider_url)
+            .broker_source(
+                os.environ['PACT_BROKER_URL'],
+                token=os.environ.get('PACT_BROKER_TOKEN'),
+                selector=True
+            )
+            .include_pending()  # Allow new contracts to not break builds
+            .include_wip_since('2026-01-01')
+            .provider_branch(os.environ.get('GIT_BRANCH', 'main'))
+            .build()
+            .state_handler(f'{provider_url}/_pact/states', body=True)
+            .set_publish_options(
+                version=os.environ['GIT_COMMIT'],
+                branch=os.environ.get('GIT_BRANCH', 'main')
+            )
         )
 
-        # Fetch contracts from Pact Broker
-        output, _ = verifier.verify_with_broker(
-            broker_url=os.environ['PACT_BROKER_URL'],
-            enable_pending=True,  # Allow new contracts to not break builds
-            include_wip_pacts_since='2026-01-01',
-            publish_version=os.environ['GIT_COMMIT'],
-            provider_branch=os.environ.get('GIT_BRANCH', 'main'),
-
-            # State handlers for setting up test data
-            provider_states_setup_url=f'{provider_url}/_pact/states'
-        )
-
-        assert output == 0, "Contract verification failed"
+        verifier.verify()
 
 
 # Provider state setup endpoint
@@ -277,8 +295,8 @@ For simpler cases or when using OpenAPI, schema validation provides contract tes
 
 ```python
 # schema_contract_testing.py
-import json
 import yaml
+import pytest
 from jsonschema import validate, ValidationError
 from typing import Dict, Any
 import requests
@@ -418,26 +436,12 @@ flowchart LR
 
 ```python
 # event_contract_testing.py
-from dataclasses import dataclass
 from typing import Type, Dict, Any
-import json
+from unittest.mock import patch
 from pydantic import BaseModel, ValidationError
 import pytest
 
 # Define message schemas using Pydantic
-class OrderCreatedEvent(BaseModel):
-    event_type: str = "order.created"
-    event_id: str
-    timestamp: str
-    data: 'OrderData'
-
-    class OrderData(BaseModel):
-        order_id: str
-        user_id: str
-        items: list
-        total_amount: float
-        currency: str
-
 class OrderData(BaseModel):
     order_id: str
     user_id: str
@@ -445,7 +449,12 @@ class OrderData(BaseModel):
     total_amount: float
     currency: str
 
-OrderCreatedEvent.OrderData = OrderData
+
+class OrderCreatedEvent(BaseModel):
+    event_type: str = "order.created"
+    event_id: str
+    timestamp: str
+    data: OrderData
 
 
 class EventContractRegistry:
@@ -594,7 +603,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-test.txt
-          pip install pact-python
+          pip install pact-python pact-python-cli
 
       - name: Run consumer contract tests
         run: pytest tests/contract/test_*_consumer.py -v
@@ -622,6 +631,11 @@ jobs:
       - name: Start provider service
         run: docker compose up -d user-service
 
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-test.txt
+          pip install pact-python
+
       - name: Wait for service
         run: |
           timeout 60 bash -c 'until curl -s http://localhost:8080/health; do sleep 2; done'
@@ -632,15 +646,7 @@ jobs:
           PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}
           GIT_COMMIT: ${{ github.sha }}
           GIT_BRANCH: ${{ github.ref_name }}
-        run: |
-          pact-verifier \
-            --provider-base-url http://localhost:8080 \
-            --provider user-service \
-            --broker-url $PACT_BROKER_URL \
-            --broker-token $PACT_BROKER_TOKEN \
-            --publish-verification-results \
-            --provider-app-version $GIT_COMMIT \
-            --provider-version-branch $GIT_BRANCH
+        run: pytest tests/contract/test_*_provider.py -v
 
   can-i-deploy:
     runs-on: ubuntu-latest

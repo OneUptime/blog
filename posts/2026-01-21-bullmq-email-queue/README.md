@@ -287,7 +287,10 @@ class DomainRateLimiter {
   constructor(private connection: Redis) {}
 
   getQueueForEmail(email: string): Queue<EmailJobData> {
-    const domain = email.split('@')[1].toLowerCase();
+    const domain = email.split('@')[1]?.toLowerCase();
+    if (!domain) {
+      throw new Error(`Invalid email address: ${email}`);
+    }
     const limits = this.domainLimits.get(domain) || { max: 100, duration: 60000 };
 
     if (!this.domainQueues.has(domain)) {
@@ -357,6 +360,15 @@ class SendGridProvider implements EmailProvider {
   name = 'sendgrid';
 
   async send(email: EmailJobData): Promise<{ messageId: string }> {
+    const content = [
+      email.text ? { type: 'text/plain', value: email.text } : null,
+      email.html ? { type: 'text/html', value: email.html } : null,
+    ].filter((part): part is { type: string; value: string } => Boolean(part));
+
+    if (content.length === 0) {
+      throw new Error('Email must include text or html content');
+    }
+
     const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -364,13 +376,14 @@ class SendGridProvider implements EmailProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: email.to }] }],
+        personalizations: [{
+          to: (Array.isArray(email.to) ? email.to : [email.to]).map((address) => ({
+            email: address,
+          })),
+        }],
         from: { email: process.env.DEFAULT_FROM_EMAIL },
         subject: email.subject,
-        content: [
-          { type: 'text/plain', value: email.text || '' },
-          { type: 'text/html', value: email.html || '' },
-        ],
+        content,
       }),
     });
 
@@ -568,44 +581,44 @@ await emailService.send({
   to: 'user@example.com',
   template: 'reminder',
   data: { userName: 'John' },
-  scheduledFor: new Date('2024-12-25T09:00:00Z'),
+  scheduledFor: new Date('2026-12-25T09:00:00Z'),
 });
 
-// Recurring emails with repeatable jobs
+// Recurring emails with job schedulers
 async function setupRecurringEmails(queue: Queue<EmailJobData>): Promise<void> {
   // Daily digest
-  await queue.add(
+  await queue.upsertJobScheduler(
     'daily-digest',
     {
-      to: 'subscribers',
-      subject: 'Daily Digest',
-      html: '<p>Template will be rendered at processing time</p>',
-      metadata: { type: 'digest', frequency: 'daily' },
+      pattern: '0 9 * * *', // 9 AM daily
+      tz: 'America/New_York',
     },
     {
-      repeat: {
-        pattern: '0 9 * * *', // 9 AM daily
-        tz: 'America/New_York',
+      name: 'daily-digest',
+      data: {
+        to: 'subscribers',
+        subject: 'Daily Digest',
+        html: '<p>Template will be rendered at processing time</p>',
+        metadata: { type: 'digest', frequency: 'daily' },
       },
-      jobId: 'daily-digest',
     }
   );
 
   // Weekly newsletter
-  await queue.add(
+  await queue.upsertJobScheduler(
     'weekly-newsletter',
     {
-      to: 'subscribers',
-      subject: 'Weekly Newsletter',
-      html: '<p>Template will be rendered at processing time</p>',
-      metadata: { type: 'newsletter', frequency: 'weekly' },
+      pattern: '0 10 * * 1', // Monday 10 AM
+      tz: 'America/New_York',
     },
     {
-      repeat: {
-        pattern: '0 10 * * 1', // Monday 10 AM
-        tz: 'America/New_York',
+      name: 'weekly-newsletter',
+      data: {
+        to: 'subscribers',
+        subject: 'Weekly Newsletter',
+        html: '<p>Template will be rendered at processing time</p>',
+        metadata: { type: 'newsletter', frequency: 'weekly' },
       },
-      jobId: 'weekly-newsletter',
     }
   );
 }
@@ -680,7 +693,7 @@ class ProductionEmailService {
     };
   }
 
-  private renderTemplate(name: string, data: Record<string, any>): Partial<EmailJobData> {
+  private renderTemplate(name: string, data: Record<string, any>): Omit<EmailJobData, 'to'> {
     const template = this.templates.get(name);
     if (!template) throw new Error(`Template ${name} not found`);
     return template.render(data);

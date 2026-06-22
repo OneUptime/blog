@@ -41,7 +41,7 @@ bash: /path/to/file: No such file or directory
 /bin/bash^M: bad interpreter: No such file or directory
 
 # When a command is not found
-command: No such file or directory
+bash: command: command not found
 ```
 
 ```mermaid
@@ -163,7 +163,7 @@ flowchart LR
 #!/bin/bash
 
 # BAD: Unquoted variables break with spaces
-FILE=/path/to/my file.txt
+FILE="/path/to/my file.txt"
 cat $FILE  # Tries to cat '/path/to/my' and 'file.txt' separately
 
 # GOOD: Always quote variables

@@ -12,15 +12,15 @@ Upgrading Apache Kafka in production requires careful planning to ensure zero do
 
 ## Understanding Kafka Upgrades
 
-Kafka supports rolling upgrades, which means you can upgrade brokers one at a time while the cluster continues to serve traffic. The key to successful upgrades is understanding the inter-broker protocol version and the client-broker protocol version.
+Kafka supports rolling upgrades, which means you can upgrade brokers one at a time while the cluster continues to serve traffic. The key to successful upgrades is understanding the inter-broker protocol version for ZooKeeper-based clusters, the metadata version for KRaft-based clusters, and the client-broker protocol negotiation used by Kafka clients.
 
 ### Version Compatibility
 
-Kafka maintains backward compatibility between versions. When upgrading:
+Kafka maintains protocol compatibility across supported upgrade paths. When upgrading:
 
-- Brokers can communicate with brokers running the previous minor version
+- Brokers can communicate in mixed-version clusters when you follow the documented upgrade path and keep the protocol or metadata version pinned during the first rolling restart
 - Clients can communicate with brokers running newer versions
-- New features are only available after all brokers are upgraded and protocol versions are bumped
+- New features are only available after all brokers are upgraded and the inter-broker protocol version or KRaft metadata version is bumped
 
 ## Pre-Upgrade Checklist
 
@@ -45,16 +45,15 @@ bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 # Check broker status
 bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
-# Verify controller status
-bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "controller"
+# Verify KRaft metadata quorum status (KRaft clusters)
+bin/kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
 ```
 
 ### 3. Backup Configuration
 
 ```bash
-# Backup broker configurations
-cp -r /etc/kafka/server.properties /etc/kafka/server.properties.backup
+# Backup broker configuration
+cp /etc/kafka/server.properties /etc/kafka/server.properties.backup
 
 # Export topic configurations
 bin/kafka-configs.sh --bootstrap-server localhost:9092 \
@@ -75,22 +74,23 @@ Always test the upgrade process in a staging environment that mirrors production
 
 ```bash
 # Download Kafka
-wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
-tar -xzf kafka_2.13-3.7.0.tgz
-cd kafka_2.13-3.7.0
+wget https://archive.apache.org/dist/kafka/3.7.2/kafka_2.13-3.7.2.tgz
+tar -xzf kafka_2.13-3.7.2.tgz
+cd kafka_2.13-3.7.2
 ```
 
 ### Step 2: Set Inter-Broker Protocol Version
 
-Before upgrading, ensure the inter-broker protocol version is set to the current version. This allows mixed-version clusters to communicate properly.
+For ZooKeeper-based clusters, ensure the inter-broker protocol version is set to the current version before upgrading. This allows mixed-version clusters to communicate properly.
 
 Add to `server.properties` on all brokers:
 
 ```properties
-# For upgrading from 3.5 to 3.7
+# For upgrading a ZooKeeper-based cluster from 3.5 to 3.7
 inter.broker.protocol.version=3.5
-log.message.format.version=3.5
 ```
+
+If you have explicitly overridden `log.message.format.version`, keep it at the current message format version until the protocol bump is complete. For KRaft-based clusters, do not set `inter.broker.protocol.version`; KRaft uses the `metadata.version` feature level instead.
 
 ### Step 3: Upgrade Brokers One at a Time
 
@@ -124,12 +124,17 @@ bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 After all brokers are upgraded:
 
 ```properties
-# Update inter.broker.protocol.version to new version
+# ZooKeeper-based clusters: update inter.broker.protocol.version to new version
 inter.broker.protocol.version=3.7
-log.message.format.version=3.7
 ```
 
-Perform another rolling restart to apply the new protocol version.
+Perform another rolling restart to apply the new protocol version. For KRaft-based clusters, upgrade the metadata version after all brokers have been upgraded:
+
+```bash
+bin/kafka-features.sh upgrade --metadata 3.7
+```
+
+If you previously overrode `log.message.format.version`, update it only after the protocol bump and perform the additional rolling restart required for that change.
 
 ## Java Implementation for Upgrade Automation
 
@@ -143,15 +148,11 @@ import org.apache.kafka.common.TopicPartitionInfo;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 public class KafkaUpgradeManager {
 
     private final AdminClient adminClient;
-    private final String bootstrapServers;
-
     public KafkaUpgradeManager(String bootstrapServers) {
-        this.bootstrapServers = bootstrapServers;
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
@@ -298,10 +299,9 @@ Here is a Python script for monitoring and automating upgrades:
 
 ```python
 from confluent_kafka.admin import AdminClient
-from confluent_kafka import KafkaException
 import time
 import sys
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 class KafkaUpgradeManager:
     def __init__(self, bootstrap_servers: str):
@@ -432,8 +432,10 @@ BOOTSTRAP_SERVER=localhost:9092
 
 check_cluster_health() {
     echo "Checking cluster health..."
-    $KAFKA_HOME/bin/kafka-topics.sh --bootstrap-server $BOOTSTRAP_SERVER \\
-        --describe --under-replicated-partitions 2>&1 | grep -q "^$"
+    local under_replicated
+    under_replicated=$($KAFKA_HOME/bin/kafka-topics.sh --bootstrap-server $BOOTSTRAP_SERVER \\
+        --describe --under-replicated-partitions)
+    [ -z "$under_replicated" ]
 }
 
 wait_for_isr() {
@@ -501,8 +503,8 @@ echo "=========================================="
 echo ""
 echo "Next steps:"
 echo "1. Verify cluster health"
-echo "2. Update inter.broker.protocol.version"
-echo "3. Perform another rolling restart"
+echo "2. Update inter.broker.protocol.version for ZooKeeper clusters or metadata.version for KRaft clusters"
+echo "3. Perform another rolling restart for ZooKeeper clusters after updating inter.broker.protocol.version"
 """
         return script
 
@@ -556,22 +558,26 @@ When controlled shutdown is enabled, the broker will:
 If migrating from ZooKeeper to KRaft mode:
 
 ```bash
-# 1. First upgrade to a version that supports both modes (3.3+)
+# 1. First upgrade brokers to Kafka 3.7.2 and set inter.broker.protocol.version=3.7
 
-# 2. Format storage for KRaft
-bin/kafka-storage.sh format -t $(bin/kafka-storage.sh random-uuid) \
-  -c config/kraft/server.properties
+# 2. Get the existing cluster ID and format each KRaft controller with it
+CLUSTER_ID=$(bin/zookeeper-shell.sh localhost:2181 get /cluster/id | tail -n 1)
+bin/kafka-storage.sh format -t "$CLUSTER_ID" \
+  -c config/kraft/controller.properties
 
-# 3. Start migration controller
+# 3. Start the KRaft controller quorum with migration enabled
 bin/kafka-server-start.sh config/kraft/controller.properties
 
-# 4. Enable migration mode on brokers
+# 4. Enable migration mode on brokers and roll them
 # Add to server.properties:
 # zookeeper.metadata.migration.enable=true
+# controller.quorum.voters=3000@localhost:9093
+# controller.listener.names=CONTROLLER
 
-# 5. Complete migration
-bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "migrate"
+# 5. After migration completes, reconfigure brokers as KRaft brokers and roll them
+# Replace broker.id with node.id, add process.roles=broker, and remove zookeeper.connect
+
+# 6. Finalize by removing zookeeper.metadata.migration.enable from controllers and rolling them
 ```
 
 ## Rollback Plan
@@ -668,7 +674,7 @@ bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 
 # Force leader election if needed
 bin/kafka-leader-election.sh --bootstrap-server localhost:9092 \
-  --election-type PREFERRED --all-topic-partitions
+  --election-type preferred --all-topic-partitions
 ```
 
 ## Conclusion

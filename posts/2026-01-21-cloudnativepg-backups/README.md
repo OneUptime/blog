@@ -8,7 +8,7 @@ Description: A comprehensive guide to setting up PostgreSQL backups with CloudNa
 
 ---
 
-Backups are critical for any production database. CloudNativePG provides built-in backup capabilities with continuous WAL archiving and base backups to object storage. This guide covers setting up comprehensive backup strategies for your PostgreSQL clusters.
+Backups are critical for any production database. CloudNativePG provides backup capabilities with continuous WAL archiving and base backups to object storage. This guide covers setting up comprehensive backup strategies for your PostgreSQL clusters.
 
 ## Prerequisites
 
@@ -17,14 +17,16 @@ Backups are critical for any production database. CloudNativePG provides built-i
 - Object storage bucket (S3, GCS, or Azure Blob)
 - Storage credentials
 
+Note: the native `barmanObjectStore` examples in this guide use CloudNativePG's built-in Barman Cloud integration. This integration is deprecated as of CloudNativePG 1.26 and is planned for removal in CloudNativePG 1.30. For new deployments, prefer the Barman Cloud Plugin.
+
 ## Backup Architecture
 
 CloudNativePG supports two backup types:
 
-1. **Continuous WAL Archiving**: Streams WAL files to object storage in real-time
+1. **Continuous WAL Archiving**: Archives completed WAL files to object storage continuously
 2. **Base Backups**: Full physical backups of the database
 
-Together, they enable Point-in-Time Recovery (PITR) to any moment between backups.
+Together, they enable Point-in-Time Recovery (PITR) from the first available base backup through the archived WAL history.
 
 ```mermaid
 flowchart LR
@@ -32,7 +34,7 @@ flowchart LR
     WAL["WAL Archiver<br/>(Barman)"]
     Storage["Object Storage<br/>(S3/GCS/Azure)"]
 
-    PG -->|"Continuous WAL Streaming"| WAL --> Storage
+    PG -->|"Continuous WAL Archiving"| WAL --> Storage
     PG -->|"Scheduled Base Backup"| Storage
 ```
 
@@ -121,15 +123,18 @@ spec:
         inheritFromIAMRole: true
 ```
 
-Configure service account:
+Configure the cluster service account:
 
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
 metadata:
-  name: postgres-backup
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/postgres-backup-role
+  name: postgres-cluster
+spec:
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/postgres-backup-role
 ```
 
 ### Google Cloud Storage
@@ -173,11 +178,18 @@ spec:
         gkeEnvironment: true
 ```
 
-Annotate service account:
+Configure the cluster service account annotation:
 
-```bash
-kubectl annotate serviceaccount postgres-backup \
-  iam.gke.io/gcp-service-account=postgres-backup@project-id.iam.gserviceaccount.com
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+spec:
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        iam.gke.io/gcp-service-account: postgres-backup@project-id.iam.gserviceaccount.com
 ```
 
 ### Azure Blob Storage
@@ -250,7 +262,7 @@ spec:
       destinationPath: s3://bucket-name/postgres/
 
       wal:
-        compression: gzip  # gzip, bzip2, snappy, lz4, zstd
+        compression: gzip  # gzip, bzip2, snappy, lz4, xz, zstd
         maxParallel: 4     # Parallel upload threads
 ```
 
@@ -258,6 +270,10 @@ spec:
 
 ```yaml
 spec:
+  postgresql:
+    parameters:
+      archive_timeout: "5min"
+
   backup:
     barmanObjectStore:
       destinationPath: s3://bucket-name/postgres/
@@ -271,9 +287,6 @@ spec:
 
         # Encryption (AES-256)
         encryption: AES256
-
-        # Archive timeout
-        archiveTimeout: "5m"
 ```
 
 ## Base Backup Configuration
@@ -326,8 +339,8 @@ kind: ScheduledBackup
 metadata:
   name: postgres-daily-backup
 spec:
-  # Cron schedule (daily at midnight)
-  schedule: "0 0 * * *"
+  # Cron schedule with seconds (daily at midnight)
+  schedule: "0 0 0 * * *"
 
   # Target cluster
   cluster:
@@ -349,13 +362,13 @@ spec:
 ### Multiple Backup Schedules
 
 ```yaml
-# Hourly WAL-based backups
+# Hourly base backups
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
   name: postgres-hourly
 spec:
-  schedule: "0 * * * *"
+  schedule: "0 0 * * * *"
   cluster:
     name: postgres-cluster
   backupOwnerReference: self
@@ -366,7 +379,7 @@ kind: ScheduledBackup
 metadata:
   name: postgres-daily
 spec:
-  schedule: "0 2 * * *"  # 2 AM daily
+  schedule: "0 0 2 * * *"  # 2 AM daily
   cluster:
     name: postgres-cluster
   backupOwnerReference: cluster
@@ -377,7 +390,7 @@ kind: ScheduledBackup
 metadata:
   name: postgres-weekly
 spec:
-  schedule: "0 3 * * 0"  # 3 AM Sunday
+  schedule: "0 0 3 * * 0"  # 3 AM Sunday
   cluster:
     name: postgres-cluster
   backupOwnerReference: none  # Keep indefinitely
@@ -515,14 +528,14 @@ kubectl logs -l cnpg.io/cluster=postgres-cluster -c postgres | grep -i backup
 ### Backup Metrics (Prometheus)
 
 ```yaml
-# Last backup age (seconds)
-cnpg_pg_stat_archiver_last_archived_age
+# Last available backup timestamp
+cnpg_collector_last_available_backup_timestamp
 
 # Archive failures
 cnpg_pg_stat_archiver_failed_count
 
-# Backup status
-cnpg_backup_status{status="completed"}
+# Last failed backup timestamp
+cnpg_collector_last_failed_backup_timestamp
 ```
 
 ### Alert Rules
@@ -532,22 +545,22 @@ groups:
   - name: cloudnativepg-backup
     rules:
       - alert: PostgreSQLBackupFailed
-        expr: cnpg_backup_status{status="failed"} > 0
+        expr: cnpg_collector_last_failed_backup_timestamp > cnpg_collector_last_available_backup_timestamp
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "PostgreSQL backup failed"
-          description: "Backup {{ $labels.backup }} failed for cluster {{ $labels.cluster }}"
+          description: "The last recorded backup attempt failed for cluster {{ $labels.cluster }}"
 
       - alert: PostgreSQLNoRecentBackup
-        expr: time() - cnpg_pg_stat_archiver_last_archived_time > 3600
+        expr: time() - cnpg_collector_last_available_backup_timestamp > 86400
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "No recent PostgreSQL backup"
-          description: "No WAL archived in the last hour for {{ $labels.cluster }}"
+          summary: "No recent PostgreSQL base backup"
+          description: "No base backup completed in the last 24 hours for {{ $labels.cluster }}"
 
       - alert: PostgreSQLArchiveFailure
         expr: increase(cnpg_pg_stat_archiver_failed_count[1h]) > 0
@@ -569,7 +582,7 @@ metadata:
   namespace: production
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14-202606151355-minimal-trixie
 
   storage:
     size: 200Gi
@@ -582,7 +595,6 @@ spec:
   postgresql:
     parameters:
       # WAL settings for backup
-      archive_mode: "on"
       archive_timeout: "5min"
       max_wal_size: "4GB"
       wal_level: "replica"
@@ -593,6 +605,7 @@ spec:
 
     barmanObjectStore:
       destinationPath: s3://company-backups/postgres/production/
+      serverName: production-postgres
       endpointURL: https://s3.us-east-1.amazonaws.com
 
       s3Credentials:
@@ -614,19 +627,12 @@ spec:
 
       # Base backup settings
       data:
-        compression: zstd
+        compression: gzip
         jobs: 4
         encryption: AES256
         immediateCheckpoint: false
 
-  # Server-side encryption
-  backup:
-    barmanObjectStore:
-      serverName: production-postgres
-      # ... credentials as above
-
-      # S3 server-side encryption
-      # Handled via S3 bucket policy
+      # S3 server-side encryption can also be handled via bucket policy
 
 ---
 # Daily backup schedule
@@ -636,7 +642,7 @@ metadata:
   name: production-daily-backup
   namespace: production
 spec:
-  schedule: "0 2 * * *"
+  schedule: "0 0 2 * * *"
   backupOwnerReference: cluster
   cluster:
     name: production-postgres
@@ -649,7 +655,7 @@ metadata:
   name: production-hourly-backup
   namespace: production
 spec:
-  schedule: "0 * * * *"
+  schedule: "0 0 * * * *"
   backupOwnerReference: self
   cluster:
     name: production-postgres
@@ -722,4 +728,4 @@ Proper backup configuration is essential for disaster recovery:
 4. **Monitor backup status** with alerts
 5. **Regularly test restoration** to verify backups work
 
-CloudNativePG's integrated backup support with Barman makes it straightforward to implement a comprehensive backup strategy for your PostgreSQL clusters on Kubernetes.
+CloudNativePG's backup support with Barman makes it straightforward to implement a comprehensive backup strategy for your PostgreSQL clusters on Kubernetes.

@@ -121,9 +121,9 @@ ansible-galaxy collection install -r requirements.yml --force
 [defaults]
 # Multiple paths separated by colon
 # Paths are searched in order from left to right
-collections_paths = ./collections:~/.ansible/collections:/usr/share/ansible/collections
+collections_path = ./collections:~/.ansible/collections:/usr/share/ansible/collections
 
-# Also configure roles path if using roles from collections
+# Also configure roles path if using standalone project roles
 roles_path = ./roles:~/.ansible/roles:/usr/share/ansible/roles
 ```
 
@@ -171,7 +171,7 @@ project/
 # ansible.cfg for project structure
 [defaults]
 inventory = inventory/production/hosts.yml
-collections_paths = ./collections
+collections_path = ./collections
 roles_path = ./roles
 
 [galaxy]
@@ -288,7 +288,7 @@ module: myapp_config
 short_description: Manage MyApp configuration
 description:
     - This module manages MyApp configuration files
-    - Supports creating, updating, and validating configurations
+    - Supports creating and updating configurations
 options:
     path:
         description: Path to the configuration file
@@ -298,11 +298,6 @@ options:
         description: Dictionary of settings to apply
         required: true
         type: dict
-    validate:
-        description: Validate configuration after writing
-        required: false
-        default: true
-        type: bool
 author:
     - Your Name (@yourhandle)
 '''
@@ -315,22 +310,19 @@ EXAMPLES = r'''
       database_host: localhost
       database_port: 5432
       debug: false
-    validate: true
 '''
 
 def main():
     module = AnsibleModule(
         argument_spec=dict(
             path=dict(type='str', required=True),
-            settings=dict(type='dict', required=True),
-            validate=dict(type='bool', default=True)
+            settings=dict(type='dict', required=True)
         ),
         supports_check_mode=True
     )
 
     path = module.params['path']
     settings = module.params['settings']
-    validate = module.params['validate']
     changed = False
 
     try:
@@ -439,9 +431,9 @@ ansible-galaxy collection build --output-path ../dist
 # Publish to Ansible Galaxy
 ansible-galaxy collection publish mycompany-myapp-1.0.0.tar.gz --token YOUR_API_TOKEN
 
-# Or set token in environment
+# Or read the token from a shell variable
 export ANSIBLE_GALAXY_TOKEN=YOUR_API_TOKEN
-ansible-galaxy collection publish mycompany-myapp-1.0.0.tar.gz
+ansible-galaxy collection publish mycompany-myapp-1.0.0.tar.gz --token "$ANSIBLE_GALAXY_TOKEN"
 ```
 
 ### Publish to Private Galaxy Server
@@ -553,10 +545,10 @@ ansible-galaxy collection publish mycompany-myapp-1.0.0.tar.gz --server private_
 
 ```bash
 # Download collection without installing
-ansible-galaxy collection download community.general -d ./offline_collections
+ansible-galaxy collection download community.general -p ./offline_collections
 
 # Download multiple collections from requirements
-ansible-galaxy collection download -r requirements.yml -d ./offline_collections
+ansible-galaxy collection download -r requirements.yml -p ./offline_collections
 ```
 
 ### Install from Offline Archives
@@ -566,10 +558,10 @@ ansible-galaxy collection download -r requirements.yml -d ./offline_collections
 # Requirements file for offline installation
 ---
 collections:
-  - source: ./offline_collections/community-general-5.8.0.tar.gz
+  - name: ./offline_collections/community-general-5.8.0.tar.gz
     type: file
 
-  - source: ./offline_collections/community-docker-3.4.0.tar.gz
+  - name: ./offline_collections/community-docker-3.4.0.tar.gz
     type: file
 ```
 
@@ -613,21 +605,21 @@ collections:
   - name: ansible.posix
     version: ">=1.0.0,<2.0.0"
 
-  # Compatible version (same major)
+  # Compatible version range (same major)
   - name: amazon.aws
-    version: "~=5.0"
+    version: ">=5.0.0,<6.0.0"
 ```
 
 ### Upgrading Collections
 
 ```bash
 # Upgrade a single collection
-ansible-galaxy collection install community.general --force
+ansible-galaxy collection install community.general --upgrade
 
 # Upgrade all collections from requirements file
-ansible-galaxy collection install -r requirements.yml --force-with-deps
+ansible-galaxy collection install -r requirements.yml --upgrade
 
-# Check for available updates (requires ansible-core >= 2.13)
+# Show installed collection versions as YAML
 ansible-galaxy collection list --format yaml | grep -A 2 "version"
 ```
 

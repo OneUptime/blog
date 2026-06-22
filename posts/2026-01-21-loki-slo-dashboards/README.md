@@ -186,7 +186,7 @@ A burn rate of 1 means you will exactly exhaust your budget over the SLO window.
 ```logql
 # Short window burn rate (1 hour)
 # For 99.9% SLO over 30 days, error budget = 0.1%
-# If burn rate > 14.4, budget exhausts in 2 hours
+# If burn rate > 14.4, the service consumes about 2% of the 30-day error budget in 1 hour
 
 (
   1 - (
@@ -582,7 +582,7 @@ A burn rate of 1 means you will exactly exhaust your budget over the SLO window.
 Create alerts based on burn rate to catch SLO violations early:
 
 ```yaml
-# Grafana alert rule for high burn rate
+# Grafana alert rule settings for high burn rate
 Alert Name: HighBurnRate
 Query:
   Expression: |
@@ -601,7 +601,7 @@ Labels:
 Annotations:
   summary: High burn rate for {{ $labels.service }}
   description: |
-    Burn rate is {{ $value }}, which will exhaust the error budget in less than 2 hours.
+    Burn rate is {{ $value }}, which indicates rapid error budget consumption.
     Current SLO target: 99.9%
 ```
 

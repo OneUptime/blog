@@ -293,6 +293,8 @@ Make tracking frictionless by integrating it into existing workflows:
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from toil_tracker import ToilEntry, ToilTracker
+from datetime import datetime
 import os
 
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
@@ -314,8 +316,17 @@ def log_toil_command(ack, say, command):
     category = parts[1]
     description = parts[2] if len(parts) > 2 else None
 
-    # Log to tracking system
-    # ... (integrate with ToilTracker from earlier)
+    tracker = ToilTracker()
+    entry = ToilEntry(
+        task_name=description or category,
+        duration_minutes=minutes,
+        engineer=command["user_id"],
+        timestamp=datetime.now(),
+        category=category,
+        automatable=True,
+        description=description
+    )
+    tracker.log_toil(entry)
 
     say(f"Logged {minutes} minutes of {category} toil. Thanks for tracking!")
 
@@ -393,6 +404,10 @@ def format_summary_blocks(summary):
             })
 
     return blocks
+
+
+if __name__ == "__main__":
+    SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()
 ```
 
 ## Problem 5: Toil Creeps Back

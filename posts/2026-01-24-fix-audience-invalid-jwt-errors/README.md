@@ -41,7 +41,7 @@ flowchart TB
 
 ### JWT Structure with Audience
 
-```javascript
+```jsonc
 // Example JWT payload with audience
 {
     "sub": "user123",
@@ -249,7 +249,8 @@ function normalizeAudience(aud) {
 
 // Custom verification with normalization
 function verifyTokenNormalized(token, expectedAudience) {
-    const decoded = jwt.decode(token);
+    // Verify signature and standard claims first, then apply custom audience comparison
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     if (!decoded || !decoded.aud) {
         throw new Error('Token missing audience claim');
@@ -266,8 +267,7 @@ function verifyTokenNormalized(token, expectedAudience) {
         throw new Error(`Audience mismatch: expected ${expectedAudience}`);
     }
 
-    // Now verify signature
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return decoded;
 }
 ```
 
@@ -359,19 +359,30 @@ function createAuthMiddleware(options = {}) {
                 algorithms: ['HS256']
             };
 
-            // Set audience if provided
-            if (audiences.length > 0) {
-                if (normalizeAudience) {
-                    // Normalize audiences for comparison
-                    verifyOptions.audience = audiences.map(a =>
-                        a.toLowerCase().replace(/\/$/, '')
-                    );
-                } else {
-                    verifyOptions.audience = audiences;
-                }
+            // Let jsonwebtoken perform exact audience matching in strict mode
+            if (audiences.length > 0 && (strict || !normalizeAudience)) {
+                verifyOptions.audience = audiences;
             }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET, verifyOptions);
+
+            if (audiences.length > 0 && !strict && normalizeAudience) {
+                const tokenAudiences = decoded.aud
+                    ? (Array.isArray(decoded.aud) ? decoded.aud : [decoded.aud])
+                    : [];
+                const expectedAudiences = audiences.map(a =>
+                    a.toLowerCase().replace(/\/$/, '')
+                );
+                const hasValidAudience = tokenAudiences.some(aud =>
+                    typeof aud === 'string' &&
+                    expectedAudiences.includes(aud.toLowerCase().replace(/\/$/, ''))
+                );
+
+                if (!hasValidAudience) {
+                    throw new jwt.JsonWebTokenError('jwt audience invalid');
+                }
+            }
+
             req.user = decoded;
             next();
         } catch (error) {
@@ -503,11 +514,12 @@ flowchart TB
 
 ```javascript
 // Auth0: Request token with specific audience
-const auth0 = require('auth0');
+const { AuthenticationClient } = require('auth0');
 
-const auth0Client = new auth0.AuthenticationClient({
+const auth0Client = new AuthenticationClient({
     domain: 'your-tenant.auth0.com',
-    clientId: process.env.AUTH0_CLIENT_ID
+    clientId: process.env.AUTH0_CLIENT_ID,
+    clientSecret: process.env.AUTH0_CLIENT_SECRET
 });
 
 // Get token with audience
@@ -519,10 +531,11 @@ async function getToken(username, password) {
         scope: 'openid profile email'
     });
 
-    return response.access_token;
+    return response.data.access_token;
 }
 
 // Verify Auth0 token
+const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 
 const client = jwksClient({

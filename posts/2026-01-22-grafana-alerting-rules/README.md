@@ -49,8 +49,8 @@ Components:
 - **Alert Rules**: Define what conditions trigger alerts
 - **Contact Points**: Define where notifications go (Slack, PagerDuty, email)
 - **Notification Policies**: Route alerts to appropriate contact points
-- **Silences**: Temporarily suppress specific alerts
-- **Mute Timings**: Define schedules when alerts should not fire
+- **Silences**: Temporarily suppress notifications for specific alerts
+- **Mute Timings**: Define schedules when alert notifications should not be sent
 
 ## Creating Your First Alert Rule
 
@@ -94,8 +94,8 @@ Annotations provide context in notifications:
 
 ```yaml
 Annotations:
-  summary: High error rate on {{ $labels.service }}
-  description: Error rate is {{ $values.A }}% (threshold: 5%)
+  summary: High error rate on api-gateway
+  description: Error rate is {{ $values.A.Value }}% (threshold: 5%)
   runbook_url: https://wiki.company.com/runbooks/high-error-rate
 ```
 
@@ -118,7 +118,7 @@ histogram_quantile(0.99,
   sum by (le, service) (
     rate(http_request_duration_seconds_bucket[5m])
   )
-) > 0.5
+)
 ```
 
 Configuration:
@@ -130,7 +130,7 @@ Labels:
   severity: warning
   team: platform
 Annotations:
-  summary: P99 latency is {{ $values.A | printf "%.2f" }}s for {{ $labels.service }}
+  summary: P99 latency is {{ $values.A.Value | printf "%.2f" }}s for {{ $labels.service }}
   description: Response times have exceeded 500ms for 5 minutes
 ```
 
@@ -138,7 +138,7 @@ Annotations:
 
 ```promql
 # Pods restarting frequently
-increase(kube_pod_container_status_restarts_total[1h]) > 5
+increase(kube_pod_container_status_restarts_total[1h])
 ```
 
 Configuration:
@@ -151,7 +151,7 @@ Labels:
   team: platform
 Annotations:
   summary: Pod {{ $labels.pod }} restarting frequently
-  description: Pod has restarted {{ $values.A }} times in the last hour
+  description: Pod has restarted {{ $values.A.Value }} times in the last hour
 ```
 
 ### Disk Space Alert
@@ -159,7 +159,7 @@ Annotations:
 ```promql
 # Disk usage above 85%
 (node_filesystem_size_bytes - node_filesystem_avail_bytes)
-/ node_filesystem_size_bytes * 100 > 85
+/ node_filesystem_size_bytes * 100
 ```
 
 Configuration:
@@ -172,7 +172,7 @@ Labels:
   team: infrastructure
 Annotations:
   summary: Disk space low on {{ $labels.instance }}
-  description: "{{ $labels.mountpoint }} is {{ $values.A | printf \"%.1f\" }}% full"
+  description: "{{ $labels.mountpoint }} is {{ $values.A.Value | printf \"%.1f\" }}% full"
 ```
 
 ### Error Budget Burn Rate Alert
@@ -184,10 +184,10 @@ For SLO-based alerting, alert on error budget consumption rate:
 (
   sum(rate(http_requests_total{status_code=~"5.."}[1h]))
   / sum(rate(http_requests_total[1h]))
-) / 0.001 > 14.4
+) / 0.001
 ```
 
-This alert fires when you are burning through your monthly error budget 14.4x faster than sustainable.
+Set the condition to **IS ABOVE 14.4**. This alert fires when you are burning through your monthly error budget 14.4x faster than sustainable.
 
 ## Multi-Condition Alerts
 
@@ -231,29 +231,64 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
+              datasource:
+                type: prometheus
+                uid: prometheus
               expr: |
                 sum(rate(http_requests_total{status_code=~"5.."}[5m]))
                 / sum(rate(http_requests_total[5m])) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
               refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              datasource:
+                type: "__expr__"
+                uid: "__expr__"
+              type: reduce
+              expression: A
+              reducer: last
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
           - refId: C
             relativeTimeRange:
               from: 0
               to: 0
             datasourceUid: "__expr__"
             model:
+              datasource:
+                type: "__expr__"
+                uid: "__expr__"
               type: threshold
-              expression: A
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
               conditions:
                 - evaluator:
                     type: gt
                     params: [5]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
         for: 5m
+        noDataState: NoData
+        execErrState: Error
         labels:
           severity: critical
           team: backend
         annotations:
           summary: High error rate detected
-          description: Error rate is {{ $values.A }}%
+          description: Error rate is {{ $values.A.Value }}%
 ```
 
 ## Notification Policies
@@ -261,24 +296,25 @@ groups:
 Notification policies determine how alerts route to contact points. Configure them at Alerting > Notification policies.
 
 ```yaml
-# Default policy
-contact_point: slack-oncall
-group_by: [alertname, cluster]
-group_wait: 30s
-group_interval: 5m
-repeat_interval: 4h
+apiVersion: 1
 
-# Override for critical alerts
-routes:
-  - match:
-      severity: critical
-    contact_point: pagerduty
-    group_wait: 0s
-    repeat_interval: 1h
+policies:
+  - orgId: 1
+    receiver: slack-oncall
+    group_by: [alertname, cluster]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - matchers:
+          - severity = critical
+        receiver: pagerduty
+        group_wait: 0s
+        repeat_interval: 1h
 
-  - match:
-      team: database
-    contact_point: slack-database
+      - matchers:
+          - team = database
+        receiver: slack-database
 ```
 
 Policy fields:
@@ -299,8 +335,8 @@ curl -X POST http://grafana:3000/api/alertmanager/grafana/api/v2/silences \
   -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -d '{
     "matchers": [
-      {"name": "alertname", "value": "HighCPU", "isRegex": false},
-      {"name": "instance", "value": "server-01", "isRegex": false}
+      {"name": "alertname", "value": "HighCPU", "isRegex": false, "isEqual": true},
+      {"name": "instance", "value": "server-01", "isRegex": false, "isEqual": true}
     ],
     "startsAt": "2026-01-25T00:00:00Z",
     "endsAt": "2026-01-25T06:00:00Z",
@@ -311,17 +347,19 @@ curl -X POST http://grafana:3000/api/alertmanager/grafana/api/v2/silences \
 
 ### Mute Timings
 
-Define recurring schedules when alerts should be suppressed:
+Define recurring schedules when alert notifications should be suppressed:
 
 ```yaml
 # mute-timings.yaml
 apiVersion: 1
 muteTimes:
-  - name: weekends
+  - orgId: 1
+    name: weekends
     time_intervals:
       - weekdays: [saturday, sunday]
 
-  - name: maintenance-window
+  - orgId: 1
+    name: maintenance-window
     time_intervals:
       - times:
           - start_time: "02:00"
@@ -333,9 +371,9 @@ Reference mute timings in notification policies:
 
 ```yaml
 routes:
-  - match:
-      severity: warning
-    contact_point: slack-general
+  - matchers:
+      - severity = warning
+    receiver: slack-general
     mute_time_intervals: [weekends, maintenance-window]
 ```
 
@@ -421,14 +459,16 @@ Connect Grafana alerts to your incident management platform:
 
 ```yaml
 # Contact point for OneUptime
-contact_points:
-  - name: oneuptime
-    type: webhook
-    settings:
-      url: https://oneuptime.com/api/webhooks/alerts
-      httpMethod: POST
-      authorization_scheme: Bearer
-      authorization_credentials: ${ONEUPTIME_API_KEY}
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: oneuptime
+    receivers:
+      - uid: oneuptime-webhook
+        type: webhook
+        settings:
+          url: ${ONEUPTIME_WORKFLOW_WEBHOOK_URL}
+          httpMethod: POST
 ```
 
 This creates incidents automatically when critical alerts fire, ensuring nothing gets missed during off-hours.

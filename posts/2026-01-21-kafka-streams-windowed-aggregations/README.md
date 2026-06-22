@@ -113,7 +113,7 @@ public class HoppingWindowExample {
 
         // 10-minute windows, advancing every 1 minute
         // Each event appears in 10 different windows
-        HoppingWindows windows = HoppingWindows
+        TimeWindows windows = TimeWindows
             .ofSizeWithNoGrace(Duration.ofMinutes(10))
             .advanceBy(Duration.ofMinutes(1));
 
@@ -310,11 +310,12 @@ public class SuppressedWindowExample {
 ### Suppression with Buffer Limits
 
 ```java
-// Suppress with memory limits
+// Suppress with memory limits; shuts down rather than emitting early
+// so final-results semantics are preserved
 .suppress(Suppressed.untilWindowCloses(
     BufferConfig.maxRecords(10000)
         .maxBytes(64 * 1024 * 1024) // 64MB
-        .emitEarlyWhenFull() // Emit if buffer fills before window closes
+        .shutDownWhenFull()
 ))
 
 // Suppress until time limit (for session windows)
@@ -483,7 +484,9 @@ TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(10))
 TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1))
 
 // Daily aggregations: use suppression
-TimeWindows.ofSizeWithNoGrace(Duration.ofDays(1))
+stream.groupByKey()
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofDays(1)))
+    .count()
     .suppress(untilWindowCloses(unbounded()))
 ```
 

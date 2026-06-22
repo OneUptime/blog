@@ -255,7 +255,7 @@ Create a spider that uses Playwright for JavaScript rendering:
 import scrapy
 from scrapy_playwright.page import PageMethod
 from itemloaders import ItemLoader
-from datetime import datetime
+from datetime import UTC, datetime
 
 from product_scraper.items import ProductItem
 
@@ -275,7 +275,7 @@ class ProductSpider(scrapy.Spider):
         "https://example-shop.com/category/clothing",
     ]
 
-    def start_requests(self):
+    async def start(self):
         """Generate initial requests with Playwright."""
         for url in self.start_urls:
             yield scrapy.Request(
@@ -375,7 +375,7 @@ class ProductSpider(scrapy.Spider):
 
         # Metadata
         loader.add_value("url", response.url)
-        loader.add_value("scraped_at", datetime.utcnow().isoformat())
+        loader.add_value("scraped_at", datetime.now(UTC).isoformat())
 
         yield loader.load_item()
 
@@ -405,7 +405,7 @@ class InfiniteScrollSpider(scrapy.Spider):
 
     name = "infinite_scroll"
 
-    def start_requests(self):
+    async def start(self):
         yield scrapy.Request(
             "https://example-shop.com/products",
             callback=self.parse,
@@ -464,7 +464,7 @@ class LoadMoreSpider(scrapy.Spider):
 
     name = "load_more"
 
-    def start_requests(self):
+    async def start(self):
         yield scrapy.Request(
             "https://example-shop.com/search?q=electronics",
             callback=self.parse,
@@ -544,7 +544,7 @@ class AuthenticatedSpider(scrapy.Spider):
         self.username = username or "user@example.com"
         self.password = password or "password123"
 
-    def start_requests(self):
+    async def start(self):
         """Start by visiting the login page."""
         yield scrapy.Request(
             "https://example-shop.com/login",
@@ -618,6 +618,7 @@ import json
 import re
 from datetime import datetime
 from itemadapter import ItemAdapter
+from scrapy.exceptions import DropItem
 
 
 class CleaningPipeline:
@@ -752,8 +753,6 @@ class DuplicatesPipeline:
         self.seen_urls.add(url)
         return item
 
-
-from scrapy.exceptions import DropItem
 ```
 
 ---
@@ -768,7 +767,6 @@ Configure your spider to avoid detection:
 # product_scraper/middlewares.py
 # Custom middlewares for stealth scraping
 import random
-from scrapy import signals
 
 
 class RandomUserAgentMiddleware:
@@ -783,26 +781,6 @@ class RandomUserAgentMiddleware:
 
     def process_request(self, request, spider):
         request.headers['User-Agent'] = random.choice(self.USER_AGENTS)
-
-
-class RandomDelayMiddleware:
-    """Add random delays between requests."""
-
-    def __init__(self, min_delay=1, max_delay=3):
-        self.min_delay = min_delay
-        self.max_delay = max_delay
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        return cls(
-            min_delay=crawler.settings.getfloat('RANDOM_DELAY_MIN', 1),
-            max_delay=crawler.settings.getfloat('RANDOM_DELAY_MAX', 3),
-        )
-
-    def process_request(self, request, spider):
-        import time
-        delay = random.uniform(self.min_delay, self.max_delay)
-        time.sleep(delay)
 ```
 
 Add to settings.py:
@@ -811,15 +789,14 @@ Add to settings.py:
 # Enable custom middlewares
 DOWNLOADER_MIDDLEWARES = {
     "product_scraper.middlewares.RandomUserAgentMiddleware": 400,
-    "product_scraper.middlewares.RandomDelayMiddleware": 500,
 }
 
-# Randomize delays
-RANDOM_DELAY_MIN = 1
-RANDOM_DELAY_MAX = 3
+# Randomize delays using Scrapy's non-blocking downloader delay
+DOWNLOAD_DELAY = 2
+RANDOMIZE_DOWNLOAD_DELAY = True
 
-# Disable cookies to reduce fingerprinting
-COOKIES_ENABLED = False
+# Leave cookies enabled for login/session spiders.
+# COOKIES_ENABLED = False
 
 # Playwright stealth options
 PLAYWRIGHT_LAUNCH_OPTIONS = {

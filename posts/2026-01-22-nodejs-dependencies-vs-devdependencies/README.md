@@ -113,7 +113,7 @@ Packages your code imports and uses at runtime:
     "mongoose": "^7.0.0",
     "pg": "^8.10.0",
     "redis": "^4.6.0",
-    "prisma": "^5.0.0",
+    "@prisma/client": "^5.0.0",
     
     "axios": "^1.4.0",
     "node-fetch": "^3.3.0",
@@ -153,6 +153,7 @@ Packages used only for development workflow:
     "nodemon": "^3.0.0",
     "ts-node": "^10.9.0",
     "concurrently": "^8.2.0",
+    "prisma": "^5.0.0",
     
     "webpack": "^5.88.0",
     "vite": "^4.4.0",
@@ -261,7 +262,7 @@ npm ci --production
 
 ### Frontend Applications (React, Vue)
 
-Frontend apps are bundled, so most packages are devDependencies:
+Frontend apps are bundled, so build tools are devDependencies, while packages imported by the app usually stay in dependencies:
 
 ```json
 {
@@ -278,7 +279,7 @@ Frontend apps are bundled, so most packages are devDependencies:
 }
 ```
 
-Wait, why is React in dependencies? The bundler (Vite) needs to bundle it. Some teams put everything in devDependencies for frontend apps since nothing runs as Node.js in production. Both approaches work.
+Wait, why is React in dependencies? The app imports React, and the bundler (Vite) needs to bundle it. Some teams put app-only frontend packages in devDependencies when production only serves the already-built static files. That can work, but only if your build environment installs devDependencies before bundling.
 
 ### npm Packages/Libraries
 
@@ -301,7 +302,7 @@ When publishing a package, the distinction is critical:
 
 - **dependencies**: Installed when someone `npm install`s your package
 - **devDependencies**: NOT installed by consumers
-- **peerDependencies**: Consumer must install these themselves
+- **peerDependencies**: Declares a compatible host package; npm v7 and later install peers by default, while npm v3 through v6 only warned
 
 ## peerDependencies
 
@@ -451,7 +452,7 @@ console.log('Done! Run npm install to update lock file.');
 | Package Type | dependencies | devDependencies |
 |--------------|--------------|-----------------|
 | Web frameworks | Express, Koa, Fastify | |
-| Databases | Mongoose, pg, Redis | |
+| Databases | Mongoose, pg, Redis, @prisma/client | Prisma CLI |
 | Testing | | Jest, Mocha, Vitest |
 | Linting | | ESLint, Prettier |
 | Build tools | | Webpack, Vite, TypeScript |

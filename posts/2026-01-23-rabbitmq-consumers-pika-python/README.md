@@ -8,7 +8,7 @@ Description: Learn how to build robust RabbitMQ consumers in Python using Pika.
 
 ---
 
-> Message queues are the backbone of distributed systems. RabbitMQ provides reliable message delivery between services, and Pika is the official Python client for interacting with it. This guide shows you how to build production-ready consumers that handle messages reliably.
+> Message queues are the backbone of distributed systems. RabbitMQ provides reliable message delivery between services, and Pika is a widely used Python client for interacting with it. This guide shows you how to build production-ready consumers that handle messages reliably.
 
 When building microservices or distributed applications, you need a way for services to communicate asynchronously. RabbitMQ excels at this, providing durable queues, routing capabilities, and delivery guarantees. Pika gives you full control over how your Python application consumes and processes messages.
 
@@ -38,7 +38,7 @@ Access the management UI at http://localhost:15672 with admin/password.
 Install Pika and related packages:
 
 ```bash
-pip install pika pydantic
+pip install pika aio-pika
 ```
 
 ---
@@ -861,13 +861,14 @@ class AsyncConsumer:
         )
 
         async def process_message(message: IncomingMessage):
-            async with message.process():
+            async with message.process(requeue=True):
                 try:
                     body = json.loads(message.body.decode())
                     await handler(body)
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
-                    # Message will be requeued due to process() context
+                    # Re-raise so message.process() can reject and requeue it
+                    raise
 
         # Start consuming
         await queue.consume(process_message)

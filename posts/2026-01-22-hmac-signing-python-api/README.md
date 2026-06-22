@@ -52,7 +52,7 @@ Let's start with a simple implementation that covers the fundamentals.
 import hmac
 import hashlib
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 def generate_signature(
@@ -112,7 +112,7 @@ def verify_signature(
 # Example client usage
 def make_signed_request(api_key: str, secret: str, method: str, path: str, body: str = ""):
     """Example of how a client would sign a request"""
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     signature = generate_signature(secret, method, path, timestamp, body)
 
     headers = {
@@ -136,7 +136,7 @@ Here's a production-ready implementation with proper error handling, replay atta
 # Production HMAC signing middleware for FastAPI
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import APIKeyHeader
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Set
 import hmac
 import hashlib
@@ -180,7 +180,7 @@ class NonceCache:
                 return False  # Replay attack detected
 
             # Add new nonce
-            self._cache[nonce] = datetime.utcnow()
+            self._cache[nonce] = datetime.now(timezone.utc)
 
             # Evict oldest if at capacity
             while len(self._cache) > self._max_size:
@@ -190,7 +190,7 @@ class NonceCache:
 
     async def _cleanup_old_entries(self):
         """Remove nonces older than the tolerance window"""
-        cutoff = datetime.utcnow() - timedelta(seconds=HMAC_TOLERANCE_SECONDS * 2)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=HMAC_TOLERANCE_SECONDS * 2)
 
         # Find keys to remove
         expired = [
@@ -266,9 +266,9 @@ class HMACAuth:
         """
         try:
             request_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            # Remove timezone info for comparison
-            request_time = request_time.replace(tzinfo=None)
-            now = datetime.utcnow()
+            if request_time.tzinfo is None:
+                return False
+            now = datetime.now(timezone.utc)
 
             delta = abs((now - request_time).total_seconds())
             return delta <= HMAC_TOLERANCE_SECONDS
@@ -299,15 +299,7 @@ class HMACAuth:
                 detail="Request timestamp outside acceptable range"
             )
 
-        # Step 3: Check nonce hasn't been used (prevent replay)
-        nonce_valid = await nonce_cache.check_and_add(f"{api_key}:{nonce}")
-        if not nonce_valid:
-            raise HTTPException(
-                status_code=401,
-                detail="Request nonce already used (possible replay attack)"
-            )
-
-        # Step 4: Build canonical request and verify signature
+        # Step 3: Build canonical request and verify signature
         body = await request.body()
 
         canonical = self._build_canonical_request(
@@ -324,6 +316,14 @@ class HMACAuth:
         # Step 5: Constant-time comparison
         if not hmac.compare_digest(expected_signature, signature):
             raise HTTPException(status_code=401, detail="Invalid signature")
+
+        # Step 4: Check nonce hasn't been used (prevent replay)
+        nonce_valid = await nonce_cache.check_and_add(f"{api_key}:{nonce}")
+        if not nonce_valid:
+            raise HTTPException(
+                status_code=401,
+                detail="Request nonce already used (possible replay attack)"
+            )
 
         return True
 
@@ -384,8 +384,9 @@ import hashlib
 import base64
 import requests
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from urllib.parse import urlencode
 
 class HMACClient:
     """
@@ -403,7 +404,7 @@ class HMACClient:
 
     def _get_timestamp(self) -> str:
         """Get current UTC timestamp in ISO format"""
-        return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def _build_canonical_request(
         self,
@@ -467,8 +468,10 @@ class HMACClient:
 
         # Build query string
         query_string = ""
+        request_params = None
         if params:
-            query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+            request_params = sorted(params.items())
+            query_string = urlencode(request_params, doseq=True)
 
         # Prepare body
         body = b""
@@ -503,7 +506,7 @@ class HMACClient:
         return requests.request(
             method=method,
             url=url,
-            params=params,
+            params=request_params,
             data=body if body else None,
             headers=headers,
             **kwargs
@@ -558,7 +561,7 @@ from starlette.responses import JSONResponse
 import hmac
 import hashlib
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class HMACMiddleware(BaseHTTPMiddleware):
     """
@@ -616,8 +619,13 @@ class HMACMiddleware(BaseHTTPMiddleware):
 
         # Verify timestamp freshness
         try:
-            request_time = datetime.fromisoformat(timestamp.replace('Z', ''))
-            if abs((datetime.utcnow() - request_time).total_seconds()) > 300:
+            request_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            if request_time.tzinfo is None:
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Timestamp must include timezone"}
+                )
+            if abs((datetime.now(timezone.utc) - request_time).total_seconds()) > 300:
                 return JSONResponse(
                     status_code=401,
                     content={"error": "Request expired"}
@@ -639,11 +647,14 @@ class HMACMiddleware(BaseHTTPMiddleware):
         # Verify signature
         body = await request.body()
         body_hash = hashlib.sha256(body).hexdigest()
+        query_string = str(request.url.query) if request.url.query else ''
+        if query_string:
+            query_string = '&'.join(sorted(query_string.split('&')))
 
         canonical = '\n'.join([
-            request.method,
+            request.method.upper(),
             request.url.path,
-            str(request.url.query) if request.url.query else '',
+            query_string,
             timestamp,
             nonce,
             body_hash
@@ -696,7 +707,7 @@ from fastapi.testclient import TestClient
 import hmac
 import hashlib
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from hmac_fastapi import app
@@ -713,7 +724,7 @@ def sign_request(
     nonce: str = None
 ) -> dict:
     """Helper to generate signed headers for tests"""
-    timestamp = timestamp or datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    timestamp = timestamp or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     nonce = nonce or str(uuid.uuid4())
     body_hash = hashlib.sha256(body).hexdigest()
 
@@ -771,7 +782,9 @@ def test_invalid_signature():
 
 def test_expired_timestamp():
     """Test that old timestamps are rejected"""
-    old_timestamp = (datetime.utcnow() - timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    old_timestamp = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).isoformat().replace("+00:00", "Z")
 
     body = b'{"amount": 100}'
     headers = sign_request(

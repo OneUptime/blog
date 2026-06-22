@@ -61,7 +61,7 @@ WebSocket upgrade handling is automatic. No special middleware is required.
 
 ## Timeout Configuration
 
-WebSocket connections are long-lived. Default HTTP timeouts will prematurely close them. Configure appropriate timeouts:
+WebSocket connections are long-lived. Default HTTP timeouts can prematurely close idle or long-running connections. Configure appropriate timeouts:
 
 ```yaml
 # traefik-websocket-config.yaml
@@ -77,9 +77,9 @@ data:
         address: ":443"
         transport:
           respondingTimeouts:
-            # Time to wait for response headers
+            # Maximum time to read the entire request
             readTimeout: 0  # 0 = no timeout
-            # Time allowed for response write
+            # Maximum time before response writes time out
             writeTimeout: 0  # 0 = no timeout
             # Time to keep idle connection open
             idleTimeout: 3600s  # 1 hour
@@ -429,14 +429,14 @@ Track WebSocket metrics through Traefik:
 
 ```promql
 # Active connections (all connections, including WebSocket)
-traefik_entrypoint_open_connections{entrypoint="websecure"}
+traefik_open_connections{entrypoint="websecure",protocol="TCP"}
 
 # Request rate (initial handshakes)
-rate(traefik_service_requests_total{service="websocket-service@kubernetes"}[5m])
+rate(traefik_service_requests_total{service=~".*websocket-service.*@kubernetescrd"}[5m])
 
 # Connection duration histogram
 histogram_quantile(0.95,
-  rate(traefik_service_request_duration_seconds_bucket{service="websocket-service@kubernetes"}[5m])
+  rate(traefik_service_request_duration_seconds_bucket{service=~".*websocket-service.*@kubernetescrd"}[5m])
 )
 ```
 
@@ -503,7 +503,7 @@ flowchart TB
 
 Common issues and solutions:
 
-1. **Connection drops after 60 seconds**: Increase idle timeout in Traefik config
+1. **Connection drops after the configured timeout**: Increase the relevant read, write, or idle timeout in Traefik config
 2. **WebSocket upgrade fails**: Check that no middleware is stripping Upgrade headers
 3. **Sticky sessions not working**: Verify cookie configuration and client cookie handling
 4. **Load imbalance**: Ensure sticky sessions are enabled or use external state (Redis)

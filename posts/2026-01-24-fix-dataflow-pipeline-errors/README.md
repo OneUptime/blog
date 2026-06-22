@@ -92,8 +92,8 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ### Error: "Region not supported" or "Quota exceeded"
 
 ```bash
-# List available regions
-gcloud compute regions list
+# Check supported Dataflow locations
+# https://cloud.google.com/dataflow/docs/resources/locations
 
 # Check quotas
 gcloud compute project-info describe --project=$PROJECT_ID
@@ -141,14 +141,16 @@ worker_options.use_public_ips = False  # For private workers
 
 ### Error: "Failed to install dependencies"
 
-```python
+```text
 # requirements.txt - ensure compatible versions
-apache-beam[gcp]==2.52.0
-google-cloud-bigquery==3.14.0
-google-cloud-storage==2.14.0
-pandas==2.0.3
-numpy==1.24.3
+apache-beam[gcp]==2.74.0
+google-cloud-bigquery>=3.14.0
+google-cloud-storage>=2.14.0
+pandas>=2.0.0
+numpy>=1.24.0
+```
 
+```python
 # setup.py for custom packages
 from setuptools import setup, find_packages
 
@@ -157,7 +159,7 @@ setup(
     version='1.0',
     packages=find_packages(),
     install_requires=[
-        'apache-beam[gcp]==2.52.0',
+        'apache-beam[gcp]==2.74.0',
         'pandas>=2.0.0',
     ],
 )
@@ -248,46 +250,62 @@ with beam.Pipeline(options=options) as p:
 ### Error: "BigQuery insertion failed"
 
 ```python
+import logging
+import apache_beam as beam
 from apache_beam.io.gcp.bigquery import WriteToBigQuery, BigQueryDisposition
+from apache_beam.io.gcp.bigquery_tools import RetryStrategy
 
 # Configure BigQuery write with error handling
 output = (
     processed_data
-    | 'WriteToBQ' >> WriteToBigQuery(
+    | 'WriteToBQWithRetry' >> WriteToBigQuery(
         table='project:dataset.table',
         schema='name:STRING,value:INTEGER,timestamp:TIMESTAMP',
         create_disposition=BigQueryDisposition.CREATE_IF_NEEDED,
         write_disposition=BigQueryDisposition.WRITE_APPEND,
         # Handle failed rows
-        insert_retry_strategy='RETRY_ON_TRANSIENT_ERROR',
+        insert_retry_strategy=RetryStrategy.RETRY_ON_TRANSIENT_ERROR,
         # Use streaming inserts for real-time
-        method='STREAMING_INSERTS',
+        method=WriteToBigQuery.Method.STREAMING_INSERTS,
         # Or batch for efficiency
         # method='FILE_LOADS',
     )
 )
 
+def log_failed_row(row):
+    logging.error(f"Failed row: {row}")
+    return str(row)
+
 # Handle dead letters (failed records)
 result = (
     processed_data
-    | 'WriteToBQ' >> WriteToBigQuery(
+    | 'WriteToBQWithDeadLetters' >> WriteToBigQuery(
         table='project:dataset.table',
         schema=table_schema,
+        method=WriteToBigQuery.Method.STREAMING_INSERTS,
+        insert_retry_strategy=RetryStrategy.RETRY_ON_TRANSIENT_ERROR,
     )
 )
 
 # Capture failed rows
-failed_rows = result[WriteToBigQuery.FAILED_ROWS]
+failed_rows = result.failed_rows
 (
     failed_rows
-    | 'LogFailed' >> beam.Map(lambda x: logging.error(f"Failed row: {x}"))
+    | 'LogFailed' >> beam.Map(log_failed_row)
     | 'WriteFailedToGCS' >> beam.io.WriteToText('gs://bucket/failed-rows')
 )
 ```
 
 ### Error: "Pub/Sub acknowledgement deadline exceeded"
 
+```bash
+# If you own the subscription, tune the subscription-level ack deadline.
+# Dataflow also extends Pub/Sub ack deadlines while processing messages.
+gcloud pubsub subscriptions update my-sub --ack-deadline=120
+```
+
 ```python
+import apache_beam as beam
 from apache_beam.io.gcp.pubsub import ReadFromPubSub
 
 # Configure Pub/Sub read with appropriate settings
@@ -295,7 +313,6 @@ messages = (
     p
     | 'Read' >> ReadFromPubSub(
         subscription='projects/my-project/subscriptions/my-sub',
-        # Increase ack deadline for slow processing
         with_attributes=True,
         timestamp_attribute='event_time'
     )
@@ -355,8 +372,15 @@ resource.labels.job_id="JOB_ID"
 severity>=ERROR
 ' --limit=50
 
-# Stream logs during development
-gcloud dataflow jobs show JOB_ID --region=us-central1 --format="value(currentState)"
+# Check job state during development
+gcloud dataflow jobs describe JOB_ID --region=us-central1 --format="value(currentState)"
+
+# Live-tail logs during development
+gcloud alpha logging tail '
+resource.type="dataflow_step"
+resource.labels.job_id="JOB_ID"
+severity>=ERROR
+'
 ```
 
 ### Add Logging to Pipeline

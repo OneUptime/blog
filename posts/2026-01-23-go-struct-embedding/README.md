@@ -152,9 +152,9 @@ func main() {
 
 ---
 
-## Method Overriding
+## Method Shadowing
 
-Outer type methods take precedence:
+Outer type methods take precedence over promoted methods:
 
 ```go
 package main
@@ -178,7 +178,7 @@ type Dog struct {
     Breed string
 }
 
-// Override the Speak method
+// Shadow the promoted Speak method
 func (d Dog) Speak() string {
     return "Woof!"
 }
@@ -201,7 +201,7 @@ func main() {
 
 ## Embedding Interfaces
 
-Embed interfaces to require implementation:
+Embed interfaces to compose behavior:
 
 ```go
 package main
@@ -340,6 +340,7 @@ func main() {
 package main
 
 import (
+    "fmt"
     "sync"
 )
 
@@ -457,16 +458,16 @@ func main() {
 | Fields/methods promoted | Must access via field name |
 | Shorter syntax | More explicit |
 | Can cause ambiguity | No ambiguity |
-| Interface satisfaction | No interface satisfaction |
+| Automatic interface satisfaction through promoted methods | No automatic interface satisfaction through promoted methods |
 
 ```go
 // Embedding - implements fmt.Stringer if Person does
-type Employee struct {
+type EmbeddedEmployee struct {
     Person
 }
 
 // Named field - does NOT implement fmt.Stringer
-type Employee struct {
+type NamedEmployee struct {
     person Person
 }
 ```
@@ -479,11 +480,11 @@ type Employee struct {
 - Automatic field and method promotion
 - Composition without inheritance
 - Interface satisfaction through embedded types
-- Ability to override methods
+- Ability to shadow promoted methods
 
 **Best Practices:**
 
-1. Use embedding for "is-a" relationships with behavior
+1. Use embedding when promoted behavior is part of the outer type's API
 2. Use named fields when you don't want promotion
 3. Be careful with method name conflicts
 4. Document when embedding is for interface satisfaction

@@ -8,7 +8,7 @@ Description: A complete guide to running PostgreSQL in Docker containers with pe
 
 ---
 
-Running PostgreSQL in Docker is convenient for development and works well for production with the right setup. The key is persistence. Without it, your data disappears when the container stops. This guide covers everything from basic setup to production-ready configurations.
+Running PostgreSQL in Docker is convenient for development and works well for production with the right setup. The key is persistence. Without it, your data is tied to the container's writable layer and can disappear when the container is removed or recreated. This guide covers everything from basic setup to production-ready configurations.
 
 ## Quick Start for Development
 
@@ -65,6 +65,7 @@ docker volume create pgdata
 # Use it with PostgreSQL
 docker run -d \
   --name postgres \
+  -e POSTGRES_PASSWORD=secretpassword \
   -v pgdata:/var/lib/postgresql/data \
   postgres:16
 
@@ -83,6 +84,7 @@ mkdir -p /data/postgres
 # Use bind mount
 docker run -d \
   --name postgres \
+  -e POSTGRES_PASSWORD=secretpassword \
   -v /data/postgres:/var/lib/postgresql/data \
   postgres:16
 ```
@@ -95,8 +97,6 @@ For a complete development environment:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -223,7 +223,7 @@ services:
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
 ```
 
-Or use environment variables for simple settings:
+Or use command-line options for simple settings:
 
 ```yaml
 services:
@@ -261,8 +261,6 @@ docker exec -i postgres pg_restore -U appuser -d appdb < backup.dump
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -272,6 +270,11 @@ services:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: secretpassword
       POSTGRES_DB: appdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backup:
     image: postgres:16
@@ -284,6 +287,7 @@ services:
       PGDATABASE: appdb
     entrypoint: >
       bash -c "
+        until pg_isready; do sleep 2; done
         while true; do
           pg_dump -Fc > /backups/backup_$$(date +%Y%m%d_%H%M%S).dump
           find /backups -name '*.dump' -mtime +7 -delete
@@ -291,7 +295,8 @@ services:
         done
       "
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

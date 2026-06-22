@@ -51,7 +51,14 @@ flowchart TD
         "ManagedRuleGroupStatement": {
           "VendorName": "AWS",
           "Name": "AWSManagedRulesCommonRuleSet",
-          "ExcludedRules": []
+          "RuleActionOverrides": [
+            {
+              "Name": "SizeRestrictions_BODY",
+              "ActionToUse": {
+                "Count": {}
+              }
+            }
+          ]
         }
       },
       "VisibilityConfig": {
@@ -272,7 +279,9 @@ resource "aws_wafv2_web_acl" "main" {
     statement {
       xss_match_statement {
         field_to_match {
-          body {}
+          body {
+            oversize_handling = "CONTINUE"
+          }
         }
         text_transformation {
           priority = 0
@@ -379,23 +388,17 @@ Include /etc/nginx/modsec/custom-rules.conf
 # /etc/nginx/modsec/crs/crs-setup.conf
 
 # Paranoia level (1-4, higher = more rules, more false positives)
-SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.paranoia_level=2"
+SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"
+SecAction "id:900001,phase:1,nolog,pass,t:none,setvar:tx.detection_paranoia_level=2"
 
 # Anomaly scoring mode
 SecAction "id:900110,phase:1,nolog,pass,t:none,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"
 
-# Enable specific attack categories
-SecAction "id:900200,phase:1,nolog,pass,t:none,setvar:tx.do_sqli_check=1"
-SecAction "id:900210,phase:1,nolog,pass,t:none,setvar:tx.do_xss_check=1"
-SecAction "id:900220,phase:1,nolog,pass,t:none,setvar:tx.do_rfi_check=1"
-SecAction "id:900230,phase:1,nolog,pass,t:none,setvar:tx.do_lfi_check=1"
-SecAction "id:900240,phase:1,nolog,pass,t:none,setvar:tx.do_rce_check=1"
-
 # Allowed HTTP methods
-SecAction "id:900300,phase:1,nolog,pass,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT DELETE OPTIONS PATCH'"
+SecAction "id:900200,phase:1,nolog,pass,t:none,setvar:'tx.allowed_methods=GET HEAD POST PUT DELETE OPTIONS PATCH'"
 
 # Allowed content types
-SecAction "id:900310,phase:1,nolog,pass,t:none,setvar:'tx.allowed_request_content_type=application/x-www-form-urlencoded|multipart/form-data|text/xml|application/xml|application/json'"
+SecAction "id:900220,phase:1,nolog,pass,t:none,setvar:'tx.allowed_request_content_type=|application/x-www-form-urlencoded| |multipart/form-data| |text/xml| |application/xml| |application/json|'"
 ```
 
 ### Custom ModSecurity Rules
@@ -412,6 +415,8 @@ SecRule REQUEST_URI "@rx (?:\.git|\.env|\.htaccess|wp-config\.php|\.svn)" \
     "id:100002,phase:1,deny,status:403,log,msg:'Access to sensitive file blocked'"
 
 # Rate limit login attempts
+SecAction "id:100000,phase:1,pass,nolog,initcol:ip=%{REMOTE_ADDR}"
+
 SecRule REQUEST_URI "@streq /api/auth/login" \
     "id:100003,phase:1,pass,nolog,setvar:ip.login_counter=+1,expirevar:ip.login_counter=300"
 
@@ -457,27 +462,45 @@ or http.request.uri contains "onerror="
 
 ```json
 {
+  "name": "Custom WAF rules",
+  "kind": "zone",
+  "phase": "http_request_firewall_custom",
   "rules": [
     {
-      "id": "rate-limit-api",
+      "ref": "challenge-likely-bots",
+      "description": "Challenge likely automated traffic",
+      "expression": "(cf.bot_management.score lt 30 and not cf.bot_management.verified_bot)",
+      "action": "managed_challenge"
+    },
+    {
+      "ref": "challenge-suspicious",
+      "description": "Challenge suspicious requests",
+      "expression": "(cf.threat_score gt 30)",
+      "action": "managed_challenge"
+    }
+  ]
+}
+```
+
+### Rate Limiting Rule (Rulesets API)
+
+```json
+{
+  "name": "API rate limiting",
+  "kind": "zone",
+  "phase": "http_ratelimit",
+  "rules": [
+    {
+      "ref": "rate-limit-api",
+      "description": "Rate limit API requests",
       "expression": "(http.request.uri.path contains \"/api/\")",
-      "action": "rate_limit",
+      "action": "block",
       "ratelimit": {
-        "characteristics": ["ip.src"],
+        "characteristics": ["cf.colo.id", "ip.src"],
         "period": 60,
         "requests_per_period": 100,
         "mitigation_timeout": 300
       }
-    },
-    {
-      "id": "block-bad-bots",
-      "expression": "(cf.client.bot) and not (cf.verified_bot_category in {\"search_engine\" \"monitoring\"})",
-      "action": "block"
-    },
-    {
-      "id": "challenge-suspicious",
-      "expression": "(cf.threat_score gt 30)",
-      "action": "managed_challenge"
     }
   ]
 }

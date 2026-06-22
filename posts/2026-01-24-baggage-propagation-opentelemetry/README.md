@@ -57,13 +57,14 @@ First, you need to configure your application to propagate baggage. This require
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
+const { UndiciInstrumentation } = require('@opentelemetry/instrumentation-undici');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const {
   CompositePropagator,
   W3CTraceContextPropagator,
   W3CBaggagePropagator
 } = require('@opentelemetry/core');
-const { propagation, context } = require('@opentelemetry/api');
+const { propagation } = require('@opentelemetry/api');
 
 // Create a composite propagator that handles both trace context and baggage
 // W3CTraceContextPropagator: Handles traceparent and tracestate headers
@@ -86,7 +87,8 @@ provider.register();
 // Register instrumentations that will automatically propagate context
 registerInstrumentations({
   instrumentations: [
-    new HttpInstrumentation(),      // Auto-propagates on HTTP calls
+    new HttpInstrumentation(),      // Auto-propagates on node:http and node:https calls
+    new UndiciInstrumentation(),    // Auto-propagates on undici and Node.js fetch calls
     new ExpressInstrumentation()    // Extracts context from incoming requests
   ]
 });
@@ -99,7 +101,7 @@ console.log('OpenTelemetry configured with baggage propagation');
 ### Creating and Setting Baggage
 
 ```javascript
-const { context, propagation, baggage } = require('@opentelemetry/api');
+const { context, propagation, baggageEntryMetadataFromString } = require('@opentelemetry/api');
 
 // Method 1: Create baggage with a single entry
 function setBaggageSimple() {
@@ -124,7 +126,7 @@ function setBaggageWithMetadata() {
     'tenant.id': { value: 'acme-corp' },
     'feature.flags': {
       value: 'new-ui,beta-search',
-      metadata: 'encoded=true'  // Optional metadata about the value
+      metadata: baggageEntryMetadataFromString('encoded=true')  // Optional metadata about the value
     },
     'request.priority': { value: 'high' }
   });
@@ -238,13 +240,13 @@ function clearAllBaggage() {
 
 ## Express.js Integration Example
 
-Here is a complete example of using baggage in an Express.js application:
+Here is an example of using baggage in an Express.js application:
 
 ```javascript
 // server.js - Express server with baggage propagation
 
 const express = require('express');
-const { context, propagation, trace } = require('@opentelemetry/api');
+const { context, propagation, trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Initialize OpenTelemetry first (see setup.js above)
 require('./setup');
@@ -316,11 +318,11 @@ app.post('/orders', async (req, res) => {
         await callPaymentService(orderId);
       });
 
-      span.setStatus({ code: 0 });
+      span.setStatus({ code: SpanStatusCode.OK });
       res.json({ orderId, status: 'created' });
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       res.status(500).json({ error: error.message });
     } finally {
       span.end();
@@ -354,14 +356,13 @@ app.listen(3000, () => {
 
 ## Propagating Baggage in HTTP Clients
 
-When making outbound HTTP requests, baggage is automatically propagated if you use instrumented HTTP clients:
+When making outbound HTTP requests, baggage is automatically propagated if you use instrumented HTTP clients. In Node.js, `@opentelemetry/instrumentation-http` covers `node:http` and `node:https`, while `@opentelemetry/instrumentation-undici` covers Undici and the built-in `fetch` API:
 
 ```javascript
 const { context, propagation } = require('@opentelemetry/api');
-const http = require('http');
 
 // With auto-instrumentation, baggage is automatically injected
-// The HTTP instrumentation handles this for you
+// The Undici instrumentation handles this for Node.js fetch
 async function callServiceWithAutoInstrumentation() {
   // Baggage from current context is automatically added to headers
   const response = await fetch('http://downstream-service/api/data');
@@ -515,19 +516,20 @@ flowchart TD
     style G fill:#c8e6c9
 ```
 
-### Pitfall 2: Losing Context in Async Operations
+### Pitfall 2: Losing Context in Unbound Async Callbacks
 
 ```javascript
-// WRONG: Context is lost in setTimeout
+// RISKY: Context can be lost if a callback is invoked later outside
+// the active OpenTelemetry context
 app.get('/api/data', (req, res) => {
   const baggage = propagation.getBaggage(context.active());
-  console.log('Before timeout:', baggage?.getEntry('user.id'));
+  console.log('Before callback:', baggage?.getEntry('user.id'));
 
-  setTimeout(() => {
-    // Context is lost here!
+  someExternalAsyncLibrary(() => {
+    // Context may not be active here
     const baggage = propagation.getBaggage(context.active());
-    console.log('After timeout:', baggage?.getEntry('user.id'));  // undefined!
-  }, 100);
+    console.log('After callback:', baggage?.getEntry('user.id'));  // may be undefined
+  });
 });
 
 // CORRECT: Capture and restore context
@@ -535,13 +537,13 @@ app.get('/api/data', (req, res) => {
   // Capture the current context
   const currentContext = context.active();
 
-  setTimeout(() => {
+  someExternalAsyncLibrary(() => {
     // Run the callback within the captured context
     context.with(currentContext, () => {
       const baggage = propagation.getBaggage(context.active());
-      console.log('After timeout:', baggage?.getEntry('user.id'));  // Works!
+      console.log('After callback:', baggage?.getEntry('user.id'));  // Works!
     });
-  }, 100);
+  });
 });
 ```
 

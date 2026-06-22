@@ -71,11 +71,16 @@ firebase init
 const admin = require('firebase-admin');
 
 // When running on GCP, uses Application Default Credentials automatically
-admin.initializeApp({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  // Specify database URL if using Realtime Database
-  databaseURL: `https://${process.env.GOOGLE_CLOUD_PROJECT}.firebaseio.com`
-});
+const appOptions = {
+  projectId: process.env.GOOGLE_CLOUD_PROJECT
+};
+
+// Specify the database URL if using Realtime Database
+if (process.env.FIREBASE_DATABASE_URL) {
+  appOptions.databaseURL = process.env.FIREBASE_DATABASE_URL;
+}
+
+admin.initializeApp(appOptions);
 
 // Now you can use Firebase services
 const firestore = admin.firestore();
@@ -116,7 +121,8 @@ const authenticateFirebase = async (req, res, next) => {
       email: decodedToken.email,
       emailVerified: decodedToken.email_verified,
       // Custom claims if any
-      roles: decodedToken.roles || []
+      role: decodedToken.role,
+      permissions: decodedToken.permissions || []
     };
 
     next();
@@ -248,9 +254,8 @@ exports.syncToBigQuery = functions.firestore
         .table('orders')
         .insert([row]);
     } catch (error) {
-      // Handle duplicate key errors gracefully
       if (error.name === 'PartialFailureError') {
-        console.log('Row already exists, skipping');
+        console.error('Some BigQuery rows failed to insert:', error.errors);
       } else {
         throw error;
       }
@@ -322,8 +327,9 @@ steps:
       - functions
       - deploy
       - processUploadedImage
-      - --runtime=nodejs18
-      - --trigger-bucket=my-project.appspot.com
+      - --gen2
+      - --runtime=nodejs22
+      - --trigger-bucket=my-project.firebasestorage.app
       - --entry-point=processImage
       - --memory=1024MB
       - --timeout=120s
@@ -404,6 +410,7 @@ functions.cloudEvent('processImage', async (cloudEvent) => {
 
 ```javascript
 // Use Cloud Logging for both Firebase and GCP services
+const functions = require('firebase-functions');
 const { Logging } = require('@google-cloud/logging');
 const logging = new Logging();
 const log = logging.log('my-app');

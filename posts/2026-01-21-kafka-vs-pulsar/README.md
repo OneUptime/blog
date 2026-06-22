@@ -19,7 +19,7 @@ flowchart TB
     P[Producers] --> B[Kafka Brokers<br/>Stateful]
     B --> C[Consumers]
     B -.->|Data stored on brokers| S[(Local Disk Storage)]
-    B -.->|Coordination| Z[ZooKeeper or KRaft]
+    B -.->|Coordination| Z[KRaft<br/>(ZooKeeper in Kafka 3.x and earlier)]
 ```
 
 ### Pulsar Architecture
@@ -30,7 +30,7 @@ flowchart TB
     B --> BK[BookKeeper<br/>Bookies]
     B -.->|Stateless, handle routing| R[Routing Layer]
     BK -.->|Distributed storage| S[(Distributed Log)]
-    BK -.->|Coordination| Z[ZooKeeper<br/>Metadata]
+    BK -.->|Coordination| Z[Metadata Store<br/>ZooKeeper, etcd, or other backend]
 ```
 
 ## Feature Comparison
@@ -40,12 +40,12 @@ flowchart TB
 | Storage Architecture | Broker-local | Separate (BookKeeper) |
 | Multi-tenancy | Limited | Native support |
 | Geo-replication | MirrorMaker 2 | Built-in |
-| Message TTL | Per-topic retention | Per-message TTL |
+| Message TTL | Per-topic retention | Namespace/topic TTL |
 | Subscription modes | Consumer groups | Exclusive, Shared, Failover, Key_Shared |
 | Schema Registry | Separate component | Built-in |
 | Functions | Kafka Streams | Pulsar Functions |
 | Transactions | Yes | Yes |
-| Tiered Storage | Confluent only | Built-in |
+| Tiered Storage | Remote log storage (plugin/vendor implementation) | Built-in offloaders |
 
 ## Performance Characteristics
 
@@ -74,6 +74,8 @@ flowchart TB
 Properties props = new Properties();
 props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processors");
 props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
 Consumer<String, String> consumer = new KafkaConsumer<>(props);
 consumer.subscribe(Collections.singletonList("orders"));
@@ -172,8 +174,13 @@ pulsar-admin namespaces set-clusters tenant1/production \
 ```properties
 # Offload old data to S3
 managedLedgerOffloadDriver=aws-s3
+offloadersDirectory=offloaders
 s3ManagedLedgerOffloadBucket=pulsar-offload
-managedLedgerOffloadThresholdInBytes=1073741824
+```
+
+```bash
+# Configure automatic offload threshold per namespace
+pulsar-admin namespaces set-offload-threshold --size 1G tenant1/production
 ```
 
 ### Kafka (Confluent Platform)
@@ -199,8 +206,8 @@ confluent.tier.s3.bucket=kafka-tier
 - Multi-tenant SaaS platform
 - Built-in geo-replication needed
 - Flexible subscription models required
-- Tiered storage without enterprise license
-- Message-level TTL needed
+- Bundled tiered storage offloaders needed
+- Namespace/topic TTL policies needed
 - Compute (Pulsar Functions) tightly integrated
 
 ## Migration Considerations

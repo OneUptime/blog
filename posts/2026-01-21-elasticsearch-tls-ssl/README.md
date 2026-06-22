@@ -91,6 +91,8 @@ cd /etc/elasticsearch/certs
 unzip certs.zip
 ```
 
+After extraction, each node certificate is in its own directory, for example `certs/node-1/node-1.p12`.
+
 ### Option 2: Using OpenSSL
 
 #### Create CA
@@ -159,9 +161,7 @@ xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
 xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: certs/elastic-certificates.p12
-xpack.security.transport.ssl.keystore.password: ${KEYSTORE_PASSWORD}
 xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
-xpack.security.transport.ssl.truststore.password: ${TRUSTSTORE_PASSWORD}
 ```
 
 Add passwords to the Elasticsearch keystore:
@@ -181,8 +181,8 @@ For highest security with hostname verification:
 ```yaml
 xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: full
-xpack.security.transport.ssl.keystore.path: certs/node-1.p12
-xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
+xpack.security.transport.ssl.keystore.path: certs/node-1/node-1.p12
+xpack.security.transport.ssl.truststore.path: certs/node-1/node-1.p12
 ```
 
 ## Configuring HTTP Layer TLS
@@ -193,7 +193,6 @@ xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
 # HTTP layer TLS
 xpack.security.http.ssl.enabled: true
 xpack.security.http.ssl.keystore.path: certs/http.p12
-xpack.security.http.ssl.truststore.path: certs/http.p12
 ```
 
 ### Generate HTTP Certificates
@@ -221,10 +220,10 @@ This creates a zip file with:
 ```yaml
 xpack.security.http.ssl.enabled: true
 xpack.security.http.ssl.keystore.path: certs/http.p12
-xpack.security.http.ssl.verification_mode: certificate
 
 # Client authentication (optional)
 xpack.security.http.ssl.client_authentication: optional
+xpack.security.http.ssl.certificate_authorities: [ "certs/client-ca.crt" ]
 ```
 
 ## Complete elasticsearch.yml Example
@@ -243,18 +242,17 @@ xpack.security.enabled: true
 # Transport layer TLS (node-to-node)
 xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: full
-xpack.security.transport.ssl.keystore.path: certs/node-1.p12
-xpack.security.transport.ssl.truststore.path: certs/ca.p12
+xpack.security.transport.ssl.keystore.path: certs/node-1/node-1.p12
+xpack.security.transport.ssl.truststore.path: certs/node-1/node-1.p12
 
 # HTTP layer TLS (client-to-node)
 xpack.security.http.ssl.enabled: true
 xpack.security.http.ssl.keystore.path: certs/http.p12
-xpack.security.http.ssl.verification_mode: certificate
 ```
 
 ## Setting Up Built-in Users
 
-After enabling security, set up passwords for built-in users:
+After enabling security in Elasticsearch 7.x, set up passwords for built-in users:
 
 ```bash
 # Auto-generate passwords
@@ -262,6 +260,12 @@ After enabling security, set up passwords for built-in users:
 
 # Or set passwords interactively
 /usr/share/elasticsearch/bin/elasticsearch-setup-passwords interactive
+```
+
+In Elasticsearch 8.x and later, `elasticsearch-setup-passwords` is deprecated. Use the password generated during security auto-configuration, or reset the `elastic` user password:
+
+```bash
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic
 ```
 
 ## Testing TLS Configuration
@@ -354,23 +358,19 @@ const client = new Client({
 ### Java Client
 
 ```java
-import org.elasticsearch.client.RestClient;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.apache.http.ssl.SSLContextBuilder;
-import org.apache.http.ssl.SSLContexts;
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.transport.TransportUtils;
+import java.io.File;
+import javax.net.ssl.SSLContext;
 
-SSLContext sslContext = SSLContexts.custom()
-    .loadTrustMaterial(
-        new File("/path/to/truststore.p12"),
-        "password".toCharArray()
-    )
-    .build();
+File caCert = new File("/path/to/http_ca.crt");
+SSLContext sslContext = TransportUtils.sslContextFromHttpCaCrt(caCert);
 
-RestHighLevelClient client = new RestHighLevelClient(
-    RestClient.builder(new HttpHost("node-1.example.com", 9200, "https"))
-        .setHttpClientConfigCallback(httpClientBuilder ->
-            httpClientBuilder.setSSLContext(sslContext)
-        )
+ElasticsearchClient client = ElasticsearchClient.of(builder ->
+    builder
+        .host("https://node-1.example.com:9200")
+        .usernameAndPassword("elastic", "password")
+        .sslContext(sslContext)
 );
 ```
 
@@ -497,7 +497,7 @@ openssl rsa -noout -modulus -in node.key | openssl md5
 
 1. **Always use full verification mode** in production when possible
 2. **Enable both transport and HTTP TLS**
-3. **Use strong cipher suites**:
+3. **Use modern TLS protocols**:
 
 ```yaml
 xpack.security.transport.ssl.supported_protocols: ["TLSv1.3", "TLSv1.2"]

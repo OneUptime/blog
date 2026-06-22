@@ -189,7 +189,7 @@ mkdir -p ${OUT_DIR}
 
 # Generate Go code, gRPC code, and gateway code
 protoc \
-  -I ${PROTO_DIR} \
+  -I . \
   -I ${THIRD_PARTY} \
   --go_out=${OUT_DIR} \
   --go_opt=paths=source_relative \
@@ -219,6 +219,7 @@ package service
 
 import (
     "context"
+    "fmt"
     "sync"
     "time"
 
@@ -372,7 +373,9 @@ import (
     "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/metadata"
     "google.golang.org/grpc/reflection"
+    "google.golang.org/protobuf/encoding/protojson"
 
     pb "github.com/example/myapp/gen/api/v1"
     "github.com/example/myapp/internal/service"
@@ -581,6 +584,7 @@ package gateway
 import (
     "context"
     "encoding/json"
+    "fmt"
     "net/http"
 
     "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -636,10 +640,7 @@ func CustomErrorHandler(
 package gateway
 
 import (
-    "context"
     "net/http"
-
-    "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
 // ValidationMiddleware validates incoming requests
@@ -672,9 +673,9 @@ func ValidationMiddleware(next http.Handler) http.Handler {
 package gateway
 
 import (
+    "net"
     "net/http"
     "sync"
-    "time"
 
     "golang.org/x/time/rate"
 )
@@ -713,7 +714,10 @@ func (rl *RateLimiter) GetLimiter(ip string) *rate.Limiter {
 // Middleware creates the rate limiting middleware
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        ip := r.RemoteAddr
+        ip, _, err := net.SplitHostPort(r.RemoteAddr)
+        if err != nil {
+            ip = r.RemoteAddr
+        }
 
         limiter := rl.GetLimiter(ip)
         if !limiter.Allow() {
@@ -746,7 +750,7 @@ curl "http://localhost:8080/api/v1/users?page_size=10"
 # Update a user
 curl -X PUT http://localhost:8080/api/v1/users/user_1234567890 \
   -H "Content-Type: application/json" \
-  -d '{"user": {"user_id": "user_1234567890", "name": "John Updated"}}'
+  -d '{"name": "John Updated"}'
 
 # Delete a user
 curl -X DELETE http://localhost:8080/api/v1/users/user_1234567890
@@ -758,8 +762,6 @@ curl -X DELETE http://localhost:8080/api/v1/users/user_1234567890
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   grpc-server:
     build:
@@ -805,7 +807,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/nginx/certs/server.crt;

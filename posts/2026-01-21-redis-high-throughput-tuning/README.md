@@ -49,13 +49,12 @@ redis-benchmark -h localhost -p 6379 -c 100 -n 1000000 -t set,get -P 16
 ```bash
 # redis.conf
 
-# Disable memory overcommit check (improves startup)
-# Note: Ensure system has overcommit enabled
+# Suppress only warnings you have investigated and accepted
 ignore-warnings ARM64-COW-BUG
 
 # Hash optimization for small hashes
-hash-max-ziplist-entries 512
-hash-max-ziplist-value 64
+hash-max-listpack-entries 512
+hash-max-listpack-value 64
 
 # List optimization
 list-max-listpack-size -2
@@ -66,8 +65,8 @@ set-max-intset-entries 512
 set-max-listpack-entries 128
 
 # Sorted set optimization
-zset-max-ziplist-entries 128
-zset-max-ziplist-value 64
+zset-max-listpack-entries 128
+zset-max-listpack-value 64
 
 # Active rehashing during idle time
 activerehashing yes
@@ -261,7 +260,7 @@ import redis.asyncio as aioredis
 
 async def high_throughput_operations():
     """Async operations for high throughput"""
-    r = await aioredis.from_url('redis://localhost')
+    r = aioredis.from_url('redis://localhost')
 
     # Concurrent operations
     tasks = []
@@ -270,7 +269,7 @@ async def high_throughput_operations():
 
     await asyncio.gather(*tasks)
 
-    await r.close()
+    await r.aclose()
 
 # Run
 asyncio.run(high_throughput_operations())
@@ -328,8 +327,8 @@ redis-cli INFO stats
 # instantaneous_ops_per_sec: Current throughput
 # total_commands_processed: Total commands since start
 # rejected_connections: Connections rejected (maxclients)
-# expired_keys: Keys expired per second
-# evicted_keys: Keys evicted per second
+# expired_keys: Total keys expired since start
+# evicted_keys: Total keys evicted since start
 ```
 
 ### Prometheus Metrics
@@ -345,17 +344,22 @@ rejected = Counter('redis_rejected_connections_total', 'Rejected connections')
 
 def monitor(r):
     prev_ops = None
+    prev_rejected = None
 
     while True:
         info = r.info('stats')
         clients = r.info('clients')
 
         current_ops = info['total_commands_processed']
+        current_rejected = info['rejected_connections']
 
         if prev_ops is not None:
             ops_per_sec.set(current_ops - prev_ops)
+        if prev_rejected is not None and current_rejected > prev_rejected:
+            rejected.inc(current_rejected - prev_rejected)
 
         prev_ops = current_ops
+        prev_rejected = current_rejected
         connections.set(clients['connected_clients'])
 
         time.sleep(1)
@@ -440,8 +444,8 @@ def measure_latency(r, iterations=1000):
 
     latencies.sort()
     print(f"Min: {latencies[0]:.3f}ms")
-    print(f"P50: {latencies[500]:.3f}ms")
-    print(f"P99: {latencies[990]:.3f}ms")
+    print(f"P50: {latencies[int(iterations * 0.50)]:.3f}ms")
+    print(f"P99: {latencies[int(iterations * 0.99)]:.3f}ms")
 
 # Solutions:
 # - Co-locate client and Redis

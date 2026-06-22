@@ -80,7 +80,7 @@ advertise-client-urls: http://10.0.0.1:2379
 sudo apt install python3 python3-pip -y
 
 # Install Patroni
-sudo pip3 install patroni[etcd]
+sudo pip3 install patroni[etcd3]
 
 # Verify
 patroni --version
@@ -111,7 +111,7 @@ restapi:
   listen: 0.0.0.0:8008
   connect_address: 10.0.0.11:8008
 
-etcd:
+etcd3:
   hosts: 10.0.0.1:2379,10.0.0.2:2379,10.0.0.3:2379
 
 bootstrap:
@@ -258,7 +258,7 @@ patronictl -c /etc/patroni/patroni.yml switchover
 
 # Or directly
 patronictl -c /etc/patroni/patroni.yml switchover postgres-cluster \
-  --master pg-node1 --candidate pg-node2 --force
+  --leader pg-node1 --candidate pg-node2 --force
 ```
 
 ### Manual Failover
@@ -315,7 +315,7 @@ frontend postgres_frontend
     default_backend postgres_backend
 
 backend postgres_backend
-    option httpchk GET /master
+    option httpchk GET /primary
     http-check expect status 200
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
 
@@ -379,8 +379,8 @@ patronictl -c /etc/patroni/patroni.yml show-config
 # Health check
 curl http://10.0.0.11:8008/health
 
-# Master check
-curl http://10.0.0.11:8008/master
+# Primary check
+curl http://10.0.0.11:8008/primary
 
 # Replica check
 curl http://10.0.0.11:8008/replica
@@ -406,29 +406,29 @@ curl http://10.0.0.11:8008/metrics
 groups:
   - name: patroni
     rules:
-      - alert: PatroniClusterUnhealthy
-        expr: patroni_cluster_healthy == 0
+      - alert: PatroniPostgresDown
+        expr: patroni_postgres_running == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Patroni cluster is unhealthy"
+          summary: "PostgreSQL is not running under Patroni"
 
-      - alert: PatroniNoLeader
-        expr: sum(patroni_is_leader) == 0
+      - alert: PatroniNoPrimary
+        expr: sum by (scope) (patroni_primary) == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Patroni cluster has no leader"
+          summary: "Patroni cluster has no primary"
 
-      - alert: PatroniHighReplicationLag
-        expr: patroni_replication_lag > 30
+      - alert: PatroniReplicaNotStreaming
+        expr: patroni_replica == 1 and patroni_postgres_streaming == 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High replication lag"
+          summary: "Patroni replica is not streaming"
 ```
 
 ## Troubleshooting
@@ -470,7 +470,7 @@ patronictl -c /etc/patroni/patroni.yml reinit postgres-cluster pg-node3
 
 ## Best Practices
 
-1. **Use odd number of nodes** for proper quorum
+1. **Use an odd number of DCS nodes** for proper quorum
 2. **Separate etcd cluster** from PostgreSQL nodes
 3. **Monitor all components** - Patroni, etcd, PostgreSQL
 4. **Test failover regularly** in staging environment

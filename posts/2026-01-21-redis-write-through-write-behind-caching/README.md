@@ -54,8 +54,7 @@ flowchart LR
 ```python
 import redis
 import json
-from typing import Optional, Any
-from functools import wraps
+from typing import Optional
 
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -81,7 +80,7 @@ class WriteThrough:
         # Cache miss - fetch from database
         data = self._fetch_from_database(entity_id)
         if data:
-            redis_client.setex(cache_key, self.ttl, json.dumps(data))
+            redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
 
         return data
 
@@ -97,7 +96,7 @@ class WriteThrough:
             return False
 
         # Step 2: Update cache
-        redis_client.setex(cache_key, self.ttl, json.dumps(data))
+        redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
 
         return True
 
@@ -147,6 +146,7 @@ user = user_cache.get("123")
 
 ```python
 import redis
+import json
 from contextlib import contextmanager
 
 class TransactionalWriteThrough:
@@ -170,7 +170,7 @@ class TransactionalWriteThrough:
             pipe = self.redis.pipeline()
             for op, key, value, ttl in cache_operations:
                 if op == 'set':
-                    pipe.setex(key, ttl, value)
+                    pipe.set(key, value, ex=ttl)
                 elif op == 'delete':
                     pipe.delete(key)
             pipe.execute()
@@ -214,8 +214,7 @@ import redis
 import json
 import threading
 import time
-from queue import Queue
-from typing import Dict, Any
+from queue import Empty, Queue
 import logging
 
 logger = logging.getLogger(__name__)
@@ -252,7 +251,7 @@ class WriteBehind:
         # Cache miss - fetch from database
         data = self._fetch_from_database(entity_id)
         if data:
-            redis_client.setex(cache_key, self.ttl, json.dumps(data))
+            redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
 
         return data
 
@@ -264,7 +263,7 @@ class WriteBehind:
         cache_key = self._cache_key(entity_id)
 
         # Write to cache immediately
-        redis_client.setex(cache_key, self.ttl, json.dumps(data))
+        redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
 
         # Queue async database write
         self.write_queue.put({
@@ -312,7 +311,7 @@ class WriteBehind:
                 try:
                     item = self.write_queue.get(timeout=0.1)
                     batch.append(item)
-                except:
+                except Empty:
                     pass
 
                 # Flush if batch is full or interval elapsed
@@ -433,7 +432,7 @@ class StreamWriteBehind:
         cache_key = self._cache_key(entity_id)
 
         # Write to cache
-        redis_client.setex(cache_key, self.ttl, json.dumps(data))
+        redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
 
         # Add to stream for async database write
         message_id = redis_client.xadd(
@@ -479,13 +478,13 @@ class StreamWriteBehind:
                         )
                     except Exception as e:
                         print(f"Error processing {message_id}: {e}")
-                        # Message will be retried
+                        # Message remains pending; use XPENDING/XAUTOCLAIM for retries
 
     def _process_message(self, fields: dict):
         """Process a single write message"""
-        operation = fields.get('operation', '').decode()
-        entity_id = fields.get('entity_id', '').decode()
-        data = json.loads(fields.get('data', '{}').decode())
+        operation = fields.get('operation', '')
+        entity_id = fields.get('entity_id', '')
+        data = json.loads(fields.get('data', '{}'))
 
         if operation == 'set':
             self._write_to_database(entity_id, data)
@@ -515,9 +514,9 @@ cache.set("order:123", {"id": "123", "total": 99.99})
 ### Write-Through in Node.js
 
 ```javascript
-const Redis = require('redis');
+import { createClient } from 'redis';
 
-const client = Redis.createClient();
+const client = createClient();
 await client.connect();
 
 class WriteThroughCache {
@@ -542,7 +541,7 @@ class WriteThroughCache {
         // Fetch from database
         const data = await this.fetchFromDatabase(id);
         if (data) {
-            await client.setEx(key, this.ttl, JSON.stringify(data));
+            await client.set(key, JSON.stringify(data), { EX: this.ttl });
         }
 
         return data;
@@ -555,7 +554,7 @@ class WriteThroughCache {
         await this.writeToDatabase(id, data);
 
         // Then update cache
-        await client.setEx(key, this.ttl, JSON.stringify(data));
+        await client.set(key, JSON.stringify(data), { EX: this.ttl });
 
         return true;
     }
@@ -600,8 +599,11 @@ const user = await userCache.get('123');
 ### Write-Behind in Node.js
 
 ```javascript
-const Redis = require('redis');
-const { EventEmitter } = require('events');
+import { createClient } from 'redis';
+import { EventEmitter } from 'events';
+
+const client = createClient();
+await client.connect();
 
 class WriteBehindCache extends EventEmitter {
     constructor(prefix, options = {}) {
@@ -629,7 +631,7 @@ class WriteBehindCache extends EventEmitter {
 
         const data = await this.fetchFromDatabase(id);
         if (data) {
-            await client.setEx(key, this.ttl, JSON.stringify(data));
+            await client.set(key, JSON.stringify(data), { EX: this.ttl });
         }
 
         return data;
@@ -639,7 +641,7 @@ class WriteBehindCache extends EventEmitter {
         const key = this.cacheKey(id);
 
         // Write to cache immediately
-        await client.setEx(key, this.ttl, JSON.stringify(data));
+        await client.set(key, JSON.stringify(data), { EX: this.ttl });
 
         // Queue for async database write
         this.writeQueue.push({
@@ -725,6 +727,7 @@ process.on('SIGTERM', async () => {
 ### Write-Through Failure Handling
 
 ```python
+import json
 import logging
 from enum import Enum
 
@@ -760,7 +763,7 @@ class ResilientWriteThrough:
 
         try:
             # Step 2: Write to cache
-            redis_client.setex(cache_key, self.ttl, json.dumps(data))
+            redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
             return WriteResult.SUCCESS
 
         except Exception as cache_error:
@@ -790,7 +793,7 @@ class ResilientWriteThrough:
 
             try:
                 # Write to cache
-                redis_client.setex(cache_key, self.ttl, json.dumps(data))
+                redis_client.set(cache_key, json.dumps(data), ex=self.ttl)
                 return WriteResult.SUCCESS
 
             except Exception as cache_error:
@@ -821,6 +824,10 @@ class ResilientWriteThrough:
 ### Write-Behind Failure Recovery
 
 ```python
+import json
+import logging
+import time
+
 class WriteBehindWithRecovery:
     """Write-behind with dead letter queue for failed writes"""
 
@@ -830,13 +837,14 @@ class WriteBehindWithRecovery:
         self.write_queue = "write_queue"
         self.dead_letter_queue = "write_dlq"
         self.retry_counts = {}
+        self.logger = logging.getLogger(__name__)
 
     def set(self, entity_id: str, data: dict):
         """Queue write with retry metadata"""
         cache_key = f"{self.cache_prefix}:{entity_id}"
 
         # Write to cache
-        redis_client.setex(cache_key, 3600, json.dumps(data))
+        redis_client.set(cache_key, json.dumps(data), ex=3600)
 
         # Queue for async write
         message = json.dumps({

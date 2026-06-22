@@ -35,8 +35,9 @@ Kafka has a default message size limit of 1MB, but many applications need to sen
 ```properties
 # server.properties
 
-message.max.bytes=10485760  # 10MB
-replica.fetch.max.bytes=10485760  # 10MB
+# 10MB
+message.max.bytes=10485760
+replica.fetch.max.bytes=10485760
 ```
 
 ### Producer Configuration
@@ -157,7 +158,6 @@ public class CompressionUtils {
 
 ```java
 import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.common.header.internals.RecordHeader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -196,14 +196,10 @@ public class ChunkingProducer {
 
             // Add chunk headers
             record.headers()
-                .add(new RecordHeader("message-id",
-                    messageId.getBytes(StandardCharsets.UTF_8)))
-                .add(new RecordHeader("chunk-index",
-                    String.valueOf(i).getBytes(StandardCharsets.UTF_8)))
-                .add(new RecordHeader("total-chunks",
-                    String.valueOf(totalChunks).getBytes(StandardCharsets.UTF_8)))
-                .add(new RecordHeader("total-size",
-                    String.valueOf(payload.length).getBytes(StandardCharsets.UTF_8)));
+                .add("message-id", messageId.getBytes(StandardCharsets.UTF_8))
+                .add("chunk-index", String.valueOf(i).getBytes(StandardCharsets.UTF_8))
+                .add("total-chunks", String.valueOf(totalChunks).getBytes(StandardCharsets.UTF_8))
+                .add("total-size", String.valueOf(payload.length).getBytes(StandardCharsets.UTF_8));
 
             RecordMetadata metadata = producer.send(record).get();
             metadataList.add(metadata);
@@ -397,6 +393,7 @@ class ChunkingProducer:
                 headers=headers,
                 callback=self.delivery_report
             )
+            self.producer.poll(0)
 
         self.producer.flush()
         print(f"Sent {total_chunks} chunks for message {message_id}")
@@ -453,7 +450,7 @@ class ChunkingConsumer:
         for mid in expired:
             del self.buffers[mid]
 
-    def consume(self, topic: str, handler: Callable[[str, bytes], None]):
+    def consume(self, topic: str, handler: Callable[[Optional[str], bytes], None]):
         self.consumer.subscribe([topic])
         last_cleanup = time.time()
 
@@ -511,6 +508,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.core.sync.RequestBody;
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.clients.consumer.*;
 import java.util.*;
 
 public class ClaimCheckProducer {
@@ -569,7 +567,7 @@ public class ClaimCheckProducer {
     }
 }
 
-public class ClaimCheckConsumer {
+class ClaimCheckConsumer {
     private final Consumer<String, String> consumer;
     private final S3Client s3Client;
 
@@ -592,14 +590,6 @@ public class ClaimCheckConsumer {
             // Extract bucket and key
             String bucket = extractField(value, "bucket");
             String s3Key = extractField(value, "key");
-
-            // Fetch from S3
-            GetObjectResponse response = s3Client.getObject(
-                GetObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(s3Key)
-                    .build()
-            ).response();
 
             return s3Client.getObjectAsBytes(
                 GetObjectRequest.builder()
@@ -667,6 +657,7 @@ class ClaimCheckProducer:
             })
 
         self.producer.produce(topic, key=key, value=value)
+        self.producer.poll(0)
         self.producer.flush()
 
 

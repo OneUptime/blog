@@ -8,7 +8,7 @@ Description: A comprehensive guide to using BullMQ sandboxed processors for isol
 
 ---
 
-Sandboxed processors in BullMQ run job processing code in separate child processes, providing isolation from the main worker process. This is valuable for memory leak prevention, crash isolation, and running potentially unsafe code. This guide covers how to implement and use sandboxed processors effectively.
+Sandboxed processors in BullMQ run job processing code in separate child processes, providing isolation from the main worker process. This is valuable for memory leak prevention and crash isolation. This guide covers how to implement and use sandboxed processors effectively.
 
 ## Understanding Sandboxed Processors
 
@@ -17,7 +17,7 @@ A sandboxed processor runs in a separate Node.js process:
 - **Isolation**: Crashes don't affect the main worker
 - **Memory management**: Process can be restarted to free memory
 - **CPU isolation**: Heavy computation doesn't block the event loop
-- **Security**: Untrusted code runs in isolation
+- **Limited security isolation**: Processor code runs outside the main worker process, but it is not a complete sandbox for untrusted code
 
 ```typescript
 import { Worker } from 'bullmq';
@@ -43,7 +43,7 @@ Create the processor file:
 
 ```typescript
 // processor.ts (compile to processor.js)
-import { Job, SandboxedJob } from 'bullmq';
+import { SandboxedJob } from 'bullmq';
 
 // Export the processor function
 export default async function (job: SandboxedJob) {
@@ -69,7 +69,7 @@ Main worker file:
 
 ```typescript
 // worker.ts
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import path from 'path';
 
@@ -161,9 +161,10 @@ async function processData(data: any) {
   return { processed: true, data };
 }
 
-// Clean up on process exit
-process.on('exit', () => {
-  redis?.quit();
+// Clean up on termination
+process.on('SIGTERM', async () => {
+  await redis?.quit();
+  process.exit(0);
 });
 ```
 
@@ -225,8 +226,15 @@ The main worker handles processor crashes:
 
 ```typescript
 // worker-with-crash-handling.ts
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 import path from 'path';
+
+const connection = new Redis({
+  host: 'localhost',
+  port: 6379,
+  maxRetriesPerRequest: null,
+});
 
 const worker = new Worker(
   'crash-safe-tasks',
@@ -235,10 +243,8 @@ const worker = new Worker(
     connection,
     concurrency: 5,
     // Processor restart settings
-    settings: {
-      stalledInterval: 30000,
-      maxStalledCount: 2,
-    },
+    stalledInterval: 30000,
+    maxStalledCount: 2,
   }
 );
 
@@ -256,23 +262,40 @@ worker.on('stalled', (jobId) => {
 
 ## Processor with Timeout
 
-Implement per-job timeouts:
+Implement per-job timeouts. Note that JavaScript timers can only run while the processor's event loop is not blocked:
 
 ```typescript
 // timeout-processor.ts
 import { SandboxedJob } from 'bullmq';
 
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
+const CLEANUP_TIMEOUT = 5000; // 5 seconds
+const TIMEOUT_EXIT_CODE = 10;
 
 export default async function (job: SandboxedJob) {
   const timeout = job.data.timeout || DEFAULT_TIMEOUT;
+  let completed = false;
 
-  const result = await Promise.race([
-    processJob(job),
-    timeoutPromise(timeout),
-  ]);
+  const hardTimeout = setTimeout(() => {
+    if (!completed) {
+      process.exit(TIMEOUT_EXIT_CODE);
+    }
+  }, timeout);
 
-  return result;
+  const cleanupTimeout = setTimeout(async () => {
+    if (!completed) {
+      await cleanup(job);
+    }
+  }, Math.max(timeout - CLEANUP_TIMEOUT, 0));
+
+  try {
+    const result = await processJob(job);
+    completed = true;
+    return result;
+  } finally {
+    clearTimeout(hardTimeout);
+    clearTimeout(cleanupTimeout);
+  }
 }
 
 async function processJob(job: SandboxedJob) {
@@ -281,12 +304,8 @@ async function processJob(job: SandboxedJob) {
   return { success: true };
 }
 
-function timeoutPromise(ms: number): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new Error(`Job timed out after ${ms}ms`));
-    }, ms);
-  });
+async function cleanup(job: SandboxedJob) {
+  await job.updateProgress(50);
 }
 ```
 
@@ -297,7 +316,14 @@ Run different processors for different queues:
 ```typescript
 // multi-queue-worker.ts
 import { Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 import path from 'path';
+
+const connection = new Redis({
+  host: 'localhost',
+  port: 6379,
+  maxRetriesPerRequest: null,
+});
 
 const workers: Worker[] = [];
 
@@ -559,4 +585,4 @@ async function processJob(job: SandboxedJob) {
 
 ## Conclusion
 
-Sandboxed processors provide valuable isolation for BullMQ jobs, protecting your main worker process from crashes, memory leaks, and CPU-heavy operations. By running job processing code in separate processes or worker threads, you can build more resilient job processing systems. Use sandboxed processors when you need isolation, memory management, or when running potentially unsafe code.
+Sandboxed processors provide valuable isolation for BullMQ jobs, protecting your main worker process from crashes, memory leaks, and CPU-heavy operations. By running job processing code in separate processes or worker threads, you can build more resilient job processing systems. Use sandboxed processors when you need process isolation, memory management, or protection from processor crashes.

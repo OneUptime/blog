@@ -8,7 +8,7 @@ Description: A comprehensive guide to shipping Docker container logs to Grafana 
 
 ---
 
-Docker containers generate logs that are essential for debugging, monitoring, and auditing applications. Grafana Loki provides multiple methods for collecting Docker container logs, from the native Loki Docker driver to sidecar patterns and file-based collection. This guide covers all approaches with production-ready configurations.
+Docker containers generate logs that are essential for debugging, monitoring, and auditing applications. Grafana Loki provides multiple methods for collecting Docker container logs, from the official Loki Docker logging driver plugin to sidecar patterns and file-based collection. This guide covers common approaches with practical configurations.
 
 ## Prerequisites
 
@@ -18,6 +18,8 @@ Before starting, ensure you have:
 - Grafana Loki instance running and accessible
 - Docker Compose (optional, for multi-container setups)
 - Basic understanding of Docker logging drivers
+
+Note: Promtail is end of life as of March 2, 2026. The Promtail examples below are useful for existing deployments, but new deployments should use Grafana Alloy or another supported Loki client for file-based collection.
 
 ## Understanding Docker Logging
 
@@ -38,7 +40,7 @@ The Loki Docker logging driver sends container logs directly to Loki.
 ### Installing the Loki Docker Driver
 
 ```bash
-docker plugin install grafana/loki-docker-driver:2.9.4 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.7.0-amd64 --alias loki --grant-all-permissions
 ```
 
 Verify installation:
@@ -126,13 +128,13 @@ sudo systemctl restart docker
 | Option | Description | Default |
 |--------|-------------|---------|
 | loki-url | Loki push API endpoint | Required |
-| loki-batch-size | Number of log lines in a batch | 102400 |
+| loki-batch-size | Maximum size of a log batch | 1048576 |
 | loki-batch-wait | Time to wait before sending batch | 1s |
 | loki-timeout | Request timeout | 10s |
 | loki-retries | Number of retries | 10 |
-| loki-max-backoff | Max backoff time | 5s |
+| loki-max-backoff | Max backoff time | 5m |
 | loki-min-backoff | Min backoff time | 500ms |
-| loki-external-labels | Additional labels | - |
+| loki-external-labels | Additional labels | container_name={{.Name}} |
 | loki-pipeline-stages | Pipeline configuration | - |
 | loki-tenant-id | Multi-tenant ID | - |
 | loki-relabel-config | Relabel configuration | - |
@@ -570,7 +572,7 @@ docker exec promtail cat /var/lib/promtail/positions.yaml
 
 **Driver Not Found**:
 ```bash
-docker plugin install grafana/loki-docker-driver:2.9.4 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.7.0-amd64 --alias loki --grant-all-permissions
 ```
 
 **Connection Refused**:
@@ -586,9 +588,9 @@ docker plugin install grafana/loki-docker-driver:2.9.4 --alias loki --grant-all-
 Docker container logs can be shipped to Loki using multiple methods:
 
 - **Loki Docker Driver**: Simplest setup for direct shipping
-- **Promtail with JSON Files**: Works with existing file-based logging
-- **Docker Service Discovery**: Automatic container detection
-- **Sidecar Pattern**: Application-specific log processing
+- **Promtail with JSON Files**: Works with existing file-based logging in legacy Promtail deployments
+- **Docker Service Discovery**: Automatic container detection in legacy Promtail deployments
+- **Sidecar Pattern**: Application-specific log processing in legacy Promtail deployments
 
 Key recommendations:
 

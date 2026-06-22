@@ -63,9 +63,9 @@ The Redlock algorithm acquires locks across multiple independent Redis instances
 ```typescript
 // redlock.ts
 import Redis from 'ioredis';
-import crypto from 'crypto';
+import { randomBytes } from 'node:crypto';
 
-interface Lock {
+export interface Lock {
   resource: string;
   value: string;
   validity: number;
@@ -115,7 +115,7 @@ export class Redlock {
   }
 
   async acquire(resource: string, ttl: number): Promise<Lock | null> {
-    const value = crypto.randomBytes(16).toString('hex');
+    const value = randomBytes(16).toString('hex');
 
     for (let attempt = 0; attempt < this.options.retryCount; attempt++) {
       const startTime = Date.now();
@@ -179,6 +179,8 @@ export class Redlock {
       };
     }
 
+    // Failed to extend - release any instances that were extended
+    await this.releaseAll(lock.resource, lock.value);
     return null;
   }
 
@@ -206,8 +208,8 @@ export class Redlock {
     const results = await Promise.all(
       this.clients.map(async (client) => {
         try {
-          await client.eval(this.unlockScript, 1, resource, value);
-          return true;
+          const result = await client.eval(this.unlockScript, 1, resource, value);
+          return result === 1;
         } catch (error) {
           return false;
         }
@@ -307,6 +309,7 @@ export class AutoExtendingLock {
     } else {
       console.error('Failed to extend lock - it may have expired');
       this.stop();
+      this.lock = null;
     }
   }
 
@@ -669,6 +672,6 @@ app.get('/metrics/locks', (req, res) => {
 | **TTL** | Locks auto-expire to prevent deadlocks |
 | **Clock Drift** | Account for time differences between servers |
 | **Auto-Extension** | Extend locks for long-running operations |
-| **Fencing** | Use lock value to verify ownership |
+| **Ownership Token** | Use lock value to verify ownership when releasing or extending |
 
-Distributed locks with Redlock provide a reliable way to coordinate access to shared resources across multiple application instances. The algorithm tolerates Redis instance failures while preventing split-brain scenarios. Use distributed locks for job processing, scheduled tasks, rate limiting, and any operation that must run exclusively across your cluster. Remember that locks should be held for the minimum time necessary and always have proper error handling to release locks when operations fail.
+Distributed locks with Redlock provide a reliable way to coordinate access to shared resources across multiple application instances. The algorithm tolerates Redis instance failures as long as a majority remains available, while reducing split-brain risk during contention when Redlock's timing assumptions hold. Use distributed locks for job processing, scheduled tasks, rate limiting, and any operation that must run exclusively across your cluster. For correctness-sensitive writes, use fencing tokens in addition to the lock value so downstream systems can reject stale clients. Remember that locks should be held for the minimum time necessary and always have proper error handling to release locks when operations fail.

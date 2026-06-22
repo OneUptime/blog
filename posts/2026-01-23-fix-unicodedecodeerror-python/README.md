@@ -48,11 +48,11 @@ with open('european_data.txt', 'r', encoding='latin-1') as f:
 ```python
 # Data from different sources with different encodings
 text1 = "Hello"  # ASCII/UTF-8
-text2 = b'\xe9'  # Latin-1 encoded 'e'
+text2 = b'\xe9'  # Latin-1 encoded 'é'
 
 # Trying to decode with wrong encoding
 text2.decode('utf-8')  # UnicodeDecodeError!
-text2.decode('latin-1')  # Works: 'e'
+text2.decode('latin-1')  # Works: 'é'
 ```
 
 ### 3. Binary Data Treated as Text
@@ -130,7 +130,7 @@ with open('data.txt', 'r', encoding='utf-8', errors='ignore') as f:
 
 # 'replace' - replace with U+FFFD (replacement character)
 with open('data.txt', 'r', encoding='utf-8', errors='replace') as f:
-    content = f.read()  # Shows '?' for problematic bytes
+    content = f.read()  # Shows '�' for problematic bytes
 
 # 'backslashreplace' - show escaped bytes
 with open('data.txt', 'r', encoding='utf-8', errors='backslashreplace') as f:
@@ -222,8 +222,8 @@ def read_csv_flexible(filepath):
 # Or with pandas
 import pandas as pd
 
-# Let pandas detect encoding
-df = pd.read_csv('data.csv', encoding_errors='replace')
+# Replace invalid bytes while reading with a known encoding
+df = pd.read_csv('data.csv', encoding='utf-8', encoding_errors='replace')
 
 # Or specify encoding
 df = pd.read_csv('data.csv', encoding='latin-1')
@@ -241,16 +241,15 @@ def fetch_text_content(url):
     response = requests.get(url)
 
     # requests usually handles encoding correctly
-    # response.text uses detected encoding
+    # response.text uses response.encoding
     text = response.text
 
     # Check what encoding was used
     print(f"Encoding: {response.encoding}")
 
-    # If incorrect, override
-    if response.encoding != 'utf-8':
-        response.encoding = 'utf-8'
-        text = response.text
+    # If incorrect, override based on external knowledge before using response.text
+    # response.encoding = 'utf-8'
+    # text = response.text
 
     return text
 
@@ -284,7 +283,7 @@ def process_log_file(filepath):
                 try:
                     text = line.decode('latin-1')
                     process_line(text)
-                except:
+                except UnicodeDecodeError:
                     errors_found.append(line_num)
 
     if errors_found:
@@ -381,6 +380,8 @@ def validate_text_input(data):
 ### 4. Document Expected Encodings
 
 ```python
+import json
+
 def load_config(filepath):
     """
     Load configuration file.
@@ -406,7 +407,7 @@ def load_config(filepath):
 |------------|--------|----------|
 | `strict` (default) | Raises error | Data must be perfect |
 | `ignore` | Skips bad bytes | Missing chars OK |
-| `replace` | Shows ? | User-facing text |
+| `replace` | Shows � | User-facing text |
 | `backslashreplace` | Shows \xNN | Debugging |
 | `surrogateescape` | Preserves bytes | Round-trip needed |
 

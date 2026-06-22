@@ -155,14 +155,14 @@ curl -X PUT "https://localhost:9200/_ilm/policy/rollover_policy" \
 ### Manual Rollover
 
 ```bash
-curl -X POST "https://localhost:9200/logs-000001/_rollover" \
+curl -X POST "https://localhost:9200/logs/_rollover" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "conditions": {
       "max_age": "1d",
       "max_docs": 1000000,
-      "max_size": "5gb"
+      "max_primary_shard_size": "5gb"
     }
   }'
 ```
@@ -299,7 +299,7 @@ curl -X PUT "https://localhost:9200/_ilm/policy/cold_actions" \
                 "data": "cold"
               }
             },
-            "freeze": {},
+            "readonly": {},
             "set_priority": {
               "priority": 0
             }
@@ -336,12 +336,14 @@ curl -X PUT "https://localhost:9200/_ilm/policy/frozen_actions" \
 
 ### Apply to Existing Index
 
+Use a policy without a rollover action, such as a delete-only policy named `retention_policy`, when applying ILM directly to an existing index.
+
 ```bash
 curl -X PUT "https://localhost:9200/logs-2024.01/_settings" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "index.lifecycle.name": "logs_policy"
+    "index.lifecycle.name": "retention_policy"
   }'
 ```
 
@@ -519,7 +521,7 @@ curl -X PUT "https://localhost:9200/_ilm/policy/compliance" \
 ### 1. Use Data Streams
 
 ```bash
-# Data streams automatically manage rollover
+# Data streams work with ILM to manage rollover
 curl -X PUT "https://localhost:9200/_data_stream/logs-production" \
   -u elastic:password
 ```

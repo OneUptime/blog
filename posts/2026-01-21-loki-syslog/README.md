@@ -16,7 +16,7 @@ Before starting, ensure you have:
 
 - Grafana Loki deployed and accessible
 - Systems configured to send syslog (or ability to configure)
-- Promtail, Syslog-ng, or Rsyslog installed
+- Grafana Alloy, Syslog-ng, Rsyslog, Fluent Bit, Vector, or Promtail installed (Promtail is deprecated and has reached end-of-life)
 - Understanding of syslog formats (RFC3164, RFC5424)
 
 ## Understanding Syslog Formats
@@ -41,6 +41,8 @@ Structured syslog format:
 
 ## Method 1: Promtail Syslog Receiver
 
+Promtail's syslog receiver is deprecated with Promtail itself. For new deployments, prefer Grafana Alloy; use Promtail only for existing environments that still run it.
+
 ### Promtail Configuration
 
 ```yaml
@@ -58,9 +60,9 @@ scrape_configs:
   - job_name: syslog
     syslog:
       listen_address: 0.0.0.0:1514
-      listen_protocol: tcp
       idle_timeout: 60s
       label_structured_data: yes
+      use_incoming_timestamp: true
       labels:
         job: syslog
     relabel_configs:
@@ -72,34 +74,27 @@ scrape_configs:
         target_label: facility
       - source_labels: [__syslog_message_app_name]
         target_label: app
-    pipeline_stages:
-      - match:
-          selector: '{job="syslog"}'
-          stages:
-            - regex:
-                expression: '(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<message>.*)'
-            - timestamp:
-                source: timestamp
-                format: 'Jan 2 15:04:05'
 ```
 
-### UDP Syslog Receiver
+### UDP Syslog Forwarder
 
-```yaml
-scrape_configs:
-  - job_name: syslog-udp
-    syslog:
-      listen_address: 0.0.0.0:514
-      listen_protocol: udp
-      idle_timeout: 60s
-      labels:
-        job: syslog
-        protocol: udp
-    relabel_configs:
-      - source_labels: [__syslog_message_hostname]
-        target_label: host
-      - source_labels: [__syslog_message_severity]
-        target_label: level
+This Promtail example listens on TCP. To accept UDP syslog while keeping Promtail behind a TCP receiver, put a syslog forwarder in front of Promtail:
+
+```conf
+# /etc/rsyslog.d/50-udp-to-promtail.conf
+
+module(load="imudp")
+module(load="omfwd")
+
+input(type="imudp" port="514")
+
+*.* action(
+    type="omfwd"
+    target="promtail-syslog"
+    port="1514"
+    protocol="tcp"
+    template="RSYSLOG_SyslogProtocol23Format"
+)
 ```
 
 ### Kubernetes Deployment
@@ -131,9 +126,6 @@ spec:
             - name: syslog-tcp
               containerPort: 1514
               protocol: TCP
-            - name: syslog-udp
-              containerPort: 514
-              protocol: UDP
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
@@ -165,17 +157,13 @@ spec:
       port: 1514
       targetPort: 1514
       protocol: TCP
-    - name: syslog-udp
-      port: 514
-      targetPort: 514
-      protocol: UDP
   selector:
     app: promtail-syslog
 ```
 
 ## Method 2: Rsyslog to Loki
 
-### Rsyslog with omkafka (Kafka to Loki)
+### Rsyslog with omhttp (Direct HTTP to Loki)
 
 ```conf
 # /etc/rsyslog.d/50-loki.conf
@@ -216,9 +204,8 @@ action(
     serverport="3100"
     restpath="loki/api/v1/push"
     template="LokiFormat"
-    httpheaders=["Content-Type: application/json"]
-    retry="on"
-    retry.ruleset="retry_queue"
+    httpContentType="application/json"
+    action.resumeRetryCount="-1"
 )
 ```
 
@@ -268,6 +255,9 @@ scrape_configs:
           host:
           severity:
           facility:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
       - output:
           source: message
 ```
@@ -279,7 +269,7 @@ scrape_configs:
 ```conf
 # /etc/syslog-ng/conf.d/loki.conf
 
-@version: 3.38
+@version: 4.7
 
 source s_network {
     network(
@@ -292,17 +282,17 @@ source s_network {
     );
 };
 
-template t_loki {
-    template('{"streams":[{"stream":{"job":"syslog","host":"${HOST}","facility":"${FACILITY}","severity":"${LEVEL}"},"values":[["${UNIXTIME}000000000","${MSG}"]]}]}');
-};
-
 destination d_loki {
-    http(
-        url("http://loki:3100/loki/api/v1/push")
-        method("POST")
-        headers("Content-Type: application/json")
-        body("$(template t_loki)")
-        persist-name("loki")
+    loki(
+        url("loki:9095")
+        labels(
+            "job" => "syslog",
+            "host" => "$HOST",
+            "facility" => "$FACILITY",
+            "severity" => "$LEVEL"
+        )
+        template("${MSG}")
+        timestamp(msg)
     );
 };
 
@@ -316,17 +306,13 @@ log {
 
 ```conf
 destination d_loki_batch {
-    http(
-        url("http://loki:3100/loki/api/v1/push")
-        method("POST")
-        headers("Content-Type: application/json")
-        body-prefix('{"streams":[{"stream":{"job":"syslog"},"values":[')
-        body('["${UNIXTIME}000000000","${HOST} ${FACILITY} ${LEVEL}: ${MSG}"]')
-        body-suffix(']}]}')
-        delimiter(",")
+    loki(
+        url("loki:9095")
+        labels("job" => "syslog")
+        template("${HOST} ${FACILITY} ${LEVEL}: ${MSG}")
+        timestamp(msg)
         batch-lines(100)
         batch-timeout(5000)
-        persist-name("loki-batch")
     );
 };
 ```
@@ -601,10 +587,6 @@ spec:
       port: 514
       targetPort: 1514
       protocol: TCP
-    - name: syslog-udp
-      port: 514
-      targetPort: 514
-      protocol: UDP
   selector:
     app: promtail-syslog
 ```
@@ -633,14 +615,14 @@ spec:
 
 ## Monitoring and Alerting
 
-### Promtail Metrics
+### Alloy Syslog Metrics
 
 ```promql
 # Syslog messages received
-rate(promtail_syslog_message_total[5m])
+rate(loki_source_syslog_entries_total[5m])
 
 # Parse errors
-rate(promtail_syslog_parsing_errors_total[5m])
+rate(loki_source_syslog_parsing_errors_total[5m])
 ```
 
 ### Alert Rules
@@ -660,7 +642,7 @@ groups:
 
       - alert: SyslogSourceMissing
         expr: |
-          absent(count_over_time({job="syslog", host="firewall01"}[10m]))
+          absent_over_time({job="syslog", host="firewall01"}[10m])
         for: 10m
         labels:
           severity: critical
@@ -705,7 +687,7 @@ labels:
 
 Shipping syslog to Loki enables centralized log management for legacy systems and network infrastructure. Key takeaways:
 
-- Use Promtail's syslog receiver for direct ingestion
+- Use Grafana Alloy's syslog receiver for new direct ingestion, or Promtail only for existing deployments
 - Configure proper parsing for RFC3164 and RFC5424
 - Map syslog severity and facility to Loki labels
 - Implement high availability for critical infrastructure

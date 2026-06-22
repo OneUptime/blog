@@ -15,7 +15,7 @@ Proper memory configuration is critical for Elasticsearch performance and stabil
 Elasticsearch uses memory in several ways:
 
 1. **JVM Heap**: Used for field data, node queries, caches, and Lucene segments
-2. **Off-heap (Direct Memory)**: Used by Lucene for file system cache and memory-mapped files
+2. **Off-heap Memory**: Used for native memory, direct buffers, and memory-mapped index files
 3. **Operating System Cache**: Linux file system cache for recently accessed data
 
 The balance between these is crucial for performance.
@@ -26,7 +26,7 @@ The balance between these is crucial for performance.
 
 The most important rule for Elasticsearch memory configuration:
 
-**Set the heap size to no more than 50% of available RAM, with a maximum of 31GB.**
+**Set the heap size to no more than 50% of available RAM, and keep it below the JVM compressed ordinary object pointer threshold.**
 
 This leaves the other 50% for the operating system cache, which Lucene uses extensively.
 
@@ -48,11 +48,13 @@ Add the following content:
 -Xmx16g
 ```
 
-For environments where heap size varies, you can use environment variables. Edit `/etc/default/elasticsearch`:
+For testing and development environments where heap size varies, you can use environment variables. Edit `/etc/default/elasticsearch`:
 
 ```bash
 ES_JAVA_OPTS="-Xms16g -Xmx16g"
 ```
+
+In production, prefer a `.options` file in `jvm.options.d/`. `ES_JAVA_OPTS` overrides other JVM options and should be used carefully.
 
 ### Heap Size Guidelines by Server RAM
 
@@ -61,50 +63,43 @@ ES_JAVA_OPTS="-Xms16g -Xmx16g"
 | 8 GB       | 4 GB            | Leave 4 GB for OS cache |
 | 16 GB      | 8 GB            | Balanced approach |
 | 32 GB      | 16 GB           | Optimal for most workloads |
-| 64 GB      | 31 GB           | Maximum recommended heap |
-| 128 GB     | 31 GB           | Extra RAM for OS cache |
+| 64 GB      | 26-30 GB        | Stay below compressed OOPs threshold |
+| 128 GB     | 26-30 GB        | Extra RAM for OS cache |
 
-### The 31GB Limit Explained
+### The Compressed OOPs Limit Explained
 
-Elasticsearch recommends not exceeding 31GB heap size because:
+Elasticsearch recommends keeping heap size below the compressed ordinary object pointer threshold because:
 
-1. **Compressed OOPs**: Below ~32GB, the JVM uses compressed ordinary object pointers (OOPs), reducing memory overhead
+1. **Compressed OOPs**: The exact threshold varies by system. 26GB is safe on most systems and the threshold can be as large as 30GB on some systems
 2. **GC efficiency**: Smaller heaps have faster garbage collection cycles
 3. **OS cache benefits**: Additional RAM benefits Lucene file system operations
 
 Check if compressed OOPs are enabled:
 
 ```bash
-curl -s -u elastic:password "https://localhost:9200/_nodes/jvm?pretty" | grep compressed
+curl -s -u elastic:password "https://localhost:9200/_nodes/_all/jvm?pretty" | jq '.nodes[].jvm.using_compressed_ordinary_object_pointers'
 ```
 
 ## Garbage Collection Configuration
 
 ### G1GC (Recommended for Elasticsearch 8.x)
 
-Elasticsearch 8.x uses G1GC by default. Configure it in `/etc/elasticsearch/jvm.options.d/gc.options`:
+Elasticsearch 8.x uses G1GC by default. In most cases, use the Elasticsearch-provided JVM defaults and avoid overriding GC tuning flags unless you have tested the change for your workload.
+
+If you need to change GC logging, create `/etc/elasticsearch/jvm.options.d/gc.options` and disable the default logging configuration before adding your own:
 
 ```text
-# Use G1 Garbage Collector
--XX:+UseG1GC
+# Disable the default GC logging configuration
+-Xlog:disable
 
-# Set maximum pause time target
--XX:MaxGCPauseMillis=200
-
-# Set region size (for heaps > 8GB)
--XX:G1HeapRegionSize=16m
-
-# Reserve memory for promotions
--XX:G1ReservePercent=25
-
-# Initiating heap occupancy percent
--XX:InitiatingHeapOccupancyPercent=30
-
-# Enable GC logging
--Xlog:gc*:file=/var/log/elasticsearch/gc.log:time,tags:filecount=10,filesize=50m
+# Keep warnings on stderr and enable GC logging to a custom file
+-Xlog:all=warning:stderr:utctime,level,tags
+-Xlog:gc*,gc+age=trace,safepoint:file=/var/log/elasticsearch/gc.log:utctime,level,pid,tags:filecount=32,filesize=64m
 ```
 
 ### Understanding G1GC Parameters
+
+If you experiment with G1GC settings, understand what each parameter controls before applying it:
 
 - **MaxGCPauseMillis**: Target maximum pause time (200ms is a good balance)
 - **G1HeapRegionSize**: Size of G1 regions (larger for bigger heaps)
@@ -231,8 +226,8 @@ indices.breaker.fielddata.overhead: 1.03
 indices.breaker.request.limit: 60%
 indices.breaker.request.overhead: 1
 
-# Total circuit breaker (default: 70% of JVM heap)
-indices.breaker.total.limit: 70%
+# Total circuit breaker (default: 95% of JVM heap when real-memory accounting is enabled)
+indices.breaker.total.limit: 95%
 
 # In-flight requests circuit breaker
 network.breaker.inflight_requests.limit: 100%
@@ -253,29 +248,33 @@ Configure index buffer for write-heavy workloads:
 # Index buffer size (default: 10% of heap)
 indices.memory.index_buffer_size: 15%
 
-# Minimum index buffer size per shard
+# Minimum index buffer size for the node
 indices.memory.min_index_buffer_size: 96mb
 
-# Maximum index buffer size per shard
+# Maximum index buffer size for the node
 indices.memory.max_index_buffer_size: 512mb
 ```
 
 ## Thread Pool Configuration
 
-Optimize thread pools based on your workload:
+Thread pools are sized automatically from the node's allocated processors. If you need to tune them, use valid values for your node and configure them in `elasticsearch.yml`:
 
 ```yaml
 # Search thread pool
-thread_pool.search.size: 25
-thread_pool.search.queue_size: 1000
+thread_pool:
+  search:
+    size: 25
+    queue_size: 1000
 
 # Write thread pool
-thread_pool.write.size: 10
-thread_pool.write.queue_size: 10000
+  write:
+    size: 10
+    queue_size: 10000
 
 # Get thread pool
-thread_pool.get.size: 5
-thread_pool.get.queue_size: 1000
+  get:
+    size: 5
+    queue_size: 1000
 ```
 
 Monitor thread pool usage:
@@ -349,15 +348,17 @@ done
 ### Search-Heavy Workloads
 
 ```yaml
-# Increase field data cache
-indices.fielddata.cache.size: 40%
+# Increase field data cache, keeping it below the field data circuit breaker limit
+indices.fielddata.cache.size: 30%
 
 # Enable request cache
 indices.requests.cache.size: 2%
 
 # Optimize search thread pool
-thread_pool.search.size: 50
-thread_pool.search.queue_size: 2000
+thread_pool:
+  search:
+    size: 50
+    queue_size: 2000
 ```
 
 ### Write-Heavy Workloads
@@ -366,11 +367,13 @@ thread_pool.search.queue_size: 2000
 # Increase index buffer
 indices.memory.index_buffer_size: 20%
 
-# Increase write thread pool
-thread_pool.write.size: 20
-thread_pool.write.queue_size: 20000
+# Tune write thread pool only after verifying CPU capacity
+thread_pool:
+  write:
+    size: 20
+    queue_size: 20000
 
-# Reduce refresh interval
+# Increase refresh interval to reduce refresh overhead
 index.refresh_interval: 30s
 ```
 
@@ -382,8 +385,11 @@ indices.fielddata.cache.size: 30%
 indices.memory.index_buffer_size: 15%
 indices.requests.cache.size: 2%
 
-thread_pool.search.size: 25
-thread_pool.write.size: 10
+thread_pool:
+  search:
+    size: 25
+  write:
+    size: 10
 ```
 
 ## Troubleshooting Memory Issues
@@ -450,30 +456,27 @@ Complete recommended JVM options for production:
 ```text
 # /etc/elasticsearch/jvm.options.d/production.options
 
-# Heap size (set to 50% of RAM, max 31g)
+# Heap size (set to no more than 50% of RAM and below the compressed OOPs threshold)
 -Xms16g
 -Xmx16g
 
-# G1GC settings
--XX:+UseG1GC
--XX:MaxGCPauseMillis=200
--XX:G1HeapRegionSize=16m
--XX:G1ReservePercent=25
--XX:InitiatingHeapOccupancyPercent=30
+# G1GC is enabled by Elasticsearch defaults; avoid overriding GC tuning
+# unless you have tested the change for your workload.
 
 # GC logging
--Xlog:gc*:file=/var/log/elasticsearch/gc.log:time,tags:filecount=10,filesize=50m
+-Xlog:disable
+-Xlog:all=warning:stderr:utctime,level,tags
+-Xlog:gc*,gc+age=trace,safepoint:file=/var/log/elasticsearch/gc.log:utctime,level,pid,tags:filecount=32,filesize=64m
 
 # Performance optimizations
 -XX:+AlwaysPreTouch
--XX:-UseBiasedLocking
 
 # Error handling
 -XX:+HeapDumpOnOutOfMemoryError
 -XX:HeapDumpPath=/var/lib/elasticsearch
 -XX:ErrorFile=/var/log/elasticsearch/hs_err_pid%p.log
 
-# Disable JVM info output
+# Preserve full exception stack traces
 -XX:-OmitStackTraceInFastThrow
 ```
 
@@ -481,11 +484,11 @@ Complete recommended JVM options for production:
 
 Proper memory and JVM configuration is essential for Elasticsearch performance. Key takeaways:
 
-1. **Set heap to 50% of RAM**, maximum 31GB
+1. **Set heap to no more than 50% of RAM**, and keep it below the compressed OOPs threshold
 2. **Enable memory lock** to prevent swapping
 3. **Configure circuit breakers** to prevent OOM errors
 4. **Monitor memory usage** continuously
 5. **Tune for your workload** (search-heavy vs write-heavy)
-6. **Use G1GC** with appropriate settings
+6. **Use the default G1GC settings** unless workload testing shows a need to change them
 
 Regular monitoring and adjustment based on actual usage patterns will help maintain optimal performance as your cluster grows.

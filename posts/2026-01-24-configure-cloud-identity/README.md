@@ -18,7 +18,7 @@ Cloud Identity sits at the foundation of your Google Cloud security model.
 flowchart TB
     subgraph External["External Identity Providers"]
         Okta[Okta]
-        Azure[Azure AD]
+        Entra[Microsoft Entra ID]
         ADFS[AD FS]
     end
 
@@ -36,7 +36,7 @@ flowchart TB
     end
 
     Okta --> |SAML/OIDC| CloudIdentity
-    Azure --> |SAML/OIDC| CloudIdentity
+    Entra --> |SAML/OIDC| CloudIdentity
     ADFS --> |SAML/OIDC| CloudIdentity
 
     CloudIdentity --> Projects
@@ -92,47 +92,33 @@ gcloud identity groups memberships list \
 
 ### Automated Provisioning with GCDS
 
-Google Cloud Directory Sync (GCDS) synchronizes users from Active Directory or LDAP.
+Google Cloud Directory Sync (GCDS) synchronizes users from Active Directory or LDAP. Create and save the XML configuration with GCDS Configuration Manager instead of hand-writing the file, because it includes generated settings and encrypted secrets.
 
-```xml
-<!-- gcds-config.xml - Example configuration -->
-<configuration>
-  <ldap>
-    <hostname>ldap.yourdomain.com</hostname>
-    <port>636</port>
-    <authType>SIMPLE</authType>
-    <bindDn>CN=GCDS Service,OU=Service Accounts,DC=yourdomain,DC=com</bindDn>
-    <ssl>true</ssl>
-  </ldap>
-
-  <google>
-    <domain>yourdomain.com</domain>
-    <adminEmail>admin@yourdomain.com</adminEmail>
-  </google>
-
-  <userSync>
-    <userSearchBase>OU=Users,DC=yourdomain,DC=com</userSearchBase>
-    <userSearchFilter>(&amp;(objectClass=user)(mail=*))</userSearchFilter>
-    <userAttributes>
-      <mail>mail</mail>
-      <givenName>givenName</givenName>
-      <sn>sn</sn>
-    </userAttributes>
-  </userSync>
-</configuration>
+```bash
+# Configure in GCDS Configuration Manager:
+# - Google Domain Configuration > Connection Settings
+# - LDAP Configuration > Connection Settings
+# - User Accounts > Search Rules
+# - User Attributes > Attribute Mapping
+# Then save the generated XML configuration securely, for example:
+# C:\ProgramData\gcds\config.xml
 ```
 
 ### SCIM-Based Provisioning
 
-For modern identity providers, use SCIM for real-time user provisioning.
+For modern identity providers, use the vendor-supported Google Workspace or Cloud Identity provisioning connector. Some connectors describe the integration as SCIM provisioning, but Google connectors commonly authorize against Google's Cloud Identity or Admin SDK APIs rather than requiring you to paste a generic SCIM base URL.
 
 ```bash
-# Enable SCIM in Admin Console:
-# Security > API Controls > App Access Control > Manage Third-Party App Access
+# Example: Microsoft Entra ID provisioning
+# 1. Add the Google Cloud / G Suite Connector by Microsoft enterprise app.
+# 2. Set Provisioning Mode to Automatic.
+# 3. Under Admin Credentials, click Authorize.
+# 4. Sign in with a dedicated Google Workspace or Cloud Identity admin account.
+# 5. Test the connection, configure mappings, then set Provisioning Status to On.
 
-# Configure your IdP (example: Okta) with:
-# SCIM Base URL: https://www.googleapis.com/scim/v2
-# OAuth Bearer Token: Generated from Admin Console
+# Example: Okta provisioning
+# Use the Google Workspace app integration and enable API integration
+# from the app's Provisioning tab.
 ```
 
 ## Configuring Single Sign-On (SSO)
@@ -176,8 +162,9 @@ For Okta, create a SAML app with these settings:
 
 ```yaml
 # Okta SAML Configuration
-single_sign_on_url: https://www.google.com/a/yourdomain.com/acs
-audience_uri: google.com/a/yourdomain.com
+# Use the Entity ID and ACS URL copied from the Google Admin console SAML profile.
+single_sign_on_url: ACS_URL_FROM_GOOGLE_SAML_PROFILE
+audience_uri: ENTITY_ID_FROM_GOOGLE_SAML_PROFILE
 name_id_format: EmailAddress
 name_id_attribute: user.email
 
@@ -189,13 +176,14 @@ attributes:
     value: user.lastName
 ```
 
-For Azure AD:
+For Microsoft Entra ID:
 
 ```yaml
-# Azure AD SAML Configuration
-identifier: google.com
-reply_url: https://www.google.com/a/yourdomain.com/acs
-sign_on_url: https://www.google.com/a/yourdomain.com
+# Microsoft Entra ID SAML Configuration
+# Use the Entity ID and ACS URL copied from the Google Admin console SAML profile.
+identifier: ENTITY_ID_FROM_GOOGLE_SAML_PROFILE
+reply_url: ACS_URL_FROM_GOOGLE_SAML_PROFILE
+sign_on_url: https://www.google.com/a/yourdomain.com/ServiceLogin?continue=https://console.cloud.google.com/
 
 # Claims
 claims:
@@ -214,18 +202,19 @@ claims:
 ```bash
 # Create a Cloud Identity group
 gcloud identity groups create security-team@yourdomain.com \
-    --organization=organizations/ORGANIZATION_ID \
+    --organization=yourdomain.com \
+    --group-type=security \
     --display-name="Security Team" \
     --description="Members of the security team"
 
-# Add members to the group
-gcloud identity groups memberships add \
+# Add members to the group (membership creation is currently an alpha gcloud command)
+gcloud alpha identity groups memberships add \
     --group-email=security-team@yourdomain.com \
     --member-email=alice@yourdomain.com \
     --roles=MEMBER
 
 # Add as manager (can manage group membership)
-gcloud identity groups memberships add \
+gcloud alpha identity groups memberships add \
     --group-email=security-team@yourdomain.com \
     --member-email=bob@yourdomain.com \
     --roles=MEMBER,MANAGER
@@ -249,7 +238,7 @@ flowchart TB
 
 ```bash
 # Add a group as a member of another group
-gcloud identity groups memberships add \
+gcloud alpha identity groups memberships add \
     --group-email=all-engineers@yourdomain.com \
     --member-email=backend-team@yourdomain.com \
     --roles=MEMBER
@@ -262,7 +251,7 @@ gcloud identity groups memberships add \
 # This requires the Admin SDK or Admin Console
 
 # Example: All users in the Engineering department
-# Query: user.organizations.department == 'Engineering'
+# Query: user.organizations.exists(org, org.department == 'Engineering')
 ```
 
 ## Security Policies
@@ -274,11 +263,9 @@ In Admin Console, navigate to Security > Authentication > Password management:
 ```yaml
 # Recommended Password Policy
 minimum_length: 12
-require_symbols: true
-require_numbers: true
-require_mixed_case: true
+enforce_strong_password: true
 password_expiration_days: 90
-prevent_reuse_count: 10
+allow_password_reuse: false
 ```
 
 ### Enable 2-Step Verification
@@ -300,12 +287,12 @@ new_user_enrollment_period_days: 7
 ### Configure Login Challenges
 
 ```yaml
-# Security > Authentication > Login challenges
-enable_login_challenges: true
-suspicious_login_protection: enabled
-actions:
-  - require_2sv_for_suspicious_logins
-  - require_identity_verification
+# Google presents risk-based login challenges automatically when it detects
+# suspicious sign-in behavior. Administrators can enforce 2SV separately and
+# can temporarily turn off a user's login challenge for 10 minutes when needed.
+enforce_2sv_for_users: true
+monitor_suspicious_login_alerts: true
+temporary_login_challenge_bypass: per_user_10_minutes
 ```
 
 ## Integrating with Google Cloud IAM
@@ -366,6 +353,7 @@ resource "google_cloud_identity_group" "developers" {
 
   labels = {
     "cloudidentity.googleapis.com/groups.discussion_forum" = ""
+    "cloudidentity.googleapis.com/groups.security" = ""
   }
 }
 
@@ -436,8 +424,9 @@ gcloud projects get-iam-policy my-project \
     --flatten="bindings[].members" \
     --filter="bindings.members:group:developers@yourdomain.com"
 
-# Note: Group membership changes can take up to 24 hours to propagate
-# For faster propagation, remove and re-add the IAM binding
+# Note: IAM policy changes usually propagate within minutes, but group
+# membership changes can take several minutes or longer. Nested group
+# changes can take longer than direct group membership changes.
 ```
 
 ## Best Practices
@@ -448,7 +437,7 @@ gcloud projects get-iam-policy my-project \
 4. **Require 2-Step Verification** - Enforce for all users, prefer security keys
 5. **Regular access reviews** - Quarterly review of group memberships and IAM bindings
 6. **Separate admin accounts** - Super admins should not be daily use accounts
-7. **Automate provisioning** - Use SCIM or GCDS to reduce manual errors
+7. **Automate provisioning** - Use IdP provisioning connectors or GCDS to reduce manual errors
 8. **Document group purposes** - Clear descriptions help during audits
 
 Cloud Identity forms the foundation of your Google Cloud security posture. Take time to set it up correctly, and you will have a much easier time managing access as your organization grows.

@@ -8,7 +8,7 @@ Description: Resolve TypeScript errors when using new with dynamic expressions, 
 
 ---
 
-The "Cannot use 'new' with an expression whose type lacks a call or construct signature" error occurs when TypeScript cannot verify that a value can be instantiated with `new`. This guide explains the causes and provides solutions for common scenarios.
+The "This expression is not constructable" error occurs when TypeScript cannot verify that a value can be instantiated with `new`. This guide explains the causes and provides solutions for common scenarios.
 
 ## Understanding the Error
 
@@ -35,7 +35,7 @@ flowchart TD
     B -->|"No"| D["Error: Cannot use new"]
 
     E["class Foo {}"] --> F["Has construct signature"]
-    G["function Bar() {}"] --> H["Has construct signature"]
+    G["new () => Bar"] --> H["Has construct signature"]
     I["() => {}"] --> J["No construct signature"]
 
     F --> C
@@ -90,7 +90,7 @@ class User {
 
 // TypeScript enforces correct arguments
 const user = createWithArgs(User, 'Alice', 30);  // Works
-const bad = createWithArgs(User, 'Bob');  // Error: Expected 2 arguments
+const bad = createWithArgs(User, 'Bob');  // Error: Missing age argument
 ```
 
 ## Solution 2: Interface with Construct Signature
@@ -176,9 +176,10 @@ type ConcreteConstructor<T = {}> = new (...args: any[]) => T;
 
 // Function that works with abstract base classes
 function extendClass<T extends AbstractConstructor>(Base: T) {
-  return class Extended extends Base {
+  abstract class Extended extends Base {
     extended = true;
-  };
+  }
+  return Extended;
 }
 
 // Abstract base class
@@ -222,11 +223,12 @@ class User {
 
 const user = new User('Alice');
 console.log(user.name);       // 'Alice'
-console.log(user.createdAt);  // Date object
+// Note: the decorator syntax does not change the TypeScript type of User
 
 // Without decorator syntax
 const TimestampedUser = Timestamped(User);
 const user2 = new TimestampedUser('Bob');
+console.log(user2.createdAt);  // Date object
 ```
 
 ## Common Scenarios
@@ -331,7 +333,7 @@ function Serializable<TBase extends GConstructor>(Base: TBase) {
       return JSON.stringify(this);
     }
 
-    static fromJSON<T>(this: new () => T, json: string): T {
+    static fromJSON<T extends object>(this: new () => T, json: string): T {
       return Object.assign(new this(), JSON.parse(json));
     }
   };
@@ -440,16 +442,17 @@ const db = container.get<Database>(TYPES.Database);
 
 ```mermaid
 flowchart TD
-    A["Function"] --> B["Callable but not Constructable"]
+    A["Function type"] --> B["Callable but not Constructable"]
     C["Arrow Function"] --> B
 
-    D["class Foo {}"] --> E["Both Callable and Constructable"]
-    F["function Bar() {}"] --> E
+    D["class Foo {}"] --> E["Constructable but not callable"]
+    F["interface with call and construct signatures"] --> L["Both Callable and Constructable"]
 
     G["abstract class Baz {}"] --> H["Abstract Constructor"]
     H --> I["Can be extended but not instantiated"]
 
     E --> J["new () => T"]
+    L --> J
     I --> K["abstract new () => T"]
 
     style J fill:#9f6,stroke:#333,stroke-width:2px

@@ -28,7 +28,7 @@ const connection = new Redis({
 });
 
 interface PDFJobData {
-  type: 'report' | 'invoice' | 'certificate' | 'custom';
+  type: 'report' | 'invoice' | 'certificate';
   data: Record<string, any>;
   outputPath: string;
   template?: string;
@@ -74,6 +74,7 @@ const pdfWorker = new Worker<PDFJobData, PDFResult>(
       bufferPages: true,
     });
 
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
     const writeStream = fs.createWriteStream(outputPath);
     doc.pipe(writeStream);
 
@@ -92,16 +93,17 @@ const pdfWorker = new Worker<PDFJobData, PDFResult>(
         throw new Error(`Unknown PDF type: ${type}`);
     }
 
-    doc.end();
-
     // Wait for file to be written
-    await new Promise<void>((resolve, reject) => {
+    const finished = new Promise<void>((resolve, reject) => {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
     });
 
-    const stats = fs.statSync(outputPath);
     const pageCount = doc.bufferedPageRange().count;
+    doc.end();
+    await finished;
+
+    const stats = fs.statSync(outputPath);
 
     return {
       path: outputPath,
@@ -134,13 +136,14 @@ async function generateReport(
   await job.updateProgress(30);
 
   // Sections
-  for (let i = 0; i < data.sections?.length || 0; i++) {
-    const section = data.sections[i];
+  const sections = data.sections || [];
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
     doc.fontSize(16).text(section.title);
     doc.fontSize(12).text(section.content);
     doc.moveDown();
 
-    await job.updateProgress(30 + ((i + 1) / data.sections.length) * 60);
+    await job.updateProgress(30 + ((i + 1) / sections.length) * 60);
   }
 
   // Footer
@@ -236,6 +239,8 @@ class HTMLToPDFService {
         const template = await this.loadTemplate(templatePath);
         const renderedHtml = this.renderTemplate(template, templateData || {});
         await page.setContent(renderedHtml, { waitUntil: 'networkidle0' });
+      } else {
+        throw new Error('Provide html, url, or templatePath');
       }
 
       await job.updateProgress(50);
@@ -251,6 +256,7 @@ class HTMLToPDFService {
 
       await job.log('Generating PDF');
 
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
       await page.pdf({
         path: outputPath,
         format: 'A4',
@@ -280,7 +286,7 @@ class HTMLToPDFService {
 
   private renderTemplate(template: string, data: Record<string, any>): string {
     // Simple template rendering (use Handlebars or similar in production)
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] || '');
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] ?? '');
   }
 
   async close(): Promise<void> {
@@ -460,12 +466,13 @@ class InvoiceService {
       .fontSize(8)
       .text('Thank you for your business!', 50, 750, { align: 'center', width: 500 });
 
-    doc.end();
-
-    await new Promise<void>((resolve, reject) => {
+    const finished = new Promise<void>((resolve, reject) => {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
     });
+
+    doc.end();
+    await finished;
 
     await job.updateProgress(100);
 
@@ -488,7 +495,7 @@ Support multiple output formats:
 ```typescript
 interface ReportJobData {
   reportType: string;
-  format: 'pdf' | 'html' | 'csv' | 'xlsx';
+  format: 'pdf' | 'html' | 'csv';
   data: any;
   outputPath: string;
   options?: Record<string, any>;
@@ -526,8 +533,6 @@ class ReportBuilderService {
         return this.generateHTML(reportType, data, outputPath, options);
       case 'csv':
         return this.generateCSV(data, outputPath);
-      case 'xlsx':
-        return this.generateXLSX(data, outputPath);
       default:
         throw new Error(`Unsupported format: ${format}`);
     }
@@ -542,6 +547,7 @@ class ReportBuilderService {
   ): Promise<PDFResult> {
     // PDF generation logic
     const doc = new PDFDocument();
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
     const writeStream = fs.createWriteStream(outputPath);
     doc.pipe(writeStream);
 
@@ -556,12 +562,13 @@ class ReportBuilderService {
       }
     }
 
-    doc.end();
-
-    await new Promise<void>((resolve, reject) => {
+    const finished = new Promise<void>((resolve, reject) => {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
     });
+
+    doc.end();
+    await finished;
 
     const stats = await fs.promises.stat(outputPath);
 
@@ -598,6 +605,7 @@ class ReportBuilderService {
       </html>
     `;
 
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.promises.writeFile(outputPath, html, 'utf-8');
 
     return { path: outputPath, format: 'html' };
@@ -608,21 +616,18 @@ class ReportBuilderService {
       throw new Error('CSV requires rows and headers');
     }
 
+    const escapeCSV = (cell: any) => `"${String(cell).replace(/"/g, '""')}"`;
     const lines = [
-      data.headers.join(','),
+      data.headers.map(escapeCSV).join(','),
       ...data.rows.map((row: any[]) =>
-        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+        row.map(escapeCSV).join(',')
       ),
     ];
 
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.promises.writeFile(outputPath, lines.join('\n'), 'utf-8');
 
     return { path: outputPath, format: 'csv', rows: data.rows.length };
-  }
-
-  private async generateXLSX(data: any, outputPath: string): Promise<any> {
-    // Would use a library like exceljs
-    throw new Error('XLSX generation not implemented');
   }
 
   private async addTable(doc: PDFKit.PDFDocument, table: any): Promise<void> {

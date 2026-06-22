@@ -29,9 +29,8 @@ DB::Exception: Memory limit (for user) exceeded: would use 25.00 GiB
 
 ```text
 Server Memory (max_server_memory_usage)
-    └── All Queries (max_memory_usage_for_all_queries)
-        └── User Memory (max_memory_usage_for_user)
-            └── Query Memory (max_memory_usage)
+    └── User Memory (max_memory_usage_for_user)
+        └── Query Memory (max_memory_usage)
 ```
 
 ## Diagnosing Memory Issues
@@ -65,7 +64,6 @@ SELECT
     user,
     query_duration_ms,
     formatReadableSize(memory_usage) AS memory_used,
-    formatReadableSize(peak_memory_usage) AS peak_memory,
     exception,
     query
 FROM system.query_log
@@ -77,13 +75,13 @@ LIMIT 20;
 -- Top memory consumers
 SELECT
     query_start_time,
-    formatReadableSize(peak_memory_usage) AS peak_memory,
+    formatReadableSize(memory_usage) AS memory_used,
     read_rows,
     query
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_date = today()
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -93,23 +91,23 @@ LIMIT 10;
 -- GROUP BY with high cardinality
 SELECT
     query,
-    peak_memory_usage
+    memory_usage
 FROM system.query_log
 WHERE query LIKE '%GROUP BY%'
-  AND peak_memory_usage > 5000000000  -- > 5GB
+  AND memory_usage > 5000000000  -- > 5GB
   AND event_date >= today() - 7
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 
 -- Large JOINs
 SELECT
     query,
-    peak_memory_usage
+    memory_usage
 FROM system.query_log
 WHERE query LIKE '%JOIN%'
-  AND peak_memory_usage > 5000000000
+  AND memory_usage > 5000000000
   AND event_date >= today() - 7
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 10;
 ```
 
@@ -134,7 +132,7 @@ ALTER USER analyst SETTINGS max_memory_usage = 20000000000;
 ### Enable External Aggregation
 
 ```sql
--- Spill to disk when memory limit is reached
+-- Spill to disk when the external aggregation threshold is reached
 SELECT user_id, count() AS events
 FROM events
 GROUP BY user_id
@@ -246,7 +244,7 @@ GROUP BY month, user_id;
 ### Use Sampling
 
 ```sql
--- Approximate results with less memory
+-- Approximate results with less memory on tables configured with SAMPLE BY
 SELECT
     user_id,
     count() * 100 AS estimated_events
@@ -334,9 +332,6 @@ DROP TABLE temp_user_stats;
 
     <!-- Or absolute limit -->
     <max_server_memory_usage>50000000000</max_server_memory_usage>
-
-    <!-- Memory for all queries -->
-    <max_memory_usage_for_all_queries>40000000000</max_memory_usage_for_all_queries>
 </clickhouse>
 ```
 
@@ -364,18 +359,29 @@ DROP TABLE temp_user_stats;
 ### Temporary Storage for External Operations
 
 ```xml
-<!-- Configure disk for external operations -->
+<!-- Configure disks for external operations -->
 <clickhouse>
-    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
-
-    <!-- Multiple tmp disks for parallel operations -->
     <storage_configuration>
         <disks>
-            <tmp_disk>
-                <path>/mnt/fast_ssd/clickhouse_tmp/</path>
-            </tmp_disk>
+            <tmp_disk_1>
+                <path>/mnt/fast_ssd_1/clickhouse_tmp/</path>
+            </tmp_disk_1>
+            <tmp_disk_2>
+                <path>/mnt/fast_ssd_2/clickhouse_tmp/</path>
+            </tmp_disk_2>
         </disks>
+        <policies>
+            <tmp_two_disks>
+                <volumes>
+                    <main>
+                        <disk>tmp_disk_1</disk>
+                        <disk>tmp_disk_2</disk>
+                    </main>
+                </volumes>
+            </tmp_two_disks>
+        </policies>
     </storage_configuration>
+    <tmp_policy>tmp_two_disks</tmp_policy>
 </clickhouse>
 ```
 
@@ -396,10 +402,9 @@ WHERE metric = 'MemoryTracking'
 -- Monitor memory over time
 SELECT
     toStartOfMinute(event_time) AS minute,
-    max(value) AS peak_memory
-FROM system.asynchronous_metric_log
-WHERE metric = 'MemoryTracking'
-  AND event_date = today()
+    max(CurrentMetric_MemoryTracking) AS peak_memory
+FROM system.metric_log
+WHERE event_date = today()
 GROUP BY minute
 ORDER BY minute;
 ```
@@ -410,8 +415,8 @@ ORDER BY minute;
 -- Create quota to prevent runaway queries
 CREATE QUOTA memory_quota
 FOR INTERVAL 1 hour
-    MAX execution_time = 36000  -- 10 hours total
-    MAX result_rows = 1000000000
+    MAX execution_time = 36000,  -- 10 hours total
+        result_rows = 1000000000
 TO default_user;
 ```
 

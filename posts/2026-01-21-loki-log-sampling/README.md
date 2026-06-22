@@ -10,6 +10,8 @@ Description: A comprehensive guide to implementing log sampling strategies with 
 
 Log sampling reduces the volume of logs ingested into Loki while preserving statistical significance and visibility into system behavior. When dealing with high-volume logs from verbose applications, sampling can dramatically reduce costs without losing the ability to detect issues and analyze trends. This guide covers various sampling strategies and their implementation.
 
+Note: the Promtail examples below are useful for existing Promtail deployments, but Promtail has reached end-of-life. For new deployments, use Grafana Alloy's `loki.process` stages, which provide equivalent `stage.sampling`, `stage.drop`, and `stage.limit` functionality.
+
 ## Understanding Log Sampling
 
 ### Why Sample Logs?
@@ -66,27 +68,28 @@ scrape_configs:
             level: level
             message: message
 
-      # Keep all errors and warnings
-      - match:
-          selector: '{job="app"}'
-          stages:
-            - regex:
-                expression: '(?i)level="?(error|warn)'
-            # No drop - keep 100% of errors/warnings
+      - template:
+          source: level
+          template: '{{ ToLower .Value }}'
+      - labels:
+          level:
 
       # Sample INFO logs at 10%
       - match:
-          selector: '{job="app"} |~ "(?i)level=\"?info"'
+          selector: '{job="app", level="info"}'
           stages:
             - sampling:
                 rate: 0.1  # Keep 10%
 
       # Sample DEBUG logs at 1%
       - match:
-          selector: '{job="app"} |~ "(?i)level=\"?debug"'
+          selector: '{job="app", level="debug"}'
           stages:
             - sampling:
                 rate: 0.01  # Keep 1%
+
+      # ERROR, CRITICAL, and WARN logs do not match the sampling rules above,
+      # so they are kept at 100%.
 ```
 
 ### Drop Stage for Sampling
@@ -97,21 +100,16 @@ pipeline_stages:
       expressions:
         level: level
 
-  # Alternative: Use drop with probability
-  - match:
-      selector: '{job="app"}'
-      stages:
-        - drop:
-            source: level
-            value: info
-            drop_counter_reason: info_sampled
-            # Sampling via drop_rate
-            # Note: This drops 90%, keeping 10%
-            # Actual sampling support varies by Promtail version
+  - template:
+      source: level
+      template: '{{ ToLower .Value }}'
+  - labels:
+      level:
 
-  # For older Promtail, use regex-based approach
+  # Use the sampling stage for probabilistic sampling.
+  # The drop stage only supports exact-value, regex, age, and length filters.
   - match:
-      selector: '{job="app"} |~ "level=\"info\""'
+      selector: '{job="app", level="info"}'
       pipeline_name: info_sampling
       stages:
         - sampling:
@@ -120,7 +118,7 @@ pipeline_stages:
 
 ## Hash-Based Sampling
 
-Hash-based sampling ensures consistent sampling - the same request_id or user_id always gets the same sampling decision:
+Hash-based sampling ensures consistent sampling - the same request_id or user_id always gets the same sampling decision. Promtail's template stage can hash strings, but it does not support a built-in modulo bucket operation in YAML pipelines. For true hash-based bucketing, compute a stable sample bucket in your application or a preprocessing layer and have Promtail act on that field:
 
 ```yaml
 # promtail-config.yaml
@@ -129,27 +127,16 @@ pipeline_stages:
       expressions:
         request_id: request_id
         level: level
+        sample_bucket: sample_bucket
 
-  # Hash-based sampling using template
-  - template:
-      source: sample_hash
-      template: '{{ mod (hash .request_id) 100 }}'
-
-  # Keep if hash < 10 (10% sample)
-  - match:
-      selector: '{job="app"}'
-      stages:
-        - template:
-            source: should_keep
-            template: '{{ if lt (atoi .sample_hash) 10 }}true{{ else }}false{{ end }}'
-
-  # Drop logs that shouldn't be kept (for INFO only)
+  # sample_bucket is a stable application-computed integer from 0-99.
+  # Keep buckets 0-9 for a 10% sample; drop buckets 10-99.
   - match:
       selector: '{job="app"}'
       stages:
         - drop:
-            source: should_keep
-            expression: 'false'
+            source: sample_bucket
+            expression: '^([1-9][0-9])$'
             drop_counter_reason: hash_sampled
 ```
 
@@ -163,18 +150,13 @@ pipeline_stages:
         level: level
 
   # For distributed tracing: sample entire traces consistently
-  - template:
-      source: trace_sample
-      template: '{{ if hasSuffix (slice .trace_id -2) "0" }}keep{{ else }}sample{{ end }}'
-      # Keeps traces ending in "0" (~6.25% sample by last hex digit)
-
-  # Keep sampled traces
+  # Keep traces ending in "0" (~6.25% sample by last hex digit)
   - match:
       selector: '{job="app"}'
       stages:
         - drop:
-            source: trace_sample
-            value: sample
+            source: trace_id
+            expression: '.*[1-9a-fA-F]$'
             drop_counter_reason: trace_sampled
 ```
 
@@ -188,6 +170,10 @@ pipeline_stages:
   - json:
       expressions:
         level: level
+        service: service
+
+  - labels:
+      service:
 
   # Use limit stage for rate-based sampling
   - limit:
@@ -207,6 +193,9 @@ pipeline_stages:
         level: level
         service: service
 
+  - labels:
+      service:
+
   # Rate limit by service
   - match:
       selector: '{job="app"} |= "INFO"'
@@ -214,6 +203,7 @@ pipeline_stages:
         - limit:
             rate: 50  # 50 logs/second per service
             burst: 100
+            drop: true
             by_label_name: service
 ```
 
@@ -295,45 +285,34 @@ scrape_configs:
             level: level
             error_type: error_type
             endpoint: endpoint
+            is_slow: is_slow
 
-      # Priority 1: Always keep errors and warnings
-      - match:
-          selector: '{job="app"} |~ "(?i)(error|warn|critical|fatal)"'
-          action: keep
+      - template:
+          source: level
+          template: '{{ ToLower .Value }}'
+      - labels:
+          level:
+          endpoint:
+          is_slow:
 
-      # Priority 2: Always keep slow requests
-      - match:
-          selector: '{job="app"}'
-          stages:
-            - json:
-                expressions:
-                  duration: duration
-            - match:
-                selector: '{job="app"}'
-                stages:
-                  # Keep if duration > 5 seconds
-                  - template:
-                      source: is_slow
-                      template: '{{ if gt .duration 5.0 }}true{{ else }}false{{ end }}'
+      # Priority 1: Errors, warnings, and fatal logs do not match
+      # the INFO/DEBUG sampling rules below, so they are kept at 100%.
 
-      # Priority 3: Always keep specific endpoints
-      - match:
-          selector: '{job="app"} |~ "endpoint=\"(/api/payment|/api/auth)\""'
-          action: keep
+      # Priority 2 and 3: Slow requests and specific endpoints are excluded
+      # from the routine INFO sampling selector.
 
       # Priority 4: Sample everything else at 10%
       - match:
-          selector: '{job="app"} |~ "(?i)level=\"?info\""'
+          selector: '{job="app", level="info", is_slow!="true", endpoint!~"/api/(payment|auth)"}'
           stages:
             - sampling:
                 rate: 0.1
 
       # Priority 5: Drop debug in production
       - match:
-          selector: '{job="app"} |~ "(?i)level=\"?debug\""'
-          stages:
-            - drop:
-                drop_counter_reason: debug_dropped
+          selector: '{job="app", level="debug"}'
+          action: drop
+          drop_counter_reason: debug_dropped
 ```
 
 ## Sampling with Labels
@@ -345,6 +324,10 @@ pipeline_stages:
   - json:
       expressions:
         level: level
+
+  - template:
+      source: level
+      template: '{{ ToLower .Value }}'
 
   # Add sampling label
   - template:
@@ -373,8 +356,8 @@ rate(promtail_sent_entries_total[5m])
 # Effective sample rate
 rate(promtail_sent_entries_total[5m]) / rate(promtail_read_lines_total[5m])
 
-# Dropped by sampling
-rate(promtail_dropped_entries_total{reason="info_sampled"}[5m])
+# Dropped by sampling or filtering stages
+rate(logentry_dropped_lines_total[5m])
 ```
 
 ### Dashboard for Sampling
@@ -404,7 +387,7 @@ rate(promtail_dropped_entries_total{reason="info_sampled"}[5m])
         "type": "piechart",
         "targets": [
           {
-            "expr": "sum by (reason) (rate(promtail_dropped_entries_total[5m]))",
+            "expr": "sum by (reason) (rate(logentry_dropped_lines_total[5m]))",
             "legendFormat": "{{reason}}"
           }
         ]
@@ -468,18 +451,13 @@ pipeline_stages:
         trace_id: trace_id
         span_id: span_id
 
-  # Sample by trace_id to keep entire traces
-  - template:
-      source: trace_bucket
-      template: '{{ mod (hash .trace_id) 10 }}'
-
-  # Keep traces in bucket 0 (10% sample)
+  # Keep traces ending in "0" (~6.25% sample by last hex digit)
   - match:
       selector: '{job="app"}'
       stages:
         - drop:
-            source: trace_bucket
-            expression: '[1-9]'
+            source: trace_id
+            expression: '.*[1-9a-fA-F]$'
             drop_counter_reason: trace_sampled
 ```
 

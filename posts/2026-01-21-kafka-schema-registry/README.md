@@ -26,10 +26,14 @@ services:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
+    ports:
+      - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   schema-registry:
@@ -40,7 +44,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
 ```
 
@@ -52,7 +56,7 @@ services:
 listeners=http://0.0.0.0:8081
 kafkastore.bootstrap.servers=PLAINTEXT://localhost:9092
 kafkastore.topic=_schemas
-kafkastore.topic.replication.factor=3
+kafkastore.topic.replication.factor=1
 schema.compatibility.level=BACKWARD
 ```
 
@@ -100,9 +104,9 @@ curl http://localhost:8081/subjects/users-value/versions
 
 | Mode | Description | Safe Changes |
 |------|-------------|--------------|
-| BACKWARD | New schema can read old data | Add optional fields, remove fields |
-| FORWARD | Old schema can read new data | Remove optional fields, add fields |
-| FULL | Both backward and forward | Add/remove optional fields |
+| BACKWARD | New schema can read old data | Add fields with defaults, remove fields |
+| FORWARD | Old schema can read new data | Add fields, remove fields that had defaults |
+| FULL | Both backward and forward | Add/remove fields with defaults |
 | NONE | No compatibility checking | Any change |
 
 ### Set Compatibility
@@ -139,9 +143,16 @@ import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.Schema;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+
+import java.util.Properties;
 
 public class AvroProducer {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -183,6 +194,16 @@ public class AvroProducer {
 ```java
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Properties;
 
 public class AvroConsumer {
     public static void main(String[] args) {
@@ -216,11 +237,11 @@ public class AvroConsumer {
 ```java
 // Producer with Protobuf
 props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-    KafkaProtobufSerializer.class);
+    io.confluent.kafka.serializers.protobuf.KafkaProtobufSerializer.class);
 
 // Consumer with Protobuf
 props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-    KafkaProtobufDeserializer.class);
+    io.confluent.kafka.serializers.protobuf.KafkaProtobufDeserializer.class);
 props.put("specific.protobuf.value.type", UserProto.User.class);
 ```
 

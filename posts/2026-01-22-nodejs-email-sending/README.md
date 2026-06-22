@@ -268,12 +268,12 @@ async function sendWithSendGrid() {
 
 // Send multiple emails
 async function sendBulk(recipients) {
-  const messages = recipients.map(recipient => ({
+  const messages = await Promise.all(recipients.map(async (recipient) => ({
     to: recipient.email,
     from: 'noreply@myapp.com',
     subject: 'Newsletter',
-    html: renderTemplate('newsletter', { name: recipient.name }),
-  }));
+    html: await renderTemplate('newsletter', { name: recipient.name }),
+  })));
   
   await sgMail.send(messages);
 }
@@ -295,7 +295,7 @@ async function sendWithTemplate() {
 ## Using AWS SES
 
 ```bash
-npm install @aws-sdk/client-ses
+npm install @aws-sdk/client-ses @aws-sdk/client-sesv2
 ```
 
 ```javascript
@@ -344,14 +344,14 @@ async function sendWithSES() {
 
 ```javascript
 const nodemailer = require('nodemailer');
-const aws = require('@aws-sdk/client-ses');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 
-const ses = new aws.SES({
+const sesClient = new SESv2Client({
   region: 'us-east-1',
 });
 
 const transporter = nodemailer.createTransport({
-  SES: { ses, aws },
+  SES: { sesClient, SendEmailCommand },
 });
 
 await transporter.sendMail({

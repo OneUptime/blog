@@ -43,11 +43,13 @@ openssl genrsa -out server-key.pem 4096
 
 # Generate server certificate signing request
 openssl req -new -key server-key.pem -out server-req.pem \
-    -subj "/C=US/ST=State/L=City/O=Organization/CN=clickhouse-server"
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=clickhouse-server" \
+    -addext "subjectAltName = DNS:clickhouse-server"
 
 # Sign server certificate with CA
 openssl x509 -req -days 365 -in server-req.pem \
     -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial \
+    -copy_extensions copy \
     -out server-cert.pem
 
 # Set proper permissions
@@ -92,7 +94,7 @@ Configure ClickHouse to use TLS in `/etc/clickhouse-server/config.d/ssl.xml`:
             <!-- Cache SSL sessions -->
             <cacheSessions>true</cacheSessions>
 
-            <!-- Disable session tickets for better security -->
+            <!-- Disable legacy protocols -->
             <disableProtocols>sslv2,sslv3</disableProtocols>
 
             <!-- Prefer server cipher order -->
@@ -129,8 +131,9 @@ clickhouse-client --secure --port 9440 \
     --host clickhouse-server \
     --config-file /path/to/client-config.xml
 
-# Using HTTPS with curl
-curl -k "https://clickhouse-server:8443/?query=SELECT%201" \
+# Using HTTPS with curl and CA verification
+curl --cacert /etc/clickhouse-server/certs/ca-cert.pem \
+    "https://clickhouse-server:8443/?query=SELECT%201" \
     --user "default:password"
 ```
 
@@ -207,9 +210,10 @@ ClickHouse supports encrypted disks for protecting data at rest:
                 <type>encrypted</type>
                 <disk>default</disk>
                 <path>encrypted/</path>
+                <algorithm>AES_256_CTR</algorithm>
                 <key>your_32_byte_encryption_key_here</key>
-                <!-- Or use key from file -->
-                <!-- <key_hex>your_hex_encoded_key</key_hex> -->
+                <!-- Or use a hex-encoded key -->
+                <!-- <key_hex>00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff</key_hex> -->
             </encrypted_disk>
 
             <!-- Encrypted disk with key from environment variable -->
@@ -217,7 +221,8 @@ ClickHouse supports encrypted disks for protecting data at rest:
                 <type>encrypted</type>
                 <disk>default</disk>
                 <path>encrypted_env/</path>
-                <key_hex from_env="CLICKHOUSE_ENCRYPTION_KEY"/>
+                <algorithm>AES_256_CTR</algorithm>
+                <key_hex from_env="CLICKHOUSE_ENCRYPTION_KEY"></key_hex>
             </encrypted_disk_env>
         </disks>
 
@@ -264,10 +269,10 @@ WHERE name = 'sensitive_data';
 <clickhouse>
     <encryption_codecs>
         <aes_128_gcm_siv>
-            <key_hex from_env="ENCRYPTION_KEY_128"/>
+            <key_hex from_env="ENCRYPTION_KEY_128"></key_hex>
         </aes_128_gcm_siv>
         <aes_256_gcm_siv>
-            <key_hex from_env="ENCRYPTION_KEY_256"/>
+            <key_hex from_env="ENCRYPTION_KEY_256"></key_hex>
         </aes_256_gcm_siv>
     </encryption_codecs>
 </clickhouse>
@@ -296,8 +301,8 @@ INSERT INTO user_secrets (user_id, username, encrypted_ssn, iv)
 SELECT
     1 AS user_id,
     'john_doe' AS username,
-    encrypt('aes-256-gcm', '123-45-6789', 'your-32-byte-encryption-key!', 'random-12byte') AS encrypted_ssn,
-    'random-12byte' AS iv;
+    encrypt('aes-256-gcm', '123-45-6789', '12345678910121314151617181920212', 'iviviviviviviviv') AS encrypted_ssn,
+    'iviviviviviviviv' AS iv;
 
 -- Decrypt when querying
 SELECT
@@ -314,9 +319,7 @@ WHERE user_id = 1;
 -- AES encryption modes available
 -- aes-128-ecb, aes-192-ecb, aes-256-ecb
 -- aes-128-cbc, aes-192-cbc, aes-256-cbc
--- aes-128-cfb1, aes-192-cfb1, aes-256-cfb1
--- aes-128-cfb8, aes-192-cfb8, aes-256-cfb8
--- aes-128-cfb128, aes-192-cfb128, aes-256-cfb128
+-- aes-128-cfb, aes-128-cfb1, aes-128-cfb8
 -- aes-128-ofb, aes-192-ofb, aes-256-ofb
 -- aes-128-gcm, aes-192-gcm, aes-256-gcm
 -- aes-128-ctr, aes-192-ctr, aes-256-ctr
@@ -324,22 +327,22 @@ WHERE user_id = 1;
 -- Example with different modes
 SELECT
     encrypt('aes-256-cbc', 'sensitive data', unhex('0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'), unhex('0123456789ABCDEF0123456789ABCDEF')) AS cbc_encrypted,
-    encrypt('aes-256-gcm', 'sensitive data', unhex('0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'), unhex('0123456789ABCDEF01234567')) AS gcm_encrypted;
+    encrypt('aes-256-gcm', 'sensitive data', unhex('0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'), unhex('0123456789ABCDEF0123456789ABCDEF')) AS gcm_encrypted;
 ```
 
 ### Creating an Encrypted Column Pattern
 
 ```sql
 -- Create a function for consistent encryption
-CREATE FUNCTION encryptPII AS (value, key) ->
-    encrypt('aes-256-gcm', value, key, generateUUIDv4());
+CREATE FUNCTION encryptPII AS (value, key, iv) ->
+    encrypt('aes-256-gcm', value, key, iv);
 
 -- Or use a materialized column approach
 CREATE TABLE customers (
     id UInt64,
     email String,
     phone_plain String,
-    phone_encrypted String MATERIALIZED encrypt('aes-256-gcm', phone_plain, 'encryption-key-32-bytes-long!!!', 'iv-12-bytes!'),
+    phone_encrypted String MATERIALIZED encrypt('aes-256-gcm', phone_plain, '12345678910121314151617181920212', 'iviviviviviviviv'),
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY id;
@@ -371,10 +374,10 @@ Configure encryption codecs in server config:
 <clickhouse>
     <encryption_codecs>
         <aes_128_gcm_siv>
-            <key_hex>your_32_char_hex_key_for_128bit</key_hex>
+            <key_hex>00112233445566778899aabbccddeeff</key_hex>
         </aes_128_gcm_siv>
         <aes_256_gcm_siv>
-            <key_hex>your_64_char_hex_key_for_256bit_encryption_key</key_hex>
+            <key_hex>00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff</key_hex>
         </aes_256_gcm_siv>
     </encryption_codecs>
 </clickhouse>
@@ -389,31 +392,31 @@ For data that doesn't need to be decrypted, use hashing:
 CREATE TABLE user_auth (
     user_id UInt64,
     username String,
-    password_hash FixedString(64),  -- SHA-256 produces 64 hex chars
+    api_token_hash FixedString(64),  -- SHA-256 produces 64 hex chars
     salt String,
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY user_id;
 
--- Insert with salted hash
-INSERT INTO user_auth (user_id, username, password_hash, salt)
+-- Insert with salted hash for an API token or other high-entropy secret
+INSERT INTO user_auth (user_id, username, api_token_hash, salt)
 SELECT
     1,
     'john_doe',
-    hex(SHA256(concat('user_password', 'random_salt_value'))),
+    hex(SHA256(concat('api_token_value', 'random_salt_value'))),
     'random_salt_value';
 
--- Verify password
+-- Verify token
 SELECT
     user_id,
     username,
-    hex(SHA256(concat('user_password', salt))) = password_hash AS password_valid
+    hex(SHA256(concat('api_token_value', salt))) = api_token_hash AS token_valid
 FROM user_auth
 WHERE username = 'john_doe';
 
--- Pseudonymization with consistent hashing
+-- Pseudonymization with a secret pepper
 SELECT
-    sipHash64(user_id) AS pseudonymized_id,
+    hex(SHA256(concat('secret_pepper', toString(user_id)))) AS pseudonymized_id,
     count() AS event_count
 FROM user_events
 GROUP BY pseudonymized_id;
@@ -485,24 +488,24 @@ clickhouse-client --query "SYSTEM RELOAD CONFIG"
 
 ```bash
 # Set encryption key via environment variable
-export CLICKHOUSE_ENCRYPTION_KEY="your-64-char-hex-encoded-256-bit-key"
+export CLICKHOUSE_ENCRYPTION_KEY="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
 # In systemd service file
 # /etc/systemd/system/clickhouse-server.service.d/encryption.conf
 [Service]
-Environment="CLICKHOUSE_ENCRYPTION_KEY=your-64-char-hex-encoded-256-bit-key"
+Environment="CLICKHOUSE_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 ```
 
 ## Monitoring Encryption Status
 
 ```sql
--- Check TLS status for current connection
+-- Check the configured secure native TCP port
 SELECT
-    getSetting('tcp_port_secure') AS secure_port_configured;
+    getServerPort('tcp_port_secure') AS secure_port_configured;
 
--- View encryption-related settings
+-- View encryption-related server settings
 SELECT *
-FROM system.settings
+FROM system.server_settings
 WHERE name LIKE '%encrypt%' OR name LIKE '%ssl%';
 
 -- Check storage policies

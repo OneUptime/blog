@@ -80,8 +80,6 @@ Docker Compose makes it easier to manage Redis configurations. Create a `docker-
 ### Basic Docker Compose Setup
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -103,8 +101,6 @@ docker compose logs redis
 Data persistence ensures your data survives container restarts:
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -159,8 +155,6 @@ tcp-keepalive 300
 Docker Compose configuration:
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -188,8 +182,6 @@ volumes:
 Here is a comprehensive production setup:
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -199,7 +191,7 @@ services:
     volumes:
       - redis-data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command: sh -c 'redis-server /usr/local/etc/redis/redis.conf --requirepass "$${REDIS_PASSWORD}"'
     restart: unless-stopped
     deploy:
       resources:
@@ -210,7 +202,7 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -252,7 +244,7 @@ protected-mode yes
 tcp-backlog 511
 
 # Security
-requirepass your_very_secure_password_here
+# The password is supplied by the Compose command from REDIS_PASSWORD.
 
 # Memory
 maxmemory 450mb
@@ -366,8 +358,6 @@ CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
 `docker-compose.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -478,7 +468,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
 COPY . .
 
@@ -492,8 +482,6 @@ CMD ["node", "app.js"]
 Set up a Redis master with replicas:
 
 ```yaml
-version: '3.8'
-
 services:
   redis-master:
     image: redis:7-alpine
@@ -571,8 +559,6 @@ docker exec -it redis-master redis-cli -a masterpassword INFO replication
 High availability setup with Sentinel:
 
 ```yaml
-version: '3.8'
-
 services:
   redis-master:
     image: redis:7-alpine
@@ -724,7 +710,6 @@ const redisSentinel = new Redis({
   ],
   name: 'mymaster',
   password: 'redispassword',
-  sentinelPassword: 'redispassword',
 });
 ```
 
@@ -734,7 +719,6 @@ const redisSentinel = new Redis({
 package main
 
 import (
-    "context"
     "os"
     "time"
 
@@ -742,8 +726,6 @@ import (
 )
 
 func main() {
-    ctx := context.Background()
-
     // Simple connection
     client := redis.NewClient(&redis.Options{
         Addr:         os.Getenv("REDIS_HOST") + ":" + os.Getenv("REDIS_PORT"),
@@ -764,8 +746,7 @@ func main() {
             "sentinel-2:26379",
             "sentinel-3:26379",
         },
-        Password:         "redispassword",
-        SentinelPassword: "redispassword",
+        Password: "redispassword",
     })
     defer sentinelClient.Close()
 }

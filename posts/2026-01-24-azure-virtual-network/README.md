@@ -8,7 +8,7 @@ Description: A practical guide to designing and configuring Azure Virtual Networ
 
 ---
 
-Azure Virtual Network (VNet) is the foundation of your cloud infrastructure. Every VM, container, and managed service needs a network home. Getting the network design right from the start prevents painful migrations later. This guide covers practical VNet configuration from basic setup to advanced architectures.
+Azure Virtual Network (VNet) is the foundation of your cloud infrastructure. Every VM and many container or managed service deployments need a network home. Getting the network design right from the start prevents painful migrations later. This guide covers practical VNet configuration from basic setup to advanced architectures.
 
 ## VNet Architecture Overview
 
@@ -27,7 +27,7 @@ flowchart TB
             end
 
             subgraph DB["DB Subnet 10.0.3.0/24"]
-                SQL[(Azure SQL)]
+                SQLPE[SQL Private Endpoint]
             end
 
             subgraph GW["Gateway Subnet 10.0.255.0/24"]
@@ -40,8 +40,9 @@ flowchart TB
     Internet --> VM2
     VM1 --> VM3
     VM2 --> VM4
-    VM3 --> SQL
-    VM4 --> SQL
+    VM3 --> SQLPE
+    VM4 --> SQLPE
+    SQLPE --> SQL[(Azure SQL)]
     VPN <--> OnPrem[On-Premises]
 ```
 
@@ -248,7 +249,7 @@ resource "azurerm_network_security_group" "web" {
     destination_address_prefix = "*"
   }
 
-  # Deny direct internet access from app tier
+  # Deny direct internet access from web tier
   security_rule {
     name                       = "DenyInternetOutbound"
     priority                   = 4000
@@ -351,7 +352,7 @@ az network private-dns link vnet create \
     --virtual-network $VNET_NAME \
     --registration-enabled false
 
-# Create DNS record for private endpoint
+# Associate the private DNS zone with the private endpoint
 az network private-endpoint dns-zone-group create \
     --resource-group $RESOURCE_GROUP \
     --endpoint-name sql-private-endpoint \
@@ -427,7 +428,7 @@ nslookup myserver.database.windows.net
 # Should return private IP (10.x.x.x), not public IP
 
 # Issue: Asymmetric routing with load balancer
-# Fix: Enable "Allow gateway transit" and "Use remote gateways" correctly
+# Fix: Verify UDRs, NSGs, and load balancer health probes/return path
 ```
 
 ## Best Practices
@@ -455,12 +456,12 @@ DR Environment:
 ### Security Checklist
 
 - Use NSGs on all subnets
-- Enable DDoS Protection Standard for public-facing workloads
+- Enable Azure DDoS Network Protection for public-facing workloads
 - Use Private Endpoints for PaaS services
 - Implement Azure Firewall or NVA for egress filtering
 - Enable VNet flow logs for traffic analysis
 - Use service endpoints for Azure services without Private Link support
-- Never put databases in subnets with public IP addresses
+- Never put database VMs in subnets with public IP addresses
 
 ---
 

@@ -38,10 +38,10 @@ GOROOT is where Go is installed. It contains:
 go env GOROOT
 
 # Typical locations:
-# macOS (Homebrew): /opt/homebrew/Cellar/go/1.21.0/libexec
+# macOS (Homebrew): /opt/homebrew/opt/go/libexec
 # macOS (pkg):      /usr/local/go
 # Linux:            /usr/local/go
-# Windows:          C:\Go
+# Windows:          C:\Program Files\Go
 ```
 
 ### When to Set GOROOT
@@ -74,8 +74,8 @@ GOPATH was crucial before Go modules. Now it's mainly used for:
 
 ```bash
 go env GOPATH
-# Default: /Users/username/go (macOS/Linux)
-# Default: C:\Users\username\go (Windows)
+# Default: $HOME/go (macOS/Linux)
+# Default: %USERPROFILE%\go (Windows)
 ```
 
 ### GOPATH Structure
@@ -83,7 +83,7 @@ go env GOPATH
 ```text
 $GOPATH/
   bin/          # Compiled binaries from go install
-  pkg/          # Module cache (pkg/mod/)
+  pkg/          # Module/cache data (pkg/mod/, pkg/sumdb/) and legacy package objects
   src/          # (Legacy) Source code for projects
 ```
 

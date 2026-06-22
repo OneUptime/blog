@@ -21,7 +21,8 @@ Docker provides an embedded DNS server at 127.0.0.11 for user-defined networks. 
 ```bash
 # Check DNS configuration inside a container
 
-docker run --rm alpine cat /etc/resolv.conf
+docker network create mynetwork
+docker run --rm --network mynetwork alpine cat /etc/resolv.conf
 
 # Output on user-defined network:
 nameserver 127.0.0.11
@@ -63,8 +64,6 @@ docker exec app ping database
 In Docker Compose, this happens automatically:
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -103,8 +102,9 @@ docker exec app nslookup api.example.com 8.8.8.8
 
 Set default DNS servers for all containers:
 
+In `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["8.8.8.8", "8.8.4.4"],
   "dns-search": ["example.com"],
@@ -192,8 +192,9 @@ services:
 
 Or adjust timeout options:
 
+In `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "dns-opts": ["timeout:1", "attempts:1"]
 }
@@ -221,8 +222,9 @@ services:
 
 Or configure split DNS:
 
+In `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["10.0.0.1", "8.8.8.8"]
 }
@@ -311,8 +313,9 @@ nc -zv 8.8.8.8 53
 # Query Docker's internal DNS directly
 docker exec app nslookup database 127.0.0.11
 
-# Check DNS logs (if available)
-docker logs $(docker ps -q --filter name=dns)
+# The embedded DNS server does not expose separate container logs.
+# If you run a custom DNS container, check that container's logs.
+docker compose logs dns
 ```
 
 ### Verify Network Configuration
@@ -333,8 +336,6 @@ docker inspect app --format '{{json .NetworkSettings.Networks}}' | jq
 For complex requirements, run your own DNS:
 
 ```yaml
-version: '3.8'
-
 services:
   dns:
     image: coredns/coredns:latest

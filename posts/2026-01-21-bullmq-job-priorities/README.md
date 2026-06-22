@@ -15,11 +15,11 @@ Job priorities allow you to control the order in which jobs are processed when m
 In BullMQ, priorities are integers where:
 - Lower numbers = Higher priority
 - Priority 1 jobs are processed before priority 2 jobs
-- Default priority is 0 (highest)
-- Valid range is 0 to 2^21 - 1 (about 2 million)
+- Jobs without a priority are processed first
+- Explicit priority values range from 1 to 2,097,152
 
 ```typescript
-import { Queue, Worker } from 'bullmq';
+import { Job, Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -116,11 +116,11 @@ class PriorityTaskQueue {
 
   // Get queue statistics by priority
   async getStatsByPriority() {
-    const waiting = await this.queue.getWaiting();
+    const waiting = await this.queue.getJobs(['waiting', 'prioritized']);
     const stats: Record<string, number> = {};
 
     for (const job of waiting) {
-      const priority = job.opts.priority || 0;
+      const priority = job.opts.priority ?? 0;
       const priorityName = PRIORITY_NAMES[priority as PriorityLevel] || `Priority-${priority}`;
       stats[priorityName] = (stats[priorityName] || 0) + 1;
     }
@@ -378,7 +378,7 @@ class PriorityAgingQueue {
   }
 
   private async ageWaitingJobs() {
-    const waitingJobs = await this.queue.getWaiting();
+    const waitingJobs = await this.queue.getPrioritized();
     const now = Date.now();
 
     for (const job of waitingJobs) {
@@ -387,15 +387,11 @@ class PriorityAgingQueue {
 
       // Boost priority by 1 for every 5 minutes waiting
       const priorityBoost = Math.floor(waitMinutes / 5) * this.PRIORITY_BOOST;
-      const currentPriority = job.opts.priority || 0;
+      const currentPriority = job.opts.priority ?? 0;
       const newPriority = Math.max(1, currentPriority - priorityBoost);
 
       if (newPriority < currentPriority) {
-        // Remove and re-add with new priority
-        const jobData = job.data;
-        const jobName = job.name;
-        await job.remove();
-        await this.queue.add(jobName, jobData, { priority: newPriority });
+        await job.changePriority({ priority: newPriority });
       }
     }
   }
@@ -417,14 +413,16 @@ class PriorityMonitor {
   }
 
   async getPriorityDistribution() {
-    const [waiting, active, delayed] = await Promise.all([
+    const [waiting, prioritized, active, delayed] = await Promise.all([
       this.queue.getWaiting(),
+      this.queue.getPrioritized(),
       this.queue.getActive(),
       this.queue.getDelayed(),
     ]);
 
     const distribution = {
       waiting: this.groupByPriority(waiting),
+      prioritized: this.groupByPriority(prioritized),
       active: this.groupByPriority(active),
       delayed: this.groupByPriority(delayed),
     };
@@ -434,7 +432,7 @@ class PriorityMonitor {
 
   private groupByPriority(jobs: Job[]): Record<number, number> {
     return jobs.reduce((acc, job) => {
-      const priority = job.opts.priority || 0;
+      const priority = job.opts.priority ?? 0;
       acc[priority] = (acc[priority] || 0) + 1;
       return acc;
     }, {} as Record<number, number>);
@@ -445,7 +443,7 @@ class PriorityMonitor {
     const waitTimes: Record<number, number[]> = {};
 
     for (const job of completed) {
-      const priority = job.opts.priority || 0;
+      const priority = job.opts.priority ?? 0;
       const waitTime = (job.processedOn || 0) - job.timestamp;
 
       if (!waitTimes[priority]) {
@@ -529,15 +527,10 @@ class SupportTicketQueue {
       throw new Error('Ticket not found');
     }
 
-    const currentPriority = job.opts.priority || 5;
+    const currentPriority = job.opts.priority ?? 5;
     const newPriority = Math.max(1, currentPriority - 2);
 
-    // Re-add with higher priority
-    await job.remove();
-    await this.queue.add('process-ticket', job.data, {
-      priority: newPriority,
-      jobId: `ticket_${ticketId}`,
-    });
+    await job.changePriority({ priority: newPriority });
 
     console.log(`Escalated ticket ${ticketId} from priority ${currentPriority} to ${newPriority}`);
   }

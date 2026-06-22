@@ -56,7 +56,7 @@ class FlashSaleInventory:
 
         return sale_id
 
-    def check_and_reserve(self, sale_id, user_id, quantity=1):
+    def check_and_reserve(self, sale_id, user_id, quantity=1, max_per_user=2):
         """
         Atomically check and reserve inventory.
         Returns reservation_id if successful, None if out of stock.
@@ -78,7 +78,7 @@ class FlashSaleInventory:
 
         -- Check if user already has maximum reservations
         local user_reservations = redis.call('GET', user_key)
-        if user_reservations and tonumber(user_reservations) >= max_per_user then
+        if user_reservations and (tonumber(user_reservations) + quantity) > max_per_user then
             return 'USER_LIMIT_EXCEEDED'
         end
 
@@ -114,8 +114,6 @@ class FlashSaleInventory:
 
         reservation_id = str(uuid.uuid4())
         timestamp = int(time.time())
-        max_per_user = 2  # Maximum items per user
-
         result = r.eval(
             lua_script, 3,
             inventory_key, reservations_key, user_key,
@@ -259,7 +257,7 @@ class FlashSaleInventory {
       local max_per_user = tonumber(ARGV[5])
 
       local user_reservations = redis.call('GET', user_key)
-      if user_reservations and tonumber(user_reservations) >= max_per_user then
+      if user_reservations and (tonumber(user_reservations) + quantity) > max_per_user then
         return 'USER_LIMIT_EXCEEDED'
       end
 
@@ -502,13 +500,13 @@ class FlashSaleRateLimiter:
         """
         lua_script = """
         local results = {}
-        local current_second = math.floor(tonumber(ARGV[1]))
+        local current_second = math.floor(tonumber(ARGV[#KEYS + 1]))
         local current_minute = math.floor(current_second / 60)
 
         -- Check each limit
-        for i = 1, #KEYS, 2 do
+        for i = 1, #KEYS do
             local key = KEYS[i]
-            local limit = tonumber(KEYS[i + 1])
+            local limit = tonumber(ARGV[i])
             local count = redis.call('INCR', key)
 
             if count == 1 then
@@ -533,23 +531,26 @@ class FlashSaleRateLimiter:
         minute_bucket = int(current_time / 60)
 
         # Build keys and limits
-        keys_and_limits = [
+        rate_keys = [
             f"{self.prefix}:{sale_id}:user:{user_id}:second:{second_bucket}",
-            limits.get('user_per_second', 2),
             f"{self.prefix}:{sale_id}:user:{user_id}:minute:{minute_bucket}",
-            limits.get('user_per_minute', 10),
             f"{self.prefix}:{sale_id}:ip:{ip_address}:second:{second_bucket}",
-            limits.get('ip_per_second', 5),
             f"{self.prefix}:{sale_id}:ip:{ip_address}:minute:{minute_bucket}",
-            limits.get('ip_per_minute', 30),
             f"{self.prefix}:{sale_id}:global:second:{second_bucket}",
+        ]
+        rate_limits = [
+            limits.get('user_per_second', 2),
+            limits.get('user_per_minute', 10),
+            limits.get('ip_per_second', 5),
+            limits.get('ip_per_minute', 30),
             limits.get('global_per_second', 10000),
         ]
 
         result = r.eval(
             lua_script,
-            len(keys_and_limits),
-            *keys_and_limits,
+            len(rate_keys),
+            *rate_keys,
+            *rate_limits,
             current_time
         )
 
@@ -595,6 +596,8 @@ else:
 ## Complete Flash Sale System
 
 ```python
+import json
+
 class FlashSaleSystem:
     def __init__(self):
         self.inventory = FlashSaleInventory()
@@ -611,7 +614,7 @@ class FlashSaleSystem:
         # Store sale configuration
         sale_config = {
             'max_per_user': config.get('max_per_user', 2),
-            'use_queue': config.get('use_queue', False),
+            'use_queue': 'true' if config.get('use_queue', False) else 'false',
             'rate_limits': json.dumps(config.get('rate_limits', {
                 'user_per_second': 2,
                 'user_per_minute': 10,
@@ -665,7 +668,7 @@ class FlashSaleSystem:
         else:
             # Direct purchase attempt
             reservation_id, status = self.inventory.check_and_reserve(
-                sale_id, user_id, quantity
+                sale_id, user_id, quantity, int(config.get('max_per_user', 2))
             )
 
             if reservation_id:
@@ -777,15 +780,18 @@ r = redis.Redis(connection_pool=pool)
 
 ```python
 from redis.cluster import RedisCluster
+from redis.cluster import ClusterNode
 
 rc = RedisCluster(
     startup_nodes=[
-        {"host": "redis1", "port": 6379},
-        {"host": "redis2", "port": 6379},
-        {"host": "redis3", "port": 6379}
+        ClusterNode("redis1", 6379),
+        ClusterNode("redis2", 6379),
+        ClusterNode("redis3", 6379)
     ]
 )
 ```
+
+When using Redis Cluster with Lua scripts or other multi-key operations, keep all keys touched by one operation in the same hash slot by using a hash tag, such as `flash_sale:{sale_001}:inventory` and `flash_sale:{sale_001}:reservations`.
 
 ### 3. Implement Reservation Timeout
 

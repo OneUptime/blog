@@ -89,15 +89,17 @@ ALTER TABLE iceberg_catalog.analytics.events SET TBLPROPERTIES (
     -- Target file size of 512MB for optimal read performance
     'write.target-file-size-bytes' = '536870912',
 
-    -- Enable automatic compaction during writes
+    -- Enable Spark's fanout writer for unclustered writes (uses more memory)
     'write.spark.fanout.enabled' = 'true',
 
-    -- Keep 10 snapshots for time travel (adjust based on needs)
+    -- Keep snapshots for up to 7 days and retain at least 10 snapshots
     'history.expire.max-snapshot-age-ms' = '604800000',
+    'history.expire.min-snapshots-to-keep' = '10',
 
-    -- Enable row-level deletes for ACID operations
+    -- Use merge-on-read mode for row-level delete, update, and merge commands
     'write.delete.mode' = 'merge-on-read',
-    'write.update.mode' = 'merge-on-read'
+    'write.update.mode' = 'merge-on-read',
+    'write.merge.mode' = 'merge-on-read'
 );
 ```
 
@@ -111,7 +113,7 @@ One of Iceberg's killer features is safe schema evolution. You can add, rename, 
 
 ```python
 # schema_evolution.py
-# Demonstrates safe schema changes that don't break existing queries
+# Demonstrates schema changes that do not require rewriting data files
 
 from pyspark.sql import SparkSession
 
@@ -135,7 +137,7 @@ spark.sql("""
 """)
 
 # Rename a column - also metadata-only
-# Old queries using the old name will still work via column IDs
+# Data files are not rewritten, but queries must use the new column name
 spark.sql("""
     ALTER TABLE iceberg_catalog.analytics.events
     RENAME COLUMN event_data TO event_payload
@@ -189,11 +191,12 @@ spark = SparkSession.builder.getOrCreate()
 
 # Query data as it existed at a specific timestamp
 # Useful for auditing and comparing changes
-yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+yesterday_ms = int((datetime.now() - timedelta(days=1)).timestamp() * 1000)
 
 historical_data = spark.read \
-    .option("as-of-timestamp", yesterday) \
-    .table("iceberg_catalog.analytics.events")
+    .option("as-of-timestamp", yesterday_ms) \
+    .format("iceberg") \
+    .load("iceberg_catalog.analytics.events")
 
 print(f"Row count yesterday: {historical_data.count()}")
 
@@ -211,7 +214,8 @@ snapshots.show()
 snapshot_id = 1234567890123456789  # Replace with actual snapshot ID
 snapshot_data = spark.read \
     .option("snapshot-id", snapshot_id) \
-    .table("iceberg_catalog.analytics.events")
+    .format("iceberg") \
+    .load("iceberg_catalog.analytics.events")
 
 # Compare current vs historical for debugging
 spark.sql("""
@@ -372,12 +376,12 @@ small_files.show()
 # Monitor snapshot growth
 snapshot_history = spark.sql("""
     SELECT
-        DATE(committed_at) as commit_date,
+        CAST(committed_at AS DATE) as commit_date,
         COUNT(*) as snapshots,
-        SUM(added_data_files_count) as files_added,
-        SUM(added_rows_count) as rows_added
+        SUM(CAST(summary['added-data-files'] AS BIGINT)) as files_added,
+        SUM(CAST(summary['added-records'] AS BIGINT)) as rows_added
     FROM iceberg_catalog.analytics.events.snapshots
-    GROUP BY DATE(committed_at)
+    GROUP BY CAST(committed_at AS DATE)
     ORDER BY commit_date DESC
     LIMIT 30
 """)

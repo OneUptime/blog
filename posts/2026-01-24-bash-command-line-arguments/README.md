@@ -153,10 +153,11 @@ usage() {
 verbose=false
 input_file=""
 output_file=""
+OPTERR=0
 
 # Parse options
 # The colon after a letter means it requires an argument
-while getopts "vf:o:h" opt; do
+while getopts ":vf:o:h" opt; do
     case $opt in
         v)
             verbose=true
@@ -222,7 +223,7 @@ done
 # All these are equivalent:
 # ./script.sh -v -f input.txt
 # ./script.sh -vf input.txt
-# ./script.sh -fv input.txt  # Note: won't work, -f needs argument
+# ./script.sh -fv input.txt  # Not equivalent: -f consumes "v" as its argument
 ```
 
 ---
@@ -639,6 +640,10 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             -c|--config)
+                if [[ $# -lt 2 ]] || [[ "$2" == -* ]]; then
+                    log_error "$1 requires an argument"
+                    exit 1
+                fi
                 CONFIG_FILE="$2"
                 shift 2
                 ;;
@@ -647,6 +652,10 @@ parse_args() {
                 shift
                 ;;
             -o|--output)
+                if [[ $# -lt 2 ]] || [[ "$2" == -* ]]; then
+                    log_error "$1 requires an argument"
+                    exit 1
+                fi
                 OUTPUT_DIR="$2"
                 shift 2
                 ;;
@@ -655,6 +664,10 @@ parse_args() {
                 shift
                 ;;
             -w|--workers)
+                if [[ $# -lt 2 ]] || [[ "$2" == -* ]]; then
+                    log_error "$1 requires an argument"
+                    exit 1
+                fi
                 MAX_WORKERS="$2"
                 shift 2
                 ;;
@@ -663,6 +676,10 @@ parse_args() {
                 shift
                 ;;
             -l|--log-level)
+                if [[ $# -lt 2 ]] || [[ "$2" == -* ]]; then
+                    log_error "$1 requires an argument"
+                    exit 1
+                fi
                 LOG_LEVEL="$2"
                 shift 2
                 ;;

@@ -29,9 +29,9 @@ Dragonfly was created in 2022 by former Google and Amazon engineers with the goa
 | Max Throughput | ~500K ops/sec | ~4M ops/sec |
 | Memory Efficiency | 1x baseline | ~2-4x better |
 | Clustering | Required for scale | Single instance scales |
-| License | SSPL | BSL 1.1 (source available) |
+| License | RSALv2/SSPLv1/AGPLv3 | BSL 1.1 (source available) |
 | Protocol | RESP2/RESP3 | RESP2/RESP3 compatible |
-| Persistence | RDB, AOF | Snapshot, upcoming AOF |
+| Persistence | RDB, AOF | Snapshots; no AOF support |
 | Replication | Master-replica | Master-replica |
 | Lua Scripting | Full support | Full support |
 | Pub/Sub | Yes | Yes |
@@ -195,7 +195,7 @@ pubsub.subscribe('channel')
 | DEBUG commands | Full | Partial |
 | MEMORY DOCTOR | Yes | No |
 | Redis Modules | Full ecosystem | Limited (growing) |
-| ACL | Full | Basic |
+| ACL | Full | Partial |
 | Cluster protocol | Native | Emulated |
 | CLIENT NO-EVICT | Yes | No |
 
@@ -205,14 +205,14 @@ pubsub.subscribe('channel')
 # Redis has extensive module ecosystem
 # Dragonfly module support is limited but growing
 
-# Supported in Dragonfly:
-# - RedisJSON (basic)
-# - RediSearch (partial)
+# Supported natively in Dragonfly:
+# - RedisJSON commands (most fully supported)
+# - RediSearch-compatible Search commands (partial)
+# - Bloom/Count-Min/Top-K commands (varies by command)
 
-# Not yet supported:
-# - RedisGraph
+# Not supported:
+# - RedisGraph (also end-of-life in Redis)
 # - RedisTimeSeries
-# - RedisBloom (native implementation coming)
 ```
 
 ## Clustering Comparison
@@ -274,18 +274,18 @@ appendfsync everysec
 
 ```bash
 # Dragonfly snapshot
-dragonfly --dbfilename dump.rdb --dir /data
+dragonfly --dbfilename dump --dir /data
 
 # Trigger snapshot
 dragonfly> BGSAVE
 
-# Snapshot scheduling (coming)
-# --save "900 1" --save "300 10"
+# Snapshot scheduling
+dragonfly --snapshot_cron "0 */6 * * *"
 ```
 
 **Current Status**:
-- RDB snapshots: Full support
-- AOF: In development
+- Snapshots: Full support
+- AOF: Not supported
 - Point-in-time recovery: Planned
 
 ## Configuration Comparison
@@ -297,12 +297,13 @@ dragonfly> BGSAVE
 dragonfly \
   --port 6379 \
   --bind 0.0.0.0 \
-  --proactor_threads 0 \        # Auto-detect cores
+  --proactor_threads=0 \
   --maxmemory 32gb \
-  --dbfilename dump.rdb \
+  --dbfilename dump \
   --dir /data \
   --requirepass secret \
   --snapshot_cron "0 */6 * * *"  # Every 6 hours
+# proactor_threads=0 auto-detects cores
 
 # Or configuration file
 dragonfly --flagfile /etc/dragonfly/dragonfly.conf
@@ -341,13 +342,13 @@ dragonfly> INFO CPU
 dragonfly> INFO STATS
 
 # Prometheus metrics (built-in)
-curl http://localhost:6380/metrics
+curl http://localhost:6379/metrics
 ```
 
 ### Known Limitations
 
 1. **Module Ecosystem**: Limited compared to Redis
-2. **AOF Persistence**: Still in development
+2. **AOF Persistence**: Not supported
 3. **Some DEBUG commands**: Not fully implemented
 4. **Cluster Mode**: Less mature than Redis Cluster
 
@@ -438,7 +439,7 @@ redis-cli REPLICAOF NO ONE
 
 ### Stick with Redis If:
 
-1. **Module Dependency**: Need RediSearch, RedisGraph, etc.
+1. **Module Dependency**: Need full Redis Query Engine/Search support, RedisTimeSeries, or other unsupported modules
 2. **AOF Critical**: Need guaranteed write durability
 3. **Risk Averse**: Prefer battle-tested solution
 4. **Enterprise Features**: Need Redis Enterprise features
@@ -469,19 +470,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 def benchmark(host, port, name, operations=100000, clients=50):
     results = {'ops': 0, 'errors': 0}
+    lock = threading.Lock()
 
     def worker():
         r = redis.Redis(host=host, port=port)
         local_ops = 0
+        local_errors = 0
         for i in range(operations // clients):
             try:
                 key = f"bench:{threading.current_thread().name}:{i}"
                 r.set(key, "x" * 100)
                 r.get(key)
                 local_ops += 2
-            except Exception as e:
-                results['errors'] += 1
-        results['ops'] += local_ops
+            except Exception:
+                local_errors += 1
+        with lock:
+            results['ops'] += local_ops
+            results['errors'] += local_errors
 
     start = time.time()
     with ThreadPoolExecutor(max_workers=clients) as executor:

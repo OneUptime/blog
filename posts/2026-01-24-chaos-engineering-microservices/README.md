@@ -53,7 +53,6 @@ from typing import Callable, Optional, Dict, List, Any
 from datetime import datetime, timedelta
 from enum import Enum
 import asyncio
-import random
 from opentelemetry import trace
 
 tracer = trace.get_tracer(__name__)
@@ -111,10 +110,18 @@ class ChaosEngine:
         self.alerting = alerting_client
         self.active_experiments: Dict[str, ChaosExperiment] = {}
         self.chaos_handlers: Dict[ChaosType, Callable] = {}
+        self.stop_handlers: Dict[ChaosType, Callable] = {}
 
-    def register_handler(self, chaos_type: ChaosType, handler: Callable):
+    def register_handler(
+        self,
+        chaos_type: ChaosType,
+        handler: Callable,
+        stop_handler: Optional[Callable] = None
+    ):
         """Register a chaos injection handler"""
         self.chaos_handlers[chaos_type] = handler
+        if stop_handler:
+            self.stop_handlers[chaos_type] = stop_handler
 
     async def check_steady_state(self, metrics: List[SteadyStateMetric]) -> Dict[str, Any]:
         """Check if system is in steady state"""
@@ -177,7 +184,10 @@ class ChaosEngine:
 
                 # Inject chaos
                 span.add_event("chaos_injection_started")
-                await handler(experiment)
+                if hasattr(handler, "inject"):
+                    await handler.inject(experiment)
+                else:
+                    await handler(experiment)
 
                 # Monitor during experiment
                 abort_triggered = await self._monitor_experiment(experiment)
@@ -240,8 +250,13 @@ class ChaosEngine:
 
     async def _stop_chaos(self, experiment: ChaosExperiment):
         """Stop chaos injection for an experiment"""
-        # Implementation depends on chaos type
-        pass
+        handler = self.chaos_handlers.get(experiment.chaos_type)
+        stop_handler = self.stop_handlers.get(experiment.chaos_type)
+
+        if stop_handler:
+            await stop_handler(experiment)
+        elif handler and hasattr(handler, "stop"):
+            await handler.stop(experiment)
 ```
 
 ### Chaos Injection Handlers
@@ -396,6 +411,16 @@ class ResourceChaos:
             "--timeout", f"{duration}s"
         ])
 
+    async def _stress_disk(self, intensity: int, duration: int):
+        """Stress disk I/O to specified intensity"""
+        import subprocess
+        subprocess.Popen([
+            "stress-ng",
+            "--hdd", "1",
+            "--hdd-bytes", f"{intensity}%",
+            "--timeout", f"{duration}s"
+        ])
+
 
 class NetworkChaos:
     """Injects network failures"""
@@ -411,7 +436,8 @@ class NetworkChaos:
             span.set_attribute("network.target", target)
 
             if failure_type == "partition":
-                await self._network_partition(target)
+                target_b = experiment.parameters.get("target_b", target)
+                await self._network_partition(target_b)
             elif failure_type == "packet_loss":
                 loss_percent = experiment.parameters.get("loss_percent", 10)
                 await self._packet_loss(target, loss_percent)
@@ -468,6 +494,12 @@ from opentelemetry import trace
 tracer = trace.get_tracer(__name__)
 
 app = FastAPI()
+service_name = "my-service"
+redis_client = redis.Redis(decode_responses=True)
+
+def verify_chaos_authorization(api_key: str) -> bool:
+    """Verify that the caller is allowed to run chaos experiments"""
+    return api_key == "your-secure-chaos-api-key"
 
 class ChaosMiddleware(BaseHTTPMiddleware):
     """
@@ -478,7 +510,7 @@ class ChaosMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, redis_client: redis.Redis):
         super().__init__(app)
         self.redis = redis_client
-        self.service_name = "my-service"
+        self.service_name = service_name
 
     def get_active_chaos(self) -> dict:
         """Get active chaos configuration from Redis"""
@@ -587,8 +619,7 @@ async def disable_chaos(api_key: str):
 
     return {"status": "chaos_disabled"}
 
-
-app.add_middleware(ChaosMiddleware, redis_client=redis.Redis())
+app.add_middleware(ChaosMiddleware, redis_client=redis_client)
 ```
 
 ---
@@ -601,6 +632,7 @@ Test your circuit breakers work correctly:
 # circuit_breaker_chaos.py
 from dataclasses import dataclass
 from typing import Dict, Optional
+import asyncio
 import time
 from opentelemetry import trace
 
@@ -821,7 +853,7 @@ class ExperimentCatalog:
                 ),
                 SteadyStateMetric(
                     name="p99_latency",
-                    query=f'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{{service="{service}"}}[5m]))',
+                    query=f'histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{{service="{service}"}}[5m])))',
                     threshold_min=0,
                     threshold_max=5.0,
                     description="P99 latency should stay below 5s"
@@ -885,7 +917,7 @@ class ExperimentCatalog:
             steady_state_metrics=[
                 SteadyStateMetric(
                     name="connection_pool_exhaustion",
-                    query=f'pg_stat_activity_count{{datname="{db_name}"}} / pg_settings_max_connections',
+                    query=f'sum(pg_stat_activity_count{{datname="{db_name}"}}) / max(pg_settings_max_connections)',
                     threshold_min=0,
                     threshold_max=0.8,
                     description="Connection pool should not exhaust"
@@ -1062,6 +1094,8 @@ async def run_chaos_tests():
         results = await pipeline.run_smoke_tests()
     elif env == "full":
         results = await pipeline.run_resilience_suite()
+    else:
+        raise ValueError(f"Unknown CHAOS_TEST_LEVEL: {env}")
 
     # Output results
     print(f"Chaos Test Results: {results['suite']}")
@@ -1121,6 +1155,7 @@ flowchart TD
 
 ```python
 # chaos_observability.py
+from contextlib import asynccontextmanager
 from prometheus_client import Counter, Histogram, Gauge
 from opentelemetry import trace
 
@@ -1159,6 +1194,7 @@ class ChaosObserver:
         self.metrics = metrics_client
         self.tracer = trace.get_tracer(__name__)
 
+    @asynccontextmanager
     async def observe_experiment(self, experiment: ChaosExperiment):
         """Create observation context for experiment"""
 

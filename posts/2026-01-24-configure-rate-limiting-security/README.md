@@ -54,8 +54,8 @@ http {
     # Zone for login attempts: 5 requests per minute per IP
     limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
 
-    # Zone for password reset: 3 requests per hour per IP
-    limit_req_zone $binary_remote_addr zone=reset_limit:10m rate=3r/h;
+    # Zone for password reset: 1 request per minute per IP
+    limit_req_zone $binary_remote_addr zone=reset_limit:10m rate=1r/m;
 
     # Zone based on API key for authenticated requests
     limit_req_zone $http_x_api_key zone=apikey_limit:10m rate=100r/s;
@@ -146,40 +146,49 @@ class DistributedRateLimiter {
     async isAllowed(identifier) {
         const key = `${this.keyPrefix}${identifier}`;
         const now = Date.now();
-        const windowStart = now - this.windowMs;
+        const member = `${now}-${Math.random()}`;
 
-        // Use Redis sorted set for sliding window
-        const pipeline = redis.pipeline();
+        // Use a Redis Lua script so cleanup, count, and add are atomic
+        const [allowed, remaining, retryAfterMs] = await redis.eval(`
+            local key = KEYS[1]
+            local now = tonumber(ARGV[1])
+            local window_ms = tonumber(ARGV[2])
+            local max_requests = tonumber(ARGV[3])
+            local member = ARGV[4]
+            local window_start = now - window_ms
 
-        // Remove old entries
-        pipeline.zremrangebyscore(key, 0, windowStart);
+            redis.call('ZREMRANGEBYSCORE', key, 0, window_start)
 
-        // Count current entries
-        pipeline.zcard(key);
+            local count = redis.call('ZCARD', key)
+            if count >= max_requests then
+                local ttl = redis.call('PTTL', key)
+                if ttl < 0 then
+                    ttl = window_ms
+                end
+                return {0, 0, ttl}
+            end
 
-        // Add current request
-        pipeline.zadd(key, now, `${now}-${Math.random()}`);
+            redis.call('ZADD', key, now, member)
+            redis.call('PEXPIRE', key, window_ms + 1000)
 
-        // Set expiry
-        pipeline.expire(key, Math.ceil(this.windowMs / 1000) + 1);
+            return {1, max_requests - count - 1, redis.call('PTTL', key)}
+        `, 1, key, now, this.windowMs, this.maxRequests, member);
 
-        const results = await pipeline.exec();
-        const count = results[1][1];
-
-        if (count >= this.maxRequests) {
-            // Remove the request we just added
-            await redis.zremrangebyscore(key, now, now);
+        if (allowed === 0) {
+            const retryAfter = Math.ceil(retryAfterMs / 1000);
 
             return {
                 allowed: false,
                 remaining: 0,
-                resetAt: windowStart + this.windowMs
+                retryAfter,
+                resetAt: now + retryAfterMs
             };
         }
 
         return {
             allowed: true,
-            remaining: this.maxRequests - count - 1
+            remaining,
+            resetAt: now + retryAfterMs
         };
     }
 }
@@ -231,15 +240,15 @@ function createRateLimitMiddleware(limiter, keyGenerator) {
         res.set({
             'X-RateLimit-Limit': limiter.maxRequests,
             'X-RateLimit-Remaining': result.remaining,
-            'X-RateLimit-Reset': Math.ceil((Date.now() + limiter.windowMs) / 1000)
+            'X-RateLimit-Reset': Math.ceil(result.resetAt / 1000)
         });
 
         if (!result.allowed) {
-            res.set('Retry-After', Math.ceil(limiter.windowMs / 1000));
+            res.set('Retry-After', result.retryAfter);
             return res.status(429).json({
                 error: 'Too Many Requests',
                 message: 'Rate limit exceeded. Please try again later.',
-                retryAfter: Math.ceil(limiter.windowMs / 1000)
+                retryAfter: result.retryAfter
             });
         }
 
@@ -259,6 +268,8 @@ const { rateLimiters, createRateLimitMiddleware } = require('./rate-limiter');
 
 const app = express();
 
+app.use(express.json());
+
 // Apply rate limiters to routes
 app.use('/api', createRateLimitMiddleware(
     rateLimiters.api,
@@ -269,7 +280,7 @@ app.post('/api/auth/login',
     createRateLimitMiddleware(
         rateLimiters.login,
         // Key by IP and username to prevent targeted attacks
-        (req) => `${req.ip}:${req.body.email || 'unknown'}`
+        (req) => `${req.ip}:${req.body?.email || 'unknown'}`
     ),
     loginHandler
 );
@@ -286,7 +297,7 @@ app.post('/api/auth/reset-password',
     createRateLimitMiddleware(
         rateLimiters.passwordReset,
         // Key by email to prevent enumeration
-        (req) => req.body.email || req.ip
+        (req) => req.body?.email || req.ip
     ),
     resetPasswordHandler
 );

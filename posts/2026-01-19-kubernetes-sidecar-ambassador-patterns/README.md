@@ -74,6 +74,17 @@ spec:
     # Logging sidecar (Fluent Bit)
     - name: log-shipper
       image: fluent/fluent-bit:latest
+      args:
+        - -i
+        - tail
+        - -p
+        - path=/var/log/app/application.log
+        - -o
+        - es
+        - -p
+        - host=$(FLUENT_ELASTICSEARCH_HOST)
+        - -p
+        - port=$(FLUENT_ELASTICSEARCH_PORT)
       volumeMounts:
         - name: log-volume
           mountPath: /var/log/app
@@ -122,7 +133,7 @@ data:
         Name        json
         Format      json
         Time_Key    timestamp
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Format %Y-%m-%dT%H:%M:%SZ
 ---
 apiVersion: v1
 kind: Pod
@@ -142,6 +153,14 @@ spec:
       volumeMounts:
         - name: log-volume
           mountPath: /var/log/app
+      command:
+        - /bin/sh
+        - -c
+        - |
+          while true; do
+            printf '{"timestamp":"%s","message":"Application log entry"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /var/log/app/application.log
+            sleep 5
+          done
     
     - name: fluent-bit
       image: fluent/fluent-bit:latest
@@ -186,7 +205,7 @@ spec:
     
     # Git sync sidecar
     - name: git-sync
-      image: k8s.gcr.io/git-sync/git-sync:v3.6.0
+      image: registry.k8s.io/git-sync/git-sync:v4.4.3
       volumeMounts:
         - name: content
           mountPath: /data
@@ -194,18 +213,16 @@ spec:
           mountPath: /etc/git-secret
           readOnly: true
       env:
-        - name: GIT_SYNC_REPO
+        - name: GITSYNC_REPO
           value: "https://github.com/example/content.git"
-        - name: GIT_SYNC_BRANCH
+        - name: GITSYNC_REF
           value: "main"
-        - name: GIT_SYNC_ROOT
+        - name: GITSYNC_ROOT
           value: "/data"
-        - name: GIT_SYNC_DEST
+        - name: GITSYNC_LINK
           value: "html"
-        - name: GIT_SYNC_PERIOD
+        - name: GITSYNC_PERIOD
           value: "30s"
-        - name: GIT_SYNC_ONE_TIME
-          value: "false"
       securityContext:
         runAsUser: 65533
 ```
@@ -344,11 +361,11 @@ spec:
     
     # Cloud SQL Proxy ambassador
     - name: cloudsql-proxy
-      image: gcr.io/cloudsql-docker/gce-proxy:latest
-      command:
-        - /cloud_sql_proxy
-        - -instances=project:region:instance=tcp:5432
-        - -credential_file=/secrets/cloudsql/credentials.json
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+      args:
+        - --port=5432
+        - --credentials-file=/secrets/cloudsql/credentials.json
+        - project:region:instance
       ports:
         - containerPort: 5432
       volumeMounts:
@@ -398,6 +415,8 @@ data:
                                 cluster: order_service
                     http_filters:
                       - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
       clusters:
         - name: user_service
           connect_timeout: 5s
@@ -464,6 +483,24 @@ spec:
 ```yaml
 # prometheus-adapter.yaml
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-status-config
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+        location /stub_status {
+            stub_status;
+            access_log off;
+        }
+    }
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: app-with-metrics-adapter
@@ -472,18 +509,26 @@ metadata:
     prometheus.io/port: "9113"
     prometheus.io/path: "/metrics"
 spec:
+  volumes:
+    - name: nginx-config
+      configMap:
+        name: nginx-status-config
   containers:
-    # Main application (outputs custom metrics format)
+    # Main application (nginx exposing stub_status)
     - name: app
-      image: myapp:latest
+      image: nginx:alpine
       ports:
         - containerPort: 8080
+      volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
     
     # Prometheus exporter adapter (nginx example)
     - name: nginx-exporter
       image: nginx/nginx-prometheus-exporter:latest
       args:
-        - -nginx.scrape-uri=http://localhost:8080/stub_status
+        - --nginx.scrape-uri=http://localhost:8080/stub_status
       ports:
         - containerPort: 9113
 ```
@@ -707,11 +752,11 @@ spec:
               memory: "128Mi"
               cpu: "100m"
         
-        # Metrics exporter sidecar
+        # Metrics exporter sidecar for an app that exposes NGINX stub_status
         - name: metrics-exporter
           image: nginx/nginx-prometheus-exporter:latest
           args:
-            - -nginx.scrape-uri=http://localhost:8080/metrics
+            - --nginx.scrape-uri=http://localhost:8080/stub_status
           ports:
             - containerPort: 9113
           resources:

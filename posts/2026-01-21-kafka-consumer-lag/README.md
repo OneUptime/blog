@@ -8,21 +8,21 @@ Description: A comprehensive guide to understanding, monitoring, and reducing Ka
 
 ---
 
-Consumer lag is the difference between the latest message in a partition and the last message consumed by a consumer group. High lag indicates consumers cannot keep up with producers, leading to delayed processing and potential data staleness. This guide covers how to monitor, diagnose, and reduce consumer lag.
+Consumer lag is the difference between the log end offset in a partition and the committed offset for a consumer group. High lag indicates consumers cannot keep up with producers, leading to delayed processing and potential data staleness. This guide covers how to monitor, diagnose, and reduce consumer lag.
 
 ## Understanding Consumer Lag
 
 ### What is Consumer Lag?
 
 ```text
-Lag = Latest Offset (Log End Offset) - Committed Offset
+Lag = Log End Offset - Committed Offset
 
 Partition 0: [offset 0] [1] [2] [3] [4] [5] [6] [7] [8] [9]
-                                          ^              ^
-                                     Committed      Log End
-                                     Offset=5       Offset=9
+                                          ^                  ^
+                                     Committed          Log End
+                                     Offset=5           Offset=10
 
-Lag = 9 - 5 = 4 messages
+Lag = 10 - 5 = 5 messages
 ```
 
 ### Types of Lag
@@ -30,7 +30,7 @@ Lag = 9 - 5 = 4 messages
 - **Offset Lag**: Number of messages behind
 - **Time Lag**: How old the oldest unconsumed message is
 - **Partition Lag**: Lag per partition
-- **Consumer Lag**: Total lag across all partitions for a consumer
+- **Consumer Lag**: Total lag across all partitions for a consumer group
 
 ## Monitoring Consumer Lag
 
@@ -54,12 +54,12 @@ import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 
 public class LagMonitor {
-    private final AdminClient admin;
+    private final Admin admin;
 
     public LagMonitor(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.admin = AdminClient.create(props);
+        this.admin = Admin.create(props);
     }
 
     public Map<TopicPartition, Long> getConsumerLag(String groupId)
@@ -124,11 +124,12 @@ public class LagMonitor {
 
 ```python
 from confluent_kafka.admin import AdminClient, ConsumerGroupTopicPartitions
-from confluent_kafka import TopicPartition
+from confluent_kafka import OFFSET_INVALID, TopicPartition
 from typing import Dict, Tuple
 
 class LagMonitor:
     def __init__(self, bootstrap_servers: str):
+        self.bootstrap_servers = bootstrap_servers
         self.admin = AdminClient({'bootstrap.servers': bootstrap_servers})
 
     def get_consumer_lag(self, group_id: str) -> Dict[Tuple[str, int], int]:
@@ -142,12 +143,13 @@ class LagMonitor:
         for group_id, future in result.items():
             partitions = future.result().topic_partitions
             for tp in partitions:
-                committed_offsets[(tp.topic, tp.partition)] = tp.offset
+                if tp.offset != OFFSET_INVALID:
+                    committed_offsets[(tp.topic, tp.partition)] = tp.offset
 
         # Get end offsets (watermarks)
         from confluent_kafka import Consumer
         temp_consumer = Consumer({
-            'bootstrap.servers': self.admin._conf.get('bootstrap.servers'),
+            'bootstrap.servers': self.bootstrap_servers,
             'group.id': 'lag-monitor-temp',
             'enable.auto.commit': False,
         })
@@ -193,26 +195,52 @@ if __name__ == '__main__':
 ### Using kafka-lag-exporter
 
 ```yaml
-# kubernetes deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-lag-exporter-config
+data:
+  application.conf: |
+    kafka-lag-exporter {
+      reporters.prometheus.port = 8000
+      sinks = ["PrometheusEndpointSink"]
+      clusters = [
+        {
+          name = "production"
+          bootstrap-brokers = "kafka:9092"
+        }
+      ]
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka-lag-exporter
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-lag-exporter
   template:
+    metadata:
+      labels:
+        app: kafka-lag-exporter
     spec:
       containers:
         - name: kafka-lag-exporter
-          image: seglo/kafka-lag-exporter:latest
-          env:
-            - name: KAFKA_LAG_EXPORTER_CLUSTERS
-              value: |
-                clusters:
-                  - name: production
-                    bootstrapBrokers: kafka:9092
+          image: lightbend/kafka-lag-exporter:0.8.2
+          args:
+            - /opt/docker/bin/kafka-lag-exporter
+            - -Dconfig.file=/opt/docker/conf/application.conf
           ports:
             - containerPort: 8000
+          volumeMounts:
+            - name: config
+              mountPath: /opt/docker/conf
+      volumes:
+        - name: config
+          configMap:
+            name: kafka-lag-exporter-config
 ```
 
 ### Custom Metrics Exporter
@@ -221,6 +249,7 @@ spec:
 import io.prometheus.client.Gauge;
 import io.prometheus.client.exporter.HTTPServer;
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 
 public class LagExporter {
@@ -236,13 +265,13 @@ public class LagExporter {
         .labelNames("group")
         .register();
 
-    private final AdminClient admin;
+    private final Admin admin;
     private final List<String> groups;
 
     public LagExporter(String bootstrapServers, List<String> groups) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.admin = AdminClient.create(props);
+        this.admin = Admin.create(props);
         this.groups = groups;
     }
 
@@ -307,7 +336,7 @@ groups:
 
       # Alert on growing lag
       - alert: KafkaConsumerLagGrowing
-        expr: rate(kafka_consumer_lag[5m]) > 100
+        expr: deriv(kafka_consumer_lag[5m]) > 100
         for: 10m
         labels:
           severity: critical
@@ -317,13 +346,13 @@ groups:
 
       # Alert on stalled consumer
       - alert: KafkaConsumerStalled
-        expr: increase(kafka_consumer_lag[10m]) == 0 and kafka_consumer_lag > 0
+        expr: changes(kafka_consumer_lag[10m]) == 0 and kafka_consumer_lag > 0
         for: 15m
         labels:
           severity: critical
         annotations:
-          summary: "Consumer appears stalled"
-          description: "Consumer group {{ $labels.group }} has not made progress in 15 minutes"
+          summary: "Consumer lag is unchanged"
+          description: "Consumer group {{ $labels.group }} has had unchanged non-zero lag for 15 minutes"
 ```
 
 ## Diagnosing Lag Causes
@@ -344,7 +373,7 @@ groups:
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
   --describe --group my-group --members --verbose
 
-# Check broker metrics
+# Check broker API versions
 kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Check consumer group state
@@ -355,11 +384,27 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 ### Performance Profiling Consumer
 
 ```java
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.apache.kafka.clients.consumer.*;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
+
 public class InstrumentedConsumer {
     private final Consumer<String, String> consumer;
-    private final Timer pollTimer = new Timer();
-    private final Timer processTimer = new Timer();
-    private final Counter recordsProcessed = new Counter();
+    private final Timer pollTimer;
+    private final Timer processTimer;
+    private final Counter recordsProcessed;
+
+    public InstrumentedConsumer(Consumer<String, String> consumer,
+            MeterRegistry registry) {
+        this.consumer = consumer;
+        this.pollTimer = registry.timer("kafka.consumer.poll.duration");
+        this.processTimer = registry.timer("kafka.consumer.process.duration");
+        this.recordsProcessed = registry.counter("kafka.consumer.records.processed");
+    }
 
     public void consume(String topic) {
         consumer.subscribe(Collections.singletonList(topic));
@@ -369,23 +414,29 @@ public class InstrumentedConsumer {
             ConsumerRecords<String, String> records =
                 consumer.poll(Duration.ofMillis(100));
             long pollDuration = System.nanoTime() - pollStart;
-            pollTimer.record(pollDuration);
+            pollTimer.record(Duration.ofNanos(pollDuration));
 
             for (ConsumerRecord<String, String> record : records) {
                 long processStart = System.nanoTime();
                 processRecord(record);
                 long processDuration = System.nanoTime() - processStart;
-                processTimer.record(processDuration);
+                processTimer.record(Duration.ofNanos(processDuration));
                 recordsProcessed.increment();
             }
 
             // Log metrics periodically
-            if (recordsProcessed.count() % 1000 == 0) {
-                System.out.printf("Poll avg: %.2fms, Process avg: %.2fms%n",
-                    pollTimer.average() / 1_000_000,
-                    processTimer.average() / 1_000_000);
+            if (recordsProcessed.count() > 0
+                    && recordsProcessed.count() % 1000 == 0) {
+                System.out.printf(
+                    "Poll count: %d, Process avg: %.2fms%n",
+                    pollTimer.count(),
+                    processTimer.mean(TimeUnit.MILLISECONDS));
             }
         }
+    }
+
+    private void processRecord(ConsumerRecord<String, String> record) {
+        // Application-specific processing
     }
 }
 ```
@@ -463,18 +514,11 @@ public class BatchingConsumer {
 ```java
 public class ParallelPartitionConsumer {
     private final Consumer<String, String> consumer;
-    private final ExecutorService executor;
-    private final Map<Integer, BlockingQueue<ConsumerRecord<String, String>>>
-        partitionQueues = new ConcurrentHashMap<>();
+    private final Map<Integer, ExecutorService> partitionExecutors =
+        new ConcurrentHashMap<>();
 
-    public ParallelPartitionConsumer(int parallelism) {
-        this.executor = Executors.newFixedThreadPool(parallelism);
-
-        // Start worker threads for each partition
-        for (int i = 0; i < parallelism; i++) {
-            final int partition = i;
-            executor.submit(() -> processPartition(partition));
-        }
+    public ParallelPartitionConsumer(Consumer<String, String> consumer) {
+        this.consumer = consumer;
     }
 
     public void consume() {
@@ -484,29 +528,15 @@ public class ParallelPartitionConsumer {
 
             for (ConsumerRecord<String, String> record : records) {
                 int partition = record.partition();
-                partitionQueues.computeIfAbsent(partition,
-                    k -> new LinkedBlockingQueue<>()).offer(record);
+                partitionExecutors.computeIfAbsent(partition,
+                    k -> Executors.newSingleThreadExecutor())
+                    .submit(() -> processRecord(record));
             }
         }
     }
 
-    private void processPartition(int partition) {
-        BlockingQueue<ConsumerRecord<String, String>> queue =
-            partitionQueues.computeIfAbsent(partition,
-                k -> new LinkedBlockingQueue<>());
-
-        while (true) {
-            try {
-                ConsumerRecord<String, String> record =
-                    queue.poll(100, TimeUnit.MILLISECONDS);
-                if (record != null) {
-                    processRecord(record);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
+    private void processRecord(ConsumerRecord<String, String> record) {
+        // Application-specific processing
     }
 }
 ```
@@ -558,7 +588,7 @@ public class CatchUpConsumer {
 
     public void consume() {
         while (true) {
-            int pollRecords = catchUpMode ? 5000 : 500;
+            // Configure max.poll.records higher before starting a catch-up run.
 
             ConsumerRecords<String, String> records =
                 consumer.poll(Duration.ofMillis(100));
@@ -623,7 +653,15 @@ long timestampLag = System.currentTimeMillis() - record.timestamp();
 # Kubernetes HPA with custom metrics
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
+metadata:
+  name: kafka-consumer
 spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kafka-consumer
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
     - type: External
       external:

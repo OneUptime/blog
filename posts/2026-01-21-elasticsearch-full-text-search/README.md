@@ -436,7 +436,7 @@ Response includes highlighted fragments:
   "hits": {
     "hits": [
       {
-        "_source": { ... },
+        "_source": { "title": "Elasticsearch guide" },
         "highlight": {
           "content": [
             "Learn about <strong>Elasticsearch</strong> for full-text search...",
@@ -468,6 +468,8 @@ curl -X GET "https://localhost:9200/articles/_search" \
 
 For large result sets:
 
+Use a stable tie-breaker field with `doc_values`, such as a copy of the document ID.
+
 ```bash
 # First request
 curl -X GET "https://localhost:9200/articles/_search" \
@@ -477,7 +479,7 @@ curl -X GET "https://localhost:9200/articles/_search" \
     "query": { "match_all": {} },
     "sort": [
       { "date": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
     "size": 10
   }'
@@ -490,7 +492,7 @@ curl -X GET "https://localhost:9200/articles/_search" \
     "query": { "match_all": {} },
     "sort": [
       { "date": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
     "size": 10,
     "search_after": ["2024-01-15", "abc123"]
@@ -556,7 +558,13 @@ curl -X PUT "https://localhost:9200/blog" \
           "type": "text",
           "analyzer": "blog_analyzer"
         },
-        "tags": { "type": "keyword" },
+        "tags": {
+          "type": "text",
+          "analyzer": "blog_analyzer",
+          "fields": {
+            "keyword": { "type": "keyword" }
+          }
+        },
         "author": { "type": "keyword" },
         "date": { "type": "date" },
         "status": { "type": "keyword" }

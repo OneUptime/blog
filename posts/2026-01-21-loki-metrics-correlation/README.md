@@ -15,8 +15,9 @@ Effective observability requires connecting different telemetry signals. When a 
 Before starting, ensure you have:
 
 - Grafana 9.0 or later
-- Grafana Loki 2.4 or later
+- Grafana Loki 2.8 or later when using the TSDB `v13` schema shown below
 - Prometheus 2.30 or later
+- Grafana Promtail for existing deployments, or Grafana Alloy for new deployments
 - Applications emitting both logs and metrics
 - Basic understanding of LogQL and PromQL
 
@@ -195,6 +196,8 @@ ruler:
 
 ### Promtail Configuration with Matching Labels
 
+Note: Promtail reached end-of-life on March 2, 2026. The configuration below is valid for existing Promtail deployments; for new deployments, use Grafana Alloy with equivalent discovery, parsing, and labeling rules.
+
 Create `promtail-config.yaml` to ensure labels match between logs and metrics:
 
 ```yaml
@@ -241,8 +244,15 @@ scrape_configs:
             level: level
             msg: message
             error: error
+            service: service
+            instance: instance
+          source: content
       - labels:
           level:
+          service:
+          instance:
+      - output:
+          source: content
 
   # Docker containers
   - job_name: docker
@@ -262,8 +272,8 @@ scrape_configs:
       # Extract container labels for correlation
       - json:
           expressions:
-            container_name: '["attrs"]["container_name"]'
-            service: '["attrs"]["service"]'
+            container_name: container_name
+            service: service
           source: attrs
       - labels:
           container_name:
@@ -544,6 +554,18 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/api/users/:id', async (req, res) => {
+  const userId = req.params.id;
+  logger.info({ endpoint: '/api/users/:id', method: 'GET', user_id: userId }, 'Fetching user');
+  // Fetch user...
+  res.json({ id: userId, name: 'John Doe' });
+});
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   const endpoint = req.route ? req.route.path : req.path;
@@ -565,18 +587,6 @@ app.use((err, req, res, next) => {
   }, 'Request failed');
 
   res.status(500).json({ error: err.message });
-});
-
-app.get('/api/users/:id', async (req, res) => {
-  const userId = req.params.id;
-  logger.info({ endpoint: '/api/users/:id', method: 'GET', user_id: userId }, 'Fetching user');
-  // Fetch user...
-  res.json({ id: userId, name: 'John Doe' });
-});
-
-app.get('/metrics', async (req, res) => {
-  res.set('Content-Type', register.contentType);
-  res.end(await register.metrics());
 });
 
 app.listen(8080, () => {
@@ -798,8 +808,7 @@ groups:
 
 Add annotations from logs to metric graphs:
 
-```yaml
-# Dashboard annotation configuration
+```json
 {
   "annotations": {
     "list": [
@@ -899,8 +908,8 @@ curl -s 'http://loki:3100/loki/api/v1/label/service/values' | jq
 Ensure time ranges cover the same period:
 
 ```logql
-# Use explicit time range in LogQL
-{service="api-server"} | json [$__range]
+# Count matching log lines over Grafana's selected dashboard range
+count_over_time({service="api-server"} | json [$__range])
 ```
 
 ## Conclusion

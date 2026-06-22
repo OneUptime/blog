@@ -114,7 +114,7 @@ Or use the correct exported name.
 
 ## Cause 3: Wrong Package in Same Directory
 
-All `.go` files in a directory must have the same package name:
+All non-test `.go` files in a directory must have the same package name. If a helper file uses a different package, Go reports a package mismatch and the helper won't be part of the package you're building:
 
 ```text
 myapp/
@@ -127,7 +127,7 @@ myapp/
 package main
 
 func main() {
-    DoSomething()  // undefined: DoSomething
+    DoSomething()  // DoSomething is not available from package main
 }
 ```
 
@@ -157,6 +157,7 @@ Files excluded by build tags or naming conventions won't compile:
 
 ```go
 // file_linux.go - Only builds on Linux
+//go:build linux
 // +build linux
 
 package main
@@ -176,6 +177,7 @@ func main() {
 ### Build Tags
 
 ```go
+//go:build !production
 // +build !production
 
 package main
@@ -191,8 +193,11 @@ This function is undefined when building with `-tags production`.
 # See what files are included
 go list -f '{{.GoFiles}}' .
 
-# Build with specific tags
-go build -tags linux
+# Build for a specific OS
+GOOS=linux go build
+
+# Build with specific custom tags
+go build -tags production
 
 # Check for build constraints
 grep -r "// +build" .
@@ -240,7 +245,7 @@ package a imports package b
 package b imports package a
 ```
 
-This can cause confusing undefined errors.
+This usually produces an import cycle error rather than an `undefined` error, but it often appears while fixing package structure.
 
 ### Fix: Restructure Packages
 
@@ -257,26 +262,26 @@ This can cause confusing undefined errors.
 
 ---
 
-## Cause 7: Module Not Downloaded
+## Cause 7: Dependency Not Added or Wrong Version
 
-Dependencies might not be downloaded:
+Dependencies might not be added to your module, or you might be using a version that doesn't provide the identifier you're calling:
 
 ```go
-import "github.com/some/package"
+import "github.com/some/lib"
 
 func main() {
-    package.Function()  // undefined if not downloaded
+    lib.Function()  // undefined if Function doesn't exist in the selected version
 }
 ```
 
-### Fix: Download Dependencies
+### Fix: Add or Update Dependencies
 
 ```bash
-# Download all dependencies
+# Add missing dependencies and remove unused ones
 go mod tidy
 
-# Or download specific package
-go get github.com/some/package
+# Or add/update a specific module
+go get github.com/some/lib
 
 # Verify dependencies
 go mod verify
@@ -409,7 +414,7 @@ go build ./...
 | `undefined: LocalFunc` | Different package | Match package names |
 | `undefined` on some OS | Build tags | Check constraints |
 | `undefined` in regular build | In test file | Move to non-test file |
-| `undefined: pkg.X` after go get | Module cache | `go mod tidy` |
+| `undefined: pkg.X` after go get | Identifier not in selected dependency version | Check docs/version and update dependency or code |
 
 ---
 
@@ -444,7 +449,7 @@ Configure your editor to:
   run: go build ./...
 
 - name: Lint
-  uses: golangci/golangci-lint-action@v3
+  uses: golangci/golangci-lint-action@v9
 ```
 
 ---

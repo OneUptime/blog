@@ -8,7 +8,7 @@ Description: A comprehensive guide to integrating Redis with FastAPI application
 
 ---
 
-FastAPI's async-first design pairs perfectly with Redis for high-performance caching, session management, and real-time features. This guide covers async Redis integration using aioredis/redis-py with practical patterns for production applications.
+FastAPI's async-first design pairs perfectly with Redis for high-performance caching, session management, and real-time features. This guide covers async Redis integration using redis-py with practical patterns for production applications.
 
 ## Installation
 
@@ -42,9 +42,9 @@ class RedisClient:
 
     async def disconnect(self):
         if self.client:
-            await self.client.close()
+            await self.client.aclose()
         if self.pool:
-            await self.pool.disconnect()
+            await self.pool.aclose()
 
     def get_client(self) -> Redis:
         return self.client
@@ -105,8 +105,8 @@ async def get_cached_value(key: str, redis: Redis = Depends(get_redis)):
 # app/services/cache.py
 from redis.asyncio import Redis
 from typing import Any, Optional, Callable, TypeVar
+import asyncio
 import json
-from functools import wraps
 
 T = TypeVar('T')
 
@@ -186,10 +186,10 @@ async def get_cache(redis: Redis = Depends(get_redis)) -> CacheService:
 
 ```python
 # app/routers/products.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies import get_cache
 from app.services.cache import CacheService
-from app.models import Product
+from app.models import Product, ProductUpdate
 
 router = APIRouter()
 
@@ -247,8 +247,10 @@ def cached(
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get cache from kwargs or use global
-            cache = kwargs.get('cache') or get_global_cache()
+            # Get cache from kwargs or from the instance when decorating methods
+            cache = kwargs.get('cache') or getattr(args[0], 'cache', None)
+            if cache is None:
+                raise RuntimeError("CacheService instance is required")
 
             # Build cache key
             if key_builder:
@@ -363,6 +365,7 @@ class AuthService:
 # app/dependencies.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from redis.asyncio import Redis
 from app.services.auth import AuthService
 
 security = HTTPBearer()
@@ -391,7 +394,8 @@ async def get_current_user(
 ```python
 # app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies import get_auth_service, get_current_user
+from fastapi.security import HTTPAuthorizationCredentials
+from app.dependencies import get_auth_service, get_current_user, security
 from app.services.auth import AuthService
 
 router = APIRouter()
@@ -491,10 +495,12 @@ class RateLimiter:
 
 ```python
 # app/middleware/rate_limit.py
-from fastapi import Request, HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.redis import redis_client
 from app.services.rate_limiter import RateLimiter
+import time
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, limit: int = 100, window: int = 60):
@@ -525,9 +531,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Reset"] = str(result["reset"])
             return response
 
-        raise HTTPException(
+        return JSONResponse(
             status_code=429,
-            detail="Too many requests",
+            content={"detail": "Too many requests"},
             headers={
                 "X-RateLimit-Limit": str(result["limit"]),
                 "X-RateLimit-Remaining": "0",
@@ -541,7 +547,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 ```python
 # app/dependencies.py
-from fastapi import Request, HTTPException
+from fastapi import Depends, Request, HTTPException
+from redis.asyncio import Redis
+from app.services.rate_limiter import RateLimiter
 
 async def rate_limit(
     request: Request,
@@ -558,10 +566,16 @@ async def rate_limit(
 
     return result
 
+def rate_limit_dependency(limit: int = 100, window: int = 60):
+    async def dependency(request: Request, redis: Redis = Depends(get_redis)):
+        return await rate_limit(request, redis, limit, window)
+
+    return dependency
+
 # Usage
 @router.post("/expensive-operation")
 async def expensive_operation(
-    _: dict = Depends(lambda: rate_limit(limit=10, window=60))
+    _: dict = Depends(rate_limit_dependency(limit=10, window=60))
 ):
     # Limited to 10 requests per minute
     pass
@@ -600,8 +614,11 @@ class PubSubService:
 
 ```python
 # app/routers/events.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from redis.asyncio import Redis
+import json
+from app.dependencies import get_redis
 from app.services.pubsub import PubSubService
 
 router = APIRouter()

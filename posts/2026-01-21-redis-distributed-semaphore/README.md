@@ -74,38 +74,38 @@ class DistributedSemaphore:
             SemaphorePermit if acquired, None otherwise
         """
         permit_id = str(uuid.uuid4())
-        now = time.time()
-        expires_at = now + self.timeout
 
         while True:
             # Cleanup expired permits
             self._cleanup_expired()
+            now = time.time()
+            expires_at = now + self.timeout
 
             # Try to acquire permit atomically
-            pipe = self.redis.pipeline(True)
-            try:
-                pipe.watch(self.key)
+            with self.redis.pipeline() as pipe:
+                try:
+                    pipe.watch(self.key)
 
-                # Check current count
-                current_count = pipe.zcard(self.key)
-                pipe.multi()
+                    # Check current count
+                    current_count = pipe.zcard(self.key)
+                    pipe.multi()
 
-                if current_count < self.limit:
-                    # Add permit with expiration timestamp as score
-                    pipe.zadd(self.key, {permit_id: expires_at})
-                    pipe.execute()
+                    if current_count < self.limit:
+                        # Add permit with expiration timestamp as score
+                        pipe.zadd(self.key, {permit_id: expires_at})
+                        pipe.execute()
 
-                    return SemaphorePermit(
-                        id=permit_id,
-                        acquired_at=now,
-                        expires_at=expires_at
-                    )
-                else:
-                    pipe.unwatch()
+                        return SemaphorePermit(
+                            id=permit_id,
+                            acquired_at=now,
+                            expires_at=expires_at
+                        )
+                    else:
+                        pipe.unwatch()
 
-            except redis.WatchError:
-                # Another client modified, retry
-                continue
+                except redis.WatchError:
+                    # Another client modified, retry
+                    continue
 
             if not blocking:
                 return None
@@ -191,7 +191,6 @@ class FairSemaphore:
                 wait_timeout: float = 30) -> Optional[SemaphorePermit]:
         """Acquire permit with fair ordering."""
         permit_id = str(uuid.uuid4())
-        now = time.time()
 
         # Get position in queue
         counter = self.redis.incr(self.counter_key)
@@ -204,29 +203,38 @@ class FairSemaphore:
         try:
             while time.time() < deadline:
                 # Cleanup expired owners
+                now = time.time()
                 self.redis.zremrangebyscore(self.owners_key, '-inf', now)
 
-                # Check if we can acquire
-                current_owners = self.redis.zcard(self.owners_key)
+                # Atomically check queue position and move to owners
+                expires_at = now + self.timeout
+                lua_script = """
+                redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[3])
+                local current_owners = redis.call('zcard', KEYS[1])
+                local available = tonumber(ARGV[2]) - current_owners
+                if available <= 0 then
+                    return 0
+                end
+                local rank = redis.call('zrank', KEYS[2], ARGV[1])
+                if rank and rank < available then
+                    redis.call('zrem', KEYS[2], ARGV[1])
+                    redis.call('zadd', KEYS[1], ARGV[4], ARGV[1])
+                    return 1
+                end
+                return 0
+                """
 
-                if current_owners < self.limit:
-                    # Check if we're next in line
-                    waiters = self.redis.zrange(self.waiters_key, 0,
-                                                self.limit - current_owners - 1)
+                acquired = self.redis.eval(
+                    lua_script, 2, self.owners_key, self.waiters_key,
+                    permit_id, self.limit, now, expires_at
+                )
 
-                    if permit_id in waiters:
-                        # Move to owners
-                        expires_at = time.time() + self.timeout
-                        pipe = self.redis.pipeline()
-                        pipe.zrem(self.waiters_key, permit_id)
-                        pipe.zadd(self.owners_key, {permit_id: expires_at})
-                        pipe.execute()
-
-                        return SemaphorePermit(
-                            id=permit_id,
-                            acquired_at=now,
-                            expires_at=expires_at
-                        )
+                if acquired:
+                    return SemaphorePermit(
+                        id=permit_id,
+                        acquired_at=now,
+                        expires_at=expires_at
+                    )
 
                 if not blocking:
                     break
@@ -310,11 +318,11 @@ class DistributedSemaphore {
     async acquire(options = {}) {
         const { blocking = true, retryDelay = 100 } = options;
         const permitId = uuidv4();
-        const now = Date.now() / 1000;
-        const expiresAt = now + this.timeout;
 
         while (true) {
             await this._cleanupExpired();
+            const now = Date.now() / 1000;
+            const expiresAt = now + this.timeout;
 
             // Watch for changes
             await this.redis.watch(this.key);
@@ -326,7 +334,10 @@ class DistributedSemaphore {
                 multi.zadd(this.key, expiresAt, permitId);
 
                 try {
-                    await multi.exec();
+                    const result = await multi.exec();
+                    if (result === null) {
+                        continue;
+                    }
                     return {
                         id: permitId,
                         acquiredAt: now,

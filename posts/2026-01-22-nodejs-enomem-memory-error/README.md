@@ -211,13 +211,13 @@ function getData(key) {
 **Solution: Use LRU Cache**
 
 ```javascript
-const LRU = require('lru-cache');
+const { LRUCache } = require('lru-cache');
 
-const cache = new LRU({
+const cache = new LRUCache({
   max: 500,                    // Max items
   maxSize: 50 * 1024 * 1024,   // 50MB max
   sizeCalculation: (value) => {
-    return JSON.stringify(value).length;
+    return Buffer.byteLength(JSON.stringify(value));
   },
   ttl: 1000 * 60 * 5,          // 5 minutes
 });
@@ -307,30 +307,34 @@ function generateHTML(items, outputStream) {
 
 ```javascript
 const fs = require('fs');
-const { Transform } = require('stream');
-const { pipeline } = require('stream/promises');
+const readline = require('readline');
+const { once } = require('events');
 
 // Process JSON lines file
 async function processJSONL(inputPath, outputPath) {
-  const transformStream = new Transform({
-    objectMode: true,
-    transform(chunk, encoding, callback) {
-      const line = chunk.toString();
-      if (line.trim()) {
-        const item = JSON.parse(line);
-        const processed = processItem(item);
-        callback(null, JSON.stringify(processed) + '\n');
-      } else {
-        callback();
-      }
-    },
+  const inputStream = fs.createReadStream(inputPath);
+  const outputStream = fs.createWriteStream(outputPath);
+  const rl = readline.createInterface({
+    input: inputStream,
+    crlfDelay: Infinity,
   });
   
-  await pipeline(
-    fs.createReadStream(inputPath),
-    transformStream,
-    fs.createWriteStream(outputPath)
-  );
+  try {
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      
+      const item = JSON.parse(line);
+      const processed = await processItem(item);
+      const canContinue = outputStream.write(JSON.stringify(processed) + '\n');
+      
+      if (!canContinue) {
+        await once(outputStream, 'drain');
+      }
+    }
+  } finally {
+    outputStream.end();
+    await once(outputStream, 'finish');
+  }
 }
 ```
 
@@ -372,11 +376,10 @@ async function processBatches(items) {
 
 ```javascript
 const v8 = require('v8');
-const fs = require('fs');
 
 function takeHeapSnapshot() {
-  const snapshotFile = `heap-${Date.now()}.heapsnapshot`;
-  const snapshotStream = v8.writeHeapSnapshot(snapshotFile);
+  const requestedFile = `heap-${Date.now()}.heapsnapshot`;
+  const snapshotFile = v8.writeHeapSnapshot(requestedFile);
   console.log(`Heap snapshot written to ${snapshotFile}`);
   return snapshotFile;
 }
@@ -428,6 +431,8 @@ setInterval(() => {
 ### Graceful Degradation
 
 ```javascript
+const v8 = require('v8');
+
 const MEMORY_THRESHOLD = 0.85;  // 85% of heap limit
 
 function checkMemoryPressure() {
@@ -474,6 +479,8 @@ module.exports = {
 ### Memory-Aware Queue Processing
 
 ```javascript
+const v8 = require('v8');
+
 class MemoryAwareQueue {
   constructor(options = {}) {
     this.maxMemoryPercent = options.maxMemoryPercent || 0.8;

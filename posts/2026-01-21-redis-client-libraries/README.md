@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, Node.js, Go, Client Libraries, Connection Pooling, Programming
 
-Description: A comprehensive guide to connecting to Redis from Python, Node.
+Description: A comprehensive guide to connecting to Redis from Python, Node.js, and Go.
 
 ---
 
@@ -22,7 +22,7 @@ The `redis-py` library is the official Python client for Redis, offering a compr
 pip install redis
 ```
 
-For better performance with connection pooling:
+For faster response parsing with the hiredis parser:
 
 ```bash
 pip install redis[hiredis]
@@ -103,9 +103,8 @@ client = redis.Redis(connection_pool=pool)
 client1 = redis.Redis(connection_pool=pool)
 client2 = redis.Redis(connection_pool=pool)
 
-# Check pool stats
-print(f"Active connections: {len(pool._in_use_connections)}")
-print(f"Available connections: {len(pool._available_connections)}")
+# Check total connections currently managed by the pool
+print(f"Connections: {pool.get_connection_count()}")
 ```
 
 ### Async Support
@@ -128,7 +127,7 @@ async def main():
     print(f"Value: {value}")
 
     # Close connection
-    await client.close()
+    await client.aclose()
 
 asyncio.run(main())
 ```
@@ -155,8 +154,8 @@ async def main():
     print(value)
 
     # Cleanup
-    await client.close()
-    await pool.disconnect()
+    await client.aclose()
+    await pool.aclose()
 
 asyncio.run(main())
 ```
@@ -288,6 +287,7 @@ def safe_redis_operation():
 
 ```python
 import redis
+from redis.exceptions import ConnectionError
 
 def create_production_client():
     """Create a production-ready Redis client."""
@@ -324,7 +324,7 @@ def create_production_client():
 
 ## Node.js: ioredis
 
-`ioredis` is a robust, feature-rich Redis client for Node.js with built-in Cluster and Sentinel support.
+`ioredis` is a robust, feature-rich Redis client for Node.js with built-in Cluster and Sentinel support. Redis now recommends `node-redis` for new Node.js projects, but `ioredis` remains common in existing applications.
 
 ### Installation
 
@@ -387,9 +387,9 @@ const redisAcl = new Redis({
 const redisUrl = new Redis('redis://:password@localhost:6379/0');
 ```
 
-### Connection Pool (Automatic)
+### Connection and Retry Configuration
 
-ioredis manages connection pooling automatically, but you can configure it:
+ioredis manages a connection and reconnects automatically by default, but you can configure retry behavior:
 
 ```javascript
 const Redis = require('ioredis');
@@ -398,7 +398,7 @@ const redis = new Redis({
   host: 'localhost',
   port: 6379,
 
-  // Connection pool settings
+  // Request and queue settings
   maxRetriesPerRequest: 3,
   enableReadyCheck: true,
   enableOfflineQueue: true,
@@ -413,7 +413,6 @@ const redis = new Redis({
 
   // Connection settings
   connectTimeout: 10000,
-  commandTimeout: 5000,
 });
 
 // Event listeners
@@ -578,6 +577,7 @@ async function safeOperation() {
 
 ```javascript
 const Redis = require('ioredis');
+const fs = require('fs');
 
 function createProductionClient() {
   return new Redis({
@@ -588,7 +588,6 @@ function createProductionClient() {
 
     // Connection settings
     connectTimeout: 10000,
-    commandTimeout: 5000,
     keepAlive: 30000,
 
     // Retry settings
@@ -642,6 +641,7 @@ import (
     "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/redis/go-redis/v9"
 )
@@ -687,14 +687,9 @@ func main() {
 ```go
 package main
 
-import (
-    "context"
-    "github.com/redis/go-redis/v9"
-)
+import "github.com/redis/go-redis/v9"
 
 func main() {
-    ctx := context.Background()
-
     // With password
     client := redis.NewClient(&redis.Options{
         Addr:     "localhost:6379",
@@ -725,15 +720,13 @@ func main() {
 package main
 
 import (
-    "context"
+    "fmt"
     "time"
 
     "github.com/redis/go-redis/v9"
 )
 
 func main() {
-    ctx := context.Background()
-
     client := redis.NewClient(&redis.Options{
         Addr:     "localhost:6379",
         Password: "password",
@@ -818,6 +811,8 @@ package main
 
 import (
     "context"
+    "log"
+    "time"
 
     "github.com/redis/go-redis/v9"
 )
@@ -861,6 +856,8 @@ package main
 
 import (
     "context"
+    "fmt"
+    "log"
     "time"
 
     "github.com/redis/go-redis/v9"
@@ -976,6 +973,7 @@ package main
 import (
     "context"
     "crypto/tls"
+    "log"
     "time"
 
     "github.com/redis/go-redis/v9"
@@ -1031,7 +1029,7 @@ func main() {
 
 ### Connection Management
 
-1. **Use connection pooling** - All three libraries support it
+1. **Reuse clients and pools where applicable** - redis-py and go-redis expose connection pools; ioredis manages connections per client instance
 2. **Set appropriate timeouts** - Prevent hanging operations
 3. **Implement health checks** - Detect connection issues early
 4. **Handle reconnection gracefully** - Use retry strategies
@@ -1046,7 +1044,7 @@ func main() {
 ### Performance
 
 1. **Use pipelining** - For multiple operations
-2. **Use connection pooling** - Reuse connections
+2. **Reuse connections** - Share long-lived clients and pools where applicable
 3. **Set appropriate pool sizes** - Based on workload
 4. **Monitor pool statistics** - Identify bottlenecks
 

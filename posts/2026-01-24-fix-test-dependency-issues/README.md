@@ -85,6 +85,7 @@ def test_create_second_user(user_counter):
 
 ```bash
 # Run tests in random order to detect dependencies
+pip install pytest-random-order
 pytest --random-order
 
 # Or use pytest-randomly
@@ -109,14 +110,14 @@ Tests that modify shared state (database, files, globals).
 
 def test_create_user():
     # Creates a user but doesn't clean up
-    db.users.insert({"email": "test@example.com"})
-    assert db.users.count() == 1
+    db.users.insert_one({"email": "test@example.com"})
+    assert db.users.count_documents({}) == 1
 
 
 def test_user_count():
     # Fails if test_create_user ran first
     # because user already exists
-    assert db.users.count() == 0
+    assert db.users.count_documents({}) == 0
 ```
 
 ### Solution: Use Fixtures with Cleanup
@@ -142,13 +143,13 @@ def clean_database():
 
 
 def test_create_user():
-    db.users.insert({"email": "test@example.com"})
-    assert db.users.count() == 1
+    db.users.insert_one({"email": "test@example.com"})
+    assert db.users.count_documents({}) == 1
 
 
 def test_user_count():
     # Always starts with empty database
-    assert db.users.count() == 0
+    assert db.users.count_documents({}) == 0
 ```
 
 ### Solution: Use Transactions for Isolation
@@ -204,6 +205,8 @@ Tests that depend on external APIs, databases, or services.
 # test_external_dependency.py
 # BAD: Test requires real external service
 
+import requests
+
 def test_fetch_weather():
     # Fails if API is down, rate limited, or network unavailable
     response = requests.get("https://api.weather.com/current")
@@ -218,6 +221,7 @@ def test_fetch_weather():
 # GOOD: Mock external dependencies
 
 import pytest
+import requests
 from unittest.mock import patch, Mock
 
 @pytest.fixture
@@ -248,7 +252,7 @@ def test_weather_api_error():
     with patch('app.services.requests.get') as mock_get:
         mock_get.side_effect = requests.Timeout("Connection timed out")
 
-        from app.services import get_weather
+        from app.services import get_weather, WeatherServiceError
 
         with pytest.raises(WeatherServiceError):
             get_weather("New York")
@@ -261,29 +265,23 @@ def test_weather_api_error():
 # For tests that NEED real services
 
 import pytest
-import testcontainers.postgres
+import sqlalchemy
+from testcontainers.postgres import PostgresContainer
 
 @pytest.fixture(scope="session")
 def postgres_container():
     """Start a real PostgreSQL container for integration tests."""
-    with testcontainers.postgres.PostgresContainer("postgres:15") as postgres:
+    with PostgresContainer("postgres:15") as postgres:
         yield postgres
 
 
 @pytest.fixture
 def db_connection(postgres_container):
     """Get connection to test database."""
-    import psycopg2
-
-    conn = psycopg2.connect(
-        host=postgres_container.get_container_host_ip(),
-        port=postgres_container.get_exposed_port(5432),
-        user="test",
-        password="test",
-        database="test"
-    )
-    yield conn
-    conn.close()
+    engine = sqlalchemy.create_engine(postgres_container.get_connection_url())
+    with engine.connect() as connection:
+        yield connection
+    engine.dispose()
 ```
 
 ---
@@ -297,6 +295,9 @@ Tests that read or write files.
 ```python
 # test_file_dependency.py
 # BAD: Tests share files
+
+import json
+import os
 
 def test_write_config():
     with open("/tmp/config.json", "w") as f:
@@ -321,6 +322,7 @@ def test_read_config():
 
 import pytest
 import tempfile
+import json
 import os
 
 @pytest.fixture
@@ -428,9 +430,9 @@ describe('UserService', () => {
 pip install pytest-randomly
 pytest --randomly-seed=12345
 
-# JavaScript with mocha
-npm install mocha-random-order
-mocha --require mocha-random-order
+# JavaScript with mocha and choma
+npm install --save-dev choma
+mocha ./tests/ --require choma
 ```
 
 ### Run Tests in Isolation
@@ -459,11 +461,11 @@ _test_modifications = {}
 @pytest.fixture(autouse=True)
 def track_modifications(request):
     """Track database modifications for debugging."""
-    initial_count = db.users.count()
+    initial_count = db.users.count_documents({})
 
     yield
 
-    final_count = db.users.count()
+    final_count = db.users.count_documents({})
     if final_count != initial_count:
         _test_modifications[request.node.name] = {
             "before": initial_count,

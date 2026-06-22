@@ -103,17 +103,17 @@ count_args_size "/var/log/*.log"
 
 # Instead of: rm /data/*.log
 # Use:
-find /data -name "*.log" | xargs rm
+find /data -name "*.log" -print0 | xargs -0 -r rm -f
 
-# With -print0 and -0 for filenames containing spaces or special chars
-find /data -name "*.log" -print0 | xargs -0 rm
+# Use -print0 and -0 for filenames containing spaces, newlines, or special chars
+find /data -name "*.log" -print0 | xargs -0 -r rm -f
 
 # Limit number of arguments per command
-find /data -name "*.log" -print0 | xargs -0 -n 100 rm
+find /data -name "*.log" -print0 | xargs -0 -r -n 100 rm
 # -n 100 means process 100 files at a time
 
 # Show what would be executed (dry run)
-find /data -name "*.log" -print0 | xargs -0 -n 100 echo rm
+find /data -name "*.log" -print0 | xargs -0 -r -n 100 echo rm
 ```
 
 ### xargs with Custom Commands
@@ -124,14 +124,14 @@ find /data -name "*.log" -print0 | xargs -0 -n 100 echo rm
 
 # Process files with a specific command
 # -I {} replaces {} with each argument
-find /data -name "*.txt" | xargs -I {} cp {} /backup/
+find /data -name "*.txt" -print0 | xargs -0 -r -I {} cp {} /backup/
 
 # Parallel processing with -P
 # Process 4 files simultaneously
-find /data -name "*.jpg" -print0 | xargs -0 -P 4 -I {} convert {} -resize 50% {}.thumb
+find /data -name "*.jpg" -print0 | xargs -0 -r -P 4 -I {} convert {} -resize 50% {}.thumb
 
 # Combining multiple commands
-find /data -name "*.log" -print0 | xargs -0 -I {} sh -c 'gzip "{}" && mv "{}.gz" /archive/'
+find /data -name "*.log" -print0 | xargs -0 -r -I {} sh -c 'gzip "$1" && mv "$1.gz" /archive/' _ {}
 ```
 
 ---
@@ -280,14 +280,14 @@ shopt -u nullglob
 #          yum install parallel (RHEL/CentOS)
 
 # Process files in parallel (4 jobs)
-find /data -name "*.jpg" | parallel -j4 convert {} -resize 800x600 {.}_resized.jpg
+find /data -name "*.jpg" -print0 | parallel -0 -j4 convert {} -resize 800x600 {.}_resized.jpg
 
 # With progress bar
-find /data -name "*.log" | parallel --bar gzip {}
+find /data -name "*.log" -print0 | parallel -0 --bar gzip {}
 
 # Distribute across multiple machines
-parallel --sshlogin server1,server2,server3 \
-    'process_file {}' ::: /data/*.dat
+find /data -name "*.dat" -print0 | parallel -0 --sshlogin server1,server2,server3 \
+    'process_file {}'
 ```
 
 ### Parallel with Complex Commands
@@ -297,18 +297,19 @@ parallel --sshlogin server1,server2,server3 \
 # Advanced parallel processing
 
 # Process with multiple arguments
-parallel "convert {1} -resize {2} {1.}_{2}.jpg" ::: *.jpg ::: 100x100 200x200 400x400
+find . -maxdepth 1 -name "*.jpg" -print0 | \
+    parallel -0 "convert {1} -resize {2} {1.}_{2}.jpg" :::: - ::: 100x100 200x200 400x400
 
 # Using functions with parallel
-export -f my_function  # Export function for parallel
-
 my_function() {
     local file="$1"
     # Process file
     echo "Processing: $file"
 }
 
-find /data -name "*.txt" | parallel my_function {}
+export -f my_function  # Export function for parallel
+
+find /data -name "*.txt" -print0 | parallel -0 my_function {}
 ```
 
 ---
@@ -326,7 +327,7 @@ find /data -name "*.txt" | parallel my_function {}
 rsync -av /source/ /dest/
 
 # With specific file pattern
-rsync -av --include='*.log' --exclude='*' /source/ /dest/
+rsync -av --include='*/' --include='*.log' --exclude='*' /source/ /dest/
 
 # Delete files not in source
 rsync -av --delete /source/ /dest/
@@ -446,7 +447,7 @@ compress_files() {
             parallel -0 -j"$jobs" --bar gzip {}
     else
         find "$source_dir" -name "$pattern" -type f ! -name "*.gz" -print0 | \
-            xargs -0 -P"$jobs" -I {} gzip {}
+            xargs -0 -r -P"$jobs" -I {} gzip {}
     fi
 
     echo "Compression complete"
@@ -525,7 +526,7 @@ process_good() {
 
 # Good: Using xargs for external commands
 delete_good() {
-    find /data -name "*.tmp" -print0 | xargs -0 rm -f
+    find /data -name "*.tmp" -print0 | xargs -0 -r rm -f
 }
 
 # Good: Batched processing with arrays
@@ -538,14 +539,14 @@ process_batched() {
 
         if (( ${#batch[@]} >= batch_size )); then
             # Process batch
-            printf '%s\n' "${batch[@]}" | process_batch
+            process_batch "${batch[@]}"
             batch=()
         fi
     done < <(find /data -type f -print0)
 
     # Process remaining
     if (( ${#batch[@]} > 0 )); then
-        printf '%s\n' "${batch[@]}" | process_batch
+        process_batch "${batch[@]}"
     fi
 }
 ```
@@ -562,7 +563,7 @@ safe_operation() {
     local operation="$3"
 
     # First, try the simple approach
-    if eval "$operation" "$directory"/"$pattern" 2>/dev/null; then
+    if "$operation" "$directory"/$pattern 2>/dev/null; then
         echo "Operation completed successfully"
         return 0
     fi
@@ -572,13 +573,13 @@ safe_operation() {
 
     case "$operation" in
         rm)
-            find "$directory" -name "$pattern" -print0 | xargs -0 rm -f
+            find "$directory" -name "$pattern" -print0 | xargs -0 -r rm -f
             ;;
         gzip)
-            find "$directory" -name "$pattern" -print0 | xargs -0 gzip
+            find "$directory" -name "$pattern" -print0 | xargs -0 -r gzip
             ;;
         *)
-            find "$directory" -name "$pattern" -print0 | xargs -0 "$operation"
+            find "$directory" -name "$pattern" -print0 | xargs -0 -r "$operation"
             ;;
     esac
 

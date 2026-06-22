@@ -76,7 +76,9 @@ az aks create \
     --min-count 2 \
     --max-count 10 \
     --network-plugin azure \
-    --network-policy azure \
+    --network-plugin-mode overlay \
+    --network-dataplane cilium \
+    --network-policy cilium \
     --enable-addons monitoring \
     --generate-ssh-keys \
     --zones 1 2 3
@@ -96,7 +98,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "myapp"
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   # System node pool for critical components
   default_node_pool {
@@ -104,7 +106,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     node_count          = 3
     vm_size             = "Standard_D4s_v3"
     zones               = ["1", "2", "3"]
-    enable_auto_scaling = true
+    auto_scaling_enabled = true
     min_count           = 2
     max_count           = 5
 
@@ -117,9 +119,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   network_profile {
-    network_plugin    = "azure"
-    network_policy    = "azure"
-    load_balancer_sku = "standard"
+    network_plugin      = "azure"
+    network_plugin_mode = "overlay"
+    network_data_plane  = "cilium"
+    network_policy      = "cilium"
+    load_balancer_sku   = "standard"
   }
 
   oms_agent {
@@ -134,7 +138,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
   vm_size               = "Standard_D8s_v3"
   node_count            = 3
   zones                 = ["1", "2", "3"]
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 2
   max_count             = 20
 
@@ -185,7 +189,7 @@ az aks nodepool update \
 ### Use Spot Instances for Cost Savings
 
 ```bash
-# Add spot instance node pool (up to 90% cost savings)
+# Add spot instance node pool for interruptible workloads and cost savings
 az aks nodepool add \
     --resource-group $RESOURCE_GROUP \
     --cluster-name $CLUSTER_NAME \
@@ -288,9 +292,9 @@ az aks enable-addons \
 // Find pods with high restart counts
 KubePodInventory
 | where TimeGenerated > ago(1h)
-| where RestartCount > 5
-| project TimeGenerated, Namespace, Name, RestartCount, ContainerStatus
-| order by RestartCount desc
+| where PodRestartCount > 5
+| project TimeGenerated, Namespace, Name, PodRestartCount, ContainerStatus
+| order by PodRestartCount desc
 
 // CPU usage by node
 Perf
@@ -366,11 +370,13 @@ az aks get-upgrades \
     --name $CLUSTER_NAME \
     --output table
 
+TARGET_VERSION="<target-version-from-get-upgrades>"
+
 # Upgrade control plane first
 az aks upgrade \
     --resource-group $RESOURCE_GROUP \
     --name $CLUSTER_NAME \
-    --kubernetes-version 1.29.0 \
+    --kubernetes-version $TARGET_VERSION \
     --control-plane-only
 
 # Upgrade node pools individually
@@ -378,7 +384,7 @@ az aks nodepool upgrade \
     --resource-group $RESOURCE_GROUP \
     --cluster-name $CLUSTER_NAME \
     --name user \
-    --kubernetes-version 1.29.0
+    --kubernetes-version $TARGET_VERSION
 ```
 
 ## Best Practices Checklist

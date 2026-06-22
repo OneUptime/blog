@@ -370,9 +370,9 @@ app.Run();
 // HealthChecks/DatabaseHealthCheck.cs
 public class DatabaseHealthCheck : IHealthCheck
 {
-    private readonly IDbConnection _connection;
+    private readonly DbConnection _connection;
 
-    public DatabaseHealthCheck(IDbConnection connection)
+    public DatabaseHealthCheck(DbConnection connection)
     {
         _connection = connection;
     }

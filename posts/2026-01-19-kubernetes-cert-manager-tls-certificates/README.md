@@ -58,7 +58,7 @@ flowchart TD
 ```bash
 # Install cert-manager CRDs and components
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for pods to be ready
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
@@ -78,7 +78,8 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --version v1.20.2 \
+  --set crds.enabled=true \
   --set prometheus.enabled=true \
   --set webhook.timeoutSeconds=30
 
@@ -107,7 +108,7 @@ spec:
       # HTTP-01 challenge
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ### Production Issuer
@@ -128,7 +129,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ### DNS-01 Challenge (Wildcard Support)
@@ -151,7 +152,9 @@ spec:
           route53:
             region: us-east-1
             hostedZoneID: Z1234567890
-            accessKeyID: AKIAIOSFODNN7EXAMPLE
+            accessKeyIDSecretRef:
+              name: route53-credentials
+              key: access-key-id
             secretAccessKeySecretRef:
               name: route53-credentials
               key: secret-access-key
@@ -167,6 +170,7 @@ metadata:
   namespace: cert-manager
 type: Opaque
 stringData:
+  access-key-id: AKIAIOSFODNN7EXAMPLE
   secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
@@ -421,12 +425,9 @@ spec:
     server: https://vault.example.com
     path: pki/sign/example-role
     auth:
-      kubernetes:
-        role: cert-manager
-        mountPath: /v1/auth/kubernetes
-        secretRef:
-          name: vault-token
-          key: token
+      tokenSecretRef:
+        name: vault-token
+        key: token
 ---
 # Vault token secret
 apiVersion: v1
@@ -467,30 +468,47 @@ kubectl get secret example-com-tls-secret -o jsonpath='{.data.tls\.crt}' | base6
 kubectl get events --field-selector involvedObject.kind=Certificate
 
 # Check cert-manager logs
-kubectl logs -n cert-manager -l app=cert-manager -f
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager -f
 
 # Check webhook logs
-kubectl logs -n cert-manager -l app=webhook -f
+kubectl logs -n cert-manager -l app.kubernetes.io/name=webhook -f
 ```
 
 ### Prometheus Metrics
 
 ```yaml
-# servicemonitor.yaml
+# podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: cert-manager
-  namespace: monitoring
+  namespace: cert-manager
+  labels:
+    app: cert-manager
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/instance: cert-manager
 spec:
+  jobLabel: app.kubernetes.io/name
   selector:
-    matchLabels:
-      app: cert-manager
-  namespaceSelector:
-    matchNames:
-      - cert-manager
-  endpoints:
-    - port: tcp-prometheus-servicemonitor
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - cainjector
+          - cert-manager
+          - webhook
+      - key: app.kubernetes.io/instance
+        operator: In
+        values:
+          - cert-manager
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - cainjector
+          - controller
+          - webhook
+  podMetricsEndpoints:
+    - port: http-metrics
       interval: 60s
 ```
 
@@ -501,10 +519,10 @@ certmanager_certificate_expiration_timestamp_seconds
 # Certificates ready
 certmanager_certificate_ready_status
 
-# Certificate renewal attempts
+# Certificate renewal time
 certmanager_certificate_renewal_timestamp_seconds
 
-# ACME client errors
+# ACME client request count
 certmanager_http_acme_client_request_duration_seconds_count
 ```
 
@@ -545,14 +563,11 @@ dig TXT _acme-challenge.example.com
 ### Force Certificate Renewal
 
 ```bash
-# Delete the certificate (will be recreated)
-kubectl delete certificate example-com-tls
-
-# Or delete the secret (cert-manager will renew)
-kubectl delete secret example-com-tls-secret
-
 # Manually trigger renewal
-kubectl annotate certificate example-com-tls cert-manager.io/issue-temporary-certificate="true"
+cmctl renew example-com-tls
+
+# Or renew all certificates in a namespace
+cmctl renew --namespace=default --all
 ```
 
 ## Best Practices
@@ -580,7 +595,8 @@ spec:
   privateKey:
     algorithm: ECDSA
     size: 256
-  # Enable key rotation
+    # Enable key rotation
+    rotationPolicy: Always
   secretTemplate:
     annotations:
       my-annotation: "value"

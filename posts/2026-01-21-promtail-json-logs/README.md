@@ -19,6 +19,8 @@ Before starting, ensure you have:
 - Basic understanding of Promtail pipelines
 - Access to modify Promtail configuration
 
+Note: Promtail reached end-of-life on March 2, 2026. Existing Promtail deployments can still use these pipeline examples, but new deployments should use Grafana Alloy or another supported Loki client.
+
 ## Understanding JSON Logs
 
 ### Common JSON Log Formats
@@ -70,7 +72,7 @@ pipeline_stages:
       expressions:
         level: level
         message: message
-        timestamp: '@timestamp'
+        timestamp: '"@timestamp"'
 
   # Add labels from extracted fields
   - labels:
@@ -108,7 +110,7 @@ pipeline_stages:
 pipeline_stages:
   - json:
       expressions:
-        trace_id: request.headers.x-trace-id
+        trace_id: 'request.headers."x-trace-id"'
 ```
 
 ### Multiple Levels
@@ -177,7 +179,7 @@ pipeline_stages:
 pipeline_stages:
   - json:
       expressions:
-        ts: '@timestamp'
+        ts: '"@timestamp"'
   - timestamp:
       source: ts
       format: '2006-01-02T15:04:05.000Z'
@@ -341,7 +343,10 @@ pipeline_stages:
         level: level
         message: message
 
-  # If level is empty, it might be a different format
+  - labels:
+      level:
+
+  # If level is empty or missing, it might be a different format
   - match:
       selector: '{level=""}'
       stages:
@@ -349,6 +354,8 @@ pipeline_stages:
             expressions:
               level: severity
               message: msg
+        - labels:
+            level:
 ```
 
 ### Optional Fields
@@ -395,7 +402,7 @@ scrape_configs:
       # Parse JSON
       - json:
           expressions:
-            timestamp: '@timestamp'
+            timestamp: '"@timestamp"'
             level: level
             message: message
             service: service
@@ -512,8 +519,8 @@ scrape_configs:
 pipeline_stages:
   - json:
       expressions:
-        timestamp: '@timestamp'
-        level: log.level
+        timestamp: '"@timestamp"'
+        level: '"log.level"'
         message: message
         service_name: service.name
         trace_id: trace.id

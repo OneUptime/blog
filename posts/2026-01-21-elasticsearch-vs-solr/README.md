@@ -16,7 +16,7 @@ Both Elasticsearch and Apache Solr are built on Apache Lucene but have different
 
 - **First Release**: 2010
 - **Organization**: Elastic NV
-- **License**: Elastic License 2.0 / SSPL
+- **License**: Elastic License 2.0 distribution; source-available under Elastic License 2.0 / SSPL / AGPLv3
 - **Written In**: Java
 - **Core**: Apache Lucene
 
@@ -70,7 +70,7 @@ flowchart TB
 
 | Aspect | Elasticsearch | Solr |
 |--------|---------------|------|
-| Cluster coordination | Built-in (Zen/Raft) | ZooKeeper (external) |
+| Cluster coordination | Built-in cluster coordination | ZooKeeper (external) |
 | Configuration | Dynamic via API | ZooKeeper + config files |
 | Sharding | Automatic | Manual or automatic |
 | Node discovery | Built-in | ZooKeeper |
@@ -204,8 +204,8 @@ curl -X GET "localhost:9200/_cluster/health?pretty"
 # Add node - automatic discovery
 # Configure elasticsearch.yml and start
 
-# Scale shards
-curl -X PUT "localhost:9200/index/_settings" -d '{"index": {"number_of_replicas": 2}}'
+# Scale replicas
+curl -X PUT "localhost:9200/index/_settings" -H 'Content-Type: application/json' -d '{"index": {"number_of_replicas": 2}}'
 ```
 
 **Solr:**
@@ -367,26 +367,36 @@ results = solr.search("title:hello")
 
 **Elasticsearch:**
 ```java
-RestHighLevelClient client = new RestHighLevelClient(
-    RestClient.builder(new HttpHost("localhost", 9200, "http"))
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http")
+).build();
+
+ElasticsearchTransport transport = new RestClientTransport(
+    restClient, new JacksonJsonpMapper()
 );
 
-SearchRequest request = new SearchRequest("my-index");
-SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-sourceBuilder.query(QueryBuilders.matchQuery("title", "hello"));
-request.source(sourceBuilder);
+ElasticsearchClient client = new ElasticsearchClient(transport);
 
-SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+SearchResponse<MyDocument> response = client.search(s -> s
+    .index("my-index")
+    .query(q -> q
+        .match(m -> m
+            .field("title")
+            .query("hello")
+        )
+    ),
+    MyDocument.class
+);
 ```
 
 **Solr:**
 ```java
-SolrClient client = new HttpSolrClient.Builder("http://localhost:8983/solr/my-core").build();
+SolrClient client = new HttpJdkSolrClient.Builder("http://localhost:8983/solr").build();
 
 SolrQuery query = new SolrQuery();
 query.setQuery("title:hello");
 
-QueryResponse response = client.query(query);
+QueryResponse response = client.query("my-core", query);
 ```
 
 ## Ecosystem Comparison
@@ -439,10 +449,10 @@ QueryResponse response = client.query(query);
 
 ```bash
 # Export from Solr
-curl "localhost:8983/solr/collection/export?q=*:*&fl=*&wt=json" > data.json
+curl "localhost:8983/solr/collection/export?q=*:*&sort=id+asc&fl=id,title,date&wt=json" > data.json
 
 # Transform data format
-# Solr documents have _version_, etc.
+# /export requires sort and fl fields with docValues enabled.
 # Elasticsearch expects clean JSON
 
 # Import to Elasticsearch

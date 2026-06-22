@@ -8,7 +8,7 @@ Description: Learn how to fix 'cannot refer to unexported name' errors in Go by 
 
 ---
 
-Go uses capitalization to control visibility. Names starting with a lowercase letter are unexported (private to the package), while uppercase names are exported (public). This error occurs when trying to access unexported names from outside their package.
+Go uses capitalization to control visibility for package-level identifiers, struct fields, and methods. Names starting with a lowercase letter are unexported (private to the package), while names starting with an uppercase letter are exported (public). This error occurs when trying to access unexported names from outside their package.
 
 ---
 
@@ -44,7 +44,7 @@ func main() {
 
 ```mermaid
 graph TD
-    A[Identifier Name] --> B{First Letter}
+    A[Package-level identifier, field, or method] --> B{First Letter}
     B -->|Uppercase| C[Exported]
     B -->|Lowercase| D[Unexported]
     C --> E[Accessible from any package]

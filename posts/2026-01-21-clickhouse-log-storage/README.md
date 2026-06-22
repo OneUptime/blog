@@ -63,7 +63,7 @@ CREATE TABLE logs
 
     -- Skip indexes for common search patterns
     INDEX idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
-    INDEX idx_message message TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4,
+    INDEX idx_message message TYPE text(tokenizer = splitByNonAlpha, preprocessor = lower(message)),
     INDEX idx_level level TYPE set(100) GRANULARITY 4
 )
 ENGINE = MergeTree()
@@ -138,6 +138,7 @@ endpoint = "http://clickhouse:8123"
 database = "logs"
 table = "logs"
 skip_unknown_fields = true
+date_time_best_effort = true
 
 [sinks.clickhouse.encoding]
 timestamp_format = "rfc3339"
@@ -176,7 +177,9 @@ timestamp_format = "rfc3339"
     json_date_format epoch
 ```
 
-### Promtail to ClickHouse
+### Promtail with a Loki-Compatible Endpoint
+
+Promtail does not write directly to ClickHouse's `JSONEachRow` HTTP insert endpoint. Its clients send data to the Loki push API, so use Vector, Fluent Bit, OpenTelemetry Collector, or a Loki-compatible bridge for direct ClickHouse ingestion.
 
 ```yaml
 # promtail-config.yaml
@@ -187,7 +190,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://clickhouse:8123/?query=INSERT%20INTO%20logs%20FORMAT%20JSONEachRow
+  - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
   - job_name: kubernetes-pods
@@ -210,12 +213,12 @@ scrape_configs:
 ```python
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def send_logs(logs):
     """Send logs to ClickHouse via HTTP interface."""
     data = '\n'.join(json.dumps({
-        'timestamp': log.get('timestamp', datetime.utcnow().isoformat()),
+        'timestamp': log.get('timestamp', datetime.now(timezone.utc).isoformat()),
         'level': log.get('level', 'info'),
         'service': log.get('service', 'unknown'),
         'host': log.get('host', 'unknown'),
@@ -269,14 +272,14 @@ ORDER BY timestamp DESC;
 -- Multiple terms (AND)
 SELECT timestamp, service, message
 FROM logs
-WHERE hasAll(splitByWhitespace(lower(message)), ['error', 'database'])
+WHERE hasAllTokens(message, ['error', 'database'])
   AND timestamp >= now() - INTERVAL 1 HOUR
 ORDER BY timestamp DESC;
 
 -- Regular expression search
 SELECT timestamp, service, message
 FROM logs
-WHERE match(message, 'timeout.*\d+ms')
+WHERE match(message, 'timeout.*\\d+ms')
   AND timestamp >= now() - INTERVAL 1 HOUR
 ORDER BY timestamp DESC;
 ```
@@ -348,7 +351,7 @@ LIMIT 20;
 ```sql
 -- Find repeated error patterns
 SELECT
-    replaceRegexpAll(message, '\d+', 'N') AS pattern,
+    replaceRegexpAll(message, '\\d+', 'N') AS pattern,
     count() AS occurrences,
     min(timestamp) AS first_seen,
     max(timestamp) AS last_seen
@@ -371,9 +374,15 @@ WITH hourly_counts AS (
 SELECT
     hour,
     cnt,
-    avg(cnt) OVER (ORDER BY hour ROWS BETWEEN 24 PRECEDING AND 1 PRECEDING) AS avg_24h,
+    avg_24h,
     cnt / avg_24h AS ratio
-FROM hourly_counts
+FROM (
+    SELECT
+        hour,
+        cnt,
+        avg(cnt) OVER (ORDER BY hour ROWS BETWEEN 24 PRECEDING AND 1 PRECEDING) AS avg_24h
+    FROM hourly_counts
+)
 WHERE cnt > avg_24h * 2
 ORDER BY hour DESC;
 ```

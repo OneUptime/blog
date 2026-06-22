@@ -263,6 +263,13 @@ az network nic ip-config inbound-nat-rule add \
   --ip-config-name ipconfig1 \
   --lb-name myLoadBalancer \
   --inbound-nat-rule myNatRuleSSH1
+
+az network nic ip-config inbound-nat-rule add \
+  --resource-group myLBResourceGroup \
+  --nic-name myNic2 \
+  --ip-config-name ipconfig1 \
+  --lb-name myLoadBalancer \
+  --inbound-nat-rule myNatRuleSSH2
 ```
 
 ## Creating an Internal Load Balancer
@@ -337,7 +344,7 @@ az network lb rule create \
 
 ## Outbound Rules Configuration
 
-Standard Load Balancer requires explicit outbound rules for backend instances to access the internet.
+For predictable outbound connectivity with Standard Load Balancer, configure explicit outbound connectivity such as outbound rules.
 
 ```bash
 # Create a public IP for outbound traffic
@@ -376,14 +383,14 @@ Enable monitoring to track load balancer health and performance.
 az monitor diagnostic-settings create \
   --name myLBDiagnostics \
   --resource /subscriptions/{sub-id}/resourceGroups/myLBResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer \
-  --logs '[{"category": "LoadBalancerAlertEvent", "enabled": true}, {"category": "LoadBalancerProbeHealthStatus", "enabled": true}]' \
+  --logs '[{"category": "LoadBalancerHealthEvent", "enabled": true}]' \
   --metrics '[{"category": "AllMetrics", "enabled": true}]' \
   --workspace myLogAnalyticsWorkspace
 
 # Query health probe status
 az monitor metrics list \
   --resource /subscriptions/{sub-id}/resourceGroups/myLBResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer \
-  --metric "HealthProbeStatus" \
+  --metric "DipAvailability" \
   --interval PT1M
 ```
 
@@ -391,7 +398,7 @@ az monitor metrics list \
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| HealthProbeStatus | Percentage of healthy probes | < 100% |
+| DipAvailability | Health probe status | < 100% |
 | ByteCount | Total bytes processed | Baseline + 50% |
 | PacketCount | Total packets processed | Baseline + 50% |
 | SYNCount | SYN packets (new connections) | Baseline + 100% |
@@ -458,9 +465,11 @@ az network lb show \
 ```python
 # Example health endpoint that checks dependencies
 from flask import Flask, jsonify
+import os
 import psycopg2
 
 app = Flask(__name__)
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 @app.route('/health')
 def health():

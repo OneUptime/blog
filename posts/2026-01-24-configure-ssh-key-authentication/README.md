@@ -245,9 +245,6 @@ PasswordAuthentication no
 # Disable empty passwords
 PermitEmptyPasswords no
 
-# Disable challenge-response authentication
-ChallengeResponseAuthentication no
-
 # Disable keyboard-interactive authentication
 KbdInteractiveAuthentication no
 
@@ -258,8 +255,7 @@ UsePAM yes
 AuthorizedKeysFile .ssh/authorized_keys
 
 # Security settings
-# Use only protocol version 2
-Protocol 2
+# Modern OpenSSH supports only protocol version 2
 
 # Limit authentication attempts
 MaxAuthTries 3
@@ -431,7 +427,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519_new.pub user@server
 ssh -i ~/.ssh/id_ed25519_new user@server
 
 # Step 4: Remove old key from server's authorized_keys
-ssh user@server "grep -v 'old-key-identifier' ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.new && mv ~/.ssh/authorized_keys.new ~/.ssh/authorized_keys"
+ssh user@server "grep -v 'old-key-identifier' ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.new && mv ~/.ssh/authorized_keys.new ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 
 # Step 5: Update local key files
 mv ~/.ssh/id_ed25519 ~/.ssh/id_ed25519_old

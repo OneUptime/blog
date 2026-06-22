@@ -63,6 +63,9 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
 
 public class BasicStreamingJob {
 
@@ -111,7 +114,7 @@ class Event {
     public String eventType;
     public long timestamp;
     public String userId;
-    public Map<String, String> properties;
+    public Map<String, String> properties = new HashMap<>();
 
     // Getters and setters
 }
@@ -141,6 +144,9 @@ class EnrichEventFunction implements MapFunction<Event, Event> {
     @Override
     public Event map(Event event) {
         // Add derived fields
+        if (event.properties == null) {
+            event.properties = new HashMap<>();
+        }
         event.properties.put("processed_at", String.valueOf(System.currentTimeMillis()));
         return event;
     }
@@ -155,10 +161,14 @@ class EnrichEventFunction implements MapFunction<Event, Event> {
 // WindowingExample.java
 
 import org.apache.flink.streaming.api.windowing.assigners.*;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.triggers.CountTrigger;
+import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.util.Collector;
+import java.time.Duration;
 
 public class WindowingExample {
 
@@ -170,22 +180,22 @@ public class WindowingExample {
         // Tumbling window - fixed size, non-overlapping
         DataStream<EventCount> tumblingCounts = events
             .keyBy(event -> event.eventType)
-            .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
             .apply(new CountEventsFunction());
 
         // Sliding window - fixed size, overlapping
         DataStream<EventCount> slidingCounts = events
             .keyBy(event -> event.eventType)
             .window(SlidingEventTimeWindows.of(
-                Time.minutes(10),  // Window size
-                Time.minutes(5)    // Slide interval
+                Duration.ofMinutes(10),  // Window size
+                Duration.ofMinutes(5)    // Slide interval
             ))
             .apply(new CountEventsFunction());
 
         // Session window - gap-based
         DataStream<EventCount> sessionCounts = events
             .keyBy(event -> event.userId)
-            .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+            .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
             .apply(new CountEventsFunction());
 
         // Global window with custom trigger
@@ -193,7 +203,7 @@ public class WindowingExample {
             .keyBy(event -> event.eventType)
             .window(GlobalWindows.create())
             .trigger(CountTrigger.of(1000))  // Trigger every 1000 events
-            .apply(new CountEventsFunction());
+            .apply(new CountGlobalEventsFunction());
 
         tumblingCounts.print();
 
@@ -238,6 +248,25 @@ class EventCount {
         this.windowEnd = windowEnd;
     }
 }
+
+// Global windows use GlobalWindow instead of TimeWindow
+class CountGlobalEventsFunction implements WindowFunction<Event, EventCount, String, GlobalWindow> {
+
+    @Override
+    public void apply(
+        String key,
+        GlobalWindow window,
+        Iterable<Event> events,
+        Collector<EventCount> out
+    ) {
+        long count = 0;
+        for (Event event : events) {
+            count++;
+        }
+
+        out.collect(new EventCount(key, count, 0L, Long.MAX_VALUE));
+    }
+}
 ```
 
 ---
@@ -273,6 +302,12 @@ gantt
 // WatermarkExample.java
 
 import org.apache.flink.api.common.eventtime.*;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.util.OutputTag;
+import java.time.Duration;
 
 public class WatermarkExample {
 
@@ -291,17 +326,19 @@ public class WatermarkExample {
         DataStream<Event> events = env
             .fromSource(kafkaSource, watermarkStrategy, "Kafka Source");
 
+        OutputTag<Event> lateOutputTag = new OutputTag<Event>("late-events") {};
+
         // Process with event time
-        DataStream<EventCount> counts = events
+        SingleOutputStreamOperator<EventCount> counts = events
             .keyBy(event -> event.eventType)
-            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
-            .allowedLateness(Time.minutes(2))  // Allow late events
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
+            .allowedLateness(Duration.ofMinutes(2))  // Allow late events
             .sideOutputLateData(lateOutputTag)  // Capture late events
             .apply(new CountEventsFunction());
 
         // Handle late events separately
         DataStream<Event> lateEvents = counts.getSideOutput(lateOutputTag);
-        lateEvents.addSink(new LateEventSink());
+        lateEvents.sinkTo(new LateEventSink());
 
         env.execute("Watermark Example");
     }
@@ -335,9 +372,15 @@ class CustomWatermarkGenerator implements WatermarkGenerator<Event> {
 // StatefulProcessingExample.java
 
 import org.apache.flink.api.common.state.*;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.util.Collector;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 public class StatefulProcessingExample {
 
@@ -345,7 +388,9 @@ public class StatefulProcessingExample {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // Enable state backend for large state
-        env.setStateBackend(new EmbeddedRocksDBStateBackend());
+        Configuration config = new Configuration();
+        config.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
+        env.configure(config);
 
         DataStream<Event> events = getEventStream(env);
 
@@ -372,33 +417,38 @@ class UserStatsFunction extends KeyedProcessFunction<String, Event, UserStats> {
 
     @Override
     public void open(Configuration parameters) {
-        // Initialize state descriptors
-        eventCountState = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("eventCount", Long.class)
-        );
-
-        firstEventTimeState = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("firstEventTime", Long.class)
-        );
-
-        lastEventTimeState = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("lastEventTime", Long.class)
-        );
-
-        eventTypeCountState = getRuntimeContext().getMapState(
-            new MapStateDescriptor<>("eventTypeCounts", String.class, Long.class)
-        );
-
         // Configure TTL for state cleanup
         StateTtlConfig ttlConfig = StateTtlConfig
-            .newBuilder(Time.days(7))
+            .newBuilder(Duration.ofDays(7))
             .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite)
             .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
             .build();
 
-        ValueStateDescriptor<List<String>> recentEventsDescriptor =
-            new ValueStateDescriptor<>("recentEvents", TypeInformation.of(new TypeHint<List<String>>() {}));
+        // Initialize state descriptors
+        ValueStateDescriptor<Long> eventCountDescriptor =
+            new ValueStateDescriptor<>("eventCount", Long.class);
+        eventCountDescriptor.enableTimeToLive(ttlConfig);
+        eventCountState = getRuntimeContext().getState(eventCountDescriptor);
+
+        ValueStateDescriptor<Long> firstEventTimeDescriptor =
+            new ValueStateDescriptor<>("firstEventTime", Long.class);
+        firstEventTimeDescriptor.enableTimeToLive(ttlConfig);
+        firstEventTimeState = getRuntimeContext().getState(firstEventTimeDescriptor);
+
+        ValueStateDescriptor<Long> lastEventTimeDescriptor =
+            new ValueStateDescriptor<>("lastEventTime", Long.class);
+        lastEventTimeDescriptor.enableTimeToLive(ttlConfig);
+        lastEventTimeState = getRuntimeContext().getState(lastEventTimeDescriptor);
+
+        MapStateDescriptor<String, Long> eventTypeCountDescriptor =
+            new MapStateDescriptor<>("eventTypeCounts", String.class, Long.class);
+        eventTypeCountDescriptor.enableTimeToLive(ttlConfig);
+        eventTypeCountState = getRuntimeContext().getMapState(eventTypeCountDescriptor);
+
+        ListStateDescriptor<String> recentEventsDescriptor =
+            new ListStateDescriptor<>("recentEvents", String.class);
         recentEventsDescriptor.enableTimeToLive(ttlConfig);
+        recentEventsState = getRuntimeContext().getListState(recentEventsDescriptor);
     }
 
     @Override
@@ -460,7 +510,15 @@ class UserStats {
 
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
-import org.apache.flink.streaming.api.CheckpointingMode;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.configuration.ExternalizedCheckpointRetention;
+import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.core.execution.CheckpointingMode;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 
 public class ExactlyOnceKafkaJob {
 
@@ -473,9 +531,9 @@ public class ExactlyOnceKafkaJob {
         env.getCheckpointConfig().setCheckpointTimeout(120000);
         env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
 
-        // External checkpoint storage for recovery
-        env.getCheckpointConfig().setExternalizedCheckpointCleanup(
-            ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION
+        // Retain externalized checkpoints for recovery
+        env.getCheckpointConfig().setExternalizedCheckpointRetention(
+            ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION
         );
 
         // Kafka source with exactly-once
@@ -520,7 +578,17 @@ public class ExactlyOnceKafkaJob {
 // AsyncIOExample.java
 
 import org.apache.flink.streaming.api.functions.async.*;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class AsyncIOExample {
 
@@ -607,6 +675,10 @@ class AsyncEnrichmentFunction extends RichAsyncFunction<Event, EnrichedEvent> {
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Histogram;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.metrics.DescriptiveStatisticsHistogram;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.util.Collector;
 
 class MonitoredProcessFunction extends KeyedProcessFunction<String, Event, ProcessedEvent> {
 

@@ -247,8 +247,8 @@ spec:
             matchLabels:
               # Namespace must have this label
               kubernetes.io/metadata.name: frontend
-        # Optionally restrict to specific pods
-        - podSelector:
+          # Optionally restrict to specific pods in that namespace
+          podSelector:
             matchLabels:
               app: frontend
       ports:
@@ -338,7 +338,9 @@ spec:
           port: 8080
     # Allow DNS
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -385,7 +387,9 @@ spec:
           port: 5432
     # Allow DNS
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -427,7 +431,7 @@ spec:
 Network policies use namespace labels to identify allowed sources/destinations:
 
 ```bash
-# Kubernetes 1.21+ automatically adds this label to all namespaces
+# Kubernetes 1.22+ automatically adds this immutable label to all namespaces
 kubectl get namespace frontend -o jsonpath='{.metadata.labels}'
 # {"kubernetes.io/metadata.name":"frontend"}
 
@@ -556,7 +560,9 @@ spec:
     - Egress
   egress:
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -565,12 +571,12 @@ spec:
           port: 53
 EOF
 
-# Issue 2: Namespace label not matching
+# Issue 2: Custom namespace label not matching
 # Check namespace labels
 kubectl get namespace backend --show-labels
 
-# Add required label
-kubectl label namespace backend kubernetes.io/metadata.name=backend
+# Add or update your custom labels
+kubectl label namespace backend tier=backend --overwrite
 
 # Issue 3: Pod selector not matching
 # Verify pod labels
@@ -602,8 +608,7 @@ kind: Namespace
 metadata:
   name: my-app
   labels:
-    # Standard Kubernetes label (auto-added in 1.21+)
-    kubernetes.io/metadata.name: my-app
+    # kubernetes.io/metadata.name is auto-added by Kubernetes 1.22+
     # Custom labels for network policies
     environment: production
     team: platform

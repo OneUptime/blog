@@ -67,7 +67,7 @@ app.get('/health/memory', (req, res) => {
         heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + ' MB',
         // Memory used by C++ objects bound to JS
         external: Math.round(memUsage.external / 1024 / 1024) + ' MB',
-        // Resident Set Size - total memory allocated
+        // Resident Set Size - memory occupied in main memory
         rss: Math.round(memUsage.rss / 1024 / 1024) + ' MB',
         // Array buffers memory
         arrayBuffers: Math.round(memUsage.arrayBuffers / 1024 / 1024) + ' MB'
@@ -86,16 +86,15 @@ Use heap snapshots to find what is consuming memory. In Node.js:
 // Generate heap snapshots for analysis
 
 const v8 = require('v8');
-const fs = require('fs');
 
 function takeHeapSnapshot() {
     const snapshotPath = `/tmp/heap-${Date.now()}.heapsnapshot`;
 
     // Write heap snapshot to file
-    const snapshotStream = v8.writeHeapSnapshot(snapshotPath);
+    const filename = v8.writeHeapSnapshot(snapshotPath);
 
-    console.log(`Heap snapshot written to: ${snapshotStream}`);
-    return snapshotStream;
+    console.log(`Heap snapshot written to: ${filename}`);
+    return filename;
 }
 
 // Take snapshot on demand via signal
@@ -115,7 +114,6 @@ For Python applications:
 # Track memory usage in Python applications
 
 import tracemalloc
-import linecache
 from functools import wraps
 
 def start_memory_tracking():
@@ -287,15 +285,17 @@ def process_line(line):
     pass
 ```
 
-### Issue 4: Circular References
+### Issue 4: Reachable Reference Cycles
 
-Circular references can prevent garbage collection in some cases:
+Modern JavaScript engines can collect circular references when the cycle is unreachable. The problem is when a reference cycle is still reachable from a long-lived object such as a cache or registry:
 
 ```javascript
 // circular-reference.js
-// Problem: Objects reference each other
+// Problem: Objects reference each other and remain reachable
 
-function createCircularLeak() {
+const registry = new Map();
+
+function createReachableCycle(id) {
     const parent = { name: 'parent' };
     const child = { name: 'child' };
 
@@ -303,18 +303,24 @@ function createCircularLeak() {
     parent.child = child;
     child.parent = parent;
 
-    // Even after function returns, these may not be collected
-    // in older JS engines or certain scenarios
+    // The registry keeps the cycle reachable, so it cannot be collected
+    registry.set(id, parent);
 }
 
-// Solution: Use WeakRef for optional references
-function createWithWeakRef() {
+// Solution: remove long-lived references when they are no longer needed
+function releaseCycle(id) {
+    registry.delete(id);
+}
+
+// WeakRef can be useful for optional back-references
+function createWithWeakRef(id) {
     const parent = { name: 'parent' };
     const child = { name: 'child' };
 
     parent.child = child;
-    // WeakRef allows garbage collection of parent
+    // WeakRef does not keep parent alive on its own
     child.parentRef = new WeakRef(parent);
+    registry.set(id, child);
 
     // Access parent when needed
     const parentObj = child.parentRef.deref();
@@ -343,8 +349,8 @@ flowchart LR
 // Process large files with constant memory usage
 
 const fs = require('fs');
-const readline = require('readline');
 const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 
 async function processLargeFile(inputPath, outputPath) {
     const readStream = fs.createReadStream(inputPath);
@@ -359,15 +365,8 @@ async function processLargeFile(inputPath, outputPath) {
         }
     });
 
-    // Pipe streams together - memory efficient
-    readStream
-        .pipe(transformStream)
-        .pipe(writeStream);
-
-    return new Promise((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-    });
+    // Pipe streams together and propagate stream errors
+    await pipeline(readStream, transformStream, writeStream);
 }
 ```
 
@@ -482,7 +481,7 @@ groups:
 
       - alert: MemoryLeakSuspected
         expr: |
-          increase(process_resident_memory_bytes[1h]) > 500000000
+          delta(process_resident_memory_bytes[1h]) > 500000000
         for: 30m
         labels:
           severity: warning

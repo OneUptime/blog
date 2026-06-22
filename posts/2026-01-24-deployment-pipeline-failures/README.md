@@ -68,7 +68,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789:role/github-actions-deploy
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
           aws-region: us-east-1
           # No access keys needed - uses OIDC token exchange
 
@@ -141,10 +141,12 @@ deploy:
     # Clean up Docker to free space (common fix for disk issues)
     - docker system prune -af --volumes || true
 
-    # Build with memory limits to prevent OOM kills
-    - docker build \
-        --memory=4g \
-        --memory-swap=4g \
+    # Build with per-step memory limits to prevent OOM kills
+    - |
+      docker buildx build \
+        --load \
+        --resource memory=4g \
+        --resource memory-swap=4g \
         -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
 
     # Push with retry logic for transient failures
@@ -210,7 +212,7 @@ deploy_with_retry() {
     while [ $attempt -le $MAX_RETRIES ]; do
         echo "Deployment attempt $attempt of $MAX_RETRIES"
 
-        if kubectl apply -f k8s/ --timeout=120s; then
+        if kubectl apply -f k8s/ --request-timeout=120s; then
             echo "Deployment successful"
             return 0
         fi
@@ -260,7 +262,13 @@ metadata:
   name: web-api
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-api
   template:
+    metadata:
+      labels:
+        app: web-api
     spec:
       # Pull secrets for private registries
       imagePullSecrets:
@@ -291,12 +299,12 @@ jobs:
 
       - name: Validate Kubernetes manifests
         run: |
-          # Install kubeval for manifest validation
-          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-          tar xf kubeval-linux-amd64.tar.gz
+          # Install kubeconform for manifest validation
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
 
           # Validate all YAML files
-          ./kubeval --strict k8s/*.yaml
+          ./kubeconform -strict k8s/*.yaml
 
       - name: Check for required secrets
         run: |

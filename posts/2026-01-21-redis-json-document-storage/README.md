@@ -18,7 +18,7 @@ RedisJSON is a Redis module that provides native JSON support. Key features incl
 - **JSONPath queries**: Query and manipulate nested structures
 - **Atomic operations**: Update specific fields without fetching entire documents
 - **RediSearch integration**: Full-text search on JSON documents
-- **Memory efficiency**: Optimized binary format for JSON storage
+- **Efficient subdocument access**: Keeps JSON in an internal representation that can access and update nested values without reparsing the whole document
 
 ## Getting Started
 
@@ -45,11 +45,8 @@ services:
       - "8001:8001"
     volumes:
       - redis-data:/data
-    command: >
-      redis-server
-      --loadmodule /opt/redis-stack/lib/rejson.so
-      --loadmodule /opt/redis-stack/lib/redisearch.so
-      --appendonly yes
+    environment:
+      REDIS_ARGS: "--appendonly yes"
 
 volumes:
   redis-data:
@@ -161,7 +158,8 @@ JSON.SET store:1 $ '{
     {"id": 2, "name": "Mouse", "price": 29, "category": "electronics", "inStock": true},
     {"id": 3, "name": "Desk", "price": 299, "category": "furniture", "inStock": false},
     {"id": 4, "name": "Monitor", "price": 399, "category": "electronics", "inStock": true}
-  ]
+  ],
+  "tags": ["electronics", "furniture"]
 }'
 
 # Get all product names
@@ -208,8 +206,8 @@ JSON.ARRTRIM store:1 $.products 0 4
 # Increment number
 JSON.NUMINCRBY user:1 $.age 1
 
-# Multiply number
-JSON.NUMMULTBY product:1 $.price 0.9  # 10% discount
+# Apply a 10% discount by setting the computed value
+JSON.SET product:1 $.price 899.991
 
 # Increment float
 JSON.NUMINCRBY product:1 $.price 0.01
@@ -311,10 +309,6 @@ class RedisJSONStore:
     def increment(self, key: str, path: str, value: Union[int, float] = 1) -> float:
         """Increment a numeric field."""
         return self.redis.json().numincrby(self._key(key), path, value)
-
-    def multiply(self, key: str, path: str, value: Union[int, float]) -> float:
-        """Multiply a numeric field."""
-        return self.redis.json().nummultby(self._key(key), path, value)
 
     # ==================== Query Operations ====================
 
@@ -425,8 +419,9 @@ const redis = require('redis');
 
 class RedisJSONStore {
     constructor(options = {}) {
-        this.prefix = options.prefix || '';
-        this.client = redis.createClient(options);
+        const { prefix = '', ...clientOptions } = options;
+        this.prefix = prefix;
+        this.client = redis.createClient(clientOptions);
     }
 
     async connect() {
@@ -596,7 +591,7 @@ FT.SEARCH product_idx "@tags:{wireless}"
 
 ```python
 from redis.commands.search.field import TextField, NumericField, TagField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 class SearchableJSONStore(RedisJSONStore):
@@ -760,6 +755,8 @@ address = {
 ### Versioning Pattern
 
 ```python
+from datetime import datetime, timezone
+
 class VersionedJSONStore(RedisJSONStore):
     def set_versioned(self, key: str, document: Dict) -> int:
         """Store document with version tracking."""
@@ -769,7 +766,7 @@ class VersionedJSONStore(RedisJSONStore):
 
         # Add version metadata
         document['_version'] = version
-        document['_updated_at'] = datetime.utcnow().isoformat()
+        document['_updated_at'] = datetime.now(timezone.utc).isoformat()
 
         # Store current version
         self.set(key, document)
@@ -816,7 +813,7 @@ class PartialUpdateStore(RedisJSONStore):
 
         for path, value in updates.items():
             # Convert dot notation to JSONPath
-            json_path = '$.' + path.replace('[', '.[')
+            json_path = '$.' + path
             pipe.json().set(self._key(key), json_path, value)
 
         results = pipe.execute()
@@ -923,6 +920,6 @@ RedisJSON provides a powerful way to store and manipulate JSON documents with Re
 2. **JSONPath queries**: Efficiently access and modify specific fields
 3. **RediSearch integration**: Full-text search and filtering on JSON documents
 4. **Atomic operations**: Update fields without race conditions
-5. **Memory efficiency**: Optimized storage format
+5. **Efficient nested access**: Work with subdocuments without repeatedly parsing and serializing whole JSON strings
 
 By combining RedisJSON with RediSearch, you can build document-oriented applications that rival dedicated document databases while benefiting from Redis's speed and simplicity.

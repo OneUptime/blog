@@ -99,7 +99,15 @@ function validate(schema, property = 'body') {
     }
     
     // Replace request data with validated/sanitized data
-    req[property] = value;
+    if (property === 'query') {
+      Object.defineProperty(req, 'query', {
+        value,
+        writable: true,
+        configurable: true
+      });
+    } else {
+      req[property] = value;
+    }
     next();
   };
 }
@@ -327,8 +335,8 @@ const passwordSchema = Joi.object({
       .filter(Boolean).length;
     
     if (strength < 3) {
-      return helpers.error('any.custom', {
-        message: 'Password must contain at least 3 of: uppercase, lowercase, number, special character'
+      return helpers.message({
+        custom: 'Password must contain at least 3 of: uppercase, lowercase, number, special character'
       });
     }
     
@@ -568,14 +576,16 @@ const patchSchema = createSchema.fork(['name', 'email'], (schema) => schema.opti
 ```javascript
 const Joi = require('joi');
 
+const paginationSchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20)
+});
+
 // Centralized schema definitions
 const schemas = {
   // Reusable components
   objectId: Joi.string().pattern(/^[0-9a-fA-F]{24}$/),
-  pagination: Joi.object({
-    page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(100).default(20)
-  }),
+  pagination: paginationSchema,
   
   // User schemas
   user: {
@@ -617,7 +627,7 @@ const schemas = {
       maxPrice: Joi.number().greater(Joi.ref('minPrice')),
       sort: Joi.string().valid('price', 'name', 'created'),
       order: Joi.string().valid('asc', 'desc').default('asc')
-    }).concat(schemas.pagination)
+    }).concat(paginationSchema)
   }
 };
 

@@ -18,7 +18,7 @@ Redis offers several approaches to data backup:
 |--------|----------|---------------|----------------|
 | RDB Snapshots | Point-in-time backups | Fast | Minutes of data |
 | AOF Files | Continuous backups | Slower | Seconds of data |
-| SYNC/REPLICATION | Real-time backup | Instant failover | Minimal |
+| REPLICATION | High availability/failover | Instant failover | Minimal, but not a backup substitute |
 | redis-dump | Logical backups | Variable | Depends on frequency |
 
 ## Manual RDB Backup
@@ -57,7 +57,6 @@ Here is a comprehensive Python backup solution:
 
 ```python
 import redis
-import os
 import shutil
 import time
 import hashlib
@@ -98,9 +97,8 @@ class RedisBackupManager:
         filename = config.get('dbfilename', 'dump.rdb')
         return self.redis_data_dir / filename
 
-    def wait_for_save(self, timeout=300) -> bool:
+    def wait_for_save(self, initial_lastsave, timeout=300) -> bool:
         """Wait for a background save to complete."""
-        initial_lastsave = self.client.lastsave()
         start_time = time.time()
 
         while time.time() - start_time < timeout:
@@ -131,8 +129,9 @@ class RedisBackupManager:
             if blocking:
                 self.client.save()
             else:
+                initial_lastsave = self.client.lastsave()
                 self.client.bgsave()
-                if not self.wait_for_save():
+                if not self.wait_for_save(initial_lastsave):
                     return BackupResult(
                         success=False,
                         filename='',
@@ -307,7 +306,7 @@ if __name__ == "__main__":
 ## Node.js Backup Solution
 
 ```javascript
-const Redis = require('ioredis');
+const { createClient } = require('redis');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -319,11 +318,15 @@ const gzip = promisify(zlib.gzip);
 
 class RedisBackupManager {
     constructor(options = {}) {
-        this.client = new Redis({
-            host: options.host || 'localhost',
-            port: options.port || 6379,
+        this.client = createClient({
+            socket: {
+                host: options.host || 'localhost',
+                port: options.port || 6379
+            },
             password: options.password
         });
+        this.client.on('error', err => console.error('Redis Client Error', err));
+        this.connectPromise = this.client.connect();
 
         this.redisDataDir = options.redisDataDir || '/var/lib/redis';
         this.backupDir = options.backupDir || '/backup/redis';
@@ -335,21 +338,21 @@ class RedisBackupManager {
     }
 
     async getRdbPath() {
-        const config = await this.client.config('GET', 'dbfilename');
+        await this.connectPromise;
+        const config = await this.client.sendCommand(['CONFIG', 'GET', 'dbfilename']);
         const filename = config[1] || 'dump.rdb';
         return path.join(this.redisDataDir, filename);
     }
 
-    async waitForSave(timeoutMs = 300000) {
-        const initialLastsave = await this.client.lastsave();
+    async waitForSave(initialLastsave, timeoutMs = 300000) {
         const startTime = Date.now();
 
         while (Date.now() - startTime < timeoutMs) {
-            const info = await this.client.info('persistence');
+            const info = await this.client.sendCommand(['INFO', 'persistence']);
             const bgsaveInProgress = info.includes('rdb_bgsave_in_progress:1');
 
             if (!bgsaveInProgress) {
-                const currentLastsave = await this.client.lastsave();
+                const currentLastsave = Number(await this.client.sendCommand(['LASTSAVE']));
                 if (currentLastsave > initialLastsave) {
                     return true;
                 }
@@ -378,12 +381,15 @@ class RedisBackupManager {
         const timestamp = new Date();
 
         try {
+            await this.connectPromise;
+
             // Trigger save
             if (blocking) {
-                await this.client.save();
+                await this.client.sendCommand(['SAVE']);
             } else {
-                await this.client.bgsave();
-                const saved = await this.waitForSave();
+                const initialLastsave = Number(await this.client.sendCommand(['LASTSAVE']));
+                await this.client.sendCommand(['BGSAVE']);
+                const saved = await this.waitForSave(initialLastsave);
                 if (!saved) {
                     return {
                         success: false,
@@ -462,7 +468,8 @@ class RedisBackupManager {
     }
 
     async close() {
-        await this.client.quit();
+        await this.connectPromise;
+        await this.client.close();
     }
 }
 
@@ -877,7 +884,7 @@ for issue in result['issues']:
 
 5. **Document recovery procedures**: Have runbooks for disaster recovery
 
-6. **Consider replication**: Use replicas as live backups for instant failover
+6. **Consider replication**: Use replicas for high availability and instant failover, but keep separate backups because replication also propagates accidental writes and deletes
 
 7. **Verify checksums**: Always verify backup integrity before and after transfer
 

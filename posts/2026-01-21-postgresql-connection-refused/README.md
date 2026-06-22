@@ -14,9 +14,9 @@ Description: A comprehensive guide to diagnosing and resolving PostgreSQL connec
 
 1. PostgreSQL not running
 2. Wrong host/port
-3. Firewall blocking connections
+3. Firewall rejecting or blocking connections
 4. listen_addresses misconfigured
-5. pg_hba.conf rejecting connections
+5. pg_hba.conf rejecting connections after TCP succeeds
 
 ## Diagnostic Steps
 
@@ -125,4 +125,4 @@ pg_isready -h server-ip -p 5432
 
 ## Conclusion
 
-Systematically check: service status, listen_addresses, pg_hba.conf, and firewall rules. Most connection refused errors stem from configuration issues.
+Systematically check: service status, listen_addresses, firewall rules, and pg_hba.conf for follow-on authentication errors. Most connection refused errors stem from PostgreSQL not listening on the requested address/port or a network/firewall rejection.

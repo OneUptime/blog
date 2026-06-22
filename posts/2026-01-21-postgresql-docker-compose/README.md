@@ -91,8 +91,6 @@ PostgreSQL Docker image supports several environment variables:
 Create a `docker-compose.yml` file:
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -122,8 +120,6 @@ docker compose up -d
 A more complete configuration for production use:
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -175,6 +171,7 @@ Create a `postgresql.conf` for custom settings:
 
 listen_addresses = '*'
 max_connections = 200
+shared_preload_libraries = 'pg_stat_statements'
 
 # Memory Settings
 shared_buffers = 1GB
@@ -284,8 +281,6 @@ chmod +x init-scripts/03-setup.sh
 ### Full Stack Example
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -343,8 +338,6 @@ networks:
 For connection pooling, add PgBouncer:
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -365,23 +358,21 @@ services:
       - database
 
   pgbouncer:
-    image: bitnami/pgbouncer:latest
+    image: edoburu/pgbouncer:latest
     container_name: pgbouncer
     restart: unless-stopped
     environment:
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: 5432
-      POSTGRESQL_USERNAME: myuser
-      POSTGRESQL_PASSWORD: mypassword
-      POSTGRESQL_DATABASE: myapp
-      PGBOUNCER_DATABASE: myapp
-      PGBOUNCER_PORT: 6432
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_MAX_CLIENT_CONN: 1000
-      PGBOUNCER_DEFAULT_POOL_SIZE: 20
-      PGBOUNCER_MIN_POOL_SIZE: 10
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: myuser
+      DB_PASSWORD: mypassword
+      DB_NAME: myapp
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 10
     ports:
-      - "6432:6432"
+      - "6432:5432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -538,8 +529,6 @@ docker logs postgres --tail 100
 ### Use Secrets for Passwords
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine

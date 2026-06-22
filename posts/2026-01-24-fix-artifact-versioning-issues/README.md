@@ -89,11 +89,15 @@ For services that do not need SemVer, use Git metadata:
 #!/bin/bash
 # version.sh - Generate version from Git state
 
-# Get the latest tag
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+# Get the latest tag, if one exists
+LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
 
-# Get commit count since tag
-COMMITS_SINCE=$(git rev-list ${LATEST_TAG}..HEAD --count)
+if [ -n "$LATEST_TAG" ]; then
+    COMMITS_SINCE=$(git rev-list ${LATEST_TAG}..HEAD --count)
+else
+    LATEST_TAG="v0.0.0"
+    COMMITS_SINCE=$(git rev-list HEAD --count)
+fi
 
 # Get short SHA
 SHORT_SHA=$(git rev-parse --short HEAD)
@@ -161,6 +165,8 @@ jobs:
         with:
           images: |
             myregistry.com/myapp
+          flavor: |
+            latest=false
           tags: |
             # Tag with version
             type=semver,pattern={{version}}
@@ -168,15 +174,16 @@ jobs:
             type=semver,pattern={{major}}
             # Tag with SHA for traceability
             type=sha,format=short
-            # Tag with branch name for PRs
+            # Tag with branch name and PR number
             type=ref,event=branch
+            type=ref,event=pr
             # Never use 'latest' automatically
 
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -204,6 +211,10 @@ RUN go build -ldflags="-X main.Version=${VERSION} \
     -o /app/server .
 
 FROM alpine:3.19
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
 COPY --from=builder /app/server /server
 
 # Store version info in labels
@@ -240,7 +251,7 @@ myregistry.com/
 
 ## Helm Chart Versioning
 
-Keep chart versions synchronized with application versions:
+Track chart versions and application versions separately:
 
 ```yaml
 # Chart.yaml
@@ -307,9 +318,9 @@ metadata:
     version: "2.3.1"  # Match image tag
   annotations:
     app.kubernetes.io/version: "2.3.1"
-    deployment.kubernetes.io/revision-history: "10"
 spec:
   replicas: 3
+  revisionHistoryLimit: 10
   selector:
     matchLabels:
       app: api
@@ -386,7 +397,7 @@ DEPLOYMENT=$1
 NAMESPACE=${2:-default}
 
 # Get current revision
-CURRENT=$(kubectl rollout history deployment/$DEPLOYMENT -n $NAMESPACE | tail -2 | head -1 | awk '{print $1}')
+CURRENT=$(kubectl rollout history deployment/$DEPLOYMENT -n $NAMESPACE | awk 'NF && $1 ~ /^[0-9]+$/ {current=$1} END {print current}')
 
 # Roll back to previous revision
 kubectl rollout undo deployment/$DEPLOYMENT -n $NAMESPACE
@@ -433,39 +444,51 @@ flowchart LR
 
 Implement retention policies:
 
-```yaml
-# registry-lifecycle.yaml (for ECR)
-rules:
-  - rulePriority: 1
-    description: "Keep last 10 production images"
-    selection:
-      tagStatus: tagged
-      tagPrefixList: ["v"]
-      countType: imageCountMoreThan
-      countNumber: 10
-    action:
-      type: expire
-
-  - rulePriority: 2
-    description: "Delete untagged images older than 7 days"
-    selection:
-      tagStatus: untagged
-      countType: sinceImagePushed
-      countUnit: days
-      countNumber: 7
-    action:
-      type: expire
-
-  - rulePriority: 3
-    description: "Delete PR images older than 14 days"
-    selection:
-      tagStatus: tagged
-      tagPrefixList: ["pr-"]
-      countType: sinceImagePushed
-      countUnit: days
-      countNumber: 14
-    action:
-      type: expire
+```json
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Keep last 10 production images",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["v"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": {
+        "type": "expire"
+      }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Delete untagged images older than 7 days",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 7
+      },
+      "action": {
+        "type": "expire"
+      }
+    },
+    {
+      "rulePriority": 3,
+      "description": "Delete PR images older than 14 days",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["pr-"],
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 14
+      },
+      "action": {
+        "type": "expire"
+      }
+    }
+  ]
+}
 ```
 
 ## Best Practices Summary

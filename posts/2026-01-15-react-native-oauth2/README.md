@@ -10,7 +10,7 @@ Description: Learn how to implement OAuth 2.0 authentication in React Native wit
 
 ## Introduction
 
-OAuth 2.0 has become the industry standard for authentication and authorization in modern applications. For React Native developers, implementing OAuth 2.0 provides users with a seamless sign-in experience using their existing accounts from providers like Google, Apple, and Facebook. This comprehensive guide walks you through implementing OAuth 2.0 authentication in your React Native application, covering everything from basic concepts to production-ready implementations.
+OAuth 2.0 has become the industry standard for authorization in modern applications, and OpenID Connect builds on it for authentication. For React Native developers, implementing OAuth 2.0 and OpenID Connect provides users with a seamless sign-in experience using their existing accounts from providers like Google, Apple, and Facebook. This comprehensive guide walks you through implementing OAuth 2.0 authentication in your React Native application, covering everything from basic concepts to production-ready implementations.
 
 ## Understanding OAuth 2.0 Flow
 
@@ -28,7 +28,7 @@ Here's how it works:
 
 3. **Authorization Code**: The provider redirects back to your app with an authorization code.
 
-4. **Token Exchange**: Your app exchanges the authorization code (along with the code verifier) for access and refresh tokens.
+4. **Token Exchange**: Your app exchanges the authorization code (along with the code verifier) for an access token and, when the provider issues one, a refresh token.
 
 5. **API Access**: Use the access token to make authenticated API requests.
 
@@ -42,7 +42,7 @@ sequenceDiagram
     Note over Auth: 3. User authenticates
     Auth->>App: 4. Redirect with authorization_code
     App->>Auth: 5. Token Request + code_verifier
-    Auth->>App: 6. Access Token + Refresh Token
+    Auth->>App: 6. Access Token (+ optional Refresh Token)
 ```
 
 ## Setting Up react-native-app-auth
@@ -54,10 +54,10 @@ The `react-native-app-auth` library is the most robust solution for implementing
 ```bash
 # Using npm
 
-npm install react-native-app-auth
+npm install react-native-app-auth jwt-decode
 
 # Using yarn
-yarn add react-native-app-auth
+yarn add react-native-app-auth jwt-decode
 ```
 
 ### iOS Configuration
@@ -146,18 +146,23 @@ android {
 }
 ```
 
-**Step 2: Update AndroidManifest.xml**
+**Step 2: AndroidManifest.xml for App Links**
+
+For custom scheme redirects, the `appAuthRedirectScheme` placeholder configures the library's redirect activity. If your OAuth redirect URL uses Android App Links (`https://`), add a receiver activity for that HTTPS redirect:
 
 ```xml
 <!-- android/app/src/main/AndroidManifest.xml -->
 <activity
     android:name="net.openid.appauth.RedirectUriReceiverActivity"
     android:exported="true">
-    <intent-filter>
+    <intent-filter android:autoVerify="true">
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="com.yourapp.auth"/>
+        <data
+            android:scheme="https"
+            android:host="yourapp.com"
+            android:pathPrefix="/oauth2redirect"/>
     </intent-filter>
 </activity>
 ```
@@ -170,8 +175,10 @@ Let's create a comprehensive authentication service that handles multiple OAuth 
 // src/services/AuthService.ts
 import { authorize, refresh, revoke, AuthConfiguration } from 'react-native-app-auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { jwtDecode } from 'jwt-decode';
 
 // Token storage keys
+// For production, store tokens in secure storage as shown in the Token Management section.
 const TOKEN_STORAGE_KEY = '@auth_tokens';
 const USER_STORAGE_KEY = '@auth_user';
 
@@ -179,8 +186,8 @@ const USER_STORAGE_KEY = '@auth_user';
 export const OAuthConfigs: Record<string, AuthConfiguration> = {
   google: {
     issuer: 'https://accounts.google.com',
-    clientId: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-    redirectUrl: 'com.yourapp.auth:/oauth2redirect/google',
+    clientId: 'YOUR_GOOGLE_OAUTH_APP_GUID.apps.googleusercontent.com',
+    redirectUrl: 'com.googleusercontent.apps.YOUR_GOOGLE_OAUTH_APP_GUID:/oauth2redirect/google',
     scopes: ['openid', 'profile', 'email'],
   },
   apple: {
@@ -195,8 +202,8 @@ export const OAuthConfigs: Record<string, AuthConfiguration> = {
     redirectUrl: 'com.yourapp.auth:/oauth2redirect/facebook',
     scopes: ['public_profile', 'email'],
     serviceConfiguration: {
-      authorizationEndpoint: 'https://www.facebook.com/v12.0/dialog/oauth',
-      tokenEndpoint: 'https://graph.facebook.com/v12.0/oauth/access_token',
+      authorizationEndpoint: 'https://www.facebook.com/v25.0/dialog/oauth',
+      tokenEndpoint: 'https://graph.facebook.com/v25.0/oauth/access_token',
     },
   },
 };
@@ -340,9 +347,7 @@ class AuthService {
       throw new Error('No ID token received from Apple');
     }
 
-    // Decode JWT payload (base64)
-    const payload = idToken.split('.')[1];
-    const decoded = JSON.parse(atob(payload));
+    const decoded = jwtDecode<{ sub: string; email?: string; name?: string }>(idToken);
 
     return {
       id: decoded.sub,
@@ -415,7 +420,6 @@ class AuthService {
       try {
         await revoke(config, {
           tokenToRevoke: this.tokens.accessToken,
-          includeBasicAuth: true,
         });
       } catch (error) {
         console.warn('Token revocation failed:', error);
@@ -502,13 +506,13 @@ export default authService;
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the Google+ API
+3. Configure the OAuth consent screen and enable any Google APIs your app will call
 4. Go to "Credentials" and create OAuth 2.0 Client IDs
 
 **For iOS:**
 - Application type: iOS
 - Bundle ID: Your app's bundle identifier
-- Download the `GoogleService-Info.plist`
+- Note the generated client ID and enable custom URI scheme support if your OAuth client settings require it
 
 **For Android:**
 - Application type: Android
@@ -524,12 +528,12 @@ import { Platform } from 'react-native';
 export const googleConfig = {
   issuer: 'https://accounts.google.com',
   clientId: Platform.select({
-    ios: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com',
-    android: 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com',
+    ios: 'YOUR_IOS_OAUTH_APP_GUID.apps.googleusercontent.com',
+    android: 'YOUR_ANDROID_OAUTH_APP_GUID.apps.googleusercontent.com',
   }),
   redirectUrl: Platform.select({
-    ios: 'com.yourapp:/oauth2redirect/google',
-    android: 'com.yourapp:/oauth2redirect/google',
+    ios: 'com.googleusercontent.apps.YOUR_IOS_OAUTH_APP_GUID:/oauth2redirect/google',
+    android: 'com.googleusercontent.apps.YOUR_ANDROID_OAUTH_APP_GUID:/oauth2redirect/google',
   }),
   scopes: ['openid', 'profile', 'email'],
   usePKCE: true,
@@ -665,10 +669,8 @@ npm install @invertase/react-native-apple-authentication
 import { Platform } from 'react-native';
 import appleAuth, {
   appleAuthAndroid,
-  AppleAuthRequestOperation,
-  AppleAuthRequestScope,
-  AppleAuthCredentialState,
 } from '@invertase/react-native-apple-authentication';
+import { jwtDecode } from 'jwt-decode';
 
 interface AppleUser {
   id: string;
@@ -695,10 +697,10 @@ class AppleAuthService {
   async signInIOS(): Promise<AppleUser> {
     // Start the sign-in request
     const appleAuthRequestResponse = await appleAuth.performRequest({
-      requestedOperation: AppleAuthRequestOperation.LOGIN,
+      requestedOperation: appleAuth.Operation.LOGIN,
       requestedScopes: [
-        AppleAuthRequestScope.EMAIL,
-        AppleAuthRequestScope.FULL_NAME,
+        appleAuth.Scope.EMAIL,
+        appleAuth.Scope.FULL_NAME,
       ],
     });
 
@@ -707,7 +709,7 @@ class AppleAuthService {
       appleAuthRequestResponse.user
     );
 
-    if (credentialState !== AppleAuthCredentialState.AUTHORIZED) {
+    if (credentialState !== appleAuth.State.AUTHORIZED) {
       throw new Error('Apple Sign-In authorization failed');
     }
 
@@ -742,11 +744,17 @@ class AppleAuthService {
     });
 
     const response = await appleAuthAndroid.signIn();
+    const decoded = response.id_token
+      ? jwtDecode<{ sub: string }>(response.id_token)
+      : null;
+    const displayName = response.user?.name
+      ? `${response.user.name.firstName || ''} ${response.user.name.lastName || ''}`.trim()
+      : null;
 
     return {
-      id: response.user || '',
-      email: response.email || null,
-      fullName: response.fullName?.givenName || null,
+      id: decoded?.sub || '',
+      email: response.user?.email || null,
+      fullName: displayName,
       identityToken: response.id_token || '',
       authorizationCode: response.code || '',
     };
@@ -771,7 +779,7 @@ class AppleAuthService {
     }
 
     const credentialState = await appleAuth.getCredentialStateForUser(userId);
-    return credentialState === AppleAuthCredentialState.AUTHORIZED;
+    return credentialState === appleAuth.State.AUTHORIZED;
   }
 }
 
@@ -790,7 +798,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   View,
-  Platform,
 } from 'react-native';
 import { appleAuthService } from '../services/AppleAuthService';
 
@@ -828,7 +835,6 @@ const AppleSignInButton: React.FC<Props> = ({ onSuccess, onError }) => {
         <ActivityIndicator color="#fff" />
       ) : (
         <View style={styles.content}>
-          <Text style={styles.appleIcon}></Text>
           <Text style={styles.text}>Continue with Apple</Text>
         </View>
       )}
@@ -851,11 +857,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  appleIcon: {
-    color: '#fff',
-    fontSize: 20,
-    marginRight: 8,
-  },
   text: {
     color: '#fff',
     fontSize: 16,
@@ -874,7 +875,7 @@ export default AppleSignInButton;
 2. Create a new app or select existing
 3. Add Facebook Login product
 4. Configure OAuth redirect URIs
-5. Note your App ID and App Secret
+5. Note your App ID and Client Token; keep the App Secret server-side only
 
 ### Facebook Configuration
 
@@ -883,12 +884,11 @@ export default AppleSignInButton;
 export const facebookConfig = {
   issuer: 'https://www.facebook.com',
   clientId: 'YOUR_FACEBOOK_APP_ID',
-  clientSecret: 'YOUR_FACEBOOK_APP_SECRET', // Only use server-side!
   redirectUrl: 'fb{YOUR_FACEBOOK_APP_ID}://authorize',
   scopes: ['public_profile', 'email'],
   serviceConfiguration: {
-    authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth',
-    tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
+    authorizationEndpoint: 'https://www.facebook.com/v25.0/dialog/oauth',
+    tokenEndpoint: 'https://graph.facebook.com/v25.0/oauth/access_token',
   },
 };
 ```

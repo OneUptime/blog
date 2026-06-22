@@ -26,13 +26,12 @@ flowchart LR
     subgraph Broker["Broker"]
         E --> F{Size Check}
         F -->|> message.max.bytes| G[MessageSizeTooLargeException]
-        F -->|OK| H[Write to Log]
+        F -->|OK| H{Topic Config Check}
     end
 
     subgraph Topic["Topic Config"]
-        H --> I{Size Check}
-        I -->|> max.message.bytes| J[Rejected]
-        I -->|OK| K[Stored]
+        H -->|> max.message.bytes| J[Rejected]
+        H -->|OK| K[Stored]
     end
 ```
 
@@ -43,10 +42,11 @@ Kafka has multiple size limits that can trigger this error.
 | Configuration | Default | Location | Description |
 |---------------|---------|----------|-------------|
 | `max.request.size` | 1 MB | Producer | Maximum size of a produce request |
-| `message.max.bytes` | 1 MB | Broker | Maximum size of a message the broker accepts |
-| `max.message.bytes` | 1 MB | Topic | Maximum size for a specific topic |
-| `replica.fetch.max.bytes` | 1 MB | Broker | Maximum size for replication fetches |
-| `fetch.max.bytes` | 50 MB | Consumer | Maximum data returned per fetch request |
+| `message.max.bytes` | 1,048,588 bytes | Broker | Maximum record batch size the broker accepts after compression |
+| `max.message.bytes` | 1,048,588 bytes | Topic | Maximum record batch size for a specific topic after compression |
+| `replica.fetch.max.bytes` | 1 MB | Broker | Maximum data to attempt to fetch per partition for replication |
+| `fetch.max.bytes` | 50 MB | Consumer | Maximum data returned per fetch request, though the first oversized batch may still be returned |
+| `max.partition.fetch.bytes` | 1 MB | Consumer | Maximum data returned per partition in a fetch request, though the first oversized batch may still be returned |
 
 ## Diagnosing the Issue
 
@@ -58,6 +58,7 @@ First, determine where the size limit is being exceeded.
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.serialization.StringSerializer;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 public class MessageSizeChecker {
 
@@ -192,7 +193,7 @@ message.max.bytes=10485760
 replica.fetch.max.bytes=10485760
 
 # Socket receive buffer size
-# Should accommodate large messages
+# Usually does not need to match the maximum message size
 socket.receive.buffer.bytes=10485760
 
 # Socket request max size
@@ -335,6 +336,7 @@ import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import java.util.*;
+import java.util.concurrent.Future;
 import java.nio.charset.StandardCharsets;
 
 public class MessageChunker {
@@ -514,16 +516,17 @@ flowchart LR
 ### Implementation Example
 
 ```java
-import com.amazonaws.services.s3.*;
-import com.amazonaws.services.s3.model.*;
 import org.apache.kafka.clients.producer.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.util.*;
 
 public class ExternalStorageProducer {
 
     private final KafkaProducer<String, String> producer;
-    private final AmazonS3 s3Client;
+    private final S3Client s3Client;
     private final String bucketName;
     private final ObjectMapper objectMapper;
     private final int sizeThreshold;
@@ -539,7 +542,7 @@ public class ExternalStorageProducer {
             "org.apache.kafka.common.serialization.StringSerializer");
 
         this.producer = new KafkaProducer<>(props);
-        this.s3Client = AmazonS3ClientBuilder.defaultClient();
+        this.s3Client = S3Client.create();
         this.bucketName = bucketName;
         this.objectMapper = new ObjectMapper();
         this.sizeThreshold = sizeThreshold;
@@ -552,9 +555,9 @@ public class ExternalStorageProducer {
 
         if (payload.length <= sizeThreshold) {
             // Small message - send directly
-            String value = Base64.getEncoder().encodeToString(payload);
+            String inlineData = Base64.getEncoder().encodeToString(payload);
             MessageReference ref = new MessageReference(
-                "inline", null, payload.length, null);
+                "inline", null, payload.length, null, inlineData);
 
             producer.send(new ProducerRecord<>(topic, key,
                 objectMapper.writeValueAsString(ref)));
@@ -565,18 +568,19 @@ public class ExternalStorageProducer {
                 topic, key, UUID.randomUUID().toString());
 
             // Upload to S3
-            ObjectMetadata metadata = new ObjectMetadata();
-            metadata.setContentLength(payload.length);
-            metadata.setContentType("application/octet-stream");
+            PutObjectRequest putRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(objectKey)
+                .contentLength((long) payload.length)
+                .contentType("application/octet-stream")
+                .build();
 
-            s3Client.putObject(new PutObjectRequest(
-                bucketName, objectKey,
-                new java.io.ByteArrayInputStream(payload), metadata));
+            s3Client.putObject(putRequest, RequestBody.fromBytes(payload));
 
             // Send reference to Kafka
             String s3Uri = String.format("s3://%s/%s", bucketName, objectKey);
             MessageReference ref = new MessageReference(
-                "s3", s3Uri, payload.length, objectKey);
+                "s3", s3Uri, payload.length, objectKey, null);
 
             producer.send(new ProducerRecord<>(topic, key,
                 objectMapper.writeValueAsString(ref)));
@@ -594,12 +598,15 @@ public class ExternalStorageProducer {
         public String uri;          // S3 URI for external storage
         public int size;            // Original message size
         public String objectKey;    // S3 object key for cleanup
+        public String inlineData;   // Base64 payload for inline messages
 
-        public MessageReference(String storageType, String uri, int size, String objectKey) {
+        public MessageReference(String storageType, String uri, int size,
+                String objectKey, String inlineData) {
             this.storageType = storageType;
             this.uri = uri;
             this.size = size;
             this.objectKey = objectKey;
+            this.inlineData = inlineData;
         }
     }
 }
@@ -608,17 +615,18 @@ public class ExternalStorageProducer {
 ### Consumer with External Storage Retrieval
 
 ```java
-import com.amazonaws.services.s3.*;
-import com.amazonaws.services.s3.model.*;
 import org.apache.kafka.clients.consumer.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.*;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import java.util.*;
 
 public class ExternalStorageConsumer {
 
     private final KafkaConsumer<String, String> consumer;
-    private final AmazonS3 s3Client;
+    private final S3Client s3Client;
     private final ObjectMapper objectMapper;
 
     public ExternalStorageConsumer(String bootstrapServers, String groupId) {
@@ -631,7 +639,7 @@ public class ExternalStorageConsumer {
             "org.apache.kafka.common.serialization.StringDeserializer");
 
         this.consumer = new KafkaConsumer<>(props);
-        this.s3Client = AmazonS3ClientBuilder.defaultClient();
+        this.s3Client = S3Client.create();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -644,7 +652,7 @@ public class ExternalStorageConsumer {
 
         if ("inline".equals(ref.storageType)) {
             // Payload is embedded in the message
-            return Base64.getDecoder().decode(record.value());
+            return Base64.getDecoder().decode(ref.inlineData);
 
         } else if ("s3".equals(ref.storageType)) {
             // Fetch from S3
@@ -652,9 +660,13 @@ public class ExternalStorageConsumer {
             String bucket = parts[0];
             String key = parts[1];
 
-            S3Object s3Object = s3Client.getObject(bucket, key);
-            byte[] payload = s3Object.getObjectContent().readAllBytes();
-            s3Object.close();
+            GetObjectRequest getRequest = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
+            ResponseBytes<GetObjectResponse> objectBytes =
+                s3Client.getObjectAsBytes(getRequest);
+            byte[] payload = objectBytes.asByteArray();
 
             System.out.printf("Retrieved %d bytes from S3: %s%n",
                 payload.length, ref.uri);
@@ -671,6 +683,7 @@ public class ExternalStorageConsumer {
         public String uri;
         public int size;
         public String objectKey;
+        public String inlineData;
     }
 }
 ```
@@ -707,11 +720,8 @@ flowchart TD
 ### Quick Diagnostic Commands
 
 ```bash
-# Check producer config
-kafka-configs.sh --bootstrap-server localhost:9092 \
-    --entity-type clients \
-    --entity-name producer-client-id \
-    --describe
+# Check producer config if you use a local producer properties file
+grep -E 'max.request.size|compression.type|buffer.memory' producer.properties
 
 # Check broker message size limit
 kafka-configs.sh --bootstrap-server localhost:9092 \

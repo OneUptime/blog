@@ -48,6 +48,8 @@ Before performing operations, always verify that files exist and have appropriat
 
 file="/path/to/file.txt"
 dir="/path/to/directory"
+file1="/path/to/file1.txt"
+file2="/path/to/file2.txt"
 
 # Existence tests
 
@@ -164,7 +166,7 @@ validate_file "/etc/passwd" "r" && echo "File is valid for reading"
 
 file="/path/to/file.txt"
 
-# Method 1: Using cat (loads entire file into memory)
+# Method 1: Using cat with command substitution (stores entire file in memory)
 content=$(cat "$file")
 echo "$content"
 
@@ -172,7 +174,7 @@ echo "$content"
 content=$(<"$file")
 echo "$content"
 
-# Method 3: Using read with here-string
+# Method 3: Using read with redirection
 while IFS= read -r line; do
     echo "Line: $line"
 done < "$file"
@@ -248,18 +250,18 @@ echo "Last line: ${lines[-1]}"
 
 ```bash
 #!/bin/bash
-# Parsing CSV and delimited files
+# Parsing simple delimited files
 
-# CSV file processing
-process_csv() {
-    local csv_file="$1"
+# Simple comma-delimited file processing
+process_delimited() {
+    local delimited_file="$1"
 
     while IFS=',' read -r col1 col2 col3 col4; do
         # Skip header line
         [[ "$col1" == "id" ]] && continue
 
         echo "ID: $col1, Name: $col2, Email: $col3, Status: $col4"
-    done < "$csv_file"
+    done < "$delimited_file"
 }
 
 # Process /etc/passwd
@@ -330,19 +332,35 @@ echo "Appended message" | tee -a "$output_file"
 safe_write() {
     local target_file="$1"
     local content="$2"
+    local target_dir
+    target_dir=$(dirname "$target_file")
 
     # Create temporary file in same directory
     # This ensures atomic move operation works
     local temp_file
-    temp_file=$(mktemp "${target_file}.XXXXXX")
+    temp_file=$(mktemp "${target_dir}/.$(basename "$target_file").XXXXXX") || {
+        echo "Error: Failed to create temp file" >&2
+        return 1
+    }
+    local old_trap
+    old_trap=$(trap -p EXIT)
+
+    restore_exit_trap() {
+        if [[ -n "$old_trap" ]]; then
+            eval "$old_trap"
+        else
+            trap - EXIT
+        fi
+    }
 
     # Ensure cleanup on exit
     trap "rm -f '$temp_file'" EXIT
 
     # Write content to temp file
-    if ! echo "$content" > "$temp_file"; then
+    if ! printf '%s\n' "$content" > "$temp_file"; then
         echo "Error: Failed to write to temp file" >&2
         rm -f "$temp_file"
+        restore_exit_trap
         return 1
     fi
 
@@ -355,10 +373,11 @@ safe_write() {
     if ! mv "$temp_file" "$target_file"; then
         echo "Error: Failed to move temp file to target" >&2
         rm -f "$temp_file"
+        restore_exit_trap
         return 1
     fi
 
-    trap - EXIT
+    restore_exit_trap
     return 0
 }
 
@@ -560,7 +579,7 @@ rename_files "/tmp" ".txt" ".bak"
 # Safe file deletion practices
 
 # DANGEROUS: Never do this
-# rm -rf $dir/*  # If $dir is empty, this becomes rm -rf /*
+# rm -rf $dir/*  # If the $dir variable is empty, this becomes rm -rf /*
 
 # SAFE: Always quote and verify
 dir="/tmp/myapp"
@@ -622,19 +641,25 @@ trash() {
 
         local basename
         basename=$(basename "$file")
+        local original_path
+        original_path=$(realpath "$file")
         local timestamp
         timestamp=$(date +%Y%m%d%H%M%S)
         local trash_name="${basename}.${timestamp}"
 
-        # Move to trash
-        mv "$file" "$trash_dir/$trash_name"
-
-        # Create info file (freedesktop.org standard)
+        # Create info file before moving to trash
         cat > "$trash_info/$trash_name.trashinfo" << EOF
 [Trash Info]
-Path=$(realpath "$file")
+Path=$original_path
 DeletionDate=$(date +%Y-%m-%dT%H:%M:%S)
 EOF
+
+        # Move to trash
+        if ! mv "$file" "$trash_dir/$trash_name"; then
+            echo "Error: Failed to trash file: $file" >&2
+            rm -f "$trash_info/$trash_name.trashinfo"
+            continue
+        fi
 
         echo "Trashed: $file"
     done

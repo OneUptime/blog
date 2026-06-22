@@ -19,7 +19,7 @@ Stateless Operations:
 - filter()
 - map()
 - flatMap()
-- branch()
+- split().branch()
 
 Stateful Operations:
 - count()
@@ -74,6 +74,8 @@ public class StatefulStreamConfig {
         Properties props = new Properties();
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, "stateful-app");
         props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        // Unique host:port for distributed interactive queries
+        props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, "localhost:8080");
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
 
@@ -99,14 +101,18 @@ import org.apache.kafka.streams.state.RocksDBConfigSetter;
 import org.rocksdb.Options;
 import org.rocksdb.BlockBasedTableConfig;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CustomRocksDBConfig implements RocksDBConfigSetter {
+    private final Map<String, BlockBasedTableConfig> tableConfigs = new ConcurrentHashMap<>();
+
     @Override
     public void setConfig(String storeName, Options options, Map<String, Object> configs) {
         // Optimize for point lookups
         BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
         tableConfig.setBlockCacheSize(50 * 1024 * 1024L); // 50MB cache
         tableConfig.setBlockSize(4096);
+        tableConfigs.put(storeName, tableConfig);
 
         options.setTableFormatConfig(tableConfig);
         options.setMaxWriteBufferNumber(3);
@@ -115,7 +121,10 @@ public class CustomRocksDBConfig implements RocksDBConfigSetter {
 
     @Override
     public void close(String storeName, Options options) {
-        // Cleanup if needed
+        BlockBasedTableConfig tableConfig = tableConfigs.remove(storeName);
+        if (tableConfig != null) {
+            tableConfig.close();
+        }
     }
 }
 ```
@@ -157,7 +166,11 @@ public class EventCounter {
 ### Custom Aggregation
 
 ```java
+import org.apache.kafka.common.serialization.*;
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
+import org.apache.kafka.streams.state.KeyValueStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class OrderAggregator {
@@ -167,8 +180,8 @@ public class OrderAggregator {
         ObjectMapper mapper = new ObjectMapper();
 
         // Custom Serde for Order
-        Serde<Order> orderSerde = createOrderSerde();
-        Serde<OrderAggregate> aggregateSerde = createAggregateSerde();
+        Serde<Order> orderSerde = jsonSerde(Order.class, mapper);
+        Serde<OrderAggregate> aggregateSerde = jsonSerde(OrderAggregate.class, mapper);
 
         KStream<String, Order> orders = builder.stream("orders",
             Consumed.with(Serdes.String(), orderSerde));
@@ -198,6 +211,26 @@ public class OrderAggregator {
         KafkaStreams streams = new KafkaStreams(builder.build(), StatefulStreamConfig.getConfig());
         streams.start();
     }
+
+    private static <T> Serde<T> jsonSerde(Class<T> type, ObjectMapper mapper) {
+        Serializer<T> serializer = (topic, data) -> {
+            try {
+                return data == null ? null : mapper.writeValueAsBytes(data);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to serialize " + type.getSimpleName(), e);
+            }
+        };
+
+        Deserializer<T> deserializer = (topic, data) -> {
+            try {
+                return data == null ? null : mapper.readValue(data, type);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to deserialize " + type.getSimpleName(), e);
+            }
+        };
+
+        return Serdes.serdeFrom(serializer, deserializer);
+    }
 }
 
 class Order {
@@ -205,7 +238,15 @@ class Order {
     private String customerId;
     private double amount;
     private long timestamp;
-    // getters and setters
+
+    public String getOrderId() { return orderId; }
+    public void setOrderId(String orderId) { this.orderId = orderId; }
+    public String getCustomerId() { return customerId; }
+    public void setCustomerId(String customerId) { this.customerId = customerId; }
+    public double getAmount() { return amount; }
+    public void setAmount(double amount) { this.amount = amount; }
+    public long getTimestamp() { return timestamp; }
+    public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
 }
 
 class OrderAggregate {
@@ -220,7 +261,15 @@ class OrderAggregate {
         averageAmount = totalAmount / orderCount;
         lastOrderTime = Math.max(lastOrderTime, order.getTimestamp());
     }
-    // getters
+
+    public int getOrderCount() { return orderCount; }
+    public void setOrderCount(int orderCount) { this.orderCount = orderCount; }
+    public double getTotalAmount() { return totalAmount; }
+    public void setTotalAmount(double totalAmount) { this.totalAmount = totalAmount; }
+    public double getAverageAmount() { return averageAmount; }
+    public void setAverageAmount(double averageAmount) { this.averageAmount = averageAmount; }
+    public long getLastOrderTime() { return lastOrderTime; }
+    public void setLastOrderTime(long lastOrderTime) { this.lastOrderTime = lastOrderTime; }
 }
 ```
 
@@ -251,6 +300,9 @@ KTable<String, String> concatenated = stringStream
 ```java
 import org.apache.kafka.streams.state.*;
 import org.apache.kafka.streams.*;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class StateQueryService {
     private final KafkaStreams streams;
@@ -311,8 +363,13 @@ public class StateQueryService {
 
 ```java
 import com.sun.net.httpserver.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.streams.KafkaStreams;
+
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 public class StateQueryServer {
     private final StateQueryService queryService;
@@ -336,9 +393,10 @@ public class StateQueryServer {
         Long count = queryService.getCount(key);
 
         String response = count != null ? count.toString() : "null";
-        exchange.sendResponseHeaders(200, response.length());
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, responseBytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
-            os.write(response.getBytes());
+            os.write(responseBytes);
         }
     }
 
@@ -347,9 +405,10 @@ public class StateQueryServer {
         String response = new ObjectMapper().writeValueAsString(counts);
 
         exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, response.length());
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, responseBytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
-            os.write(response.getBytes());
+            os.write(responseBytes);
         }
     }
 }
@@ -358,6 +417,14 @@ public class StateQueryServer {
 ### Distributed Queries
 
 ```java
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyQueryMetadata;
+import org.apache.kafka.streams.StoreQueryParameters;
+import org.apache.kafka.streams.state.HostInfo;
+import org.apache.kafka.streams.state.QueryableStoreTypes;
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
+
 public class DistributedQueryService {
     private final KafkaStreams streams;
     private final HostInfo thisHost;
@@ -414,7 +481,12 @@ public class DistributedQueryService {
 
 ```java
 import org.apache.kafka.streams.processor.StateStore;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.*;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CustomStateStore implements StateStore {
     private final String name;
@@ -431,14 +503,17 @@ public class CustomStateStore implements StateStore {
     }
 
     @Override
-    public void init(ProcessorContext context, StateStore root) {
+    public void init(StateStoreContext context, StateStore root) {
         this.open = true;
         // Register for changelog if needed
         context.register(root, (key, value) -> {
             if (value == null) {
-                data.remove(new String(key));
+                data.remove(new String(key, StandardCharsets.UTF_8));
             } else {
-                data.put(new String(key), new String(value));
+                data.put(
+                    new String(key, StandardCharsets.UTF_8),
+                    new String(value, StandardCharsets.UTF_8)
+                );
             }
         });
     }
@@ -477,6 +552,14 @@ public class CustomStateStore implements StateStore {
 ### Register Custom Store
 
 ```java
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.Named;
+import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.StoreBuilder;
+import org.apache.kafka.streams.state.Stores;
+
 StreamsBuilder builder = new StreamsBuilder();
 
 StoreBuilder<KeyValueStore<String, String>> storeBuilder =
@@ -489,15 +572,18 @@ StoreBuilder<KeyValueStore<String, String>> storeBuilder =
 builder.addStateStore(storeBuilder);
 
 // Use in processor
-builder.stream("input")
-    .process(() -> new CustomProcessor(), "custom-store");
+builder.stream("input", Consumed.with(Serdes.String(), Serdes.String()))
+    .process(() -> new CustomProcessor(), Named.as("custom-processor"), "custom-store");
 ```
 
 ## Processor API for Advanced State Management
 
 ```java
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.api.*;
 import org.apache.kafka.streams.state.*;
+
+import java.time.Duration;
 
 public class StatefulProcessor implements Processor<String, String, String, String> {
     private ProcessorContext<String, String> context;
@@ -517,8 +603,11 @@ public class StatefulProcessor implements Processor<String, String, String, Stri
     }
 
     @Override
-    public void process(Record<String, String> record) {
+    public void process(org.apache.kafka.streams.processor.api.Record<String, String> record) {
         String key = record.key();
+        if (key == null) {
+            return;
+        }
 
         // Update state
         Long currentCount = stateStore.get(key);
@@ -526,7 +615,11 @@ public class StatefulProcessor implements Processor<String, String, String, Stri
         stateStore.put(key, newCount);
 
         // Forward result
-        context.forward(new Record<>(key, String.valueOf(newCount), record.timestamp()));
+        context.forward(new org.apache.kafka.streams.processor.api.Record<>(
+            key,
+            String.valueOf(newCount),
+            record.timestamp()
+        ));
     }
 
     private void emitStats(long timestamp) {
@@ -534,7 +627,7 @@ public class StatefulProcessor implements Processor<String, String, String, Stri
         try (KeyValueIterator<String, Long> iterator = stateStore.all()) {
             while (iterator.hasNext()) {
                 KeyValue<String, Long> entry = iterator.next();
-                context.forward(new Record<>(
+                context.forward(new org.apache.kafka.streams.processor.api.Record<>(
                     entry.key,
                     "stats:" + entry.value,
                     timestamp
@@ -555,6 +648,10 @@ public class StatefulProcessor implements Processor<String, String, String, Stri
 ### Standby Replicas
 
 ```java
+import org.apache.kafka.streams.StreamsConfig;
+
+import java.util.Properties;
+
 Properties props = new Properties();
 // Enable standby replicas for faster recovery
 props.put(StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG, 1);
@@ -563,6 +660,9 @@ props.put(StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG, 1);
 ### State Store Restoration
 
 ```java
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.streams.processor.StateRestoreListener;
+
 public class RestorationListener implements StateRestoreListener {
     @Override
     public void onRestoreStart(
@@ -606,6 +706,8 @@ streams.setGlobalStateRestoreListener(new RestorationListener());
 ### 1. Choose Right State Store Type
 
 ```java
+import java.util.Map;
+
 // Persistent for large state (survives restarts)
 Stores.persistentKeyValueStore("my-store")
 
@@ -616,7 +718,7 @@ Stores.inMemoryKeyValueStore("my-store")
 storeBuilder.withCachingEnabled()
 
 // With logging for fault tolerance
-storeBuilder.withLoggingEnabled(configs)
+storeBuilder.withLoggingEnabled(Map.of("retention.ms", "86400000"))
 ```
 
 ### 2. Handle Rebalancing
@@ -634,6 +736,11 @@ streams.setStateListener((newState, oldState) -> {
 ### 3. Monitor State Store Metrics
 
 ```java
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
+
+import java.util.Map;
+
 // Get metrics
 Map<MetricName, ? extends Metric> metrics = streams.metrics();
 

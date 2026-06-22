@@ -19,12 +19,10 @@ package main
 
 func main() {
     nums := []int{1, 2, 3}
+    index := 5
     
     // panic: runtime error: index out of range [5] with length 3
-    _ = nums[5]
-    
-    // panic: runtime error: index out of range [-1]
-    _ = nums[-1]
+    _ = nums[index]
 }
 ```
 
@@ -193,6 +191,9 @@ func main() {
     if start < 0 {
         start = 0
     }
+    if end < 0 {
+        end = 0
+    }
     if end > len(nums) {
         end = len(nums)
     }
@@ -228,7 +229,7 @@ func main() {
     
     // For runes (Unicode-safe)
     runes := []rune(s)
-    if index < len(runes) {
+    if index >= 0 && index < len(runes) {
         fmt.Printf("Rune at %d: %c\n", index, runes[index])
     }
 }

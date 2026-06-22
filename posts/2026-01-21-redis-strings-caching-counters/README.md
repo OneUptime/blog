@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, String, Caching, Counter, Data Structure, Atomic Operation, TTL
 
-Description: A comprehensive guide to using Redis Strings for caching and counters, covering GET, SET, INCR, EXPIRE commands, atomic operations, and practical examples in Python, Node.
+Description: A comprehensive guide to using Redis Strings for caching and counters, covering GET, SET, INCR, EXPIRE commands, atomic operations, and practical examples in Python, Node, and Go.
 
 ---
 
@@ -50,7 +50,7 @@ SET session:abc123 "user_data" EX 3600 NX
 
 ### SETNX and SETEX
 
-Specialized SET variations:
+Specialized SET variations. In new code, prefer `SET` with `NX`, `EX`, or `PX` options because `SETEX` and `PSETEX` are deprecated aliases for `SET` with expiration options:
 
 ```bash
 # SET if Not eXists
@@ -161,7 +161,7 @@ GETSET counter "0"
 GETDEL temp:counter
 # Returns value and deletes key
 
-# Get current value and set expiration
+# Get current value and then set expiration (two separate commands)
 GET counter
 EXPIRE counter 3600
 ```
@@ -215,7 +215,7 @@ client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 def cache_user_profile(user_id: int, profile: dict, ttl: int = 3600) -> None:
     """Cache a user profile with expiration."""
     key = f"user:{user_id}:profile"
-    client.setex(key, ttl, json.dumps(profile))
+    client.set(key, json.dumps(profile), ex=ttl)
 
 def get_cached_user_profile(user_id: int) -> dict | None:
     """Get cached user profile."""
@@ -236,7 +236,7 @@ def cache_with_lock(key: str, fetch_func, ttl: int = 3600, lock_ttl: int = 10):
         try:
             # Fetch fresh data
             data = fetch_func()
-            client.setex(key, ttl, json.dumps(data))
+            client.set(key, json.dumps(data), ex=ttl)
             return data
         finally:
             client.delete(lock_key)
@@ -261,7 +261,7 @@ def get_page_views(page_id: str) -> int:
     return int(views) if views else 0
 
 def increment_daily_counter(metric: str) -> int:
-    """Increment a daily counter that expires at midnight."""
+    """Increment a daily counter and keep it for 2 days."""
     today = datetime.now().strftime("%Y-%m-%d")
     key = f"daily:{metric}:{today}"
 
@@ -279,7 +279,7 @@ def rate_limit_check(user_id: str, limit: int = 100, window: int = 60) -> bool:
 
     current = client.get(key)
     if current is None:
-        client.setex(key, window, 1)
+        client.set(key, 1, ex=window)
         return True
 
     if int(current) >= limit:
@@ -299,22 +299,23 @@ def atomic_transfer(from_account: str, to_account: str, amount: int) -> bool:
 
     while True:
         try:
-            # Watch keys for changes
-            client.watch(from_key, to_key)
+            with client.pipeline() as pipe:
+                # Watch keys for changes
+                pipe.watch(from_key, to_key)
 
-            # Get current balances
-            from_balance = int(client.get(from_key) or 0)
-            to_balance = int(client.get(to_key) or 0)
+                # Get current balances
+                from_balance = int(pipe.get(from_key) or 0)
+                to_balance = int(pipe.get(to_key) or 0)
 
-            if from_balance < amount:
-                client.unwatch()
-                return False
+                if from_balance < amount:
+                    pipe.unwatch()
+                    return False
 
-            # Execute transaction
-            pipe = client.pipeline(True)
-            pipe.set(from_key, from_balance - amount)
-            pipe.set(to_key, to_balance + amount)
-            pipe.execute()
+                # Execute transaction
+                pipe.multi()
+                pipe.set(from_key, from_balance - amount)
+                pipe.set(to_key, to_balance + amount)
+                pipe.execute()
 
             return True
         except redis.WatchError:
@@ -380,7 +381,7 @@ const redis = new Redis({
 
 async function cacheUserProfile(userId, profile, ttl = 3600) {
   const key = `user:${userId}:profile`;
-  await redis.setex(key, ttl, JSON.stringify(profile));
+  await redis.set(key, JSON.stringify(profile), 'EX', ttl);
 }
 
 async function getCachedUserProfile(userId) {
@@ -403,7 +404,7 @@ async function cacheWithLock(key, fetchFunc, ttl = 3600, lockTtl = 10) {
   if (acquired) {
     try {
       const data = await fetchFunc();
-      await redis.setex(key, ttl, JSON.stringify(data));
+      await redis.set(key, JSON.stringify(data), 'EX', ttl);
       return data;
     } finally {
       await redis.del(lockKey);
@@ -447,7 +448,7 @@ async function rateLimitCheck(userId, limit = 100, window = 60) {
 
   const current = await redis.get(key);
   if (current === null) {
-    await redis.setex(key, window, 1);
+    await redis.set(key, 1, 'EX', window);
     return true;
   }
 
@@ -482,13 +483,13 @@ async function atomicTransfer(fromAccount, toAccount, amount) {
       const multi = redis.multi();
       multi.set(fromKey, fromBalance - amount);
       multi.set(toKey, toBalance + amount);
-      await multi.exec();
+      const results = await multi.exec();
+      if (results === null) {
+        continue; // Retry on concurrent modification
+      }
 
       return true;
     } catch (error) {
-      if (error.message.includes('EXECABORT')) {
-        continue; // Retry on concurrent modification
-      }
       throw error;
     }
   }
@@ -608,7 +609,7 @@ func cacheUserProfile(userID int, profile UserProfile, ttl time.Duration) error 
     if err != nil {
         return err
     }
-    return client.SetEx(ctx, key, data, ttl).Err()
+    return client.Set(ctx, key, data, ttl).Err()
 }
 
 func getCachedUserProfile(userID int) (*UserProfile, error) {
@@ -653,7 +654,7 @@ func cacheWithLock(key string, fetchFunc func() (interface{}, error), ttl, lockT
         }
 
         serialized, _ := json.Marshal(data)
-        client.SetEx(ctx, key, serialized, ttl)
+        client.Set(ctx, key, serialized, ttl)
         return data, nil
     }
 
@@ -703,7 +704,7 @@ func rateLimitCheck(userID string, limit int64, window time.Duration) (bool, err
 
     current, err := client.Get(ctx, key).Result()
     if err == redis.Nil {
-        return true, client.SetEx(ctx, key, 1, window).Err()
+        return true, client.Set(ctx, key, 1, window).Err()
     }
     if err != nil {
         return false, err
@@ -910,7 +911,7 @@ Always handle Redis errors gracefully:
 
 Redis Strings are fundamental building blocks for caching, counters, and many other use cases. Key takeaways:
 
-- Use SETEX for cache entries with automatic expiration
+- Use SET with EX for cache entries with automatic expiration
 - INCR/DECR provide atomic counter operations
 - Combine SET NX with expiration for distributed locks
 - Use pipelines for multiple operations to reduce round trips

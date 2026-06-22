@@ -55,8 +55,10 @@ Floating version ranges are the most common source of non-reproducibility. A dep
 Always use exact versions and commit your lockfile:
 
 ```bash
-# Generate package-lock.json with exact versions
+# Generate or update package-lock.json with exact versions
+npm install
 
+# In CI, install exactly what's in package-lock.json
 npm ci
 
 # Never use npm install in CI - it can update the lockfile
@@ -85,7 +87,7 @@ werkzeug==2.3.7 \
 
 ### Go Modules
 
-Go modules are reproducible by default when you commit go.sum:
+Go modules help keep dependency downloads verifiable when you commit go.sum:
 
 ```bash
 # Verify module checksums match go.sum
@@ -103,10 +105,11 @@ Timestamps embedded in build outputs cause different hashes even with identical 
 
 ```dockerfile
 # Dockerfile with reproducible builds
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-# Set consistent timestamp for all files
+# Set consistent timestamps with BuildKit
 ARG SOURCE_DATE_EPOCH=0
+ARG VERSION=dev
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -178,8 +181,6 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library")
 go_binary(
     name = "server",
     embed = [":server_lib"],
-    # Disable stamping for reproducibility
-    stamp = 0,
     visibility = ["//visibility:public"],
 )
 
@@ -195,7 +196,7 @@ go_library(
 
 ### Nix for Pure Builds
 
-Nix provides fully reproducible builds through pure functions:
+Nix helps define reproducible builds through pinned inputs and pure build environments:
 
 ```nix
 # default.nix - reproducible build definition
@@ -220,9 +221,6 @@ pkgs.buildGoModule rec {
     "-s" "-w"
     "-X main.version=${version}"
   ];
-
-  # Fixed output derivation
-  outputHashMode = "recursive";
 }
 ```
 
@@ -270,13 +268,17 @@ File system ordering can affect builds when processing multiple files.
 
 ```go
 // Sort files before processing to ensure consistent order
-package main
+package buildutil
 
 import (
     "os"
     "path/filepath"
     "sort"
 )
+
+func processFile(path string) {
+    // Process one file.
+}
 
 func processFiles(dir string) error {
     var files []string

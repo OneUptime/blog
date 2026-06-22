@@ -26,7 +26,6 @@ Common authorization patterns include:
 ```python
 import redis
 import json
-from datetime import datetime
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -80,9 +79,8 @@ class PermissionCache:
 
     def invalidate_all(self):
         """Invalidate all cached permissions."""
-        keys = r.keys(f"{self.prefix}:*")
-        if keys:
-            r.delete(*keys)
+        for key in r.scan_iter(match=f"{self.prefix}:*"):
+            r.delete(key)
 
 # Usage
 
@@ -205,8 +203,8 @@ class RBACCache:
             pipe.sadd(role_key, *permissions)
 
         # Store parent roles for inheritance
+        pipe.delete(parent_key)
         if parent_roles:
-            pipe.delete(parent_key)
             pipe.sadd(parent_key, *parent_roles)
 
         pipe.execute()
@@ -340,6 +338,7 @@ class ResourcePermissionCache:
         # Also track which resources user has access to
         user_resources_key = f"{self.prefix}:{user_id}:{resource_type}:list"
         r.sadd(user_resources_key, resource_id)
+        r.expire(user_resources_key, self.ttl)
 
     def revoke_permission(self, user_id, resource_type, resource_id, permission):
         """Revoke permission on a specific resource."""
@@ -386,6 +385,7 @@ class ResourcePermissionCache:
         # Track sharing
         sharing_key = f"{self.prefix}:sharing:{resource_type}:{resource_id}"
         r.sadd(sharing_key, target_user_id)
+        r.expire(sharing_key, self.ttl)
 
     def get_resource_collaborators(self, resource_type, resource_id):
         """Get all users with access to a resource."""
@@ -437,6 +437,10 @@ class WildcardPermissionCache:
         key = f"{self.prefix}:user:{user_id}"
         permissions = r.smembers(key)
 
+        # Check * (superuser)
+        if '*' in permissions:
+            return True
+
         # Direct match
         if permission in permissions:
             return True
@@ -452,10 +456,6 @@ class WildcardPermissionCache:
 
             # Check *:action (action on all resources)
             if f"*:{action}" in permissions:
-                return True
-
-            # Check * (superuser)
-            if '*' in permissions:
                 return True
 
         return False

@@ -12,7 +12,7 @@ ClickHouse offers multiple table engines, each optimized for different use cases
 
 ## The MergeTree Family
 
-All production ClickHouse tables should use a MergeTree variant. These engines share core functionality but differ in how they handle data during background merges.
+Most production analytical ClickHouse tables use a MergeTree variant. These engines share core functionality but differ in how they handle data during background merges.
 
 ```mermaid
 flowchart TB
@@ -145,7 +145,7 @@ ORDER BY (date, page);
 
 ### How It Works
 
-During merges, rows with identical ORDER BY values are combined:
+During merges, rows with identical ORDER BY values are combined within the resulting part:
 
 ```sql
 -- Insert multiple incremental updates
@@ -154,7 +154,7 @@ INSERT INTO daily_stats VALUES ('2024-01-15', '/home', 150, 120, 75000);
 INSERT INTO daily_stats VALUES ('2024-01-15', '/home', 50, 40, 25000);
 
 -- Before merge: 3 rows
--- After merge: 1 row with views=300, unique_visitors=240, total_time_ms=150000
+-- After a full merge: 1 row with views=300, unique_visitors=240, total_time_ms=150000
 ```
 
 ### Specifying Columns to Sum
@@ -174,7 +174,8 @@ ENGINE = SummingMergeTree((views, total_time_ms))
 
 ### Caveats
 
-- Non-numeric columns take the first encountered value
+- Merges can leave rows with the same ORDER BY key in different parts, so use `GROUP BY` and `sum()` for guaranteed totals
+- Non-numeric columns that are not in the sorting key and not summed take an arbitrary value
 - Doesn't handle averages (sum count + sum total separately)
 - Empty sums (all zeros) may be deleted
 
@@ -189,7 +190,7 @@ CREATE TABLE hourly_metrics
     service String,
 
     -- Aggregate state columns
-    request_count AggregateFunction(count, UInt64),
+    request_count AggregateFunction(count),
     avg_latency AggregateFunction(avg, Float64),
     p99_latency AggregateFunction(quantile(0.99), Float64),
     unique_users AggregateFunction(uniq, UInt64)
@@ -389,7 +390,7 @@ CREATE TABLE user_daily_stats
 (
     date Date,
     user_id UInt64,
-    event_count AggregateFunction(count, UInt64),
+    event_count AggregateFunction(count),
     unique_events AggregateFunction(uniq, String)
 )
 ENGINE = AggregatingMergeTree()
@@ -433,7 +434,7 @@ CREATE TABLE api_metrics_hourly
     endpoint LowCardinality(String),
     method LowCardinality(String),
 
-    request_count AggregateFunction(count, UInt64),
+    request_count AggregateFunction(count),
     error_count AggregateFunction(countIf, UInt8),
     avg_latency AggregateFunction(avg, Float64),
     p50_latency AggregateFunction(quantile(0.5), Float64),

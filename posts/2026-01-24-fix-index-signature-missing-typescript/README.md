@@ -111,12 +111,9 @@ interface User {
 
 const user: User = { name: 'Alice', email: 'alice@example.com' };
 
-// Assert the type when you know it is safe
+// Use a double assertion when you know it is safe
 // Use this when you control how the object will be accessed
-const record = user as Record<string, string>;
-
-// Or use a double assertion for stricter types
-const record2 = user as unknown as Record<string, string>;
+const record = user as unknown as Record<string, string>;
 ```
 
 **Warning:** Type assertions bypass TypeScript's safety checks. Only use them when you are certain the code is correct.
@@ -153,14 +150,14 @@ function processRecord(record: Record<string, string>): void {
   // ...
 }
 
-// GOOD: Accept any object with string values
+// GOOD: Accept any object whose declared properties are string values
 // The generic constraint is more flexible
-function processObject<T extends Record<string, string>>(obj: T): void {
+function processObject<T extends object>(obj: T & Record<keyof T, string>): void {
   // Access known keys safely
-  for (const key in obj) {
+  (Object.keys(obj) as Array<keyof T>).forEach(key => {
     const value: string = obj[key];
-    console.log(key, value);
-  }
+    console.log(String(key), value);
+  });
 }
 
 // Now both work
@@ -224,7 +221,7 @@ function printConfig(cfg: Record<string, string>): void {
 printConfig(config);  // Error: Index signature missing
 
 // Fix 1: Use generic constraint
-function printConfigFixed<T extends Record<string, string>>(cfg: T): void {
+function printConfigFixed<T extends object>(cfg: T & Record<keyof T, string>): void {
   (Object.keys(cfg) as Array<keyof T>).forEach(key => {
     console.log(`${String(key)}: ${cfg[key]}`);
   });
@@ -239,12 +236,12 @@ printConfig({ ...config });  // Works
 ### Scenario 2: Dynamic Property Access
 
 ```typescript
-interface FormData {
+interface LoginFormData {
   username: string;
   password: string;
 }
 
-const form: FormData = { username: 'alice', password: 'secret' };
+const form: LoginFormData = { username: 'alice', password: 'secret' };
 
 // You want to access properties dynamically
 function getFieldValue(
@@ -257,10 +254,10 @@ function getFieldValue(
 getFieldValue(form, 'username');  // Error: Index signature missing
 
 // Fix: Use keyof for type-safe dynamic access
-function getFieldValueTyped<T>(
+function getFieldValueTyped<T, K extends keyof T>(
   data: T,
-  field: keyof T
-): T[keyof T] {
+  field: K
+): T[K] {
   return data[field];
 }
 
@@ -320,7 +317,7 @@ flowchart TD
     F -->|"No"| H["Use spread to copy"]
 
     E --> I["interface X { [key: string]: T }"]
-    G --> J["function fn<T extends Record>"]
+    G --> J["function fn<T extends object>(obj: T & Record<keyof T, V>)"]
     H --> K["const copy = { ...original }"]
     D --> L["obj as Record<string, T>"]
 

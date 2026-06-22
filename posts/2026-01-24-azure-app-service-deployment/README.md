@@ -46,7 +46,13 @@ az webapp deployment source config-local-git \
   --name myapp \
   --resource-group mygroup
 
-# Get the deployment URL (looks like https://user@myapp.scm.azurewebsites.net/myapp.git)
+# Local Git deploys from the master branch by default; set this if you push main
+az webapp config appsettings set \
+  --name myapp \
+  --resource-group mygroup \
+  --settings DEPLOYMENT_BRANCH=main
+
+# Get the deployment URL (append /myapp.git if it is not included)
 az webapp deployment list-publishing-credentials \
   --name myapp \
   --resource-group mygroup \
@@ -238,7 +244,7 @@ az webapp create \
   --resource-group mygroup \
   --plan myplan \
   --name myapp \
-  --deployment-container-image-name myregistry.azurecr.io/myapp:v1
+  --container-image-name myregistry.azurecr.io/myapp:v1
 
 # Enable managed identity for ACR pull
 az webapp identity assign \
@@ -254,6 +260,13 @@ az role assignment create \
   --role AcrPull \
   --scope $ACR_ID
 
+# Configure App Service to use the system-assigned identity for ACR pulls
+az webapp config set \
+  --resource-group mygroup \
+  --name myapp \
+  --acr-use-identity true \
+  --acr-identity '[system]'
+
 # Configure continuous deployment
 az webapp deployment container config \
   --enable-cd true \
@@ -262,6 +275,8 @@ az webapp deployment container config \
 ```
 
 ### Multi-Container with Docker Compose
+
+Docker Compose support in App Service is scheduled for retirement on March 31, 2027. Use it only for existing multi-container apps; for new apps, use App Service sidecars.
 
 ```yaml
 # docker-compose.yml
@@ -276,7 +291,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=Server=tcp:myserver.database.windows.net,1433;Database=mydb;...
 ```
 
 ```bash
@@ -347,7 +362,7 @@ az webapp config connection-string set \
   --slot staging \
   --slot-settings \
   --connection-string-type SQLAzure \
-  --settings "Database=Server=staging-db.database.windows.net;..."
+  --settings "DefaultConnection=Server=tcp:staging-db.database.windows.net,1433;Database=mydb;..."
 ```
 
 ## Application Settings and Configuration
@@ -431,23 +446,27 @@ curl -u "$USER:$PASS" \
 
 ```bash
 # Issue: Deployment stuck
-# Solution: Restart the Kudu service
+# Solution: Restart the app, including the Kudu/SCM site
 az webapp restart \
   --name myapp \
   --resource-group mygroup
 
-# Issue: Old code still running after deploy
-# Solution: Sync deployments
+# Issue: Old code still running with manual source-control integration
+# Solution: Sync the configured source-control deployment
 az webapp deployment source sync \
   --name myapp \
   --resource-group mygroup
 
 # Issue: Container not starting
-# Check container logs
-az webapp log show \
+# Enable and stream container logs
+az webapp log config \
   --name myapp \
   --resource-group mygroup \
-  --docker-container
+  --docker-container-logging filesystem
+
+az webapp log tail \
+  --name myapp \
+  --resource-group mygroup
 
 # Issue: Build failing on App Service
 # Run build locally instead

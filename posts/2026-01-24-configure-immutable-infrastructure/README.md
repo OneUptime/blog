@@ -52,17 +52,21 @@ variable "app_version" {
   description = "Application version to bake into the image"
 }
 
-variable "base_ami" {
-  type    = string
-  default = "ami-0c55b159cbfafe1f0"  # Ubuntu 22.04 LTS
-}
-
 source "amazon-ebs" "app_server" {
   ami_name      = "app-server-${var.app_version}-{{timestamp}}"
   instance_type = "t3.medium"
   region        = "us-east-1"
-  source_ami    = var.base_ami
   ssh_username  = "ubuntu"
+
+  source_ami_filter {
+    filters = {
+      name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    }
+    owners      = ["099720109477"]
+    most_recent = true
+  }
 
   tags = {
     Name        = "app-server"
@@ -187,7 +191,7 @@ resource "aws_launch_template" "app" {
   user_data = base64encode(<<-EOF
     #!/bin/bash
     # Minimal bootstrap - app already installed in AMI
-    /usr/local/bin/app --config /etc/app/config.yaml
+    systemctl start app
   EOF
   )
 
@@ -216,7 +220,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   instance_refresh {
@@ -328,7 +332,7 @@ spec:
       containers:
         - name: app
           # Always use specific image digest, not tags
-          image: myregistry.com/myapp@sha256:abc123...
+          image: myregistry.com/myapp@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           ports:
             - containerPort: 8080
           resources:
@@ -396,7 +400,7 @@ For secrets, use external secret management:
 
 ```yaml
 # external-secret.yaml (using External Secrets Operator)
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets

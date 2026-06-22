@@ -36,7 +36,7 @@ CREATE TABLE ecommerce_events (
     session_id String,
     device_id String,
     -- Product data
-    product_id UInt32,
+    product_id UInt64,
     product_name String,
     category_path Array(String),
     brand LowCardinality(String),
@@ -54,7 +54,7 @@ CREATE TABLE ecommerce_events (
     -- Custom properties
     properties Map(String, String),
     INDEX event_type_idx event_type TYPE set(0) GRANULARITY 4,
-    INDEX product_idx product_id TYPE bloom_filter GRANULARITY 4
+    INDEX product_idx product_id TYPE bloom_filter(0.01) GRANULARITY 4
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(event_time)
 ORDER BY (user_id, event_time, event_id)
@@ -66,7 +66,7 @@ SETTINGS index_granularity = 8192;
 ```sql
 -- Product dimensions table
 CREATE TABLE products (
-    product_id UInt32,
+    product_id UInt64,
     sku String,
     product_name String,
     description String,
@@ -85,7 +85,7 @@ ORDER BY product_id;
 
 -- Product dictionary for fast lookups
 CREATE DICTIONARY products_dict (
-    product_id UInt32,
+    product_id UInt64,
     product_name String,
     brand String,
     category_path Array(String),
@@ -123,7 +123,7 @@ CREATE TABLE orders (
     shipping_method LowCardinality(String),
     shipping_country LowCardinality(String),
     items Array(Tuple(
-        product_id UInt32,
+        product_id UInt64,
         quantity UInt16,
         unit_price Decimal64(2),
         discount Decimal64(2)
@@ -158,7 +158,7 @@ WITH funnel_data AS (
 SELECT
     'Product View' AS step,
     1 AS step_number,
-    countIf(viewed_product) AS users,
+    countIf(viewed_product) AS sessions,
     100 AS conversion_rate
 FROM funnel_data
 
@@ -167,7 +167,7 @@ UNION ALL
 SELECT
     'Add to Cart' AS step,
     2 AS step_number,
-    countIf(added_to_cart) AS users,
+    countIf(added_to_cart) AS sessions,
     round(countIf(added_to_cart) / countIf(viewed_product) * 100, 2) AS conversion_rate
 FROM funnel_data
 
@@ -176,7 +176,7 @@ UNION ALL
 SELECT
     'Checkout Start' AS step,
     3 AS step_number,
-    countIf(started_checkout) AS users,
+    countIf(started_checkout) AS sessions,
     round(countIf(started_checkout) / countIf(added_to_cart) * 100, 2) AS conversion_rate
 FROM funnel_data
 
@@ -185,7 +185,7 @@ UNION ALL
 SELECT
     'Purchase' AS step,
     4 AS step_number,
-    countIf(completed_purchase) AS users,
+    countIf(completed_purchase) AS sessions,
     round(countIf(completed_purchase) / countIf(started_checkout) * 100, 2) AS conversion_rate
 FROM funnel_data
 ORDER BY step_number;
@@ -423,19 +423,27 @@ GROUP BY category
 ORDER BY abandoned_sessions DESC;
 
 -- Average cart value at abandonment
+WITH abandoned_carts AS (
+    SELECT
+        session_id,
+        min(event_time) AS first_cart_time,
+        sum(total_price) AS cart_value
+    FROM ecommerce_events
+    WHERE event_type = 'add_to_cart'
+      AND event_time >= now() - INTERVAL 24 HOUR
+      AND session_id NOT IN (
+          SELECT session_id
+          FROM ecommerce_events
+          WHERE event_type = 'purchase'
+            AND event_time >= now() - INTERVAL 24 HOUR
+      )
+    GROUP BY session_id
+)
 SELECT
-    toStartOfHour(event_time) AS hour,
-    avg(total_price) AS avg_cart_value,
-    count() AS cart_adds
-FROM ecommerce_events
-WHERE event_type = 'add_to_cart'
-  AND event_time >= now() - INTERVAL 24 HOUR
-  AND session_id NOT IN (
-      SELECT session_id
-      FROM ecommerce_events
-      WHERE event_type = 'purchase'
-        AND event_time >= now() - INTERVAL 24 HOUR
-  )
+    toStartOfHour(first_cart_time) AS hour,
+    avg(cart_value) AS avg_cart_value,
+    count() AS abandoned_carts
+FROM abandoned_carts
 GROUP BY hour
 ORDER BY hour;
 ```
@@ -455,24 +463,36 @@ WITH order_products AS (
       AND event_time >= now() - INTERVAL 90 DAY
     GROUP BY order_id
     HAVING length(products) >= 2
+),
+product_order_counts AS (
+    SELECT
+        product_id,
+        count(DISTINCT order_id) AS product_orders
+    FROM ecommerce_events
+    WHERE event_type = 'purchase'
+      AND event_time >= now() - INTERVAL 90 DAY
+    GROUP BY product_id
+),
+pair_counts AS (
+    SELECT
+        p1,
+        p2,
+        count() AS co_purchase_count
+    FROM order_products
+    ARRAY JOIN products AS p1
+    ARRAY JOIN products AS p2
+    WHERE p1 < p2
+    GROUP BY p1, p2
+    HAVING co_purchase_count >= 10
 )
 SELECT
     p1 AS product_1,
     p2 AS product_2,
-    count() AS co_purchase_count,
+    co_purchase_count,
     -- Confidence: P(p2|p1)
-    count() / (
-        SELECT count(DISTINCT order_id)
-        FROM ecommerce_events
-        WHERE event_type = 'purchase'
-          AND product_id = p1
-    ) AS confidence
-FROM order_products
-ARRAY JOIN products AS p1
-ARRAY JOIN products AS p2
-WHERE p1 < p2
-GROUP BY p1, p2
-HAVING co_purchase_count >= 10
+    co_purchase_count / pc.product_orders AS confidence
+FROM pair_counts
+INNER JOIN product_order_counts pc ON pc.product_id = p1
 ORDER BY co_purchase_count DESC
 LIMIT 1000;
 ```
@@ -509,11 +529,12 @@ WHERE e.event_type = 'purchase'
       -- Users who bought similar products
       SELECT user_id
       FROM user_product_matrix_mv
-      WHERE hasAny(
+      WHERE user_id != 12345
+      GROUP BY user_id
+      HAVING hasAny(
           groupArrayMerge(purchased_products),
           (SELECT products FROM target_user_products)
       )
-      AND user_id != 12345
   )
 GROUP BY e.product_id
 ORDER BY buyer_count DESC
@@ -527,7 +548,7 @@ LIMIT 20;
 CREATE TABLE inventory_movements (
     movement_id UUID,
     timestamp DateTime64(3),
-    product_id UInt32,
+    product_id UInt64,
     warehouse_id UInt16,
     movement_type Enum8(
         'purchase' = 1,
@@ -566,22 +587,30 @@ SELECT
     daily_sales.avg_daily_sales,
     round(inv.current_stock / daily_sales.avg_daily_sales, 1) AS days_of_stock
 FROM (
-    SELECT product_id, sum(quantity) AS current_stock
+    SELECT
+        product_id,
+        sum(
+            CASE
+                WHEN movement_type IN ('purchase', 'return', 'transfer_in') THEN quantity
+                WHEN movement_type IN ('sale', 'transfer_out') THEN -quantity
+                WHEN movement_type = 'adjustment' THEN quantity
+            END
+        ) AS current_stock
     FROM inventory_movements
-    WHERE movement_type IN ('purchase', 'return', 'adjustment')
     GROUP BY product_id
 ) inv
 JOIN products p ON inv.product_id = p.product_id
 JOIN (
     SELECT
         product_id,
-        count() / 30 AS avg_daily_sales
+        sum(quantity) / 30 AS avg_daily_sales
     FROM ecommerce_events
     WHERE event_type = 'purchase'
       AND event_time >= now() - INTERVAL 30 DAY
     GROUP BY product_id
 ) daily_sales ON inv.product_id = daily_sales.product_id
-WHERE inv.current_stock / daily_sales.avg_daily_sales < 14  -- Less than 2 weeks stock
+WHERE daily_sales.avg_daily_sales > 0
+  AND inv.current_stock / daily_sales.avg_daily_sales < 14  -- Less than 2 weeks stock
 ORDER BY days_of_stock;
 ```
 

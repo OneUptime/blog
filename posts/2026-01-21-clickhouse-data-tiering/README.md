@@ -102,13 +102,11 @@ FROM system.storage_policies;
 ```sql
 -- Move specific partition to cold storage
 ALTER TABLE events_tiered
-MOVE PARTITION '202401' TO VOLUME 'cold';
+MOVE PARTITION 202401 TO VOLUME 'cold';
 
--- Move data older than date
+-- Move another monthly partition to cold storage
 ALTER TABLE events_tiered
-MOVE PARTITION ID 'all'
-WHERE timestamp < '2024-01-01'
-TO VOLUME 'cold';
+MOVE PARTITION 202312 TO VOLUME 'cold';
 ```
 
 ## Cost Optimization

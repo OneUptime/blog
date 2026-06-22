@@ -26,7 +26,7 @@ Version jump rules:
 - **Patch versions** (24.3.1 to 24.3.2): Generally safe, bug fixes only
 - **Minor versions** (24.3 to 24.4): New features, review changelog
 - **Major versions** (23.x to 24.x): Breaking changes possible, test thoroughly
-- Never skip more than two minor versions in one upgrade
+- For large version jumps, upgrade incrementally and avoid downgrading across versions more than one year apart
 
 ### Review Deprecation Warnings
 
@@ -151,17 +151,20 @@ sudo systemctl stop clickhouse-server
 
 ```bash
 # Download and install new version
+TARGET_VERSION=24.4.x.y
 
 # For Debian/Ubuntu
 sudo apt update
-sudo apt install clickhouse-server=24.4.1
+sudo apt install clickhouse-server=$TARGET_VERSION clickhouse-client=$TARGET_VERSION clickhouse-common-static=$TARGET_VERSION
 
 # For RHEL/CentOS
-sudo yum install clickhouse-server-24.4.1
+sudo yum install clickhouse-server-$TARGET_VERSION clickhouse-client-$TARGET_VERSION
 
-# Or using packages directly
-wget https://packages.clickhouse.com/deb/pool/main/c/clickhouse-server/clickhouse-server_24.4.1_amd64.deb
-sudo dpkg -i clickhouse-server_24.4.1_amd64.deb
+# Or using packages directly, install all matching deb packages
+wget https://packages.clickhouse.com/deb/pool/main/c/clickhouse-common-static/clickhouse-common-static_${TARGET_VERSION}_amd64.deb
+wget https://packages.clickhouse.com/deb/pool/main/c/clickhouse-client/clickhouse-client_${TARGET_VERSION}_amd64.deb
+wget https://packages.clickhouse.com/deb/pool/main/c/clickhouse-server/clickhouse-server_${TARGET_VERSION}_amd64.deb
+sudo dpkg -i clickhouse-common-static_${TARGET_VERSION}_amd64.deb clickhouse-client_${TARGET_VERSION}_amd64.deb clickhouse-server_${TARGET_VERSION}_amd64.deb
 ```
 
 ### Step 3: Start and Verify
@@ -332,7 +335,8 @@ helm upgrade clickhouse ./clickhouse-chart \
 sudo systemctl stop clickhouse-server
 
 # 2. Downgrade package
-sudo apt install clickhouse-server=24.3.2  # Previous version
+PREVIOUS_VERSION=24.3.x.y
+sudo apt install clickhouse-server=$PREVIOUS_VERSION clickhouse-client=$PREVIOUS_VERSION clickhouse-common-static=$PREVIOUS_VERSION
 
 # 3. Start ClickHouse
 sudo systemctl start clickhouse-server
@@ -353,7 +357,8 @@ sudo systemctl stop clickhouse-server
 clickhouse-backup restore pre_upgrade_20240115
 
 # 3. Downgrade package
-sudo apt install clickhouse-server=24.3.2
+PREVIOUS_VERSION=24.3.x.y
+sudo apt install clickhouse-server=$PREVIOUS_VERSION clickhouse-client=$PREVIOUS_VERSION clickhouse-common-static=$PREVIOUS_VERSION
 
 # 4. Start ClickHouse
 sudo systemctl start clickhouse-server
@@ -405,10 +410,10 @@ SELECT
 FROM system.tables
 WHERE engine LIKE '%MergeTree%';
 
--- Convert deprecated table engines
-ALTER TABLE events
-MODIFY ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
-ORDER BY (event_type, event_time);
+-- Convert a detached MergeTree table to ReplicatedMergeTree
+DETACH TABLE events;
+ATTACH TABLE events AS REPLICATED;
+SYSTEM RESTORE REPLICA events;
 ```
 
 ### Function Migration
@@ -476,6 +481,7 @@ echo "Health check passed"
 
 ```yaml
 # Alert on upgrade issues
+# Adjust metric names if you use a third-party exporter instead of ClickHouse's built-in Prometheus endpoint.
 groups:
 - name: clickhouse_upgrade
   rules:
@@ -488,7 +494,7 @@ groups:
       summary: "Multiple ClickHouse versions in cluster"
 
   - alert: ClickHouseReplicaLagDuringUpgrade
-    expr: clickhouse_replicas_absolute_delay > 300
+    expr: ClickHouseAsyncMetrics_ReplicasMaxAbsoluteDelay > 300
     for: 5m
     labels:
       severity: critical
@@ -538,7 +544,7 @@ Recommended upgrade schedule:
 Version management recommendations:
 
 1. Stay within 2 minor versions of latest stable
-   - Current stable: 24.4
+   - Example target: 24.4
    - Acceptable: 24.2, 24.3, 24.4
    - Needs upgrade: 24.1 and older
 

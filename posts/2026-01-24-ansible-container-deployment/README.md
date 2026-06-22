@@ -69,7 +69,7 @@ ansible-galaxy collection list | grep -E "(docker|kubernetes)"
 # requirements.yml - Collection dependencies
 collections:
   - name: community.docker
-    version: ">=3.0.0"
+    version: ">=3.6.0"
   - name: kubernetes.core
     version: ">=2.4.0"
   - name: community.general
@@ -179,11 +179,10 @@ collections:
 
     # Pull images before deployment
     - name: Pull Docker images
-      community.docker.docker_compose_v2:
+      community.docker.docker_compose_v2_pull:
         project_src: "{{ compose_dir }}"
         project_name: "{{ project_name }}"
-        pull: always
-        state: present
+        policy: always
 
     # Deploy with Docker Compose
     - name: Deploy application stack
@@ -191,7 +190,7 @@ collections:
         project_src: "{{ compose_dir }}"
         project_name: "{{ project_name }}"
         state: present
-        recreate: "{{ 'always' if compose_file.changed or env_file.changed else 'smart' }}"
+        recreate: "{{ 'always' if compose_file.changed or env_file.changed else 'auto' }}"
       register: compose_result
 
     # Display deployment status
@@ -205,8 +204,6 @@ collections:
 ```yaml
 ---
 # templates/docker-compose.yml.j2
-version: '3.8'
-
 services:
   web:
     image: "{{ app_image | default('nginx:latest') }}"
@@ -454,7 +451,7 @@ flowchart LR
     - name: Update deployment image
       kubernetes.core.k8s:
         kubeconfig: ~/.kube/config
-        state: present
+        state: patched
         definition:
           apiVersion: apps/v1
           kind: Deployment
@@ -633,9 +630,12 @@ flowchart TB
     app_name: myapp
     build_context: /opt/source/myapp
     registry: registry.example.com
-    image_tag: "{{ lookup('pipe', 'git -C ' + build_context + ' rev-parse --short HEAD') }}"
 
   tasks:
+    - name: Set image tag from Git commit
+      ansible.builtin.set_fact:
+        image_tag: "{{ lookup('pipe', 'git -C ' + build_context + ' rev-parse --short HEAD') }}"
+
     # Build the container image
     - name: Build container image
       community.docker.docker_image:
@@ -657,7 +657,8 @@ flowchart TB
       community.docker.docker_image:
         name: "{{ registry }}/{{ app_name }}"
         tag: "{{ image_tag }}"
-        repository: "{{ registry }}/{{ app_name }}"
+        repository: "{{ registry }}/{{ app_name }}:latest"
+        force_tag: yes
         push: no
         source: local
 
@@ -678,7 +679,7 @@ flowchart TB
   vars:
     app_name: myapp
     registry: registry.example.com
-    image_tag: "{{ hostvars['build_servers']['image_tag'] }}"
+    image_tag: "{{ hostvars[groups['build_servers'][0]].image_tag }}"
 
   tasks:
     - name: Deploy updated container
@@ -700,6 +701,7 @@ flowchart TB
 | Deploy container | docker_container | name, image, state, ports |
 | Manage images | docker_image | name, source, pull |
 | Docker Compose | docker_compose_v2 | project_src, state |
+| Pull Compose images | docker_compose_v2_pull | project_src, policy |
 | Registry login | docker_login | registry_url, username |
 | K8s resources | k8s | state, definition |
 | K8s info | k8s_info | kind, name, namespace |

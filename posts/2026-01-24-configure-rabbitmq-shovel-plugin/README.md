@@ -65,11 +65,11 @@ Expected output:
 
 ## Static Shovel Configuration
 
-Static shovels are defined in the RabbitMQ configuration file and persist across broker restarts. They are ideal for permanent message routing requirements.
+Static shovels are defined in RabbitMQ's advanced configuration file and persist across broker restarts. They can be used for permanent message routing requirements, although dynamic shovels are preferred for most deployments because they are easier to update without restarting nodes.
 
 ### Basic Configuration
 
-Create or edit the RabbitMQ configuration file (typically at `/etc/rabbitmq/rabbitmq.conf` for the new format or `/etc/rabbitmq/advanced.config` for advanced settings).
+Create or edit the RabbitMQ advanced configuration file (typically `/etc/rabbitmq/advanced.config`).
 
 ```erlang
 %% advanced.config - Static shovel configuration
@@ -123,7 +123,7 @@ Create or edit the RabbitMQ configuration file (typically at `/etc/rabbitmq/rabb
 | `ack_mode` | When to acknowledge messages | `on_confirm` for reliability |
 | `prefetch_count` | Messages to prefetch | 100-1000 depending on message size |
 | `reconnect_delay` | Seconds between reconnection attempts | 5-30 seconds |
-| `delete_after` | Delete shovel after N messages | `never` for continuous operation |
+| `src-delete-after` | Delete dynamic shovel after a source queue length or N messages | `never` for continuous operation |
 
 ## Dynamic Shovel Configuration
 
@@ -176,19 +176,22 @@ curl -u admin:password -X PUT \
 
 # Check shovel status
 curl -u admin:password \
-  http://localhost:15672/api/shovels/%2f/logs_shovel
+  http://localhost:15672/api/shovels/vhost/%2f/logs_shovel
 ```
 
 ## Advanced Configuration Patterns
 
 ### Multi-Destination Shovel
 
-For scenarios requiring message replication to multiple destinations, configure multiple shovels from the same source.
+For scenarios requiring message replication to multiple destinations, configure multiple source queues bound to the same source exchange, with one shovel per queue. Multiple shovels consuming from the same queue would compete for messages instead of each destination receiving every message.
 
 ```mermaid
 flowchart TD
     subgraph Source["Source Broker"]
-        SQ[Orders Queue]
+        EX[Orders Exchange]
+        SQ1[Orders Analytics Queue]
+        SQ2[Orders Archive Queue]
+        SQ3[Orders Backup Queue]
     end
 
     subgraph Shovels["Shovel Workers"]
@@ -203,16 +206,16 @@ flowchart TD
         D3[Backup Broker]
     end
 
-    SQ --> S1
-    SQ --> S2
-    SQ --> S3
+    EX --> SQ1 --> S1
+    EX --> SQ2 --> S2
+    EX --> SQ3 --> S3
     S1 --> D1
     S2 --> D2
     S3 --> D3
 ```
 
 ```erlang
-%% Multiple shovels from same source
+%% Multiple shovels from queues bound to the same source exchange
 [
   {rabbitmq_shovel, [
     {shovels, [
@@ -220,7 +223,7 @@ flowchart TD
       {orders_to_analytics, [
         {source, [
           {uris, ["amqp://user:pass@source:5672"]},
-          {queue, <<"orders">>}
+          {queue, <<"orders.analytics">>}
         ]},
         {destination, [
           {uris, ["amqp://user:pass@analytics:5672"]},
@@ -233,7 +236,7 @@ flowchart TD
       {orders_to_archive, [
         {source, [
           {uris, ["amqp://user:pass@source:5672"]},
-          {queue, <<"orders">>}
+          {queue, <<"orders.archive">>}
         ]},
         {destination, [
           {uris, ["amqp://user:pass@archive:5672"]},
@@ -323,7 +326,11 @@ curl -u admin:password http://localhost:15672/api/shovels | jq '.'
 
 ### Prometheus Metrics
 
-If you have the Prometheus plugin enabled, shovel metrics are automatically exported.
+If you have both the Prometheus plugin and the Shovel Prometheus plugin enabled, aggregate shovel metrics are exported.
+
+```bash
+rabbitmq-plugins enable rabbitmq_prometheus rabbitmq_shovel_prometheus
+```
 
 ```yaml
 # Example Prometheus alert for shovel failures
@@ -331,13 +338,13 @@ groups:
   - name: rabbitmq_shovel
     rules:
       - alert: RabbitMQShovelDown
-        expr: rabbitmq_shovel_state{state!="running"} == 1
+        expr: rabbitmq_shovel_dynamic{status!="running"} > 0 or rabbitmq_shovel_static{status!="running"} > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "RabbitMQ Shovel {{ $labels.name }} is not running"
-          description: "Shovel has been in {{ $labels.state }} state for more than 5 minutes"
+          summary: "One or more RabbitMQ shovels are not running"
+          description: "{{ $value }} shovel(s) have been in {{ $labels.status }} state for more than 5 minutes"
 ```
 
 ## Troubleshooting Common Issues
@@ -411,12 +418,12 @@ To prevent message loss:
 {secure_shovel, [
   {source, [
     {protocol, amqp091},
-    {uris, ["amqps://user:pass@source:5671?cacertfile=/path/ca.pem&certfile=/path/cert.pem&keyfile=/path/key.pem&verify=verify_peer"]},
+    {uris, ["amqps://user:pass@source:5671?cacertfile=/path/ca.pem&certfile=/path/cert.pem&keyfile=/path/key.pem&verify=verify_peer&server_name_indication=source"]},
     {queue, <<"secure_queue">>}
   ]},
   {destination, [
     {protocol, amqp091},
-    {uris, ["amqps://user:pass@dest:5671?cacertfile=/path/ca.pem&certfile=/path/cert.pem&keyfile=/path/key.pem&verify=verify_peer"]},
+    {uris, ["amqps://user:pass@dest:5671?cacertfile=/path/ca.pem&certfile=/path/cert.pem&keyfile=/path/key.pem&verify=verify_peer&server_name_indication=dest"]},
     {queue, <<"secure_dest">>}
   ]},
   {ack_mode, on_confirm}
@@ -446,7 +453,7 @@ rabbitmqctl set_parameter shovel secure_shovel "{
 
 The RabbitMQ Shovel plugin is an essential tool for reliable message transfer between brokers. Key takeaways:
 
-1. Use static configuration for permanent routing needs
+1. Prefer dynamic shovels for most deployments; use static configuration only when node-boot configuration is required
 2. Use dynamic configuration for flexible, runtime-adjustable shovels
 3. Always configure `ack_mode: on_confirm` for reliability
 4. Set up proper monitoring and alerting for shovel status

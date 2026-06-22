@@ -16,7 +16,7 @@ Kafka provides fault tolerance through:
 
 - **Replication**: Each partition has multiple replicas across brokers
 - **Leader election**: Automatic failover when a leader becomes unavailable
-- **In-Sync Replicas (ISR)**: Only replicas that are caught up can become leaders
+- **In-Sync Replicas (ISR)**: With unclean leader election disabled, only replicas that are caught up can become leaders
 
 ## How Leader Election Works
 
@@ -35,11 +35,14 @@ When a broker fails, Kafka automatically elects new leaders for affected partiti
 ```properties
 # server.properties
 
-# Time before a broker is considered dead
-
+# ZooKeeper mode: session timeout used for broker failure detection
 zookeeper.session.timeout.ms=18000
 
-# For KRaft mode
+# KRaft mode: broker heartbeat and session timeout
+broker.heartbeat.interval.ms=2000
+broker.session.timeout.ms=9000
+
+# KRaft controller quorum election settings
 controller.quorum.election.timeout.ms=1000
 controller.quorum.fetch.timeout.ms=2000
 
@@ -61,8 +64,6 @@ import org.apache.kafka.common.Node;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
-
 public class BrokerHealthMonitor {
 
     private final AdminClient adminClient;
@@ -415,32 +416,35 @@ bin/kafka-leader-election.sh --bootstrap-server localhost:9092 \
 When the controller broker fails:
 
 ```java
+import org.apache.kafka.clients.admin.*;
+import java.util.*;
+
 public class ControllerFailoverHandler {
 
     public void handleControllerFailure(String bootstrapServers)
             throws Exception {
 
-        AdminClient adminClient = createAdminClient(bootstrapServers);
+        try (AdminClient adminClient = createAdminClient(bootstrapServers)) {
+            // New controller should be elected automatically
+            // Wait and verify
+            int maxWaitSeconds = 60;
+            int waited = 0;
 
-        // New controller should be elected automatically
-        // Wait and verify
-        int maxWaitSeconds = 60;
-        int waited = 0;
-
-        while (waited < maxWaitSeconds) {
-            try {
-                int controllerId = adminClient.describeCluster()
-                    .controller().get().id();
-                System.out.println("New controller elected: " + controllerId);
-                return;
-            } catch (Exception e) {
-                System.out.println("Waiting for controller election...");
-                Thread.sleep(5000);
-                waited += 5;
+            while (waited < maxWaitSeconds) {
+                try {
+                    int controllerId = adminClient.describeCluster()
+                        .controller().get().id();
+                    System.out.println("New controller elected: " + controllerId);
+                    return;
+                } catch (Exception e) {
+                    System.out.println("Waiting for controller election...");
+                    Thread.sleep(5000);
+                    waited += 5;
+                }
             }
-        }
 
-        throw new RuntimeException("Controller election timeout");
+            throw new RuntimeException("Controller election timeout");
+        }
     }
 
     private AdminClient createAdminClient(String bootstrapServers) {
@@ -490,9 +494,9 @@ def handle_multiple_broker_failure(bootstrap_servers: str,
         else:
             result['status'] = 'critical'
             result['actions_needed'] = [
-                'URGENT: Cluster may lose quorum',
+                'URGENT: Cluster may have unavailable partitions',
                 'Prioritize bringing brokers back online',
-                'Consider enabling unclean leader election if data loss acceptable'
+                'Consider unclean leader election only for leaderless partitions if data loss is acceptable'
             ]
 
         # Check under-replicated partitions
@@ -568,6 +572,7 @@ $KAFKA_HOME/bin/kafka-leader-election.sh \
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 
 public class BrokerReplacement {
@@ -584,23 +589,43 @@ public class BrokerReplacement {
             Map<String, TopicDescription> descriptions =
                 adminClient.describeTopics(topics).allTopicNames().get();
 
-            List<String> affectedPartitions = new ArrayList<>();
+            Map<TopicPartition, Optional<NewPartitionReassignment>> reassignments =
+                new HashMap<>();
 
             for (Map.Entry<String, TopicDescription> entry : descriptions.entrySet()) {
                 String topic = entry.getKey();
                 for (var partition : entry.getValue().partitions()) {
-                    boolean hadReplica = partition.replicas().stream()
-                        .anyMatch(n -> n.id() == failedBrokerId);
-                    if (hadReplica) {
-                        affectedPartitions.add(topic + "-" + partition.partition());
+                    List<Integer> targetReplicas = new ArrayList<>();
+                    boolean replacedReplica = false;
+
+                    for (var replica : partition.replicas()) {
+                        if (replica.id() == failedBrokerId) {
+                            targetReplicas.add(newBrokerId);
+                            replacedReplica = true;
+                        } else {
+                            targetReplicas.add(replica.id());
+                        }
+                    }
+
+                    if (replacedReplica) {
+                        TopicPartition tp = new TopicPartition(
+                            topic,
+                            partition.partition()
+                        );
+                        reassignments.put(
+                            tp,
+                            Optional.of(new NewPartitionReassignment(targetReplicas))
+                        );
                     }
                 }
             }
 
-            System.out.println("Affected partitions: " + affectedPartitions.size());
+            System.out.println("Affected partitions: " + reassignments.size());
 
-            // 2. The new broker will automatically receive replicas
-            // based on partition reassignment
+            // 2. Move replicas from the failed broker to the replacement broker
+            if (!reassignments.isEmpty()) {
+                adminClient.alterPartitionReassignments(reassignments).all().get();
+            }
 
             // 3. Verify new broker is catching up
             System.out.println("Waiting for new broker to sync...");
@@ -795,7 +820,7 @@ groups:
   - name: kafka-broker-alerts
     rules:
       - alert: KafkaBrokerDown
-        expr: kafka_server_replicamanager_leadercount == 0
+        expr: up{job="kafka"} == 0
         for: 1m
         labels:
           severity: critical

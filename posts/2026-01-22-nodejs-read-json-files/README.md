@@ -147,9 +147,9 @@ async function loadAllConfigs() {
 }
 ```
 
-## Method 5: ES Modules Import (Node.js 18+)
+## Method 5: ES Modules Import (Node.js 18.20.5+)
 
-Import JSON directly with import assertion:
+Import JSON directly with an import attribute:
 
 ```javascript
 // app.mjs (ES modules)
@@ -174,6 +174,10 @@ async function loadConfig() {
 For large files, avoid loading everything into memory:
 
 ### Using Streams
+
+```bash
+npm install JSONStream
+```
 
 ```javascript
 const fs = require('fs');
@@ -344,7 +348,7 @@ function getConfig() {
 ### Using chokidar
 
 ```bash
-npm install chokidar
+npm install chokidar@4
 ```
 
 ```javascript
@@ -386,12 +390,16 @@ class ConfigManager {
 }
 
 // Usage
-const config = new ConfigManager('./config.json');
-config.onChange((newConfig) => {
-  console.log('Config updated:', newConfig);
-});
-await config.load();
-config.watch();
+async function main() {
+  const config = new ConfigManager('./config.json');
+  config.onChange((newConfig) => {
+    console.log('Config updated:', newConfig);
+  });
+  await config.load();
+  config.watch();
+}
+
+main();
 ```
 
 ## JSON with Comments

@@ -27,7 +27,11 @@ SELECT * FROM mysql('host:3306', 'database', 'table', 'user', 'password');
 
 ```sql
 -- Create persistent table mapping
-CREATE TABLE pg_users
+CREATE TABLE pg_users (
+    id UInt64,
+    email String,
+    active Bool
+)
 ENGINE = PostgreSQL('host:5432', 'database', 'users', 'user', 'password');
 
 -- Query like a normal table
@@ -73,7 +77,12 @@ ENGINE = PostgreSQL(
 
 ```sql
 -- Specify schema
-CREATE TABLE pg_orders
+CREATE TABLE pg_orders (
+    order_id UInt64,
+    user_id UInt64,
+    total Decimal(10, 2),
+    created_at DateTime
+)
 ENGINE = PostgreSQL(
     'postgres:5432',
     'app_database',
@@ -134,7 +143,12 @@ ENGINE = MySQL(
 
 ```sql
 -- With connection pool settings
-CREATE TABLE mysql_orders
+CREATE TABLE mysql_orders (
+    order_id UInt64,
+    customer_id UInt64,
+    total Decimal(10, 2),
+    created_at DateTime
+)
 ENGINE = MySQL(
     'mysql:3306',
     'ecommerce',
@@ -192,7 +206,7 @@ CREATE TABLE s3_events (
     event_time DateTime
 )
 ENGINE = S3(
-    'https://bucket.s3.amazonaws.com/events/',
+    'https://bucket.s3.amazonaws.com/events/*.parquet',
     'ACCESS_KEY',
     'SECRET_KEY',
     'Parquet'
@@ -297,14 +311,16 @@ SELECT count() FROM distributed_events;
 SELECT *
 FROM hdfs(
     'hdfs://namenode:9000/data/events/*.parquet',
-    'Parquet'
+    'Parquet',
+    'event_id UInt64, event_type String, event_time DateTime'
 );
 
 -- Read ORC
 SELECT *
 FROM hdfs(
     'hdfs://namenode:9000/warehouse/events/year=2024/month=01/*.orc',
-    'ORC'
+    'ORC',
+    'event_id UInt64, event_type String, event_time DateTime'
 );
 ```
 
@@ -370,7 +386,10 @@ SELECT * FROM mongo_users WHERE email LIKE '%@example.com';
 
 ```sql
 -- Connect to SQLite file
-CREATE TABLE sqlite_data
+CREATE TABLE sqlite_data (
+    id UInt64,
+    value String
+)
 ENGINE = SQLite('/path/to/database.db', 'table_name');
 
 -- Query SQLite
@@ -437,8 +456,11 @@ FROM events;
 
 ```sql
 -- Use connection pooling
-CREATE TABLE external_data
-ENGINE = PostgreSQL(...)
+CREATE TABLE external_data (
+    id UInt64,
+    value String
+)
+ENGINE = MySQL('mysql:3306', 'database', 'table', 'user', 'password')
 SETTINGS
     connection_pool_size = 16,
     connection_max_tries = 3,
@@ -450,10 +472,10 @@ SETTINGS
 ```sql
 -- Handle connection errors gracefully
 SELECT *
-FROM postgresql('host', 'db', 'table', 'user', 'pass')
+FROM mysql('host', 'db', 'table', 'user', 'pass')
 SETTINGS
     external_storage_connect_timeout_sec = 10,
-    external_storage_max_read_rows = 1000000;
+    external_storage_rw_timeout_sec = 30;
 ```
 
 ### Security

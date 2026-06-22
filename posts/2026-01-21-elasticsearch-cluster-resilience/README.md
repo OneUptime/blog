@@ -88,7 +88,7 @@ curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/jso
 {
   "persistent": {
     "cluster.routing.allocation.awareness.attributes": "zone",
-    "cluster.routing.allocation.awareness.force.zone.values": ["zone-a", "zone-b", "zone-c"]
+    "cluster.routing.allocation.awareness.force.zone.values": "zone-a,zone-b,zone-c"
   }
 }'
 ```
@@ -203,17 +203,13 @@ cluster.max_voting_config_exclusions: 10
 
 ### Cluster Recovery Settings
 
-Configure how the cluster recovers from restarts:
+Configure how the cluster recovers after a full cluster restart:
 
-```bash
-curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
-{
-  "persistent": {
-    "gateway.recover_after_nodes": 2,
-    "gateway.expected_nodes": 3,
-    "gateway.recover_after_time": "5m"
-  }
-}'
+```yaml
+# Static settings configured on every master-eligible node
+gateway.recover_after_data_nodes: 2
+gateway.expected_data_nodes: 3
+gateway.recover_after_time: 5m
 ```
 
 ### Shard Recovery Settings
@@ -388,8 +384,9 @@ watch -n 1 'curl -s localhost:9200/_cat/shards?v | grep -E "RELOCATING|INITIALIZ
 ### Verify Allocation Awareness
 
 ```bash
-# Check shard distribution across zones
-curl -s "localhost:9200/_cat/shards?v" | awk '{print $1, $8}' | sort | uniq -c
+# Check shard distribution by node, then compare nodes with their zone attributes
+curl -s "localhost:9200/_cat/shards?v&h=index,shard,prirep,state,node" | sort
+curl -s "localhost:9200/_cat/nodeattrs?v&h=node,attr,value" | grep ' zone '
 ```
 
 ## Summary

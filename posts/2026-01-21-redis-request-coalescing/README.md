@@ -146,7 +146,7 @@ class SingleFlightCache:
 
             # Store in cache
             cache_ttl = ttl or self.default_ttl
-            self.redis.setex(key, cache_ttl, result)
+            self.redis.set(key, result, ex=cache_ttl)
 
             return result
 
@@ -197,7 +197,7 @@ class SingleFlightCache:
             cache_ttl = ttl or self.default_ttl
             pipe = self.redis.pipeline()
             for key, value in computed.items():
-                pipe.setex(key, cache_ttl, value)
+                pipe.set(key, value, ex=cache_ttl)
             pipe.execute()
 
             return computed
@@ -314,7 +314,7 @@ class SingleFlightCache {
 
             // Store in cache
             const cacheTTL = ttl || this.defaultTTL;
-            await this.redis.setex(key, cacheTTL, value);
+            await this.redis.set(key, value, 'EX', cacheTTL);
 
             return value;
         });
@@ -369,7 +369,7 @@ class SingleFlightCache {
             const cacheTTL = ttl || this.defaultTTL;
             const pipeline = this.redis.pipeline();
             for (const [key, value] of Object.entries(computedValues)) {
-                pipeline.setex(key, cacheTTL, value);
+                pipeline.set(key, value, 'EX', cacheTTL);
             }
             await pipeline.exec();
 
@@ -481,15 +481,15 @@ class DistributedSingleFlight:
                 result = fn()
 
                 # Store result for waiting clients
-                self.redis.setex(result_key, result_ttl, self._serialize(result))
+                self.redis.set(result_key, self._serialize(result), ex=result_ttl)
 
                 return result
             except Exception as e:
                 # Store error for waiting clients
-                self.redis.setex(
+                self.redis.set(
                     result_key,
-                    result_ttl,
-                    self._serialize({'__error__': str(e)})
+                    self._serialize({'__error__': str(e)}),
+                    ex=result_ttl
                 )
                 raise
             finally:
@@ -591,7 +591,7 @@ class DistributedCache:
 
             # Cache
             cache_ttl = ttl or self.default_ttl
-            self.redis.setex(key, cache_ttl, result)
+            self.redis.set(key, result, ex=cache_ttl)
 
             return result
 
@@ -620,7 +620,7 @@ import threading
 import time
 import json
 import uuid
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, Tuple
 from dataclasses import dataclass
 
 @dataclass
@@ -646,7 +646,7 @@ class PubSubSingleFlight:
         self.wait_timeout = wait_timeout
 
         # Waiting requests
-        self._waiting: Dict[str, WaitingRequest] = {}
+        self._waiting: Dict[str, List[WaitingRequest]] = {}
         self._lock = threading.Lock()
 
         # Start subscriber thread
@@ -664,6 +664,9 @@ class PubSubSingleFlight:
     def _lock_key(self, key: str) -> str:
         return f"singleflight:lock:{key}"
 
+    def _result_key(self, key: str) -> str:
+        return f"singleflight:result:value:{key}"
+
     def _subscriber_loop(self):
         """Background thread to receive result notifications."""
         self._pubsub.psubscribe('singleflight:result:*')
@@ -679,8 +682,8 @@ class PubSubSingleFlight:
                 data = json.loads(message['data'])
 
                 with self._lock:
-                    if key in self._waiting:
-                        waiting = self._waiting[key]
+                    waiters = self._waiting.get(key, [])
+                    for waiting in waiters:
                         if 'error' in data:
                             waiting.error = data['error']
                         else:
@@ -690,6 +693,7 @@ class PubSubSingleFlight:
     def do(self, key: str, fn: Callable[[], Any]) -> Any:
         """Execute fn() with distributed deduplication."""
         lock_key = self._lock_key(key)
+        result_key = self._result_key(key)
         lock_value = str(uuid.uuid4())
 
         # Try to acquire lock
@@ -704,20 +708,29 @@ class PubSubSingleFlight:
             # We got the lock - execute
             try:
                 result = fn()
+                payload = json.dumps({'result': result})
+
+                # Store result so waiters can recover missed Pub/Sub messages
+                self.redis.set(result_key, payload, ex=5)
 
                 # Publish result
                 self.redis.publish(
                     self._channel_name(key),
-                    json.dumps({'result': result})
+                    payload
                 )
 
                 return result
 
             except Exception as e:
+                payload = json.dumps({'error': str(e)})
+
+                # Store error so waiters can recover missed Pub/Sub messages
+                self.redis.set(result_key, payload, ex=5)
+
                 # Publish error
                 self.redis.publish(
                     self._channel_name(key),
-                    json.dumps({'error': str(e)})
+                    payload
                 )
                 raise
 
@@ -730,22 +743,48 @@ class PubSubSingleFlight:
 
     def _wait_for_result(self, key: str) -> Any:
         """Wait for result notification via Pub/Sub."""
+        found, stored = self._get_stored_result(key)
+        if found:
+            return stored
+
         waiting = WaitingRequest(event=threading.Event())
 
         with self._lock:
-            self._waiting[key] = waiting
+            self._waiting.setdefault(key, []).append(waiting)
 
         try:
+            found, stored = self._get_stored_result(key)
+            if found:
+                return stored
+
             # Wait for notification
             if waiting.event.wait(timeout=self.wait_timeout):
                 if waiting.error:
                     raise Exception(waiting.error)
                 return waiting.result
             else:
+                found, stored = self._get_stored_result(key)
+                if found:
+                    return stored
                 raise TimeoutError(f"Timeout waiting for {key}")
         finally:
             with self._lock:
-                self._waiting.pop(key, None)
+                waiters = self._waiting.get(key)
+                if waiters and waiting in waiters:
+                    waiters.remove(waiting)
+                    if not waiters:
+                        self._waiting.pop(key, None)
+
+    def _get_stored_result(self, key: str) -> Tuple[bool, Any]:
+        """Get a short-lived stored result for missed Pub/Sub messages."""
+        result = self.redis.get(self._result_key(key))
+        if result is None:
+            return False, None
+
+        data = json.loads(result)
+        if 'error' in data:
+            raise Exception(data['error'])
+        return True, data['result']
 
     def _release_lock(self, lock_key: str, lock_value: str):
         """Release lock if we still own it."""
@@ -936,7 +975,7 @@ class CoalescingCache:
             # Compute and cache
             result = compute_fn()
             cache_ttl = ttl or self.default_ttl
-            self.redis.setex(key, cache_ttl, result)
+            self.redis.set(key, result, ex=cache_ttl)
             return result
 
         return self.semaphore.do(f"cache:{key}", fetch_and_cache)
@@ -1017,19 +1056,21 @@ class DistributedSingleFlight {
                 const result = await fn();
 
                 // Store result for waiting clients
-                await this.redis.setex(
+                await this.redis.set(
                     resultKey,
-                    resultTTL,
-                    JSON.stringify({ result })
+                    JSON.stringify({ result }),
+                    'EX',
+                    resultTTL
                 );
 
                 return result;
             } catch (err) {
                 // Store error
-                await this.redis.setex(
+                await this.redis.set(
                     resultKey,
-                    resultTTL,
-                    JSON.stringify({ error: err.message })
+                    JSON.stringify({ error: err.message }),
+                    'EX',
+                    resultTTL
                 );
                 throw err;
             } finally {
@@ -1111,7 +1152,7 @@ class DistributedCache {
 
             // Cache
             const cacheTTL = ttl || this.defaultTTL;
-            await this.redis.setex(key, cacheTTL, result);
+            await this.redis.set(key, result, 'EX', cacheTTL);
 
             return result;
         });

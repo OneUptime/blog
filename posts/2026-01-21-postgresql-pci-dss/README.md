@@ -46,7 +46,7 @@ CREATE EXTENSION pgcrypto;
 
 -- Encrypt PAN (Primary Account Number)
 INSERT INTO transactions (pan_encrypted)
-VALUES (pgp_sym_encrypt('4111111111111111', 'encryption_key'));
+VALUES (pgp_sym_encrypt('4111111111111111', current_setting('app.encryption_key')));
 ```
 
 ## Access Control
@@ -71,13 +71,18 @@ CREATE POLICY merchant_isolation ON transactions
 
 ## Auditing with pgaudit
 
+```conf
+# postgresql.conf
+shared_preload_libraries = 'pgaudit'
+```
+
 ```sql
 CREATE EXTENSION pgaudit;
 
 -- Configure auditing
 ALTER SYSTEM SET pgaudit.log = 'all';
 ALTER SYSTEM SET pgaudit.log_catalog = off;
-ALTER SYSTEM SET pgaudit.log_parameter = on;
+ALTER SYSTEM SET pgaudit.log_parameter = off;
 ```
 
 ## Logging Configuration
@@ -87,7 +92,7 @@ ALTER SYSTEM SET pgaudit.log_parameter = on;
 log_connections = on
 log_disconnections = on
 log_statement = 'ddl'
-log_min_duration_statement = 0  # Log all statements
+log_min_duration_statement = 1000  # Log statements running 1 second or longer
 log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 ```
 

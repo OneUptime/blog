@@ -48,8 +48,8 @@ flowchart TB
 Without bulkheads, a slow external service can cascade failures:
 
 1. Payment API becomes slow
-2. All threads wait on payment calls
-3. No threads left for user requests
+2. Request handlers wait on pending payment calls
+3. No concurrency capacity left for user requests
 4. Entire application becomes unresponsive
 
 Bulkheads limit concurrent operations per component, ensuring failures stay isolated.
@@ -137,14 +137,15 @@ Add timeout support to prevent indefinite waiting:
 ```typescript
 // bulkhead.ts
 
-interface BulkheadOptions {
+export interface BulkheadOptions {
   maxConcurrent: number;      // Maximum concurrent operations
   maxWaiting: number;         // Maximum operations in wait queue
   timeoutMs: number;          // Maximum time to wait for a permit
 }
 
-class Bulkhead {
+export class Bulkhead {
   private name: string;
+  private maxConcurrent: number;
   private permits: number;
   private maxWaiting: number;
   private timeoutMs: number;
@@ -165,6 +166,7 @@ class Bulkhead {
 
   constructor(name: string, options: BulkheadOptions) {
     this.name = name;
+    this.maxConcurrent = options.maxConcurrent;
     this.permits = options.maxConcurrent;
     this.maxWaiting = options.maxWaiting;
     this.timeoutMs = options.timeoutMs;
@@ -181,7 +183,7 @@ class Bulkhead {
     if (this.waitQueue.length >= this.maxWaiting) {
       this.metrics.rejected++;
       throw new BulkheadRejectedException(
-        `Bulkhead ${this.name} is full. Max concurrent: ${this.permits}, waiting: ${this.waitQueue.length}`
+        `Bulkhead ${this.name} is full. Max concurrent: ${this.maxConcurrent}, waiting: ${this.waitQueue.length}`
       );
     }
 
@@ -246,14 +248,14 @@ class Bulkhead {
 }
 
 // Custom error types for different failure modes
-class BulkheadRejectedException extends Error {
+export class BulkheadRejectedException extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'BulkheadRejectedException';
   }
 }
 
-class BulkheadTimeoutException extends Error {
+export class BulkheadTimeoutException extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'BulkheadTimeoutException';
@@ -269,6 +271,7 @@ Create a registry to manage multiple bulkheads:
 
 ```typescript
 // bulkhead-registry.ts
+import { Bulkhead } from './bulkhead';
 
 interface BulkheadConfig {
   maxConcurrent: number;
@@ -359,7 +362,7 @@ function WithBulkhead(bulkheadName: string, type?: string) {
 // Example service using the decorator
 class PaymentService {
 
-  // This method is protected by a bulkhead with max 5 concurrent calls
+  // This method is protected by the externalApi bulkhead with max 10 concurrent calls
   @WithBulkhead('payment-gateway', 'externalApi')
   async processPayment(orderId: string, amount: number): Promise<PaymentResult> {
     // Call external payment gateway
@@ -402,8 +405,8 @@ For CPU-intensive operations, use worker threads with bulkheads:
 
 ```typescript
 // worker-bulkhead.ts
-import { Worker } from 'worker_threads';
-import * as os from 'os';
+import { Worker } from 'node:worker_threads';
+import * as os from 'node:os';
 
 interface WorkerTask<T> {
   resolve: (value: T) => void;
@@ -455,8 +458,7 @@ class WorkerPoolBulkhead {
   private createWorker(): Worker {
     // Create a generic worker that can run any script
     const workerCode = `
-      const { parentPort, workerData } = require('worker_threads');
-      const vm = require('vm');
+      const { parentPort } = require('node:worker_threads');
 
       parentPort.on('message', async (task) => {
         try {
@@ -526,7 +528,7 @@ class WorkerPoolBulkhead {
 const cpuBulkhead = new WorkerPoolBulkhead(4, 50);
 
 async function processImage(imageData: Buffer): Promise<Buffer> {
-  return cpuBulkhead.execute<Buffer>(
+  const result = await cpuBulkhead.execute<Uint8Array>(
     `
       // CPU-intensive image processing
       const sharp = require('sharp');
@@ -537,6 +539,8 @@ async function processImage(imageData: Buffer): Promise<Buffer> {
     `,
     imageData
   );
+
+  return Buffer.from(result);
 }
 ```
 
@@ -641,14 +645,28 @@ const availablePermits = new Gauge({
   name: 'bulkhead_available_permits',
   help: 'Number of available permits in bulkhead',
   labelNames: ['bulkhead'],
-  registers: [register]
+  registers: [register],
+  collect() {
+    const allMetrics = bulkheadRegistry.getAllMetrics();
+
+    for (const [name, metrics] of Object.entries(allMetrics)) {
+      this.set({ bulkhead: name }, metrics.availablePermits);
+    }
+  }
 });
 
 const waitingCount = new Gauge({
   name: 'bulkhead_waiting_count',
   help: 'Number of operations waiting for permits',
   labelNames: ['bulkhead'],
-  registers: [register]
+  registers: [register],
+  collect() {
+    const allMetrics = bulkheadRegistry.getAllMetrics();
+
+    for (const [name, metrics] of Object.entries(allMetrics)) {
+      this.set({ bulkhead: name }, metrics.waitingCount);
+    }
+  }
 });
 
 const rejectedTotal = new Counter({
@@ -665,18 +683,34 @@ const timeoutTotal = new Counter({
   registers: [register]
 });
 
-// Update metrics periodically
-setInterval(() => {
+const previousTotals: Record<string, { rejected: number; timedOut: number }> = {};
+
+function updateCounterMetrics(): void {
   const allMetrics = bulkheadRegistry.getAllMetrics();
 
   for (const [name, metrics] of Object.entries(allMetrics)) {
-    availablePermits.set({ bulkhead: name }, metrics.availablePermits);
-    waitingCount.set({ bulkhead: name }, metrics.waitingCount);
+    const previous = previousTotals[name] || { rejected: 0, timedOut: 0 };
+    const rejectedDelta = metrics.rejected - previous.rejected;
+    const timedOutDelta = metrics.timedOut - previous.timedOut;
+
+    if (rejectedDelta > 0) {
+      rejectedTotal.inc({ bulkhead: name }, rejectedDelta);
+    }
+
+    if (timedOutDelta > 0) {
+      timeoutTotal.inc({ bulkhead: name }, timedOutDelta);
+    }
+
+    previousTotals[name] = {
+      rejected: metrics.rejected,
+      timedOut: metrics.timedOut
+    };
   }
-}, 5000);
+}
 
 // Export metrics endpoint
 export async function getMetrics(): Promise<string> {
+  updateCounterMetrics();
   return register.metrics();
 }
 ```

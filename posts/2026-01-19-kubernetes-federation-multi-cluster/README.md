@@ -8,7 +8,7 @@ Description: Learn how to federate multiple Kubernetes clusters for unified mana
 
 ---
 
-Kubernetes Federation allows you to manage multiple clusters as a single entity, enabling workload distribution across regions, hybrid cloud deployments, and disaster recovery scenarios.
+Kubernetes Federation allows you to coordinate multiple clusters from a single API surface, enabling workload distribution across regions, hybrid cloud deployments, and disaster recovery scenarios.
 
 This guide covers setting up and managing federated Kubernetes clusters.
 
@@ -45,7 +45,7 @@ flowchart TD
 
 | Solution | Use Case | Complexity |
 |----------|----------|------------|
-| KubeFed (v2) | Full federation | High |
+| KubeFed (v2, archived) | Legacy federation | High |
 | Liqo | Multi-cluster networking | Medium |
 | Admiralty | Scheduling across clusters | Medium |
 | Skupper | Service connectivity | Low |
@@ -59,22 +59,27 @@ flowchart TD
 # Install kubefedctl CLI
 
 VERSION=0.10.0
-curl -LO "https://github.com/kubernetes-sigs/kubefed/releases/download/v${VERSION}/kubefedctl-${VERSION}-linux-amd64.tgz"
+curl -LO "https://github.com/kubernetes-retired/kubefed/releases/download/v${VERSION}/kubefedctl-${VERSION}-linux-amd64.tgz"
 tar -xzf kubefedctl-${VERSION}-linux-amd64.tgz
 sudo mv kubefedctl /usr/local/bin/
 
-# Or on macOS
-brew install kubefedctl
+# Or on macOS (Intel)
+curl -LO "https://github.com/kubernetes-retired/kubefed/releases/download/v${VERSION}/kubefedctl-${VERSION}-darwin-amd64.tgz"
+tar -xzf kubefedctl-${VERSION}-darwin-amd64.tgz
+sudo mv kubefedctl /usr/local/bin/
 
 # Install KubeFed on the host cluster
-helm repo add kubefed-charts https://raw.githubusercontent.com/kubernetes-sigs/kubefed/master/charts
+helm repo add kubefed-charts https://raw.githubusercontent.com/kubernetes-retired/kubefed/master/charts
 helm install kubefed kubefed-charts/kubefed \
   --namespace kube-federation-system \
-  --create-namespace
+  --create-namespace \
+  --version ${VERSION}
 
 # Verify installation
 kubectl get pods -n kube-federation-system
 ```
+
+KubeFed was archived by SIG Multicluster in 2023. Treat it as legacy tooling for existing deployments or experiments; for new production platforms, evaluate actively maintained multi-cluster projects before adopting it.
 
 ### Join Clusters
 
@@ -235,15 +240,18 @@ spec:
   overrides:
     - clusterName: cluster1
       clusterOverrides:
-        - path: "/data/REGION"
+        - op: add
+          path: "/data/REGION"
           value: "us-east"
     - clusterName: cluster2
       clusterOverrides:
-        - path: "/data/REGION"
+        - op: add
+          path: "/data/REGION"
           value: "us-west"
     - clusterName: cluster3
       clusterOverrides:
-        - path: "/data/REGION"
+        - op: add
+          path: "/data/REGION"
           value: "eu-west"
 ```
 
@@ -326,7 +334,7 @@ subctl show all
 
 ```yaml
 # Make service discoverable across clusters
-apiVersion: multicluster.x-k8s.io/v1alpha1
+apiVersion: multicluster.x-k8s.io/v1beta1
 kind: ServiceExport
 metadata:
   name: my-app
@@ -339,8 +347,8 @@ metadata:
 ### Service Import
 
 ```yaml
-# Import service from other clusters
-apiVersion: multicluster.x-k8s.io/v1alpha1
+# ServiceImport is normally created by the multi-cluster service controller
+apiVersion: multicluster.x-k8s.io/v1beta1
 kind: ServiceImport
 metadata:
   name: my-app
@@ -441,6 +449,10 @@ spec:
       - name: primary-cluster
       - name: dr-cluster        # Standby
   overrides:
+    - clusterName: primary-cluster
+      clusterOverrides:
+        - path: "/spec/replicas"
+          value: 5
     - clusterName: dr-cluster
       clusterOverrides:
         - path: "/spec/replicas"

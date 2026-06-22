@@ -110,7 +110,7 @@ az servicebus topic subscription create \
 # requirements: azure-servicebus>=7.0.0
 
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
-from azure.identity import DefaultAzureCredential
+from datetime import timedelta
 import json
 import os
 
@@ -184,6 +184,7 @@ if __name__ == "__main__":
 ```python
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 import json
+import os
 
 def send_notification(notification_data: dict):
     """Send notification to topic for multiple subscribers."""
@@ -205,7 +206,15 @@ def send_notification(notification_data: dict):
 
 
 # Create subscription filter (via Azure CLI)
-# Only receive high-priority notifications for premium customers
+# Remove the default rule first; otherwise the subscription still receives all messages.
+# Only receive order-shipped notifications for premium customers
+# az servicebus topic subscription rule delete \
+#   --name '$Default' \
+#   --subscription-name email-subscription \
+#   --topic-name notifications-topic \
+#   --namespace-name sb-myapp-prod \
+#   --resource-group rg-messaging
+#
 # az servicebus topic subscription rule create \
 #   --name premium-filter \
 #   --subscription-name email-subscription \
@@ -223,9 +232,13 @@ def send_notification(notification_data: dict):
 from azure.servicebus import ServiceBusClient, ServiceBusReceiveMode
 import json
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class ProcessingError(Exception):
+    """Raised when processing should be retried."""
 
 def process_messages():
     """Process messages from queue with error handling."""
@@ -302,6 +315,10 @@ def process_order(order: dict):
 ```python
 def process_email_notifications():
     """Process messages from topic subscription."""
+    import json
+    import os
+    from azure.servicebus import ServiceBusClient, ServiceBusReceiveMode
+
     connection_string = os.environ["SERVICEBUS_CONNECTION_STRING"]
     topic_name = "notifications-topic"
     subscription_name = "email-subscription"
@@ -323,7 +340,7 @@ def process_email_notifications():
                         body=notification["body"]
                     )
                     receiver.complete_message(message)
-                except EmailSendError as e:
+                except Exception as e:
                     # Retry transient failures
                     receiver.abandon_message(message)
 ```
@@ -335,6 +352,9 @@ Dead letter queues (DLQ) capture messages that could not be processed. Always mo
 ```python
 def process_dead_letters():
     """Process messages from dead letter queue."""
+    from azure.servicebus import ServiceBusClient, ServiceBusReceiveMode, ServiceBusSubQueue
+    import os
+
     connection_string = os.environ["SERVICEBUS_CONNECTION_STRING"]
     queue_name = "orders-queue"
 
@@ -379,7 +399,21 @@ def process_dead_letters():
 
 Sessions ensure messages with the same session ID are processed in order by a single consumer.
 
+Create the queue with sessions enabled before using this example:
+
+```bash
+az servicebus queue create \
+  --name customer-events-queue \
+  --namespace-name sb-myapp-prod \
+  --resource-group rg-messaging \
+  --enable-session true
+```
+
 ```python
+from azure.servicebus import ServiceBusClient, ServiceBusMessage, NEXT_AVAILABLE_SESSION
+from azure.servicebus.exceptions import ServiceBusError
+import json
+
 def send_session_messages(customer_id: str, events: list):
     """Send ordered events for a customer using sessions."""
     with ServiceBusClient.from_connection_string(connection_string) as client:

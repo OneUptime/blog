@@ -108,8 +108,8 @@ server={{ server }}
 ```
 
 ```yaml
-# Use lstrip_blocks and trim_blocks in ansible.cfg
-# or set in template task
+# Set lstrip_blocks and trim_blocks in the template task
+# or with a #jinja2 header in the template file
 - name: Deploy configuration
   template:
     src: app.conf.j2
@@ -121,7 +121,7 @@ server={{ server }}
 ### Problem 3: File Permissions Keep Changing
 
 ```yaml
-# BAD: Might report changed if umask differs
+# BAD: Initial permissions depend on the target system's umask
 - name: Create script
   copy:
     content: |
@@ -144,11 +144,11 @@ server={{ server }}
 ### Problem 4: Package Module Reports Changed Unnecessarily
 
 ```yaml
-# Can report changed if package already installed but version differs
+# Can report changed if a newer package version is available
 - name: Install nginx
   apt:
     name: nginx
-    state: latest  # BAD: always checks for updates
+    state: latest  # BAD: may upgrade the package when newer versions are available
 
 # GOOD: Use 'present' for idempotent installs
 - name: Install nginx
@@ -295,14 +295,14 @@ handlers:
 ```yaml
 # Check if database exists before creating
 - name: Check if database exists
-  mysql_info:
+  ansible.mysql.mysql_info:
     login_user: root
     login_password: "{{ mysql_root_password }}"
     filter: databases
   register: mysql_databases
 
 - name: Create database
-  mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_db
     state: present
     login_user: root
@@ -311,7 +311,7 @@ handlers:
 
 # Or use the idempotent mysql_db module directly
 - name: Ensure database exists
-  mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_db
     state: present
     login_user: root
@@ -380,30 +380,19 @@ handlers:
 ### Technique 4: Idempotent Archive Extraction
 
 ```yaml
-# BAD: Extracts every time
+# BAD: May unpack every time if archive diff detection is not available
 - name: Extract archive
   unarchive:
     src: /tmp/app.tar.gz
     dest: /opt/
 
-# GOOD: Check for marker file
-- name: Check if already extracted
-  stat:
-    path: /opt/app/.extracted
-  register: extracted_marker
-
+# GOOD: Skip extraction when a known extracted path exists
 - name: Extract archive
   unarchive:
     src: /tmp/app.tar.gz
     dest: /opt/
     remote_src: true
-  when: not extracted_marker.stat.exists
-
-- name: Create extraction marker
-  file:
-    path: /opt/app/.extracted
-    state: touch
-  when: not extracted_marker.stat.exists
+    creates: /opt/app
 ```
 
 ## Debugging Idempotency Issues
@@ -614,7 +603,7 @@ handlers:
 - name: Create user with stored password
   user:
     name: appuser
-    password: "{{ app_password | password_hash('sha512') }}"
+    password: "{{ app_password | password_hash('sha512', 65534 | random(seed=inventory_hostname ~ 'appuser') | string, rounds=5001) }}"
 ```
 
 ## Idempotency Checklist

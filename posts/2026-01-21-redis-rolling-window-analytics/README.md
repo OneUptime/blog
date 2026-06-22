@@ -28,8 +28,8 @@ Sorted sets are ideal for time-based rolling windows where the score represents 
 ```python
 import redis
 import time
-import json
-from statistics import mean, stdev
+import uuid
+from statistics import mean
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -44,7 +44,7 @@ class RollingWindow:
             timestamp = time.time()
 
         # Store value with unique identifier to allow duplicates
-        member = f"{timestamp}:{value}"
+        member = f"{timestamp}:{uuid.uuid4()}:{value}"
         r.zadd(self.key, {member: timestamp})
 
         # Clean up old entries
@@ -54,8 +54,8 @@ class RollingWindow:
     def get_values(self):
         """Get all values in the current window."""
         cutoff = time.time() - self.window_seconds
-        members = r.zrangebyscore(self.key, cutoff, '+inf')
-        return [float(m.split(':')[1]) for m in members]
+        members = r.zrange(self.key, cutoff, '+inf', byscore=True)
+        return [float(m.rsplit(':', 1)[1]) for m in members]
 
     def moving_average(self):
         """Calculate the moving average."""
@@ -100,9 +100,10 @@ class AtomicRollingWindow:
             local value = ARGV[1]
             local timestamp = tonumber(ARGV[2])
             local window = tonumber(ARGV[3])
+            local nonce = ARGV[4]
 
             -- Add new value
-            local member = timestamp .. ':' .. value
+            local member = timestamp .. ':' .. nonce .. ':' .. value
             redis.call('ZADD', key, timestamp, member)
 
             -- Remove old entries
@@ -119,12 +120,12 @@ class AtomicRollingWindow:
             local window = tonumber(ARGV[2])
             local cutoff = now - window
 
-            local members = redis.call('ZRANGEBYSCORE', key, cutoff, '+inf')
+            local members = redis.call('ZRANGE', key, cutoff, '+inf', 'BYSCORE')
             local count = #members
             local sum = 0
 
             for _, member in ipairs(members) do
-                local value = tonumber(string.match(member, ':(.+)$'))
+                local value = tonumber(string.match(member, ':([^:]+)$'))
                 sum = sum + value
             end
 
@@ -141,7 +142,7 @@ class AtomicRollingWindow:
         timestamp = time.time()
         return self.add_script(
             keys=[self.key],
-            args=[value, timestamp, self.window_seconds]
+            args=[value, timestamp, self.window_seconds, str(uuid.uuid4())]
         )
 
     def get_stats(self):
@@ -170,6 +171,7 @@ print(f"Stats: {stats}")
 
 ```javascript
 const Redis = require('ioredis');
+const crypto = require('crypto');
 const redis = new Redis();
 
 class RollingWindow {
@@ -179,7 +181,7 @@ class RollingWindow {
   }
 
   async add(value, timestamp = Date.now() / 1000) {
-    const member = `${timestamp}:${value}`;
+    const member = `${timestamp}:${crypto.randomUUID()}:${value}`;
     const cutoff = timestamp - this.windowSeconds;
 
     const pipeline = redis.pipeline();
@@ -190,8 +192,8 @@ class RollingWindow {
 
   async getValues() {
     const cutoff = Date.now() / 1000 - this.windowSeconds;
-    const members = await redis.zrangebyscore(this.key, cutoff, '+inf');
-    return members.map(m => parseFloat(m.split(':')[1]));
+    const members = await redis.zrange(this.key, cutoff, '+inf', 'BYSCORE');
+    return members.map(m => parseFloat(m.split(':').pop()));
   }
 
   async movingAverage() {
@@ -539,7 +541,7 @@ def record_batch_metrics(metrics):
     for metric in metrics:
         key = f"metrics:{metric['name']}"
         timestamp = metric.get('timestamp', time.time())
-        member = f"{timestamp}:{metric['value']}"
+        member = f"{timestamp}:{uuid.uuid4()}:{metric['value']}"
 
         pipe.zadd(key, {member: timestamp})
 

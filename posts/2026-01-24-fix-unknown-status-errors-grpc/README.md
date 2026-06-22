@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Debugging, Error Handling, Status Code, Troubleshooting
 
-Description: Learn how to diagnose and resolve gRPC Unknown status errors caused by unhandled exceptions, serialization issues, and misconfigured services.
+Description: Learn how to diagnose and resolve gRPC Unknown status errors caused by plain errors, serialization issues, and misconfigured services.
 
 ---
 
-The UNKNOWN status code in gRPC indicates that an unexpected error occurred that does not map to a specific gRPC status code. These errors are often caused by unhandled exceptions, serialization problems, or misconfigured services. This guide covers common causes and provides practical solutions for fixing Unknown status errors.
+The UNKNOWN status code in gRPC indicates that an error occurred that does not map to a specific gRPC status code. These errors are often caused by plain application errors returned without a gRPC status, serialization problems, or misconfigured services. This guide covers common causes and provides practical solutions for fixing Unknown status errors.
 
 ## Understanding gRPC Status Codes
 
@@ -23,7 +23,7 @@ flowchart TD
     B --> F[Other codes 3-16]
 
     E --> G{Common Causes}
-    G --> H[Unhandled Exception]
+    G --> H[Plain Application Error]
     G --> I[Serialization Error]
     G --> J[Protocol Mismatch]
     G --> K[Middleware Error]
@@ -31,9 +31,9 @@ flowchart TD
 
 ## 1. Common Causes of Unknown Status
 
-### Unhandled Server Exceptions
+### Unhandled Server Errors
 
-The most common cause of Unknown errors.
+The most common cause of Unknown errors in Go services is returning a plain error instead of a gRPC status error.
 
 ```go
 // server_exception.go
@@ -41,6 +41,7 @@ package main
 
 import (
     "context"
+    "errors"
     "log"
 
     "google.golang.org/grpc/codes"
@@ -49,19 +50,19 @@ import (
     pb "myapp/proto"
 )
 
-// BadServer demonstrates how unhandled panics cause Unknown errors
+// BadServer demonstrates how plain errors become Unknown errors
 type BadServer struct {
     pb.UnimplementedUserServiceServer
 }
 
 func (s *BadServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
-    // This panic will result in an UNKNOWN error
-    // The client will see: rpc error: code = Unknown desc =
+    // Returning a non-status error results in UNKNOWN.
+    // The client will see: rpc error: code = Unknown desc = user ID cannot be empty
     if req.UserId == "" {
-        panic("user ID cannot be empty")
+        return nil, errors.New("user ID cannot be empty")
     }
 
-    // This nil pointer dereference will also cause UNKNOWN
+    // Returning a nil response with a nil error can cause marshal errors.
     var user *pb.User
     return user, nil // Returning nil with nil error can cause issues
 }
@@ -198,7 +199,7 @@ func WrapHandler[Req, Resp any](
 
 ## 2. Serialization Issues
 
-Protocol buffer serialization problems often cause Unknown errors.
+Protocol buffer serialization problems can surface as gRPC errors if messages cannot be marshaled, unmarshaled, or fit within configured size limits.
 
 ```go
 // serialization_issues.go
@@ -217,14 +218,14 @@ import (
 
 // Common serialization problems
 
-// Problem 1: Returning wrong message type
+// Problem 1: Returning a value the codec cannot marshal
 type WrongTypeServer struct {
     pb.UnimplementedUserServiceServer
 }
 
 func (s *WrongTypeServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
-    // This compiles but may cause serialization issues if types differ
-    // Always return the exact type defined in the proto
+    // Generated Go handlers enforce this return type at compile time.
+    // In lower-level or custom-codec handlers, always return a value the codec can marshal.
     return &pb.User{
         Id:    req.UserId,
         Name:  "John Doe",
@@ -290,6 +291,7 @@ package main
 import (
     "context"
 
+    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -338,14 +340,14 @@ func (r *GetUserRequest) Validate() error {
 
 ## 3. Protocol Version Mismatches
 
-Client and server using different proto versions can cause Unknown errors.
+Client and server using incompatible proto versions can cause decoding errors or application-level failures.
 
 ```mermaid
 flowchart TD
     A[Client Proto v1] --> B[Server Proto v2]
     B --> C{Field Compatibility}
     C -->|Compatible| D[Success]
-    C -->|Incompatible| E[Unknown Error]
+    C -->|Incompatible| E[Decode Error or Application Error]
 
     F[Solutions] --> G[Version in Metadata]
     F --> H[Backwards Compatible Changes]
@@ -430,7 +432,7 @@ func ClientVersionInterceptor(version string) grpc.UnaryClientInterceptor {
 
 ## 4. Middleware and Interceptor Errors
 
-Errors in interceptors can cause Unknown status.
+Plain errors returned by interceptors can cause Unknown status.
 
 ```go
 // middleware_errors.go
@@ -453,7 +455,7 @@ func BadInterceptor() grpc.UnaryServerInterceptor {
         info *grpc.UnaryServerInfo,
         handler grpc.UnaryHandler,
     ) (interface{}, error) {
-        // Panic in interceptor causes Unknown error
+        // Panic in interceptor will terminate the RPC unless recovered
         // panic("something went wrong")
 
         // Returning non-gRPC error causes Unknown error
@@ -615,6 +617,7 @@ package main
 
 import (
     "context"
+    "log"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
@@ -714,14 +717,13 @@ package main
 import (
     "crypto/tls"
     "log"
-    "net"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
 )
 
 // Problem: Using HTTP/1.1 instead of HTTP/2
-// gRPC requires HTTP/2, and protocol mismatch causes Unknown errors
+// gRPC requires HTTP/2, and protocol mismatch causes transport errors
 
 // Server setup with proper TLS
 func createSecureServer() *grpc.Server {
@@ -749,13 +751,13 @@ func createSecureClient(target string) (*grpc.ClientConn, error) {
     }
 
     creds := credentials.NewTLS(tlsConfig)
-    return grpc.Dial(target, grpc.WithTransportCredentials(creds))
+    return grpc.NewClient(target, grpc.WithTransportCredentials(creds))
 }
 ```
 
 ### Scenario 2: Load Balancer Misconfiguration
 
-```yaml
+```nginx
 # nginx.conf
 
 # Problem: NGINX not configured for gRPC
@@ -763,7 +765,7 @@ func createSecureClient(target string) (*grpc.ClientConn, error) {
 # Incorrect configuration
 server {
     listen 443 ssl;
-    # Missing http2 directive
+    # Missing http2 on;
 
     location / {
         # Using proxy_pass instead of grpc_pass
@@ -773,7 +775,8 @@ server {
 
 # Correct configuration
 server {
-    listen 443 ssl http2;  # Enable HTTP/2
+    listen 443 ssl;
+    http2 on;  # Enable HTTP/2
 
     location / {
         grpc_pass grpc://backend;  # Use grpc_pass for gRPC
@@ -802,7 +805,6 @@ server {
 package main
 
 import (
-    "context"
     "sync"
     "time"
 
@@ -829,7 +831,7 @@ func NewConnectionPool(target string, size int) (*ConnectionPool, error) {
     }
 
     for i := 0; i < size; i++ {
-        conn, err := grpc.Dial(
+        conn, err := grpc.NewClient(
             target,
             grpc.WithTransportCredentials(insecure.NewCredentials()),
             grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
@@ -881,9 +883,10 @@ func (p *ConnectionPool) healthCheck() {
             if state == connectivity.TransientFailure || state == connectivity.Shutdown {
                 // Reconnect
                 conn.Close()
-                newConn, err := grpc.Dial(
+                newConn, err := grpc.NewClient(
                     p.target,
                     grpc.WithTransportCredentials(insecure.NewCredentials()),
+                    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
                 )
                 if err == nil {
                     p.conns[i] = newConn
@@ -1013,7 +1016,7 @@ Follow these guidelines to minimize Unknown errors.
 ```mermaid
 flowchart TD
     A[Prevent Unknown Errors] --> B[Always Use Status Package]
-    A --> C[Handle All Exceptions]
+    A --> C[Recover Panics]
     A --> D[Validate Proto Messages]
     A --> E[Test Error Paths]
     A --> F[Monitor and Alert]
@@ -1132,4 +1135,4 @@ func isNotFoundError(err error) bool {
 
 ---
 
-Unknown status errors in gRPC often indicate unhandled exceptions or configuration issues. By using the status package consistently, implementing proper error conversion, handling panics with recovery interceptors, and monitoring Unknown error rates, you can build more reliable gRPC services with clearer error reporting for both developers and operators.
+Unknown status errors in gRPC often indicate plain application errors returned without status codes or configuration issues. By using the status package consistently, implementing proper error conversion, handling panics with recovery interceptors, and monitoring Unknown error rates, you can build more reliable gRPC services with clearer error reporting for both developers and operators.

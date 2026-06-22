@@ -24,13 +24,13 @@ graph LR
 
     subgraph Airbyte
         F[Source Connectors]
-        G[Normalization]
+        G[Typing and Deduping]
         H[Destination Connector]
     end
 
     subgraph ClickHouse
-        I[Raw Tables]
-        J[Normalized Tables]
+        I[Typed Destination Tables]
+        J[Deduplicated Tables]
         K[Analytics Views]
     end
 
@@ -51,13 +51,14 @@ graph LR
 ### Docker Installation
 
 ```bash
-# Clone Airbyte repository
-
-git clone https://github.com/airbytehq/airbyte.git
-cd airbyte
+# Install abctl
+curl -LsfS https://get.airbyte.com | bash -
 
 # Start Airbyte
-docker-compose up -d
+abctl local install
+
+# View login credentials
+abctl local credentials
 
 # Access UI at http://localhost:8000
 ```
@@ -67,10 +68,16 @@ docker-compose up -d
 ```yaml
 # airbyte-values.yaml
 global:
-  serviceAccountName: airbyte
-  deploymentMode: oss
+  serviceAccountName: airbyte-admin
+  edition: community
+  jobs:
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1"
 
 webapp:
+  enabled: true
   replicaCount: 1
 
 server:
@@ -78,12 +85,8 @@ server:
 
 worker:
   replicaCount: 2
-  resources:
-    requests:
-      memory: "2Gi"
-      cpu: "1"
 
-scheduler:
+workloadLauncher:
   replicaCount: 1
 ```
 
@@ -99,11 +102,12 @@ helm install airbyte airbyte/airbyte -f airbyte-values.yaml
 ```json
 {
   "host": "clickhouse.example.com",
-  "port": 8443,
+  "port": "8443",
+  "protocol": "https",
   "database": "analytics",
   "username": "airbyte_user",
   "password": "secure_password",
-  "ssl": true,
+  "enable_json": true,
   "tunnel_method": {
     "tunnel_type": "NO_TUNNEL"
   }
@@ -118,13 +122,15 @@ CREATE USER airbyte_user
 IDENTIFIED BY 'secure_password'
 SETTINGS max_execution_time = 3600;
 
+ALTER USER airbyte_user SETTINGS async_insert = 0;
+
 -- Grant necessary permissions
-GRANT CREATE TABLE, DROP TABLE, INSERT, SELECT
+GRANT CREATE, CREATE TABLE, DROP TABLE, ALTER, TRUNCATE, INSERT, SELECT
 ON analytics.*
 TO airbyte_user;
 
--- Grant ability to create temporary tables
-GRANT CREATE TEMPORARY TABLE ON *.* TO airbyte_user;
+-- Grant ability to create databases when namespaces map to ClickHouse databases
+GRANT CREATE DATABASE ON *.* TO airbyte_user;
 ```
 
 ## Source Configuration Examples
@@ -158,7 +164,9 @@ GRANT CREATE TEMPORARY TABLE ON *.* TO airbyte_user;
   "database": "app_db",
   "username": "replication_user",
   "password": "password",
-  "replication_method": "CDC",
+  "replication_method": {
+    "method": "CDC"
+  },
   "server_timezone": "UTC"
 }
 ```
@@ -195,7 +203,7 @@ sync_mode: full_refresh
 destination_sync_mode: overwrite
 
 # ClickHouse table created
-# _airbyte_raw_customers with full data replaced each sync
+# customers with full data replaced each sync
 ```
 
 ### Incremental Sync with Deduplication
@@ -207,7 +215,8 @@ destination_sync_mode: append_dedup
 cursor_field: updated_at
 primary_key: [id]
 
-# ClickHouse uses ReplacingMergeTree for deduplication
+# ClickHouse uses ReplacingMergeTree for deduplication;
+# use FINAL in queries when you need merge-complete deduplicated results
 ```
 
 ## ClickHouse Table Optimization
@@ -215,17 +224,17 @@ primary_key: [id]
 ### Custom Table Engines
 
 ```sql
--- Airbyte creates raw tables, you can create optimized views
+-- Airbyte creates typed destination tables, you can create optimized copies
 CREATE TABLE customers_optimized
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY customer_id
 AS SELECT
-    JSONExtractInt(_airbyte_data, 'customer_id') AS customer_id,
-    JSONExtractString(_airbyte_data, 'email') AS email,
-    JSONExtractString(_airbyte_data, 'name') AS name,
-    parseDateTimeBestEffort(JSONExtractString(_airbyte_data, 'created_at')) AS created_at,
-    parseDateTimeBestEffort(JSONExtractString(_airbyte_data, 'updated_at')) AS updated_at
-FROM _airbyte_raw_customers;
+    customer_id,
+    email,
+    name,
+    created_at,
+    updated_at
+FROM customers;
 ```
 
 ### Materialized View for Real-time Processing
@@ -235,12 +244,12 @@ FROM _airbyte_raw_customers;
 CREATE MATERIALIZED VIEW customers_mv
 TO customers_final
 AS SELECT
-    JSONExtractInt(_airbyte_data, 'customer_id') AS customer_id,
-    JSONExtractString(_airbyte_data, 'email') AS email,
-    JSONExtractString(_airbyte_data, 'name') AS name,
-    _airbyte_emitted_at AS synced_at
-FROM _airbyte_raw_customers
-WHERE _airbyte_emitted_at > now() - INTERVAL 1 DAY;
+    customer_id,
+    email,
+    name,
+    _airbyte_extracted_at AS synced_at
+FROM customers
+WHERE _airbyte_extracted_at > now() - INTERVAL 1 DAY;
 ```
 
 ## Scheduling and Orchestration
@@ -260,25 +269,27 @@ WHERE _airbyte_emitted_at > now() - INTERVAL 1 DAY;
 ```python
 import requests
 
-AIRBYTE_API = "http://localhost:8000/api/v1"
+AIRBYTE_API = "http://localhost:8000/api/public/v1"
+ACCESS_TOKEN = "your-access-token"
+HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
 def trigger_sync(connection_id):
     response = requests.post(
-        f"{AIRBYTE_API}/connections/sync",
-        json={"connectionId": connection_id}
+        f"{AIRBYTE_API}/jobs",
+        headers=HEADERS,
+        json={"connectionId": connection_id, "jobType": "sync"}
     )
+    response.raise_for_status()
     return response.json()
 
 def check_sync_status(job_id):
-    response = requests.post(
-        f"{AIRBYTE_API}/jobs/get",
-        json={"id": job_id}
-    )
-    return response.json()["job"]["status"]
+    response = requests.get(f"{AIRBYTE_API}/jobs/{job_id}", headers=HEADERS)
+    response.raise_for_status()
+    return response.json()["status"]
 
 # Trigger sync
 result = trigger_sync("your-connection-id")
-job_id = result["job"]["id"]
+job_id = result["jobId"]
 print(f"Sync job started: {job_id}")
 ```
 
@@ -287,17 +298,13 @@ print(f"Sync job started: {job_id}")
 ### Sync Monitoring Query
 
 ```sql
--- Track Airbyte sync history
+-- Track freshness for a synced table
 SELECT
-    table AS stream,
-    max(_airbyte_emitted_at) AS last_sync,
+    'customers' AS stream,
+    max(_airbyte_extracted_at) AS last_sync,
     count() AS records_synced,
-    dateDiff('minute', max(_airbyte_emitted_at), now()) AS minutes_since_sync
-FROM system.tables
-WHERE database = 'analytics'
-  AND name LIKE '_airbyte_raw_%'
-GROUP BY table
-ORDER BY last_sync DESC;
+    dateDiff('minute', max(_airbyte_extracted_at), now()) AS minutes_since_sync
+FROM customers;
 ```
 
 ### Data Freshness Alert
@@ -306,13 +313,13 @@ ORDER BY last_sync DESC;
 -- Alert if data is stale
 SELECT
     'customers' AS stream,
-    max(_airbyte_emitted_at) AS last_sync,
+    max(_airbyte_extracted_at) AS last_sync,
     CASE
-        WHEN dateDiff('hour', max(_airbyte_emitted_at), now()) > 24
+        WHEN dateDiff('hour', max(_airbyte_extracted_at), now()) > 24
         THEN 'STALE'
         ELSE 'OK'
     END AS status
-FROM _airbyte_raw_customers;
+FROM customers;
 ```
 
 ## Troubleshooting
@@ -320,20 +327,20 @@ FROM _airbyte_raw_customers;
 ### Common Issues
 
 ```sql
--- Check for failed records
+-- Check for records with missing required fields
 SELECT
-    _airbyte_ab_id,
-    _airbyte_emitted_at,
-    JSONExtractString(_airbyte_data, 'error') AS error
-FROM _airbyte_raw_customers
-WHERE JSONHas(_airbyte_data, 'error');
+    customer_id,
+    email,
+    _airbyte_extracted_at
+FROM customers
+WHERE customer_id IS NULL OR email = '';
 
 -- Verify data completeness
 SELECT
-    toDate(_airbyte_emitted_at) AS sync_date,
+    toDate(_airbyte_extracted_at) AS sync_date,
     count() AS records,
-    uniqExact(JSONExtractInt(_airbyte_data, 'id')) AS unique_ids
-FROM _airbyte_raw_orders
+    uniqExact(id) AS unique_ids
+FROM orders
 GROUP BY sync_date
 ORDER BY sync_date DESC;
 ```
@@ -345,7 +352,7 @@ Airbyte with ClickHouse provides:
 1. **200+ connectors** for diverse data sources
 2. **CDC support** for real-time data replication
 3. **Incremental syncs** for efficient data loading
-4. **Normalization** for structured data
+4. **Typing and deduping** for structured data
 5. **Open-source flexibility** with cloud option
 
 Use Airbyte to build reliable data pipelines that feed your ClickHouse analytics platform.

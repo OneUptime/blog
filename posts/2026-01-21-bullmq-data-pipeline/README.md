@@ -15,7 +15,7 @@ Data processing pipelines are essential for ETL operations, analytics, and data 
 Create a simple data processing pipeline:
 
 ```typescript
-import { Queue, Worker, FlowProducer, Job } from 'bullmq';
+import { Queue, Worker, FlowProducer, Job, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -324,7 +324,7 @@ interface ParallelPipelineJobData {
 class ParallelDataPipeline {
   private flowProducer: FlowProducer;
 
-  constructor(connection: Redis) {
+  constructor(private connection: Redis) {
     this.flowProducer = new FlowProducer({ connection });
     this.setupWorkers(connection);
   }
@@ -403,11 +403,11 @@ class ParallelDataPipeline {
 
   async runParallelPipeline(config: ParallelPipelineJobData): Promise<any> {
     // First, split the data
-    const splitQueue = new Queue('pipeline-split', { connection });
+    const splitQueue = new Queue('pipeline-split', { connection: this.connection });
     const splitJob = await splitQueue.add('split', config);
 
     // Wait for split to complete
-    const splitEvents = new QueueEvents('pipeline-split', { connection });
+    const splitEvents = new QueueEvents('pipeline-split', { connection: this.connection });
     const splitResult = await splitJob.waitUntilFinished(splitEvents, 60000) as any;
 
     // Create parallel chunk processing jobs
@@ -466,13 +466,13 @@ interface StreamConfig {
 
 class StreamProcessingPipeline {
   private inputQueue: Queue;
-  private outputQueue: Queue;
+  private batchQueue: Queue;
   private buffer: any[] = [];
   private lastFlush: number = Date.now();
 
   constructor(connection: Redis, private config: StreamConfig) {
     this.inputQueue = new Queue('stream-input', { connection });
-    this.outputQueue = new Queue('stream-output', { connection });
+    this.batchQueue = new Queue('stream-batch', { connection });
 
     this.setupWorkers(connection);
     this.startWindowFlush();
@@ -532,8 +532,7 @@ class StreamProcessingPipeline {
     this.buffer = [];
     this.lastFlush = Date.now();
 
-    const batchQueue = new Queue('stream-batch', { connection });
-    await batchQueue.add('process', {
+    await this.batchQueue.add('process', {
       events,
       windowStart: events[0].timestamp,
       windowEnd: events[events.length - 1].timestamp,
@@ -603,9 +602,14 @@ interface ValidationJobData {
 
 class DataValidationPipeline {
   private queue: Queue<ValidationJobData>;
+  private customValidators: Map<string, (value: any, record: any) => boolean>;
 
-  constructor(connection: Redis) {
+  constructor(
+    connection: Redis,
+    customValidators: Record<string, (value: any, record: any) => boolean> = {}
+  ) {
     this.queue = new Queue('data-validation', { connection });
+    this.customValidators = new Map(Object.entries(customValidators));
 
     new Worker<ValidationJobData>(
       'data-validation',
@@ -683,11 +687,18 @@ class DataValidationPipeline {
           }
           break;
 
-        case 'custom':
-          if (!rule.config.validator(value, record)) {
+        case 'custom': {
+          const validator = this.customValidators.get(rule.config.validatorName);
+          if (!validator) {
+            errors.push(`${rule.field} custom validator not found`);
+            break;
+          }
+
+          if (!validator(value, record)) {
             errors.push(rule.config.message || `${rule.field} validation failed`);
           }
           break;
+        }
       }
     }
 

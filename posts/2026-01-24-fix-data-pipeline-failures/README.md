@@ -65,6 +65,7 @@ Always start with the logs. Most pipeline tools provide detailed error informati
 # Python logging setup for data pipelines
 
 import logging
+import os
 import sys
 
 def setup_pipeline_logging(job_name):
@@ -77,7 +78,9 @@ def setup_pipeline_logging(job_name):
     console_handler.setLevel(logging.INFO)
 
     # File handler for detailed debugging
-    file_handler = logging.FileHandler(f'/var/log/pipelines/{job_name}.log')
+    log_dir = '/var/log/pipelines'
+    os.makedirs(log_dir, exist_ok=True)
+    file_handler = logging.FileHandler(f'{log_dir}/{job_name}.log')
     file_handler.setLevel(logging.DEBUG)
 
     # Format with timestamp and context
@@ -101,6 +104,8 @@ logger.info('Starting pipeline run')
 
 ```python
 # Add checkpoints to identify where failures occur
+from datetime import datetime
+
 class PipelineCheckpoint:
     def __init__(self, pipeline_name):
         self.pipeline_name = pipeline_name
@@ -215,7 +220,13 @@ def process_in_batches(source_query, batch_size=10000):
     while True:
         # Fetch batch
         batch_query = f"{source_query} LIMIT {batch_size} OFFSET {offset}"
-        batch_df = spark.read.jdbc(url, table, properties, query=batch_query)
+        batch_df = (
+            spark.read.format("jdbc")
+            .option("url", url)
+            .option("query", batch_query)
+            .options(**properties)
+            .load()
+        )
 
         if batch_df.count() == 0:
             break
@@ -233,7 +244,7 @@ def process_in_batches(source_query, batch_size=10000):
 
         logger.info(f"Processed batch: {batch_count} records, total: {total_processed}")
 
-        # Clear cache to free memory
+        # Drop cached blocks if these DataFrames were persisted
         batch_df.unpersist()
         processed.unpersist()
 
@@ -259,7 +270,7 @@ if [ "$usage" -gt "$THRESHOLD" ]; then
     find "$TEMP_DIR" -type f -mtime +1 -delete
 
     # Remove empty directories
-    find "$TEMP_DIR" -type d -empty -delete
+    find "$TEMP_DIR" -mindepth 1 -type d -empty -delete
 
     new_usage=$(df "$TEMP_DIR" | tail -1 | awk '{print $5}')
     echo "Disk usage after cleanup: $new_usage"
@@ -270,6 +281,7 @@ fi
 
 ```python
 # Implement retry logic with exponential backoff
+import requests
 import time
 from functools import wraps
 
@@ -312,6 +324,8 @@ def fetch_from_api(endpoint):
 
 ```python
 # Implement circuit breaker for failing dependencies
+import time
+
 class CircuitBreaker:
     def __init__(self, failure_threshold=5, recovery_timeout=60):
         self.failure_count = 0
@@ -376,7 +390,7 @@ flowchart TD
 # Quarantine bad records instead of failing entire pipeline
 def process_with_dlq(df, transform_func, dlq_path):
     """Process records, sending failures to dead letter queue."""
-    from pyspark.sql.functions import struct, lit, current_timestamp
+    from datetime import datetime
 
     good_records = []
     bad_records = []
@@ -395,7 +409,7 @@ def process_with_dlq(df, transform_func, dlq_path):
                     'error': str(e),
                     'timestamp': datetime.now().isoformat()
                 })
-        return good, bad
+        return [(good, bad)]
 
     # Collect results
     results = df.rdd.mapPartitions(process_partition).collect()
@@ -419,7 +433,9 @@ def process_with_dlq(df, transform_func, dlq_path):
 
 ```python
 # Send alerts when pipeline failures occur
+import os
 import requests
+from datetime import datetime
 
 def send_pipeline_alert(pipeline_name, error_message, severity='error'):
     """Send alert to monitoring system."""

@@ -159,7 +159,7 @@ Redis LATENCY tracks various latency sources:
 ### Enable Latency Monitoring
 
 ```bash
-# Set latency threshold (microseconds)
+# Set latency threshold (milliseconds)
 # Commands faster than this won't be tracked
 redis-cli CONFIG SET latency-monitor-threshold 100
 
@@ -203,7 +203,11 @@ redis-cli LATENCY RESET
 # aof-fsync-always - fsync with appendfsync=always
 # aof-write-pending-fsync - Write with pending fsync
 # aof-write-active-child - Write during BGSAVE
+# aof-write-alone - Write with no pending fsync and no active child
+# aof-fstat       - AOF fstat system call
+# aof-rename      - Rename temporary AOF file after rewrite
 # rdb-unlink-temp-file - Unlink temp RDB file
+# active-defrag-cycle - Active defragmentation cycle
 # expire-cycle     - Active expiration cycle
 # eviction-cycle   - Eviction when maxmemory reached
 # eviction-del     - DEL during eviction
@@ -236,12 +240,13 @@ redis-cli LATENCY DOCTOR
 # Get histogram for specific commands
 redis-cli LATENCY HISTOGRAM get set hget
 
-# Output shows distribution of call latencies:
-# get:
-#   calls: 1000000
-#   latency-percentile-50: 0.001ms
-#   latency-percentile-99: 0.023ms
-#   latency-percentile-99.9: 0.156ms
+# Output shows cumulative latency buckets in microseconds:
+# 1# "get" =>
+#    1# "calls" => (integer) 1000000
+#    2# "histogram_usec" =>
+#       1# (integer) 1 => (integer) 995830
+#       2# (integer) 2 => (integer) 998520
+#       3# (integer) 4 => (integer) 999140
 ```
 
 ### Python Latency Analysis

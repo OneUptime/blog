@@ -31,7 +31,7 @@ $ uname -r
 # Check the distribution
 $ cat /etc/os-release
 NAME="Ubuntu"
-VERSION="22.04.3 LTS (Jammy Jellyfish)"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
 ```
 
 The kernel is from your host machine. The "Ubuntu" part is just the filesystem - the binaries, libraries, and configuration files that make up Ubuntu's userland.
@@ -159,7 +159,7 @@ This is the critical insight. The Linux kernel provides:
 
 When a container process calls `open()`, `read()`, or `fork()`, those calls go directly to the host kernel. The kernel doesn't know or care that the process came from an "Ubuntu container" or an "Alpine container."
 
-This diagram shows what happens when a containerized application makes a system call. The call passes through the container runtime's namespace isolation but ultimately reaches the same host kernel.
+This diagram shows what happens when a containerized application makes a system call. The process runs inside namespaces configured by the container runtime, but the call is ultimately handled by the same host kernel.
 
 ```mermaid
 sequenceDiagram

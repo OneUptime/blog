@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix the ESOCKETTIMEDOUT error in Node.js 
 
 ---
 
-The `ESOCKETTIMEDOUT` error occurs when a socket connection times out while waiting for a response. This typically happens during HTTP requests when the server takes too long to respond or the network is slow. Let's explore how to fix this error.
+The `ESOCKETTIMEDOUT` error occurs when an HTTP client reports that a socket timed out while waiting for response data. This typically happens during HTTP requests when the server takes too long to respond or the network is slow. Let's explore how to fix this error.
 
 ## Understanding ESOCKETTIMEDOUT
 
-This error differs from `ETIMEDOUT` in that it specifically relates to socket-level timeouts rather than connection establishment timeouts:
+In clients that distinguish these codes, this error differs from `ETIMEDOUT` in that it specifically relates to socket-level inactivity after the connection phase rather than connection establishment timeouts:
 
 ```javascript
 // Example error
@@ -33,13 +33,15 @@ This error differs from `ETIMEDOUT` in that it specifically relates to socket-le
 
 ## Solution 1: Increase Timeout with Request Library
 
+The `request` package is deprecated, so use this approach only when maintaining legacy code.
+
 ```javascript
 const request = require('request');
 
 // Configure timeout options
 const options = {
   url: 'https://api.example.com/data',
-  timeout: 30000, // Connection timeout in ms
+  timeout: 30000, // Socket inactivity timeout in ms
   // More specific timeout control
   time: true,
   pool: {
@@ -68,7 +70,7 @@ const axios = require('axios');
 const apiClient = axios.create({
   baseURL: 'https://api.example.com',
   timeout: 30000, // 30 seconds
-  // Separate timeouts for different phases
+  // Custom message when the request timeout is exceeded
   timeoutErrorMessage: 'Request timed out - server not responding'
 });
 
@@ -137,7 +139,7 @@ function makeRequest(url, options = {}) {
       res.on('end', () => resolve(data));
     });
     
-    // Connection timeout
+    // Request/socket inactivity timeout
     req.setTimeout(timeout, () => {
       req.destroy();
       reject(new Error('ESOCKETTIMEDOUT: Request timed out'));
@@ -166,7 +168,7 @@ async function fetchWithTimeout() {
 ## Solution 4: Got Library with Advanced Timeouts
 
 ```javascript
-const got = require('got');
+import got from 'got';
 
 // Create client with detailed timeout configuration
 const client = got.extend({
@@ -190,8 +192,7 @@ const client = got.extend({
       'EPIPE',
       'ENOTFOUND',
       'ENETUNREACH',
-      'EAI_AGAIN',
-      'ESOCKETTIMEDOUT'
+      'EAI_AGAIN'
     ],
     calculateDelay: ({ attemptCount }) => {
       // Exponential backoff
@@ -200,8 +201,8 @@ const client = got.extend({
   },
   hooks: {
     beforeRetry: [
-      (options, error, retryCount) => {
-        console.log(`Retry #${retryCount} for ${options.url}: ${error.code}`);
+      (error, retryCount) => {
+        console.log(`Retry #${retryCount}: ${error.code}`);
       }
     ]
   }
@@ -213,7 +214,7 @@ async function fetchData() {
     const response = await client.get('https://api.example.com/data');
     return response.body;
   } catch (error) {
-    if (error.code === 'ESOCKETTIMEDOUT') {
+    if (error.code === 'ETIMEDOUT') {
       console.error('Socket timeout after all retries');
     }
     throw error;
@@ -224,8 +225,7 @@ async function fetchData() {
 ## Solution 5: Node-fetch with AbortController
 
 ```javascript
-const fetch = require('node-fetch');
-const AbortController = require('abort-controller');
+import fetch, { AbortError } from 'node-fetch';
 
 async function fetchWithTimeout(url, options = {}) {
   const timeout = options.timeout || 30000;
@@ -247,7 +247,7 @@ async function fetchWithTimeout(url, options = {}) {
   } catch (error) {
     clearTimeout(timeoutId);
     
-    if (error.name === 'AbortError') {
+    if (error instanceof AbortError) {
       const timeoutError = new Error('ESOCKETTIMEDOUT');
       timeoutError.code = 'ESOCKETTIMEDOUT';
       throw timeoutError;
@@ -461,7 +461,7 @@ function debugRequest(url) {
 
 | Solution | Use Case | Timeout Control |
 |----------|----------|-----------------|
-| Axios | General HTTP | Connection + Response |
+| Axios | General HTTP | Request timeout |
 | Got | Advanced retry | Phase-specific |
 | Native HTTP | Full control | Socket + Request |
 | node-fetch | Modern syntax | AbortController |

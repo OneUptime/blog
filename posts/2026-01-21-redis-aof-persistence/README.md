@@ -12,11 +12,11 @@ Redis AOF (Append-Only File) persistence logs every write operation received by 
 
 ## Understanding AOF Persistence
 
-AOF works by appending each write command to a log file. When Redis restarts, it replays the commands in the AOF file to reconstruct the dataset. This provides several benefits:
+AOF works by appending each write command to append-only file data. When Redis restarts, it replays the AOF data to reconstruct the dataset. This provides several benefits:
 
 - **Stronger Durability**: Configurable fsync policies let you choose between performance and durability
-- **Human-Readable Format**: AOF files contain Redis commands that can be inspected and edited
-- **Automatic Rewriting**: AOF files are periodically compacted to prevent unbounded growth
+- **Human-Readable Format**: Incremental AOF entries contain Redis protocol commands that can be inspected and edited
+- **Automatic Rewriting**: AOF files are compacted when rewrite thresholds are reached to prevent unbounded growth
 - **Corruption Resistance**: Built-in tools can repair partially corrupted AOF files
 
 ## Basic AOF Configuration
@@ -56,7 +56,7 @@ appendfsync always
 ```
 
 - Fsync after every write command
-- Maximum durability - lose at most one command
+- Maximum durability for acknowledged writes
 - Slowest performance
 - Use for critical financial or transactional data
 
@@ -79,7 +79,7 @@ appendfsync no
 
 - Let the operating system handle flushing
 - Fastest performance
-- May lose several seconds of data
+- May lose several seconds of data, or more depending on operating system flush behavior
 - Use only when durability is not critical
 
 ## Python Example - AOF Management
@@ -413,7 +413,10 @@ Redis 7.0 introduced a new multi-part AOF structure:
 Configure the new format:
 
 ```bash
-# Use multi-part AOF (default in Redis 7.0+)
+# Store multi-part AOF files in this directory (Redis 7.0+)
+appenddirname "appendonlydir"
+
+# Store rewritten base AOF files in RDB format (default)
 aof-use-rdb-preamble yes
 ```
 
@@ -424,21 +427,21 @@ If your AOF file becomes corrupted, use the redis-check-aof utility:
 ### Check for Corruption
 
 ```bash
-redis-check-aof --fix /var/lib/redis/appendonly.aof
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
 
 ### Fix Truncated AOF
 
 ```bash
-redis-check-aof --fix /var/lib/redis/appendonly.aof
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
 
-This truncates the file at the first invalid command.
+This may truncate or discard the invalid AOF portion from the first unrecoverable error onward.
 
 ### Validate AOF Without Fixing
 
 ```bash
-redis-check-aof /var/lib/redis/appendonly.aof
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
 
 ## Performance Tuning
@@ -455,13 +458,13 @@ This improves rewrite performance but may lose more data if Redis crashes during
 ### AOF Buffer Configuration
 
 ```bash
-# Maximum size of the AOF rewrite buffer
+# Fsync the rewritten AOF file incrementally every 4 MB
 aof-rewrite-incremental-fsync yes
 ```
 
 ### Lazy Fsync
 
-For high-write workloads, consider combining AOF with lazy fsync:
+For high-write workloads, consider reducing fsync contention during rewrites:
 
 ```bash
 appendfsync everysec
@@ -511,9 +514,9 @@ groups:
 redis_aof_current_size
 
 # AOF rewrite duration
-rate(redis_aof_last_rewrite_time_sec[5m])
+redis_aof_last_rewrite_time_sec
 
-# Commands since last fsync
+# Pending background fsync jobs
 redis_aof_pending_bio_fsync
 ```
 
@@ -530,7 +533,7 @@ redis-cli CONFIG SET appendonly yes
 2. Wait for the initial AOF to be created:
 
 ```bash
-redis-cli INFO persistence | grep aof_rewrite_in_progress
+redis-cli INFO persistence | grep -E 'aof_rewrite_in_progress|aof_rewrite_scheduled|aof_last_bgrewrite_status'
 ```
 
 3. Make the change permanent in redis.conf:
@@ -555,7 +558,7 @@ save ""
 
 4. **Consider hybrid persistence**: Use both RDB and AOF for comprehensive protection
 
-5. **Schedule rewrites during low traffic**: Configure rewrite thresholds to trigger during off-peak hours
+5. **Run rewrites during low traffic**: Trigger manual rewrites during off-peak hours, and tune automatic rewrite thresholds for your workload
 
 6. **Monitor fsync latency**: High fsync latency indicates disk I/O issues
 

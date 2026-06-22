@@ -8,9 +8,9 @@ Description: Learn how to effectively debug network requests in React Native usi
 
 ---
 
-Debugging network requests is one of the most critical skills for React Native developers. Whether you're integrating REST APIs, handling GraphQL queries, or troubleshooting WebSocket connections, having the right tools can save hours of frustration. Flipper, developed by Meta, has become the go-to debugging platform for React Native applications, and its network inspection capabilities are particularly powerful.
+Debugging network requests is one of the most critical skills for React Native developers. Whether you're integrating REST APIs, handling GraphQL queries, or troubleshooting WebSocket connections, having the right tools can save hours of frustration. Flipper, developed by Meta, has been a popular debugging platform for React Native applications, and its network inspection capabilities are particularly useful in projects that still include Flipper support.
 
-In this comprehensive guide, we'll explore everything you need to know about debugging network requests in React Native using Flipper's network inspector.
+In this comprehensive guide, we'll explore everything you need to know about debugging network requests in React Native using Flipper's network inspector. React Native added Flipper by default in 0.62, but the built-in React Native integration was deprecated in 0.73 and removed from new React Native projects in 0.74. This guide applies to React Native projects that still use the built-in Flipper integration (typically React Native 0.62-0.72) or projects where Flipper has been manually integrated after upgrading. For current React Native projects, React Native DevTools is the default debugging experience.
 
 ## Table of Contents
 
@@ -70,13 +70,13 @@ Flipper offers advantages over these approaches:
 
 Before getting started, ensure you have:
 
-1. React Native 0.62 or higher (Flipper is included by default)
+1. A React Native project with Flipper integration (built in for React Native 0.62-0.72, deprecated in 0.73, and no longer included in new 0.74+ projects)
 2. Flipper desktop application installed
 3. Your development environment set up for React Native
 
 ### Installing Flipper Desktop
 
-Download Flipper from the official website or install via package managers:
+Download Flipper from the official website or install via package managers when available:
 
 ```bash
 # macOS with Homebrew
@@ -87,13 +87,15 @@ brew install --cask flipper
 # https://fbflipper.com/
 ```
 
+If the Homebrew cask is unavailable or disabled on your machine, use the official Flipper releases instead.
+
 ### Enabling Network Plugin in React Native
 
-For React Native 0.62+, Flipper comes pre-configured. However, you need to ensure the network plugin is properly set up.
+For React Native 0.62-0.72, Flipper comes pre-configured in the React Native template. For React Native 0.74 and later, new projects do not include the React Native Flipper integration, so you need to manually integrate Flipper or use React Native DevTools and platform-native network debugging tools instead.
 
 #### iOS Setup
 
-Check your `ios/Podfile` for Flipper configuration:
+In older React Native projects, check your `ios/Podfile` for Flipper configuration:
 
 ```ruby
 # ios/Podfile
@@ -129,34 +131,17 @@ dependencies {
 
 #### Configuring the Network Plugin
 
-In your React Native app, configure the network plugin in your entry file:
+In projects that already include React Native's Flipper integration, the Network plugin is configured through the native iOS and Android setup, not by importing a Flipper desktop plugin from your JavaScript entry file:
 
 ```typescript
 // index.js or App.tsx
-import { Platform } from 'react-native';
-
 if (__DEV__) {
-  // Network plugin is automatically enabled in debug builds
-  // but you can add custom configuration here
+  // Keep app-specific debug-only setup here.
+  // Flipper network capture is wired through native debug configuration.
 }
 ```
 
-For advanced configuration with fetch interceptors:
-
-```typescript
-// flipperConfig.ts
-import { addPlugin } from 'react-native-flipper';
-
-if (__DEV__) {
-  // Custom network configuration if needed
-  const networkPlugin = require('flipper-plugin-network');
-
-  // Configure options
-  networkPlugin.configure({
-    // Options here
-  });
-}
-```
+For advanced Android configuration, ensure the same `NetworkFlipperPlugin` instance registered with the Flipper client is also attached to the OkHttp client used by your app.
 
 ### Verifying the Connection
 
@@ -171,7 +156,7 @@ You should see the Network plugin interface ready to capture requests.
 
 ## Inspecting HTTP Requests and Responses
 
-Once connected, Flipper captures all HTTP/HTTPS traffic from your app automatically.
+Once connected, Flipper captures HTTP/HTTPS traffic that flows through the networking stack wired to the Flipper Network plugin. In React Native's built-in integration this commonly includes `fetch` and XMLHttpRequest traffic, but custom native clients may need additional native setup.
 
 ### The Network Plugin Interface
 
@@ -223,7 +208,7 @@ In Flipper, this request will show:
 - All request headers
 - Response headers
 - Response body (formatted JSON)
-- Timing breakdown
+- Request duration
 
 ---
 
@@ -319,7 +304,7 @@ Understanding request timing is crucial for performance optimization.
 
 ### Timing Breakdown
 
-Flipper provides detailed timing information:
+Flipper provides useful request-level timing information, especially total duration. It does not provide the same per-phase network timing breakdown as Chrome DevTools for every React Native request. When a request is slow, these are the common phases to investigate with platform logs, server logs, or a proxy that exposes detailed timing:
 
 1. **DNS Lookup**: Time to resolve domain name
 2. **Connection**: TCP connection establishment
@@ -352,14 +337,14 @@ const fetchLargeDataset = async () => {
 
 In Flipper, you can identify:
 
-- Slow server responses (high TTFB)
+- Slow responses by total duration
 - Large payload downloads
 - Connection issues
-- SSL negotiation delays
+- Possible SSL or connection failures
 
 ### Timeline Visualization
 
-The timeline view shows requests in chronological order, helping identify:
+The request list shows requests in chronological order, helping identify:
 
 - Sequential vs parallel requests
 - Request blocking
@@ -415,16 +400,15 @@ DELETE // Deletions
 
 ### Custom Filters
 
-Create complex filters:
+Some Flipper versions and plugins support additional filtering options. When available, use them to narrow the request list by values such as host, method, or status:
 
 ```text
-// Combine filters
-domain:api.example.com method:POST status:>=400
+api.example.com POST 500
 ```
 
 ### Saving Filter Presets
 
-For frequently used filters, save presets:
+If your Flipper version or installed plugin supports saved filters, you can use them for frequently repeated searches:
 
 1. Configure your filter
 2. Click "Save Filter"
@@ -435,7 +419,7 @@ For frequently used filters, save presets:
 
 ## Mocking API Responses
 
-Flipper allows you to mock API responses for testing.
+Flipper's Network plugin has supported response mocking in some Flipper and native-client configurations. In React Native projects, this depends on the native integration and is most commonly associated with Android/OkHttp setups where the Flipper interceptor is configured for mocking.
 
 ### Setting Up Mock Responses
 
@@ -449,8 +433,8 @@ const fetchProducts = async () => {
 
 ### Creating a Mock
 
-1. Right-click on a request in Flipper
-2. Select "Mock Response"
+1. Open the Network plugin's mock response controls, if available in your Flipper build
+2. Add a route for the endpoint you want to mock
 3. Configure the mock:
 
 ```json
@@ -534,11 +518,11 @@ const fetchWithRetry = async (url: string, retries = 3) => {
 };
 ```
 
-In Flipper, failed requests show:
+In Flipper, failed requests can show:
 
 - Error type (timeout, connection refused, etc.)
 - Error message
-- Stack trace if available
+- Stack trace if the native integration reports one
 
 #### HTTP Errors
 
@@ -565,10 +549,10 @@ For 4xx and 5xx responses:
 
 ### Replay Requests
 
-Flipper allows you to replay requests:
+Some Flipper versions expose actions such as copying a request as cURL. If your build provides request replay or resend controls, you can use them to test the same request again:
 
 1. Right-click on a request
-2. Select "Replay"
+2. Select the replay/resend action, if available
 3. Optionally modify headers or body
 4. Send the request again
 
@@ -765,7 +749,7 @@ Modern apps often use WebSockets for real-time features.
 
 ### WebSocket Support in Flipper
 
-Flipper can inspect WebSocket connections:
+The built-in Flipper Network plugin is primarily for HTTP/HTTPS traffic and does not reliably inspect WebSocket frames in React Native apps. For WebSocket debugging, use application-level logging, a protocol-specific Flipper plugin, or a proxy/tool that explicitly supports WebSocket inspection:
 
 ```typescript
 // Example WebSocket connection
@@ -799,7 +783,7 @@ const connectWebSocket = () => {
 
 ### Viewing WebSocket Data
 
-Flipper shows:
+With a WebSocket-capable debugging tool, inspect:
 
 - Connection status
 - Messages sent and received
@@ -809,14 +793,18 @@ Flipper shows:
 
 ### WebSocket Message Format
 
+Sent message:
+
 ```json
-// Sent message
 {
   "type": "subscribe",
   "channel": "notifications"
 }
+```
 
-// Received message
+Received message:
+
+```json
 {
   "type": "notification",
   "data": {
@@ -828,7 +816,7 @@ Flipper shows:
 
 ### Debugging WebSocket Issues
 
-Common issues visible in Flipper:
+Common issues visible in WebSocket-capable tooling or application logs:
 
 1. **Connection failures**: Server unreachable
 2. **Authentication errors**: Invalid tokens
@@ -839,7 +827,7 @@ Common issues visible in Flipper:
 
 ## Exporting Network Logs
 
-Flipper allows exporting network data for sharing and documentation.
+Flipper versions vary in export support. When the Network plugin exposes export or copy actions, use them for sharing and documentation.
 
 ### Export Options
 
@@ -847,9 +835,9 @@ Flipper allows exporting network data for sharing and documentation.
 
 HAR (HTTP Archive) format is widely supported:
 
-1. Select requests to export
-2. Click "Export" or right-click menu
-3. Choose "Export as HAR"
+1. Select requests to export, if your Flipper build supports it
+2. Click "Export" or use the right-click menu
+3. Choose the available export format
 4. Save the .har file
 
 HAR files can be opened in:
@@ -860,7 +848,7 @@ HAR files can be opened in:
 
 #### Export as cURL
 
-Convert requests to cURL commands:
+Many network inspectors can convert requests to cURL commands. If this action is available in your Flipper build, it produces a command similar to:
 
 ```bash
 # Exported cURL command
@@ -1087,15 +1075,15 @@ When debugging complex issues:
 
 ## Conclusion
 
-Flipper's network plugin is an indispensable tool for React Native developers. It provides visibility into your app's network layer that was previously difficult to achieve in mobile development.
+Flipper's network plugin remains a useful tool for React Native projects that still include Flipper support. It provides visibility into your app's network layer that was previously difficult to achieve in mobile development.
 
 Key takeaways:
 
-1. **Easy setup**: Flipper comes pre-configured in React Native 0.62+
+1. **Easy setup for older projects**: Flipper comes pre-configured in React Native 0.62-0.72
 2. **Comprehensive inspection**: View all request and response details
 3. **Performance analysis**: Understand timing and optimize slow requests
-4. **Debugging tools**: Mock responses, replay requests, filter effectively
-5. **Protocol support**: HTTP, HTTPS, GraphQL, and WebSocket debugging
+4. **Debugging tools**: Mock responses and replay requests where supported, and filter effectively
+5. **Protocol support**: HTTP and HTTPS inspection, including GraphQL requests sent over HTTP
 
 By mastering Flipper's network debugging capabilities, you can:
 

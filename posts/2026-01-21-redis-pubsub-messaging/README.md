@@ -26,7 +26,7 @@ Redis Pub/Sub follows the publish-subscribe pattern:
 | Message Delivery | At-most-once (no guarantees) |
 | Persistence | None (messages lost if no subscribers) |
 | Message Order | Preserved per publisher |
-| Scalability | All subscribers receive all messages |
+| Scalability | All subscribers to a channel receive each message |
 | Pattern Matching | Supported with PSUBSCRIBE |
 
 ## Basic Pub/Sub Commands
@@ -78,7 +78,7 @@ import json
 import time
 from typing import Callable, Dict, List, Optional
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class Event:
@@ -91,7 +91,7 @@ class Event:
     def create(cls, event_type: str, data: dict) -> 'Event':
         return cls(
             type=event_type,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             data=data
         )
 
@@ -128,12 +128,12 @@ class RedisPublisher:
         return self.publish(channel, json.dumps(data))
 
     def get_channel_subscribers(self, channel: str) -> int:
-        """Get the number of subscribers for a channel."""
+        """Get the number of exact-match subscribers for a channel."""
         result = self.client.pubsub_numsub(channel)
         return result[0][1] if result else 0
 
     def get_active_channels(self, pattern: str = '*') -> List[str]:
-        """Get list of active channels matching pattern."""
+        """Get list of active channels with exact-match subscribers."""
         return self.client.pubsub_channels(pattern)
 
 
@@ -221,8 +221,9 @@ class RedisSubscriber:
         self.pubsub.close()
 
     def run_in_thread(self, sleep_time=0.001):
-        """Run the subscriber in a managed thread."""
-        return self.pubsub.run_in_thread(sleep_time=sleep_time)
+        """Run the subscriber in this class's background thread."""
+        self.start()
+        return self.thread
 
 
 class EventBus:
@@ -527,7 +528,7 @@ Here is a practical example of a notification system:
 import redis
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
 from dataclasses import dataclass, asdict
@@ -583,7 +584,7 @@ class NotificationService:
             type=notification_type.value,
             title=title,
             message=message,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             data=data
         )
 
@@ -605,7 +606,7 @@ class NotificationService:
             'type': notification_type.value,
             'title': title,
             'message': message,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'data': data
         }
 
@@ -662,8 +663,8 @@ class NotificationService:
 
 # WebSocket integration example (using Flask-SocketIO)
 """
-from flask import Flask
-from flask_socketio import SocketIO, emit
+from flask import Flask, request
+from flask_socketio import SocketIO, join_room
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -805,7 +806,7 @@ pubsub_active_subscribers = Gauge(
 - **No acknowledgments**: No way to confirm message delivery
 - **No replay**: Cannot retrieve historical messages
 - **Memory pressure**: Large subscriber counts can impact performance
-- **Single-node scope**: In Redis Cluster, Pub/Sub is node-local
+- **Cluster fan-out cost**: Classic Pub/Sub in Redis Cluster is global; use Redis 7.0+ sharded Pub/Sub for shard-local propagation
 
 For use cases requiring message durability and guaranteed delivery, consider Redis Streams instead.
 

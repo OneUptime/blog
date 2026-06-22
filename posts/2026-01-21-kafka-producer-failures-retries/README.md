@@ -67,7 +67,7 @@ public class RetryConfiguredProducer {
 
         // In-flight requests - set to 1 for strict ordering with retries
         // or use idempotent producer which handles this automatically
-        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
+        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION_CONFIG, 5);
 
         return new KafkaProducer<>(props);
     }
@@ -158,11 +158,7 @@ public class ErrorHandlingProducer {
     }
 
     private boolean isRetriable(Exception e) {
-        return e instanceof TimeoutException ||
-               e instanceof NotLeaderOrFollowerException ||
-               e instanceof LeaderNotAvailableException ||
-               e instanceof NotEnoughReplicasException ||
-               e instanceof NetworkException;
+        return e instanceof RetriableException;
     }
 
     private void sendToDeadLetterQueue(ProducerRecord<String, String> record,
@@ -174,7 +170,8 @@ public class ErrorHandlingProducer {
             record.key(),
             record.value()
         );
-        dlqRecord.headers().add("error", exception.getMessage().getBytes());
+        dlqRecord.headers().add("error",
+            String.valueOf(exception.getMessage()).getBytes());
         dlqRecord.headers().add("original-topic", record.topic().getBytes());
 
         producer.send(dlqRecord, (metadata, ex) -> {
@@ -237,15 +234,6 @@ class MessageStats:
 
 
 class ErrorHandlingProducer:
-    RETRIABLE_ERRORS = {
-        KafkaError._TIMED_OUT,
-        KafkaError.REQUEST_TIMED_OUT,
-        KafkaError.NOT_LEADER_FOR_PARTITION,
-        KafkaError.LEADER_NOT_AVAILABLE,
-        KafkaError.NOT_ENOUGH_REPLICAS,
-        KafkaError._TRANSPORT,
-    }
-
     def __init__(self, bootstrap_servers):
         self.config = {
             'bootstrap.servers': bootstrap_servers,
@@ -276,7 +264,7 @@ class ErrorHandlingProducer:
             self._handle_fatal_error(msg, err)
 
     def _is_retriable(self, err):
-        return err.code() in self.RETRIABLE_ERRORS
+        return err.retriable()
 
     def _send_to_dlq(self, msg, err):
         dlq_topic = f"{msg.topic()}-dlq"
@@ -304,7 +292,7 @@ class ErrorHandlingProducer:
         error_code = err.code()
 
         if error_code == KafkaError.MSG_SIZE_TOO_LARGE:
-            logger.error(f"Message too large: {len(msg.value())} bytes")
+            logger.error(f"Message too large: {len(msg.value() or b'')} bytes")
         elif error_code == KafkaError.TOPIC_AUTHORIZATION_FAILED:
             logger.error(f"Authorization failed for topic: {msg.topic()}")
         elif error_code == KafkaError.INVALID_MSG:
@@ -433,9 +421,7 @@ public class CustomRetryProducer {
     }
 
     private boolean isRetriable(Exception e) {
-        return e instanceof org.apache.kafka.common.errors.TimeoutException ||
-               e instanceof org.apache.kafka.common.errors.NotLeaderOrFollowerException ||
-               e instanceof org.apache.kafka.common.errors.RetriableException;
+        return e instanceof org.apache.kafka.common.errors.RetriableException;
     }
 
     private long calculateBackoff(int attempt) {
@@ -482,6 +468,11 @@ logger = logging.getLogger(__name__)
 
 
 class CustomRetryProducer:
+    class ProduceFailed(Exception):
+        def __init__(self, err):
+            super().__init__(str(err))
+            self.err = err
+
     def __init__(self, bootstrap_servers, max_retries=5,
                  initial_backoff_ms=100, backoff_multiplier=2.0):
         self.config = {
@@ -495,14 +486,7 @@ class CustomRetryProducer:
         self.backoff_multiplier = backoff_multiplier
 
     def _is_retriable(self, err):
-        from confluent_kafka import KafkaError
-        retriable_codes = {
-            KafkaError._TIMED_OUT,
-            KafkaError.REQUEST_TIMED_OUT,
-            KafkaError.NOT_LEADER_FOR_PARTITION,
-            KafkaError.LEADER_NOT_AVAILABLE,
-        }
-        return err.code() in retriable_codes
+        return err.retriable()
 
     def _calculate_backoff(self, attempt):
         return self.initial_backoff_ms * (self.backoff_multiplier ** attempt) / 1000
@@ -551,7 +535,7 @@ class CustomRetryProducer:
                         on_failure(err)
                     raise Exception(f"Send failed after {attempt + 1} attempts: {err}")
 
-            except Exception as e:
+            except BufferError as e:
                 if attempt < self.max_retries:
                     backoff = self._calculate_backoff(attempt)
                     logger.warning(f"Retry {attempt + 1} after {backoff:.2f}s: {e}")
@@ -568,6 +552,8 @@ class CustomRetryProducer:
                 result = await self._async_produce(topic, key, value)
                 return result
             except Exception as e:
+                if isinstance(e, self.ProduceFailed) and not self._is_retriable(e.err):
+                    raise
                 if attempt < self.max_retries:
                     backoff = self._calculate_backoff(attempt)
                     logger.warning(f"Retry {attempt + 1} after {backoff:.2f}s: {e}")
@@ -582,7 +568,7 @@ class CustomRetryProducer:
         def callback(err, msg):
             if err:
                 loop.call_soon_threadsafe(
-                    future.set_exception, Exception(str(err)))
+                    future.set_exception, self.ProduceFailed(err))
             else:
                 loop.call_soon_threadsafe(
                     future.set_result, {
@@ -597,7 +583,10 @@ class CustomRetryProducer:
             value=json.dumps(value) if isinstance(value, dict) else value,
             callback=callback
         )
-        self.producer.poll(0)
+
+        while not future.done():
+            self.producer.poll(0)
+            await asyncio.sleep(0.1)
 
         return await future
 
@@ -680,7 +669,7 @@ public class DeadLetterQueueProducer {
             .add(new RecordHeader("original-topic",
                 originalRecord.topic().getBytes(StandardCharsets.UTF_8)))
             .add(new RecordHeader("error-message",
-                exception.getMessage().getBytes(StandardCharsets.UTF_8)))
+                String.valueOf(exception.getMessage()).getBytes(StandardCharsets.UTF_8)))
             .add(new RecordHeader("error-class",
                 exception.getClass().getName().getBytes(StandardCharsets.UTF_8)))
             .add(new RecordHeader("timestamp",

@@ -51,10 +51,11 @@ def store_metric(metric_name, value, timestamp=None):
 
 def get_metrics_range(metric_name, start_time, end_time):
     """Retrieve metrics within a time range."""
-    results = r.zrangebyscore(
+    results = r.zrange(
         f'metrics:{metric_name}',
         start_time,
         end_time,
+        byscore=True,
         withscores=True
     )
 
@@ -93,10 +94,11 @@ async function storeMetric(metricName, value, timestamp = Date.now()) {
 }
 
 async function getMetricsRange(metricName, startTime, endTime) {
-  const results = await redis.zrangebyscore(
+  const results = await redis.zrange(
     `metrics:${metricName}`,
     startTime,
     endTime,
+    'BYSCORE',
     'WITHSCORES'
   );
 
@@ -201,9 +203,9 @@ for i in range(100):
 entries = get_stream_range(stream)
 print(f"Total entries: {len(entries)}")
 
-# Query last 50 entries
-recent = get_stream_range(stream, '-', '+', count=50)
-print(f"Recent entries: {len(recent)}")
+# Query first 50 entries
+first_entries = get_stream_range(stream, '-', '+', count=50)
+print(f"First entries: {len(first_entries)}")
 ```
 
 ### Stream with Consumer Groups for Processing
@@ -298,11 +300,11 @@ RedisTimeSeries is a Redis module specifically designed for time-series data wit
 ### Installation
 
 ```bash
-# Using Docker
-docker run -p 6379:6379 redislabs/redistimeseries
+# Using Redis Stack server
+docker run -p 6379:6379 redis/redis-stack-server:latest
 
-# Or with Redis Stack
-docker run -p 6379:6379 redis/redis-stack
+# Or with Redis Stack and Redis Insight
+docker run -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 ```
 
 ### Basic RedisTimeSeries Operations
@@ -380,7 +382,7 @@ ts.createrule(
     bucket_size_msec=3600000  # 1-hour buckets
 )
 
-# Now when you add to raw, downsampled series update automatically
+# Now when you add to raw, completed buckets are compacted automatically
 current_time = int(time.time() * 1000)
 for i in range(1000):
     ts.add('metrics:requests:raw', '*', 100 + i % 50)
@@ -434,16 +436,14 @@ const redis = new Redis();
 
 async function createTimeSeries(key, retentionMs, labels = {}) {
   const labelArgs = Object.entries(labels).flatMap(([k, v]) => [k, v]);
+  const args = ['TS.CREATE', key, 'RETENTION', retentionMs];
+
+  if (labelArgs.length > 0) {
+    args.push('LABELS', ...labelArgs);
+  }
 
   try {
-    await redis.call(
-      'TS.CREATE',
-      key,
-      'RETENTION',
-      retentionMs,
-      'LABELS',
-      ...labelArgs
-    );
+    await redis.call(...args);
   } catch (err) {
     if (!err.message.includes('already exists')) {
       throw err;

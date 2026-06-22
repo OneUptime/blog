@@ -46,7 +46,7 @@ curl -X GET "https://localhost:9200/products/_search" \
 
 ### Fuzziness Values
 
-- `0`, `1`, `2`: Exact number of edits allowed
+- `0`, `1`, `2`: Maximum number of edits allowed
 - `AUTO`: Automatically sets based on term length
   - 0-2 characters: exact match
   - 3-5 characters: 1 edit allowed
@@ -198,8 +198,10 @@ Match words that sound alike (soundex, metaphone):
 ### Install Phonetic Plugin
 
 ```bash
-bin/elasticsearch-plugin install analysis-phonetic
+sudo bin/elasticsearch-plugin install analysis-phonetic
 ```
+
+Install the plugin on every node in the cluster and restart each node after installation.
 
 ### Configure Phonetic Analyzer
 
@@ -270,6 +272,7 @@ curl -X GET "https://localhost:9200/products-phonetic/_search" \
 - `koelnerphonetik`: German
 - `haasephonetik`: German
 - `beider_morse`: Multi-language
+- `daitch_mokotoff`: Slavic and Yiddish names
 
 ## N-gram Similarity
 
@@ -312,7 +315,7 @@ curl -X PUT "https://localhost:9200/products-ngram" \
 
 ## "Did You Mean" Suggestions
 
-Suggest corrections for misspellings:
+Suggest corrections for misspellings using a shingle subfield such as `name.trigram`:
 
 ```bash
 curl -X GET "https://localhost:9200/products/_search" \
@@ -323,11 +326,11 @@ curl -X GET "https://localhost:9200/products/_search" \
       "text": "elasticsearh",
       "simple-phrase": {
         "phrase": {
-          "field": "name",
+          "field": "name.trigram",
           "size": 3,
-          "gram_size": 2,
+          "gram_size": 3,
           "direct_generator": [{
-            "field": "name",
+            "field": "name.trigram",
             "suggest_mode": "popular"
           }],
           "highlight": {
@@ -405,11 +408,11 @@ curl -X GET "https://localhost:9200/products/_search" \
       "spelling": {
         "text": "wireles headpohnes",
         "phrase": {
-          "field": "name",
+          "field": "name.trigram",
           "size": 3,
-          "gram_size": 2,
+          "gram_size": 3,
           "direct_generator": [{
-            "field": "name",
+            "field": "name.trigram",
             "suggest_mode": "popular"
           }]
         }

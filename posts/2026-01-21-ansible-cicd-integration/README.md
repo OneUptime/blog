@@ -161,7 +161,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     environment: staging
-    if: github.event_name == 'push' || github.event.inputs.environment == 'staging'
+    if: github.event_name == 'push' || github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'production'
 
     steps:
       - name: Checkout
@@ -184,7 +184,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.STAGING_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Create vault password file
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
@@ -228,6 +228,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PRODUCTION_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Create vault password file
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
@@ -260,10 +261,13 @@ stages:
 variables:
   ANSIBLE_FORCE_COLOR: "true"
   PY_COLORS: "1"
+  STAGING_HOST: "staging.example.com"
+  PRODUCTION_HOST: "example.com"
 
 .ansible-base:
   image: python:3.11
   before_script:
+    - apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
     - pip install ansible ansible-lint boto3
     - ansible-galaxy collection install -r requirements.yml
     - echo "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
@@ -303,6 +307,7 @@ molecule-tests:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - apk add --no-cache python3 py3-pip
     - pip install molecule molecule-plugins[docker] ansible pytest-testinfra
@@ -327,6 +332,7 @@ deploy-staging:
     url: https://staging.example.com
   script:
     - |
+      ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts
       ansible-playbook playbooks/site.yml \
         -i inventory/staging/ \
         --vault-password-file .vault_pass \
@@ -342,6 +348,7 @@ deploy-production:
     url: https://example.com
   script:
     - |
+      ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts
       ansible-playbook playbooks/site.yml \
         -i inventory/production/ \
         --vault-password-file .vault_pass \
@@ -370,7 +377,8 @@ pipeline {
     environment {
         ANSIBLE_FORCE_COLOR = 'true'
         ANSIBLE_VAULT_PASSWORD = credentials('ansible-vault-password')
-        SSH_KEY = credentials('deploy-ssh-key')
+        STAGING_HOST = 'staging.example.com'
+        PRODUCTION_HOST = 'example.com'
     }
 
     parameters {
@@ -390,6 +398,9 @@ pipeline {
         stage('Setup') {
             steps {
                 sh '''
+                    apt-get update
+                    apt-get install -y --no-install-recommends openssh-client
+                    rm -rf /var/lib/apt/lists/*
                     pip install ansible ansible-lint boto3
                     ansible-galaxy collection install -r requirements.yml
                 '''
@@ -424,13 +435,14 @@ pipeline {
             steps {
                 script {
                     withCredentials([
-                        file(credentialsId: 'deploy-ssh-key', variable: 'SSH_KEY_FILE'),
+                        sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY_FILE'),
                         string(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS')
                     ]) {
                         sh '''
                             mkdir -p ~/.ssh
                             cp $SSH_KEY_FILE ~/.ssh/deploy_key
                             chmod 600 ~/.ssh/deploy_key
+                            ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts
                             echo "$VAULT_PASS" > .vault_pass
 
                             ansible-playbook playbooks/${PLAYBOOK} \
@@ -462,13 +474,14 @@ pipeline {
             steps {
                 script {
                     withCredentials([
-                        file(credentialsId: 'deploy-ssh-key', variable: 'SSH_KEY_FILE'),
+                        sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY_FILE'),
                         string(credentialsId: 'ansible-vault-password', variable: 'VAULT_PASS')
                     ]) {
                         sh '''
                             mkdir -p ~/.ssh
                             cp $SSH_KEY_FILE ~/.ssh/deploy_key
                             chmod 600 ~/.ssh/deploy_key
+                            ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts
                             echo "$VAULT_PASS" > .vault_pass
 
                             ansible-playbook playbooks/${PLAYBOOK} \
@@ -534,22 +547,28 @@ curl --request POST \
 
 ```yaml
 # GitHub Actions with Vault
-- name: Import secrets from Vault
-  uses: hashicorp/vault-action@v2
-  with:
-    url: https://vault.example.com
-    method: jwt
-    role: ansible-deploy
-    secrets: |
-      secret/data/ansible/vault_password value | ANSIBLE_VAULT_PASSWORD ;
-      secret/data/ansible/ssh_key value | SSH_PRIVATE_KEY
+permissions:
+  contents: read
+  id-token: write
 
-- name: Run playbook
-  run: |
-    echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-    chmod 600 ~/.ssh/deploy_key
-    echo "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
-    ansible-playbook playbooks/site.yml --vault-password-file .vault_pass
+steps:
+  - name: Import secrets from Vault
+    uses: hashicorp/vault-action@v4
+    with:
+      url: https://vault.example.com
+      method: jwt
+      role: ansible-deploy
+      secrets: |
+        secret/data/ansible/vault_password value | ANSIBLE_VAULT_PASSWORD ;
+        secret/data/ansible/ssh_key value | SSH_PRIVATE_KEY
+
+  - name: Run playbook
+    run: |
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+      chmod 600 ~/.ssh/deploy_key
+      echo "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
+      ansible-playbook playbooks/site.yml --vault-password-file .vault_pass
 ```
 
 ## Best Practices

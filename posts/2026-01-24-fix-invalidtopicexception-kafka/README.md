@@ -19,13 +19,13 @@ flowchart TB
     B --> D[Reserved Name]
     B --> E[Name Too Long]
     B --> F[Invalid Characters]
-    B --> G[Topic Already Exists]
+    B --> G[Empty Name]
 
     C --> H[Fix: Follow naming rules]
-    D --> I[Fix: Avoid __ prefix]
+    D --> I[Fix: Avoid . and ..]
     E --> J[Fix: Limit to 249 chars]
     F --> K[Fix: Use alphanumeric, ., _, -]
-    G --> L[Fix: Use unique name or alter existing]
+    G --> L[Fix: Provide a non-empty topic name]
 ```
 
 ## Topic Naming Rules
@@ -77,13 +77,13 @@ producer.send(new ProducerRecord<>("", "key", "value"));
 
 ```bash
 # These are reserved filesystem names
-kafka-topics.sh --create --topic .     # Invalid
-kafka-topics.sh --create --topic ..    # Invalid
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic .     # Invalid
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic ..    # Invalid
 ```
 
 ### Rule 5: Avoid Internal Topic Prefix
 
-Topics starting with double underscore (__) are reserved for Kafka internal use.
+Kafka uses double-underscore names for internal topics. The generic topic-name validator does not reject every `__*` name, but using that prefix for application topics is a bad practice and may conflict with Kafka internals or platform policies.
 
 ```bash
 # Internal topics - do not create manually
@@ -91,7 +91,7 @@ __consumer_offsets
 __transaction_state
 
 # Your topics should not use this prefix
-kafka-topics.sh --create --topic __my-topic  # Bad practice, may fail
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic __my-topic  # Bad practice, may conflict with internal conventions
 ```
 
 ## Common Error Scenarios and Fixes
@@ -107,6 +107,8 @@ ASCII alphanumerics, '.', '_' and '-'
 
 **Fix:**
 ```java
+import java.util.regex.Pattern;
+
 public class TopicNameValidator {
     // Regex pattern for valid Kafka topic names
     private static final Pattern VALID_TOPIC_PATTERN =
@@ -129,6 +131,10 @@ public class TopicNameValidator {
         // Validate length
         if (sanitized.length() > 249) {
             sanitized = sanitized.substring(0, 249);
+        }
+
+        if (!isValid(sanitized)) {
+            throw new IllegalArgumentException("Unable to create a valid topic name from: " + topicName);
         }
 
         return sanitized;
@@ -175,9 +181,11 @@ public String createTopicName(String service, String entity, String action) {
 
 ### Scenario 3: Topic Does Not Exist (Auto-Create Disabled)
 
+This is a related topic-management error, but it is typically a `TimeoutException` from a producer waiting for metadata or an `UnknownTopicOrPartitionException`, not an `InvalidTopicException`.
+
 **Error:**
 ```text
-org.apache.kafka.common.errors.InvalidTopicException:
+org.apache.kafka.common.errors.TimeoutException:
 Topic user-events not found in metadata after 60000 ms
 ```
 
@@ -208,6 +216,13 @@ auto.create.topics.enable=true
 
 **Fix Option 3: Create topic programmatically before use**
 ```java
+import java.util.Collections;
+import java.util.Properties;
+import java.util.Set;
+
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
+
 public class TopicCreator {
     public static void ensureTopicExists(String bootstrapServers, String topicName,
                                          int partitions, short replication) {
@@ -234,13 +249,13 @@ public class TopicCreator {
 
 **Error:**
 ```text
-org.apache.kafka.common.errors.InvalidTopicException:
-Topic name "__custom-offsets" is illegal, it starts with reserved prefix "__"
+org.apache.kafka.common.errors.TopicAuthorizationException:
+Not authorized to access topics: [__custom-offsets]
 ```
 
 **Fix:**
 ```java
-// Bad - uses reserved prefix
+// Bad practice - uses internal-looking prefix
 String topicName = "__custom-offsets";
 
 // Good - use different prefix
@@ -277,6 +292,8 @@ String topicName = "my.topic";
 ### Producer Error Handling
 
 ```java
+import java.util.Properties;
+
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.errors.InvalidTopicException;
 
@@ -317,6 +334,10 @@ public class SafeProducer {
 ### Consumer Error Handling
 
 ```java
+import java.util.List;
+import java.util.Properties;
+import java.util.stream.Collectors;
+
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.errors.InvalidTopicException;
 
@@ -417,8 +438,11 @@ kafka-topics.sh --bootstrap-server localhost:9092 --list | sort
 ### 1. Centralized Topic Registry
 
 ```java
+import java.util.HashMap;
+import java.util.Map;
+
 public class TopicRegistry {
-    private static final Map<String, TopicConfig> TOPICS = new HashMap<>();
+    private static final Map<String, TopicDefinition> TOPICS = new HashMap<>();
 
     static {
         // Register all valid topics
@@ -431,7 +455,7 @@ public class TopicRegistry {
         if (!TopicNameValidator.isValid(name)) {
             throw new IllegalArgumentException("Invalid topic name: " + name);
         }
-        TOPICS.put(name, new TopicConfig(name, partitions, replication));
+        TOPICS.put(name, new TopicDefinition(name, partitions, replication));
     }
 
     public static String getTopic(String name) {
@@ -440,12 +464,30 @@ public class TopicRegistry {
         }
         return name;
     }
+
+    private static class TopicDefinition {
+        private final String name;
+        private final int partitions;
+        private final int replication;
+
+        private TopicDefinition(String name, int partitions, int replication) {
+            this.name = name;
+            this.partitions = partitions;
+            this.replication = replication;
+        }
+    }
 }
 ```
 
-### 2. Input Validation Middleware
+### 2. Input Validation Guard
 
 ```java
+import java.util.Map;
+
+import org.apache.kafka.clients.producer.ProducerInterceptor;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+
 public class KafkaTopicInterceptor implements ProducerInterceptor<String, String> {
 
     @Override
@@ -453,8 +495,7 @@ public class KafkaTopicInterceptor implements ProducerInterceptor<String, String
         String topic = record.topic();
 
         if (!TopicNameValidator.isValid(topic)) {
-            throw new IllegalArgumentException(
-                "Interceptor blocked invalid topic: " + topic);
+            System.err.println("Invalid topic detected by interceptor: " + topic);
         }
 
         return record;
@@ -521,7 +562,7 @@ flowchart TB
 | Not empty | `""` | `events` |
 | Not `.` or `..` | `.`, `..` | `my.topic` |
 | Valid chars | `user@events` | `user-events` |
-| No `__` prefix | `__my-topic` | `_my-topic` |
+| Avoid `__` prefix | `__my-topic` | `_my-topic` |
 
 ---
 

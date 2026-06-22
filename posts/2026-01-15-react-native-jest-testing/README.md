@@ -22,7 +22,7 @@ Before diving into the technical details, let's understand why unit testing matt
 
 ## Jest Setup for React Native
 
-React Native projects created with the React Native CLI or Expo come with Jest pre-configured. However, let's understand the setup and customize it for optimal testing.
+React Native projects created with the React Native CLI include a basic Jest setup. Expo projects can use `jest-expo`, which provides the Expo-specific Jest preset and mocks. However, let's understand the setup and customize it for optimal testing.
 
 ### Basic Configuration
 
@@ -32,7 +32,7 @@ Your `package.json` should include Jest configuration:
 {
   "jest": {
     "preset": "react-native",
-    "setupFilesAfterEnv": ["@testing-library/jest-native/extend-expect"],
+    "setupFilesAfterEnv": ["<rootDir>/jest.setup.js"],
     "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"],
     "transformIgnorePatterns": [
       "node_modules/(?!(react-native|@react-native|react-native-.*)/)"
@@ -64,7 +64,6 @@ Alternatively, create a `jest.config.js` file for more flexibility:
 module.exports = {
   preset: 'react-native',
   setupFilesAfterEnv: [
-    '@testing-library/jest-native/extend-expect',
     '<rootDir>/jest.setup.js',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
@@ -89,10 +88,16 @@ module.exports = {
 Install the required testing libraries:
 
 ```bash
-npm install --save-dev @testing-library/react-native @testing-library/jest-native jest-expo
+npm install --save-dev @testing-library/react-native test-renderer jest
 # or with yarn
 
-yarn add --dev @testing-library/react-native @testing-library/jest-native jest-expo
+yarn add --dev @testing-library/react-native test-renderer jest
+```
+
+For Expo projects, install and use `jest-expo` instead of the `react-native` preset:
+
+```bash
+npx expo install jest-expo jest @types/jest --dev
 ```
 
 ### Setup File
@@ -100,9 +105,6 @@ yarn add --dev @testing-library/react-native @testing-library/jest-native jest-e
 Create a `jest.setup.js` file for global test configuration:
 
 ```javascript
-// jest.setup.js
-import '@testing-library/jest-native/extend-expect';
-
 // Silence the warning: Animated: `useNativeDriver` is not supported
 jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 
@@ -229,7 +231,7 @@ Now let's write comprehensive tests:
 ```typescript
 // Button.test.tsx
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import { Button } from './Button';
 
 describe('Button Component', () => {
@@ -240,44 +242,44 @@ describe('Button Component', () => {
   });
 
   describe('Rendering', () => {
-    it('renders with correct title', () => {
-      render(<Button title="Click me" onPress={mockOnPress} />);
+    it('renders with correct title', async () => {
+      await render(<Button title="Click me" onPress={mockOnPress} />);
 
       expect(screen.getByText('Click me')).toBeTruthy();
     });
 
-    it('renders with testID when provided', () => {
-      render(
+    it('renders with testID when provided', async () => {
+      await render(
         <Button title="Test" onPress={mockOnPress} testID="custom-button" />
       );
 
       expect(screen.getByTestId('custom-button')).toBeTruthy();
     });
 
-    it('renders loading indicator when loading is true', () => {
-      render(<Button title="Submit" onPress={mockOnPress} loading={true} />);
+    it('renders loading indicator when loading is true', async () => {
+      await render(<Button title="Submit" onPress={mockOnPress} loading={true} />);
 
       expect(screen.getByTestId('button-loader')).toBeTruthy();
       expect(screen.queryByText('Submit')).toBeNull();
     });
 
-    it('has correct accessibility role', () => {
-      render(<Button title="Accessible" onPress={mockOnPress} />);
+    it('has correct accessibility role', async () => {
+      await render(<Button title="Accessible" onPress={mockOnPress} />);
 
       expect(screen.getByRole('button')).toBeTruthy();
     });
   });
 
   describe('Disabled State', () => {
-    it('has disabled accessibility state when disabled', () => {
-      render(<Button title="Disabled" onPress={mockOnPress} disabled={true} />);
+    it('has disabled accessibility state when disabled', async () => {
+      await render(<Button title="Disabled" onPress={mockOnPress} disabled={true} />);
 
       const button = screen.getByRole('button');
       expect(button.props.accessibilityState.disabled).toBe(true);
     });
 
-    it('has disabled accessibility state when loading', () => {
-      render(<Button title="Loading" onPress={mockOnPress} loading={true} />);
+    it('has disabled accessibility state when loading', async () => {
+      await render(<Button title="Loading" onPress={mockOnPress} loading={true} />);
 
       const button = screen.getByRole('button');
       expect(button.props.accessibilityState.disabled).toBe(true);
@@ -376,7 +378,7 @@ const styles = StyleSheet.create({
 ```typescript
 // LoginForm.test.tsx
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent } from '@testing-library/react-native';
 import { LoginForm } from './LoginForm';
 
 describe('LoginForm', () => {
@@ -386,75 +388,75 @@ describe('LoginForm', () => {
     jest.clearAllMocks();
   });
 
-  it('renders all form elements', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('renders all form elements', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
     expect(screen.getByTestId('email-input')).toBeTruthy();
     expect(screen.getByTestId('password-input')).toBeTruthy();
     expect(screen.getByTestId('submit-button')).toBeTruthy();
   });
 
-  it('updates email input when user types', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('updates email input when user types', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
     const emailInput = screen.getByTestId('email-input');
-    fireEvent.changeText(emailInput, 'test@example.com');
+    await fireEvent.changeText(emailInput, 'test@example.com');
 
     expect(emailInput.props.value).toBe('test@example.com');
   });
 
-  it('updates password input when user types', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('updates password input when user types', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
     const passwordInput = screen.getByTestId('password-input');
-    fireEvent.changeText(passwordInput, 'secretpassword');
+    await fireEvent.changeText(passwordInput, 'secretpassword');
 
     expect(passwordInput.props.value).toBe('secretpassword');
   });
 
-  it('shows error when submitting with empty fields', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('shows error when submitting with empty fields', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
-    fireEvent.press(screen.getByTestId('submit-button'));
+    await fireEvent.press(screen.getByTestId('submit-button'));
 
     expect(screen.getByTestId('error-message')).toBeTruthy();
     expect(screen.getByText('Please fill in all fields')).toBeTruthy();
     expect(mockSubmit).not.toHaveBeenCalled();
   });
 
-  it('shows error for invalid email', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('shows error for invalid email', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
-    fireEvent.changeText(screen.getByTestId('email-input'), 'invalid-email');
-    fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
-    fireEvent.press(screen.getByTestId('submit-button'));
+    await fireEvent.changeText(screen.getByTestId('email-input'), 'invalid-email');
+    await fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
+    await fireEvent.press(screen.getByTestId('submit-button'));
 
     expect(screen.getByText('Please enter a valid email')).toBeTruthy();
     expect(mockSubmit).not.toHaveBeenCalled();
   });
 
-  it('calls onSubmit with correct values on valid submission', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('calls onSubmit with correct values on valid submission', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
-    fireEvent.changeText(screen.getByTestId('email-input'), 'test@example.com');
-    fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
-    fireEvent.press(screen.getByTestId('submit-button'));
+    await fireEvent.changeText(screen.getByTestId('email-input'), 'test@example.com');
+    await fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
+    await fireEvent.press(screen.getByTestId('submit-button'));
 
     expect(mockSubmit).toHaveBeenCalledWith('test@example.com', 'password123');
     expect(mockSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('clears error on successful submission', () => {
-    render(<LoginForm onSubmit={mockSubmit} />);
+  it('clears error on successful submission', async () => {
+    await render(<LoginForm onSubmit={mockSubmit} />);
 
     // First, trigger an error
-    fireEvent.press(screen.getByTestId('submit-button'));
+    await fireEvent.press(screen.getByTestId('submit-button'));
     expect(screen.getByTestId('error-message')).toBeTruthy();
 
     // Then, fill in valid data and submit
-    fireEvent.changeText(screen.getByTestId('email-input'), 'test@example.com');
-    fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
-    fireEvent.press(screen.getByTestId('submit-button'));
+    await fireEvent.changeText(screen.getByTestId('email-input'), 'test@example.com');
+    await fireEvent.changeText(screen.getByTestId('password-input'), 'password123');
+    await fireEvent.press(screen.getByTestId('submit-button'));
 
     expect(screen.queryByTestId('error-message')).toBeNull();
   });
@@ -463,7 +465,7 @@ describe('LoginForm', () => {
 
 ## Testing Hooks
 
-Custom hooks can be tested in isolation using `@testing-library/react-hooks` or by testing them through a component.
+Custom hooks can be tested in isolation using React Native Testing Library's `renderHook` helper or by testing them through a component.
 
 ### Testing Custom Hooks
 
@@ -510,42 +512,42 @@ import { renderHook, act } from '@testing-library/react-native';
 import { useCounter } from './useCounter';
 
 describe('useCounter', () => {
-  it('initializes with default value of 0', () => {
-    const { result } = renderHook(() => useCounter());
+  it('initializes with default value of 0', async () => {
+    const { result } = await renderHook(() => useCounter());
 
     expect(result.current.count).toBe(0);
   });
 
-  it('initializes with custom initial value', () => {
-    const { result } = renderHook(() => useCounter({ initialValue: 10 }));
+  it('initializes with custom initial value', async () => {
+    const { result } = await renderHook(() => useCounter({ initialValue: 10 }));
 
     expect(result.current.count).toBe(10);
   });
 
-  it('increments count', () => {
-    const { result } = renderHook(() => useCounter());
+  it('increments count', async () => {
+    const { result } = await renderHook(() => useCounter());
 
-    act(() => {
+    await act(() => {
       result.current.increment();
     });
 
     expect(result.current.count).toBe(1);
   });
 
-  it('decrements count', () => {
-    const { result } = renderHook(() => useCounter({ initialValue: 5 }));
+  it('decrements count', async () => {
+    const { result } = await renderHook(() => useCounter({ initialValue: 5 }));
 
-    act(() => {
+    await act(() => {
       result.current.decrement();
     });
 
     expect(result.current.count).toBe(4);
   });
 
-  it('respects maximum value', () => {
-    const { result } = renderHook(() => useCounter({ initialValue: 9, max: 10 }));
+  it('respects maximum value', async () => {
+    const { result } = await renderHook(() => useCounter({ initialValue: 9, max: 10 }));
 
-    act(() => {
+    await act(() => {
       result.current.increment();
       result.current.increment();
     });
@@ -553,10 +555,10 @@ describe('useCounter', () => {
     expect(result.current.count).toBe(10);
   });
 
-  it('respects minimum value', () => {
-    const { result } = renderHook(() => useCounter({ initialValue: 1, min: 0 }));
+  it('respects minimum value', async () => {
+    const { result } = await renderHook(() => useCounter({ initialValue: 1, min: 0 }));
 
-    act(() => {
+    await act(() => {
       result.current.decrement();
       result.current.decrement();
     });
@@ -564,10 +566,10 @@ describe('useCounter', () => {
     expect(result.current.count).toBe(0);
   });
 
-  it('resets to initial value', () => {
-    const { result } = renderHook(() => useCounter({ initialValue: 5 }));
+  it('resets to initial value', async () => {
+    const { result } = await renderHook(() => useCounter({ initialValue: 5 }));
 
-    act(() => {
+    await act(() => {
       result.current.increment();
       result.current.increment();
       result.current.reset();
@@ -576,16 +578,16 @@ describe('useCounter', () => {
     expect(result.current.count).toBe(5);
   });
 
-  it('sets value within bounds', () => {
-    const { result } = renderHook(() => useCounter({ min: 0, max: 100 }));
+  it('sets value within bounds', async () => {
+    const { result } = await renderHook(() => useCounter({ min: 0, max: 100 }));
 
-    act(() => {
+    await act(() => {
       result.current.setValue(150);
     });
 
     expect(result.current.count).toBe(100);
 
-    act(() => {
+    await act(() => {
       result.current.setValue(-10);
     });
 
@@ -675,7 +677,7 @@ jest.mock('@react-native-firebase/analytics', () => () => ({
 
 ## Mocking Navigation
 
-React Navigation is commonly used and requires proper mocking.
+React Navigation is commonly used and can be mocked for isolated unit tests. For integration-style navigation tests, prefer rendering a real navigator so tests reflect the actual navigation behavior.
 
 ### Navigation Mock Setup
 
@@ -799,34 +801,34 @@ describe('ProfileScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('displays the user ID from route params', () => {
-    render(<ProfileScreen />);
+  it('displays the user ID from route params', async () => {
+    await render(<ProfileScreen />);
 
     expect(screen.getByTestId('user-id')).toHaveTextContent('User ID: user-123');
   });
 
-  it('navigates to Settings when settings button is pressed', () => {
-    render(<ProfileScreen />);
+  it('navigates to Settings when settings button is pressed', async () => {
+    await render(<ProfileScreen />);
 
-    fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-button'));
 
     expect(mockNavigation.navigate).toHaveBeenCalledWith('Settings');
   });
 
-  it('navigates to EditProfile with userId when edit button is pressed', () => {
-    render(<ProfileScreen />);
+  it('navigates to EditProfile with userId when edit button is pressed', async () => {
+    await render(<ProfileScreen />);
 
-    fireEvent.press(screen.getByTestId('edit-button'));
+    await fireEvent.press(screen.getByTestId('edit-button'));
 
     expect(mockNavigation.navigate).toHaveBeenCalledWith('EditProfile', {
       userId: 'user-123',
     });
   });
 
-  it('goes back when back button is pressed', () => {
-    render(<ProfileScreen />);
+  it('goes back when back button is pressed', async () => {
+    await render(<ProfileScreen />);
 
-    fireEvent.press(screen.getByTestId('back-button'));
+    await fireEvent.press(screen.getByTestId('back-button'));
 
     expect(mockNavigation.goBack).toHaveBeenCalled();
   });
@@ -941,7 +943,7 @@ const styles = StyleSheet.create({
 ```typescript
 // UserList.test.tsx
 import React from 'react';
-import { render, screen, fireEvent, waitFor, waitForElementToBeRemoved } from '@testing-library/react-native';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { UserList } from './UserList';
 
 const mockUsers = [
@@ -958,10 +960,10 @@ describe('UserList', () => {
     jest.clearAllMocks();
   });
 
-  it('shows loading indicator initially', () => {
+  it('shows loading indicator initially', async () => {
     mockFetchUsers.mockImplementation(() => new Promise(() => {})); // Never resolves
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     expect(screen.getByTestId('loading-indicator')).toBeTruthy();
   });
@@ -969,7 +971,7 @@ describe('UserList', () => {
   it('renders user list after successful fetch', async () => {
     mockFetchUsers.mockResolvedValue(mockUsers);
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('user-list')).toBeTruthy();
@@ -983,7 +985,7 @@ describe('UserList', () => {
   it('displays error message when fetch fails', async () => {
     mockFetchUsers.mockRejectedValue(new Error('Network error'));
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('error-container')).toBeTruthy();
@@ -997,13 +999,13 @@ describe('UserList', () => {
       .mockRejectedValueOnce(new Error('Network error'))
       .mockResolvedValueOnce(mockUsers);
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('retry-button')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByTestId('retry-button'));
+    await fireEvent.press(screen.getByTestId('retry-button'));
 
     await waitFor(() => {
       expect(screen.getByTestId('user-list')).toBeTruthy();
@@ -1015,7 +1017,7 @@ describe('UserList', () => {
   it('displays empty message when no users returned', async () => {
     mockFetchUsers.mockResolvedValue([]);
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('empty-container')).toBeTruthy();
@@ -1027,13 +1029,13 @@ describe('UserList', () => {
   it('calls onUserPress when a user item is pressed', async () => {
     mockFetchUsers.mockResolvedValue(mockUsers);
 
-    render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
+    await render(<UserList fetchUsers={mockFetchUsers} onUserPress={mockOnUserPress} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('user-item-1')).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByTestId('user-item-1'));
+    await fireEvent.press(screen.getByTestId('user-item-1'));
 
     expect(mockOnUserPress).toHaveBeenCalledWith(mockUsers[0]);
   });
@@ -1100,21 +1102,21 @@ const styles = StyleSheet.create({
 ```typescript
 // Card.test.tsx
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import { Card } from './Card';
 
 describe('Card Snapshots', () => {
-  it('matches snapshot with basic props', () => {
-    const { toJSON } = render(
+  it('matches snapshot with basic props', async () => {
+    const { toJSON } = await render(
       <Card title="Test Title" description="Test description text" />
     );
 
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it('matches snapshot with image', () => {
-    const { toJSON } = render(
+  it('matches snapshot with image', async () => {
+    const { toJSON } = await render(
       <Card
         title="Card with Image"
         description="This card has an image"
@@ -1125,8 +1127,8 @@ describe('Card Snapshots', () => {
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it('matches snapshot with footer', () => {
-    const { toJSON } = render(
+  it('matches snapshot with footer', async () => {
+    const { toJSON } = await render(
       <Card
         title="Card with Footer"
         description="This card has a footer"
@@ -1137,8 +1139,8 @@ describe('Card Snapshots', () => {
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it('matches snapshot with all props', () => {
-    const { toJSON } = render(
+  it('matches snapshot with all props', async () => {
+    const { toJSON } = await render(
       <Card
         title="Complete Card"
         description="This card has all props set"
@@ -1153,8 +1155,8 @@ describe('Card Snapshots', () => {
 
 // Best practices for snapshot testing
 describe('Card Snapshot Best Practices', () => {
-  it('uses inline snapshots for small components', () => {
-    const { toJSON } = render(
+  it('uses inline snapshots for small components', async () => {
+    const { toJSON } = await render(
       <Card title="Small" description="Inline snapshot test" />
     );
 
@@ -1239,14 +1241,14 @@ npm test -- --coverage --collectCoverageFrom='src/components/**/*.tsx'
 
 ```typescript
 // Bad: Testing implementation details
-it('sets isLoading state to true', () => {
-  const { result } = renderHook(() => useData());
+it('sets isLoading state to true', async () => {
+  const { result } = await renderHook(() => useData());
   expect(result.current.isLoading).toBe(true);
 });
 
 // Good: Testing behavior
 it('shows loading indicator while fetching data', async () => {
-  render(<DataComponent />);
+  await render(<DataComponent />);
   expect(screen.getByTestId('loading-indicator')).toBeTruthy();
   await waitFor(() => {
     expect(screen.queryByTestId('loading-indicator')).toBeNull();
@@ -1416,11 +1418,8 @@ jobs:
 ```json
 // package.json
 {
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged",
-      "pre-push": "npm test"
-    }
+  "scripts": {
+    "prepare": "husky"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
@@ -1429,6 +1428,21 @@ jobs:
     ]
   }
 }
+```
+
+```bash
+npm install --save-dev husky lint-staged
+npx husky init
+```
+
+```bash
+# .husky/pre-commit
+npx lint-staged
+```
+
+```bash
+# .husky/pre-push
+npm test
 ```
 
 ## Conclusion

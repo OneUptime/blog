@@ -18,14 +18,12 @@ Audit logging in ClickHouse helps track user activities, query execution, and da
 <!-- config.d/query_log.xml -->
 <clickhouse>
     <query_log>
-        <database>system</database>
         <table>query_log</table>
         <partition_by>toYYYYMM(event_date)</partition_by>
         <flush_interval_milliseconds>7500</flush_interval_milliseconds>
     </query_log>
 
     <query_thread_log>
-        <database>system</database>
         <table>query_thread_log</table>
     </query_thread_log>
 </clickhouse>
@@ -81,11 +79,13 @@ ORDER BY event_time DESC;
 -- Track session activity
 SELECT
     event_time,
+    type,
     user,
-    client_hostname,
+    auth_type,
+    client_address,
     client_name,
     interface,
-    initial_query_id
+    failure_reason
 FROM system.session_log
 ORDER BY event_time DESC
 LIMIT 100;
@@ -117,7 +117,7 @@ SELECT
     event_time,
     'query' AS event_type,
     user,
-    client_hostname AS source_ip,
+    toString(address) AS source_ip,
     query_id,
     databases[1] AS database,
     tables[1] AS table,

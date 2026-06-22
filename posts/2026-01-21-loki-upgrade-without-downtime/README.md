@@ -26,18 +26,18 @@ Before starting, ensure you have:
 ```bash
 # Check current version
 
-curl http://loki:3100/ready
+curl http://loki:3100/loki/api/v1/status/buildinfo
 
 # Review upgrade notes
-# https://grafana.com/docs/loki/latest/upgrading/
+# https://grafana.com/docs/loki/latest/setup/upgrade/
 ```
 
 ### 2. Check Configuration Compatibility
 
 ```bash
 # Validate configuration against new version
-docker run grafana/loki:NEW_VERSION \
-  -config.file=/path/to/config.yaml \
+docker run --rm -v "$(pwd)":/config grafana/loki:NEW_VERSION \
+  -config.file=/config/config.yaml \
   -verify-config
 ```
 
@@ -85,16 +85,22 @@ kind: Deployment
 metadata:
   name: loki-distributor
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki-distributor
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
       maxSurge: 1
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loki-distributor
     spec:
       containers:
         - name: distributor
-          image: grafana/loki:2.9.4  # New version
+          image: grafana/loki:NEW_VERSION  # New version
 ```
 
 ### Helm Upgrade
@@ -103,14 +109,14 @@ spec:
 # Update Helm values
 helm upgrade loki grafana/loki \
   --namespace loki \
-  --set image.tag=2.9.4 \
+  --set loki.image.tag=NEW_VERSION \
   --wait \
   --timeout 10m
 
 # For gradual rollout
 helm upgrade loki grafana/loki \
   --namespace loki \
-  --set image.tag=2.9.4 \
+  --set loki.image.tag=NEW_VERSION \
   --set distributor.replicas=3 \
   --atomic
 ```
@@ -121,8 +127,11 @@ helm upgrade loki grafana/loki \
 
 ```yaml
 ingester:
+  wal:
+    enabled: true
+  flush_on_shutdown: true
   lifecycler:
-    final_sleep: 30s  # Allow time for handoff
+    final_sleep: 30s  # Optional final scrape window
 
 # Kubernetes configuration
 spec:
@@ -137,7 +146,7 @@ curl http://loki:3100/ring
 
 # 2. Upgrade one ingester at a time
 kubectl set image statefulset/loki-ingester \
-  ingester=grafana/loki:2.9.4 \
+  ingester=grafana/loki:NEW_VERSION \
   --namespace loki
 
 # 3. Wait for pod to be ready
@@ -167,21 +176,19 @@ curl http://loki:3100/metrics | grep loki_ingester_memory_streams
 ### Version-Specific Changes
 
 ```yaml
-# Example: Migrating from 2.8 to 2.9
+# Example: Migrating from BoltDB Shipper to TSDB
 
-# Old configuration (2.8)
+# Old configuration
 storage_config:
   boltdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/cache
-    shared_store: s3
 
-# New configuration (2.9)
+# New configuration
 storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: s3
 
 schema_config:
   configs:
@@ -231,11 +238,19 @@ metadata:
   name: loki-distributor-v2
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki-distributor
+      version: v2
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loki-distributor
+        version: v2
     spec:
       containers:
         - name: distributor
-          image: grafana/loki:2.9.4
+          image: grafana/loki:NEW_VERSION
 ```
 
 ### Traffic Switching
@@ -256,7 +271,7 @@ spec:
 
 ```yaml
 # Using Istio for traffic splitting
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: loki-distributor
@@ -283,7 +298,12 @@ kind: StatefulSet
 metadata:
   name: loki-ingester-canary
 spec:
+  serviceName: loki-ingester-canary
   replicas: 1
+  selector:
+    matchLabels:
+      app: loki-ingester
+      version: canary
   template:
     metadata:
       labels:
@@ -292,7 +312,7 @@ spec:
     spec:
       containers:
         - name: ingester
-          image: grafana/loki:2.9.4
+          image: grafana/loki:NEW_VERSION
 ```
 
 ### Monitor Canary
@@ -345,13 +365,13 @@ curl -G http://loki:3100/loki/api/v1/query \
 
 ```promql
 # Ingestion errors
-sum(rate(loki_distributor_ingester_append_failures_total[5m]))
+sum(rate(loki_distributor_ingester_append_timeouts_total[5m]))
 
 # Query errors
 sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m]))
 
 # Ring health
-count(cortex_ring_members{state="ACTIVE", name="ingester"})
+count(loki_ring_members{state="ACTIVE", name="ingester"})
 
 # WAL replay progress
 loki_ingester_wal_replay_active
@@ -374,7 +394,7 @@ loki_ingester_wal_replay_active
       "title": "Ring Members",
       "type": "stat",
       "targets": [{
-        "expr": "count(cortex_ring_members{state='ACTIVE', name='ingester'})"
+        "expr": "count(loki_ring_members{state='ACTIVE', name='ingester'})"
       }]
     },
     {
@@ -403,7 +423,8 @@ curl -G "http://loki:3100/loki/api/v1/query" \
   --data-urlencode 'query={test="upgrade"}'
 
 # Test tail
-curl "http://loki:3100/loki/api/v1/tail?query={job='test'}"
+curl -G "http://loki:3100/loki/api/v1/tail" \
+  --data-urlencode 'query={job="test"}'
 ```
 
 ### Performance Comparison

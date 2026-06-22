@@ -46,7 +46,7 @@ class PerformanceMetrics {
         // Largest Contentful Paint
         this.observeLCP();
 
-        // First Input Delay / Interaction to Next Paint
+        // Interaction to Next Paint
         this.observeINP();
 
         // Cumulative Layout Shift
@@ -68,13 +68,19 @@ class PerformanceMetrics {
     }
 
     observeINP() {
-        let maxDuration = 0;
+        const interactions = new Map();
 
         const observer = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
-                if (entry.duration > maxDuration) {
-                    maxDuration = entry.duration;
-                    this.metrics.inp = maxDuration;
+                if (entry.interactionId > 0) {
+                    interactions.set(
+                        entry.interactionId,
+                        Math.max(interactions.get(entry.interactionId) || 0, entry.duration)
+                    );
+
+                    const durations = Array.from(interactions.values()).sort((a, b) => a - b);
+                    const index = Math.min(durations.length - 1, Math.ceil(durations.length * 0.98) - 1);
+                    this.metrics.inp = durations[index];
                     console.log('INP:', this.metrics.inp.toFixed(2), 'ms');
                 }
             }
@@ -85,11 +91,28 @@ class PerformanceMetrics {
 
     observeCLS() {
         let clsValue = 0;
+        let sessionValue = 0;
+        let sessionStart = 0;
+        let lastEntryTime = 0;
 
         const observer = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
                 if (!entry.hadRecentInput) {
-                    clsValue += entry.value;
+                    const entryTime = entry.startTime;
+
+                    if (
+                        sessionValue === 0 ||
+                        entryTime - lastEntryTime > 1000 ||
+                        entryTime - sessionStart > 5000
+                    ) {
+                        sessionValue = entry.value;
+                        sessionStart = entryTime;
+                    } else {
+                        sessionValue += entry.value;
+                    }
+
+                    lastEntryTime = entryTime;
+                    clsValue = Math.max(clsValue, sessionValue);
                     this.metrics.cls = clsValue;
                     console.log('CLS:', this.metrics.cls.toFixed(4));
                 }
@@ -167,6 +190,7 @@ async function showChart(data) {
 // React example with lazy loading
 import React, { lazy, Suspense } from 'react';
 
+// These modules must export the component as the default export
 const HeavyChart = lazy(() => import('./HeavyChart'));
 const DataTable = lazy(() => import('./DataTable'));
 
@@ -298,7 +322,7 @@ function animateElement(element, x, y) {
     sizes="(max-width: 600px) 400px,
            (max-width: 1000px) 800px,
            1200px"
-    alt="Hero image"
+    alt="Gallery image"
     loading="lazy"
     decoding="async"
 >

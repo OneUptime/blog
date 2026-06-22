@@ -178,6 +178,11 @@ print("Message sent to alternate exchange")
 ### Consuming Unrouted Messages
 
 ```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def process_unrouted_message(ch, method, properties, body):
     """
     Process messages that could not be routed to their intended destination.
@@ -188,10 +193,10 @@ def process_unrouted_message(ch, method, properties, body):
     # Log for investigation
     logger.warning(f"Unrouted message: {body.decode()}")
 
-    # Check original routing key if available in headers
-    if properties.headers:
-        original_key = properties.headers.get('x-first-death-reason')
-        logger.info(f"Original routing context: {original_key}")
+    # Alternate exchanges do not add dead-letter headers.
+    # The delivery metadata is the routing context to inspect.
+    logger.info(f"Exchange: {method.exchange}")
+    logger.info(f"Routing key: {method.routing_key}")
 
     # Acknowledge after processing
     ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -210,7 +215,7 @@ channel.start_consuming()
 
 ## Solution 3: Publisher Confirms
 
-Publisher confirms provide acknowledgment that a message was successfully routed:
+Publisher confirms acknowledge that RabbitMQ accepted the publish. Combine them with `mandatory=True` to detect messages that the exchange could not route:
 
 ```python
 import pika

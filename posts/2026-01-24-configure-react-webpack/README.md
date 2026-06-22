@@ -32,6 +32,9 @@ npm install --save-dev webpack webpack-cli webpack-dev-server
 # Install Babel for JSX transformation
 npm install --save-dev @babel/core @babel/preset-env @babel/preset-react babel-loader
 
+# Install polyfills used by @babel/preset-env
+npm install core-js
+
 # Install HTML plugin
 npm install --save-dev html-webpack-plugin
 
@@ -49,6 +52,7 @@ react-webpack-app/
     index.js
     App.js
     App.css
+    index.css
   public/
     index.html
   webpack.config.js
@@ -196,6 +200,7 @@ Create a separate configuration for development with hot reloading and source ma
 // webpack.dev.js
 
 const { merge } = require('webpack-merge');
+process.env.NODE_ENV = 'development';
 const common = require('./webpack.config.js');
 
 module.exports = merge(common, {
@@ -250,13 +255,21 @@ Create an optimized configuration for production builds.
 ```javascript
 // webpack.prod.js
 
-const { merge } = require('webpack-merge');
+const { mergeWithRules } = require('webpack-merge');
+process.env.NODE_ENV = 'production';
 const common = require('./webpack.config.js');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 
-module.exports = merge(common, {
+module.exports = mergeWithRules({
+  module: {
+    rules: {
+      test: 'match',
+      use: 'replace'
+    }
+  }
+})(common, {
   // Production mode enables optimizations
   mode: 'production',
 
@@ -498,13 +511,19 @@ module.exports = {
   // ... other configuration
 
   plugins: [
-    // Load environment variables from .env file
+    // Load shared environment variables
     new Dotenv({
       // Path to .env file
       path: './.env',
       // Load system environment variables as well
       systemvars: true,
       // Hide any errors if .env file is missing
+      silent: true
+    }),
+    // Load environment-specific variables
+    new Dotenv({
+      path: `./.env.${process.env.NODE_ENV || 'development'}`,
+      systemvars: true,
       silent: true
     }),
     // ... other plugins
@@ -750,6 +769,10 @@ flowchart TD
 ## Common Issues and Solutions
 
 ### Issue: Module not found errors
+
+```bash
+npm install --save-dev path-browserify stream-browserify
+```
 
 ```javascript
 // webpack.config.js - fix module resolution

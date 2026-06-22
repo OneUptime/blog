@@ -70,10 +70,11 @@ compactor:
 ### Per-Tenant Retention
 
 ```yaml
-# Different retention for different tenants
+# loki-config.yaml
 limits_config:
   retention_period: 720h  # Default: 30 days
 
+# runtime-config.yaml
 overrides:
   # Critical services - longer retention
   production:
@@ -113,9 +114,9 @@ limits_config:
 ```yaml
 # loki-config.yaml
 ingester:
-  chunk_encoding: snappy  # Default, fast
-  # Or use better compression
-  chunk_encoding: gzip  # Better compression, slower
+  chunk_encoding: gzip  # Default, better compression
+  # Or use a faster codec
+  # chunk_encoding: snappy  # Faster, less compression
 
   # Chunk size affects compression
   chunk_target_size: 1572864  # 1.5MB target
@@ -147,6 +148,8 @@ ingester:
 ```
 
 ## Log Filtering and Reduction
+
+Note: Promtail reached end-of-life on March 2, 2026. Existing Promtail pipelines can still illustrate ingestion filtering, but new deployments should use Grafana Alloy or another supported client.
 
 ### Drop Unnecessary Logs at Ingestion
 
@@ -203,14 +206,9 @@ pipeline_stages:
             rate: 0.1  # Keep only 10% of INFO logs
 ```
 
-### Deduplication
+### Duplicate Handling
 
-```yaml
-# Remove duplicate log lines
-pipeline_stages:
-  - dedup:
-      window: 10s  # Dedupe within 10 second window
-```
+Promtail does not have a deduplication pipeline stage. To avoid duplicate log lines, make sure each file is scraped by only one target and that overlapping scrape configurations do not read the same path.
 
 ## Tiered Storage
 
@@ -220,7 +218,7 @@ pipeline_stages:
 # loki-config.yaml
 storage_config:
   aws:
-    s3: s3://bucket-name
+    bucketnames: bucket-name
     region: us-east-1
     # Use S3 Intelligent Tiering
     storage_class: INTELLIGENT_TIERING
@@ -229,7 +227,6 @@ storage_config:
 ### Configure Lifecycle Policies
 
 ```json
-// S3 Lifecycle Policy
 {
   "Rules": [
     {
@@ -245,7 +242,7 @@ storage_config:
         },
         {
           "Days": 90,
-          "StorageClass": "GLACIER"
+          "StorageClass": "GLACIER_IR"
         }
       ]
     },
@@ -385,8 +382,8 @@ sum(rate(loki_distributor_bytes_received_total[5m]))
 
 # Compression ratio
 1 - (
-  sum(rate(loki_distributor_bytes_received_total[5m]))
-  / sum(rate(loki_ingester_chunk_stored_bytes_total[5m]))
+  sum(rate(loki_ingester_chunk_stored_bytes_total[5m]))
+  / sum(rate(loki_distributor_bytes_received_total[5m]))
 )
 ```
 
@@ -442,7 +439,7 @@ sum(rate(loki_distributor_bytes_received_total[5m]))
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum by (reason) (rate(promtail_dropped_entries_total[5m]))",
+            "expr": "sum by (reason) (rate(logentry_dropped_lines_total[5m]))",
             "legendFormat": "{{reason}}"
           }
         ]

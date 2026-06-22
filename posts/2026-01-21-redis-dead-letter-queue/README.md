@@ -28,8 +28,8 @@ Implement a simple DLQ with Redis Streams:
 import redis
 import json
 import time
-from typing import Dict, Any, Callable, Optional, List
-from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
@@ -128,36 +128,46 @@ class DeadLetterQueue:
         )
 
         messages = []
+        ready_ids = []
         for msg_id in message_ids:
             if isinstance(msg_id, bytes):
                 msg_id = msg_id.decode()
+            ready_ids.append(msg_id)
 
-            # Get message data from stream
-            entries = self.redis.xread(
-                {self._dlq_stream: "0-0"},
-                count=1000
-            )
+        ready_set = set(ready_ids)
+        latest_by_message = {}
 
-            for stream, stream_entries in entries:
-                for stream_id, data in stream_entries:
-                    decoded = {
-                        k.decode() if isinstance(k, bytes) else k:
-                        v.decode() if isinstance(v, bytes) else v
-                        for k, v in data.items()
-                    }
+        # Read newest DLQ entries first so repeated failures use the latest
+        # retry_count and error details.
+        entries = self.redis.xrevrange(self._dlq_stream)
 
-                    if decoded["message_id"] == msg_id:
-                        messages.append(FailedMessage(
-                            message_id=decoded["message_id"],
-                            original_stream=decoded["original_stream"],
-                            data=json.loads(decoded["data"]),
-                            error=decoded["error"],
-                            failed_at=float(decoded["failed_at"]),
-                            retry_count=int(decoded["retry_count"]),
-                            max_retries=int(decoded["max_retries"]),
-                            next_retry_at=float(decoded["next_retry_at"])
-                        ))
-                        break
+        for stream_id, data in entries:
+            decoded = {
+                k.decode() if isinstance(k, bytes) else k:
+                v.decode() if isinstance(v, bytes) else v
+                for k, v in data.items()
+            }
+
+            msg_id = decoded.get("message_id")
+            if msg_id in ready_set and msg_id not in latest_by_message:
+                latest_by_message[msg_id] = decoded
+
+                if len(latest_by_message) == len(ready_set):
+                    break
+
+        for msg_id in ready_ids:
+            decoded = latest_by_message.get(msg_id)
+            if decoded:
+                messages.append(FailedMessage(
+                    message_id=decoded["message_id"],
+                    original_stream=decoded["original_stream"],
+                    data=json.loads(decoded["data"]),
+                    error=decoded["error"],
+                    failed_at=float(decoded["failed_at"]),
+                    retry_count=int(decoded["retry_count"]),
+                    max_retries=int(decoded["max_retries"]),
+                    next_retry_at=float(decoded["next_retry_at"])
+                ))
 
         return messages
 
@@ -224,8 +234,9 @@ class ResilientConsumer:
                 id="0",
                 mkstream=True
             )
-        except redis.ResponseError:
-            pass
+        except redis.ResponseError as e:
+            if "BUSYGROUP" not in str(e):
+                raise
 
     def consume(self, handler: Callable[[Dict], None]):
         """Start consuming messages with DLQ support."""
@@ -347,7 +358,7 @@ def process_order(data: Dict):
     """Process order - may raise exceptions."""
     order_id = data.get("order_id")
     # Process order...
-    if some_condition:
+    if data.get("should_fail"):
         raise Exception("Processing failed")
 
 consumer.consume(process_order)
@@ -515,6 +526,10 @@ class CategorizedDLQ:
                 self.redis.xdel(
                     self._category_stream(category),
                     msg["stream_id"]
+                )
+                self.redis.zrem(
+                    self._retry_queue(category),
+                    msg["message_id"]
                 )
                 stats["success"] += 1
             except Exception as e:

@@ -134,14 +134,14 @@ public class StreamTableJoin {
         // Enrich transactions with customer data
         // Transaction key must be customer ID
         KStream<String, EnrichedTransaction> enriched = transactions
-            .selectKey((key, txn) -> txn.getCustomerId())  // Re-key by customer ID
+            .selectKey((key, txn) -> txn.customerId())  // Re-key by customer ID
             .join(
                 customers,
                 (transaction, customer) -> new EnrichedTransaction(
                     transaction,
-                    customer.getName(),
-                    customer.getSegment(),
-                    customer.getRegion()
+                    customer.name(),
+                    customer.segment(),
+                    customer.region()
                 )
             );
 
@@ -153,7 +153,7 @@ public class StreamTableJoin {
     }
 }
 
-record Transaction(String txnId, String customerId, double amount, String type) {}
+record Transaction(String txnId, String customerId, double amount, String type, String currency) {}
 record Customer(String customerId, String name, String segment, String region) {}
 record EnrichedTransaction(Transaction transaction, String customerName,
                           String segment, String region) {}
@@ -164,14 +164,19 @@ record EnrichedTransaction(Transaction transaction, String customerName,
 ```java
 // Left join - keep transaction even if customer not found
 KStream<String, EnrichedTransaction> enriched = transactions
-    .selectKey((key, txn) -> txn.getCustomerId())
+    .selectKey((key, txn) -> txn.customerId())
     .leftJoin(
         customers,
         (transaction, customer) -> {
             if (customer != null) {
-                return new EnrichedTransaction(transaction, customer);
+                return new EnrichedTransaction(
+                    transaction,
+                    customer.name(),
+                    customer.segment(),
+                    customer.region()
+                );
             } else {
-                return new EnrichedTransaction(transaction, null);
+                return new EnrichedTransaction(transaction, null, null, null);
             }
         }
     );
@@ -260,11 +265,11 @@ public class GlobalTableJoin {
         KStream<String, TransactionInUSD> converted = transactions.join(
             exchangeRates,
             // Key mapper - extract currency from transaction
-            (txnKey, transaction) -> transaction.getCurrency(),
+            (txnKey, transaction) -> transaction.currency(),
             // Value joiner
             (transaction, rate) -> new TransactionInUSD(
                 transaction,
-                transaction.getAmount() * rate.getRateToUSD()
+                transaction.amount() * rate.rateToUSD()
             )
         );
 
@@ -326,7 +331,7 @@ public class ForeignKeyJoin {
         KTable<String, OrderWithCustomer> joined = orders.join(
             customers,
             // Foreign key extractor
-            order -> order.getCustomerId(),
+            order -> order.customerId(),
             // Value joiner
             (order, customer) -> new OrderWithCustomer(order, customer),
             // Materialized config
@@ -343,7 +348,7 @@ public class ForeignKeyJoin {
 
 ## Co-partitioning Requirements
 
-For non-global joins, streams and tables must be co-partitioned:
+For KStream-KStream, KStream-KTable, and primary-key KTable-KTable joins, streams and tables must be co-partitioned:
 
 ```java
 public class CoPartitioningExample {
@@ -359,7 +364,7 @@ public class CoPartitioningExample {
 
         // If orders are keyed by orderId, re-key before join
         KStream<String, Order> rekeyedOrders = orders
-            .selectKey((orderId, order) -> order.getCustomerId());
+            .selectKey((orderId, order) -> order.customerId());
 
         // Now join works - both keyed by customerId
         KStream<String, OrderWithCustomer> joined = rekeyedOrders.join(
@@ -375,7 +380,7 @@ public class CoPartitioningExample {
 ```java
 // Explicit repartition through topic
 KStream<String, Order> repartitioned = orders
-    .selectKey((key, order) -> order.getCustomerId())
+    .selectKey((key, order) -> order.customerId())
     .repartition(Repartitioned.with(Serdes.String(), orderSerde)
         .withName("orders-by-customer")
         .withNumberOfPartitions(12));
@@ -401,7 +406,7 @@ public class MultiWayJoin {
         // Chain joins
         KStream<String, EnrichedOrder> enriched = orders
             // Rekey by customer
-            .selectKey((k, v) -> v.getCustomerId())
+            .selectKey((k, v) -> v.customerId())
             // Join with customer
             .join(customers, EnrichedOrder::withCustomer)
             // Rekey by product
@@ -437,8 +442,8 @@ KStream<String, Attribution> attributions = clicks.join(
         purchase.getAmount()
     ),
     JoinWindows.ofTimeDifferenceWithNoGrace(Duration.ofMinutes(30))
-        .before(Duration.ofMinutes(30))  // Click must be before purchase
-        .after(Duration.ZERO),            // No clicks after purchase
+        .before(Duration.ZERO)             // No purchases before click
+        .after(Duration.ofMinutes(30)),    // Purchase must be within 30 minutes after click
     StreamJoined.with(Serdes.String(), clickSerde, purchaseSerde)
 );
 ```
@@ -448,7 +453,7 @@ KStream<String, Attribution> attributions = clicks.join(
 ### 1. Understand Co-partitioning
 
 ```java
-// Verify co-partitioning at runtime
+// Inspect the topology before runtime
 TopologyDescription description = builder.build().describe();
 System.out.println(description);
 

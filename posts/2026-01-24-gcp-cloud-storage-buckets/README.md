@@ -40,18 +40,18 @@ flowchart TB
 
 gcloud storage buckets create gs://my-app-data-bucket \
     --location=us-central1 \
-    --storage-class=STANDARD \
+    --default-storage-class=STANDARD \
     --uniform-bucket-level-access
 
 # Create a multi-region bucket for high availability
 gcloud storage buckets create gs://my-global-assets \
     --location=US \
-    --storage-class=STANDARD
+    --default-storage-class=STANDARD
 
 # Create a nearline bucket for infrequent access
 gcloud storage buckets create gs://my-backup-bucket \
     --location=us-central1 \
-    --storage-class=NEARLINE \
+    --default-storage-class=NEARLINE \
     --uniform-bucket-level-access
 ```
 
@@ -209,26 +209,24 @@ flowchart LR
 # Create lifecycle.json
 cat > lifecycle.json << 'EOF'
 {
-  "lifecycle": {
-    "rule": [
-      {
-        "action": {"type": "SetStorageClass", "storageClass": "NEARLINE"},
-        "condition": {"age": 30, "matchesStorageClass": ["STANDARD"]}
-      },
-      {
-        "action": {"type": "SetStorageClass", "storageClass": "COLDLINE"},
-        "condition": {"age": 90, "matchesStorageClass": ["NEARLINE"]}
-      },
-      {
-        "action": {"type": "Delete"},
-        "condition": {"age": 365}
-      },
-      {
-        "action": {"type": "Delete"},
-        "condition": {"isLive": false, "numNewerVersions": 3}
-      }
-    ]
-  }
+  "rule": [
+    {
+      "action": {"type": "SetStorageClass", "storageClass": "NEARLINE"},
+      "condition": {"age": 30, "matchesStorageClass": ["STANDARD"]}
+    },
+    {
+      "action": {"type": "SetStorageClass", "storageClass": "COLDLINE"},
+      "condition": {"age": 90, "matchesStorageClass": ["NEARLINE"]}
+    },
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 365}
+    },
+    {
+      "action": {"type": "Delete"},
+      "condition": {"isLive": false, "numNewerVersions": 3}
+    }
+  ]
 }
 EOF
 
@@ -260,7 +258,7 @@ gcloud storage buckets update gs://my-app-data-bucket \
 
 # View current CORS configuration
 gcloud storage buckets describe gs://my-app-data-bucket \
-    --format="json(cors)"
+    --format="json(cors_config)"
 ```
 
 ## Setting Up Bucket Notifications
@@ -322,6 +320,10 @@ gcloud kms keys create storage-key \
     --location=us-central1 \
     --purpose=encryption
 
+# Grant the Cloud Storage service agent permission to use the key
+gcloud storage service-agent --project=my-project \
+    --authorize-cmek=projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/storage-key
+
 # Create bucket with CMEK
 gcloud storage buckets create gs://my-encrypted-bucket \
     --location=us-central1 \
@@ -343,6 +345,11 @@ gcloud storage buckets describe gs://my-app-data-bucket \
 ## Monitoring and Logging
 
 ```bash
+# Grant Cloud Storage permission to write logs to the log bucket
+gcloud storage buckets add-iam-policy-binding gs://my-logs-bucket \
+    --member=group:cloud-storage-analytics@google.com \
+    --role=roles/storage.objectCreator
+
 # Enable access logging
 gcloud storage buckets update gs://my-app-data-bucket \
     --log-bucket=gs://my-logs-bucket \

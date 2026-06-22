@@ -40,28 +40,24 @@ The first step in debugging is examining the run history to identify exactly whe
 
 ```bash
 # List recent workflow runs
+SUBSCRIPTION_ID=$(az account show --query id --output tsv)
 
 # This shows trigger status and overall run result
-az logic workflow run list \
-  --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --query "[].{name:name, status:status, startTime:startTime}" \
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/myLogicApp/runs?api-version=2019-05-01" \
+  --query "value[].{name:name, status:properties.status, startTime:properties.startTime}" \
   --output table
 
 # Get details for a specific run
 # Replace RUN_NAME with the actual run identifier
-az logic workflow run show \
-  --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --name RUN_NAME
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/myLogicApp/runs/RUN_NAME?api-version=2019-05-01"
 
 # List actions within a failed run
 # This helps identify which specific action failed
-az logic workflow run action list \
-  --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --run-name RUN_NAME \
-  --query "[].{name:name, status:status}" \
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/myLogicApp/runs/RUN_NAME/actions?api-version=2019-05-01" \
+  --query "value[].{name:name, status:properties.status}" \
   --output table
 ```
 
@@ -112,17 +108,17 @@ Triggers are the starting point of every workflow. When triggers fail, no workfl
 ```bash
 # Get the callback URL with SAS token for HTTP trigger
 # This URL includes the authentication token
-az logic workflow show \
-  --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --query "accessEndpoint" \
+SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+
+az rest --method post \
+  --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/myLogicApp/triggers/manual/listCallbackUrl?api-version=2019-05-01" \
+  --query "value" \
   --output tsv
 
 # Generate a new SAS key if the current one is compromised
-az logic workflow regenerate-access-key \
-  --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --key-type Primary
+az rest --method post \
+  --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/myLogicApp/regenerateAccessKey?api-version=2019-05-01" \
+  --body '{"keyType":"Primary"}'
 ```
 
 ### Recurrence Trigger Not Firing
@@ -137,7 +133,7 @@ Recurrence triggers that stop firing typically have configuration issues.
       "recurrence": {
         "frequency": "Hour",
         "interval": 1,
-        "startTime": "2024-01-01T00:00:00Z",
+        "startTime": "2026-07-01T00:00:00",
         "timeZone": "Eastern Standard Time"
       }
     }
@@ -146,7 +142,8 @@ Recurrence triggers that stop firing typically have configuration issues.
 ```
 
 Common issues:
-- **startTime in the past**: The trigger will fire immediately once then follow the schedule
+- **startTime omitted**: The first recurrence runs immediately when you save or deploy the workflow
+- **startTime with timeZone and a trailing Z**: The "Z" marks the start time as UTC, so Azure Logic Apps ignores the timeZone value
 - **Invalid timeZone**: Use exact timezone names from the Windows time zone database
 - **Logic App disabled**: Check if the workflow is enabled
 
@@ -154,14 +151,14 @@ Common issues:
 # Check if Logic App is enabled
 az logic workflow show \
   --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
+  --name myLogicApp \
   --query "state" \
   --output tsv
 
 # Enable a disabled Logic App
 az logic workflow update \
   --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
+  --name myLogicApp \
   --state Enabled
 ```
 
@@ -347,9 +344,9 @@ To reauthorize, navigate to the Azure Portal:
 3. Click "Edit API connection"
 4. Click "Authorize" and complete OAuth flow
 
-### Service Principal Connection
+### Managed Identity Connection
 
-For automated deployments, use service principal authentication instead of user OAuth.
+For automated deployments, use managed identity authentication instead of user OAuth.
 
 ```json
 {
@@ -405,8 +402,7 @@ Loops and parallel branches can introduce complex error scenarios.
         "concurrency": {
           "repetitions": 20
         }
-      },
-      "operationOptions": "Sequential"
+      }
     }
   }
 }
@@ -593,8 +589,9 @@ flowchart TD
 # Configure 90-day run history retention
 az logic workflow update \
   --resource-group myResourceGroup \
-  --workflow-name myLogicApp \
-  --set "properties.runtimeConfiguration.runHistoryRetentionDays=90"
+  --name myLogicApp \
+  --set properties.runtimeConfiguration.lifetime.unit=day \
+        properties.runtimeConfiguration.lifetime.count=90
 ```
 
 2. **Use tracked properties** to add custom data to run history

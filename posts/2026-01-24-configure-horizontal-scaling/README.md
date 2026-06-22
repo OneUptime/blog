@@ -69,7 +69,7 @@ spec:
       containers:
       - name: api
         image: myapp/web-api:v1.2.0
-        # Resource requests are required for HPA to work
+        # Resource requests are required for utilization-based HPA metrics
         resources:
           requests:
             cpu: 100m
@@ -205,7 +205,7 @@ Resources:
         ImageId: ami-0123456789abcdef0
         InstanceType: t3.medium
         SecurityGroupIds:
-          - !Ref WebServerSecurityGroup
+          - sg-0123456789abcdef0
         UserData:
           Fn::Base64: |
             #!/bin/bash
@@ -228,7 +228,7 @@ Resources:
         - subnet-abc123
         - subnet-def456
       TargetGroupARNs:
-        - !Ref WebServerTargetGroup
+        - arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/web-api/0123456789abcdef
       HealthCheckType: ELB
       HealthCheckGracePeriod: 300
       Tags:
@@ -242,12 +242,11 @@ Resources:
     Properties:
       AutoScalingGroupName: !Ref WebServerASG
       PolicyType: TargetTrackingScaling
+      EstimatedInstanceWarmup: 60
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 70.0
-        ScaleInCooldown: 300
-        ScaleOutCooldown: 60
 ```
 
 ### Terraform Configuration for GCP
@@ -387,7 +386,7 @@ kubectl get vpa web-api-vpa -o jsonpath='{.status.recommendation}'
 
 ### 3. Configure Pod Disruption Budgets
 
-Prevent scaling events from causing outages:
+Limit voluntary disruptions such as node drains during maintenance:
 
 ```yaml
 # pdb.yaml
@@ -404,7 +403,7 @@ spec:
 
 ### 4. Use Anti-Affinity for High Availability
 
-Spread pods across nodes and zones:
+Spread pods across zones:
 
 ```yaml
 # In your deployment spec
@@ -444,7 +443,7 @@ Before going to production, test your scaling setup:
 
 ```bash
 # Generate load to trigger scaling
-kubectl run load-test --rm -i --tty --image=busybox -- sh -c "
+kubectl run load-test --rm -i --tty --restart=Never --image=busybox -- sh -c "
   while true; do
     wget -q -O- http://web-api-service:8080/health
   done

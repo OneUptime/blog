@@ -181,24 +181,24 @@ def cache_key(source, identifier, params=None):
     return f"cache:{source}:{identifier}"
 
 # API response cache
-r.setex(
+r.set(
     cache_key("api", "products", {"category": 5, "page": 1}),
-    300,  # 5 minutes TTL
-    json.dumps(products_data)
+    json.dumps(products_data),
+    ex=300  # 5 minutes TTL
 )
 
 # Database query cache
-r.setex(
+r.set(
     cache_key("db", "user_orders", {"user_id": 1000}),
-    60,
-    json.dumps(orders)
+    json.dumps(orders),
+    ex=60
 )
 
 # Computed result cache
-r.setex(
+r.set(
     cache_key("computed", "dashboard_stats", {"period": "weekly"}),
-    3600,
-    json.dumps(stats)
+    json.dumps(stats),
+    ex=3600
 )
 ```
 
@@ -353,13 +353,13 @@ class TenantRedis:
     def set(self, key, value, **kwargs):
         return self.r.set(self._key(key), value, **kwargs)
 
-    def keys(self, pattern="*"):
-        """Get keys for this tenant only"""
-        return self.r.keys(self._key(pattern))
+    def scan_keys(self, pattern="*", count=100):
+        """Iterate keys for this tenant only"""
+        return self.r.scan_iter(self._key(pattern), count=count)
 
     def flush_tenant(self):
         """Delete all keys for this tenant"""
-        keys = self.keys()
+        keys = list(self.scan_keys())
         if keys:
             self.r.delete(*keys)
 
@@ -377,14 +377,14 @@ tenant2.set("config:api_key", "key2")  # tenant:globex:config:api_key
 
 ### Short vs Descriptive Keys
 
-```python
+```text
 # Memory comparison for 1 million keys
 
 # Long descriptive keys
-# Key: "user:profile:information:1000" (30 bytes) x 1M = 30MB in keys alone
+# Key: "user:profile:information:1000" (29 bytes) x 1M = 29MB in key names alone
 
 # Shorter keys
-# Key: "u:p:1000" (8 bytes) x 1M = 8MB in keys alone
+# Key: "u:p:1000" (8 bytes) x 1M = 8MB in key names alone
 
 # Balance: reasonably descriptive but not verbose
 # Key: "user:1000:profile" (17 bytes) x 1M = 17MB
@@ -478,14 +478,14 @@ r.set(f"user:{user_id}", data)  # user:1000
 r.set("cache:expensive:query", result)  # Stays forever!
 
 # GOOD: Always set TTL for cache
-r.setex("cache:expensive:query", 3600, result)
+r.set("cache:expensive:query", result, ex=3600)
 
 # Or use naming convention to enforce
 def set_cache(key, value, ttl=3600):
     """All cache keys must have TTL"""
     if not key.startswith("cache:"):
         raise ValueError("Cache keys must start with 'cache:'")
-    r.setex(key, ttl, value)
+    r.set(key, value, ex=ttl)
 ```
 
 ### 4. Flat Key Structure
@@ -522,7 +522,7 @@ r.set("app:myapp:config:database", value)
 
 ### E-Commerce Application
 
-```python
+```text
 # Products
 product:{id}                    # Hash - product details
 product:{id}:reviews            # List - recent reviews
@@ -555,7 +555,7 @@ cache:search:{query_hash}       # Cached search results
 
 ### Social Media Application
 
-```python
+```text
 # Users
 user:{id}                       # Hash - profile
 user:{id}:followers             # Set - follower IDs
@@ -584,7 +584,7 @@ typing:{conversation_id}:{user_id} # String - typing indicator
 
 ### Analytics Application
 
-```python
+```text
 # Counters
 counter:pageviews:{date}                    # Daily page views
 counter:pageviews:{date}:{page_id}          # Page-specific views

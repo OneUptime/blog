@@ -101,6 +101,9 @@ finally:
 from kafka import KafkaConsumer
 import json
 
+def process_order(order):
+    print(f"Processing order: {order}")
+
 consumer = KafkaConsumer(
     'orders',
     bootstrap_servers=['localhost:9092'],
@@ -126,9 +129,6 @@ except KeyboardInterrupt:
     pass
 finally:
     consumer.close()
-
-def process_order(order):
-    print(f"Processing order: {order}")
 ```
 
 ### confluent-kafka-python Library
@@ -575,6 +575,7 @@ public class OrderProducer {
 
 ```java
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import java.time.Duration;
 import java.util.*;
@@ -618,6 +619,10 @@ public class OrderConsumer {
                     processRecord(record);
                 }
             }
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
+            }
         } finally {
             consumer.close();
         }
@@ -650,6 +655,7 @@ public class OrderConsumer {
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import java.time.Duration;
 import java.util.*;
@@ -695,6 +701,10 @@ public class ManualCommitConsumer {
                     }
                 }
             }
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
+            }
         } finally {
             consumer.close();
         }
@@ -721,6 +731,10 @@ public class ManualCommitConsumer {
                         System.err.println("Batch processing failed: " + e.getMessage());
                     }
                 }
+            }
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
             }
         } finally {
             consumer.close();
@@ -749,75 +763,99 @@ public class ManualCommitConsumer {
 
 ```java
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import java.util.Map;
+import java.util.Properties;
 
-public class JsonSerializer<T> implements Serializer<T> {
-    private final ObjectMapper objectMapper = new ObjectMapper();
+public class JsonSerializationExample {
+    public static class JsonSerializer<T> implements Serializer<T> {
+        private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Override
-    public void configure(Map<String, ?> configs, boolean isKey) {}
+        @Override
+        public void configure(Map<String, ?> configs, boolean isKey) {}
 
-    @Override
-    public byte[] serialize(String topic, T data) {
-        if (data == null) return null;
-        try {
-            return objectMapper.writeValueAsBytes(data);
-        } catch (Exception e) {
-            throw new RuntimeException("Error serializing JSON", e);
+        @Override
+        public byte[] serialize(String topic, T data) {
+            if (data == null) return null;
+            try {
+                return objectMapper.writeValueAsBytes(data);
+            } catch (Exception e) {
+                throw new RuntimeException("Error serializing JSON", e);
+            }
         }
+
+        @Override
+        public void close() {}
     }
 
-    @Override
-    public void close() {}
-}
+    public static class JsonDeserializer<T> implements Deserializer<T> {
+        private final ObjectMapper objectMapper = new ObjectMapper();
+        private Class<T> targetType;
 
-public class JsonDeserializer<T> implements Deserializer<T> {
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private Class<T> targetType;
+        public JsonDeserializer() {}
 
-    public JsonDeserializer(Class<T> targetType) {
-        this.targetType = targetType;
-    }
-
-    @Override
-    public void configure(Map<String, ?> configs, boolean isKey) {}
-
-    @Override
-    public T deserialize(String topic, byte[] data) {
-        if (data == null) return null;
-        try {
-            return objectMapper.readValue(data, targetType);
-        } catch (Exception e) {
-            throw new RuntimeException("Error deserializing JSON", e);
+        public JsonDeserializer(Class<T> targetType) {
+            this.targetType = targetType;
         }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public void configure(Map<String, ?> configs, boolean isKey) {
+            if (targetType == null && configs.containsKey("json.value.type")) {
+                try {
+                    targetType = (Class<T>) Class.forName((String) configs.get("json.value.type"));
+                } catch (ClassNotFoundException e) {
+                    throw new IllegalArgumentException("Invalid JSON target type", e);
+                }
+            }
+        }
+
+        @Override
+        public T deserialize(String topic, byte[] data) {
+            if (data == null) return null;
+            if (targetType == null) {
+                throw new IllegalStateException("JSON target type is not configured");
+            }
+            try {
+                return objectMapper.readValue(data, targetType);
+            } catch (Exception e) {
+                throw new RuntimeException("Error deserializing JSON", e);
+            }
+        }
+
+        @Override
+        public void close() {}
     }
 
-    @Override
-    public void close() {}
+    public static class Order {
+        public int orderId;
+        public String product;
+        public int quantity;
+    }
+
+    public static void main(String[] args) {
+        // Producer with JSON serializer
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());
+
+        Producer<String, Order> producer = new KafkaProducer<>(props);
+        Order order = new Order();
+        order.orderId = 123;
+        order.product = "Widget";
+        order.quantity = 5;
+
+        producer.send(new ProducerRecord<>("orders", "order-123", order));
+        producer.close();
+    }
 }
-
-// Usage
-public class Order {
-    public int orderId;
-    public String product;
-    public int quantity;
-}
-
-// Producer with JSON serializer
-Properties props = new Properties();
-props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());
-
-Producer<String, Order> producer = new KafkaProducer<>(props);
-Order order = new Order();
-order.orderId = 123;
-order.product = "Widget";
-order.quantity = 5;
-
-producer.send(new ProducerRecord<>("orders", "order-123", order));
 ```
 
 ## SSL/TLS Configuration
@@ -884,7 +922,7 @@ props.put("ssl.key.password", "keypassword");
 
 - Reuse producer and consumer instances
 - Implement proper shutdown hooks
-- Use connection pooling for high-throughput applications
+- Use long-lived clients for high-throughput applications
 
 ### Error Handling
 

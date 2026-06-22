@@ -17,20 +17,20 @@ Start with a simple Dockerfile for your BullMQ worker:
 ```dockerfile
 # Dockerfile
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Create app directory
 WORKDIR /app
 
 # Install dependencies first (better caching)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy application code
 COPY . .
 
 # Build TypeScript (if applicable)
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
 
 # Run as non-root user
 USER node
@@ -46,7 +46,7 @@ For production, use a multi-stage build to minimize image size:
 ```dockerfile
 # Dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -64,10 +64,10 @@ COPY src ./src
 RUN npm run build
 
 # Prune dev dependencies
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 # Set environment
 ENV NODE_ENV=production
@@ -253,8 +253,6 @@ Create a complete development environment with Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -276,7 +274,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: bullmq-worker-email
     environment:
       - NODE_ENV=production
       - REDIS_HOST=redis
@@ -297,7 +294,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: bullmq-worker-notifications
     environment:
       - NODE_ENV=production
       - REDIS_HOST=redis
@@ -344,8 +340,6 @@ Scale workers horizontally:
 
 ```yaml
 # docker-compose.scale.yml
-version: '3.8'
-
 services:
   worker-email:
     build:
@@ -374,7 +368,7 @@ Run with scaling:
 
 ```bash
 # Scale to 5 worker instances
-docker-compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale worker-email=5
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale worker-email=5
 ```
 
 ## Production Docker Compose with Monitoring
@@ -383,8 +377,6 @@ Add monitoring and logging for production:
 
 ```yaml
 # docker-compose.prod.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -544,7 +536,7 @@ LOG_LEVEL=warn
 Run with specific environment:
 
 ```bash
-docker-compose --env-file .env.production -f docker-compose.prod.yml up -d
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 ## Advanced Worker with Metrics
@@ -692,13 +684,13 @@ COPY . .
 3. **Use specific base image tags** instead of `latest`:
 
 ```dockerfile
-FROM node:20.10-alpine3.18
+FROM node:24.17.0-alpine3.23
 ```
 
 4. **Minimize layers** by combining commands:
 
 ```dockerfile
-RUN npm ci && npm run build && npm prune --production
+RUN npm ci && npm run build && npm prune --omit=dev
 ```
 
 ## Best Practices

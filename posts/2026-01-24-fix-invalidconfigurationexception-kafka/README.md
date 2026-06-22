@@ -8,9 +8,9 @@ Description: Learn how to diagnose and fix InvalidConfigurationException errors 
 
 ---
 
-> InvalidConfigurationException is Kafka's way of telling you that something in your configuration does not make sense. The error message usually points directly to the problem, but understanding why certain configurations are invalid helps you avoid these issues entirely.
+> InvalidConfigurationException, and the client-side ConfigException you may see during client startup, are Kafka's way of telling you that something in your configuration does not make sense. The error message usually points directly to the problem, but understanding why certain configurations are invalid helps you avoid these issues entirely.
 
-The `InvalidConfigurationException` occurs when Kafka detects conflicting, out-of-range, or incompatible configuration values. This guide covers the most common causes and their solutions.
+Configuration exceptions occur when Kafka detects conflicting, out-of-range, or incompatible configuration values. This guide covers the most common causes and their solutions.
 
 ---
 
@@ -23,7 +23,7 @@ flowchart TD
     subgraph Validation["Configuration Validation"]
         A[Client Config] --> B{Type Check}
         B -->|Valid| C{Range Check}
-        B -->|Invalid| X[InvalidConfigurationException]
+        B -->|Invalid| X[Configuration Exception]
         C -->|Valid| D{Dependency Check}
         C -->|Invalid| X
         D -->|Valid| E{Compatibility Check}
@@ -35,7 +35,7 @@ flowchart TD
 
 ---
 
-## Common InvalidConfigurationException Causes
+## Common Configuration Exception Causes
 
 ### 1. Incompatible Producer Settings
 
@@ -73,10 +73,10 @@ KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 #### Transactional Producer Requirements
 
 ```java
-// WRONG: Transactional producer without required settings
+// WRONG: Transactional producer with explicitly disabled idempotence
 Properties props = new Properties();
 props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "my-txn-id");
-// Missing: enable.idempotence (implicitly required)
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "false"); // ERROR: transactional.id implies idempotence
 
 // CORRECT: Transactional producer configuration
 Properties props = new Properties();
@@ -86,7 +86,7 @@ props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.g
 
 // Transactional settings
 props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "order-processor-txn");
-props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true"); // Required for transactions
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true"); // Optional, because transactional.id implies it
 props.put(ProducerConfig.ACKS_CONFIG, "all");
 props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
@@ -182,8 +182,9 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 // WRONG: Incomplete SSL configuration
 Properties props = new Properties();
 props.put("security.protocol", "SSL");
-props.put("ssl.truststore.location", "/path/to/truststore.jks");
-// Missing: ssl.truststore.password
+props.put("ssl.keystore.location", "/path/to/keystore.jks");
+props.put("ssl.keystore.type", "JKS");
+// Missing: ssl.keystore.password
 ```
 
 ```java
@@ -278,6 +279,11 @@ public class KafkaConfigValidator {
             if (maxInFlight > 5) {
                 errors.add("When enable.idempotence=true, max.in.flight.requests.per.connection must be <= 5");
             }
+
+            int retries = Integer.parseInt(props.getProperty(ProducerConfig.RETRIES_CONFIG, "2147483647"));
+            if (retries <= 0) {
+                errors.add("When enable.idempotence=true, retries must be greater than 0");
+            }
         }
 
         // Check timeout constraints
@@ -295,9 +301,9 @@ public class KafkaConfigValidator {
 
         // Check transactional constraints
         if (props.containsKey(ProducerConfig.TRANSACTIONAL_ID_CONFIG)) {
-            String idempotence = props.getProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "false");
-            if (!Boolean.parseBoolean(idempotence)) {
-                errors.add("When transactional.id is set, enable.idempotence must be true");
+            String idempotence = props.getProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG);
+            if ("false".equalsIgnoreCase(idempotence)) {
+                errors.add("When transactional.id is set, enable.idempotence must not be false");
             }
         }
 
@@ -403,7 +409,7 @@ graph TD
     end
 
     subgraph Transactions["transactional.id set"]
-        D["enable.idempotence=true"]
+        D["enable.idempotence implied"]
         E["All idempotence requirements"]
     end
 
@@ -420,7 +426,7 @@ graph TD
 |---------|-------------|-----|
 | `enable.idempotence=true` | `acks=all` | Idempotence needs leader confirmation |
 | `enable.idempotence=true` | `max.in.flight<=5` | Sequence ordering guarantee |
-| `transactional.id` set | `enable.idempotence=true` | Transactions require idempotence |
+| `transactional.id` set | `enable.idempotence` is implied and must not be `false` | Transactions require idempotence |
 | `delivery.timeout.ms` | `>= linger.ms + request.timeout.ms` | Total timeout must cover batching + request |
 | `heartbeat.interval.ms` | `< session.timeout.ms` | Heartbeat must fit within session |
 
@@ -496,12 +502,16 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 For Spring Boot applications, use typed configuration:
 
 ```java
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @Configuration
 public class KafkaConfig {
@@ -613,7 +623,7 @@ public class ConfigInspector {
 
 ## Summary
 
-To avoid `InvalidConfigurationException`:
+To avoid `InvalidConfigurationException` and related client-side configuration errors:
 
 1. **Understand dependencies** - Some settings require others to be set correctly
 2. **Validate early** - Check configurations before creating clients

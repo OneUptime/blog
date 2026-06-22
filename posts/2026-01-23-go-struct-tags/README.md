@@ -95,7 +95,7 @@ Output:
 
 ## Common JSON Tag Options
 
-Here are all the JSON tag options:
+Here are common JSON tag options:
 
 ```go
 type Example struct {
@@ -161,6 +161,10 @@ type Product struct {
     CreatedAt time.Time
     UpdatedAt time.Time
     DeletedAt gorm.DeletedAt `gorm:"index"` // Soft delete
+}
+
+type User struct {
+    ID uint `gorm:"primaryKey"`
 }
 
 type Order struct {
@@ -317,6 +321,7 @@ Field: Name
 Field: Email
   json: email
   db: email_address
+  custom: 
   raw: json:"email" db:"email_address"
 ```
 
@@ -606,15 +611,15 @@ type Good struct {
 }
 ```
 
-### Mistake 2: Missing Spaces Between Tags
+### Best Practice 2: Use Spaces Between Tags
 
 ```go
-// WRONG - no space between tags
+// AVOID - no space between tags, even though reflect can parse this
 type Bad struct {
     Name string `json:"name"validate:"required"`
 }
 
-// CORRECT - space between tags
+// PREFERRED - space between tags
 type Good struct {
     Name string `json:"name" validate:"required"`
 }

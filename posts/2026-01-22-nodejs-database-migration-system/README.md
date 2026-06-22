@@ -128,7 +128,7 @@ export class MigrationRunner {
       )
     `);
 
-    // Create advisory lock for preventing concurrent migrations
+    // Create lock table for preventing concurrent migrations
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ${this.tableName}_lock (
         id INTEGER PRIMARY KEY DEFAULT 1,
@@ -380,8 +380,8 @@ export class MigrationRunner {
 ## CLI Tool
 
 ```typescript
-// cli.ts
 #!/usr/bin/env node
+// cli.ts
 import { Command } from 'commander';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -635,10 +635,16 @@ export async function up(ctx: MigrationContext): Promise<void> {
   let processed = 0;
   while (true) {
     const result = await ctx.query(`
+      WITH batch AS (
+        SELECT id
+        FROM users
+        WHERE full_name IS NULL
+        LIMIT 1000
+      )
       UPDATE users
       SET full_name = CONCAT(first_name, ' ', last_name)
-      WHERE full_name IS NULL
-      LIMIT 1000
+      FROM batch
+      WHERE users.id = batch.id
       RETURNING id
     `);
 

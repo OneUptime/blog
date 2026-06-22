@@ -140,9 +140,6 @@ debugJWTIssuer(token, 'https://auth.example.com');
 # Python debug function
 
 import jwt
-import base64
-import json
-from urllib.parse import unquote
 
 def debug_jwt_issuer(token: str, expected_issuer: str) -> bool:
     """Debug JWT issuer claim issues."""
@@ -227,28 +224,8 @@ function verifyTokenMultipleIssuers(token, secret) {
     }
 }
 
-// Normalize issuer before comparison
-function normalizeIssuer(issuer) {
-    if (!issuer) return null;
-
-    let normalized = issuer;
-
-    // Convert to lowercase
-    normalized = normalized.toLowerCase();
-
-    // Remove trailing slash
-    normalized = normalized.replace(/\/$/, '');
-
-    // Ensure https
-    if (normalized.startsWith('http://')) {
-        normalized = normalized.replace('http://', 'https://');
-    }
-
-    return normalized;
-}
-
-// Custom verification with normalization
-function verifyTokenNormalized(token, secret, expectedIssuer) {
+// Custom verification with an explicit alias list
+function verifyTokenWithAliases(token, secret, expectedIssuers) {
     // First decode to check issuer
     const decoded = jwt.decode(token);
 
@@ -256,17 +233,14 @@ function verifyTokenNormalized(token, secret, expectedIssuer) {
         throw new Error('Token missing issuer claim');
     }
 
-    const normalizedTokenIss = normalizeIssuer(decoded.iss);
-    const normalizedExpected = normalizeIssuer(expectedIssuer);
-
-    if (normalizedTokenIss !== normalizedExpected) {
+    if (!expectedIssuers.includes(decoded.iss)) {
         throw new Error(
-            `Issuer mismatch: expected ${expectedIssuer}, got ${decoded.iss}`
+            `Issuer mismatch: expected one of ${expectedIssuers.join(', ')}, got ${decoded.iss}`
         );
     }
 
-    // Now verify signature (without issuer check since we did it manually)
-    return jwt.verify(token, secret, { issuer: decoded.iss });
+    // Now verify signature and issuer against the exact configured values
+    return jwt.verify(token, secret, { issuer: expectedIssuers });
 }
 ```
 
@@ -274,16 +248,22 @@ function verifyTokenNormalized(token, secret, expectedIssuer) {
 
 ```python
 import jwt
-from typing import List, Union
+from typing import List
 
-def verify_token(token: str, secret: str, expected_issuer: str) -> dict:
+def verify_token(
+    token: str,
+    secret: str,
+    expected_issuer: str,
+    expected_audience: str
+) -> dict:
     """Verify token with issuer check."""
     try:
         payload = jwt.decode(
             token,
             secret,
             algorithms=["HS256"],
-            issuer=expected_issuer
+            issuer=expected_issuer,
+            audience=expected_audience
         )
         return {"valid": True, "payload": payload}
     except jwt.InvalidIssuerError as e:
@@ -294,68 +274,37 @@ def verify_token(token: str, secret: str, expected_issuer: str) -> dict:
 def verify_token_multi_issuer(
     token: str,
     secret: str,
-    valid_issuers: List[str]
+    valid_issuers: List[str],
+    expected_audience: str
 ) -> dict:
     """Verify token accepting multiple issuers."""
-    # PyJWT doesn't natively support multiple issuers
-    # So we decode first and check manually
-
     try:
-        # Decode without issuer verification
-        unverified = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            options={"verify_iss": False}
-        )
-
-        token_issuer = unverified.get('iss')
-
-        if token_issuer not in valid_issuers:
-            return {
-                "valid": False,
-                "error": f"Issuer '{token_issuer}' not in allowed list"
-            }
-
-        return {"valid": True, "payload": unverified}
-    except jwt.InvalidTokenError as e:
-        return {"valid": False, "error": str(e)}
-
-def normalize_issuer(issuer: str) -> str:
-    """Normalize issuer URL for comparison."""
-    if not issuer:
-        return ""
-
-    normalized = issuer.lower()
-    normalized = normalized.rstrip('/')
-
-    if normalized.startswith('http://'):
-        normalized = normalized.replace('http://', 'https://', 1)
-
-    return normalized
-
-def verify_token_normalized(
-    token: str,
-    secret: str,
-    expected_issuer: str
-) -> dict:
-    """Verify token with normalized issuer comparison."""
-    try:
-        # Decode without issuer verification
         payload = jwt.decode(
             token,
             secret,
             algorithms=["HS256"],
-            options={"verify_iss": False}
+            issuer=valid_issuers,
+            audience=expected_audience
         )
+        return {"valid": True, "payload": payload}
+    except jwt.InvalidTokenError as e:
+        return {"valid": False, "error": str(e)}
 
-        token_iss = payload.get('iss', '')
-        if normalize_issuer(token_iss) != normalize_issuer(expected_issuer):
-            return {
-                "valid": False,
-                "error": f"Issuer mismatch: expected {expected_issuer}, got {token_iss}"
-            }
-
+def verify_token_with_aliases(
+    token: str,
+    secret: str,
+    valid_issuers: List[str],
+    expected_audience: str
+) -> dict:
+    """Verify token with an explicit list of accepted issuer strings."""
+    try:
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            issuer=valid_issuers,
+            audience=expected_audience
+        )
         return {"valid": True, "payload": payload}
     except jwt.InvalidTokenError as e:
         return {"valid": False, "error": str(e)}
@@ -370,7 +319,6 @@ const jwt = require('jsonwebtoken');
 function createAuthMiddleware(options = {}) {
     const {
         issuers = [],
-        normalizeIssuers = true,
         requireIssuer = true
     } = options;
 
@@ -396,21 +344,7 @@ function createAuthMiddleware(options = {}) {
             }
 
             // Check issuer
-            let validIssuer = false;
-            const tokenIss = normalizeIssuers
-                ? normalizeIssuer(decoded.iss)
-                : decoded.iss;
-
-            for (const issuer of issuers) {
-                const compareIss = normalizeIssuers
-                    ? normalizeIssuer(issuer)
-                    : issuer;
-
-                if (tokenIss === compareIss) {
-                    validIssuer = true;
-                    break;
-                }
-            }
+            const validIssuer = issuers.includes(decoded.iss);
 
             if (issuers.length > 0 && !validIssuer) {
                 return res.status(401).json({
@@ -424,7 +358,8 @@ function createAuthMiddleware(options = {}) {
             // Verify signature
             // Get the appropriate secret/key based on issuer
             const secret = await getSecretForIssuer(decoded.iss);
-            const verified = jwt.verify(token, secret);
+            const verifyOptions = issuers.length > 0 ? { issuer: issuers } : {};
+            const verified = jwt.verify(token, secret, verifyOptions);
 
             req.user = verified;
             next();
@@ -444,20 +379,13 @@ async function getSecretForIssuer(issuer) {
         'https://login.provider.com': process.env.PROVIDER_SECRET
     };
 
-    const normalizedIss = normalizeIssuer(issuer);
+    const secret = secrets[issuer];
 
-    for (const [iss, secret] of Object.entries(secrets)) {
-        if (normalizeIssuer(iss) === normalizedIss) {
-            return secret;
-        }
+    if (!secret) {
+        throw new Error(`Unknown issuer: ${issuer}`);
     }
 
-    throw new Error(`Unknown issuer: ${issuer}`);
-}
-
-function normalizeIssuer(issuer) {
-    if (!issuer) return '';
-    return issuer.toLowerCase().replace(/\/$/, '');
+    return secret;
 }
 
 // Usage
@@ -467,8 +395,7 @@ app.use('/api', createAuthMiddleware({
     issuers: [
         'https://auth.example.com',
         'https://login.provider.com'
-    ],
-    normalizeIssuers: true
+    ]
 }));
 ```
 
@@ -491,8 +418,8 @@ flowchart TB
 ### Google
 
 ```javascript
-// Google issuer is always the same
-const GOOGLE_ISSUER = 'https://accounts.google.com';
+// Google ID tokens can use either issuer string
+const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
 function verifyGoogleToken(token) {
     // Google uses RS256, need to fetch public keys
@@ -593,8 +520,8 @@ class IssuerDiscovery {
         const config = await response.json();
 
         // Verify the issuer in discovery matches what we expected
-        if (normalizeIssuer(config.issuer) !== normalizeIssuer(issuerUrl)) {
-            console.warn(
+        if (config.issuer !== issuerUrl) {
+            throw new Error(
                 `Issuer mismatch in discovery: expected ${issuerUrl}, got ${config.issuer}`
             );
         }
@@ -622,13 +549,13 @@ class IssuerDiscovery {
             throw new Error('Invalid token or missing issuer');
         }
 
-        // Discover the issuer configuration
-        const config = await this.discover(decoded.payload.iss);
+        // Discover the expected issuer configuration
+        const config = await this.discover(expectedIssuer);
 
-        // Verify the issuer matches (with normalization)
-        if (normalizeIssuer(config.issuer) !== normalizeIssuer(expectedIssuer)) {
+        // Verify the token issuer matches the discovered issuer exactly
+        if (decoded.payload.iss !== config.issuer) {
             throw new Error(
-                `Issuer mismatch: token issued by ${config.issuer}, expected ${expectedIssuer}`
+                `Issuer mismatch: token issued by ${decoded.payload.iss}, expected ${config.issuer}`
             );
         }
 
@@ -659,11 +586,6 @@ class IssuerDiscovery {
         const pem = jwkToPem(key);
         return jwt.verify(token, pem, { issuer });
     }
-}
-
-function normalizeIssuer(issuer) {
-    if (!issuer) return '';
-    return issuer.toLowerCase().replace(/\/$/, '');
 }
 ```
 
@@ -703,8 +625,7 @@ function getAllowedIssuers() {
 
 // Middleware using environment config
 app.use('/api', createAuthMiddleware({
-    issuers: getAllowedIssuers(),
-    normalizeIssuers: true
+    issuers: getAllowedIssuers()
 }));
 ```
 
@@ -714,7 +635,7 @@ app.use('/api', createAuthMiddleware({
 - [ ] Server configured with correct expected issuer
 - [ ] Trailing slash handled consistently
 - [ ] Protocol matches (http vs https)
-- [ ] Case sensitivity handled
+- [ ] Issuer compared as an exact, case-sensitive string
 - [ ] Multi-tenant scenarios addressed
 - [ ] Environment-specific issuers configured
 - [ ] OIDC discovery used when available

@@ -33,25 +33,25 @@ npm install tedious          # Microsoft SQL Server
 const { Sequelize } = require('sequelize');
 
 // PostgreSQL
-const sequelize = new Sequelize('database', 'username', 'password', {
+const postgresSequelize = new Sequelize('database', 'username', 'password', {
   host: 'localhost',
   dialect: 'postgres',
 });
 
 // MySQL
-const sequelize = new Sequelize('database', 'username', 'password', {
+const mysqlSequelize = new Sequelize('database', 'username', 'password', {
   host: 'localhost',
   dialect: 'mysql',
 });
 
 // SQLite
-const sequelize = new Sequelize({
+const sqliteSequelize = new Sequelize({
   dialect: 'sqlite',
   storage: './database.sqlite',
 });
 
 // Connection URI
-const sequelize = new Sequelize('postgres://user:pass@localhost:5432/dbname');
+const uriSequelize = new Sequelize('postgres://user:pass@localhost:5432/dbname');
 ```
 
 ### Connection Options
@@ -73,8 +73,7 @@ const sequelize = new Sequelize('database', 'username', 'password', {
   },
   
   // Logging
-  logging: console.log,  // or false to disable
-  logging: (msg) => logger.debug(msg),
+  logging: console.log,  // or false to disable, or (msg) => logger.debug(msg)
   
   // Timezone
   timezone: '+00:00',
@@ -128,6 +127,9 @@ const User = sequelize.define('User', {
       isEmail: true,
     },
   },
+
+  firstName: DataTypes.STRING,
+  lastName: DataTypes.STRING,
   
   // With default value
   role: {
@@ -237,7 +239,7 @@ const users = await User.bulkCreate([
 ]);
 
 // Create with specific fields only
-const user = await User.create(
+const jane = await User.create(
   { email: 'jane@example.com', name: 'Jane', role: 'admin' },
   { fields: ['email', 'name'] }  // Ignore 'role'
 );
@@ -250,7 +252,7 @@ const user = await User.create(
 const user = await User.findByPk(1);
 
 // Find one
-const user = await User.findOne({
+const userByEmail = await User.findOne({
   where: { email: 'john@example.com' },
 });
 
@@ -266,7 +268,7 @@ const activeUsers = await User.findAll({
 });
 
 // Find or create
-const [user, created] = await User.findOrCreate({
+const [foundUser, created] = await User.findOrCreate({
   where: { email: 'john@example.com' },
   defaults: { name: 'John Doe' },
 });
@@ -315,27 +317,33 @@ await user.destroy({ force: true });
 const { Op } = require('sequelize');
 
 // Comparison operators
-const users = await User.findAll({
+const filteredUsers = await User.findAll({
   where: {
-    age: { [Op.gt]: 18 },      // > 18
-    age: { [Op.gte]: 18 },     // >= 18
-    age: { [Op.lt]: 65 },      // < 65
-    age: { [Op.lte]: 65 },     // <= 65
-    age: { [Op.ne]: 25 },      // != 25
-    age: { [Op.between]: [18, 65] },
-    status: { [Op.in]: ['active', 'pending'] },
-    status: { [Op.notIn]: ['banned'] },
-    name: { [Op.like]: '%john%' },
-    name: { [Op.iLike]: '%JOHN%' },  // Case insensitive (PostgreSQL)
-    name: { [Op.startsWith]: 'J' },
-    name: { [Op.endsWith]: 'son' },
-    description: { [Op.is]: null },
+    age: {
+      [Op.gt]: 18,      // > 18
+      [Op.gte]: 18,     // >= 18
+      [Op.lt]: 65,      // < 65
+      [Op.lte]: 65,     // <= 65
+      [Op.ne]: 25,      // != 25
+      [Op.between]: [18, 65],
+    },
+    status: {
+      [Op.in]: ['active', 'pending'],
+      [Op.notIn]: ['banned'],
+    },
+    name: {
+      [Op.like]: '%john%',
+      [Op.iLike]: '%JOHN%',  // Case insensitive (PostgreSQL)
+      [Op.startsWith]: 'J',
+      [Op.endsWith]: 'son',
+    },
+    deletedAt: { [Op.is]: null },
     description: { [Op.not]: null },
   },
 });
 
 // Logical operators
-const users = await User.findAll({
+const adminUsers = await User.findAll({
   where: {
     [Op.and]: [
       { status: 'active' },
@@ -429,12 +437,12 @@ const post = await Post.findByPk(1, {
 });
 
 // Add tags
-const post = await Post.findByPk(1);
+const postWithTags = await Post.findByPk(1);
 const tag = await Tag.findByPk(1);
-await post.addTag(tag);
-await post.addTags([tag1, tag2, tag3]);
-await post.setTags([tag1, tag2]);
-await post.removeTag(tag);
+await postWithTags.addTag(tag);
+await postWithTags.addTags([tag1, tag2, tag3]);
+await postWithTags.setTags([tag1, tag2]);
+await postWithTags.removeTag(tag);
 ```
 
 ## Eager Loading
@@ -461,7 +469,7 @@ const posts = await Post.findAll({
 });
 
 // Conditional includes
-const users = await User.findAll({
+const usersWithPublishedPosts = await User.findAll({
   include: {
     model: Post,
     as: 'posts',
@@ -471,7 +479,7 @@ const users = await User.findAll({
 });
 
 // Select specific attributes
-const users = await User.findAll({
+const selectedUsers = await User.findAll({
   attributes: ['id', 'name'],
   include: {
     model: Post,
@@ -594,12 +602,13 @@ try {
 ## Raw Queries
 
 ```javascript
+const { QueryTypes } = require('sequelize');
+
 // Raw SELECT
 const [results, metadata] = await sequelize.query(
   'SELECT * FROM Users WHERE status = ?',
   {
     replacements: ['active'],
-    type: sequelize.QueryTypes.SELECT,
   }
 );
 
@@ -608,7 +617,7 @@ const users = await sequelize.query(
   'SELECT * FROM Users WHERE status = :status AND role = :role',
   {
     replacements: { status: 'active', role: 'admin' },
-    type: sequelize.QueryTypes.SELECT,
+    type: QueryTypes.SELECT,
   }
 );
 ```

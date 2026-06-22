@@ -49,7 +49,7 @@ curl -X GET "https://localhost:9200/_nodes/stats/indices/search,indexing" \
 
 ### 1. Use Filters Instead of Queries
 
-Filters are cached and skip scoring:
+Filter context skips scoring, and frequently used filters can be cached:
 
 ```bash
 # High load: Query context
@@ -115,7 +115,7 @@ curl -X GET "https://localhost:9200/products/_search" \
   -u elastic:password \
   -d '{
     "size": 10,
-    "sort": [{ "created_at": "desc" }, { "_id": "asc" }],
+    "sort": [{ "created_at": "desc" }, { "tie_breaker_id": "asc" }],
     "search_after": ["2024-01-15T10:00:00", "abc123"]
   }'
 ```
@@ -290,7 +290,7 @@ curl -X PUT "https://localhost:9200/_ilm/policy/logs_policy" \
         "hot": {
           "actions": {
             "rollover": {
-              "max_size": "50gb",
+              "max_primary_shard_size": "50gb",
               "max_age": "1d"
             }
           }
@@ -320,12 +320,12 @@ curl -X PUT "https://localhost:9200/_ilm/policy/logs_policy" \
 curl -X POST "https://localhost:9200/logs-2023.*/_close" \
   -u elastic:password
 
-# Or use frozen tier
+# Or move rarely searched indices to a colder data tier
 curl -X PUT "https://localhost:9200/logs-2023.01/_settings" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "index.routing.allocation.include._tier_preference": "data_frozen"
+    "index.routing.allocation.include._tier_preference": "data_cold,data_warm,data_hot"
   }'
 ```
 
@@ -345,7 +345,7 @@ curl -X POST "https://localhost:9200/logs-2024.01.01/_forcemerge?max_num_segment
   -u elastic:password
 ```
 
-Resource Management
+## Resource Management
 
 ### 1. Configure Thread Pools
 
@@ -422,14 +422,12 @@ curl -X PUT "https://localhost:9200/products/_settings" \
 ### Set Max Concurrent Searches
 
 ```bash
-# Limit concurrent searches per node
-curl -X PUT "https://localhost:9200/_cluster/settings" \
+# Limit concurrent shard requests for this search
+curl -X GET "https://localhost:9200/products/_search?max_concurrent_shard_requests=5" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "persistent": {
-      "search.max_concurrent_shard_requests": 5
-    }
+    "query": { "match_all": {} }
   }'
 ```
 

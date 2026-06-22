@@ -129,11 +129,15 @@ package com.example.service;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.vavr.control.Try;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 @Service
 public class PaymentServiceClient {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentServiceClient.class);
 
     private final RestTemplate restTemplate;
     private final CircuitBreaker circuitBreaker;
@@ -189,12 +193,13 @@ public class PaymentServiceClient {
 # circuit_breaker.py
 
 from enum import Enum
-from dataclasses import dataclass, field
-from typing import Callable, Optional, Type, Tuple
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from typing import Callable, Optional
+from datetime import datetime
 import threading
 import time
 import functools
+import requests
 
 class CircuitState(Enum):
     CLOSED = "closed"
@@ -426,9 +431,10 @@ flowchart TD
 
 ```python
 # bulkhead.py
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, Dict
+import asyncio
 import threading
 import time
 
@@ -491,10 +497,29 @@ class ThreadPoolBulkhead:
         """
         self._metrics["total_calls"] += 1
 
-        future = self._executor.submit(func, *args, **kwargs)
+        acquired = await asyncio.to_thread(
+            self._semaphore.acquire,
+            timeout=self.config.max_wait_duration
+        )
+
+        if not acquired:
+            self._metrics["rejected_calls"] += 1
+            raise BulkheadFullError(
+                f"Bulkhead '{self.name}' is full, "
+                f"max concurrent calls: {self.config.max_concurrent_calls}"
+            )
+
+        loop = asyncio.get_running_loop()
+        future = loop.run_in_executor(
+            self._executor,
+            lambda: func(*args, **kwargs)
+        )
 
         try:
-            result = future.result(timeout=timeout or self.config.max_wait_duration)
+            result = await asyncio.wait_for(
+                asyncio.shield(future),
+                timeout=timeout or self.config.max_wait_duration
+            )
             self._metrics["successful_calls"] += 1
             return result
         except TimeoutError:
@@ -505,6 +530,11 @@ class ThreadPoolBulkhead:
         except Exception as e:
             self._metrics["failed_calls"] += 1
             raise
+        finally:
+            if future.done():
+                self._semaphore.release()
+            else:
+                future.add_done_callback(lambda _: self._semaphore.release())
 
     @property
     def metrics(self) -> Dict:
@@ -625,7 +655,7 @@ def with_timeout(timeout_seconds: float):
                     func(*args, **kwargs),
                     timeout=timeout_seconds
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise TimeoutError(
                     f"Function {func.__name__} timed out after {timeout_seconds}s"
                 )
@@ -652,7 +682,7 @@ class TimeoutConfig:
     # HTTP client defaults
     CONNECT_TIMEOUT = 3.0
     READ_TIMEOUT = 10.0
-    TOTAL_TIMEOUT = 15.0
+    POOL_TIMEOUT = 15.0
 
 
 class ResilientHttpClient:
@@ -664,13 +694,13 @@ class ResilientHttpClient:
         self,
         connect_timeout: float = TimeoutConfig.CONNECT_TIMEOUT,
         read_timeout: float = TimeoutConfig.READ_TIMEOUT,
-        total_timeout: float = TimeoutConfig.TOTAL_TIMEOUT
+        pool_timeout: float = TimeoutConfig.POOL_TIMEOUT
     ):
         self.timeout = httpx.Timeout(
             connect=connect_timeout,
             read=read_timeout,
             write=read_timeout,
-            pool=total_timeout
+            pool=pool_timeout
         )
         self.client = httpx.AsyncClient(timeout=self.timeout)
 
@@ -719,7 +749,7 @@ async def get_user_with_fallback(user_id: str) -> dict:
     try:
         async with asyncio.timeout(TimeoutConfig.DB_READ_TIMEOUT):
             return await fetch_user_from_db(user_id)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # Try cache as fallback
         cached = await get_from_cache(f"user:{user_id}")
         if cached:
@@ -750,6 +780,7 @@ import random
 from typing import Callable, Type, Tuple
 from functools import wraps
 import logging
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -887,8 +918,7 @@ async def fetch_data(url: str) -> dict:
         httpx.HTTPStatusError
     ),
     non_retryable_exceptions=(
-        ValueError,
-        httpx.HTTPStatusError  # Only for 4xx errors
+        ValueError  # Used below for 4xx errors
     )
 ))
 async def process_payment(order_id: str, amount: float) -> dict:
@@ -927,6 +957,9 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Any
 from functools import wraps
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class DegradationConfig:
@@ -1009,12 +1042,13 @@ def graceful(
         @wraps(func)
         async def wrapper(*args, **kwargs):
             cache_key = cache_key_fn(*args, **kwargs)
+            cache_client = args[0].cache
 
             try:
                 result = await func(*args, **kwargs)
 
                 # Cache the result
-                await cache.set(cache_key, result, ttl=cache_ttl)
+                await cache_client.set(cache_key, result, ttl=cache_ttl)
 
                 return result
 
@@ -1022,7 +1056,7 @@ def graceful(
                 logger.warning(f"Function {func.__name__} failed: {e}")
 
                 # Try cache
-                cached = await cache.get(cache_key)
+                cached = await cache_client.get(cache_key)
                 if cached is not None:
                     logger.info(f"Returning cached result for {func.__name__}")
                     return cached
@@ -1152,6 +1186,11 @@ flowchart TD
 ```python
 # combined_resilience.py
 from dataclasses import dataclass
+from typing import Callable
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ResilienceConfig:
@@ -1211,18 +1250,23 @@ class ResilientCall:
         """
         Execute function with all resilience patterns applied.
         """
+        loop = asyncio.get_running_loop()
+
         try:
             # 1. Bulkhead - limit concurrent calls
-            async def bulkhead_wrapped():
+            def bulkhead_wrapped():
                 return self.bulkhead.call(
                     lambda: asyncio.run_coroutine_threadsafe(
                         self._with_timeout_and_retry(func, *args, **kwargs),
-                        asyncio.get_event_loop()
+                        loop
                     ).result()
                 )
 
             # 2. Circuit breaker - fail fast if service is down
-            return self.circuit_breaker.call(bulkhead_wrapped)
+            return await asyncio.to_thread(
+                self.circuit_breaker.call,
+                bulkhead_wrapped
+            )
 
         except (CircuitOpenError, BulkheadFullError, TimeoutError) as e:
             # Use fallback if available
@@ -1243,7 +1287,7 @@ class ResilientCall:
                     timeout=self.config.timeout
                 )
 
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 last_error = e
                 if attempt == self.retry_config.max_attempts:
                     raise TimeoutError(
@@ -1363,7 +1407,7 @@ groups:
       summary: "High bulkhead rejection rate for {{ $labels.service }}"
 
   - alert: HighServiceLatency
-    expr: histogram_quantile(0.99, service_call_duration_seconds) > 5
+    expr: histogram_quantile(0.99, sum by (le, service, endpoint) (rate(service_call_duration_seconds_bucket[5m]))) > 5
     for: 5m
     labels:
       severity: critical

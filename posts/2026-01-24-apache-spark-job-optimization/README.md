@@ -141,13 +141,13 @@ result = df_salted.join(df_small_exploded, ["key", "salt"])
 ### Configure Memory Settings
 
 ```python
-# Optimal memory configuration
+# Example memory configuration
 spark = SparkSession.builder \
     .appName("OptimizedJob") \
     .config("spark.executor.memory", "8g") \
     .config("spark.executor.memoryOverhead", "2g") \
-    .config("spark.memory.fraction", "0.8") \
-    .config("spark.memory.storageFraction", "0.3") \
+    .config("spark.memory.fraction", "0.6") \
+    .config("spark.memory.storageFraction", "0.5") \
     .config("spark.sql.shuffle.partitions", "200") \
     .getOrCreate()
 ```
@@ -192,17 +192,18 @@ df_filtered.unpersist()  # Release memory when done
 ```python
 from pyspark import StorageLevel
 
-# MEMORY_ONLY - fastest, but may cause OOM
+# MEMORY_ONLY - stores cached partitions in memory
 df.persist(StorageLevel.MEMORY_ONLY)
 
 # MEMORY_AND_DISK - spills to disk if needed
 df.persist(StorageLevel.MEMORY_AND_DISK)
 
-# MEMORY_ONLY_SER - serialized, uses less memory but more CPU
-df.persist(StorageLevel.MEMORY_ONLY_SER)
+# DISK_ONLY - stores cached partitions on disk
+df.persist(StorageLevel.DISK_ONLY)
 
-# For large datasets, serialized with disk spillover
-df.persist(StorageLevel.MEMORY_AND_DISK_SER)
+# MEMORY_AND_DISK_DESER - stores deserialized cached partitions in memory,
+# spilling to disk if needed
+df.persist(StorageLevel.MEMORY_AND_DISK_DESER)
 ```
 
 ## Shuffle Optimization
@@ -393,7 +394,7 @@ spark = SparkSession.builder \
     .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
     .config("spark.sql.adaptive.skewJoin.enabled", "true") \
     .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
-    .config("spark.sql.shuffle.partitions", "auto") \
+    .config("spark.sql.shuffle.partitions", "200") \
     .config("spark.default.parallelism", "200") \
     .config("spark.sql.files.maxPartitionBytes", "268435456") \
     .config("spark.sql.broadcastTimeout", "600") \

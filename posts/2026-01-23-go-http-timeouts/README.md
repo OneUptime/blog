@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, HTTP, Timeout, Network, API, Client
 
-Description: Learn how to properly configure HTTP client timeouts in Go to prevent hanging requests, including connection, read, write, and overall timeouts.
+Description: Learn how to properly configure HTTP client timeouts in Go to prevent hanging requests, including connection, response header, body, and overall timeouts.
 
 ---
 
-The default Go HTTP client has no timeout, meaning requests can hang indefinitely. This guide covers all the timeout options and best practices for production HTTP clients.
+The default Go HTTP client has no timeout, meaning requests can hang indefinitely. This guide covers common timeout options and best practices for production HTTP clients.
 
 ---
 
@@ -95,7 +95,6 @@ For fine-grained control, configure the Transport:
 package main
 
 import (
-    "crypto/tls"
     "net"
     "net/http"
     "time"
@@ -215,7 +214,7 @@ func main() {
 
 ---
 
-## Read/Write Body Timeouts
+## Response Body Timeouts
 
 Control time spent reading the response body:
 
@@ -223,7 +222,6 @@ Control time spent reading the response body:
 package main
 
 import (
-    "context"
     "fmt"
     "io"
     "net/http"
@@ -231,25 +229,20 @@ import (
 )
 
 func fetchWithBodyTimeout(url string, headerTimeout, bodyTimeout time.Duration) ([]byte, error) {
-    // Context for connection + headers
-    ctx, cancel := context.WithTimeout(context.Background(), headerTimeout)
-    defer cancel()
-    
-    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil {
-        return nil, err
+    transport := &http.Transport{
+        ResponseHeaderTimeout: headerTimeout,
     }
+    client := &http.Client{Transport: transport}
     
-    client := &http.Client{}
-    resp, err := client.Do(req)
+    resp, err := client.Get(url)
     if err != nil {
         return nil, err
     }
     defer resp.Body.Close()
     
     // Separate timeout for body reading
-    bodyCtx, bodyCancel := context.WithTimeout(context.Background(), bodyTimeout)
-    defer bodyCancel()
+    timer := time.NewTimer(bodyTimeout)
+    defer timer.Stop()
     
     // Read body with timeout
     done := make(chan []byte, 1)
@@ -269,8 +262,9 @@ func fetchWithBodyTimeout(url string, headerTimeout, bodyTimeout time.Duration) 
         return data, nil
     case err := <-errChan:
         return nil, err
-    case <-bodyCtx.Done():
-        return nil, fmt.Errorf("body read timeout: %w", bodyCtx.Err())
+    case <-timer.C:
+        resp.Body.Close()
+        return nil, fmt.Errorf("body read timeout after %s", bodyTimeout)
     }
 }
 ```
@@ -346,7 +340,7 @@ func NewHTTPClient(cfg HTTPClientConfig) *http.Client {
     }
 }
 
-// HTTPClient wrapper with retry and logging
+// HTTPClient wrapper
 type HTTPClient struct {
     client *http.Client
     config HTTPClientConfig
@@ -414,7 +408,6 @@ import (
     "net"
     "net/http"
     "net/url"
-    "os"
     "time"
 )
 
@@ -542,6 +535,10 @@ func fetchWithRetry(ctx context.Context, client *http.Client, url string, cfg Re
             return nil, ctx.Err()
         }
         
+        if attempt == cfg.MaxRetries {
+            break
+        }
+        
         // Calculate backoff
         delay := time.Duration(float64(cfg.BaseDelay) * math.Pow(cfg.Multiplier, float64(attempt)))
         if delay > cfg.MaxDelay {
@@ -597,7 +594,7 @@ func main() {
 
 **Best Practices:**
 
-1. Never use `http.DefaultClient` in production
+1. Avoid relying on `http.DefaultClient` in production without setting timeouts
 2. Always set a `Client.Timeout` at minimum
 3. Use context for per-request timeouts
 4. Configure transport for granular control

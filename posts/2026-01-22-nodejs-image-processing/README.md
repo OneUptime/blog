@@ -256,9 +256,27 @@ async function addWatermark(imagePath, watermarkPath, outputPath, options = {}) 
   
   // Resize watermark if needed
   const watermarkWidth = Math.round(imageMetadata.width * 0.2);
-  const watermark = await sharp(watermarkPath)
+  const { data: resizedWatermark, info: watermarkInfo } = await sharp(watermarkPath)
     .resize(watermarkWidth, null)
-    .ensureAlpha(opacity)
+    .ensureAlpha()
+    .toBuffer({ resolveWithObject: true });
+  
+  const opacityMask = await sharp({
+    create: {
+      width: watermarkInfo.width,
+      height: watermarkInfo.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: opacity }
+    }
+  })
+    .png()
+    .toBuffer();
+  
+  const watermark = await sharp(resizedWatermark)
+    .composite([{
+      input: opacityMask,
+      blend: 'dest-in'
+    }])
     .toBuffer();
   
   // Calculate position
@@ -344,19 +362,20 @@ async function createCollage(images, outputPath, options = {}) {
 Jimp is a pure JavaScript alternative that works everywhere:
 
 ```javascript
-const Jimp = require('jimp');
+const { Jimp, intToRGBA, loadFont, HorizontalAlign, VerticalAlign } = require('jimp');
+const { SANS_64_WHITE } = require('jimp/fonts');
 
 // Basic operations with Jimp
 async function processWithJimp(inputPath, outputPath) {
   const image = await Jimp.read(inputPath);
   
   // Chain multiple operations
-  await image
-    .resize(800, Jimp.AUTO) // Maintain aspect ratio
-    .quality(85)            // JPEG quality
+  image
+    .resize({ w: 800 })     // Maintain aspect ratio
     .greyscale()            // Convert to grayscale
-    .contrast(0.2)          // Increase contrast
-    .writeAsync(outputPath);
+    .contrast(0.2);         // Increase contrast
+  
+  await image.write(outputPath, { quality: 85 });
   
   console.log('Image processed with Jimp');
 }
@@ -367,7 +386,7 @@ async function advancedJimpProcessing(inputPath) {
   
   // Get pixel color
   const color = image.getPixelColor(100, 100);
-  const rgba = Jimp.intToRGBA(color);
+  const rgba = intToRGBA(color);
   console.log('Pixel at (100,100):', rgba);
   
   // Iterate over pixels
@@ -385,7 +404,7 @@ async function advancedJimpProcessing(inputPath) {
     image.bitmap.data[idx + 2] = Math.min(255, (red * 0.272) + (green * 0.534) + (blue * 0.131));
   });
   
-  await image.writeAsync('./sepia_output.jpg');
+  await image.write('./sepia_output.jpg');
 }
 
 // Add text to image with Jimp
@@ -393,23 +412,23 @@ async function addTextToImage(inputPath, outputPath, text) {
   const image = await Jimp.read(inputPath);
   
   // Load font
-  const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+  const font = await loadFont(SANS_64_WHITE);
   
   // Print text
-  image.print(
+  image.print({
     font,
-    10, // x position
-    10, // y position
-    {
+    x: 10,
+    y: 10,
+    text: {
       text: text,
-      alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
-      alignmentY: Jimp.VERTICAL_ALIGN_MIDDLE
+      alignmentX: HorizontalAlign.CENTER,
+      alignmentY: VerticalAlign.MIDDLE
     },
-    image.bitmap.width - 20,
-    image.bitmap.height - 20
-  );
+    maxWidth: image.bitmap.width - 20,
+    maxHeight: image.bitmap.height - 20
+  });
   
-  await image.writeAsync(outputPath);
+  await image.write(outputPath);
 }
 ```
 

@@ -160,7 +160,7 @@ az network vnet subnet show \
 Calculate required subnet size:
 
 ```bash
-# For 100 VM instances, you need at least /25 subnet (126 usable IPs)
+# For 100 VM instances, you need at least /25 subnet (123 usable IPs)
 # Azure reserves 5 IPs per subnet
 # Recommended: use /24 (251 usable IPs) for room to grow
 ```
@@ -299,7 +299,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "main" {
   zones         = ["1", "2", "3"]
   zone_balance  = true
 
-  # Use flexible orchestration for better availability
+  # Allow multiple placement groups for larger Uniform scale sets
   platform_fault_domain_count = 1
   single_placement_group      = false
 
@@ -332,6 +332,7 @@ az network lb probe show \
 az vmss list-instances \
     --resource-group myResourceGroup \
     --name myVMSS \
+    --expand instanceView \
     --query "[].{Name:name, Health:instanceView.statuses[?code=='HealthState/healthy']}" \
     --output table
 ```
@@ -460,13 +461,13 @@ flowchart LR
 ```json
 {
     "extensionProfile": {
+        "extensionsTimeBudget": "PT30M",
         "extensions": [
             {
                 "properties": {
                     "settings": {
                         "timestamp": "[parameters('deploymentTimestamp')]"
-                    },
-                    "provisioningTimeout": "PT30M"
+                    }
                 }
             }
         ]

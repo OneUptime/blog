@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix common Ansible async task errors incl
 
 ---
 
-Ansible's async feature allows long-running tasks to execute without blocking playbook execution. However, async tasks come with their own set of challenges. This guide covers common errors and solutions for managing asynchronous tasks effectively.
+Ansible's async feature allows long-running tasks to avoid connection timeouts, and with `poll: 0` it can run tasks without blocking playbook execution. However, async tasks come with their own set of challenges. This guide covers common errors and solutions for managing asynchronous tasks effectively.
 
 ---
 
@@ -135,10 +135,11 @@ The most common async error is the task exceeding the specified async time.
       until: job_status.finished
       retries: 1440   # 24 hours with 1-minute intervals
       delay: 60
+      failed_when: false
 
     # Handle timeout gracefully
     - name: Handle timeout scenario
-      when: job_status.finished == false
+      when: not job_status.finished
       block:
         - name: Log timeout
           ansible.builtin.debug:
@@ -279,13 +280,13 @@ flowchart TB
       ansible.builtin.set_fact:
         job_ids: "{{ backup_jobs.results | map(attribute='ansible_job_id') | list }}"
 
-    # Wait for all jobs to complete
-    - name: Wait for all backups to complete
+    # Wait for each job to complete
+    - name: Wait for each backup to complete
       ansible.builtin.async_status:
         jid: "{{ item }}"
       register: job_results
       loop: "{{ job_ids }}"
-      until: job_results.results | map(attribute='finished') | list | min
+      until: job_results.finished
       retries: 120
       delay: 60
       ignore_errors: yes
@@ -403,8 +404,6 @@ flowchart TB
           echo "$i" > "$progress_file"
         done
 
-        # Cleanup
-        rm -f "$progress_file"
         echo "Complete"
       async: 300
       poll: 0

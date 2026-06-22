@@ -204,7 +204,7 @@ func main() {
 
 ## Common Mistake: Capturing Loop Variables in Goroutines
 
-A related issue involves closures in goroutines:
+A related issue involves closures in goroutines in Go 1.21 and earlier:
 
 ```go
 package main
@@ -223,7 +223,7 @@ func main() {
     
     var wg sync.WaitGroup
     
-    // WRONG: All goroutines see the last value of job
+    // WRONG in Go 1.21 and earlier: goroutines may see the last value of job
     for _, job := range jobs {
         wg.Add(1)
         go func() {
@@ -232,7 +232,7 @@ func main() {
         }()
     }
     wg.Wait()
-    // Likely outputs: 3, 3, 3 (or some unpredictable result)
+    // In Go 1.21 and earlier, this may output: 3, 3, 3 (or another unpredictable result)
 }
 ```
 
@@ -261,9 +261,9 @@ for _, job := range jobs {
 }
 ```
 
-### Fix 3: Use Index (Go 1.22+)
+### Fix 3: Rely on Per-Iteration Loop Variables (Go 1.22+)
 
-Starting with Go 1.22, loop variables are per-iteration:
+Starting with Go 1.22, loop variables are per-iteration for packages that declare `go 1.22` or later:
 
 ```go
 // Go 1.22+: Each iteration gets its own variable
@@ -414,14 +414,14 @@ When modifying slice elements during iteration in Go:
 | Use index | `slice[i].field = value` | Default choice |
 | Pointer slice | `[]*T` then `v.field = value` | When pointers make sense |
 | Address in loop | `v := &slice[i]` | Multiple modifications |
-| Go 1.22+ | Loop vars per-iteration | New code |
+| Go 1.22+ loop vars | Per-iteration closure capture | Goroutines and closures, not slice mutation |
 
 **Key Points:**
 
 1. `for _, v := range slice` creates a copy of each element
 2. Modifying the copy doesn't affect the original slice
 3. Use `slice[i]` or `&slice[i]` to modify originals
-4. For goroutines, pass values as parameters or use Go 1.22+
+4. For goroutines, pass values as parameters in Go 1.21 and earlier, or use Go 1.22+ loop semantics
 5. Maps allow modification of existing keys during iteration
 
 ---

@@ -144,11 +144,11 @@ def track_article_views(article_id: str, views: int = 1) -> float:
 def get_trending_articles(limit: int = 10) -> list:
     """Get top trending articles."""
     key = "trending:articles:daily"
-    # ZREVRANGE returns highest scores first
-    return r.zrevrange(key, 0, limit - 1, withscores=True)
+    # ZRANGE with desc=True returns highest scores first
+    return r.zrange(key, 0, limit - 1, desc=True, withscores=True)
 
-def get_article_rank(article_id: str) -> int:
-    """Get the rank of an article (0-indexed, None if not found)."""
+def get_article_rank(article_id: str) -> int | None:
+    """Get the rank of an article (1-indexed, None if not found)."""
     key = "trending:articles:daily"
     rank = r.zrevrank(key, article_id)
     return rank + 1 if rank is not None else None
@@ -175,21 +175,43 @@ import math
 def track_with_time_decay(item_id: str, score: float = 1.0) -> None:
     """Track item with time-based score decay."""
     key = "trending:time_decay"
-
-    # Use timestamp as part of score calculation
-    # Items naturally decay as newer items get higher timestamps
+    score_key = "trending:time_decay:scores"
+    created_key = "trending:time_decay:created"
     timestamp = time.time()
-    decay_factor = 45000  # Adjust for decay speed
+    gravity = 1.8  # Adjust for decay speed
 
-    # Score = actual_score * e^(timestamp/decay_factor)
-    weighted_score = score * math.exp(timestamp / decay_factor)
+    if not r.hexists(created_key, item_id):
+        r.hset(created_key, item_id, timestamp)
 
-    r.zincrby(key, weighted_score, item_id)
+    total_score = r.hincrbyfloat(score_key, item_id, score)
+    created_at = float(r.hget(created_key, item_id))
+    age_hours = max((timestamp - created_at) / 3600, 0)
+
+    # Score decreases as the item ages.
+    decayed_score = total_score / math.pow(age_hours + 2, gravity)
+    r.zadd(key, {item_id: decayed_score})
 
 def get_trending_with_decay(limit: int = 10) -> list:
     """Get trending items accounting for time decay."""
     key = "trending:time_decay"
-    return r.zrevrange(key, 0, limit - 1, withscores=True)
+    score_key = "trending:time_decay:scores"
+    created_key = "trending:time_decay:created"
+    now = time.time()
+
+    candidates = r.zrange(key, 0, -1, desc=True)
+    pipe = r.pipeline()
+
+    for item_id in candidates:
+        total_score = float(r.hget(score_key, item_id) or 0)
+        created_at = float(r.hget(created_key, item_id) or now)
+        age_hours = max((now - created_at) / 3600, 0)
+        decayed_score = total_score / math.pow(age_hours + 2, 1.8)
+        pipe.zadd(key, {item_id: decayed_score})
+
+    if candidates:
+        pipe.execute()
+
+    return r.zrange(key, 0, limit - 1, desc=True, withscores=True)
 ```
 
 ## HyperLogLog for Unique Visitor Counting
@@ -523,6 +545,7 @@ SLIDING_WINDOW_SCRIPT = """
 local key = KEYS[1]
 local window_size = tonumber(ARGV[1])
 local current_time = tonumber(ARGV[2])
+local ttl_seconds = math.ceil(window_size / 1000)
 local cutoff = current_time - window_size
 
 -- Remove old entries
@@ -535,7 +558,7 @@ redis.call('ZADD', key, current_time, current_time .. '-' .. math.random())
 local count = redis.call('ZCARD', key)
 
 -- Set expiration
-redis.call('EXPIRE', key, window_size)
+redis.call('EXPIRE', key, ttl_seconds)
 
 return count
 """

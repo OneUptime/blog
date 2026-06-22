@@ -55,9 +55,10 @@ cat >> images.txt << EOF
 docker.io/calico/cni:v3.26.1
 docker.io/calico/node:v3.26.1
 docker.io/calico/kube-controllers:v3.26.1
-k8s.gcr.io/metrics-server/metrics-server:v0.6.4
-k8s.gcr.io/ingress-nginx/controller:v1.8.0
-k8s.gcr.io/coredns/coredns:v1.10.1
+quay.io/tigera/operator:v1.30.4
+registry.k8s.io/metrics-server/metrics-server:v0.6.4
+registry.k8s.io/ingress-nginx/controller:v1.8.0
+registry.k8s.io/coredns/coredns:v1.10.1
 docker.io/library/nginx:1.25
 docker.io/library/busybox:1.36
 quay.io/coreos/flannel:v0.22.0
@@ -112,9 +113,9 @@ mkdir -p packages/debian
 
 # Download DEB packages
 apt-get download \
-    kubelet=$KUBE_VERSION-00 \
-    kubeadm=$KUBE_VERSION-00 \
-    kubectl=$KUBE_VERSION-00 \
+    kubelet=$KUBE_VERSION-1.1 \
+    kubeadm=$KUBE_VERSION-1.1 \
+    kubectl=$KUBE_VERSION-1.1 \
     containerd.io
 
 mv *.deb packages/debian/
@@ -129,11 +130,11 @@ tar -czvf kubernetes-packages.tar.gz packages/
 
 ```bash
 # On connected system, download Harbor offline installer
-wget https://github.com/goharbor/harbor/releases/download/v2.9.0/harbor-offline-installer-v2.9.0.tgz
+wget https://github.com/goharbor/harbor/releases/download/v2.14.0/harbor-offline-installer-v2.14.0.tgz
 
 # Transfer to air-gapped environment
 # Then on air-gapped system:
-tar xvf harbor-offline-installer-v2.9.0.tgz
+tar xvf harbor-offline-installer-v2.14.0.tgz
 cd harbor
 
 # Configure harbor
@@ -155,7 +156,7 @@ data_volume: /data/harbor
 EOF
 
 # Install Harbor
-./install.sh --with-notary --with-trivy
+./install.sh --with-trivy
 ```
 
 ### Simple Docker Registry
@@ -171,7 +172,8 @@ mkdir -p /opt/registry/{data,certs,auth}
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /opt/registry/certs/registry.key \
     -out /opt/registry/certs/registry.crt \
-    -subj "/CN=registry.airgap.local"
+    -subj "/CN=registry.airgap.local" \
+    -addext "subjectAltName=DNS:registry.airgap.local"
 
 # Start registry
 docker run -d \
@@ -199,8 +201,13 @@ docker load -i kubernetes-images.tar
 
 # Tag and push to private registry
 while read image; do
-    # Get image name without registry
-    IMAGE_NAME=$(echo $image | sed 's|.*/||')
+    # Preserve repository paths after the source registry.
+    IMAGE_NAME="${image#*/}"
+    if [[ "$IMAGE_NAME" == coredns/coredns:* ]]; then
+        IMAGE_NAME="coredns:${image##*:}"
+    elif [[ "$IMAGE_NAME" == library/* ]]; then
+        IMAGE_NAME="${IMAGE_NAME#library/}"
+    fi
     
     # Tag for private registry
     docker tag $image $REGISTRY/$IMAGE_NAME
@@ -228,13 +235,15 @@ for node in node1 node2 node3; do
     # Create cert directory
     ssh $node "mkdir -p /etc/docker/certs.d/$REGISTRY"
     ssh $node "mkdir -p /etc/containerd/certs.d/$REGISTRY"
+    ssh $node "mkdir -p /usr/local/share/ca-certificates"
     
     # Copy certificate
     scp $CERT_PATH $node:/etc/docker/certs.d/$REGISTRY/ca.crt
+    scp $CERT_PATH $node:/etc/containerd/certs.d/$REGISTRY/ca.crt
     scp $CERT_PATH $node:/usr/local/share/ca-certificates/registry.crt
     
     # Update CA certificates
-    ssh $node "update-ca-certificates"
+    ssh $node "if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; elif command -v update-ca-trust >/dev/null 2>&1; then cp /usr/local/share/ca-certificates/registry.crt /etc/pki/ca-trust/source/anchors/registry.crt && update-ca-trust; fi"
 done
 ```
 
@@ -244,19 +253,17 @@ done
 # /etc/containerd/config.toml
 
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://registry.airgap.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.gcr.io"]
-      endpoint = ["https://registry.airgap.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-      endpoint = ["https://registry.airgap.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
-      endpoint = ["https://registry.airgap.local:5000"]
-  
-  [plugins."io.containerd.grpc.v1.cri".registry.configs]
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.airgap.local:5000".tls]
-      ca_file = "/etc/containerd/certs.d/registry.airgap.local:5000/ca.crt"
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/registry.airgap.local:5000/hosts.toml
+
+server = "https://registry.airgap.local:5000"
+
+[host."https://registry.airgap.local:5000"]
+  capabilities = ["pull", "resolve", "push"]
+  ca = "/etc/containerd/certs.d/registry.airgap.local:5000/ca.crt"
 ```
 
 ```bash
@@ -277,12 +284,11 @@ tar -xzvf kubernetes-packages.tar.gz
 
 # For RHEL/CentOS
 cd packages/rhel
-sudo rpm -ivh *.rpm --nodeps
+sudo dnf install -y ./*.rpm
 
 # For Ubuntu/Debian
 cd packages/debian
-sudo dpkg -i *.deb
-sudo apt-get install -f
+sudo apt install -y ./*.deb
 ```
 
 ### Initialize Cluster with Private Registry
@@ -335,7 +341,7 @@ kind: Installation
 metadata:
   name: default
 spec:
-  registry: registry.airgap.local:5000
+  registry: registry.airgap.local:5000/
   calicoNetwork:
     bgp: Disabled
     ipPools:
@@ -347,6 +353,9 @@ spec:
 ```
 
 ```bash
+# Apply the air-gapped Tigera operator manifest first
+kubectl apply -f tigera-operator-airgap.yaml
+
 # Apply CNI
 kubectl apply -f calico-airgap.yaml
 ```
@@ -365,7 +374,7 @@ PRIVATE_REGISTRY="registry.airgap.local:5000"
 # Find and replace image references in values.yaml
 sed -i "s|docker.io/|$PRIVATE_REGISTRY/|g" $CHART_PATH/values.yaml
 sed -i "s|gcr.io/|$PRIVATE_REGISTRY/|g" $CHART_PATH/values.yaml
-sed -i "s|k8s.gcr.io/|$PRIVATE_REGISTRY/|g" $CHART_PATH/values.yaml
+sed -i "s|registry.k8s.io/|$PRIVATE_REGISTRY/|g" $CHART_PATH/values.yaml
 sed -i "s|quay.io/|$PRIVATE_REGISTRY/|g" $CHART_PATH/values.yaml
 ```
 
@@ -423,7 +432,7 @@ spec:
 NEW_IMAGES="
 nginx:1.26
 redis:7.2
-postgresql:16
+postgres:16
 "
 
 # Pull new images
@@ -467,8 +476,8 @@ ETCDCTL_API=3 etcdctl snapshot save $BACKUP_DIR/etcd-snapshot.db \
 # Backup kubernetes manifests
 cp -r /etc/kubernetes $BACKUP_DIR/
 
-# Backup all resources
-kubectl get all --all-namespaces -o yaml > $BACKUP_DIR/all-resources.yaml
+# Backup common workload resources
+kubectl get all,configmaps,secrets,persistentvolumes,persistentvolumeclaims,ingressclasses,ingress --all-namespaces -o yaml > $BACKUP_DIR/common-resources.yaml
 
 # Backup registry data
 tar -czvf $BACKUP_DIR/registry-data.tar.gz /opt/registry/data

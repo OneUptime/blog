@@ -114,9 +114,12 @@ func (c *Cache) GetAll() map[string]string {
 
 func main() {
     cache := NewCache()
+    var wg sync.WaitGroup
     
     // One writer
+    wg.Add(1)
     go func() {
+        defer wg.Done()
         for i := 0; i < 10; i++ {
             cache.Set("key", fmt.Sprintf("value%d", i))
             time.Sleep(100 * time.Millisecond)
@@ -124,7 +127,6 @@ func main() {
     }()
     
     // Many readers (can run concurrently)
-    var wg sync.WaitGroup
     for i := 0; i < 5; i++ {
         wg.Add(1)
         go func(id int) {
@@ -277,31 +279,17 @@ func (c *Cache) FetchAndStore(key, url string) error {
 
 ### Try-Lock Pattern
 
-Go doesn't have a built-in try-lock, but you can implement one:
+Go 1.18+ includes `TryLock` on `sync.Mutex` and `sync.RWMutex`. Use it sparingly:
 
 ```go
 package main
 
 import (
     "sync"
-    "sync/atomic"
 )
 
-type TryMutex struct {
-    locked int32
-}
-
-func (m *TryMutex) TryLock() bool {
-    return atomic.CompareAndSwapInt32(&m.locked, 0, 1)
-}
-
-func (m *TryMutex) Unlock() {
-    atomic.StoreInt32(&m.locked, 0)
-}
-
-// Usage
 func main() {
-    var mu TryMutex
+    var mu sync.Mutex
     
     if mu.TryLock() {
         defer mu.Unlock()
@@ -319,7 +307,6 @@ package main
 
 import (
     "context"
-    "sync"
     "time"
 )
 
@@ -404,18 +391,25 @@ func (km *KeyedMutex) Unlock(key string) {
 // Usage: different keys can be accessed concurrently
 func main() {
     km := NewKeyedMutex()
+    var wg sync.WaitGroup
     
+    wg.Add(1)
     go func() {
+        defer wg.Done()
         km.Lock("user:1")
         defer km.Unlock("user:1")
         // Work on user 1
     }()
     
+    wg.Add(1)
     go func() {
+        defer wg.Done()
         km.Lock("user:2")  // Doesn't block!
         defer km.Unlock("user:2")
         // Work on user 2 concurrently
     }()
+
+    wg.Wait()
 }
 ```
 

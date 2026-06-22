@@ -164,7 +164,7 @@ func main() {
         PermitWithoutStream: true,
     }
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(kaParams),
@@ -251,10 +251,12 @@ flowchart LR
     end
 
     subgraph Solution
-        D[Client] -->|Keepalive < 60s| E[Load Balancer]
+        D[Client] -->|Idle timeout > expected idle period| E[Load Balancer]
         E -->|Connection Active| F[Server]
     end
 ```
+
+For AWS Application Load Balancers, HTTP/2 PING frames do not reset the connection idle timeout. Increase the load balancer idle timeout to cover expected idle periods, or make sure the application sends data before the idle timeout expires.
 
 ### AWS ALB Configuration
 
@@ -278,7 +280,7 @@ resource "aws_lb_target_group" "grpc" {
     matcher             = "0"  # gRPC OK status
   }
 
-  # Increase idle timeout to accommodate long-running streams
+  # Optional stickiness for repeat calls from the same client
   stickiness {
     type            = "lb_cookie"
     cookie_duration = 86400  # 1 day
@@ -290,7 +292,7 @@ resource "aws_lb" "grpc" {
   internal           = false
   load_balancer_type = "application"
 
-  # Set idle timeout higher than client keepalive
+  # Set idle timeout high enough for expected idle periods
   idle_timeout = 120  # 2 minutes
 }
 ```
@@ -377,11 +379,40 @@ static_resources:
                     interval: 30s
                     timeout: 10s
 
+                route_config:
+                  name: grpc_routes
+                  virtual_hosts:
+                    - name: grpc_service
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: grpc_backend
+
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
   clusters:
     - name: grpc_backend
       connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
+
+      # Use HTTP/2 upstream for gRPC
+      http2_protocol_options: {}
+
+      load_assignment:
+        cluster_name: grpc_backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: grpc-server
+                      port_value: 50051
 
       # Circuit breaker settings
       circuit_breakers:
@@ -510,7 +541,7 @@ func WithRetry[T any](
 
 // Example usage
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -542,6 +573,8 @@ func main() {
 package main
 
 import (
+    "log"
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
@@ -566,7 +599,7 @@ func main() {
         }]
     }`
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(retryPolicy),
@@ -587,7 +620,6 @@ func main() {
 package main
 
 import (
-    "context"
     "log"
     "net"
     "sync"
@@ -687,7 +719,6 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -740,6 +771,8 @@ func watchHealth(conn *grpc.ClientConn, service string) {
 ```go
 // Enable verbose logging
 import (
+    "os"
+
     "google.golang.org/grpc/grpclog"
 )
 

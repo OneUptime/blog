@@ -73,14 +73,13 @@ services:
 
 ## Variable Precedence
 
-When the same variable is set multiple ways, Docker uses this precedence (highest to lowest):
+When the same variable is set multiple ways in Docker Compose, Compose uses this precedence (highest to lowest):
 
-1. Values set with `docker run -e`
-2. Values in `docker-compose.yml` environment section
-3. Values from env_file
-4. Values from `docker-compose.yml` env_file
-5. Dockerfile ENV instructions
-6. Values inherited from host
+1. Values set with `docker compose run -e`
+2. Values in `environment` or `env_file` that are interpolated from the shell or an environment file
+3. Values in the Compose file `environment` section
+4. Values from the Compose file `env_file` section
+5. Dockerfile `ENV` instructions
 
 Example demonstrating precedence:
 
@@ -109,8 +108,8 @@ RUN echo "Building version ${APP_VERSION}"
 LABEL version="${APP_VERSION}"
 LABEL build_date="${BUILD_DATE}"
 
-# ARG is NOT available at runtime
-# This will be empty when container runs
+# ARG itself is NOT available at runtime
+# ENV persists the resolved build-time value into the image
 ENV VERSION=${APP_VERSION}
 ```
 
@@ -279,16 +278,15 @@ docker compose config --format json | jq '.services.app.environment'
 
 ### Common Issues
 
-**Variable not expanding:**
+**Variable not expanding in an environment file:**
 
-```yaml
-# Wrong: Single quotes prevent expansion
-environment:
-  - URL='http://${HOST}:${PORT}'
+```bash
+# .env or env_file
+# Wrong: Single quotes prevent expansion in environment files
+URL='http://${HOST}:${PORT}'
 
 # Correct: Use double quotes or no quotes
-environment:
-  - URL=http://${HOST}:${PORT}
+URL=http://${HOST}:${PORT}
 ```
 
 **Whitespace in values:**

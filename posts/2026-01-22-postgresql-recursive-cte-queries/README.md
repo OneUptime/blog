@@ -223,7 +223,7 @@ WITH RECURSIVE bom AS (
 )
 SELECT sum(quantity * unit_cost) AS total_cost
 FROM bom
-WHERE unit_cost > 0;  -- Only count leaf parts with costs
+WHERE unit_cost > 0;  -- Only count costed parts
 ```
 
 ## Example 3: Graph Traversal
@@ -276,7 +276,7 @@ WITH RECURSIVE paths AS (
 SELECT path, total_weight
 FROM paths
 WHERE to_node = 'G'
-ORDER BY total_weight;
+ORDER BY total_weight, path;
 ```
 
 Result:
@@ -285,8 +285,8 @@ Result:
 -----------------------+--------------
  {A,B,D,G}             |            8
  {A,B,E,G}             |           12
- {A,C,F,G}             |           13
  {A,C,E,G}             |           12
+ {A,C,F,G}             |           13
 ```
 
 ## Preventing Infinite Loops

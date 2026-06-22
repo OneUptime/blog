@@ -62,7 +62,7 @@ export class TestRedis {
 
   createQueueEvents(name: string): QueueEvents {
     const events = new QueueEvents(name, {
-      connection: this.connection,
+      connection: this.connection.duplicate(),
     });
     this.queueEvents.push(events);
     return events;
@@ -199,6 +199,7 @@ describe('Job Lifecycle Integration', () => {
     const queueName = `test-queue-${Date.now()}`;
     queue = testRedis.createQueue(queueName);
     queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
   });
 
   it('should process job and return result', async () => {
@@ -318,6 +319,8 @@ describe('Multiple Workers', () => {
     const processedBy: string[] = [];
     const queueName = `multi-worker-${Date.now()}`;
     const queue = testRedis.createQueue(queueName);
+    const queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
 
     // Create multiple workers
     const workers = [1, 2, 3].map((id) =>
@@ -336,7 +339,6 @@ describe('Multiple Workers', () => {
     );
 
     // Wait for all jobs to complete
-    const queueEvents = testRedis.createQueueEvents(queueName);
     await Promise.all(
       jobs.map((job) => job.waitUntilFinished(queueEvents, 10000))
     );
@@ -356,6 +358,8 @@ describe('Multiple Workers', () => {
     let maxConcurrent = 0;
     const queueName = `concurrent-${Date.now()}`;
     const queue = testRedis.createQueue(queueName);
+    const queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
 
     const worker = testRedis.createWorker(
       queueName,
@@ -377,7 +381,6 @@ describe('Multiple Workers', () => {
     );
 
     // Wait for completion
-    const queueEvents = testRedis.createQueueEvents(queueName);
     await Promise.all(
       jobs.map((job) => job.waitUntilFinished(queueEvents, 10000))
     );
@@ -400,6 +403,8 @@ describe('Flow Integration', () => {
 
     const parentQueue = testRedis.createQueue('parent');
     const childQueue = testRedis.createQueue('child');
+    const parentEvents = testRedis.createQueueEvents('parent');
+    await parentEvents.waitUntilReady();
 
     // Child worker
     testRedis.createWorker('child', async (job) => {
@@ -434,7 +439,6 @@ describe('Flow Integration', () => {
     });
 
     // Wait for parent to complete
-    const parentEvents = testRedis.createQueueEvents('parent');
     const result = await flow.job.waitUntilFinished(parentEvents, 10000);
 
     expect(result.parentResult).toBe(true);
@@ -462,6 +466,7 @@ describe('Event Handling', () => {
     const queueName = `events-${Date.now()}`;
     const queue = testRedis.createQueue(queueName);
     const queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
 
     queueEvents.on('waiting', () => events.push('waiting'));
     queueEvents.on('active', () => events.push('active'));
@@ -495,6 +500,7 @@ describe('Event Handling', () => {
     const queueName = `fail-events-${Date.now()}`;
     const queue = testRedis.createQueue(queueName);
     const queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
 
     queueEvents.on('failed', ({ failedReason: reason }) => {
       failedReason = reason;
@@ -534,6 +540,8 @@ describe('Rate Limiting', () => {
         removeOnComplete: true,
       },
     });
+    const queueEvents = testRedis.createQueueEvents(queueName);
+    await queueEvents.waitUntilReady();
 
     testRedis.createWorker(
       queueName,
@@ -557,7 +565,6 @@ describe('Rate Limiting', () => {
     );
 
     // Wait for all to complete
-    const queueEvents = testRedis.createQueueEvents(queueName);
     await Promise.all(
       jobs.map((job) => job.waitUntilFinished(queueEvents, 10000))
     );
@@ -576,7 +583,7 @@ Create helper utilities for integration tests:
 
 ```typescript
 // test/helpers/waitForJob.ts
-import { Job, QueueEvents } from 'bullmq';
+import { Job, Queue, QueueEvents } from 'bullmq';
 
 export async function waitForJobState(
   job: Job,

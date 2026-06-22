@@ -44,7 +44,7 @@ metadata:
   name: {{ .Release.Name }}
   namespace: {{ .Release.Namespace }}
   labels:
-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 ```
 
@@ -279,7 +279,7 @@ has-key1: true
 # Unset a value
 {{- $_ := unset $myDict "key1" }}
 
-# Merge dictionaries (later values override)
+# Merge dictionaries (first dictionary takes precedence)
 {{- $merged := merge $dict1 $dict2 }}
 
 # Merge with overwrite
@@ -424,8 +424,8 @@ data:
   maximum: {{ max 1 5 3 }}       # 5
   
   # Rounding
-  ceiling: {{ ceil 1.5 }}        # 2
-  floor: {{ floor 1.5 }}         # 1
+  ceiling: {{ ceil 1.5 }}        # 2.0
+  floor: {{ floor 1.5 }}         # 1.0
   rounded: {{ round 1.55 1 }}    # 1.6
   
   # Increment for port calculations
@@ -491,6 +491,10 @@ helm.sh/chart: {{ include "my-chart.chart" . }}
 
 {{- define "my-chart.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "my-chart.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{- define "my-chart.fullname" -}}

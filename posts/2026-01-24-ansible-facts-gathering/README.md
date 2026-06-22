@@ -223,10 +223,10 @@ gantt
         msg: "Distribution: {{ ansible_distribution }}, Network: {{ ansible_default_ipv4.address | default('N/A') }}"
 ```
 
-### Complete List of Fact Subsets
+### Common Fact Subsets
 
 ```yaml
-# Reference: All available gather_subset values
+# Reference: Common gather_subset values
 
 # Subset options:
 #   all        - Gather all facts (default)
@@ -241,7 +241,8 @@ gantt
 #   !hardware  - Exclude hardware facts
 #   !network   - Exclude network facts
 #   !virtual   - Exclude virtual facts
-#   !all       - Start with nothing (use with specific subsets)
+#   !all       - Gather only the min subset unless you also exclude !min
+#   !all,!min  - Start with nothing (use with specific subsets)
 ```
 
 ## Caching Facts for Performance
@@ -286,7 +287,7 @@ flowchart TD
 
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 # Redis connection string
 fact_caching_connection = localhost:6379:0
 fact_caching_timeout = 86400
@@ -296,7 +297,8 @@ fact_caching_timeout = 86400
 ```
 
 ```bash
-# Install Redis Python library
+# Install the Redis cache plugin collection and Python library
+ansible-galaxy collection install community.general
 pip install redis
 ```
 
@@ -307,13 +309,14 @@ pip install redis
 
 [defaults]
 gathering = smart
-fact_caching = memcached
+fact_caching = community.general.memcached
 fact_caching_connection = 127.0.0.1:11211
 fact_caching_timeout = 86400
 ```
 
 ```bash
-# Install Memcached Python library
+# Install the Memcached cache plugin collection and Python library
+ansible-galaxy collection install community.general
 pip install python-memcached
 ```
 
@@ -751,6 +754,7 @@ flowchart TD
 - name: Benchmark Full Facts
   hosts: all
   gather_facts: true
+  tags: full
 
   tasks:
     - name: Record full facts time
@@ -761,6 +765,7 @@ flowchart TD
 - name: Benchmark Minimal Facts
   hosts: all
   gather_facts: false
+  tags: minimal
 
   tasks:
     - name: Gather minimal facts
@@ -775,6 +780,7 @@ flowchart TD
 - name: Benchmark No Facts
   hosts: all
   gather_facts: false
+  tags: none
 
   tasks:
     - name: Simple task without facts

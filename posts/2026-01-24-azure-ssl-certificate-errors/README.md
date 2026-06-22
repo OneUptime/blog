@@ -107,6 +107,7 @@ az webapp config ssl create \
 az webapp config ssl bind \
     --name myapp \
     --resource-group myresourcegroup \
+    --hostname www.mydomain.com \
     --certificate-thumbprint <new-thumbprint> \
     --ssl-type SNI
 ```
@@ -127,6 +128,7 @@ az webapp config ssl upload \
 az webapp config ssl bind \
     --name myapp \
     --resource-group myresourcegroup \
+    --hostname www.mydomain.com \
     --certificate-thumbprint <new-thumbprint> \
     --ssl-type SNI
 ```
@@ -174,7 +176,7 @@ flowchart TB
 # This should show multiple certificates in the chain
 openssl s_client -connect myapp.com:443 -servername myapp.com -showcerts 2>/dev/null | grep -E "s:|i:"
 
-# Expected: Your cert, intermediate(s), root
+# Expected: Your cert and intermediate(s); the trusted root is often not sent by the server
 # Problem: Only your cert showing
 ```
 
@@ -183,14 +185,15 @@ openssl s_client -connect myapp.com:443 -servername myapp.com -showcerts 2>/dev/
 When creating your PFX, include the full chain:
 
 ```bash
-# Combine certificates in correct order
-cat your-certificate.crt intermediate.crt root.crt > fullchain.crt
+# Combine intermediate and root certificates
+cat intermediate.crt root.crt > chain.crt
 
 # Create PFX with full chain
 openssl pkcs12 -export \
     -out certificate.pfx \
     -inkey private.key \
-    -in fullchain.crt \
+    -in your-certificate.crt \
+    -certfile chain.crt \
     -password pass:your-password
 ```
 
@@ -245,13 +248,14 @@ az webapp config hostname add \
 az webapp config ssl bind \
     --name myapp \
     --resource-group myresourcegroup \
+    --hostname www.mydomain.com \
     --certificate-thumbprint <thumbprint> \
     --ssl-type SNI
 ```
 
 ## Fix 4: TLS Version Incompatibility
 
-Old TLS versions (1.0, 1.1) are disabled by default. Clients using them will fail.
+Old TLS versions (1.0, 1.1) are disabled by default for new App Service apps. Clients using them will fail.
 
 ### Check Current TLS Configuration
 
@@ -316,6 +320,7 @@ az webapp config ssl unbind \
 az webapp config ssl bind \
     --name myapp \
     --resource-group myresourcegroup \
+    --hostname www.mydomain.com \
     --certificate-thumbprint <correct-thumbprint> \
     --ssl-type SNI
 ```
@@ -343,7 +348,7 @@ openssl pkcs12 -export -out dev.pfx -inkey dev.key -in dev.crt
 ```csharp
 // C# - Only for development/testing
 var handler = new HttpClientHandler();
-if (Environment.IsDevelopment())
+if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
 {
     handler.ServerCertificateCustomValidationCallback =
         (message, cert, chain, errors) => true;
@@ -380,8 +385,9 @@ az keyvault certificate create \
     --policy @cert-policy.json
 ```
 
+cert-policy.json:
+
 ```json
-// cert-policy.json
 {
     "issuerParameters": {
         "name": "DigiCert"
@@ -415,9 +421,9 @@ Set up alerts before certificates expire.
 az monitor scheduled-query create \
     --name "CertExpiryAlert" \
     --resource-group myresourcegroup \
-    --scopes "/subscriptions/{sub-id}/resourceGroups/{rg}" \
-    --condition "count > 0" \
-    --condition-query "AzureDiagnostics | where ResourceType == 'VAULTS' | where certificateExpiry_d < 30"
+    --scopes "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{workspace}" \
+    --condition "count 'CertificateNearExpiry' > 0" \
+    --condition-query CertificateNearExpiry="AzureDiagnostics | where OperationName =~ 'CertificateNearExpiryEventGridNotification'"
 ```
 
 ## SSL Certificate Checklist

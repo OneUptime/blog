@@ -84,9 +84,9 @@ npm root -g
 # /usr/local/lib/node_modules (macOS/Linux)
 # C:\Users\you\AppData\Roaming\npm\node_modules (Windows)
 
-# Find global binary location
-npm bin -g
-# /usr/local/bin
+# Find global prefix (binaries are in <prefix>/bin on macOS/Linux, <prefix> on Windows)
+npm prefix -g
+# /usr/local
 
 # List global packages
 npm list -g --depth=0
@@ -137,9 +137,9 @@ Local packages work in npm scripts without npx:
     "format": "prettier --write ."
   },
   "devDependencies": {
-    "jest": "^29.0.0",
+    "jest": "^30.0.0",
     "webpack": "^5.0.0",
-    "eslint": "^8.0.0",
+    "eslint": "^10.0.0",
     "prettier": "^3.0.0"
   }
 }
@@ -156,7 +156,7 @@ npx lets you run packages without global installation:
 npx jest
 
 # Run package without installing
-npx create-react-app my-app
+npx create-vite@latest my-app --template react
 
 # Run specific version
 npx node@18 script.js
@@ -230,12 +230,12 @@ npm install -g nodemon
 ### Command Not Found After Global Install
 
 ```bash
-# Check if npm bin is in PATH
-npm bin -g
+# Check if the global prefix's bin directory is in PATH
+npm prefix -g
 # Add to PATH if not
 
 # macOS/Linux: Add to ~/.bashrc or ~/.zshrc
-export PATH=$(npm bin -g):$PATH
+export PATH="$(npm prefix -g)/bin:$PATH"
 
 # Windows: Add to Environment Variables
 ```
@@ -258,10 +258,10 @@ For most tools, prefer local installation:
 ```json
 {
   "devDependencies": {
-    "eslint": "^8.0.0",
+    "eslint": "^10.0.0",
     "prettier": "^3.0.0",
-    "jest": "^29.0.0",
-    "typescript": "^5.0.0"
+    "jest": "^30.0.0",
+    "typescript": "^6.0.0"
   },
   "scripts": {
     "lint": "eslint .",
@@ -290,7 +290,7 @@ npm install -g nodemon        # Auto-restart for Node
 
 # One-time project generators
 npm install -g @angular/cli
-npm install -g create-react-app  # Though npx is better
+npm install -g create-vite       # Though npx is better
 
 # System tools
 npm install -g npm-check-updates  # Update checker
@@ -308,7 +308,7 @@ Even these can be used with npx instead:
 ```bash
 npx serve dist/
 npx nodemon server.js
-npx create-react-app my-app
+npx create-vite@latest my-app --template react
 ```
 
 ## Project Setup Recommendation
@@ -324,12 +324,12 @@ npx create-react-app my-app
     "format": "prettier --write ."
   },
   "dependencies": {
-    "express": "^4.18.0"
+    "express": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0",
-    "jest": "^29.0.0",
-    "eslint": "^8.0.0",
+    "jest": "^30.0.0",
+    "eslint": "^10.0.0",
     "prettier": "^3.0.0"
   }
 }

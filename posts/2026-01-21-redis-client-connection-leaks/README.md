@@ -178,7 +178,10 @@ pool = redis.ConnectionPool(
 )
 
 def get_pool_stats(pool):
-    """Get connection pool statistics"""
+    """Get connection pool statistics.
+
+    These attributes are redis-py internals and can change between versions.
+    """
     return {
         'created': pool._created_connections,
         'available': len(pool._available_connections),
@@ -204,17 +207,17 @@ for i in range(100):
 
 ### Pattern 1: Missing Connection Pool
 
-**Bad - Creates new connection each time:**
+**Bad - Creates a new client and pool each time:**
 
 ```python
 import redis
 
 def get_user_bad(user_id):
-    # BAD: New connection every call
+    # BAD: New client and pool every call
     r = redis.Redis(host='localhost', port=6379)
     return r.get(f'user:{user_id}')
 
-# Each call creates a new connection that may not be closed
+# Each call creates a separate pool that may keep an idle connection open
 for i in range(1000):
     get_user_bad(i)
 ```
@@ -233,18 +236,16 @@ pool = redis.ConnectionPool(
     socket_connect_timeout=5
 )
 
-def get_redis():
-    return redis.Redis(connection_pool=pool)
+redis_client = redis.Redis(connection_pool=pool)
 
 def get_user_good(user_id):
     # GOOD: Uses pooled connection
-    r = get_redis()
-    return r.get(f'user:{user_id}')
+    return redis_client.get(f'user:{user_id}')
 ```
 
 ### Pattern 2: Missing Error Handling
 
-**Bad - Connection leaks on error:**
+**Bad - Client is not closed on error:**
 
 ```python
 import redis
@@ -252,7 +253,7 @@ import redis
 def process_data_bad(data):
     r = redis.Redis(host='localhost', port=6379)
 
-    # If this fails, connection may leak
+    # If this fails, the client and its pool are not closed
     result = r.set('key', data)
     processed = r.get('key')
 
@@ -346,17 +347,17 @@ subscriber.close()
 
 ### Pattern 4: Async Connection Leaks
 
-**Bad - Async connections not awaited:**
+**Bad - Async client created per call and not closed:**
 
 ```python
 import asyncio
-import aioredis
+from redis import asyncio as aioredis
 
 async def get_data_bad(key):
-    # BAD: Creates new connection, never closed
-    redis = await aioredis.create_redis_pool('redis://localhost')
+    # BAD: Creates a new client and pool, never closed
+    redis = aioredis.Redis.from_url('redis://localhost')
     value = await redis.get(key)
-    # Missing: redis.close() and await redis.wait_closed()
+    # Missing: await redis.aclose()
     return value
 ```
 
@@ -364,36 +365,34 @@ async def get_data_bad(key):
 
 ```python
 import asyncio
-import aioredis
+from redis import asyncio as aioredis
 
-class AsyncRedisPool:
-    _pool = None
+class AsyncRedisClient:
+    _client = None
 
     @classmethod
-    async def get_pool(cls):
-        if cls._pool is None:
-            cls._pool = await aioredis.create_redis_pool(
+    async def get_client(cls):
+        if cls._client is None:
+            cls._client = aioredis.Redis.from_url(
                 'redis://localhost',
-                minsize=5,
-                maxsize=20
+                max_connections=20
             )
-        return cls._pool
+        return cls._client
 
     @classmethod
     async def close(cls):
-        if cls._pool:
-            cls._pool.close()
-            await cls._pool.wait_closed()
-            cls._pool = None
+        if cls._client:
+            await cls._client.aclose()
+            cls._client = None
 
 async def get_data_good(key):
-    pool = await AsyncRedisPool.get_pool()
-    value = await pool.get(key)
+    redis = await AsyncRedisClient.get_client()
+    value = await redis.get(key)
     return value
 
 # On application shutdown
 async def shutdown():
-    await AsyncRedisPool.close()
+    await AsyncRedisClient.close()
 ```
 
 ## Step 5: Configure Connection Limits
@@ -430,8 +429,8 @@ redis-cli CLIENT KILL ADDR 192.168.1.100:54321
 # Kill by filter
 redis-cli CLIENT KILL TYPE normal SKIPME yes
 
-# Kill idle connections older than 1 hour
-redis-cli CLIENT KILL IDLE 3600
+# Kill connections older than 1 hour
+redis-cli CLIENT KILL MAXAGE 3600
 ```
 
 ## Step 6: Implement Connection Health Checks
@@ -462,7 +461,10 @@ class HealthCheckedPool:
         thread.start()
 
     def _check_pool_health(self):
-        """Check and report pool health"""
+        """Check and report pool health.
+
+        These attributes are redis-py internals and can change between versions.
+        """
         stats = {
             'created': self.pool._created_connections,
             'available': len(self.pool._available_connections),
@@ -516,9 +518,9 @@ def collect_connection_metrics(host='localhost', port=6379):
             current_total = stats['total_connections_received']
             current_rejected = stats['rejected_connections']
 
-            if last_total > 0:
+            if last_total > 0 and current_total >= last_total:
                 total_connections.inc(current_total - last_total)
-            if last_rejected > 0:
+            if last_rejected > 0 and current_rejected >= last_rejected:
                 rejected_connections.inc(current_rejected - last_rejected)
 
             last_total = current_total
@@ -550,7 +552,7 @@ groups:
           description: "{{ $value }} connections, check for leaks"
 
       - alert: RedisConnectionsRejected
-        expr: rate(redis_rejected_connections[5m]) > 0
+        expr: rate(redis_rejected_connections_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -559,7 +561,7 @@ groups:
           description: "maxclients limit reached"
 
       - alert: RedisConnectionChurn
-        expr: rate(redis_total_connections[5m]) > 100
+        expr: rate(redis_total_connections_total[5m]) > 100
         for: 10m
         labels:
           severity: warning

@@ -75,7 +75,7 @@ Edit your SSH client configuration to send keepalive packets:
 ```bash
 # Edit the SSH client config file
 # This configuration applies to all SSH connections from this client
-sudo nano ~/.ssh/config
+nano ~/.ssh/config
 ```
 
 Add the following configuration:
@@ -121,9 +121,13 @@ Apply the changes:
 # Restart SSH service to apply changes
 # For systemd-based systems
 sudo systemctl restart sshd
+# On Debian/Ubuntu systems, the service is often named ssh
+sudo systemctl restart ssh
 
 # For older init systems
 sudo service sshd restart
+# Or, on systems where the service is named ssh
+sudo service ssh restart
 ```
 
 ### Using Screen or Tmux
@@ -180,13 +184,13 @@ When writing scripts, you may want to handle broken pipes gracefully:
 # Script that handles broken pipe errors gracefully
 
 # Trap SIGPIPE and handle it
-trap '' PIPE
+trap 'exit 0' PIPE
 
 # Function to write with error handling
 safe_write() {
     # Write to stdout, capturing any errors
     # The 2>/dev/null suppresses error messages
-    echo "$1" 2>/dev/null || true
+    printf '%s\n' "$1" 2>/dev/null || exit 0
 }
 
 # Example: Generate data that might outlive its consumer
@@ -194,12 +198,6 @@ generate_data() {
     for i in $(seq 1 1000000); do
         # Use safe_write to avoid broken pipe termination
         safe_write "Line $i of output"
-
-        # Check if we can still write
-        if ! echo "" >/dev/null 2>&1; then
-            # Consumer has closed, exit gracefully
-            exit 0
-        fi
     done
 }
 
@@ -228,7 +226,7 @@ rm /tmp/stage1.txt /tmp/stage2.txt /tmp/stage3.txt
 
 ```bash
 # Process substitution can help manage complex data flows
-# This creates named pipes automatically
+# Bash implements this using named pipes or /dev/fd, depending on the system
 
 diff <(sort file1.txt) <(sort file2.txt)
 
@@ -300,17 +298,19 @@ strace -f -e write,pipe your_command 2>&1 | grep -E '(EPIPE|SIGPIPE|Broken)'
 ps aux | grep your_process
 
 # Then trace it
-sudo strace -p <PID> -e signal 2>&1 | grep SIGPIPE
+PID=1234  # replace with the process ID
+sudo strace -p "$PID" -e signal 2>&1 | grep SIGPIPE
 ```
 
 ### Monitoring Pipe Status
 
 ```bash
 # List all open pipes for a process
-ls -la /proc/<PID>/fd | grep pipe
+PID=1234  # replace with the process ID
+ls -la "/proc/$PID/fd" | grep pipe
 
 # Use lsof to see pipe connections
-lsof -p <PID> | grep PIPE
+lsof -p "$PID" | grep PIPE
 
 # Monitor pipe buffer status
 cat /proc/sys/fs/pipe-max-size
@@ -351,26 +351,22 @@ flowchart TD
 """
 Handle broken pipe errors gracefully in Python scripts.
 """
-import signal
+import os
 import sys
-
-# Ignore SIGPIPE signal to handle broken pipes gracefully
-# This prevents the default behavior of terminating the script
-signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 def main():
     try:
         # Your main logic here
         for i in range(1000000):
-            try:
-                print(f"Line {i}")
-                # Flush to detect broken pipe early
-                sys.stdout.flush()
-            except BrokenPipeError:
-                # Consumer closed the pipe, exit gracefully
-                # Close stderr to avoid error messages
-                sys.stderr.close()
-                sys.exit(0)
+            print(f"Line {i}")
+        # Flush to detect broken pipe while still inside the try block
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # Consumer closed the pipe; redirect remaining stdout to /dev/null
+        # so Python does not raise another BrokenPipeError during shutdown.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(1)
     except KeyboardInterrupt:
         sys.exit(0)
 
@@ -389,28 +385,22 @@ safe_pipe() {
     # Run the command and handle SIGPIPE
     # Returns 0 even if pipe breaks
     (
-        trap '' PIPE
+        trap 'exit 0' PIPE
         "$@"
     ) 2>/dev/null
     return 0
 }
 
-# Function to check if stdout is connected to a valid consumer
-stdout_valid() {
-    # Returns true if stdout can be written to
-    echo "" >/dev/null 2>&1
+# Function to write a line and exit cleanly if the consumer closed the pipe
+write_line() {
+    printf '%s\n' "$1" 2>/dev/null || exit 0
 }
 
 # Example usage
 main() {
     # Generate large output safely
     for i in $(seq 1 100000); do
-        if stdout_valid; then
-            echo "Processing item $i"
-        else
-            echo "Consumer disconnected, exiting" >&2
-            exit 0
-        fi
+        write_line "Processing item $i"
     done
 }
 
@@ -443,12 +433,10 @@ flowchart LR
 #!/bin/bash
 # monitor_broken_pipes.sh
 
-LOG_FILE="/var/log/syslog"
 ALERT_THRESHOLD=10
-WINDOW_SECONDS=300
 
 # Count broken pipe errors in the last 5 minutes
-count=$(grep -c "Broken pipe" "$LOG_FILE" 2>/dev/null | tail -$WINDOW_SECONDS)
+count=$(journalctl --since "5 minutes ago" 2>/dev/null | grep -c "Broken pipe")
 
 if [ "$count" -gt "$ALERT_THRESHOLD" ]; then
     echo "Alert: $count broken pipe errors detected in last 5 minutes"

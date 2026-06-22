@@ -184,13 +184,12 @@ flowchart LR
 
     subgraph "Double Brackets [[ ]]"
         B1["Word splitting: NO"]
-        B2["Glob expansion: NO*"]
+        B2["Pathname expansion: NO"]
         B3["POSIX compliant: NO"]
         B4["Pattern matching: YES"]
     end
 
-    A1 --> C["*except on right side of == or !="]
-    B2 --> C
+    B4 --> C["right side of == or != is treated as a pattern unless quoted"]
 ```
 
 ## Handling Arrays Properly
@@ -233,8 +232,8 @@ The `find` command combined with `-exec` can also trigger argument errors.
 ```bash
 #!/bin/bash
 
-# Problem: Too many files for single command
-# This might fail if there are many matches
+# Problem: Multiple paths stored in one variable
+# This might fail if find returns more than one path
 result=$(find /var/log -name "*.log")
 if [ -n $result ]; then
     echo "Found log files"
@@ -245,8 +244,8 @@ if [ -n "$result" ]; then
     echo "Found log files"
 fi
 
-# Solution 2: Use find's exit status directly
-if find /var/log -name "*.log" -quit 2>/dev/null | grep -q .; then
+# Solution 2: Stop after the first match and test the output
+if find /var/log -name "*.log" -print -quit 2>/dev/null | grep -q .; then
     echo "Found log files"
 fi
 
@@ -372,7 +371,7 @@ done
 ```bash
 #!/bin/bash
 
-# A robust script that handles all edge cases
+# A robust script that handles common edge cases
 
 check_files() {
     local dir="${1:-.}"  # Default to current directory

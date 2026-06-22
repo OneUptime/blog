@@ -45,8 +45,8 @@ DECLARE
 BEGIN
     -- Calculate subtotal
     SELECT SUM(quantity * price) INTO subtotal
-    FROM order_items
-    WHERE order_id = calculate_order_total.order_id;
+    FROM order_items oi
+    WHERE oi.order_id = calculate_order_total.order_id;
 
     -- Calculate total with tax
     total := subtotal * (1 + tax_rate);
@@ -207,13 +207,6 @@ CREATE TRIGGER check_email
 ### Conditional Trigger
 
 ```sql
--- Trigger with WHEN condition
-CREATE TRIGGER log_price_changes
-    AFTER UPDATE OF price ON products
-    FOR EACH ROW
-    WHEN (OLD.price IS DISTINCT FROM NEW.price)
-    EXECUTE FUNCTION log_price_change();
-
 -- Function
 CREATE OR REPLACE FUNCTION log_price_change()
 RETURNS TRIGGER AS $$
@@ -223,6 +216,13 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Trigger with WHEN condition
+CREATE TRIGGER log_price_changes
+    AFTER UPDATE OF price ON products
+    FOR EACH ROW
+    WHEN (OLD.price IS DISTINCT FROM NEW.price)
+    EXECUTE FUNCTION log_price_change();
 ```
 
 ## Advanced Patterns
@@ -347,7 +347,7 @@ BEGIN
 
     IF TG_OP = 'UPDATE' THEN
         -- Compare specific fields
-        IF OLD.status != NEW.status THEN
+        IF OLD.status IS DISTINCT FROM NEW.status THEN
             RAISE NOTICE 'Status changed from % to %', OLD.status, NEW.status;
         END IF;
     END IF;

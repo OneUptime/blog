@@ -21,8 +21,8 @@ ClickHouse Keeper is a drop-in replacement for ZooKeeper, built specifically for
 | Memory footprint  | Higher       | Lower             |
 | Configuration     | Complex      | Simpler           |
 | ClickHouse-native | No           | Yes               |
-| Log format        | Binary       | Human-readable    |
-| Compression       | No           | Configurable      |
+| Snapshot/log format | ZooKeeper format | Keeper format (not interchangeable) |
+| Compression       | Limited      | Configurable      |
 ```
 
 ## Setting Up ClickHouse Keeper
@@ -223,11 +223,6 @@ spec:
               mountPath: /etc/clickhouse-keeper/
             - name: data
               mountPath: /var/lib/clickhouse-keeper
-          env:
-            - name: KEEPER_SERVER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
       volumes:
         - name: config
           configMap:
@@ -265,34 +260,49 @@ spec:
 
 echo "stat" | nc zookeeper-1 2181
 
-# 2. Backup ZooKeeper data
-zkCli.sh -server zookeeper-1:2181 <<< "getAll /" > zk_backup.txt
+# 2. List ZooKeeper tree for comparison
+zkCli.sh -server zookeeper-1:2181 <<< "ls -R /" > zk_tree.txt
 
-# 3. Verify ClickHouse tables
+# 3. Backup ZooKeeper logs and snapshots
+cp -a /var/lib/zookeeper/version-2 /backup/zookeeper-version-2
+
+# 4. Verify ClickHouse tables
 clickhouse-client --query "SELECT database, table FROM system.replicas"
 ```
 
 ### Migration Steps
 
 ```bash
-# 1. Set up Keeper cluster (do not start yet)
+# 1. Stop data ingestion and ClickHouse background tasks
+clickhouse-client --query "SYSTEM STOP MERGES"
+
+# 2. Stop ZooKeeper after taking backups
+systemctl stop zookeeper
+
+# 3. Set up Keeper cluster (do not start yet)
 # Configure all keeper nodes
 
-# 2. Export ZooKeeper data
+# 4. Export ZooKeeper data to the Keeper snapshot directory
 clickhouse-keeper-converter --zookeeper-logs-dir /var/lib/zookeeper/version-2 \
     --zookeeper-snapshots-dir /var/lib/zookeeper/version-2 \
-    --output-dir /var/lib/clickhouse-keeper
+    --output-dir /var/lib/clickhouse-keeper/snapshots
 
-# 3. Copy converted data to all Keeper nodes
-rsync -av /var/lib/clickhouse-keeper/ keeper-1:/var/lib/clickhouse-keeper/
-rsync -av /var/lib/clickhouse-keeper/ keeper-2:/var/lib/clickhouse-keeper/
-rsync -av /var/lib/clickhouse-keeper/ keeper-3:/var/lib/clickhouse-keeper/
+# 5. Copy converted snapshots to all Keeper nodes before starting any node
+rsync -av /var/lib/clickhouse-keeper/snapshots/ keeper-1:/var/lib/clickhouse-keeper/snapshots/
+rsync -av /var/lib/clickhouse-keeper/snapshots/ keeper-2:/var/lib/clickhouse-keeper/snapshots/
+rsync -av /var/lib/clickhouse-keeper/snapshots/ keeper-3:/var/lib/clickhouse-keeper/snapshots/
 
-# 4. Start Keeper cluster
+# 6. Start Keeper cluster
 systemctl start clickhouse-keeper
 
-# 5. Verify Keeper is working
+# 7. Restart ClickHouse with the updated Keeper endpoints
+systemctl restart clickhouse-server
+
+# 8. Verify Keeper is working
 echo "stat" | nc keeper-1 2181
+
+# 9. Resume background tasks after verification
+clickhouse-client --query "SYSTEM START MERGES"
 ```
 
 ### Update ClickHouse Configuration
@@ -366,12 +376,13 @@ echo "wchc" | nc keeper-1 2181
 ```xml
 <!-- Enable metrics -->
 <clickhouse>
-    <keeper_server>
-        <prometheus>
-            <endpoint>/metrics</endpoint>
-            <port>9363</port>
-        </prometheus>
-    </keeper_server>
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
 </clickhouse>
 ```
 
@@ -493,9 +504,11 @@ systemctl start clickhouse-keeper
     <log_storage_path>/mnt/fast-ssd/keeper/log</log_storage_path>
     <snapshot_storage_path>/mnt/storage/keeper/snapshots</snapshot_storage_path>
 
-    <!-- Compression -->
-    <compress_logs>true</compress_logs>
-    <compress_snapshots_with_zstd_format>true</compress_snapshots_with_zstd_format>
+    <coordination_settings>
+        <!-- Compression -->
+        <compress_logs>true</compress_logs>
+        <compress_snapshots_with_zstd_format>true</compress_snapshots_with_zstd_format>
+    </coordination_settings>
 </keeper_server>
 ```
 

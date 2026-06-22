@@ -14,7 +14,6 @@ Client-side connection pooling reduces connection overhead and improves applicat
 
 ```python
 import psycopg_pool
-from contextlib import contextmanager
 
 # Create connection pool
 
@@ -23,20 +22,12 @@ pool = psycopg_pool.ConnectionPool(
     min_size=5,
     max_size=20,
     max_idle=300,
-    max_lifetime=3600
+    max_lifetime=3600,
+    open=True
 )
 
-# Use connection from pool
-@contextmanager
-def get_connection():
-    conn = pool.getconn()
-    try:
-        yield conn
-    finally:
-        pool.putconn(conn)
-
 # Usage
-with get_connection() as conn:
+with pool.connection() as conn:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM users WHERE id = %s", (1,))
         result = cur.fetchone()
@@ -103,6 +94,9 @@ async function getUsers() {
 ```java
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 // Configure pool
 HikariConfig config = new HikariConfig();

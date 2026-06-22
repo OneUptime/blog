@@ -121,7 +121,6 @@ Mixed encoding:
 
 ```python
 from flask import Flask, request, send_file, abort
-import os
 from pathlib import Path
 
 app = Flask(__name__)
@@ -140,7 +139,7 @@ def download_file():
         requested_path = (UPLOAD_DIR / filename).resolve()
 
         # Verify the resolved path is within the allowed directory
-        if not str(requested_path).startswith(str(UPLOAD_DIR)):
+        if not requested_path.is_relative_to(UPLOAD_DIR):
             abort(403, "Access denied")
 
         # Verify file exists
@@ -196,13 +195,20 @@ app.get('/download', async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
+        // Resolve symlinks before serving
+        const realUploadDir = await fs.realpath(UPLOAD_DIR);
+        const realRequestedPath = await fs.realpath(requestedPath);
+        if (!realRequestedPath.startsWith(realUploadDir + path.sep)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
         // Check if file exists and is a file (not directory)
-        const stats = await fs.stat(requestedPath);
+        const stats = await fs.stat(realRequestedPath);
         if (!stats.isFile()) {
             return res.status(404).json({ error: 'File not found' });
         }
 
-        res.sendFile(requestedPath);
+        res.sendFile(realRequestedPath);
 
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -273,7 +279,6 @@ import (
     "net/http"
     "os"
     "path/filepath"
-    "strings"
 )
 
 const uploadDir = "/var/www/uploads"
@@ -286,30 +291,50 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Clean the path and resolve any .. components
+    // Reject absolute paths and paths that escape the current directory
+    if !filepath.IsLocal(filename) {
+        http.Error(w, "Access denied", http.StatusForbidden)
+        return
+    }
+
+    // Clean the path and resolve any . components
     cleanPath := filepath.Clean(filename)
 
     // Construct the full path
     fullPath := filepath.Join(uploadDir, cleanPath)
 
-    // Resolve to absolute path
-    absPath, err := filepath.Abs(fullPath)
+    // Resolve symlinks in the upload directory and requested file
+    realUploadDir, err := filepath.EvalSymlinks(uploadDir)
+    if err != nil {
+        http.Error(w, "Upload directory unavailable", http.StatusInternalServerError)
+        return
+    }
+
+    realPath, err := filepath.EvalSymlinks(fullPath)
+    if os.IsNotExist(err) {
+        http.Error(w, "File not found", http.StatusNotFound)
+        return
+    }
     if err != nil {
         http.Error(w, "Invalid path", http.StatusBadRequest)
         return
     }
 
     // Ensure the resolved path is within the upload directory
-    absUploadDir, _ := filepath.Abs(uploadDir)
-    if !strings.HasPrefix(absPath, absUploadDir+string(os.PathSeparator)) {
+    relPath, err := filepath.Rel(realUploadDir, realPath)
+    if err != nil || !filepath.IsLocal(relPath) {
         http.Error(w, "Access denied", http.StatusForbidden)
         return
     }
 
     // Check if file exists and is not a directory
-    info, err := os.Stat(absPath)
+    info, err := os.Stat(realPath)
     if os.IsNotExist(err) {
         http.Error(w, "File not found", http.StatusNotFound)
+        return
+    }
+    if err != nil {
+        http.Error(w, "Cannot access file", http.StatusInternalServerError)
         return
     }
     if info.IsDir() {
@@ -317,7 +342,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    http.ServeFile(w, r, absPath)
+    http.ServeFile(w, r, realPath)
 }
 
 func main() {
@@ -339,7 +364,7 @@ def validate_filename(filename):
     """Validate filename contains only safe characters"""
     # Allow only alphanumeric, underscore, hyphen, and single dot for extension
     pattern = r'^[a-zA-Z0-9_\-]+\.[a-zA-Z0-9]+$'
-    return bool(re.match(pattern, filename))
+    return bool(filename and re.match(pattern, filename))
 
 # Usage
 filename = request.args.get('filename')
@@ -372,6 +397,7 @@ CMD ["python", "server.py"]
 
 ```python
 from flask import Flask, request, send_file, abort
+from flask_login import current_user
 from models import FileRecord
 
 @app.route('/download/<file_id>')
@@ -447,9 +473,9 @@ def bad_validation_2(filename):
     return True
 # Can be bypassed with: foo/../../../etc/passwd
 
-# MISTAKE 3: Using realpath before validation
+# MISTAKE 3: Using realpath without validation
 def bad_validation_3(filename, base_dir):
-    # This resolves the path but attacker controls result
+    # This resolves the path but never checks whether it stays in base_dir
     full_path = os.path.realpath(os.path.join(base_dir, filename))
     return full_path  # Still vulnerable!
 ```

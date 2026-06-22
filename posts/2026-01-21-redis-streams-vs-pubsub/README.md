@@ -18,7 +18,7 @@ Redis offers two messaging paradigms: the traditional Pub/Sub model and the newe
 | Consumer Groups | No | Yes |
 | Message Acknowledgment | No | Yes |
 | Message Replay | No | Yes |
-| Delivery Guarantee | At-most-once | At-least-once |
+| Delivery Guarantee | At-most-once | At-most-once or at-least-once (with consumer groups) |
 | Blocking Reads | Yes | Yes |
 | Pattern Matching | Yes | No |
 | Message History | No | Yes |
@@ -76,7 +76,7 @@ publisher()
 Streams provide durable, log-based messaging:
 
 - Messages are appended to a log with unique IDs
-- Messages persist until explicitly deleted
+- Messages persist until explicitly deleted or trimmed
 - Consumer groups enable parallel processing
 - Supports acknowledgment and pending message tracking
 - Can replay historical messages
@@ -620,7 +620,7 @@ comparePubSubVsStreams().catch(console.error);
 
 ### Choose Streams When
 
-- Messages must not be lost
+- Messages need to be retained for later processing
 - Need to replay historical data
 - Multiple consumers process different messages
 - Acknowledgment and retry are required
@@ -663,17 +663,17 @@ class HybridMessaging:
 
 ### Pub/Sub Performance
 
-- **Latency**: Very low (~0.1ms local)
-- **Throughput**: High (100k+ msg/sec)
-- **Memory**: Minimal (no storage)
-- **Scaling**: Limited by subscriber count
+- **Latency**: Very low because messages are pushed directly to connected subscribers
+- **Throughput**: High, but dependent on message size, network, Redis deployment, and subscriber count
+- **Memory**: Minimal (no message storage)
+- **Scaling**: Limited by subscriber count and, in Redis Cluster, whether you use global or sharded Pub/Sub
 
 ### Streams Performance
 
-- **Latency**: Low (~0.5ms local)
-- **Throughput**: High (50k+ msg/sec with acknowledgment)
+- **Latency**: Low, with additional overhead for persistence, consumer groups, and acknowledgments
+- **Throughput**: High, but dependent on message size, trimming strategy, acknowledgment pattern, and Redis deployment
 - **Memory**: Grows with retained messages
-- **Scaling**: Consumer groups enable horizontal scaling
+- **Scaling**: Consumer groups enable horizontal scaling within a stream
 
 ## Conclusion
 

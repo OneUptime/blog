@@ -50,13 +50,13 @@ producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
 
 ```java
 // Consumer configuration - WRONG: using String deserializer for JSON data
-// This will fail because JSON bytes cannot be directly converted to String
+// This returns JSON text, not an Order object for your application
 Properties consumerProps = new Properties();
 consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
     "org.apache.kafka.common.serialization.StringDeserializer");
 consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-    "org.apache.kafka.common.serialization.StringDeserializer"); // Wrong!
+    "org.apache.kafka.common.serialization.StringDeserializer"); // Wrong for Order objects!
 ```
 
 **Fix: Use matching deserializer**
@@ -108,10 +108,12 @@ flowchart LR
   "fields": [
     {"name": "name", "type": "string"},
     {"name": "age", "type": "int"},
-    {"name": "email", "type": "string"}  // Required field - breaks backward compatibility
+    {"name": "email", "type": "string"}
   ]
 }
 ```
+
+The `email` field is required and has no default, which breaks backward compatibility for consumers reading older messages with the new schema.
 
 **Fix: Use optional fields or provide defaults**
 
@@ -173,17 +175,42 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
 public class ErrorHandlingDeserializer<T> implements Deserializer<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(
         ErrorHandlingDeserializer.class);
 
-    private final Deserializer<T> delegate;
-    private final Class<T> targetType;
+    private Deserializer<T> delegate;
 
-    public ErrorHandlingDeserializer(Deserializer<T> delegate, Class<T> targetType) {
+    public ErrorHandlingDeserializer() {
+    }
+
+    public ErrorHandlingDeserializer(Deserializer<T> delegate) {
         this.delegate = delegate;
-        this.targetType = targetType;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void configure(Map<String, ?> configs, boolean isKey) {
+        if (delegate == null) {
+            String configKey = isKey ? "delegate.key.deserializer" : "delegate.value.deserializer";
+            Object delegateClassName = configs.get(configKey);
+            if (delegateClassName == null) {
+                throw new IllegalArgumentException("Missing " + configKey);
+            }
+            try {
+                Class<?> delegateClass = delegateClassName instanceof Class<?>
+                    ? (Class<?>) delegateClassName
+                    : Class.forName(delegateClassName.toString());
+                delegate = (Deserializer<T>) delegateClass.getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Failed to create delegate deserializer", e);
+            }
+        }
+        delegate.configure(configs, isKey);
     }
 
     @Override
@@ -196,7 +223,7 @@ public class ErrorHandlingDeserializer<T> implements Deserializer<T> {
             logger.error("Failed to deserialize message from topic {}: {}",
                 topic, e.getMessage());
             logger.debug("Raw message bytes: {}",
-                data != null ? new String(data) : "null");
+                data != null ? new String(data, StandardCharsets.UTF_8) : "null");
 
             // Return null to skip the bad message
             // The consumer can filter out null values
@@ -206,7 +233,9 @@ public class ErrorHandlingDeserializer<T> implements Deserializer<T> {
 
     @Override
     public void close() {
-        delegate.close();
+        if (delegate != null) {
+            delegate.close();
+        }
     }
 }
 ```
@@ -220,19 +249,28 @@ Spring Kafka provides built-in error handling for deserialization failures:
 ```java
 // Configure Spring Kafka with error handling deserializer
 // This prevents the consumer from crashing on bad messages
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.errors.SerializationException;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
-import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.util.backoff.FixedBackOff;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 public class KafkaConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaConfig.class);
 
     @Bean
     public ConsumerFactory<String, Order> consumerFactory() {
@@ -255,6 +293,7 @@ public class KafkaConfig {
 
         // Trust packages for JSON deserialization
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.example.model");
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "com.example.model.Order");
 
         return new DefaultKafkaConsumerFactory<>(props);
     }
@@ -279,10 +318,10 @@ public class KafkaConfig {
         );
 
         // Add specific exceptions that should not be retried
-        // Deserialization errors are not recoverable by retry
+        // DeserializationException is already treated as fatal by default;
+        // SerializationException is included here for producer/send failures
         errorHandler.addNotRetryableExceptions(
-            SerializationException.class,
-            DeserializationException.class
+            SerializationException.class
         );
 
         factory.setCommonErrorHandler(errorHandler);
@@ -314,10 +353,16 @@ flowchart LR
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.StandardCharsets;
 
 public class DeadLetterQueueHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(
+        DeadLetterQueueHandler.class);
 
     private final KafkaProducer<byte[], byte[]> dlqProducer;
     private final String dlqTopicSuffix = ".DLQ";
@@ -344,22 +389,22 @@ public class DeadLetterQueueHandler {
         // Add headers with error information for debugging
         dlqRecord.headers().add(new RecordHeader(
             "error.message",
-            exception.getMessage().getBytes()));
+            exception.getMessage().getBytes(StandardCharsets.UTF_8)));
         dlqRecord.headers().add(new RecordHeader(
             "error.type",
-            exception.getClass().getName().getBytes()));
+            exception.getClass().getName().getBytes(StandardCharsets.UTF_8)));
         dlqRecord.headers().add(new RecordHeader(
             "original.topic",
-            failedRecord.topic().getBytes()));
+            failedRecord.topic().getBytes(StandardCharsets.UTF_8)));
         dlqRecord.headers().add(new RecordHeader(
             "original.partition",
-            String.valueOf(failedRecord.partition()).getBytes()));
+            String.valueOf(failedRecord.partition()).getBytes(StandardCharsets.UTF_8)));
         dlqRecord.headers().add(new RecordHeader(
             "original.offset",
-            String.valueOf(failedRecord.offset()).getBytes()));
+            String.valueOf(failedRecord.offset()).getBytes(StandardCharsets.UTF_8)));
         dlqRecord.headers().add(new RecordHeader(
             "failed.timestamp",
-            String.valueOf(System.currentTimeMillis()).getBytes()));
+            String.valueOf(System.currentTimeMillis()).getBytes(StandardCharsets.UTF_8)));
 
         // Send to DLQ asynchronously
         dlqProducer.send(dlqRecord, (metadata, ex) -> {
@@ -398,7 +443,7 @@ props.put(AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG,
 // Auto-register schemas (disable in production for controlled schema evolution)
 props.put(AbstractKafkaSchemaSerDeConfig.AUTO_REGISTER_SCHEMAS, true);
 
-// Use specific Avro reader for better performance
+// Do not force the latest registered schema; use the schema ID in each message
 props.put(AbstractKafkaSchemaSerDeConfig.USE_LATEST_VERSION, false);
 
 KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props);
@@ -408,6 +453,7 @@ KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props);
 // Configure consumer with Schema Registry
 // The consumer fetches schemas from the registry to deserialize messages
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 
 Properties props = new Properties();
 props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");

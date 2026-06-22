@@ -120,7 +120,7 @@ const GestureHandlerExample: React.FC = () => {
 - Runs on the native UI thread
 - Native driver support through Reanimated integration
 - Built-in gesture states (BEGAN, ACTIVE, END, CANCELLED, FAILED)
-- Easy gesture composition (simultaneous, exclusive, sequential)
+- Easy gesture composition (simultaneous, exclusive, race)
 - Better performance and smoother animations
 - Declarative API with Gesture object
 
@@ -131,11 +131,13 @@ const GestureHandlerExample: React.FC = () => {
 ```bash
 # Using npm
 
-npm install react-native-gesture-handler react-native-reanimated
+npm install react-native-gesture-handler react-native-reanimated react-native-worklets
 
 # Using yarn
-yarn add react-native-gesture-handler react-native-reanimated
+yarn add react-native-gesture-handler react-native-reanimated react-native-worklets
 ```
+
+If you use Reanimated 4 with React Native Community CLI, add `react-native-worklets/plugin` as the last plugin in your `babel.config.js`.
 
 ### iOS Setup
 
@@ -147,25 +149,7 @@ cd ios && pod install
 
 ### Android Setup
 
-Update your `MainActivity.java` or `MainActivity.kt`:
-
-```kotlin
-// MainActivity.kt
-package com.yourapp
-
-import com.facebook.react.ReactActivity
-import com.facebook.react.ReactActivityDelegate
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
-import com.facebook.react.defaults.DefaultReactActivityDelegate
-import com.swmansion.gesturehandler.react.RNGestureHandlerEnabledRootView
-
-class MainActivity : ReactActivity() {
-  override fun getMainComponentName(): String = "YourApp"
-
-  override fun createReactActivityDelegate(): ReactActivityDelegate =
-    DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
-}
-```
+No additional Android setup is required for current versions of `react-native-gesture-handler`. If you are migrating older code, remove any `RNGestureHandlerEnabledRootView` usage and use `GestureHandlerRootView` in JavaScript instead.
 
 ### App Entry Point Configuration
 
@@ -203,8 +187,8 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSequence,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import { StyleSheet, Text } from 'react-native';
 
@@ -223,7 +207,7 @@ const TapButton: React.FC<TapButtonProps> = ({ onTap, label }) => {
       opacity.value = withTiming(0.8, { duration: 100 });
     })
     .onEnd(() => {
-      onTap();
+      runOnJS(onTap)();
     })
     .onFinalize(() => {
       scale.value = withTiming(1, { duration: 100 });
@@ -1197,46 +1181,29 @@ const GestureStateDemo: React.FC = () => {
     setGestureState(state);
   };
 
-  const getStateColor = (state: number): string => {
-    switch (state) {
-      case State.UNDETERMINED:
-        return '#95A5A6';
-      case State.BEGAN:
-        return '#F39C12';
-      case State.ACTIVE:
-        return '#27AE60';
-      case State.END:
-        return '#3498DB';
-      case State.CANCELLED:
-        return '#E74C3C';
-      case State.FAILED:
-        return '#C0392B';
-      default:
-        return '#95A5A6';
-    }
-  };
-
   const panGesture = Gesture.Pan()
     .onBegin(() => {
-      backgroundColor.value = withTiming(getStateColor(State.BEGAN));
+      backgroundColor.value = withTiming('#F39C12');
       runOnJS(updateState)('BEGAN');
     })
     .onStart(() => {
-      backgroundColor.value = withTiming(getStateColor(State.ACTIVE));
+      backgroundColor.value = withTiming('#27AE60');
       runOnJS(updateState)('ACTIVE');
     })
     .onUpdate(() => {
       scale.value = 1.1;
     })
     .onEnd(() => {
-      backgroundColor.value = withTiming(getStateColor(State.END));
+      backgroundColor.value = withTiming('#3498DB');
       scale.value = withTiming(1);
       runOnJS(updateState)('END');
     })
-    .onFinalize((_, success) => {
+    .onFinalize((event, success) => {
       if (!success) {
-        backgroundColor.value = withTiming(getStateColor(State.CANCELLED));
-        runOnJS(updateState)('CANCELLED');
+        const nextState = event.state === State.FAILED ? 'FAILED' : 'CANCELLED';
+        const nextColor = event.state === State.FAILED ? '#C0392B' : '#E74C3C';
+        backgroundColor.value = withTiming(nextColor);
+        runOnJS(updateState)(nextState);
       }
       scale.value = withTiming(1);
     });
@@ -1521,10 +1488,10 @@ const SwipePatternGesture: React.FC<SwipePatternProps> = ({
     velocityX: number,
     velocityY: number
   ): SwipeDirection => {
+    'worklet';
+
     const absX = Math.abs(translationX);
     const absY = Math.abs(translationY);
-    const absVelX = Math.abs(velocityX);
-    const absVelY = Math.abs(velocityY);
 
     if (absX < SWIPE_THRESHOLD && absY < SWIPE_THRESHOLD) {
       return null;

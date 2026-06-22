@@ -17,7 +17,7 @@ flowchart TD
     subgraph "Voluntary Disruptions"
         V1[Node Drain]
         V2[Cluster Upgrade]
-        V3[Rolling Update]
+        V3[Workload Rolling Update]
         V4[Autoscaler Scale-Down]
     end
     
@@ -30,7 +30,7 @@ flowchart TD
     
     V1 --> |PDB Protects| APP[Application]
     V2 --> |PDB Protects| APP
-    V3 --> |PDB Protects| APP
+    V3 --> |Controlled by Rollout Strategy| APP
     V4 --> |PDB Protects| APP
     
     I1 --> |PDB Cannot Help| APP
@@ -389,11 +389,11 @@ spec:
 # 3 replicas, 66% availability -> minAvailable = ceil(3 * 0.66) = 2
 
 # For disruption tolerance:
-# maxUnavailable = floor(replicas * acceptable_disruption_percentage)
+# maxUnavailable = ceil(replicas * acceptable_disruption_percentage)
 
 # Examples:
-# 5 replicas, 40% disruption OK -> maxUnavailable = floor(5 * 0.4) = 2
-# 10 replicas, 20% disruption OK -> maxUnavailable = floor(10 * 0.2) = 2
+# 5 replicas, 40% disruption OK -> maxUnavailable = ceil(5 * 0.4) = 2
+# 10 replicas, 20% disruption OK -> maxUnavailable = ceil(10 * 0.2) = 2
 ```
 
 ### Quorum-Based Systems
@@ -462,8 +462,8 @@ kubectl drain node-1 --ignore-daemonsets --delete-emptydir-data
 # Check what's blocking
 kubectl get pdb -A
 
-# Force drain (use with caution!)
-kubectl drain node-1 --ignore-daemonsets --delete-emptydir-data --force
+# Bypass PDB checks (use with caution!)
+kubectl drain node-1 --ignore-daemonsets --delete-emptydir-data --disable-eviction
 ```
 
 ### PDB with Single Replica

@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Exactly-Once, Idempotent Producer, Transaction, Data Consistency, Java, Python
 
-Description: A comprehensive guide to implementing exactly-once semantics in Kafka producers using idempotent producers and transactions, ensuring no duplicate or lost messages in your streaming applications.
+Description: A comprehensive guide to implementing exactly-once semantics in Kafka producers using idempotent producers and transactions, avoiding duplicate writes from producer retries and enabling atomic commits in your streaming applications.
 
 ---
 
-Exactly-once semantics (EOS) is one of the most challenging problems in distributed systems. Kafka provides built-in support for exactly-once delivery through idempotent producers and transactions. This guide covers how to implement EOS in your Kafka applications.
+Exactly-once semantics (EOS) is one of the most challenging problems in distributed systems. Kafka provides built-in support for exactly-once writes and stream processing within Kafka through idempotent producers and transactions. This guide covers how to implement EOS in your Kafka applications.
 
 ## Understanding Delivery Semantics
 
@@ -16,7 +16,7 @@ Kafka supports three delivery semantics:
 
 - **At-most-once**: Messages may be lost but never duplicated
 - **At-least-once**: Messages are never lost but may be duplicated
-- **Exactly-once**: Messages are delivered exactly once
+- **Exactly-once**: Messages are written or processed once within Kafka's idempotent and transactional guarantees
 
 ## Idempotent Producers
 
@@ -24,7 +24,7 @@ Idempotent producers ensure that retries don't result in duplicate messages with
 
 ### How Idempotence Works
 
-1. Producer assigns a unique Producer ID (PID) on initialization
+1. Kafka assigns a unique Producer ID (PID) during producer initialization
 2. Each message gets a sequence number
 3. Broker tracks sequence numbers and rejects duplicates
 4. Automatic retry handling without duplicates
@@ -432,7 +432,7 @@ public class ExactlyOnceProcessor {
                     }
 
                     // Commit offsets as part of transaction
-                    producer.sendOffsetsToTransaction(offsets, consumerGroup);
+                    producer.sendOffsetsToTransaction(offsets, consumer.groupMetadata());
 
                     // Commit transaction
                     producer.commitTransaction();
@@ -543,6 +543,7 @@ class ExactlyOnceProcessor:
             pass
         finally:
             self.consumer.close()
+            self.producer.close()
 
     def process_record(self, value):
         # Transform the message
@@ -679,7 +680,7 @@ transaction.state.log.num.partitions=50
 # Transaction timeout
 transaction.max.timeout.ms=900000
 
-# Enable EOS for transactions
+# Transactional ID expiration
 transactional.id.expiration.ms=604800000
 ```
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Idempotency, API, Distributed System, Deduplication, Reliability
 
-Description: A comprehensive guide to implementing idempotency keys with Redis for preventing duplicate API requests, ensuring exactly-once processing, and building reliable distributed systems.
+Description: A comprehensive guide to implementing idempotency keys with Redis for preventing duplicate API requests, avoiding duplicate side effects, and building reliable distributed systems.
 
 ---
 
@@ -15,16 +15,16 @@ Idempotency keys ensure that duplicate requests produce the same result without 
 An operation is idempotent if performing it multiple times produces the same result as performing it once. For API endpoints:
 
 - GET requests are naturally idempotent
-- POST/PUT/DELETE may need idempotency keys to be safe to retry
+- POST requests often need idempotency keys to be safe to retry
+- PUT and DELETE are defined as idempotent HTTP methods, but idempotency keys can still be useful when you need to replay the original response or protect implementation-specific side effects
 
 ## Basic Idempotency Implementation
 
 ```python
 import redis
 import json
-import hashlib
 import time
-from typing import Optional, Tuple, Any
+from typing import Callable, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
@@ -76,7 +76,7 @@ class IdempotencyStore:
 
         local record = cjson.encode({
             status = 'processing',
-            created_at = ARGV[1],
+            created_at = tonumber(ARGV[1]),
             completed_at = nil,
             result = nil,
             error = nil
@@ -104,25 +104,66 @@ class IdempotencyStore:
     def complete(self, idempotency_key: str, result: dict):
         """Mark request as completed with result."""
         key = self._make_key(idempotency_key)
+        existing = self.get(idempotency_key)
+        now = time.time()
 
         record = {
             'status': 'completed',
-            'created_at': time.time(),
-            'completed_at': time.time(),
+            'created_at': existing.created_at if existing else now,
+            'completed_at': now,
             'result': result,
             'error': None
         }
 
         self.redis.set(key, json.dumps(record), ex=self.ttl)
 
+    def reclaim_processing(self, idempotency_key: str,
+                           retry_processing_after: int) -> bool:
+        """Atomically reclaim a stale processing record."""
+        key = self._make_key(idempotency_key)
+        now = time.time()
+
+        lua_script = """
+        local existing = redis.call('GET', KEYS[1])
+        if not existing then
+            return 0
+        end
+
+        local record = cjson.decode(existing)
+        if record['status'] ~= 'processing' then
+            return 0
+        end
+
+        local created_at = tonumber(record['created_at'])
+        if not created_at or (created_at + tonumber(ARGV[1])) > tonumber(ARGV[2]) then
+            return 0
+        end
+
+        local new_record = cjson.encode({
+            status = 'processing',
+            created_at = tonumber(ARGV[2]),
+            completed_at = nil,
+            result = nil,
+            error = nil
+        })
+        redis.call('SET', KEYS[1], new_record, 'EX', ARGV[3])
+        return 1
+        """
+
+        return self.redis.eval(
+            lua_script, 1, key, retry_processing_after, now, self.ttl
+        ) == 1
+
     def fail(self, idempotency_key: str, error: str):
         """Mark request as failed."""
         key = self._make_key(idempotency_key)
+        existing = self.get(idempotency_key)
+        now = time.time()
 
         record = {
             'status': 'failed',
-            'created_at': time.time(),
-            'completed_at': time.time(),
+            'created_at': existing.created_at if existing else now,
+            'completed_at': now,
             'result': None,
             'error': error
         }
@@ -162,7 +203,7 @@ class IdempotentOperation:
         self.retry_processing_after = retry_processing_after
 
     def execute(self, idempotency_key: str,
-                operation: callable,
+                operation: Callable[..., dict],
                 *args, **kwargs) -> Tuple[dict, bool]:
         """
         Execute operation idempotently.
@@ -181,8 +222,20 @@ class IdempotentOperation:
                 # Check if stuck
                 age = time.time() - existing.created_at
                 if age > self.retry_processing_after:
-                    # Retry processing
-                    is_new = True
+                    # Retry only if this worker atomically reclaimed the key.
+                    if self.store.reclaim_processing(
+                        idempotency_key,
+                        self.retry_processing_after
+                    ):
+                        is_new = True
+                    else:
+                        latest = self.store.get(idempotency_key)
+                        if latest and latest.status == IdempotencyStatus.COMPLETED:
+                            return latest.result, True
+                        raise IdempotencyConflictError(
+                            "Request is being processed",
+                            retry_after=self.retry_processing_after
+                        )
                 else:
                     raise IdempotencyConflictError(
                         "Request is being processed",
@@ -233,13 +286,19 @@ def idempotent(key_header='X-Idempotency-Key', ttl=86400):
             store = IdempotencyStore(ttl=ttl)
             op = IdempotentOperation(store)
 
+            def call_json_endpoint():
+                response = make_response(f(*args, **kwargs))
+                if not response.is_json:
+                    raise ValueError("Idempotent endpoints must return JSON responses")
+                return response.get_json()
+
             try:
                 result, was_cached = op.execute(
                     idempotency_key,
-                    lambda: f(*args, **kwargs)
+                    call_json_endpoint
                 )
 
-                response = make_response(result)
+                response = jsonify(result)
                 if was_cached:
                     response.headers['X-Idempotency-Replayed'] = 'true'
                 return response
@@ -262,7 +321,7 @@ def idempotent(key_header='X-Idempotency-Key', ttl=86400):
 
 # FastAPI integration
 from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 async def idempotency_middleware(request: Request, call_next,
                                   store: IdempotencyStore):
@@ -286,10 +345,34 @@ async def idempotency_middleware(request: Request, call_next,
                 detail="Request is being processed"
             )
 
+        elif existing.status == IdempotencyStatus.FAILED:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Previous request failed: {existing.error}"
+            )
+
     try:
         response = await call_next(request)
-        # Note: In real implementation, capture response body
-        return response
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk
+
+        content_type = response.headers.get("content-type", "")
+        if response.status_code < 500 and content_type.startswith("application/json"):
+            payload = json.loads(body.decode() or "null")
+            store.complete(idempotency_key, payload)
+        else:
+            store.fail(
+                idempotency_key,
+                f"Response was not cacheable: HTTP {response.status_code}"
+            )
+
+        return Response(
+            content=body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type
+        )
     except Exception as e:
         store.fail(idempotency_key, str(e))
         raise
@@ -363,7 +446,7 @@ class IdempotencyStore {
 
         local record = cjson.encode({
             status = 'processing',
-            created_at = ARGV[1],
+            created_at = tonumber(ARGV[1]),
             completed_at = nil,
             result = nil,
             error = nil
@@ -500,7 +583,7 @@ async function test() {
     const key = 'payment-123';
 
     // First request
-    let { isNew } = await store.checkAndStart(key);
+    let { isNew, existing } = await store.checkAndStart(key);
     console.log('First request isNew:', isNew);
 
     const result = await createPayment(100);

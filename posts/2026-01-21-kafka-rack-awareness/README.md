@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing Apache Kafka rack awareness t
 
 ---
 
-Rack awareness in Kafka ensures that partition replicas are distributed across different racks, availability zones, or data centers. This prevents a single rack failure from causing data loss or unavailability. This guide covers how to configure and verify rack-aware replica placement.
+Rack awareness in Kafka ensures that partition replicas are distributed across different racks, availability zones, or data centers. This reduces the risk that a single rack failure causes data loss or unavailability. This guide covers how to configure and verify rack-aware replica placement.
 
 ## Understanding Rack Awareness
 
@@ -97,12 +97,12 @@ import java.util.stream.Collectors;
 
 public class RackAwarenessVerifier {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
     public RackAwarenessVerifier(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.adminClient = AdminClient.create(props);
+        this.adminClient = Admin.create(props);
     }
 
     public Map<Integer, String> getBrokerRacks()
@@ -214,25 +214,23 @@ public class RackAwarenessVerifier {
 
 ```python
 from confluent_kafka.admin import AdminClient
-from typing import Dict, List, Set
+from typing import Dict
 from collections import defaultdict
 
 class RackAwarenessVerifier:
-    def __init__(self, bootstrap_servers: str):
+    def __init__(self, bootstrap_servers: str, broker_racks: Dict[int, str]):
         self.admin_client = AdminClient({
             'bootstrap.servers': bootstrap_servers
         })
+        self.broker_racks = broker_racks
 
     def get_broker_racks(self) -> Dict[int, str]:
         """Get rack assignment for each broker."""
         metadata = self.admin_client.list_topics(timeout=10)
-        broker_racks = {}
-
-        for broker_id, broker in metadata.brokers.items():
-            # Note: confluent-kafka may not expose rack info directly
-            # This might need JMX or other mechanisms
-            rack = getattr(broker, 'rack', None) or 'UNKNOWN'
-            broker_racks[broker_id] = rack
+        broker_racks = {
+            broker_id: self.broker_racks.get(broker_id, 'UNKNOWN')
+            for broker_id in metadata.brokers.keys()
+        }
 
         return broker_racks
 
@@ -285,14 +283,14 @@ class RackAwarenessVerifier:
         print("RACK AWARENESS REPORT")
         print("=" * 60)
 
-        # Build broker-to-rack mapping (may need alternative method)
-        broker_racks = {}
+        # confluent-kafka metadata exposes broker IDs, hosts, and ports, but
+        # not broker.rack, so provide the broker-to-rack mapping from your
+        # deployment inventory or broker configuration.
+        broker_racks = self.get_broker_racks()
         rack_to_brokers = defaultdict(list)
 
-        for broker_id, broker in metadata.brokers.items():
-            # Try to get rack info
-            rack = f"rack-{broker_id % 3 + 1}"  # Simulated for demo
-            broker_racks[broker_id] = rack
+        for broker_id in metadata.brokers.keys():
+            rack = broker_racks.get(broker_id, 'UNKNOWN')
             rack_to_brokers[rack].append(broker_id)
 
         print("\nBroker Rack Assignment:")
@@ -322,7 +320,14 @@ class RackAwarenessVerifier:
 
 
 def main():
-    verifier = RackAwarenessVerifier("localhost:9092")
+    verifier = RackAwarenessVerifier("localhost:9092", {
+        1: "rack-a",
+        2: "rack-a",
+        3: "rack-b",
+        4: "rack-b",
+        5: "rack-c",
+        6: "rack-c",
+    })
     verifier.print_rack_report()
 
 
@@ -364,16 +369,15 @@ import org.apache.kafka.common.TopicPartition;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 public class RackAwareReassignment {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
     public RackAwareReassignment(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.adminClient = AdminClient.create(props);
+        this.adminClient = Admin.create(props);
     }
 
     public Map<TopicPartition, List<Integer>> generateRackAwarePlan(
@@ -381,13 +385,11 @@ public class RackAwareReassignment {
             throws ExecutionException, InterruptedException {
 
         // Get broker-to-rack mapping
-        Map<Integer, String> brokerRacks = new HashMap<>();
         Map<String, List<Integer>> rackToBrokers = new HashMap<>();
 
         DescribeClusterResult cluster = adminClient.describeCluster();
         for (var node : cluster.nodes().get()) {
             String rack = node.rack() != null ? node.rack() : "default";
-            brokerRacks.put(node.id(), rack);
             rackToBrokers.computeIfAbsent(rack, k -> new ArrayList<>()).add(node.id());
         }
 
@@ -405,19 +407,27 @@ public class RackAwareReassignment {
         for (var partition : description.partitions()) {
             TopicPartition tp = new TopicPartition(topic, partition.partition());
             List<Integer> newReplicas = new ArrayList<>();
+            int startRack = partition.partition() % racks.size();
 
             // Distribute across racks
             for (int i = 0; i < replicationFactor; i++) {
-                String rack = racks.get(i % racks.size());
+                String rack = racks.get((startRack + i) % racks.size());
                 List<Integer> brokersInRack = rackToBrokers.get(rack);
+                int startBroker = partition.partition() % brokersInRack.size();
 
                 // Find a broker not already selected
-                for (int broker : brokersInRack) {
+                for (int j = 0; j < brokersInRack.size(); j++) {
+                    int broker = brokersInRack.get((startBroker + j) % brokersInRack.size());
                     if (!newReplicas.contains(broker)) {
                         newReplicas.add(broker);
                         break;
                     }
                 }
+            }
+
+            if (newReplicas.size() != replicationFactor) {
+                throw new IllegalArgumentException(
+                    "Not enough unique brokers for replication factor " + replicationFactor);
             }
 
             reassignment.put(tp, newReplicas);
@@ -476,7 +486,7 @@ public class RackAwareReassignment {
 ### Using Strimzi Operator
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: my-cluster
@@ -488,6 +498,7 @@ spec:
       transaction.state.log.replication.factor: 3
       transaction.state.log.min.isr: 2
     rack:
+      type: topology-label
       topologyKey: topology.kubernetes.io/zone
     storage:
       type: persistent-claim
@@ -526,7 +537,11 @@ kubectl label node node6 topology.kubernetes.io/zone=zone-c
 
 ## Consumer Rack Awareness
 
-Kafka 2.4+ supports consumer rack awareness for fetching from the nearest replica:
+Kafka 2.4+ supports consumer rack awareness for fetching from the nearest replica when brokers use the rack-aware replica selector:
+
+```properties
+replica.selector.class=org.apache.kafka.common.replica.RackAwareReplicaSelector
+```
 
 ### Consumer Configuration
 
@@ -549,7 +564,7 @@ from confluent_kafka import Consumer
 consumer = Consumer({
     'bootstrap.servers': 'broker1:9092,broker2:9092',
     'group.id': 'my-group',
-    'client.rack': 'rack-a',  # Fetch from nearest replica
+    'client.rack': 'rack-a',  # Used with the broker-side RackAwareReplicaSelector
     'auto.offset.reset': 'earliest'
 })
 ```
@@ -564,11 +579,9 @@ groups:
   - name: kafka-rack-awareness
     rules:
       - alert: KafkaReplicasNotDistributed
-        expr: |
-          count by(topic)(
-            kafka_topic_partition_replicas_count
-          ) <
-          count(group by(rack)(kafka_server_broker_rack))
+        # Export this gauge from the verification job above:
+        # 1 means the partition spans the expected racks, 0 means it does not.
+        expr: kafka_rack_aware_partition_distributed == 0
         for: 10m
         labels:
           severity: warning
@@ -607,7 +620,7 @@ bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 
 ### 4. Use Rack-Aware Consumers
 
-Configure consumers with their rack ID to reduce cross-rack traffic:
+Configure consumers with their rack ID to reduce cross-rack traffic when the broker-side `RackAwareReplicaSelector` is enabled:
 
 ```properties
 client.rack=rack-a
@@ -615,4 +628,4 @@ client.rack=rack-a
 
 ## Conclusion
 
-Rack awareness is essential for building highly available Kafka clusters. By configuring broker rack IDs and verifying replica distribution, you can ensure that your cluster survives rack-level failures. Remember to balance brokers across racks, configure consumer rack awareness for optimal performance, and regularly verify that replicas are properly distributed. With proper rack awareness configuration, Kafka can provide strong fault tolerance guarantees even in the face of infrastructure failures.
+Rack awareness is essential for building highly available Kafka clusters. By configuring broker rack IDs and verifying replica distribution, you can help your cluster survive rack-level failures. Remember to balance brokers across racks, configure consumer rack awareness for optimal performance, and regularly verify that replicas are properly distributed. With proper rack awareness configuration, Kafka can provide strong fault tolerance guarantees even in the face of infrastructure failures.

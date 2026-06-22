@@ -30,7 +30,7 @@ flowchart TD
 
 ## The Root Cause
 
-React tracks whether an input is controlled or uncontrolled based on whether the `value` prop is defined. The warning appears when an input switches between these states.
+React tracks whether an input is controlled or uncontrolled based on whether the `value` prop is defined for text inputs, or whether the `checked` prop is defined for checkboxes and radio buttons. The warning appears when an input switches between these states.
 
 ### What Triggers the Warning
 
@@ -450,7 +450,7 @@ Create a reusable hook that ensures controlled behavior:
 
 ```tsx
 // src/hooks/useForm.ts
-import { useState, useCallback, ChangeEvent } from 'react';
+import { useState, useCallback, ChangeEvent, FocusEvent } from 'react';
 
 type FormErrors<T> = Partial<Record<keyof T, string>>;
 
@@ -458,7 +458,7 @@ interface UseFormReturn<T> {
   values: T;
   errors: FormErrors<T>;
   handleChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
-  handleBlur: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
+  handleBlur: (e: FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
   setFieldValue: (name: keyof T, value: T[keyof T]) => void;
   setFieldError: (name: keyof T, error: string) => void;
   reset: () => void;
@@ -492,10 +492,11 @@ export function useForm<T extends Record<string, any>>(
 
       // Clear error when field is edited
       if (errors[name as keyof T]) {
-        setErrors((prev) => ({
-          ...prev,
-          [name]: undefined,
-        }));
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next[name as keyof T];
+          return next;
+        });
       }
     },
     [errors]
@@ -503,7 +504,7 @@ export function useForm<T extends Record<string, any>>(
 
   // Handle input blur for validation
   const handleBlur = useCallback(
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    (e: FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name } = e.target;
 
       setTouched((prev) => ({

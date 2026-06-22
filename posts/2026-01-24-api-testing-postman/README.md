@@ -43,8 +43,9 @@ flowchart TD
 
 Set up environments for different stages:
 
+Development environment:
+
 ```json
-// Development Environment
 {
   "name": "Development",
   "values": [
@@ -65,8 +66,11 @@ Set up environments for different stages:
     }
   ]
 }
+```
 
-// Staging Environment
+Staging environment:
+
+```json
 {
   "name": "Staging",
   "values": [
@@ -125,6 +129,14 @@ pm.test("Response has required fields", function () {
 Validate response structure with JSON Schema:
 
 ```javascript
+const Ajv = require("ajv");
+const ajv = new Ajv();
+
+ajv.addFormat("email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+ajv.addFormat("date-time", function (value) {
+    return !Number.isNaN(Date.parse(value));
+});
+
 // Define expected schema
 const userSchema = {
     "type": "object",
@@ -141,7 +153,9 @@ const userSchema = {
 
 pm.test("Response matches user schema", function () {
     const response = pm.response.json();
-    pm.expect(tv4.validate(response, userSchema)).to.be.true;
+    const validate = ajv.compile(userSchema);
+
+    pm.expect(validate(response), JSON.stringify(validate.errors)).to.be.true;
 });
 ```
 
@@ -179,11 +193,21 @@ pm.environment.set("timestamp", new Date().toISOString());
 pm.environment.set("randomEmail", `test_${Date.now()}@example.com`);
 pm.environment.set("randomName", `User_${Math.random().toString(36).substring(7)}`);
 
-// Calculate signature for authenticated APIs
-const crypto = require('crypto-js');
+// Calculate signature for authenticated APIs with Web Crypto
 const secretKey = pm.environment.get("apiSecretKey");
 const timestamp = Date.now().toString();
-const signature = crypto.HmacSHA256(timestamp, secretKey).toString();
+const encoder = new TextEncoder();
+const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secretKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+);
+const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(timestamp));
+const signature = Array.from(new Uint8Array(signatureBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 
 pm.environment.set("requestTimestamp", timestamp);
 pm.environment.set("requestSignature", signature);
@@ -295,8 +319,9 @@ sequenceDiagram
 
 Use CSV or JSON data files for parameterized tests:
 
+`test-data.json`:
+
 ```json
-// test-data.json
 [
     {
         "email": "valid@example.com",
@@ -357,13 +382,13 @@ pm.test("Missing resource returns 404", function () {
 ### Retry Logic for Flaky Tests
 
 ```javascript
-// Collection-level pre-request script
+// Request-level post-response script
 const maxRetries = 3;
-const currentRetry = pm.environment.get("currentRetry") || 0;
+const currentRetry = Number(pm.environment.get("currentRetry") || 0);
 
-if (pm.response && pm.response.code >= 500 && currentRetry < maxRetries) {
+if (pm.response.code >= 500 && currentRetry < maxRetries) {
     pm.environment.set("currentRetry", currentRetry + 1);
-    postman.setNextRequest(pm.info.requestName);
+    pm.execution.setNextRequest(pm.info.requestName);
 } else {
     pm.environment.set("currentRetry", 0);
 }
@@ -384,7 +409,7 @@ npm install -g newman
 newman run collection.json -e environment.json
 
 # Run with detailed output
-newman run collection.json -e environment.json --reporters cli,html
+newman run collection.json -e environment.json --reporters cli,json
 
 # Run with specific folder
 newman run collection.json --folder "Authentication" -e environment.json
@@ -450,33 +475,27 @@ jobs:
           path: reports/api-test-report.html
 ```
 
-### Newman Configuration File
-
-```json
-// newman.config.json
-{
-  "collection": "./tests/api-collection.json",
-  "environment": "./tests/environments/staging.json",
-  "reporters": ["cli", "htmlextra", "json"],
-  "reporter": {
-    "htmlextra": {
-      "export": "./reports/api-report.html",
-      "title": "API Test Report"
-    },
-    "json": {
-      "export": "./reports/api-results.json"
-    }
-  },
-  "iterationCount": 1,
-  "timeoutRequest": 30000,
-  "delayRequest": 100
-}
-```
-
-Run with config:
+### Newman Run Script
 
 ```bash
-newman run --config newman.config.json
+#!/usr/bin/env bash
+set -euo pipefail
+
+newman run ./tests/api-collection.json \
+  --environment ./tests/environments/staging.json \
+  --reporters cli,htmlextra,json \
+  --reporter-htmlextra-export ./reports/api-report.html \
+  --reporter-htmlextra-title "API Test Report" \
+  --reporter-json-export ./reports/api-results.json \
+  --iteration-count 1 \
+  --timeout-request 30000 \
+  --delay-request 100
+```
+
+Run the script:
+
+```bash
+./run-api-tests.sh
 ```
 
 ## Best Practices

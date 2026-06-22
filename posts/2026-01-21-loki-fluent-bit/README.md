@@ -92,13 +92,13 @@ Create a basic `fluent-bit.conf`:
 [OUTPUT]
     Name              loki
     Match             *
-    Host              loki-gateway.loki.svc.cluster.local
-    Port              80
+    Host              loki.example.com
+    Port              443
     # Authentication
     HTTP_User         admin
     HTTP_Passwd       ${LOKI_PASSWORD}
     # TLS settings
-    TLS               off
+    TLS               on
     TLS.verify        on
     TLS.ca_file       /certs/ca.crt
     TLS.crt_file      /certs/client.crt
@@ -113,9 +113,6 @@ Create a basic `fluent-bit.conf`:
     Remove_Keys       kubernetes,stream
     # Line format
     Line_Format       json
-    # Batching
-    batch_wait        1
-    batch_size        1048576
     # Retry settings
     Retry_Limit       5
 ```
@@ -250,8 +247,8 @@ Label map file (`labelmap.json`):
     Rename            msg message
     Rename            lvl level
     # Remove fields
-    Remove            kubernetes.labels.pod-template-hash
-    Remove            kubernetes.labels.controller-revision-hash
+    Remove            debug
+    Remove            temporary
     # Copy fields
     Copy              level severity
 ```
@@ -265,9 +262,6 @@ Label map file (`labelmap.json`):
     Record            hostname ${HOSTNAME}
     Record            cluster production
     Remove_key        stream
-    Allowlist_key     level
-    Allowlist_key     message
-    Allowlist_key     timestamp
 ```
 
 ### Grep Filter (Include/Exclude)
@@ -407,7 +401,7 @@ Create `parsers.conf`:
 [PARSER]
     Name              multiline_start
     Format            regex
-    Regex             ^(?<time>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}).*$
+    Regex             ^(?<time>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})(?<log>.*)$
 ```
 
 ## Complete Production Configuration
@@ -431,6 +425,7 @@ Create `parsers.conf`:
     storage.checksum  off
     storage.max_chunks_up 128
     storage.backlog.mem_limit 5M
+    storage.metrics   On
 
 # Kubernetes container logs
 [INPUT]
@@ -490,9 +485,6 @@ Create `parsers.conf`:
     Name              modify
     Match             kube.*
     Remove            logtag
-    Remove            kubernetes.pod_id
-    Remove            kubernetes.docker_id
-    Remove            kubernetes.container_hash
 
 # Filter out noisy logs
 [FILTER]
@@ -521,8 +513,6 @@ Create `parsers.conf`:
     Remove_Keys       kubernetes,stream,logtag
     Auto_Kubernetes_Labels on
     Line_Format       json
-    batch_wait        1
-    batch_size        1048576
     Retry_Limit       5
 
 [OUTPUT]
@@ -535,10 +525,15 @@ Create `parsers.conf`:
     Line_Format       json
     Retry_Limit       5
 
-# Metrics output
+# Fluent Bit internal metrics
+[INPUT]
+    Name              fluentbit_metrics
+    Tag               internal_metrics
+    Scrape_Interval   2
+
 [OUTPUT]
     Name              prometheus_exporter
-    Match             *
+    Match             internal_metrics
     Host              0.0.0.0
     Port              2021
 ```

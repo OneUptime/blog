@@ -10,7 +10,7 @@ Description: Learn how to use Python's pickle module to serialize and deserializ
 
 > Pickle lets you save any Python object to a file and load it back later, preserving its exact state. This is useful for caching, storing machine learning models, or saving application state. However, pickle comes with security implications you need to understand.
 
-Python's `pickle` module converts Python objects into a byte stream (serialization) and reconstructs them later (deserialization). Unlike JSON, pickle can handle almost any Python object, including custom classes, functions, and nested structures.
+Python's `pickle` module converts Python objects into a byte stream (serialization) and reconstructs them later (deserialization). Unlike JSON, pickle can handle many Python object types, including custom class instances and nested structures. Functions and classes can be pickled when they are accessible from the top level of an importable module.
 
 ---
 
@@ -186,8 +186,8 @@ with open('data_v4.pkl', 'wb') as f:
 # Protocol 1: Old binary format
 # Protocol 2: New-style classes
 # Protocol 3: Python 3 support
-# Protocol 4: Large objects, more efficient (default in 3.8+)
-# Protocol 5: Out-of-band data, buffer protocol (3.8+)
+# Protocol 4: Large objects, more efficient (default in Python 3.8-3.13)
+# Protocol 5: Out-of-band data, buffer protocol (default in Python 3.14+)
 
 # For maximum compatibility with older Python versions
 with open('compatible.pkl', 'wb') as f:
@@ -239,7 +239,7 @@ class UserData(BaseModel):
     email: str
 
 # Only accepts valid data, no code execution
-user = UserData.parse_raw('{"name": "Alice", "email": "alice@example.com"}')
+user = UserData.model_validate_json('{"name": "Alice", "email": "alice@example.com"}')
 ```
 
 ---

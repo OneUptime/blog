@@ -33,13 +33,34 @@ Event sourcing stores the complete history of state changes as a sequence of eve
 ### Event Structure
 
 ```java
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+@JsonTypeInfo(
+    use = JsonTypeInfo.Id.NAME,
+    include = JsonTypeInfo.As.EXISTING_PROPERTY,
+    property = "eventType",
+    visible = true
+)
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = OrderCreated.class, name = "OrderCreated"),
+    @JsonSubTypes.Type(value = OrderItemAdded.class, name = "OrderItemAdded"),
+    @JsonSubTypes.Type(value = OrderConfirmed.class, name = "OrderConfirmed"),
+    @JsonSubTypes.Type(value = OrderCancelled.class, name = "OrderCancelled")
+})
 public abstract class DomainEvent {
-    private final String eventId;
-    private final String aggregateId;
-    private final String eventType;
-    private final long timestamp;
-    private final int version;
-    private final Map<String, String> metadata;
+    private String eventId;
+    private String aggregateId;
+    private String eventType;
+    private long timestamp;
+    private int version;
+    private Map<String, String> metadata;
+
+    protected DomainEvent() {
+        // Required by Jackson
+    }
 
     protected DomainEvent(String aggregateId, String eventType, int version) {
         this.eventId = UUID.randomUUID().toString();
@@ -55,9 +76,11 @@ public abstract class DomainEvent {
 
 // Concrete events
 public class OrderCreated extends DomainEvent {
-    private final String customerId;
-    private final List<OrderItem> items;
-    private final BigDecimal totalAmount;
+    private String customerId;
+    private List<OrderItem> items;
+    private BigDecimal totalAmount;
+
+    public OrderCreated() {}
 
     public OrderCreated(String orderId, String customerId,
                        List<OrderItem> items, BigDecimal totalAmount, int version) {
@@ -69,9 +92,11 @@ public class OrderCreated extends DomainEvent {
 }
 
 public class OrderItemAdded extends DomainEvent {
-    private final String productId;
-    private final int quantity;
-    private final BigDecimal price;
+    private String productId;
+    private int quantity;
+    private BigDecimal price;
+
+    public OrderItemAdded() {}
 
     public OrderItemAdded(String orderId, String productId,
                          int quantity, BigDecimal price, int version) {
@@ -83,7 +108,9 @@ public class OrderItemAdded extends DomainEvent {
 }
 
 public class OrderConfirmed extends DomainEvent {
-    private final LocalDateTime confirmedAt;
+    private LocalDateTime confirmedAt;
+
+    public OrderConfirmed() {}
 
     public OrderConfirmed(String orderId, LocalDateTime confirmedAt, int version) {
         super(orderId, "OrderConfirmed", version);
@@ -92,7 +119,9 @@ public class OrderConfirmed extends DomainEvent {
 }
 
 public class OrderCancelled extends DomainEvent {
-    private final String reason;
+    private String reason;
+
+    public OrderCancelled() {}
 
     public OrderCancelled(String orderId, String reason, int version) {
         super(orderId, "OrderCancelled", version);
@@ -105,19 +134,12 @@ public class OrderCancelled extends DomainEvent {
 
 ```java
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 
 public class EventSerializer {
     private final ObjectMapper mapper;
 
     public EventSerializer() {
         this.mapper = new ObjectMapper();
-        mapper.activateDefaultTyping(
-            BasicPolymorphicTypeValidator.builder()
-                .allowIfBaseType(DomainEvent.class)
-                .build(),
-            ObjectMapper.DefaultTyping.NON_FINAL
-        );
         mapper.findAndRegisterModules();
     }
 
@@ -169,7 +191,10 @@ public class KafkaEventStore {
             "org.apache.kafka.common.serialization.ByteArraySerializer");
         producerProps.put(ProducerConfig.ACKS_CONFIG, "all");
         producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        producerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG,
+            eventsTopic + "-event-store-" + UUID.randomUUID());
         this.producer = new KafkaProducer<>(producerProps);
+        this.producer.initTransactions();
 
         // Consumer configuration
         Properties consumerProps = new Properties();
@@ -180,11 +205,16 @@ public class KafkaEventStore {
             "org.apache.kafka.common.serialization.ByteArrayDeserializer");
         consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        consumerProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
         this.consumer = new KafkaConsumer<>(consumerProps);
     }
 
     // Append event to store
     public void append(DomainEvent event) {
+        appendAll(List.of(event));
+    }
+
+    private void sendEvent(DomainEvent event) {
         ProducerRecord<String, byte[]> record = new ProducerRecord<>(
             eventsTopic,
             event.getAggregateId(),
@@ -195,19 +225,19 @@ public class KafkaEventStore {
         record.headers().add("eventType", event.getEventType().getBytes());
         record.headers().add("version", String.valueOf(event.getVersion()).getBytes());
 
-        try {
-            producer.send(record).get();  // Sync for consistency
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to append event", e);
-        }
+        producer.send(record);
     }
 
     // Append multiple events atomically
     public void appendAll(List<DomainEvent> events) {
+        if (events.isEmpty()) {
+            return;
+        }
+
         producer.beginTransaction();
         try {
             for (DomainEvent event : events) {
-                append(event);
+                sendEvent(event);
             }
             producer.commitTransaction();
         } catch (Exception e) {
@@ -227,15 +257,11 @@ public class KafkaEventStore {
             .toList();
         consumer.assign(partitions);
         consumer.seekToBeginning(partitions);
+        Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
 
         // Read all events for this aggregate
-        boolean done = false;
-        while (!done) {
+        while (partitions.stream().anyMatch(p -> consumer.position(p) < endOffsets.get(p))) {
             ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(1000));
-
-            if (records.isEmpty()) {
-                done = true;
-            }
 
             for (ConsumerRecord<String, byte[]> record : records) {
                 if (aggregateId.equals(record.key())) {
@@ -414,9 +440,11 @@ public class OrderRepository {
     public void save(Order order) {
         List<DomainEvent> events = order.getUncommittedEvents();
         if (!events.isEmpty()) {
-            // Optimistic locking check
+            int expectedVersion = events.get(0).getVersion() - 1;
+
+            // Best-effort optimistic locking check
             List<DomainEvent> existingEvents =
-                eventStore.loadEventsAfterVersion(order.getId(), order.getVersion());
+                eventStore.loadEventsAfterVersion(order.getId(), expectedVersion);
             if (!existingEvents.isEmpty()) {
                 throw new ConcurrencyException("Order was modified by another process");
             }
@@ -449,7 +477,7 @@ public class OrderProjectionHandler {
     private final EventSerializer serializer;
     private final OrderReadModelRepository readModelRepo;
 
-    public void startProjection(String groupId) {
+    public void startProjection() {
         consumer.subscribe(Collections.singletonList("events.orders"));
 
         while (true) {
@@ -518,11 +546,15 @@ public class SnapshotStore {
             System.currentTimeMillis()
         );
 
-        producer.send(new ProducerRecord<>(
-            snapshotTopic,
-            aggregate.getId(),
-            serializeSnapshot(snapshot)
-        ));
+        try {
+            producer.send(new ProducerRecord<>(
+                snapshotTopic,
+                aggregate.getId(),
+                serializeSnapshot(snapshot)
+            )).get();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to save snapshot", e);
+        }
     }
 
     public Optional<Snapshot> loadLatestSnapshot(String aggregateId) {

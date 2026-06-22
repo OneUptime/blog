@@ -171,6 +171,10 @@ public class OrderCommandHandler {
 public class OrderCommandController {
     private final OrderCommandHandler commandHandler;
 
+    public OrderCommandController(OrderCommandHandler commandHandler) {
+        this.commandHandler = commandHandler;
+    }
+
     @PostMapping
     public ResponseEntity<CreateOrderResponse> createOrder(@RequestBody CreateOrderRequest request) {
         CreateOrderCommand command = new CreateOrderCommand(
@@ -227,6 +231,10 @@ public class OrderView {
 @Service
 public class OrderProjection {
     private final OrderViewRepository viewRepository;
+
+    public OrderProjection(OrderViewRepository viewRepository) {
+        this.viewRepository = viewRepository;
+    }
 
     @KafkaListener(topics = "order-events", groupId = "order-projection")
     public void handleEvent(DomainEvent event) {
@@ -293,6 +301,10 @@ public class OrderSearchDocument {
 public class OrderSearchProjection {
     private final ElasticsearchOperations elasticsearchOps;
 
+    public OrderSearchProjection(ElasticsearchOperations elasticsearchOps) {
+        this.elasticsearchOps = elasticsearchOps;
+    }
+
     @KafkaListener(topics = "order-events", groupId = "order-search-projection")
     public void handleEvent(DomainEvent event) {
         if (event instanceof OrderCreatedEvent) {
@@ -337,6 +349,12 @@ public class OrderQueryController {
     private final OrderViewRepository viewRepository;
     private final OrderSearchRepository searchRepository;
 
+    public OrderQueryController(OrderViewRepository viewRepository,
+                                OrderSearchRepository searchRepository) {
+        this.viewRepository = viewRepository;
+        this.searchRepository = searchRepository;
+    }
+
     // Simple queries use PostgreSQL view
     @GetMapping("/{orderId}")
     public ResponseEntity<OrderView> getOrder(@PathVariable String orderId) {
@@ -372,7 +390,7 @@ public class KafkaConfig {
         Map<String, Object> config = new HashMap<>();
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
         config.put(ProducerConfig.ACKS_CONFIG, "all");
         config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
@@ -389,8 +407,8 @@ public class KafkaConfig {
         Map<String, Object> config = new HashMap<>();
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
+        config.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
 
         return new DefaultKafkaConsumerFactory<>(config);
     }

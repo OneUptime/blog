@@ -44,7 +44,8 @@ const fetchDataOfflineFirst = async () => {
   const localData = await LocalDatabase.getData();
 
   // Try to sync in background if online
-  if (await NetInfo.isConnected()) {
+  const networkState = await NetInfo.fetch();
+  if (networkState.isConnected && networkState.isInternetReachable !== false) {
     syncInBackground();
   }
 
@@ -86,7 +87,7 @@ interface Task {
   completed: boolean;
   createdAt: number;
   updatedAt: number;
-  syncStatus: 'synced' | 'pending' | 'conflict';
+  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
   version: number;
 }
 
@@ -256,7 +257,7 @@ userPreferences.set({ theme: 'dark', notifications: true });
 
 ### Realm for Complex Object Graphs
 
-Best for: Complex object relationships, real-time sync needs
+Best for: Complex object relationships and local object persistence. For new real-time sync needs, choose a supported sync service rather than Atlas Device Sync, which reached end-of-life on September 30, 2025.
 
 ```typescript
 import Realm from 'realm';
@@ -510,7 +511,8 @@ The simplest strategy where the most recent change wins:
 ```typescript
 class LastWriteWinsResolver {
   resolve<T extends SyncableEntity>(local: T, remote: T): T {
-    if (local.updatedAt > remote.serverUpdatedAt!) {
+    const remoteUpdatedAt = remote.serverUpdatedAt ?? remote.updatedAt;
+    if (local.updatedAt > remoteUpdatedAt) {
       return local;
     }
     return remote;
@@ -518,7 +520,7 @@ class LastWriteWinsResolver {
 }
 ```
 
-### Version Vector / Optimistic Locking
+### Version-Based / Optimistic Locking
 
 Detect conflicts using version numbers:
 
@@ -585,7 +587,8 @@ class FieldLevelMergeResolver {
       } else if (localChanged && remoteChanged) {
         // Both changed - use timestamp-based resolution for this field
         // Or mark as conflict for user resolution
-        if (local.updatedAt > remote.serverUpdatedAt) {
+        const remoteUpdatedAt = remote.serverUpdatedAt ?? remote.updatedAt;
+        if (local.updatedAt > remoteUpdatedAt) {
           merged[key as keyof T] = local[key];
         } else {
           merged[key as keyof T] = remote[key];
@@ -667,6 +670,7 @@ A robust sync queue ensures operations are persisted and processed in order:
 
 ```typescript
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 
 interface SyncOperation {
   id: string;
@@ -813,7 +817,7 @@ class SyncQueue {
 Properly detecting and responding to network state changes is essential:
 
 ```typescript
-import NetInfo, { NetInfoState, NetInfoSubscription } from '@react-native-community/netinfo';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { useEffect, useState, useCallback, createContext, useContext } from 'react';
 
 interface NetworkContextValue {
@@ -970,7 +974,9 @@ const syncWithRetry = async () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Sync failed: ${response.status}`);
+        const error = new Error(`Sync failed: ${response.status}`) as Error & { status: number };
+        error.status = response.status;
+        throw error;
       }
 
       return response.json();
@@ -989,7 +995,7 @@ const syncWithRetry = async () => {
 Keeping users informed about sync status builds trust:
 
 ```typescript
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 
 interface SyncStatusBarProps {
@@ -1293,7 +1299,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: Infinity, // Data is always fresh from local DB
-      cacheTime: Infinity,
+      gcTime: Infinity,
       retry: false, // We handle retries in our sync layer
     },
   },
@@ -1314,7 +1320,7 @@ export default function App() {
 }
 
 // contexts/SyncContext.tsx
-import React, { createContext, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useState } from 'react';
 
 interface SyncContextValue {
   triggerSync: () => Promise<void>;

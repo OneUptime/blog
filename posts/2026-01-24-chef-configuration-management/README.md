@@ -34,29 +34,29 @@ Key components:
 - **Chef Workstation**: Development environment with Knife CLI
 - **Cookbooks**: Packages containing recipes and resources
 - **Recipes**: Ruby files defining configuration
-- **Data Bags**: Global variables available to all nodes
+- **Data Bags**: Global JSON data available to all nodes
 
 ## Setting Up Chef Workstation
 
 Start with the workstation where you develop and upload cookbooks.
 
 ```bash
-# Download and install Chef Workstation
+# Install Chef Workstation with Chef Habitat
 
-wget https://packages.chef.io/files/stable/chef-workstation/24.2.1058/ubuntu/22.04/chef-workstation_24.2.1058-1_amd64.deb
-sudo dpkg -i chef-workstation_24.2.1058-1_amd64.deb
+# After installing Chef Habitat and configuring it with your Habitat Builder token
+hab pkg install chef/chef-workstation --binlink --force
 
 # Verify installation
 chef --version
 
-# Initialize Chef repository structure
-chef generate repo chef-repo
+# Initialize Chef repository structure for roles and environments
+chef generate repo chef-repo --roles
 cd chef-repo
 
 # Repository structure:
 # chef-repo/
 # ├── cookbooks/          # Your cookbooks
-# ├── data_bags/          # Encrypted data storage
+# ├── data_bags/          # JSON data storage
 # ├── environments/       # Environment configurations
 # ├── roles/              # Role definitions
 # └── .chef/              # Knife configuration
@@ -352,7 +352,6 @@ knife data bag create users deploy
 ```
 
 ```json
-// data_bags/users/deploy.json
 {
   "id": "deploy",
   "uid": 1001,
@@ -415,6 +414,8 @@ knife data bag create secrets --secret-file ~/.chef/encrypted_data_bag_secret
 
 # Edit encrypted data bag item
 knife data bag edit secrets database --secret-file ~/.chef/encrypted_data_bag_secret
+
+# Configure clients with encrypted_data_bag_secret in /etc/chef/client.rb
 ```
 
 ```ruby
@@ -435,7 +436,6 @@ end
 Roles group recipes and attributes for specific server types.
 
 ```json
-// roles/webserver.json
 {
   "name": "webserver",
   "description": "Web server role",
@@ -469,7 +469,6 @@ knife node run_list add web1.example.com 'role[webserver]'
 Environments manage different deployment stages.
 
 ```json
-// environments/production.json
 {
   "name": "production",
   "description": "Production environment",

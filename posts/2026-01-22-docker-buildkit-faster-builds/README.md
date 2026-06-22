@@ -26,8 +26,9 @@ docker build -t myapp .
 
 ### Permanent Enablement
 
+On current Docker Desktop and Docker Engine releases, BuildKit is the default builder for Linux images. For older Engine versions, enable it in `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "features": {
     "buildkit": true
@@ -127,8 +128,8 @@ RUN --mount=type=cache,id=myapp-npm,target=/root/.npm npm ci
 # Share cache with write access (default is shared)
 RUN --mount=type=cache,target=/root/.npm,sharing=shared npm ci
 
-# Private cache (locked during use)
-RUN --mount=type=cache,target=/build,sharing=private make build
+# Locked cache (waits when another build is using it)
+RUN --mount=type=cache,target=/build,sharing=locked make build
 
 # Read-only cache from another stage
 RUN --mount=type=cache,target=/deps,from=dependencies,source=/deps,ro \
@@ -159,10 +160,10 @@ RUN npm run build
 Build with the secret:
 
 ```bash
-docker build --secret id=npm_token,src=$HOME/.npmrc -t myapp .
+docker build --secret id=npm_token,src=$HOME/.npm-token -t myapp .
 
 # Or from environment variable
-echo "$NPM_TOKEN" | docker build --secret id=npm_token -t myapp .
+docker build --secret id=npm_token,env=NPM_TOKEN -t myapp .
 ```
 
 The secret is never stored in any image layer.
@@ -259,17 +260,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -305,7 +306,7 @@ FROM ubuntu:22.04
 # Multi-line script without escaping
 RUN <<EOF
 apt-get update
-apt-get install -y curl git
+apt-get install -y curl git python3
 rm -rf /var/lib/apt/lists/*
 EOF
 
@@ -362,11 +363,12 @@ Builder configuration file:
 # buildkitd.toml
 [worker.oci]
   gc = true
-  gckeepstorage = 20000000000  # 20GB
+  reservedSpace = "10GB"
+  maxUsedSpace = "20GB"
 
 [[worker.oci.gcpolicy]]
-  keepBytes = 10000000000       # 10GB
-  keepDuration = 604800         # 7 days
+  reservedSpace = "10GB"
+  keepDuration = "168h"         # 7 days
   all = true
 ```
 
@@ -405,8 +407,8 @@ Typical improvements:
 
 5. **Use secrets** for sensitive build-time data
 
-6. **Enable BuildKit permanently** in daemon.json
+6. **Use the default BuildKit builder** on current Docker releases, or enable it permanently in daemon.json on older Engine versions
 
 ---
 
-BuildKit transforms Docker builds with parallel execution, advanced caching, and secure secret handling. Enable it permanently, use cache mounts for package managers, and leverage registry-based caching in CI/CD pipelines. These features alone can cut build times by 50% or more, significantly improving developer productivity and deployment speed.
+BuildKit transforms Docker builds with parallel execution, advanced caching, and secure secret handling. Use cache mounts for package managers, and leverage registry-based caching in CI/CD pipelines. These features alone can cut build times by 50% or more, significantly improving developer productivity and deployment speed.

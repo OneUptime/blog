@@ -298,12 +298,12 @@ message: "Value is: {{ some_var }}"
 
 ```yaml
 # Bad - Braces at start confuse YAML
+shell: {{ command }}
+
+# Good - Quote the entire expression
 shell: "{{ command }}"
 
-# Good - This works but prefer quoting
-shell: "{{ command }}"
-
-# Better - Explicit full quoting
+# Alternative - Use a folded scalar for longer commands
 shell: >
   {{ command }}
 ```
@@ -385,7 +385,7 @@ ansible-playbook test-template.yml -e "app_name=myapp" --check
 
 ```bash
 # Test a simple expression
-ansible localhost -m debug -a "msg={{ '192.168.1.1' | ipaddr }}"
+ansible localhost -m debug -a "msg={{ 'hello' | upper }}"
 
 # Test with variables
 ansible localhost -m debug -a "msg={{ hostvars }}" -e "test_var=hello"
@@ -396,7 +396,7 @@ ansible localhost -m debug -a "msg={{ hostvars }}" -e "test_var=hello"
 ### Type Conversion Filters
 
 ```yaml
-# Convert to integer (fails if not a number)
+# Convert to integer (returns 0 by default if not a number)
 port: "{{ port_string | int }}"
 
 # Safe conversion with default
@@ -528,12 +528,10 @@ flowchart TD
       template:
         src: nginx.conf.j2
         dest: /tmp/nginx.conf.test
-      check_mode: yes
       register: nginx_test
 
     - name: Validate nginx syntax
       command: nginx -t -c /tmp/nginx.conf.test
-      when: not nginx_test.changed
       delegate_to: localhost
 
     - name: Show template output

@@ -121,8 +121,9 @@ brew install docker-credential-helper-ecr
 
 Configure Docker to use the helper:
 
+`~/.docker/config.json`:
+
 ```json
-// ~/.docker/config.json
 {
   "credHelpers": {
     "123456789012.dkr.ecr.us-east-1.amazonaws.com": "ecr-login",
@@ -163,8 +164,9 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 
 ### Docker Config for GCR
 
+`~/.docker/config.json`:
+
 ```json
-// ~/.docker/config.json
 {
   "credHelpers": {
     "gcr.io": "gcloud",
@@ -184,7 +186,7 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 # Login using Azure CLI credentials
 az acr login --name myregistry
 
-# Get credentials for service principal
+# Get registry admin credentials, if the admin user is enabled
 az acr credential show --name myregistry
 ```
 
@@ -228,7 +230,7 @@ docker run -d \
 Login to the registry:
 
 ```bash
-docker login localhost:5000 -u myuser -p mypassword
+echo mypassword | docker login localhost:5000 -u myuser --password-stdin
 ```
 
 ### TLS Configuration
@@ -240,6 +242,7 @@ For production, always use TLS:
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /certs/registry.key \
   -out /certs/registry.crt \
+  -addext "subjectAltName = DNS:registry.example.com" \
   -subj "/CN=registry.example.com"
 
 # Run registry with TLS
@@ -287,7 +290,7 @@ Use credential helpers for secure storage:
   "credHelpers": {
     "docker.io": "osxkeychain",
     "gcr.io": "gcloud",
-    "123456789.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
+    "123456789012.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
   },
   "credsStore": "osxkeychain"
 }
@@ -304,7 +307,7 @@ Available helpers:
 
 ```bash
 # Download and install docker-credential-secretservice
-VERSION=0.8.0
+VERSION=0.9.8
 wget https://github.com/docker/docker-credential-helpers/releases/download/v${VERSION}/docker-credential-secretservice-v${VERSION}.linux-amd64
 chmod +x docker-credential-secretservice-v${VERSION}.linux-amd64
 sudo mv docker-credential-secretservice-v${VERSION}.linux-amd64 /usr/local/bin/docker-credential-secretservice

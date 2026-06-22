@@ -47,23 +47,29 @@ Create a simple pipe that validates positive numbers:
 import { PipeTransform, Injectable, BadRequestException, ArgumentMetadata } from '@nestjs/common';
 
 @Injectable()
-export class PositiveNumberPipe implements PipeTransform<string, number> {
+export class PositiveNumberPipe implements PipeTransform<unknown, number> {
   // Transform method receives the value and metadata about where it came from
-  transform(value: string, metadata: ArgumentMetadata): number {
+  transform(value: unknown, metadata: ArgumentMetadata): number {
+    const fieldName = metadata.data || 'Value';
+
+    if (value === undefined || value === null || value === '') {
+      throw new BadRequestException(`${fieldName} must be a valid whole number`);
+    }
+
     // Convert string to number
-    const num = parseInt(value, 10);
+    const num = Number(value);
 
     // Check if conversion was successful
-    if (isNaN(num)) {
+    if (!Number.isInteger(num) || !Number.isFinite(num)) {
       throw new BadRequestException(
-        `${metadata.data || 'Value'} must be a valid number`
+        `${fieldName} must be a valid whole number`
       );
     }
 
     // Check if number is positive
     if (num <= 0) {
       throw new BadRequestException(
-        `${metadata.data || 'Value'} must be a positive number`
+        `${fieldName} must be a positive number`
       );
     }
 
@@ -104,7 +110,7 @@ interface RangePipeOptions {
 }
 
 @Injectable()
-export class RangePipe implements PipeTransform<string, number> {
+export class RangePipe implements PipeTransform<unknown, number> {
   private min: number;
   private max: number;
   private allowDecimal: boolean;
@@ -116,15 +122,17 @@ export class RangePipe implements PipeTransform<string, number> {
     this.allowDecimal = options.allowDecimal ?? false;
   }
 
-  transform(value: string, metadata: ArgumentMetadata): number {
+  transform(value: unknown, metadata: ArgumentMetadata): number {
     const fieldName = metadata.data || 'Value';
 
-    // Parse as float if decimals allowed, otherwise as integer
-    const num = this.allowDecimal
-      ? parseFloat(value)
-      : parseInt(value, 10);
+    if (value === undefined || value === null || value === '') {
+      throw new BadRequestException(`${fieldName} must be a valid number`);
+    }
 
-    if (isNaN(num)) {
+    // Convert the full value instead of accepting partial matches like "12abc"
+    const num = Number(value);
+
+    if (!Number.isFinite(num)) {
       throw new BadRequestException(`${fieldName} must be a valid number`);
     }
 
@@ -224,7 +232,7 @@ export class SlugifyPipe implements PipeTransform<string, string> {
   }
 }
 
-// Sanitize HTML to prevent XSS
+// Escape HTML special characters
 @Injectable()
 export class SanitizeHtmlPipe implements PipeTransform<string, string> {
   transform(value: string, metadata: ArgumentMetadata): string {
@@ -232,7 +240,7 @@ export class SanitizeHtmlPipe implements PipeTransform<string, string> {
       throw new BadRequestException(`${metadata.data || 'Value'} must be a string`);
     }
 
-    // Basic HTML entity encoding
+    // Basic HTML entity encoding for escaped text output
     return value
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -314,8 +322,17 @@ Create pipes that perform async validation:
 
 ```typescript
 // pipes/unique-email.pipe.ts
-import { PipeTransform, Injectable, BadRequestException, ArgumentMetadata } from '@nestjs/common';
+import {
+  PipeTransform,
+  Injectable,
+  BadRequestException,
+  ArgumentMetadata,
+  Inject,
+  Type,
+  mixin
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
+import { ProductsService } from '../products/products.service';
 
 @Injectable()
 export class UniqueEmailPipe implements PipeTransform<string, Promise<string>> {
@@ -344,37 +361,41 @@ export class UniqueEmailPipe implements PipeTransform<string, Promise<string>> {
 }
 
 // Validate entity exists in database
-@Injectable()
-export class EntityExistsPipe implements PipeTransform<string, Promise<string>> {
-  constructor(
-    private entityService: { findOne: (id: string) => Promise<any> },
-    private entityName: string = 'Entity'
-  ) {}
+export function EntityExistsPipe(
+  entityServiceToken: Type<{ findOne: (id: string) => Promise<any> }>,
+  entityName: string = 'Entity'
+): Type<PipeTransform<string, Promise<string>>> {
+  @Injectable()
+  class EntityExistsPipeMixin implements PipeTransform<string, Promise<string>> {
+    constructor(
+      @Inject(entityServiceToken)
+      private entityService: { findOne: (id: string) => Promise<any> }
+    ) {}
 
-  async transform(value: string, metadata: ArgumentMetadata): Promise<string> {
-    // First validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(value)) {
-      throw new BadRequestException(`Invalid ${this.entityName} ID format`);
+    async transform(value: string, metadata: ArgumentMetadata): Promise<string> {
+      // First validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(value)) {
+        throw new BadRequestException(`Invalid ${entityName} ID format`);
+      }
+
+      // Check if entity exists
+      const entity = await this.entityService.findOne(value);
+      if (!entity) {
+        throw new BadRequestException(`${entityName} not found`);
+      }
+
+      return value;
     }
-
-    // Check if entity exists
-    const entity = await this.entityService.findOne(value);
-    if (!entity) {
-      throw new BadRequestException(`${this.entityName} not found`);
-    }
-
-    return value;
   }
+
+  return mixin(EntityExistsPipeMixin);
 }
 
 // Usage with dependency injection
 @Controller('users')
 export class UsersController {
-  constructor(
-    private usersService: UsersService,
-    private productsService: ProductsService
-  ) {}
+  constructor(private usersService: UsersService) {}
 
   @Post()
   create(@Body('email', UniqueEmailPipe) email: string) {
@@ -384,8 +405,8 @@ export class UsersController {
 
   @Post(':userId/wishlist')
   addToWishlist(
-    @Param('userId', new EntityExistsPipe(this.usersService, 'User')) userId: string,
-    @Body('productId', new EntityExistsPipe(this.productsService, 'Product')) productId: string
+    @Param('userId', EntityExistsPipe(UsersService, 'User')) userId: string,
+    @Body('productId', EntityExistsPipe(ProductsService, 'Product')) productId: string
   ) {
     return this.usersService.addToWishlist(userId, productId);
   }
@@ -442,8 +463,9 @@ export class ArrayPipe<T = any> implements PipeTransform<any[], T[]> {
         try {
           return this.options.itemTransformer!(item);
         } catch (error) {
+          const message = error instanceof Error ? error.message : 'Invalid item';
           throw new BadRequestException(
-            `${fieldName}[${index}]: ${error.message}`
+            `${fieldName}[${index}]: ${message}`
           );
         }
       });
@@ -472,17 +494,17 @@ export class ArrayPipe<T = any> implements PipeTransform<any[], T[]> {
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Create specific array validators
 @Injectable()
 export class UuidArrayPipe extends ArrayPipe<string> {
-  private uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   constructor(options: { minLength?: number; maxLength?: number } = {}) {
     super({
       ...options,
       unique: true,
-      itemValidator: (item) => typeof item === 'string' && this.uuidRegex.test(item),
-      itemTransformer: (item) => item.toLowerCase()
+      itemValidator: (item) => typeof item === 'string' && UUID_REGEX.test(item),
+      itemTransformer: (item) => typeof item === 'string' ? item.toLowerCase() : item
     });
   }
 }

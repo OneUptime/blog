@@ -8,7 +8,7 @@ Description: A comprehensive guide to diagnosing and resolving Loki 'too many ou
 
 ---
 
-The "too many outstanding requests" error in Grafana Loki indicates that the system is overwhelmed with concurrent queries or that rate limits have been exceeded. This error can affect both query and ingestion paths, impacting dashboard loading and log shipping. This guide helps you diagnose the root cause and implement effective solutions.
+The "too many outstanding requests" error in Grafana Loki usually indicates that the read path is overwhelmed with concurrent queries or that query queue limits have been exceeded. Ingestion rate-limit errors can also return HTTP 429, but they are controlled by separate ingestion limits. This guide helps you diagnose the root cause and implement effective solutions.
 
 ## Understanding the Error
 
@@ -38,29 +38,35 @@ per-tenant request rate limit exceeded
 ```bash
 # Query outstanding requests metric
 
-curl -s http://loki:3100/metrics | grep -E "loki_query_frontend_outstanding_requests|loki_request_duration"
+curl -s http://loki:3100/metrics | grep -E "loki_query_frontend_queries_in_progress|loki_query_scheduler_(queue_length|inflight_requests)|loki_request_duration"
 
 # Check rate limiting metrics
 curl -s http://loki:3100/metrics | grep -E "loki_discarded|loki_ingester_streams_created_total"
 
-# View querier status
-curl -s http://loki:3100/ring | jq
+# View query scheduler ring status, if the scheduler ring is enabled
+curl -s http://loki:3100/scheduler/ring
 ```
 
 ### Key Metrics to Monitor
 
 ```promql
-# Outstanding requests per tenant
-loki_query_frontend_outstanding_per_tenant
+# Queries in progress at the query frontend
+loki_query_frontend_queries_in_progress
 
-# Queue length
-loki_query_scheduler_queue_length
+# Query scheduler queue length per tenant
+sum by (user) (loki_query_scheduler_queue_length)
+
+# Query scheduler inflight requests
+loki_query_scheduler_inflight_requests
 
 # Request rate
 rate(loki_request_duration_seconds_count[5m])
 
-# Rejected requests
+# Rejected ingestion samples
 rate(loki_discarded_samples_total[5m])
+
+# Rejected query requests from the scheduler
+rate(loki_query_scheduler_discarded_requests_total[5m])
 
 # Query latency
 histogram_quantile(0.99, rate(loki_request_duration_seconds_bucket{route=~"/loki/api/v1/query.*"}[5m]))
@@ -83,45 +89,35 @@ docker logs loki 2>&1 | grep -i "slow query\|timeout"
 ```yaml
 # loki-config.yaml
 limits_config:
-  # Maximum outstanding requests per tenant
-  max_outstanding_per_tenant: 2048  # Default: 100
-
   # Maximum concurrent queries per tenant
-  max_query_parallelism: 32  # Default: 14
+  max_query_parallelism: 64  # Default: 32
+
+  # Maximum queriers per tenant
+  max_queriers_per_tenant: 0  # 0 = no limit
 
   # Query timeout
   query_timeout: 5m
 
   # Maximum query length
-  max_query_length: 721h  # 30 days
+  max_query_length: 721h  # Default: 30d1h
 
   # Split queries by interval
   split_queries_by_interval: 1h
 
 server:
-  # HTTP server max concurrent requests
+  # gRPC server max concurrent streams
   grpc_server_max_concurrent_streams: 1000
 
 query_scheduler:
-  # Maximum outstanding requests globally
-  max_outstanding_requests_per_tenant: 2048
+  # Maximum outstanding requests per tenant per scheduler
+  max_outstanding_requests_per_tenant: 32000
 
 frontend:
   # Maximum outstanding requests per tenant in frontend
-  max_outstanding_per_tenant: 2048
-
-  # Maximum queriers per tenant
-  max_queriers_per_tenant: 0  # 0 = no limit
+  max_outstanding_per_tenant: 4096
 
   # Compress responses
   compress_responses: true
-
-  # Query result cache
-  results_cache:
-    cache:
-      embedded_cache:
-        enabled: true
-        max_size_mb: 500
 
 querier:
   # Maximum concurrent queries
@@ -158,14 +154,12 @@ query_range:
 overrides:
   # Higher limits for specific tenants
   high-volume-tenant:
-    max_outstanding_per_tenant: 4096
     max_query_parallelism: 64
     ingestion_rate_mb: 100
     ingestion_burst_size_mb: 200
 
   # Lower limits for less critical tenants
   low-priority-tenant:
-    max_outstanding_per_tenant: 256
     max_query_parallelism: 8
     ingestion_rate_mb: 10
 ```
@@ -176,11 +170,9 @@ overrides:
 
 ```yaml
 # docker-compose.yaml for distributed Loki
-version: "3.8"
-
 services:
   query-frontend:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.2
     command: -config.file=/etc/loki/config.yaml -target=query-frontend
     deploy:
       replicas: 2
@@ -190,7 +182,7 @@ services:
           cpus: '2'
 
   querier:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.2
     command: -config.file=/etc/loki/config.yaml -target=querier
     deploy:
       replicas: 4  # Scale up queriers
@@ -200,7 +192,7 @@ services:
           cpus: '4'
 
   query-scheduler:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.2
     command: -config.file=/etc/loki/config.yaml -target=query-scheduler
     deploy:
       replicas: 2
@@ -210,6 +202,7 @@ services:
 
 ```yaml
 # querier-hpa.yaml
+# Requires a Prometheus/custom metrics adapter exposing Loki metrics to Kubernetes.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -223,13 +216,16 @@ spec:
   minReplicas: 2
   maxReplicas: 10
   metrics:
-    - type: Pods
-      pods:
+    - type: External
+      external:
         metric:
-          name: loki_query_frontend_outstanding_per_tenant
+          name: loki_query_scheduler_inflight_requests
+          selector:
+            matchLabels:
+              quantile: "0.75"
         target:
-          type: AverageValue
-          averageValue: "50"
+          type: Value
+          value: "50"
     - type: Resource
       resource:
         name: cpu
@@ -246,8 +242,8 @@ spec:
 # Bad: Scans entire time range
 {job="application"}
 
-# Better: Add time filtering and limit
-{job="application"} | json | level="error" | limit 1000
+# Better: Add parsing filters and set the API query limit to 1000
+{job="application"} | json | level="error"
 
 # Bad: High cardinality label selector
 {job=~".*"}
@@ -265,8 +261,8 @@ spec:
 ### Use Shorter Time Ranges
 
 ```logql
-# Instead of querying 30 days
-{job="application"} [30d]
+# Instead of querying a broad 30-day range
+{job="application"}
 
 # Query smaller windows and aggregate
 sum by (service) (
@@ -401,25 +397,25 @@ limits_config:
 groups:
   - name: loki-request-limits
     rules:
-      - alert: LokiHighOutstandingRequests
+      - alert: LokiHighQuerySchedulerQueue
         expr: |
-          sum by (tenant) (loki_query_frontend_outstanding_per_tenant) > 100
+          sum by (user) (loki_query_scheduler_queue_length) > 100
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High outstanding requests for tenant {{ $labels.tenant }}"
-          description: "Outstanding requests: {{ $value }}"
+          summary: "High queued requests for tenant {{ $labels.user }}"
+          description: "Queued requests: {{ $value }}"
 
-      - alert: LokiRequestsRejected
+      - alert: LokiIngestionSamplesRejected
         expr: |
           rate(loki_discarded_samples_total[5m]) > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Loki is rejecting requests"
-          description: "Rejection rate: {{ $value }}/s"
+          summary: "Loki is discarding ingestion samples"
+          description: "Discarded samples: {{ $value }}/s"
 
       - alert: LokiQueryLatencyHigh
         expr: |
@@ -442,22 +438,22 @@ groups:
     "title": "Loki Request Monitoring",
     "panels": [
       {
-        "title": "Outstanding Requests per Tenant",
+        "title": "Queued Requests per Tenant",
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum by (tenant) (loki_query_frontend_outstanding_per_tenant)",
-            "legendFormat": "{{ tenant }}"
+            "expr": "sum by (user) (loki_query_scheduler_queue_length)",
+            "legendFormat": "{{ user }}"
           }
         ]
       },
       {
-        "title": "Rejected Requests",
+        "title": "Discarded Samples",
         "type": "timeseries",
         "targets": [
           {
             "expr": "rate(loki_discarded_samples_total[5m])",
-            "legendFormat": "Rejections/s"
+            "legendFormat": "Discarded samples/s"
           }
         ]
       },
@@ -480,7 +476,7 @@ groups:
 
 1. **Immediate Relief**:
    ```yaml
-   limits_config:
+   frontend:
      max_outstanding_per_tenant: 4096
    ```
 
@@ -503,7 +499,7 @@ groups:
 The "too many outstanding requests" error indicates Loki is overloaded with queries relative to its capacity. By properly configuring rate limits, scaling query components, optimizing queries, and implementing client-side queuing, you can eliminate these errors and ensure reliable log access.
 
 Key takeaways:
-- Increase `max_outstanding_per_tenant` for immediate relief
+- Increase `frontend.max_outstanding_per_tenant` for immediate relief
 - Scale querier replicas for sustained high query load
 - Optimize LogQL queries to reduce resource consumption
 - Configure caching to reduce repeated query load

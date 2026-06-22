@@ -8,7 +8,7 @@ Description: A comprehensive guide to connecting to Elasticsearch from Python, N
 
 ---
 
-Connecting your applications to Elasticsearch requires using the official client libraries, which provide type-safe, efficient ways to interact with your cluster. This guide covers setting up and using Elasticsearch clients in Python, Node.js, and Java with practical examples.
+Connecting your applications to Elasticsearch requires using the official client libraries, which provide efficient, idiomatic ways to interact with your cluster. This guide covers setting up and using Elasticsearch clients in Python, Node.js, and Java with practical examples.
 
 ## Python Client
 
@@ -31,9 +31,9 @@ pip install elasticsearch[async]
 ```python
 from elasticsearch import Elasticsearch
 
-# Connect to local Elasticsearch
+# Connect to local Elasticsearch with security disabled
 
-es = Elasticsearch("https://localhost:9200")
+es = Elasticsearch("http://localhost:9200")
 
 # Check connection
 print(es.info())
@@ -270,7 +270,7 @@ npm install @elastic/elasticsearch
 const { Client } = require('@elastic/elasticsearch');
 
 const client = new Client({
-  node: 'https://localhost:9200'
+  node: 'http://localhost:9200'
 });
 
 async function run() {
@@ -583,19 +583,14 @@ async function searchArticles(): Promise<Article[]> {
 
 ### Maven Dependency
 
-Add to your `pom.xml`:
+Add to your `pom.xml`. The current Java API Client requires Java 17 or later:
 
 ```xml
 <dependencies>
   <dependency>
     <groupId>co.elastic.clients</groupId>
     <artifactId>elasticsearch-java</artifactId>
-    <version>8.12.0</version>
-  </dependency>
-  <dependency>
-    <groupId>com.fasterxml.jackson.core</groupId>
-    <artifactId>jackson-databind</artifactId>
-    <version>2.15.2</version>
+    <version>9.3.0</version>
   </dependency>
 </dependencies>
 ```
@@ -604,8 +599,7 @@ Add to your `pom.xml`:
 
 ```groovy
 dependencies {
-    implementation 'co.elastic.clients:elasticsearch-java:8.12.0'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'co.elastic.clients:elasticsearch-java:9.3.0'
 }
 ```
 
@@ -613,25 +607,13 @@ dependencies {
 
 ```java
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.json.jackson.JacksonJsonpMapper;
-import co.elastic.clients.transport.ElasticsearchTransport;
-import co.elastic.clients.transport.rest_client.RestClientTransport;
-import org.apache.http.HttpHost;
-import org.elasticsearch.client.RestClient;
 
 public class ElasticsearchConnection {
     public static void main(String[] args) throws Exception {
-        // Create the low-level client
-        RestClient restClient = RestClient.builder(
-            new HttpHost("localhost", 9200, "https")
-        ).build();
-
-        // Create the transport with Jackson mapper
-        ElasticsearchTransport transport = new RestClientTransport(
-            restClient, new JacksonJsonpMapper());
-
-        // Create the API client
-        ElasticsearchClient client = new ElasticsearchClient(transport);
+        // Create the API client for a local cluster with security disabled
+        ElasticsearchClient client = ElasticsearchClient.of(b -> b
+            .host("http://localhost:9200")
+        );
 
         // Test connection
         var info = client.info();
@@ -639,8 +621,7 @@ public class ElasticsearchConnection {
         System.out.println("Version: " + info.version().number());
 
         // Close resources
-        transport.close();
-        restClient.close();
+        client.close();
     }
 }
 ```
@@ -649,66 +630,23 @@ public class ElasticsearchConnection {
 
 ```java
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.json.jackson.JacksonJsonpMapper;
-import co.elastic.clients.transport.ElasticsearchTransport;
-import co.elastic.clients.transport.rest_client.RestClientTransport;
-import org.apache.http.HttpHost;
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.apache.http.ssl.SSLContextBuilder;
-import org.apache.http.ssl.SSLContexts;
-import org.elasticsearch.client.RestClient;
-import org.elasticsearch.client.RestClientBuilder;
+import co.elastic.clients.transport.TransportUtils;
 
 import javax.net.ssl.SSLContext;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.security.KeyStore;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateFactory;
+import java.io.File;
 
 public class AuthenticatedConnection {
     public static ElasticsearchClient createClient() throws Exception {
-        // Load CA certificate
-        Path caCertificatePath = Path.of("/path/to/ca.crt");
-        CertificateFactory factory = CertificateFactory.getInstance("X.509");
-        Certificate trustedCa;
-        try (InputStream is = Files.newInputStream(caCertificatePath)) {
-            trustedCa = factory.generateCertificate(is);
-        }
+        // Load CA certificate and build SSL context
+        File caCertificate = new File("/path/to/http_ca.crt");
+        SSLContext sslContext = TransportUtils.sslContextFromHttpCaCrt(caCertificate);
 
-        // Create trust store
-        KeyStore trustStore = KeyStore.getInstance("pkcs12");
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("ca", trustedCa);
-
-        // Build SSL context
-        SSLContext sslContext = SSLContexts.custom()
-            .loadTrustMaterial(trustStore, null)
-            .build();
-
-        // Create credentials provider
-        BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-        credentialsProvider.setCredentials(
-            AuthScope.ANY,
-            new UsernamePasswordCredentials("elastic", "your_password")
+        // Create client with basic authentication
+        return ElasticsearchClient.of(b -> b
+            .host("https://localhost:9200")
+            .usernameAndPassword("elastic", "your_password")
+            .sslContext(sslContext)
         );
-
-        // Build REST client
-        RestClient restClient = RestClient.builder(
-            new HttpHost("localhost", 9200, "https")
-        ).setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder
-            .setSSLContext(sslContext)
-            .setDefaultCredentialsProvider(credentialsProvider)
-        ).build();
-
-        // Create transport and client
-        ElasticsearchTransport transport = new RestClientTransport(
-            restClient, new JacksonJsonpMapper());
-
-        return new ElasticsearchClient(transport);
     }
 }
 ```
@@ -958,7 +896,8 @@ const client = new Client({
   node: 'https://localhost:9200',
   maxRetries: 3,
   requestTimeout: 30000,
-  compression: true
+  compression: 'gzip',
+  suggestCompression: true
 });
 ```
 
@@ -998,7 +937,7 @@ Always use bulk operations when indexing many documents to reduce network overhe
 
 ### 4. Enable Compression
 
-Enable HTTP compression for better performance:
+Enable HTTP request body compression and ask Elasticsearch for compressed responses:
 
 **Python:**
 ```python
@@ -1009,7 +948,8 @@ es = Elasticsearch("https://localhost:9200", http_compress=True)
 ```javascript
 const client = new Client({
   node: 'https://localhost:9200',
-  compression: true
+  compression: 'gzip',
+  suggestCompression: true
 });
 ```
 
@@ -1017,7 +957,7 @@ const client = new Client({
 
 Connecting to Elasticsearch from your applications is straightforward with the official client libraries. Key takeaways:
 
-1. **Use official clients** - They provide type safety and optimal performance
+1. **Use official clients** - They provide maintained, efficient integrations with Elasticsearch
 2. **Configure authentication** - Use API keys for production applications
 3. **Enable TLS** - Always use encrypted connections in production
 4. **Use connection pooling** - Configured by default, tune for your workload

@@ -15,7 +15,7 @@ Caching is crucial for Elasticsearch performance. The right caching strategy can
 Elasticsearch uses several caches:
 
 1. **Node Query Cache**: Caches filter results at the node level
-2. **Request Cache**: Caches entire search response at shard level
+2. **Request Cache**: Caches shard-level search results for `size: 0` requests
 3. **Field Data Cache**: Caches field values for sorting/aggregations
 4. **Segment-level Caches**: Internal caches for segment data
 
@@ -42,7 +42,7 @@ curl -X GET "https://localhost:9200/_nodes/stats/indices/query_cache" \
 ### Index-Level Control
 
 ```bash
-# Disable query cache for specific index
+# Disable query cache for a specific index at creation time or on a closed index
 curl -X PUT "https://localhost:9200/logs/_settings" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -54,11 +54,11 @@ curl -X PUT "https://localhost:9200/logs/_settings" \
 ### What Gets Cached
 
 - Filter clauses in bool queries
-- Term queries in filter context
-- Range queries in filter context
+- Eligible non-term queries in filter context
+- Range queries in filter context, when Elasticsearch's cache heuristics select them
 
 ```bash
-# This filter will be cached
+# This range filter is eligible for caching
 curl -X GET "https://localhost:9200/products/_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -66,7 +66,6 @@ curl -X GET "https://localhost:9200/products/_search" \
     "query": {
       "bool": {
         "filter": [
-          { "term": { "status": "active" } },
           { "range": { "price": { "gte": 100 } } }
         ]
       }
@@ -76,15 +75,15 @@ curl -X GET "https://localhost:9200/products/_search" \
 
 ### Cache Invalidation
 
-Query cache is automatically invalidated when:
-- Documents are added, updated, or deleted
-- Segments are merged
+Query cache is maintained per segment. Cached entries for unchanged segments can remain valid, while:
+- New or changed documents are searched through new segments after refresh
+- Segments that are merged can invalidate cached query results
 
 ## Request Cache
 
 ### How It Works
 
-Request cache stores the entire response of search requests at the shard level. It is ideal for aggregation-heavy dashboards.
+Request cache stores shard-level search results. By default, it caches `size: 0` requests, so it does not cache document hits, but it can cache `hits.total`, aggregations, and suggestions. It is ideal for aggregation-heavy dashboards.
 
 ### Enable Request Cache
 
@@ -131,12 +130,12 @@ The cache key includes:
 - Sort
 - Source filtering
 
-**Note**: Queries with `now` expressions bypass the cache unless rounded.
+**Note**: Most queries with `now` expressions bypass the cache. Rounded expressions can improve cache reuse within the same rounded interval, but the cache key still changes when that interval changes.
 
 ### Rounding now for Caching
 
 ```bash
-# Bad: now prevents caching
+# Bad: most now expressions prevent caching
 curl -X GET "https://localhost:9200/logs/_search?request_cache=true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -150,7 +149,7 @@ curl -X GET "https://localhost:9200/logs/_search?request_cache=true" \
     }
   }'
 
-# Good: Rounded now allows caching
+# Better: rounded now can improve reuse within the same minute
 curl -X GET "https://localhost:9200/logs/_search?request_cache=true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -368,7 +367,7 @@ curl -X GET "https://localhost:9200/logs-2024.01.15/_search?request_cache=true" 
   -u elastic:password \
   -d '{
     "size": 0,
-    "aggs": { "count": { "value_count": { "field": "_id" } } }
+    "aggs": { "count": { "value_count": { "field": "timestamp" } } }
   }'
 
 # Query old indices (highly cacheable)
@@ -377,7 +376,7 @@ curl -X GET "https://localhost:9200/logs-2024.01.01,logs-2024.01.02/_search?requ
   -u elastic:password \
   -d '{
     "size": 0,
-    "aggs": { "count": { "value_count": { "field": "_id" } } }
+    "aggs": { "count": { "value_count": { "field": "timestamp" } } }
   }'
 ```
 

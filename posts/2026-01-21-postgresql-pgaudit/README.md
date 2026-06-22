@@ -18,7 +18,7 @@ pgaudit provides detailed session and object audit logging for PostgreSQL. This 
 sudo apt install postgresql-16-pgaudit
 
 # RHEL/CentOS
-sudo dnf install pgaudit16
+sudo dnf install pgaudit_16
 ```
 
 ## Configuration
@@ -26,6 +26,18 @@ sudo dnf install pgaudit16
 ```conf
 # postgresql.conf
 shared_preload_libraries = 'pgaudit'
+```
+
+Restart PostgreSQL after changing `shared_preload_libraries`, then enable the extension before setting `pgaudit.log`.
+
+## Enable Extension
+
+```sql
+CREATE EXTENSION pgaudit;
+```
+
+```conf
+# postgresql.conf
 
 # Audit settings
 pgaudit.log = 'ddl, write'
@@ -35,22 +47,17 @@ pgaudit.log_statement_once = off
 pgaudit.log_level = log
 ```
 
-## Enable Extension
-
-```sql
-CREATE EXTENSION pgaudit;
-```
-
 ## Audit Classes
 
 | Class | Description |
 |-------|-------------|
-| READ | SELECT, COPY FROM |
-| WRITE | INSERT, UPDATE, DELETE |
+| READ | SELECT, COPY when the source is a relation or query |
+| WRITE | INSERT, UPDATE, DELETE, TRUNCATE, COPY when the destination is a relation |
 | FUNCTION | Function calls |
 | ROLE | Role/permission changes |
 | DDL | Schema changes |
 | MISC | Other commands |
+| MISC_SET | SET and related commands |
 | ALL | All of the above |
 
 ## Configuration Examples

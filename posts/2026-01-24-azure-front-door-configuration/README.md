@@ -50,7 +50,7 @@ flowchart TB
 
 ### Create the Front Door Profile
 
-Start by creating a Front Door profile. The Standard tier works for most use cases, while Premium adds private link support and advanced WAF rules.
+Start by creating a Front Door profile. The Standard tier works for most use cases with custom WAF rules, while Premium adds private link support and managed WAF rule sets.
 
 ```bash
 # Create resource group
@@ -59,11 +59,11 @@ az group create \
   --name rg-frontdoor-prod \
   --location eastus
 
-# Create Front Door profile (Standard_AzureFrontDoor or Premium_AzureFrontDoor)
+# Create Front Door profile (use Premium_AzureFrontDoor for managed WAF rules)
 az afd profile create \
   --profile-name fd-myapp-prod \
   --resource-group rg-frontdoor-prod \
-  --sku Standard_AzureFrontDoor
+  --sku Premium_AzureFrontDoor
 ```
 
 ### Add an Endpoint
@@ -145,7 +145,7 @@ az afd route create \
   --profile-name fd-myapp-prod \
   --resource-group rg-frontdoor-prod \
   --origin-group og-webapp \
-  --supported-protocols Https \
+  --supported-protocols Http Https \
   --patterns-to-match "/*" \
   --forwarding-protocol HttpsOnly \
   --https-redirect Enabled \
@@ -209,15 +209,16 @@ az afd route update \
 az network front-door waf-policy create \
   --name wafpolicy-myapp \
   --resource-group rg-frontdoor-prod \
-  --sku Standard_AzureFrontDoor \
+  --sku Premium_AzureFrontDoor \
   --mode Prevention
 
 # Enable managed rule sets (OWASP)
 az network front-door waf-policy managed-rules add \
   --policy-name wafpolicy-myapp \
   --resource-group rg-frontdoor-prod \
-  --type DefaultRuleSet \
-  --version 1.0
+  --type Microsoft_DefaultRuleSet \
+  --action Block \
+  --version 2.2
 
 # Add bot protection rules
 az network front-door waf-policy managed-rules add \
@@ -253,7 +254,7 @@ az network front-door waf-policy rule create \
   --rule-type RateLimitRule \
   --action Block \
   --rate-limit-threshold 1000 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --match-variable RequestUri \
   --operator Contains \
   --values "/api/"
@@ -282,6 +283,14 @@ az afd rule-set create \
   --profile-name fd-myapp-prod \
   --resource-group rg-frontdoor-prod
 
+# Attach the rule set to the route
+az afd route update \
+  --route-name route-default \
+  --endpoint-name myapp-endpoint \
+  --profile-name fd-myapp-prod \
+  --resource-group rg-frontdoor-prod \
+  --rule-sets CachingRules
+
 # Cache static assets for 7 days
 az afd rule create \
   --rule-name CacheStaticAssets \
@@ -293,8 +302,8 @@ az afd rule create \
   --operator RegEx \
   --match-values ".*\.(css|js|png|jpg|gif|ico|woff|woff2)$" \
   --action-name CacheExpiration \
-  --cache-behavior Override \
-  --cache-duration "7.00:00:00"
+  --cache-behavior OverrideAlways \
+  --cache-duration "168:00:00"
 
 # Bypass cache for API endpoints
 az afd rule create \
@@ -335,22 +344,20 @@ az monitor diagnostic-settings create \
 ```kusto
 // Find failed requests
 AzureDiagnostics
-| where ResourceType == "FRONTDOORS"
-| where httpStatusCode_s >= 400
+| where ResourceProvider == "MICROSOFT.CDN" and Category == "FrontDoorAccessLog"
+| where toint(httpStatusCode_s) >= 400
 | summarize count() by httpStatusCode_s, requestUri_s, bin(TimeGenerated, 5m)
 | order by TimeGenerated desc
 
 // Check origin health
 AzureDiagnostics
-| where ResourceType == "FRONTDOORS"
-| where Category == "FrontDoorHealthProbeLog"
+| where ResourceProvider == "MICROSOFT.CDN" and Category == "FrontDoorHealthProbeLog"
 | where result_s != "Passed"
 | summarize count() by originName_s, result_s, bin(TimeGenerated, 5m)
 
 // WAF blocked requests
 AzureDiagnostics
-| where ResourceType == "FRONTDOORS"
-| where Category == "FrontDoorWebApplicationFirewallLog"
+| where ResourceProvider == "MICROSOFT.CDN" and Category == "FrontDoorWebApplicationFirewallLog"
 | where action_s == "Block"
 | summarize count() by ruleName_s, clientIp_s, bin(TimeGenerated, 1h)
 ```

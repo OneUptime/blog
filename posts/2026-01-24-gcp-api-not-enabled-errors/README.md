@@ -20,7 +20,7 @@ flowchart TD
     end
 
     subgraph "GCP API Layer"
-        SRM[Service Management API]
+        SRM[Service Usage API]
         APIs[Enabled APIs]
     end
 
@@ -40,7 +40,7 @@ flowchart TD
     APIs --> |Routes to| CF
 ```
 
-Every GCP service is accessed through its API. Before using a service, you must explicitly enable its API in your project. This design provides security and cost control by ensuring you only have access to services you intentionally activate.
+Most Google Cloud services are accessed through APIs. Before using a service, you must explicitly enable its API in your project. This design helps with security and cost control by reducing accidental usage of services you have not intentionally activated.
 
 ## Common Error Messages
 
@@ -114,13 +114,16 @@ gcloud services describe compute.googleapis.com
 
 ## Common APIs and Their Dependencies
 
-Many GCP services require multiple APIs to function properly. Here are common services and their required APIs:
+Many GCP services need companion APIs depending on the features you use. Here are common services and APIs you might need:
 
 ### Compute Engine
 
 ```bash
 gcloud services enable \
-    compute.googleapis.com \
+    compute.googleapis.com
+
+# Optional: enable these if you use OS Login or IAP TCP forwarding for SSH
+gcloud services enable \
     oslogin.googleapis.com \
     iap.googleapis.com
 ```
@@ -131,9 +134,7 @@ gcloud services enable \
 gcloud services enable \
     container.googleapis.com \
     compute.googleapis.com \
-    containerregistry.googleapis.com \
-    artifactregistry.googleapis.com \
-    cloudresourcemanager.googleapis.com
+    artifactregistry.googleapis.com
 ```
 
 ### Cloud Functions
@@ -143,8 +144,10 @@ gcloud services enable \
     cloudfunctions.googleapis.com \
     cloudbuild.googleapis.com \
     artifactregistry.googleapis.com \
-    run.googleapis.com \
-    eventarc.googleapis.com
+    run.googleapis.com
+
+# Optional: enable Eventarc for event-driven Cloud Run functions
+gcloud services enable eventarc.googleapis.com
 ```
 
 ### Cloud Run
@@ -153,15 +156,16 @@ gcloud services enable \
 gcloud services enable \
     run.googleapis.com \
     cloudbuild.googleapis.com \
-    artifactregistry.googleapis.com \
-    containerregistry.googleapis.com
+    artifactregistry.googleapis.com
 ```
 
 ### BigQuery
 
 ```bash
+gcloud services enable bigquery.googleapis.com
+
+# Optional: enable these if you use the BigQuery Storage API or Data Transfer Service
 gcloud services enable \
-    bigquery.googleapis.com \
     bigquerystorage.googleapis.com \
     bigquerydatatransfer.googleapis.com
 ```
@@ -174,7 +178,6 @@ flowchart TD
         GKE[container.googleapis.com]
         GKE --> CE[compute.googleapis.com]
         GKE --> AR[artifactregistry.googleapis.com]
-        GKE --> CRM[cloudresourcemanager.googleapis.com]
     end
 
     subgraph "Cloud Functions Dependencies"
@@ -187,8 +190,7 @@ flowchart TD
 
     subgraph "Cloud SQL Dependencies"
         SQL[sqladmin.googleapis.com]
-        SQL --> CE2[compute.googleapis.com]
-        SQL --> SM[servicenetworking.googleapis.com]
+        SQL --> SM[servicenetworking.googleapis.com for private IP]
     end
 ```
 
@@ -217,7 +219,7 @@ resource "google_project_service" "required_apis" {
   # Do not disable the API when destroying resources
   disable_on_destroy = false
 
-  # Wait for the API to be fully enabled
+  # Do not automatically disable services that depend on this API
   disable_dependent_services = false
 }
 
@@ -296,7 +298,6 @@ CORE_APIS=(
 COMPUTE_APIS=(
     "compute.googleapis.com"
     "container.googleapis.com"
-    "containerregistry.googleapis.com"
     "artifactregistry.googleapis.com"
 )
 
@@ -509,12 +510,14 @@ flowchart TD
 
 ```bash
 # Create an alert for API errors
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="API Errors Alert" \
     --condition-display-name="High API Error Rate" \
-    --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND metric.labels.response_code_class!="2xx"' \
-    --condition-threshold-value=100 \
-    --condition-threshold-comparison=COMPARISON_GT
+    --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND resource.type="api" AND metric.label."response_code_class"!="2xx"' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_SUM"}' \
+    --duration="60s" \
+    --if="> 100" \
+    --trigger-count=1
 ```
 
 6. **Keep APIs enabled** - Avoid disabling APIs in production projects as this can break existing workloads.

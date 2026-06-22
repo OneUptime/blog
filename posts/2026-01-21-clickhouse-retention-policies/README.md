@@ -57,9 +57,9 @@ CREATE TABLE events (
 ) ENGINE = MergeTree()
 ORDER BY timestamp
 TTL
-    timestamp + INTERVAL 7 DAY WHERE priority = 0,   -- Debug logs: 7 days
-    timestamp + INTERVAL 30 DAY WHERE priority = 1,  -- Info: 30 days
-    timestamp + INTERVAL 90 DAY WHERE priority = 2,  -- Warning: 90 days
+    timestamp + INTERVAL 7 DAY DELETE WHERE priority = 0,   -- Debug logs: 7 days
+    timestamp + INTERVAL 30 DAY DELETE WHERE priority = 1,  -- Info: 30 days
+    timestamp + INTERVAL 90 DAY DELETE WHERE priority = 2,  -- Warning: 90 days
     timestamp + INTERVAL 365 DAY;                    -- Default: 1 year
 ```
 
@@ -68,12 +68,12 @@ TTL
 ### Automated Partition Drops
 
 ```sql
--- Create procedure for partition cleanup
+-- Create script for partition cleanup
 -- Run via external scheduler (cron, Airflow)
+-- Assumes the table is partitioned by toYYYYMM(timestamp)
 
--- Drop partitions older than retention period
-ALTER TABLE events DROP PARTITION
-WHERE toYYYYMM(partition_value) < toYYYYMM(now() - INTERVAL 90 DAY);
+-- Drop one old partition returned by the script
+ALTER TABLE events DROP PARTITION '202401';
 
 -- Script for automated cleanup
 -- cleanup.sql
@@ -82,6 +82,7 @@ SELECT
     concat('ALTER TABLE events DROP PARTITION ''', partition, ''';') AS drop_command
 FROM system.parts
 WHERE table = 'events'
+  AND database = currentDatabase()
   AND partition < toString(toYYYYMM(now() - INTERVAL 90 DAY))
 GROUP BY partition;
 ```
@@ -93,20 +94,22 @@ GROUP BY partition;
 SELECT
     table,
     formatReadableSize(sum(bytes_on_disk)) AS size,
-    min(min_date) AS oldest_data,
-    max(max_date) AS newest_data
+    min(min_time) AS oldest_data,
+    max(max_time) AS newest_data
 FROM system.parts
 WHERE active
 GROUP BY table;
 
--- Pending TTL cleanup
+-- Recent TTL cleanup
 SELECT
     database,
     table,
-    result_part_name,
-    result_part_path
+    part_name,
+    path_on_disk,
+    merge_reason
 FROM system.part_log
 WHERE event_type = 'MergeParts'
+  AND merge_reason IN ('TTLDeleteMerge', 'TTLDropMerge')
   AND event_time >= now() - INTERVAL 1 HOUR;
 ```
 

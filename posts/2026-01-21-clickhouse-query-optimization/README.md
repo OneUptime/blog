@@ -50,7 +50,7 @@ EXPLAIN PLAN SELECT * FROM events WHERE user_id = 123;
 -- Show query pipeline (execution steps)
 EXPLAIN PIPELINE SELECT * FROM events WHERE user_id = 123;
 
--- Show estimated rows and costs
+-- Show estimated rows, marks, and parts
 EXPLAIN ESTIMATE SELECT * FROM events WHERE user_id = 123;
 
 -- Show Abstract Syntax Tree
@@ -60,7 +60,7 @@ EXPLAIN AST SELECT * FROM events WHERE user_id = 123;
 ### Reading EXPLAIN Output
 
 ```sql
-EXPLAIN
+EXPLAIN indexes = 1
 SELECT user_id, count()
 FROM events
 WHERE event_type = 'click' AND created_at > '2024-01-01'
@@ -97,7 +97,7 @@ WHERE event_type = 'click'
 GROUP BY user_id;
 ```
 
-Shows estimated bytes, rows, and parts to read.
+Shows estimated rows, marks, and parts to read for MergeTree tables.
 
 ## Query Profiling
 
@@ -176,12 +176,12 @@ SELECT * FROM events WHERE event_type = 'click' AND user_id = 123;
 ```sql
 -- Table partitioned by toYYYYMM(created_at)
 
--- SLOW: No partition pruning (scans all partitions)
+-- SLOWER: Function on column can make range analysis less direct
 SELECT * FROM events WHERE toDate(created_at) = '2024-01-15';
 
--- FAST: Explicit partition filter
+-- FAST: Explicit range filter for the same day
 SELECT * FROM events
-WHERE created_at >= '2024-01-01' AND created_at < '2024-02-01';
+WHERE created_at >= '2024-01-15' AND created_at < '2024-01-16';
 ```
 
 ### 3. Avoid SELECT *
@@ -214,7 +214,7 @@ PREWHERE works best when:
 
 ### 5. Optimize GROUP BY Order
 
-Put low-cardinality columns first:
+When it matches the table's sorting key, GROUP BY can be more efficient because ClickHouse can aggregate in order. Low-cardinality grouping keys can also reduce aggregation memory in some workloads, but benchmark the order for your schema:
 
 ```sql
 -- SLOWER: High cardinality first
@@ -262,6 +262,8 @@ FROM events;
 
 ### 8. Use Sampling for Approximate Results
 
+Sampling requires a MergeTree table created with a sampling expression.
+
 ```sql
 -- Full table scan for exact count
 SELECT count() FROM events WHERE event_type = 'click';
@@ -270,13 +272,13 @@ SELECT count() FROM events WHERE event_type = 'click';
 SELECT count() * 10 FROM events SAMPLE 0.1 WHERE event_type = 'click';
 
 -- With minimum rows guarantee
-SELECT count() * 10 FROM events SAMPLE 10000 WHERE event_type = 'click';
+SELECT sum(_sample_factor) FROM events SAMPLE 10000 WHERE event_type = 'click';
 ```
 
-### 9. Parallelize with FINAL Alternatives
+### 9. Avoid FINAL When Possible
 
 ```sql
--- SLOW: FINAL forces single-threaded execution
+-- SLOW: FINAL can require expensive query-time row merging
 SELECT * FROM users FINAL WHERE user_id = 123;
 
 -- FASTER: Use aggregation instead
@@ -370,7 +372,8 @@ SET max_bytes_before_external_sort = 10000000000;
 -- More threads for faster queries
 SET max_threads = 16;
 
--- More streams for reading
+-- More streams for asynchronous MergeTree reading
+SET allow_asynchronous_read_from_io_pool_for_merge_tree = 1;
 SET max_streams_for_merge_tree_reading = 16;
 ```
 
@@ -409,6 +412,7 @@ ORDER BY day;
 After:
 ```sql
 -- 0.5 seconds
+-- Assumes the table sorting key starts with (event_type, day) or an equivalent materialized day column
 SELECT
     toStartOfDay(created_at) AS day,
     event_type,

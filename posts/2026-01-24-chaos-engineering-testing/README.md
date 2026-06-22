@@ -65,11 +65,13 @@ class SteadyStateMetrics:
         return self.prometheus.query(query)
 
     def get_p99_latency(self, duration):
-        query = f'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[{duration}m]))'
+        query = f'histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[{duration}m])))'
         return self.prometheus.query(query)
 
     def is_within_tolerance(self, current, baseline, tolerance=0.1):
         """Check if current metrics are within acceptable range"""
+        if baseline == 0:
+            return current == 0
         return abs(current - baseline) / baseline <= tolerance
 ```
 
@@ -159,7 +161,7 @@ class ChaosRunner:
         return results
 
     def _should_abort(self, current, baseline, max_degradation=0.5):
-        """Abort if error rate exceeds 50% degradation from baseline"""
+        """Abort if error rate increases by more than 50 percentage points"""
         error_increase = current.get('error_rate', 0) - baseline.get('error_rate', 0)
         return error_increase > max_degradation
 
@@ -199,7 +201,7 @@ class NetworkChaos:
         self.namespace = namespace
 
     def inject_latency(self, delay_ms: int = 200, jitter_ms: int = 50):
-        """Add network latency to a service using tc"""
+        """Add network latency to a service using Chaos Mesh"""
         # Using Chaos Mesh CRD
         manifest = f"""
 apiVersion: chaos-mesh.org/v1alpha1
@@ -272,6 +274,8 @@ Kill pods randomly to test recovery mechanisms.
 ```python
 # pod_chaos.py - Pod failure experiments
 
+import subprocess
+
 class PodChaos:
     def __init__(self, target_deployment: str, namespace: str = "default"):
         self.deployment = target_deployment
@@ -293,8 +297,6 @@ spec:
       - {self.namespace}
     labelSelectors:
       app: {self.deployment}
-  scheduler:
-    cron: "@every 2m"
 """
         self._apply_manifest(manifest)
 
@@ -316,6 +318,26 @@ spec:
       app: {self.deployment}
 """
         self._apply_manifest(manifest)
+
+    def rollback(self):
+        """Remove all pod chaos"""
+        subprocess.run([
+            "kubectl", "delete", "podchaos",
+            f"pod-kill-{self.deployment}",
+            f"pod-kill-all-{self.deployment}",
+            "-n", self.namespace,
+            "--ignore-not-found"
+        ])
+
+    def _apply_manifest(self, manifest: str):
+        process = subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=manifest,
+            text=True,
+            capture_output=True
+        )
+        if process.returncode != 0:
+            raise Exception(f"Failed to apply chaos: {process.stderr}")
 ```
 
 ### CPU and Memory Stress
@@ -324,6 +346,8 @@ Test how your application handles resource exhaustion.
 
 ```python
 # resource_chaos.py - CPU and memory stress tests
+
+import subprocess
 
 class ResourceChaos:
     def __init__(self, target_service: str, namespace: str = "default"):
@@ -375,6 +399,26 @@ spec:
   duration: "5m"
 """
         self._apply_manifest(manifest)
+
+    def rollback(self):
+        """Remove all resource chaos"""
+        subprocess.run([
+            "kubectl", "delete", "stresschaos",
+            f"cpu-stress-{self.target}",
+            f"memory-stress-{self.target}",
+            "-n", self.namespace,
+            "--ignore-not-found"
+        ])
+
+    def _apply_manifest(self, manifest: str):
+        process = subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=manifest,
+            text=True,
+            capture_output=True
+        )
+        if process.returncode != 0:
+            raise Exception(f"Failed to apply chaos: {process.stderr}")
 ```
 
 ## Running Chaos in CI/CD
@@ -397,8 +441,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Kubernetes cluster
-        uses: azure/setup-kubectl@v3
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure Kubernetes context
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
 
       - name: Install Chaos Mesh
         run: |

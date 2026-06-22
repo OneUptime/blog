@@ -12,7 +12,7 @@ PostgreSQL's query planner usually makes good decisions, but sometimes you need 
 
 ## Prerequisites
 
-- PostgreSQL 10+
+- A PostgreSQL version supported by the pg_hint_plan release you install
 - Superuser access for extension installation
 - Understanding of EXPLAIN ANALYZE output
 - Knowledge of join types and index usage
@@ -36,11 +36,7 @@ Use hints when:
 
 sudo apt install postgresql-16-pg-hint-plan
 
-# RHEL/CentOS
-sudo dnf install pg_hint_plan_16
-
-# macOS with Homebrew
-brew install pg_hint_plan
+# Use the package matching your PostgreSQL major version
 ```
 
 ### From Source
@@ -164,7 +160,7 @@ Control how tables are joined:
 ### NestLoop - Nested Loop Join
 
 ```sql
-/*+ NestLoop(orders customers) */
+/*+ NestLoop(o c) */
 SELECT o.*, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
@@ -176,7 +172,7 @@ WHERE o.id = 123;
 ### HashJoin - Hash Join
 
 ```sql
-/*+ HashJoin(orders customers) */
+/*+ HashJoin(o c) */
 SELECT o.*, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id;
@@ -187,7 +183,7 @@ JOIN customers c ON o.customer_id = c.id;
 ### MergeJoin - Merge Join
 
 ```sql
-/*+ MergeJoin(orders customers) */
+/*+ MergeJoin(o c) */
 SELECT o.*, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
@@ -200,7 +196,7 @@ ORDER BY c.id;
 
 ```sql
 -- Force hash join by disabling others
-/*+ NoNestLoop(orders customers) NoMergeJoin(orders customers) */
+/*+ NoNestLoop(o c) NoMergeJoin(o c) */
 SELECT o.*, c.name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id;
@@ -212,7 +208,7 @@ JOIN customers c ON o.customer_id = c.id;
 
 ```sql
 -- Join customers first, then orders, then items
-/*+ Leading(customers orders items) */
+/*+ Leading(c o i) */
 SELECT c.name, o.id, i.product_name
 FROM customers c
 JOIN orders o ON o.customer_id = c.id
@@ -220,7 +216,7 @@ JOIN order_items i ON i.order_id = o.id
 WHERE c.region = 'US';
 
 -- Nested leading for complex joins
-/*+ Leading((customers (orders items))) */
+/*+ Leading((c (o i))) */
 SELECT ...
 ```
 
@@ -228,32 +224,32 @@ SELECT ...
 
 ```sql
 -- (outer inner) syntax
-/*+ Leading((customers orders)) */
+/*+ Leading((c o)) */
 -- customers is outer, orders is inner
 
-/*+ Leading(((customers orders) items)) */
+/*+ Leading(((c o) i)) */
 -- (customers JOIN orders) is outer, items is inner
 ```
 
 ## Row Count Hints
 
-Override row estimates:
+Override join row estimates:
 
 ```sql
--- Tell planner to expect 1000 rows from orders
-/*+ Rows(orders #1000) */
-SELECT * FROM orders WHERE complex_condition;
+-- Tell planner to expect 1000 rows from a join
+/*+ Rows(o c #1000) */
+SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id;
 
 -- Multiply estimate by 10
-/*+ Rows(orders *10) */
-SELECT * FROM orders WHERE status = 'rare_status';
+/*+ Rows(o c *10) */
+SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id;
 
 -- Add to estimate
-/*+ Rows(orders +1000) */
-SELECT * FROM orders;
+/*+ Rows(o c +1000) */
+SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id;
 
 -- Set estimate for join
-/*+ Rows(orders customers #100) */
+/*+ Rows(o c #100) */
 SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id;
 ```
 
@@ -279,12 +275,12 @@ SELECT * FROM orders;
 
 ```sql
 /*+
-    Leading(customers orders items)
-    NestLoop(customers orders)
-    HashJoin(orders items)
-    IndexScan(customers idx_customers_region)
-    SeqScan(orders)
-    Rows(orders #10000)
+    Leading(c o i)
+    NestLoop(c o)
+    HashJoin(o i)
+    IndexScan(c idx_customers_region)
+    SeqScan(o)
+    Rows(o i #10000)
 */
 SELECT
     c.name,
@@ -314,38 +310,39 @@ SET pg_hint_plan.enable_hint_table = on;
 -- Hint table is created automatically, but you can check:
 SELECT * FROM hint_plan.hints;
 
--- Insert hint for specific query
+-- Get the query ID with EXPLAIN (VERBOSE), then insert a hint for it
 INSERT INTO hint_plan.hints (
-    norm_query_string,
+    query_id,
     application_name,
     hints
 ) VALUES (
-    'SELECT * FROM orders WHERE customer_id = $1',
+    -7164653396197960701,
     '',
     'IndexScan(orders idx_orders_customer_id)'
 );
 
 -- Application name specific hint
 INSERT INTO hint_plan.hints (
-    norm_query_string,
+    query_id,
     application_name,
     hints
 ) VALUES (
-    'SELECT * FROM orders WHERE status = $1',
+    -8427798578123456789,
     'reporting_app',
     'SeqScan(orders)'
 );
 ```
 
-### Query Normalization
+### Query Identification
 
 ```sql
--- Query with parameters is normalized
--- Original: SELECT * FROM orders WHERE id = 123
--- Normalized: SELECT * FROM orders WHERE id = $1
+-- Show the query identifier
 
--- Check normalized query form
-SELECT pg_stat_statements.query
+EXPLAIN (VERBOSE)
+SELECT * FROM orders WHERE id = 123;
+
+-- You can also retrieve query IDs from pg_stat_statements
+SELECT queryid, query
 FROM pg_stat_statements
 WHERE query LIKE '%orders%';
 ```
@@ -405,11 +402,11 @@ SELECT * FROM orders WHERE status = 'cancelled';
 ```sql
 -- Complex join with known data distribution
 /*+
-    Leading(regions customers orders)
-    NestLoop(regions customers)
-    HashJoin(customers orders)
-    IndexScan(regions idx_regions_code)
-    Rows(customers #100)
+    Leading(r c o)
+    NestLoop(r c)
+    HashJoin(c o)
+    IndexScan(r idx_regions_code)
+    Rows(r c #100)
 */
 SELECT r.name, COUNT(o.id)
 FROM regions r
@@ -423,7 +420,7 @@ GROUP BY r.name;
 
 ```sql
 -- Force nested loop to avoid memory-heavy hash join
-/*+ NoHashJoin(large_table1 large_table2) */
+/*+ NoHashJoin(t1 t2) */
 SELECT *
 FROM large_table1 t1
 JOIN large_table2 t2 ON t1.id = t2.foreign_id
@@ -433,9 +430,8 @@ WHERE t1.id < 1000;
 ### Example 4: CTE Materialization Control
 
 ```sql
--- PostgreSQL 12+ allows CTE materialization hints
-WITH /*+ Materialize */
-expensive_cte AS (
+-- PostgreSQL 12+ allows CTE materialization control
+WITH expensive_cte AS MATERIALIZED (
     SELECT customer_id, SUM(total) AS lifetime_value
     FROM orders
     GROUP BY customer_id
@@ -445,27 +441,23 @@ FROM customers c
 JOIN expensive_cte e ON e.customer_id = c.id;
 
 -- Or prevent materialization
-WITH /*+ NoMaterialize */
-simple_cte AS (
+WITH simple_cte AS NOT MATERIALIZED (
     SELECT * FROM orders WHERE status = 'active'
 )
 SELECT * FROM simple_cte WHERE customer_id = 123;
 ```
 
-### Example 5: Subquery Optimization
+### Example 5: Join Optimization
 
 ```sql
 /*+
-    Leading((orders (SELECT customer_id FROM vip_customers)))
-    HashJoin(orders vip_customers)
+    Leading(o v)
+    HashJoin(o v)
 */
 SELECT *
 FROM orders o
-WHERE o.customer_id IN (
-    SELECT customer_id
-    FROM vip_customers
-    WHERE tier = 'platinum'
-);
+JOIN vip_customers v ON v.customer_id = o.customer_id
+WHERE v.tier = 'platinum';
 ```
 
 ## Best Practices
@@ -489,11 +481,11 @@ WHERE o.customer_id IN (
 
 ```sql
 -- Document why hint is needed
+-- Hint needed because: Statistics don't reflect recent bulk insert
+-- of 100k orders for customer 12345. Remove after next ANALYZE.
+-- Added: 2026-01-21, Ticket: PERF-1234
 /*+
     IndexScan(orders idx_orders_customer_id)
-    -- Hint needed because: Statistics don't reflect recent bulk insert
-    -- of 100k orders for customer 12345. Remove after next ANALYZE.
-    -- Added: 2026-01-21, Ticket: PERF-1234
 */
 SELECT * FROM orders WHERE customer_id = 12345;
 ```

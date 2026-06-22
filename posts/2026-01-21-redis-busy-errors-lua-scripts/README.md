@@ -20,8 +20,8 @@ BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN N
 
 It means:
 1. A Lua script is currently executing
-2. The script has been running longer than the `lua-time-limit` (default: 5 seconds)
-3. Redis is blocking all other operations
+2. The script has been running longer than the `busy-reply-threshold` (default: 5 seconds; older configs used the `lua-time-limit` name)
+3. Redis is rejecting normal operations with BUSY replies
 4. You can kill the script or wait for it to complete
 
 ## Step 1: Identify the Problem Script
@@ -60,40 +60,30 @@ redis-cli SLOWLOG GET 20
 #       4) "key:pattern"
 ```
 
-### List Cached Scripts
+### Check Cached Scripts
 
 ```bash
 # Check script cache
 redis-cli SCRIPT EXISTS <sha1> <sha2> ...
-
-# Debug: see all loaded scripts
-redis-cli DEBUG SCRIPT EXISTS
 ```
 
 ## Step 2: Configure Timeout Settings
 
-### Adjust lua-time-limit
+### Adjust busy-reply-threshold
 
 ```bash
 # Check current limit
-redis-cli CONFIG GET lua-time-limit
+redis-cli CONFIG GET busy-reply-threshold
 # Default: 5000 (5 seconds)
 
 # Increase limit (temporary fix)
-redis-cli CONFIG SET lua-time-limit 10000  # 10 seconds
+redis-cli CONFIG SET busy-reply-threshold 10000  # 10 seconds
 
 # Persist change
 redis-cli CONFIG REWRITE
 ```
 
-Note: This does not stop scripts from running - it only determines when Redis starts accepting SCRIPT KILL and returning BUSY errors.
-
-### Configure busy-reply-threshold (Redis 7.0+)
-
-```bash
-# Set threshold for BUSY response
-redis-cli CONFIG SET busy-reply-threshold 5000
-```
+Note: This does not stop scripts from running - it only determines when Redis starts accepting SCRIPT KILL and returning BUSY errors. In older Redis configurations this setting was named `lua-time-limit`; current Redis keeps `lua-time-limit` as an alias.
 
 ## Step 3: Optimize Slow Scripts
 
@@ -104,7 +94,7 @@ Common causes of slow Lua scripts:
 1. **Large KEYS operations** - Scanning many keys
 2. **Unbounded loops** - Processing without limits
 3. **Complex string operations** - Large data manipulation
-4. **Network calls** - Scripts cannot make external calls, but waiting for large responses
+4. **Large Redis command replies** - Fetching or processing big values inside the script
 
 ### Example: Bad vs Good Script
 
@@ -403,7 +393,6 @@ Protect your application from BUSY errors:
 ```python
 import redis
 import time
-from functools import wraps
 
 class RedisCircuitBreaker:
     def __init__(self, redis_client, failure_threshold=5, reset_timeout=60):
@@ -510,7 +499,7 @@ def validate_script(script):
         issues.append("ERROR: Unbounded while loop detected")
 
     # Check for missing key validation
-    if "KEYS[1]" in script and "if not KEYS" not in script and "#keys" not in script:
+    if "KEYS[1]" in script and "if not KEYS" not in script and "#KEYS" not in script:
         issues.append("WARNING: No key validation found")
 
     # Check for large iterations without limits
@@ -547,7 +536,7 @@ for issue in issues:
 | Script just started | Wait for completion |
 | Script running > 30s, read-only | `SCRIPT KILL` |
 | Script with writes, must stop | `SHUTDOWN NOSAVE` (data loss!) |
-| Frequent BUSY errors | Optimize scripts, increase lua-time-limit |
+| Frequent BUSY errors | Optimize scripts, increase busy-reply-threshold |
 | Production incident | Kill script, then investigate |
 
 ## Prevention Checklist

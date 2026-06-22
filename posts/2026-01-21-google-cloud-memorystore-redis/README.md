@@ -65,7 +65,7 @@ gcloud redis instances create my-redis-prod \
     --network=projects/my-project/global/networks/my-vpc \
     --connect-mode=private-service-access \
     --transit-encryption-mode=server-authentication \
-    --auth-enabled \
+    --enable-auth \
     --maintenance-window-day=sunday \
     --maintenance-window-hour=2 \
     --labels=env=production,team=platform
@@ -84,7 +84,7 @@ gcloud redis instances create my-redis-replicas \
     --replica-count=2 \
     --read-replicas-mode=read-replicas-enabled \
     --transit-encryption-mode=server-authentication \
-    --auth-enabled
+    --enable-auth
 ```
 
 ### Using Terraform
@@ -262,10 +262,11 @@ def get_memorystore_connection():
     """Connect to Memorystore for Redis"""
     return redis.Redis(
         host=os.environ['REDIS_HOST'],
-        port=int(os.environ.get('REDIS_PORT', 6379)),
+        port=int(os.environ.get('REDIS_PORT', 6378)),
         password=os.environ.get('REDIS_AUTH_STRING'),
         ssl=True,  # If transit encryption is enabled
         ssl_cert_reqs='required',
+        ssl_ca_certs=os.environ['REDIS_CA_CERT_PATH'],
         decode_responses=True
     )
 
@@ -274,9 +275,11 @@ def get_redis_pool():
     """Create a connection pool for better performance"""
     pool = redis.ConnectionPool(
         host=os.environ['REDIS_HOST'],
-        port=int(os.environ.get('REDIS_PORT', 6379)),
+        port=int(os.environ.get('REDIS_PORT', 6378)),
         password=os.environ.get('REDIS_AUTH_STRING'),
         ssl=True,
+        ssl_cert_reqs='required',
+        ssl_ca_certs=os.environ['REDIS_CA_CERT_PATH'],
         max_connections=25,
         decode_responses=True
     )
@@ -292,14 +295,15 @@ print(redis_client.get('greeting'))
 
 ```javascript
 const Redis = require('ioredis');
+const fs = require('fs');
 
 const redis = new Redis({
   host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT || 6379,
+  port: process.env.REDIS_PORT || 6378,
   password: process.env.REDIS_AUTH_STRING,
   tls: {
     // Enable if transit encryption is on
-    rejectUnauthorized: false
+    ca: fs.readFileSync(process.env.REDIS_CA_CERT_PATH)
   },
   retryDelayOnFailover: 100,
   maxRetriesPerRequest: 3,
@@ -333,6 +337,7 @@ package main
 import (
     "context"
     "crypto/tls"
+    "crypto/x509"
     "fmt"
     "os"
 
@@ -345,7 +350,16 @@ func main() {
     host := os.Getenv("REDIS_HOST")
     port := os.Getenv("REDIS_PORT")
     if port == "" {
-        port = "6379"
+        port = "6378"
+    }
+
+    caCert, err := os.ReadFile(os.Getenv("REDIS_CA_CERT_PATH"))
+    if err != nil {
+        panic(err)
+    }
+    certPool := x509.NewCertPool()
+    if ok := certPool.AppendCertsFromPEM(caCert); !ok {
+        panic("failed to parse Redis CA certificate")
     }
 
     rdb := redis.NewClient(&redis.Options{
@@ -353,6 +367,7 @@ func main() {
         Password: os.Getenv("REDIS_AUTH_STRING"),
         TLSConfig: &tls.Config{
             MinVersion: tls.VersionTLS12,
+            RootCAs:    certPool,
         },
     })
 
@@ -633,7 +648,7 @@ resource "google_monitoring_dashboard" "redis" {
             dataSets = [{
               timeSeriesQuery = {
                 timeSeriesFilter = {
-                  filter = "resource.type=\"redis_instance\" AND metric.type=\"redis.googleapis.com/stats/calls\""
+                  filter = "resource.type=\"redis_instance\" AND metric.type=\"redis.googleapis.com/commands/calls\""
                 }
               }
             }]
@@ -645,7 +660,7 @@ resource "google_monitoring_dashboard" "redis" {
             dataSets = [{
               timeSeriesQuery = {
                 timeSeriesFilter = {
-                  filter = "resource.type=\"redis_instance\" AND metric.type=\"redis.googleapis.com/stats/keyspace_hits\""
+                  filter = "resource.type=\"redis_instance\" AND metric.type=\"redis.googleapis.com/stats/cache_hit_ratio\""
                 }
               }
             }]
@@ -689,18 +704,18 @@ gcloud redis instances update my-redis-prod \
 
 ```bash
 # Export RDB snapshot
-gcloud redis instances export my-redis-prod \
-    --region=us-central1 \
-    gs://my-bucket/redis-backup.rdb
+gcloud redis instances export gs://my-bucket/redis-backup.rdb \
+    my-redis-prod \
+    --region=us-central1
 ```
 
 ### Import from Cloud Storage
 
 ```bash
 # Import RDB snapshot
-gcloud redis instances import my-redis-prod \
-    --region=us-central1 \
-    gs://my-bucket/redis-backup.rdb
+gcloud redis instances import gs://my-bucket/redis-backup.rdb \
+    my-redis-prod \
+    --region=us-central1
 ```
 
 ## Security Best Practices
@@ -709,14 +724,17 @@ gcloud redis instances import my-redis-prod \
 
 ```bash
 gcloud redis instances update my-redis-prod \
-    --auth-enabled \
+    --enable-auth \
     --region=us-central1
 ```
 
 ### 2. Enable Transit Encryption
 
+Transit encryption must be enabled when you create the instance.
+
 ```bash
-gcloud redis instances update my-redis-prod \
+gcloud redis instances create my-redis-secure \
+    --size=5 \
     --transit-encryption-mode=server-authentication \
     --region=us-central1
 ```

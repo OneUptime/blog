@@ -51,7 +51,7 @@ python3 -m venv venv
 
 ### Activating the Environment
 
-You must activate the environment before using it:
+Activate the environment before using unqualified `python` and `pip` commands:
 
 ```bash
 # On Linux/macOS
@@ -218,7 +218,7 @@ virtualenv --no-pip --no-wheel --no-setuptools venv
 
 - Need to support Python 2 (though you should migrate)
 - Need faster environment creation
-- Need additional features like relocatable environments
+- Need additional features like interpreter discovery and configurable seed packages
 
 ---
 
@@ -309,7 +309,7 @@ Or configure in `.vscode/settings.json`:
 
 ```json
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python"
+    "python.defaultInterpreterPath": "${workspaceFolder}/venv"
 }
 ```
 

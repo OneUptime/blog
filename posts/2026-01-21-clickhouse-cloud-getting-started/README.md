@@ -15,7 +15,7 @@ ClickHouse Cloud provides a fully managed, serverless ClickHouse experience that
 ### Sign Up Process
 
 1. Visit [clickhouse.cloud](https://clickhouse.cloud)
-2. Sign up with email, Google, or GitHub
+2. Sign up with email, Google SSO, Microsoft SSO, or through a supported cloud marketplace
 3. Verify your email address
 4. Choose your cloud provider (AWS, GCP, or Azure)
 
@@ -24,7 +24,7 @@ ClickHouse Cloud provides a fully managed, serverless ClickHouse experience that
 ClickHouse Cloud offers a free trial with:
 - $300 in credits
 - 30-day trial period
-- Full feature access
+- Access to ClickHouse Cloud features available in your selected plan
 
 ## Creating Your First Service
 
@@ -35,17 +35,17 @@ Service Settings:
 - Name: my-analytics-service
 - Cloud Provider: AWS
 - Region: us-east-1
-- Tier: Development (or Production)
+- Tier: Basic, Scale, or Enterprise
 ```
 
-### Development vs Production Tiers
+### Basic vs Scale Tiers
 
-| Feature | Development | Production |
+| Feature | Basic | Scale |
 |---------|-------------|------------|
 | Min Replicas | 1 | 2 |
-| Auto-scaling | Limited | Full |
-| Availability | 99.5% | 99.95% |
-| Support | Community | Priority |
+| Auto-scaling | Not available | Available |
+| Availability | 1 zone | 2+ zones |
+| Storage | Up to 1 TB per service | Unlimited |
 | Price | Lower | Higher |
 
 ## Connecting to ClickHouse Cloud
@@ -113,14 +113,15 @@ print(result.result_rows)
 const { createClient } = require('@clickhouse/client');
 
 const client = createClient({
-    host: 'https://xxxxx.us-east-1.aws.clickhouse.cloud:8443',
+    url: 'https://xxxxx.us-east-1.aws.clickhouse.cloud:8443',
     username: 'default',
     password: 'your-password'
 });
 
 async function query() {
     const result = await client.query({
-        query: 'SELECT 1'
+        query: 'SELECT 1',
+        format: 'JSONEachRow'
     });
     console.log(await result.json());
 }
@@ -175,12 +176,13 @@ FROM s3(
     'Parquet'
 );
 
--- Using ClickHouse Cloud's IAM integration (no credentials needed)
+-- Using ClickHouse Cloud's role-based S3 access after configuring an IAM role
 INSERT INTO events
 SELECT *
 FROM s3(
     'https://your-bucket.s3.amazonaws.com/data/*.parquet',
-    'Parquet'
+    'Parquet',
+    extra_credentials(role_arn = 'arn:aws:iam::111111111111:role/ClickHouseAccessRole-001')
 );
 ```
 
@@ -391,20 +393,40 @@ SSL: true
 
 ```sql
 -- For most analytics: MergeTree
-CREATE TABLE metrics (...) ENGINE = MergeTree() ORDER BY (...);
+CREATE TABLE metrics (
+    metric_date Date,
+    metric_name LowCardinality(String),
+    value Float64
+) ENGINE = MergeTree()
+ORDER BY (metric_date, metric_name);
 
 -- For deduplication: ReplacingMergeTree
-CREATE TABLE users (...) ENGINE = ReplacingMergeTree(updated_at) ORDER BY user_id;
+CREATE TABLE users (
+    user_id UInt64,
+    email String,
+    updated_at DateTime
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY user_id;
 
 -- For aggregations: AggregatingMergeTree
-CREATE TABLE daily_stats (...) ENGINE = AggregatingMergeTree() ORDER BY (...);
+CREATE TABLE daily_stats (
+    date Date,
+    event_type LowCardinality(String),
+    users AggregateFunction(uniq, UInt64)
+) ENGINE = AggregatingMergeTree()
+ORDER BY (date, event_type);
 ```
 
 ### 2. Optimize ORDER BY
 
 ```sql
 -- Order by frequently filtered columns first
-CREATE TABLE events (...)
+CREATE TABLE tenant_events (
+    tenant_id UInt64,
+    event_date Date,
+    event_type LowCardinality(String),
+    event_id UUID
+)
 ENGINE = MergeTree()
 ORDER BY (tenant_id, event_date, event_type);
 ```

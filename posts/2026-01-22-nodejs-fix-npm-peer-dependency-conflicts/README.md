@@ -50,8 +50,8 @@ Peer dependencies declare what version of another package your package expects t
 ```
 
 Unlike regular dependencies, peer dependencies:
-- Are NOT installed automatically
-- Must be provided by the consumer
+- Are installed automatically by npm 7+ when npm can resolve a valid tree
+- Must be compatible with the version provided by the consumer or resolved at the project level
 - Ensure compatibility with the host environment
 
 ## Quick Fixes
@@ -147,7 +147,7 @@ npm install react-router-dom@5
 
 ### Strategy 3: Use Overrides (npm 8.3+)
 
-Force npm to use specific versions:
+Force npm to use specific versions for transitive dependencies:
 
 ```json
 {
@@ -158,7 +158,7 @@ Force npm to use specific versions:
   },
   "overrides": {
     "some-package": {
-      "react": "^18.2.0"
+      "some-transitive-dependency": "2.0.0"
     }
   }
 }
@@ -169,10 +169,12 @@ Or override globally:
 ```json
 {
   "overrides": {
-    "react": "^18.2.0"
+    "some-transitive-dependency": "2.0.0"
   }
 }
 ```
+
+Overrides do not change a package's declared peer dependency range. Use them when the conflict comes from an installed dependency version in the tree.
 
 ### Strategy 4: Use Resolutions (Yarn)
 
@@ -187,7 +189,7 @@ Or override globally:
 
 ### Strategy 5: Use Aliases
 
-Install multiple versions of the same package:
+Install multiple versions of the same package when your code can import the aliased name:
 
 ```bash
 npm install react-17@npm:react@17.0.2
@@ -202,6 +204,8 @@ npm install react@18.2.0
   }
 }
 ```
+
+Aliases do not rename packages for transitive dependencies, so they will not satisfy a peer dependency that specifically requires `react`.
 
 ## Common Scenarios
 
@@ -228,7 +232,10 @@ npx npm-check-updates --filter some-package
 ```bash
 npm ERR! peer @types/react@"^17.0.0" from some-package
 
-# Solution: Match @types version to react version
+# First check for a package version that supports your React types
+npm info some-package peerDependencies
+
+# Then install matching React type packages when supported
 npm install @types/react@18 @types/react-dom@18
 ```
 
@@ -343,14 +350,11 @@ In monorepos, ensure root and packages align:
 }
 ```
 
-### Workspace Protocol
+### Workspace Dependencies
 
-```json
-{
-  "dependencies": {
-    "shared-utils": "workspace:*"
-  }
-}
+```bash
+# Add one workspace as a dependency of another
+npm install shared-utils -w component
 ```
 
 ## When to Use --legacy-peer-deps

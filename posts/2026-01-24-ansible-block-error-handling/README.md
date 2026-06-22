@@ -36,7 +36,7 @@ flowchart TD
     M --> N[Block Complete]
 ```
 
-The block executes tasks in order. If any task fails, execution jumps to the rescue section. The always section executes regardless of success or failure.
+The block executes tasks in order. If any task returns a failed state, execution jumps to the rescue section. The always section executes regardless of success or failure. Invalid task definitions and unreachable hosts do not trigger a block's rescue or always sections.
 
 ---
 
@@ -241,6 +241,10 @@ Blocks can be nested for fine-grained error handling:
               ansible.builtin.command:
                 cmd: /opt/myapp/bin/rollback
 
+            - name: Propagate application failure
+              ansible.builtin.fail:
+                msg: "Application deployment failed"
+
       rescue:
         # Outer rescue handles any unhandled failures
         - name: Send critical failure alert
@@ -306,8 +310,6 @@ Apply conditions to entire blocks:
       block:
         - name: Deploy to inactive environment
           ansible.builtin.include_tasks: deploy.yml
-          vars:
-            target_env: "{{ 'green' if current_environment == 'blue' else 'blue' }}"
 
         - name: Run health checks on new environment
           ansible.builtin.uri:
@@ -324,6 +326,9 @@ Apply conditions to entire blocks:
         - name: Keep traffic on current environment
           ansible.builtin.debug:
             msg: "Deployment failed, traffic remains on {{ current_environment }}"
+
+      vars:
+        target_env: "{{ 'green' if current_environment == 'blue' else 'blue' }}"
 
       when: deployment_type == 'blue_green'
 
@@ -486,47 +491,44 @@ While you cannot loop a block directly, you can use include_tasks with blocks:
             msg: "Update failed on {{ inventory_hostname }}, server returned to pool"
 ```
 
-### Pattern 2: Transactional Operations
+### Pattern 2: Backup Rollback Operations
 
 ```yaml
 # playbook.yml
-# Transactional database operations
+# Database migration with backup rollback
 ---
-- name: Database migration with transaction
+- name: Database migration with backup rollback
   hosts: dbservers
   become: yes
   become_user: postgres
 
   tasks:
-    - name: Database migration block
+    - name: Database migration block with restore point
       block:
-        - name: Create savepoint
-          community.postgresql.postgresql_query:
-            db: myapp
-            query: "SAVEPOINT pre_migration;"
+        - name: Create database backup
+          community.postgresql.postgresql_db:
+            name: myapp
+            state: dump
+            target: /tmp/myapp-pre-migration.sql.gz
 
         - name: Run migration script
           community.postgresql.postgresql_query:
-            db: myapp
+            login_db: myapp
             query: "{{ lookup('file', 'migrations/001_add_columns.sql') }}"
 
         - name: Validate data integrity
           community.postgresql.postgresql_query:
-            db: myapp
+            login_db: myapp
             query: "SELECT COUNT(*) FROM users WHERE email IS NULL;"
           register: validation
           failed_when: validation.query_result[0].count > 0
 
-        - name: Release savepoint
-          community.postgresql.postgresql_query:
-            db: myapp
-            query: "RELEASE SAVEPOINT pre_migration;"
-
       rescue:
-        - name: Rollback to savepoint
-          community.postgresql.postgresql_query:
-            db: myapp
-            query: "ROLLBACK TO SAVEPOINT pre_migration;"
+        - name: Restore database from backup
+          community.postgresql.postgresql_db:
+            name: myapp
+            state: restore
+            target: /tmp/myapp-pre-migration.sql.gz
 
         - name: Log migration failure
           ansible.builtin.debug:
@@ -535,7 +537,7 @@ While you cannot loop a block directly, you can use include_tasks with blocks:
       always:
         - name: Analyze affected tables
           community.postgresql.postgresql_query:
-            db: myapp
+            login_db: myapp
             query: "ANALYZE users;"
 ```
 
@@ -888,8 +890,8 @@ rescue:
 Ansible blocks with rescue and always sections provide robust error handling capabilities for complex automation workflows. Key takeaways:
 
 - Use blocks to group related tasks and handle errors collectively
-- Rescue sections execute only when block tasks fail
-- Always sections execute regardless of success or failure
+- Rescue sections execute only when block tasks return a failed state
+- Always sections execute regardless of success or failure for tasks that run and return a result
 - Access error details through `ansible_failed_task` and `ansible_failed_result`
 - Keep rescue blocks simple to avoid cascading failures
 - Use always for cleanup tasks that must run

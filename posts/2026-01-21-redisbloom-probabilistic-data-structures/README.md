@@ -8,7 +8,7 @@ Description: A comprehensive guide to using RedisBloom for probabilistic data st
 
 ---
 
-RedisBloom is a Redis module that provides probabilistic data structures - data structures that trade perfect accuracy for massive memory savings and O(1) operations. These are essential tools for handling large-scale data when exact answers are not required.
+RedisBloom is a Redis module that provides probabilistic data structures - data structures that trade perfect accuracy for massive memory savings and fast operations. These are essential tools for handling large-scale data when exact answers are not required.
 
 ## Why Probabilistic Data Structures?
 
@@ -21,8 +21,8 @@ Consider these scenarios:
 
 Exact solutions would require storing all data, consuming massive memory. Probabilistic structures solve these with:
 
-- **Constant Memory**: Fixed size regardless of data volume
-- **O(1) Operations**: Constant time adds and queries
+- **Predictable Memory**: Fixed or bounded size based on your configuration
+- **Fast Operations**: Efficient adds and queries with small, configurable overhead
 - **Acceptable Error Rates**: Configurable accuracy trade-offs
 
 ## Installation
@@ -72,7 +72,7 @@ r.bf().madd("bf:emails", "user2@example.com", "user3@example.com", "user4@exampl
 
 # Check if exists
 exists = r.bf().exists("bf:emails", "user1@example.com")  # True
-not_exists = r.bf().exists("bf:emails", "unknown@example.com")  # False (probably)
+not_exists = r.bf().exists("bf:emails", "unknown@example.com")  # False (definitely not present)
 
 # Check multiple
 results = r.bf().mexists("bf:emails", "user1@example.com", "user5@example.com")
@@ -95,7 +95,7 @@ r.bf().create(
     0.01,  # Error rate
     1000,  # Initial capacity
     expansion=2,  # Growth factor when full
-    nonscaling=False  # Allow scaling
+    noScale=False  # Allow scaling
 )
 
 # Insert more items than initial capacity
@@ -124,7 +124,7 @@ class UsernameChecker:
     def is_username_taken(self, username):
         """
         Check if username is taken.
-        Returns: True if definitely available, False if possibly taken.
+        Returns: True if probably taken, False if definitely not taken.
         """
         normalized = username.lower().strip()
 
@@ -152,7 +152,7 @@ class UsernameChecker:
 
         # Slow path: Bloom filter says maybe exists, check database
         # exists_in_db = database_check(normalized)
-        exists_in_db = False  # Placeholder
+        exists_in_db = normalized in {"alice", "bob"}  # Placeholder
 
         if exists_in_db:
             return False, "Username is taken"
@@ -197,13 +197,15 @@ deleted = r.cf().delete("cf:sessions", "session_abc123")  # Returns 1 if deleted
 # Get info
 info = r.cf().info("cf:sessions")
 print(f"Size: {info.size}")
-print(f"Number of buckets: {info.num_buckets}")
-print(f"Number of items: {info.num_items}")
+print(f"Number of buckets: {info.bucketNum}")
+print(f"Number of items inserted: {info.insertedNum}")
 ```
 
 ### Practical Example: Session Management
 
 ```python
+import time
+
 class SessionManager:
     def __init__(self, redis_client, capacity=1000000):
         self.r = redis_client
@@ -285,15 +287,15 @@ r.cms().initbyprob("cms:pageviews", 0.01, 0.001)
 r.cms().initbydim("cms:clicks", 2000, 10)
 
 # Increment counts
-r.cms().incrby("cms:pageviews", ["page:/home", 1])
-r.cms().incrby("cms:pageviews", ["page:/about", 1, "page:/home", 1, "page:/contact", 1])
+r.cms().incrby("cms:pageviews", ["page:/home"], [1])
+r.cms().incrby("cms:pageviews", ["page:/about", "page:/home", "page:/contact"], [1, 1, 1])
 
 # Bulk increment
 r.cms().incrby("cms:pageviews", [
-    "page:/home", 5,
-    "page:/products", 10,
-    "page:/checkout", 3
-])
+    "page:/home",
+    "page:/products",
+    "page:/checkout"
+], [5, 10, 3])
 
 # Query counts
 counts = r.cms().query("cms:pageviews", "page:/home", "page:/about", "page:/unknown")
@@ -316,19 +318,17 @@ class APIRateTracker:
         self.r = redis_client
         self.setup_sketches()
 
-    def setup_sketches(self):
-        """Create sketches for different time windows."""
-        # Per-minute sketch
+    def _ensure_sketch(self, key):
+        """Create a sketch if it does not already exist."""
         try:
-            self.r.cms().initbyprob("cms:api:minute", 0.001, 0.0001)
+            self.r.cms().initbyprob(key, 0.001, 0.0001)
         except redis.ResponseError:
             pass
 
-        # Per-hour sketch
-        try:
-            self.r.cms().initbyprob("cms:api:hour", 0.001, 0.0001)
-        except redis.ResponseError:
-            pass
+    def setup_sketches(self):
+        """Create sketches for the current time windows."""
+        self._ensure_sketch(self._get_minute_key())
+        self._ensure_sketch(self._get_hour_key())
 
     def _get_minute_key(self):
         return f"cms:api:minute:{int(time.time() // 60)}"
@@ -342,25 +342,34 @@ class APIRateTracker:
         hour_key = self._get_hour_key()
 
         # Create time-windowed sketches if needed
+        self._ensure_sketch(minute_key)
+        self._ensure_sketch(hour_key)
+
+        if user_id:
+            self._ensure_sketch(f"{minute_key}:user")
+
+        if ip:
+            self._ensure_sketch(f"{minute_key}:ip")
+
         pipe = self.r.pipeline()
 
         # Record by endpoint
-        pipe.cms().incrby(minute_key, [endpoint, 1])
+        pipe.cms().incrby(minute_key, [endpoint], [1])
         pipe.expire(minute_key, 120)  # Keep 2 minutes
 
-        pipe.cms().incrby(hour_key, [endpoint, 1])
+        pipe.cms().incrby(hour_key, [endpoint], [1])
         pipe.expire(hour_key, 7200)  # Keep 2 hours
 
         # Record by user if provided
         if user_id:
             user_key = f"{minute_key}:user"
-            pipe.cms().incrby(user_key, [user_id, 1])
+            pipe.cms().incrby(user_key, [user_id], [1])
             pipe.expire(user_key, 120)
 
         # Record by IP
         if ip:
             ip_key = f"{minute_key}:ip"
-            pipe.cms().incrby(ip_key, [ip, 1])
+            pipe.cms().incrby(ip_key, [ip], [1])
             pipe.expire(ip_key, 120)
 
         pipe.execute()
@@ -387,12 +396,15 @@ class APIRateTracker:
         except redis.ResponseError:
             return 0
 
-    def check_rate_limit(self, identifier, limit, window="minute"):
+    def check_rate_limit(self, identifier, limit, window="minute", by_user=False):
         """Check if identifier has exceeded rate limit."""
         if window == "minute":
             key = self._get_minute_key()
         else:
             key = self._get_hour_key()
+
+        if by_user:
+            key = f"{key}:user"
 
         try:
             counts = self.r.cms().query(key, identifier)
@@ -418,7 +430,7 @@ print(f"/api/products rate: {tracker.get_endpoint_rate('/api/products')}")
 print(f"user_123 rate: {tracker.get_user_rate('user_123')}")
 
 # Check rate limit
-exceeded, count = tracker.check_rate_limit("user_123", 50, "minute")
+exceeded, count = tracker.check_rate_limit("user_123", 50, "minute", by_user=True)
 print(f"Rate limit exceeded: {exceeded}, count: {count}")
 ```
 
@@ -431,13 +443,13 @@ Top-K tracks the most frequent items in a stream using minimal memory.
 ```python
 # Create a Top-K structure
 # Parameters: key, k (top items to track), width, depth, decay
-r.topk().create("topk:searches", 10, 2000, 7, 0.9)
+r.topk().reserve("topk:searches", 10, 2000, 7, 0.9)
 
 # Add items
 r.topk().add("topk:searches", "redis tutorial", "python redis", "how to cache")
 
 # Add with counts
-r.topk().incrby("topk:searches", ["redis tutorial", 5, "python redis", 3])
+r.topk().incrby("topk:searches", ["redis tutorial", "python redis"], [5, 3])
 
 # Get the top-k list
 top_items = r.topk().list("topk:searches")
@@ -450,10 +462,6 @@ print(f"Top searches with counts: {top_with_counts}")
 # Check if item is in top-k
 is_top = r.topk().query("topk:searches", "redis tutorial", "unknown query")
 # Returns [1, 0] - 1 if in top-k, 0 otherwise
-
-# Get count for specific items
-counts = r.topk().count("topk:searches", "redis tutorial", "python redis")
-print(f"Counts: {counts}")
 
 # Get info
 info = r.topk().info("topk:searches")
@@ -485,7 +493,7 @@ class TrendingTracker:
         for tracker in trackers:
             try:
                 # k, width, depth, decay
-                self.r.topk().create(tracker, self.k, 8000, 7, 0.9)
+                self.r.topk().reserve(tracker, self.k, 8000, 7, 0.9)
             except redis.ResponseError:
                 pass  # Already exists
 
@@ -496,9 +504,9 @@ class TrendingTracker:
 
         # Record in all time windows
         pipe = self.r.pipeline()
-        pipe.topk().incrby("topk:trending:hour", [topic, weight])
-        pipe.topk().incrby("topk:trending:day", [topic, weight])
-        pipe.topk().incrby("topk:trending:week", [topic, weight])
+        pipe.topk().incrby("topk:trending:hour", [topic], [weight])
+        pipe.topk().incrby("topk:trending:day", [topic], [weight])
+        pipe.topk().incrby("topk:trending:week", [topic], [weight])
         pipe.execute()
 
     def get_trending(self, window="hour", limit=10):
@@ -613,11 +621,11 @@ class VisitorAnalytics:
         pipe.bf().add(bf_key, visitor_id)
 
         # Increment total views
-        pipe.cms().incrby(cms_key, ["total", 1])
+        pipe.cms().incrby(cms_key, ["total"], [1])
 
         # Increment unique views if new visitor
         if is_new:
-            pipe.cms().incrby(cms_key, ["unique", 1])
+            pipe.cms().incrby(cms_key, ["unique"], [1])
 
         pipe.execute()
 

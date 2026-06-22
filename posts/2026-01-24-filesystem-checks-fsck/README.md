@@ -18,7 +18,7 @@ The fsck utility checks and repairs Linux filesystems. It runs automatically dur
 graph TD
     A[fsck Initiated] --> B{Filesystem Type?}
     B -->|ext2/ext3/ext4| C[e2fsck]
-    B -->|XFS| D[xfs_repair]
+    B -->|XFS| D[fsck.xfs]
     B -->|Btrfs| E[btrfs check]
     B -->|NTFS| F[ntfsfix]
 
@@ -223,8 +223,8 @@ sudo xfs_repair -v /dev/sda1
 # If log is corrupt, clear it (data loss possible)
 sudo xfs_repair -L /dev/sda1
 
-# Check mounted XFS filesystem (limited)
-sudo xfs_scrub /dev/sda1
+# Check and repair mounted XFS filesystem metadata
+sudo xfs_scrub /mnt/data
 ```
 
 ### XFS Repair Process
@@ -249,8 +249,12 @@ flowchart TD
 Btrfs has built-in integrity features:
 
 ```bash
-# Check btrfs filesystem (can run on mounted fs for read-only check)
-sudo btrfs check /dev/sda1
+# Check btrfs filesystem (recommended while unmounted)
+sudo umount /dev/sda1
+sudo btrfs check --readonly /dev/sda1
+
+# Mounted read-only check only if the filesystem is quiescent or mounted read-only
+sudo btrfs check --readonly --force /dev/sda1
 
 # Scrub - online check and repair (can run on mounted fs)
 sudo btrfs scrub start /mnt/data
@@ -270,14 +274,18 @@ The root filesystem requires special handling since it cannot be unmounted while
 ### Method 1: Force Check on Reboot
 
 ```bash
-# Create marker file to force fsck on next boot
+# On systemd systems, add this kernel parameter for the next boot:
+# fsck.mode=force
+
+# Some older SysVinit/Upstart systems also honor this marker file:
 sudo touch /forcefsck
 
 # Reboot system
 sudo reboot
 
 # The system will run fsck during boot
-# Check /var/log/boot.log after boot for results
+# Check the boot journal after boot for results
+journalctl -b -u 'systemd-fsck*'
 ```
 
 ### Method 2: Boot from Live USB/Recovery Mode
@@ -386,7 +394,7 @@ flowchart TD
     B -->|Yes| C{Root Filesystem?}
     B -->|No| D[Boot from Live USB]
 
-    C -->|Yes| E[touch /forcefsck<br/>and reboot]
+    C -->|Yes| E[fsck.mode=force<br/>and reboot]
     C -->|No| F[Can unmount?]
 
     F -->|Yes| G[sudo umount device]
@@ -553,7 +561,7 @@ e2fsck -E discard  # Discard free blocks
 | Filesystem | Check Tool | Repair Tool |
 |------------|-----------|-------------|
 | ext2/ext3/ext4 | e2fsck | e2fsck |
-| XFS | xfs_check | xfs_repair |
+| XFS | xfs_repair -n / xfs_scrub | xfs_repair / xfs_scrub |
 | Btrfs | btrfs check | btrfs check --repair |
 | NTFS | ntfsfix | ntfsfix |
 | FAT/FAT32 | dosfsck | dosfsck |
@@ -584,7 +592,7 @@ fi
 
 # Check mount count vs max mount count
 for dev in $(lsblk -d -o NAME,TYPE | grep disk | awk '{print $1}'); do
-    for part in $(lsblk -o NAME,TYPE /dev/$dev | grep part | awk '{print $1}'); do
+    for part in $(lsblk -ln -o NAME,TYPE /dev/$dev | awk '$2 == "part" {print $1}'); do
         FSTYPE=$(lsblk -no FSTYPE /dev/$part 2>/dev/null)
 
         if [[ "$FSTYPE" == ext* ]]; then
@@ -614,7 +622,7 @@ echo "Check complete" >> $LOG
 | `e2fsck -b 32768 /dev/sda1` | Use backup superblock |
 | `xfs_repair /dev/sda1` | Repair XFS filesystem |
 | `tune2fs -c 30 /dev/sda1` | Set max mounts before check |
-| `touch /forcefsck` | Force root check on reboot |
+| `fsck.mode=force` | Force root check on reboot on systemd systems |
 
 ## Conclusion
 

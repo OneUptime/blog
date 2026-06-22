@@ -24,31 +24,52 @@ Audit logging should capture:
 
 ### Configure Log4j for Audit
 
-```properties
-# log4j.properties
+```yaml
+# log4j2.yaml
 
-# Authorizer audit logger
+Configuration:
+  Properties:
+    Property:
+      - name: "kafka.logs.dir"
+        value: "/var/log/kafka"
+      - name: "logPattern"
+        value: "[%d] %p %m (%c)%n"
 
-log4j.logger.kafka.authorizer.logger=INFO, authorizerAppender
-log4j.additivity.kafka.authorizer.logger=false
+  Appenders:
+    RollingFile:
+      - name: AuthorizerAppender
+        fileName: "${sys:kafka.logs.dir}/kafka-authorizer.log"
+        filePattern: "${sys:kafka.logs.dir}/kafka-authorizer.log.%i"
+        PatternLayout:
+          pattern: "${logPattern}"
+        Policies:
+          SizeBasedTriggeringPolicy:
+            size: 100MB
+        DefaultRolloverStrategy:
+          max: 10
+      - name: RequestAppender
+        fileName: "${sys:kafka.logs.dir}/kafka-request.log"
+        filePattern: "${sys:kafka.logs.dir}/kafka-request.log.%i"
+        PatternLayout:
+          pattern: "${logPattern}"
+        Policies:
+          SizeBasedTriggeringPolicy:
+            size: 100MB
+        DefaultRolloverStrategy:
+          max: 10
 
-log4j.appender.authorizerAppender=org.apache.log4j.RollingFileAppender
-log4j.appender.authorizerAppender.File=/var/log/kafka/kafka-authorizer.log
-log4j.appender.authorizerAppender.MaxFileSize=100MB
-log4j.appender.authorizerAppender.MaxBackupIndex=10
-log4j.appender.authorizerAppender.layout=org.apache.log4j.PatternLayout
-log4j.appender.authorizerAppender.layout.ConversionPattern=[%d] %p %m (%c)%n
-
-# Request logger for detailed access logging
-log4j.logger.kafka.request.logger=WARN, requestAppender
-log4j.additivity.kafka.request.logger=false
-
-log4j.appender.requestAppender=org.apache.log4j.RollingFileAppender
-log4j.appender.requestAppender.File=/var/log/kafka/kafka-request.log
-log4j.appender.requestAppender.MaxFileSize=100MB
-log4j.appender.requestAppender.MaxBackupIndex=10
-log4j.appender.requestAppender.layout=org.apache.log4j.PatternLayout
-log4j.appender.requestAppender.layout.ConversionPattern=[%d] %p %m (%c)%n
+  Loggers:
+    Logger:
+      - name: kafka.authorizer.logger
+        level: DEBUG
+        additivity: false
+        AppenderRef:
+          ref: AuthorizerAppender
+      - name: kafka.request.logger
+        level: WARN
+        additivity: false
+        AppenderRef:
+          ref: RequestAppender
 ```
 
 ### Broker Configuration
@@ -56,11 +77,8 @@ log4j.appender.requestAppender.layout.ConversionPattern=[%d] %p %m (%c)%n
 ```properties
 # server.properties
 
-# Enable authorizer logging
-authorizer.class.name=kafka.security.authorizer.AclAuthorizer
-
-# Log all authorization decisions
-log4j.logger.kafka.authorizer.logger=DEBUG
+# Enable authorization for KRaft-based Kafka clusters
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
 ```
 
 ## Custom Audit Interceptor
@@ -88,8 +106,10 @@ public class AuditProducerInterceptor implements ProducerInterceptor<String, Str
     @Override
     public void configure(Map<String, ?> configs) {
         this.clientId = (String) configs.get("client.id");
-        this.applicationName = (String) configs.getOrDefault(
-            "audit.application.name", "unknown");
+        Object configuredApplicationName = configs.get("audit.application.name");
+        this.applicationName = configuredApplicationName != null
+            ? configuredApplicationName.toString()
+            : "unknown";
     }
 
     @Override
@@ -161,18 +181,25 @@ public class AuditProducerInterceptor implements ProducerInterceptor<String, Str
         public String toJson() {
             StringBuilder sb = new StringBuilder();
             sb.append("{");
-            sb.append("\"timestamp\":\"").append(timestamp).append("\",");
-            sb.append("\"eventType\":\"").append(eventType).append("\",");
-            sb.append("\"clientId\":\"").append(clientId).append("\",");
-            sb.append("\"application\":\"").append(application).append("\",");
-            if (topic != null) sb.append("\"topic\":\"").append(topic).append("\",");
+            sb.append("\"timestamp\":\"").append(escape(timestamp)).append("\",");
+            sb.append("\"eventType\":\"").append(escape(eventType)).append("\",");
+            sb.append("\"clientId\":\"").append(escape(clientId)).append("\",");
+            sb.append("\"application\":\"").append(escape(application)).append("\",");
+            if (topic != null) sb.append("\"topic\":\"").append(escape(topic)).append("\",");
             if (partition != null) sb.append("\"partition\":").append(partition).append(",");
             if (offset != null) sb.append("\"offset\":").append(offset).append(",");
             sb.append("\"keySize\":").append(keySize).append(",");
             sb.append("\"valueSize\":").append(valueSize);
-            if (error != null) sb.append(",\"error\":\"").append(error).append("\"");
+            if (error != null) sb.append(",\"error\":\"").append(escape(error)).append("\"");
             sb.append("}");
             return sb.toString();
+        }
+
+        private String escape(String value) {
+            if (value == null) {
+                return "";
+            }
+            return value.replace("\\", "\\\\").replace("\"", "\\\"");
         }
     }
 }
@@ -204,8 +231,10 @@ public class AuditConsumerInterceptor implements ConsumerInterceptor<String, Str
     public void configure(Map<String, ?> configs) {
         this.clientId = (String) configs.get("client.id");
         this.groupId = (String) configs.get("group.id");
-        this.applicationName = (String) configs.getOrDefault(
-            "audit.application.name", "unknown");
+        Object configuredApplicationName = configs.get("audit.application.name");
+        this.applicationName = configuredApplicationName != null
+            ? configuredApplicationName.toString()
+            : "unknown";
     }
 
     @Override
@@ -215,16 +244,16 @@ public class AuditConsumerInterceptor implements ConsumerInterceptor<String, Str
             sb.append("{");
             sb.append("\"timestamp\":\"").append(Instant.now().toString()).append("\",");
             sb.append("\"eventType\":\"CONSUME\",");
-            sb.append("\"clientId\":\"").append(clientId).append("\",");
-            sb.append("\"groupId\":\"").append(groupId).append("\",");
-            sb.append("\"application\":\"").append(applicationName).append("\",");
+            sb.append("\"clientId\":\"").append(escape(clientId)).append("\",");
+            sb.append("\"groupId\":\"").append(escape(groupId)).append("\",");
+            sb.append("\"application\":\"").append(escape(applicationName)).append("\",");
             sb.append("\"recordCount\":").append(records.count()).append(",");
             sb.append("\"partitions\":[");
 
             boolean first = true;
             for (TopicPartition tp : records.partitions()) {
                 if (!first) sb.append(",");
-                sb.append("{\"topic\":\"").append(tp.topic()).append("\",");
+                sb.append("{\"topic\":\"").append(escape(tp.topic())).append("\",");
                 sb.append("\"partition\":").append(tp.partition()).append("}");
                 first = false;
             }
@@ -241,14 +270,14 @@ public class AuditConsumerInterceptor implements ConsumerInterceptor<String, Str
         sb.append("{");
         sb.append("\"timestamp\":\"").append(Instant.now().toString()).append("\",");
         sb.append("\"eventType\":\"COMMIT\",");
-        sb.append("\"clientId\":\"").append(clientId).append("\",");
-        sb.append("\"groupId\":\"").append(groupId).append("\",");
+        sb.append("\"clientId\":\"").append(escape(clientId)).append("\",");
+        sb.append("\"groupId\":\"").append(escape(groupId)).append("\",");
         sb.append("\"offsets\":[");
 
         boolean first = true;
         for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
             if (!first) sb.append(",");
-            sb.append("{\"topic\":\"").append(entry.getKey().topic()).append("\",");
+            sb.append("{\"topic\":\"").append(escape(entry.getKey().topic())).append("\",");
             sb.append("\"partition\":").append(entry.getKey().partition()).append(",");
             sb.append("\"offset\":").append(entry.getValue().offset()).append("}");
             first = false;
@@ -261,6 +290,13 @@ public class AuditConsumerInterceptor implements ConsumerInterceptor<String, Str
     @Override
     public void close() {
     }
+
+    private String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
 }
 ```
 
@@ -269,6 +305,10 @@ public class AuditConsumerInterceptor implements ConsumerInterceptor<String, Str
 ```java
 Properties props = new Properties();
 props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+    StringSerializer.class.getName());
+props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+    StringSerializer.class.getName());
 props.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
     "com.example.AuditProducerInterceptor");
 props.put("audit.application.name", "order-service");
@@ -282,9 +322,8 @@ KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 from confluent_kafka import Producer, Consumer
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from functools import wraps
 
 # Configure audit logger
 audit_logger = logging.getLogger('kafka.audit')
@@ -297,7 +336,7 @@ audit_logger.setLevel(logging.INFO)
 class AuditEvent:
     def __init__(self, event_type: str, **kwargs):
         self.data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'eventType': event_type,
             **kwargs
         }
@@ -443,13 +482,23 @@ if __name__ == '__main__':
 ```yaml
 # filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: kafka-authorizer-logs
     enabled: true
     paths:
       - /var/log/kafka/kafka-authorizer.log
+    fields:
+      log_type: kafka_authorizer
+
+  - type: filestream
+    id: kafka-json-audit-logs
+    enabled: true
+    paths:
       - /var/log/kafka/audit.log
-    json.keys_under_root: true
-    json.add_error_key: true
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
     fields:
       log_type: kafka_audit
 

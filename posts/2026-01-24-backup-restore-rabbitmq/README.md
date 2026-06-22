@@ -49,8 +49,8 @@ flowchart TD
 
 | Data Type | Default Location | Backup Method |
 |-----------|-----------------|---------------|
-| Definitions | Mnesia database | Export via API |
-| Messages | Mnesia + disk | Shovel or file copy |
+| Definitions | Node data directory (internal database) | Export via API |
+| Messages | Node data directory | File copy while stopped |
 | Configuration | /etc/rabbitmq/ | File copy |
 | Logs | /var/log/rabbitmq/ | File copy (optional) |
 
@@ -73,7 +73,7 @@ curl -u admin:password \
     -o rabbitmq-vhost-definitions.json
 
 # Using rabbitmqadmin
-rabbitmqadmin export rabbitmq-definitions.json
+rabbitmqadmin definitions export --file rabbitmq-definitions.json
 ```
 
 ### Using rabbitmqctl
@@ -82,8 +82,8 @@ rabbitmqadmin export rabbitmq-definitions.json
 # Export definitions using rabbitmqctl
 rabbitmqctl export_definitions /backup/definitions.json
 
-# Export with specific format
-rabbitmqctl export_definitions /backup/definitions.json --format=json
+# Export definitions for a specific vhost with rabbitmqadmin
+rabbitmqadmin --vhost "/" definitions export_from_vhost --file /backup/vhost-definitions.json
 ```
 
 ### Automated Backup Script
@@ -227,9 +227,9 @@ if __name__ == '__main__':
 ```mermaid
 flowchart TD
     subgraph "Message Backup Options"
-        A[Shovel Plugin] --> B[Copy to backup queue]
+        A[Shovel Plugin] --> B[Replicate new routed messages]
         C[Federation] --> D[Replicate to backup cluster]
-        E[File System] --> F[Copy Mnesia directory]
+        E[File System] --> F[Copy node data directory]
         G[Application] --> H[Dual-write pattern]
     end
 
@@ -239,7 +239,7 @@ flowchart TD
     H --> R4[Application handles restore]
 ```
 
-### Using Shovel for Message Backup
+### Using Shovel for Message Replication
 
 ```bash
 # Enable shovel plugin
@@ -249,10 +249,8 @@ rabbitmq-plugins enable rabbitmq_shovel_management
 
 ```python
 import pika
-import json
-
-def setup_backup_shovel(source_queue, backup_queue):
-    """Configure shovel to copy messages to backup queue"""
+def setup_backup_shovel(source_exchange, routing_key, backup_queue):
+    """Configure shovel to replicate newly routed messages to a backup queue"""
 
     connection = pika.BlockingConnection(
         pika.ConnectionParameters('localhost')
@@ -276,7 +274,8 @@ def setup_backup_shovel(source_queue, backup_queue):
         "value": {
             "src-protocol": "amqp091",
             "src-uri": "amqp://localhost",
-            "src-queue": source_queue,
+            "src-exchange": source_exchange,
+            "src-exchange-key": routing_key,
             "dest-protocol": "amqp091",
             "dest-uri": "amqp://localhost",
             "dest-queue": backup_queue,
@@ -286,7 +285,7 @@ def setup_backup_shovel(source_queue, backup_queue):
     }
 
     response = requests.put(
-        f"http://localhost:15672/api/parameters/shovel/%2F/{source_queue}-backup",
+        f"http://localhost:15672/api/parameters/shovel/%2F/{backup_queue}-shovel",
         auth=('admin', 'admin'),
         json=shovel_config
     )
@@ -294,16 +293,18 @@ def setup_backup_shovel(source_queue, backup_queue):
     print(f"Shovel configured: {response.status_code}")
     connection.close()
 
-# Create backup shovel for critical queues
-setup_backup_shovel('orders-queue', 'orders-queue-backup')
+# Replicate newly routed messages for critical workloads
+setup_backup_shovel('orders-exchange', 'orders.created', 'orders-queue-backup')
 ```
+
+Shovels consume from their source and acknowledge messages after publishing to the destination. A shovel that uses `src-queue` drains messages from that queue, so it is useful for moving or replaying backlog, not for non-destructive queue backup.
 
 ### File System Backup
 
 ```bash
 #!/bin/bash
 # File system backup script for RabbitMQ
-# WARNING: Requires stopping the node for consistent backup
+# WARNING: Requires stopping RabbitMQ for consistent message backup
 
 set -e
 
@@ -315,48 +316,50 @@ CONFIG_DIR="/etc/rabbitmq"
 mkdir -p "$BACKUP_DIR"
 
 echo "Stopping RabbitMQ..."
-rabbitmqctl stop_app
+systemctl stop rabbitmq-server
 
-echo "Backing up Mnesia directory..."
+echo "Backing up node data directory..."
 cp -a "$MNESIA_DIR" "$BACKUP_DIR/mnesia"
 
 echo "Backing up configuration..."
 cp -a "$CONFIG_DIR" "$BACKUP_DIR/config"
 
 echo "Starting RabbitMQ..."
-rabbitmqctl start_app
+systemctl start rabbitmq-server
 
 echo "Compressing backup..."
-tar -czf "${BACKUP_DIR}.tar.gz" -C "$(dirname $BACKUP_DIR)" "$(basename $BACKUP_DIR)"
+tar -czf "${BACKUP_DIR}.tar.gz" -C "$(dirname "$BACKUP_DIR")" "$(basename "$BACKUP_DIR")"
 rm -rf "$BACKUP_DIR"
 
 echo "Backup completed: ${BACKUP_DIR}.tar.gz"
 ```
 
-### Hot Backup with Quorum Queues
+### File System Backup with Quorum Queues
 
 ```bash
 #!/bin/bash
-# Hot backup for quorum queues (no downtime required)
+# File system backup for quorum queues
 
 BACKUP_DIR="/backup/rabbitmq/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-# Export definitions
+# Definitions must be exported while RabbitMQ is running
 rabbitmqctl export_definitions "${BACKUP_DIR}/definitions.json"
 
-# For quorum queues, take a snapshot
-# This triggers a Raft snapshot which can be used for backup
-rabbitmqctl eval 'rabbit_quorum_queue:force_checkpoint_all().'
+echo "Stopping RabbitMQ..."
+systemctl stop rabbitmq-server
 
-# Copy the quorum queue data
-QUORUM_DIR="/var/lib/rabbitmq/mnesia/$(rabbitmqctl eval 'node().' | tr -d "'")/quorum"
+echo "Copying quorum queue data..."
+QUORUM_DIR=$(find /var/lib/rabbitmq/mnesia -maxdepth 2 -type d -name quorum | head -1)
 if [ -d "$QUORUM_DIR" ]; then
     cp -a "$QUORUM_DIR" "$BACKUP_DIR/quorum"
 fi
 
+echo "Starting RabbitMQ..."
+systemctl start rabbitmq-server
+
 # Compress
-tar -czf "${BACKUP_DIR}.tar.gz" -C "$(dirname $BACKUP_DIR)" "$(basename $BACKUP_DIR)"
+tar -czf "${BACKUP_DIR}.tar.gz" -C "$(dirname "$BACKUP_DIR")" "$(basename "$BACKUP_DIR")"
 rm -rf "$BACKUP_DIR"
 
 echo "Backup completed: ${BACKUP_DIR}.tar.gz"
@@ -380,7 +383,7 @@ curl -u admin:password \
 rabbitmqctl import_definitions /backup/definitions.json
 
 # Using rabbitmqadmin
-rabbitmqadmin import /backup/definitions.json
+rabbitmqadmin definitions import /backup/definitions.json
 ```
 
 ### Restore Script with Validation
@@ -537,7 +540,7 @@ systemctl stop rabbitmq-server
 echo "Backing up current state..."
 mv /var/lib/rabbitmq/mnesia /var/lib/rabbitmq/mnesia.old.$(date +%s)
 
-echo "Restoring Mnesia directory..."
+echo "Restoring node data directory..."
 cp -a "${BACKUP_DIR}mnesia" /var/lib/rabbitmq/mnesia
 chown -R rabbitmq:rabbitmq /var/lib/rabbitmq/mnesia
 

@@ -23,7 +23,7 @@ A memory leak occurs when:
 3. Components hold onto resources after being unmounted
 4. Background processes continue running after they should have stopped
 
-React Native runs on both JavaScript and native threads, making memory management more complex than traditional web applications. Leaks can occur on either side of this bridge, requiring different debugging approaches.
+React Native runs on both JavaScript and native threads, making memory management more complex than traditional web applications. Leaks can occur on either side of the JavaScript/native boundary, requiring different debugging approaches.
 
 ## Common Causes of Memory Leaks in React Native
 
@@ -65,9 +65,11 @@ import { View, Text } from 'react-native';
 const UserProfile: React.FC = () => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const isMounted = useRef(true);
+  const isMounted = useRef(false);
 
   useEffect(() => {
+    isMounted.current = true;
+
     fetchUserData().then((data) => {
       if (isMounted.current) {
         setUserData(data);
@@ -270,7 +272,7 @@ Closures can inadvertently hold references to large objects or components, preve
 
 ```typescript
 // Bad: Closure holding reference to large data
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { View, Button } from 'react-native';
 
 const DataProcessor: React.FC = () => {
@@ -283,7 +285,7 @@ const DataProcessor: React.FC = () => {
 
   const processData = useCallback(() => {
     // This closure holds a reference to largeData
-    // even if it's not directly used
+    // while the callback is retained
     console.log('Processing...');
     someExternalAPI.process(largeData);
   }, [largeData]);
@@ -297,7 +299,7 @@ const DataProcessor: React.FC = () => {
 ```
 
 ```typescript
-// Good: Using refs to avoid closure references
+// Good: Using refs to control when large references are cleared
 import React, { useEffect, useCallback, useRef } from 'react';
 import { View, Button } from 'react-native';
 
@@ -339,7 +341,7 @@ Xcode Instruments is one of the most powerful tools for detecting memory leaks i
 1. Build your app in Release mode for accurate profiling:
 
 ```bash
-npx react-native run-ios --configuration Release
+npx react-native run-ios --mode "Release"
 ```
 
 2. Open Xcode and navigate to **Product > Profile** (or press Cmd+I)
@@ -372,13 +374,12 @@ The Leaks instrument provides several views:
 class NetworkManager {
   private callback: (() => void) | null = null;
 
-  setCallback(cb: () => void) {
+  setCallback(cb: (() => void) | null) {
     this.callback = cb;
   }
 
-  // This can create a retain cycle if the callback
-  // holds a reference to a component that holds
-  // a reference to NetworkManager
+  // If NetworkManager is retained by a long-lived singleton,
+  // this callback can keep captured values alive.
 }
 
 // In your component
@@ -387,7 +388,7 @@ const MyComponent: React.FC = () => {
 
   useEffect(() => {
     managerRef.current.setCallback(() => {
-      // This closure captures 'this' context
+      // This closure can capture component state or props.
       console.log('Callback fired');
     });
 
@@ -437,8 +438,8 @@ npx react-native run-android
 - Helps identify excessive allocations
 
 ```typescript
-// Tip: Force garbage collection before taking a heap dump
-// In your React Native code:
+// Tip: In test or debug runtimes where GC is exposed,
+// trigger it before taking a heap dump:
 if (__DEV__) {
   global.gc && global.gc();
 }
@@ -454,30 +455,21 @@ React Native apps also use native memory that can leak. Use the Native Memory Pr
 
 ### Using Flipper Memory Plugin
 
-Flipper is Facebook's mobile debugging platform, and it includes excellent memory debugging capabilities for React Native.
+Flipper is Facebook's mobile debugging platform. React Native's built-in Flipper integration was deprecated in React Native 0.73 and removed from new app templates in React Native 0.74, so this section applies to older projects that still include Flipper or projects that have manually integrated it.
 
 #### Setting Up Flipper
 
 1. Install Flipper on your development machine
 
-2. Ensure your React Native app has Flipper integration (default in new projects)
+2. Ensure your React Native app has Flipper integration (default in React Native 0.62-0.72 projects)
 
 3. Launch Flipper and connect to your running app
 
 #### Memory Plugin Features
 
 **Heap Snapshots:**
-```typescript
-// You can trigger heap snapshots programmatically
-import { HeapCapture } from 'react-native-flipper';
-
-const captureHeap = async () => {
-  if (__DEV__) {
-    await HeapCapture.captureHeap();
-    console.log('Heap snapshot captured');
-  }
-};
-```
+- Use Flipper's available memory and React DevTools plugins for projects that still support React Native Flipper integration
+- For current React Native projects, prefer React Native DevTools plus Xcode Instruments or Android Studio Profiler for memory analysis
 
 **Memory Timeline:**
 - Shows memory usage over time
@@ -491,7 +483,7 @@ const captureHeap = async () => {
 
 ### React Native Debugger Usage
 
-React Native Debugger combines React DevTools and Redux DevTools with Chrome Developer Tools.
+React Native Debugger combines React DevTools and Redux DevTools with Chrome Developer Tools, but it depends on the deprecated Remote JavaScript Debugging workflow. Remote JavaScript Debugging was deprecated in React Native 0.73 and removed in React Native 0.79, so for current projects, prefer React Native DevTools and platform profilers.
 
 #### Installing React Native Debugger
 
@@ -511,9 +503,9 @@ brew install --cask react-native-debugger
 3. Compare snapshots to find leaks
 
 ```typescript
-// Enable remote debugging in your app
+// For older React Native projects only: enable remote debugging in your app
 // shake device or press Cmd+D (iOS) / Cmd+M (Android)
-// Select "Debug with Chrome"
+// Select "Debug with Chrome" or "Debug JS Remotely" if available
 ```
 
 **Profiling Components:**
@@ -560,12 +552,12 @@ const UserList: React.FC = () => {
         setUsers(data);
         setLoading(false);
       } catch (err) {
-        if (err.name === 'AbortError') {
+        if (err instanceof Error && err.name === 'AbortError') {
           // Request was cancelled, component unmounted
           console.log('Fetch aborted');
           return;
         }
-        setError(err.message);
+        setError(err instanceof Error ? err.message : 'Unknown error');
         setLoading(false);
       }
     };
@@ -630,8 +622,8 @@ function useFetch<T>(url: string): FetchState<T> {
         const result = await response.json();
         setData(result);
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          setError(err.message);
+        if (!(err instanceof Error && err.name === 'AbortError')) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
         }
       } finally {
         if (!abortController.signal.aborted) {
@@ -719,15 +711,13 @@ const MyComponent: React.FC = () => {
 
   useEffect(() => {
     // Add various subscriptions
-    subscriptionManager.current.add(
-      eventEmitter.addListener('event1', handler1)
-    );
-    subscriptionManager.current.add(
-      eventEmitter.addListener('event2', handler2)
-    );
-    subscriptionManager.current.add(
-      websocket.subscribe('channel', messageHandler)
-    );
+    const event1Subscription = eventEmitter.addListener('event1', handler1);
+    const event2Subscription = eventEmitter.addListener('event2', handler2);
+    const websocketSubscription = websocket.subscribe('channel', messageHandler);
+
+    subscriptionManager.current.add(() => event1Subscription.remove());
+    subscriptionManager.current.add(() => event2Subscription.remove());
+    subscriptionManager.current.add(() => websocketSubscription.unsubscribe());
 
     return () => {
       subscriptionManager.current.unsubscribeAll();
@@ -739,6 +729,8 @@ const MyComponent: React.FC = () => {
 ```
 
 ### 3. Use WeakRef for Cache Implementations
+
+Use `WeakRef` only when your JavaScript engine supports it and when nondeterministic garbage collection is acceptable for the cache. Do not rely on `FinalizationRegistry` callbacks for timely cleanup.
 
 ```typescript
 class MemorySafeCache<T extends object> {
@@ -818,7 +810,8 @@ const useImagePreloader = (urls: string[]) => {
 ### 5. Navigation Memory Management
 
 ```typescript
-import React, { useEffect } from 'react';
+import React, { useState } from 'react';
+import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 const ScreenWithHeavyData: React.FC = () => {
@@ -955,6 +948,17 @@ describe('Memory Leak Tests', () => {
 
 ```typescript
 // e2e/memoryLeaks.e2e.ts
+import { execFileSync } from 'child_process';
+
+const getAndroidMemoryUsage = (packageName: string): number => {
+  const output = execFileSync('adb', ['shell', 'dumpsys', 'meminfo', packageName], {
+    encoding: 'utf8',
+  });
+  const totalLine = output.split('\n').find((line) => line.includes('TOTAL PSS:'));
+  const match = totalLine?.match(/TOTAL PSS:\s+(\d+)/);
+  return match ? Number(match[1]) * 1024 : 0;
+};
+
 describe('Memory Leak Detection', () => {
   beforeAll(async () => {
     await device.launchApp();
@@ -968,9 +972,12 @@ describe('Memory Leak Detection', () => {
       await element(by.id('settingsScreen')).tap();
     }
 
-    // Check app memory usage
-    const metrics = await device.getUiMetrics();
-    expect(metrics.memoryUsage).toBeLessThan(200 * 1024 * 1024); // 200MB
+    // Check Android app memory usage with platform tooling.
+    // Use Xcode Instruments or xcrun-based tooling for iOS.
+    if (device.getPlatform() === 'android') {
+      const memoryUsage = getAndroidMemoryUsage('com.example.app');
+      expect(memoryUsage).toBeLessThan(200 * 1024 * 1024); // 200MB
+    }
   });
 });
 ```
@@ -983,7 +990,7 @@ Key takeaways:
 
 1. **Always clean up** - Use cleanup functions in useEffect to remove event listeners, clear timers, cancel subscriptions, and abort fetch requests
 
-2. **Use the right tools** - Leverage Xcode Instruments, Android Studio Profiler, Flipper, and React Native Debugger for comprehensive memory analysis
+2. **Use the right tools** - Leverage Xcode Instruments, Android Studio Profiler, React Native DevTools, and Flipper or React Native Debugger where they are still supported
 
 3. **Implement patterns** - Use AbortController for fetch requests, custom hooks for async operations, and subscription managers for complex cleanup scenarios
 
@@ -1000,7 +1007,7 @@ By following these guidelines and regularly profiling your application, you can 
 - [React Native Performance Overview](https://reactnative.dev/docs/performance)
 - [Xcode Instruments Documentation](https://developer.apple.com/documentation/xcode/instruments)
 - [Android Studio Profiler Guide](https://developer.android.com/studio/profile/memory-profiler)
-- [Flipper Documentation](https://fbflipper.com/docs/getting-started/react-native/)
+- [Flipper GitHub Repository](https://github.com/facebook/flipper)
 
 ---
 

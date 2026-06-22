@@ -12,7 +12,7 @@ Logical replication replicates data changes at the logical level (rows) rather t
 
 ## Prerequisites
 
-- PostgreSQL 10+ (logical replication support)
+- PostgreSQL 10+ (logical replication support; some examples require newer versions, noted below)
 - Network connectivity between servers
 - Superuser access for initial setup
 
@@ -59,7 +59,7 @@ CREATE PUBLICATION all_tables FOR ALL TABLES;
 CREATE PUBLICATION insert_only FOR TABLE events
     WITH (publish = 'insert');  -- Only replicate INSERTs
 
--- Publication for schema
+-- Publication for schema (PostgreSQL 15+)
 CREATE PUBLICATION schema_pub FOR TABLES IN SCHEMA public;
 ```
 
@@ -84,7 +84,7 @@ On the target (subscriber) server:
 
 ```conf
 # postgresql.conf
-max_replication_slots = 10
+max_active_replication_origins = 10
 max_logical_replication_workers = 4
 max_worker_processes = 10
 ```
@@ -117,7 +117,7 @@ CREATE SUBSCRIPTION my_subscription
     PUBLICATION my_publication;
 
 -- Subscription with options
-CREATE SUBSCRIPTION my_subscription
+CREATE SUBSCRIPTION my_subscription_with_options
     CONNECTION 'host=publisher.example.com port=5432 dbname=myapp user=replication_user password=secure_password'
     PUBLICATION my_publication
     WITH (
@@ -153,8 +153,8 @@ SELECT * FROM pg_publication;
 -- List tables in publication
 SELECT * FROM pg_publication_tables WHERE pubname = 'my_publication';
 
--- Publication statistics
-SELECT * FROM pg_stat_publication;
+-- Publication activity (publisher WAL senders)
+SELECT * FROM pg_stat_replication;
 ```
 
 ## Managing Subscriptions
@@ -213,11 +213,17 @@ DROP SUBSCRIPTION my_subscription;
 ### Handling Strategies
 
 ```sql
--- On subscriber: Skip conflicting transactions
+-- On subscriber: Skip conflicting transactions (PostgreSQL 15+)
 -- In subscription error log, find conflicting LSN
-SELECT pg_replication_origin_advance('pg_16384', 'A/B123456'::pg_lsn);
+ALTER SUBSCRIPTION my_subscription SKIP (lsn = 'A/B123456');
 
--- Or use triggers for custom handling
+-- Or temporarily disable the subscription and advance the replication origin
+-- to the next LSN after the conflicting transaction's finish LSN
+ALTER SUBSCRIPTION my_subscription DISABLE;
+SELECT pg_replication_origin_advance('pg_16384', 'A/B123457'::pg_lsn);
+ALTER SUBSCRIPTION my_subscription ENABLE;
+
+-- Or use an enabled replica/always trigger for custom handling
 CREATE OR REPLACE FUNCTION handle_replication_conflict()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -225,11 +231,19 @@ BEGIN
     IF TG_OP = 'INSERT' THEN
         UPDATE users SET name = NEW.name, email = NEW.email
         WHERE id = NEW.id;
-        RETURN NULL;
+        IF FOUND THEN
+            RETURN NULL;
+        END IF;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER users_replication_conflict
+BEFORE INSERT ON users
+FOR EACH ROW EXECUTE FUNCTION handle_replication_conflict();
+
+ALTER TABLE users ENABLE ALWAYS TRIGGER users_replication_conflict;
 ```
 
 ## Use Cases
@@ -275,14 +289,14 @@ CREATE SUBSCRIPTION warehouse_sub
 ### Bi-Directional Replication
 
 ```sql
--- Server A
+-- Server A (PostgreSQL 16+ for origin filtering)
 CREATE PUBLICATION pub_a FOR TABLE shared_data;
 CREATE SUBSCRIPTION sub_from_b
     CONNECTION 'host=server-b ...'
     PUBLICATION pub_b
     WITH (origin = none);  -- Prevent loops
 
--- Server B
+-- Server B (PostgreSQL 16+ for origin filtering)
 CREATE PUBLICATION pub_b FOR TABLE shared_data;
 CREATE SUBSCRIPTION sub_from_a
     CONNECTION 'host=server-a ...'
@@ -310,12 +324,12 @@ WHERE slot_type = 'logical';
 SELECT
     subname,
     pid,
-    relname,
+    c.relname,
     received_lsn,
     last_msg_send_time,
     last_msg_receipt_time
-FROM pg_stat_subscription
-JOIN pg_subscription_rel ON pg_stat_subscription.subid = pg_subscription_rel.srsubid;
+FROM pg_stat_subscription s
+LEFT JOIN pg_class c ON s.relid = c.oid;
 ```
 
 ### Lag Monitoring

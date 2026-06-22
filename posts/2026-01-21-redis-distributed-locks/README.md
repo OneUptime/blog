@@ -54,14 +54,14 @@ class SimpleRedisLock:
         token = str(uuid.uuid4())
         lock_key = f"lock:{lock_name}"
 
-        end_time = time.time() + timeout if blocking else time.time()
+        end_time = time.time() + timeout
 
-        while time.time() < end_time:
+        while True:
             # SET lock_key token NX EX timeout
             if self.redis.set(lock_key, token, nx=True, ex=timeout):
                 return token
 
-            if not blocking:
+            if not blocking or time.time() >= end_time:
                 return None
 
             time.sleep(retry_delay)
@@ -135,9 +135,10 @@ For fault-tolerant locking across multiple Redis instances:
 import redis
 import uuid
 import time
-from typing import List, Optional, Tuple
+from typing import List
 from dataclasses import dataclass
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 @dataclass
 class LockResult:
@@ -224,10 +225,15 @@ class Redlock:
             n_acquired = 0
             start_time = time.time() * 1000  # Convert to ms
 
-            # Try to acquire lock on all instances
-            for instance in self.instances:
-                if self._lock_instance(instance, lock_key, token, ttl_ms):
-                    n_acquired += 1
+            # Try to acquire lock on all instances in parallel
+            with ThreadPoolExecutor(max_workers=len(self.instances)) as executor:
+                results = executor.map(
+                    lambda instance: self._lock_instance(
+                        instance, lock_key, token, ttl_ms
+                    ),
+                    self.instances
+                )
+                n_acquired = sum(1 for acquired in results if acquired)
 
             # Calculate validity time
             elapsed = (time.time() * 1000) - start_time
@@ -375,9 +381,9 @@ class SimpleRedisLock {
 
         const token = uuidv4();
         const lockKey = `lock:${lockName}`;
-        const endTime = blocking ? Date.now() + timeout : Date.now();
+        const endTime = Date.now() + timeout;
 
-        while (Date.now() < endTime) {
+        while (true) {
             const acquired = await this.redis.set(
                 lockKey, token, 'NX', 'PX', timeout
             );
@@ -386,7 +392,7 @@ class SimpleRedisLock {
                 return token;
             }
 
-            if (!blocking) {
+            if (!blocking || Date.now() >= endTime) {
                 return null;
             }
 

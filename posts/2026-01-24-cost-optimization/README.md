@@ -37,17 +37,16 @@ This script collects resource utilization data to identify over-provisioned work
 
 echo "Analyzing resource utilization..."
 
-# Get CPU and memory requests vs actual usage for all pods
+# Get CPU and memory requests vs actual usage for all containers
 
-kubectl top pods -A --no-headers | while read namespace pod cpu memory; do
+kubectl top pods -A --containers --no-headers | while read namespace pod container cpu memory; do
     # Get requested resources
-    requested=$(kubectl get pod $pod -n $namespace -o jsonpath='{.spec.containers[0].resources.requests.cpu},{.spec.containers[0].resources.requests.memory}' 2>/dev/null)
+    requested=$(kubectl get pod "$pod" -n "$namespace" -o json | jq -r --arg container "$container" '.spec.containers[] | select(.name == $container) | "\(.resources.requests.cpu // "0"),\(.resources.requests.memory // "0")"' 2>/dev/null)
 
-    req_cpu=$(echo $requested | cut -d, -f1)
-    req_mem=$(echo $requested | cut -d, -f2)
+    req_cpu=$(echo "$requested" | cut -d, -f1)
+    req_mem=$(echo "$requested" | cut -d, -f2)
 
-    # Calculate utilization percentage
-    echo "$namespace/$pod | Requested: $req_cpu CPU, $req_mem Memory | Actual: $cpu CPU, $memory Memory"
+    echo "$namespace/$pod/$container | Requested: $req_cpu CPU, $req_mem Memory | Actual: $cpu CPU, $memory Memory"
 done
 ```
 
@@ -61,7 +60,13 @@ metadata:
   name: api-server
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api-server
@@ -110,25 +115,16 @@ Spot instances cost 60-90% less than on-demand. They can be interrupted, but for
 
 Configure your cluster to use spot instances for non-critical workloads.
 
-```yaml
-# spot-node-pool.yaml (GKE example)
-apiVersion: container.google.com/v1beta1
-kind: NodePool
-metadata:
-  name: spot-pool
-spec:
-  cluster: production-cluster
-  config:
-    machineType: n2-standard-4
-    spot: true
-    taints:
-      - key: cloud.google.com/gke-spot
-        value: "true"
-        effect: NoSchedule
-  autoscaling:
-    enabled: true
-    minNodeCount: 0
-    maxNodeCount: 20
+```bash
+# Create a GKE Spot node pool with autoscaling and a taint
+gcloud container node-pools create spot-pool \
+  --cluster=production-cluster \
+  --machine-type=n2-standard-4 \
+  --spot \
+  --enable-autoscaling \
+  --min-nodes=0 \
+  --max-nodes=20 \
+  --node-taints=cloud.google.com/gke-spot="true":NoSchedule
 ```
 
 Configure pods to run on spot instances when appropriate.
@@ -141,7 +137,13 @@ metadata:
   name: batch-processor
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       # Tolerate spot instance taints
       tolerations:
@@ -170,7 +172,6 @@ Handle spot instance interruptions gracefully.
 ```python
 # spot_handler.py
 import signal
-import sys
 import requests
 import time
 
@@ -192,8 +193,18 @@ class SpotInterruptionHandler:
         """Check cloud provider's interruption notice endpoint."""
         # AWS example
         try:
+            token_response = requests.put(
+                "http://169.254.169.254/latest/api/token",
+                headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+                timeout=1
+            )
+            headers = {}
+            if token_response.status_code == 200:
+                headers["X-aws-ec2-metadata-token"] = token_response.text
+
             response = requests.get(
                 "http://169.254.169.254/latest/meta-data/spot/instance-action",
+                headers=headers,
                 timeout=1
             )
             if response.status_code == 200:
@@ -378,6 +389,24 @@ For predictable workloads, reserved instances offer significant savings.
 
 ```python
 # reservation_calculator.py
+def percentile(values, percentile_rank):
+    """
+    Calculate a percentile from a list of numeric values.
+    """
+    if not values:
+        raise ValueError("usage_data must not be empty")
+
+    sorted_values = sorted(values)
+    index = (len(sorted_values) - 1) * percentile_rank / 100
+    lower = int(index)
+    upper = min(lower + 1, len(sorted_values) - 1)
+
+    if lower == upper:
+        return sorted_values[lower]
+
+    weight = index - lower
+    return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+
 def calculate_reservation_recommendation(usage_data):
     """
     Analyze usage patterns and recommend reserved capacity.
@@ -439,7 +468,7 @@ spec:
           expr: |
             sum(
               kube_pod_container_resource_requests{resource="cpu"} * 0.03 +
-              kube_pod_container_resource_requests{resource="memory"} * 0.004
+              kube_pod_container_resource_requests{resource="memory"} / 1073741824 * 0.004
             ) * 730 > 10000  # $10,000 monthly budget
           for: 1h
           labels:

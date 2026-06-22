@@ -56,7 +56,7 @@ class SessionStore:
         }
 
         session_key = f"{self.prefix}:{session_id}"
-        r.setex(session_key, ttl, json.dumps(session_data))
+        r.set(session_key, json.dumps(session_data), ex=ttl)
 
         # Track session in user's session list
         user_sessions_key = f"{self.prefix}:user:{user_id}"
@@ -90,9 +90,14 @@ class SessionStore:
 
         # Get current TTL
         current_ttl = r.ttl(session_key)
-        new_ttl = self.default_ttl if extend_ttl else max(current_ttl, 0)
+        if extend_ttl:
+            new_ttl = self.default_ttl
+        else:
+            if current_ttl <= 0:
+                return False
+            new_ttl = current_ttl
 
-        r.setex(session_key, new_ttl, json.dumps(session_data))
+        r.set(session_key, json.dumps(session_data), ex=new_ttl)
         return True
 
     def delete_session(self, session_id):
@@ -206,7 +211,7 @@ class SessionStore {
     const userSessionsKey = `${this.prefix}:user:${userId}`;
 
     await redis.pipeline()
-      .setex(sessionKey, sessionTTL, JSON.stringify(sessionData))
+      .set(sessionKey, JSON.stringify(sessionData), 'EX', sessionTTL)
       .sadd(userSessionsKey, sessionId)
       .exec();
 
@@ -240,9 +245,15 @@ class SessionStore {
     sessionData.last_activity = Math.floor(Date.now() / 1000);
 
     const currentTTL = await redis.ttl(sessionKey);
-    const newTTL = extendTTL ? this.defaultTTL : Math.max(currentTTL, 0);
+    let newTTL = this.defaultTTL;
+    if (!extendTTL) {
+      if (currentTTL <= 0) {
+        return false;
+      }
+      newTTL = currentTTL;
+    }
 
-    await redis.setex(sessionKey, newTTL, JSON.stringify(sessionData));
+    await redis.set(sessionKey, JSON.stringify(sessionData), 'EX', newTTL);
     return true;
   }
 
@@ -349,7 +360,7 @@ class DeviceAwareSessionStore(SessionStore):
         device_fingerprint = None
         if device_info:
             fingerprint_data = f"{device_info.get('user_agent', '')}{device_info.get('screen', '')}"
-            device_fingerprint = hashlib.md5(fingerprint_data.encode()).hexdigest()
+            device_fingerprint = hashlib.sha256(fingerprint_data.encode()).hexdigest()
 
         session_data = {
             'user_id': user_id,
@@ -362,7 +373,7 @@ class DeviceAwareSessionStore(SessionStore):
         }
 
         session_key = f"{self.prefix}:{session_id}"
-        r.setex(session_key, ttl, json.dumps(session_data))
+        r.set(session_key, json.dumps(session_data), ex=ttl)
 
         # Track session
         user_sessions_key = f"{self.prefix}:user:{user_id}"
@@ -371,14 +382,14 @@ class DeviceAwareSessionStore(SessionStore):
         # Track by device fingerprint
         if device_fingerprint:
             device_key = f"{self.prefix}:device:{user_id}:{device_fingerprint}"
-            r.setex(device_key, ttl, session_id)
+            r.set(device_key, session_id, ex=ttl)
 
         return session_id
 
     def get_session_by_device(self, user_id, device_info):
         """Get existing session for a device."""
         fingerprint_data = f"{device_info.get('user_agent', '')}{device_info.get('screen', '')}"
-        device_fingerprint = hashlib.md5(fingerprint_data.encode()).hexdigest()
+        device_fingerprint = hashlib.sha256(fingerprint_data.encode()).hexdigest()
 
         device_key = f"{self.prefix}:device:{user_id}:{device_fingerprint}"
         session_id = r.get(device_key)
@@ -410,7 +421,7 @@ class DeviceAwareSessionStore(SessionStore):
         # Check device fingerprint
         if device_info and session.get('device_fingerprint'):
             fingerprint_data = f"{device_info.get('user_agent', '')}{device_info.get('screen', '')}"
-            current_fingerprint = hashlib.md5(fingerprint_data.encode()).hexdigest()
+            current_fingerprint = hashlib.sha256(fingerprint_data.encode()).hexdigest()
 
             if current_fingerprint != session['device_fingerprint']:
                 return False, 'Device mismatch'
@@ -476,7 +487,7 @@ class SlidingSessionStore(SessionStore):
         }
 
         session_key = f"{self.prefix}:{session_id}"
-        r.setex(session_key, self.idle_timeout, json.dumps(session_data))
+        r.set(session_key, json.dumps(session_data), ex=self.idle_timeout)
 
         user_sessions_key = f"{self.prefix}:user:{user_id}"
         r.sadd(user_sessions_key, session_id)
@@ -508,7 +519,7 @@ class SlidingSessionStore(SessionStore):
             return False
 
         session_data['last_activity'] = current_time
-        r.setex(session_key, new_ttl, json.dumps(session_data))
+        r.set(session_key, json.dumps(session_data), ex=new_ttl)
 
         return True
 
@@ -581,7 +592,7 @@ function sessionMiddleware(config = SESSION_CONFIG) {
 
         // Touch session to extend TTL
         req.session.last_activity = Math.floor(Date.now() / 1000);
-        await redis.setex(sessionKey, config.ttl, JSON.stringify(req.session));
+        await redis.set(sessionKey, JSON.stringify(req.session), 'EX', config.ttl);
       }
     }
 
@@ -603,7 +614,7 @@ function sessionMiddleware(config = SESSION_CONFIG) {
         data: req.session.data || {}
       };
 
-      await redis.setex(sessionKey, config.ttl, JSON.stringify(sessionData));
+      await redis.set(sessionKey, JSON.stringify(sessionData), 'EX', config.ttl);
       await redis.sadd(`${config.prefix}:user:${userId}`, newSessionId);
 
       res.cookie(config.cookieName, newSessionId, {
@@ -648,7 +659,7 @@ function sessionMiddleware(config = SESSION_CONFIG) {
         const newSessionId = crypto.randomBytes(32).toString('base64url');
         const sessionKey = `${config.prefix}:${newSessionId}`;
 
-        await redis.setex(sessionKey, config.ttl, JSON.stringify(sessionData));
+        await redis.set(sessionKey, JSON.stringify(sessionData), 'EX', config.ttl);
 
         // Update user's session list
         const userKey = `${config.prefix}:user:${sessionData.user_id}`;
@@ -680,8 +691,8 @@ app.use((req, res, next) => {
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
     cookieHeader.split(';').forEach(cookie => {
-      const [name, value] = cookie.trim().split('=');
-      req.cookies[name] = value;
+      const [name, ...parts] = cookie.trim().split('=');
+      req.cookies[name] = decodeURIComponent(parts.join('='));
     });
   }
   next();
@@ -783,7 +794,7 @@ def login(user_id, old_session_id=None):
 def generate_csrf_token(session_id):
     """Generate CSRF token tied to session."""
     csrf_token = secrets.token_urlsafe(32)
-    r.setex(f"csrf:{session_id}", 3600, csrf_token)
+    r.set(f"csrf:{session_id}", csrf_token, ex=3600)
     return csrf_token
 
 def validate_csrf_token(session_id, token):
@@ -799,9 +810,13 @@ def rate_limit_session_creation(ip_address, limit=10, window=3600):
     """Limit session creation per IP."""
     key = f"session_rate:{ip_address}"
 
-    current = r.incr(key)
-    if current == 1:
-        r.expire(key, window)
+    current = r.eval("""
+        local current = redis.call('INCR', KEYS[1])
+        if current == 1 then
+            redis.call('EXPIRE', KEYS[1], ARGV[1])
+        end
+        return current
+    """, 1, key, window)
 
     return current <= limit
 ```
@@ -817,4 +832,4 @@ Building a session management system with Redis provides the performance and fea
 - Regenerate session IDs after authentication
 - Consider device fingerprinting for additional security
 
-Redis's TTL support and atomic operations make it ideal for session storage, ensuring your sessions expire correctly and operations remain consistent under concurrent access.
+Redis's TTL support and single-command atomicity make it ideal for session storage, helping sessions expire correctly and keeping individual operations consistent under concurrent access.

@@ -179,8 +179,6 @@ redis-cli -p 26379 SENTINEL sentinels mymaster
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   redis-master:
     image: redis:7-alpine
@@ -223,7 +221,7 @@ services:
     container_name: sentinel-1
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel-1.conf:/etc/redis/sentinel.conf
     networks:
       - redis-network
     ports:
@@ -238,7 +236,7 @@ services:
     container_name: sentinel-2
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel-2.conf:/etc/redis/sentinel.conf
     networks:
       - redis-network
     ports:
@@ -251,7 +249,7 @@ services:
     container_name: sentinel-3
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel-3.conf:/etc/redis/sentinel.conf
     networks:
       - redis-network
     ports:
@@ -287,7 +285,8 @@ masterauth redispassword
 replicaof redis-master 6379
 appendonly yes
 
-# sentinel.conf
+# sentinel-1.conf, sentinel-2.conf, sentinel-3.conf
+# Use one writable config file per Sentinel because Sentinel rewrites this file at runtime.
 port 26379
 sentinel monitor mymaster redis-master 6379 2
 sentinel auth-pass mymaster redispassword
@@ -312,8 +311,7 @@ sentinel = Sentinel(
         ('sentinel-2', 26379),
         ('sentinel-3', 26379)
     ],
-    socket_timeout=0.5,
-    password='redispassword'  # Sentinel password if set
+    socket_timeout=0.5
 )
 
 # Get master connection (for writes)
@@ -380,7 +378,6 @@ const redis = new Redis({
     ],
     name: 'mymaster',  // Sentinel master name
     password: 'redispassword',
-    sentinelPassword: 'sentinelpassword',  // If Sentinel has auth
     role: 'master',  // or 'slave' for read replicas
 
     // Retry strategy
@@ -401,11 +398,12 @@ const redis = new Redis({
 
 redis.on('connect', () => console.log('Connected to Redis'));
 redis.on('error', (err) => console.error('Redis error:', err));
-redis.on('+switch-master', () => console.log('Master switched!'));
-
 // Usage
-await redis.set('key', 'value');
-const value = await redis.get('key');
+(async () => {
+    await redis.set('key', 'value');
+    const value = await redis.get('key');
+    console.log(value);
+})();
 
 // For read replicas
 const replicaRedis = new Redis({
@@ -428,6 +426,8 @@ package main
 import (
     "context"
     "fmt"
+    "time"
+
     "github.com/redis/go-redis/v9"
 )
 
@@ -442,8 +442,7 @@ func main() {
             "sentinel-2:26379",
             "sentinel-3:26379",
         },
-        Password:         "redispassword",
-        SentinelPassword: "sentinelpassword",
+        Password: "redispassword",
 
         // Pool settings
         PoolSize:     50,
@@ -492,7 +491,7 @@ redis-cli -p 26379 SENTINEL replicas mymaster
 # Get Sentinel list
 redis-cli -p 26379 SENTINEL sentinels mymaster
 
-# Check if master is down
+# Check whether this Sentinel can reach quorum and authorize a failover
 redis-cli -p 26379 SENTINEL ckquorum mymaster
 
 # Force failover (manual)
@@ -529,8 +528,12 @@ def monitor_sentinel():
 
             # Update metrics
             flags = master_dict.get(b'flags', b'').decode()
-            is_up = 1 if 'master' in flags and 's_down' not in flags else 0
+            is_up = 1 if 'master' in flags and 's_down' not in flags and 'o_down' not in flags else 0
             master_status.labels(master='mymaster').set(is_up)
+
+            # Get masters
+            masters = sentinel.execute_command('SENTINEL', 'masters')
+            sentinel_masters.set(len(masters))
 
             # Get replicas
             replicas = sentinel.execute_command('SENTINEL', 'replicas', 'mymaster')
@@ -553,7 +556,7 @@ if __name__ == '__main__':
 ### Alerting Configuration
 
 ```yaml
-# alertmanager rules for Prometheus
+# Prometheus alerting rules
 groups:
   - name: redis-sentinel
     rules:
@@ -611,8 +614,8 @@ redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 # Option 1: Stop Redis on master
 docker stop redis-master
 
-# Option 2: Debug sleep (blocks Redis)
-redis-cli -a redispassword DEBUG sleep 30
+# Option 2: Pause client command processing for 30 seconds
+redis-cli -a redispassword CLIENT PAUSE 30000 ALL
 
 # Option 3: Network partition (iptables)
 iptables -A INPUT -p tcp --dport 6379 -j DROP
@@ -709,10 +712,7 @@ sentinel failover-timeout mymaster 180000
 requirepass your-sentinel-password
 
 # Bind to specific interfaces
-bind 10.0.0.0
-
-# Disable dangerous commands
-rename-command SENTINEL ""  # If you want to disable Sentinel commands
+bind 127.0.0.1 10.0.0.10
 ```
 
 ---

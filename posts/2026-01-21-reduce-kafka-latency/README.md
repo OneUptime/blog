@@ -198,7 +198,7 @@ public class LowLatencyProducer {
         // Disable compression for lowest latency
         props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "none");
 
-        // Reduce buffer memory to force faster sends
+        // Producer buffer memory for records waiting to be sent
         props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);
 
         // Faster metadata refresh
@@ -239,9 +239,13 @@ public class LowLatencyProducer {
 
 ### Synchronous Low-Latency Producer
 
-For guaranteed low latency on individual messages:
+For measuring acknowledgment latency on individual messages:
 
 ```java
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.serialization.StringSerializer;
+import java.util.Properties;
+
 public class SynchronousLowLatencyProducer {
 
     private final KafkaProducer<String, String> producer;
@@ -256,7 +260,7 @@ public class SynchronousLowLatencyProducer {
 
         // Ultra-low latency settings
         props.put(ProducerConfig.LINGER_MS_CONFIG, 0);
-        props.put(ProducerConfig.BATCH_SIZE_CONFIG, 1);  // No batching
+        props.put(ProducerConfig.BATCH_SIZE_CONFIG, 1024);  // Very small batches
         props.put(ProducerConfig.ACKS_CONFIG, "1");
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 5000);
 
@@ -535,9 +539,10 @@ replica.fetch.min.bytes=1
 # Faster leader election
 leader.imbalance.check.interval.seconds=30
 
-# Log flush settings - balance between latency and durability
-log.flush.interval.messages=1000
-log.flush.interval.ms=100
+# Log flush settings - leave unset for normal low-latency operation.
+# Forcing frequent fsyncs is a durability trade-off and can add I/O overhead.
+# log.flush.interval.messages=1000
+# log.flush.interval.ms=100
 
 # Request handling
 queued.max.requests=500
@@ -551,12 +556,12 @@ request.timeout.ms=10000
 ```bash
 # /etc/sysctl.conf
 
-# Disable Nagle's algorithm equivalent
-net.ipv4.tcp_nodelay = 1
-
-# Reduce TCP connection time
+# Reduce TCP connection cleanup time
 net.ipv4.tcp_fin_timeout = 15
 net.ipv4.tcp_tw_reuse = 1
+
+# TCP_NODELAY disables Nagle's algorithm, but it is a per-socket option,
+# not a Linux sysctl setting.
 
 # Faster keepalive
 net.ipv4.tcp_keepalive_time = 60
@@ -589,7 +594,7 @@ public class RoundRobinPartitioner implements Partitioner {
         int numPartitions = cluster.partitionsForTopic(topic).size();
 
         // Round-robin for even distribution and predictable latency
-        return Math.abs(counter.getAndIncrement() % numPartitions);
+        return Math.floorMod(counter.getAndIncrement(), numPartitions);
     }
 
     @Override
@@ -610,22 +615,20 @@ groups:
   - name: kafka-latency
     rules:
       - alert: HighProduceLatency
-        expr: histogram_quantile(0.99,
-          rate(kafka_producer_request_latency_avg[5m])) > 50
+        expr: kafka_producer_request_latency_avg > 50
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: P99 produce latency above 50ms
+          summary: Average produce request latency above 50ms
 
       - alert: HighFetchLatency
-        expr: histogram_quantile(0.99,
-          rate(kafka_consumer_fetch_latency_avg[5m])) > 100
+        expr: kafka_consumer_fetch_latency_avg > 100
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: P99 fetch latency above 100ms
+          summary: Average fetch request latency above 100ms
 
       - alert: HighEndToEndLatency
         expr: kafka_streams_processor_node_process_latency_avg > 100

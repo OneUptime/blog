@@ -174,6 +174,7 @@ class RedisMigrationManager:
             return {'success': False, 'error': str(e)}
 
     def migrate_pattern(self, pattern: str = '*',
+                        copy: bool = False, replace: bool = True,
                         progress_callback=None) -> dict:
         """Migrate all keys matching pattern."""
         batch = []
@@ -183,7 +184,7 @@ class RedisMigrationManager:
             batch.append(key)
 
             if len(batch) >= self.batch_size:
-                self.migrate_keys(batch)
+                self.migrate_keys(batch, copy=copy, replace=replace)
                 total_processed += len(batch)
 
                 if progress_callback:
@@ -193,7 +194,7 @@ class RedisMigrationManager:
 
         # Migrate remaining keys
         if batch:
-            self.migrate_keys(batch)
+            self.migrate_keys(batch, copy=copy, replace=replace)
             total_processed += len(batch)
 
         return {
@@ -255,7 +256,7 @@ if __name__ == "__main__":
     )
 
     print("Starting migration...")
-    result = manager.migrate_pattern('*', progress_callback=progress)
+    result = manager.migrate_pattern('*', copy=True, progress_callback=progress)
     print(f"\nMigration complete: {result}")
 
     print("\nVerifying migration...")
@@ -569,14 +570,14 @@ class ReplicationMigration:
         if verification['consistency'] < 0.99:
             return {'success': False, 'error': 'Data consistency check failed'}
 
-        # Optional: Execute cutover callback (e.g., switch DNS, update app config)
-        if cutover_callback:
-            print("Step 4: Executing cutover...")
-            cutover_callback()
-
-        print("Step 5: Promoting target to master...")
+        print("Step 4: Promoting target to master...")
         if not self.promote_to_master():
             return {'success': False, 'error': 'Failed to promote'}
+
+        # Optional: Execute cutover callback (e.g., switch DNS, update app config)
+        if cutover_callback:
+            print("Step 5: Executing cutover...")
+            cutover_callback()
 
         return {
             'success': True,
@@ -616,7 +617,7 @@ class RedisMigration {
     async migrateKey(key) {
         try {
             const ttl = await this.source.pttl(key);
-            const dump = await this.source.dump(key);
+            const dump = await this.source.dumpBuffer(key);
 
             if (!dump) {
                 this.stats.skipped++;
@@ -650,26 +651,36 @@ class RedisMigration {
             const targetPipe = this.target.pipeline();
 
             for (const key of keys) {
-                sourcePipe.dump(key);
+                sourcePipe.dumpBuffer(key);
                 sourcePipe.pttl(key);
             }
 
             const results = await sourcePipe.exec();
 
             for (let i = 0; i < keys.length; i++) {
-                const dump = results[i * 2][1];
-                const ttl = results[i * 2 + 1][1];
+                const [dumpError, dump] = results[i * 2];
+                const [ttlError, ttl] = results[i * 2 + 1];
 
-                if (dump) {
+                if (dumpError || ttlError) {
+                    this.stats.failed++;
+                } else if (dump) {
                     const restoreTtl = ttl > 0 ? ttl : 0;
                     targetPipe.restore(keys[i], restoreTtl, dump, 'REPLACE');
+                } else {
+                    this.stats.skipped++;
                 }
             }
 
-            await targetPipe.exec();
+            const restoreResults = await targetPipe.exec();
+            for (const [error] of restoreResults) {
+                if (error) {
+                    this.stats.failed++;
+                } else {
+                    this.stats.migrated++;
+                }
+            }
 
             processed += keys.length;
-            this.stats.migrated += keys.length;
 
             console.log(`Progress: ${processed} keys processed`);
         } while (cursor !== '0');
@@ -681,7 +692,7 @@ class RedisMigration {
         if (sourcePassword) {
             await this.target.config('SET', 'masterauth', sourcePassword);
         }
-        await this.target.slaveof(sourceHost, sourcePort);
+        await this.target.call('REPLICAOF', sourceHost, sourcePort);
         console.log('Replication started');
     }
 
@@ -717,7 +728,7 @@ class RedisMigration {
     }
 
     async promoteToMaster() {
-        await this.target.slaveof('NO', 'ONE');
+        await this.target.call('REPLICAOF', 'NO', 'ONE');
         console.log('Promoted to master');
     }
 
@@ -769,7 +780,7 @@ main().catch(console.error);
 2. **Wait for full sync** before proceeding
 3. **Verify data consistency** with sampling
 4. **Prepare application cutover** (DNS, config)
-5. **Execute cutover** during low-traffic period
+5. **Promote target and execute cutover** during low-traffic period
 
 ### Post-Migration
 

@@ -67,10 +67,13 @@ SET format_csv_delimiter = ',';
 
 ```sql
 -- Let ClickHouse infer types
-DESCRIBE file('events.csv', 'CSVWithNames');
+DESCRIBE TABLE file('events.csv', 'CSVWithNames');
 
 -- Create table from CSV structure
-CREATE TABLE events AS
+CREATE TABLE events
+ENGINE = MergeTree()
+ORDER BY tuple()
+AS
 SELECT *
 FROM file('events.csv', 'CSVWithNames')
 LIMIT 0;
@@ -86,17 +89,17 @@ LIMIT 0;
 -- {"id": 2, "name": "Bob"}
 SELECT * FROM file('events.jsonl', 'JSONEachRow');
 
--- JSONCompact: Arrays instead of objects
+-- JSONCompactEachRow: Arrays instead of objects
 -- [1, "Alice"]
 -- [2, "Bob"]
-SELECT * FROM file('events.json', 'JSONCompact');
+SELECT * FROM file('events.json', 'JSONCompactEachRow');
 
 -- JSONStringsEachRow: All values as strings
 SELECT * FROM file('events.json', 'JSONStringsEachRow');
 
--- JSON: Complete JSON array
+-- JSONAsObject: Store complete JSON objects in a JSON column
 -- [{"id": 1}, {"id": 2}]
-SELECT * FROM file('events.json', 'JSONAsObject');
+SELECT * FROM file('events.json', 'JSONAsObject', 'json JSON');
 ```
 
 ### Handling Nested JSON
@@ -122,19 +125,20 @@ FROM file('events.jsonl', 'JSONEachRow');
 INSERT INTO events
 SELECT
     JSONExtractUInt(json, 'id') AS id,
-    JSONExtractString(json, 'user', 'name') AS user_name,
+    JSONExtract(json, 'user', 'Map(String, String)') AS user,
     JSONExtract(json, 'tags', 'Array(String)') AS tags
-FROM file('raw.jsonl', 'JSONAsString') AS t(json);
+FROM file('raw.jsonl', 'JSONAsString', 'json String');
 ```
 
 ### JSON Schema Inference
 
 ```sql
 -- Infer schema from JSON
-DESCRIBE file('events.jsonl', 'JSONEachRow');
+DESCRIBE TABLE file('events.jsonl', 'JSONEachRow');
 
 -- Handle inconsistent schemas
 SET input_format_json_read_objects_as_strings = 1;
+SET input_format_json_try_infer_named_tuples_from_objects = 0;
 SET input_format_json_try_infer_numbers_from_strings = 1;
 ```
 
@@ -149,7 +153,7 @@ SELECT *
 FROM file('events.parquet', 'Parquet');
 
 -- View Parquet schema
-DESCRIBE file('events.parquet', 'Parquet');
+DESCRIBE TABLE file('events.parquet', 'Parquet');
 
 -- Select specific columns
 SELECT event_id, event_type
@@ -170,9 +174,10 @@ FROM file('nested.parquet', 'Parquet');
 ### Parquet Row Groups
 
 ```sql
--- Read specific row groups for parallel processing
+-- Enable row-group pruning from Parquet metadata
 SELECT *
 FROM file('large.parquet', 'Parquet')
+WHERE created_at >= today() - 7
 SETTINGS
     input_format_parquet_filter_push_down = 1,
     max_threads = 16;
@@ -205,12 +210,9 @@ FROM url(
 SELECT *
 FROM url('https://example.com/data/events_*.csv', 'CSVWithNames');
 
--- Multiple specific URLs
+-- Multiple specific URLs with brace expansion
 SELECT *
-FROM url(
-    ['https://server1.com/data.csv', 'https://server2.com/data.csv'],
-    'CSVWithNames'
-);
+FROM url('https://{server1,server2}.com/data.csv', 'CSVWithNames');
 ```
 
 ## Importing from S3
@@ -228,7 +230,7 @@ FROM s3(
     'Parquet'
 );
 
--- Using IAM role (no credentials needed)
+-- Using configured credentials or an IAM role
 SELECT *
 FROM s3(
     'https://bucket.s3.amazonaws.com/events/data.parquet',
@@ -295,7 +297,7 @@ SET max_download_buffer_size = 104857600;  -- 100MB
 -- Insert with parallelism
 INSERT INTO events
 SELECT *
-FROM s3('s3://bucket/data/*.parquet', 'key', 'secret', 'Parquet')
+FROM s3('https://bucket.s3.amazonaws.com/data/*.parquet', 'key', 'secret', 'Parquet')
 SETTINGS
     max_threads = 32,
     max_insert_threads = 16;
@@ -361,7 +363,7 @@ SELECT * FROM remote_data;
 -- Import in chunks for very large files
 INSERT INTO events
 SELECT *
-FROM s3('s3://bucket/huge.parquet', 'key', 'secret', 'Parquet')
+FROM s3('https://bucket.s3.amazonaws.com/huge.parquet', 'key', 'secret', 'Parquet')
 SETTINGS
     max_block_size = 100000,
     max_insert_block_size = 100000,
@@ -387,7 +389,7 @@ WHERE query LIKE 'INSERT INTO events%';
 SET input_format_allow_errors_num = 1000;
 SET input_format_allow_errors_ratio = 0.01;
 
--- Log errors instead of failing
+-- Format error output
 SET errors_output_format = 'CSV';
 ```
 
@@ -428,7 +430,8 @@ INSERT INTO FUNCTION s3(
     'secret',
     'Parquet'
 )
-SELECT *, toDate(created_at) AS _partition_id
+PARTITION BY toDate(created_at)
+SELECT *
 FROM events;
 ```
 

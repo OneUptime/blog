@@ -40,12 +40,12 @@ TestContainers originated in the Java ecosystem and has the most mature support 
 
 ### Basic Configuration
 
-```java
+```groovy
 // build.gradle
 dependencies {
-    testImplementation 'org.testcontainers:testcontainers:1.19.3'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
-    testImplementation 'org.testcontainers:postgresql:1.19.3'
+    testImplementation 'org.testcontainers:testcontainers:1.21.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.3'
+    testImplementation 'org.testcontainers:postgresql:1.21.3'
 }
 ```
 
@@ -59,6 +59,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @Testcontainers
 class PostgresTest {
@@ -110,11 +112,15 @@ class PostgresTest {
 ```java
 // src/test/java/com/example/SpringPostgresTest.java
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest
 @Testcontainers
@@ -151,9 +157,9 @@ class SpringPostgresTest {
 ```python
 # requirements-test.txt
 
-testcontainers[postgres,redis,kafka]==3.7.1
-pytest==7.4.0
-psycopg2-binary==2.9.9
+testcontainers[postgres,redis,kafka]==4.14.2
+pytest==9.1.1
+psycopg2-binary==2.9.12
 ```
 
 ### PostgreSQL Container
@@ -173,9 +179,9 @@ def postgres_container():
         conn = psycopg2.connect(
             host=postgres.get_container_host_ip(),
             port=postgres.get_exposed_port(5432),
-            user=postgres.POSTGRES_USER,
-            password=postgres.POSTGRES_PASSWORD,
-            database=postgres.POSTGRES_DB
+            user=postgres.username,
+            password=postgres.password,
+            database=postgres.dbname
         )
         with conn.cursor() as cur:
             cur.execute("""
@@ -196,12 +202,15 @@ def db_connection(postgres_container):
     conn = psycopg2.connect(
         host=postgres_container.get_container_host_ip(),
         port=postgres_container.get_exposed_port(5432),
-        user=postgres_container.POSTGRES_USER,
-        password=postgres_container.POSTGRES_PASSWORD,
-        database=postgres_container.POSTGRES_DB
+        user=postgres_container.username,
+        password=postgres_container.password,
+        database=postgres_container.dbname
     )
     yield conn
-    conn.rollback()  # Clean up after each test
+    conn.rollback()
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE TABLE users RESTART IDENTITY")
+    conn.commit()
     conn.close()
 
 # tests/test_database.py
@@ -268,12 +277,22 @@ def test_hash_operations(redis_client):
 ## Node.js/TypeScript Setup
 
 ```json
-// package.json
 {
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node"
+  },
   "devDependencies": {
-    "testcontainers": "^10.4.0",
-    "@types/node": "^20.0.0",
-    "jest": "^29.7.0"
+    "testcontainers": "^12.0.3",
+    "@testcontainers/postgresql": "^12.0.3",
+    "pg": "^8.22.0",
+    "redis": "^6.0.0",
+    "typescript": "^6.0.3",
+    "ts-jest": "^29.4.11",
+    "@types/node": "^26.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/pg": "^8.20.0",
+    "jest": "^30.4.2"
   }
 }
 ```
@@ -282,7 +301,7 @@ def test_hash_operations(redis_client):
 
 ```typescript
 // tests/postgres.test.ts
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from 'testcontainers';
+import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Client } from 'pg';
 
 describe('PostgreSQL Tests', () => {
@@ -347,7 +366,10 @@ describe('PostgreSQL Tests', () => {
 
 ```typescript
 // tests/integration.test.ts
-import { PostgreSqlContainer, GenericContainer, Wait } from 'testcontainers';
+import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { GenericContainer, StartedGenericContainer, Wait } from 'testcontainers';
+import { Client } from 'pg';
+import { createClient } from 'redis';
 
 describe('Integration Tests', () => {
   let postgres: StartedPostgreSqlContainer;
@@ -405,10 +427,10 @@ describe('Integration Tests', () => {
 ```java
 // Java - Using custom image with pre-loaded data
 @Container
-static GenericContainer<?> customDb = new GenericContainer<>("my-registry/custom-postgres:latest")
+static GenericContainer<?> customDb = new GenericContainer<>(DockerImageName.parse("my-registry/custom-postgres:latest"))
     .withExposedPorts(5432)
     .withEnv("POSTGRES_PASSWORD", "secret")
-    .waitingFor(Wait.forLogMessage(".*database system is ready.*", 1));
+    .waitingFor(Wait.forLogMessage(".*database system is ready.*\\n", 1));
 ```
 
 ### Container Networks
@@ -456,9 +478,12 @@ const container = await new GenericContainer('my-service:latest')
 
 ```java
 // Java - Keep containers running between test runs for faster development
-@Container
 static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
     .withReuse(true);  // Container survives test restarts
+
+static {
+    postgres.start();
+}
 ```
 
 ```properties
@@ -492,7 +517,7 @@ jobs:
       - name: Run tests
         run: ./gradlew test
         env:
-          TESTCONTAINERS_RYUK_DISABLED: true  # Faster in CI
+          TESTCONTAINERS_RYUK_DISABLED: true  # Use only when CI already cleans up containers
 ```
 
 ### GitLab CI
@@ -500,13 +525,14 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 test:
-  image: docker:24-dind
+  image: gradle:8.5-jdk17
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      command: ["--tls=false"]
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-    TESTCONTAINERS_HOST_OVERRIDE: docker
+    DOCKER_DRIVER: overlay2
   script:
     - ./gradlew test
 ```

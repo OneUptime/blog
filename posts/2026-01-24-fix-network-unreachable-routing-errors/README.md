@@ -299,7 +299,7 @@ sudo nmcli con mod "Wired connection 1" ipv4.method manual
 sudo nmcli con up "Wired connection 1"
 ```
 
-### RHEL/CentOS (Traditional)
+### RHEL/CentOS (Legacy network-scripts)
 
 ```bash
 # /etc/sysconfig/network-scripts/ifcfg-eth0
@@ -315,10 +315,8 @@ DEVICE=eth0
 ```
 
 ```bash
-# Apply changes
-sudo systemctl restart NetworkManager
-# Or
-sudo nmcli con reload
+# Apply changes on systems using the legacy network service
+sudo systemctl restart network
 ```
 
 ### Adding Persistent Static Routes
@@ -327,6 +325,7 @@ sudo nmcli con reload
 # Debian/Ubuntu with Netplan
 # /etc/netplan/01-netcfg.yaml
 network:
+  version: 2
   ethernets:
     eth0:
       routes:
@@ -337,8 +336,12 @@ network:
 
 # RHEL/CentOS
 # /etc/sysconfig/network-scripts/route-eth0
-10.0.0.0/8 via 192.168.1.254
-172.16.0.0/12 via 192.168.1.253
+ADDRESS0=10.0.0.0
+NETMASK0=255.0.0.0
+GATEWAY0=192.168.1.254
+ADDRESS1=172.16.0.0
+NETMASK1=255.240.0.0
+GATEWAY1=192.168.1.253
 ```
 
 ## Troubleshooting Specific Scenarios
@@ -393,10 +396,11 @@ nslookup google.com
 # Check DNS configuration
 cat /etc/resolv.conf
 
-# Fix DNS
+# Temporary DNS test (may be overwritten by NetworkManager or systemd-resolved)
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 
 # For systems using systemd-resolved
+sudo resolvectl dns eth0 8.8.8.8
 sudo systemctl restart systemd-resolved
 ```
 
@@ -429,7 +433,7 @@ ip route show | grep docker
 # Restart Docker if routes are corrupt
 sudo systemctl restart docker
 
-# Reset Docker networking
+# Remove unused Docker networks if safe
 docker network prune
 ```
 
@@ -460,8 +464,13 @@ echo -e "\n=== ARP Cache ==="
 arp -n
 
 echo -e "\n=== Connectivity Tests ==="
-echo "Gateway: $(ip route show default | awk '{print $3}')"
-ping -c 1 -W 2 $(ip route show default | awk '{print $3}') && echo "Gateway: OK" || echo "Gateway: FAIL"
+gateway=$(ip route show default | awk 'NR==1 {print $3}')
+echo "Gateway: ${gateway:-none}"
+if [ -n "$gateway" ]; then
+    ping -c 1 -W 2 "$gateway" && echo "Gateway: OK" || echo "Gateway: FAIL"
+else
+    echo "Gateway: FAIL"
+fi
 ping -c 1 -W 2 8.8.8.8 && echo "Internet: OK" || echo "Internet: FAIL"
 ping -c 1 -W 2 google.com && echo "DNS: OK" || echo "DNS: FAIL"
 ```

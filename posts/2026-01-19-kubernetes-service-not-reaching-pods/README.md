@@ -171,7 +171,8 @@ cat /etc/resolv.conf
 
 # Test connectivity
 wget -O- http://myapp-service:80/health
-curl myapp-service:80/health
+# If using an image that includes curl:
+curl http://myapp-service:80/health
 ```
 
 ### CoreDNS Issues
@@ -214,12 +215,11 @@ kubectl delete networkpolicy <policy-name>
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-all
+  name: deny-all-ingress
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
-    - Egress
 
 # Fix: Add allow rule for service traffic
 ---
@@ -245,7 +245,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy
 # Check kube-proxy logs
 kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=100
 
-# Check kube-proxy mode (iptables or ipvs)
+# Check kube-proxy mode (iptables, ipvs, or nftables on Linux)
 kubectl logs -n kube-system -l k8s-app=kube-proxy | grep "Using"
 
 # Check iptables rules (on node)
@@ -253,6 +253,9 @@ sudo iptables -t nat -L KUBE-SERVICES | grep myapp
 
 # For IPVS mode
 sudo ipvsadm -L -n | grep <service-cluster-ip>
+
+# For nftables mode
+sudo nft list ruleset | grep <service-cluster-ip>
 
 # Restart kube-proxy
 kubectl rollout restart daemonset kube-proxy -n kube-system
@@ -265,8 +268,7 @@ kubectl rollout restart daemonset kube-proxy -n kube-system
 POD_IP=$(kubectl get pod <pod-name> -o jsonpath='{.status.podIP}')
 
 # From debug pod, test direct connection
-kubectl run debug --rm -it --image=busybox:1.36 -- /bin/sh
-wget -O- http://$POD_IP:8080/health
+kubectl run debug --rm -it --image=busybox:1.36 -- wget -O- http://$POD_IP:8080/health
 
 # From another pod in the cluster
 kubectl exec -it <other-pod> -- curl http://$POD_IP:8080/health
@@ -304,7 +306,9 @@ spec:
         initialDelaySeconds: 5
         periodSeconds: 10
         failureThreshold: 3
+```
 
+```bash
 # Debug: Check probe endpoint manually
 kubectl exec -it <pod-name> -- curl localhost:8080/health
 ```
@@ -312,13 +316,13 @@ kubectl exec -it <pod-name> -- curl localhost:8080/health
 ### Issue 2: Wrong Port Configuration
 
 ```yaml
-# Service targetPort must match container port
+# Service targetPort must match the port where the container listens
 apiVersion: v1
 kind: Service
 spec:
   ports:
     - port: 80
-      targetPort: 8080  # Must match containerPort!
+      targetPort: 8080  # Must route to the app's listening port
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -327,7 +331,7 @@ spec:
     spec:
       containers:
         - ports:
-            - containerPort: 8080  # Must match targetPort!
+            - containerPort: 8080  # Documents the port the container exposes
 ```
 
 ### Issue 3: Service Type Mismatch

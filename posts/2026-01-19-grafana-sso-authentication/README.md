@@ -15,7 +15,7 @@ Managing separate credentials for every tool frustrates users and creates securi
 Grafana supports multiple authentication methods:
 
 - **OAuth 2.0**: Google, GitHub, Azure AD, Okta, generic OAuth2
-- **SAML**: Enterprise identity providers
+- **SAML**: Enterprise identity providers (Grafana Enterprise and Grafana Cloud)
 - **LDAP**: Active Directory, OpenLDAP
 - **Proxy authentication**: Header-based auth behind a proxy
 
@@ -36,7 +36,7 @@ name = Corporate SSO
 allow_sign_up = true
 client_id = your-client-id
 client_secret = your-client-secret
-scopes = openid profile email
+scopes = openid profile email groups
 auth_url = https://idp.company.com/oauth2/authorize
 token_url = https://idp.company.com/oauth2/token
 api_url = https://idp.company.com/oauth2/userinfo
@@ -99,16 +99,16 @@ scopes = openid email profile
 auth_url = https://login.microsoftonline.com/your-tenant-id/oauth2/v2.0/authorize
 token_url = https://login.microsoftonline.com/your-tenant-id/oauth2/v2.0/token
 allowed_domains = company.com
-allowed_groups = grafana-admins,grafana-users
-role_attribute_path = contains(groups[*], 'grafana-admins') && 'Admin' || 'Viewer'
+allowed_groups = 11111111-1111-1111-1111-111111111111,22222222-2222-2222-2222-222222222222
 ```
 
 Azure AD setup:
-1. Go to Azure Portal > Azure Active Directory > App registrations
+1. Go to Azure Portal > Microsoft Entra ID > App registrations
 2. Create new registration
 3. Add redirect URI: `https://grafana.company.com/login/azuread`
 4. Create client secret
-5. Configure API permissions: `User.Read`, `GroupMember.Read.All`
+5. Configure app roles with values like `Viewer`, `Editor`, and `Admin`
+6. If using `allowed_groups`, configure group claims and use Entra ID group object IDs
 
 ### Okta OAuth
 
@@ -128,7 +128,7 @@ role_attribute_path = contains(groups[*], 'GrafanaAdmins') && 'Admin' || contain
 
 ## SAML Configuration
 
-SAML is common in enterprise environments with identity providers like Okta, OneLogin, or ADFS.
+SAML is common in enterprise environments with identity providers like Okta, OneLogin, or ADFS. Grafana SAML authentication is available in Grafana Enterprise and Grafana Cloud.
 
 ```ini
 [auth.saml]
@@ -140,6 +140,7 @@ assertion_attribute_name = displayName
 assertion_attribute_login = mail
 assertion_attribute_email = mail
 assertion_attribute_groups = groups
+assertion_attribute_role = groups
 role_values_admin = GrafanaAdmins
 role_values_editor = GrafanaEditors
 role_values_viewer = GrafanaViewers
@@ -265,10 +266,10 @@ grafana.ini:
     root_url: https://grafana.company.com
   auth:
     disable_login_form: false
-    oauth_auto_login: true
   auth.generic_oauth:
     enabled: true
     name: "Corporate SSO"
+    auto_login: true
     allow_sign_up: true
     client_id: ${OAUTH_CLIENT_ID}
     client_secret: ${OAUTH_CLIENT_SECRET}
@@ -317,14 +318,19 @@ allow_sign_up = false
 auto_assign_org = true
 auto_assign_org_id = 1
 auto_assign_org_role = Viewer
+
+[auth.generic_oauth]
+allow_sign_up = false
 ```
 
 ### 4. Enable Auto-Login for SSO
 
 ```ini
 [auth]
-oauth_auto_login = true
 disable_login_form = true
+
+[auth.generic_oauth]
+auto_login = true
 ```
 
 ### 5. Configure Session Security
@@ -363,6 +369,7 @@ scopes = openid profile email groups
 
 **SSL certificate errors**: Add CA certificate:
 ```ini
+[auth.generic_oauth]
 tls_client_ca = /etc/grafana/certs/ca.crt
 tls_skip_verify_insecure = false
 ```

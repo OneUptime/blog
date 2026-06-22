@@ -69,7 +69,7 @@ ansible-config dump | grep MODULE
 
 ## Step 2: Fix Built-in Module Issues
 
-Some modules were moved to collections in Ansible 2.10+. Use Fully Qualified Collection Names (FQCN).
+Some modules were moved to collections in Ansible 2.10+. Use Fully Qualified Collection Names (FQCN) to avoid ambiguity and make module origins clear.
 
 ### Before Ansible 2.10 (Legacy Names)
 
@@ -86,7 +86,7 @@ Some modules were moved to collections in Ansible 2.10+. Use Fully Qualified Col
         state: present
 ```
 
-### After Ansible 2.10 (FQCN Required)
+### After Ansible 2.10 (FQCN Recommended)
 
 ```yaml
 # Modern syntax with Fully Qualified Collection Names
@@ -119,7 +119,7 @@ flowchart LR
         A5[template]
     end
 
-    subgraph "FQCN (Ansible 2.10+)"
+    subgraph "FQCN (Ansible 2.10+ Recommended)"
         B1[ansible.builtin.yum]
         B2[ansible.builtin.apt]
         B3[ansible.builtin.service]
@@ -208,7 +208,7 @@ Ensure Ansible can find your installed collections.
 # ansible.cfg
 [defaults]
 # Default paths where Ansible looks for collections
-collections_paths = ./collections:~/.ansible/collections:/usr/share/ansible/collections
+collections_path = ./collections:~/.ansible/collections:/usr/share/ansible/collections
 
 # Default paths for roles
 roles_path = ./roles:~/.ansible/roles:/usr/share/ansible/roles
@@ -233,7 +233,7 @@ lookup_plugins = ./plugins/lookup
 ansible-galaxy collection list
 
 # Check effective collection paths
-ansible-config dump | grep COLLECTIONS_PATH
+ansible-config dump | grep COLLECTIONS_PATHS
 
 # Verify a specific collection is installed
 ansible-galaxy collection list community.docker
@@ -243,7 +243,7 @@ ansible-galaxy collection list community.docker
 
 ```mermaid
 flowchart TB
-    A[Module Request: community.docker.docker_container] --> B{Search collections_paths}
+    A[Module Request: community.docker.docker_container] --> B{Search collections_path}
 
     B --> C[./collections/]
     B --> D[~/.ansible/collections/]
@@ -376,7 +376,7 @@ if __name__ == '__main__':
 
 ## Step 6: Fix Python Dependency Issues
 
-Some modules require additional Python packages on the target host.
+Some modules require additional Python packages on the host that executes the module.
 
 ```yaml
 # playbook.yml
@@ -392,14 +392,14 @@ Some modules require additional Python packages on the target host.
         name: python3-pip
         state: present
 
-    # Docker module requires docker Python package
-    - name: Install docker Python package
+    # community.docker modules commonly require the Docker SDK for Python
+    - name: Install Docker SDK for Python
       ansible.builtin.pip:
         name: docker
         state: present
       when: "'docker' in group_names"
 
-    # PostgreSQL module requires psycopg2
+    # PostgreSQL modules require psycopg2 or psycopg3
     - name: Install psycopg2 for PostgreSQL modules
       ansible.builtin.pip:
         name: psycopg2-binary
@@ -425,14 +425,14 @@ flowchart TB
         A2[community.postgresql.*]
         A3[amazon.aws.*]
         A4[kubernetes.core.*]
-        A5[community.mysql.*]
+        A5[ansible.mysql.*]
     end
 
     subgraph "Python Packages Required"
         B1[docker]
-        B2[psycopg2-binary]
+        B2[psycopg2-binary or psycopg]
         B3[boto3, botocore]
-        B4[kubernetes, openshift]
+        B4[kubernetes, PyYAML]
         B5[PyMySQL]
     end
 
@@ -542,10 +542,10 @@ pip install --upgrade ansible
 # Change: docker_container -> community.docker.docker_container
 
 # Solution 4: Fix collection path in ansible.cfg
-# collections_paths = ./collections:~/.ansible/collections
+# collections_path = ./collections:~/.ansible/collections
 
 # Solution 5: Install Python dependencies
-pip install docker boto3 kubernetes
+pip install docker boto3 botocore kubernetes PyYAML
 
 # Solution 6: Reinstall collection
 ansible-galaxy collection install community.docker --force
@@ -594,7 +594,7 @@ flowchart TD
 # Step 1: Install the collection
 ansible-galaxy collection install community.docker
 
-# Step 2: Install Python dependency
+# Step 2: Install Python dependency commonly needed by community.docker modules
 pip install docker
 
 # Step 3: Verify installation
@@ -610,7 +610,7 @@ ansible-doc community.docker.docker_container
   become: true
 
   tasks:
-    - name: Ensure Docker Python package is installed
+    - name: Ensure Docker SDK for Python is installed
       ansible.builtin.pip:
         name: docker
         state: present
@@ -640,8 +640,8 @@ Module not found errors in Ansible typically result from:
 
 1. **Missing FQCN** - Use fully qualified collection names (namespace.collection.module)
 2. **Missing Collections** - Install required collections with ansible-galaxy
-3. **Incorrect Paths** - Configure collections_paths in ansible.cfg
+3. **Incorrect Paths** - Configure collections_path in ansible.cfg
 4. **Version Mismatches** - Ensure compatible Ansible and collection versions
-5. **Python Dependencies** - Install required Python packages on target hosts
+5. **Python Dependencies** - Install required Python packages on the hosts that execute the modules
 
 By following the diagnostic flow and solutions in this guide, you can quickly identify and resolve module not found errors in your Ansible automation.

@@ -30,12 +30,13 @@ Or in scripts:
 
 ```mermaid
 flowchart TD
-    A[Command Executed] --> B{Is it a builtin?}
-    B --> |Yes| C[Execute builtin]
-    B --> |No| D{Is it a function?}
+    A[Command Read] --> B{Is it an alias?}
+    B --> |Yes| C[Expand alias]
+    C --> D{Is it a function?}
+    B --> |No| D
     D --> |Yes| E[Execute function]
-    D --> |No| F{Is it an alias?}
-    F --> |Yes| G[Expand alias]
+    D --> |No| F{Is it a builtin?}
+    F --> |Yes| G[Execute builtin]
     F --> |No| H{Search PATH}
     H --> I{Found in PATH?}
     I --> |Yes| J[Execute command]
@@ -442,18 +443,18 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker daemon is running
-if ! docker info &> /dev/null; then
-    echo "Docker daemon is not running"
-    echo "Start with: sudo systemctl start docker"
-    exit 1
-fi
-
 # Check if user is in docker group
-if ! groups | grep -q docker; then
+if ! groups | grep -qw docker; then
     echo "User is not in docker group"
     echo "Add with: sudo usermod -aG docker $USER"
     echo "Then log out and back in"
+    exit 1
+fi
+
+# Check if Docker daemon is running and accessible
+if ! docker info &> /dev/null; then
+    echo "Docker daemon is not running or is not accessible"
+    echo "Start with: sudo systemctl start docker"
     exit 1
 fi
 

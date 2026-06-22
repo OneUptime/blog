@@ -8,14 +8,14 @@ Description: A comprehensive guide to implementing job deduplication in BullMQ t
 
 ---
 
-Job deduplication ensures that the same job isn't processed multiple times, which is critical for operations that should happen exactly once - like sending emails, charging payments, or updating records. This guide covers various strategies for implementing deduplication in BullMQ.
+Job deduplication ensures that the same job isn't enqueued multiple times, which is critical for operations that should not be triggered twice - like sending emails, charging payments, or updating records. This guide covers various strategies for implementing deduplication in BullMQ.
 
 ## Understanding Job Deduplication
 
-BullMQ provides built-in deduplication through custom job IDs. When you add a job with an ID that already exists, the duplicate is rejected:
+One BullMQ deduplication technique is using custom job IDs. When you add a job with an ID that already exists, the new job is ignored and not added to the queue:
 
 ```typescript
-import { Queue, Worker } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -31,11 +31,11 @@ await queue.add('process-order', { orderId: '12345' }, {
   jobId: 'order-12345',
 });
 
-// Second job with same ID is rejected (returns existing job)
+// Second job with same ID is ignored (no new job is added)
 const duplicateJob = await queue.add('process-order', { orderId: '12345' }, {
   jobId: 'order-12345',
 });
-// duplicateJob.id === 'order-12345' (same as original)
+// duplicateJob.id === 'order-12345'
 ```
 
 ## Custom Job ID Strategies
@@ -72,7 +72,7 @@ const orderQueue = new OrderQueue(connection);
 // First call creates the job
 await orderQueue.addOrderJob({ orderId: 'ORD-001', action: 'process', amount: 99.99 });
 
-// Second call returns existing job (no duplicate)
+// Second call is ignored by BullMQ because the job ID already exists
 await orderQueue.addOrderJob({ orderId: 'ORD-001', action: 'process', amount: 99.99 });
 ```
 
@@ -188,8 +188,8 @@ class TTLDeduplicationQueue {
     if (existingJob) {
       const state = await existingJob.getState();
 
-      // If job is waiting or active, don't add duplicate
-      if (state === 'waiting' || state === 'active' || state === 'delayed') {
+      // If job is not finalized, don't add duplicate
+      if (['waiting', 'active', 'delayed', 'prioritized', 'waiting-children'].includes(state)) {
         console.log(`Job ${jobId} already in queue (${state})`);
         return existingJob;
       }
@@ -216,6 +216,9 @@ class TTLDeduplicationQueue {
 Use external idempotency keys for deduplication:
 
 ```typescript
+import crypto from 'crypto';
+import { Job, Queue } from 'bullmq';
+
 class IdempotentJobQueue {
   private queue: Queue;
   private redis: Redis;
@@ -252,9 +255,14 @@ class IdempotentJobQueue {
       return { job: null, deduplicated: true };
     }
 
-    // Create the job
+    // Create the job. BullMQ custom job IDs must not contain ":".
+    const safeJobId = crypto
+      .createHash('sha256')
+      .update(idempotencyKey)
+      .digest('hex');
+
     const job = await this.queue.add(name, data, {
-      jobId: `idem_${idempotencyKey}`,
+      jobId: `idem_${safeJobId}`,
     });
 
     // Store job ID with idempotency key
@@ -326,6 +334,8 @@ app.post('/api/payments', async (req, res) => {
 Handle deduplication efficiently at scale:
 
 ```typescript
+import { Job, Queue } from 'bullmq';
+
 class HighThroughputDeduplicator {
   private queue: Queue;
   private redis: Redis;
@@ -346,7 +356,7 @@ class HighThroughputDeduplicator {
       const existing = await this.queue.getJob(jobId);
       if (existing) {
         const state = await existing.getState();
-        if (['waiting', 'active', 'delayed'].includes(state)) {
+        if (['waiting', 'active', 'delayed', 'prioritized', 'waiting-children'].includes(state)) {
           return existing;
         }
       }
@@ -387,11 +397,13 @@ class HighThroughputDeduplicator {
     try {
       return await this.queue.add('process', data, { jobId });
     } finally {
-      // Release lock
-      const currentValue = await this.redis.get(lockKey);
-      if (currentValue === lockValue) {
-        await this.redis.del(lockKey);
-      }
+      // Release lock only if this process still owns it
+      await this.redis.eval(
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+        1,
+        lockKey,
+        lockValue
+      );
     }
   }
 }
@@ -402,6 +414,8 @@ class HighThroughputDeduplicator {
 Handle deduplication when adding multiple jobs:
 
 ```typescript
+import { Job, Queue } from 'bullmq';
+
 class BulkDeduplicator {
   private queue: Queue;
 
@@ -454,7 +468,7 @@ class BulkDeduplicator {
 
 5. **Set appropriate TTLs** - Clean up old deduplication records.
 
-6. **Log deduplication events** - Track when duplicates are rejected.
+6. **Log deduplication events** - Track when duplicates are ignored.
 
 7. **Test edge cases** - Verify behavior with concurrent requests.
 

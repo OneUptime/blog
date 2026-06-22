@@ -124,7 +124,10 @@ curl -X POST "https://localhost:9200/_reindex" \
     "source": { "index": "products" },
     "dest": { "index": "products_v2" },
     "script": {
-      "source": "ctx._source.indexed_at = new Date().toISOString()"
+      "source": "ctx._source.indexed_at = params.indexed_at",
+      "params": {
+        "indexed_at": "2026-01-21T00:00:00Z"
+      }
     }
   }'
 ```
@@ -154,23 +157,7 @@ curl -X POST "https://localhost:9200/_reindex" \
     "source": { "index": "products" },
     "dest": { "index": "products_v2" },
     "script": {
-      "source": """
-        // Rename field
-        ctx._source.product_name = ctx._source.remove("name");
-
-        // Add computed field
-        ctx._source.price_with_tax = ctx._source.price * 1.2;
-
-        // Conditional transformation
-        if (ctx._source.category == "electronics") {
-          ctx._source.department = "tech";
-        } else {
-          ctx._source.department = "general";
-        }
-
-        // Remove sensitive fields
-        ctx._source.remove("internal_id");
-      """
+      "source": "ctx._source.product_name = ctx._source.remove(\"name\"); ctx._source.price_with_tax = ctx._source.price * 1.2; if (ctx._source.category == \"electronics\") { ctx._source.department = \"tech\"; } else { ctx._source.department = \"general\"; } ctx._source.remove(\"internal_id\");"
     }
   }'
 ```
@@ -239,7 +226,7 @@ curl -X POST "https://localhost:9200/_reindex?wait_for_completion=false" \
     "dest": { "index": "products_v2" }
   }'
 
-# 3. Wait for completion...
+# 3. Wait for completion, then pause writes or dual-write until the alias switch...
 
 # 4. Reindex documents written during the reindex
 curl -X POST "https://localhost:9200/_reindex" \
@@ -261,7 +248,7 @@ curl -X POST "https://localhost:9200/_reindex" \
     }
   }'
 
-# 5. Switch alias
+# 5. Switch alias before resuming single-index writes
 ```
 
 ## Remote Reindex
@@ -297,7 +284,14 @@ curl -X POST "https://localhost:9200/_reindex" \
   }'
 ```
 
-### Remote Reindex with SSL
+### Remote Reindex with SSL and Timeouts
+
+SSL trust and client certificate settings for remote reindex must be configured in `elasticsearch.yml` or the Elasticsearch keystore on the coordinating nodes. They cannot be configured in the `_reindex` request body.
+
+```yaml
+# elasticsearch.yml
+reindex.ssl.certificate_authorities: ["/path/to/ca.crt"]
+```
 
 ```bash
 curl -X POST "https://localhost:9200/_reindex" \
@@ -533,7 +527,7 @@ TASK_ID=$(curl -s -X POST "$ES_HOST/_reindex?wait_for_completion=false&slices=au
 
 echo "Task ID: $TASK_ID"
 
-# 3. Wait for completion
+# 3. Wait for completion, then pause writes or dual-write until the alias switch
 echo "Waiting for reindex to complete..."
 while true; do
   STATUS=$(curl -s -X GET "$ES_HOST/_tasks/$TASK_ID" \

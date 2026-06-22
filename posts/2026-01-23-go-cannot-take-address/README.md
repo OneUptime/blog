@@ -8,7 +8,7 @@ Description: Learn how to fix 'cannot take address of' errors in Go when trying 
 
 ---
 
-The "cannot take address of" error occurs when you try to use the `&` operator on values that don't have a memory address you can reference, such as literals, temporary values, and map elements.
+The "cannot take address of" error occurs when you try to use the `&` operator on values that are not addressable, such as basic literals, temporary values, and map elements.
 
 ---
 
@@ -80,7 +80,7 @@ func main() {
     // Error: cannot take address of users["alice"]
     ptr := &users["alice"]
     
-    // Error: cannot take address of users["alice"].Age
+    // Error: cannot assign to struct field users["alice"].Age in map
     users["alice"].Age = 31
 }
 ```
@@ -338,7 +338,7 @@ graph TD
     B -->|Variable| C[Yes - Addressable]
     B -->|Literal| D[No - Temporary]
     B -->|Map Element| E[No - May Move]
-    B -->|Function Return| F[No - Stack Frame Gone]
+    B -->|Function Return| F[No - Result Expression]
     C --> G[Can use &]
     D --> H[Cannot use &]
     E --> H
@@ -353,7 +353,7 @@ graph TD
 - Array indexing of addressable array
 
 **Non-addressable:**
-- Literals
+- Basic literals
 - Constants
 - Map index expressions
 - Function/method calls

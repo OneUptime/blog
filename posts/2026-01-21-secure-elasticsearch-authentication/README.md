@@ -16,7 +16,7 @@ Elasticsearch security (formerly X-Pack Security) provides:
 
 - **Authentication**: Verify user identity
 - **Authorization**: Control what users can do
-- **Encryption**: Protect data in transit and at rest
+- **Encryption**: Protect data in transit; use filesystem, disk, or cloud-provider controls for encryption at rest
 - **Audit logging**: Track security events
 
 ## Enabling Security (Elasticsearch 7.x and Earlier)
@@ -27,8 +27,9 @@ Edit `/etc/elasticsearch/elasticsearch.yml`:
 
 ```yaml
 xpack.security.enabled: true
-xpack.security.transport.ssl.enabled: true
 ```
+
+For a single-node development cluster, also set `discovery.type: single-node`. For multi-node or production clusters, configure Transport Layer Security (TLS) between nodes with certificates before enabling transport TLS.
 
 ## Initial Setup and Built-in Users
 
@@ -43,7 +44,7 @@ Elasticsearch includes several built-in users:
 - **apm_system**: Used by APM Server
 - **remote_monitoring_user**: Used for remote monitoring
 
-Set passwords interactively:
+In Elasticsearch 8.x, `elasticsearch-setup-passwords` is deprecated. Prefer `elasticsearch-reset-password`, the change password API, or Kibana user management. For older 7.x initial setup, set passwords interactively:
 
 ```bash
 # Interactive password setup
@@ -189,6 +190,8 @@ curl -k -u elastic:your_password -X PUT "https://localhost:9200/_security/role/a
 
 ### Document-Level Security
 
+Document-level and field-level security require an appropriate Elastic license.
+
 Restrict access to specific documents:
 
 ```bash
@@ -224,8 +227,7 @@ curl -k -u elastic:your_password -X PUT "https://localhost:9200/_security/role/l
         "names": ["employees"],
         "privileges": ["read"],
         "field_security": {
-          "grant": ["name", "department", "title"],
-          "except": ["salary", "ssn"]
+          "grant": ["name", "department", "title"]
         }
       }
     ]
@@ -302,10 +304,12 @@ curl -k -H "Authorization: ApiKey VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeW
   "https://localhost:9200/app-data-*/_search"
 ```
 
-Or use the id and api_key separately:
+Or base64-encode the `id:api_key` value yourself:
 
 ```bash
-curl -k -H "Authorization: ApiKey VuaCfGcBCdbkQm-e5aOx:ui2lp2axTNmsyakw9tvNnw" \
+printf "%s" "VuaCfGcBCdbkQm-e5aOx:ui2lp2axTNmsyakw9tvNnw" | base64
+
+curl -k -H "Authorization: ApiKey VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==" \
   "https://localhost:9200/app-data-*/_search"
 ```
 
@@ -343,7 +347,7 @@ Service tokens are used for Kibana and other Elastic services:
 
 ```bash
 # Create a service token for Kibana
-sudo /usr/share/elasticsearch/bin/elasticsearch-service-tokens create elastic/kibana my-kibana-token
+sudo -u elasticsearch /usr/share/elasticsearch/bin/elasticsearch-service-tokens create elastic/kibana my-kibana-token
 ```
 
 ## File-Based Authentication
@@ -359,10 +363,11 @@ admin:$2a$10$...hashed_password...
 readonly_user:$2a$10$...hashed_password...
 ```
 
-Generate password hashes:
+Create file-realm users with the `elasticsearch-users` tool:
 
 ```bash
-sudo /usr/share/elasticsearch/bin/elasticsearch-users passwd admin
+sudo -u elasticsearch /usr/share/elasticsearch/bin/elasticsearch-users useradd admin -r superuser
+sudo -u elasticsearch /usr/share/elasticsearch/bin/elasticsearch-users useradd readonly_user -r viewer
 ```
 
 ### Create Role Mapping File
@@ -468,8 +473,6 @@ elasticsearch.password: "kibana_password"
 elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/ca.crt"]
 elasticsearch.ssl.verificationMode: certificate
 
-# Enable Kibana security
-xpack.security.enabled: true
 xpack.encryptedSavedObjects.encryptionKey: "32-character-minimum-encryption-key"
 ```
 
@@ -493,14 +496,14 @@ xpack.security.audit.logfile.events.include:
 View audit logs:
 
 ```bash
-tail -f /var/log/elasticsearch/audit.json
+tail -f /var/log/elasticsearch/*_audit.json
 ```
 
 ## Security Best Practices
 
 ### 1. Use Strong Passwords
 
-Enforce password requirements:
+Configure the password hashing algorithm if you need to change the default:
 
 ```yaml
 # /etc/elasticsearch/elasticsearch.yml

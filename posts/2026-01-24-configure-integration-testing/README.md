@@ -48,6 +48,7 @@ npm install testcontainers --save-dev
 // tests/integration/setup.js
 const { GenericContainer, Wait } = require('testcontainers');
 const { Pool } = require('pg');
+const { runMigrations } = require('./migrations');
 
 let postgresContainer;
 let pool;
@@ -170,8 +171,6 @@ For applications with multiple services, Docker Compose provides easier orchestr
 ```yaml
 # docker-compose.test.yml
 
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -214,7 +213,7 @@ services:
       - "4566"
     environment:
       SERVICES: s3,sqs,sns
-      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
 ```
 
 ### Script to Manage Test Environment
@@ -225,28 +224,26 @@ services:
 
 set -e
 
+cleanup() {
+  echo "Cleaning up..."
+  docker compose -f docker-compose.test.yml down -v
+}
+
+trap cleanup EXIT
+
 # Start services
 echo "Starting test services..."
-docker-compose -f docker-compose.test.yml up -d
-
-# Wait for services to be healthy
-echo "Waiting for services to be ready..."
-docker-compose -f docker-compose.test.yml exec -T postgres pg_isready -U test
-docker-compose -f docker-compose.test.yml exec -T redis redis-cli ping
+docker compose -f docker-compose.test.yml up -d --wait
 
 # Get dynamic ports
-export TEST_POSTGRES_PORT=$(docker-compose -f docker-compose.test.yml port postgres 5432 | cut -d: -f2)
-export TEST_REDIS_PORT=$(docker-compose -f docker-compose.test.yml port redis 6379 | cut -d: -f2)
+export TEST_POSTGRES_PORT=$(docker compose -f docker-compose.test.yml port postgres 5432 | awk -F: '{print $NF}')
+export TEST_REDIS_PORT=$(docker compose -f docker-compose.test.yml port redis 6379 | awk -F: '{print $NF}')
 
 echo "PostgreSQL available on port $TEST_POSTGRES_PORT"
 echo "Redis available on port $TEST_REDIS_PORT"
 
 # Run tests
 npm run test:integration
-
-# Cleanup
-echo "Cleaning up..."
-docker-compose -f docker-compose.test.yml down -v
 ```
 
 ## Test Data Management
@@ -368,6 +365,8 @@ class TestDataFactory {
     return { user, orders };
   }
 }
+
+module.exports = { TestDataFactory };
 ```
 
 ## API Integration Testing
@@ -378,6 +377,7 @@ Test your HTTP endpoints against real services:
 // tests/integration/api.integration.test.js
 const request = require('supertest');
 const { setupIntegrationTests, teardownIntegrationTests } = require('./setup');
+const { TestDataFactory } = require('../factories');
 const { createApp } = require('../../src/app');
 
 describe('API Integration Tests', () => {

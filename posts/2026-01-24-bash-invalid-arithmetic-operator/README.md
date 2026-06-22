@@ -17,7 +17,7 @@ flowchart TD
     A[Arithmetic Expression] --> B{Valid Operands?}
     B -->|Integers| C[Success]
     B -->|Floats| D[Invalid Arithmetic Operator]
-    B -->|Empty| D
+    B -->|Malformed Values| D
     B -->|Special Chars| D
     B -->|Strings| D
     D --> E[Identify the Cause]
@@ -25,7 +25,7 @@ flowchart TD
     F --> C
 ```
 
-Bash arithmetic only supports integers. When you try to use floating-point numbers, empty variables, or strings, you get this error.
+Bash arithmetic only supports integers. When you try to use floating-point numbers, malformed values, or strings containing arithmetic syntax Bash cannot parse, you get this error.
 
 ## Common Error Examples
 
@@ -38,17 +38,18 @@ bash: 3.14 * 2: syntax error: invalid arithmetic operator (error token is ".14 *
 # Example 2: Empty variable
 $ unset value
 $ echo $((value + 1))
-# Sometimes works (empty becomes 0), but can fail in expressions
+1
+# Unset or null variables referenced by name evaluate to 0
 
 # Example 3: Variable with spaces
 $ value="10 20"
 $ echo $((value + 1))
-bash: 10 20 + 1: syntax error in expression (error token is "20 + 1")
+bash: 10 20: syntax error in expression (error token is "20")
 
-# Example 4: String value
-$ value="hello"
+# Example 4: Malformed string value
+$ value="hello world"
 $ echo $((value + 1))
-bash: hello: syntax error: invalid arithmetic operator
+bash: hello world: syntax error in expression (error token is "world")
 ```
 
 ## Cause 1: Floating-Point Numbers
@@ -122,7 +123,7 @@ printf "Total: \$%d.%02d\n" "$dollars" "$cents"  # Output: Total: $59.97
 
 ## Cause 2: Empty or Unset Variables
 
-Empty variables in arithmetic expressions can cause problems.
+Unset or null variables referenced by name evaluate to 0 in Bash arithmetic. This can hide missing input and produce incorrect results.
 
 ### The Problem
 
@@ -131,12 +132,12 @@ Empty variables in arithmetic expressions can cause problems.
 
 # Variable not set
 echo $((count + 1))
-# May work (count becomes 0) but is unreliable
+# Outputs 1 because count evaluates to 0
 
 # Variable is empty string
 count=""
 result=$((count + 1))
-# May cause issues depending on context
+# Also outputs 1
 ```
 
 ### Solution: Use Default Values
@@ -189,7 +190,7 @@ fi
 
 ## Cause 3: Variables Containing Spaces
 
-Spaces in variable values break arithmetic parsing.
+Internal spaces in variable values break arithmetic parsing. Leading and trailing whitespace around a single number is accepted, but it is still a good idea to normalize input before validating it.
 
 ### The Problem
 
@@ -199,10 +200,10 @@ Spaces in variable values break arithmetic parsing.
 # Variable with leading/trailing spaces
 value=" 42 "
 result=$((value + 1))
-# Error: syntax error in expression
+# Works: leading/trailing whitespace is ignored
 
-# Variable from command output with extra whitespace
-value=$(echo "  100  ")
+# Variable from command output with multiple values
+value=$(printf "100 200")
 result=$((value + 1))
 # Error
 ```
@@ -254,9 +255,9 @@ Characters like `@`, `#`, `!`, or punctuation cause errors.
 #!/bin/bash
 
 # Variable from file or user input with special chars
-value="100$"
+value="100 dollars"
 result=$((value + 1))
-# Error: invalid arithmetic operator
+# Error: syntax error in expression
 
 value="50%"
 result=$((value + 1))
@@ -268,13 +269,13 @@ result=$((value + 1))
 ```bash
 #!/bin/bash
 
-# Extract only digits (and optional minus sign)
+# Extract the first integer (and optional minus sign)
 extract_number() {
     local input="$1"
-    echo "$input" | grep -oE '^-?[0-9]+'
+    echo "$input" | grep -oE -- '-?[0-9]+' | head -n1
 }
 
-value="$100.00"
+value='$100.00'
 clean_value=$(extract_number "$value")
 if [[ -n "$clean_value" ]]; then
     result=$((clean_value + 1))
@@ -349,7 +350,7 @@ echo "Result: $result"  # Output: Result: 11 (not 9)
 
 ## Cause 6: Variables with Line Breaks
 
-Newlines in variables break arithmetic.
+Internal newlines in variables break arithmetic.
 
 ### The Problem
 
@@ -359,10 +360,11 @@ Newlines in variables break arithmetic.
 # Multi-line output
 value=$(cat << 'EOF'
 42
+43
 EOF
 )
 result=$((value + 1))
-# May fail depending on trailing newline
+# Fails because the value contains more than one line
 ```
 
 ### Solution: Handle Line Breaks
@@ -373,6 +375,7 @@ result=$((value + 1))
 # Remove all newlines
 value=$(cat << 'EOF'
 42
+43
 EOF
 )
 value=$(echo "$value" | tr -d '\n')
@@ -407,12 +410,12 @@ debug_arithmetic() {
         echo "Issue: Variable is empty" >&2
     elif [[ "$var_value" =~ \. ]]; then
         echo "Issue: Contains decimal point (floating-point)" >&2
-    elif [[ "$var_value" =~ [^0-9-] ]]; then
-        echo "Issue: Contains non-numeric characters" >&2
-    elif [[ "$var_value" =~ ^0[0-9] ]]; then
-        echo "Issue: Leading zero (may be interpreted as octal)" >&2
     elif [[ "$var_value" =~ [[:space:]] ]]; then
         echo "Issue: Contains whitespace" >&2
+    elif [[ "$var_value" =~ ^0[0-9] ]]; then
+        echo "Issue: Leading zero (may be interpreted as octal)" >&2
+    elif [[ "$var_value" =~ [^0-9-] ]]; then
+        echo "Issue: Contains non-numeric characters" >&2
     else
         echo "Value appears to be a valid integer" >&2
     fi
@@ -478,7 +481,7 @@ echo "Result: $result"  # Output: Result: 30
 flowchart TD
     A[Invalid Arithmetic Operator Error] --> B{What type of value?}
     B -->|Floating Point| C[Use bc or awk]
-    B -->|Empty/Unset| D[Add default value]
+    B -->|Missing Input| D[Add default value]
     B -->|Has Spaces| E[Trim whitespace]
     B -->|Special Chars| F[Extract digits only]
     B -->|Leading Zeros| G[Force base 10]
@@ -536,7 +539,7 @@ calculate() {
             num=$((10#$num))
         fi
         # Extract integer part only
-        num=$(echo "$num" | grep -oE '^-?[0-9]+' || echo "0")
+        num=$(echo "$num" | grep -oE -- '-?[0-9]+' | head -n1 || echo "0")
         echo "$num"
     }
 
@@ -556,7 +559,7 @@ calculate() {
         case "$operation" in
             add|+)      echo "scale=2; $operand1 + $operand2" | bc ;;
             subtract|-) echo "scale=2; $operand1 - $operand2" | bc ;;
-            multiply|*) echo "scale=2; $operand1 * $operand2" | bc ;;
+            multiply|\*) echo "scale=2; $operand1 * $operand2" | bc ;;
             divide|/)
                 if [[ "$operand2" == "0" ]]; then
                     echo "Error: Division by zero" >&2
@@ -573,7 +576,7 @@ calculate() {
         case "$operation" in
             add|+)      echo $((operand1 + operand2)) ;;
             subtract|-) echo $((operand1 - operand2)) ;;
-            multiply|*) echo $((operand1 * operand2)) ;;
+            multiply|\*) echo $((operand1 * operand2)) ;;
             divide|/)
                 if [[ "$operand2" -eq 0 ]]; then
                     echo "Error: Division by zero" >&2
@@ -603,8 +606,8 @@ echo "With special chars: $(calculate add '$100' '50%')"
 | Error Cause | Solution |
 |-------------|----------|
 | Floating-point number | Use `bc` or `awk` |
-| Empty variable | Use `${var:-0}` default |
-| Whitespace in value | Use `xargs` or `tr -d` |
+| Missing or empty input | Use `${var:-0}` default |
+| Internal whitespace in value | Use `xargs` or `tr -d` |
 | Special characters | Extract with `grep -oE` |
 | Leading zeros (octal) | Use `10#$var` |
 | Line breaks | Use `tr -d '\n'` |
@@ -620,4 +623,4 @@ echo "With special chars: $(calculate add '$100' '50%')"
 
 ---
 
-The "invalid arithmetic operator" error always comes down to Bash receiving something other than an integer. By understanding the common causes and applying the appropriate fixes, you can write robust scripts that handle numeric operations reliably, regardless of where the input comes from.
+The "invalid arithmetic operator" error usually comes down to Bash receiving a value it cannot parse as an integer arithmetic expression. By understanding the common causes and applying the appropriate fixes, you can write robust scripts that handle numeric operations reliably, regardless of where the input comes from.

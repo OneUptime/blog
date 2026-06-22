@@ -8,7 +8,9 @@ Description: A comprehensive guide to implementing full-text search in ClickHous
 
 ---
 
-While ClickHouse is primarily designed for analytical queries, it offers powerful text search capabilities that can handle log analysis, document search, and content filtering at scale. This guide covers how to implement efficient full-text search using ClickHouse's bloom filter indexes and text functions.
+While ClickHouse is primarily designed for analytical queries, it offers powerful text search capabilities that can handle log analysis, document search, and content filtering at scale. This guide covers how to implement efficient text search using ClickHouse's bloom filter indexes and text functions.
+
+Note: starting with ClickHouse 26.2, the `text` index is generally recommended for new full-text search implementations. The `tokenbf_v1` and `ngrambf_v1` indexes shown below are legacy Bloom-filter-based skip indexes that are still useful to understand, especially for existing deployments.
 
 ## Understanding ClickHouse Text Search Options
 
@@ -16,15 +18,16 @@ ClickHouse provides several approaches for text search:
 
 1. **Simple LIKE/ILIKE patterns** - Basic substring matching
 2. **Regular expressions** - Pattern matching with match() and extract()
-3. **Bloom filter indexes** - Skip indexes for efficient filtering
-4. **hasToken() function** - Optimized token-based search
-5. **Full-text search functions** - multiSearchAny, multiSearchFirstIndex
+3. **Text indexes** - Current inverted indexes for full-text search
+4. **Bloom filter indexes** - Legacy skip indexes for efficient filtering
+5. **hasToken() function** - Optimized token-based search
+6. **String search functions** - multiSearchAny, multiSearchFirstIndex
 
 ## Setting Up Text Search Indexes
 
 ### tokenbf_v1 Index
 
-The `tokenbf_v1` index creates a bloom filter of tokens (words) for efficient keyword search:
+The `tokenbf_v1` index creates a bloom filter of tokens (words) for efficient keyword search. In current ClickHouse versions, prefer the `text` index for new full-text search workloads:
 
 ```sql
 CREATE TABLE logs (
@@ -46,7 +49,7 @@ ORDER BY (service, timestamp);
 
 ### ngrambf_v1 Index
 
-The `ngrambf_v1` index creates bloom filters for character n-grams, enabling substring search:
+The `ngrambf_v1` index creates bloom filters for character n-grams, enabling substring search. In current ClickHouse versions, prefer the `text` index with an n-gram tokenizer for new full-text search workloads:
 
 ```sql
 CREATE TABLE documents (
@@ -110,13 +113,13 @@ WHERE hasToken(message, 'database')
 ORDER BY timestamp DESC
 LIMIT 100;
 
--- Token search with OR logic using hasTokenAny
+-- Token search with OR logic
 SELECT timestamp, level, message
 FROM logs
-WHERE hasAny(
-    splitByChar(' ', lower(message)),
-    ['error', 'exception', 'failure', 'timeout']
-)
+WHERE hasToken(message, 'error')
+   OR hasToken(message, 'exception')
+   OR hasToken(message, 'failure')
+   OR hasToken(message, 'timeout')
 ORDER BY timestamp DESC
 LIMIT 100;
 ```
@@ -146,13 +149,13 @@ WHERE multiSearchFirstIndex(message, ['error', 'warning', 'info', 'debug']) > 0
 ORDER BY timestamp DESC
 LIMIT 100;
 
--- Count occurrences of each pattern
+-- Return the first position of each pattern, or 0 for patterns that do not match
 SELECT
     timestamp,
     message,
     multiSearchAllPositions(message, ['user', 'session', 'request']) AS positions
 FROM logs
-WHERE length(multiSearchAllPositions(message, ['user', 'session', 'request'])) > 0
+WHERE arrayExists(pos -> pos > 0, multiSearchAllPositions(message, ['user', 'session', 'request']))
 LIMIT 10;
 ```
 
@@ -167,6 +170,7 @@ ORDER BY timestamp DESC
 LIMIT 100;
 
 -- Case-insensitive token search
+-- For tokenbf_v1 index pruning, create the index on lowercased data
 SELECT timestamp, message
 FROM logs
 WHERE hasTokenCaseInsensitive(message, 'Error')
@@ -426,7 +430,7 @@ graph TB
 | Tokenization | Basic (splitBy functions) | Advanced (analyzers) |
 | Relevance Scoring | Manual implementation | BM25, TF-IDF built-in |
 | Phrase Search | LIKE patterns | Native phrase queries |
-| Fuzzy Search | Limited (ngrambf_v1) | Native fuzzy queries |
+| Fuzzy Search | Limited n-gram similarity functions | Native fuzzy queries |
 | Aggregations | Excellent | Good |
 | Storage Efficiency | Excellent | Moderate |
 | Real-time Indexing | Good | Excellent |
@@ -451,9 +455,9 @@ Consider dedicated search engines for:
 
 ClickHouse provides practical full-text search capabilities that work well for log analysis and document filtering. Key takeaways:
 
-1. Use `tokenbf_v1` indexes for word-based search with `hasToken()`
-2. Use `ngrambf_v1` indexes for substring matching with `LIKE`
-3. Pre-compute lowercase text columns for consistent matching
+1. Use the `text` index for new full-text search workloads in current ClickHouse versions
+2. Use `tokenbf_v1` indexes for legacy word-based search with `hasToken()`
+3. Use `ngrambf_v1` indexes for legacy substring matching with `LIKE`
 4. Combine text filters with primary key filters for best performance
 5. Use `multiSearchAny()` for searching multiple patterns efficiently
 

@@ -101,11 +101,11 @@ sequenceDiagram
 
 **Solution: Use Deferred Teleport (Vue 3.5+)**
 
-Vue 3.5 introduced the `defer` prop that waits for the target:
+Vue 3.5 introduced the `defer` prop that defers target resolution until other parts of the same mount or update tick have mounted:
 
 ```vue
 <template>
-  <!-- Waits for target after current render cycle -->
+  <!-- Waits for the target in the same mount/update tick -->
   <Teleport to="#teleport-target" defer>
     <div>Teleported content</div>
   </Teleport>
@@ -166,7 +166,7 @@ function changeTarget() {
 
 ```vue
 <script setup>
-import { ref, computed, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 
 const targetId = ref('container-1');
 const isTargetReady = ref(true);
@@ -221,13 +221,13 @@ onMounted(() => {
 
 ## SSR Hydration Considerations
 
-In server-side rendering, the target might not exist during initial render.
+In server-side rendering, Teleports require special handling because teleported content is not included in the main rendered HTML string. Either render the Teleport only on the client, or inject the SSR teleport markup into a dedicated target container.
 
 ```mermaid
 flowchart TD
     A[SSR Render on Server] --> B{Target in HTML?}
-    B -->|Yes| C[Teleport renders correctly]
-    B -->|No| D[Warning: Target not found]
+    B -->|Yes| C[Inject teleport markup into target]
+    B -->|No| D[Hydration mismatch risk]
     D --> E[Client Hydration]
     E --> F{Target exists now?}
     F -->|Yes| G[Content teleports correctly]
@@ -237,18 +237,9 @@ flowchart TD
 **Solution for Nuxt:**
 
 ```vue
-<script setup>
-// Only teleport on client side
-const isMounted = ref(false);
-
-onMounted(() => {
-  isMounted.value = true;
-});
-</script>
-
 <template>
   <ClientOnly>
-    <Teleport to="body">
+    <Teleport to="#teleports">
       <div class="modal">SSR-safe modal</div>
     </Teleport>
   </ClientOnly>

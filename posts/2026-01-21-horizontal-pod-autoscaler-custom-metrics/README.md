@@ -8,7 +8,7 @@ Description: Learn how to configure Horizontal Pod Autoscaler with custom metric
 
 ---
 
-The Horizontal Pod Autoscaler (HPA) can scale your deployments based on CPU and memory usage out of the box. But real applications often need to scale on application-specific metrics: requests per second, queue depth, active connections, or business metrics. This guide shows you how to configure HPA with custom metrics.
+The Horizontal Pod Autoscaler (HPA) can scale your deployments based on CPU and memory usage when the resource metrics API is available, usually through Metrics Server. But real applications often need to scale on application-specific metrics: requests per second, queue depth, active connections, or business metrics. This guide shows you how to configure HPA with custom metrics.
 
 ## Architecture Overview
 
@@ -28,6 +28,7 @@ You need:
 1. Prometheus installed in your cluster
 2. Prometheus Adapter configured
 3. Your application exposing metrics
+4. Metrics Server if you also use CPU or memory resource metrics
 
 ## Step 1: Install Prometheus Adapter
 
@@ -53,7 +54,7 @@ Verify installation:
 kubectl get pods -n monitoring | grep prometheus-adapter
 
 # Verify custom metrics API is available
-kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1 | jq .
+kubectl get --raw /apis/custom.metrics.k8s.io/v1beta2 | jq .
 ```
 
 ## Step 2: Configure Prometheus Adapter Rules
@@ -135,13 +136,13 @@ Check that metrics are available:
 
 ```bash
 # List all custom metrics
-kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1 | jq '.resources[].name'
+kubectl get --raw /apis/custom.metrics.k8s.io/v1beta2 | jq '.resources[].name'
 
 # Get specific metric for a pod
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second" | jq .
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/default/pods/*/http_requests_per_second" | jq .
 
 # Get metric for all pods in namespace
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/queue_messages_pending" | jq .
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/default/pods/*/queue_messages_pending" | jq .
 ```
 
 ## Step 4: Create HPA with Custom Metrics
@@ -256,8 +257,8 @@ Here is a complete example with a Python app exposing Prometheus metrics:
 
 ```python
 # app.py
-from flask import Flask
-from prometheus_client import Counter, Gauge, generate_latest
+from flask import Flask, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 import random
 
 app = Flask(__name__)
@@ -277,7 +278,7 @@ def metrics():
     # Simulate queue depth and connections
     QUEUE_DEPTH.set(random.randint(0, 100))
     ACTIVE_CONNECTIONS.set(random.randint(10, 50))
-    return generate_latest()
+    return Response(generate_latest(), content_type=CONTENT_TYPE_LATEST)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
@@ -321,7 +322,7 @@ spec:
 
 ## External Metrics (from outside the cluster)
 
-For metrics not tied to pods (like cloud service queue depth):
+For metrics not tied to pods (like cloud service queue depth), configure Prometheus Adapter external rules or another adapter that serves `external.metrics.k8s.io`:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -358,7 +359,7 @@ kubectl exec -n monitoring prometheus-server-xxx -- \
   wget -qO- 'http://localhost:9090/api/v1/query?query=http_requests_total'
 
 # Check adapter logs
-kubectl logs -n monitoring -l app=prometheus-adapter
+kubectl logs -n monitoring -l app.kubernetes.io/name=prometheus-adapter,app.kubernetes.io/instance=prometheus-adapter
 
 # Verify adapter rules
 kubectl get configmap -n monitoring prometheus-adapter -o yaml
@@ -371,7 +372,7 @@ kubectl describe hpa web-app-hpa
 # Check for error messages about metrics
 
 # Verify metric is available
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second"
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/default/pods/*/http_requests_per_second"
 ```
 
 ### Scaling Too Aggressively

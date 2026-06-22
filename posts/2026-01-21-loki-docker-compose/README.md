@@ -43,8 +43,6 @@ You should see `ready` as the response.
 For a more manageable setup, create a `docker-compose.yml` file:
 
 ```yaml
-version: "3.8"
-
 services:
   loki:
     image: grafana/loki:2.9.4
@@ -73,11 +71,9 @@ docker compose up -d
 
 ## Complete Stack with Grafana and Promtail
 
-For a complete logging solution, deploy Loki with Grafana for visualization and Promtail for log collection:
+For a complete logging solution, deploy Loki with Grafana for visualization and Promtail for log collection. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy or another supported client for new production deployments:
 
 ```yaml
-version: "3.8"
-
 services:
   loki:
     image: grafana/loki:2.9.4
@@ -197,6 +193,8 @@ limits_config:
   ingestion_burst_size_mb: 24
   max_streams_per_user: 10000
   max_line_size: 256kb
+  retention_period: 720h
+  max_query_lookback: 720h
 
 chunk_store_config:
   chunk_cache_config:
@@ -216,10 +214,6 @@ compactor:
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
   delete_request_store: filesystem
-
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 720h
 ```
 
 ## Promtail Configuration
@@ -301,22 +295,17 @@ datasources:
 
 ## Distributed Mode with Docker Compose
 
-For production environments handling high log volumes, deploy Loki in distributed mode:
+For experimenting with Loki's simple scalable deployment mode in Docker Compose, split Loki into read, write, and backend targets:
 
 ```yaml
-version: "3.8"
-
 services:
   # Read path components
   loki-read:
     image: grafana/loki:2.9.4
-    container_name: loki-read
     command: -config.file=/etc/loki/config.yaml -target=read
     volumes:
       - ./loki-distributed-config.yaml:/etc/loki/config.yaml
       - loki-read-data:/loki
-    ports:
-      - "3101:3100"
     networks:
       - loki-network
     deploy:
@@ -325,28 +314,20 @@ services:
   # Write path components
   loki-write:
     image: grafana/loki:2.9.4
-    container_name: loki-write
     command: -config.file=/etc/loki/config.yaml -target=write
     volumes:
       - ./loki-distributed-config.yaml:/etc/loki/config.yaml
       - loki-write-data:/loki
-    ports:
-      - "3102:3100"
     networks:
       - loki-network
-    deploy:
-      replicas: 2
 
   # Backend components (compactor, ruler)
   loki-backend:
     image: grafana/loki:2.9.4
-    container_name: loki-backend
     command: -config.file=/etc/loki/config.yaml -target=backend
     volumes:
       - ./loki-distributed-config.yaml:/etc/loki/config.yaml
       - loki-backend-data:/loki
-    ports:
-      - "3103:3100"
     networks:
       - loki-network
 
@@ -409,7 +390,7 @@ server:
 
 common:
   path_prefix: /loki
-  replication_factor: 2
+  replication_factor: 1
   ring:
     kvstore:
       store: memberlist
@@ -444,6 +425,8 @@ limits_config:
   ingestion_rate_mb: 32
   ingestion_burst_size_mb: 48
   max_streams_per_user: 50000
+  retention_period: 720h
+  max_query_lookback: 720h
 
 compactor:
   working_directory: /loki/compactor
@@ -458,7 +441,7 @@ ingester:
     dir: /loki/wal
   lifecycler:
     ring:
-      replication_factor: 2
+      replication_factor: 1
 
 querier:
   max_concurrent: 4
@@ -678,11 +661,11 @@ docker exec promtail wget -q -O- http://loki:3100/ready
 
 ## Conclusion
 
-You have learned how to deploy Grafana Loki using Docker and Docker Compose, from simple single-node setups to production-ready distributed deployments. Key takeaways include:
+You have learned how to deploy Grafana Loki using Docker and Docker Compose, from simple single-node setups to local simple scalable deployments. Key takeaways include:
 
 - Use the single-container setup for development and testing
-- Deploy the complete stack with Grafana and Promtail for a full logging solution
-- Use distributed mode with MinIO for production environments
+- Deploy the complete stack with Grafana and Promtail for a legacy full logging solution
+- Use simple scalable mode with MinIO when you need to test a multi-target deployment locally
 - Always configure proper resource limits and retention policies
 - Monitor Loki using its built-in metrics endpoint
 

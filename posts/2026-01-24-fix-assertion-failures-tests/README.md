@@ -208,10 +208,11 @@ describe('User Service', () => {
 
     // Problem: Async assertion not awaited
     it('creates user - WRONG', () => {
-        const user = createUser('test@example.com');
         // This passes but doesn't actually test anything
-        // because createUser returns a Promise
-        expect(user.email).to.equal('test@example.com');
+        // because the Promise is not returned or awaited
+        createUser('test@example.com').then((user) => {
+            expect(user.email).to.equal('test@example.com');
+        });
     });
 
     // Fix: Await async operations
@@ -259,7 +260,6 @@ describe('User Service', () => {
 # Timing issues cause flaky tests
 
 import time
-import pytest
 
 def test_cache_expiration_flaky():
     cache.set("key", "value", ttl=1)  # 1 second TTL
@@ -379,7 +379,7 @@ def test_create_user():
 | Type mismatch | Convert types before comparison |
 | Float precision | Use `pytest.approx()` or tolerance |
 | Object equality | Implement `__eq__` or use deep equal |
-| List order | Use `set()` or `have.members()` |
+| List order | Use `sorted()`, `Counter`, or `have.members()` |
 | Timing issues | Add buffer or use retry loops |
 | Async not awaited | Add `await` keyword |
 | Wrong expected value | Verify expected value manually |

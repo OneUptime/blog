@@ -10,7 +10,7 @@ Description: Learn how to properly run stateful databases in Kubernetes using St
 
 Running databases in Kubernetes requires special consideration. Unlike stateless applications that can be freely scaled and replaced, databases need stable identities, persistent storage, and careful orchestration during scaling and updates.
 
-StatefulSets are Kubernetes workloads designed specifically for stateful applications. This guide shows you how to run production-ready databases using StatefulSets.
+StatefulSets are Kubernetes workloads designed specifically for stateful applications. This guide shows you common database patterns using StatefulSets.
 
 ## Why StatefulSets for Databases?
 
@@ -181,9 +181,12 @@ type: Opaque
 stringData:
   username: postgres
   password: your-secure-password-here  # Use sealed-secrets or external-secrets in production
+  replicator-password: your-replication-password-here
 ```
 
 ### PostgreSQL with Replication
+
+The following example shows the StatefulSet structure for PostgreSQL streaming replication. In a production deployment, use a PostgreSQL operator or add the required replication role that uses `replicator-password`, `pg_hba.conf` entries, failover automation, and backup/restore workflow.
 
 ```yaml
 # postgresql-ha/statefulset.yaml
@@ -220,9 +223,9 @@ spec:
                 done
                 
                 # If data directory is empty, clone from primary
-                if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
+                if [ -z "$(ls -A /var/lib/postgresql/data/pgdata 2>/dev/null)" ]; then
                   pg_basebackup -h postgres-0.postgres-headless -U replicator \
-                    -D /var/lib/postgresql/data -Fp -Xs -P -R
+                    -D /var/lib/postgresql/data/pgdata -Fp -Xs -P -R
                 fi
               fi
           volumeMounts:
@@ -313,6 +316,8 @@ data:
 
 ## MySQL StatefulSet
 
+The MySQL example below follows the general StatefulSet pattern for a primary and replicas using MySQL 8.4 LTS. It is intentionally a starting point: production MySQL on Kubernetes also needs replication bootstrap logic, user management, failover, backups, and tested image compatibility for the MySQL and backup-tool versions you choose.
+
 ```yaml
 # mysql/statefulset.yaml
 apiVersion: apps/v1
@@ -334,7 +339,7 @@ spec:
       initContainers:
         # Configure server-id based on ordinal index
         - name: init-mysql
-          image: mysql:8.0
+          image: mysql:8.4
           command:
             - bash
             - -c
@@ -357,7 +362,8 @@ spec:
               mountPath: /mnt/config-map
         # Clone data from primary for new replicas
         - name: clone-mysql
-          image: gcr.io/google-samples/xtrabackup:1.0
+          # Use an image compatible with MySQL 8.4 that includes ncat, xbstream, and xtrabackup.
+          image: my-registry/mysql-xtrabackup:8.4
           command:
             - bash
             - -c
@@ -377,7 +383,7 @@ spec:
               mountPath: /etc/mysql/conf.d
       containers:
         - name: mysql
-          image: mysql:8.0
+          image: mysql:8.4
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -421,7 +427,8 @@ spec:
             periodSeconds: 2
         # Sidecar for data export (used by clone-mysql)
         - name: xtrabackup
-          image: gcr.io/google-samples/xtrabackup:1.0
+          # Use the same MySQL 8.4-compatible backup image as clone-mysql.
+          image: my-registry/mysql-xtrabackup:8.4
           ports:
             - containerPort: 3307
               name: xtrabackup
@@ -504,11 +511,11 @@ spec:
       name: mysql
 
 ---
-# Service for read replicas
+# Service for all MySQL pods
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-read
+  name: mysql
   namespace: database
 spec:
   selector:
@@ -527,7 +534,7 @@ metadata:
 spec:
   selector:
     app: mysql
-    # This requires pod readiness gates or manual label management
+    # This label must be managed by your failover/controller logic
     role: primary
   ports:
     - port: 3306
@@ -555,15 +562,29 @@ spec:
         app: mongodb
     spec:
       terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: prepare-keyfile
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              cp /secret/keyfile /keyfile/keyfile
+              chown 999:999 /keyfile/keyfile
+              chmod 400 /keyfile/keyfile
+          volumeMounts:
+            - name: keyfile-secret
+              mountPath: /secret
+              readOnly: true
+            - name: keyfile
+              mountPath: /keyfile
       containers:
         - name: mongodb
           image: mongo:7.0
-          command:
-            - mongod
+          args:
             - --replSet
             - rs0
             - --bind_ip_all
-            - --auth
             - --keyFile
             - /etc/mongodb-keyfile/keyfile
           ports:
@@ -596,24 +617,36 @@ spec:
           livenessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - sh
+                - -c
+                - |
+                  mongosh --quiet \
+                    -u "$MONGO_INITDB_ROOT_USERNAME" \
+                    -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                    --authenticationDatabase admin \
+                    --eval "db.adminCommand('ping')"
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - sh
+                - -c
+                - |
+                  mongosh --quiet \
+                    -u "$MONGO_INITDB_ROOT_USERNAME" \
+                    -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                    --authenticationDatabase admin \
+                    --eval "db.adminCommand('ping')"
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
-        - name: keyfile
+        - name: keyfile-secret
           secret:
             secretName: mongodb-keyfile
             defaultMode: 0400
+        - name: keyfile
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -623,6 +656,31 @@ spec:
         resources:
           requests:
             storage: 100Gi
+```
+
+```yaml
+# mongodb/keyfile-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-keyfile
+  namespace: database
+type: Opaque
+stringData:
+  keyfile: "replace-with-a-shared-base64-key-between-6-and-1024-characters"
+```
+
+```yaml
+# mongodb/credentials-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-credentials
+  namespace: database
+type: Opaque
+stringData:
+  username: root
+  password: your-secure-password-here
 ```
 
 ```yaml
@@ -658,7 +716,11 @@ spec:
 
 ```bash
 # Initialize MongoDB replica set (run after all pods are ready)
-kubectl exec -n database mongodb-0 -- mongosh --eval '
+kubectl exec -n database mongodb-0 -- sh -c 'mongosh \
+  -u "$MONGO_INITDB_ROOT_USERNAME" \
+  -p "$MONGO_INITDB_ROOT_PASSWORD" \
+  --authenticationDatabase admin \
+  --eval '"'"'
 rs.initiate({
   _id: "rs0",
   members: [
@@ -666,7 +728,7 @@ rs.initiate({
     {_id: 1, host: "mongodb-1.mongodb-headless.database.svc.cluster.local:27017", priority: 1},
     {_id: 2, host: "mongodb-2.mongodb-headless.database.svc.cluster.local:27017", priority: 1}
   ]
-})'
+})'"'"''
 ```
 
 ## Storage Considerations
@@ -675,12 +737,12 @@ rs.initiate({
 
 ```yaml
 # storage-classes.yaml
-# Fast SSD storage for database workloads
+# Fast SSD storage for database workloads on AWS EBS CSI
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs  # or your cloud provider
+provisioner: ebs.csi.aws.com  # or your cloud provider's CSI driver
 parameters:
   type: gp3
   iops: "3000"
@@ -725,7 +787,8 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:16
+              # Use a custom image that includes both pg_dump and your storage CLI.
+              image: my-registry/postgres-awscli:16
               command:
                 - bash
                 - -c
@@ -733,7 +796,6 @@ spec:
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
                   pg_dump -h postgres -U postgres myapp | \
                     gzip > /backup/myapp-$TIMESTAMP.sql.gz
-                  # Upload to S3 or other storage
                   aws s3 cp /backup/myapp-$TIMESTAMP.sql.gz \
                     s3://my-backups/postgres/
               env:
@@ -755,7 +817,7 @@ spec:
 
 Running databases on Kubernetes with StatefulSets provides the stability and persistence that stateful applications require. Key takeaways:
 
-1. **Always use StatefulSets** for databases, not Deployments
+1. **Use StatefulSets or database operators** for databases instead of plain Deployments
 2. **Use headless services** for stable DNS names per pod
 3. **volumeClaimTemplates** give each pod its own persistent storage
 4. **Configure proper probes** for accurate health checking

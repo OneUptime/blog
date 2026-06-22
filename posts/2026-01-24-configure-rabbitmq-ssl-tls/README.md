@@ -170,17 +170,18 @@ ssl_options.certfile = /etc/rabbitmq/ssl/server_certificate.pem
 ssl_options.keyfile = /etc/rabbitmq/ssl/server_key.pem
 
 # Require clients to present a certificate (mutual TLS)
-# Set to verify_none to allow connections without client certificates
+# For encryption without client certificate verification, set verify_none
+# and ssl_options.fail_if_no_peer_cert = false.
 ssl_options.verify = verify_peer
 
 # Reject connections from clients without valid certificates
 # Only applies when verify = verify_peer
 ssl_options.fail_if_no_peer_cert = true
 
-# Minimum TLS version (TLS 1.2 recommended minimum)
-# TLS 1.3 is preferred when supported by clients
-ssl_options.versions.1 = tlsv1.3
-ssl_options.versions.2 = tlsv1.2
+# TLS protocol version
+# The restricted cipher list below is for TLS 1.2. If you enable TLS 1.3,
+# use TLS 1.3-specific cipher suites instead.
+ssl_options.versions.1 = tlsv1.2
 
 # Cipher suites (TLS 1.2)
 # Use strong ciphers only, disable weak algorithms
@@ -192,6 +193,7 @@ ssl_options.ciphers.4 = ECDHE-RSA-AES128-GCM-SHA256
 # Honor server cipher order
 # Server chooses the cipher, not the client
 ssl_options.honor_cipher_order = true
+ssl_options.honor_ecc_order = true
 
 # Management UI TLS configuration
 # Enable HTTPS for the management interface
@@ -216,6 +218,8 @@ rabbitmqctl status | grep -A 10 "Listeners"
 # This verifies the server certificate is presented correctly
 openssl s_client -connect localhost:5671 \
     -CAfile /etc/rabbitmq/ssl/ca_certificate.pem \
+    -cert /etc/rabbitmq/ssl/client_certificate.pem \
+    -key /etc/rabbitmq/ssl/client_key.pem \
     -servername rabbitmq.example.com
 ```
 
@@ -258,7 +262,6 @@ def create_tls_connection(
         pika.BlockingConnection: TLS-encrypted connection
     """
     # Create SSL context with modern security settings
-    # PROTOCOL_TLS lets the library negotiate the best available version
     ssl_context = ssl.create_default_context(
         purpose=ssl.Purpose.SERVER_AUTH,
         cafile=ca_cert
@@ -294,6 +297,7 @@ def create_tls_connection(
     return pika.BlockingConnection(parameters)
 
 # Example: Basic TLS connection (server certificate only)
+# This requires ssl_options.fail_if_no_peer_cert = false on the server.
 connection = create_tls_connection(
     host='rabbitmq.example.com',
     ca_cert='/path/to/ca_certificate.pem',
@@ -327,7 +331,6 @@ print("Mutual TLS connection established successfully!")
 
 const amqp = require('amqplib');
 const fs = require('fs');
-const path = require('path');
 
 async function createTlsConnection(options = {}) {
     /**
@@ -373,9 +376,11 @@ async function createTlsConnection(options = {}) {
     }
 
     // Build connection URL
-    // URL-encode vhost if it contains special characters
+    // URL-encode credentials and vhost if they contain special characters
+    const encodedUsername = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(password);
     const encodedVhost = encodeURIComponent(vhost);
-    const url = `amqps://${username}:${password}@${host}:${port}/${encodedVhost}`;
+    const url = `amqps://${encodedUsername}:${encodedPassword}@${host}:${port}/${encodedVhost}`;
 
     // Connect with TLS options
     const connection = await amqp.connect(url, {
@@ -478,7 +483,7 @@ public class TlsConnection {
             keyManagerFactory.init(keyStore, keyStorePassword.toCharArray());
         }
 
-        // Create SSL context with TLS 1.2 minimum
+        // Create SSL context for TLS 1.2
         SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
         sslContext.init(
             keyManagerFactory != null ? keyManagerFactory.getKeyManagers() : null,
@@ -566,6 +571,8 @@ Test your TLS setup to ensure it is working correctly.
 RABBITMQ_HOST="${1:-localhost}"
 RABBITMQ_TLS_PORT="${2:-5671}"
 CA_CERT="${3:-/etc/rabbitmq/ssl/ca_certificate.pem}"
+CLIENT_CERT="${4:-/etc/rabbitmq/ssl/client_certificate.pem}"
+CLIENT_KEY="${5:-/etc/rabbitmq/ssl/client_key.pem}"
 
 echo "Verifying TLS configuration for $RABBITMQ_HOST:$RABBITMQ_TLS_PORT"
 echo ""
@@ -583,7 +590,9 @@ fi
 echo ""
 echo "Test 2: Verifying certificate chain..."
 CERT_INFO=$(echo | openssl s_client -connect "$RABBITMQ_HOST:$RABBITMQ_TLS_PORT" \
-    -CAfile "$CA_CERT" 2>/dev/null)
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" 2>/dev/null)
 
 if echo "$CERT_INFO" | grep -q "Verify return code: 0"; then
     echo "  PASS: Certificate chain verified"
@@ -596,28 +605,36 @@ fi
 echo ""
 echo "Test 3: Checking TLS version..."
 TLS_VERSION=$(echo | openssl s_client -connect "$RABBITMQ_HOST:$RABBITMQ_TLS_PORT" \
-    -CAfile "$CA_CERT" 2>/dev/null | grep "Protocol" | head -1)
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" 2>/dev/null | grep "Protocol" | head -1)
 echo "  $TLS_VERSION"
 
 # Test 4: Check cipher suite
 echo ""
 echo "Test 4: Checking cipher suite..."
 CIPHER=$(echo | openssl s_client -connect "$RABBITMQ_HOST:$RABBITMQ_TLS_PORT" \
-    -CAfile "$CA_CERT" 2>/dev/null | grep "Cipher" | head -1)
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" 2>/dev/null | grep "Cipher" | head -1)
 echo "  $CIPHER"
 
 # Test 5: Display certificate details
 echo ""
 echo "Test 5: Server certificate details..."
 echo | openssl s_client -connect "$RABBITMQ_HOST:$RABBITMQ_TLS_PORT" \
-    -CAfile "$CA_CERT" 2>/dev/null | \
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" 2>/dev/null | \
     openssl x509 -noout -subject -issuer -dates 2>/dev/null
 
 # Test 6: Test weak TLS versions are rejected
 echo ""
 echo "Test 6: Verifying TLS 1.0 is rejected..."
 if echo | openssl s_client -connect "$RABBITMQ_HOST:$RABBITMQ_TLS_PORT" \
-    -tls1 2>&1 | grep -q "handshake failure\|wrong version"; then
+    -tls1 \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" 2>&1 | grep -q "handshake failure\|wrong version\|protocol version\|unsupported protocol\|no protocols available"; then
     echo "  PASS: TLS 1.0 correctly rejected"
 else
     echo "  WARNING: TLS 1.0 may be enabled (security risk)"

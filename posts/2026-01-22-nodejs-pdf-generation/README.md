@@ -46,8 +46,9 @@ async function generatePDF(htmlContent, outputPath) {
   await browser.close();
 }
 
-// Usage
-const html = `
+(async () => {
+  // Usage
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -63,7 +64,8 @@ const html = `
 </html>
 `;
 
-await generatePDF(html, 'output.pdf');
+  await generatePDF(html, 'output.pdf');
+})();
 ```
 
 ### Generate Invoice PDF
@@ -81,7 +83,7 @@ class InvoiceGenerator {
   
   async init() {
     this.browser = await puppeteer.launch({
-      headless: 'new',
+      headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   }
@@ -108,7 +110,7 @@ class InvoiceGenerator {
       waitUntil: 'networkidle0',
     });
     
-    const pdfBuffer = await page.pdf({
+    const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: {
@@ -120,7 +122,7 @@ class InvoiceGenerator {
     });
     
     await page.close();
-    return pdfBuffer;
+    return pdfBytes;
   }
 }
 
@@ -202,33 +204,35 @@ class InvoiceGenerator {
 </html>
 */
 
-// Usage
-const generator = new InvoiceGenerator();
-await generator.init();
+(async () => {
+  // Usage
+  const generator = new InvoiceGenerator();
+  await generator.init();
 
-const pdfBuffer = await generator.generate({
-  invoiceNumber: 'INV-2024-001',
-  date: '2024-01-15',
-  dueDate: '2024-02-15',
-  company: {
-    name: 'My Company',
-    address: '123 Business St, City',
-    email: 'billing@company.com',
-  },
-  customer: {
-    name: 'John Doe',
-    address: '456 Customer Ave, Town',
-    email: 'john@example.com',
-  },
-  items: [
-    { description: 'Web Development', quantity: 40, unitPrice: 100, amount: 4000 },
-    { description: 'Design Services', quantity: 20, unitPrice: 80, amount: 1600 },
-  ],
-  total: 5600,
-});
+  const pdfBytes = await generator.generate({
+    invoiceNumber: 'INV-2024-001',
+    date: '2024-01-15',
+    dueDate: '2024-02-15',
+    company: {
+      name: 'My Company',
+      address: '123 Business St, City',
+      email: 'billing@company.com',
+    },
+    customer: {
+      name: 'John Doe',
+      address: '456 Customer Ave, Town',
+      email: 'john@example.com',
+    },
+    items: [
+      { description: 'Web Development', quantity: 40, unitPrice: 100, amount: 4000 },
+      { description: 'Design Services', quantity: 20, unitPrice: 80, amount: 1600 },
+    ],
+    total: 5600,
+  });
 
-await fs.writeFile('invoice.pdf', pdfBuffer);
-await generator.close();
+  await fs.writeFile('invoice.pdf', pdfBytes);
+  await generator.close();
+})();
 ```
 
 ### Generate from URL
@@ -251,7 +255,9 @@ async function pdfFromUrl(url, outputPath) {
   await browser.close();
 }
 
-await pdfFromUrl('https://example.com/report', 'report.pdf');
+(async () => {
+  await pdfFromUrl('https://example.com/report', 'report.pdf');
+})();
 ```
 
 ## Using PDFKit (Programmatic PDF)
@@ -428,22 +434,24 @@ function generateFooter(doc) {
     });
 }
 
-// Usage
-await createInvoice({
-  number: 'INV-2024-001',
-  date: '2024-01-15',
-  dueDate: '2024-02-15',
-  customer: {
-    name: 'John Doe',
-    address: '456 Customer Ave',
-    email: 'john@example.com',
-  },
-  items: [
-    { description: 'Web Development', quantity: 40, unitPrice: 100, amount: 4000 },
-    { description: 'Design Services', quantity: 20, unitPrice: 80, amount: 1600 },
-  ],
-  total: 5600,
-}, 'invoice.pdf');
+(async () => {
+  // Usage
+  await createInvoice({
+    number: 'INV-2024-001',
+    date: '2024-01-15',
+    dueDate: '2024-02-15',
+    customer: {
+      name: 'John Doe',
+      address: '456 Customer Ave',
+      email: 'john@example.com',
+    },
+    items: [
+      { description: 'Web Development', quantity: 40, unitPrice: 100, amount: 4000 },
+      { description: 'Design Services', quantity: 20, unitPrice: 80, amount: 1600 },
+    ],
+    total: 5600,
+  }, 'invoice.pdf');
+})();
 ```
 
 ## Using pdf-lib (PDF Manipulation)
@@ -510,8 +518,10 @@ async function mergePDFs(pdfPaths, outputPath) {
   await fs.writeFile(outputPath, mergedPdfBytes);
 }
 
-// Usage
-await mergePDFs(['doc1.pdf', 'doc2.pdf', 'doc3.pdf'], 'merged.pdf');
+(async () => {
+  // Usage
+  await mergePDFs(['doc1.pdf', 'doc2.pdf', 'doc3.pdf'], 'merged.pdf');
+})();
 ```
 
 ### Add Watermark
@@ -543,7 +553,9 @@ async function addWatermark(pdfPath, watermarkText, outputPath) {
   await fs.writeFile(outputPath, modifiedPdfBytes);
 }
 
-await addWatermark('document.pdf', 'CONFIDENTIAL', 'watermarked.pdf');
+(async () => {
+  await addWatermark('document.pdf', 'CONFIDENTIAL', 'watermarked.pdf');
+})();
 ```
 
 ## Express API for PDF Generation
@@ -560,12 +572,21 @@ let browser;
 // Initialize browser on startup
 async function initBrowser() {
   browser = await puppeteer.launch({
-    headless: 'new',
+    headless: true,
     args: ['--no-sandbox'],
   });
 }
 
-initBrowser();
+function generateInvoiceHTML(invoiceData) {
+  return `
+    <html>
+      <body>
+        <h1>Invoice #${invoiceData.number}</h1>
+        <p>Total: ${invoiceData.total}</p>
+      </body>
+    </html>
+  `;
+}
 
 app.post('/api/pdf/invoice', async (req, res) => {
   try {
@@ -576,10 +597,10 @@ app.post('/api/pdf/invoice', async (req, res) => {
     
     await page.setContent(html, { waitUntil: 'networkidle0' });
     
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = Buffer.from(await page.pdf({
       format: 'A4',
       printBackground: true,
-    });
+    }));
     
     await page.close();
     
@@ -595,11 +616,18 @@ app.post('/api/pdf/invoice', async (req, res) => {
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  await browser.close();
+  if (browser) {
+    await browser.close();
+  }
   process.exit(0);
 });
 
-app.listen(3000);
+initBrowser()
+  .then(() => app.listen(3000))
+  .catch((error) => {
+    console.error('Failed to initialize browser:', error);
+    process.exit(1);
+  });
 ```
 
 ## Summary
@@ -614,10 +642,10 @@ app.listen(3000);
 | Feature | Puppeteer | PDFKit | pdf-lib |
 |---------|-----------|--------|---------|
 | HTML support | Yes | No | No |
-| Forms | No | No | Yes |
+| Forms | No | Create only | Yes |
 | Merge PDFs | No | No | Yes |
 | Images | Yes | Yes | Yes |
-| Tables | Yes | Manual | Manual |
+| Tables | Yes | Yes | Manual |
 
 | Use Case | Recommended Library |
 |----------|---------------------|

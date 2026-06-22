@@ -87,9 +87,8 @@ func (w *MyWriter) Write(data []byte) (int, error) {
 // Compile-time verification
 var _ Writer = (*MyWriter)(nil)
 
-// This would cause compile error if Write method is wrong:
-// cannot use (*MyWriter)(nil) (type *MyWriter) as type Writer in assignment:
-// *MyWriter does not implement Writer (wrong type for Write method)
+// This would cause a compile error if Write is missing or has the wrong signature:
+// *MyWriter does not implement Writer
 ```
 
 ---
@@ -299,6 +298,10 @@ type CRUD interface {
 // In consumer package, not provider package
 package handler
 
+type User struct {
+    ID string
+}
+
 // Define the interface where it's used
 type UserStore interface {
     GetUser(id string) (*User, error)
@@ -317,14 +320,17 @@ func NewHandler(store UserStore) *Handler {
 
 ```go
 // GOOD: Describes behavior with -er suffix
+type Request struct{}
+type Response struct{}
+
 type Reader interface { Read([]byte) (int, error) }
 type Writer interface { Write([]byte) (int, error) }
 type Stringer interface { String() string }
 type Handler interface { Handle(Request) Response }
 
 // BAD: Describes implementation
-type FileManager interface { ... }
-type DataProcessor interface { ... }
+type FileManager interface { ManageFile(name string) error }
+type DataProcessor interface { ProcessData(data []byte) error }
 ```
 
 ---
@@ -382,6 +388,8 @@ Interfaces make testing easy:
 
 ```go
 // production.go
+package service
+
 type EmailSender interface {
     Send(to, subject, body string) error
 }
@@ -398,6 +406,10 @@ func (s *UserService) Register(email string) error {
 
 ```go
 // production_test.go
+package service
+
+import "testing"
+
 type MockEmailer struct {
     SendCalled bool
     LastTo     string
@@ -434,6 +446,10 @@ func TestUserService_Register(t *testing.T) {
 ### Functional Options with Interfaces
 
 ```go
+type Server struct {
+    port int
+}
+
 type Option interface {
     apply(*Server)
 }

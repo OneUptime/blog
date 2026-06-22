@@ -41,7 +41,7 @@ curl -u elastic:password -X GET "localhost:9200/_cluster/allocation/explain?pret
 }'
 ```
 
-### Explain with Current State
+### Explain with YES Decisions
 
 ```bash
 curl -u elastic:password -X GET "localhost:9200/_cluster/allocation/explain?include_yes_decisions=true&pretty" -H 'Content-Type: application/json' -d'
@@ -163,7 +163,7 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 
 ### 3. Maximum Shards Per Node
 
-**Decider:** `max_shards_per_node`
+**Decider:** `shards_limit`
 
 **Explanation:**
 ```text
@@ -177,7 +177,7 @@ Increase the limit:
 curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
   "persistent": {
-    "cluster.max_shards_per_node": 2000
+    "cluster.routing.allocation.total_shards_per_node": 2000
   }
 }'
 ```
@@ -210,11 +210,11 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 
 ### 5. Allocation Disabled
 
-**Decider:** `cluster_routing_allocation`
+**Decider:** `enable`
 
 **Explanation:**
 ```text
-the cluster has not reached the allocation_enabled threshold
+no allocations are allowed due to cluster setting [cluster.routing.allocation.enable=none]
 ```
 
 **Solution:**
@@ -388,7 +388,7 @@ curl -s $AUTH "$ES_HOST/_cluster/settings?include_defaults=true&flat_settings=tr
 Set up alerts before watermarks are reached:
 ```bash
 # Alert when disk usage > 80%
-curl -s -u elastic:password "localhost:9200/_cat/allocation?v" | awk '{if (NR>1 && $6+0 > 80) print "WARNING: " $1 " disk at " $6}'
+curl -s -u elastic:password "localhost:9200/_cat/allocation?h=host,node,disk.percent" | awk '{if ($3+0 > 80) print "WARNING: " $1 " " $2 " disk at " $3 "%"}'
 ```
 
 ### 2. Configure Appropriate Shard Counts

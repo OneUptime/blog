@@ -154,7 +154,7 @@ tasks:
 **Error message:**
 ```text
 ERROR! Syntax Error while loading YAML.
-  found unexpected ':'
+  mapping values are not allowed in this context
 ```
 
 **Problem:** Unquoted strings containing special YAML characters.
@@ -186,11 +186,10 @@ ERROR! Syntax Error while loading YAML.
 
 **Error message:**
 ```text
-ERROR! Syntax Error while loading YAML.
-  could not determine a constructor for the tag
+No syntax error is raised, but the value may be parsed as a boolean.
 ```
 
-**Problem:** Using unquoted yes/no that YAML interprets as boolean.
+**Problem:** Using unquoted yes/no values that YAML can interpret as booleans.
 
 ```yaml
 # WRONG - "yes" becomes boolean True
@@ -277,7 +276,7 @@ ERROR! template error while templating string
 **Error message:**
 ```text
 ERROR! Syntax Error while loading YAML.
-  found undefined alias
+  This may be an issue with missing quotes around a template block
 ```
 
 **Problem:** Using Jinja2 syntax where YAML expects a value.
@@ -344,15 +343,15 @@ ERROR! template error while templating string
 **Error message:**
 ```text
 ERROR! Syntax Error while loading YAML.
-  found unexpected end of stream
+  expected <block end>, but found '<scalar>'
 ```
 
 **Problem:** Improperly escaped quotes within quotes.
 
 ```yaml
-# WRONG - unescaped quotes
+# WRONG - unescaped quotes inside a YAML double-quoted string
 - name: Run command
-  shell: echo "He said "Hello""
+  shell: "echo "He said Hello""
 ```
 
 **Solution:** Use different quote types or escape properly.
@@ -360,16 +359,16 @@ ERROR! Syntax Error while loading YAML.
 ```yaml
 # CORRECT - different quote types
 - name: Run command
-  shell: echo "He said 'Hello'"
+  shell: 'echo "He said Hello"'
 
 # CORRECT - escaped quotes
 - name: Run command
-  shell: echo "He said \"Hello\""
+  shell: "echo \"He said Hello\""
 
 # CORRECT - YAML literal block
 - name: Run command
   shell: |
-    echo "He said \"Hello\""
+    echo "He said Hello"
 ```
 
 ## Ansible-Specific Errors
@@ -384,14 +383,14 @@ ERROR! Unsupported parameters for (module) module: wrong_param
 **Problem:** Using parameters that do not exist for a module.
 
 ```yaml
-# WRONG - 'package' is not a valid parameter for apt
+# WRONG - 'package_name' is not a valid parameter for apt
 - name: Install nginx
   apt:
-    package: nginx
+    package_name: nginx
     state: present
 ```
 
-**Solution:** Use correct parameter names.
+**Solution:** Use correct parameter names. For the `apt` module, use `name` or one of its documented aliases, such as `package` or `pkg`.
 
 ```yaml
 # CORRECT - use 'name' for apt module
@@ -438,7 +437,7 @@ ERROR! conflicting action statements: command, shell
 
 **Error message:**
 ```text
-ERROR! 'tasks' is not a valid attribute for a Play
+ERROR! The field 'hosts' is required but was not set.
 ```
 
 **Problem:** Incorrect play-level structure.
@@ -466,13 +465,13 @@ ERROR! 'tasks' is not a valid attribute for a Play
 
 **Error message:**
 ```text
-ERROR! The conditional check 'ansible_os_family = "Debian"' failed
+ERROR! A 'when' expression failed: Syntax error in expression
 ```
 
-**Problem:** Using assignment operator instead of comparison.
+**Problem:** Using a single equals sign instead of a comparison operator.
 
 ```yaml
-# WRONG - single equals is assignment
+# WRONG - single equals is not a valid comparison
 - name: Install on Debian
   apt:
     name: nginx
@@ -594,7 +593,7 @@ flowchart TD
 |--------------|--------------|-----------|
 | `mapping values are not allowed` | Bad indentation | Check spaces, use 2-space indent |
 | `could not find expected ':'` | Missing colon | Add colon after key |
-| `found unexpected ':'` | Unquoted special chars | Quote the string |
+| `mapping values are not allowed` | Unquoted special chars | Quote the string |
 | `is undefined` | Missing variable | Add `\| default(value)` |
 | `unexpected end of template` | Unclosed braces | Count `{{` and `}}` pairs |
 | `Unsupported parameters` | Wrong module param | Check `ansible-doc module` |

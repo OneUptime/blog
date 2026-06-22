@@ -25,8 +25,8 @@ First, create a worker application with proper Kubernetes compatibility:
 
 ```typescript
 // src/worker.ts
-import { Worker, Job, QueueEvents } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Worker, Job, Queue, type ConnectionOptions } from 'bullmq';
+import IORedis from 'ioredis';
 import express from 'express';
 
 // Configuration from environment
@@ -48,20 +48,25 @@ const config = {
   },
 };
 
-// Redis connection
-const connection = new Redis({
+// Redis connection options
+const redisOptions = {
   ...config.redis,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
-  retryStrategy: (times) => Math.min(times * 100, 3000),
-});
+  retryStrategy: (times: number) => Math.min(times * 100, 3000),
+};
+
+const connection: ConnectionOptions = redisOptions;
+const healthConnection = new IORedis(redisOptions);
 
 // Worker state
 let isReady = false;
 let isShuttingDown = false;
 let activeJobs = 0;
 
-// Create worker
+// Create queue and worker
+const queue = new Queue(config.queue.name, { connection });
+
 const worker = new Worker(
   config.queue.name,
   async (job: Job) => {
@@ -126,7 +131,7 @@ app.get('/health/ready', async (req, res) => {
 
   // Check Redis connectivity
   try {
-    await connection.ping();
+    await healthConnection.ping();
     res.json({ status: 'ready', activeJobs });
   } catch (error) {
     res.status(503).json({
@@ -148,17 +153,27 @@ app.get('/health/startup', (req, res) => {
 // Metrics endpoint for custom metrics
 app.get('/metrics', async (req, res) => {
   try {
-    const queue = worker.queue;
-    const counts = await queue?.getJobCounts();
+    const counts = await queue.getJobCounts();
+    const queueLabel = config.queue.name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-    res.json({
-      queue: config.queue.name,
-      activeJobs,
-      concurrency: config.queue.concurrency,
-      counts,
-    });
+    const lines = [
+      '# HELP bullmq_worker_active_jobs Number of jobs currently being processed by this worker process.',
+      '# TYPE bullmq_worker_active_jobs gauge',
+      `bullmq_worker_active_jobs{queue="${queueLabel}"} ${activeJobs}`,
+      '# HELP bullmq_worker_concurrency Configured worker concurrency.',
+      '# TYPE bullmq_worker_concurrency gauge',
+      `bullmq_worker_concurrency{queue="${queueLabel}"} ${config.queue.concurrency}`,
+      '# HELP bullmq_queue_jobs Number of jobs by BullMQ state.',
+      '# TYPE bullmq_queue_jobs gauge',
+      ...Object.entries(counts).map(
+        ([state, count]) => `bullmq_queue_jobs{queue="${queueLabel}",state="${state}"} ${count}`
+      ),
+      '',
+    ];
+
+    res.type('text/plain; version=0.0.4').send(lines.join('\n'));
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get metrics' });
+    res.status(500).type('text/plain').send('# Failed to get metrics\n');
   }
 });
 
@@ -175,7 +190,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`Received ${signal}. Starting graceful shutdown...`);
 
   // Stop accepting new jobs immediately
-  await worker.pause();
+  await worker.pause(true);
   console.log('Worker paused');
 
   // Wait for active jobs to complete with timeout
@@ -189,9 +204,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     console.warn(`Forcing shutdown with ${activeJobs} jobs still active`);
   }
 
-  // Close worker and connection
-  await worker.close();
-  await connection.quit();
+  // Close worker, queue, and health connection
+  await worker.close(activeJobs > 0);
+  await queue.close();
+  await healthConnection.quit();
 
   console.log('Graceful shutdown complete');
   process.exit(0);

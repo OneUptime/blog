@@ -29,8 +29,8 @@ flowchart TD
 
 Projections are:
 - Stored within the same table
-- Automatically maintained on INSERT
-- Automatically selected by the query optimizer
+- Automatically kept in sync as data is inserted
+- Automatically considered by the query optimizer
 
 ### Basic Projection Syntax
 
@@ -182,29 +182,30 @@ ORDER BY (user_id, event_time);
 
 ```sql
 -- EXPLAIN shows which projection is selected
-EXPLAIN indexes = 1
+EXPLAIN indexes = 1, projections = 1
 SELECT count()
 FROM events
 WHERE event_type = 'click'
   AND event_time >= today() - 7;
 
--- Look for "Projection: by_type" in output
+-- Look for ReadFromMergeTree (by_type) or a Projections entry in the output
 ```
 
-### Force Projection Selection
+### Test Projection Selection
 
 ```sql
 -- Disable projections for testing
 SELECT count()
 FROM events
 WHERE event_type = 'click'
-SETTINGS allow_experimental_projection_optimization = 0;
+SETTINGS optimize_use_projections = 0;
 
--- Compare with projection enabled
+-- Require a specific projection for verification
 SELECT count()
 FROM events
 WHERE event_type = 'click'
-SETTINGS allow_experimental_projection_optimization = 1;
+SETTINGS optimize_use_projections = 1,
+         force_optimize_projection_name = 'by_type';
 ```
 
 ### Monitor Projection Performance
@@ -216,7 +217,7 @@ SELECT
     query_duration_ms,
     read_rows,
     read_bytes,
-    Settings['allow_experimental_projection_optimization'] AS projections_enabled
+    projections
 FROM system.query_log
 WHERE query LIKE '%events%'
   AND type = 'QueryFinish'
@@ -252,7 +253,7 @@ CREATE TABLE events
 ENGINE = MergeTree()
 ORDER BY (user_id, event_time);
 
--- Queries automatically use the projection
+-- Eligible queries can automatically use the projection
 SELECT
     toStartOfHour(event_time) AS hour,
     event_type,
@@ -263,28 +264,28 @@ WHERE event_time >= today() - 7
 GROUP BY hour, event_type;
 ```
 
-### State Functions in Projections
+### Complex Aggregate Functions in Projections
 
 ```sql
--- Use state functions for complex aggregations
+-- Use aggregate functions for complex aggregations
 ALTER TABLE events ADD PROJECTION complex_agg
 (
     SELECT
         toStartOfDay(event_time) AS day,
         event_type,
         count() AS cnt,
-        uniqState(user_id) AS users_state,
-        quantileState(0.95)(response_time) AS p95_state
+        uniq(user_id) AS users,
+        quantile(0.95)(revenue) AS p95_revenue
     GROUP BY day, event_type
 );
 
--- Query merges states automatically
+-- Query the base table; ClickHouse can use the projection automatically
 SELECT
-    day,
+    toStartOfDay(event_time) AS day,
     event_type,
-    sum(cnt) AS events,
-    uniqMerge(users_state) AS users,
-    quantileMerge(0.95)(p95_state) AS p95_response
+    count() AS events,
+    uniq(user_id) AS users,
+    quantile(0.95)(revenue) AS p95_revenue
 FROM events
 WHERE event_time >= today() - 30
 GROUP BY day, event_type;
@@ -319,10 +320,10 @@ WHERE table = 'events'
 ### Remove Projection
 
 ```sql
--- Drop projection
+-- Drop projection metadata and data
 ALTER TABLE events DROP PROJECTION old_projection;
 
--- Clear projection data
+-- Or clear projection data without removing the definition
 ALTER TABLE events CLEAR PROJECTION old_projection;
 ```
 
@@ -333,19 +334,21 @@ ALTER TABLE events CLEAR PROJECTION old_projection;
 SELECT
     name,
     type,
-    expr
-FROM system.projection_parts
+    sorting_key,
+    query
+FROM system.projections
 WHERE table = 'events'
-GROUP BY name, type, expr;
+ORDER BY name;
 
--- Projection storage size
+-- Total projection storage size
 SELECT
-    name,
+    table,
     sum(bytes_on_disk) AS bytes,
     formatReadableSize(sum(bytes_on_disk)) AS size
 FROM system.projection_parts
 WHERE table = 'events'
-GROUP BY name;
+  AND active
+GROUP BY table;
 ```
 
 ## Performance Considerations
@@ -363,11 +366,10 @@ WHERE table = 'events' AND active
 UNION ALL
 
 SELECT
-    concat('Projection: ', name) AS type,
+    'Projections' AS type,
     formatReadableSize(sum(bytes_on_disk)) AS size
 FROM system.projection_parts
-WHERE table = 'events'
-GROUP BY name;
+WHERE table = 'events' AND active;
 ```
 
 ### Insert Performance
@@ -377,15 +379,14 @@ Projections add overhead to INSERTs:
 ```sql
 -- Monitor insert performance
 SELECT
-    table,
+    'events' AS table_name,
     avg(query_duration_ms) AS avg_insert_ms,
     count() AS inserts
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND query_kind = 'Insert'
-  AND table = 'events'
-  AND event_date = today()
-GROUP BY table;
+  AND has(tables, 'events')
+  AND event_date = today();
 ```
 
 ### When to Use Projections vs Materialized Views
@@ -442,13 +443,12 @@ PROJECTION hourly (
 SELECT
     database,
     table,
-    name AS projection,
     sum(rows) AS rows,
     formatReadableSize(sum(bytes_on_disk)) AS size,
     count() AS parts
 FROM system.projection_parts
 WHERE active
-GROUP BY database, table, name
+GROUP BY database, table
 ORDER BY sum(bytes_on_disk) DESC;
 ```
 

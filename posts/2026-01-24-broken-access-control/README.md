@@ -271,12 +271,15 @@ class AccessPolicy {
 
   // Evaluate if access should be granted
   evaluate(subject, action, resource, environment = {}) {
+    let allowed = false;
+
     for (const rule of this.rules) {
       const result = rule.evaluate(subject, action, resource, environment);
       if (result === 'DENY') return false;  // Explicit deny takes precedence
-      if (result === 'ALLOW') return true;
+      if (result === 'ALLOW') allowed = true;
     }
-    return false;  // Default deny
+
+    return allowed;  // Default deny
   }
 }
 
@@ -331,6 +334,10 @@ policy.addRule({
 function authorize(action, getResource) {
   return async (req, res, next) => {
     const resource = await getResource(req);
+    if (!resource) {
+      return res.status(404).json({ error: 'Resource not found' });
+    }
+
     const environment = {
       maintenanceMode: process.env.MAINTENANCE_MODE === 'true',
       ipAddress: req.ip,
@@ -351,6 +358,7 @@ app.get('/api/documents/:id',
   authenticate,
   authorize('read', async (req) => {
     const doc = await Document.findById(req.params.id);
+    if (!doc) return null;
     return { type: 'document', ...doc.toObject() };
   }),
   (req, res) => {
@@ -366,7 +374,7 @@ const path = require('path');
 
 // VULNERABLE: Path traversal attack
 app.get('/files/:filename', (req, res) => {
-  const filepath = `./uploads/${req.params.filename}`;
+  const filepath = path.resolve('./uploads', req.params.filename);
   res.sendFile(filepath);  // Attacker: "../../../etc/passwd"
 });
 

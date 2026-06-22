@@ -179,14 +179,17 @@ sudo apt autoremove --purge
 sudo apt remove linux-image-5.4.0-old-version
 ```
 
-**RHEL/CentOS**:
+**RHEL/CentOS/Fedora**:
 
 ```bash
 # List installed kernels
 rpm -q kernel
 
-# Keep only 2 most recent kernels
-sudo dnf install yum-utils
+# Remove old install-only packages on RHEL/CentOS 8+ and Fedora
+sudo dnf remove --oldinstallonly
+
+# On RHEL/CentOS 7 and earlier, keep only 2 most recent kernels
+sudo yum install yum-utils
 sudo package-cleanup --oldkernels --count=2
 ```
 
@@ -299,8 +302,8 @@ sudo lvextend -l +100%FREE /dev/mapper/vg-lv_root
 # For ext4:
 sudo resize2fs /dev/mapper/vg-lv_root
 
-# For XFS:
-sudo xfs_growfs /dev/mapper/vg-lv_root
+# For XFS, use the mount point:
+sudo xfs_growfs /
 ```
 
 ### Adding a New Disk

@@ -178,11 +178,11 @@ RUN apt-get update && apt-get install -y myapp \
 # Create non-root user
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
-# Set ownership and switch to non-root user
-RUN chown -R appuser:appgroup /app
+# Create the app directory, set ownership, and switch to non-root user
+RUN mkdir -p /app && chown -R appuser:appgroup /app
 USER appuser
 
-# Drop all capabilities by default
+# Run the application as the non-root user
 CMD ["myapp"]
 ```
 
@@ -247,7 +247,7 @@ def login():
     username = request.form['username']
     password = request.form['password']
 
-    # Use parameterized queries - the database driver handles escaping
+    # Use parameterized queries - the database driver binds values separately
     query = "SELECT * FROM users WHERE username = %s"
     user = db.execute(query, (username,)).fetchone()
 
@@ -303,14 +303,18 @@ GRANT ALL PRIVILEGES ON myapp.* TO 'migration_user'@'localhost';
 # Harden user accounts and prevent privilege escalation
 
 # Disable root login via SSH
-sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+if grep -qE '^[#[:space:]]*PermitRootLogin\b' /etc/ssh/sshd_config; then
+    sed -i 's/^[#[:space:]]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+else
+    echo "PermitRootLogin no" >> /etc/ssh/sshd_config
+fi
 
 # Require sudo for administrative tasks
 # Limit sudo access to specific commands
 cat >> /etc/sudoers.d/app-user << 'EOF'
 # app-user can only restart the application service
-app-user ALL=(ALL) NOPASSWD: /bin/systemctl restart myapp
-app-user ALL=(ALL) NOPASSWD: /bin/systemctl status myapp
+app-user ALL=(ALL) NOPASSWD: /bin/systemctl restart myapp.service
+app-user ALL=(ALL) NOPASSWD: /bin/systemctl --no-pager status myapp.service
 EOF
 
 # Set restrictive umask
@@ -331,6 +335,17 @@ Use tools like Semgrep to catch privilege escalation patterns:
 # .semgrep/privilege-escalation.yaml
 rules:
   - id: hardcoded-admin-role
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: role = "admin"
+          - pattern: is_admin = True
+          - pattern: user.role = $ROLE
+    message: "Potential privilege escalation - role assignment detected"
+    severity: WARNING
+
+  - id: hardcoded-admin-role-js
+    languages: [javascript, typescript]
     patterns:
       - pattern-either:
           - pattern: role = "admin"
@@ -338,7 +353,6 @@ rules:
           - pattern: user.role = $ROLE
     message: "Potential privilege escalation - role assignment detected"
     severity: WARNING
-    languages: [python, javascript, typescript]
 
   - id: missing-authorization-check
     patterns:

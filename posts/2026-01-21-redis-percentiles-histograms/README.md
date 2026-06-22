@@ -8,7 +8,7 @@ Description: A comprehensive guide to calculating percentiles, histograms, and s
 
 ---
 
-Percentiles and histograms are essential for understanding the distribution of your data - from API latencies to user engagement metrics. While Redis does not have built-in statistical functions, its data structures can be cleverly used to compute these metrics efficiently at scale.
+Percentiles and histograms are essential for understanding the distribution of your data - from API latencies to user engagement metrics. While Redis core does not have built-in statistical functions, its data structures can be cleverly used to compute these metrics efficiently at scale.
 
 ## Understanding Percentiles and Histograms
 
@@ -30,9 +30,8 @@ from statistics import median, quantiles
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 class PercentileTracker:
-    def __init__(self, key, max_samples=10000):
+    def __init__(self, key):
         self.key = key
-        self.max_samples = max_samples
 
     def add_value(self, value, timestamp=None):
         """Add a value to the dataset."""
@@ -42,11 +41,6 @@ class PercentileTracker:
         # Use value as score, timestamp:value as member for uniqueness
         member = f"{timestamp}:{value}"
         r.zadd(self.key, {member: value})
-
-        # Trim to max samples (remove lowest scores if over limit)
-        current_size = r.zcard(self.key)
-        if current_size > self.max_samples:
-            r.zremrangebyrank(self.key, 0, current_size - self.max_samples - 1)
 
     def get_percentile(self, percentile):
         """Get the value at a specific percentile (0-100)."""
@@ -422,14 +416,14 @@ agg = ts_histogram.get_aggregated_histogram(num_windows=5)
 print(f"5-minute histogram: {agg}")
 ```
 
-## Approach 3: T-Digest for Accurate Percentiles
+## Approach 3: T-Digest for Approximate Percentiles
 
-T-Digest is an algorithm for accurate percentile estimation with bounded memory.
+T-Digest is an algorithm for high-accuracy percentile estimation with bounded memory.
 
 ```python
 class TDigest:
     """
-    Simplified T-Digest implementation using Redis sorted sets.
+    Illustrative, simplified T-Digest-like implementation using Redis sorted sets.
     For production, consider using the Redis T-Digest module.
     """
 
@@ -439,7 +433,7 @@ class TDigest:
         self.buffer_key = f"{key}:buffer"
         self.buffer_size = compression * 2
 
-    def add(self, value, weight=1):
+    def add(self, value):
         """Add a value to the digest."""
         # Buffer values and periodically merge
         r.zadd(self.buffer_key, {f"{time.time()}:{value}": value})
@@ -489,7 +483,6 @@ class TDigest:
         if not values:
             return []
 
-        total_weight = sum(w for _, w in values)
         centroids = []
 
         current_centroid = values[0][0]
@@ -573,8 +566,9 @@ class RedisBloomTDigest:
         """Create T-Digest data structure."""
         try:
             r.execute_command('TDIGEST.CREATE', self.key, 'COMPRESSION', self.compression)
-        except:
-            pass  # Already exists
+        except redis.exceptions.ResponseError as exc:
+            if 'already exists' not in str(exc).lower():
+                raise
 
     def add(self, *values):
         """Add values to the T-Digest."""
@@ -605,6 +599,8 @@ class RedisBloomTDigest:
 ## Production Example: API Latency Monitoring
 
 ```python
+from datetime import datetime, timedelta
+
 class APILatencyMonitor:
     def __init__(self, service_name):
         self.service_name = service_name
@@ -720,17 +716,21 @@ print(f"Histogram: {histogram}")
 |----------|---------------------|
 | Low cardinality, exact percentiles | Sorted Sets |
 | High throughput, approximate | Histograms |
-| Memory constrained, accurate | T-Digest |
+| Memory constrained, approximate | T-Digest |
 | Multiple time windows | Time-bucketed any |
 
 ### 2. Set Appropriate Retention
 
 ```python
-# Limit sorted set size
-def add_with_limit(key, value, max_size=10000):
+# Use time-bucketed keys so retention does not bias the value distribution
+def add_to_time_bucket(key_prefix, value, window_seconds=60, retention_seconds=3600):
+    timestamp = time.time()
+    bucket = int(timestamp / window_seconds)
+    key = f"{key_prefix}:{bucket}"
+
     pipe = r.pipeline()
-    pipe.zadd(key, {f"{time.time()}:{value}": value})
-    pipe.zremrangebyrank(key, 0, -max_size - 1)
+    pipe.zadd(key, {f"{timestamp}:{value}": value})
+    pipe.expire(key, retention_seconds)
     pipe.execute()
 ```
 
@@ -768,7 +768,7 @@ Calculating percentiles and histograms in Redis requires choosing the right data
 
 - **Sorted Sets**: Best for exact percentiles with moderate data volume
 - **Hash-based Histograms**: Optimal for high-throughput with predefined buckets
-- **T-Digest**: Ideal for accurate percentiles with memory constraints
+- **T-Digest**: Ideal for approximate percentiles with memory constraints
 - **RedisBloom T-Digest**: Production-ready native implementation
 
 For most monitoring use cases, combining histogram buckets (for aggregations) with sorted sets (for precise percentiles on recent data) provides the best balance of performance and accuracy. Remember to implement proper data retention to manage memory usage in production.

@@ -30,14 +30,14 @@ The simplest approach uses redis-cli commands:
 redis-cli KEYS '*' > keys.txt
 
 # Export key-value pairs
-redis-cli --scan --pattern 'user:*' | while read key; do
+redis-cli --scan --pattern 'user:*' | while IFS= read -r key; do
     echo "$key: $(redis-cli GET "$key")"
 done > export.txt
 
-# Export to JSON-like format
-redis-cli --scan --pattern 'user:*' | while read key; do
-    value=$(redis-cli GET "$key")
-    echo "{\"key\": \"$key\", \"value\": $value}"
+# Export to JSON Lines format
+redis-cli --scan --pattern 'user:*' | while IFS= read -r key; do
+    value=$(redis-cli --raw GET "$key")
+    KEY="$key" VALUE="$value" python3 -c 'import json, os; print(json.dumps({"key": os.environ["KEY"], "value": os.environ["VALUE"]}))'
 done > export.jsonl
 ```
 
@@ -324,6 +324,9 @@ class StreamingExporter:
     def __init__(self, redis_client: redis.Redis):
         self.redis = redis_client
 
+    def _decode(self, value: Any) -> Any:
+        return value.decode() if isinstance(value, bytes) else value
+
     def stream_export(self, pattern: str = "*") -> Iterator[Dict[str, Any]]:
         """Stream Redis data as an iterator."""
         cursor = 0
@@ -332,7 +335,7 @@ class StreamingExporter:
             cursor, keys = self.redis.scan(cursor=cursor, match=pattern, count=1000)
 
             for key in keys:
-                key_str = key.decode() if isinstance(key, bytes) else key
+                key_str = self._decode(key)
                 key_type = self.redis.type(key_str)
 
                 if isinstance(key_type, bytes):
@@ -340,8 +343,7 @@ class StreamingExporter:
 
                 if key_type == "string":
                     value = self.redis.get(key_str)
-                    if isinstance(value, bytes):
-                        value = value.decode()
+                    value = self._decode(value)
 
                     yield {
                         "key": key_str,
@@ -352,8 +354,7 @@ class StreamingExporter:
                 elif key_type == "hash":
                     value = self.redis.hgetall(key_str)
                     decoded = {
-                        k.decode() if isinstance(k, bytes) else k:
-                        v.decode() if isinstance(v, bytes) else v
+                        self._decode(k): self._decode(v)
                         for k, v in value.items()
                     }
 
@@ -361,6 +362,54 @@ class StreamingExporter:
                         "key": key_str,
                         "type": key_type,
                         "value": decoded
+                    }
+
+                elif key_type == "list":
+                    yield {
+                        "key": key_str,
+                        "type": key_type,
+                        "value": [
+                            self._decode(v)
+                            for v in self.redis.lrange(key_str, 0, -1)
+                        ]
+                    }
+
+                elif key_type == "set":
+                    yield {
+                        "key": key_str,
+                        "type": key_type,
+                        "value": [
+                            self._decode(v)
+                            for v in self.redis.smembers(key_str)
+                        ]
+                    }
+
+                elif key_type == "zset":
+                    yield {
+                        "key": key_str,
+                        "type": key_type,
+                        "value": [
+                            {"member": self._decode(member), "score": score}
+                            for member, score in self.redis.zrange(
+                                key_str, 0, -1, withscores=True
+                            )
+                        ]
+                    }
+
+                elif key_type == "stream":
+                    yield {
+                        "key": key_str,
+                        "type": key_type,
+                        "value": [
+                            {
+                                "id": self._decode(entry_id),
+                                "data": {
+                                    self._decode(k): self._decode(v)
+                                    for k, v in data.items()
+                                }
+                            }
+                            for entry_id, data in self.redis.xrange(key_str)
+                        ]
                     }
 
             if cursor == 0:
@@ -555,7 +604,9 @@ def export_stream_to_csv(redis_client: redis.Redis, stream_key: str,
 
             row = {'_id': entry_id}
             for field in fields:
-                value = data.get(field.encode() if isinstance(field, str) else field)
+                value = data.get(field)
+                if value is None and isinstance(field, str):
+                    value = data.get(field.encode())
                 if isinstance(value, bytes):
                     value = value.decode()
                 row[field] = value
@@ -689,6 +740,12 @@ def main():
         sys.exit(1)
 
     # Export based on format
+    if args.compress and args.format != 'jsonl':
+        parser.error("--compress is only supported with --format jsonl")
+
+    if args.include_ttl and args.format != 'json':
+        parser.error("--include-ttl is only supported with --format json")
+
     output_file = args.output
     if args.compress and not output_file.endswith('.gz'):
         output_file += '.gz'

@@ -154,11 +154,12 @@ for doc in documents:
 ### Using Elasticsearch Inference API
 
 ```bash
-# Create inference endpoint (requires ML node)
+# Create inference endpoint with the built-in E5 text embedding model (requires an ML node)
 curl -u elastic:password -X PUT "localhost:9200/_inference/text_embedding/my-embeddings" -H 'Content-Type: application/json' -d'
 {
-  "service": "elser",
+  "service": "elasticsearch",
   "service_settings": {
+    "model_id": ".multilingual-e5-small",
     "num_allocations": 1,
     "num_threads": 1
   }
@@ -171,10 +172,12 @@ curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/vector-embeddin
     {
       "inference": {
         "model_id": "my-embeddings",
-        "input_output": {
-          "input_field": "content",
-          "output_field": "content_vector"
-        }
+        "input_output": [
+          {
+            "input_field": "content",
+            "output_field": "content_vector"
+          }
+        ]
       }
     }
   ]
@@ -382,7 +385,7 @@ curl -u elastic:password -X GET "localhost:9200/vector-search/_search?pretty" -H
 ```python
 def find_similar_documents(doc_id: str, k: int = 5):
     # Get the source document
-    doc = es.get(index="vector-search", id=doc_id)
+    doc = es.get(index="vector-search", id=doc_id, source_exclude_vectors=False)
     doc_vector = doc["_source"]["content_vector"]
 
     # Find similar documents
@@ -532,8 +535,7 @@ curl -u elastic:password -X PUT "localhost:9200/vector-search-quantized" -H 'Con
         "index_options": {
           "type": "int8_hnsw",
           "m": 16,
-          "ef_construction": 100,
-          "confidence_interval": 0.99
+          "ef_construction": 100
         }
       }
     }
@@ -672,7 +674,7 @@ class VectorSearchService:
         } for hit in response["hits"]["hits"]]
 
     def find_similar(self, doc_id: str, k: int = 5) -> List[Dict]:
-        doc = self.es.get(index=self.index, id=doc_id)
+        doc = self.es.get(index=self.index, id=doc_id, source_exclude_vectors=False)
         doc_vector = doc["_source"]["content_vector"]
 
         response = self.es.search(

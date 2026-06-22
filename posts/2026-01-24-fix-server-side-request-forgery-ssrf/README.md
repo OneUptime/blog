@@ -57,11 +57,11 @@ app.get('/fetch-url', async (req, res) => {
 
 http://169.254.169.254/latest/meta-data/iam/security-credentials/
 
-# GCP metadata
+# GCP metadata (requires Metadata-Flavor: Google header)
 http://metadata.google.internal/computeMetadata/v1/
 
-# Azure metadata
-http://169.254.169.254/metadata/instance
+# Azure metadata (requires Metadata: true header)
+http://169.254.169.254/metadata/instance?api-version=2025-04-07
 
 # Internal services
 http://localhost:6379/           # Redis
@@ -123,7 +123,7 @@ class SSRFProtection {
 
         // Validate all resolved IPs
         for (const ip of ips) {
-            this.validateIP(ip);
+            this.validateIP(ip.address);
         }
 
         return {
@@ -133,13 +133,22 @@ class SSRFProtection {
     }
 
     async resolveHostname(hostname) {
+        const normalizedHostname = hostname.replace(/^\[|\]$/g, '');
+
         // Check if hostname is already an IP
-        if (ipaddr.isValid(hostname)) {
-            return [hostname];
+        if (ipaddr.isValid(normalizedHostname)) {
+            const addr = ipaddr.parse(normalizedHostname);
+            return [{
+                address: normalizedHostname,
+                family: addr.kind() === 'ipv6' ? 6 : 4
+            }];
         }
 
         try {
-            const addresses = await dns.resolve(hostname);
+            const addresses = await dns.lookup(hostname, {
+                all: true,
+                verbatim: true
+            });
             return addresses;
         } catch (error) {
             throw new Error(`Unable to resolve hostname: ${hostname}`);
@@ -160,6 +169,7 @@ class SSRFProtection {
             const metadataIPs = [
                 '169.254.169.254',  // AWS, Azure
                 '169.254.170.2',    // AWS ECS
+                'fd00:ec2::254',    // AWS IPv6
                 '100.100.100.200',  // Alibaba Cloud
             ];
 
@@ -211,19 +221,26 @@ class SafeFetcher {
 
         return new Promise((resolve, reject) => {
             const protocol = url.protocol === 'https:' ? https : http;
+            const resolvedIP = resolvedIPs[0];
+            const originalHostname = url.hostname.replace(/^\[|\]$/g, '');
 
             const requestOptions = {
-                hostname: url.hostname,
+                // Connect to the already-validated IP to prevent DNS rebinding.
+                hostname: resolvedIP.address,
+                family: resolvedIP.family,
                 port: url.port || (url.protocol === 'https:' ? 443 : 80),
                 path: url.pathname + url.search,
                 method: options.method || 'GET',
-                headers: options.headers || {},
-                timeout: this.timeout,
-                // Force resolved IP to prevent DNS rebinding
-                lookup: (hostname, opts, callback) => {
-                    callback(null, resolvedIPs[0], 4);
-                }
+                headers: {
+                    ...(options.headers || {}),
+                    Host: url.host
+                },
+                timeout: this.timeout
             };
+
+            if (url.protocol === 'https:') {
+                requestOptions.servername = originalHostname;
+            }
 
             const req = protocol.request(requestOptions, (res) => {
                 // Block redirects to prevent redirect-based SSRF
@@ -260,10 +277,17 @@ class SafeFetcher {
             });
 
             req.on('error', reject);
+
+            if (options.body) {
+                req.write(options.body);
+            }
+
             req.end();
         });
     }
 }
+
+module.exports = SafeFetcher;
 
 // Usage
 const fetcher = new SafeFetcher({
@@ -310,7 +334,7 @@ spec:
 
 ### Strategy 4: AWS IMDSv2 Configuration
 
-If you use AWS, require IMDSv2 which prevents SSRF attacks:
+If you use AWS, require IMDSv2 which helps prevent common SSRF attacks against instance metadata:
 
 ```bash
 # Require IMDSv2 for EC2 instance
@@ -322,13 +346,13 @@ aws ec2 modify-instance-metadata-options \
 
 ```javascript
 // IMDSv2 requires a token obtained via PUT request
-// SSRF attacks typically can only make GET requests
+// Many basic SSRF gadgets can only make GET requests without custom headers
 
 // This fails with IMDSv2:
 // GET http://169.254.169.254/latest/meta-data/
 
 // IMDSv2 requires:
-// 1. PUT http://169.254.169.254/latest/api/token (to get token)
+// 1. PUT http://169.254.169.254/latest/api/token with X-aws-ec2-metadata-token-ttl-seconds
 // 2. GET with X-aws-ec2-metadata-token header
 ```
 
@@ -339,10 +363,17 @@ aws ec2 modify-instance-metadata-options \
 ```javascript
 // webhook-validator.js
 const SSRFProtection = require('./ssrf-protection');
+const SafeFetcher = require('./safe-fetcher');
+const crypto = require('crypto');
 
 class WebhookValidator {
     constructor() {
         this.protection = new SSRFProtection({
+            allowedProtocols: ['https:'],
+            blockPrivateIPs: true,
+            blockMetadataIPs: true
+        });
+        this.safeFetcher = new SafeFetcher({
             allowedProtocols: ['https:'],
             blockPrivateIPs: true,
             blockMetadataIPs: true
@@ -380,7 +411,7 @@ class WebhookValidator {
         await storeVerificationToken(webhookUrl, verificationToken);
 
         // Send verification request
-        await safeFetcher.fetch(webhookUrl, {
+        await this.safeFetcher.fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -396,11 +427,16 @@ class WebhookValidator {
 
 ```javascript
 // image-downloader.js
+const SafeFetcher = require('./safe-fetcher');
+
 class SafeImageDownloader {
     constructor() {
-        this.protection = new SSRFProtection({
+        this.maxSize = 5 * 1024 * 1024; // 5MB
+        this.fetcher = new SafeFetcher({
             allowedProtocols: ['https:', 'http:'],
-            blockPrivateIPs: true
+            blockPrivateIPs: true,
+            maxResponseSize: this.maxSize,
+            timeout: 5000
         });
         this.allowedContentTypes = [
             'image/jpeg',
@@ -408,32 +444,28 @@ class SafeImageDownloader {
             'image/gif',
             'image/webp'
         ];
-        this.maxSize = 5 * 1024 * 1024; // 5MB
     }
 
     async download(imageUrl) {
-        await this.protection.validateUrl(imageUrl);
-
-        const response = await fetch(imageUrl, {
-            method: 'HEAD',
-            timeout: 5000
+        const response = await this.fetcher.fetch(imageUrl, {
+            method: 'HEAD'
         });
 
         // Validate content type
-        const contentType = response.headers.get('content-type');
+        const contentType = String(response.headers['content-type'] || '');
         if (!this.allowedContentTypes.some(t => contentType.startsWith(t))) {
             throw new Error('Invalid content type');
         }
 
         // Validate size
-        const contentLength = parseInt(response.headers.get('content-length') || '0');
+        const contentLength = parseInt(response.headers['content-length'] || '0', 10);
         if (contentLength > this.maxSize) {
             throw new Error('Image too large');
         }
 
         // Now safe to download
-        const imageResponse = await fetch(imageUrl);
-        return imageResponse.buffer();
+        const imageResponse = await this.fetcher.fetch(imageUrl);
+        return imageResponse.body;
     }
 }
 ```

@@ -16,9 +16,9 @@ Redis Functions are a new approach to server-side scripting that provides:
 
 - **Named Functions**: Functions have names and are organized into libraries
 - **Persistence**: Functions survive Redis restarts (stored in RDB/AOF)
-- **Versioning**: Libraries have versions for tracking changes
+- **Library Updates**: Libraries are replaced as a whole, so you can track versions in source control
 - **Better Management**: Load once, call by name, easier updates
-- **Cluster Support**: Functions replicate across cluster nodes
+- **Cluster Support**: Functions replicate to replicas; in Redis Cluster, load libraries on all master nodes
 
 ## Functions vs Traditional Lua Scripts
 
@@ -27,9 +27,9 @@ Redis Functions are a new approach to server-side scripting that provides:
 | Persistence | No | Yes (survives restart) |
 | Naming | SHA1 hash only | Named functions |
 | Organization | Individual scripts | Libraries |
-| Versioning | Manual | Built-in |
+| Versioning | Manual | Manual (usually source control) |
 | Loading | Every call or cache SHA | Load once |
-| Cluster replication | Manual | Automatic |
+| Replication | Script effects are replicated | Libraries are persisted and replicated to replicas |
 
 ## Getting Started
 
@@ -82,6 +82,14 @@ redis.register_function('decrement_counter', function(keys, args)
     local new_value = redis.call('DECRBY', key, amount)
     return new_value
 end)
+
+redis.register_function{
+    function_name = 'get_counter',
+    callback = function(keys, args)
+        return redis.call('GET', keys[1])
+    end,
+    flags = {'no-writes'}
+}
 ```
 
 ### Loading the Library
@@ -171,9 +179,13 @@ redis.register_function('add_user', function(keys, args)
     return 'OK'
 end)
 
-redis.register_function('get_user', function(keys, args)
-    return redis.call('GET', keys[1])
-end)
+redis.register_function{
+    function_name = 'get_user',
+    callback = function(keys, args)
+        return redis.call('GET', keys[1])
+    end,
+    flags = {'no-writes'}
+}
 """
 
 functions.load_library(library_code)
@@ -209,7 +221,7 @@ redis.register_function{
     flags = {'allow-oom'}
 }
 
--- Function that doesn't access keys (deterministic)
+-- Function that should not run in Redis Cluster
 redis.register_function{
     function_name = 'calculate',
     callback = function(keys, args)
@@ -228,7 +240,8 @@ Available flags:
 | `no-writes` | Function performs no writes |
 | `allow-oom` | Allow execution even in OOM situations |
 | `allow-stale` | Allow on replica even if stale |
-| `no-cluster` | Function doesn't access cluster-specific data |
+| `no-cluster` | Return an error when executed in Redis Cluster |
+| `allow-cross-slot-keys` | Allow a function to access keys from multiple hash slots |
 
 ## Practical Examples
 
@@ -267,7 +280,7 @@ redis.register_function{
             allowed = 1
         end
 
-        redis.call('HMSET', key, 'tokens', tokens, 'last_update', now_ms)
+        redis.call('HSET', key, 'tokens', tokens, 'last_update', now_ms)
         redis.call('EXPIRE', key, 3600)
 
         return {allowed, math.floor(remaining)}
@@ -281,10 +294,7 @@ redis.register_function{
     callback = function(keys, args)
         local key = keys[1]
         local bucket = redis.call('HMGET', key, 'tokens', 'last_update')
-        return {
-            tokens = tonumber(bucket[1]) or 0,
-            last_update = tonumber(bucket[2]) or 0
-        }
+        return {tonumber(bucket[1]) or 0, tonumber(bucket[2]) or 0}
     end,
     flags = {'no-writes'}
 }
@@ -342,13 +352,13 @@ redis.register_function{
         local in_cart = tonumber(redis.call('HGET', cart_key, product_id) or 0)
 
         if available < in_cart + quantity then
-            return {err = 'INSUFFICIENT_STOCK', available = available}
+            return redis.error_reply('INSUFFICIENT_STOCK available=' .. available)
         end
 
         local new_qty = redis.call('HINCRBY', cart_key, product_id, quantity)
         redis.call('EXPIRE', cart_key, 86400)  -- 24 hour expiry
 
-        return {ok = true, quantity = new_qty}
+        return {'OK', new_qty}
     end,
     flags = {}
 }
@@ -365,11 +375,11 @@ redis.register_function{
 
         if not quantity or quantity >= current then
             redis.call('HDEL', cart_key, product_id)
-            return {ok = true, quantity = 0}
+            return {'OK', 0}
         end
 
         local new_qty = redis.call('HINCRBY', cart_key, product_id, -quantity)
-        return {ok = true, quantity = new_qty}
+        return {'OK', new_qty}
     end,
     flags = {}
 }
@@ -400,7 +410,7 @@ redis.register_function{
             total = total + subtotal
         end
 
-        return {items = items, total = total}
+        return cjson.encode({items = items, total = total})
     end,
     flags = {'no-writes'}
 }
@@ -411,7 +421,7 @@ redis.register_function{
     callback = function(keys, args)
         local cart_key = keys[1]
         redis.call('DEL', cart_key)
-        return {ok = true}
+        return 'OK'
     end,
     flags = {}
 }
@@ -422,30 +432,18 @@ redis.register_function{
 ```lua
 #!lua name=sessions
 
-local function generate_session_id()
-    -- Simple session ID generation
-    local chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    local id = ''
-    for i = 1, 32 do
-        local rand = math.random(1, #chars)
-        id = id .. chars:sub(rand, rand)
-    end
-    return id
-end
-
 -- Create session
 redis.register_function{
     function_name = 'session_create',
     callback = function(keys, args)
-        local sessions_prefix = args[1] or 'session:'
+        local session_key = keys[1]
+        local user_sessions_key = keys[2]
+        local session_id = args[1]
         local user_id = args[2]
         local session_data = args[3] or '{}'
         local ttl = tonumber(args[4]) or 3600
 
-        local session_id = generate_session_id()
-        local session_key = sessions_prefix .. session_id
-
-        redis.call('HMSET', session_key,
+        redis.call('HSET', session_key,
             'user_id', user_id,
             'data', session_data,
             'created_at', redis.call('TIME')[1],
@@ -454,7 +452,7 @@ redis.register_function{
         redis.call('EXPIRE', session_key, ttl)
 
         -- Track user's sessions
-        redis.call('SADD', 'user_sessions:' .. user_id, session_id)
+        redis.call('SADD', user_sessions_key, session_id)
 
         return session_id
     end,
@@ -492,15 +490,16 @@ redis.register_function{
     function_name = 'session_destroy',
     callback = function(keys, args)
         local session_key = keys[1]
+        local user_sessions_key = keys[2]
 
         local user_id = redis.call('HGET', session_key, 'user_id')
         if user_id then
             local session_id = session_key:match('session:(.+)')
-            redis.call('SREM', 'user_sessions:' .. user_id, session_id)
+            redis.call('SREM', user_sessions_key, session_id)
         end
 
         redis.call('DEL', session_key)
-        return {ok = true}
+        return 'OK'
     end,
     flags = {}
 }
@@ -509,18 +508,16 @@ redis.register_function{
 redis.register_function{
     function_name = 'session_destroy_all',
     callback = function(keys, args)
-        local user_id = args[1]
-        local sessions_prefix = args[2] or 'session:'
+        local user_sessions_key = keys[1]
 
-        local sessions = redis.call('SMEMBERS', 'user_sessions:' .. user_id)
         local count = 0
 
-        for _, session_id in ipairs(sessions) do
-            redis.call('DEL', sessions_prefix .. session_id)
+        for i = 2, #keys do
+            redis.call('DEL', keys[i])
             count = count + 1
         end
 
-        redis.call('DEL', 'user_sessions:' .. user_id)
+        redis.call('DEL', user_sessions_key)
         return count
     end,
     flags = {}
@@ -567,18 +564,14 @@ redis-cli FUNCTION FLUSH
 
 ## Debugging Functions
 
-### Debug Mode
+### Runtime Inspection
 
 ```bash
-# Start debug session
-redis-cli --ldb --eval mylib.lua key1 key2 , arg1 arg2
+# Inspect currently running function and engine stats
+redis-cli FUNCTION STATS
 
-# Debug commands:
-# s - step
-# n - next
-# c - continue
-# p var - print variable
-# b line - breakpoint
+# Stop a long-running read-only function
+redis-cli FUNCTION KILL
 ```
 
 ### Logging in Functions
@@ -655,7 +648,7 @@ Redis Functions in Redis 7.0+ provide a significant improvement over traditional
 - Named functions that are easier to manage
 - Persistence across restarts
 - Better organization through libraries
-- Automatic cluster replication
-- Improved debugging capabilities
+- Replication to replicas and explicit deployment across Redis Cluster masters
+- Better management and observability commands
 
 By adopting Redis Functions, you can build more maintainable and robust server-side logic while retaining all the benefits of atomic execution that Lua scripts provide.

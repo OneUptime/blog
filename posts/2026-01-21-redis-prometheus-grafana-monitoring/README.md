@@ -70,11 +70,17 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./rules:/etc/prometheus/rules
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
 
   grafana:
     image: grafana/grafana:latest
@@ -199,7 +205,8 @@ metadata:
     app: redis-exporter
 spec:
   ports:
-    - port: 9121
+    - name: metrics
+      port: 9121
       targetPort: 9121
   selector:
     app: redis-exporter
@@ -214,7 +221,7 @@ spec:
     matchLabels:
       app: redis-exporter
   endpoints:
-    - port: "9121"
+    - port: metrics
       interval: 15s
 ```
 
@@ -226,7 +233,7 @@ spec:
 |--------|-------------|-----------------|
 | `redis_memory_used_bytes` | Total memory used | > 80% of maxmemory |
 | `redis_memory_max_bytes` | Maximum memory configured | - |
-| `redis_memory_fragmentation_ratio` | Memory fragmentation | < 1 or > 1.5 |
+| `redis_mem_fragmentation_ratio` | Memory fragmentation | < 1 or > 1.5 |
 | `redis_mem_fragmentation_bytes` | Fragmentation in bytes | - |
 
 ### Connection Metrics
@@ -331,7 +338,7 @@ Create a comprehensive Redis dashboard:
         "gridPos": {"h": 4, "w": 3, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100",
+            "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100",
             "legendFormat": "Hit %"
           }
         ],
@@ -434,7 +441,7 @@ rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rat
 rate(redis_commands_processed_total[1m])
 
 # Average command latency
-rate(redis_commands_duration_seconds_total[1m]) / rate(redis_commands_processed_total[1m])
+sum by (instance) (rate(redis_commands_duration_seconds_total[1m])) / rate(redis_commands_processed_total[1m])
 
 # Evicted keys per second
 rate(redis_evicted_keys_total[1m])
@@ -443,7 +450,7 @@ rate(redis_evicted_keys_total[1m])
 rate(redis_expired_keys_total[1m])
 
 # Memory fragmentation ratio
-redis_memory_fragmentation_ratio
+redis_mem_fragmentation_ratio
 
 # Replication lag (bytes)
 redis_master_repl_offset - on(instance) redis_slave_repl_offset
@@ -560,7 +567,7 @@ groups:
           description: "Redis instance {{ $labels.instance }} RDB save failed"
 
       - alert: RedisAOFRewriteFailed
-        expr: redis_aof_last_rewrite_status == 0
+        expr: redis_aof_last_bgrewrite_status == 0
         for: 1m
         labels:
           severity: warning
@@ -589,7 +596,7 @@ groups:
 
       # Memory Fragmentation
       - alert: RedisMemoryFragmentationHigh
-        expr: redis_memory_fragmentation_ratio > 1.5
+        expr: redis_mem_fragmentation_ratio > 1.5
         for: 10m
         labels:
           severity: warning
@@ -793,7 +800,8 @@ def main():
             print(f"  Latency: {latency['avg']:.2f}ms (p99: {latency['p99']:.2f}ms)")
 
             # Check for issues
-            if info['used_memory'] / info.get('maxmemory', float('inf')) > 0.8:
+            maxmemory = int(info.get('maxmemory') or 0)
+            if maxmemory > 0 and info['used_memory'] / maxmemory > 0.8:
                 print("  WARNING: Memory usage > 80%")
 
             if big_keys:

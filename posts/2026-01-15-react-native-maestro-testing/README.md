@@ -85,7 +85,7 @@ appId: com.myapp
 
 ### Performance
 
-**Detox**: Test execution is reasonably fast but requires a full build cycle when tests change.
+**Detox**: Test execution is reasonably fast, but it usually requires more runner and build configuration than a YAML-based Maestro flow.
 
 **Maestro**: Extremely fast iteration. Change a YAML file and re-run immediately. No compilation step.
 
@@ -110,6 +110,7 @@ appId: com.myapp
 
 Before installing Maestro, ensure you have:
 - macOS, Linux, or Windows (with WSL2)
+- Java 17 or higher, with `JAVA_HOME` pointing to your Java installation
 - A working React Native development environment
 - iOS Simulator (macOS only) or Android Emulator
 - Node.js and npm/yarn (for your React Native app)
@@ -119,7 +120,7 @@ Before installing Maestro, ensure you have:
 On macOS and Linux, install Maestro using the following command:
 
 ```bash
-curl -Ls "https://get.maestro.mobile.dev" | bash
+curl -fsSL "https://get.maestro.mobile.dev" | bash
 ```
 
 This downloads and installs the Maestro CLI to your system. After installation, add Maestro to your PATH:
@@ -175,8 +176,7 @@ your-react-native-app/
     utils/
       common-steps.yaml
     config/
-      .env.local
-      .env.staging
+      config.yaml
 ```
 
 ## Writing Your First Maestro Flow
@@ -257,7 +257,7 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 ### Launch and App Control
 
 ```yaml
-# Launch the app (clears state)
+# Launch the app
 - launchApp
 
 # Launch with specific options
@@ -285,7 +285,7 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 
 # Tap by accessibility label
 - tapOn:
-    label: "Submit Form"
+    text: "Submit Form"
 
 # Tap at specific coordinates (use sparingly)
 - tapOn:
@@ -306,7 +306,7 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 ### Text Input
 
 ```yaml
-# Simple text input (taps field first)
+# Simple text input into the focused field
 - inputText: "Hello World"
 
 # Input into specific field
@@ -315,7 +315,7 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 - inputText: "search query"
 
 # Clear and input
-- clearText
+- eraseText
 - inputText: "New text"
 
 # Input with keyboard handling
@@ -332,11 +332,11 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
     direction: DOWN
 
 # Scroll in a specific container
-- scrollUntilVisible:
-    element: "Target Item"
-    direction: DOWN
-    container:
+- swipe:
+    from:
       id: "scroll-view"
+    direction: UP
+- assertVisible: "Target Item"
 
 # Swipe gestures
 - swipe:
@@ -346,7 +346,7 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 # Swipe on specific element
 - swipe:
     direction: RIGHT
-    element:
+    from:
       id: "carousel"
 ```
 
@@ -354,16 +354,18 @@ Maestro's YAML syntax is intuitive but powerful. Let us explore the key commands
 
 ```yaml
 # Wait for element to appear
-- waitForElement:
-    text: "Loading complete"
+- extendedWaitUntil:
+    visible: "Loading complete"
     timeout: 10000  # 10 seconds
 
 # Wait for element to disappear
-- waitUntilNotVisible:
-    text: "Loading..."
+- extendedWaitUntil:
+    notVisible: "Loading..."
+    timeout: 10000
 
-# Fixed delay (use sparingly)
-- wait: 2000  # 2 seconds
+# Wait for animations to settle
+- waitForAnimationToEnd:
+    timeout: 2000
 ```
 
 ## Element Selection Strategies
@@ -383,10 +385,10 @@ TestIDs are stable across text changes and localization. Add them to critical in
 
 ```yaml
 - tapOn:
-    label: "Submit order"
+    text: "Submit order"
 ```
 
-Good for apps that already have accessibility support. Labels are often more descriptive than testIDs.
+Good for apps that already have accessibility support. Maestro's `text` selector can match visible text and accessibility labels.
 
 ### 3. Text Content
 
@@ -401,7 +403,6 @@ Simple and readable, but breaks if text changes or with localization.
 ```yaml
 - tapOn:
     text: "Sign.*"
-    regex: true
 ```
 
 Useful when text might vary slightly.
@@ -415,7 +416,8 @@ Useful when text might vary slightly.
 
 - tapOn:
     id: "item-row"
-    containsChild: "Product Name"
+    containsChild:
+      text: "Product Name"
 ```
 
 ### 6. Index-Based Selection
@@ -459,19 +461,20 @@ Maestro provides several ways to verify your app's state:
 # Check text with regex
 - assertVisible:
     text: "Order #[0-9]+"
-    regex: true
 ```
 
 ### Element State Assertions
 
 ```yaml
 # Assert element is enabled
-- assertEnabled:
+- assertVisible:
     id: "submit-button"
+    enabled: true
 
 # Assert element is disabled
-- assertDisabled:
+- assertVisible:
     id: "submit-button"
+    enabled: false
 ```
 
 ### Custom Assertions with JavaScript
@@ -479,12 +482,12 @@ Maestro provides several ways to verify your app's state:
 For complex validations, use inline JavaScript:
 
 ```yaml
-- evalScript: |
-    const balance = maestro.findElement({ id: 'balance' }).text;
-    const numericBalance = parseFloat(balance.replace('$', ''));
-    if (numericBalance < 0) {
-      throw new Error('Balance should not be negative');
-    }
+- copyTextFrom:
+    id: "balance"
+- evalScript: ${output.numericBalance = parseFloat(maestro.copiedText.replace('$', ''))}
+- assertTrue:
+    condition: ${output.numericBalance >= 0}
+    label: Balance should not be negative
 ```
 
 ## Handling Conditional Flows
@@ -552,13 +555,14 @@ Managing test data effectively is crucial for maintainable tests:
 
 ### Environment Variables
 
-Create a `.env` file in your maestro directory:
+Pass environment values when running the flow:
 
-```env
-# maestro/.env.local
-EMAIL=testuser@example.com
-PASSWORD=SecurePassword123
-API_URL=https://staging.api.example.com
+```bash
+maestro test \
+  -e EMAIL=testuser@example.com \
+  -e PASSWORD=SecurePassword123 \
+  -e API_URL=https://staging.api.example.com \
+  maestro/flows/login.yaml
 ```
 
 Use variables in your flows:
@@ -575,38 +579,35 @@ appId: com.yourapp
 - inputText: "${PASSWORD}"
 ```
 
-Run with environment file:
+You can also define constants directly in a flow:
 
-```bash
-maestro test --env maestro/.env.local maestro/flows/login.yaml
+```yaml
+appId: com.yourapp
+env:
+  EMAIL: testuser@example.com
+  PASSWORD: SecurePassword123
+---
+- launchApp
 ```
 
 ### External Data Files
 
-For complex test data, use external YAML files:
+For complex test data, use an external JavaScript file:
 
-```yaml
-# maestro/data/users.yaml
-admin:
-  email: admin@example.com
-  password: AdminPass123
-  role: administrator
-
-regular:
-  email: user@example.com
-  password: UserPass123
-  role: user
+```javascript
+// maestro/data/users.js
+output.adminEmail = "admin@example.com";
+output.adminPassword = "AdminPass123";
 ```
 
 Reference in your flow:
 
 ```yaml
 appId: com.yourapp
-env:
-  DATA_FILE: maestro/data/users.yaml
 ---
 - launchApp
-- inputText: "${admin.email}"
+- runScript: ../data/users.js
+- inputText: "${output.adminEmail}"
 ```
 
 ### Dynamic Data Generation
@@ -614,10 +615,9 @@ env:
 Use JavaScript for dynamic data:
 
 ```yaml
-- evalScript: |
-    const timestamp = Date.now();
-    output.uniqueEmail = `test+${timestamp}@example.com`;
-    output.orderRef = `ORD-${timestamp}`;
+- evalScript: ${output.timestamp = Date.now()}
+- evalScript: ${output.uniqueEmail = "test+" + output.timestamp + "@example.com"}
+- evalScript: ${output.orderRef = "ORD-" + output.timestamp}
 
 - tapOn: "Email"
 - inputText: "${output.uniqueEmail}"
@@ -650,7 +650,7 @@ env:
   PASSWORD: specificPassword
 ---
 - launchApp
-- runFlow: utils/login.yaml
+- runFlow: ../utils/login.yaml
 - tapOn: "Profile"
 ```
 
@@ -686,7 +686,7 @@ jobs:
 
       - name: Install Maestro
         run: |
-          curl -Ls "https://get.maestro.mobile.dev" | bash
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
 
       - name: Build iOS app
@@ -734,7 +734,7 @@ jobs:
 
       - name: Install Maestro
         run: |
-          curl -Ls "https://get.maestro.mobile.dev" | bash
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
 
       - name: Enable KVM
@@ -784,7 +784,7 @@ e2e-android:
   services:
     - name: android-emulator
   before_script:
-    - curl -Ls "https://get.maestro.mobile.dev" | bash
+    - curl -fsSL "https://get.maestro.mobile.dev" | bash
     - export PATH="$PATH:$HOME/.maestro/bin"
   script:
     - adb install android/app/build/outputs/apk/release/app-release.apk
@@ -819,7 +819,7 @@ jobs:
       - run:
           name: Install Maestro
           command: |
-            curl -Ls "https://get.maestro.mobile.dev" | bash
+            curl -fsSL "https://get.maestro.mobile.dev" | bash
             echo 'export PATH="$PATH:$HOME/.maestro/bin"' >> $BASH_ENV
       - run:
           name: Build Android app
@@ -844,10 +844,10 @@ Maestro Cloud is a managed service that runs your tests on real devices in the c
 
 First, create an account at [cloud.mobile.dev](https://cloud.mobile.dev) and get your API key.
 
-Install the Maestro Cloud CLI:
+Authenticate the Maestro CLI with Maestro Cloud:
 
 ```bash
-maestro cloud login
+maestro login
 ```
 
 ### Uploading and Running Tests
@@ -868,30 +868,30 @@ maestro cloud \
 
 ### Advanced Cloud Configuration
 
-Create a `maestro-cloud.yaml` configuration file:
+Create a `config.yaml` configuration file:
 
 ```yaml
-# maestro-cloud.yaml
-appFile: android/app/build/outputs/apk/release/app-release.apk
-flows: maestro/flows/
+# config.yaml
+flows:
+  - maestro/flows/**
 env:
   API_URL: https://staging.api.example.com
   TEST_USER: cloud-test@example.com
-parallelism: 4
-timeout: 30  # minutes
-devices:
-  - platform: android
-    version: 14
-  - platform: android
-    version: 13
-  - platform: ios
-    version: 17
+includeTags:
+  - smoke
+platform:
+  android:
+    disableAnimations: true
+  ios:
+    disableAnimations: true
 ```
 
 Run with configuration:
 
 ```bash
-maestro cloud --config maestro-cloud.yaml
+maestro cloud \
+  --app-file android/app/build/outputs/apk/release/app-release.apk \
+  --config config.yaml
 ```
 
 ### CI Integration with Maestro Cloud
@@ -945,7 +945,9 @@ appId: com.yourapp
     id: "password-input"
 - inputText: "${PASSWORD}"
 - tapOn: "Login"
-- waitForElement: "Dashboard"
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 10000
 ```
 
 Use in other flows:
@@ -957,7 +959,7 @@ env:
   PASSWORD: password123
 ---
 - launchApp
-- runFlow: utils/login-helper.yaml
+- runFlow: ../utils/login-helper.yaml
 # Continue with authenticated actions
 ```
 
@@ -977,8 +979,8 @@ env:
 
 ```yaml
 # Wait for loading to complete before asserting
-- waitUntilNotVisible:
-    text: "Loading..."
+- extendedWaitUntil:
+    notVisible: "Loading..."
     timeout: 15000
 
 - assertVisible: "Data loaded"
@@ -996,7 +998,7 @@ Maestro Studio opens an interactive UI where you can:
 - Test individual commands in real-time
 - Export generated flows
 
-### 6. Run Tests in Parallel Locally
+### 6. Run Test Suites Locally
 
 ```bash
 # Run all flows in the directory
@@ -1021,10 +1023,10 @@ maestro test maestro/flows/checkout/
 
 ```bash
 # Run with verbose output
-maestro test --debug-output maestro/flows/login.yaml
+maestro --verbose test maestro/flows/login.yaml
 
 # Run single flow with detailed logging
-maestro test maestro/flows/login.yaml --format junit
+maestro test --debug-output ./maestro-debug-output maestro/flows/login.yaml --format JUNIT
 ```
 
 ### 9. Handle Permissions Dialogs
@@ -1060,12 +1062,13 @@ maestro test maestro/flows/login.yaml --format junit
 
 ```yaml
 # Bad - arbitrary wait
-- wait: 5000
+- waitForAnimationToEnd:
+    timeout: 5000
 - tapOn: "Submit"
 
 # Good - wait for specific condition
-- waitForElement:
-    text: "Form Ready"
+- extendedWaitUntil:
+    visible: "Form Ready"
     timeout: 5000
 - tapOn: "Submit"
 ```
@@ -1097,13 +1100,15 @@ maestro test --exclude-tags slow maestro/flows/
 
 ```yaml
 # Add timeout for slow-loading elements
-- tapOn:
-    text: "Submit"
+- extendedWaitUntil:
+    visible: "Submit"
     timeout: 10000
+- tapOn: "Submit"
 
-# Use waitForElement before interaction
-- waitForElement:
-    id: "submit-button"
+# Wait for an element before interaction
+- extendedWaitUntil:
+    visible:
+      id: "submit-button"
     timeout: 15000
 - tapOn:
     id: "submit-button"
@@ -1122,11 +1127,14 @@ maestro test --exclude-tags slow maestro/flows/
 
 ```yaml
 # Wait for animations to complete
-- waitUntilNotVisible:
-    id: "loading-animation"
+- extendedWaitUntil:
+    notVisible:
+      id: "loading-animation"
+    timeout: 10000
 
-# Or use a brief pause (last resort)
-- wait: 500
+# Or wait briefly for animations to settle
+- waitForAnimationToEnd:
+    timeout: 500
 ```
 
 ## Conclusion

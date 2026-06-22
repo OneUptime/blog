@@ -45,6 +45,9 @@ spec:
     attempts: 3
     # Initial wait time between retries
     initialInterval: 100ms
+    # Retry on upstream server errors
+    status:
+      - "500-599"
 ```
 
 Apply it to a route:
@@ -75,13 +78,14 @@ spec:
 Traefik retries requests when:
 
 - Network errors occur (connection refused, reset, timeout)
-- Backend returns 5xx status codes (by default)
+- Backend returns configured status codes, such as 5xx responses
 
 Traefik does NOT retry when:
 
 - Backend returns successful response (2xx)
 - Backend returns client error (4xx)
-- Request body has already been consumed
+- Backend returns a response status that is not listed in the retry configuration
+- A non-idempotent method such as POST, PATCH, or LOCK is used without enabling `retryNonIdempotentMethod`
 
 ```mermaid
 sequenceDiagram
@@ -117,13 +121,13 @@ spec:
     attempts: 4
     # Initial interval between retries
     initialInterval: 100ms
+    status:
+      - "500-599"
 ```
 
-The retry intervals follow exponential backoff by default:
-- Attempt 1: immediate
-- Attempt 2: wait ~100ms
-- Attempt 3: wait ~200ms
-- Attempt 4: wait ~400ms
+When `initialInterval` is set, retries use exponential backoff. The maximum interval is calculated as twice the `initialInterval` value:
+- First retry: wait ~100ms
+- Later retries: increase up to ~200ms
 
 ## Limiting Total Retry Duration
 
@@ -140,21 +144,16 @@ spec:
   retry:
     attempts: 5
     initialInterval: 200ms
+    # Total time allowed for retrying this request
+    timeout: 2s
+    status:
+      - "500-599"
 ```
 
-Combine with a timeout middleware to cap total request duration:
+Use the retry `timeout` option to cap the time Traefik is allowed to spend retrying the request:
 
 ```yaml
-# timeout-middleware.yaml
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: request-timeout
-  namespace: default
-spec:
-  # Overall request timeout including retries
-  # Note: This is handled via forwardingTimeouts in service config
----
+# bounded-retry-route.yaml
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -171,9 +170,6 @@ spec:
       services:
         - name: api-service
           port: 8080
-          # Response timeout limits each attempt
-          responseForwarding:
-            flushInterval: 100ms
   tls: {}
 ```
 
@@ -193,6 +189,8 @@ spec:
   retry:
     attempts: 3
     initialInterval: 100ms
+    status:
+      - "500-599"
 ---
 # No retry for POST/PUT operations (might cause duplicates)
 apiVersion: traefik.io/v1alpha1
@@ -238,6 +236,8 @@ spec:
   retry:
     attempts: 3
     initialInterval: 100ms
+    status:
+      - "500-599"
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -300,6 +300,9 @@ spec:
   retry:
     attempts: 5
     initialInterval: 50ms
+    timeout: 1s
+    status:
+      - "500-599"
 ---
 # Standard service: moderate retries
 apiVersion: traefik.io/v1alpha1
@@ -311,6 +314,9 @@ spec:
   retry:
     attempts: 3
     initialInterval: 100ms
+    timeout: 1s
+    status:
+      - "500-599"
 ---
 # Non-critical service: minimal retries
 apiVersion: traefik.io/v1alpha1
@@ -322,6 +328,9 @@ spec:
   retry:
     attempts: 2
     initialInterval: 200ms
+    timeout: 1s
+    status:
+      - "500-599"
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -384,7 +393,7 @@ Query retry-related metrics:
 # Total requests with retries
 sum(rate(traefik_service_retries_total[5m])) by (service)
 
-# Retry ratio - percentage of requests that needed retries
+# Retry ratio - fraction of requests that needed retries
 sum(rate(traefik_service_retries_total[5m])) by (service)
 /
 sum(rate(traefik_service_requests_total[5m])) by (service)
@@ -413,8 +422,9 @@ for i in {1..20}; do
     https://api.example.com/status/503
 done
 
-# Observe that some requests succeed due to retries
-# (if backend is intermittently failing)
+# /status/503 always returns 503, so retries should still end with 503.
+# Use metrics to confirm retry attempts, or test against a backend
+# that fails intermittently to observe eventual success.
 ```
 
 Check Traefik logs for retry activity:
@@ -440,18 +450,21 @@ spec:
     attempts: 2
     # Longer initial interval to spread retries
     initialInterval: 500ms
+    timeout: 2s
+    status:
+      - "500-599"
 ```
 
 Additional strategies:
 
 1. **Use circuit breakers**: Stop retries when service is clearly down
-2. **Add jitter**: Traefik adds some randomization by default
+2. **Add jitter at clients or callers**: Traefik retry exposes interval and timeout controls, but not a jitter option
 3. **Limit concurrent requests**: Use rate limiting before retry
 4. **Set reasonable timeouts**: Fast timeouts prevent pile-up
 
 ## Retry Headers for Debugging
 
-Add headers to track retry attempts:
+Add headers to identify routes where retry is enabled:
 
 ```yaml
 # retry-headers.yaml
@@ -464,16 +477,18 @@ spec:
   retry:
     attempts: 3
     initialInterval: 100ms
+    status:
+      - "500-599"
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: add-attempt-header
+  name: add-retry-route-header
   namespace: default
 spec:
   headers:
     customRequestHeaders:
-      X-Retry-Count: "{{ .Attempt }}"
+      X-Retry-Enabled: "true"
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -488,19 +503,19 @@ spec:
       kind: Rule
       middlewares:
         - name: retry-with-headers
-        - name: add-attempt-header
+        - name: add-retry-route-header
       services:
         - name: api-service
           port: 8080
   tls: {}
 ```
 
-Your backend can log the retry count for debugging.
+Your backend can log this header to identify requests that passed through a retry-enabled route. Use Traefik metrics to count actual retry attempts.
 
 ## Best Practices
 
 1. **Start conservative**: Begin with 2-3 attempts and adjust based on data
-2. **Use exponential backoff**: The default behavior spreads out retries
+2. **Use exponential backoff**: Set `initialInterval` to spread out retries
 3. **Combine with circuit breaker**: Prevents retry storms to failing services
 4. **Separate read and write operations**: Only retry idempotent operations
 5. **Monitor retry rates**: High retry rates indicate underlying issues

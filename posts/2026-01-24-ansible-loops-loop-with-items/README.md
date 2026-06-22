@@ -24,7 +24,7 @@ flowchart LR
     style F fill:#90EE90
 ```
 
-The `loop` keyword was introduced in Ansible 2.5 as a cleaner replacement for `with_*` constructs. While both work, `loop` combined with filters is now the recommended approach.
+The `loop` keyword was introduced in Ansible 2.5 as a cleaner replacement for many `with_*` constructs. While both work, `loop` combined with filters is now the recommended approach in most cases.
 
 ## Basic Loop Syntax
 
@@ -63,6 +63,8 @@ The `loop` keyword was introduced in Ansible 2.5 as a cleaner replacement for `w
     - postgresql
     - redis
 ```
+
+When converting existing `with_items` tasks, remember that `with_items` performs implicit single-level flattening. Use `loop: "{{ items | flatten(1) }}"` if you need to preserve that exact behavior.
 
 ### Modern Package Module Approach
 
@@ -300,10 +302,10 @@ flowchart LR
 # Using loop_control for index
 - name: Install packages with index
   debug:
-    msg: "Installing package {{ loop_index }}/{{ packages | length }}: {{ item }}"
+    msg: "Installing package {{ loop_index + 1 }}/{{ packages | length }}: {{ item }}"
   loop: "{{ packages }}"
   loop_control:
-    index_var: loop_index
+    index_var: loop_index  # loop_index is 0-based
 ```
 
 ### Pausing Between Iterations
@@ -433,14 +435,14 @@ flowchart TD
 
 | Legacy Syntax | Modern Equivalent |
 |--------------|-------------------|
-| `with_items` | `loop` |
+| `with_items` | `loop: "{{ items \| flatten(1) }}"` |
 | `with_list` | `loop` |
 | `with_dict` | `loop: "{{ dict \| dict2items }}"` |
 | `with_subelements` | `loop: "{{ list \| subelements('key') }}"` |
 | `with_nested` | `loop: "{{ list1 \| product(list2) \| list }}"` |
 | `with_sequence` | `loop: "{{ range(start, end, step) \| list }}"` |
 | `with_fileglob` | `loop: "{{ query('fileglob', 'pattern') }}"` |
-| `with_lines` | `loop: "{{ lookup('lines', 'command') }}"` |
+| `with_lines` | `loop: "{{ query('lines', 'command') }}"` |
 | `with_indexed_items` | `loop` with `loop_control.index_var` |
 
 ### Conversion Examples

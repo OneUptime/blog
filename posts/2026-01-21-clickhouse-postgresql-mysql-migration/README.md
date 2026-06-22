@@ -79,19 +79,20 @@ PostgreSQL/MySQL types don't map 1:1 to ClickHouse. Here's a conversion guide:
 
 | PostgreSQL | MySQL | ClickHouse | Notes |
 |------------|-------|------------|-------|
-| SERIAL, BIGSERIAL | INT AUTO_INCREMENT | UInt64 | No auto-increment in ClickHouse |
+| SERIAL | INT AUTO_INCREMENT | UInt32 | No auto-increment in ClickHouse |
+| BIGSERIAL | BIGINT AUTO_INCREMENT | UInt64 | No auto-increment in ClickHouse |
 | INTEGER | INT | Int32 | Signed integer |
 | BIGINT | BIGINT | Int64 | Signed 64-bit |
 | SMALLINT | SMALLINT | Int16 | Signed 16-bit |
 | REAL | FLOAT | Float32 | Single precision |
 | DOUBLE PRECISION | DOUBLE | Float64 | Double precision |
-| NUMERIC(p,s) | DECIMAL(p,s) | Decimal64(s) | Fixed decimal |
+| NUMERIC(p,s) | DECIMAL(p,s) | Decimal(p,s) | Fixed decimal |
 | VARCHAR(n) | VARCHAR(n) | String | No length limit |
 | TEXT | TEXT | String | Same as VARCHAR |
 | BOOLEAN | TINYINT(1) | UInt8 | 0 or 1 |
 | DATE | DATE | Date | YYYY-MM-DD |
-| TIMESTAMP | DATETIME | DateTime | Second precision |
-| TIMESTAMPTZ | DATETIME | DateTime('UTC') | With timezone |
+| TIMESTAMP | DATETIME | DateTime or DateTime64(6) | Use DateTime64 for sub-second precision |
+| TIMESTAMPTZ | DATETIME | DateTime('UTC') or DateTime64(6, 'UTC') | Use DateTime64 for sub-second precision |
 | UUID | CHAR(36) | UUID | Native UUID type |
 | JSONB | JSON | JSON or Map | Depends on usage |
 | ARRAY | - | Array() | Native arrays |
@@ -121,8 +122,8 @@ ClickHouse equivalent:
 -- ClickHouse
 CREATE TABLE events
 (
-    id UInt64,  -- No auto-increment, generate in app or use generateUUIDv4()
-    user_id UInt64,
+    id UInt64,  -- No auto-increment, generate numeric IDs in your app
+    user_id Int64,
     event_type LowCardinality(String),  -- Optimized for low cardinality
     properties Map(String, String),     -- Or JSON if structure varies
     created_at DateTime('UTC')
@@ -154,7 +155,7 @@ Export from PostgreSQL:
 psql -h localhost -U postgres -d mydb -c "\COPY (SELECT * FROM events) TO '/tmp/events.csv' WITH CSV HEADER"
 
 # Or use COPY for better performance
-COPY events TO '/tmp/events.csv' WITH (FORMAT CSV, HEADER);
+psql -h localhost -U postgres -d mydb -c "COPY events TO '/tmp/events.csv' WITH (FORMAT CSV, HEADER);"
 ```
 
 Export from MySQL:
@@ -167,13 +168,20 @@ mysql -h localhost -u root -p mydb -e "SELECT * FROM events INTO OUTFILE '/tmp/e
 mysqldump --tab=/tmp --fields-terminated-by=',' --fields-enclosed-by='"' mydb events
 ```
 
+MySQL's `SELECT INTO OUTFILE` and `mysqldump --tab` exports do not include a header row by default, so import those files with `CSV` instead of `CSVWithNames`.
+
 Import to ClickHouse:
 
 ```sql
--- Import from local file
+-- Import from local file with a header row
 INSERT INTO events
 SELECT *
 FROM file('/tmp/events.csv', 'CSVWithNames');
+
+-- Import from local file without a header row
+INSERT INTO events
+SELECT *
+FROM file('/tmp/events.csv', 'CSV');
 
 -- Import from URL
 INSERT INTO events
@@ -264,7 +272,11 @@ Set up Debezium with Kafka:
     "database.dbname": "mydb",
     "table.include.list": "public.events",
     "topic.prefix": "pg",
-    "plugin.name": "pgoutput"
+    "plugin.name": "pgoutput",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState"
   }
 }
 ```
@@ -276,7 +288,7 @@ Consume in ClickHouse using Kafka engine:
 CREATE TABLE events_kafka
 (
     id UInt64,
-    user_id UInt64,
+    user_id Int64,
     event_type String,
     created_at DateTime
 )
@@ -298,9 +310,8 @@ FROM events_kafka;
 Write to both databases from your application:
 
 ```python
-# Python example with async writes to ClickHouse
-import asyncio
-from sqlalchemy import create_engine
+# Python example with best-effort writes to ClickHouse
+from sqlalchemy import create_engine, text
 import clickhouse_connect
 
 # PostgreSQL connection
@@ -309,20 +320,29 @@ pg_engine = create_engine('postgresql://user:pass@localhost/mydb')
 # ClickHouse connection
 ch_client = clickhouse_connect.get_client(host='localhost')
 
-async def insert_event(event_data):
+def insert_event(event_data):
     # Write to PostgreSQL (synchronous, transactional)
     with pg_engine.connect() as conn:
-        conn.execute(
-            "INSERT INTO events (user_id, event_type, created_at) VALUES (%s, %s, %s)",
-            (event_data['user_id'], event_data['event_type'], event_data['created_at'])
+        result = conn.execute(
+            text("""
+                INSERT INTO events (user_id, event_type, created_at)
+                VALUES (:user_id, :event_type, :created_at)
+                RETURNING id
+            """),
+            {
+                'user_id': event_data['user_id'],
+                'event_type': event_data['event_type'],
+                'created_at': event_data['created_at'],
+            }
         )
+        event_id = result.scalar_one()
         conn.commit()
 
-    # Write to ClickHouse (async, can fail independently)
+    # Write to ClickHouse (best effort, can fail independently)
     try:
         ch_client.insert('events', [
-            [event_data['user_id'], event_data['event_type'], event_data['created_at']]
-        ], column_names=['user_id', 'event_type', 'created_at'])
+            [event_id, event_data['user_id'], event_data['event_type'], event_data['created_at']]
+        ], column_names=['id', 'user_id', 'event_type', 'created_at'])
     except Exception as e:
         # Log error, add to retry queue
         log_clickhouse_failure(event_data, e)
@@ -392,7 +412,7 @@ ClickHouse:
 ```sql
 SELECT lower(name), substring(email, 1, 5)
 FROM users
-WHERE lower(name) LIKE '%john%';  -- No ILIKE, use lower()
+WHERE name ILIKE '%john%';
 ```
 
 ### JSON Queries

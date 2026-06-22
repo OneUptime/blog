@@ -19,8 +19,8 @@ Connection settings significantly impact PostgreSQL performance and resource usa
 
 max_connections = 100  # Default
 
-# Each connection uses ~10MB RAM
-# Formula: available_memory / 10MB = rough max
+# max_connections increases shared resource allocation
+# Active queries can use additional memory, such as work_mem
 ```
 
 ### Connection Calculation
@@ -32,7 +32,8 @@ Example (32GB server):
 - shared_buffers: 8GB
 - OS/other: 4GB
 - Available: 20GB
-- Max connections: 20GB / 10MB = 2000 (but use pooling instead)
+- Do not size max_connections by dividing RAM by a fixed per-connection value
+- Keep max_connections reasonable and use pooling instead
 ```
 
 ### superuser_reserved_connections
@@ -115,7 +116,7 @@ AND query_start < NOW() - INTERVAL '5 minutes';
 
 1. **Use connection pooling** - Essential for scaling
 2. **Set appropriate timeouts** - Clean up idle connections
-3. **Reserve admin connections** - superuser_reserved
+3. **Reserve admin connections** - superuser_reserved_connections
 4. **Monitor usage** - Alert before hitting limits
 5. **Size for workload** - Not maximum possible
 

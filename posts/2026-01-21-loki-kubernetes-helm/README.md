@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Kubernetes, Helm, Log Management, Observability, Promtail, Cloud Native
 
-Description: A comprehensive guide to deploying Grafana Loki on Kubernetes using Helm charts, covering the loki-stack, single binary, and distributed deployments with production-ready configurations.
+Description: A comprehensive guide to deploying Grafana Loki on Kubernetes using Helm charts, covering the legacy loki-stack, monolithic, and distributed deployments with production-ready configurations.
 
 ---
 
-Grafana Loki is a horizontally scalable, highly available log aggregation system designed for cloud-native environments. Deploying Loki on Kubernetes with Helm provides a streamlined, repeatable deployment process that can scale from development clusters to production workloads. This guide covers everything from basic loki-stack deployments to advanced distributed configurations.
+Grafana Loki is a horizontally scalable, highly available log aggregation system designed for cloud-native environments. Deploying Loki on Kubernetes with Helm provides a streamlined, repeatable deployment process that can scale from development clusters to production workloads. This guide covers everything from legacy loki-stack deployments to advanced distributed configurations.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- Kubernetes cluster (1.21+) with kubectl configured
+- Kubernetes cluster (1.25+) with kubectl configured
 - Helm 3.8 or later installed
 - At least 4GB of available memory in your cluster
 - Storage class configured for persistent volumes
@@ -22,9 +22,10 @@ Before starting, ensure you have:
 
 ## Adding the Grafana Helm Repository
 
-First, add the Grafana Helm repository:
+First, add the Grafana Community Helm repository for the Loki chart. Add the Grafana Helm repository as well if you plan to use legacy charts such as loki-stack or Promtail:
 
 ```bash
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 ```
@@ -32,22 +33,21 @@ helm repo update
 Verify the repository was added:
 
 ```bash
-helm search repo grafana/loki
+helm search repo loki
 ```
 
 You should see available Loki charts:
 
 ```text
 NAME                            CHART VERSION   APP VERSION
-grafana/loki                    5.47.1          2.9.4
-grafana/loki-stack              2.10.1          v2.9.3
-grafana/loki-distributed        0.78.3          2.9.4
-grafana/loki-simple-scalable    1.8.11          2.6.1
+grafana-community/loki          17.4.9          3.7.2
+grafana/loki-stack              2.10.3          v2.9.3
+grafana/promtail                6.17.1          3.5.1
 ```
 
 ## Option 1 - Loki Stack (Quick Start)
 
-The loki-stack chart deploys Loki along with Promtail and optionally Grafana. This is ideal for development and small-scale production environments.
+The loki-stack chart deploys Loki along with Promtail and optionally Grafana. This chart is deprecated and should be used only for legacy or development deployments; use the main `grafana-community/loki` chart for new production deployments.
 
 ### Basic Installation
 
@@ -90,9 +90,11 @@ loki:
       ingestion_rate_mb: 16
       ingestion_burst_size_mb: 24
       max_streams_per_user: 10000
-    table_manager:
-      retention_deletes_enabled: true
       retention_period: 720h
+    compactor:
+      working_directory: /loki/retention
+      retention_enabled: true
+      delete_request_store: filesystem
   resources:
     requests:
       cpu: 100m
@@ -151,9 +153,9 @@ helm install loki grafana/loki-stack \
   -f loki-stack-values.yaml
 ```
 
-## Option 2 - Single Binary Mode
+## Option 2 - Monolithic Mode
 
-For medium-scale deployments, the main Loki chart in single binary mode provides more configuration options:
+For small to medium deployments, the main Loki chart in monolithic mode provides more configuration options. This mode was previously called single binary mode in older chart versions:
 
 Create `loki-single-values.yaml`:
 
@@ -188,7 +190,7 @@ loki:
     max_entries_limit_per_query: 5000
     max_query_series: 500
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 1
@@ -204,7 +206,7 @@ singleBinary:
       cpu: 2000m
       memory: 4Gi
 
-# Disable components not needed in single binary mode
+# Disable components not needed in monolithic mode
 
 backend:
   replicas: 0
@@ -247,7 +249,7 @@ monitoring:
 Install:
 
 ```bash
-helm install loki grafana/loki \
+helm install loki grafana-community/loki \
   --namespace loki \
   --create-namespace \
   -f loki-single-values.yaml
@@ -314,10 +316,6 @@ loki:
     per_stream_rate_limit_burst: 15MB
 
   rulerConfig:
-    storage:
-      type: s3
-      s3:
-        bucketnames: loki-ruler
     alertmanager_url: http://alertmanager:9093
 
 deploymentMode: Distributed
@@ -325,6 +323,8 @@ deploymentMode: Distributed
 # Ingester configuration
 ingester:
   replicas: 3
+  zoneAwareReplication:
+    enabled: false
   persistence:
     enabled: true
     size: 50Gi
@@ -487,7 +487,7 @@ monitoring:
 Install:
 
 ```bash
-helm install loki grafana/loki \
+helm install loki grafana-community/loki \
   --namespace loki \
   --create-namespace \
   -f loki-distributed-values.yaml
@@ -495,7 +495,7 @@ helm install loki grafana/loki \
 
 ## Deploying Promtail Separately
 
-When using the main Loki chart, deploy Promtail separately:
+When using the main Loki chart, deploy a log collector separately. Promtail reached end-of-life on March 2, 2026; the example below is retained for legacy environments, but Grafana Alloy is the recommended collector for new deployments.
 
 Create `promtail-values.yaml`:
 
@@ -699,6 +699,8 @@ loki:
 ### MinIO (Self-Hosted S3)
 
 ```yaml
+# The built-in MinIO subchart is deprecated and requires this flag in Loki chart v17+.
+ignoreMinioDeprecation: true
 minio:
   enabled: true
   persistence:
@@ -817,13 +819,13 @@ To upgrade Loki:
 # Update helm repos
 helm repo update
 
-# Check what will change
-helm diff upgrade loki grafana/loki \
+# Check what will change with the helm-diff plugin installed
+helm diff upgrade loki grafana-community/loki \
   --namespace loki \
   -f loki-values.yaml
 
 # Perform the upgrade
-helm upgrade loki grafana/loki \
+helm upgrade loki grafana-community/loki \
   --namespace loki \
   -f loki-values.yaml
 ```
@@ -881,11 +883,11 @@ kubectl delete pvc -n loki -l app.kubernetes.io/name=loki
 
 You have learned how to deploy Grafana Loki on Kubernetes using Helm, from simple loki-stack deployments to production-grade distributed configurations. Key takeaways:
 
-- Use loki-stack for development and small-scale deployments
-- Use single binary mode for medium-scale production
+- Use the deprecated loki-stack chart only for legacy development deployments
+- Use monolithic mode for small to medium deployments
 - Use distributed mode for high-volume, high-availability requirements
 - Configure object storage (S3, GCS, Azure) for production persistence
-- Deploy Promtail as a DaemonSet for comprehensive log collection
+- Deploy Grafana Alloy, or Promtail in legacy environments, as a DaemonSet for comprehensive log collection
 - Monitor Loki using the included Grafana dashboards and Prometheus metrics
 
 The combination of Loki's efficient architecture and Kubernetes' orchestration capabilities provides a scalable, cost-effective log management solution for cloud-native environments.

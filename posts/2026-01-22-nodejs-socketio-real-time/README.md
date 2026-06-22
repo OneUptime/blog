@@ -366,6 +366,8 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
+app.use(express.json());
+
 // Map of userId -> socket.id
 const userSockets = new Map();
 
@@ -446,7 +448,9 @@ function useNotifications(userId) {
 
 ```javascript
 // Server
-const io = require('socket.io')(httpServer);
+const { Server } = require('socket.io');
+
+const io = new Server(httpServer);
 
 // Broadcast metrics every second
 setInterval(async () => {
@@ -602,15 +606,15 @@ socket.on('connect_error', (error) => {
   console.error('Connection failed:', error.message);
 });
 
-socket.on('reconnect', (attemptNumber) => {
+socket.io.on('reconnect', (attemptNumber) => {
   console.log('Reconnected after', attemptNumber, 'attempts');
 });
 
-socket.on('reconnect_error', (error) => {
+socket.io.on('reconnect_error', (error) => {
   console.error('Reconnection failed:', error.message);
 });
 
-socket.on('reconnect_failed', () => {
+socket.io.on('reconnect_failed', () => {
   console.error('All reconnection attempts failed');
 });
 ```

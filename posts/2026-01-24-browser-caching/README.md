@@ -10,13 +10,13 @@ Description: A comprehensive guide to configuring browser caching for web applic
 
 > Browser caching is one of the most effective ways to improve website performance. By storing static assets locally on the user's device, you can dramatically reduce page load times and decrease server load. This guide covers everything you need to know about configuring browser caching effectively.
 
-Understanding how browser caching works and implementing it correctly can reduce your page load times by 50% or more for returning visitors. Let's dive into the mechanics and practical implementation.
+Understanding how browser caching works and implementing it correctly can significantly reduce page load times for returning visitors. Let's dive into the mechanics and practical implementation.
 
 ---
 
 ## How Browser Caching Works
 
-When a browser requests a resource, the server can include HTTP headers that tell the browser how long to cache that resource. On subsequent visits, the browser serves the cached version instead of making a network request.
+When a browser requests a resource, the server can include HTTP headers that tell the browser how long to cache that resource. On subsequent visits, the browser can serve a fresh cached version instead of making a network request.
 
 ```mermaid
 sequenceDiagram
@@ -186,9 +186,9 @@ server {
     server_name example.com;
 
     # Versioned assets (e.g., /assets/app.abc123.js)
-    # These contain a hash in the filename and can be cached forever
+    # These contain a hash in the filename and can use a long cache duration
     location ~* /assets/.*\.[a-f0-9]{8,}\.(css|js)$ {
-        expires max;
+        expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
 
         # Security headers
@@ -203,15 +203,15 @@ server {
 
     # Conditional caching based on query parameters
     location /images/ {
-        # If URL has version parameter, cache forever
-        if ($args ~* "v=") {
-            expires max;
-            add_header Cache-Control "public, max-age=31536000";
+        # Default: cache for 1 day
+        set $image_cache_control "public, max-age=86400";
+
+        # If URL has version parameter, use a long cache duration
+        if ($arg_v != "") {
+            set $image_cache_control "public, max-age=31536000";
         }
 
-        # Default: cache for 1 day
-        expires 1d;
-        add_header Cache-Control "public, max-age=86400";
+        add_header Cache-Control $image_cache_control;
     }
 }
 ```
@@ -322,7 +322,9 @@ const cacheMiddleware = (req, res, next) => {
             res.setHeader('Pragma', 'no-cache');
         } else {
             // Enable caching with specified duration
-            res.setHeader('Cache-Control', `public, max-age=${duration}, immutable`);
+            const isVersioned = /\.[a-f0-9]{8,}\./.test(req.path);
+            const immutable = isVersioned ? ', immutable' : '';
+            res.setHeader('Cache-Control', `public, max-age=${duration}${immutable}`);
         }
     }
 
@@ -350,7 +352,7 @@ app.use(express.static('public', {
 }));
 
 // API routes - no caching
-app.get('/api/*', (req, res, next) => {
+app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
@@ -401,9 +403,6 @@ location /static/ {
 location /api/public/ {
     # Browser: no cache (always fresh)
     # CDN: cache for 5 minutes
-    add_header Cache-Control "public, max-age=0, s-maxage=300";
-
-    # Stale-while-revalidate for better performance
     add_header Cache-Control "public, max-age=0, s-maxage=300, stale-while-revalidate=60";
 }
 ```
@@ -483,7 +482,7 @@ Check the Network tab in your browser's developer tools:
 
 2. **Set appropriate cache durations** - Static assets can be cached for a year, but HTML and API responses need shorter or no caching.
 
-3. **Always include Vary header** - When responses differ based on request headers (like Accept-Encoding), include the Vary header.
+3. **Include Vary header when needed** - When responses differ based on request headers (like Accept-Encoding), include the Vary header.
 
 4. **Use immutable for versioned assets** - The `immutable` directive tells browsers not to revalidate during page navigation.
 
@@ -497,7 +496,7 @@ Check the Network tab in your browser's developer tools:
 
 Proper browser caching configuration is essential for web performance. By setting appropriate cache headers based on resource type, implementing cache busting for updates, and leveraging CDN caching, you can significantly improve page load times and reduce server load.
 
-The key is matching cache duration to how often content changes. Static assets with hash-based filenames can be cached indefinitely, while dynamic content needs shorter or no caching to ensure freshness.
+The key is matching cache duration to how often content changes. Static assets with hash-based filenames can use long cache durations, while dynamic content needs shorter or no caching to ensure freshness.
 
 ---
 

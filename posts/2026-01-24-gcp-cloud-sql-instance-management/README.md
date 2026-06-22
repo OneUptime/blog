@@ -52,7 +52,7 @@ gcloud sql instances create my-postgres \
     --region=us-central1 \
     --availability-type=REGIONAL \
     --storage-type=SSD \
-    --storage-size=100GB \
+    --storage-size=100 \
     --storage-auto-increase \
     --backup-start-time=02:00 \
     --enable-point-in-time-recovery \
@@ -67,7 +67,7 @@ gcloud sql instances create my-mysql \
     --region=us-central1 \
     --availability-type=REGIONAL \
     --storage-type=SSD \
-    --storage-size=50GB \
+    --storage-size=50 \
     --backup-start-time=02:00
 
 # Create a database
@@ -96,6 +96,7 @@ resource "google_sql_database_instance" "primary" {
   settings {
     tier              = "db-custom-4-16384"  # 4 vCPUs, 16GB RAM
     availability_type = "REGIONAL"           # High availability
+    deletion_protection_enabled = true
     disk_type         = "PD_SSD"
     disk_size         = 100
     disk_autoresize   = true
@@ -124,7 +125,7 @@ resource "google_sql_database_instance" "primary" {
     ip_configuration {
       ipv4_enabled    = false  # Disable public IP
       private_network = google_compute_network.vpc.id
-      require_ssl     = true
+      ssl_mode        = "ENCRYPTED_ONLY"
 
       # If public IP is needed, use authorized networks
       # authorized_networks {
@@ -329,10 +330,10 @@ gcloud sql import sql my-postgres gs://my-bucket/backup.sql \
 # PostgreSQL performance flags
 gcloud sql instances patch my-postgres \
     --database-flags="\
-shared_buffers=4096MB,\
-effective_cache_size=12288MB,\
-work_mem=64MB,\
-maintenance_work_mem=512MB,\
+shared_buffers=524288,\
+effective_cache_size=1572864,\
+work_mem=65536,\
+maintenance_work_mem=524288,\
 checkpoint_completion_target=0.9,\
 random_page_cost=1.1"
 
@@ -343,6 +344,7 @@ innodb_buffer_pool_size=6442450944,\
 innodb_log_file_size=536870912,\
 innodb_flush_log_at_trx_commit=2,\
 slow_query_log=on,\
+log_output=FILE,\
 long_query_time=1"
 ```
 
@@ -407,7 +409,7 @@ gcloud sql instances describe my-postgres \
     --format="get(maintenancePendingDescription)"
 
 # Reschedule maintenance
-gcloud sql instances reschedule-maintenance my-postgres \
+gcloud sql reschedule-maintenance my-postgres \
     --reschedule-type=SPECIFIC_TIME \
     --schedule-time="2024-02-01T03:00:00Z"
 
@@ -417,7 +419,7 @@ gcloud sql instances patch my-postgres \
 
 # Update storage size (no restart required)
 gcloud sql instances patch my-postgres \
-    --storage-size=200GB
+    --storage-size=200
 ```
 
 ## Connection Management
@@ -426,7 +428,7 @@ gcloud sql instances patch my-postgres \
 
 ```bash
 # Download Cloud SQL Proxy
-curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.1/cloud-sql-proxy.linux.amd64
 chmod +x cloud-sql-proxy
 
 # Run proxy for local development
@@ -446,7 +448,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       serviceAccountName: my-app-sa
       containers:
@@ -471,7 +479,7 @@ spec:
                   key: password
 
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
           args:
             - "--structured-logs"
             - "--port=5432"

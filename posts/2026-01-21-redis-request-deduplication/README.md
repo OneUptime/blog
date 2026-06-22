@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Request Deduplication, Idempotency, Microservice, Exactly-Once, Distributed System
 
-Description: A comprehensive guide to implementing request deduplication with Redis for exactly-once processing semantics in distributed microservices architectures.
+Description: A comprehensive guide to implementing request deduplication with Redis for idempotent processing in distributed microservices architectures.
 
 ---
 
@@ -74,7 +74,7 @@ class IdempotencyStore:
         key = self._key(idempotency_key)
         request_hash = self._hash_request(request_data)
 
-        # Try to set with NX (only if not exists)
+        # Create a pending record if the key does not exist
         record = IdempotencyRecord(
             idempotency_key=idempotency_key,
             request_hash=request_hash,
@@ -82,13 +82,13 @@ class IdempotencyStore:
             created_at=time.time()
         )
 
-        # Use SET NX with Lua for atomicity
+        # Use Lua for atomic check-and-set
         script = """
         local existing = redis.call('GET', KEYS[1])
         if existing then
             return existing
         else
-            redis.call('SETEX', KEYS[1], ARGV[2], ARGV[1])
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
             return nil
         end
         """
@@ -115,6 +115,61 @@ class IdempotencyStore:
 
         return False, None
 
+    def restart_failed(self, idempotency_key: str,
+                       request_data: Dict) -> tuple:
+        """
+        Restart a failed request without deleting a newer pending record.
+        Returns: (is_duplicate, existing_record or None)
+        """
+        key = self._key(idempotency_key)
+        request_hash = self._hash_request(request_data)
+
+        record = IdempotencyRecord(
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="pending",
+            created_at=time.time()
+        )
+
+        script = """
+        local existing = redis.call('GET', KEYS[1])
+        if not existing then
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+            return nil
+        end
+
+        local existing_record = cjson.decode(existing)
+        if existing_record['request_hash'] ~= ARGV[3] then
+            return existing
+        end
+
+        if existing_record['status'] == 'failed' then
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+            return nil
+        end
+
+        return existing
+        """
+
+        result = self.redis.eval(
+            script,
+            1,
+            key,
+            json.dumps(asdict(record)),
+            self.ttl,
+            request_hash
+        )
+
+        if result:
+            existing = IdempotencyRecord(**json.loads(result))
+            if existing.request_hash != request_hash:
+                raise IdempotencyConflictError(
+                    f"Idempotency key {idempotency_key} used with different request"
+                )
+            return True, existing
+
+        return False, None
+
     def complete(self, idempotency_key: str, response: Dict):
         """Mark request as completed with response."""
         key = self._key(idempotency_key)
@@ -130,7 +185,7 @@ class IdempotencyStore:
         record.response = response
         record.completed_at = time.time()
 
-        self.redis.setex(key, self.ttl, json.dumps(asdict(record)))
+        self.redis.set(key, json.dumps(asdict(record)), ex=self.ttl)
 
     def fail(self, idempotency_key: str, error: str):
         """Mark request as failed."""
@@ -145,7 +200,7 @@ class IdempotencyStore:
         record.response = {"error": error}
         record.completed_at = time.time()
 
-        self.redis.setex(key, self.ttl, json.dumps(asdict(record)))
+        self.redis.set(key, json.dumps(asdict(record)), ex=self.ttl)
 
     def get(self, idempotency_key: str) -> Optional[IdempotencyRecord]:
         """Get idempotency record."""
@@ -195,8 +250,14 @@ def idempotent(store: IdempotencyStore,
                         f"Request {idempotency_key} is still processing"
                     )
                 elif existing.status == "failed":
-                    # Allow retry of failed requests
-                    pass
+                    # Allow retry of failed requests by reserving a fresh record
+                    is_duplicate, existing = store.restart_failed(
+                        idempotency_key, request_data
+                    )
+                    if is_duplicate:
+                        raise RequestInProgressError(
+                            f"Request {idempotency_key} is still processing"
+                        )
 
             # Execute the function
             try:
@@ -219,7 +280,7 @@ idempotency_store = IdempotencyStore(r)
 
 @idempotent(idempotency_store)
 def process_payment(request_data: Dict) -> Dict:
-    """Process a payment - will only execute once per idempotency key."""
+    """Process a payment and cache the response per idempotency key."""
     # Actual payment processing logic
     return {
         "payment_id": "pay_123",
@@ -289,24 +350,31 @@ class RequestDeduplicator:
         )
         key = self._key(fingerprint)
 
-        # Check if exists
-        existing = self.redis.get(key)
+        data = {
+            "status": "processing",
+            "created_at": time.time(),
+            "result": None
+        }
 
-        if existing:
-            return True, fingerprint
+        # Atomically reserve the fingerprint so concurrent requests do not
+        # both process before either one stores a result.
+        was_reserved = self.redis.set(
+            key, json.dumps(data), ex=self.window, nx=True
+        )
 
-        return False, fingerprint
+        return not bool(was_reserved), fingerprint
 
     def mark_processed(self, fingerprint: str, result: Any = None):
         """Mark request as processed."""
         key = self._key(fingerprint)
 
         data = {
+            "status": "completed",
             "processed_at": time.time(),
             "result": result
         }
 
-        self.redis.setex(key, self.window, json.dumps(data))
+        self.redis.set(key, json.dumps(data), ex=self.window)
 
     def get_cached_result(self, fingerprint: str) -> Optional[Any]:
         """Get cached result for fingerprint."""
@@ -315,7 +383,8 @@ class RequestDeduplicator:
 
         if data:
             parsed = json.loads(data)
-            return parsed.get("result")
+            if parsed.get("status") == "completed":
+                return parsed.get("result")
         return None
 
     def deduplicate(self, request: Dict,
@@ -332,7 +401,7 @@ class RequestDeduplicator:
 
         if is_dup:
             cached = self.get_cached_result(fingerprint)
-            if cached:
+            if cached is not None:
                 logger.info(f"Returning cached result for {fingerprint[:16]}")
                 return cached, True
             # Duplicate but no result - request might be in progress
@@ -466,13 +535,14 @@ else:
     logger.info("Skipping duplicate email send")
 ```
 
-## Pattern 4: Exactly-Once Message Processing
+## Pattern 4: Idempotent Message Processing
 
-Implement exactly-once semantics for message consumers:
+Implement idempotent processing for message consumers:
 
 ```python
 import redis
 import json
+import secrets
 import time
 from typing import Dict, Any, Callable, Optional
 from dataclasses import dataclass
@@ -487,13 +557,13 @@ class ProcessedMessage:
     result: Optional[Dict]
     status: str
 
-class ExactlyOnceProcessor:
+class IdempotentMessageProcessor:
     def __init__(self, redis_client: redis.Redis, consumer_name: str,
                  ttl: int = 86400):
         self.redis = redis_client
         self.consumer_name = consumer_name
         self.ttl = ttl
-        self._prefix = f"exactly_once:{consumer_name}"
+        self._prefix = f"message_dedup:{consumer_name}"
 
     def _message_key(self, message_id: str) -> str:
         return f"{self._prefix}:{message_id}"
@@ -504,7 +574,7 @@ class ExactlyOnceProcessor:
     def process_message(self, message_id: str, message: Dict,
                         handler: Callable[[Dict], Dict]) -> tuple:
         """
-        Process message exactly once.
+        Process each completed message ID only once.
         Returns: (result, was_duplicate)
         """
         message_key = self._message_key(message_id)
@@ -519,8 +589,9 @@ class ExactlyOnceProcessor:
             # If failed or pending, try to reprocess
 
         # Try to acquire lock
+        lock_token = secrets.token_hex(16)
         lock_acquired = self.redis.set(
-            lock_key, "1", nx=True, ex=60
+            lock_key, lock_token, nx=True, ex=60
         )
 
         if not lock_acquired:
@@ -567,13 +638,19 @@ class ExactlyOnceProcessor:
             raise
 
         finally:
-            self.redis.delete(lock_key)
+            release_script = """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+            """
+            self.redis.eval(release_script, 1, lock_key, lock_token)
 
     def _save_record(self, message_id: str, record: ProcessedMessage):
         """Save processing record."""
         from dataclasses import asdict
         key = self._message_key(message_id)
-        self.redis.setex(key, self.ttl, json.dumps(asdict(record)))
+        self.redis.set(key, json.dumps(asdict(record)), ex=self.ttl)
 
     def was_processed(self, message_id: str) -> bool:
         """Check if message was already processed."""
@@ -592,7 +669,7 @@ class MessageLockedError(Exception):
         super().__init__(f"Message {message_id} is being processed")
 
 # Usage with message queue
-processor = ExactlyOnceProcessor(redis.Redis(), "order-processor")
+processor = IdempotentMessageProcessor(redis.Redis(), "order-processor")
 
 def handle_order_message(message: Dict) -> Dict:
     """Process order message."""
@@ -667,10 +744,13 @@ class DeduplicationTokenService:
 
         # Store token
         key = f"{self._prefix}:{token_id}"
-        self.redis.setex(key, ttl, json.dumps({
+        self.redis.set(key, json.dumps({
+            "id": token_id,
             "context": context,
+            "timestamp": timestamp,
+            "ttl": ttl,
             "used": False
-        }))
+        }), ex=ttl)
 
         # Return token with signature
         return f"{token_id}.{signature}"
@@ -687,6 +767,30 @@ class DeduplicationTokenService:
             return False, "Invalid token format"
 
         key = f"{self._prefix}:{token_id}"
+
+        data = self.redis.get(key)
+        if not data:
+            return False, "Token expired or not found"
+
+        token_data = json.loads(data)
+        payload = json.dumps({
+            "id": token_data["id"],
+            "context": token_data["context"],
+            "timestamp": token_data["timestamp"],
+            "ttl": token_data["ttl"]
+        }, sort_keys=True)
+        expected_signature = hmac.new(
+            self.secret_key,
+            payload.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, expected_signature):
+            return False, "Invalid token signature"
+
+        for k, v in token_data["context"].items():
+            if request_context.get(k) != v:
+                return False, f"Context mismatch: {k}"
 
         # Atomic check-and-mark-used
         script = """
@@ -713,14 +817,6 @@ class DeduplicationTokenService:
 
         if not result[0]:
             return False, result[1].decode() if isinstance(result[1], bytes) else result[1]
-
-        # Verify context matches
-        stored_context = json.loads(result[1])
-
-        # Check relevant context fields match
-        for k, v in stored_context.items():
-            if k in request_context and request_context[k] != v:
-                return False, f"Context mismatch: {k}"
 
         return True, "Valid"
 
@@ -796,4 +892,4 @@ def create_order():
 
 ## Conclusion
 
-Request deduplication with Redis provides exactly-once processing semantics in distributed systems. Choose the appropriate pattern based on your requirements: idempotency keys for explicit client control, fingerprinting for automatic deduplication, or exactly-once processing for message consumers. Always combine deduplication with idempotent handlers for maximum reliability.
+Request deduplication with Redis helps build idempotent processing in distributed systems. Choose the appropriate pattern based on your requirements: idempotency keys for explicit client control, fingerprinting for automatic deduplication, or message deduplication for consumers. Always combine deduplication with idempotent handlers for maximum reliability.

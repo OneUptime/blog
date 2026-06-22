@@ -14,11 +14,11 @@ An event store is the foundation of event sourcing architectures, recording all 
 
 Redis Streams offer unique advantages:
 
-- **Immutable append-only log**: Perfect for event sourcing semantics
+- **Append-only log**: A good fit for event sourcing semantics when you avoid deleting or trimming stored events
 - **Automatic ordering**: Guaranteed event sequence with auto-generated IDs
 - **Consumer groups**: Reliable event processing with acknowledgments
 - **Range queries**: Efficient event replay from any point
-- **High performance**: Sub-millisecond writes and reads
+- **High performance**: Low-latency writes and reads
 
 ## Event Store Architecture
 
@@ -98,17 +98,6 @@ class EventStore:
         version_key = self._version_key(aggregate_type, aggregate_id)
         global_stream = self._global_stream_key()
 
-        # Optimistic concurrency check
-        if expected_version is not None:
-            current_version = self.redis.get(version_key)
-            current_version = int(current_version) if current_version else 0
-
-            if current_version != expected_version:
-                raise ConcurrencyError(
-                    f"Expected version {expected_version}, "
-                    f"but found {current_version}"
-                )
-
         stream_ids = []
         pipe = self.redis.pipeline(True)
 
@@ -116,9 +105,24 @@ class EventStore:
             # Watch version key for optimistic locking
             if expected_version is not None:
                 pipe.watch(version_key)
+                current_version = pipe.get(version_key)
+                current_version = int(current_version) if current_version else 0
+
+                if current_version != expected_version:
+                    raise ConcurrencyError(
+                        f"Expected version {expected_version}, "
+                        f"but found {current_version}"
+                    )
+
                 pipe.multi()
 
             for event in events:
+                if (event.aggregate_type != aggregate_type or
+                        event.aggregate_id != aggregate_id):
+                    raise ValueError(
+                        "All events in a batch must belong to the same aggregate"
+                    )
+
                 event_data = {
                     "event_id": event.event_id,
                     "event_type": event.event_type,
@@ -137,7 +141,7 @@ class EventStore:
                 pipe.xadd(global_stream, {
                     **event_data,
                     "stream_key": stream_key
-                }, maxlen=1000000)
+                })
 
             # Update version
             new_version = events[-1].version
@@ -160,6 +164,8 @@ class EventStore:
 
         except redis.WatchError:
             raise ConcurrencyError("Concurrent modification detected")
+        finally:
+            pipe.reset()
 
     def load(self, aggregate_type: str, aggregate_id: str,
              from_version: int = 0) -> List[Event]:
@@ -499,19 +505,21 @@ class EventSubscription:
                 for stream, entries in messages:
                     for message_id, data in entries:
                         event = self.event_store._decode_event(message_id, data)
-                        self._dispatch_event(event)
-                        self.redis.xack(
-                            global_stream,
-                            self._consumer_group,
-                            message_id
-                        )
+                        if self._dispatch_event(event):
+                            self.redis.xack(
+                                global_stream,
+                                self._consumer_group,
+                                message_id
+                            )
 
             except redis.RedisError as e:
                 logger.error(f"Redis error: {e}")
                 time.sleep(1)
 
-    def _dispatch_event(self, event: Event):
+    def _dispatch_event(self, event: Event) -> bool:
         """Dispatch event to handlers."""
+        success = True
+
         # Specific handlers
         handlers = self._handlers.get(event.event_type, [])
         for handler in handlers:
@@ -519,6 +527,7 @@ class EventSubscription:
                 handler(event)
             except Exception as e:
                 logger.error(f"Handler error for {event.event_type}: {e}")
+                success = False
 
         # Wildcard handlers
         wildcard_handlers = self._handlers.get("*", [])
@@ -527,6 +536,9 @@ class EventSubscription:
                 handler(event)
             except Exception as e:
                 logger.error(f"Wildcard handler error: {e}")
+                success = False
+
+        return success
 
 # Usage - Build projections
 subscription = EventSubscription(r, event_store)
@@ -568,11 +580,17 @@ class SnapshotStore:
         """Save aggregate snapshot."""
         key = self._snapshot_key(aggregate.aggregate_type, aggregate.id)
 
+        state = {
+            key: value
+            for key, value in aggregate.__dict__.items()
+            if key != "_uncommitted_events"
+        }
+
         snapshot_data = {
             "aggregate_id": aggregate.id,
             "aggregate_type": aggregate.aggregate_type,
             "version": aggregate.version,
-            "state": json.dumps(aggregate.__dict__, default=str),
+            "state": json.dumps(state, default=str),
             "timestamp": time.time()
         }
 

@@ -22,19 +22,19 @@ flowchart TB
         Operate --> Inform
     end
 
-    subgraph Inform
+    subgraph InformPhase["Inform"]
         Visibility[Cost Visibility]
         Allocation[Cost Allocation]
         Benchmarks[Benchmarking]
     end
 
-    subgraph Optimize
+    subgraph OptimizePhase["Optimize"]
         RightSize[Right-sizing]
         Reserved[Reserved Instances]
         Waste[Waste Elimination]
     end
 
-    subgraph Operate
+    subgraph OperatePhase["Operate"]
         Budgets[Budget Alerts]
         Governance[Governance]
         Culture[Culture Change]
@@ -129,8 +129,7 @@ variable "required_tags" {
 locals {
   # Merge required tags with common tags
   common_tags = merge(var.required_tags, {
-    managed_by   = "terraform"
-    created_date = formatdate("YYYY-MM-DD", timestamp())
+    managed_by = "terraform"
   })
 }
 
@@ -156,14 +155,14 @@ Create dashboards that show costs by team, service, and environment.
 
 import boto3
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 def get_costs_by_tag(tag_name: str, days: int = 30) -> dict:
     """Fetch costs grouped by a specific tag."""
     client = boto3.client('ce')
 
-    end_date = datetime.now().date()
+    end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days)
 
     response = client.get_cost_and_usage(
@@ -191,7 +190,7 @@ def get_top_services(days: int = 30, limit: int = 10) -> list:
     """Get the most expensive AWS services."""
     client = boto3.client('ce')
 
-    end_date = datetime.now().date()
+    end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days)
 
     response = client.get_cost_and_usage(
@@ -258,13 +257,13 @@ Most cloud resources are over-provisioned. Use metrics to find opportunities.
 # Find over-provisioned EC2 instances
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def get_instance_metrics(instance_id: str, days: int = 14) -> dict:
-    """Get CPU and memory utilization metrics for an instance."""
+    """Get CPU utilization metrics for an instance."""
     cloudwatch = boto3.client('cloudwatch')
 
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=days)
 
     # Get CPU utilization
@@ -398,7 +397,7 @@ spec:
                   '
 
                   # Find PVCs not bound to any pod
-                  echo -e "\n=== Unused PVCs ==="
+                  printf "\n=== Unused PVCs ===\n"
                   kubectl get pvc -A -o json | jq -r '
                     .items[] |
                     select(.status.phase == "Bound") |
@@ -406,15 +405,18 @@ spec:
                   ' > /tmp/all_pvcs.txt
 
                   kubectl get pods -A -o json | jq -r '
-                    .items[].spec.volumes[]? |
+                    .items[] as $pod |
+                    $pod.spec.volumes[]? |
                     select(.persistentVolumeClaim) |
-                    .persistentVolumeClaim.claimName
+                    "\($pod.metadata.namespace)/\(.persistentVolumeClaim.claimName)"
                   ' | sort -u > /tmp/used_pvcs.txt
 
-                  comm -23 <(sort /tmp/all_pvcs.txt) <(sort /tmp/used_pvcs.txt)
+                  sort -u /tmp/all_pvcs.txt -o /tmp/all_pvcs.txt
+                  sort -u /tmp/used_pvcs.txt -o /tmp/used_pvcs.txt
+                  comm -23 /tmp/all_pvcs.txt /tmp/used_pvcs.txt
 
-                  # Find deployments scaled to zero for over 7 days
-                  echo -e "\n=== Deployments at zero replicas ==="
+                  # Find deployments scaled to zero
+                  printf "\n=== Deployments at zero replicas ===\n"
                   kubectl get deployments -A -o json | jq -r '
                     .items[] |
                     select(.spec.replicas == 0) |
@@ -437,6 +439,7 @@ resource "aws_budgets_budget" "monthly_total" {
   limit_amount = "50000"
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
+  depends_on   = [aws_sns_topic_policy.budget_alerts]
 
   notification {
     comparison_operator        = "GREATER_THAN"
@@ -471,10 +474,11 @@ resource "aws_budgets_budget" "team_budgets" {
   limit_amount = each.value
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
+  depends_on   = [aws_sns_topic_policy.budget_alerts]
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:team$${each.key}"]
+    values = ["user:team${"$"}${each.key}"]
   }
 
   notification {
@@ -488,6 +492,40 @@ resource "aws_budgets_budget" "team_budgets" {
 
 resource "aws_sns_topic" "budget_alerts" {
   name = "budget-alerts"
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "budget_alerts" {
+  statement {
+    sid     = "AWSBudgetsSNSPublishingPermissions"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["budgets.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.budget_alerts.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:budgets::${data.aws_caller_identity.current.account_id}:*"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "budget_alerts" {
+  arn    = aws_sns_topic.budget_alerts.arn
+  policy = data.aws_iam_policy_document.budget_alerts.json
 }
 ```
 
@@ -505,36 +543,35 @@ name: Cost Estimate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - 'terraform/**'
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   estimate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Plan
-        run: |
-          cd terraform
-          terraform init
-          terraform plan -out=tfplan
-
-      - name: Estimate costs
-        uses: infracost/actions/cost-estimate@v3
+        if: github.event.action != 'closed'
         with:
-          path: terraform/tfplan
-        env:
-          INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+          path: head
 
-      - name: Post cost estimate
-        uses: infracost/actions/comment@v3
+      - uses: actions/checkout@v4
+        if: github.event.action != 'closed'
         with:
-          path: /tmp/infracost.json
-          behavior: update
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+
+      - name: Estimate cost diff
+        uses: infracost/actions/diff@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          base-path: base/terraform
+          head-path: head/terraform
 ```
 
 ### Team Cost Reviews

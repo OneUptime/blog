@@ -16,7 +16,7 @@ Data-at-rest encryption protects data stored on disk from unauthorized access. T
 |----------|--------------|-------------|----------|
 | Filesystem | Full | Good | All data |
 | pgcrypto | None | Variable | Selected data |
-| TDE (Enterprise) | Full | Good | All data |
+| TDE (PostgreSQL distributions) | Full | Good | All data |
 
 ## Filesystem Encryption
 
@@ -32,7 +32,9 @@ sudo cryptsetup luksOpen /dev/sdb pg_encrypted
 sudo mkfs.ext4 /dev/mapper/pg_encrypted
 
 # Mount for PostgreSQL
+sudo mkdir -p /var/lib/postgresql/16/main
 sudo mount /dev/mapper/pg_encrypted /var/lib/postgresql/16/main
+sudo chown postgres:postgres /var/lib/postgresql/16/main
 ```
 
 ### Auto-unlock with Key File
@@ -88,7 +90,11 @@ SELECT pgp_sym_decrypt(data, get_key()) FROM secrets;
 # Create encrypted RDS instance
 aws rds create-db-instance \
     --db-instance-identifier mydb \
+    --db-instance-class db.t4g.micro \
     --engine postgres \
+    --allocated-storage 20 \
+    --master-username dbadmin \
+    --manage-master-user-password \
     --storage-encrypted \
     --kms-key-id alias/aws/rds
 ```
@@ -99,7 +105,7 @@ aws rds create-db-instance \
 |----------|---------|----------------|
 | AWS RDS | Storage encryption | KMS |
 | GCP Cloud SQL | Encryption by default | Cloud KMS |
-| Azure | TDE | Key Vault |
+| Azure Database for PostgreSQL | Storage encryption | Key Vault |
 
 ## Best Practices
 

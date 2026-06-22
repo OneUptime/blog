@@ -12,7 +12,7 @@ The "Too many open files" error is one of the most common issues encountered by 
 
 ## Understanding the Error
 
-In Linux, everything is a file - including network sockets, pipes, and actual files. Each open "file" requires a file descriptor (FD). When a process or the system reaches its file descriptor limit, you see errors like:
+In Linux, everything is a file - including network sockets, pipes, and actual files. Each open "file" requires a file descriptor (FD). When a process reaches its file descriptor limit (EMFILE) or the system reaches the system-wide file handle limit (ENFILE), you see errors like:
 
 ```text
 Too many open files
@@ -58,7 +58,7 @@ flowchart TB
 
 | Limit Type | Description | Configurable By |
 |------------|-------------|-----------------|
-| System-wide | Total FDs for entire system | Root (sysctl) |
+| System-wide | Total file handles for entire system | Root (sysctl) |
 | Hard limit | Maximum a user can raise to | Root (limits.conf) |
 | Soft limit | Current enforced limit | User (up to hard limit) |
 | Process limit | Per-process limit | Inherited from shell |
@@ -89,12 +89,13 @@ ulimit -a
 # View the system-wide maximum number of file descriptors
 cat /proc/sys/fs/file-max
 
-# Example output: 9223372036854775807 (effectively unlimited on modern systems)
+# Example output: 9223372036854775807 (effectively unlimited on some modern systems)
 
 # Check currently allocated vs maximum
 cat /proc/sys/fs/file-nr
 
 # Output format: allocated    free    maximum
+# Note: on Linux 2.6 and later, the "free" field is always 0
 # Example: 5664    0    9223372036854775807
 ```
 
@@ -103,7 +104,7 @@ cat /proc/sys/fs/file-nr
 ```bash
 # Count open file descriptors for a specific process
 # Replace PID with actual process ID
-ls -la /proc/PID/fd | wc -l
+ls -1 /proc/PID/fd 2>/dev/null | wc -l
 
 # List all open files for a process
 ls -la /proc/PID/fd
@@ -113,7 +114,7 @@ ls -la /proc/PID/fd
 lsof -p PID
 
 # Count files by type for a process
-lsof -p PID | awk '{print $5}' | sort | uniq -c | sort -rn
+lsof -p PID | awk 'NR>1 {print $5}' | sort | uniq -c | sort -rn
 ```
 
 ### Find Processes with Most Open Files
@@ -130,7 +131,7 @@ for pid in /proc/[0-9]*; do
 done | sort -rn | head -10
 
 # Alternative using lsof
-lsof | awk '{print $1}' | sort | uniq -c | sort -rn | head -10
+lsof | awk 'NR>1 {print $1}' | sort | uniq -c | sort -rn | head -10
 ```
 
 ## Temporary Fix: Adjust Soft Limit
@@ -294,8 +295,8 @@ Or edit the main service file:
 # Find the service file location
 systemctl show -p FragmentPath nginx.service
 
-# Edit the service file
-sudo nano /lib/systemd/system/nginx.service
+# Edit the service file shown in FragmentPath
+sudo nano /path/from/FragmentPath
 ```
 
 Add under `[Service]` section:
@@ -315,7 +316,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart nginx.service
 
 # Verify the limit is applied
-cat /proc/$(pgrep -f 'nginx: master')/limits | grep 'open files'
+pid=$(pgrep -f 'nginx: master' | head -1)
+cat /proc/$pid/limits | grep 'open files'
 ```
 
 ### Docker Containers

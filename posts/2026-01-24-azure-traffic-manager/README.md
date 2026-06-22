@@ -105,7 +105,7 @@ resource "azurerm_traffic_manager_profile" "main" {
 resource "azurerm_traffic_manager_azure_endpoint" "us_east" {
   name                 = "endpoint-us-east"
   profile_id           = azurerm_traffic_manager_profile.main.id
-  target_resource_id   = azurerm_app_service.us_east.id
+  target_resource_id   = azurerm_linux_web_app.us_east.id
   weight               = 100
   priority             = 1
   endpoint_location    = "East US"
@@ -115,7 +115,7 @@ resource "azurerm_traffic_manager_azure_endpoint" "us_east" {
 resource "azurerm_traffic_manager_azure_endpoint" "eu_west" {
   name                 = "endpoint-eu-west"
   profile_id           = azurerm_traffic_manager_profile.main.id
-  target_resource_id   = azurerm_app_service.eu_west.id
+  target_resource_id   = azurerm_linux_web_app.eu_west.id
   weight               = 100
   priority             = 2
   endpoint_location    = "West Europe"
@@ -285,6 +285,13 @@ Create a dedicated health endpoint that validates all dependencies:
 // ASP.NET Core health check endpoint
 public class Startup
 {
+    private readonly IConfiguration Configuration;
+
+    public Startup(IConfiguration configuration)
+    {
+        Configuration = configuration;
+    }
+
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddHealthChecks()
@@ -469,32 +476,21 @@ resource "azurerm_traffic_manager_nested_endpoint" "eu" {
 
 Enable Real User Measurements to improve performance routing accuracy:
 
-```javascript
-// Add this script to your web pages
+```html
+<!-- Add the generated Real User Measurements script to your web pages exactly as provided by Azure Traffic Manager. -->
 <script>
-(function() {
-    var rum = document.createElement('script');
-    rum.src = 'https://www.azuretm.net/aznr/rum.js';
-    rum.dataset.trafficManagerKey = 'YOUR_RUM_KEY';
-    document.head.appendChild(rum);
-})();
+    // Paste the generated Traffic Manager RUM JavaScript snippet here.
 </script>
 ```
 
-Get your RUM key:
+Generate the RUM key in the Azure portal, or retrieve the subscription-level key with the REST API:
 
 ```bash
-# Enable Real User Measurements and get the key
-az network traffic-manager profile update \
-    --resource-group myResourceGroup \
-    --name myTrafficManagerProfile \
-    --traffic-view-enrollment-status Enabled
-
-# Retrieve the key
-az network traffic-manager profile show \
-    --resource-group myResourceGroup \
-    --name myTrafficManagerProfile \
-    --query "trafficViewEnrollmentStatus"
+# Retrieve the Real User Measurements key
+az rest --method get \
+    --url "https://management.azure.com/subscriptions/{sub}/providers/Microsoft.Network/trafficManagerUserMetricsKeys/default?api-version=2022-04-01" \
+    --query "properties.key" \
+    --output tsv
 ```
 
 ## DNS and TTL Considerations
@@ -505,7 +501,7 @@ az network traffic-manager profile show \
 timeline
     title TTL Impact on Failover Time
     0s : Endpoint fails
-    10s : Health check detects failure
+    10-45s : Health probes mark endpoint degraded
     30s : TTL expires for clients
     45s : All traffic redirected
 ```
@@ -536,7 +532,7 @@ az monitor action-group create \
     --resource-group myResourceGroup \
     --name TrafficManagerAlerts \
     --short-name TMAlerts \
-    --email-receiver name=Admin email=admin@company.com
+    --action email Admin admin@company.com
 
 # Create alert for endpoint degradation
 az monitor metrics alert create \
@@ -544,10 +540,10 @@ az monitor metrics alert create \
     --name "EndpointDegraded" \
     --description "Traffic Manager endpoint is degraded" \
     --scopes /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/trafficManagerProfiles/myTrafficManagerProfile \
-    --condition "avg ProbeAgentCurrentEndpointStateByProfileResourceId < 1" \
+    --condition "max ProbeAgentCurrentEndpointStateByProfileResourceId < 1" \
     --window-size 5m \
     --evaluation-frequency 1m \
-    --action-group TrafficManagerAlerts
+    --action TrafficManagerAlerts
 ```
 
 ## Testing Failover

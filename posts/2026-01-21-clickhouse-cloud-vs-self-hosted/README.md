@@ -28,10 +28,10 @@ Choosing between ClickHouse Cloud and self-hosted deployment involves weighing c
 | Component | Monthly Cost |
 |-----------|--------------|
 | Compute (auto-scaled) | $2,000-4,000 |
-| Storage (10TB compressed) | $200-400 |
+| Storage (10TB compressed + default backup) | $500-600 |
 | Data Transfer | $100-300 |
 | DevOps Time (0.1 FTE) | $800-1,200 |
-| **Total** | **$3,100-5,900** |
+| **Total** | **$3,400-6,100** |
 
 ### Break-Even Analysis
 
@@ -59,8 +59,8 @@ ClickHouse Cloud makes sense when:
 |------------|---------------------|------------------|
 | Simple aggregation | Baseline | ~Same |
 | Complex JOIN | Baseline | ~Same |
-| High concurrency | Tunable | Auto-scaled |
-| Cold start | N/A | 1-5 seconds |
+| High concurrency | Tunable | Auto-scaled on Scale/Enterprise tiers |
+| Cold start | N/A | Depends on idle scaling settings |
 
 ### Ingestion Performance
 
@@ -140,14 +140,14 @@ Monthly:
 | Feature | Self-Hosted | ClickHouse Cloud |
 |---------|-------------|------------------|
 | Full SQL | Yes | Yes |
-| All table engines | Yes | Most (no Kafka engine) |
+| All table engines | Yes | Most (ClickPipes recommended for Kafka ingestion) |
 | Materialized views | Yes | Yes |
-| Dictionaries | Full | Table-based only |
-| Custom UDFs | Yes | Limited |
-| Private networking | Manual | Built-in |
-| Auto-scaling | Manual | Automatic |
+| Dictionaries | Full | Supported for PostgreSQL, MySQL, ClickHouse, Redis, MongoDB, and HTTP sources |
+| Custom UDFs | Yes | SQL UDFs supported; executable UDFs available in Cloud UI/beta |
+| Private networking | Manual | Built-in on Scale/Enterprise tiers |
+| Auto-scaling | Manual | Tier-dependent (automatic vertical scaling; horizontal scaling is manual or enabled by configuration) |
 | Automatic backups | Manual | Included |
-| Point-in-time recovery | Manual | Included |
+| Backup restore | Manual | Included |
 | Monitoring | Build yourself | Included |
 | Support | Community/Enterprise | Included |
 
@@ -155,7 +155,7 @@ Monthly:
 
 ### Self-Hosted Scaling
 
-```bash
+```text
 # Adding a node (manual process)
 1. Provision new server
 2. Install ClickHouse
@@ -172,7 +172,7 @@ Monthly:
 ### ClickHouse Cloud Scaling
 
 ```text
-# Auto-scaling (automatic)
+# Auto-scaling (tier-dependent)
 1. Workload increases
 2. System detects need
 3. Resources scale up

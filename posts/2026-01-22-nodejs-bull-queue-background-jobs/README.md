@@ -44,10 +44,10 @@ const emailQueue = new Queue('email', {
 });
 
 // Or with connection string
-const emailQueue = new Queue('email', 'redis://127.0.0.1:6379');
+// const emailQueue = new Queue('email', 'redis://127.0.0.1:6379');
 
 // Or with default localhost
-const emailQueue = new Queue('email');
+// const emailQueue = new Queue('email');
 ```
 
 ### Adding Jobs
@@ -203,7 +203,7 @@ await reminderQueue.add(
 );
 
 // Delay until specific time
-const targetTime = new Date('2024-12-25T10:00:00Z');
+const targetTime = new Date('2026-12-25T10:00:00Z');
 const delay = targetTime.getTime() - Date.now();
 await reminderQueue.add(
   { message: 'Merry Christmas!' },
@@ -426,11 +426,11 @@ await job.moveToFailed({ message: 'Manual fail' });
 await queue.clean(24 * 60 * 60 * 1000, 'completed');  // Remove completed jobs older than 24h
 await queue.clean(7 * 24 * 60 * 60 * 1000, 'failed');  // Remove failed jobs older than 7 days
 
-// Drain queue (remove all jobs)
-await queue.drain();
-
-// Empty queue (remove all jobs including active)
+// Empty queue (remove waiting and delayed jobs)
 await queue.empty();
+
+// Remove all queue data, including completed, failed, and repeatable jobs
+await queue.obliterate();
 
 // Pause/resume
 await queue.pause();
@@ -451,6 +451,8 @@ const express = require('express');
 
 const app = express();
 const emailQueue = new Queue('email', 'redis://localhost:6379');
+
+app.use(express.json());
 
 app.post('/send-email', async (req, res) => {
   const job = await emailQueue.add({

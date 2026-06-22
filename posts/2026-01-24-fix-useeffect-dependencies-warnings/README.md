@@ -179,13 +179,13 @@ function SearchComponent() {
 ### Pattern 3: Object and Array Dependencies
 
 ```tsx
-// BAD: Object reference changes every render
+// BAD: Object reference may change every render
 function DataFetcher({ options }: { options: { page: number; limit: number } }) {
   const [data, setData] = useState([]);
 
   useEffect(() => {
     fetchData(options).then(setData);
-  }, [options]); // Effect runs every render because options is new object
+  }, [options]); // Effect runs whenever the options object reference changes
 
   return <div>{data.length} items</div>;
 }
@@ -202,7 +202,7 @@ function DataFetcher({ options }: { options: { page: number; limit: number } }) 
   return <div>{data.length} items</div>;
 }
 
-// ALTERNATIVE: Use JSON.stringify for complex objects
+// ALTERNATIVE: Use JSON.stringify for JSON-serializable objects
 function DataFetcher({ filters }: { filters: Record<string, string> }) {
   const [data, setData] = useState([]);
   const filtersKey = JSON.stringify(filters);
@@ -258,10 +258,10 @@ function Component({ userId }: { userId: string }) {
 }
 ```
 
-### Strategy 2: Use useCallback for Handlers
+### Strategy 2: Use Functional Updates for State
 
 ```tsx
-// BEFORE: Inline function in dependency
+// BEFORE: State value in dependency
 function Timer() {
   const [count, setCount] = useState(0);
 
@@ -378,7 +378,7 @@ function SearchComponent({ onSearch }: { onSearch: (query: string) => void }) {
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [query, stableOnSearch]); // stableOnSearch is stable, no re-runs
+  }, [query, stableOnSearch]); // Re-runs when query changes
 
   return (
     <input value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -397,8 +397,8 @@ export function useDebouncedEffect(
   dependencies: any[],
   delay: number
 ) {
-  const timeoutRef = useRef<NodeJS.Timeout>();
-  const cleanupRef = useRef<(() => void) | void>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     // Clear any pending timeout
@@ -411,9 +411,10 @@ export function useDebouncedEffect(
       // Run any previous cleanup
       if (cleanupRef.current) {
         cleanupRef.current();
+        cleanupRef.current = null;
       }
       // Run effect and store cleanup
-      cleanupRef.current = effect();
+      cleanupRef.current = effect() ?? null;
     }, delay);
 
     // Cleanup on unmount or dependency change
@@ -423,6 +424,7 @@ export function useDebouncedEffect(
       }
       if (cleanupRef.current) {
         cleanupRef.current();
+        cleanupRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -476,7 +478,7 @@ flowchart TD
     Q1 --> |"No"| Q3{"Is it an object<br/>or array?"}
     Q3 --> |"Yes"| Q4{"Can you use<br/>primitive values?"}
     Q4 --> |"Yes"| A3["Destructure to<br/>primitive values"]
-    Q4 --> |"No"| A4["Use useMemo or<br/>JSON.stringify"]
+    Q4 --> |"No"| A4["Use useMemo or<br/>JSON.stringify for JSON-safe values"]
 
     Q3 --> |"No"| Q5{"Is it a prop<br/>callback?"}
     Q5 --> |"Yes"| A5["Use useRef to store<br/>or useEvent hook"]

@@ -45,15 +45,11 @@ First, let's set up a proper testing environment for navigation testing:
 
 ```typescript
 // jest.setup.ts
-import '@testing-library/jest-native/extend-expect';
+import type { ReactNode } from 'react';
 import 'react-native-gesture-handler/jestSetup';
+import { setUpTests } from 'react-native-reanimated';
 
-// Mock react-native-reanimated
-jest.mock('react-native-reanimated', () => {
-  const Reanimated = require('react-native-reanimated/mock');
-  Reanimated.default.call = () => {};
-  return Reanimated;
-});
+setUpTests();
 
 // Silence the warning: Animated: `useNativeDriver` is not supported
 jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
@@ -62,8 +58,8 @@ jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 jest.mock('react-native-safe-area-context', () => {
   const inset = { top: 0, right: 0, bottom: 0, left: 0 };
   return {
-    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
-    SafeAreaConsumer: ({ children }: { children: (insets: typeof inset) => React.ReactNode }) =>
+    SafeAreaProvider: ({ children }: { children: ReactNode }) => children,
+    SafeAreaConsumer: ({ children }: { children: (insets: typeof inset) => ReactNode }) =>
       children(inset),
     useSafeAreaInsets: () => inset,
     useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
@@ -71,10 +67,23 @@ jest.mock('react-native-safe-area-context', () => {
 });
 ```
 
+Make sure Jest transforms React Navigation's ES modules:
+
+```javascript
+// jest.config.js
+module.exports = {
+  preset: 'react-native',
+  transformIgnorePatterns: [
+    'node_modules/(?!(@react-native|react-native|@react-navigation)/)',
+  ],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+};
+```
+
 Install the necessary dependencies:
 
 ```bash
-npm install --save-dev @testing-library/react-native @testing-library/jest-native jest
+npm install --save-dev @testing-library/react-native test-renderer jest
 ```
 
 ## Unit Testing Navigation Actions
@@ -364,7 +373,7 @@ describe('DetailsScreen', () => {
 // SettingsScreen.test.tsx
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import SettingsScreen from '../screens/SettingsScreen';
 
@@ -407,7 +416,6 @@ Understanding and testing navigation state is essential for complex navigation s
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import App from '../App';
 
 type RootStackParamList = {
@@ -481,7 +489,7 @@ describe('Navigation State', () => {
 ```typescript
 // StatePersistence.test.tsx
 import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, InitialState } from '@react-navigation/native';
 import App from '../App';
@@ -716,8 +724,17 @@ const linking = {
 };
 
 describe('Deep Linking', () => {
+  let linkingCallback: ({ url }: { url: string }) => void;
+
   beforeEach(() => {
     jest.spyOn(Linking, 'getInitialURL').mockResolvedValue(null);
+    jest.spyOn(Linking, 'addEventListener').mockImplementation((event, callback) => {
+      if (event === 'url') {
+        linkingCallback = callback;
+      }
+
+      return { remove: jest.fn() };
+    });
   });
 
   afterEach(() => {
@@ -761,7 +778,6 @@ describe('Deep Linking', () => {
     );
 
     // Simulate receiving a deep link
-    const linkingCallback = (Linking.addEventListener as jest.Mock).mock.calls[0][1];
     linkingCallback({ url: 'myapp://profile/user456' });
 
     await waitFor(() => {
@@ -957,8 +973,12 @@ import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-const TabNavigator = () => (
-  <Tab.Navigator>
+const TabNavigator = ({ onTabLongPress }: { onTabLongPress?: (routeName: string) => void }) => (
+  <Tab.Navigator
+    screenListeners={({ route }) => ({
+      tabLongPress: () => onTabLongPress?.(route.name),
+    })}
+  >
     <Tab.Screen name="Home" component={HomeScreen} />
     <Tab.Screen name="Search" component={SearchScreen} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
@@ -1057,8 +1077,8 @@ Drawer navigation has its own unique testing requirements:
 // DrawerNavigation.test.tsx
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { createDrawerNavigator, DrawerActions } from '@react-navigation/drawer';
+import { NavigationContainer, DrawerActions } from '@react-navigation/native';
+import { createDrawerNavigator, getDrawerStatusFromState } from '@react-navigation/drawer';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AboutScreen from '../screens/AboutScreen';
@@ -1089,7 +1109,7 @@ describe('Drawer Navigation', () => {
     // Drawer should be open
     await waitFor(() => {
       const state = navigationRef.current?.getRootState();
-      expect(state?.history?.some((h: any) => h.type === 'drawer')).toBe(true);
+      expect(state && getDrawerStatusFromState(state)).toBe('open');
     });
   });
 
@@ -1136,26 +1156,24 @@ describe('Drawer Navigation', () => {
     // Drawer should be closed
     await waitFor(() => {
       const state = navigationRef.current?.getRootState();
-      expect(state?.history?.some((h: any) => h.type === 'drawer')).toBe(false);
+      expect(state && getDrawerStatusFromState(state)).toBe('closed');
     });
   });
 
-  it('should toggle drawer with gesture', async () => {
+  it('should toggle drawer with a drawer action', async () => {
     const navigationRef = React.createRef<any>();
 
-    const { getByTestId } = render(
+    render(
       <NavigationContainer ref={navigationRef}>
         <DrawerNavigator />
       </NavigationContainer>
     );
 
-    // Simulate swipe from left edge
-    const mainView = getByTestId('main-content');
-    fireEvent(mainView, 'swipeRight', { nativeEvent: { translationX: 100 } });
+    navigationRef.current?.dispatch(DrawerActions.toggleDrawer());
 
     await waitFor(() => {
       const state = navigationRef.current?.getRootState();
-      expect(state?.history?.some((h: any) => h.type === 'drawer')).toBe(true);
+      expect(state && getDrawerStatusFromState(state)).toBe('open');
     });
   });
 });
@@ -1171,7 +1189,6 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import renderer from 'react-test-renderer';
 import HomeScreen from '../screens/HomeScreen';
 import DetailsScreen from '../screens/DetailsScreen';
 
@@ -1196,8 +1213,8 @@ const App = () => (
 
 describe('Navigation Snapshots', () => {
   it('should match Home screen snapshot', () => {
-    const tree = renderer.create(<App />).toJSON();
-    expect(tree).toMatchSnapshot();
+    const { toJSON } = render(<App />);
+    expect(toJSON()).toMatchSnapshot();
   });
 
   it('should match navigation header snapshot', () => {
@@ -1218,8 +1235,8 @@ describe('Navigation Snapshots', () => {
       </NavigationContainer>
     );
 
-    const tree = renderer.create(<DetailsWithParams />).toJSON();
-    expect(tree).toMatchSnapshot();
+    const { toJSON } = render(<DetailsWithParams />);
+    expect(toJSON()).toMatchSnapshot();
   });
 });
 ```
@@ -1252,7 +1269,7 @@ describe('Navigation E2E', () => {
     await expect(element(by.text('Details Screen'))).toBeVisible();
 
     // Navigate back
-    await element(by.traits(['button'])).atIndex(0).tap();
+    await element(by.id('back-button')).tap();
     await expect(element(by.text('Welcome to Home'))).toBeVisible();
   });
 

@@ -139,7 +139,9 @@ def verify_2fa_setup():
         user.save()
 
         # Generate backup codes
-        backup_codes = generate_backup_codes(user)
+        backup_codes, hashed_codes = generate_backup_codes()
+        user.backup_code_hashes = hashed_codes
+        user.save()
 
         return jsonify({
             'success': True,
@@ -294,8 +296,8 @@ Always provide backup codes for users who lose access to their authenticator:
 
 ```python
 import secrets
-import hashlib
 from typing import List, Tuple
+from werkzeug.security import generate_password_hash, check_password_hash
 
 def generate_backup_codes(count=10) -> Tuple[List[str], List[str]]:
     """
@@ -319,14 +321,14 @@ def hash_backup_code(code: str) -> str:
     """Hash a backup code for storage"""
     # Remove formatting and lowercase
     normalized = code.replace('-', '').lower()
-    return hashlib.sha256(normalized.encode()).hexdigest()
+    return generate_password_hash(normalized)
 
 def verify_backup_code(user, submitted_code: str) -> bool:
     """Verify and consume a backup code"""
-    submitted_hash = hash_backup_code(submitted_code)
+    normalized = submitted_code.replace('-', '').lower()
 
     for i, stored_hash in enumerate(user.backup_code_hashes):
-        if stored_hash and submitted_hash == stored_hash:
+        if stored_hash and check_password_hash(stored_hash, normalized):
             # Mark code as used (set to None)
             user.backup_code_hashes[i] = None
             user.save()
@@ -356,7 +358,6 @@ async function startWebAuthnRegistration(user) {
     const options = await generateRegistrationOptions({
         rpName,
         rpID,
-        userID: user.id,
         userName: user.email,
         userDisplayName: user.name,
         attestationType: 'none',
@@ -366,28 +367,32 @@ async function startWebAuthnRegistration(user) {
         }
     });
 
-    // Store challenge for verification
-    await storeChallenge(user.id, options.challenge);
+    // Store options for verification
+    await storeRegistrationOptions(user.id, options);
 
     return options;
 }
 
 async function completeWebAuthnRegistration(user, response) {
-    const expectedChallenge = await getStoredChallenge(user.id);
+    const currentOptions = await getStoredRegistrationOptions(user.id);
 
     const verification = await verifyRegistrationResponse({
         response,
-        expectedChallenge,
+        expectedChallenge: currentOptions.challenge,
         expectedOrigin: origin,
         expectedRPID: rpID
     });
 
     if (verification.verified) {
+        const { credential } = verification.registrationInfo;
+
         // Store credential
         await saveCredential(user.id, {
-            credentialID: verification.registrationInfo.credentialID,
-            credentialPublicKey: verification.registrationInfo.credentialPublicKey,
-            counter: verification.registrationInfo.counter
+            id: credential.id,
+            publicKey: credential.publicKey,
+            counter: credential.counter,
+            transports: credential.transports,
+            webAuthnUserID: currentOptions.user.id
         });
 
         return { success: true };
@@ -403,13 +408,13 @@ async function startWebAuthnAuthentication(user) {
     const options = await generateAuthenticationOptions({
         rpID,
         allowCredentials: credentials.map(cred => ({
-            id: cred.credentialID,
-            type: 'public-key'
+            id: cred.id,
+            transports: cred.transports
         })),
         userVerification: 'preferred'
     });
 
-    await storeChallenge(user.id, options.challenge);
+    await storeAuthenticationOptions(user.id, options);
 
     return options;
 }
@@ -421,6 +426,8 @@ async function startWebAuthnAuthentication(user) {
 
 ```javascript
 // Frontend WebAuthn implementation
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
+
 class WebAuthnClient {
 
     async register() {
@@ -428,35 +435,17 @@ class WebAuthnClient {
         const response = await fetch('/api/webauthn/register/start', {
             method: 'POST'
         });
-        const options = await response.json();
-
-        // Convert base64 strings to ArrayBuffers
-        options.challenge = base64ToArrayBuffer(options.challenge);
-        options.user.id = base64ToArrayBuffer(options.user.id);
+        const optionsJSON = await response.json();
 
         try {
             // Prompt user to create credential
-            const credential = await navigator.credentials.create({
-                publicKey: options
-            });
+            const credential = await startRegistration({ optionsJSON });
 
             // Send credential to server
             const verifyResponse = await fetch('/api/webauthn/register/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: credential.id,
-                    rawId: arrayBufferToBase64(credential.rawId),
-                    response: {
-                        clientDataJSON: arrayBufferToBase64(
-                            credential.response.clientDataJSON
-                        ),
-                        attestationObject: arrayBufferToBase64(
-                            credential.response.attestationObject
-                        )
-                    },
-                    type: credential.type
-                })
+                body: JSON.stringify(credential)
             });
 
             return await verifyResponse.json();
@@ -471,59 +460,17 @@ class WebAuthnClient {
         const response = await fetch('/api/webauthn/authenticate/start', {
             method: 'POST'
         });
-        const options = await response.json();
+        const optionsJSON = await response.json();
 
-        options.challenge = base64ToArrayBuffer(options.challenge);
-        options.allowCredentials = options.allowCredentials.map(cred => ({
-            ...cred,
-            id: base64ToArrayBuffer(cred.id)
-        }));
-
-        const credential = await navigator.credentials.get({
-            publicKey: options
-        });
+        const credential = await startAuthentication({ optionsJSON });
 
         // Send to server for verification
         return fetch('/api/webauthn/authenticate/complete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: credential.id,
-                rawId: arrayBufferToBase64(credential.rawId),
-                response: {
-                    clientDataJSON: arrayBufferToBase64(
-                        credential.response.clientDataJSON
-                    ),
-                    authenticatorData: arrayBufferToBase64(
-                        credential.response.authenticatorData
-                    ),
-                    signature: arrayBufferToBase64(
-                        credential.response.signature
-                    )
-                },
-                type: credential.type
-            })
+            body: JSON.stringify(credential)
         });
     }
-}
-
-// Utility functions
-function base64ToArrayBuffer(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
-
-function arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
 }
 ```
 
@@ -562,10 +509,11 @@ flowchart TD
 ```python
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from datetime import datetime, timedelta
 
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
+    app=app,
     default_limits=["100 per hour"]
 )
 

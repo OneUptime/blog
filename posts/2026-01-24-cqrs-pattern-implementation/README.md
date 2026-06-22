@@ -62,7 +62,7 @@ flowchart TB
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -77,7 +77,7 @@ class Command(ABC):
         if self.command_id is None:
             self.command_id = str(uuid.uuid4())
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(timezone.utc)
 
 
 # Specific commands
@@ -127,7 +127,7 @@ class DomainEvent:
         if self.event_id is None:
             self.event_id = str(uuid.uuid4())
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -156,10 +156,13 @@ class OrderCancelledEvent(DomainEvent):
 
 ```python
 # aggregates.py
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+
+from commands import DomainEvent, OrderCreatedEvent, OrderItemAddedEvent, OrderCancelledEvent
 
 
 class OrderStatus(Enum):
@@ -199,7 +202,7 @@ class Order:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
         self.updated_at = self.created_at
 
     # Command methods that modify state and emit events
@@ -245,7 +248,7 @@ class Order:
         item = OrderItem(product_id=product_id, quantity=quantity, price=price)
         self.items.append(item)
         self.version += 1
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
         event = OrderItemAddedEvent(
             aggregate_id=self.id,
@@ -264,7 +267,7 @@ class Order:
 
         self.status = OrderStatus.CANCELLED
         self.version += 1
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
         event = OrderCancelledEvent(
             aggregate_id=self.id,
@@ -305,7 +308,20 @@ class EventStore(ABC):
 
 ```python
 # command_handlers.py
-from typing import Dict, Optional
+from typing import Dict, List
+import uuid
+
+from aggregates import EventStore, Order, OrderItem, OrderStatus
+from commands import (
+    AddItemToOrderCommand,
+    Command,
+    CommandHandler,
+    CreateOrderCommand,
+    DomainEvent,
+    OrderCancelledEvent,
+    OrderCreatedEvent,
+    OrderItemAddedEvent,
+)
 
 
 class CreateOrderHandler(CommandHandler):
@@ -359,6 +375,8 @@ class AddItemToOrderHandler(CommandHandler):
         # Load aggregate from events
         events = self.event_store.get_events(command.order_id)
         order = self._rebuild_order(command.order_id, events)
+        if order is None:
+            raise ValueError(f"Order {command.order_id} not found")
 
         # Get product price
         product = self.product_service.get_product(command.product_id)
@@ -444,7 +462,7 @@ class CommandDispatcher:
 ```python
 # read_models.py
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List
 from datetime import datetime
 
 
@@ -490,7 +508,8 @@ class CustomerOrdersReadModel:
 ```python
 # projections.py
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+
+from commands import DomainEvent, OrderCancelledEvent, OrderCreatedEvent, OrderItemAddedEvent
 
 
 class EventHandler(ABC):
@@ -593,8 +612,11 @@ class CustomerOrdersProjection(EventHandler):
 ```python
 # query_handlers.py
 from dataclasses import dataclass
-from typing import List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional
 from abc import ABC, abstractmethod
+
+from read_models import CustomerOrdersReadModel, OrderSummaryReadModel
 
 
 # Query definitions
@@ -747,6 +769,8 @@ import threading
 import queue
 import time
 
+from commands import DomainEvent
+
 
 class EventBus:
     """Publishes events to subscribers"""
@@ -850,6 +874,20 @@ class AsyncEventBus:
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
+
+from command_handlers import AddItemToOrderHandler, CommandDispatcher, CreateOrderHandler
+from commands import AddItemToOrderCommand, CreateOrderCommand, OrderCancelledEvent, OrderCreatedEvent, OrderItemAddedEvent
+from event_bus import AsyncEventBus
+from projections import CustomerOrdersProjection, OrderSummaryProjection
+from query_handlers import (
+    GetCustomerOrdersHandler,
+    GetCustomerOrdersQuery,
+    GetOrderSummaryHandler,
+    GetOrderSummaryQuery,
+    QueryDispatcher,
+    SearchOrdersHandler,
+    SearchOrdersQuery,
+)
 
 
 app = FastAPI()
@@ -1058,14 +1096,14 @@ async def create_order(request):
     return {
         "order_id": result["order_id"],
         "status": "created",
-        "total": result["total"]  # From command result
+        "total_amount": result["total_amount"]  # From command result
     }
 
 # Option 2: Use correlation IDs for status checks
 @app.get("/api/orders/{order_id}/status")
 async def check_order_status(order_id: str):
     # Check if read model has caught up
-    read_model = query_dispatcher.dispatch(GetOrderQuery(order_id))
+    read_model = query_dispatcher.dispatch(GetOrderSummaryQuery(order_id))
     if not read_model:
         return {"status": "processing", "message": "Order being processed"}
     return read_model

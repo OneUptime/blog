@@ -12,7 +12,7 @@ Loops are fundamental building blocks in Bash scripting that allow you to automa
 
 ## Types of Loops in Bash
 
-Bash provides three main types of loops, each suited for different use cases:
+Bash commonly uses three types of loops, each suited for different use cases:
 
 ```mermaid
 flowchart TD
@@ -109,7 +109,7 @@ flowchart TD
 count=1
 
 # Loop while count is less than or equal to 5
-while [ $count -le 5 ]
+while [ "$count" -le 5 ]
 do
     echo "Count is: $count"
     # Increment the counter
@@ -145,7 +145,7 @@ job_pid=$!
 
 echo "Started job with PID: $job_pid"
 
-until ! ps -p $job_pid > /dev/null 2>&1
+until ! ps -p "$job_pid" > /dev/null 2>&1
 do
     echo "Job still running..."
     sleep 5
@@ -198,7 +198,7 @@ done
 
 ## Best Practices
 
-1. **Always quote variables** to handle filenames with spaces correctly
+1. **Quote variable expansions** in command arguments and tests to handle filenames with spaces correctly
 2. **Use `[[ ]]` instead of `[ ]`** for more reliable conditional expressions
 3. **Avoid parsing `ls` output** - use glob patterns instead
 4. **Use `read -r`** to prevent backslash interpretation

@@ -45,12 +45,12 @@ flowchart LR
 brew install conftest
 
 # Linux
-wget https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
-tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+wget https://github.com/open-policy-agent/conftest/releases/download/v0.64.0/conftest_0.64.0_Linux_x86_64.tar.gz
+tar xzf conftest_0.64.0_Linux_x86_64.tar.gz
 sudo mv conftest /usr/local/bin/
 
 # Docker
-docker run --rm -v $(pwd):/project openpolicyagent/conftest test deployment.yaml
+docker run --rm -v "$(pwd):/project" -w /project openpolicyagent/conftest test deployment.yaml
 ```
 
 ### Project Structure
@@ -65,7 +65,7 @@ kubernetes/
 │   ├── deployment.rego
 │   ├── security.rego
 │   └── labels.rego
-├── .conftest.toml
+├── conftest.toml
 └── Makefile
 ```
 
@@ -78,7 +78,7 @@ kubernetes/
 package main
 
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -86,7 +86,7 @@ deny[msg] {
 }
 
 # Deny deployments without resource requests
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.requests
@@ -94,7 +94,7 @@ deny[msg] {
 }
 
 # Require minimum replicas for production
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     input.metadata.namespace == "production"
     input.spec.replicas < 2
@@ -109,7 +109,7 @@ deny[msg] {
 package main
 
 # Deny privileged containers
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     container.securityContext.privileged == true
@@ -117,7 +117,7 @@ deny[msg] {
 }
 
 # Deny containers running as root
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.securityContext.runAsNonRoot
@@ -125,7 +125,7 @@ deny[msg] {
 }
 
 # Require read-only root filesystem
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.securityContext.readOnlyRootFilesystem
@@ -133,21 +133,21 @@ deny[msg] {
 }
 
 # Deny hostNetwork
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     input.spec.template.spec.hostNetwork == true
     msg := sprintf("Deployment '%s' cannot use hostNetwork", [input.metadata.name])
 }
 
 # Deny hostPID
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     input.spec.template.spec.hostPID == true
     msg := sprintf("Deployment '%s' cannot use hostPID", [input.metadata.name])
 }
 
 # Deny hostPath volumes
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     volume := input.spec.template.spec.volumes[_]
     volume.hostPath
@@ -155,7 +155,7 @@ deny[msg] {
 }
 
 # Require security context at pod level
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     not input.spec.template.spec.securityContext
     msg := sprintf("Deployment '%s' must have a pod-level securityContext", [input.metadata.name])
@@ -170,26 +170,26 @@ package main
 
 # Allowed image registries
 allowed_registries := [
-    "mycompany.azurecr.io",
-    "gcr.io/myproject",
-    "docker.io/library"
+    "mycompany.azurecr.io/",
+    "gcr.io/myproject/",
+    "docker.io/library/"
 ]
 
 # Deny images from unapproved registries
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not image_from_allowed_registry(container.image)
     msg := sprintf("Container '%s' uses image from unapproved registry: %s", [container.name, container.image])
 }
 
-image_from_allowed_registry(image) {
+image_from_allowed_registry(image) if {
     registry := allowed_registries[_]
     startswith(image, registry)
 }
 
 # Deny 'latest' tag
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     endswith(container.image, ":latest")
@@ -197,11 +197,17 @@ deny[msg] {
 }
 
 # Deny images without explicit tag
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
-    not contains(container.image, ":")
+    not image_has_explicit_tag(container.image)
     msg := sprintf("Container '%s' must specify an image tag", [container.name])
+}
+
+image_has_explicit_tag(image) if {
+    parts := split(image, "/")
+    name := parts[count(parts) - 1]
+    contains(name, ":")
 }
 ```
 
@@ -220,7 +226,7 @@ required_labels := [
 ]
 
 # Deny resources missing required labels
-deny[msg] {
+deny contains msg if {
     required_label := required_labels[_]
     not input.metadata.labels[required_label]
     msg := sprintf("%s '%s' is missing required label: %s", [input.kind, input.metadata.name, required_label])
@@ -229,7 +235,7 @@ deny[msg] {
 # Validate environment label values
 valid_environments := ["development", "staging", "production"]
 
-deny[msg] {
+deny contains msg if {
     label := input.metadata.labels.env
     not label in valid_environments
     msg := sprintf("%s '%s' has invalid 'env' label value: %s (must be one of: %v)", [input.kind, input.metadata.name, label, valid_environments])
@@ -243,13 +249,13 @@ deny[msg] {
 package main
 
 # Deny resources in default namespace
-deny[msg] {
+deny contains msg if {
     input.metadata.namespace == "default"
     msg := sprintf("%s '%s' cannot be deployed to 'default' namespace", [input.kind, input.metadata.name])
 }
 
 # No namespace specified (will default to 'default')
-deny[msg] {
+deny contains msg if {
     not input.metadata.namespace
     input.kind != "Namespace"
     input.kind != "ClusterRole"
@@ -260,14 +266,14 @@ deny[msg] {
 # Protected namespaces
 protected_namespaces := ["kube-system", "kube-public", "kube-node-lease"]
 
-deny[msg] {
+deny contains msg if {
     namespace := input.metadata.namespace
     namespace in protected_namespaces
     not is_system_resource
     msg := sprintf("%s '%s' cannot be deployed to protected namespace: %s", [input.kind, input.metadata.name, namespace])
 }
 
-is_system_resource {
+is_system_resource if {
     input.metadata.labels["app.kubernetes.io/managed-by"] == "Helm"
     input.metadata.labels["app.kubernetes.io/name"] == "kube-prometheus-stack"
 }
@@ -282,16 +288,16 @@ is_system_resource {
 package main
 
 # Track which namespaces have network policies
-namespaces_with_netpol[ns] {
+namespaces_with_netpol contains ns if {
     input.kind == "NetworkPolicy"
     ns := input.metadata.namespace
 }
 
 # Require network policy for production deployments
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     input.metadata.namespace == "production"
-    # This is a warning since we can't check across files easily
+    # This is a warning since we can't check across files without --combine
     msg := sprintf("Deployment '%s' in production should have a NetworkPolicy", [input.metadata.name])
 }
 ```
@@ -307,17 +313,26 @@ max_cpu_limit := "2"
 max_memory_limit := "4Gi"
 
 # Parse and compare resource values
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
-    cpu_limit := container.resources.limits.cpu
-    cpu_value := to_number(trim_suffix(cpu_limit, "m")) / 1000
+    cpu_value := parse_cpu(container.resources.limits.cpu)
     cpu_value > to_number(max_cpu_limit)
-    msg := sprintf("Container '%s' CPU limit %s exceeds maximum %s", [container.name, cpu_limit, max_cpu_limit])
+    msg := sprintf("Container '%s' CPU limit %s exceeds maximum %s", [container.name, container.resources.limits.cpu, max_cpu_limit])
+}
+
+parse_cpu(cpu) := value if {
+    endswith(cpu, "m")
+    value := to_number(trim_suffix(cpu, "m")) / 1000
+}
+
+parse_cpu(cpu) := value if {
+    not endswith(cpu, "m")
+    value := to_number(cpu)
 }
 
 # Require limits to not exceed requests by more than 2x
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     requests := container.resources.requests.memory
@@ -334,7 +349,7 @@ warn[msg] {
 package main
 
 # Production deployments with 3+ replicas should have PDB
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     input.metadata.namespace == "production"
     input.spec.replicas >= 3
@@ -342,7 +357,7 @@ warn[msg] {
 }
 
 # HPA should not set minReplicas to 1 in production
-deny[msg] {
+deny contains msg if {
     input.kind == "HorizontalPodAutoscaler"
     input.metadata.namespace == "production"
     input.spec.minReplicas < 2
@@ -372,14 +387,14 @@ conftest test deployment.yaml -o json
 conftest test deployment.yaml -o tap
 conftest test deployment.yaml -o table
 
-# Show only failures
+# Fail the command if warnings are found
 conftest test deployment.yaml --fail-on-warn
 ```
 
 ### Configuration File
 
 ```toml
-# .conftest.toml
+# conftest.toml
 # Conftest configuration
 
 # Default policy location
@@ -404,8 +419,9 @@ helm template myrelease ./mychart | conftest test -
 # Test with values
 helm template myrelease ./mychart -f values-prod.yaml | conftest test -
 
-# Test Helm chart directory
-conftest test ./mychart/templates/
+# Test rendered Helm chart output
+helm template myrelease ./mychart --output-dir /tmp/mychart-rendered
+conftest test /tmp/mychart-rendered/
 ```
 
 ### Testing Kustomize
@@ -440,8 +456,8 @@ jobs:
       
       - name: Install Conftest
         run: |
-          wget https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.64.0/conftest_0.64.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.64.0_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
       
       - name: Run Policy Tests
@@ -461,7 +477,7 @@ policy-test:
   stage: test
   image: openpolicyagent/conftest:latest
   script:
-    - conftest test kubernetes/*.yaml -p policy/ --fail-on-warn
+    - conftest test kubernetes/manifests/*.yaml -p policy/ --fail-on-warn
   rules:
     - changes:
         - kubernetes/**
@@ -474,10 +490,10 @@ policy-test:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/open-policy-agent/conftest
-    rev: v0.46.0
+    rev: v0.64.0
     hooks:
-      - id: conftest
-        args: ["-p", "policy/"]
+      - id: conftest-test
+        args: ["--policy", "policy/"]
         files: \.ya?ml$
 ```
 
@@ -487,7 +503,7 @@ pip install pre-commit
 pre-commit install
 
 # Manual run
-pre-commit run conftest --all-files
+pre-commit run conftest-test --all-files
 ```
 
 ## Testing Policies
@@ -499,8 +515,8 @@ pre-commit run conftest --all-files
 package main
 
 # Test that deployment without limits is denied
-test_deployment_without_limits_denied {
-    input := {
+test_deployment_without_limits_denied if {
+    input_doc := {
         "kind": "Deployment",
         "metadata": {"name": "test"},
         "spec": {
@@ -515,20 +531,37 @@ test_deployment_without_limits_denied {
         }
     }
     
-    count(deny) > 0
+    some msg in deny with input as input_doc
+    contains(msg, "must have resource limits")
 }
 
 # Test that deployment with limits is allowed
-test_deployment_with_limits_allowed {
-    input := {
+test_deployment_with_limits_allowed if {
+    input_doc := {
         "kind": "Deployment",
-        "metadata": {"name": "test"},
+        "metadata": {
+            "name": "test",
+            "namespace": "staging",
+            "labels": {
+                "app": "test",
+                "env": "staging",
+                "team": "platform",
+                "version": "v1"
+            }
+        },
         "spec": {
             "template": {
                 "spec": {
+                    "securityContext": {
+                        "runAsNonRoot": true
+                    },
                     "containers": [{
                         "name": "app",
-                        "image": "nginx:1.19",
+                        "image": "mycompany.azurecr.io/app:1.19",
+                        "securityContext": {
+                            "runAsNonRoot": true,
+                            "readOnlyRootFilesystem": true
+                        },
                         "resources": {
                             "limits": {
                                 "cpu": "100m",
@@ -545,7 +578,7 @@ test_deployment_with_limits_allowed {
         }
     }
     
-    count(deny) == 0
+    count(deny) with input as input_doc == 0
 }
 ```
 

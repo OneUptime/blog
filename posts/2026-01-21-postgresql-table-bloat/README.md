@@ -14,16 +14,14 @@ Table bloat occurs when dead tuples accumulate, wasting storage and degrading pe
 
 - MVCC leaves dead tuples after UPDATE/DELETE
 - Autovacuum not keeping up
-- Long-running transactions blocking vacuum
+- Long-running transactions delaying tuple cleanup
 - Disabled autovacuum
 
 ## Detect Bloat
 
-### Using pgstattuple
+### Using pg_stat_user_tables
 
 ```sql
-CREATE EXTENSION pgstattuple;
-
 SELECT
     schemaname || '.' || relname AS table,
     pg_size_pretty(pg_relation_size(relid)) AS size,
@@ -38,6 +36,8 @@ ORDER BY n_dead_tup DESC;
 ### Detailed Bloat Analysis
 
 ```sql
+CREATE EXTENSION IF NOT EXISTS pgstattuple;
+
 SELECT * FROM pgstattuple('users');
 
 -- Key metrics:
@@ -67,19 +67,20 @@ VACUUM VERBOSE users;
 VACUUM FULL users;
 ```
 
-### pg_repack (No Lock)
+### pg_repack (Minimal Lock)
 
 ```bash
 # Install pg_repack
 
 sudo apt install postgresql-16-repack
 
-# Repack table without locking
+# Repack eligible table with minimal locking
+# Target table must have a PRIMARY KEY or a UNIQUE NOT NULL index
 pg_repack -d myapp -t users
 ```
 
 ```sql
--- Or via SQL
+-- Enable extension in the target database
 CREATE EXTENSION pg_repack;
 ```
 
@@ -132,7 +133,7 @@ ORDER BY n_dead_tup DESC;
 1. **Monitor dead tuple counts** - Regular checks
 2. **Tune autovacuum** - For your workload
 3. **Use pg_repack** - For online maintenance
-4. **Avoid long transactions** - They block vacuum
+4. **Avoid long transactions** - They delay tuple cleanup
 5. **Schedule maintenance windows** - For VACUUM FULL if needed
 
 ## Conclusion

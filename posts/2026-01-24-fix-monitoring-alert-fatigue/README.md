@@ -95,7 +95,7 @@ class AlertAuditor:
                     pair = tuple(sorted([a1, a2]))
                     co_occurrences[pair] += 1
 
-        # Return pairs that fire together more than 50% of the time
+        # Return pairs that fire together frequently enough to review
         return {k: v for k, v in co_occurrences.items() if v > 10}
 
     def calculate_noise_score(self):
@@ -210,7 +210,6 @@ Static thresholds cause many false positives. Use dynamic thresholds instead:
 # Implement smarter alerting thresholds
 
 import numpy as np
-from scipy import stats
 
 class DynamicThreshold:
     def __init__(self, historical_data, sensitivity=2.5):
@@ -243,6 +242,9 @@ class DynamicThreshold:
             upper = median + (self.sensitivity * 1.4826 * mad)
             lower = median - (self.sensitivity * 1.4826 * mad)
 
+        else:
+            raise ValueError(f"Unsupported threshold method: {method}")
+
         return {'upper': upper, 'lower': lower}
 
     def is_anomaly(self, value, method='zscore'):
@@ -257,18 +259,26 @@ prometheus_alert_rule = """
 groups:
   - name: dynamic_thresholds
     rules:
-      # Calculate rolling average and stddev
-      - record: http_request_duration_avg
-        expr: avg_over_time(http_request_duration_seconds[7d])
+      # Convert request duration histogram buckets into a p95 latency series
+      - record: job:http_request_duration_seconds:p95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket[5m]))
+          )
 
-      - record: http_request_duration_stddev
-        expr: stddev_over_time(http_request_duration_seconds[7d])
+      # Calculate rolling average and stddev
+      - record: job:http_request_duration_seconds:p95_avg
+        expr: avg_over_time(job:http_request_duration_seconds:p95[7d])
+
+      - record: job:http_request_duration_seconds:p95_stddev
+        expr: stddev_over_time(job:http_request_duration_seconds:p95[7d])
 
       # Alert only when significantly above baseline
       - alert: HighLatencyAnomaly
         expr: |
-          http_request_duration_seconds
-          > (http_request_duration_avg + 2.5 * http_request_duration_stddev)
+          job:http_request_duration_seconds:p95
+          > (job:http_request_duration_seconds:p95_avg + 2.5 * job:http_request_duration_seconds:p95_stddev)
         for: 5m
         labels:
           severity: high
@@ -377,6 +387,11 @@ class AlertCorrelator {
     // Send to notification system
   }
 
+  sendNotification(alert) {
+    console.log('Alert:', alert);
+    // Send to notification system
+  }
+
   getHighestSeverity(alerts) {
     const severityOrder = ['critical', 'high', 'medium', 'low'];
     return alerts.reduce((highest, alert) => {
@@ -410,27 +425,29 @@ global:
 
 inhibit_rules:
   # If cluster is down, suppress individual node alerts
-  - source_match:
-      alertname: 'ClusterDown'
-    target_match_re:
-      alertname: 'Node.*'
+  - source_matchers:
+      - alertname="ClusterDown"
+    target_matchers:
+      - alertname=~"Node.*"
     equal: ['cluster']
 
   # If database is down, suppress dependent service alerts
-  - source_match:
-      alertname: 'DatabaseDown'
-    target_match_re:
-      alertname: '(APIErrors|SlowQueries|ServiceUnhealthy)'
+  - source_matchers:
+      - alertname="DatabaseDown"
+    target_matchers:
+      - alertname=~"(APIErrors|SlowQueries|ServiceUnhealthy)"
     equal: ['environment']
 
   # High severity suppresses lower severity for same issue
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'service']
 
 route:
+  receiver: 'default'
+
   # Group alerts by service and alertname
   group_by: ['alertname', 'service', 'environment']
 
@@ -444,16 +461,27 @@ route:
   repeat_interval: 4h
 
   routes:
+    # Maintenance windows - send to null receiver
+    - matchers:
+        - maintenance="true"
+      receiver: 'null'
+
     # Critical goes immediately
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_wait: 10s
       receiver: 'pagerduty-critical'
 
-    # Maintenance windows - send to null receiver
-    - match:
-        maintenance: 'true'
-      receiver: 'null'
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'https://alerts.example.com/webhook'
+
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - routing_key: '<pagerduty-routing-key>'
+
+  - name: 'null'
 ```
 
 ## Step 6: Create Alert Quality Metrics

@@ -34,7 +34,7 @@ avg by (service) (
 
 # Peak CPU usage to identify spikes
 max by (service) (
-  rate(container_cpu_usage_seconds_total[5m])
+  max_over_time(rate(container_cpu_usage_seconds_total[5m])[24h:5m])
 )
 ```
 
@@ -42,9 +42,9 @@ For memory, you want to track both current usage and the trend over time.
 
 ```promql
 # Memory usage percentage by container
-sum by (container) (
+sum by (namespace, pod, container) (
   container_memory_usage_bytes
-) / sum by (container) (
+) / sum by (namespace, pod, container) (
   container_spec_memory_limit_bytes
 ) * 100
 
@@ -103,10 +103,10 @@ groups:
       # Alert when CPU usage exceeds 80% for 15 minutes
       - alert: HighCPUUsage
         expr: |
-          avg by (namespace, pod) (
+          sum by (namespace, pod) (
             rate(container_cpu_usage_seconds_total[5m])
-          ) / avg by (namespace, pod) (
-            kube_pod_container_resource_limits{resource="cpu"}
+          ) / sum by (namespace, pod) (
+            kube_pod_container_resource_limits{resource="cpu", unit="core"}
           ) > 0.8
         for: 15m
         labels:
@@ -132,6 +132,7 @@ groups:
 Static resource allocation is a recipe for either waste or outages. Autoscaling adjusts capacity based on actual demand.
 
 The Horizontal Pod Autoscaler (HPA) is the starting point for most Kubernetes workloads.
+Resource utilization targets are calculated against pod resource requests, so make sure CPU and memory requests are set on the containers you want HPA to scale.
 
 ```yaml
 # hpa.yaml
@@ -234,9 +235,6 @@ Looking at historical data helps predict future needs. This Python script analyz
 ```python
 # capacity_forecast.py
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-
 def analyze_capacity_trends(metrics_data):
     """
     Analyze historical metrics and forecast future capacity needs.
@@ -245,10 +243,12 @@ def analyze_capacity_trends(metrics_data):
     df = pd.DataFrame(metrics_data)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df = df.set_index('timestamp')
+    metric_column = 'usage_percent' if 'usage_percent' in df.columns else df.select_dtypes('number').columns[0]
+    usage = df[metric_column].astype(float)
 
     # Calculate daily averages and peaks
-    daily_avg = df.resample('D').mean()
-    daily_peak = df.resample('D').max()
+    daily_avg = usage.resample('D').mean()
+    daily_peak = usage.resample('D').max()
 
     # Calculate growth rate
     growth_rate = (daily_avg.iloc[-1] - daily_avg.iloc[0]) / len(daily_avg)
@@ -304,13 +304,19 @@ for deployment in $(kubectl get deployments -A -o jsonpath='{range .items[*]}{.m
     current_cpu=$(kubectl get deployment -n $namespace $name -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}')
     current_memory=$(kubectl get deployment -n $namespace $name -o jsonpath='{.spec.template.spec.containers[0].resources.requests.memory}')
 
-    # Get actual usage from metrics-server
-    actual_cpu=$(kubectl top pods -n $namespace -l app=$name --no-headers 2>/dev/null | awk '{sum+=$2} END {print sum/NR}')
-    actual_memory=$(kubectl top pods -n $namespace -l app=$name --no-headers 2>/dev/null | awk '{sum+=$3} END {print sum/NR}')
+    # Get actual usage from metrics-server using the deployment's selector
+    selector=$(kubectl get deployment -n $namespace $name -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{printf "%s=%s," $k $v}}{{end}}' | sed 's/,$//')
+    if [ -n "$selector" ]; then
+        actual_cpu=$(kubectl top pods -n $namespace -l "$selector" --no-headers 2>/dev/null | awk '{sum+=$2; count++} END {if (count > 0) print sum/count "m"; else print "N/A"}')
+        actual_memory=$(kubectl top pods -n $namespace -l "$selector" --no-headers 2>/dev/null | awk '{sum+=$3; count++} END {if (count > 0) print sum/count "Mi"; else print "N/A"}')
+    else
+        actual_cpu="N/A"
+        actual_memory="N/A"
+    fi
 
     echo "Deployment: $namespace/$name"
     echo "  Current: CPU=$current_cpu, Memory=$current_memory"
-    echo "  Actual:  CPU=${actual_cpu}m, Memory=${actual_memory}Mi"
+    echo "  Actual:  CPU=$actual_cpu, Memory=$actual_memory"
     echo ""
 done
 ```

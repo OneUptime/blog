@@ -35,10 +35,10 @@ Before starting, ensure you have:
 
 ```text
 object-storage-bucket/
-  - chunks/
+  - chunks/                 # chunk objects
       - tenant-id/
           - chunk-files...
-  - index/
+  - index_YYYY-MM-DD/       # TSDB or BoltDB Shipper index objects; prefix depends on schema_config
       - tenant-id/
           - index-files...
   - rules/
@@ -156,7 +156,10 @@ aws s3 sync ${SOURCE_BUCKET}/chunks ${BACKUP_BUCKET}/chunks \
   --storage-class GLACIER_IR
 
 # Sync index
-aws s3 sync ${SOURCE_BUCKET}/index ${BACKUP_BUCKET}/index \
+aws s3 sync ${SOURCE_BUCKET} ${BACKUP_BUCKET} \
+  --exclude "*" \
+  --include "index/*" \
+  --include "index_*/*" \
   --storage-class STANDARD_IA
 
 # Backup rules
@@ -266,7 +269,7 @@ done
 
 LOKI_URL="http://loki-gateway:3100"
 BACKUP_DIR="/backups/rules/$(date +%Y-%m-%d)"
-TENANTS=$(curl -s ${LOKI_URL}/loki/api/v1/labels | jq -r '.data[]' | grep tenant)
+TENANTS="tenant-1 tenant-2 tenant-3"
 
 mkdir -p ${BACKUP_DIR}
 
@@ -301,7 +304,10 @@ kubectl scale statefulset -n loki --replicas=0 loki-ingester
 aws s3 sync ${BACKUP_BUCKET}/chunks ${TARGET_BUCKET}/chunks
 
 # Restore index
-aws s3 sync ${BACKUP_BUCKET}/index ${TARGET_BUCKET}/index
+aws s3 sync ${BACKUP_BUCKET} ${TARGET_BUCKET} \
+  --exclude "*" \
+  --include "index/*" \
+  --include "index_*/*"
 
 # Restore rules
 aws s3 sync ${BACKUP_BUCKET}/rules ${TARGET_BUCKET}/rules
@@ -313,7 +319,8 @@ kubectl scale deployment -n loki --replicas=3 \
 
 # Wait for ring to stabilize
 sleep 60
-curl http://loki:3100/ring
+curl http://loki:3100/ready
+curl http://loki:3100/distributor/ring
 ```
 
 ### Rules Restore
@@ -322,36 +329,39 @@ curl http://loki:3100/ring
 # Restore rules via API
 for file in rules-backup-*.yaml; do
   tenant=$(echo $file | sed 's/rules-backup-\(.*\)\.yaml/\1/')
-  curl -X POST "http://loki:3100/loki/api/v1/rules/${tenant}" \
-    -H "X-Scope-OrgID: ${tenant}" \
-    -H "Content-Type: application/yaml" \
-    -d @${file}
+  for namespace in $(yq -r 'keys | .[]' "${file}"); do
+    group_count=$(yq ".\"${namespace}\" | length" "${file}")
+    for i in $(seq 0 $((group_count - 1))); do
+      yq ".\"${namespace}\"[${i}]" "${file}" | \
+        curl -X POST "http://loki:3100/loki/api/v1/rules/${namespace}" \
+          -H "X-Scope-OrgID: ${tenant}" \
+          -H "Content-Type: application/yaml" \
+          --data-binary @-
+    done
+  done
 done
 ```
 
 ### WAL Restore
 
-```bash
-#!/bin/bash
-# restore-wal.sh
-
-RESTORE_DATE=$1
-
-# Scale down ingesters
-kubectl scale statefulset -n loki --replicas=0 loki-ingester
-
-# Restore WAL for each ingester
-for i in 0 1 2; do
-  # Clear existing WAL
-  kubectl exec -n loki loki-ingester-$i -- rm -rf /loki/wal/*
-
-  # Restore from backup
-  aws s3 cp s3://loki-backups/wal/ingester-$i-${RESTORE_DATE}.tar.gz - | \
-    kubectl exec -i -n loki loki-ingester-$i -- tar xzf - -C /
-done
-
-# Scale up ingesters
-kubectl scale statefulset -n loki --replicas=3 loki-ingester
+```yaml
+# Restore the WAL PVC from a VolumeSnapshot while the ingester StatefulSet is scaled down.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-loki-ingester-0
+  namespace: loki
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 100Gi
+  dataSource:
+    name: loki-ingester-wal-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
 ```
 
 ## Disaster Recovery
@@ -428,7 +438,7 @@ CHUNK_COUNT=$(aws s3 ls ${BACKUP_BUCKET}/chunks/ --recursive | wc -l)
 echo "Chunks backed up: ${CHUNK_COUNT}"
 
 # Check index count
-INDEX_COUNT=$(aws s3 ls ${BACKUP_BUCKET}/index/ --recursive | wc -l)
+INDEX_COUNT=$(aws s3 ls ${BACKUP_BUCKET}/ --recursive | grep -E '(^|/)index(_|/)' | wc -l)
 echo "Index files backed up: ${INDEX_COUNT}"
 
 # Verify file sizes

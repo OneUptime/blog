@@ -64,7 +64,7 @@ class TokenBlacklist:
             if ttl > 0:
                 # Store in blacklist with TTL matching token expiration
                 key = f"{self.prefix}:{jti}"
-                r.setex(key, ttl, '1')
+                r.set(key, '1', ex=ttl)
                 return True
 
             return False  # Token already expired
@@ -91,11 +91,11 @@ class TokenBlacklist:
             return True  # Invalid tokens are effectively blacklisted
 
     def blacklist_all_user_tokens(self, user_id, issued_before=None):
-        """Blacklist all tokens for a user issued before a timestamp."""
+        """Blacklist all tokens for a user issued at or before a timestamp."""
         if issued_before is None:
             issued_before = int(time.time())
 
-        # Store the timestamp - all tokens issued before this are invalid
+        # Store the timestamp - all tokens issued at or before this are invalid
         key = f"{self.prefix}:user:{user_id}"
         r.set(key, issued_before)
 
@@ -119,7 +119,7 @@ class TokenBlacklist:
 
             if user_id and iat:
                 invalidation_time = r.get(f"{self.prefix}:user:{user_id}")
-                if invalidation_time and int(invalidation_time) > iat:
+                if invalidation_time and int(invalidation_time) >= iat:
                     return False
 
             return True
@@ -170,7 +170,7 @@ class TokenBlacklist {
 
   async blacklistToken(token) {
     try {
-      const payload = jwt.decode(token);
+      const payload = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
 
       if (!payload || !payload.jti || !payload.exp) {
         return false;
@@ -180,7 +180,7 @@ class TokenBlacklist {
 
       if (ttl > 0) {
         const key = `${this.prefix}:${payload.jti}`;
-        await redis.setex(key, ttl, '1');
+        await redis.set(key, '1', 'EX', ttl);
         return true;
       }
 
@@ -192,7 +192,7 @@ class TokenBlacklist {
 
   async isBlacklisted(token) {
     try {
-      const payload = jwt.decode(token);
+      const payload = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
 
       if (!payload || !payload.jti) {
         return true;
@@ -228,7 +228,7 @@ class TokenBlacklist {
       // Check user-level blacklist
       if (payload.sub && payload.iat) {
         const invalidationTime = await redis.get(`${this.prefix}:user:${payload.sub}`);
-        if (invalidationTime && parseInt(invalidationTime) > payload.iat) {
+        if (invalidationTime && parseInt(invalidationTime) >= payload.iat) {
           return { valid: false, reason: 'User tokens invalidated' };
         }
       }
@@ -309,7 +309,7 @@ class RefreshTokenManager:
 
         # Store by token hash
         token_key = f"{self.prefix}:{token_hash}"
-        r.setex(token_key, self.token_lifetime, json.dumps(token_data))
+        r.set(token_key, json.dumps(token_data), ex=self.token_lifetime)
 
         # Add to user's token list for management
         user_tokens_key = f"{self.prefix}:user:{user_id}"
@@ -352,7 +352,7 @@ class RefreshTokenManager:
 
         # Mark old token as used (keep briefly for replay detection)
         token_data['used'] = True
-        r.setex(token_key, 3600, json.dumps(token_data))  # Keep for 1 hour
+        r.set(token_key, json.dumps(token_data), ex=3600)  # Keep for 1 hour
 
         # Create new token
         new_token = self.create_refresh_token(
@@ -608,7 +608,7 @@ async function authMiddleware(req, res, next) {
     // Check user-level invalidation
     if (payload.sub && payload.iat) {
       const invalidationTime = await redis.get(`${BLACKLIST_PREFIX}:user:${payload.sub}`);
-      if (invalidationTime && parseInt(invalidationTime) > payload.iat) {
+      if (invalidationTime && parseInt(invalidationTime) >= payload.iat) {
         return res.status(401).json({ error: 'Session invalidated' });
       }
     }
@@ -631,7 +631,7 @@ app.post('/logout', authMiddleware, async (req, res) => {
   if (payload && payload.jti && payload.exp) {
     const ttl = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
     if (ttl > 0) {
-      await redis.setex(`${BLACKLIST_PREFIX}:${payload.jti}`, ttl, '1');
+      await redis.set(`${BLACKLIST_PREFIX}:${payload.jti}`, '1', 'EX', ttl);
     }
   }
 
@@ -671,10 +671,10 @@ r.set(f"refresh:{token_hash}", user_data)
 ```python
 # Access token blacklist - match token expiration
 access_token_ttl = exp_time - current_time
-r.setex(f"blacklist:{jti}", access_token_ttl, '1')
+r.set(f"blacklist:{jti}", '1', ex=access_token_ttl)
 
 # Refresh tokens - typically 30 days
-r.setex(f"refresh:{hash}", 30 * 24 * 3600, data)
+r.set(f"refresh:{hash}", data, ex=30 * 24 * 3600)
 ```
 
 ### 3. Use Atomic Operations for Token Rotation
@@ -702,10 +702,10 @@ end
 
 -- Mark old as used
 data.used = true
-redis.call('SETEX', old_key, 3600, cjson.encode(data))
+redis.call('SET', old_key, cjson.encode(data), 'EX', 3600)
 
 -- Create new token
-redis.call('SETEX', new_key, ttl, new_data)
+redis.call('SET', new_key, new_data, 'EX', ttl)
 
 -- Update user's token set
 redis.call('SREM', user_tokens_key, old_hash)

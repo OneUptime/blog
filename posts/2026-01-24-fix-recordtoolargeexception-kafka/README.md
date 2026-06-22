@@ -500,6 +500,7 @@ import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.core.sync.RequestBody;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.*;
+import java.util.*;
 
 public class ExternalStorageProducer {
 
@@ -570,11 +571,12 @@ public class ExternalStorageProducer {
 
 ## Solution 5: Use Kafka Headers for Metadata
 
-Keep the message body small by moving metadata to headers:
+Keep metadata separate from the message body by moving small metadata fields to headers. Headers still count toward the total record size, so this is useful for organization and avoiding duplicated metadata, not for bypassing Kafka's message size limits:
 
 ```java
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.header.internals.RecordHeaders;
+import java.util.Map;
 
 public class HeaderOptimizedProducer {
 
@@ -631,20 +633,19 @@ public class HeaderOptimizedProducer {
 ### Test Message Size
 
 ```bash
-# Generate test data
-dd if=/dev/urandom of=/tmp/test-5mb.bin bs=1M count=5
-
-# Test sending via console producer
-cat /tmp/test-5mb.bin | /opt/kafka/bin/kafka-console-producer.sh \
-  --bootstrap-server localhost:9092 \
+# Test sending one generated 5MB record
+/opt/kafka/bin/kafka-producer-perf-test.sh \
   --topic test-large \
-  --producer-property max.request.size=10485760
+  --num-records 1 \
+  --record-size 5242880 \
+  --throughput -1 \
+  --producer-props bootstrap.servers=localhost:9092 max.request.size=10485760
 ```
 
-### Monitor Message Sizes
+### Inspect Topic Data
 
 ```bash
-# Check message sizes in topic
+# Check offsets in topic
 /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
   --broker-list localhost:9092 \
   --topic your-topic

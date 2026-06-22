@@ -38,11 +38,13 @@ flowchart LR
     Image --> Docker
 ```
 
-## Google Container Registry (GCR) Errors
+## Google Artifact Registry and gcr.io Errors
+
+Google Container Registry is deprecated and shut down for writes. Use Artifact Registry for new pushes. Existing `gcr.io` URLs can still work when they are backed by Artifact Registry repositories.
 
 ### Error: "denied: Token exchange failed"
 
-This is the most common GCR error. It means your authentication is not configured correctly.
+This was a common legacy GCR error. For new pushes, use Artifact Registry authentication and IAM roles.
 
 ```bash
 # Error message
@@ -58,7 +60,7 @@ Caller does not have permission 'storage.buckets.get'.
 # Then configure Docker authentication
 gcloud auth configure-docker
 
-# For Artifact Registry (newer)
+# For Artifact Registry
 gcloud auth configure-docker us-central1-docker.pkg.dev
 ```
 
@@ -69,17 +71,17 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 gcloud iam service-accounts create docker-pusher \
     --display-name="Docker Image Pusher"
 
-# Grant Storage Admin role (for GCR)
+# Grant Artifact Registry Writer role
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:docker-pusher@my-project.iam.gserviceaccount.com" \
-    --role="roles/storage.admin"
+    --role="roles/artifactregistry.writer"
 
 # Create and download key
 gcloud iam service-accounts keys create key.json \
     --iam-account=docker-pusher@my-project.iam.gserviceaccount.com
 
 # Authenticate Docker with service account
-cat key.json | docker login -u _json_key --password-stdin https://gcr.io
+cat key.json | docker login -u _json_key --password-stdin https://us-central1-docker.pkg.dev
 ```
 
 ### Error: "unauthorized: authentication required"
@@ -103,7 +105,7 @@ This usually means the image tag format is wrong.
 # Wrong format
 docker push myimage:latest
 
-# Correct format for GCR
+# Correct format for a gcr.io repository hosted on Artifact Registry
 docker push gcr.io/PROJECT_ID/myimage:latest
 
 # Correct format for Artifact Registry
@@ -147,7 +149,12 @@ The ECR repository must exist before you can push images.
 # Create the repository first
 aws ecr create-repository \
     --repository-name my-app \
-    --image-scanning-configuration scanOnPush=true \
+    --region us-east-1
+
+# Configure registry-level scan on push
+aws ecr put-registry-scanning-configuration \
+    --scan-type BASIC \
+    --rules '[{"repositoryFilters":[{"filter":"my-app","filterType":"WILDCARD"}],"scanFrequency":"SCAN_ON_PUSH"}]' \
     --region us-east-1
 
 # Then push
@@ -161,12 +168,21 @@ resource "aws_ecr_repository" "app" {
   name                 = "my-app"
   image_tag_mutability = "MUTABLE"
 
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
   lifecycle {
     prevent_destroy = true
+  }
+}
+
+resource "aws_ecr_registry_scanning_configuration" "app" {
+  scan_type = "BASIC"
+
+  rule {
+    scan_frequency = "SCAN_ON_PUSH"
+
+    repository_filter {
+      filter      = aws_ecr_repository.app.name
+      filter_type = "WILDCARD"
+    }
   }
 }
 
@@ -269,7 +285,7 @@ curl -v https://gcr.io/v2/
 
 # If behind a proxy, configure Docker
 sudo mkdir -p /etc/systemd/system/docker.service.d
-sudo cat > /etc/systemd/system/docker.service.d/http-proxy.conf << EOF
+sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf > /dev/null << EOF
 [Service]
 Environment="HTTP_PROXY=http://proxy.example.com:8080"
 Environment="HTTPS_PROXY=http://proxy.example.com:8080"
@@ -333,9 +349,10 @@ RUN npm run build
 
 FROM node:18-alpine
 WORKDIR /app
-# Only copy production dependencies and build output
+# Only install production dependencies and copy build output
+COPY package*.json ./
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 CMD ["node", "dist/index.js"]
 ```
 
@@ -348,8 +365,8 @@ docker images | grep my-app
 # Verify tag matches exactly
 docker tag my-app:latest gcr.io/my-project/my-app:latest
 
-# Push with verbose output
-docker push gcr.io/my-project/my-app:latest --debug
+# Push with debug output
+docker --debug push gcr.io/my-project/my-app:latest
 ```
 
 ## CI/CD Pipeline Troubleshooting
@@ -421,10 +438,12 @@ echo "=== Checking registry connectivity ==="
 curl -s -o /dev/null -w "%{http_code}" "https://$REGISTRY/v2/" || echo "Cannot reach registry"
 
 echo "=== Checking authentication ==="
-docker pull "$REGISTRY/library/alpine:latest" 2>&1 | head -5
+jq -e --arg registry "$REGISTRY" \
+  '.auths[$registry] or .credHelpers[$registry] or .credsStore' \
+  ~/.docker/config.json > /dev/null || echo "No saved Docker auth entry found"
 
 echo "=== Attempting push with debug ==="
-DOCKER_CLI_DEBUG=1 docker push "$REGISTRY/$IMAGE" 2>&1
+docker --debug push "$REGISTRY/$IMAGE" 2>&1
 
 echo "=== Docker config ==="
 cat ~/.docker/config.json | jq '.auths | keys'

@@ -71,7 +71,7 @@ def cache_query(ttl: int = 300, prefix: str = "query"):
 
             # Cache result
             if result is not None:
-                redis_client.setex(cache_key, ttl, json.dumps(result, default=str))
+                redis_client.set(cache_key, json.dumps(result, default=str), ex=ttl)
 
             return result
 
@@ -139,10 +139,10 @@ def get_product_statistics(db: Session, category_id: int) -> dict:
 ### Node.js with Knex
 
 ```javascript
-const Redis = require('redis');
-const crypto = require('crypto');
+import { createClient } from 'redis';
+import crypto from 'node:crypto';
 
-const redis = Redis.createClient();
+const redis = createClient();
 await redis.connect();
 
 /**
@@ -180,7 +180,7 @@ class QueryCache {
 
         // Cache result
         if (result !== null && result !== undefined) {
-            await redis.setEx(cacheKey, ttl, JSON.stringify(result));
+            await redis.set(cacheKey, JSON.stringify(result), { EX: ttl });
         }
 
         return result;
@@ -198,9 +198,13 @@ class QueryCache {
      * Invalidate all queries matching pattern
      */
     async invalidatePattern(pattern) {
-        const keys = await redis.keys(`${this.prefix}:${pattern}:*`);
-        if (keys.length > 0) {
-            await redis.del(keys);
+        for await (const keys of redis.scanIterator({
+            MATCH: `${this.prefix}:${pattern}:*`,
+            COUNT: 100
+        })) {
+            if (keys.length > 0) {
+                await redis.del(keys);
+            }
         }
     }
 }
@@ -241,8 +245,7 @@ async function updateProduct(productId, data) {
     await knex('products').where('id', productId).update(data);
 
     // Invalidate related queries
-    const product = await knex('products').where('id', productId).first();
-    await queryCache.invalidate('products_by_category', { categoryId: product.category_id });
+    await queryCache.invalidatePattern('products_by_category');
 }
 ```
 
@@ -294,7 +297,7 @@ class CachedRepository(Generic[T], ABC):
         entity = self._fetch_by_id(entity_id)
 
         if entity:
-            self.redis.setex(cache_key, self.ttl, self._serialize(entity))
+            self.redis.set(cache_key, self._serialize(entity), ex=self.ttl)
 
         return entity
 
@@ -325,7 +328,7 @@ class CachedRepository(Generic[T], ABC):
             pipe = self.redis.pipeline()
             for entity in entities:
                 cache_key = self._cache_key(f"id:{entity.id}")
-                pipe.setex(cache_key, self.ttl, self._serialize(entity))
+                pipe.set(cache_key, self._serialize(entity), ex=self.ttl)
                 results[entity.id] = entity
             pipe.execute()
 
@@ -338,7 +341,7 @@ class CachedRepository(Generic[T], ABC):
 
         # Update cache
         cache_key = self._cache_key(f"id:{saved.id}")
-        self.redis.setex(cache_key, self.ttl, self._serialize(saved))
+        self.redis.set(cache_key, self._serialize(saved), ex=self.ttl)
 
         # Invalidate related query caches
         self._invalidate_query_caches(saved)
@@ -408,9 +411,14 @@ class ProductRepository(CachedRepository):
         self.db.query(Product).filter(Product.id == product_id).delete()
         self.db.commit()
 
+    def _delete_pattern(self, pattern: str):
+        keys = list(self.redis.scan_iter(match=pattern, count=100))
+        if keys:
+            self.redis.delete(*keys)
+
     def _invalidate_query_caches(self, product):
         # Invalidate category listing
-        self.redis.delete(f"query:products_by_category:{product.category_id}")
+        self._delete_pattern(f"query:products_by_category:{product.category_id}:*")
         # Invalidate all products query
         self.redis.delete("query:all_products")
 
@@ -431,7 +439,7 @@ class ProductRepository(CachedRepository):
 
         # Cache query result
         serialized = [self._serialize(p) for p in products]
-        self.redis.setex(cache_key, self.ttl, json.dumps(serialized))
+        self.redis.set(cache_key, json.dumps(serialized), ex=self.ttl)
 
         return products
 ```
@@ -459,7 +467,7 @@ class SmartQueryCache:
         cache_key = self._query_key(query_name, params)
 
         # Store result
-        self.redis.setex(cache_key, ttl, json.dumps(result, default=str))
+        self.redis.set(cache_key, json.dumps(result, default=str), ex=ttl)
 
         # Track which tables this query depends on
         for table in tables:
@@ -495,7 +503,8 @@ def get_order_summary(user_id: int) -> dict:
     if cached:
         return cached
 
-    result = db.execute("""
+    result = db.execute(
+        text("""
         SELECT
             COUNT(*) as total_orders,
             SUM(total) as total_spent,
@@ -503,7 +512,9 @@ def get_order_summary(user_id: int) -> dict:
         FROM orders o
         JOIN order_items oi ON o.id = oi.order_id
         WHERE o.user_id = :user_id
-    """, {'user_id': user_id}).fetchone()
+    """),
+        {'user_id': user_id}
+    ).fetchone()
 
     summary = dict(result._mapping)
 
@@ -531,7 +542,7 @@ def on_order_created(order):
 ### Write-Through with Cache Update
 
 ```python
-class WriteThoughQueryCache:
+class WriteThroughQueryCache:
     """Update cache on every write"""
 
     def update_product(self, product_id: int, data: dict):
@@ -543,9 +554,9 @@ class WriteThoughQueryCache:
         db.commit()
 
         # Update individual product cache
-        product = self.get_product_by_id(product_id)
+        product = self._fetch_product_by_id(product_id)
         cache_key = f"product:{product_id}"
-        redis_client.setex(cache_key, 300, json.dumps(product))
+        redis_client.set(cache_key, json.dumps(product), ex=300)
 
         # Refresh query caches that might include this product
         self._refresh_affected_queries(product)
@@ -565,7 +576,7 @@ import time
 class StaleWhileRevalidateCache:
     """
     Serve stale data while refreshing in background.
-    Prevents cache stampede and ensures low latency.
+    Helps prevent cache stampede within a process and ensures low latency.
     """
 
     def __init__(self, redis_client):
@@ -602,13 +613,19 @@ class StaleWhileRevalidateCache:
 
             # Data is stale but acceptable - return and refresh in background
             if age < stale_ttl:
-                self._background_refresh(cache_key, fetch_fn, ttl)
+                self._background_refresh(cache_key, fetch_fn, ttl, stale_ttl)
                 return data
 
         # Cache miss or data too old - fetch synchronously
-        return self._fetch_and_cache(cache_key, fetch_fn, ttl)
+        return self._fetch_and_cache(cache_key, fetch_fn, ttl, stale_ttl)
 
-    def _fetch_and_cache(self, cache_key: str, fetch_fn: Callable, ttl: int) -> Any:
+    def _fetch_and_cache(
+        self,
+        cache_key: str,
+        fetch_fn: Callable,
+        ttl: int,
+        stale_ttl: int
+    ) -> Any:
         """Fetch data and cache it"""
         data = fetch_fn()
 
@@ -616,11 +633,17 @@ class StaleWhileRevalidateCache:
             'data': json.dumps(data, default=str),
             'cached_at': str(time.time())
         })
-        self.redis.expire(cache_key, ttl * 2)  # Keep slightly longer for stale reads
+        self.redis.expire(cache_key, stale_ttl)  # Keep long enough for stale reads
 
         return data
 
-    def _background_refresh(self, cache_key: str, fetch_fn: Callable, ttl: int):
+    def _background_refresh(
+        self,
+        cache_key: str,
+        fetch_fn: Callable,
+        ttl: int,
+        stale_ttl: int
+    ):
         """Refresh cache in background thread"""
         # Prevent multiple concurrent refreshes
         if cache_key in self.revalidating:
@@ -630,7 +653,7 @@ class StaleWhileRevalidateCache:
 
         def refresh():
             try:
-                self._fetch_and_cache(cache_key, fetch_fn, ttl)
+                self._fetch_and_cache(cache_key, fetch_fn, ttl, stale_ttl)
             finally:
                 self.revalidating.discard(cache_key)
 
@@ -693,7 +716,7 @@ def get_paginated_products(
         'pages': (total + per_page - 1) // per_page
     }
 
-    redis_client.setex(cache_key, 300, json.dumps(result))
+    redis_client.set(cache_key, json.dumps(result), ex=300)
 
     return result
 
@@ -710,7 +733,7 @@ def get_category_product_count(category_id: int) -> int:
         {'category_id': category_id}
     ).scalar()
 
-    redis_client.setex(cache_key, 600, str(count))
+    redis_client.set(cache_key, str(count), ex=600)
 
     return count
 ```
@@ -761,7 +784,7 @@ def get_products_cursor(
         'has_more': has_more
     }
 
-    redis_client.setex(cache_key, 300, json.dumps(result, default=str))
+    redis_client.set(cache_key, json.dumps(result, default=str), ex=300)
 
     return result
 ```
@@ -778,15 +801,15 @@ import msgpack
 
 # JSON - human readable, widely compatible
 def cache_json(key, data, ttl):
-    redis_client.setex(key, ttl, json.dumps(data, default=str))
+    redis_client.set(key, json.dumps(data, default=str), ex=ttl)
 
 # MessagePack - faster, smaller than JSON
 def cache_msgpack(key, data, ttl):
-    redis_client.setex(key, ttl, msgpack.packb(data))
+    redis_client.set(key, msgpack.packb(data), ex=ttl)
 
 # Pickle - Python objects, but security risk
 def cache_pickle(key, data, ttl):
-    redis_client.setex(key, ttl, pickle.dumps(data))
+    redis_client.set(key, pickle.dumps(data), ex=ttl)
 ```
 
 ### 2. Handle None Results
@@ -805,10 +828,10 @@ def get_user(user_id: int) -> Optional[dict]:
     user = fetch_user_from_database(user_id)
 
     if user:
-        redis_client.setex(cache_key, 300, json.dumps(user))
+        redis_client.set(cache_key, json.dumps(user), ex=300)
     else:
         # Cache negative result to prevent repeated DB lookups
-        redis_client.setex(cache_key, 60, "NULL")
+        redis_client.set(cache_key, "NULL", ex=60)
 
     return user
 ```
@@ -838,7 +861,7 @@ def cached_query_with_metrics(query_name: str, cache_key: str, fetch_fn: Callabl
         result = fetch_fn()
 
     if result is not None:
-        redis_client.setex(cache_key, ttl, json.dumps(result, default=str))
+        redis_client.set(cache_key, json.dumps(result, default=str), ex=ttl)
 
     return result
 ```

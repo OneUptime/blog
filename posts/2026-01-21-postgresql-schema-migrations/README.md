@@ -103,7 +103,7 @@ tar xzf liquibase-4.25.0.tar.gz
 
 ### Configuration
 
-```yaml
+```properties
 # liquibase.properties
 changeLogFile=db/changelog/db.changelog-master.yaml
 url=jdbc:postgresql://localhost:5432/myapp
@@ -158,7 +158,7 @@ liquibase update
 liquibase status
 
 # Rollback
-liquibase rollback-count 1
+liquibase rollback-count --count=1
 
 # Generate changelog from existing database
 liquibase generate-changelog
@@ -348,7 +348,7 @@ DROP INDEX IF EXISTS old_index;
 ### Transaction Control
 
 ```sql
--- Wrap in transaction (most tools do this automatically)
+-- Wrap transactional migrations in a transaction (most tools do this automatically)
 BEGIN;
 
 CREATE TABLE new_table (...);
@@ -357,6 +357,8 @@ INSERT INTO new_table SELECT ...;
 COMMIT;
 ```
 
+Run PostgreSQL statements such as `CREATE INDEX CONCURRENTLY` outside a transaction block.
+
 ### Testing Migrations
 
 ```bash
@@ -364,16 +366,16 @@ COMMIT;
 # test_migrations.sh
 
 # Start fresh database
-docker run -d --name test-db -e POSTGRES_PASSWORD=test postgres:16
+docker run -d --name test-db -e POSTGRES_PASSWORD=test -p 5432:5432 postgres:16
 
 # Wait for startup
 sleep 5
 
 # Run migrations
-flyway -url=jdbc:postgresql://localhost:5432/postgres migrate
+flyway -url=jdbc:postgresql://localhost:5432/postgres -user=postgres -password=test migrate
 
 # Verify
-psql -h localhost -U postgres -c "\dt"
+PGPASSWORD=test psql -h localhost -U postgres -c "\dt"
 
 # Cleanup
 docker stop test-db && docker rm test-db
@@ -399,6 +401,8 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -410,11 +414,11 @@ jobs:
 
       - name: Run migrations
         run: |
-          flyway -url=jdbc:postgresql://postgres:5432/postgres migrate
+          flyway -url=jdbc:postgresql://localhost:5432/postgres -user=postgres -password=test migrate
 
       - name: Validate migrations
         run: |
-          flyway -url=jdbc:postgresql://postgres:5432/postgres validate
+          flyway -url=jdbc:postgresql://localhost:5432/postgres -user=postgres -password=test validate
 ```
 
 ## Conclusion

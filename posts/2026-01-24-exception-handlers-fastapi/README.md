@@ -16,7 +16,7 @@ Exception handling in APIs is about more than catching errors. It's about transl
 
 ## Understanding FastAPI Exception Handling
 
-FastAPI processes requests through a chain of middleware and handlers. When an exception occurs, it bubbles up until something catches it. Without custom handlers, FastAPI returns generic errors that don't help anyone.
+FastAPI processes requests through a chain of middleware and handlers. When an exception occurs, it bubbles up until something catches it. Without custom handlers, FastAPI returns built-in error responses that may not match your API's response format.
 
 ```mermaid
 flowchart TD
@@ -28,7 +28,7 @@ flowchart TD
     F -->|Yes| G[Custom Exception Handler]
     F -->|No| H[Default Handler]
     G --> I[Formatted Error Response]
-    H --> J[Generic 500 Error]
+    H --> J[Default Error Response]
 ```
 
 ---
@@ -42,10 +42,11 @@ Let's start with a foundation that catches common errors and returns consistent 
 
 # Foundation for FastAPI exception handling
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, Any
 from datetime import datetime
 import logging
 import traceback
@@ -88,7 +89,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response.dict()
+        content=jsonable_encoder(error_response)
     )
 
 @app.exception_handler(RequestValidationError)
@@ -121,7 +122,7 @@ async def validation_exception_handler(
 
     return JSONResponse(
         status_code=422,
-        content=error_response.dict()
+        content=jsonable_encoder(error_response)
     )
 
 @app.exception_handler(Exception)
@@ -146,7 +147,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content=error_response.dict()
+        content=jsonable_encoder(error_response)
     )
 ```
 
@@ -265,7 +266,8 @@ import logging
 
 from custom_exceptions import (
     AppException, NotFoundError, AuthenticationError,
-    AuthorizationError, RateLimitError, ExternalServiceError
+    AuthorizationError, ConflictError, RateLimitError,
+    ExternalServiceError
 )
 
 logger = logging.getLogger(__name__)
@@ -309,7 +311,7 @@ def register_exception_handlers(app: FastAPI):
     async def rate_limit_handler(request: Request, exc: RateLimitError):
         """
         Special handler for rate limits that adds Retry-After header.
-        HTTP spec says 429 responses should include this header.
+        RFC 6585 says 429 responses may include this header.
         """
         return JSONResponse(
             status_code=429,
@@ -362,6 +364,13 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Replace these with the concrete exceptions from your database driver or ORM.
+class DatabaseConnectionError(Exception):
+    pass
+
+class DatabaseTimeoutError(Exception):
+    pass
 
 class ErrorTrackingMiddleware(BaseHTTPMiddleware):
     """
@@ -452,7 +461,9 @@ import logging
 import json
 from datetime import datetime
 from typing import Any, Dict
-from fastapi import Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from custom_exceptions import AppException
 
 class StructuredLogFormatter(logging.Formatter):
     """
@@ -527,6 +538,7 @@ class ErrorLogger:
         )
 
 # Usage in exception handlers
+app = FastAPI()
 error_logger = ErrorLogger()
 
 @app.exception_handler(AppException)

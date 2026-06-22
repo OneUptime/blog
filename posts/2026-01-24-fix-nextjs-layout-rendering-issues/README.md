@@ -51,7 +51,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // This fetch only runs once, not on every navigation
+  // This fetch does not run again for every child route navigation
   const user = await getCurrentUser();
 
   return (
@@ -65,7 +65,7 @@ export default async function DashboardLayout({
 
 ### The Solution
 
-Use React cache or restructure data fetching to handle dynamic content.
+Use Client Components or templates to handle content that needs to update on navigation.
 
 ```typescript
 // app/dashboard/layout.tsx
@@ -116,39 +116,43 @@ export function Sidebar() {
 }
 ```
 
-### Alternative: Using Server Actions
+### Alternative: Using a Template
 
 ```typescript
 // app/dashboard/layout.tsx
-// Solution 2: Use a parallel route for dynamic content
+// Keep the shared layout stable
 
 export default function DashboardLayout({
   children,
-  sidebar,
 }: {
   children: React.ReactNode;
-  sidebar: React.ReactNode;
 }) {
   return (
     <div className="dashboard">
-      {sidebar}
-      <main>{children}</main>
+      {children}
     </div>
   );
 }
 
-// app/dashboard/@sidebar/page.tsx
-// This parallel route re-renders on navigation
+// app/dashboard/template.tsx
+// Templates create a new instance for each child route navigation
 
-export default async function SidebarSlot() {
+export default async function DashboardTemplate({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = await getCurrentUser();
   const notifications = await getNotifications();
 
   return (
-    <aside className="sidebar">
-      <UserInfo user={user} />
-      <NotificationBadge count={notifications.length} />
-    </aside>
+    <>
+      <aside className="sidebar">
+        <UserInfo user={user} />
+        <NotificationBadge count={notifications.length} />
+      </aside>
+      <main>{children}</main>
+    </>
   );
 }
 ```
@@ -162,24 +166,17 @@ Hydration errors occur when server-rendered HTML does not match client-rendered 
 ### The Problem
 
 ```typescript
-// app/layout.tsx
+// components/Header.tsx
 // ERROR: Hydration mismatch due to Date
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+"use client";
+
+export function Header() {
   return (
-    <html lang="en">
-      <body>
-        <header>
-          {/* This causes hydration mismatch - different on server vs client */}
-          <span>Current time: {new Date().toLocaleTimeString()}</span>
-        </header>
-        {children}
-      </body>
-    </html>
+    <header>
+      {/* This causes hydration mismatch - different on server vs client */}
+      <span>Current time: {new Date().toLocaleTimeString()}</span>
+    </header>
   );
 }
 ```
@@ -266,7 +263,7 @@ When layouts lose state unexpectedly, it is often due to key changes or componen
 
 ```typescript
 // app/products/layout.tsx
-// State in this layout resets unexpectedly
+// State in this layout should persist while navigating within /products
 
 "use client";
 
@@ -282,7 +279,7 @@ export default function ProductsLayout({
     sortBy: "name",
   });
 
-  // Filters reset when navigating between product pages
+  // If filters reset, check for templates, route changes outside /products, or remounting keys
   return (
     <div>
       <FilterPanel filters={filters} onChange={setFilters} />
@@ -301,16 +298,30 @@ Check for unnecessary key props or use a state management solution.
 // Check parent components for key props on the layout
 
 // app/products/layout.tsx
-"use client";
-
-import { useState } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { Suspense } from "react";
+import { ProductsFilters } from "@/components/ProductsFilters";
 
 export default function ProductsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <div>
+      <Suspense fallback={null}>
+        <ProductsFilters />
+      </Suspense>
+      {children}
+    </div>
+  );
+}
+
+// components/ProductsFilters.tsx
+"use client";
+
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+
+export function ProductsFilters() {
   // Persist state in URL for durability
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -334,10 +345,7 @@ export default function ProductsLayout({
   };
 
   return (
-    <div>
-      <FilterPanel filters={filters} onChange={updateFilters} />
-      {children}
-    </div>
+    <FilterPanel filters={filters} onChange={updateFilters} />
   );
 }
 
@@ -573,7 +581,7 @@ Errors in layouts need special handling.
 
 ```typescript
 // app/dashboard/layout.tsx
-// Errors here crash the entire app
+// Errors here are not caught by app/dashboard/error.tsx
 
 export default async function DashboardLayout({
   children,
@@ -621,7 +629,8 @@ Layout errors must be caught by error boundaries in parent segments.
 //     layout.tsx           // Dashboard layout (can error)
 //     error.tsx            // Catches page errors only
 //     page.tsx
-//   error.tsx              // Parent error boundary - catches dashboard layout errors!
+//   error.tsx              // Parent error boundary - catches dashboard layout errors
+//   global-error.tsx       // Catches errors in the root layout
 //   layout.tsx             // Root layout
 
 // app/(dashboard)/layout.tsx
@@ -647,12 +656,12 @@ export default async function DashboardLayout({
 }
 
 // app/error.tsx
-// Root error boundary - catches layout errors from child segments
+// Parent error boundary - catches layout errors from child segments
 "use client";
 
 import { useEffect } from "react";
 
-export default function GlobalError({
+export default function AppError({
   error,
   reset,
 }: {
@@ -665,11 +674,30 @@ export default function GlobalError({
   }, [error]);
 
   return (
+    <div className="error-container">
+      <h1>Something went wrong!</h1>
+      <p>We encountered an error loading this page.</p>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
+}
+
+// app/global-error.tsx
+// Use this file, with html and body tags, for root layout errors
+"use client";
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  return (
     <html>
       <body>
         <div className="error-container">
           <h1>Something went wrong!</h1>
-          <p>We encountered an error loading this page.</p>
           <button onClick={reset}>Try again</button>
         </div>
       </body>
@@ -682,8 +710,8 @@ export default function GlobalError({
 
 ```mermaid
 flowchart TD
-    A[global-error.tsx] --> B[Root Layout]
-    B --> C[app/error.tsx]
+    A[global-error.tsx catches root layout errors]
+    B[Root Layout] --> C[app/error.tsx]
     C --> D[Route Group Layout]
     D --> E[segment/error.tsx]
     E --> F[Page Component]
@@ -697,15 +725,15 @@ flowchart TD
 
 ## Issue 7: CSS Not Applying to Layout
 
-Styles might not work as expected in layouts due to module scope or import order.
+Styles might not work as expected in layouts due to module scope, missing Tailwind content paths, or importing global styles outside the supported entry point.
 
 ### The Problem
 
 ```typescript
 // app/layout.tsx
-// Global styles not applying
+// This import is correct if globals.css lives next to app/layout.tsx
 
-import "./globals.css"; // Might not work as expected
+import "./globals.css";
 
 export default function RootLayout({
   children,
@@ -722,13 +750,13 @@ export default function RootLayout({
 
 ### The Solution
 
-Ensure correct CSS import patterns and class application.
+Ensure global CSS is imported from the root layout and use CSS Modules for component-scoped styles.
 
 ```typescript
 // app/layout.tsx
 // CORRECT: Proper CSS handling
 
-import "@/styles/globals.css"; // Use path alias
+import "@/styles/globals.css"; // Or import "./globals.css" if the file is colocated
 import { Inter } from "next/font/google";
 import styles from "./layout.module.css"; // CSS Modules for component-specific styles
 

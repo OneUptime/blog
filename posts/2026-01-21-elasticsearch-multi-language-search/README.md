@@ -291,37 +291,46 @@ curl -X GET "https://localhost:9200/articles_all/_search" \
 
 ## Language Detection
 
-### Using the Langdetect Plugin
+### Using the Built-in Language Identification Model
 
-Install the plugin:
+Elasticsearch includes a language identification model that can be used from an inference processor:
 
 ```bash
-bin/elasticsearch-plugin install org.elasticsearch:elasticsearch-analysis-langdetect:7.17.0
+curl -X GET "https://localhost:9200/_ml/trained_models/lang_ident_model_1" \
+  -H "Content-Type: application/json" \
+  -u elastic:password
 ```
 
 Configure language detection:
 
 ```bash
-curl -X PUT "https://localhost:9200/articles" \
+curl -X PUT "https://localhost:9200/_ingest/pipeline/detect_language" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "settings": {
-      "analysis": {
-        "filter": {
-          "langdetect": {
-            "type": "langdetect"
-          }
-        },
-        "analyzer": {
-          "langdetect_analyzer": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": ["langdetect"]
+    "description": "Detect language of content",
+    "processors": [
+      {
+        "inference": {
+          "model_id": "lang_ident_model_1",
+          "target_field": "ml",
+          "field_map": {
+            "content": "text"
           }
         }
+      },
+      {
+        "set": {
+          "field": "detected_language",
+          "value": "{{ml.predicted_value}}"
+        }
+      },
+      {
+        "remove": {
+          "field": "ml"
+        }
       }
-    }
+    ]
   }'
 ```
 
@@ -338,7 +347,7 @@ curl -X PUT "https://localhost:9200/_ingest/pipeline/detect_language" \
     "processors": [
       {
         "script": {
-          "source": "ctx.language = ctx.content.substring(0, Math.min(500, ctx.content.length()))"
+          "source": "ctx.language_sample = ctx.content.substring(0, Math.min(500, ctx.content.length()))"
         }
       },
       {
@@ -346,7 +355,7 @@ curl -X PUT "https://localhost:9200/_ingest/pipeline/detect_language" \
           "model_id": "lang_ident_model_1",
           "target_field": "ml",
           "field_map": {
-            "language": "text"
+            "language_sample": "text"
           }
         }
       },
@@ -358,7 +367,7 @@ curl -X PUT "https://localhost:9200/_ingest/pipeline/detect_language" \
       },
       {
         "remove": {
-          "field": ["ml", "language"]
+          "field": ["ml", "language_sample"]
         }
       }
     ]
@@ -383,7 +392,7 @@ def index_document(es, content, title):
 
     # Index to language-specific index
     index_name = f"articles_{language}"
-    es.index(index=index_name, body=doc)
+    es.index(index=index_name, document=doc)
 ```
 
 ## Custom Language Analyzers
@@ -450,7 +459,7 @@ curl -X PUT "https://localhost:9200/articles_de" \
           },
           "german_decompounder": {
             "type": "hyphenation_decompounder",
-            "word_list_path": "analysis/de_DR.xml",
+            "word_list_path": "analysis/german_words.txt",
             "hyphenation_patterns_path": "analysis/de_DR.xml",
             "only_longest_match": true,
             "min_subword_size": 4

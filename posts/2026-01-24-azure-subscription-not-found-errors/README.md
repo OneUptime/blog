@@ -49,7 +49,13 @@ az login
 # For service principals
 az login --service-principal \
   --username <app-id> \
-  --password <password-or-cert-path> \
+  --password <client-secret> \
+  --tenant <tenant-id>
+
+# Or with a certificate
+az login --service-principal \
+  --username <app-id> \
+  --certificate <path-to-cert.pem> \
   --tenant <tenant-id>
 ```
 
@@ -172,21 +178,25 @@ rm -rf ~/.azure
 az login
 ```
 
-### 7. Environment Variables Overriding Settings
+### 7. Environment Variables Overriding SDK or Tool Settings
 
 Check if environment variables are causing issues:
 
 ```bash
 # Check for Azure-related environment variables
-env | grep -i azure
+env | grep -i "azure\|arm_"
 
-# Key variables that can override settings:
-# AZURE_SUBSCRIPTION_ID
+# Key variables that can affect SDKs, Terraform, and CI tools:
 # AZURE_TENANT_ID
 # AZURE_CLIENT_ID
+# AZURE_CLIENT_SECRET
+# ARM_SUBSCRIPTION_ID
+# ARM_TENANT_ID
+# ARM_CLIENT_ID
+# ARM_CLIENT_SECRET
 
 # Unset if they're causing problems
-unset AZURE_SUBSCRIPTION_ID
+unset ARM_SUBSCRIPTION_ID
 ```
 
 ## Fixing in Different Contexts
@@ -310,25 +320,25 @@ fi
 
 ## Prevention Best Practices
 
-### 1. Use Azure Configuration Files
+### 1. Set the Active Subscription Explicitly
 
 ```bash
-# Create a defaults file
-mkdir -p ~/.azure
-cat > ~/.azure/config << 'EOF'
-[defaults]
-subscription = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-[core]
-output = table
-EOF
+# Set and verify the active subscription
+az account set --subscription "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+az account show --query "{Name:name, Id:id, IsDefault:isDefault}" --output table
 ```
 
-### 2. Set Up Named Profiles
+To configure CLI output or resource defaults, use the documented Azure CLI configuration keys:
 
 ```bash
-# Create profile for different environments
-az config set defaults.subscription=<prod-sub-id> --local
+az config set core.output=table
+az config set defaults.group=<prod-resource-group>
+```
+
+### 2. Set Up Local Defaults
+
+```bash
+# Set local defaults for different working directories
 az config set defaults.group=<prod-resource-group> --local
 ```
 

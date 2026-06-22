@@ -15,14 +15,14 @@ Renaming tables and columns requires careful planning to avoid breaking applicat
 ### Rename Table
 
 ```sql
--- Instant operation, but breaks queries using old name
+-- Metadata-only operation, but it takes a lock and breaks queries using old name
 ALTER TABLE old_name RENAME TO new_name;
 ```
 
 ### Rename Column
 
 ```sql
--- Instant, breaks queries using old column name
+-- Metadata-only operation, but it takes a lock and breaks queries using old column name
 ALTER TABLE users RENAME COLUMN old_column TO new_column;
 ```
 
@@ -54,7 +54,20 @@ UPDATE users SET new_name = old_name WHERE new_name IS NULL;
 CREATE OR REPLACE FUNCTION sync_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.new_name := NEW.old_name;
+    IF TG_OP = 'INSERT' THEN
+        NEW.new_name := COALESCE(NEW.new_name, NEW.old_name);
+        NEW.old_name := COALESCE(NEW.old_name, NEW.new_name);
+    ELSIF NEW.old_name IS DISTINCT FROM OLD.old_name
+        AND NEW.new_name IS NOT DISTINCT FROM OLD.new_name THEN
+        NEW.new_name := NEW.old_name;
+    ELSIF NEW.new_name IS DISTINCT FROM OLD.new_name
+        AND NEW.old_name IS NOT DISTINCT FROM OLD.old_name THEN
+        NEW.old_name := NEW.new_name;
+    ELSE
+        NEW.new_name := COALESCE(NEW.new_name, NEW.old_name);
+        NEW.old_name := COALESCE(NEW.old_name, NEW.new_name);
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -82,7 +95,7 @@ SELECT
 FROM new_table_name;
 
 -- Grant permissions
-GRANT SELECT ON old_table_name TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON old_table_name TO app_user;
 ```
 
 ## Rename with Dependencies

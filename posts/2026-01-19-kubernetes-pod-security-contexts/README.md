@@ -50,7 +50,7 @@ spec:
     runAsGroup: 3000
     fsGroup: 2000
     
-    # Prevent privilege escalation
+    # Require a non-root user
     runAsNonRoot: true
     
     # Seccomp profile (requires Kubernetes 1.19+)
@@ -66,8 +66,8 @@ spec:
     
     # Sysctls (limited set allowed)
     sysctls:
-      - name: net.core.somaxconn
-        value: "1024"
+      - name: net.ipv4.tcp_syncookies
+        value: "1"
   
   containers:
     - name: app
@@ -90,7 +90,13 @@ metadata:
   name: secure-deployment
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: secure-app
   template:
+    metadata:
+      labels:
+        app: secure-app
     spec:
       securityContext:
         runAsNonRoot: true
@@ -186,7 +192,7 @@ securityContext:
 # Never use (dangerous):
 # - SYS_ADMIN
 # - ALL
-# - CAP_PRIVILEGED
+# - privileged: true
 ```
 
 ## Seccomp Profiles
@@ -210,7 +216,6 @@ spec:
 ### Custom Seccomp Profile
 
 ```json
-// /var/lib/kubelet/seccomp/profiles/custom.json
 {
   "defaultAction": "SCMP_ACT_ERRNO",
   "architectures": ["SCMP_ARCH_X86_64"],
@@ -275,9 +280,11 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: apparmor-pod
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/app: localhost/custom-profile
 spec:
+  securityContext:
+    appArmorProfile:
+      type: Localhost
+      localhostProfile: custom-profile
   containers:
     - name: app
       image: myapp:1.0

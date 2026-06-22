@@ -46,7 +46,7 @@ Key concepts:
 ERROR: Network security rule priority '100' is already in use.
 ```
 
-Every rule in an NSG must have a unique priority number.
+Every rule in the same NSG direction must have a unique priority number between 100 and 4096.
 
 **Check existing priorities:**
 
@@ -63,15 +63,24 @@ az network nsg rule list \
 **Fix: Use an available priority number**
 
 ```bash
-# Find the next available priority
-NEXT_PRIORITY=$(az network nsg rule list \
+# Find the next available inbound priority
+USED_PRIORITIES=$(az network nsg rule list \
     --nsg-name myNSG \
     --resource-group myResourceGroup \
-    --query "max([].priority)" \
+    --query "[?direction=='Inbound'].priority" \
     --output tsv)
 
-# Add 10 to get next available
-NEW_PRIORITY=$((NEXT_PRIORITY + 10))
+for priority in $(seq 100 10 4090); do
+    if ! grep -qx "$priority" <<< "$USED_PRIORITIES"; then
+        NEW_PRIORITY=$priority
+        break
+    fi
+done
+
+if [ -z "$NEW_PRIORITY" ]; then
+    echo "No available inbound priority found"
+    exit 1
+fi
 
 az network nsg rule create \
     --nsg-name myNSG \
@@ -81,7 +90,7 @@ az network nsg rule create \
     --direction Inbound \
     --access Allow \
     --protocol Tcp \
-    --destination-port-range 443
+    --destination-port-ranges 443
 ```
 
 ### Error 2: Locked Out of VM (SSH/RDP Blocked)
@@ -95,7 +104,7 @@ sequenceDiagram
     participant VM
 
     Admin->>NSG: SSH Connection (Port 22)
-    NSG->>NSG: Rule 100: Deny All Inbound
+    NSG->>NSG: Rule 200: Deny All Inbound
     NSG--xAdmin: Connection Blocked
     Note over Admin,VM: Cannot manage VM!
 ```
@@ -124,8 +133,8 @@ az network nsg rule create \
     --direction Inbound \
     --access Allow \
     --protocol Tcp \
-    --source-address-prefix "203.0.113.50" \
-    --destination-port-range 22
+    --source-address-prefixes "203.0.113.50" \
+    --destination-port-ranges 22
 ```
 
 ### Error 3: Rule Order Causing Unexpected Behavior
@@ -140,15 +149,20 @@ Traffic is being allowed or denied unexpectedly due to rule ordering.
 # Priority 200: Allow HTTP from Internet  <-- This never matches!
 ```
 
-**Diagnose with NSG flow logs:**
+**Diagnose with virtual network flow logs:**
 
 ```bash
-# Enable flow logs
+# Enable virtual network flow logs.
+# New NSG flow logs cannot be created after June 30, 2025.
 az network watcher flow-log create \
+    --location eastus \
     --name myFlowLog \
     --resource-group myResourceGroup \
-    --nsg myNSG \
+    --vnet myVNet \
     --storage-account mystorageaccount \
+    --traffic-analytics true \
+    --workspace myWorkspace \
+    --interval 10 \
     --enabled true \
     --retention 7
 ```
@@ -233,7 +247,7 @@ ERROR: Application security group '/subscriptions/.../applicationSecurityGroups/
 is not in the same location as network security group.
 ```
 
-ASGs must be in the same region as the NSG.
+ASGs used by an NSG rule must be in the same region as the NSG. Network interfaces assigned to the ASG must also be in the same virtual network.
 
 **Check ASG locations:**
 
@@ -501,10 +515,10 @@ resource "azurerm_subnet_network_security_group_association" "web" {
 
 5. **Document your rules** - Use meaningful names and add descriptions.
 
-6. **Enable flow logs** - You cannot troubleshoot what you cannot see.
+6. **Enable virtual network flow logs** - New NSG flow logs cannot be created after June 30, 2025.
 
-7. **Test before deploying** - Use IP Flow Verify to validate rules before applying.
+7. **Test after changes** - Use IP Flow Verify to validate the effective rules applied to a VM.
 
 ---
 
-NSG errors usually come down to rule ordering, priority conflicts, or not understanding that both subnet and NIC NSGs must allow traffic. Use IP Flow Verify and flow logs to debug issues, and always maintain a bastion or serial console access path so you do not lock yourself out.
+NSG errors usually come down to rule ordering, priority conflicts, or not understanding that both subnet and NIC NSGs must allow traffic. Use IP Flow Verify and virtual network flow logs to debug issues, and always maintain a bastion or serial console access path so you do not lock yourself out.

@@ -17,7 +17,7 @@ In this guide, we will build a complete feature flag system using Redis, coverin
 Redis offers several advantages for feature flag implementations:
 
 - **Low Latency**: Sub-millisecond reads ensure feature checks do not slow down your application
-- **Real-Time Updates**: Changes propagate instantly without restarts
+- **Real-Time Updates**: Changes can propagate quickly to subscribed services without restarts
 - **Pub/Sub**: Notify services when flags change
 - **Data Structures**: Hashes, sets, and sorted sets for complex targeting rules
 - **Persistence**: Flags survive restarts with RDB/AOF
@@ -166,6 +166,12 @@ class FeatureFlagManager:
 
         # Percentage rollout
         if flag.status == FlagStatus.PERCENTAGE.value:
+            if user_id and user_id in flag.allowed_users:
+                return True
+            if user_groups:
+                for group in user_groups:
+                    if group in flag.allowed_groups:
+                        return True
             if not user_id:
                 return False
             # Consistent hashing for user
@@ -299,7 +305,7 @@ class AdvancedFeatureFlags:
         rules_data = r.hgetall(f"feature_flags:rules:{flag_name}")
 
         if not rules_data:
-            return False
+            return True
 
         rules = json.loads(rules_data.get("rules", "[]"))
         match_type = rules_data.get("match_type", "all")
@@ -370,6 +376,13 @@ class AdvancedFeatureFlags:
 
 # Usage with complex rules
 advanced = AdvancedFeatureFlags()
+
+# Create the base feature flag
+advanced.manager.create_flag(FeatureFlag(
+    name="premium_analytics",
+    status="enabled",
+    description="Premium analytics dashboard"
+))
 
 # Create flag with targeting rules
 advanced.create_flag_with_rules(
@@ -479,6 +492,14 @@ class FeatureFlagManager {
         }
         return false;
       case 'percentage':
+        if (userId && flag.allowedUsers.includes(userId)) {
+          return true;
+        }
+        for (const group of userGroups) {
+          if (flag.allowedGroups.includes(group)) {
+            return true;
+          }
+        }
         if (!userId) {
           return false;
         }
@@ -493,7 +514,7 @@ class FeatureFlagManager {
     const combined = `${flagName}:${userId}`;
     const hash = crypto.createHash('md5').update(combined).digest();
     const hashInt = hash.readUInt32BE(0);
-    return (hashInt / 0xFFFFFFFF) * 100;
+    return (hashInt / 0x100000000) * 100;
   }
 
   async getVariant(flagName, userId) {
@@ -666,6 +687,12 @@ class CachedFeatureFlags:
             return False
 
         if flag.status == FlagStatus.PERCENTAGE.value:
+            if user_id and user_id in flag.allowed_users:
+                return True
+            if user_groups:
+                for group in user_groups:
+                    if group in flag.allowed_groups:
+                        return True
             if not user_id:
                 return False
             hash_value = self.manager._hash_user(flag_name, user_id)
@@ -695,6 +722,8 @@ if flags.is_enabled("new_feature", user_id="user_123"):
 Track experiment exposure and outcomes:
 
 ```python
+from datetime import datetime
+
 class ExperimentTracker:
     def __init__(self, flag_manager: FeatureFlagManager):
         self.manager = flag_manager
@@ -834,6 +863,8 @@ print(json.dumps(results, indent=2))
 Implement a safe rollout process:
 
 ```python
+from datetime import datetime
+
 class GradualRollout:
     def __init__(self, flag_manager: FeatureFlagManager):
         self.manager = flag_manager
@@ -869,6 +900,7 @@ class GradualRollout:
         # Update the feature flag
         flag = self.manager.get_flag(flag_name)
         if flag:
+            flag.status = "percentage"
             flag.percentage = next_config.get("percentage", flag.percentage)
             flag.allowed_groups = next_config.get("groups", flag.allowed_groups)
             self.manager.create_flag(flag)
@@ -906,6 +938,7 @@ class GradualRollout:
         # Update the feature flag
         flag = self.manager.get_flag(flag_name)
         if flag:
+            flag.status = "percentage"
             flag.percentage = prev_config.get("percentage", flag.percentage)
             flag.allowed_groups = prev_config.get("groups", flag.allowed_groups)
             self.manager.create_flag(flag)
@@ -922,6 +955,15 @@ class GradualRollout:
 
 # Usage
 rollout = GradualRollout(manager)
+
+# Create the feature flag at the initial rollout stage
+manager.create_flag(FeatureFlag(
+    name="new_payment_system",
+    status="percentage",
+    description="New payment processing system",
+    percentage=0,
+    allowed_groups=["internal"]
+))
 
 # Create a multi-stage rollout plan
 rollout.create_rollout("new_payment_system", [

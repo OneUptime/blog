@@ -20,7 +20,7 @@ Elasticsearch needs file descriptors for:
 - Memory-mapped files
 - Inter-node communication
 
-Default Linux limits (1024) are insufficient for Elasticsearch.
+Default Linux limits are often insufficient for Elasticsearch.
 
 ## Error Symptoms
 
@@ -31,13 +31,13 @@ java.io.IOException: Too many open files
 
 ElasticsearchException: Too many open files
 
-max file descriptors [4096] for elasticsearch process is too low, increase to at least [65536]
+max file descriptors [4096] for elasticsearch process is too low, increase to at least [65535]
 ```
 
 ### Log Entries
 
 ```text
-[WARN ][o.e.b.BootstrapChecks] max file descriptors [1024] for elasticsearch process is too low, increase to at least [65536]
+[WARN ][o.e.b.BootstrapChecks] max file descriptors [1024] for elasticsearch process is too low, increase to at least [65535]
 ```
 
 ## Checking Current Limits
@@ -50,7 +50,8 @@ max file descriptors [4096] for elasticsearch process is too low, increase to at
 pgrep -f elasticsearch
 
 # Check current limits for the process
-cat /proc/$(pgrep -f elasticsearch)/limits | grep "Max open files"
+ES_PID=$(pgrep -f elasticsearch | head -n 1)
+cat /proc/$ES_PID/limits | grep "Max open files"
 ```
 
 ### Check System-Wide Limits
@@ -176,7 +177,7 @@ docker run -d \
   --ulimit nofile=65536:65536 \
   --ulimit nproc=4096:4096 \
   --ulimit memlock=-1:-1 \
-  elasticsearch:8.11.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.11.0
 ```
 
 ## System-Wide Configuration
@@ -206,7 +207,7 @@ Also recommended for Elasticsearch:
 
 ```bash
 # /etc/sysctl.conf
-vm.max_map_count = 262144
+vm.max_map_count = 1048576
 vm.swappiness = 1
 ```
 
@@ -219,7 +220,8 @@ vm.swappiness = 1
 sudo systemctl restart elasticsearch
 
 # Check new limits
-cat /proc/$(pgrep -f elasticsearch)/limits | grep -E "open files|processes"
+ES_PID=$(pgrep -f elasticsearch | head -n 1)
+cat /proc/$ES_PID/limits | grep -E "open files|processes"
 
 # Via API
 curl -u elastic:password -X GET "localhost:9200/_nodes/stats/process?pretty" | jq '.nodes[].process.max_file_descriptors'
@@ -232,7 +234,7 @@ Max open files            65536                65536                files
 Max processes             4096                 4096                 processes
 ```
 
-### Check Bootstrap Checks
+### Check Bootstrap Settings
 
 ```bash
 curl -u elastic:password -X GET "localhost:9200/_nodes/_local?pretty" | jq '.nodes[].settings.bootstrap'
@@ -244,10 +246,11 @@ curl -u elastic:password -X GET "localhost:9200/_nodes/_local?pretty" | jq '.nod
 
 ```bash
 # Current open files by Elasticsearch
-lsof -p $(pgrep -f elasticsearch) | wc -l
+ES_PID=$(pgrep -f elasticsearch | head -n 1)
+lsof -p $ES_PID | wc -l
 
 # Breakdown by type
-lsof -p $(pgrep -f elasticsearch) | awk '{print $5}' | sort | uniq -c | sort -rn
+lsof -p $ES_PID | awk '{print $5}' | sort | uniq -c | sort -rn
 ```
 
 ### Set Up Alerting
@@ -256,7 +259,7 @@ Create monitoring script:
 
 ```bash
 #!/bin/bash
-ES_PID=$(pgrep -f elasticsearch)
+ES_PID=$(pgrep -f elasticsearch | head -n 1)
 OPEN_FILES=$(ls /proc/$ES_PID/fd 2>/dev/null | wc -l)
 MAX_FILES=$(cat /proc/$ES_PID/limits | grep "Max open files" | awk '{print $4}')
 USAGE_PCT=$((OPEN_FILES * 100 / MAX_FILES))
@@ -329,17 +332,17 @@ For containers, limits must be set at container runtime, not inside the containe
 
 | Setting | Recommended Value |
 |---------|------------------|
-| nofile | 65536 (minimum) |
+| nofile | 65535 or higher |
 | nproc | 4096 |
 | memlock | unlimited |
-| vm.max_map_count | 262144 |
+| vm.max_map_count | 1048576 |
 
 ### 2. Production Configuration
 
 Create `/etc/elasticsearch/jvm.options.d/production.options`:
 
 ```text
-# Avoid file descriptor issues
+# Enable heap dumps on out-of-memory errors
 -XX:+HeapDumpOnOutOfMemoryError
 ```
 
@@ -372,7 +375,7 @@ Ansible example:
     state: present
     reload: yes
   loop:
-    - { name: 'vm.max_map_count', value: '262144' }
+    - { name: 'vm.max_map_count', value: '1048576' }
     - { name: 'fs.file-max', value: '2097152' }
 ```
 
@@ -382,7 +385,7 @@ Fixing "too many open files" errors in Elasticsearch requires:
 
 1. **Understand the cause** - Elasticsearch needs many file descriptors
 2. **Check current limits** - Both process and system-wide
-3. **Configure appropriate limits** - At least 65536 for Elasticsearch
+3. **Configure appropriate limits** - At least 65535 for Elasticsearch
 4. **Use correct method** - limits.conf for interactive, systemd for services
 5. **Verify changes** - After restart, confirm new limits
 6. **Monitor continuously** - Track file descriptor usage

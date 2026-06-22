@@ -105,12 +105,12 @@ curl -X POST "https://localhost:9200/_aliases" \
   }'
 ```
 
-This operation is atomic - no requests will fail during the swap.
+This operation updates alias metadata atomically - clients won't see the alias missing or pointing to both indices during the swap.
 
 ### List All Aliases
 
 ```bash
-curl -X GET "https://localhost:9200/_aliases?pretty" \
+curl -X GET "https://localhost:9200/_alias?pretty" \
   -u elastic:password
 ```
 
@@ -219,6 +219,8 @@ Query the filtered alias - results automatically filtered:
 curl -X GET "https://localhost:9200/orders-completed/_search" \
   -u elastic:password
 ```
+
+Alias filters apply to Query DSL searches, but they are not applied when retrieving a document directly by ID.
 
 ## Routing Aliases
 
@@ -464,12 +466,14 @@ curl -X POST "https://localhost:9200/_aliases" \
   }'
 ```
 
-Tenants query their own alias and only see their data:
+Tenants query their own alias and only see their data in search results:
 
 ```bash
 curl -X GET "https://localhost:9200/data-tenant-1/_search" \
   -u elastic:password
 ```
+
+Use application-level security in addition to filtered aliases; aliases alone are not a security boundary for direct document access.
 
 ## Best Practices
 
@@ -515,7 +519,7 @@ curl -X GET "https://localhost:9200/_cat/aliases?v" \
   -u elastic:password
 ```
 
-### 5. Use Filtered Aliases for Access Control
+### 5. Use Filtered Aliases to Scope Search Results
 
 Combine with application-level security:
 
@@ -557,9 +561,9 @@ curl -X GET "https://localhost:9200/_alias/my-alias?pretty" \
 
 Look for `"is_write_index": true`.
 
-### Duplicate Alias Error
+### Alias Name Conflicts
 
-Cannot have same alias pointing to index twice with different filters:
+Aliases, indices, and data streams share a namespace. Creating an alias with the same name as an existing index or data stream will fail:
 
 ```bash
 # This will fail
@@ -568,8 +572,7 @@ curl -X POST "https://localhost:9200/_aliases" \
   -u elastic:password \
   -d '{
     "actions": [
-      { "add": { "index": "data", "alias": "alias1", "filter": {"term": {"a": "1"}} } },
-      { "add": { "index": "data", "alias": "alias1", "filter": {"term": {"b": "2"}} } }
+      { "add": { "index": "data-*", "alias": "data" } }
     ]
   }'
 ```
@@ -581,7 +584,7 @@ Index aliases are essential for production Elasticsearch deployments. Key takeaw
 1. **Use aliases for all client access** - Never point directly to indices
 2. **Enable zero-downtime operations** - Atomic swaps for reindexing
 3. **Designate write indices** - Control where writes go
-4. **Use filtered aliases** - For data isolation and access control
+4. **Use filtered aliases** - For scoped search views
 5. **Integrate with ILM** - Automate rolling indices
 6. **Follow naming conventions** - Keep alias management organized
 

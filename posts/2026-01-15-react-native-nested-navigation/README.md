@@ -31,7 +31,7 @@ Before diving in, ensure you have React Navigation installed:
 
 ```bash
 npm install @react-navigation/native @react-navigation/stack @react-navigation/bottom-tabs @react-navigation/drawer
-npm install react-native-screens react-native-safe-area-context react-native-gesture-handler react-native-reanimated
+npm install react-native-screens react-native-safe-area-context react-native-gesture-handler react-native-reanimated react-native-worklets
 ```
 
 ## Understanding Nested Navigators
@@ -511,8 +511,8 @@ type RootStackParamList = {
 type HomeScreenProps = CompositeScreenProps<
   StackScreenProps<HomeStackParamList, 'HomeMain'>,
   CompositeScreenProps<
-    BottomTabScreenProps<TabParamList>,
-    DrawerScreenProps<DrawerParamList>
+    BottomTabScreenProps<TabParamList, 'Home'>,
+    DrawerScreenProps<DrawerParamList, 'MainTabs'>
   >
 >;
 
@@ -553,16 +553,14 @@ const ProductDetailsScreen: React.FC<ProductDetailsProps> = ({ route }) => {
 
 ### Global Type Declaration
 
-Create a declaration file for global navigation types:
+Specify the root navigator type so React Navigation can infer global navigation types:
 
 ```typescript
-// navigation.d.ts
-import { RootStackParamList } from './types';
+const RootStack = createStackNavigator<RootStackParamList>();
+type RootStackType = typeof RootStack;
 
-declare global {
-  namespace ReactNavigation {
-    interface RootParamList extends RootStackParamList {}
-  }
+declare module '@react-navigation/native' {
+  interface RootNavigator extends RootStackType {}
 }
 ```
 
@@ -637,14 +635,14 @@ const ProfileScreen = ({ navigation }: any) => {
 
 ### Options in Nested Navigators
 
-When navigating to a nested screen, you can pass options:
+When navigating to a nested screen, you can control how the nested navigator handles its initial route:
 
 ```typescript
 navigation.navigate('Home', {
   screen: 'Details',
   params: { itemId: 123 },
-  // These options apply to the target screen
-  initial: false, // Don't reset navigation state
+  // Render the navigator's initial route before Details in the back stack
+  initial: false,
 });
 ```
 
@@ -765,7 +763,7 @@ navigation.dispatch(
 ### StackActions for Stack Navigators
 
 ```typescript
-import { StackActions } from '@react-navigation/stack';
+import { StackActions } from '@react-navigation/native';
 
 // Replace current screen
 navigation.dispatch(StackActions.replace('NewScreen', { param: 'value' }));
@@ -783,7 +781,7 @@ navigation.dispatch(StackActions.popToTop());
 ### Tab-specific Reset
 
 ```typescript
-import { TabActions } from '@react-navigation/native';
+import { CommonActions, TabActions } from '@react-navigation/native';
 
 // Jump to a tab and reset its stack
 navigation.dispatch(TabActions.jumpTo('Home'));
@@ -799,7 +797,7 @@ navigation.dispatch(
 
 ## Focus Events
 
-Handling focus events in nested navigators requires special attention since inner screens may not receive focus events properly.
+Handling events in nested navigators requires special attention because screens in a nested navigator don't receive parent navigator events such as `tabPress` automatically.
 
 ### Using useFocusEffect
 
@@ -841,7 +839,8 @@ const NestedScreen = ({ navigation }: any) => {
 
   // Also listen to tab press events
   React.useEffect(() => {
-    const unsubscribe = navigation.addListener('tabPress', (e: any) => {
+    const parent = navigation.getParent('TabNavigator');
+    const unsubscribe = parent?.addListener('tabPress', (e: any) => {
       // Prevent default behavior
       e.preventDefault();
 

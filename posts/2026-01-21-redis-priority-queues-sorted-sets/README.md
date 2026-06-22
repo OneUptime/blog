@@ -124,6 +124,7 @@ class MultiLevelPriorityQueue:
         self.key = f"mlpq:{name}"
         self.redis = redis_client
         self.counter_key = f"{self.key}:counter"
+        self.priority_multiplier = 1_000_000_000
 
     def push(self, item, priority=Priority.MEDIUM):
         """
@@ -133,9 +134,10 @@ class MultiLevelPriorityQueue:
         # Use counter for FIFO within same priority
         counter = self.redis.incr(self.counter_key)
 
-        # Create composite score: priority * 10^12 + counter
-        # This ensures priority ordering with FIFO tiebreaker
-        score = float(priority) * 1e12 + counter
+        # Create composite score: priority * multiplier + counter.
+        # Keep the multiplier larger than the expected queue depth per priority
+        # and low enough to stay within Redis sorted set score precision.
+        score = int(priority) * self.priority_multiplier + counter
 
         self.redis.zadd(self.key, {item: score})
 
@@ -153,17 +155,17 @@ class MultiLevelPriorityQueue:
 
     def peek_by_priority(self, priority):
         """View items at specific priority level"""
-        min_score = float(priority) * 1e12
-        max_score = (float(priority) + 1) * 1e12 - 1
+        min_score = int(priority) * self.priority_multiplier
+        max_score = (int(priority) + 1) * self.priority_multiplier - 1
 
-        return self.redis.zrangebyscore(
-            self.key, min_score, max_score
+        return self.redis.zrange(
+            self.key, min_score, max_score, byscore=True
         )
 
     def count_by_priority(self, priority):
         """Count items at specific priority level"""
-        min_score = float(priority) * 1e12
-        max_score = (float(priority) + 1) * 1e12 - 1
+        min_score = int(priority) * self.priority_multiplier
+        max_score = (int(priority) + 1) * self.priority_multiplier - 1
 
         return self.redis.zcount(self.key, min_score, max_score)
 
@@ -241,8 +243,8 @@ class DelayedPriorityQueue:
         now = time.time()
 
         # Get items ready for execution
-        ready_items = self.redis.zrangebyscore(
-            self.scheduled_key, '-inf', now
+        ready_items = self.redis.zrange(
+            self.scheduled_key, '-inf', now, byscore=True
         )
 
         if not ready_items:
@@ -409,6 +411,7 @@ class FairPriorityQueue:
 
     def get_queue_state(self):
         """Get current queue state with effective priorities"""
+        self.update_priorities()
         items = self.redis.zrange(self.key, 0, -1, withscores=True)
         state = []
 

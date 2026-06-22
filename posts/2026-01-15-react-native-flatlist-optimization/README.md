@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
 });
 ```
 
-FlatList only renders items currently visible on screen (plus a small buffer), dramatically reducing memory usage and improving performance.
+FlatList renders items lazily within a finite window around the viewport, dramatically reducing memory usage and improving performance.
 
 ### When to Use Each
 
@@ -467,7 +467,7 @@ const getBatchConfig = () => {
 };
 ```
 
-## removeClippedSubviews: Memory Optimization
+## removeClippedSubviews: Rendering Optimization
 
 This prop detaches views that are outside the viewport from the native view hierarchy.
 
@@ -508,10 +508,12 @@ const styles = StyleSheet.create({
 // - Absolutely positioned elements
 // - Animations that extend beyond item boundaries
 
-// Safe to use when:
+// Most useful when:
 // - Items have fixed, predictable bounds
 // - No animations extend beyond item containers
-// - You're experiencing memory pressure on Android
+// - You're trying to reduce native rendering work on Android
+// Note: This does not significantly reduce memory usage because views are
+// detached from the native hierarchy, not deallocated.
 ```
 
 ## Item Separator Optimization
@@ -747,8 +749,9 @@ const ComplexListItem = memo(
       prevProps.item.id === nextProps.item.id &&
       prevProps.item.title === nextProps.item.title &&
       prevProps.item.imageUrl === nextProps.item.imageUrl &&
+      prevProps.item.metadata.views === nextProps.item.metadata.views &&
       prevProps.item.metadata.likes === nextProps.item.metadata.likes
-      // Note: we intentionally skip views comparison for performance
+      // Include every value used in the rendered output
     );
   }
 );
@@ -1425,6 +1428,9 @@ const ListItemComponent = memo(
   },
   (prevProps, nextProps) =>
     prevProps.item.id === nextProps.item.id &&
+    prevProps.item.title === nextProps.item.title &&
+    prevProps.item.subtitle === nextProps.item.subtitle &&
+    prevProps.item.imageUrl === nextProps.item.imageUrl &&
     prevProps.onPress === nextProps.onPress
 );
 

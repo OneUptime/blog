@@ -88,7 +88,8 @@ import (
 )
 
 func main() {
-    now := time.Now()
+    loc := time.FixedZone("MST", -7*60*60)
+    now := time.Date(2024, time.January, 15, 14, 30, 0, 123456789, loc)
     
     // Built-in layouts
     fmt.Println("RFC3339:    ", now.Format(time.RFC3339))
@@ -141,7 +142,7 @@ func main() {
     
     // With timezone offset
     t2, _ := time.Parse(time.RFC3339, "2024-01-15T14:30:00-05:00")
-    fmt.Println("EST:", t2)
+    fmt.Println("UTC-05:00:", t2)
     
     // Parse in specific location
     loc, _ := time.LoadLocation("America/New_York")
@@ -223,7 +224,7 @@ Duration units:
 ```go
 // WRONG: Using actual date values in layout
 t, err := time.Parse("2024-01-15", "2024-01-15")  // ERROR!
-// parsing time "2024-01-15": month out of range
+// parsing time "2024-01-15" as "2024-01-15": cannot parse...
 
 // CORRECT: Use reference date
 t, err := time.Parse("2006-01-02", "2024-01-15")
@@ -426,7 +427,7 @@ func main() {
 **Parsing Time:**
 - Use Go's reference time: `Mon Jan 2 15:04:05 MST 2006`
 - Match layout exactly to input format
-- Use `ParseInLocation` for timezone-aware parsing
+- Use `ParseInLocation` for location-aware parsing
 - Use built-in constants like `time.RFC3339` when possible
 
 **Parsing Durations:**

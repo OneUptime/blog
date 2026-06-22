@@ -26,10 +26,10 @@ elasticsearch.username: "kibana_system"
 elasticsearch.password: "${KIBANA_PASSWORD}"
 elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/ca.crt"]
 
-# Encryption keys (required for alerting)
+# Encryption keys (use static values of at least 32 characters)
 xpack.encryptedSavedObjects.encryptionKey: "your-32-char-encryption-key-here"
-xpack.reporting.encryptionKey: "your-32-char-reporting-key-here"
-xpack.security.encryptionKey: "your-32-char-security-key-here"
+xpack.reporting.encryptionKey: "your-32-char-reporting-key-here-1"
+xpack.security.encryptionKey: "your-32-char-security-key-here-12"
 ```
 
 ## Creating Data Views
@@ -371,7 +371,7 @@ Create pixel-perfect presentations:
 
 ### Create Alert Rule
 
-1. Go to Stack Management > Rules
+1. Go to Stack Management > Alerts and insights > Rules
 2. Click "Create rule"
 3. Select "Elasticsearch query"
 
@@ -380,19 +380,16 @@ Create pixel-perfect presentations:
 ```json
 {
   "name": "High Error Rate Alert",
-  "rule_type_id": "xpack.elasticsearch.query",
+  "consumer": "alerts",
+  "rule_type_id": ".es-query",
   "params": {
     "index": ["logs-*"],
     "timeField": "@timestamp",
-    "esQuery": {
-      "query": {
-        "bool": {
-          "must": [
-            {"term": {"level": "error"}}
-          ]
-        }
-      }
-    },
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"level\":\"error\"}}]}}}",
+    "searchType": "esQuery",
+    "aggType": "count",
+    "groupBy": "all",
+    "size": 100,
     "threshold": [100],
     "timeWindowSize": 5,
     "timeWindowUnit": "m",
@@ -403,7 +400,7 @@ Create pixel-perfect presentations:
   },
   "actions": [
     {
-      "group": "threshold met",
+      "group": "query matched",
       "id": "slack-connector-id",
       "params": {
         "message": "High error rate detected: {{context.value}} errors in last 5 minutes"
@@ -447,17 +444,23 @@ For pattern-based alerts:
 #### Export Dashboard
 
 ```bash
-curl -u elastic:password -X GET "localhost:5601/api/kibana/dashboards/export?dashboard=dashboard-id" \
-  -H "kbn-xsrf: true" > dashboard-export.ndjson
+curl -u elastic:password -X POST "localhost:5601/api/saved_objects/_export" \
+  -H "kbn-xsrf: true" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "objects": [
+      {"type": "dashboard", "id": "dashboard-id"}
+    ],
+    "includeReferencesDeep": true
+  }' > dashboard-export.ndjson
 ```
 
 #### Import Dashboard
 
 ```bash
-curl -u elastic:password -X POST "localhost:5601/api/kibana/dashboards/import" \
+curl -u elastic:password -X POST "localhost:5601/api/saved_objects/_import" \
   -H "kbn-xsrf: true" \
-  -H "Content-Type: application/json" \
-  --data-binary @dashboard-export.ndjson
+  --form file=@dashboard-export.ndjson
 ```
 
 ### Dashboard Templates

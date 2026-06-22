@@ -65,9 +65,6 @@ persistence:
     registry:
       storageClass: local-storage
       size: 500Gi
-    chartmuseum:
-      storageClass: local-storage
-      size: 50Gi
 
 database:
   type: internal
@@ -78,10 +75,6 @@ redis:
 # Enable image scanning
 trivy:
   enabled: true
-
-# Enable content trust
-notary:
-  enabled: false
 ```
 
 ```bash
@@ -94,6 +87,23 @@ helm install harbor harbor/harbor -f harbor-values.yaml -n harbor --create-names
 
 ```yaml
 # registry-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-pvc
+  namespace: registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -120,8 +130,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/registry
-            - name: auth
-              mountPath: /auth
           resources:
             requests:
               memory: 256Mi
@@ -133,9 +141,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: registry-pvc
-        - name: auth
-          secret:
-            secretName: registry-htpasswd
 ---
 apiVersion: v1
 kind: Service
@@ -165,10 +170,10 @@ TARGET_REGISTRY="registry.internal.local:5000"
 
 # List of images to mirror
 IMAGES=(
-    "nginx:1.25"
-    "redis:7-alpine"
-    "postgres:15"
-    "busybox:1.36"
+    "library/nginx:1.25"
+    "library/redis:7-alpine"
+    "library/postgres:15"
+    "library/busybox:1.36"
 )
 
 for IMAGE in "${IMAGES[@]}"; do
@@ -208,28 +213,29 @@ skopeo copy \
 # save-images.sh
 
 IMAGES=(
-    "docker.io/nginx:1.25"
-    "docker.io/redis:7-alpine"
-    "gcr.io/google-containers/pause:3.9"
+    "docker.io/library/nginx:1.25"
+    "docker.io/library/redis:7-alpine"
+    "registry.k8s.io/pause:3.9"
     "quay.io/prometheus/prometheus:v2.48.0"
 )
 
 OUTPUT_DIR="./image-archive"
-mkdir -p $OUTPUT_DIR
+mkdir -p "$OUTPUT_DIR"
 
 for IMAGE in "${IMAGES[@]}"; do
     # Convert image name to filename
-    FILENAME=$(echo $IMAGE | tr '/:' '_').tar
+    FILENAME=$(echo "$IMAGE" | tr '/:' '_').tar
     echo "Saving: $IMAGE -> $FILENAME"
     
     skopeo copy \
+        --all \
         docker://${IMAGE} \
-        docker-archive:${OUTPUT_DIR}/${FILENAME}
+        docker-archive:${OUTPUT_DIR}/${FILENAME}:${IMAGE}
 done
 
 # Create manifest file
 echo "Creating manifest..."
-cat > ${OUTPUT_DIR}/manifest.txt << EOF
+cat > "${OUTPUT_DIR}/manifest.txt" << EOF
 # Image Manifest
 # Generated: $(date)
 
@@ -249,13 +255,12 @@ tar -cvzf images-$(date +%Y%m%d).tar.gz -C $OUTPUT_DIR .
 ARCHIVE_DIR="./image-archive"
 TARGET_REGISTRY="registry.internal.local:5000"
 
-for TARFILE in ${ARCHIVE_DIR}/*.tar; do
-    # Extract original image name from filename
-    BASENAME=$(basename $TARFILE .tar)
-    
-    # Convert filename back to image reference
-    # docker.io_library_nginx_1.25 -> library/nginx:1.25
-    IMAGE_PATH=$(echo $BASENAME | sed 's/_/\//g' | sed 's/\/\([^\/]*\)$/:\1/')
+while IFS= read -r IMAGE; do
+    [[ -z "$IMAGE" || "$IMAGE" =~ ^# ]] && continue
+
+    FILENAME=$(echo "$IMAGE" | tr '/:' '_').tar
+    TARFILE="${ARCHIVE_DIR}/${FILENAME}"
+    IMAGE_PATH="${IMAGE#*/}"
     
     echo "Loading: $TARFILE -> ${TARGET_REGISTRY}/${IMAGE_PATH}"
     
@@ -263,7 +268,7 @@ for TARFILE in ${ARCHIVE_DIR}/*.tar; do
         --dest-tls-verify=false \
         docker-archive:${TARFILE} \
         docker://${TARGET_REGISTRY}/${IMAGE_PATH}
-done
+done < "${ARCHIVE_DIR}/manifest.txt"
 ```
 
 ## Mirror Helm Chart Images
@@ -375,23 +380,23 @@ auth:
 
 images:
   # Kubernetes core images
-  registry.k8s.io/kube-apiserver: registry.internal.local:5000/k8s
-  registry.k8s.io/kube-controller-manager: registry.internal.local:5000/k8s
-  registry.k8s.io/kube-scheduler: registry.internal.local:5000/k8s
-  registry.k8s.io/kube-proxy: registry.internal.local:5000/k8s
-  registry.k8s.io/pause: registry.internal.local:5000/k8s
-  registry.k8s.io/coredns/coredns: registry.internal.local:5000/k8s
-  registry.k8s.io/etcd: registry.internal.local:5000/k8s
+  registry.k8s.io/kube-apiserver:v1.28.4: registry.internal.local:5000/kube-apiserver
+  registry.k8s.io/kube-controller-manager:v1.28.4: registry.internal.local:5000/kube-controller-manager
+  registry.k8s.io/kube-scheduler:v1.28.4: registry.internal.local:5000/kube-scheduler
+  registry.k8s.io/kube-proxy:v1.28.4: registry.internal.local:5000/kube-proxy
+  registry.k8s.io/pause:3.9: registry.internal.local:5000/pause
+  registry.k8s.io/coredns/coredns:v1.10.1: registry.internal.local:5000/coredns/coredns
+  registry.k8s.io/etcd:3.5.9-0: registry.internal.local:5000/etcd
   
   # Common applications
-  docker.io/library/nginx: registry.internal.local:5000/library
-  docker.io/library/redis: registry.internal.local:5000/library
-  docker.io/library/postgres: registry.internal.local:5000/library
+  docker.io/library/nginx:1.25: registry.internal.local:5000/library/nginx
+  docker.io/library/redis:7-alpine: registry.internal.local:5000/library/redis
+  docker.io/library/postgres:15: registry.internal.local:5000/library/postgres
   
   # Monitoring
-  quay.io/prometheus/prometheus: registry.internal.local:5000/prometheus
-  quay.io/prometheus/alertmanager: registry.internal.local:5000/prometheus
-  grafana/grafana: registry.internal.local:5000/grafana
+  quay.io/prometheus/prometheus:v2.48.0: registry.internal.local:5000/prometheus/prometheus
+  quay.io/prometheus/alertmanager:v0.26.0: registry.internal.local:5000/prometheus/alertmanager
+  docker.io/grafana/grafana:10.2.2: registry.internal.local:5000/grafana/grafana
 ```
 
 ```bash
@@ -404,24 +409,46 @@ image-syncer --config image-sync-config.yaml --proc 5
 ### containerd Configuration
 
 ```toml
-# /etc/containerd/config.toml
+# /etc/containerd/config.toml for containerd 2.x
+version = 3
+
+[plugins."io.containerd.cri.v1.images".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/config.toml for containerd 1.x
 version = 2
 
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://registry.internal.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-      endpoint = ["https://registry.internal.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
-      endpoint = ["https://registry.internal.local:5000"]
-  
-  [plugins."io.containerd.grpc.v1.cri".registry.configs]
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.internal.local:5000".tls]
-      insecure_skip_verify = true
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.internal.local:5000".auth]
-      username = "admin"
-      password = "secret"
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."https://registry.internal.local:5000"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = true
+```
+
+```toml
+# /etc/containerd/certs.d/registry.k8s.io/hosts.toml
+server = "https://registry.k8s.io"
+
+[host."https://registry.internal.local:5000"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = true
+```
+
+```toml
+# /etc/containerd/certs.d/quay.io/hosts.toml
+server = "https://quay.io"
+
+[host."https://registry.internal.local:5000"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = true
 ```
 
 ```bash

@@ -82,11 +82,12 @@ throttled_usec 30000000   # Time spent throttled (microseconds)
 From the host:
 
 ```bash
-# Find the container's cgroup
-CONTAINER_ID=$(docker inspect mycontainer --format '{{.Id}}')
+# Find the container's process and cgroup path
+PID=$(docker inspect mycontainer --format '{{.State.Pid}}')
+CGROUP_PATH=$(grep '^0::' /proc/$PID/cgroup | cut -d: -f3)
 
-# Check throttling stats (cgroup v1)
-cat /sys/fs/cgroup/cpu/docker/$CONTAINER_ID/cpu.stat
+# Check throttling stats (cgroup v2)
+cat /sys/fs/cgroup$CGROUP_PATH/cpu.stat
 ```
 
 High `nr_throttled` values indicate the container needs more CPU allocation.
@@ -122,6 +123,7 @@ For Python applications:
 
 ```bash
 # Profile with py-spy (no code changes needed)
+# The container may need --cap-add SYS_PTRACE and an unconfined seccomp profile
 docker exec mycontainer pip install py-spy
 docker exec mycontainer py-spy top --pid 1
 ```
@@ -152,8 +154,6 @@ Base limits on observed usage plus headroom:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: myapi:latest
@@ -274,10 +274,10 @@ docker update --cpus=4 mycontainer
 const os = require('os');
 const cluster = require('cluster');
 
-// In container, this might be limited by cgroup
-const numWorkers = parseInt(process.env.WORKERS) || os.cpus().length;
+// In container, set WORKERS to match your CPU quota when needed
+const numWorkers = parseInt(process.env.WORKERS) || os.availableParallelism();
 
-if (cluster.isMaster) {
+if (cluster.isPrimary) {
   for (let i = 0; i < numWorkers; i++) {
     cluster.fork();
   }

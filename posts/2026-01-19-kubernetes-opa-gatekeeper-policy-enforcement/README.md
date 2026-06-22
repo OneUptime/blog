@@ -70,10 +70,10 @@ Install Gatekeeper using kubectl or Helm.
 ### Using kubectl
 
 ```bash
-# Install the latest Gatekeeper release
+# Install a current Gatekeeper release
 
 # This creates CRDs, deployments, and webhook configurations
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 ### Using Helm (Recommended for Production)
@@ -82,7 +82,7 @@ Helm provides more configuration options:
 
 ```bash
 # Add the Gatekeeper Helm repository
-helm repo add gatekeeper https://open-policy-agent/gatekeeper/releases/download/helm-charts
+helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
 helm repo update
 
 # Install with production settings
@@ -293,24 +293,34 @@ spec:
         package k8sblockprivilegedcontainers
         
         violation[{"msg": msg}] {
-          # Check regular containers
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           container.securityContext.privileged == true
           msg := sprintf("Privileged container not allowed: %s", [container.name])
         }
         
-        violation[{"msg": msg}] {
-          # Check init containers
-          container := input.review.object.spec.initContainers[_]
-          container.securityContext.privileged == true
-          msg := sprintf("Privileged init container not allowed: %s", [container.name])
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.containers[_]
         }
         
-        violation[{"msg": msg}] {
-          # Check ephemeral containers
-          container := input.review.object.spec.ephemeralContainers[_]
-          container.securityContext.privileged == true
-          msg := sprintf("Privileged ephemeral container not allowed: %s", [container.name])
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.initContainers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.ephemeralContainers[_]
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind == "Pod"
+          spec := input.review.object.spec
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind != "Pod"
+          spec := input.review.object.spec.template.spec
         }
 ```
 
@@ -348,7 +358,7 @@ spec:
         # Check memory limits
         violation[{"msg": msg}] {
           input.parameters.requireMemory
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           not container.resources.limits.memory
           msg := sprintf("Container %s must have memory limit", [container.name])
         }
@@ -356,17 +366,34 @@ spec:
         # Check CPU limits
         violation[{"msg": msg}] {
           input.parameters.requireCPU
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           not container.resources.limits.cpu
           msg := sprintf("Container %s must have CPU limit", [container.name])
         }
         
-        # Check init containers too
-        violation[{"msg": msg}] {
-          input.parameters.requireMemory
-          container := input.review.object.spec.initContainers[_]
-          not container.resources.limits.memory
-          msg := sprintf("Init container %s must have memory limit", [container.name])
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.containers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.initContainers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.ephemeralContainers[_]
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind == "Pod"
+          spec := input.review.object.spec
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind != "Pod"
+          spec := input.review.object.spec.template.spec
         }
 ```
 
@@ -400,22 +427,41 @@ spec:
         package k8sallowedimageregistries
         
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           not registry_allowed(container.image)
           msg := sprintf("Image %s is not from an allowed registry. Allowed: %v", 
             [container.image, input.parameters.registries])
-        }
-        
-        violation[{"msg": msg}] {
-          container := input.review.object.spec.initContainers[_]
-          not registry_allowed(container.image)
-          msg := sprintf("Init image %s is not from an allowed registry", [container.image])
         }
         
         # Check if image starts with an allowed registry
         registry_allowed(image) {
           allowed := input.parameters.registries[_]
           startswith(image, allowed)
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.containers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.initContainers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.ephemeralContainers[_]
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind == "Pod"
+          spec := input.review.object.spec
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind != "Pod"
+          spec := input.review.object.spec.template.spec
         }
 ---
 # Constraint to allow only internal registry
@@ -462,31 +508,48 @@ spec:
         package k8sblocklatestimage
         
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           uses_latest(container.image)
           msg := sprintf("Container %s uses :latest tag. Use a specific version.", [container.name])
         }
         
-        violation[{"msg": msg}] {
-          container := input.review.object.spec.initContainers[_]
-          uses_latest(container.image)
-          msg := sprintf("Init container %s uses :latest tag", [container.name])
-        }
-        
         # Check for :latest tag or no tag (which defaults to latest)
         uses_latest(image) {
-          endswith(image, ":latest")
+          image_without_digest := split(image, "@")[0]
+          endswith(image_without_digest, ":latest")
         }
         
         uses_latest(image) {
-          not contains(image, ":")  # No tag specified
+          not contains(image, "@")
+          image_without_digest := split(image, "@")[0]
+          path_parts := split(image_without_digest, "/")
+          last_part := path_parts[count(path_parts) - 1]
+          not contains(last_part, ":")  # No tag specified
         }
         
-        uses_latest(image) {
-          # Handle digest references
-          contains(image, "@")
-          parts := split(image, "@")
-          not contains(parts[0], ":")
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.containers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.initContainers[_]
+        }
+        
+        all_containers[container] {
+          pod_spec(spec)
+          container := spec.ephemeralContainers[_]
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind == "Pod"
+          spec := input.review.object.spec
+        }
+        
+        pod_spec(spec) {
+          input.review.kind.kind != "Pod"
+          spec := input.review.object.spec.template.spec
         }
 ```
 
@@ -532,6 +595,20 @@ spec:
           # This requires syncing PDBs to Gatekeeper (see data replication)
           data.inventory.namespace[input.review.object.metadata.namespace]["policy/v1"]["PodDisruptionBudget"][_]
         }
+```
+
+Policies like this need the referenced resources synced into Gatekeeper's inventory:
+
+```yaml
+apiVersion: syncset.gatekeeper.sh/v1alpha1
+kind: SyncSet
+metadata:
+  name: sync-pod-disruption-budgets
+spec:
+  gvks:
+    - group: "policy"
+      version: "v1"
+      kind: "PodDisruptionBudget"
 ```
 
 ## Step 5: Dry-Run and Audit Mode
@@ -725,13 +802,6 @@ spec:
         - gatekeeper-system
       processes:
         - "*"
-    # Exclude specific resource types globally
-    - excludedNamespaces: ["*"]
-      processes:
-        - webhook
-      kinds:
-        - apiGroups: [""]
-          kinds: ["Event"]  # Never validate Events
 ```
 
 ## Monitoring and Alerting
@@ -759,15 +829,15 @@ Key metrics:
 
 ```promql
 # Constraint violations (from audit)
-gatekeeper_violations{constraint_kind="K8sRequiredLabels"}
+gatekeeper_violations
 
 # Webhook request latency
 histogram_quantile(0.99, 
-  rate(gatekeeper_webhook_duration_seconds_bucket[5m])
+  rate(gatekeeper_validation_request_duration_seconds_bucket[5m])
 )
 
-# Webhook request errors
-rate(gatekeeper_webhook_request_count{status="error"}[5m])
+# Webhook requests denied by admission
+rate(gatekeeper_validation_request_count{admission_status="deny"}[5m])
 ```
 
 ### Alerting Rules
@@ -785,21 +855,21 @@ spec:
       rules:
         - alert: GatekeeperViolationsIncreasing
           expr: |
-            sum(increase(gatekeeper_violations[1h])) by (constraint_kind) > 10
+            sum(gatekeeper_violations) by (enforcement_action) > 10
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Policy violations increasing for {{ $labels.constraint_kind }}"
+            summary: "Policy violations detected for {{ $labels.enforcement_action }} constraints"
         
-        - alert: GatekeeperWebhookErrors
+        - alert: GatekeeperWebhookHighLatency
           expr: |
-            rate(gatekeeper_webhook_request_count{status="error"}[5m]) > 0.1
+            histogram_quantile(0.99, rate(gatekeeper_validation_request_duration_seconds_bucket[5m])) > 1
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Gatekeeper webhook returning errors"
+            summary: "Gatekeeper validation webhook latency is high"
 ```
 
 ## Troubleshooting
@@ -833,14 +903,14 @@ kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-config
 
 ### Rego Debugging
 
-Test Rego policies with the `conftest` CLI:
+Test Gatekeeper policies with the `gator` CLI:
 
 ```bash
-# Install conftest
-brew install conftest
+# Install gator
+brew install gator
 
-# Test a policy against a manifest
-conftest test deployment.yaml -p policy.rego
+# Test templates and constraints against a manifest
+gator test -f deployment.yaml -f policies/
 ```
 
 ## Related Resources

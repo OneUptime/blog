@@ -167,7 +167,8 @@ git log -1
 To reset authorship to yourself.
 
 ```bash
-git cherry-pick --reset-author def5678
+git cherry-pick -n def5678
+git commit --reset-author -C def5678
 ```
 
 ### Edit Commit Message
@@ -345,7 +346,7 @@ flowchart TD
     subgraph "Merge"
         M1[Combines entire branches]
         M2[Preserves all history]
-        M3[Creates merge commit]
+        M3[May create merge commit]
     end
 
     subgraph "Rebase"

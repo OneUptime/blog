@@ -39,18 +39,21 @@ local items_start = 4
 
 -- First pass: validate all items have sufficient stock
 local items = {}
+local requested_by_product = {}
 for i = items_start, #ARGV, 2 do
     local product_id = ARGV[i]
     local quantity = tonumber(ARGV[i + 1])
+    local total_requested = (requested_by_product[product_id] or 0) + quantity
+    requested_by_product[product_id] = total_requested
 
     local available = tonumber(redis.call('HGET', inventory_key, product_id) or 0)
-    if available < quantity then
+    if available < total_requested then
         return cjson.encode({
             success = false,
             error = 'INSUFFICIENT_STOCK',
             product_id = product_id,
             available = available,
-            requested = quantity
+            requested = total_requested
         })
     end
 
@@ -111,18 +114,21 @@ class OrderProcessor:
     local items_start = 4
 
     local items = {}
+    local requested_by_product = {}
     for i = items_start, #ARGV, 2 do
         local product_id = ARGV[i]
         local quantity = tonumber(ARGV[i + 1])
+        local total_requested = (requested_by_product[product_id] or 0) + quantity
+        requested_by_product[product_id] = total_requested
 
         local available = tonumber(redis.call('HGET', inventory_key, product_id) or 0)
-        if available < quantity then
+        if available < total_requested then
             return cjson.encode({
                 success = false,
                 error = 'INSUFFICIENT_STOCK',
                 product_id = product_id,
                 available = available,
-                requested = quantity
+                requested = total_requested
             })
         end
         table.insert(items, {product_id = product_id, quantity = quantity})
@@ -215,13 +221,13 @@ print(f"Remaining inventory PROD-001: {processor.get_inventory('PROD-001')}")
 local accounts_key = KEYS[1]      -- Hash: account_id -> balance
 local transactions_key = KEYS[2]  -- Sorted set: transactions by timestamp
 local limits_key = KEYS[3]        -- Hash: account_id -> daily_limit
+local daily_key = KEYS[4]         -- String: daily transfer total for source account
 
 local from_account = ARGV[1]
 local to_account = ARGV[2]
 local amount = tonumber(ARGV[3])
 local transaction_id = ARGV[4]
 local timestamp = tonumber(ARGV[5])
-local day_start = tonumber(ARGV[6])  -- Start of current day (timestamp)
 
 -- Validate amount
 if amount <= 0 then
@@ -248,7 +254,6 @@ end
 
 -- Check daily transfer limit
 local daily_limit = tonumber(redis.call('HGET', limits_key, from_account) or 10000)
-local daily_key = 'daily_transfers:' .. from_account .. ':' .. day_start
 
 local daily_total = tonumber(redis.call('GET', daily_key) or 0)
 if daily_total + amount > daily_limit then
@@ -538,6 +543,7 @@ return cjson.encode({
 local inventory_key = KEYS[1]      -- Hash: product_id -> available
 local reserved_key = KEYS[2]       -- Hash: product_id -> reserved
 local reservations_key = KEYS[3]   -- Hash: reservation_id -> details
+local expiry_key = KEYS[4]         -- String: reservation expiry marker
 
 local reservation_id = ARGV[1]
 local product_id = ARGV[2]
@@ -572,8 +578,8 @@ local reservation = cjson.encode({
 redis.call('HSET', reservations_key, reservation_id, reservation)
 
 -- Set expiration key for this reservation
-local expiry_key = 'reservation_expiry:' .. reservation_id
 redis.call('SETEX', expiry_key, ttl, product_id .. ':' .. quantity)
+-- Use a cleanup worker or keyspace notification handler to cancel expired reservations.
 
 return cjson.encode({
     success = true,
@@ -590,6 +596,7 @@ local inventory_key = KEYS[1]
 local reserved_key = KEYS[2]
 local reservations_key = KEYS[3]
 local sales_key = KEYS[4]
+local expiry_key = KEYS[5]
 
 local reservation_id = ARGV[1]
 local timestamp = ARGV[2]
@@ -607,6 +614,10 @@ local reservation = cjson.decode(reservation_data)
 
 -- Check if expired
 if tonumber(timestamp) > reservation.expires then
+    redis.call('HINCRBY', reserved_key, reservation.product_id, -reservation.quantity)
+    redis.call('HDEL', reservations_key, reservation_id)
+    redis.call('DEL', expiry_key)
+
     return cjson.encode({
         success = false,
         error = 'RESERVATION_EXPIRED'
@@ -622,7 +633,7 @@ redis.call('HINCRBY', sales_key, reservation.product_id, reservation.quantity)
 
 -- Remove reservation
 redis.call('HDEL', reservations_key, reservation_id)
-redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+redis.call('DEL', expiry_key)
 
 return cjson.encode({
     success = true,
@@ -637,6 +648,7 @@ return cjson.encode({
 
 local reserved_key = KEYS[1]
 local reservations_key = KEYS[2]
+local expiry_key = KEYS[3]
 
 local reservation_id = ARGV[1]
 
@@ -656,7 +668,7 @@ redis.call('HINCRBY', reserved_key, reservation.product_id, -reservation.quantit
 
 -- Remove reservation
 redis.call('HDEL', reservations_key, reservation_id)
-redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+redis.call('DEL', expiry_key)
 
 return cjson.encode({
     success = true,
@@ -680,6 +692,7 @@ class InventoryManager:
     local inventory_key = KEYS[1]
     local reserved_key = KEYS[2]
     local reservations_key = KEYS[3]
+    local expiry_key = KEYS[4]
 
     local reservation_id = ARGV[1]
     local product_id = ARGV[2]
@@ -710,7 +723,8 @@ class InventoryManager:
         expires = timestamp + (ttl * 1000)
     })
     redis.call('HSET', reservations_key, reservation_id, reservation)
-    redis.call('SETEX', 'reservation_expiry:' .. reservation_id, ttl, product_id .. ':' .. quantity)
+    redis.call('SETEX', expiry_key, ttl, product_id .. ':' .. quantity)
+    -- Use a cleanup worker or keyspace notification handler to cancel expired reservations.
 
     return cjson.encode({success = true, reservation_id = reservation_id, expires_in = ttl})
     """
@@ -720,6 +734,7 @@ class InventoryManager:
     local reserved_key = KEYS[2]
     local reservations_key = KEYS[3]
     local sales_key = KEYS[4]
+    local expiry_key = KEYS[5]
 
     local reservation_id = ARGV[1]
     local timestamp = tonumber(ARGV[2])
@@ -732,6 +747,10 @@ class InventoryManager:
     local reservation = cjson.decode(reservation_data)
 
     if timestamp > reservation.expires then
+        redis.call('HINCRBY', reserved_key, reservation.product_id, -reservation.quantity)
+        redis.call('HDEL', reservations_key, reservation_id)
+        redis.call('DEL', expiry_key)
+
         return cjson.encode({success = false, error = 'RESERVATION_EXPIRED'})
     end
 
@@ -739,7 +758,7 @@ class InventoryManager:
     redis.call('HINCRBY', reserved_key, reservation.product_id, -reservation.quantity)
     redis.call('HINCRBY', sales_key, reservation.product_id, reservation.quantity)
     redis.call('HDEL', reservations_key, reservation_id)
-    redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+    redis.call('DEL', expiry_key)
 
     return cjson.encode({
         success = true,
@@ -751,6 +770,7 @@ class InventoryManager:
     CANCEL_SCRIPT = """
     local reserved_key = KEYS[1]
     local reservations_key = KEYS[2]
+    local expiry_key = KEYS[3]
 
     local reservation_id = ARGV[1]
 
@@ -763,7 +783,7 @@ class InventoryManager:
 
     redis.call('HINCRBY', reserved_key, reservation.product_id, -reservation.quantity)
     redis.call('HDEL', reservations_key, reservation_id)
-    redis.call('DEL', 'reservation_expiry:' .. reservation_id)
+    redis.call('DEL', expiry_key)
 
     return cjson.encode({
         success = true,
@@ -794,7 +814,7 @@ class InventoryManager:
         timestamp = int(time.time() * 1000)
 
         result = self._reserve(
-            keys=['inventory', 'reserved', 'reservations'],
+            keys=['inventory', 'reserved', 'reservations', f'reservation_expiry:{reservation_id}'],
             args=[reservation_id, product_id, quantity, ttl_seconds, timestamp]
         )
         return json.loads(result)
@@ -803,7 +823,7 @@ class InventoryManager:
         """Commit a reservation (finalize purchase)"""
         timestamp = int(time.time() * 1000)
         result = self._commit(
-            keys=['inventory', 'reserved', 'reservations', 'sales'],
+            keys=['inventory', 'reserved', 'reservations', 'sales', f'reservation_expiry:{reservation_id}'],
             args=[reservation_id, timestamp]
         )
         return json.loads(result)
@@ -811,7 +831,7 @@ class InventoryManager:
     def cancel(self, reservation_id):
         """Cancel a reservation"""
         result = self._cancel(
-            keys=['reserved', 'reservations'],
+            keys=['reserved', 'reservations', f'reservation_expiry:{reservation_id}'],
             args=[reservation_id]
         )
         return json.loads(result)

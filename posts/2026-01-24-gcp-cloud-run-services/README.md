@@ -109,9 +109,13 @@ gcloud run services update my-service \
     --region us-central1 \
     --timeout 300s
 
-# CPU allocation options
-# always: CPU is always allocated (good for background processing)
-# request: CPU only during request processing (default, cost efficient)
+# CPU allocation and billing options
+# --no-cpu-throttling: CPU is always allocated (instance-based billing)
+# --cpu-throttling: CPU only during request processing (request-based billing)
+gcloud run services update my-service \
+    --region us-central1 \
+    --no-cpu-throttling
+
 gcloud run services update my-service \
     --region us-central1 \
     --cpu-throttling
@@ -171,7 +175,7 @@ resource "google_cloud_run_v2_service" "api" {
           cpu    = "2"
           memory = "1Gi"
         }
-        cpu_idle = true  # Scale to zero when idle
+        cpu_idle = true  # CPU is allocated only while processing requests
       }
 
       # Port configuration
@@ -246,9 +250,9 @@ resource "google_cloud_run_v2_service" "api" {
 }
 
 # IAM - Allow unauthenticated access
-resource "google_cloud_run_service_iam_member" "public" {
+resource "google_cloud_run_v2_service_iam_member" "public" {
   location = google_cloud_run_v2_service.api.location
-  service  = google_cloud_run_v2_service.api.name
+  name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
@@ -303,6 +307,8 @@ gcloud run services update-traffic my-service \
 
 ## Custom Domains
 
+Cloud Run domain mappings are in Preview and are not recommended for production services. For production custom domains, use a global external Application Load Balancer.
+
 ```bash
 # Map a custom domain
 gcloud run domain-mappings create \
@@ -311,7 +317,7 @@ gcloud run domain-mappings create \
     --region us-central1
 
 # Verify domain ownership (if not already verified)
-gcloud domains verify api.example.com
+gcloud domains verify example.com
 
 # List domain mappings
 gcloud run domain-mappings list --region us-central1
@@ -382,12 +388,11 @@ resource "google_vpc_access_connector" "connector" {
 ## Cloud SQL Connection
 
 ```bash
-# Deploy with Cloud SQL connection
+# Deploy with Cloud SQL connection name for the Python Connector
 gcloud run deploy my-service \
     --image gcr.io/my-project/my-app:v1 \
     --region us-central1 \
-    --add-cloudsql-instances my-project:us-central1:my-instance \
-    --set-env-vars "DB_SOCKET=/cloudsql/my-project:us-central1:my-instance"
+    --set-env-vars "INSTANCE_CONNECTION_NAME=my-project:us-central1:my-instance"
 ```
 
 ### Application Code for Cloud SQL
@@ -399,7 +404,7 @@ from google.cloud.sql.connector import Connector
 import sqlalchemy
 
 def get_connection():
-    connector = Connector()
+    connector = Connector(refresh_strategy="LAZY")
 
     def getconn():
         conn = connector.connect(
@@ -447,6 +452,7 @@ gcloud run services add-iam-policy-binding my-service \
 
 ```python
 # Python - calling an authenticated Cloud Run service
+import requests
 import google.auth.transport.requests
 import google.oauth2.id_token
 
@@ -466,10 +472,11 @@ def call_cloud_run_service(url):
 gcloud run services logs read my-service --region us-central1
 
 # Tail logs in real-time
-gcloud run services logs tail my-service --region us-central1
+gcloud beta run services logs tail my-service --region us-central1
 
 # View specific revision logs
-gcloud run revisions logs read my-service-00002-abc --region us-central1
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.revision_name="my-service-00002-abc"' \
+    --limit 10
 
 # Export logs to BigQuery
 gcloud logging sinks create cloud-run-logs \

@@ -32,7 +32,9 @@ The most common type. Populates options by querying your data source.
 Name: namespace
 Type: Query
 Data source: Prometheus
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Metric: kube_pod_info
+Label: namespace
 Sort: Alphabetical (asc)
 Multi-value: true
 Include All option: true
@@ -46,7 +48,7 @@ Use the variable in panel queries:
 # Filter by selected namespace
 
 sum by (pod) (
-  rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])
+  rate(container_cpu_usage_seconds_total{namespace=~"$namespace"}[$__rate_interval])
 )
 ```
 
@@ -74,7 +76,7 @@ Hide: Variable
 
 ### Interval Variable
 
-Time intervals for rate functions. Adapts to the selected time range.
+User-selected time intervals. For Prometheus `rate()` and `increase()` queries, prefer Grafana's built-in `$__rate_interval` unless you intentionally want users to control the range.
 
 ```yaml
 Name: interval
@@ -87,7 +89,7 @@ Auto count: 30
 Use in queries:
 
 ```promql
-rate(http_requests_total{namespace="$namespace"}[$interval])
+rate(http_requests_total{namespace=~"$namespace"}[$interval])
 ```
 
 ### Data Source Variable
@@ -114,7 +116,7 @@ flowchart TD
         I[Interval Variable]
         DS[Data Source Variable]
         T[Text Box Variable]
-        A[Ad Hoc Filters]
+        A[Filters]
     end
 
     subgraph Use Cases
@@ -139,13 +141,17 @@ Variables can depend on other variables. This creates cascading dropdowns.
 First variable (namespace):
 ```yaml
 Name: namespace
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Metric: kube_pod_info
+Label: namespace
 ```
 
 Second variable (service), filtered by namespace:
 ```yaml
 Name: service
-Query: label_values(kube_pod_info{namespace="$namespace"}, pod)
+Query type: Label values
+Metric: kube_pod_info{namespace=~"$namespace"}
+Label: pod
 Regex: /(.+)-[a-z0-9]+-[a-z0-9]+$/
 ```
 
@@ -154,7 +160,9 @@ The regex extracts the service name from pod names like `api-gateway-abc123-xyz`
 Third variable (pod), filtered by namespace and service:
 ```yaml
 Name: pod
-Query: label_values(kube_pod_info{namespace="$namespace", pod=~"$service.*"}, pod)
+Query type: Label values
+Metric: kube_pod_info{namespace=~"$namespace", pod=~"$service.*"}
+Label: pod
 ```
 
 When users select a namespace, the service dropdown updates. When they select a service, the pod dropdown updates.
@@ -174,7 +182,7 @@ In queries, use regex matching:
 ```promql
 # Matches multiple selected namespaces
 sum by (namespace) (
-  rate(http_requests_total{namespace=~"$namespace"}[5m])
+  rate(http_requests_total{namespace=~"$namespace"}[$__rate_interval])
 )
 ```
 
@@ -206,9 +214,9 @@ HTTP Requests - $namespace / $service
 
 ```promql
 sum(rate(http_requests_total{
-  namespace="$namespace",
+  namespace=~"$namespace",
   service=~"$service"
-}[5m]))
+}[$__rate_interval]))
 ```
 
 ### Dashboard Links
@@ -221,7 +229,7 @@ sum(rate(http_requests_total{
 
 ```promql
 changes(kube_deployment_status_observed_generation{
-  namespace="$namespace",
+  namespace=~"$namespace",
   deployment=~"$service"
 }[5m]) > 0
 ```
@@ -233,7 +241,9 @@ changes(kube_deployment_status_observed_generation{
 Extract parts of labels using capture groups:
 
 ```yaml
-Query: label_values(container_cpu_usage_seconds_total, pod)
+Query type: Label values
+Metric: container_cpu_usage_seconds_total
+Label: pod
 Regex: /(.+)-[a-z0-9]{5}-[a-z0-9]{5}/
 ```
 
@@ -245,33 +255,39 @@ Query one metric but filter another:
 
 ```yaml
 # Get namespaces that have both pods and services
-Query: label_values(kube_pod_info * on(namespace) group_left kube_service_info, namespace)
+Query type: Query result
+Query: count by (namespace) (kube_pod_info) and count by (namespace) (kube_service_info)
+Regex: /namespace="([^"]+)"/
 ```
 
 ### Using Label Queries
 
 For Prometheus data sources:
 
-```promql
-# Get unique values
-label_values(namespace)
+```yaml
+# Get unique label values
+Query type: Label values
+Label: namespace
 
 # Get values from specific metric
-label_values(http_requests_total, service)
+Query type: Label values
+Metric: http_requests_total
+Label: service
 
 # Get values with filters
-label_values(http_requests_total{namespace="$namespace"}, endpoint)
+Query type: Label values
+Metric: http_requests_total{namespace=~"$namespace"}
+Label: endpoint
 ```
 
 ## Variable Refresh Options
 
 Control when variables refresh their options:
 
-- **Never**: Options cached until dashboard refresh
 - **On Dashboard Load**: Refresh when dashboard opens
 - **On Time Range Change**: Refresh when time picker changes
 
-For frequently changing data, use "On Dashboard Load". For stable data like namespaces, "Never" improves performance.
+For frequently changing data, use "On Dashboard Load". For stable data like namespaces, avoid "On Time Range Change" unless the variable query depends on the selected time range.
 
 ## Text Box Variables
 
@@ -287,16 +303,16 @@ Use for filtering:
 
 ```promql
 # Search logs containing user input
-{namespace="$namespace"} |= "$search"
+{namespace=~"$namespace"} |= "$search"
 ```
 
-## Ad Hoc Filters
+## Filters
 
 Enable flexible filtering without predefined variables:
 
 ```yaml
 Name: Filters
-Type: Ad hoc filters
+Type: Filters
 Data source: Prometheus
 ```
 
@@ -319,7 +335,9 @@ Let us build a service overview dashboard with effective variables:
 - name: namespace
   type: query
   datasource: $datasource
-  query: label_values(kube_namespace_labels, namespace)
+  queryType: label_values
+  metric: kube_namespace_labels
+  label: namespace
   multi: true
   includeAll: true
 
@@ -327,13 +345,16 @@ Let us build a service overview dashboard with effective variables:
 - name: service
   type: query
   datasource: $datasource
-  query: label_values(kube_deployment_labels{namespace=~"$namespace"}, deployment)
+  queryType: label_values
+  metric: kube_deployment_labels{namespace=~"$namespace"}
+  label: deployment
   multi: true
   includeAll: true
 
-# 4. Time interval
+# 4. Optional user-controlled interval
 - name: interval
   type: interval
+  values: 1m,5m,10m,30m,1h
   auto: true
   auto_count: 50
   auto_min: 30s
@@ -347,7 +368,7 @@ sum by (service, namespace) (
   rate(http_requests_total{
     namespace=~"$namespace",
     service=~"$service"
-  }[$interval])
+  }[$__rate_interval])
 )
 ```
 
@@ -380,10 +401,10 @@ Values: 0h,1d,7d,30d
 
 ```promql
 # Current value
-sum(rate(http_requests_total[$interval]))
+sum(rate(http_requests_total[$__rate_interval]))
 
 # Previous period value
-sum(rate(http_requests_total[$interval] offset $offset))
+sum(rate(http_requests_total[$__rate_interval] offset $offset))
 ```
 
 ### Pattern: Percentile Selector
@@ -397,7 +418,7 @@ Default: 0.99
 
 ```promql
 histogram_quantile($percentile,
-  sum by (le) (rate(http_request_duration_seconds_bucket[$interval]))
+  sum by (le) (rate(http_request_duration_seconds_bucket[$__rate_interval]))
 )
 ```
 
@@ -426,9 +447,9 @@ See how variables expand in queries:
 
 1. **Limit option count**: Queries returning thousands of values slow down the dashboard
 2. **Use regex sparingly**: Complex regex patterns are expensive
-3. **Cache aggressively**: Set refresh to "Never" for stable data
+3. **Refresh deliberately**: Avoid time-range refreshes for variables whose values do not depend on time
 4. **Avoid chained dependencies**: Deep chains (A > B > C > D) create query cascades
 
 ## Conclusion
 
-Variables transform Grafana dashboards from static displays into interactive exploration tools. Start with namespace and service filters, add interval variables for rate queries, and chain variables for hierarchical data. Well-designed variables let one dashboard serve an entire organization while remaining fast and intuitive.
+Variables transform Grafana dashboards from static displays into interactive exploration tools. Start with namespace and service filters, use `$__rate_interval` for Prometheus rate queries, and chain variables for hierarchical data. Well-designed variables let one dashboard serve an entire organization while remaining fast and intuitive.

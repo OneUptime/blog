@@ -8,7 +8,7 @@ Description: A comprehensive guide to troubleshooting Promtail when logs are not
 
 ---
 
-Promtail is the primary log collection agent for Grafana Loki. When logs stop appearing in Loki, the issue often lies with Promtail configuration, file permissions, network connectivity, or pipeline processing. This guide provides a systematic approach to diagnosing and resolving Promtail issues.
+Promtail is the legacy log collection agent for Grafana Loki. Promtail reached end of life on March 2, 2026, and Grafana recommends migrating to Grafana Alloy or another supported client. For existing Promtail deployments, when logs stop appearing in Loki, the issue often lies with Promtail configuration, file permissions, network connectivity, or pipeline processing. This guide provides a systematic approach to diagnosing and resolving Promtail issues.
 
 ## Common Symptoms
 
@@ -107,15 +107,15 @@ clients:
 **Missing job or path labels:**
 
 ```yaml
-# Always include job and __path__
+# Include a useful job label and the required __path__ label for file targets
 scrape_configs:
   - job_name: system
     static_configs:
       - targets:
           - localhost
         labels:
-          job: syslog  # Required
-          __path__: /var/log/syslog  # Required
+          job: syslog  # Standard and useful for querying
+          __path__: /var/log/syslog  # Required for file targets
 ```
 
 ### Validate Configuration
@@ -289,7 +289,7 @@ scrape_configs:
           selector: '{job="app"}'
           stages:
             - regex:
-                expression: '.*'
+                expression: '^(?P<output>.*)$'
             - output:
                 source: output
 
@@ -312,12 +312,8 @@ pipeline_stages:
   - json:
       expressions:
         level: level
-    # Add error handling
-  - match:
-      selector: '{__error__="JSONParseError"}'
-      stages:
-        - drop:
-            drop_counter_reason: json_parse_error
+      # Drop lines that are not valid JSON objects instead of forwarding them
+      drop_malformed: true
 ```
 
 **Timestamp parsing failure:**
@@ -331,7 +327,7 @@ pipeline_stages:
       fallback_formats:
         - "2006-01-02 15:04:05"
         - UnixMs
-      action_on_failure: keep  # Keep log with current time
+      action_on_failure: skip  # Keep the timestamp from when Promtail scraped the log
 ```
 
 ### Test Pipeline Locally
@@ -349,11 +345,11 @@ echo '{"level":"error","message":"test"}' | promtail \
 ### Check Discovered Targets
 
 ```bash
-# List all targets
-curl -s http://localhost:9080/targets | jq
+# View all targets
+curl -s http://localhost:9080/targets
 
-# Check specific target status
-curl -s http://localhost:9080/targets | jq '.[] | select(.labels.job=="app")'
+# Check for a specific job in the targets page output
+curl -s http://localhost:9080/targets | grep 'job="app"'
 ```
 
 ### File Discovery Not Working
@@ -371,7 +367,7 @@ scrape_configs:
           __path__: /var/log/app/**/*.log
 
 # Test the glob pattern
-ls -la /var/log/app/**/*.log
+find /var/log/app -type f -name '*.log' -ls
 ```
 
 ### Kubernetes Discovery Issues
@@ -405,7 +401,7 @@ clients:
     batchsize: 1048576  # 1MB
     batchwait: 1s
 
-# Limit concurrent targets
+# Resync watched directories and tailed files less frequently
 target_config:
   sync_period: 10s
 ```
@@ -450,8 +446,8 @@ rate(promtail_read_bytes_total[5m])
 # Lines sent rate
 rate(promtail_sent_entries_total[5m])
 
-# Entries dropped
-rate(promtail_dropped_entries_total[5m])
+# Entries dropped by pipeline stages
+rate(logentry_dropped_lines_total[5m])
 
 # Target sync failures
 rate(promtail_targets_failed_total[5m])
@@ -477,7 +473,7 @@ groups:
 
       - alert: PromtailHighDropRate
         expr: |
-          rate(promtail_dropped_entries_total[5m])
+          rate(logentry_dropped_lines_total[5m])
           / rate(promtail_read_lines_total[5m]) > 0.1
         for: 5m
         labels:

@@ -61,6 +61,14 @@ gcloud compute ssh my-instance \
     --tunnel-through-iap
 ```
 
+For IAP tunneling, you also need permission to create IAP TCP tunnels.
+
+```bash
+gcloud projects add-iam-policy-binding my-project \
+    --member="user:your-email@example.com" \
+    --role="roles/iap.tunnelResourceAccessor"
+```
+
 ### Check Firewall Rules
 
 ```bash
@@ -92,6 +100,11 @@ gcloud compute firewall-rules create allow-ssh-iap \
     --allow=tcp:22 \
     --source-ranges="35.235.240.0/20" \
     --target-tags=allow-ssh-iap
+
+# Add the IAP tag to your instance
+gcloud compute instances add-tags my-instance \
+    --zone=us-central1-a \
+    --tags=allow-ssh-iap
 ```
 
 ## Error 2: Permission Denied (publickey)
@@ -127,11 +140,13 @@ USERNAME=$(whoami)
 KEY_CONTENT=$(cat ~/.ssh/gcp_key.pub)
 echo "${USERNAME}:${KEY_CONTENT}" > /tmp/ssh-key-entry.txt
 
-# Add to project metadata (affects all instances)
+# Add to project metadata (affects all instances).
+# Include existing ssh-keys in the file too; this updates the ssh-keys metadata value.
 gcloud compute project-info add-metadata \
     --metadata-from-file=ssh-keys=/tmp/ssh-key-entry.txt
 
-# Or add to specific instance only
+# Or add to specific instance only.
+# Include existing instance ssh-keys in the file too; this updates the ssh-keys metadata value.
 gcloud compute instances add-metadata my-instance \
     --zone=us-central1-a \
     --metadata-from-file=ssh-keys=/tmp/ssh-key-entry.txt
@@ -217,6 +232,11 @@ gcloud compute instances get-serial-port-output my-instance \
 # Look for SSH-related errors
 gcloud compute instances get-serial-port-output my-instance \
     --zone=us-central1-a 2>&1 | grep -i ssh
+
+# Enable interactive serial console access
+gcloud compute instances add-metadata my-instance \
+    --zone=us-central1-a \
+    --metadata=serial-port-enable=TRUE
 
 # Connect to serial console interactively
 gcloud compute connect-to-serial-port my-instance \

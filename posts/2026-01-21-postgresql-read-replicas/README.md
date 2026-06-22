@@ -47,12 +47,6 @@ max_replication_slots = 10
 
 # Keep WAL for replicas
 wal_keep_size = 1GB
-
-# Enable hot standby for replicas to accept queries
-hot_standby = on
-
-# Optional: Enable feedback from standby
-hot_standby_feedback = on
 ```
 
 ### Create Replication User
@@ -61,8 +55,7 @@ hot_standby_feedback = on
 -- Create dedicated replication user
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'secure_password';
 
--- Grant necessary permissions
-GRANT pg_read_all_data TO replicator;
+-- No table-level grants are required for physical replication
 ```
 
 ### Configure pg_hba.conf
@@ -253,7 +246,7 @@ listen stats
     stats uri /
 ```
 
-### Option 2: PgBouncer with Target Session Attrs
+### Option 2: PgBouncer with a Read-Only Pool
 
 ```ini
 # /etc/pgbouncer/pgbouncer.ini
@@ -305,19 +298,33 @@ const writePool = new Pool({
   password: 'mypass',
 });
 
-// Replica pool for reads
-const readPool = new Pool({
-  host: 'replica1.example.com,replica2.example.com',
-  database: 'myapp',
-  user: 'myuser',
-  password: 'mypass',
-  target_session_attrs: 'prefer-standby',
-});
+// Replica pools for reads
+const readPools = [
+  new Pool({
+    host: 'replica1.example.com',
+    database: 'myapp',
+    user: 'myuser',
+    password: 'mypass',
+  }),
+  new Pool({
+    host: 'replica2.example.com',
+    database: 'myapp',
+    user: 'myuser',
+    password: 'mypass',
+  }),
+];
+
+let nextReadPool = 0;
+function getReadPool() {
+  const pool = readPools[nextReadPool];
+  nextReadPool = (nextReadPool + 1) % readPools.length;
+  return pool;
+}
 
 // Usage
 async function getUser(id) {
   // Read from replica
-  const result = await readPool.query('SELECT * FROM users WHERE id = $1', [id]);
+  const result = await getReadPool().query('SELECT * FROM users WHERE id = $1', [id]);
   return result.rows[0];
 }
 
@@ -340,7 +347,10 @@ async function createUser(data) {
 CREATE OR REPLACE FUNCTION check_replica_lag()
 RETURNS INTERVAL AS $$
 BEGIN
-    RETURN NOW() - pg_last_xact_replay_timestamp();
+    RETURN CASE
+        WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN INTERVAL '0 seconds'
+        ELSE NOW() - pg_last_xact_replay_timestamp()
+    END;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -361,9 +371,10 @@ def get_data(id, max_lag_seconds=5, require_current=False):
     # Check replica lag
     with read_conn.cursor() as cur:
         cur.execute("""
-            SELECT EXTRACT(EPOCH FROM
-                NOW() - pg_last_xact_replay_timestamp()
-            ) AS lag_seconds
+            SELECT CASE
+                WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+                ELSE EXTRACT(EPOCH FROM NOW() - pg_last_xact_replay_timestamp())
+            END AS lag_seconds
         """)
         lag = cur.fetchone()[0]
 

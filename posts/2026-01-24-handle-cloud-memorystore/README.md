@@ -8,7 +8,7 @@ Description: A comprehensive guide to setting up, connecting, and managing Googl
 
 ---
 
-Google Cloud Memorystore provides fully managed Redis and Memcached instances. It handles replication, failover, and patching so you can focus on using caching effectively. This guide covers everything from initial setup to production best practices.
+Google Cloud Memorystore provides fully managed Redis and Memcached instances. For Redis Standard Tier, it handles replication and failover, and Memorystore handles patching so you can focus on using caching effectively. This guide covers everything from initial setup to production best practices.
 
 ## Understanding Memorystore Architecture
 
@@ -108,6 +108,8 @@ resource "google_redis_instance" "cache" {
     environment = "production"
     team        = "backend"
   }
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
 # VPC peering for private access
@@ -150,6 +152,7 @@ import redis
 from functools import wraps
 import json
 import hashlib
+from datetime import datetime
 
 # Get connection details from environment
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
@@ -329,21 +332,21 @@ class RateLimiter {
         const windowStart = now - (this.windowSeconds * 1000);
 
         // Use Redis transaction for atomic operations
-        const pipeline = this.client.pipeline();
+        const transaction = this.client.multi();
 
         // Remove old entries outside the window
-        pipeline.zremrangebyscore(key, 0, windowStart);
+        transaction.zremrangebyscore(key, 0, windowStart);
 
         // Count requests in current window
-        pipeline.zcard(key);
+        transaction.zcard(key);
 
         // Add current request
-        pipeline.zadd(key, now, `${now}`);
+        transaction.zadd(key, now, `${now}:${Math.random()}`);
 
         // Set expiry on the key
-        pipeline.expire(key, this.windowSeconds);
+        transaction.expire(key, this.windowSeconds);
 
-        const results = await pipeline.exec();
+        const results = await transaction.exec();
         const requestCount = results[1][1];
 
         return {
@@ -392,7 +395,7 @@ func init() {
 
     client = redis.NewClient(&redis.Options{
         Addr:         fmt.Sprintf("%s:%s", host, port),
-        Password:     "", // Memorystore basic tier has no password
+        Password:     "", // Leave empty when Redis AUTH is disabled
         DB:           0,
         DialTimeout:  5 * time.Second,
         ReadTimeout:  3 * time.Second,
@@ -469,9 +472,9 @@ gcloud redis instances describe my-redis-cache \
 # Monitor using Cloud Monitoring
 # Key metrics to track:
 # - redis.googleapis.com/stats/memory/usage_ratio
-# - redis.googleapis.com/stats/connected_clients
+# - redis.googleapis.com/clients/connected
 # - redis.googleapis.com/stats/evicted_keys
-# - redis.googleapis.com/stats/keyspace_hits_ratio
+# - redis.googleapis.com/stats/cache_hit_ratio
 ```
 
 ### Alert Configuration
@@ -546,6 +549,7 @@ def cache_with_ttl(key, value, ttl_seconds=3600):
 # Handle connection failures gracefully
 
 from contextlib import contextmanager
+import logging
 
 @contextmanager
 def redis_connection():

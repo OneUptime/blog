@@ -38,10 +38,12 @@ redis-cli MODULE LIST
 ### Using RedisTimeSeries Module
 
 ```bash
-# Download and build
-git clone https://github.com/RedisTimeSeries/RedisTimeSeries.git
+# Redis 8 includes time series natively. For older Redis deployments
+# that need the standalone module, clone with submodules and build it:
+git clone --recursive https://github.com/RedisTimeSeries/RedisTimeSeries.git
 cd RedisTimeSeries
-make
+make setup
+make build
 
 # Load module
 redis-server --loadmodule ./bin/redistimeseries.so
@@ -107,17 +109,27 @@ r.ts().add("metrics:cpu:server1", timestamp, 48.2)
 data_points = [
     (timestamp - 10000, 42.0),
     (timestamp - 5000, 43.5),
-    (timestamp, 45.0),
+    (timestamp - 1000, 45.0),
 ]
 for ts, value in data_points:
     r.ts().add("metrics:cpu:server1", ts, value)
 
-# Add to multiple series at once (MADD)
+# Add to multiple existing series at once (MADD)
+batch_timestamp = timestamp + 1000
+for key, labels in [
+    ("metrics:cpu:server2", {"metric": "cpu", "host": "server2"}),
+    ("metrics:memory:server2", {"metric": "memory", "host": "server2"}),
+]:
+    try:
+        r.ts().create(key, labels=labels)
+    except redis.exceptions.ResponseError:
+        pass  # Already exists
+
 r.ts().madd([
-    ("metrics:cpu:server1", timestamp, 45.5),
-    ("metrics:cpu:server2", timestamp, 52.3),
-    ("metrics:memory:server1", timestamp, 68.2),
-    ("metrics:memory:server2", timestamp, 71.8),
+    ("metrics:cpu:server1", batch_timestamp, 45.5),
+    ("metrics:cpu:server2", batch_timestamp, 52.3),
+    ("metrics:memory:server1", batch_timestamp, 68.2),
+    ("metrics:memory:server2", batch_timestamp, 71.8),
 ])
 ```
 
@@ -161,8 +173,8 @@ data = r.ts().range(
 )
 print(f"Data points in last hour: {len(data)}")
 
-# Get specific number of recent points
-data = r.ts().range(
+# Get the last 100 points, newest first
+data = r.ts().revrange(
     "metrics:cpu:server1",
     "-",  # Earliest
     "+",  # Latest
@@ -219,7 +231,8 @@ filtered = r.ts().range(
     "metrics:cpu:server1",
     one_hour_ago,
     now,
-    filter_by_value=[50, 100]  # Only values between 50 and 100
+    filter_by_min_value=50,
+    filter_by_max_value=100  # Only values between 50 and 100
 )
 ```
 
@@ -377,7 +390,7 @@ class MetricsCollector:
                         "unit": unit
                     }
                 )
-            except redis.ResponseError:
+            except redis.exceptions.ResponseError:
                 pass  # Already exists
 
     def collect(self):
@@ -447,14 +460,16 @@ class AppMetrics:
 
         for metric in metrics:
             key = f"app:{self.app_name}:{metric}"
+            duplicate_policy = "sum" if metric.endswith("_count") else "last"
             try:
                 self.r.ts().create(
                     key,
                     retention_msecs=86400000,
+                    duplicate_policy=duplicate_policy,
                     labels={"app": self.app_name, "metric": metric}
                 )
-            except:
-                pass
+            except redis.exceptions.ResponseError:
+                pass  # Already exists
 
     def record_request(self, latency_ms, endpoint, status_code):
         """Record an HTTP request."""
@@ -524,18 +539,20 @@ class AppMetrics:
             f"app:{self.app_name}:request_count",
             start, now,
             aggregation_type="sum",
-            bucket_size_msec=minutes * 60000
+            bucket_size_msec=minutes * 60000,
+            align=start
         )
 
         error_data = self.r.ts().range(
             f"app:{self.app_name}:error_count",
             start, now,
             aggregation_type="sum",
-            bucket_size_msec=minutes * 60000
+            bucket_size_msec=minutes * 60000,
+            align=start
         )
 
-        total_requests = request_data[0][1] if request_data else 0
-        total_errors = error_data[0][1] if error_data else 0
+        total_requests = sum(value for _, value in request_data)
+        total_errors = sum(value for _, value in error_data)
 
         if total_requests == 0:
             return 0
@@ -559,6 +576,8 @@ print(f"Error rate: {metrics.get_error_rate(5):.2f}%")
 ### Alerting Patterns
 
 ```python
+import json
+
 class MetricAlerter:
     def __init__(self, redis_client):
         self.r = redis_client
@@ -575,7 +594,8 @@ class MetricAlerter:
             series_key,
             start, now,
             aggregation_type="avg",
-            bucket_size_msec=window_minutes * 60000
+            bucket_size_msec=window_minutes * 60000,
+            align=start
         )
 
         if not data:

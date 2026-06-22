@@ -59,6 +59,8 @@ flowchart LR
 
 ### Common Signals
 
+Signal numbers can vary by architecture; the numbers below are the common Linux x86/ARM values.
+
 | Signal | Number | Default Action | Triggered By |
 |--------|--------|----------------|--------------|
 | SIGHUP | 1 | Terminate | Terminal closed |
@@ -220,12 +222,12 @@ while [[ "$shutdown_requested" == "false" ]]; do
 done
 ```
 
-### EXIT (Always Runs)
+### EXIT (Runs on Shell Exit)
 
 ```bash
 #!/bin/bash
 
-# EXIT trap runs when script exits (any reason)
+# EXIT trap runs when the shell exits
 cleanup() {
     echo "Cleanup running..."
     rm -f /tmp/myapp_*.tmp
@@ -238,7 +240,9 @@ trap cleanup EXIT
 # - Normal script completion
 # - exit command
 # - Fatal error (with set -e)
-# - Signals (SIGINT, SIGTERM, etc.)
+# - Trapped signals when the handler exits the shell
+#
+# SIGKILL and SIGSTOP cannot be trapped, so they cannot run cleanup.
 
 echo "Script running"
 exit 0  # Cleanup will run
@@ -258,10 +262,11 @@ declare -a TEMP_FILES
 
 # Function to create tracked temp file
 create_temp_file() {
+    local __result_var=$1
     local tmpfile
     tmpfile=$(mktemp /tmp/myapp_XXXXXX)
     TEMP_FILES+=("$tmpfile")
-    echo "$tmpfile"
+    printf -v "$__result_var" '%s' "$tmpfile"
 }
 
 # Cleanup function
@@ -282,8 +287,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Usage
-WORK_FILE=$(create_temp_file)
-CONFIG_FILE=$(create_temp_file)
+create_temp_file WORK_FILE
+create_temp_file CONFIG_FILE
 
 echo "Working with temp files:"
 echo "  $WORK_FILE"
@@ -305,8 +310,8 @@ flowchart TD
     C --> D{Script runs}
 
     D -->|Normal exit| E[EXIT trap fires]
-    D -->|Error occurs| E
-    D -->|Signal received| E
+    D -->|Fatal error exits shell| E
+    D -->|Trapped signal exits shell| E
 
     E --> F[Cleanup function]
     F --> G[Remove temp files]
@@ -400,6 +405,8 @@ wait
 ```bash
 #!/bin/bash
 
+set -e
+
 cleanup() {
     # Capture the original exit code FIRST
     local exit_code=$?
@@ -416,9 +423,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Simulate failure
-false  # This exits with code 1
-
-# With set -e, script exits here with code 1
+false  # With set -e, script exits here with code 1
 # Cleanup runs and preserves the exit code
 ```
 
@@ -476,7 +481,8 @@ sleep 30
 ```bash
 #!/bin/bash
 
-# ERR trap runs when a command fails (with set -e)
+# ERR trap runs when a command returns a non-zero status,
+# with the same exceptions as set -e
 set -e
 
 error_handler() {
@@ -715,13 +721,16 @@ test_signal_handler() {
 
     echo "Testing $signal on $script..."
 
+    local output_file
+    output_file=$(mktemp)
+
     # Start script in background
-    bash "$script" &
+    bash "$script" >"$output_file" 2>&1 &
     local pid=$!
     sleep 1
 
     # Send signal
-    kill -"$signal" $pid
+    kill -"$signal" "$pid"
     sleep 1
 
     # Check result
@@ -731,6 +740,14 @@ test_signal_handler() {
         local exit_code=$?
         echo "  Script exited with code: $exit_code"
     fi
+
+    if grep -q "$expected" "$output_file"; then
+        echo "  Expected output found: $expected"
+    else
+        echo "  Expected output missing: $expected"
+    fi
+
+    rm -f "$output_file"
 }
 
 # Create test script
@@ -761,7 +778,7 @@ flowchart TD
     H -->|No| I[Define handler function]
     H -->|Yes| J{Using subshell?}
 
-    J -->|Yes| K[Traps dont inherit to subshells]
+    J -->|Yes| K[Trapped signals reset in subshells]
     J -->|No| L[Check for trap override]
 ```
 
@@ -796,13 +813,13 @@ log_error() {
 
 # Cleanup function (idempotent)
 cleanup() {
+    local exit_code=${1:-$?}
+
     # Prevent running twice
     if [[ "$CLEANUP_DONE" == "true" ]]; then
-        return
+        exit "$exit_code"
     fi
     CLEANUP_DONE=true
-
-    local exit_code=$?
     log "Running cleanup (exit code: $exit_code)"
 
     # Stop background processes
@@ -835,24 +852,24 @@ cleanup() {
 # Signal handlers
 handle_sigint() {
     log "Received SIGINT (Ctrl+C)"
-    cleanup
+    cleanup 130
 }
 
 handle_sigterm() {
     log "Received SIGTERM"
-    cleanup
+    cleanup 143
 }
 
 handle_sighup() {
     log "Received SIGHUP (terminal closed)"
-    cleanup
+    cleanup 129
 }
 
 handle_error() {
     local line=$1
     local code=$2
     log_error "Error on line $line (exit code: $code)"
-    cleanup
+    cleanup "$code"
 }
 
 # Set up all traps
@@ -864,10 +881,11 @@ trap 'handle_error $LINENO $?' ERR
 
 # Helper functions
 create_temp_file() {
+    local __result_var=$1
     local tmpfile
     tmpfile=$(mktemp)
     TEMP_FILES+=("$tmpfile")
-    echo "$tmpfile"
+    printf -v "$__result_var" '%s' "$tmpfile"
 }
 
 acquire_lock() {
@@ -899,7 +917,7 @@ main() {
 
     # Create temp file
     local work_file
-    work_file=$(create_temp_file)
+    create_temp_file work_file
     log "Using temp file: $work_file"
 
     # Main logic here
@@ -930,20 +948,20 @@ main "$@"
 ```bash
 #!/bin/bash
 
-# Traps are NOT inherited by subshells
+# Trapped signals are reset in subshells
 
 cleanup() {
-    echo "Cleanup from PID $$"
+    echo "Cleanup from Bash process $BASHPID"
 }
 
 trap cleanup EXIT
 
-echo "Parent PID: $$"
+echo "Parent Bash process: $BASHPID"
 
 # Subshell has its own trap (or none)
 (
-    # This subshell does NOT inherit the parent trap
-    echo "Subshell PID: $$"
+    # Trapped signals are reset when the subshell is created
+    echo "Subshell Bash process: $BASHPID"
 
     # Must set trap in subshell if needed
     trap 'echo "Subshell cleanup"' EXIT
@@ -953,7 +971,7 @@ echo "Parent PID: $$"
 
 # Command substitution is also a subshell
 result=$(
-    # No inherited trap here either
+    # Trapped signals are reset here too
     echo "command substitution"
 )
 ```
@@ -982,21 +1000,21 @@ trap -p
 SIGINT   # Ctrl+C
 SIGTERM  # kill command
 SIGHUP   # Terminal closed
-EXIT     # Script exit (any reason)
-ERR      # Command failure (with set -e)
+EXIT     # Shell exit (except uncatchable termination such as SIGKILL)
+ERR      # Command failure, with the same exceptions as set -e
 ```
 
 ---
 
 ## Key Takeaways
 
-1. **Always use EXIT trap for cleanup** - It runs regardless of how the script exits
+1. **Always use EXIT trap for cleanup** - It runs when the shell exits normally, from `exit`, from `set -e`, or after a trapped signal handler exits
 2. **Handle both SIGINT and SIGTERM** - Users expect Ctrl+C and kill to work gracefully
 3. **Make cleanup idempotent** - Cleanup might run multiple times in edge cases
 4. **Preserve exit codes** - Capture $? at the start of cleanup handlers
 5. **Set traps early** - Before creating resources that need cleanup
 6. **Test your signal handlers** - Send signals manually to verify behavior
-7. **Remember subshell limitations** - Traps do not inherit to subshells
+7. **Remember subshell limitations** - Trapped signals reset in subshells, and variable changes in command substitutions do not affect the parent shell
 8. **Log signal receipt** - Helps debugging when things go wrong
 
 ---

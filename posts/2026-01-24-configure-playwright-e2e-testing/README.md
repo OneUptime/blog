@@ -171,6 +171,7 @@ Most applications require authentication. Playwright supports storing authentica
 ```typescript
 // tests/auth.setup.ts
 import { test as setup, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 
 const authFile = '.auth/user.json';
 
@@ -192,6 +193,7 @@ setup('authenticate', async ({ page }) => {
   await expect(page.locator('[data-testid="user-menu"]')).toBeVisible();
 
   // Store authentication state for reuse
+  await mkdir('.auth', { recursive: true });
   await page.context().storageState({ path: authFile });
 });
 ```
@@ -378,7 +380,7 @@ jobs:
       - name: Run E2E tests
         run: npx playwright test
         env:
-          BASE_URL: ${{ secrets.STAGING_URL }}
+          BASE_URL: http://localhost:3000
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
 

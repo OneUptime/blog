@@ -160,7 +160,6 @@ kubectl get svc <service-name> -o yaml
 kubectl describe svc <service-name>
 
 # Verify endpoints exist
-kubectl get endpoints <service-name>
 kubectl get endpointslices -l kubernetes.io/service-name=<service-name>
 
 # Test service DNS
@@ -175,7 +174,7 @@ kubectl exec -it netshoot -- curl http://<service-name>.<namespace>.svc.cluster.
 ### Common Service Problems
 
 ```yaml
-# Problem: No endpoints
+# Problem: No service endpoints
 # Check selector matches pod labels
 apiVersion: v1
 kind: Service
@@ -190,7 +189,7 @@ spec:
 
 # Debug:
 # kubectl get pods -l app=my-app
-# kubectl get endpoints my-service
+# kubectl get endpointslices -l kubernetes.io/service-name=my-service
 ```
 
 ### Debug kube-proxy
@@ -246,10 +245,9 @@ metadata:
 spec:
   containers:
     - name: dnsutils
-      image: gcr.io/kubernetes-e2e-test-images/dnsutils:1.3
-      command:
-        - sleep
-        - "infinity"
+      image: registry.k8s.io/e2e-test-images/agnhost:2.39
+      imagePullPolicy: IfNotPresent
+  restartPolicy: Always
 ---
 # Test DNS
 # kubectl exec -it dnsutils -- nslookup kubernetes.default
@@ -317,6 +315,7 @@ metadata:
   name: my-ingress
   annotations:
     # For NGINX, ensure correct rewrite
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
@@ -383,7 +382,7 @@ spec:
         - podSelector:
             matchLabels:
               app: frontend
-        # Also allow from same namespace
+        # Also allow from namespaces labeled name=production
         - namespaceSelector:
             matchLabels:
               name: production

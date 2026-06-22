@@ -197,7 +197,7 @@ function UserCard({ user }) {
 }
 ```
 
-### Solution: Add default props and validation
+### Solution: Add default values and validation
 
 ```javascript
 import React from 'react';
@@ -212,17 +212,9 @@ function UserCard({ user = { name: 'Anonymous', bio: 'No bio available' } }) {
   );
 }
 
-// Default values via destructuring (recommended for React 19+)
-// Note: defaultProps is deprecated in React 18.3+ and removed in React 19
-// UserCard.defaultProps is deprecated in modern React
-UserCard.defaultProps = {
-  user: {
-    name: 'Anonymous',
-    bio: 'No bio available'
-  }
-};
-
-// PropTypes catch missing props during development
+// PropTypes catch invalid props during development in React 18 and earlier.
+// In React 19, propTypes on function components are ignored; use TypeScript
+// or another type-checking solution for modern React projects.
 UserCard.propTypes = {
   user: PropTypes.shape({
     name: PropTypes.string.isRequired,
@@ -729,6 +721,11 @@ function DebugComponent({ data }) {
   if (data === null) {
     console.warn('data prop is null in DebugComponent');
     return <div>Data is null</div>;
+  }
+
+  if (typeof data !== 'object') {
+    console.warn('data prop is not an object in DebugComponent');
+    return <div>Data has an unexpected type</div>;
   }
 
   // Check the shape of the data

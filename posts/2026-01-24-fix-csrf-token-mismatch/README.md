@@ -45,7 +45,8 @@ The most common cause is an expired session. When the session expires, the store
 ```python
 # Flask example - Session timeout causes CSRF mismatch
 
-from flask import Flask, session
+from datetime import timedelta
+from flask import Flask
 from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
@@ -85,7 +86,7 @@ Browser caching or CDN caching can serve stale pages with old CSRF tokens.
 
 ```python
 # Flask - Disable caching for views with forms
-from flask import make_response
+from flask import make_response, render_template
 
 @app.route('/form')
 def show_form():
@@ -121,7 +122,7 @@ fetch('/api/data', {
 
 ### 5. Domain Mismatch
 
-CSRF tokens are often tied to a specific domain. Subdomain or protocol mismatches can cause validation failures.
+CSRF validation often depends on session cookies and same-origin checks. Subdomain, cookie domain, or protocol mismatches can cause validation failures.
 
 ```javascript
 // Problem: Token generated for www.example.com
@@ -180,29 +181,31 @@ axios.defaults.withCredentials = true;
 ```php
 <?php
 // Handle CSRF token expiration gracefully
-// app/Exceptions/Handler.php
+// bootstrap/app.php
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
 
-public function render($request, Throwable $exception)
-{
-    if ($exception instanceof TokenMismatchException) {
-        // For AJAX requests
-        if ($request->expectsJson()) {
-            return response()->json([
-                'error' => 'CSRF token expired',
-                'message' => 'Please refresh the page and try again'
-            ], 419);
-        }
+return Application::configure(basePath: dirname(__DIR__))
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (TokenMismatchException $exception, Request $request) {
+            // For AJAX requests
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'error' => 'CSRF token expired',
+                    'message' => 'Please refresh the page and try again'
+                ], 419);
+            }
 
-        // For regular requests, redirect back with error
-        return redirect()
-            ->back()
-            ->withInput($request->except('password'))
-            ->withErrors(['csrf' => 'Session expired. Please try again.']);
-    }
-
-    return parent::render($request, $exception);
-}
+            // For regular requests, redirect back with error
+            return redirect()
+                ->back()
+                ->withInput($request->except('password'))
+                ->withErrors(['csrf' => 'Session expired. Please try again.']);
+        });
+    })
+    ->create();
 ```
 
 ### Django
@@ -212,7 +215,7 @@ Django uses middleware for CSRF protection:
 ```python
 # settings.py - CSRF configuration
 CSRF_COOKIE_SECURE = True  # Only send over HTTPS
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read (needed for AJAX)
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read the cookie for AJAX
 CSRF_COOKIE_SAMESITE = 'Lax'  # Prevent CSRF in most cross-site contexts
 CSRF_TRUSTED_ORIGINS = [
     'https://yourapp.com',
@@ -263,9 +266,9 @@ fetch('/api/endpoint/', {
 ```
 
 ```python
-# views.py - Handle CSRF failures gracefully
+# views.py - Protect views explicitly when middleware is disabled
+from django.shortcuts import render
 from django.views.decorators.csrf import csrf_protect
-from django.middleware.csrf import CsrfViewMiddleware
 
 @csrf_protect
 def my_view(request):
@@ -284,13 +287,13 @@ def api_webhook(request):
     pass
 ```
 
-### Express.js with csurf
+### Express.js with csrf-csrf
 
 ```javascript
 // app.js - Configure CSRF middleware
 const express = require('express');
-const csrf = require('csurf');
 const cookieParser = require('cookie-parser');
+const { doubleCsrf } = require('csrf-csrf');
 
 const app = express();
 
@@ -301,33 +304,39 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Configure CSRF protection
-const csrfProtection = csrf({
-    cookie: {
-        key: '_csrf',
+// Configure CSRF protection using the signed double-submit cookie pattern
+const {
+    generateCsrfToken,
+    doubleCsrfProtection
+} = doubleCsrf({
+    getSecret: () => process.env.CSRF_SECRET,
+    getSessionIdentifier: (req) => req.cookies.session_id,
+    cookieName: process.env.NODE_ENV === 'production'
+        ? '__Host-csrf-token'
+        : 'csrf-token',
+    cookieOptions: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 3600 // 1 hour
+        path: '/'
+    },
+    getCsrfTokenFromRequest: (req) => {
+        if (req.is('application/json')) {
+            return req.headers['x-csrf-token'];
+        }
+
+        return req.body.csrfToken;
     }
 });
 
-// Apply CSRF to all routes except specific ones
-app.use((req, res, next) => {
-    // Skip CSRF for webhooks or specific paths
-    if (req.path.startsWith('/webhook/') || req.path.startsWith('/api/public/')) {
-        return next();
-    }
-    csrfProtection(req, res, next);
+// Issue a token for forms or SPAs
+app.get('/csrf-token', (req, res) => {
+    const csrfToken = generateCsrfToken(req, res);
+    res.json({ csrfToken });
 });
 
-// Make CSRF token available to templates
-app.use((req, res, next) => {
-    if (req.csrfToken) {
-        res.locals.csrfToken = req.csrfToken();
-    }
-    next();
-});
+// Apply CSRF to routes that accept state-changing requests
+app.use(doubleCsrfProtection);
 
 // Error handler for CSRF errors
 app.use((err, req, res, next) => {
@@ -349,13 +358,15 @@ app.use((err, req, res, next) => {
 ```javascript
 // routes/form.js - Include CSRF token in responses
 router.get('/form', (req, res) => {
+    const csrfToken = generateCsrfToken(req, res);
+
     res.render('form', {
-        csrfToken: req.csrfToken()
+        csrfToken
     });
 });
 
 // Handlebars/EJS template
-// <input type="hidden" name="_csrf" value="{{csrfToken}}">
+// <input type="hidden" name="csrfToken" value="{{csrfToken}}">
 ```
 
 ### Flask with Flask-WTF
@@ -407,8 +418,10 @@ OAuth2 uses the `state` parameter as CSRF protection. Here is how to handle it p
 
 ```python
 # OAuth2 state parameter as CSRF protection
+import time
 import secrets
-from flask import session, redirect, request
+from urllib.parse import urlencode
+from flask import session, redirect, request, jsonify
 
 def initiate_oauth():
     # Generate a cryptographically secure state
@@ -487,7 +500,7 @@ console.log('CSRF Cookie:', csrfCookie);
 ```python
 # Flask - Add debugging for CSRF
 import logging
-from flask_wtf.csrf import validate_csrf, ValidationError
+from flask import request, session
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -573,17 +586,17 @@ class CSRFManager {
         }
     }
 
-    getToken() {
+    async getToken() {
         if (!this.token || Date.now() >= this.tokenExpiry) {
-            // Token missing or expired, refresh synchronously for this request
-            this.refreshToken();
+            // Token missing or expired, refresh before this request
+            await this.refreshToken();
         }
         return this.token;
     }
 
     // Create a fetch wrapper that includes CSRF token
     async fetch(url, options = {}) {
-        const token = this.getToken();
+        const token = await this.getToken();
 
         const headers = {
             ...options.headers,

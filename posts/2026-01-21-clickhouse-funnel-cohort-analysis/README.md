@@ -193,7 +193,7 @@ ORDER BY time_bucket;
 -- Weekly retention for January signups
 SELECT
     retention_week,
-    users,
+    count() AS users,
     round(users / max(users) OVER () * 100, 2) AS retention_pct
 FROM (
     SELECT
@@ -261,11 +261,12 @@ ORDER BY cohort_week, weeks_since_signup;
 WITH user_activity AS (
     SELECT
         user_id,
-        min(toDate(event_time)) AS signup_date,
+        minIf(toDate(event_time), event_type = 'signup') AS signup_date,
         groupArray(DISTINCT toDate(event_time)) AS active_dates
     FROM events
     WHERE event_time >= '2024-01-01'
     GROUP BY user_id
+    HAVING signup_date != toDate('1970-01-01')
 )
 SELECT
     countIf(has(active_dates, signup_date + 1)) AS day_1_retained,
@@ -288,10 +289,11 @@ WHERE signup_date >= '2024-01-01' AND signup_date <= '2024-01-31';
 WITH user_activity AS (
     SELECT
         user_id,
-        min(toDate(event_time)) AS first_date,
+        minIf(toDate(event_time), event_type = 'signup') AS first_date,
         max(toDate(event_time)) AS last_date
     FROM events
     GROUP BY user_id
+    HAVING first_date != toDate('1970-01-01')
 )
 SELECT
     days_range,
@@ -315,24 +317,36 @@ ORDER BY days_range;
 
 ```sql
 -- Users who viewed product then purchased within 1 hour
-SELECT count(DISTINCT user_id) AS users
-FROM events
-WHERE sequenceMatch('(?1).*(?2)')(
-    event_time,
-    event_type = 'view_product',
-    event_type = 'purchase'
+SELECT count() AS users
+FROM (
+    SELECT
+        user_id,
+        sequenceMatch('(?1).*(?2)')(
+            event_time,
+            event_type = 'view_product',
+            event_type = 'purchase'
+        ) AS matched
+    FROM events
+    WHERE event_time >= '2024-01-01'
+    GROUP BY user_id
 )
-AND event_time >= '2024-01-01';
+WHERE matched = 1;
 
 -- Sequence with time constraint
-SELECT count(DISTINCT user_id) AS users
-FROM events
-WHERE sequenceMatch('(?1)(?t<=3600)(?2)')(  -- Within 1 hour
-    event_time,
-    event_type = 'view_product',
-    event_type = 'purchase'
+SELECT count() AS users
+FROM (
+    SELECT
+        user_id,
+        sequenceMatch('(?1)(?t<=3600)(?2)')(  -- Within 1 hour
+            event_time,
+            event_type = 'view_product',
+            event_type = 'purchase'
+        ) AS matched
+    FROM events
+    WHERE event_time >= '2024-01-01'
+    GROUP BY user_id
 )
-AND event_time >= '2024-01-01';
+WHERE matched = 1;
 ```
 
 ### sequenceCount Function
@@ -367,17 +381,13 @@ FROM (
         user_id,
         arrayStringConcat(
             arraySlice(
-                groupArray(event_type),
+                arrayMap(x -> x.2, arraySort(groupArray((event_time, event_type)))),
                 1, 5  -- First 5 events
             ),
             ' -> '
         ) AS path
-    FROM (
-        SELECT user_id, event_type, event_time
-        FROM events
-        WHERE event_time >= '2024-01-01'
-        ORDER BY user_id, event_time
-    )
+    FROM events
+    WHERE event_time >= '2024-01-01'
     GROUP BY user_id
 )
 GROUP BY path
@@ -427,24 +437,34 @@ CREATE MATERIALIZED VIEW funnel_daily_mv
 ENGINE = SummingMergeTree()
 ORDER BY (day, acquisition_source)
 AS SELECT
-    toDate(event_time) AS day,
-    any(acquisition_source) AS acquisition_source,
-    windowFunnel(86400)(
-        event_time,
-        event_type = 'view',
-        event_type = 'cart',
-        event_type = 'purchase'
-    ) AS max_step
-FROM events
-GROUP BY user_id, day;
-
--- Query pre-computed funnels
-SELECT
     day,
     acquisition_source,
     countIf(max_step >= 1) AS viewers,
     countIf(max_step >= 2) AS carters,
     countIf(max_step >= 3) AS purchasers
+FROM (
+    SELECT
+        user_id,
+        toDate(event_time) AS day,
+        any(acquisition_source) AS acquisition_source,
+        windowFunnel(86400)(
+            event_time,
+            event_type = 'view',
+            event_type = 'cart',
+            event_type = 'purchase'
+        ) AS max_step
+    FROM events
+    GROUP BY user_id, day
+)
+GROUP BY day, acquisition_source;
+
+-- Query pre-computed funnels
+SELECT
+    day,
+    acquisition_source,
+    sum(viewers) AS viewers,
+    sum(carters) AS carters,
+    sum(purchasers) AS purchasers
 FROM funnel_daily_mv
 WHERE day >= '2024-01-01'
 GROUP BY day, acquisition_source

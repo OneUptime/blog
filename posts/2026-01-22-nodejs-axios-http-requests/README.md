@@ -28,7 +28,7 @@ const response = await axios.get('https://api.example.com/users');
 console.log(response.data);
 
 // With query parameters
-const response = await axios.get('https://api.example.com/users', {
+const paginatedResponse = await axios.get('https://api.example.com/users', {
   params: {
     page: 1,
     limit: 10,
@@ -49,12 +49,13 @@ const response = await axios.post('https://api.example.com/users', {
 });
 
 // POST with form data
+const fs = require('fs');
 const FormData = require('form-data');
 const form = new FormData();
 form.append('name', 'John');
 form.append('file', fs.createReadStream('/path/to/file'));
 
-const response = await axios.post('https://api.example.com/upload', form, {
+const uploadResponse = await axios.post('https://api.example.com/upload', form, {
   headers: form.getHeaders(),
 });
 ```
@@ -80,7 +81,7 @@ const response = await axios.head('https://api.example.com/users');
 console.log(response.headers);
 
 // OPTIONS
-const response = await axios.options('https://api.example.com/users');
+const optionsResponse = await axios.options('https://api.example.com/users');
 ```
 
 ## Response Structure
@@ -167,8 +168,8 @@ const config = {
     },
   },
   
-  // Cancel token
-  cancelToken: source.token,
+  // Cancellation
+  signal: new AbortController().signal,
   
   // Upload/Download progress
   onUploadProgress: (progressEvent) => {
@@ -347,7 +348,7 @@ axios.interceptors.request.eject(interceptorId);
 ```javascript
 const controller = new AbortController();
 
-// Make request with cancel token
+// Make request with an AbortController signal
 axios.get('https://api.example.com/data', {
   signal: controller.signal,
 }).then(response => {
@@ -442,7 +443,7 @@ npm install axios-retry
 
 ```javascript
 const axios = require('axios');
-const axiosRetry = require('axios-retry');
+const axiosRetry = require('axios-retry').default;
 
 axiosRetry(axios, {
   retries: 3,
@@ -474,13 +475,13 @@ const results = await axios.all([
 ]);
 
 // Using Promise.allSettled for fault tolerance
-const results = await Promise.allSettled([
+const settledResults = await Promise.allSettled([
   axios.get('/users'),
   axios.get('/posts'),
   axios.get('/comments'),
 ]);
 
-results.forEach((result, index) => {
+settledResults.forEach((result, index) => {
   if (result.status === 'fulfilled') {
     console.log(`Request ${index} succeeded:`, result.value.data);
   } else {

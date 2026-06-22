@@ -99,9 +99,8 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    _ "google.golang.org/grpc/balancer/roundrobin"
     "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/resolver"
     
     pb "myapp/proto"
 )
@@ -111,7 +110,7 @@ func main() {
     // Format: dns:///service-name.namespace.svc.cluster.local:port
     target := "dns:///grpc-server.production.svc.cluster.local:50051"
     
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         // Enable round-robin load balancing
@@ -144,7 +143,6 @@ func main() {
 ```python
 # grpc_client.py
 import grpc
-from grpc import experimental
 
 import myservice_pb2
 import myservice_pb2_grpc
@@ -381,7 +379,7 @@ spec:
 
 ```yaml
 # traefik-grpc-ingressroute.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-server
@@ -398,16 +396,6 @@ spec:
           scheme: h2c  # HTTP/2 cleartext
   tls:
     secretName: grpc-tls
----
-# ServersTransport for gRPC backend
-apiVersion: traefik.containo.us/v1alpha1
-kind: ServersTransport
-metadata:
-  name: grpc-transport
-  namespace: production
-spec:
-  serverName: grpc-server
-  insecureSkipVerify: false
 ```
 
 ### Envoy Gateway for gRPC
@@ -482,7 +470,7 @@ func main() {
     // Requires GRPC_XDS_BOOTSTRAP environment variable
     target := "xds:///grpc-server.production.svc.cluster.local:50051"
     
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -543,6 +531,7 @@ func main() {
 package main
 
 import (
+    "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -565,7 +554,13 @@ kind: Deployment
 metadata:
   name: grpc-server
 spec:
+  selector:
+    matchLabels:
+      app: grpc-server
   template:
+    metadata:
+      labels:
+        app: grpc-server
     spec:
       containers:
         - name: grpc-server
@@ -573,7 +568,7 @@ spec:
           ports:
             - containerPort: 50051
           
-          # Native gRPC health check (Kubernetes 1.24+)
+          # Native gRPC health check (stable in Kubernetes 1.27+; beta in 1.24+)
           readinessProbe:
             grpc:
               port: 50051
@@ -601,22 +596,32 @@ spec:
 ```go
 // Enable gRPC Prometheus metrics
 import (
-    grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+    grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+    "github.com/prometheus/client_golang/prometheus"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
+    reg := prometheus.NewRegistry()
+    srvMetrics := grpcprom.NewServerMetrics()
+    clientMetrics := grpcprom.NewClientMetrics()
+    reg.MustRegister(srvMetrics, clientMetrics)
+
     // Server side
     grpcServer := grpc.NewServer(
-        grpc.StreamInterceptor(grpc_prometheus.StreamServerInterceptor),
-        grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+        grpc.ChainStreamInterceptor(srvMetrics.StreamServerInterceptor()),
+        grpc.ChainUnaryInterceptor(srvMetrics.UnaryServerInterceptor()),
     )
-    grpc_prometheus.Register(grpcServer)
+    // After registering services:
+    srvMetrics.InitializeMetrics(grpcServer)
     
     // Client side
-    conn, _ := grpc.Dial(
+    conn, _ := grpc.NewClient(
         target,
-        grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
-        grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithChainUnaryInterceptor(clientMetrics.UnaryClientInterceptor()),
+        grpc.WithChainStreamInterceptor(clientMetrics.StreamClientInterceptor()),
     )
 }
 ```
@@ -625,15 +630,19 @@ func main() {
 
 ```promql
 # Request rate by server
-sum by (grpc_server_method, instance) (rate(grpc_server_handled_total[5m]))
+sum by (grpc_service, grpc_method, instance) (rate(grpc_server_handled_total[5m]))
 
 # Request distribution (should be even with proper LB)
-stddev by (grpc_server_method) (rate(grpc_server_handled_total[5m]))
+stddev by (grpc_service, grpc_method) (
+  sum by (grpc_service, grpc_method, instance) (rate(grpc_server_handled_total[5m]))
+)
 / 
-avg by (grpc_server_method) (rate(grpc_server_handled_total[5m]))
+avg by (grpc_service, grpc_method) (
+  sum by (grpc_service, grpc_method, instance) (rate(grpc_server_handled_total[5m]))
+)
 
 # Latency percentiles
-histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le, grpc_method))
+histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le, grpc_service, grpc_method))
 
 # Error rate
 sum(rate(grpc_server_handled_total{grpc_code!="OK"}[5m])) 
@@ -647,9 +656,9 @@ sum(rate(grpc_server_handled_total[5m]))
 
 ```yaml
 ports:
-  - name: grpc  # Required for protocol detection
+  - name: grpc  # Used by meshes and ingress controllers for protocol detection
     port: 50051
-    appProtocol: grpc  # Alternative for newer K8s
+    appProtocol: grpc  # Preferred protocol hint in Kubernetes 1.20+
 ```
 
 ### 2. Implement Proper Health Checks

@@ -226,11 +226,11 @@ losetup -a
 lsof /dev/loop0
 
 # Detach the loop device
-sudo losetup -d /dev/loop0
-
-# If busy, unmount first
 sudo umount /mnt/iso
 sudo losetup -d /dev/loop0
+
+# On modern Linux, losetup -d marks a busy loop device for
+# lazy destruction; it is removed when the last user closes it
 ```
 
 ### Scenario 6: Deleted Files Holding Disk Space
@@ -248,7 +248,7 @@ sudo systemctl restart nginx
 
 # Solution 2: Truncate the file descriptor (keeps process running)
 # This empties the file without closing it
-echo "" | sudo tee /proc/1234/fd/12
+sudo truncate -s 0 /proc/1234/fd/12
 ```
 
 ## Advanced Troubleshooting
@@ -445,8 +445,12 @@ sync
 
 # Try to unmount
 if sudo umount "$MOUNT_POINT"; then
-    # Spin down and eject
-    sudo hdparm -Y "$DEVICE" 2>/dev/null
+    # Try to spin down devices that support ATA standby, then eject
+    # eject will use the whole-disk device if a partition was specified
+    DISK="/dev/$(lsblk -no PKNAME "$DEVICE" 2>/dev/null | head -n1)"
+    if [ "$DISK" != "/dev/" ]; then
+        sudo hdparm -Y "$DISK" 2>/dev/null
+    fi
     sudo eject "$DEVICE" 2>/dev/null
     echo "Safe to remove device"
 else

@@ -174,7 +174,7 @@ Structured logs are significantly easier to search and analyze compared to plain
 ```python
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 class StructuredLogFormatter(logging.Formatter):
     """Custom formatter that outputs JSON structured logs."""
@@ -182,7 +182,7 @@ class StructuredLogFormatter(logging.Formatter):
     def format(self, record):
         # Build the structured log entry
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "severity": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -266,11 +266,24 @@ gcloud logging metrics create auth-failures \
     --description="Count of authentication failures" \
     --log-filter='jsonPayload.event="auth_failure" OR textPayload:"authentication failed"'
 
-# Create a metric for response times from access logs
-gcloud logging metrics create api-latency \
-    --description="API response latency distribution" \
-    --log-filter='resource.type="cloud_run_revision" AND httpRequest.latency!=""' \
-    --bucket-options=exponential,num-finite-buckets=10,growth-factor=2,scale=0.01
+# Create a distribution metric for response times from access logs
+cat > api-latency-metric.yaml <<'EOF'
+name: api-latency
+description: API response latency distribution
+filter: resource.type="cloud_run_revision" AND httpRequest.latency!=""
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: s
+valueExtractor: REGEXP_EXTRACT(httpRequest.latency, "([0-9.]+)s")
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 10
+    growthFactor: 2
+    scale: 0.01
+EOF
+
+gcloud logging metrics create api-latency --config-from-file=api-latency-metric.yaml
 ```
 
 You can then use these metrics in Cloud Monitoring dashboards and alerting policies.
@@ -331,18 +344,14 @@ gcloud logging buckets create long-term-logs \
     --retention-days=90 \
     --description="Logs retained for 90 days"
 
-# Create an exclusion filter to reduce log volume
+# Add exclusion filters to the default sink to reduce stored log volume
 # This excludes debug-level logs from non-production environments
-gcloud logging sinks create exclude-debug-logs \
-    logging.googleapis.com/projects/your-project/locations/global/buckets/_Default \
-    --log-filter='severity="DEBUG"' \
-    --exclusion
+gcloud logging sinks update _Default \
+    --add-exclusion=name=exclude-debug-logs,filter='severity="DEBUG" AND labels.environment!="production"'
 
 # Exclude health check logs that add noise
-gcloud logging sinks create exclude-health-checks \
-    logging.googleapis.com/projects/your-project/locations/global/buckets/_Default \
-    --log-filter='httpRequest.requestUrl="/health" OR httpRequest.requestUrl="/ready"' \
-    --exclusion
+gcloud logging sinks update _Default \
+    --add-exclusion=name=exclude-health-checks,filter='httpRequest.requestUrl="/health" OR httpRequest.requestUrl="/ready"'
 ```
 
 ## Integrating with Error Reporting
@@ -357,7 +366,7 @@ def log_exception_properly(logger, error, context=None):
     """Log an exception in a format that Error Reporting can parse."""
 
     # Format the exception with full stack trace
-    error_message = {
+    error_payload = {
         "message": str(error),
         "stack_trace": traceback.format_exc(),
         "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
@@ -365,10 +374,13 @@ def log_exception_properly(logger, error, context=None):
 
     # Add context if provided
     if context:
-        error_message["context"] = context
+        error_payload["context"] = context
 
-    # Log at ERROR severity - Error Reporting will pick this up
-    logger.error(error_message)
+    # Log at ERROR severity with a JSON payload - Error Reporting will pick this up
+    logger.error(
+        str(error),
+        extra={"json_fields": error_payload},
+    )
 
 # Usage in a request handler
 try:

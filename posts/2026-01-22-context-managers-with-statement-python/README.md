@@ -87,13 +87,15 @@ with lock:
 
 ```python
 import sqlite3
+from contextlib import closing
 
-# Connection closes automatically
-with sqlite3.connect('database.db') as conn:
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users')
-    results = cursor.fetchall()
-# Connection closed here
+# Transaction commits or rolls back automatically; closing() closes the connection
+with closing(sqlite3.connect('database.db')) as conn:
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users')
+        results = cursor.fetchall()
+# Transaction handled and connection closed here
 ```
 
 ### Temporary Files
@@ -402,6 +404,7 @@ with profile():
 
 ```python
 from contextlib import suppress
+import os
 
 # Without suppress
 try:
@@ -424,8 +427,8 @@ with suppress(FileNotFoundError, PermissionError):
 from contextlib import closing
 from urllib.request import urlopen
 
-# urlopen returns an object with close() but is not a context manager (old Python)
-with closing(urlopen('http://example.com')) as page:
+# closing() calls close() on exit; this urlopen example is illustrative
+with closing(urlopen('https://example.com')) as page:
     content = page.read()
 ```
 
@@ -481,11 +484,11 @@ import asyncio
 
 class AsyncTimer:
     async def __aenter__(self):
-        self.start = asyncio.get_event_loop().time()
+        self.start = asyncio.get_running_loop().time()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        elapsed = asyncio.get_event_loop().time() - self.start
+        elapsed = asyncio.get_running_loop().time() - self.start
         print(f"Async elapsed: {elapsed:.4f}s")
         return False
 

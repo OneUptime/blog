@@ -39,7 +39,7 @@ sequenceDiagram
     end
 ```
 
-## Common SSH Timeout Error Messages
+## Common SSH Connection Error Messages
 
 ```text
 ssh: connect to host example.com port 22: Connection timed out
@@ -74,7 +74,7 @@ telnet example.com 22
 # Single verbose
 ssh -v user@example.com
 
-# More verbose (shows packet-level details)
+# More verbose (shows protocol-level details)
 ssh -vv user@example.com
 
 # Maximum verbosity
@@ -83,7 +83,7 @@ ssh -vvv user@example.com
 
 Analyze the output:
 - Stops at "Connecting to..." = Network/firewall issue
-- Stops at "SSH2_MSG_KEXINIT" = Key exchange problem
+- Stops at "SSH2_MSG_KEXINIT" = Key exchange negotiation or network path problem
 - Stops at "Authentications that can continue" = Auth issue
 
 ### Step 3: Check DNS Resolution
@@ -160,14 +160,17 @@ ssh-add -l
 ### Check SSH Service Status
 
 ```bash
-# Check if SSH daemon is running
+# Check if SSH daemon is running (RHEL/CentOS often use sshd; Debian/Ubuntu often use ssh)
 sudo systemctl status sshd
+sudo systemctl status ssh
 
 # Start SSH if stopped
 sudo systemctl start sshd
+sudo systemctl start ssh
 
 # Enable on boot
 sudo systemctl enable sshd
+sudo systemctl enable ssh
 
 # Check SSH is listening
 sudo ss -tlnp | grep 22
@@ -217,8 +220,9 @@ LogLevel DEBUG3
 After changes:
 
 ```bash
-# Restart SSH service
+# Restart SSH service (unit name varies by distro)
 sudo systemctl restart sshd
+sudo systemctl restart ssh
 ```
 
 ### Check Server Firewall
@@ -255,20 +259,24 @@ getenforce
 sudo ausearch -m avc -ts recent | grep ssh
 
 # If SSH port changed, update SELinux
+sudo semanage port -l | grep ssh_port_t
 sudo semanage port -a -t ssh_port_t -p tcp 2222
+# If the port already has an SELinux label, modify it instead
+sudo semanage port -m -t ssh_port_t -p tcp 2222
 ```
 
 ### Check TCP Wrappers
 
 ```bash
+# Legacy systems only: modern OpenSSH builds usually do not use TCP Wrappers
 # Check hosts.allow
 cat /etc/hosts.allow
 
 # Check hosts.deny
 cat /etc/hosts.deny
 
-# Add SSH access
-echo "sshd: ALL" >> /etc/hosts.allow
+# Add SSH access only if sshd is linked with libwrap on your system
+sudo sh -c 'echo "sshd: ALL" >> /etc/hosts.allow'
 ```
 
 ## Network-Level Troubleshooting
@@ -350,11 +358,13 @@ ssh -p 2222 user@example.com
 sudo tail -f /var/log/auth.log        # Debian/Ubuntu
 sudo tail -f /var/log/secure          # RHEL/CentOS
 
-# Check system messages
+# Check system messages (unit name varies by distro)
 sudo journalctl -u sshd -f
+sudo journalctl -u ssh -f
 
 # Search for SSH errors
 sudo journalctl -u sshd --since "1 hour ago" | grep -i error
+sudo journalctl -u ssh --since "1 hour ago" | grep -i error
 ```
 
 ## Specific Timeout Scenarios
@@ -363,7 +373,7 @@ sudo journalctl -u sshd --since "1 hour ago" | grep -i error
 
 ```bash
 # Problem: Stuck at "SSH2_MSG_KEXINIT"
-# Solution: Try different key exchange algorithms
+# For testing: try a specific key exchange algorithm
 
 ssh -o KexAlgorithms=curve25519-sha256 user@example.com
 
@@ -379,8 +389,9 @@ ssh -c aes128-ctr user@example.com
 # Add to /etc/ssh/sshd_config:
 UseDNS no
 
-# Restart SSH
+# Restart SSH (unit name varies by distro)
 sudo systemctl restart sshd
+sudo systemctl restart ssh
 ```
 
 ### Intermittent Timeouts
@@ -428,7 +439,7 @@ flowchart TD
     E --> E3[fail2ban]
 
     D -->|Yes| F{SSH service running?}
-    F -->|No| G[Start sshd service]
+    F -->|No| G[Start SSH service]
 
     F -->|Yes| H{Using verbose mode?}
     H -->|No| I[ssh -vvv user@host]
@@ -454,14 +465,16 @@ ssh -o ServerAliveInterval=60 user@host
 # Debug SSH connection
 ssh -vvv user@host
 
-# Check server SSH status
+# Check server SSH status (unit name varies by distro)
 sudo systemctl status sshd
+sudo systemctl status ssh
 
 # Check firewall
 sudo firewall-cmd --list-all
 
 # View SSH logs
 sudo journalctl -u sshd -f
+sudo journalctl -u ssh -f
 
 # Check if IP is banned
 sudo fail2ban-client status sshd

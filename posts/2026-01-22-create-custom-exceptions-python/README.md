@@ -442,7 +442,7 @@ def get_user(user_id):
 class MyError(Exception):
     pass
 
-# Bad - catches KeyboardInterrupt and SystemExit
+# Bad - BaseException is reserved for exceptions that usually should not be caught
 class MyError(BaseException):
     pass
 ```

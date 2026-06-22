@@ -237,23 +237,11 @@ import (
     "net"
 )
 
-type TemporaryError interface {
-    Temporary() bool
-}
-
-type TimeoutError interface {
-    Timeout() bool
-}
-
 func handleError(err error) {
     // Check for specific error types
     if netErr, ok := err.(net.Error); ok {
         if netErr.Timeout() {
             fmt.Println("Network timeout - will retry")
-            return
-        }
-        if netErr.Temporary() {
-            fmt.Println("Temporary network error - will retry")
             return
         }
     }
@@ -275,6 +263,10 @@ type PathError struct {
 
 func (e *PathError) Error() string {
     return fmt.Sprintf("path %s: %v", e.Path, e.Err)
+}
+
+func (e *PathError) Unwrap() error {
+    return e.Err
 }
 ```
 

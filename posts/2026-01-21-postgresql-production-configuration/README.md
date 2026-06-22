@@ -91,7 +91,7 @@ work_mem = 256MB
 Memory for maintenance operations (VACUUM, CREATE INDEX, etc.).
 
 ```conf
-# Recommendation: 5-10% of RAM, max 2GB
+# Recommendation: 5-10% of RAM, cap conservatively for autovacuum
 maintenance_work_mem = 1GB
 
 # For systems with autovacuum:
@@ -103,9 +103,9 @@ autovacuum_work_mem = 512MB
 Write-ahead log buffers in shared memory.
 
 ```conf
-# Recommendation: ~3% of shared_buffers, max 64MB
+# Recommendation: usually leave auto-tuned; default caps at one WAL segment, typically 16MB
 # Usually auto-tuned, but can set explicitly:
-wal_buffers = 64MB
+wal_buffers = 16MB
 ```
 
 ### Complete Memory Configuration Example
@@ -118,7 +118,7 @@ shared_buffers = 8GB
 effective_cache_size = 24GB
 work_mem = 128MB
 maintenance_work_mem = 2GB
-wal_buffers = 64MB
+wal_buffers = 16MB
 
 # Huge pages (Linux only - enable in OS first)
 huge_pages = try
@@ -208,7 +208,7 @@ commit_siblings = 5            # Min concurrent transactions
 ```conf
 # Enable archiving
 archive_mode = on
-archive_command = 'cp %p /backup/wal/%f'
+archive_command = 'test ! -f /backup/wal/%f && cp %p /backup/wal/%f'
 
 # For streaming replication
 max_wal_senders = 10
@@ -254,7 +254,7 @@ random_page_cost = 1.1          # SSDs (default 4.0 for HDDs)
 seq_page_cost = 1.0
 
 # Effective I/O concurrency (for SSDs)
-effective_io_concurrency = 200  # SSDs (default 1 for HDDs)
+effective_io_concurrency = 200  # SSDs; default depends on PostgreSQL version and platform
 
 # CPU cost parameters
 cpu_tuple_cost = 0.01
@@ -436,7 +436,7 @@ shared_buffers = 8GB
 effective_cache_size = 24GB
 work_mem = 64MB
 maintenance_work_mem = 2GB
-wal_buffers = 64MB
+wal_buffers = 16MB
 huge_pages = try
 
 # Connections
@@ -503,7 +503,7 @@ shared_buffers = 16GB
 effective_cache_size = 48GB
 work_mem = 512MB
 maintenance_work_mem = 4GB
-wal_buffers = 64MB
+wal_buffers = 16MB
 
 # Connections - fewer but heavier
 max_connections = 50
@@ -566,16 +566,14 @@ WHERE name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem',
 
 Use PgTune for initial recommendations:
 
-```bash
-# Install pgtune
-pip install pgtune
-
-# Generate configuration
-pgtune -i /etc/postgresql/16/main/postgresql.conf -o postgresql.conf.tuned \
-  --type=web \
-  --memory=32GB \
-  --connections=200 \
-  --storage-type=ssd
+```text
+# Open https://pgtune.leopard.in.ua/ and enter:
+DB Version: 16
+OS Type: Linux
+DB Type: Web Application
+Total Memory: 32 GB
+Number of Connections: 200
+Data Storage: SSD
 ```
 
 ### postgresqltuner

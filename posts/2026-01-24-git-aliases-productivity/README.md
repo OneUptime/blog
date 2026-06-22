@@ -133,7 +133,7 @@ git undo         # Uncommit but keep changes
     main = !git checkout $(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
 
     # Cleanup merged branches
-    cleanup = !git branch --merged | grep -v '\\*\\|main\\|master' | xargs -n 1 git branch -d
+    cleanup = "!git branch --merged | grep -v '\\*\\|main\\|master' | while read branch; do git branch -d \"$branch\"; done"
 ```
 
 **Usage examples:**
@@ -177,10 +177,10 @@ These are the most impactful aliases for visualizing repository history.
 
 ```text
 * a1b2c3d (HEAD -> main) Add authentication
-| * d4e5f6g (feature-api) Implement REST endpoints
-| * h7i8j9k Add API routes
+| * d4e5f6a (feature-api) Implement REST endpoints
+| * h7a8b9c Add API routes
 |/
-* l0m1n2o Initial commit
+* e0f1a2b Initial commit
 ```
 
 ### Diff Aliases
@@ -336,7 +336,7 @@ Here is a complete `.gitconfig` alias section organized by category:
     br = branch
     branches = branch -a --sort=-committerdate
     main = !git checkout main || git checkout master
-    cleanup = !git branch --merged | grep -v '\\*\\|main\\|master' | xargs -n 1 git branch -d
+    cleanup = "!git branch --merged | grep -v '\\*\\|main\\|master' | while read branch; do git branch -d \"$branch\"; done"
 
     # === History ===
     lg = log --oneline --graph --decorate --all

@@ -10,7 +10,7 @@ Description: A complete guide to working with indexed and associative arrays in 
 
 > Arrays are essential data structures in Bash scripting that allow you to store and manipulate collections of values. While Bash arrays are not as feature-rich as arrays in other languages, they are powerful enough for most shell scripting tasks.
 
-This guide covers both indexed arrays (Bash 3.0+) and associative arrays (Bash 4.0+), with practical examples for real-world use cases.
+This guide covers both indexed arrays and associative arrays (Bash 4.0+), with practical examples for real-world use cases. Examples using `local -n` namerefs require Bash 4.3+.
 
 ---
 
@@ -24,7 +24,7 @@ flowchart TD
     B --> B1[Integer indices]
     B --> B2[0-based by default]
     B --> B3[Sparse - gaps allowed]
-    B --> B4[Bash 3.0+]
+    B --> B4[Built into Bash]
 
     C --> C1[String keys]
     C --> C2[Key-value pairs]
@@ -60,8 +60,10 @@ sparse[0]="first"
 sparse[5]="sixth"
 sparse[10]="eleventh"
 
-# Method 5: From command output
-files=($(ls *.txt 2>/dev/null))
+# Method 5: From a glob pattern
+shopt -s nullglob
+files=(*.txt)
+shopt -u nullglob
 
 # Method 6: Using read command
 IFS=',' read -ra csv_data <<< "value1,value2,value3"
@@ -328,13 +330,13 @@ for i in "${!numbers[@]}"; do
     echo "Index $i: ${numbers[$i]}"
 done
 
-# Method 3: C-style for loop
+# Method 3: C-style for loop (for contiguous indexed arrays)
 echo "Method 3: C-style loop"
 for ((i = 0; i < ${#numbers[@]}; i++)); do
     echo "Index $i: ${numbers[$i]}"
 done
 
-# Method 4: While loop with counter
+# Method 4: While loop with counter (for contiguous indexed arrays)
 echo "Method 4: While loop"
 i=0
 while [[ $i -lt ${#numbers[@]} ]]; do
@@ -373,7 +375,7 @@ done
 # Sort keys before iterating
 echo -e "\nSorted Inventory:"
 echo "----------------"
-IFS=$'\n' sorted_keys=($(sort <<< "${!inventory[*]}"))
+mapfile -t sorted_keys < <(printf "%s\n" "${!inventory[@]}" | sort)
 for fruit in "${sorted_keys[@]}"; do
     printf "%-10s: %d\n" "$fruit" "${inventory[$fruit]}"
 done
@@ -467,16 +469,16 @@ fruits=("banana" "apple" "cherry" "date" "apricot")
 
 # Sort using external sort command
 # For strings (alphabetically)
-IFS=$'\n' sorted_fruits=($(sort <<< "${fruits[*]}"))
+mapfile -t sorted_fruits < <(printf "%s\n" "${fruits[@]}" | sort)
 echo "Sorted: ${sorted_fruits[@]}"
 
 # Reverse sort
-IFS=$'\n' reverse_fruits=($(sort -r <<< "${fruits[*]}"))
+mapfile -t reverse_fruits < <(printf "%s\n" "${fruits[@]}" | sort -r)
 echo "Reverse: ${reverse_fruits[@]}"
 
 # Numeric sort
 numbers=(10 5 25 1 15 100 50)
-IFS=$'\n' sorted_nums=($(sort -n <<< "${numbers[*]}"))
+mapfile -t sorted_nums < <(printf "%s\n" "${numbers[@]}" | sort -n)
 echo "Sorted numbers: ${sorted_nums[@]}"
 
 # Sort in place (using bubble sort - for learning purposes)
@@ -759,8 +761,8 @@ flowchart LR
     end
 
     subgraph Iterate
-        D1["for i in arr[@]"]
-        D2["for i in !arr[@]"]
+        D1["for x in ${arr[@]}"]
+        D2["for i in ${!arr[@]}"]
     end
 
     Declaration --> Access
@@ -804,9 +806,9 @@ process_data() {
 # Always initialize associative arrays
 declare -A my_assoc=()
 
-# Check if array is set before use
+# Check if an indexed array has any set elements
 if [[ -v my_array[@] ]]; then
-    echo "Array exists"
+    echo "Array has elements"
 fi
 ```
 

@@ -21,7 +21,9 @@ FATAL: sorry, too many clients already
 
 ```sql
 -- Current connection count
-SELECT COUNT(*) FROM pg_stat_activity;
+SELECT COUNT(*)
+FROM pg_stat_activity
+WHERE backend_type = 'client backend';
 
 -- Connection limit
 SHOW max_connections;
@@ -29,17 +31,20 @@ SHOW max_connections;
 -- Connections by state
 SELECT state, COUNT(*)
 FROM pg_stat_activity
+WHERE backend_type = 'client backend'
 GROUP BY state;
 
 -- Connections by user
 SELECT usename, COUNT(*)
 FROM pg_stat_activity
+WHERE backend_type = 'client backend'
 GROUP BY usename
 ORDER BY COUNT(*) DESC;
 
 -- Connections by application
 SELECT application_name, COUNT(*)
 FROM pg_stat_activity
+WHERE backend_type = 'client backend'
 GROUP BY application_name
 ORDER BY COUNT(*) DESC;
 ```
@@ -54,16 +59,18 @@ SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
 WHERE state = 'idle'
 AND state_change < NOW() - INTERVAL '10 minutes'
+AND backend_type = 'client backend'
 AND pid != pg_backend_pid();
 
 -- Kill all connections for specific user
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
 WHERE usename = 'problematic_user'
+AND backend_type = 'client backend'
 AND pid != pg_backend_pid();
 ```
 
-### Increase max_connections (Temporary)
+### Increase max_connections (Requires Restart)
 
 ```sql
 -- Check current value
@@ -71,6 +78,7 @@ SHOW max_connections;
 
 -- Increase (requires restart)
 ALTER SYSTEM SET max_connections = 200;
+-- This persists in postgresql.auto.conf; reset it later if it was only needed temporarily.
 -- Then: sudo systemctl restart postgresql
 ```
 
@@ -113,15 +121,16 @@ SELECT rolname, rolconnlimit FROM pg_roles;
 ```sql
 -- Connection usage percentage
 SELECT
-    (SELECT COUNT(*) FROM pg_stat_activity) AS current,
+    COUNT(*) AS current,
     (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max,
     ROUND(100.0 * COUNT(*) / (SELECT setting::int FROM pg_settings WHERE name = 'max_connections'), 2) AS usage_percent
-FROM pg_stat_activity;
+FROM pg_stat_activity
+WHERE backend_type = 'client backend';
 ```
 
 ## Best Practices
 
-1. **Use connection pooling** - PgBouncer or built-in
+1. **Use connection pooling** - PgBouncer or application-level pooling
 2. **Set appropriate limits** - Per-user connection limits
 3. **Monitor connections** - Alert before hitting limits
 4. **Close connections properly** - Application-level fixes

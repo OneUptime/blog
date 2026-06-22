@@ -16,7 +16,7 @@ Choosing between Elastic Cloud (managed service) and self-hosted Elasticsearch i
 
 - **Provider**: Elastic NV
 - **Type**: Fully managed SaaS
-- **Deployment**: AWS, GCP, Azure
+- **Deployment**: AWS, GCP, Azure, and other Elastic-supported regions/options depending on offering
 - **Pricing**: Consumption-based
 
 ### Self-Hosted Elasticsearch
@@ -34,11 +34,11 @@ Choosing between Elastic Cloud (managed service) and self-hosted Elasticsearch i
 |---------|---------------|-------------|
 | Full-text search | Yes | Yes |
 | Aggregations | Yes | Yes |
-| Machine learning | Yes (included) | Yes (subscription required) |
-| Security | Yes (included) | Yes (basic free, advanced paid) |
-| Alerting | Yes (included) | Yes (paid Watcher) |
+| Machine learning | Yes (subscription tier dependent) | Yes (subscription required) |
+| Security | Yes (basic included, advanced tier dependent) | Yes (basic free, advanced paid) |
+| Alerting | Yes (subscription tier dependent) | Yes (Kibana alerting basic; Watcher paid) |
 | APM | Yes (included) | Yes (basic free) |
-| Cross-cluster replication | Yes (included) | Yes (paid) |
+| Cross-cluster replication | Yes (subscription tier dependent) | Yes (paid) |
 
 ### Operational Features
 
@@ -53,9 +53,13 @@ Choosing between Elastic Cloud (managed service) and self-hosted Elasticsearch i
 
 ## Cost Analysis
 
-### Elastic Cloud Pricing (2024 Estimates)
+### Elastic Cloud Pricing (Illustrative Estimates)
 
 ```plaintext
+Actual Elastic Cloud costs vary by subscription tier, region, cloud provider,
+hardware profile, data tier, and current Elastic pricing. Use Elastic's pricing
+calculator for a current quote.
+
 Standard Deployment:
 - 4GB RAM, 120GB storage: ~$95/month
 - 8GB RAM, 240GB storage: ~$190/month
@@ -147,9 +151,10 @@ Monthly Tasks:
 # 3. Rolling upgrade happens automatically
 
 # API example
-curl -X POST "https://api.elastic-cloud.com/api/v1/deployments/{id}/_upgrade" \
+curl -X POST "https://api.elastic-cloud.com/api/v1/deployments/{deployment_id}/upgrade" \
   -H "Authorization: ApiKey $API_KEY" \
-  -d '{"version": "8.11.0"}'
+  -H "Content-Type: application/json" \
+  -d '{"target_version": "8.11.0"}'
 ```
 
 **Self-Hosted:**
@@ -161,7 +166,9 @@ curl -X GET "localhost:9200/_cluster/health?pretty"
 curl -X PUT "localhost:9200/_snapshot/backup/pre_upgrade"
 
 # 3. Disable shard allocation
-curl -X PUT "localhost:9200/_cluster/settings" -d '
+curl -X PUT "localhost:9200/_cluster/settings" \
+  -H "Content-Type: application/json" \
+  -d '
 {"persistent": {"cluster.routing.allocation.enable": "none"}}'
 
 # 4. Stop and upgrade each node
@@ -170,7 +177,9 @@ yum install elasticsearch-8.11.0
 systemctl start elasticsearch
 
 # 5. Re-enable allocation
-curl -X PUT "localhost:9200/_cluster/settings" -d '
+curl -X PUT "localhost:9200/_cluster/settings" \
+  -H "Content-Type: application/json" \
+  -d '
 {"persistent": {"cluster.routing.allocation.enable": "all"}}'
 
 # 6. Verify cluster health
@@ -181,18 +190,14 @@ curl -X GET "localhost:9200/_cluster/health?wait_for_status=green"
 
 **Elastic Cloud:**
 ```bash
-# Scale via API
-curl -X PUT "https://api.elastic-cloud.com/api/v1/deployments/{id}" \
+# Scale the hot/content tier via API
+curl -X PATCH "https://api.elastic-cloud.com/api/v1/deployments/{deployment_id}/elasticsearch/{ref_id}/tiers" \
   -H "Authorization: ApiKey $API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{
-    "resources": {
-      "elasticsearch": [{
-        "size": {
-          "value": 8192,
-          "resource": "memory"
-        },
-        "zone_count": 3
-      }]
+    "hot_content": {
+      "memory_size": 8192,
+      "zone_count": 3
     }
   }'
 
@@ -226,10 +231,10 @@ curl -X GET "localhost:9200/_cluster/health?wait_for_status=green"
 Built-in:
 - TLS encryption (transit and rest)
 - Role-based access control
-- SAML/OIDC authentication
+- SAML/OIDC authentication (subscription tier dependent)
 - IP filtering
-- Audit logging
-- Private Link support (AWS, Azure, GCP)
+- Audit logging (subscription tier dependent)
+- Private connectivity support (provider dependent)
 - SOC 2 Type II certified
 - HIPAA eligible
 ```
@@ -251,7 +256,7 @@ xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
 xpack.security.http.ssl.enabled: true
 xpack.security.http.ssl.keystore.path: http.p12
 
-# Audit logging
+# Audit logging (subscription tier dependent)
 xpack.security.audit.enabled: true
 ```
 
@@ -261,9 +266,9 @@ xpack.security.audit.enabled: true
 ./bin/elasticsearch-certutil cert --ca elastic-stack-ca.p12
 
 # Set up users
-./bin/elasticsearch-setup-passwords auto
+./bin/elasticsearch-reset-password -u elastic
 
-# Configure LDAP (requires manual setup)
+# Configure LDAP (requires manual setup and the appropriate subscription tier)
 ```
 
 ## Monitoring and Alerting
@@ -300,7 +305,9 @@ metricbeat.modules:
   hosts: ["localhost:9200"]
 
 # Set up alerting with Watcher
-curl -X PUT "localhost:9200/_watcher/watch/cluster_health" -d '
+curl -X PUT "localhost:9200/_watcher/watch/cluster_health" \
+  -H "Content-Type: application/json" \
+  -d '
 {
   "trigger": {"schedule": {"interval": "1m"}},
   "input": {
@@ -323,9 +330,9 @@ curl -X PUT "localhost:9200/_watcher/watch/cluster_health" -d '
 
 ```plaintext
 Automatic features:
-- Continuous snapshots
-- Cross-region replication
-- Point-in-time recovery
+- Automated snapshots
+- Snapshot restore
+- Cross-cluster replication when configured
 - Managed snapshot repository
 
 # Restore via UI or API
@@ -335,7 +342,9 @@ Automatic features:
 
 ```bash
 # 1. Create snapshot repository
-curl -X PUT "localhost:9200/_snapshot/my_backup" -d '
+curl -X PUT "localhost:9200/_snapshot/my_backup" \
+  -H "Content-Type: application/json" \
+  -d '
 {
   "type": "s3",
   "settings": {
@@ -348,7 +357,9 @@ curl -X PUT "localhost:9200/_snapshot/my_backup" -d '
 curl -X PUT "localhost:9200/_snapshot/my_backup/snapshot_1?wait_for_completion=true"
 
 # 3. Schedule snapshots (cron or SLM)
-curl -X PUT "localhost:9200/_slm/policy/daily-snapshots" -d '
+curl -X PUT "localhost:9200/_slm/policy/daily-snapshots" \
+  -H "Content-Type: application/json" \
+  -d '
 {
   "schedule": "0 30 1 * * ?",
   "name": "<daily-snap-{now/d}>",
@@ -447,10 +458,14 @@ Self-Hosted:
 
 ```bash
 # Self-hosted cluster configured to search Elastic Cloud
-curl -X PUT "localhost:9200/_cluster/settings" -d '
+# Assumes API key credentials and TLS trust are configured on the local cluster.
+curl -X PUT "localhost:9200/_cluster/settings" \
+  -H "Content-Type: application/json" \
+  -d '
 {
   "persistent": {
-    "cluster.remote.elastic_cloud.seeds": ["cluster-id.es.us-east-1.aws.found.io:9243"],
+    "cluster.remote.elastic_cloud.mode": "proxy",
+    "cluster.remote.elastic_cloud.proxy_address": "<elastic-cloud-remote-cluster-address>:9443",
     "cluster.remote.elastic_cloud.skip_unavailable": true
   }
 }'
@@ -501,7 +516,7 @@ curl -X GET "localhost:9200/local-index,elastic_cloud:cloud-index/_search"
 - You want operational simplicity
 - You need quick deployment
 - Your team lacks Elasticsearch expertise
-- You want all features included
+- You want managed access to Elastic features by subscription tier
 - Compliance (SOC 2, HIPAA) is required
 
 ### Choose Self-Hosted if:

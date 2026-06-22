@@ -69,28 +69,33 @@ googleapiclient.errors.HttpError: 403 Permission 'ml.jobs.create' denied on reso
 
 ### Solution
 
-Ensure the service account has the necessary IAM roles.
+Ensure the identity submitting the job has the necessary IAM roles, and that the service account running the training container can access the data and artifact locations.
 
 ```bash
-# Get the default Compute Engine service account
+# Set this to the user or service account that submits jobs.
+# Examples:
+# CALLER_PRINCIPAL="user:you@example.com"
+# CALLER_PRINCIPAL="serviceAccount:ci@$PROJECT_ID.iam.gserviceaccount.com"
+CALLER_PRINCIPAL="user:you@example.com"
 
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
-SERVICE_ACCOUNT="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
-
-# Grant AI Platform Admin role
+# For legacy AI Platform Training, grant permission to create jobs
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --member="$CALLER_PRINCIPAL" \
     --role="roles/ml.admin"
 
-# Grant access to Cloud Storage buckets used for training
-gcloud storage buckets add-iam-policy-binding gs://my-training-bucket \
-    --member="serviceAccount:$SERVICE_ACCOUNT" \
-    --role="roles/storage.objectAdmin"
-
-# For Vertex AI, also grant Vertex AI User role
+# For Vertex AI, grant permission to create and manage Vertex AI jobs
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --member="$CALLER_PRINCIPAL" \
     --role="roles/aiplatform.user"
+
+# Vertex AI custom training containers use this service agent by default
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+VERTEX_TRAINING_SA="service-$PROJECT_NUMBER@gcp-sa-aiplatform-cc.iam.gserviceaccount.com"
+
+# Grant access to Cloud Storage buckets used for training artifacts and data
+gcloud storage buckets add-iam-policy-binding gs://my-training-bucket \
+    --member="serviceAccount:$VERTEX_TRAINING_SA" \
+    --role="roles/storage.objectAdmin"
 ```
 
 For custom service accounts, create and configure properly.
@@ -108,6 +113,12 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:ml-training-sa@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/storage.objectAdmin"
+
+# Allow the job submitter to attach the service account to the training job
+gcloud iam service-accounts add-iam-policy-binding \
+    ml-training-sa@$PROJECT_ID.iam.gserviceaccount.com \
+    --member="$CALLER_PRINCIPAL" \
+    --role="roles/iam.serviceAccountUser"
 ```
 
 ## Error: RESOURCE_EXHAUSTED
@@ -128,7 +139,7 @@ gcloud compute regions describe us-central1 \
     --format="table(quotas.metric,quotas.limit,quotas.usage)" \
     | grep -i gpu
 
-# Request a quota increase through the console or gcloud
+# Review the quota details before requesting an increase in the console
 gcloud compute regions describe us-central1 --format="value(quotas)"
 ```
 
@@ -195,9 +206,6 @@ Failed to pull image: rpc error: code = NotFound desc = failed to pull and unpac
 Verify the image exists and is accessible.
 
 ```bash
-# Check if the image exists in Container Registry
-gcloud container images list-tags gcr.io/$PROJECT_ID/my-training-image
-
 # Check if the image exists in Artifact Registry
 gcloud artifacts docker images list \
     us-central1-docker.pkg.dev/$PROJECT_ID/ml-images/my-training-image
@@ -205,7 +213,7 @@ gcloud artifacts docker images list \
 # Make sure the service account can access the registry
 gcloud artifacts repositories add-iam-policy-binding ml-images \
     --location=us-central1 \
-    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --member="serviceAccount:$VERTEX_TRAINING_SA" \
     --role="roles/artifactregistry.reader"
 ```
 
@@ -213,7 +221,7 @@ Build and push the image correctly.
 
 ```dockerfile
 # Dockerfile for training
-FROM gcr.io/deeplearning-platform-release/tf2-gpu.2-12
+FROM us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest
 
 WORKDIR /app
 
@@ -230,11 +238,13 @@ ENTRYPOINT ["python", "-m", "trainer.task"]
 
 ```bash
 # Build and push the image
-docker build -t gcr.io/$PROJECT_ID/my-training-image:latest .
-docker push gcr.io/$PROJECT_ID/my-training-image:latest
+IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/ml-images/my-training-image:latest"
+
+docker build -t $IMAGE_URI .
+docker push $IMAGE_URI
 
 # Verify the image is accessible
-gcloud container images describe gcr.io/$PROJECT_ID/my-training-image:latest
+gcloud artifacts docker images describe $IMAGE_URI
 ```
 
 ## Error: Training Script Crashes
@@ -361,6 +371,7 @@ Ensure the bucket exists and is accessible.
 
 ```python
 import os
+import tensorflow as tf
 from google.cloud import storage
 
 def setup_checkpoint_directory(bucket_name, job_id):
@@ -415,6 +426,7 @@ Make sure your training code reports metrics correctly.
 
 ```python
 import hypertune
+import tensorflow as tf
 
 def train_and_report_metrics(hparams):
     """Train model and report metrics for hyperparameter tuning."""
@@ -485,10 +497,12 @@ python -m trainer.task \
     --data_path=gs://my-bucket/data
 
 # Test in a container locally
+IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/ml-images/my-training-image:latest"
+
 docker run -it --gpus all \
     -v ~/.config/gcloud:/root/.config/gcloud \
     -e GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json \
-    gcr.io/$PROJECT_ID/my-training-image:latest \
+    $IMAGE_URI \
     --learning_rate=0.01 \
     --epochs=2
 ```
@@ -499,6 +513,7 @@ Set up proper monitoring to catch issues early.
 
 ```python
 from google.cloud import aiplatform
+from google.cloud.aiplatform_v1.types import job_state
 from google.cloud import monitoring_v3
 import time
 
@@ -508,19 +523,24 @@ def monitor_training_job(job_name, check_interval=60):
     aiplatform.init(project="my-project", location="us-central1")
 
     job = aiplatform.CustomJob.get(job_name)
+    terminal_states = {
+        job_state.JobState.JOB_STATE_SUCCEEDED,
+        job_state.JobState.JOB_STATE_FAILED,
+        job_state.JobState.JOB_STATE_CANCELLED,
+    }
 
-    while job.state not in ["JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED"]:
+    while job.state not in terminal_states:
         print(f"Job state: {job.state}")
 
         # Check for warning signs
-        if job.state == "JOB_STATE_RUNNING":
+        if job.state == job_state.JobState.JOB_STATE_RUNNING:
             # Monitor GPU utilization, memory usage, etc.
             check_resource_utilization(job)
 
         time.sleep(check_interval)
         job = aiplatform.CustomJob.get(job_name)
 
-    if job.state == "JOB_STATE_FAILED":
+    if job.state == job_state.JobState.JOB_STATE_FAILED:
         print(f"Job failed with error: {job.error}")
         # Send alert notification
         send_alert(f"Training job {job_name} failed: {job.error}")
@@ -537,13 +557,18 @@ def check_resource_utilization(job):
     # If GPU utilization is consistently low, the job might be stuck
     # on data loading or CPU-bound operations
     pass
+
+def send_alert(message):
+    """Send an alert through your notification system."""
+
+    print(message)
 ```
 
 ## Summary
 
 AI Platform and Vertex AI training errors typically fall into these categories:
 
-- **Permission issues**: Ensure service accounts have ml.admin, storage access, and aiplatform.user roles
+- **Permission issues**: Ensure job submitters have ml.admin or aiplatform.user roles, and training service accounts have storage access
 - **Resource exhaustion**: Check quotas, try different regions, or use smaller machine types
 - **Container issues**: Verify images exist and are accessible by the service account
 - **Code errors**: Test locally first, check logs for stack traces, and handle errors gracefully

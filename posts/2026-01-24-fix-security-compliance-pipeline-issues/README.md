@@ -44,7 +44,7 @@ def get_user_bad(user_id):
     return db.execute(query)
 
 # GOOD: Use parameterized queries
-# This passes SAST checks because parameters are safely escaped
+# This passes SAST checks because parameters are safely bound
 def get_user_good(user_id):
     query = "SELECT * FROM users WHERE id = %s"
     return db.execute(query, (user_id,))
@@ -188,10 +188,13 @@ API_KEY = os.environ.get('API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # BETTER: Use a secrets manager
-from aws_secretsmanager import get_secret
+import json
+import boto3
 
 def get_api_credentials():
-    secret = get_secret('my-app/api-credentials')
+    client = boto3.client('secretsmanager')
+    response = client.get_secret_value(SecretId='my-app/api-credentials')
+    secret = json.loads(response['SecretString'])
     return secret['api_key']
 ```
 
@@ -246,10 +249,10 @@ The most common fix is updating your base image. Older images accumulate vulnera
 FROM node:14-buster
 
 # GOOD: Use newer, minimal base images
-FROM node:20-alpine
+FROM node:24-alpine
 
 # BETTER: Use distroless for production
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs24-debian13
 ```
 
 ### Multi-Stage Builds for Smaller Attack Surface
@@ -258,7 +261,7 @@ Multi-stage builds reduce vulnerabilities by excluding build tools from the fina
 
 ```dockerfile
 # Build stage with all development tools
-FROM node:20 AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -266,7 +269,7 @@ COPY . .
 RUN npm run build
 
 # Production stage with minimal footprint
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Create non-root user for security
@@ -360,7 +363,7 @@ dependency_scan:
 secrets_scan:
   stage: security
   script:
-    - gitleaks detect --source . --verbose
+    - gitleaks git -v .
   allow_failure: false
 
 container_scan:

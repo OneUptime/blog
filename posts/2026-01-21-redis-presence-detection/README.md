@@ -187,11 +187,11 @@ class BasicPresence:
 
     def get_online_users(self) -> Set[str]:
         """Get all currently online users."""
-        return r.smembers("users:online")
+        return self._cleanup_stale_online_users()
 
     def get_online_count(self) -> int:
         """Get count of online users."""
-        return r.scard("users:online")
+        return len(self.get_online_users())
 
     def get_recently_active(self, minutes: int = 5, limit: int = 100) -> List[str]:
         """Get users who were active in the last N minutes."""
@@ -214,6 +214,62 @@ class BasicPresence:
             "timestamp": datetime.now().isoformat()
         }
         r.publish("presence:changes", json.dumps(message))
+
+    def _cleanup_stale_online_users(self) -> Set[str]:
+        """Remove users whose presence and device keys expired from the online set."""
+        user_ids = list(r.smembers("users:online"))
+
+        if not user_ids:
+            return set()
+
+        pipe = r.pipeline()
+        for user_id in user_ids:
+            pipe.exists(f"presence:{user_id}")
+            pipe.smembers(f"user:{user_id}:devices")
+
+        results = pipe.execute()
+
+        active_users = set()
+        stale_device_ids = {}
+
+        for i, user_id in enumerate(user_ids):
+            has_presence = results[i * 2]
+            device_ids = list(results[i * 2 + 1])
+
+            if has_presence:
+                active_users.add(user_id)
+                continue
+
+            if not device_ids:
+                continue
+
+            device_pipe = r.pipeline()
+            for device_id in device_ids:
+                device_pipe.exists(f"device:{user_id}:{device_id}")
+            device_exists = device_pipe.execute()
+
+            active_devices = [
+                device_id
+                for device_id, exists in zip(device_ids, device_exists)
+                if exists
+            ]
+
+            if active_devices:
+                active_users.add(user_id)
+
+            stale_devices = set(device_ids) - set(active_devices)
+            if stale_devices:
+                stale_device_ids[user_id] = stale_devices
+
+        for user_id, device_ids in stale_device_ids.items():
+            r.srem(f"user:{user_id}:devices", *device_ids)
+
+        stale_users = set(user_ids) - active_users
+
+        if stale_users:
+            r.srem("users:online", *stale_users)
+
+        return active_users
 
 
 # Usage
@@ -548,12 +604,10 @@ class MultiDevicePresence:
         # Remove device presence
         pipe.delete(f"device:{user_id}:{device_id}")
         pipe.srem(f"user:{user_id}:devices", device_id)
+        pipe.execute()
 
-        # Get remaining devices
-        pipe.scard(f"user:{user_id}:devices")
-
-        results = pipe.execute()
-        remaining_devices = results[2]
+        # Count only devices whose presence keys have not expired
+        remaining_devices = len(self.get_user_devices(user_id))
 
         # If no devices left, mark user offline
         if remaining_devices == 0:
@@ -603,9 +657,17 @@ class MultiDevicePresence:
         devices_data = pipe.execute()
 
         devices = []
+        stale_device_ids = []
         for device_id, data in zip(device_ids, devices_data):
             if data:  # Device is still active
                 devices.append(data)
+            else:
+                stale_device_ids.append(device_id)
+
+        if stale_device_ids:
+            r.srem(f"user:{user_id}:devices", *stale_device_ids)
+            if not devices:
+                r.srem("users:online", user_id)
 
         return devices
 
@@ -700,12 +762,9 @@ class FriendPresence:
 
     def get_online_friends(self, user_id: str) -> List[str]:
         """Get friends who are currently online."""
-        # Intersect friends with online users
-        online_friends = r.sinter(
-            f"friends:{user_id}",
-            "users:online"
-        )
-        return list(online_friends)
+        friends = self.get_friends(user_id)
+        online_users = BasicPresence().get_online_users()
+        return list(friends & online_users)
 
     def get_friends_presence(self, user_id: str) -> Dict[str, Dict]:
         """Get presence status for all friends."""
@@ -763,7 +822,7 @@ Integrate presence with WebSocket connections:
 ```python
 # Flask-SocketIO example
 """
-from flask import Flask
+from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)

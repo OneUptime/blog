@@ -184,7 +184,8 @@ metadata:
   name: myapp-pdb
   namespace: production
 spec:
-  # Ensure at least 2 pods per zone
+  # Ensure at least 6 pods remain available overall
+  # Combine this with topologySpreadConstraints to keep pods balanced by zone.
   minAvailable: 6  # With 3 zones and 9 replicas
   selector:
     matchLabels:
@@ -258,7 +259,7 @@ kubectl get nodes --show-labels | grep topology
 
 ```yaml
 # istio-destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp
@@ -305,7 +306,7 @@ spec:
 
 ```yaml
 # istio-failover.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp-failover
@@ -316,14 +317,13 @@ spec:
     loadBalancer:
       localityLbSetting:
         enabled: true
-        # Failover to other zones when local is unhealthy
+        # Fail over to another region when local-region endpoints are unhealthy.
+        # Zone failover within a region is handled by locality priorities.
         failover:
-          - from: us-west-2/us-west-2a
-            to: us-west-2/us-west-2b
-          - from: us-west-2/us-west-2b
-            to: us-west-2/us-west-2c
-          - from: us-west-2/us-west-2c
-            to: us-west-2/us-west-2a
+          - from: us-west-2
+            to: us-east-1
+          - from: us-east-1
+            to: us-west-2
     
     outlierDetection:
       consecutiveGatewayErrors: 5
@@ -333,10 +333,12 @@ spec:
 
 ## Cross-Region Topology
 
-### Multi-Region Service Routing
+### Single-Cluster Multi-Region Routing
 
 ```yaml
 # multi-region-service.yaml
+# For multiple Kubernetes clusters, use a service mesh or global load balancer.
+# This example assumes one Kubernetes cluster with nodes labeled across regions.
 apiVersion: v1
 kind: Service
 metadata:
@@ -359,7 +361,13 @@ metadata:
   namespace: production
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: api
   template:
+    metadata:
+      labels:
+        app: api
     spec:
       topologySpreadConstraints:
         # Spread across regions
@@ -376,6 +384,11 @@ spec:
           labelSelector:
             matchLabels:
               app: api
+      containers:
+        - name: api
+          image: myregistry/api:v1.2.0
+          ports:
+            - containerPort: 8443
 ```
 
 ## Monitoring Topology Routing
@@ -390,28 +403,40 @@ groups:
       # Track cross-zone traffic
       - record: service:cross_zone_requests:rate5m
         expr: |
-          sum by (source_zone, destination_zone, service) (
+          sum by (source_zone, destination_zone, destination_service) (
             rate(istio_requests_total{
+              source_zone!="",
+              destination_zone!="",
               source_workload_namespace!="",
               destination_service_namespace!=""
             }[5m])
-          )
-          unless on (source_zone, destination_zone)
-          (
-            label_replace(
-              up{job="kubernetes-nodes"},
-              "source_zone",
-              "$1",
-              "zone",
-              "(.*)"
-            )
-            * on() group_left()
-            label_replace(
-              up{job="kubernetes-nodes"},
-              "destination_zone",
-              "$1",
-              "zone",
-              "(.*)"
+            unless ignoring(zone_match)
+            (
+              label_replace(
+                rate(istio_requests_total{
+                  source_zone!="",
+                  destination_zone!="",
+                  source_workload_namespace!="",
+                  destination_service_namespace!=""
+                }[5m]),
+                "zone_match",
+                "$1",
+                "source_zone",
+                "(.*)"
+              )
+              and
+              label_replace(
+                rate(istio_requests_total{
+                  source_zone!="",
+                  destination_zone!="",
+                  source_workload_namespace!="",
+                  destination_service_namespace!=""
+                }[5m]),
+                "zone_match",
+                "$1",
+                "destination_zone",
+                "(.*)"
+              )
             )
           )
 ```
@@ -420,13 +445,47 @@ groups:
 
 ```promql
 # Local vs cross-zone traffic ratio
-sum(rate(istio_requests_total{source_zone=destination_zone}[5m])) 
+sum(
+  label_replace(
+    rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m]),
+    "zone_match",
+    "$1",
+    "source_zone",
+    "(.*)"
+  )
+  and
+  label_replace(
+    rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m]),
+    "zone_match",
+    "$1",
+    "destination_zone",
+    "(.*)"
+  )
+)
 / 
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m]))
 
 # Cross-zone traffic by service
 sum by (destination_service) (
-  rate(istio_requests_total{source_zone!=destination_zone}[5m])
+  rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m])
+  unless ignoring(zone_match)
+  (
+    label_replace(
+      rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m]),
+      "zone_match",
+      "$1",
+      "source_zone",
+      "(.*)"
+    )
+    and
+    label_replace(
+      rate(istio_requests_total{source_zone!="",destination_zone!=""}[5m]),
+      "zone_match",
+      "$1",
+      "destination_zone",
+      "(.*)"
+    )
+  )
 )
 ```
 
@@ -455,13 +514,13 @@ echo "Minimum replicas needed: $TOTAL_REPLICAS"
 ### 3. Handle Zone Failures
 
 ```yaml
-# Configure PDB to allow zone-level failures
+# Configure PDB to limit voluntary disruptions
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: myapp-pdb
 spec:
-  # Allow one zone to be unavailable
+  # Allow roughly one zone's worth of pods to be voluntarily disrupted
   maxUnavailable: 33%
   selector:
     matchLabels:

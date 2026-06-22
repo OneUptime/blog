@@ -50,7 +50,7 @@ SELECT unnest(enum_range(NULL::order_status));
 
 -- Compare enum values (order is preserved)
 SELECT * FROM orders
-WHERE status >= 'shipped';  -- shipped, delivered
+WHERE status >= 'shipped';  -- shipped, delivered, cancelled
 
 -- Get enum position
 SELECT enumsortorder
@@ -185,14 +185,14 @@ CREATE DOMAIN non_empty_text AS text
 NOT NULL
 CHECK (length(trim(VALUE)) > 0);
 
-CREATE TABLE products (
+CREATE TABLE product_names (
     id serial PRIMARY KEY,
     name non_empty_text,
     description text
 );
 
 -- Empty string fails
-INSERT INTO products (name) VALUES ('');
+INSERT INTO product_names (name) VALUES ('');
 -- ERROR: value for domain non_empty_text violates check constraint
 ```
 
@@ -207,6 +207,8 @@ CREATE TYPE float_range AS RANGE (
 );
 
 -- Use range types
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 CREATE TABLE reservations (
     id serial PRIMARY KEY,
     room_id integer,
@@ -281,17 +283,13 @@ FROM companies;
 -- Cast between compatible types
 SELECT '123'::positive_int;
 
--- Create cast function
-CREATE FUNCTION text_to_email(text) RETURNS email AS $$
-    SELECT $1::email;
-$$ LANGUAGE SQL IMMUTABLE;
+-- Assigning the underlying type checks domain constraints
+INSERT INTO users (email, age)
+VALUES ('auto@cast.com'::varchar, 30);
 
-CREATE CAST (text AS email)
-WITH FUNCTION text_to_email(text)
-AS ASSIGNMENT;
-
--- Now implicit casting works
-INSERT INTO users (email, age) VALUES ('auto@cast.com', 30);
+-- Cast expression results back to the domain to re-check constraints
+SELECT (age + 1)::positive_int
+FROM users;
 ```
 
 ## Documenting Custom Types
@@ -299,7 +297,7 @@ INSERT INTO users (email, age) VALUES ('auto@cast.com', 30);
 ```sql
 -- Add comments for documentation
 COMMENT ON TYPE order_status IS 'Valid states for order lifecycle';
-COMMENT ON DOMAIN email IS 'RFC 5322 compliant email address';
+COMMENT ON DOMAIN email IS 'Simple email address format';
 COMMENT ON TYPE address IS 'US mailing address with street, city, state, zip, country';
 
 -- View comments
@@ -326,8 +324,10 @@ SELECT
     END AS type_kind
 FROM pg_type t
 JOIN pg_namespace n ON t.typnamespace = n.oid
+LEFT JOIN pg_class c ON c.oid = t.typrelid
 WHERE n.nspname = 'public'
-  AND t.typtype IN ('e', 'c', 'd', 'r');
+  AND t.typtype IN ('e', 'c', 'd', 'r')
+  AND (t.typtype <> 'c' OR c.relkind = 'c');
 ```
 
 ## Practical Example: Product Catalog

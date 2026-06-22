@@ -35,7 +35,7 @@ Benefits of GitOps:
 1. **Git as Single Source of Truth** - All configuration is versioned in Git
 2. **Audit Trail** - Git history shows who changed what and when
 3. **Easy Rollbacks** - Revert to any previous state with `git revert`
-4. **Self-Healing** - ArgoCD automatically corrects drift from desired state
+4. **Self-Healing** - ArgoCD can automatically correct drift from desired state
 5. **Security** - No need to expose cluster credentials to CI pipelines
 
 ## Architecture Overview
@@ -125,7 +125,7 @@ helm install argocd argo/argo-cd \
 global:
   # Use a specific image tag for reproducibility
   image:
-    tag: v2.10.0
+    tag: v3.4.4
 
 server:
   # Expose via LoadBalancer or Ingress
@@ -150,8 +150,8 @@ server:
       enabled: true
 
 controller:
-  # Increase replicas for HA
-  replicas: 2
+  # Keep one controller replica unless you enable dynamic cluster distribution
+  replicas: 1
   
   metrics:
     enabled: true
@@ -271,6 +271,7 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: repository
 stringData:
+  type: git
   # Repository URL
   url: https://github.com/myorg/my-k8s-configs
   # Authentication
@@ -341,7 +342,7 @@ spec:
       prune: true
       # Self-heal - revert manual changes to match Git
       selfHeal: true
-      # Only sync when git changes, not when cluster resources change
+      # Prevent automated pruning when the target manifests render no resources
       allowEmpty: false
     
     # Sync options
@@ -696,7 +697,7 @@ spec:
 
 Hook types:
 - `PreSync` - Before sync starts
-- `Sync` - During sync (same as wave 0)
+- `Sync` - During the sync phase
 - `PostSync` - After all resources are synced
 - `SyncFail` - If sync fails
 
@@ -707,12 +708,12 @@ Hook types:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-metrics
+  name: argocd-application-controller-metrics
   namespace: argocd
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-server
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -727,10 +728,10 @@ argocd_app_info{health_status="Healthy"}
 
 # Sync operations
 argocd_app_sync_total
-argocd_app_reconcile_count
+argocd_app_reconcile
 
-# API server request latency
-argocd_redis_request_duration_seconds
+# Kubernetes API request latency
+argocd_kubectl_request_duration_seconds
 ```
 
 ```yaml

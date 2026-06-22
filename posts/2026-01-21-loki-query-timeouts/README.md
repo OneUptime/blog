@@ -26,7 +26,7 @@ Error: Query timeout
 1. **Large time ranges**: Querying months of data
 2. **High cardinality queries**: Scanning many streams
 3. **Complex regex patterns**: CPU-intensive pattern matching
-4. **Missing indexes**: Full scans instead of indexed lookups
+4. **Broad selectors**: Queries that cannot narrow index lookups effectively
 5. **Resource constraints**: Insufficient CPU/memory for queriers
 6. **Network issues**: Slow storage backend access
 7. **Inefficient LogQL**: Non-optimized query patterns
@@ -55,10 +55,10 @@ histogram_quantile(0.99,
   rate(loki_request_duration_seconds_bucket{route=~"/loki/api/v1/query.*"}[5m])
 )
 
-# Slow queries (>30s)
-sum(rate(loki_request_duration_seconds_count{route=~"/loki/api/v1/query.*"}[5m]))
-* on() group_left
-histogram_quantile(0.95, rate(loki_request_duration_seconds_bucket[5m])) > 30
+# Slow query latency (>30s)
+histogram_quantile(0.95,
+  rate(loki_request_duration_seconds_bucket{route=~"/loki/api/v1/query.*"}[5m])
+) > 30
 
 # Query frontend queue time
 histogram_quantile(0.99,
@@ -87,7 +87,10 @@ limits_config:
   query_timeout: 5m  # Default: 1m
 
   # Maximum time for a single query to be processed
-  max_query_length: 721h  # 30 days
+  max_query_length: 720h  # 30 days
+
+  # Split queries into smaller intervals
+  split_queries_by_interval: 1h
 
 server:
   # HTTP server timeout
@@ -98,16 +101,8 @@ server:
   grpc_server_max_recv_msg_size: 104857600  # 100MB
   grpc_server_max_send_msg_size: 104857600
 
-querier:
-  # Query timeout for querier
-  query_timeout: 5m
-
-  # Engine timeout
-  engine:
-    timeout: 5m
-
 frontend:
-  # Frontend timeout
+  # URL of downstream Loki when using query-frontend in downstream mode
   downstream_url: http://querier:3100
 ```
 
@@ -115,10 +110,11 @@ frontend:
 
 ```yaml
 # loki-config.yaml
-query_range:
+limits_config:
   # Split queries into smaller intervals
   split_queries_by_interval: 1h
 
+query_range:
   # Maximum retries for split queries
   max_retries: 5
 
@@ -186,15 +182,15 @@ query_scheduler:
 # Slow: Multiple regex filters
 {job="app"} |~ "error" |~ "timeout" |~ "database"
 
-# Fast: Combined filter
-{job="app"} |~ "error.*(timeout|database)"
+# Fast: Use substring filters when possible
+{job="app"} |= "error" |= "timeout" |= "database"
 ```
 
 ### Limit Results
 
-```logql
-# Add explicit limits
-{job="app"} | json | level="error" | limit 1000
+```text
+# Add explicit limits with the query API or Grafana query options
+GET /loki/api/v1/query_range?query=%7Bjob%3D%22app%22%7D%20%7C%20json%20%7C%20level%3D%22error%22&limit=1000
 
 # Use line_format to reduce data transfer
 {job="app"} | json | line_format "{{.timestamp}}: {{.message}}"
@@ -202,12 +198,12 @@ query_scheduler:
 
 ### Reduce Time Ranges
 
-```logql
-# Instead of querying 30 days
-{job="app"} [30d]
+```text
+# Instead of querying 30 days in Grafana
+from=now-30d&to=now
 
 # Query shorter periods
-{job="app"} [1h]
+from=now-1h&to=now
 
 # For aggregations, use appropriate windows
 sum by (service) (rate({job="app"} |= "error" [5m]))
@@ -223,10 +219,10 @@ sum by (service) (rate({job="app"} |= "error" [5m]))
 {job="app"} | json | level="error" | error_type=~"timeout|connection" | service=~"database|redis"
 
 # Expensive: Unwrap on every line
-{job="app"} | json | unwrap duration [5m]
+avg_over_time({job="app"} | json | unwrap duration [5m])
 
 # Better: Filter first
-{job="app"} | json | level="error" | unwrap duration [5m]
+avg_over_time({job="app"} | json | level="error" | unwrap duration [5m])
 ```
 
 ## Caching Strategies
@@ -244,8 +240,6 @@ query_range:
         max_size_mb: 2000
         ttl: 24h
 
-  # Cache only queries longer than threshold
-  cache_results_for_unaligned_queries: true
 ```
 
 ### External Cache (Redis/Memcached)
@@ -267,7 +261,9 @@ query_range:
   results_cache:
     cache:
       memcached:
-        addresses: "memcached:11211"
+        expiration: 24h
+      memcached_client:
+        addresses: "dns+memcached:11211"
         timeout: 500ms
         max_idle_conns: 100
 ```
@@ -299,7 +295,7 @@ chunk_store_config:
 # docker-compose.yaml
 services:
   querier:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.0
     command: -config.file=/etc/loki/config.yaml -target=querier
     deploy:
       replicas: 4
@@ -377,16 +373,23 @@ schema_config:
         prefix: loki_index_
         period: 24h
 
-# Enable bloom filters for faster filtering
+# Enable bloom filters for faster filtering of structured metadata
 compactor:
   working_directory: /loki/compactor
   compaction_interval: 10m
 
+bloom_build:
+  enabled: true
+
 bloom_gateway:
   enabled: true
-  ring:
-    kvstore:
-      store: memberlist
+  client:
+    addresses: dnssrvnoa+_bloom-gateway-grpc._tcp.bloom-gateway-headless.loki.svc.cluster.local
+
+limits_config:
+  bloom_creation_enabled: true
+  bloom_split_series_keyspace_by: 1024
+  bloom_gateway_enable_filtering: true
 ```
 
 ## Client-Side Solutions
@@ -497,7 +500,7 @@ groups:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(loki_request_duration_seconds_count{route=~\"/loki/api/v1/query.*\"}[5m]) * histogram_quantile(0.99, rate(loki_request_duration_seconds_bucket[5m])) > 10"
+            "expr": "histogram_quantile(0.99, rate(loki_request_duration_seconds_bucket{route=~\"/loki/api/v1/query.*\"}[5m])) > 10"
           }
         ]
       }
@@ -524,9 +527,9 @@ groups:
 limits_config:
   query_timeout: 10m
   max_query_length: 744h
+  split_queries_by_interval: 1h
 
 query_range:
-  split_queries_by_interval: 1h
   parallelise_shardable_queries: true
   results_cache:
     cache:

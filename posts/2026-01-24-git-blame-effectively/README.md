@@ -51,10 +51,10 @@ git blame -L 10,20 src/server.js
 # Blame from a function name to end of function
 git blame -L '/function handleRequest/,/^}/' src/server.js
 
-# Show the commit message for each line
+# Use git-annotate compatible output
 git blame -c src/server.js
 
-# Suppress author name (useful for scripting)
+# Show machine-readable output
 git blame --porcelain src/server.js
 ```
 
@@ -68,10 +68,10 @@ Bulk formatting commits pollute blame history. Skip them:
 # Ignore whitespace changes
 git blame -w src/server.js
 
-# Ignore moved or copied lines within the file
+# Detect moved or copied lines within the file
 git blame -M src/server.js
 
-# Ignore moved or copied lines from other files
+# Detect moved or copied lines from other files
 git blame -C src/server.js
 
 # Combine options for thorough history
@@ -209,7 +209,7 @@ Create an alias for quick debugging:
 ```bash
 # Add to ~/.gitconfig
 [alias]
-    # Show blame with commit messages
+    # Show blame in git-annotate compatible format
     praise = blame -c
 
     # Blame ignoring whitespace and moves
@@ -292,15 +292,15 @@ git blame --line-porcelain "$FILE" | \
 
 echo ""
 echo "Lines per time period:"
-git blame "$FILE" | \
-    awk '{print $4}' | \
-    cut -d'-' -f1,2 | \
+git blame --line-porcelain "$FILE" | \
+    awk '/^author-time / { print strftime("%Y-%m", $2) }' | \
     sort | uniq -c | sort -rn
 
 echo ""
 echo "Oldest lines:"
-git blame "$FILE" | \
-    sort -k4 | head -5
+git blame --line-porcelain "$FILE" | \
+    awk '/^author-time / { time=$2 } /^\t/ { print time " " substr($0, 2) }' | \
+    sort -n | head -5
 ```
 
 ```bash
@@ -351,7 +351,7 @@ Most IDEs have integrated blame views:
 Track blame through file renames:
 
 ```bash
-# Follow renames automatically
+# Follow copied lines across files
 git blame -C -C -C src/newname.js
 
 # Show the original filename for moved code
@@ -389,6 +389,6 @@ Git blame is essential for understanding code history and debugging issues:
 3. Use `-L` to focus on specific line ranges or functions
 4. Combine blame with `git log -L` for full change history
 5. Use porcelain output for scripts and statistics
-6. Follow renames with `-C -C -C` for thorough history
+6. Trace copied or moved lines across files with `-C -C -C` for thorough history
 
 The goal of blame is not to find fault but to find context. Understanding who made a change and why helps you make better decisions about the code today.

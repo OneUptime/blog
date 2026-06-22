@@ -248,16 +248,16 @@ sudo visudo
 Defaults:ansible !requiretty
 ```
 
-### Solution 2: Use pipelining (if NOPASSWD is configured)
+### Solution 2: Check pipelining configuration
 
 ```ini
 # ansible.cfg
 
 [ssh_connection]
-pipelining = True
+pipelining = False
 ```
 
-Note: Pipelining requires NOPASSWD sudo to be configured.
+Note: If you enable pipelining, disable `requiretty` first. Pipelining can conflict with `become` when sudo requires a TTY.
 
 ## Error: "become method not supported"
 
@@ -312,7 +312,7 @@ Failed to set permissions on the temporary files Ansible needs to create
 
 ### Cause
 
-The become user cannot access the temporary directory created by the connecting user.
+This commonly happens when Ansible connects as one unprivileged user and uses `become` to run as another unprivileged user. The become user cannot securely read the temporary module files created by the connecting user.
 
 ### Solution 1: Configure remote_tmp
 
@@ -332,19 +332,18 @@ remote_tmp = /tmp/.ansible-${USER}/tmp
 allow_world_readable_tmpfiles = True
 ```
 
-### Solution 3: Set ACL on temp directory
+### Solution 3: Install POSIX ACL support
 
 ```yaml
-# Ensure temp directory has proper permissions
-- name: Configure temp directory
+# Ensure Ansible can use setfacl for temporary module files
+- name: Install ACL support
   hosts: all
-  become: no
+  become: yes
   tasks:
-    - name: Create ansible temp directory
-      file:
-        path: /tmp/.ansible-{{ ansible_user }}
-        state: directory
-        mode: '0700'
+    - name: Install acl package
+      package:
+        name: acl
+        state: present
 ```
 
 ## Error: "User not in sudoers file"

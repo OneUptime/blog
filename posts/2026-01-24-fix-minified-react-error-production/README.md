@@ -46,14 +46,14 @@ Create a utility to decode errors locally:
 ```javascript
 // errorDecoder.js
 const REACT_ERRORS = {
-  130: 'Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: %s.',
+  130: 'Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: %s.%s',
   152: 'Nothing was returned from render. This usually means a return statement is missing. Or, to render nothing, return null.',
-  185: 'Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either does not have a dependency array, or one of the dependencies changes on every render.',
+  185: 'Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.',
   200: 'Target container is not a DOM element.',
-  301: 'Objects are not valid as a React child (found: %s). If you meant to render a collection of children, use an array instead.',
+  31: 'Objects are not valid as a React child (found: %s). If you meant to render a collection of children, use an array instead.',
+  301: 'Too many re-renders. React limits the number of renders to prevent an infinite loop.',
   310: 'Rendered more hooks than during the previous render.',
-  321: 'Invalid hook call. Hooks can only be called inside of the body of a function component.',
-  400: 'Too many re-renders. React limits the number of renders to prevent an infinite loop.',
+  321: 'Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen because of mismatching React versions, breaking the Rules of Hooks, or multiple copies of React in the same app.',
   // Add more as needed from React source
 };
 
@@ -181,11 +181,11 @@ function GoodComponent() {
 }
 ```
 
-### Error 301: Objects Not Valid as React Child
+### Error 31: Objects Not Valid as React Child
 
 ```javascript
 // The error
-// Minified React error #301
+// Minified React error #31
 
 // Cause: Rendering an object directly
 function UserProfile({ user }) {
@@ -272,11 +272,11 @@ function useMyHook() {
 }
 ```
 
-### Error 400: Too Many Re-renders
+### Error 301: Too Many Re-renders
 
 ```javascript
 // The error
-// Minified React error #400
+// Minified React error #301
 
 // Cause: setState called directly in render
 function BadComponent() {
@@ -330,6 +330,8 @@ Enable source maps for error tracking (but not public access):
 
 ```javascript
 // webpack.config.js
+const { sentryWebpackPlugin } = require('@sentry/webpack-plugin');
+
 module.exports = {
   devtool: process.env.NODE_ENV === 'production'
     ? 'hidden-source-map' // Generate but do not expose
@@ -337,10 +339,17 @@ module.exports = {
 
   // Upload source maps to error tracking service
   plugins: [
-    new SentryWebpackPlugin({
-      include: './build',
-      ignore: ['node_modules'],
-      release: process.env.REACT_APP_VERSION,
+    sentryWebpackPlugin({
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      release: {
+        name: process.env.REACT_APP_VERSION,
+      },
+      sourcemaps: {
+        assets: './build/**',
+        ignore: ['node_modules'],
+      },
     })
   ]
 };
@@ -358,8 +367,8 @@ Sentry.init({
   environment: process.env.NODE_ENV,
   release: process.env.REACT_APP_VERSION,
 
-  // Capture React component stack traces
-  integrations: [new Sentry.BrowserTracing()],
+  // Enable browser performance tracing
+  integrations: [Sentry.browserTracingIntegration()],
 
   beforeSend(event, hint) {
     // Decode minified errors before sending
@@ -425,12 +434,7 @@ When you cannot access source maps:
 module.exports = {
   plugins: [
     // Add component display names
-    ['@babel/plugin-transform-react-display-name'],
-
-    // Custom plugin to add component names to errors
-    ['babel-plugin-transform-react-remove-prop-types', {
-      mode: 'wrap', // Keep displayName
-    }]
+    ['@babel/plugin-transform-react-display-name']
   ]
 };
 
@@ -517,11 +521,8 @@ module.exports = {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
 
-    // Catch missing returns
-    'consistent-return': 'error',
-
-    // Catch accidental object rendering
-    'react/jsx-no-useless-fragment': 'error'
+    // Catch inconsistent returns
+    'consistent-return': 'error'
   }
 };
 ```
@@ -530,7 +531,7 @@ module.exports = {
 
 ```javascript
 // ErrorScenarios.test.js
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 // Test that components handle undefined props
 describe('Component Robustness', () => {
@@ -558,9 +559,9 @@ flowchart TD
     A[Common Minified Errors] --> B[Error 130]
     A --> C[Error 152]
     A --> D[Error 185]
-    A --> E[Error 301]
+    A --> E[Error 31]
     A --> F[Error 310/321]
-    A --> G[Error 400]
+    A --> G[Error 301]
 
     B --> B1[Invalid element type]
     B1 --> B2[Check imports/exports]
@@ -586,7 +587,7 @@ flowchart TD
 Minified React errors can be frustrating, but they are solvable:
 
 1. Use the React error decoder to understand the error
-2. Common errors (130, 152, 185, 301, 321, 400) have well-known solutions
+2. Common errors (130, 152, 185, 31, 301, 310, 321) have well-known solutions
 3. Set up proper error tracking with source maps for production
 4. Use TypeScript, ESLint, and Strict Mode to catch errors early
 5. Test edge cases and error scenarios

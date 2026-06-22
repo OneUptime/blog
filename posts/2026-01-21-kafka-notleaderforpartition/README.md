@@ -8,13 +8,16 @@ Description: A comprehensive guide to diagnosing and fixing Kafka NotLeaderForPa
 
 ---
 
-The NotLeaderForPartition error occurs when a producer or consumer sends a request to a broker that is no longer the leader for a partition. This guide covers how to diagnose, prevent, and handle these errors.
+The NotLeaderForPartition error occurs when a producer or consumer sends a request to a broker that is no longer the leader for a partition. In Kafka 2.6 and later, the Java client uses the newer NotLeaderOrFollowerException name for the same class of condition. This guide covers how to diagnose, prevent, and handle these errors.
 
 ## Understanding the Error
 
 ```text
 org.apache.kafka.common.errors.NotLeaderForPartitionException:
 This server is not the leader for that topic-partition
+
+org.apache.kafka.common.errors.NotLeaderOrFollowerException:
+For requests intended only for the leader, this error indicates that the broker is not the current leader
 ```
 
 ### Common Causes
@@ -43,9 +46,8 @@ Topic: my-topic	Partition: 2	Leader: 3	Replicas: 3,1,2	Isr: 3,1,2
 ### Check Controller Status
 
 ```bash
-# Find current controller
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command controllers
+# Find the active KRaft metadata quorum controller
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
 
 # Or via ZooKeeper (older versions)
 zookeeper-shell.sh localhost:2181 get /controller
@@ -68,6 +70,7 @@ grep -i "failed\|error\|exception" /var/log/kafka/server.log | tail -100
 ```java
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.errors.NotLeaderForPartitionException;
+import org.apache.kafka.common.errors.NotLeaderOrFollowerException;
 import org.apache.kafka.common.errors.RetriableException;
 
 import java.util.*;
@@ -106,7 +109,7 @@ public class ResilientProducer {
                     attempts++;
                     System.out.printf("Attempt %d failed, retrying: %s%n", attempts, e.getMessage());
 
-                    // Force metadata refresh
+                    // Request current partition metadata
                     forceMetadataRefresh(topic);
 
                     try {
@@ -125,13 +128,20 @@ public class ResilientProducer {
     }
 
     private boolean isRetriable(Exception e) {
-        Throwable cause = e.getCause();
-        return cause instanceof NotLeaderForPartitionException
-            || cause instanceof RetriableException;
+        Throwable current = e;
+        while (current != null) {
+            if (current instanceof NotLeaderOrFollowerException
+                    || current instanceof NotLeaderForPartitionException
+                    || current instanceof RetriableException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void forceMetadataRefresh(String topic) {
-        // Calling partitionsFor forces metadata refresh
+        // Request partition metadata; the producer also refreshes metadata automatically on invalid metadata errors
         producer.partitionsFor(topic);
     }
 
@@ -145,8 +155,8 @@ public class ResilientProducer {
 
 ```java
 import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.NotLeaderForPartitionException;
+import org.apache.kafka.common.errors.NotLeaderOrFollowerException;
 
 import java.time.Duration;
 import java.util.*;
@@ -178,8 +188,8 @@ public class ResilientConsumer {
 
                 consumer.commitSync();
 
-            } catch (NotLeaderForPartitionException e) {
-                System.out.println("NotLeaderForPartition - refreshing metadata");
+            } catch (NotLeaderOrFollowerException | NotLeaderForPartitionException e) {
+                System.out.println("Leader metadata changed - refreshing metadata");
                 handleNotLeaderError(topic);
 
             } catch (Exception e) {
@@ -190,16 +200,8 @@ public class ResilientConsumer {
     }
 
     private void handleNotLeaderError(String topic) {
-        // Force metadata refresh by unsubscribing and resubscribing
-        consumer.unsubscribe();
-
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        consumer.subscribe(Collections.singletonList(topic));
+        // Request fresh topic metadata; the consumer also refreshes metadata automatically on invalid metadata errors
+        consumer.partitionsFor(topic, Duration.ofSeconds(10));
     }
 
     private void processRecord(ConsumerRecord<String, String> record) {
@@ -227,6 +229,7 @@ public class PartitionLeaderMonitor {
 
     private final AdminClient adminClient;
     private final Map<String, Map<Integer, Integer>> leaderHistory = new ConcurrentHashMap<>();
+    private ScheduledExecutorService scheduler;
 
     public PartitionLeaderMonitor(String bootstrapServers) {
         Properties props = new Properties();
@@ -268,7 +271,7 @@ public class PartitionLeaderMonitor {
     }
 
     public void startMonitoring(String topic, long intervalMs) {
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 monitorTopic(topic);
@@ -279,6 +282,9 @@ public class PartitionLeaderMonitor {
     }
 
     public void close() {
+        if (scheduler != null) {
+            scheduler.shutdown();
+        }
         adminClient.close();
     }
 }
@@ -288,7 +294,7 @@ public class PartitionLeaderMonitor {
 
 ```python
 from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka.admin import AdminClient
 import time
 from typing import Dict, Optional
 import threading
@@ -312,16 +318,37 @@ class ResilientProducer:
         last_error = None
 
         while attempts < self.max_retries:
+            delivery_error = None
+
+            def delivery_callback(err, msg):
+                nonlocal delivery_error
+                if err:
+                    delivery_error = err
+                self._delivery_callback(err, msg)
+
             try:
                 self.producer.produce(
                     topic,
                     key=key.encode('utf-8'),
                     value=value.encode('utf-8'),
-                    callback=self._delivery_callback
+                    callback=delivery_callback
                 )
-                self.producer.flush(timeout=30)
+
+                remaining = self.producer.flush(timeout=30)
+                if remaining > 0:
+                    raise TimeoutError("Timed out waiting for delivery report")
+
+                if delivery_error:
+                    if self._is_retriable(delivery_error):
+                        attempts += 1
+                        print(f"Attempt {attempts} failed: {delivery_error}")
+                        self._force_metadata_refresh(topic)
+                        time.sleep(0.1 * attempts)
+                        continue
+                    raise KafkaException(delivery_error)
+
                 return
-            except KafkaException as e:
+            except (KafkaException, BufferError, TimeoutError) as e:
                 last_error = e
                 if self._is_retriable(e):
                     attempts += 1
@@ -339,16 +366,27 @@ class ResilientProducer:
         else:
             print(f"Delivered to {msg.topic()}[{msg.partition()}] @ {msg.offset()}")
 
-    def _is_retriable(self, error: KafkaException) -> bool:
+    def _is_retriable(self, error) -> bool:
+        if isinstance(error, KafkaException):
+            kafka_error = error.args[0]
+        elif isinstance(error, KafkaError):
+            kafka_error = error
+        else:
+            return isinstance(error, (BufferError, TimeoutError))
+
         retriable_codes = [
             KafkaError.NOT_LEADER_FOR_PARTITION,
             KafkaError.LEADER_NOT_AVAILABLE,
             KafkaError.REQUEST_TIMED_OUT
         ]
-        return error.args[0].code() in retriable_codes
+
+        if hasattr(KafkaError, 'NOT_LEADER_OR_FOLLOWER'):
+            retriable_codes.append(KafkaError.NOT_LEADER_OR_FOLLOWER)
+
+        return kafka_error.retriable() or kafka_error.code() in retriable_codes
 
     def _force_metadata_refresh(self, topic: str):
-        """Force metadata refresh by listing topic partitions"""
+        """Request metadata refresh by listing topic partitions"""
         try:
             self.producer.list_topics(topic, timeout=10)
         except Exception as e:
@@ -390,8 +428,8 @@ class ResilientConsumer:
                 self._handle_kafka_exception(e, topic)
 
     def _handle_error(self, error: KafkaError, topic: str):
-        if error.code() == KafkaError.NOT_LEADER_FOR_PARTITION:
-            print("NotLeaderForPartition - refreshing metadata")
+        if self._is_not_leader_error(error):
+            print("Leader metadata changed - refreshing metadata")
             self._refresh_subscription(topic)
         elif error.code() == KafkaError._PARTITION_EOF:
             pass  # End of partition is normal
@@ -399,16 +437,22 @@ class ResilientConsumer:
             print(f"Consumer error: {error}")
 
     def _handle_kafka_exception(self, error: KafkaException, topic: str):
-        if error.args[0].code() == KafkaError.NOT_LEADER_FOR_PARTITION:
+        if self._is_not_leader_error(error.args[0]):
             self._refresh_subscription(topic)
         else:
             raise
 
+    def _is_not_leader_error(self, error: KafkaError) -> bool:
+        codes = [KafkaError.NOT_LEADER_FOR_PARTITION]
+
+        if hasattr(KafkaError, 'NOT_LEADER_OR_FOLLOWER'):
+            codes.append(KafkaError.NOT_LEADER_OR_FOLLOWER)
+
+        return error.code() in codes
+
     def _refresh_subscription(self, topic: str):
-        """Force metadata refresh"""
-        self.consumer.unsubscribe()
-        time.sleep(1)
-        self.consumer.subscribe([topic])
+        """Request fresh topic metadata"""
+        self.consumer.list_topics(topic, timeout=10)
 
     def _process_message(self, msg):
         print(f"Received: key={msg.key()}, value={msg.value()}, "
@@ -536,8 +580,8 @@ max.poll.interval.ms=300000
 controller.socket.timeout.ms=30000
 
 # Leader election
+auto.leader.rebalance.enable=true
 leader.imbalance.check.interval.seconds=300
-leader.imbalance.per.broker.percentage=10
 
 # Replica settings
 replica.lag.time.max.ms=30000

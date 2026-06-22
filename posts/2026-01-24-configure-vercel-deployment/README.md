@@ -37,9 +37,7 @@ Create a `vercel.json` file in your project root to customize deployment behavio
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "name": "my-application",
-  "regions": ["iad1", "sfo1"],
+  "regions": ["iad1"],
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
@@ -59,14 +57,9 @@ const vercelConfig = {
   // Schema for IDE autocompletion
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  // Vercel platform version (always use 2)
-  "version": 2,
-
-  // Project name - used in deployment URLs
-  "name": "my-application",
-
   // Target regions for serverless functions
   // iad1 = US East, sfo1 = US West, cdg1 = Europe, etc.
+  // Multiple regions require an Enterprise plan
   "regions": ["iad1"],
 
   // Custom build command (overrides framework default)
@@ -114,11 +107,11 @@ flowchart LR
 
 ### Using vercel.json for Environment Variables
 
+Use the dashboard or Vercel CLI for secrets and environment-specific values. `env` and `build.env` in `vercel.json` are legacy options and should only be used for static, non-secret values when you specifically need file-based configuration.
+
 ```json
 {
-  "version": 2,
   "env": {
-    "NODE_ENV": "production",
     "API_VERSION": "v2"
   },
   "build": {
@@ -203,17 +196,14 @@ Customize the build process for optimal performance.
 
 ```json
 {
-  "version": 2,
   "buildCommand": "npm run build",
   "installCommand": "npm ci --legacy-peer-deps",
   "framework": "nextjs",
   "functions": {
     "api/**/*.ts": {
-      "memory": 1024,
       "maxDuration": 30
     },
-    "app/api/**/*.ts": {
-      "memory": 512,
+    "app/api/**/route.ts": {
       "maxDuration": 10
     }
   }
@@ -225,8 +215,8 @@ Customize the build process for optimal performance.
 ```mermaid
 flowchart TD
     A[Function Request] --> B{Check Limits}
-    B --> C[Memory: 128MB - 3008MB]
-    B --> D[Duration: 10s - 300s]
+    B --> C[Memory: plan default, dashboard configurable on Pro/Enterprise]
+    B --> D[Duration: plan-dependent maxDuration]
     C --> E{Exceeds Limit?}
     D --> E
     E -->|Yes| F[Function Error]
@@ -237,16 +227,12 @@ flowchart TD
 
 ```json
 {
-  "version": 2,
-  "regions": ["iad1", "cdg1", "hnd1"],
+  "regions": ["iad1"],
   "functions": {
     "api/user/**": {
-      "memory": 1024,
-      "maxDuration": 30,
-      "runtime": "nodejs20.x"
+      "maxDuration": 30
     },
     "api/heavy-computation.ts": {
-      "memory": 3008,
       "maxDuration": 60
     }
   }
@@ -263,7 +249,6 @@ Configure URL routing, redirects, and rewrites.
 
 ```json
 {
-  "version": 2,
   "rewrites": [
     {
       "source": "/api/:path*",
@@ -285,7 +270,6 @@ Configure URL routing, redirects, and rewrites.
 
 ```json
 {
-  "version": 2,
   "redirects": [
     {
       "source": "/old-blog/:slug",
@@ -310,7 +294,6 @@ Configure URL routing, redirects, and rewrites.
 
 ```json
 {
-  "version": 2,
   "headers": [
     {
       "source": "/api/(.*)",
@@ -368,20 +351,19 @@ Deploy functions at the edge for better performance.
 // Edge function for geolocation-based responses
 
 import { NextRequest, NextResponse } from "next/server";
+import { geolocation } from "@vercel/functions";
 
 // Configure as Edge Function
 export const runtime = "edge";
 
 export async function GET(request: NextRequest) {
   // Access geolocation data (available at the edge)
-  const country = request.geo?.country || "Unknown";
-  const city = request.geo?.city || "Unknown";
-  const region = request.geo?.region || "Unknown";
+  const { country, city, countryRegion } = geolocation(request);
 
   return NextResponse.json({
-    country,
-    city,
-    region,
+    country: country || "Unknown",
+    city: city || "Unknown",
+    region: countryRegion || "Unknown",
     timestamp: new Date().toISOString(),
   });
 }
@@ -395,6 +377,7 @@ export async function GET(request: NextRequest) {
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { geolocation } from "@vercel/functions";
 
 export function middleware(request: NextRequest) {
   // Get the pathname of the request
@@ -405,7 +388,7 @@ export function middleware(request: NextRequest) {
   response.headers.set("x-custom-header", "my-value");
 
   // Geolocation-based routing
-  const country = request.geo?.country || "US";
+  const { country = "US" } = geolocation(request);
 
   // Redirect to country-specific page
   if (pathname === "/" && country !== "US") {
@@ -462,7 +445,9 @@ export async function getFeatureFlags() {
     };
   }
 }
+```
 
+```typescript
 // Usage in a page
 // app/page.tsx
 import { getFeatureFlags } from "@/lib/feature-flags";
@@ -488,7 +473,6 @@ Configure caching for optimal performance.
 
 ```json
 {
-  "version": 2,
   "headers": [
     {
       "source": "/static/(.*)",
@@ -543,7 +527,9 @@ export default async function ProductPage({
 
   return <ProductDetails product={product} />;
 }
+```
 
+```typescript
 // For on-demand revalidation, create an API route
 // app/api/revalidate/route.ts
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -588,7 +574,6 @@ Configure Vercel for monorepo deployments.
 
 ```json
 {
-  "version": 2,
   "buildCommand": "cd ../.. && turbo run build --filter=web",
   "installCommand": "cd ../.. && npm install",
   "framework": "nextjs",
@@ -600,7 +585,6 @@ Configure Vercel for monorepo deployments.
 
 ```json
 {
-  "version": 2,
   "framework": "nextjs",
   "ignoreCommand": "npx turbo-ignore"
 }
@@ -630,11 +614,12 @@ flowchart TD
 ### Shared Configuration
 
 ```typescript
-// packages/config/vercel.shared.js
+// packages/config/vercel.shared.ts
 // Shared Vercel configuration for monorepo apps
 
-module.exports = {
-  version: 2,
+import type { VercelConfig } from "@vercel/config/v1";
+
+export const sharedConfig: VercelConfig = {
   regions: ["iad1"],
   headers: [
     {
@@ -647,14 +632,16 @@ module.exports = {
     },
   ],
 };
+```
 
-// apps/web/vercel.json
+```typescript
+// apps/web/vercel.ts
 // Extend shared configuration
-const shared = require("@myorg/config/vercel.shared");
+import type { VercelConfig } from "@vercel/config/v1";
+import { sharedConfig } from "@myorg/config/vercel.shared";
 
-module.exports = {
-  ...shared,
-  name: "web-app",
+export const config: VercelConfig = {
+  ...sharedConfig,
   buildCommand: "cd ../.. && turbo run build --filter=web",
 };
 ```
@@ -669,7 +656,6 @@ Configure preview deployments for pull requests.
 
 ```json
 {
-  "version": 2,
   "git": {
     "deploymentEnabled": {
       "main": true,
@@ -708,11 +694,9 @@ const getSiteUrl = () => {
 
 ```json
 {
-  "version": 2,
   "github": {
-    "enabled": true,
     "autoAlias": true,
-    "silent": false
+    "autoJobCancelation": true
   }
 }
 ```
@@ -723,20 +707,17 @@ const getSiteUrl = () => {
 
 Configure custom domains and SSL.
 
-### vercel.json Domain Aliases
+### Vercel CLI Domain Setup
 
-```json
-{
-  "version": 2,
-  "alias": ["myapp.com", "www.myapp.com"]
-}
+```bash
+vercel domains add myapp.com my-application
+vercel domains add www.myapp.com my-application
 ```
 
 ### Redirect www to Non-www
 
 ```json
 {
-  "version": 2,
   "redirects": [
     {
       "source": "/:path(.*)",
@@ -794,11 +775,14 @@ vercel --prod
 # Deploy with specific environment
 vercel --env NODE_ENV=production --env API_KEY=xxx
 
-# Deploy and wait for completion
-vercel --prod --confirm
+# Deploy to production and accept defaults in non-interactive environments
+vercel --prod --yes
 
-# View deployment logs
-vercel logs [deployment-url]
+# View recent runtime logs
+vercel logs
+
+# Stream runtime logs for a specific deployment
+vercel logs --follow --deployment dpl_xxxxx
 
 # Rollback to previous deployment
 vercel rollback [deployment-url]
@@ -840,31 +824,36 @@ export default function RootLayout({
 
 ```typescript
 // lib/monitoring.ts
-// Integrate with external monitoring
+// Integrate with an external monitoring webhook
 
-import { OneUptime } from "@oneuptime/sdk";
-
-// Initialize monitoring
-const monitoring = new OneUptime({
-  apiKey: process.env.ONEUPTIME_API_KEY!,
-  serviceName: "my-vercel-app",
-});
+const monitoringWebhookUrl = process.env.MONITORING_WEBHOOK_URL!;
 
 // Track deployments
 export async function trackDeployment() {
-  await monitoring.createEvent({
-    type: "deployment",
-    environment: process.env.VERCEL_ENV,
-    commit: process.env.VERCEL_GIT_COMMIT_SHA,
-    timestamp: new Date().toISOString(),
+  await fetch(monitoringWebhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "deployment",
+      environment: process.env.VERCEL_ENV,
+      commit: process.env.VERCEL_GIT_COMMIT_SHA,
+      timestamp: new Date().toISOString(),
+    }),
   });
 }
 
 // Track errors
 export async function trackError(error: Error) {
-  await monitoring.captureException(error, {
-    region: process.env.VERCEL_REGION,
-    url: process.env.VERCEL_URL,
+  await fetch(monitoringWebhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "error",
+      message: error.message,
+      stack: error.stack,
+      region: process.env.VERCEL_REGION,
+      url: process.env.VERCEL_URL,
+    }),
   });
 }
 ```
@@ -879,7 +868,6 @@ Implement security measures for your Vercel deployment.
 
 ```json
 {
-  "version": 2,
   "headers": [
     {
       "source": "/(.*)",
@@ -954,7 +942,7 @@ Key takeaways:
 
 - Use `vercel.json` for detailed deployment configuration
 - Manage environment variables securely across environments
-- Configure functions with appropriate memory and duration limits
+- Configure functions with appropriate duration limits and plan-level memory settings
 - Implement proper caching strategies for performance
 - Use Edge Functions for geolocation and low-latency operations
 - Set up preview deployments for pull request testing

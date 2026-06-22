@@ -66,6 +66,7 @@ The service module cannot find the service on the target host.
       loop:
         - /etc/systemd/system/nginx.service
         - /lib/systemd/system/nginx.service
+        - /usr/lib/systemd/system/nginx.service
         - /etc/init.d/nginx
       register: service_locations
 
@@ -92,9 +93,9 @@ Different systems use different init systems. Explicitly specify the service man
   hosts: all
   become: yes
   tasks:
-    # Use systemd module for systemd-based systems
-    - name: Start service with systemd
-      ansible.builtin.systemd:
+    # Use systemd_service module for systemd-based systems
+    - name: Start service with systemd_service
+      ansible.builtin.systemd_service:
         name: nginx
         state: started
         enabled: yes
@@ -109,9 +110,9 @@ Different systems use different init systems. Explicitly specify the service man
         enabled: yes
       when: ansible_service_mgr == "sysvinit"
 
-    # Use sysvinit module explicitly for older systems
-    - name: Start service on older systems
-      ansible.builtin.sysvinit:
+    # Use service module as a fallback for other supported service managers
+    - name: Start service on other supported service managers
+      ansible.builtin.service:
         name: nginx
         state: started
         enabled: yes
@@ -134,10 +135,7 @@ Services may fail to start due to missing dependencies.
     # Ensure required packages are installed
     - name: Install nginx and dependencies
       ansible.builtin.apt:
-        name:
-          - nginx
-          - openssl
-          - libpcre3
+        name: nginx
         state: present
         update_cache: yes
 
@@ -150,8 +148,9 @@ Services may fail to start due to missing dependencies.
 
     # Reload systemd if service file changed
     - name: Reload systemd daemon
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
+      when: ansible_service_mgr == "systemd"
 
     # Now start the service
     - name: Start nginx service
@@ -163,8 +162,10 @@ Services may fail to start due to missing dependencies.
 
     # Debug output if service fails
     - name: Show service status on failure
-      ansible.builtin.command: systemctl status nginx
-      when: service_result is failed
+      ansible.builtin.command: systemctl status nginx --no-pager
+      when:
+        - service_result is failed
+        - ansible_service_mgr == "systemd"
       ignore_errors: yes
 ```
 
@@ -190,7 +191,9 @@ Get detailed information about why a service failed.
 
     # Block for debugging failed service
     - name: Debug service failure
-      when: service_start is failed
+      when:
+        - service_start is failed
+        - ansible_service_mgr == "systemd"
       block:
         # Get detailed service status
         - name: Get service status
@@ -308,6 +311,7 @@ stateDiagram-v2
       ansible.builtin.command: systemctl reset-failed nginx
       ignore_errors: yes
       changed_when: false
+      when: ansible_service_mgr == "systemd"
 
     # Stop service cleanly before restart
     - name: Ensure service is stopped
@@ -357,31 +361,39 @@ Services that are masked cannot be started.
       register: service_enabled
       ignore_errors: yes
       changed_when: false
+      when: ansible_service_mgr == "systemd"
 
     # Unmask service if masked
     - name: Unmask service
-      ansible.builtin.command: systemctl unmask nginx
-      when: "'masked' in service_enabled.stdout"
+      ansible.builtin.systemd_service:
+        name: nginx
+        masked: no
+      when:
+        - ansible_service_mgr == "systemd"
+        - "'masked' in service_enabled.stdout | default('')"
 
     # Reload systemd after unmasking
     - name: Reload systemd daemon
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
-      when: "'masked' in service_enabled.stdout"
+      when:
+        - ansible_service_mgr == "systemd"
+        - "'masked' in service_enabled.stdout | default('')"
 
     # Now start the service
     - name: Start nginx service
-      ansible.builtin.service:
+      ansible.builtin.systemd_service:
         name: nginx
         state: started
         enabled: yes
+      when: ansible_service_mgr == "systemd"
 ```
 
 ---
 
 ## Solution 8: Cross-Platform Service Management
 
-Handle services across different operating systems.
+Handle services across different Linux and BSD operating systems.
 
 ```yaml
 ---
@@ -397,7 +409,6 @@ Handle services across different operating systems.
       Ubuntu: nginx
       CentOS: nginx
       FreeBSD: nginx
-      Darwin: nginx  # macOS
 
   tasks:
     # Get the correct service name
@@ -407,7 +418,7 @@ Handle services across different operating systems.
 
     # Handle different init systems
     - name: Start service on systemd systems
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ target_service }}"
         state: started
         enabled: yes
@@ -430,7 +441,7 @@ Handle services across different operating systems.
 | Service not found | Package not installed | Install the package first |
 | Unable to start | Configuration error | Validate config before start |
 | Permission denied | Missing become/sudo | Add `become: yes` |
-| Service masked | Service is disabled | Unmask the service |
+| Service masked | Unit is masked | Unmask the service |
 | Port in use | Another service running | Stop conflicting service |
 | Unknown state | Service manager mismatch | Specify correct module |
 
@@ -484,7 +495,7 @@ Handle services across different operating systems.
 ansible webservers -m command -a "systemctl status nginx" -b
 
 # List all services
-ansible webservers -m command -a "systemctl list-units --type=service" -b
+ansible webservers -m command -a "systemctl list-units --type=service --all" -b
 
 # Check service manager
 ansible webservers -m setup -a "filter=ansible_service_mgr"

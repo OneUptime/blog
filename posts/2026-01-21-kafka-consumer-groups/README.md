@@ -21,9 +21,9 @@ Consumer groups are Kafka's mechanism for parallel message consumption. Understa
 
 ### Fundamental Rules
 
-1. Each partition is consumed by exactly one consumer in a group
+1. Each assigned partition is consumed by at most one consumer in a group
 2. A consumer can consume from multiple partitions
-3. Maximum parallelism equals the number of partitions
+3. Maximum parallelism for a topic equals its number of partitions
 4. Consumers across different groups read independently
 
 ## Basic Consumer Group Setup
@@ -210,7 +210,7 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 
 ### Cooperative Sticky Assignor
 
-Incremental rebalancing without stop-the-world behavior.
+Incremental rebalancing that reduces stop-the-world partition revocation.
 
 ```java
 props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
@@ -233,6 +233,7 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
 import java.util.*;
 
 public class RebalanceAwareConsumer {
@@ -367,11 +368,10 @@ class RebalanceAwareConsumer:
         offsets_to_commit = []
         for p in partitions:
             key = (p.topic, p.partition)
-            if key in self.current_offsets and self.current_offsets[key]:
+            offset = self.current_offsets.pop(key, None)
+            if offset is not None:
                 offsets_to_commit.append(
-                    TopicPartition(p.topic, p.partition,
-                                  self.current_offsets[key] + 1))
-                del self.current_offsets[key]
+                    TopicPartition(p.topic, p.partition, offset + 1))
 
         if offsets_to_commit:
             consumer.commit(offsets=offsets_to_commit, asynchronous=False)
@@ -492,6 +492,9 @@ spec:
             - name: INSTANCE_ID
               valueFrom:
                 fieldRef:
+                  # For static membership across restarts, prefer a StatefulSet
+                  # or another stable per-replica ID; Deployment Pod names
+                  # change when Pods are replaced.
                   fieldPath: metadata.name
           resources:
             requests:
@@ -547,16 +550,17 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 
 public class ConsumerGroupMonitor {
-    private final AdminClient admin;
+    private final Admin admin;
 
     public ConsumerGroupMonitor(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.admin = AdminClient.create(props);
+        this.admin = Admin.create(props);
     }
 
     public void describeGroup(String groupId) throws Exception {
@@ -568,7 +572,7 @@ public class ConsumerGroupMonitor {
             describeResult.describedGroups().get(groupId).get();
 
         System.out.println("Group ID: " + description.groupId());
-        System.out.println("State: " + description.state());
+        System.out.println("State: " + description.groupState());
         System.out.println("Coordinator: " + description.coordinator());
         System.out.println("Assignment Strategy: " +
             description.partitionAssignor());
@@ -602,7 +606,11 @@ public class ConsumerGroupMonitor {
 
         System.out.println("\nConsumer Lag:");
         for (TopicPartition tp : partitions) {
-            long committed = offsets.get(tp).offset();
+            OffsetAndMetadata committedOffset = offsets.get(tp);
+            if (committedOffset == null) {
+                continue;
+            }
+            long committed = committedOffset.offset();
             long end = endOffsets.get(tp).offset();
             long lag = end - committed;
             System.out.printf("  %s: committed=%d, end=%d, lag=%d%n",

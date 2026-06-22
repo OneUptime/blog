@@ -231,7 +231,7 @@ resource "aws_route_table_association" "private" {
   count = local.az_count
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private[var.single_nat_gateway ? 0 : count.index].id
+  route_table_id = aws_route_table.private[var.enable_nat_gateway && !var.single_nat_gateway ? count.index : 0].id
 }
 
 # Data Route Tables (same as private)
@@ -239,7 +239,7 @@ resource "aws_route_table_association" "data" {
   count = local.az_count
 
   subnet_id      = aws_subnet.data[count.index].id
-  route_table_id = aws_route_table.private[var.single_nat_gateway ? 0 : count.index].id
+  route_table_id = aws_route_table.private[var.enable_nat_gateway && !var.single_nat_gateway ? count.index : 0].id
 }
 ```
 
@@ -417,7 +417,7 @@ data "aws_region" "current" {}
 
 ## VPC Peering
 
-Connect two VPCs for private communication.
+Create a peering connection and add routes from this VPC to the peer VPC. Add reciprocal routes in the peer VPC route tables for two-way private communication.
 
 ```hcl
 # Peering connection
@@ -449,7 +449,7 @@ resource "aws_vpc_peering_connection_accepter" "peer" {
 resource "aws_route" "peer_private" {
   count = local.az_count
 
-  route_table_id            = aws_route_table.private[count.index].id
+  route_table_id            = aws_route_table.private[var.enable_nat_gateway && !var.single_nat_gateway ? count.index : 0].id
   destination_cidr_block    = var.peer_vpc_cidr
   vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
 }
@@ -459,7 +459,7 @@ data "aws_caller_identity" "current" {}
 
 ## Transit Gateway
 
-For connecting multiple VPCs and on-premises networks.
+For connecting multiple VPCs and on-premises networks. Add routes in the attached VPC subnet route tables to send target CIDRs to the Transit Gateway.
 
 ```hcl
 # Transit Gateway

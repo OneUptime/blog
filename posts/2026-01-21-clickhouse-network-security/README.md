@@ -24,11 +24,11 @@ Securing network access to ClickHouse is critical for protecting your data. This
     <listen_host>127.0.0.1</listen_host>
     <listen_host>::1</listen_host>
 
-    <!-- Disable external access ports -->
-    <!-- <http_port>8123</http_port> -->
+    <!-- Disable external access ports from the default config -->
+    <http_port remove="remove"/>
     <https_port>8443</https_port>
 
-    <!-- <tcp_port>9000</tcp_port> -->
+    <tcp_port remove="remove"/>
     <tcp_port_secure>9440</tcp_port_secure>
 </clickhouse>
 ```
@@ -80,6 +80,7 @@ iptables -A INPUT -p tcp --dport 8443 -j DROP
 
 # Allow cluster communication
 iptables -A INPUT -p tcp -s 10.0.1.0/24 --dport 9009 -j ACCEPT
+iptables -A INPUT -p tcp --dport 9009 -j DROP
 ```
 
 ### Cloud Security Groups (AWS)
@@ -120,9 +121,11 @@ iptables -A INPUT -p tcp -s 10.0.1.0/24 --dport 9009 -j ACCEPT
 # Create VPC endpoint for ClickHouse Cloud
 aws ec2 create-vpc-endpoint \
     --vpc-id vpc-xxx \
+    --vpc-endpoint-type Interface \
     --service-name com.amazonaws.vpce.us-east-1.vpce-svc-xxx \
     --subnet-ids subnet-xxx \
-    --security-group-ids sg-xxx
+    --security-group-ids sg-xxx \
+    --no-private-dns-enabled
 ```
 
 ### Network Architecture

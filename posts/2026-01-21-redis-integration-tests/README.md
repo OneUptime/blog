@@ -214,19 +214,22 @@ def cluster_test_key():
 # tests/test_pubsub.py
 import pytest
 import threading
-import time
 
 class TestPubSub:
     def test_publish_subscribe(self, redis_client):
         """Test basic pub/sub functionality."""
         received_messages = []
         channel = "test_channel"
+        ready = threading.Event()
 
         def subscriber():
             pubsub = redis_client.pubsub()
             pubsub.subscribe(channel)
 
             for message in pubsub.listen():
+                if message['type'] == 'subscribe':
+                    ready.set()
+                    continue
                 if message['type'] == 'message':
                     received_messages.append(message['data'])
                     if len(received_messages) >= 3:
@@ -235,11 +238,10 @@ class TestPubSub:
             pubsub.close()
 
         # Start subscriber in background
-        sub_thread = threading.Thread(target=subscriber)
+        sub_thread = threading.Thread(target=subscriber, daemon=True)
         sub_thread.start()
 
-        # Give subscriber time to connect
-        time.sleep(0.1)
+        assert ready.wait(timeout=2), "Subscriber did not subscribe in time"
 
         # Publish messages
         for i in range(3):
@@ -252,6 +254,7 @@ class TestPubSub:
     def test_pattern_subscribe(self, redis_client):
         """Test pattern-based subscription."""
         received = []
+        ready = threading.Event()
 
         def subscriber():
             pubsub = redis_client.pubsub()
@@ -259,6 +262,9 @@ class TestPubSub:
 
             count = 0
             for message in pubsub.listen():
+                if message['type'] == 'psubscribe':
+                    ready.set()
+                    continue
                 if message['type'] == 'pmessage':
                     received.append({
                         'channel': message['channel'],
@@ -270,9 +276,9 @@ class TestPubSub:
 
             pubsub.close()
 
-        sub_thread = threading.Thread(target=subscriber)
+        sub_thread = threading.Thread(target=subscriber, daemon=True)
         sub_thread.start()
-        time.sleep(0.1)
+        assert ready.wait(timeout=2), "Pattern subscriber did not subscribe in time"
 
         redis_client.publish("events:user:created", "user_1")
         redis_client.publish("events:order:placed", "order_1")
@@ -678,10 +684,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -698,7 +704,9 @@ jobs:
           pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ### GitLab CI
@@ -728,7 +736,7 @@ Effective Redis integration testing requires:
 
 Key takeaways:
 
-- Use **database isolation** or **key prefixes** for parallel test execution
+- Use **per-worker database isolation** or **per-test key prefixes** for parallel test execution
 - Use **Testcontainers** for realistic integration tests
 - Use **mocks** (fakeredis, ioredis-mock) for fast unit tests
 - Always **clean up** after tests

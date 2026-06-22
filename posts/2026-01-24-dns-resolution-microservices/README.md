@@ -28,9 +28,9 @@ flowchart TD
     subgraph "DNS Resolution Chain"
         D --> E{Is it a cluster service?}
         E -->|Yes| F[Return ClusterIP]
-        E -->|No| G{Is it a local domain?}
-        G -->|Yes| H[Query upstream DNS]
-        G -->|No| I[Return NXDOMAIN]
+        E -->|No| G{Matches cluster domain?}
+        G -->|Yes| I[Return NXDOMAIN]
+        G -->|No| H[Query upstream DNS]
         H --> J[External DNS Server]
     end
 
@@ -80,14 +80,14 @@ class DNSErrorAnalyzer:
     """
 
     ERROR_PATTERNS = {
-        r"NXDOMAIN": DNSErrorType.NXDOMAIN,
+        r"nxdomain": DNSErrorType.NXDOMAIN,
         r"name.*not.*found": DNSErrorType.NXDOMAIN,
         r"no such host": DNSErrorType.NXDOMAIN,
         r"timeout": DNSErrorType.TIMEOUT,
         r"timed out": DNSErrorType.TIMEOUT,
-        r"SERVFAIL": DNSErrorType.SERVFAIL,
+        r"servfail": DNSErrorType.SERVFAIL,
         r"server failure": DNSErrorType.SERVFAIL,
-        r"REFUSED": DNSErrorType.REFUSED,
+        r"refused": DNSErrorType.REFUSED,
         r"connection refused": DNSErrorType.REFUSED,
         r"network.*unreachable": DNSErrorType.NETWORK_ERROR,
         r"no route to host": DNSErrorType.NETWORK_ERROR,
@@ -107,7 +107,7 @@ class DNSErrorAnalyzer:
                 "Use fully qualified name: <service>.<namespace>.svc.cluster.local",
                 "Check service name spelling in application config",
                 "Verify pod's /etc/resolv.conf has correct search domains",
-                "Check if service endpoints exist: kubectl get endpoints <name>"
+                "Check if service endpoints exist: kubectl get endpointslice -n <namespace> -l kubernetes.io/service-name=<name>"
             ]
         },
         DNSErrorType.TIMEOUT: {
@@ -284,13 +284,13 @@ check_coredns_service() {
         return 1
     fi
 
-    # Check endpoints
-    local endpoints=$(kubectl get endpoints kube-dns -n kube-system -o jsonpath='{.subsets[*].addresses[*].ip}')
+    # Check EndpointSlices
+    local endpoints=$(kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns -o jsonpath='{.items[*].endpoints[*].addresses[*]}')
 
     if [ -n "$endpoints" ]; then
-        print_success "CoreDNS endpoints: $endpoints"
+        print_success "CoreDNS EndpointSlice addresses: $endpoints"
     else
-        print_error "No CoreDNS endpoints found!"
+        print_error "No CoreDNS EndpointSlice addresses found!"
     fi
 }
 
@@ -373,7 +373,7 @@ spec:
     # This reduces DNS queries for external domains
     - name: ndots
       value: "2"
-    # Enable single-request to reduce query count
+    # Reopen the socket between A and AAAA queries for compatibility with some resolvers
     - name: single-request-reopen
     # Set timeout for faster failover
     - name: timeout
@@ -416,7 +416,7 @@ class DNSCache:
     Thread-safe DNS cache for applications.
 
     Reduces DNS queries by caching resolved addresses.
-    Implements automatic expiration and background refresh.
+    Implements automatic expiration.
     """
 
     def __init__(
@@ -533,7 +533,7 @@ class DNSCache:
                 key=lambda x: x[1].timestamp
             )
             # Remove oldest 10%
-            to_remove = len(sorted_entries) // 10
+            to_remove = max(1, len(sorted_entries) // 10)
             for hostname, _ in sorted_entries[:to_remove]:
                 del self._cache[hostname]
 
@@ -730,6 +730,7 @@ class DNSHealthMonitor:
         self._hostnames: List[str] = []
         self._results: Dict[str, List[DNSHealthResult]] = {}
         self._callbacks: List[Callable[[str, bool], None]] = []
+        self._last_health: Dict[str, bool] = {}
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.RLock()
@@ -747,6 +748,7 @@ class DNSHealthMonitor:
             if hostname in self._hostnames:
                 self._hostnames.remove(hostname)
                 self._results.pop(hostname, None)
+                self._last_health.pop(hostname, None)
 
     def add_callback(self, callback: Callable[[str, bool], None]) -> None:
         """Add callback for health state changes."""
@@ -867,7 +869,12 @@ class DNSHealthMonitor:
                     # Check for state changes
                     summary = self.get_health_summary(hostname)
                     if summary:
-                        self._notify_callbacks(hostname, summary.is_healthy)
+                        with self._lock:
+                            previous_health = self._last_health.get(hostname)
+                            self._last_health[hostname] = summary.is_healthy
+
+                        if previous_health is None or previous_health != summary.is_healthy:
+                            self._notify_callbacks(hostname, summary.is_healthy)
 
                 except Exception as e:
                     logger.error(f"Health check failed for {hostname}: {e}")
@@ -983,7 +990,7 @@ spec:
 
 ## Best Practices
 
-1. **Use fully qualified domain names** - Always use complete names like `service.namespace.svc.cluster.local` for clarity and faster resolution.
+1. **Use fully qualified domain names** - Use complete names like `service.namespace.svc.cluster.local` for clarity and reliable cross-namespace resolution.
 
 2. **Configure ndots appropriately** - Set ndots to 2 for most applications to reduce unnecessary DNS queries.
 

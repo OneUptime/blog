@@ -16,8 +16,8 @@ Choosing between Apache Kafka and AWS Kinesis is a critical decision for streami
 |---------|-------------|-------------|
 | Type | Self-hosted or managed | Fully managed |
 | Throughput | Unlimited (depends on cluster) | 1 MB/s or 1000 records/s per shard |
-| Retention | Configurable (unlimited with tiered storage) | 24 hours to 365 days |
-| Latency | Sub-millisecond | 200ms+ typical |
+| Retention | Configurable (extended with tiered storage) | 24 hours to 365 days |
+| Latency | Low milliseconds (workload dependent) | Milliseconds to seconds, depending on consumers |
 | Ordering | Per partition | Per shard |
 | Pricing | Infrastructure cost | Pay per shard + data |
 
@@ -105,8 +105,7 @@ public class KafkaProducerExample {
 import software.amazon.awssdk.services.kinesis.*;
 import software.amazon.awssdk.services.kinesis.model.*;
 import software.amazon.awssdk.core.SdkBytes;
-
-import java.util.*;
+import software.amazon.awssdk.regions.Region;
 
 public class KinesisProducerExample {
 
@@ -141,9 +140,10 @@ public class KinesisProducerExample {
 ### Kinesis with KPL (High Throughput)
 
 ```java
-import com.amazonaws.services.kinesis.producer.*;
+import software.amazon.kinesis.producer.*;
+import com.google.common.util.concurrent.*;
 import java.nio.ByteBuffer;
-import java.util.concurrent.*;
+import java.nio.charset.StandardCharsets;
 
 public class KinesisKPLExample {
 
@@ -159,14 +159,14 @@ public class KinesisKPLExample {
         String streamName = "my-stream";
 
         for (int i = 0; i < 100000; i++) {
-            ByteBuffer data = ByteBuffer.wrap(("value-" + i).getBytes());
+            ByteBuffer data = ByteBuffer.wrap(("value-" + i).getBytes(StandardCharsets.UTF_8));
 
-            ListenableFuture<UserRecordResult> future =
+            ListenableFuture<PutRecordResult> future =
                 producer.addUserRecord(streamName, "key-" + i, data);
 
-            Futures.addCallback(future, new FutureCallback<UserRecordResult>() {
+            Futures.addCallback(future, new FutureCallback<PutRecordResult>() {
                 @Override
-                public void onSuccess(UserRecordResult result) {
+                public void onSuccess(PutRecordResult result) {
                     System.out.printf("Sent to shard %s%n", result.getShardId());
                 }
 
@@ -225,18 +225,29 @@ public class KafkaConsumerExample {
 ### Kinesis Consumer (KCL)
 
 ```java
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
+import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient;
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
+import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
+import software.amazon.kinesis.common.ConfigsBuilder;
 import software.amazon.kinesis.coordinator.*;
-import software.amazon.kinesis.lifecycle.*;
+import software.amazon.kinesis.lifecycle.events.*;
 import software.amazon.kinesis.processor.*;
 import software.amazon.kinesis.retrieval.*;
+import software.amazon.kinesis.retrieval.polling.PollingConfig;
 
 public class KinesisKCLExample {
 
     public static void main(String[] args) {
+        String streamName = "my-stream";
+        KinesisAsyncClient kinesisClient = KinesisAsyncClient.create();
+
         ConfigsBuilder configsBuilder = new ConfigsBuilder(
-            "my-stream",
+            streamName,
             "my-application",
-            KinesisAsyncClient.create(),
+            kinesisClient,
             DynamoDbAsyncClient.create(),
             CloudWatchAsyncClient.create(),
             UUID.randomUUID().toString(),
@@ -251,6 +262,7 @@ public class KinesisKCLExample {
             configsBuilder.metricsConfig(),
             configsBuilder.processorConfig(),
             configsBuilder.retrievalConfig()
+                .retrievalSpecificConfig(new PollingConfig(streamName, kinesisClient))
         );
 
         Thread schedulerThread = new Thread(scheduler);
@@ -266,18 +278,20 @@ class RecordProcessorFactory implements ShardRecordProcessorFactory {
 }
 
 class RecordProcessor implements ShardRecordProcessor {
+    private String shardId;
 
     @Override
     public void initialize(InitializationInput input) {
+        shardId = input.shardId();
         System.out.println("Initializing shard: " + input.shardId());
     }
 
     @Override
     public void processRecords(ProcessRecordsInput input) {
         input.records().forEach(record -> {
-            String data = new String(record.data().array());
+            String data = StandardCharsets.UTF_8.decode(record.data()).toString();
             System.out.printf("Shard %s, Sequence %s, Data %s%n",
-                input.shardId(), record.sequenceNumber(), data);
+                shardId, record.sequenceNumber(), data);
         });
 
         // Checkpoint
@@ -389,7 +403,7 @@ def kinesis_producer():
         response = kinesis.put_record(
             StreamName=stream_name,
             PartitionKey=f'key-{i}',
-            Data=f'value-{i}'
+            Data=f'value-{i}'.encode('utf-8')
         )
         print(f"Sent to shard {response['ShardId']}, "
               f"sequence {response['SequenceNumber']}")
@@ -445,7 +459,7 @@ Per shard (provisioned):
 - $0.015/hour = ~$11/shard/month
 - PUT payload unit: $0.014 per 1M units
 
-Example (10 shards, 100M records/month):
+Example (10 shards, 100M records/month at 25 KB or less per record):
 - Shard hours: $110/month
 - PUT units: $1.40/month
 - Data retrieval: Variable
@@ -488,7 +502,7 @@ Kinesis:
 ```text
 Kafka:
 - Configurable retention (time or size based)
-- Tiered storage for unlimited retention
+- Tiered storage for extended retention
 - Compacted topics for key-based retention
 
 Kinesis:
@@ -514,7 +528,7 @@ Kinesis:
 ## When to Choose Kafka
 
 1. **High throughput needs**: Millions of messages per second
-2. **Low latency requirements**: Sub-millisecond latency
+2. **Low latency requirements**: Low millisecond latency
 3. **Long retention**: Need to store data for extended periods
 4. **Complex processing**: Kafka Streams or KSQL
 5. **Multi-cloud or on-premise**: Avoid vendor lock-in
@@ -552,7 +566,7 @@ def kafka_to_kinesis_bridge():
         if msg and not msg.error():
             kinesis.put_record(
                 StreamName='target-stream',
-                PartitionKey=msg.key() or 'default',
+                PartitionKey=(msg.key() or b'default').decode('utf-8'),
                 Data=msg.value()
             )
 ```
@@ -568,7 +582,14 @@ def kinesis_to_kafka_bridge():
     kinesis = boto3.client('kinesis')
     producer = Producer({'bootstrap.servers': 'kafka:9092'})
 
-    shard_iterator = get_shard_iterator(kinesis, 'source-stream')
+    response = kinesis.describe_stream(StreamName='source-stream')
+    shard_id = response['StreamDescription']['Shards'][0]['ShardId']
+    iterator_response = kinesis.get_shard_iterator(
+        StreamName='source-stream',
+        ShardId=shard_id,
+        ShardIteratorType='TRIM_HORIZON'
+    )
+    shard_iterator = iterator_response['ShardIterator']
 
     while True:
         response = kinesis.get_records(ShardIterator=shard_iterator)
@@ -579,7 +600,7 @@ def kinesis_to_kafka_bridge():
                 value=record['Data']
             )
 
-        producer.flush()
+        producer.poll(0)
         shard_iterator = response['NextShardIterator']
 ```
 

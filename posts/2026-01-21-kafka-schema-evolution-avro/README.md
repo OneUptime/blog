@@ -22,7 +22,7 @@ Schema evolution allows you to change message schemas over time without breaking
 ### Avro Benefits
 
 - **Compact binary format**: Efficient serialization
-- **Schema included**: Self-describing messages
+- **Schema ID included**: Kafka messages include a schema ID that resolves to the schema in Schema Registry
 - **Rich type system**: Primitives, complex types, logical types
 - **Schema evolution**: Built-in compatibility rules
 
@@ -39,13 +39,15 @@ services:
     container_name: kafka
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
@@ -69,8 +71,11 @@ services:
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | BACKWARD | New schema can read old data | Consumer upgrades first |
+| BACKWARD_TRANSITIVE | New schema can read all previous data | Long-lived topics with many schema versions |
 | FORWARD | Old schema can read new data | Producer upgrades first |
+| FORWARD_TRANSITIVE | All previous schemas can read new data | Strict producer-first rollouts |
 | FULL | Both backward and forward | Maximum flexibility |
+| FULL_TRANSITIVE | Both backward and forward across all previous versions | Maximum flexibility across all versions |
 | NONE | No compatibility checking | Development only |
 
 ### Setting Compatibility
@@ -101,7 +106,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
     {"name": "orderId", "type": "string"},
     {"name": "customerId", "type": "string"},
     {"name": "amount", "type": "double"},
-    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
   ]
 }
 ```
@@ -117,7 +122,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
     {"name": "orderId", "type": "string"},
     {"name": "customerId", "type": "string"},
     {"name": "amount", "type": "double"},
-    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
     {"name": "currency", "type": ["null", "string"], "default": null},
     {"name": "notes", "type": ["null", "string"], "default": null}
   ]
@@ -181,7 +186,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
     <dependency>
         <groupId>org.apache.avro</groupId>
         <artifactId>avro</artifactId>
-        <version>1.11.3</version>
+        <version>1.11.4</version>
     </dependency>
 </dependencies>
 
@@ -265,7 +270,7 @@ public class AvroProducer {
 
     public static void main(String[] args) {
         AvroProducer producer = new AvroProducer(
-            "localhost:9092",
+            "localhost:29092",
             "http://localhost:8081"
         );
 
@@ -337,7 +342,7 @@ public class AvroConsumer {
 
     public static void main(String[] args) {
         AvroConsumer consumer = new AvroConsumer(
-            "localhost:9092",
+            "localhost:29092",
             "http://localhost:8081",
             "order-consumer"
         );
@@ -468,7 +473,7 @@ class AvroProducer:
 
 def main():
     producer = AvroProducer(
-        'localhost:9092',
+        'localhost:29092',
         'http://localhost:8081'
     )
 
@@ -564,7 +569,7 @@ class AvroConsumer:
 
 def main():
     consumer = AvroConsumer(
-        'localhost:9092',
+        'localhost:29092',
         'http://localhost:8081',
         'order-consumer'
     )
@@ -580,7 +585,7 @@ if __name__ == '__main__':
 
 ### Adding a Field (Backward Compatible)
 
-```json
+```jsonc
 // Version 1
 {
   "type": "record",
@@ -605,7 +610,7 @@ if __name__ == '__main__':
 
 ### Removing a Field (Forward Compatible)
 
-```json
+```jsonc
 // Version 1 - Has status field
 {
   "type": "record",
@@ -643,7 +648,7 @@ if __name__ == '__main__':
 
 ### Changing Field Type (Widening)
 
-```json
+```jsonc
 // Version 1 - int
 {
   "type": "record",
@@ -707,7 +712,7 @@ curl -X DELETE http://localhost:8081/subjects/orders-value/versions/1?permanent=
 
 ### 1. Always Use Defaults for New Fields
 
-```json
+```jsonc
 // Good - has default
 {"name": "currency", "type": ["null", "string"], "default": null}
 
@@ -717,19 +722,19 @@ curl -X DELETE http://localhost:8081/subjects/orders-value/versions/1?permanent=
 
 ### 2. Never Remove Required Fields
 
-```json
+```jsonc
 // Only remove fields that had defaults
 // Keep required fields forever or use aliases
 ```
 
 ### 3. Use Namespaces
 
-```json
+```jsonc
 {
   "type": "record",
   "name": "Order",
   "namespace": "com.example.orders.v1",
-  "fields": [...]
+  "fields": []
 }
 ```
 
@@ -750,9 +755,10 @@ curl -X DELETE http://localhost:8081/subjects/orders-value/versions/1?permanent=
 ### 5. Test Compatibility Before Deploying
 
 ```bash
-# Always check compatibility before registering
+# Always check compatibility before registering. The file must contain a
+# Schema Registry request object such as {"schema": "{\"type\":\"record\",...}"}.
 curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data @new-schema.json \
+  --data @compatibility-request.json \
   http://localhost:8081/compatibility/subjects/orders-value/versions/latest
 ```
 

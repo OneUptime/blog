@@ -324,7 +324,7 @@ func main() {
 
 ## Configuring CloudWatch Alarms
 
-Set up monitoring and alerting for your Redis cluster:
+Set up monitoring and alerting for your Redis cluster. Create node-level alarms for each cache cluster ID in the replication group:
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "redis_cpu" {
@@ -340,7 +340,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_cpu" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    CacheClusterId = aws_elasticache_replication_group.redis.id
+    CacheClusterId = "my-redis-cluster-001"
   }
 }
 
@@ -357,7 +357,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_memory" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    CacheClusterId = aws_elasticache_replication_group.redis.id
+    CacheClusterId = "my-redis-cluster-001"
   }
 }
 
@@ -374,7 +374,7 @@ resource "aws_cloudwatch_metric_alarm" "redis_connections" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    CacheClusterId = aws_elasticache_replication_group.redis.id
+    CacheClusterId = "my-redis-cluster-001"
   }
 }
 ```
@@ -391,39 +391,73 @@ resource "aws_elasticache_replication_group" "redis" {
 
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
-  auth_token                 = var.redis_auth_token  # Required with transit encryption
+  auth_token                 = var.redis_auth_token  # Required when using Redis AUTH
 }
 ```
 
 ### 2. Use IAM Authentication (Redis 7.0+)
 
 ```python
-import boto3
+from urllib.parse import ParseResult, urlencode, urlunparse
+
+import botocore.session
 import redis
+from botocore.model import ServiceId
+from botocore.signers import RequestSigner
+
+
+def generate_iam_auth_token(user_id, replication_group_id, region):
+    session = botocore.session.get_session()
+    request_signer = RequestSigner(
+        ServiceId("elasticache"),
+        region,
+        "elasticache",
+        "v4",
+        session.get_credentials(),
+        session.get_component("event_emitter"),
+    )
+
+    url = urlunparse(
+        ParseResult(
+            scheme="https",
+            netloc=replication_group_id,
+            path="/",
+            params="",
+            query=urlencode({"Action": "connect", "User": user_id}),
+            fragment="",
+        )
+    )
+
+    signed_url = request_signer.generate_presigned_url(
+        {"method": "GET", "url": url, "body": {}, "headers": {}, "context": {}},
+        operation_name="connect",
+        expires_in=900,
+        region_name=region,
+    )
+    return signed_url.removeprefix("https://")
+
 
 def get_redis_with_iam():
-    session = boto3.Session()
-    credentials = session.get_credentials()
-
-    # Generate IAM auth token
-    client = boto3.client('elasticache')
-    token = client.generate_auth_token(
-        CacheClusterId='my-redis-cluster',
-        AuthTokenEnabled=True
+    user_id = "iam-user-01"
+    token = generate_iam_auth_token(
+        user_id=user_id,
+        replication_group_id="my-redis-cluster",
+        region="us-east-1",
     )
 
     return redis.Redis(
         host='my-redis-cluster.xxxxx.use1.cache.amazonaws.com',
         port=6379,
+        username=user_id,
         password=token,
         ssl=True,
         decode_responses=True
     )
 ```
 
-### 3. VPC Endpoints
+### 3. VPC Endpoints for API Access
 
-Use VPC endpoints for secure, private connectivity:
+Use VPC endpoints for secure, private connectivity to the ElastiCache API. Application traffic to Redis uses the cache endpoints in your VPC:
 
 ```hcl
 resource "aws_vpc_endpoint" "elasticache" {
@@ -507,10 +541,10 @@ resource "aws_elasticache_parameter_group" "optimized" {
     value = "300"
   }
 
-  # Persistence (if needed)
+  # Slow command visibility
   parameter {
-    name  = "appendonly"
-    value = "yes"
+    name  = "slowlog-log-slower-than"
+    value = "10000"
   }
 
   # Performance tuning

@@ -15,9 +15,9 @@ Logstash is a powerful data processing pipeline that ingests, transforms, and ou
 ### Debian/Ubuntu
 
 ```bash
-wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
-sudo apt update && sudo apt install logstash
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elastic-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/elastic-keyring.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-9.x.list
+sudo apt-get update && sudo apt-get install logstash
 ```
 
 ### Docker
@@ -27,7 +27,7 @@ docker run -d \
   --name logstash \
   -v $(pwd)/pipeline:/usr/share/logstash/pipeline \
   -v $(pwd)/config:/usr/share/logstash/config \
-  docker.elastic.co/logstash/logstash:8.11.0
+  docker.elastic.co/logstash/logstash:9.4.2
 ```
 
 ## Basic Pipeline Structure
@@ -56,10 +56,11 @@ output {
 input {
   beats {
     port => 5044
-    ssl => true
+    ssl_enabled => true
     ssl_certificate => "/etc/logstash/certs/logstash.crt"
     ssl_key => "/etc/logstash/certs/logstash.key"
     ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
+    ssl_client_authentication => "required"
   }
 }
 ```
@@ -235,14 +236,18 @@ filter {
 ### Java/Spring Boot Logs
 
 ```ruby
-filter {
-  # Handle multiline
-  multiline {
-    pattern => "^%{TIMESTAMP_ISO8601}"
-    negate => true
-    what => "previous"
+input {
+  file {
+    path => "/var/log/app/application.log"
+    codec => multiline {
+      pattern => "^%{TIMESTAMP_ISO8601}"
+      negate => true
+      what => "previous"
+    }
   }
+}
 
+filter {
   grok {
     match => {
       "message" => "%{TIMESTAMP_ISO8601:timestamp}\s+%{LOGLEVEL:level}\s+%{NUMBER:pid}\s+---\s+\[%{DATA:thread}\]\s+%{DATA:logger}\s+:\s+%{GREEDYDATA:log_message}"
@@ -291,7 +296,7 @@ filter {
 filter {
   grok {
     match => {
-      "message" => "%{DATESTAMP:timestamp} \[%{LOGLEVEL:level}\] %{POSINT:pid}#%{NUMBER:tid}: (\*%{NUMBER:connection_id} )?%{GREEDYDATA:error_message}"
+      "message" => "(?<timestamp>%{YEAR}/%{MONTHNUM}/%{MONTHDAY} %{TIME}) \[%{LOGLEVEL:level}\] %{POSINT:pid}#%{NUMBER:tid}: (\*%{NUMBER:connection_id} )?%{GREEDYDATA:error_message}"
     }
   }
 
@@ -564,9 +569,6 @@ filter {
       source => "client_ip"
       target => "geoip"
       database => "/etc/logstash/GeoLite2-City.mmdb"
-      add_field => {
-        "[geoip][coordinates]" => "%{[geoip][longitude]},%{[geoip][latitude]}"
-      }
     }
   }
 }
@@ -597,11 +599,12 @@ output {
     hosts => ["https://es1:9200", "https://es2:9200"]
     user => "logstash_internal"
     password => "${ES_PASSWORD}"
-    ssl => true
-    cacert => "/etc/logstash/certs/ca.crt"
+    ssl_enabled => true
+    ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
 
     # Dynamic index
     index => "logs-%{[service]}-%{+YYYY.MM.dd}"
+    ilm_enabled => false
 
     # Ingest pipeline
     pipeline => "logs-enrich-pipeline"
@@ -610,8 +613,7 @@ output {
     routing => "%{[tenant_id]}"
 
     # Performance
-    bulk_max_size => 1000
-    flush_size => 500
+    compression_level => 1
   }
 }
 ```
@@ -624,6 +626,7 @@ output {
   elasticsearch {
     hosts => ["https://elasticsearch:9200"]
     index => "logs-%{+YYYY.MM.dd}"
+    ilm_enabled => false
   }
 
   # Archive to S3

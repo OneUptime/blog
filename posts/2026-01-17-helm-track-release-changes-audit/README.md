@@ -141,13 +141,14 @@ spec:
             - |
               # Capture current state
               TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+              AUDIT_ID=$(date -u +"%Y%m%d%H%M%S")
               
               # Log audit event
               cat <<EOF | kubectl apply -f -
               apiVersion: v1
               kind: ConfigMap
               metadata:
-                name: audit-{{ .Release.Name }}-pre-${TIMESTAMP//[:.]/}
+                name: audit-{{ .Release.Name }}-pre-${AUDIT_ID}
                 namespace: {{ .Release.Namespace }}
                 labels:
                   audit-type: pre-upgrade
@@ -331,8 +332,9 @@ data:
         Match           helm.audit.*
         Host            elasticsearch.logging.svc.cluster.local
         Port            9200
-        Index           helm-audit
-        Type            _doc
+        Logstash_Format On
+        Logstash_Prefix helm-audit
+        Suppress_Type_Name On
   
   parsers.conf: |
     [PARSER]
@@ -385,6 +387,9 @@ on:
       - 'charts/**'
       - 'environments/**'
 
+permissions:
+  contents: write
+
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -403,6 +408,7 @@ jobs:
           CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E "^(charts|environments)/" || true)
           
           # Create audit record
+          mkdir -p audit-records
           cat > audit-records/${TIMESTAMP//[:.]/}-${COMMIT_SHA:0:7}.json << EOF
           {
             "timestamp": "${TIMESTAMP}",

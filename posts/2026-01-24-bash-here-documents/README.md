@@ -16,7 +16,7 @@ Here documents (heredocs) are a powerful Bash feature that allows you to embed m
 
 ### Standard Here Document
 
-A here document starts with `<<` followed by a delimiter, includes your content, and ends with the delimiter on its own line.
+A here document starts with `<<` followed by a delimiter, includes your content, and ends with the delimiter on its own line with no trailing blanks.
 
 ```bash
 #!/bin/bash
@@ -233,7 +233,7 @@ EOF
 
 ## Here Strings
 
-Here strings (`<<<`) provide a simpler syntax for single-line input.
+Here strings (`<<<`) provide a simpler syntax for short string input.
 
 ```bash
 #!/bin/bash
@@ -266,7 +266,7 @@ flowchart LR
     end
 
     subgraph "Here String"
-        C["<<< \"text\""] --> D[Single-line input]
+        C["<<< \"text\""] --> D[Single string input]
     end
 
     B --> E[stdin of command]
@@ -517,9 +517,9 @@ Replace old with new
 EOF
 
 # Parse structured data
-cat <<EOF | while IFS=':' read -r name value; do
+while IFS=':' read -r name value; do
     echo "Name: $name, Value: $value"
-done
+done <<EOF
 username:alice
 email:alice@example.com
 role:admin
@@ -752,7 +752,7 @@ deploy() {
     # Install dependencies
     if [ -f "package.json" ]; then
         log "Installing Node.js dependencies..."
-        npm ci --production
+        npm ci --omit=dev
     elif [ -f "requirements.txt" ]; then
         log "Installing Python dependencies..."
         pip install -r requirements.txt
@@ -784,6 +784,8 @@ rollback() {
 }
 
 main() {
+    mkdir -p "\$(dirname "\$LOG_FILE")"
+
     case "\${1:-deploy}" in
         deploy)
             backup_current

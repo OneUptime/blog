@@ -77,18 +77,18 @@ subctl join --kubeconfig ~/.kube/config-cluster-a \
   broker-info.subm \
   --clusterid cluster-a \
   --cable-driver libreswan \
-  --health-check-enabled \
-  --pod-cidr 10.244.0.0/16 \
-  --service-cidr 10.96.0.0/12
+  --health-check=true \
+  --clustercidr 10.244.0.0/16 \
+  --servicecidr 10.96.0.0/16
 
 # Join Cluster B
 subctl join --kubeconfig ~/.kube/config-cluster-b \
   broker-info.subm \
   --clusterid cluster-b \
   --cable-driver libreswan \
-  --health-check-enabled \
-  --pod-cidr 10.245.0.0/16 \
-  --service-cidr 10.97.0.0/12
+  --health-check=true \
+  --clustercidr 10.245.0.0/16 \
+  --servicecidr 10.97.0.0/16
 
 # Note: Pod and Service CIDRs must not overlap between clusters
 ```
@@ -143,7 +143,13 @@ metadata:
   name: frontend
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
         - name: frontend
@@ -171,14 +177,24 @@ spec:
       multiCluster:
         clusterName: cluster-a
       network: network1
+      externalIstiod: true
 EOF
 
-# Create cross-network gateway
-kubectl --context=cluster-a apply -f samples/multicluster/expose-istiod.yaml
+# Install an east-west gateway and expose the primary control plane
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | \
+  istioctl --context=cluster-a install -y -f -
+kubectl --context=cluster-a apply -n istio-system \
+  -f samples/multicluster/expose-istiod.yaml
 
-# Enable API server access from remote cluster
-istioctl x create-remote-secret --context=cluster-a \
-  --name=cluster-a | kubectl apply -f - --context=cluster-b
+# Identify the primary control plane for the remote cluster
+kubectl --context=cluster-b create namespace istio-system
+kubectl --context=cluster-b annotate namespace istio-system \
+  topology.istio.io/controlPlaneClusters=cluster-a
+
+# Get the primary cluster's east-west gateway address
+export DISCOVERY_ADDRESS=$(kubectl --context=cluster-a \
+  -n istio-system get svc istio-eastwestgateway \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Install Istio on remote cluster
 istioctl install --context=cluster-b -f - <<EOF
@@ -187,19 +203,27 @@ kind: IstioOperator
 spec:
   profile: remote
   values:
+    istiodRemote:
+      injectionPath: /inject/cluster/cluster-b/net/network1
     global:
-      meshID: mesh1
-      multiCluster:
-        clusterName: cluster-b
-      network: network1
-      remotePilotAddress: <cluster-a-istiod-ip>
+      remotePilotAddress: ${DISCOVERY_ADDRESS}
 EOF
+
+# Enable API server access from the primary cluster
+istioctl create-remote-secret --context=cluster-b \
+  --name=cluster-b | kubectl apply -f - --context=cluster-a
 ```
 
 ### Multi-Primary Model
 
 ```bash
 # Configure both clusters as primaries
+# Set network labels on the Istio system namespaces
+kubectl --context=cluster-a create namespace istio-system
+kubectl --context=cluster-a label namespace istio-system topology.istio.io/network=network-a
+kubectl --context=cluster-b create namespace istio-system
+kubectl --context=cluster-b label namespace istio-system topology.istio.io/network=network-b
+
 # Cluster A
 istioctl install --context=cluster-a -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
@@ -226,19 +250,21 @@ spec:
       network: network-b
 EOF
 
-# Exchange secrets
-istioctl x create-remote-secret --context=cluster-a --name=cluster-a | \
-  kubectl apply -f - --context=cluster-b
-istioctl x create-remote-secret --context=cluster-b --name=cluster-b | \
-  kubectl apply -f - --context=cluster-a
-
 # Install east-west gateways
-kubectl --context=cluster-a apply -f samples/multicluster/gen-eastwest-gateway.yaml
-kubectl --context=cluster-b apply -f samples/multicluster/gen-eastwest-gateway.yaml
+samples/multicluster/gen-eastwest-gateway.sh --network network-a | \
+  istioctl --context=cluster-a install -y -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network-b | \
+  istioctl --context=cluster-b install -y -f -
 
 # Expose services
-kubectl --context=cluster-a apply -f samples/multicluster/expose-services.yaml
-kubectl --context=cluster-b apply -f samples/multicluster/expose-services.yaml
+kubectl --context=cluster-a apply -n istio-system -f samples/multicluster/expose-services.yaml
+kubectl --context=cluster-b apply -n istio-system -f samples/multicluster/expose-services.yaml
+
+# Exchange secrets for endpoint discovery
+istioctl create-remote-secret --context=cluster-a --name=cluster-a | \
+  kubectl apply -f - --context=cluster-b
+istioctl create-remote-secret --context=cluster-b --name=cluster-b | \
+  kubectl apply -f - --context=cluster-a
 ```
 
 ### Cross-Cluster Traffic Policy
@@ -277,8 +303,8 @@ spec:
 
 ```bash
 # Install Cilium on both clusters
-cilium install --cluster-name cluster-a --cluster-id 1 --context cluster-a
-cilium install --cluster-name cluster-b --cluster-id 2 --context cluster-b
+cilium install --set cluster.name=cluster-a --set cluster.id=1 --context cluster-a
+cilium install --set cluster.name=cluster-b --set cluster.id=2 --context cluster-b
 
 # Enable Cluster Mesh
 cilium clustermesh enable --context cluster-a
@@ -302,8 +328,8 @@ metadata:
   name: global-api
   namespace: production
   annotations:
-    io.cilium/global-service: "true"    # Makes service global
-    io.cilium/shared-service: "true"    # Load balance across clusters
+    service.cilium.io/global: "true"    # Makes service global
+    service.cilium.io/shared: "true"    # Load balance across clusters
 spec:
   type: ClusterIP
   selector:
@@ -323,8 +349,8 @@ metadata:
   name: api-service
   namespace: production
   annotations:
-    io.cilium/global-service: "true"
-    io.cilium/service-affinity: "local"  # Prefer local cluster
+    service.cilium.io/global: "true"
+    service.cilium.io/affinity: "local"  # Prefer local cluster
 spec:
   type: ClusterIP
   selector:
@@ -339,45 +365,57 @@ spec:
 
 ```bash
 # Install skupper CLI
-curl https://skupper.io/install.sh | sh
+curl https://skupper.io/v2/install.sh | sh
 
-# Initialize on both clusters
-skupper --context cluster-a init --site-name cluster-a
-skupper --context cluster-b init --site-name cluster-b
+# Install the Skupper controller on both clusters
+kubectl --context cluster-a apply -f https://skupper.io/v2/install.yaml
+kubectl --context cluster-b apply -f https://skupper.io/v2/install.yaml
+
+# Create sites on both clusters
+skupper --context cluster-a site create cluster-a --enable-link-access
+skupper --context cluster-b site create cluster-b
 
 # Link clusters
-skupper --context cluster-a token create ~/token.yaml
-skupper --context cluster-b link create ~/token.yaml
+skupper --context cluster-a token issue ~/cluster-a-token.yaml
+skupper --context cluster-b token redeem ~/cluster-a-token.yaml
 
 # Check status
-skupper --context cluster-a status
+skupper --context cluster-a site status
+skupper --context cluster-b link status
 ```
 
 ### Expose Services
 
 ```bash
-# Expose a deployment
-skupper --context cluster-a expose deployment/api-service --port 8080
+# Create a connector for the target workload
+skupper --context cluster-a connector create api 8080 --workload deployment/api-service
 
-# Or expose a specific service
-skupper --context cluster-a expose service api-service --address api
+# Create a matching listener in the consuming cluster
+skupper --context cluster-b listener create api 8080
 
 # Check exposed services
-skupper --context cluster-a service status
+skupper --context cluster-a connector status
+skupper --context cluster-b listener status
 ```
 
 ### Access from Other Cluster
 
 ```yaml
 # Service automatically available in cluster-b
-# Pods can access: api-service:8080
+# Pods can access: api:8080
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
         - name: frontend
@@ -510,8 +548,8 @@ data:
   check.sh: |
     #!/bin/bash
     ENDPOINTS=(
-      "api.cluster-a.svc.clusterset.local:8080/health"
-      "api.cluster-b.svc.clusterset.local:8080/health"
+      "api.production.svc.clusterset.local:8080/health"
+      "api-service.production.svc.clusterset.local:8080/health"
     )
     for ep in "${ENDPOINTS[@]}"; do
       if ! curl -sf "http://$ep"; then

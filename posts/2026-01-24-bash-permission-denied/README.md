@@ -64,7 +64,7 @@ test -x myscript.sh && echo "Executable" || echo "Not executable"
 chmod u+x myscript.sh
 
 # Add execute permission for everyone
-chmod +x myscript.sh
+chmod a+x myscript.sh
 
 # Add execute permission with specific mode
 chmod 755 myscript.sh  # rwxr-xr-x
@@ -214,26 +214,27 @@ cp myscript.sh /tmp/myscript.sh
 
 ## Cause 4: Filesystem Mount Options
 
-Some filesystems are mounted with `noexec` option, preventing any script execution.
+Some filesystems are mounted with the `noexec` option, preventing direct execution from that filesystem.
 
 ### Diagnosing Mount Issues
 
 ```bash
-# Check mount options for the filesystem
-mount | grep $(df . --output=source | tail -1)
+# Check mount options for the script's filesystem
+findmnt -T myscript.sh -o TARGET,SOURCE,FSTYPE,OPTIONS
 
 # Look for 'noexec' in the output
 # Example: /dev/sdb1 on /media/usb type ext4 (rw,noexec,nosuid)
 
-# Check specific mount point
+# Check the current directory's mount point
 findmnt -T .
 
-# Check if filesystem allows execution
-touch /tmp/test.sh
-echo '#!/bin/bash' > /tmp/test.sh
-echo 'echo "works"' >> /tmp/test.sh
-chmod +x /tmp/test.sh
-/tmp/test.sh  # Test execution
+# Check if the script's filesystem allows execution
+script_dir=$(dirname "$(realpath myscript.sh)")
+test_script="$script_dir/test-exec-$$.sh"
+printf '#!/bin/bash\necho "works"\n' > "$test_script"
+chmod u+x "$test_script"
+"$test_script"  # Test execution
+rm -f "$test_script"
 ```
 
 ### Solution: Remount with exec
@@ -246,10 +247,11 @@ sudo mount -o remount,exec /media/usb
 # Change: /dev/sdb1 /media/usb ext4 noexec 0 0
 # To:     /dev/sdb1 /media/usb ext4 defaults 0 0
 
-# Alternative: Copy script to executable location
-cp myscript.sh /tmp/
-chmod +x /tmp/myscript.sh
-/tmp/myscript.sh
+# Alternative: Copy script to a filesystem mounted with exec
+mkdir -p "$HOME/bin"
+cp myscript.sh "$HOME/bin/myscript.sh"
+chmod u+x "$HOME/bin/myscript.sh"
+"$HOME/bin/myscript.sh"
 ```
 
 ### Common Noexec Locations
@@ -435,7 +437,7 @@ flowchart TD
 
 ## Cause 8: Immutable File Attribute
 
-The file might have the immutable attribute set, preventing any modifications including execution setup.
+The file might have the immutable attribute set, preventing permission changes or other modifications needed before execution.
 
 ### Diagnosing Immutable Files
 
@@ -462,7 +464,7 @@ sudo chattr -i myscript.sh
 lsattr myscript.sh
 
 # Now you can modify permissions
-chmod +x myscript.sh
+chmod u+x myscript.sh
 ```
 
 ---
@@ -522,7 +524,7 @@ diagnose_script() {
     # Check execute permission
     if [[ ! -x "$script" ]]; then
         check_failed "No execute permission"
-        echo "  Fix: chmod +x $script"
+        echo "  Fix: chmod u+x $script"
     else
         check_passed "Has execute permission"
     fi
@@ -557,9 +559,7 @@ diagnose_script() {
     # Check filesystem mount options
     echo ""
     echo "Filesystem mount options:"
-    local mount_point
-    mount_point=$(df "$script" --output=target | tail -1)
-    mount | grep " $mount_point " || echo "  Could not determine mount options"
+    findmnt -T "$script" -o TARGET,SOURCE,FSTYPE,OPTIONS || echo "  Could not determine mount options"
 
     # Check for immutable attribute
     if command -v lsattr &>/dev/null; then
@@ -572,17 +572,20 @@ diagnose_script() {
     echo ""
     echo "Shebang line:"
     local shebang
-    shebang=$(head -1 "$script")
+    if ! shebang=$(head -1 "$script"); then
+        check_failed "Cannot read shebang line"
+        shebang=""
+    fi
     echo "  $shebang"
 
     # Extract interpreter path
     if [[ "$shebang" =~ ^#! ]]; then
         local interpreter
-        interpreter=$(echo "$shebang" | sed 's/^#!//' | awk '{print $1}')
+        interpreter=$(printf '%s\n' "$shebang" | sed 's/^#!//' | awk '{print $1}')
 
         if [[ "$interpreter" == "/usr/bin/env" ]]; then
-            interpreter=$(echo "$shebang" | awk '{print $2}')
-            interpreter=$(which "$interpreter" 2>/dev/null || echo "$interpreter")
+            interpreter=$(printf '%s\n' "$shebang" | awk '{print $2}')
+            interpreter=$(command -v "$interpreter" 2>/dev/null || echo "$interpreter")
         fi
 
         if [[ -x "$interpreter" ]]; then
@@ -605,7 +608,7 @@ diagnose_script() {
     echo "Recommended fixes:"
 
     if [[ ! -x "$script" ]]; then
-        echo "1. chmod +x $script"
+        echo "1. chmod u+x $script"
     fi
 
     echo "Alternative execution methods:"
@@ -629,7 +632,7 @@ diagnose_script "$1"
 | Error | Likely Cause | Solution |
 |-------|--------------|----------|
 | Permission denied | No execute bit | `chmod +x script.sh` |
-| Permission denied (noexec) | Filesystem restriction | Copy to /tmp or remount |
+| Permission denied (noexec) | Filesystem restriction | Copy to an exec-mounted filesystem or remount |
 | Permission denied (owner) | Wrong ownership | `chown` or run as owner |
 | Permission denied (SELinux) | Security context | `restorecon` or `chcon` |
 | bad interpreter | Shebang path wrong | Fix path or use `env` |
@@ -649,7 +652,7 @@ To fix "Permission denied" errors:
 6. **Validate shebang** - Interpreter must exist and be executable
 7. **Fix line endings** - Windows CRLF causes issues on Linux
 
-When in doubt, use `bash script.sh` to bypass execute permission requirements.
+When in doubt, use `bash script.sh` to bypass the script file's execute-bit requirement when the file is still readable.
 
 ---
 

@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing seek and replay functionality
 
 ---
 
-Kafka's ability to replay messages is one of its most powerful features. Consumers can seek to any position in a partition to reprocess historical data, recover from errors, or implement time-travel debugging. This guide covers various seek operations and replay strategies.
+Kafka's ability to replay retained messages is one of its most powerful features. Consumers can seek to any available position in a partition to reprocess historical data, recover from errors, or implement time-travel debugging. This guide covers various seek operations and replay strategies.
 
 ## Understanding Seek Operations
 
@@ -51,11 +51,8 @@ public class SeekConsumer {
     public void seekToBeginning(String topic) {
         consumer.subscribe(Collections.singletonList(topic));
 
-        // First poll to get partition assignment
-        consumer.poll(Duration.ZERO);
-
-        // Get assigned partitions
-        Set<TopicPartition> partitions = consumer.assignment();
+        // Poll until partitions are assigned
+        Set<TopicPartition> partitions = waitForAssignment();
 
         // Seek to beginning
         consumer.seekToBeginning(partitions);
@@ -66,9 +63,8 @@ public class SeekConsumer {
     // Seek to end (skip all existing messages)
     public void seekToEnd(String topic) {
         consumer.subscribe(Collections.singletonList(topic));
-        consumer.poll(Duration.ZERO);
 
-        Set<TopicPartition> partitions = consumer.assignment();
+        Set<TopicPartition> partitions = waitForAssignment();
         consumer.seekToEnd(partitions);
 
         System.out.println("Seeked to end of: " + partitions);
@@ -108,6 +104,15 @@ public class SeekConsumer {
         }
     }
 
+    private Set<TopicPartition> waitForAssignment() {
+        Set<TopicPartition> partitions = consumer.assignment();
+        while (partitions.isEmpty()) {
+            consumer.poll(Duration.ofMillis(100));
+            partitions = consumer.assignment();
+        }
+        return partitions;
+    }
+
     public void close() {
         consumer.close();
     }
@@ -134,11 +139,8 @@ class SeekConsumer:
         """Seek to beginning of all partitions."""
         self.consumer.subscribe([topic])
 
-        # Poll to get assignment
-        self.consumer.poll(timeout=0)
-
-        # Get partitions
-        partitions = self.consumer.assignment()
+        # Poll until partitions are assigned
+        partitions = self._wait_for_assignment()
 
         # Seek to beginning
         for tp in partitions:
@@ -150,9 +152,8 @@ class SeekConsumer:
     def seek_to_end(self, topic: str):
         """Seek to end of all partitions."""
         self.consumer.subscribe([topic])
-        self.consumer.poll(timeout=0)
 
-        partitions = self.consumer.assignment()
+        partitions = self._wait_for_assignment()
 
         for tp in partitions:
             low, high = self.consumer.get_watermark_offsets(tp)
@@ -198,6 +199,13 @@ class SeekConsumer:
                   f"Offset: {msg.offset()}, "
                   f"Value: {msg.value().decode()}")
             count += 1
+
+    def _wait_for_assignment(self) -> List[TopicPartition]:
+        partitions = self.consumer.assignment()
+        while not partitions:
+            self.consumer.poll(timeout=0.1)
+            partitions = self.consumer.assignment()
+        return partitions
 
     def close(self):
         self.consumer.close()
@@ -246,9 +254,8 @@ public class TimeBasedSeekConsumer {
     // Seek to timestamp
     public void seekToTimestamp(String topic, long timestampMs) {
         consumer.subscribe(Collections.singletonList(topic));
-        consumer.poll(Duration.ZERO);
 
-        Set<TopicPartition> partitions = consumer.assignment();
+        Set<TopicPartition> partitions = waitForAssignment();
 
         // Build timestamp query for each partition
         Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
@@ -276,6 +283,15 @@ public class TimeBasedSeekConsumer {
                     entry.getKey());
             }
         }
+    }
+
+    private Set<TopicPartition> waitForAssignment() {
+        Set<TopicPartition> partitions = consumer.assignment();
+        while (partitions.isEmpty()) {
+            consumer.poll(Duration.ofMillis(100));
+            partitions = consumer.assignment();
+        }
+        return partitions;
     }
 
     // Seek to hours ago
@@ -342,9 +358,8 @@ class TimeBasedSeekConsumer:
     def seek_to_timestamp(self, topic: str, timestamp_ms: int):
         """Seek all partitions to a specific timestamp."""
         self.consumer.subscribe([topic])
-        self.consumer.poll(timeout=0)
 
-        partitions = self.consumer.assignment()
+        partitions = self._wait_for_assignment()
 
         # Build list with timestamps
         partitions_with_time = [
@@ -394,6 +409,13 @@ class TimeBasedSeekConsumer:
                   f"Offset: {msg.offset()}, Value: {msg.value().decode()}")
             count += 1
 
+    def _wait_for_assignment(self):
+        partitions = self.consumer.assignment()
+        while not partitions:
+            self.consumer.poll(timeout=0.1)
+            partitions = self.consumer.assignment()
+        return partitions
+
     def close(self):
         self.consumer.close()
 
@@ -419,6 +441,11 @@ if __name__ == '__main__':
 ### Full Topic Replay
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
+import java.util.*;
+
 public class FullReplayConsumer {
     private final Consumer<String, String> consumer;
     private final String replayGroupId;
@@ -504,8 +531,27 @@ public class FullReplayConsumer {
 ### Selective Replay with Filter
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
+import java.util.*;
+import java.util.function.Predicate;
+
 public class FilteredReplayConsumer {
     private final Consumer<String, String> consumer;
+
+    public FilteredReplayConsumer(String bootstrapServers, String groupId) {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
+        this.consumer = new KafkaConsumer<>(props);
+    }
 
     public void replayWithFilter(String topic, long startTime, long endTime,
                                  Predicate<ConsumerRecord<String, String>> filter,
@@ -532,9 +578,46 @@ public class FilteredReplayConsumer {
         }
     }
 
+    private void seekToTimestamp(String topic, long timestampMs) {
+        consumer.subscribe(Collections.singletonList(topic));
+
+        Set<TopicPartition> partitions = waitForAssignment();
+
+        Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+        for (TopicPartition tp : partitions) {
+            timestampsToSearch.put(tp, timestampMs);
+        }
+
+        Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
+            consumer.offsetsForTimes(timestampsToSearch);
+
+        for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry :
+                offsetsForTimes.entrySet()) {
+            if (entry.getValue() != null) {
+                consumer.seek(entry.getKey(), entry.getValue().offset());
+            } else {
+                consumer.seekToEnd(Collections.singleton(entry.getKey()));
+            }
+        }
+    }
+
+    private Set<TopicPartition> waitForAssignment() {
+        Set<TopicPartition> partitions = consumer.assignment();
+        while (partitions.isEmpty()) {
+            consumer.poll(Duration.ofMillis(100));
+            partitions = consumer.assignment();
+        }
+        return partitions;
+    }
+
+    interface ReplayHandler {
+        void handle(ConsumerRecord<String, String> record);
+    }
+
     // Example usage
     public static void main(String[] args) {
-        FilteredReplayConsumer consumer = new FilteredReplayConsumer();
+        FilteredReplayConsumer consumer =
+            new FilteredReplayConsumer("localhost:9092", "filtered-replay-group");
 
         long yesterday = System.currentTimeMillis() - 86400000;
         long now = System.currentTimeMillis();
@@ -550,6 +633,13 @@ public class FilteredReplayConsumer {
 ### Replay to Another Topic
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
+import java.util.*;
+import java.util.function.Function;
+
 public class ReplayToTopicConsumer {
     private final Consumer<String, String> consumer;
     private final Producer<String, String> producer;
@@ -582,8 +672,8 @@ public class ReplayToTopicConsumer {
         consumer.subscribe(Collections.singletonList(sourceTopic));
 
         // Seek to beginning
-        consumer.poll(Duration.ZERO);
-        consumer.seekToBeginning(consumer.assignment());
+        Set<TopicPartition> partitions = waitForAssignment();
+        consumer.seekToBeginning(partitions);
 
         try {
             while (true) {
@@ -610,10 +700,33 @@ public class ReplayToTopicConsumer {
             producer.close();
         }
     }
+
+    private Set<TopicPartition> waitForAssignment() {
+        Set<TopicPartition> partitions = consumer.assignment();
+        while (partitions.isEmpty()) {
+            consumer.poll(Duration.ofMillis(100));
+            partitions = consumer.assignment();
+        }
+        return partitions;
+    }
+
+    private boolean isAtEnd() {
+        Map<TopicPartition, Long> endOffsets =
+            consumer.endOffsets(consumer.assignment());
+
+        for (TopicPartition tp : consumer.assignment()) {
+            if (consumer.position(tp) < endOffsets.get(tp)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 ```
 
 ## Reset Consumer Group Offsets
+
+Stop the consumers in the group before resetting offsets. Kafka requires the group to be inactive for reset operations.
 
 ### Using CLI
 
@@ -650,7 +763,9 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
+import java.util.*;
 
 public class OffsetResetter {
     private final AdminClient admin;

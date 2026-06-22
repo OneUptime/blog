@@ -96,9 +96,9 @@ graph TD
 
 Complete order:
 
-1. **Import dependencies** (recursively, depth-first)
-2. **Package-level variables** (in declaration order)
-3. **init() functions** (in source order)
+1. **Imported packages** (each imported package is initialized before the package that imports it)
+2. **Package-level variables** (in dependency order, otherwise declaration order)
+3. **init() functions** (in source order within the file; across files, in the order presented to the compiler)
 4. **main()** (only in main package)
 
 ---
@@ -201,7 +201,7 @@ main init
 main()
 ```
 
-Dependencies are initialized first (depth-first).
+Imported packages are initialized before the packages that import them.
 
 ---
 
@@ -214,11 +214,17 @@ package main
 
 import (
     "database/sql"
+    "log"
+
     _ "github.com/lib/pq"  // Registers PostgreSQL driver via init()
 )
 
 func main() {
     db, err := sql.Open("postgres", "...")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
     // pq driver was registered in its init()
 }
 ```
@@ -377,7 +383,7 @@ func init() {
 }
 ```
 
-### Problem 4: Initialization Order Issues
+### Problem 4: Circular Dependencies
 
 ```go
 // pkg/a/a.go
@@ -393,7 +399,7 @@ package b
 import "myapp/pkg/a"
 
 func Compute() int {
-    return a.Value + 1  // Circular dependency!
+    return a.Value + 1  // Circular import dependency!
 }
 ```
 
@@ -498,7 +504,7 @@ func GetSettings() *Settings {
 **Good uses:**
 - Registering drivers/plugins with a registry
 - Computing constant lookup tables
-- Verifying program correctness at build time
+- Verifying program correctness at startup time
 
 **Avoid init for:**
 - Connecting to external services

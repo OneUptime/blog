@@ -44,6 +44,7 @@ flowchart LR
 ```python
 import redis
 import json
+import hashlib
 import time
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -147,8 +148,9 @@ class IoTDataIngester:
         if partition_key is None:
             partition_key = reading.device_id
 
-        # Simple hash partitioning
-        partition = hash(partition_key) % 8  # 8 partitions
+        # Stable hash partitioning
+        partition_hash = hashlib.sha256(partition_key.encode()).hexdigest()
+        partition = int(partition_hash, 16) % 8  # 8 partitions
         stream_key = f"{self.stream_prefix}:partition:{partition}"
 
         data = {
@@ -345,7 +347,7 @@ class StreamConsumer:
 
                     except Exception as e:
                         print(f"Error processing message {message_id}: {e}")
-                        # Message will be retried
+                        # Message remains pending until reclaimed or re-read from the PEL
 
     def claim_pending_messages(self, stream_key: str, min_idle_time: int = 60000):
         """Claim messages that haven't been processed by other consumers."""
@@ -674,28 +676,32 @@ class Aggregator {
 }
 
 // Usage
-const ingester = new IoTIngester({ host: 'localhost', port: 6379 });
+async function main() {
+    const ingester = new IoTIngester({ host: 'localhost', port: 6379 });
 
-// Ingest a reading
-await ingester.ingestReading({
-    deviceId: 'sensor-001',
-    sensorType: 'temperature',
-    value: 23.5,
-    unit: 'celsius',
-    timestamp: Date.now() / 1000
-});
+    // Ingest a reading
+    await ingester.ingestReading({
+        deviceId: 'sensor-001',
+        sensorType: 'temperature',
+        value: 23.5,
+        unit: 'celsius',
+        timestamp: Date.now() / 1000
+    });
 
-// Process stream
-const processor = new StreamProcessor(
-    { host: 'localhost', port: 6379 },
-    'iot-processors',
-    'processor-1'
-);
+    // Process stream
+    const processor = new StreamProcessor(
+        { host: 'localhost', port: 6379 },
+        'iot-processors',
+        'processor-1'
+    );
 
-processor.processStream('iot:stream:sensor-001', async (data) => {
-    console.log('Processing:', data);
-    // Store to time series DB, trigger alerts, etc.
-});
+    await processor.processStream('iot:stream:sensor-001', async (data) => {
+        console.log('Processing:', data);
+        // Store to time series DB, trigger alerts, etc.
+    });
+}
+
+main().catch(console.error);
 ```
 
 ## Best Practices

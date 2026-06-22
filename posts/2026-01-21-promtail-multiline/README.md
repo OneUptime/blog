@@ -10,6 +10,8 @@ Description: A comprehensive guide to parsing multi-line logs with Promtail for 
 
 Multi-line logs, such as stack traces and exception messages, present a challenge for log aggregation. Without proper configuration, each line is treated as a separate log entry, making debugging difficult. This guide covers how to correctly parse multi-line logs with Promtail.
 
+Note: Promtail is deprecated and reached end-of-life on March 2, 2026. These examples are useful for existing Promtail deployments; for new deployments, consider Grafana Alloy.
+
 ## Prerequisites
 
 Before starting, ensure you have:
@@ -133,7 +135,7 @@ pipeline_stages:
 ```yaml
 pipeline_stages:
   - multiline:
-      firstline: '^(\d{4}-\d{2}-\d{2}|Traceback|[A-Z][a-z]+Error:|[A-Z][a-z]+Exception:)'
+      firstline: '^(\d{4}-\d{2}-\d{2}|Traceback)'
       max_wait_time: 3s
 ```
 
@@ -354,8 +356,8 @@ scrape_configs:
 ### Local Testing
 
 ```bash
-# Test with dry-run
-promtail -config.file=/etc/promtail/config.yaml -dry-run
+# Check configuration syntax
+promtail -config.file=/etc/promtail/config.yaml -check-syntax
 
 # Check with sample file
 echo '2024-01-15 10:30:00 ERROR - Exception
@@ -363,14 +365,17 @@ echo '2024-01-15 10:30:00 ERROR - Exception
     at com.example.Main.main(Main.java:5)
 2024-01-15 10:30:01 INFO - Next log' > /tmp/test.log
 
-# Run Promtail and verify aggregation
+# Run Promtail with stdin and verify aggregation
+cat /tmp/test.log | promtail --stdin --dry-run --inspect \
+  --config.file=/etc/promtail/config.yaml \
+  --client.url=http://127.0.0.1:3100/loki/api/v1/push
 ```
 
 ### Regex Testing
 
 ```bash
 # Test firstline regex
-echo "2024-01-15 10:30:00 ERROR" | grep -E '^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}'
+echo "2024-01-15 10:30:00 ERROR" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]+[0-9]{2}:[0-9]{2}:[0-9]{2}'
 ```
 
 ## Best Practices

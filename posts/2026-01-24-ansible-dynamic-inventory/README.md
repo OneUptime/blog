@@ -99,19 +99,19 @@ keyed_groups:
     prefix: region
 
   # Group by tags (e.g., group: env_production)
-  - key: tags.Environment
+  - key: ec2_tags.Environment
     prefix: env
 
   # Group by tags (e.g., group: role_webserver)
-  - key: tags.Role
+  - key: ec2_tags.Role
     prefix: role
 
 # Compose variables for each host
 compose:
   # Use public IP for SSH, fall back to private
   ansible_host: public_ip_address | default(private_ip_address)
-  # Set the SSH user based on AMI
-  ansible_user: "'ec2-user' if 'amzn' in image_id else 'ubuntu'"
+  # Set the SSH user from a tag, or use a default
+  ansible_user: ec2_tags.AnsibleUser | default('ec2-user')
 
 # Host variables from instance attributes
 hostnames:
@@ -150,13 +150,12 @@ exclude_filters:
 
 # IAM role assumption (for cross-account)
 assume_role_arn: arn:aws:iam::123456789012:role/AnsibleInventoryRole
-sts_endpoint: https://sts.us-east-1.amazonaws.com
 
 # Group by multiple attributes
 keyed_groups:
-  - key: tags.Environment
+  - key: ec2_tags.Environment
     prefix: env
-  - key: tags.Role
+  - key: ec2_tags.Role
     prefix: role
   - key: placement.availability_zone
     prefix: az
@@ -168,7 +167,7 @@ keyed_groups:
 # Groups based on conditions
 groups:
   # All webservers
-  webservers: "'webserver' in (tags.Role | default(''))"
+  webservers: "'webserver' in (ec2_tags.Role | default(''))"
   # Large instances
   large_instances: "instance_type.startswith('m5.') or instance_type.startswith('c5.')"
   # In specific VPC
@@ -177,7 +176,7 @@ groups:
 # Rich host variables
 compose:
   ansible_host: public_ip_address | default(private_ip_address)
-  ansible_user: "'ec2-user' if 'amzn' in (image_id | default('')) else 'ubuntu'"
+  ansible_user: ec2_tags.AnsibleUser | default('ec2-user')
   ansible_port: 22
   ec2_instance_id: instance_id
   ec2_region: placement.region
@@ -187,7 +186,7 @@ compose:
   ec2_private_ip: private_ip_address
   ec2_public_ip: public_ip_address | default('')
   ec2_instance_type: instance_type
-  ec2_tags: tags
+  ec2_all_tags: ec2_tags
 ```
 
 ### Using AWS Inventory
@@ -217,8 +216,8 @@ ansible-playbook -i inventory/aws_ec2.yml playbook.yml --limit "env_production:&
 # Install Azure collection
 ansible-galaxy collection install azure.azcollection
 
-# Install Azure SDK
-pip install azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource
+# Install Azure collection Python requirements
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 
 # Authenticate
 az login
@@ -239,7 +238,7 @@ Create `inventory/azure_rm.yml`:
 plugin: azure.azcollection.azure_rm
 
 # Authentication
-auth_source: auto  # Uses az login, env vars, or MSI
+auth_source: auto  # Uses env vars, credential file, or az login
 
 # Include only specific resource groups
 include_vm_resource_groups:
@@ -250,7 +249,7 @@ include_vm_resource_groups:
 exclude_vm_resource_groups:
   - test-rg
 
-# Filter by tags
+# Group by tags
 conditional_groups:
   webservers: "'webserver' in tags.Role | default('')"
   databases: "'database' in tags.Role | default('')"
@@ -293,8 +292,8 @@ cache_connection: /tmp/azure_inventory_cache
 # Install GCP collection
 ansible-galaxy collection install google.cloud
 
-# Install Google SDK
-pip install google-auth google-api-python-client
+# Install Python requirements
+pip install google-auth requests
 
 # Authenticate
 gcloud auth application-default login
@@ -333,7 +332,7 @@ keyed_groups:
     prefix: role
   - key: zone
     prefix: zone
-  - key: machine_type().split('/')[-1]
+  - key: machineType.split('/')[-1]
     prefix: type
 
 # Conditional groups
@@ -344,7 +343,7 @@ groups:
 # Host variables
 compose:
   ansible_host: networkInterfaces[0].accessConfigs[0].natIP | default(networkInterfaces[0].networkIP)
-  ansible_user: "{{ lookup('env', 'USER') }}"
+  ansible_user: lookup('env', 'USER')
   gcp_zone: zone
   gcp_project: project
   gcp_machine_type: machineType
@@ -378,40 +377,49 @@ pip install kubernetes
 
 ### Configuration
 
-Create `inventory/k8s.yml`:
+The `kubernetes.core.k8s` inventory plugin was removed in `kubernetes.core` 6.0.0. Use `kubernetes.core.k8s_info` with `ansible.builtin.add_host` to build an in-memory inventory during a playbook run.
 
 ```yaml
-# inventory/k8s.yml
+# discover_k8s_pods.yml
 ---
-plugin: kubernetes.core.k8s
-
-# Connection settings
-connections:
-  - kubeconfig: ~/.kube/config
+- name: Discover Kubernetes pods
+  hosts: localhost
+  gather_facts: false
+  vars:
+    kubeconfig: ~/.kube/config
     context: production-cluster
+    namespaces:
+      - default
+      - production
+      - staging
+  tasks:
+    - name: Query running pods by namespace
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        context: "{{ context }}"
+        kind: Pod
+        namespace: "{{ item }}"
+        field_selectors:
+          - status.phase=Running
+      loop: "{{ namespaces }}"
+      register: pod_results
 
-# Namespaces to query
-namespaces:
-  - default
-  - production
-  - staging
-
-# Group pods by labels
-keyed_groups:
-  - key: labels.app
-    prefix: app
-  - key: labels.environment
-    prefix: env
-  - key: namespace
-    prefix: ns
-
-# Host variables
-compose:
-  ansible_host: status.podIP
-  ansible_connection: kubectl
-  ansible_kubectl_pod: metadata.name
-  ansible_kubectl_namespace: metadata.namespace
-  ansible_kubectl_container: spec.containers[0].name
+    - name: Add pods to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ item.metadata.name }}.{{ item.metadata.namespace }}"
+        groups:
+          - "app_{{ item.metadata.labels.app | default('unknown') }}"
+          - "env_{{ item.metadata.labels.environment | default('unknown') }}"
+          - "ns_{{ item.metadata.namespace }}"
+        ansible_host: "{{ item.status.podIP }}"
+        ansible_connection: kubernetes.core.kubectl
+        ansible_kubectl_kubeconfig: "{{ kubeconfig }}"
+        ansible_kubectl_context: "{{ context }}"
+        ansible_kubectl_pod: "{{ item.metadata.name }}"
+        ansible_kubectl_namespace: "{{ item.metadata.namespace }}"
+        ansible_kubectl_container: "{{ item.spec.containers[0].name }}"
+      loop: "{{ pod_results.results | map(attribute='resources') | flatten }}"
+      when: item.status.podIP is defined
 ```
 
 ## Custom Script Inventory

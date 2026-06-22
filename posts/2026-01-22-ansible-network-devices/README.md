@@ -35,6 +35,9 @@ ansible-galaxy collection install cisco.ios
 # Cisco NX-OS (Nexus)
 ansible-galaxy collection install cisco.nxos
 
+# Cisco ASA
+ansible-galaxy collection install cisco.asa
+
 # Juniper Junos
 ansible-galaxy collection install junipernetworks.junos
 
@@ -45,7 +48,7 @@ ansible-galaxy collection install arista.eos
 ansible-galaxy collection install ansible.netcommon
 
 # Install network automation dependencies
-pip install paramiko netaddr jmespath
+pip install ansible-pylibssh ncclient netaddr jmespath
 ```
 
 ## Inventory Configuration for Network Devices
@@ -116,9 +119,9 @@ timeout = 60
 connect_timeout = 60
 command_timeout = 60
 
-[network]
+[diff]
 # Diff mode for showing config changes
-diff_mode = true
+always = true
 ```
 
 ## Basic Configuration Tasks
@@ -377,6 +380,7 @@ Manage access control lists.
           - afi: ipv4
             acls:
               - name: ALLOW_WEB
+                acl_type: extended
                 aces:
                   - sequence: 10
                     grant: permit
@@ -385,8 +389,8 @@ Manage access control lists.
                       any: true
                     destination:
                       host: 10.0.10.100
-                    destination_port:
-                      eq: www
+                      port_protocol:
+                        eq: www
 
                   - sequence: 20
                     grant: permit
@@ -395,8 +399,8 @@ Manage access control lists.
                       any: true
                     destination:
                       host: 10.0.10.100
-                    destination_port:
-                      eq: 443
+                      port_protocol:
+                        eq: "443"
 
                   - sequence: 30
                     grant: deny
@@ -405,7 +409,8 @@ Manage access control lists.
                       any: true
                     destination:
                       any: true
-                    log: true
+                    log:
+                      set: true
         state: merged
 
     - name: Apply ACL to interface
@@ -432,7 +437,7 @@ Backup and restore device configurations.
   gather_facts: no
 
   vars:
-    backup_dir: ./backups/{{ ansible_date_time.date }}
+    backup_dir: ./backups/{{ lookup('ansible.builtin.pipe', 'date +%F') }}
 
   tasks:
     - name: Create backup directory
@@ -481,7 +486,7 @@ Backup and restore device configurations.
     - name: Restore configuration
       cisco.ios.ios_config:
         src: "{{ config_file }}"
-        replace: config
+        replace: line
       when: restore_config | default(false) | bool
 
     - name: Save restored configuration
@@ -498,7 +503,7 @@ Validate configurations meet standards.
 # playbooks/network-compliance.yml
 ---
 - name: Check network compliance
-  hosts: all
+  hosts: routers
   gather_facts: no
 
   vars:

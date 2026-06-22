@@ -12,7 +12,7 @@ ES6 modules (import/export) provide a cleaner and more powerful way to organize 
 
 ## Enabling ES Modules
 
-There are two ways to use ES modules in Node.js:
+There are two common ways to use ES modules in Node.js:
 
 ### Option 1: Use .mjs Extension
 
@@ -122,8 +122,12 @@ export default class Logger {
     console.error(`[ERROR] ${message}`);
   }
 }
+```
 
-// Or export at the end
+Or export at the end:
+
+```javascript
+// logger.js
 class Logger {
   // ...
 }
@@ -184,11 +188,14 @@ Create barrel files to simplify imports:
 
 ```javascript
 // models/user.js
-export class User {
+class User {
   constructor(name) {
     this.name = name;
   }
 }
+
+export { User };
+export default User;
 
 // models/product.js
 export class Product {
@@ -210,7 +217,7 @@ export * from './user.js';
 export * from './product.js';
 
 // Re-export default as named
-export { default as User } from './user.js';
+export { default as DefaultUser } from './user.js';
 ```
 
 Use the barrel:
@@ -219,7 +226,7 @@ Use the barrel:
 // main.js
 import { User, Product } from './models/index.js';
 // or
-import { User, Product } from './models/index.js';
+import { UserModel, Product } from './models/index.js';
 
 const user = new User('John');
 const product = new Product('Laptop');
@@ -263,10 +270,9 @@ async function safeImport(modulePath) {
 
 ## Importing JSON
 
-Import JSON files directly (Node.js 18+):
+Import JSON files directly (Node.js 18.20.5+, 20.18.3+, 22.12.0+, or 23.1.0+):
 
 ```json
-// config.json
 {
   "port": 3000,
   "debug": true
@@ -275,17 +281,17 @@ Import JSON files directly (Node.js 18+):
 
 ```javascript
 // main.js
-// With import assertion
+// With import attributes
 import config from './config.json' with { type: 'json' };
 console.log(config.port);
 
 // Or use dynamic import
-const config = await import('./config.json', { with: { type: 'json' } });
-console.log(config.default.port);
+const configModule = await import('./config.json', { with: { type: 'json' } });
+console.log(configModule.default.port);
 
 // For older Node.js versions, use fs
 import { readFileSync } from 'fs';
-const config = JSON.parse(readFileSync('./config.json', 'utf8'));
+const configFromFile = JSON.parse(readFileSync('./config.json', 'utf8'));
 ```
 
 ## Importing CommonJS from ES Modules
@@ -305,20 +311,20 @@ module.exports = {
 import legacy from './legacy-module.cjs';
 console.log(legacy.greet('World'));
 
-// Built-in modules work the same
-import fs from 'fs';
-import path from 'path';
+// Built-in modules also support ES module imports
+import fs from 'node:fs';
+import path from 'node:path';
 ```
 
-Note: Named imports from CommonJS may not work. Use default import and destructure:
+Note: Named imports from user-created CommonJS modules may not work. Use default import and destructure:
 
 ```javascript
 // Instead of this (might not work)
-import { readFile } from 'fs';
+import { greet } from './legacy-module.cjs';
 
 // Do this
-import fs from 'fs';
-const { readFile } = fs;
+import legacy from './legacy-module.cjs';
+const { greet } = legacy;
 
 // Or use node: protocol
 import { readFile } from 'node:fs/promises';
@@ -415,11 +421,12 @@ const configPath = new URL('./config.json', import.meta.url);
 
 For TypeScript projects using ES modules:
 
+tsconfig.json:
+
 ```json
-// tsconfig.json
 {
   "compilerOptions": {
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
     "outDir": "./dist",
@@ -429,8 +436,9 @@ For TypeScript projects using ES modules:
 }
 ```
 
+package.json:
+
 ```json
-// package.json
 {
   "type": "module"
 }
@@ -450,8 +458,10 @@ module.exports = { myFunction };
 module.exports.named = namedExport;
 
 // After (ES Modules)
-import express, { Router } from 'express';
-import path from 'path';
+import express from 'express';
+import path from 'node:path';
+
+const { Router } = express;
 
 export { myFunction };
 export { namedExport as named };
@@ -459,8 +469,9 @@ export { namedExport as named };
 
 ### Maintaining Both Formats (for Libraries)
 
+package.json:
+
 ```json
-// package.json
 {
   "name": "my-library",
   "main": "./dist/index.cjs",
@@ -523,6 +534,6 @@ import { add } from './math.js';
 | File extension | `.js`, `.cjs` | `.js` (with type:module), `.mjs` |
 | `__dirname` | Available | Use `import.meta.url` |
 | Dynamic import | `require()` | `import()` |
-| Tree shaking | No | Yes |
+| Tree shaking in bundlers | Limited | Better static analysis |
 
-ES modules are the future of JavaScript. For new projects, always use `"type": "module"` in package.json and embrace the import/export syntax. The benefits of tree shaking, static analysis, and cleaner syntax make it worth the learning curve.
+ES modules are the future of JavaScript. For new projects, always use `"type": "module"` in package.json and embrace the import/export syntax. The benefits of better tree-shaking support in bundlers, static analysis, and cleaner syntax make it worth the learning curve.

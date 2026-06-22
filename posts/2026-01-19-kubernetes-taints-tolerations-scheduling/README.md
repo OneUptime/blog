@@ -168,9 +168,10 @@ spec:
           operator: "Equal"
           value: "high"
           effect: "NoSchedule"
-        # Tolerate short maintenance windows
-        - key: "node.kubernetes.io/unschedulable"
-          operator: "Exists"
+        # Tolerate batch nodes
+        - key: "workload"
+          operator: "Equal"
+          value: "batch"
           effect: "NoSchedule"
       containers:
         - name: training
@@ -296,7 +297,7 @@ spec:
 ```yaml
 # secure-node-setup.yaml
 # Apply taint to secure nodes
-# kubectl taint nodes secure-node-1 security=high:NoSchedule:NoExecute
+# kubectl taint nodes secure-node-1 security=high:NoSchedule security=high:NoExecute
 
 apiVersion: apps/v1
 kind: Deployment

@@ -23,10 +23,10 @@ API quotas are essential for SaaS applications, ensuring fair usage, preventing 
 ## Basic Quota Implementation
 
 ```python
+import json
 import redis
-import time
-from datetime import datetime, timedelta
-from typing import Tuple, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Tuple, Dict
 from dataclasses import dataclass
 from enum import Enum
 
@@ -61,7 +61,7 @@ class RedisQuotaManager:
 
     def _get_period_key(self, user_id: str, period: QuotaPeriod) -> Tuple[str, int]:
         """Generate period-specific key and TTL."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if period == QuotaPeriod.DAILY:
             period_id = now.strftime('%Y%m%d')
@@ -73,7 +73,9 @@ class RedisQuotaManager:
 
         elif period == QuotaPeriod.WEEKLY:
             # Week starts on Monday
-            week_start = now - timedelta(days=now.weekday())
+            week_start = (now - timedelta(days=now.weekday())).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             period_id = week_start.strftime('%Y%W')
             next_week = week_start + timedelta(weeks=1)
             ttl = int((next_week - now).total_seconds()) + 3600
@@ -99,7 +101,7 @@ class RedisQuotaManager:
 
     def _get_reset_time(self, period: QuotaPeriod) -> datetime:
         """Calculate when the quota resets."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if period == QuotaPeriod.DAILY:
             return (now + timedelta(days=1)).replace(
@@ -127,17 +129,35 @@ class RedisQuotaManager:
         key, ttl = self._get_period_key(user_id, config.period)
         reset_at = self._get_reset_time(config.period)
 
-        # Atomic increment and check
-        pipe = self.redis.pipeline()
-        pipe.incrby(key, amount)
-        pipe.expire(key, ttl)
-        results = pipe.execute()
+        # Atomically check and increment in Redis.
+        script = """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+        local amount = tonumber(ARGV[1])
+        local ttl = tonumber(ARGV[2])
+        local limit = tonumber(ARGV[3])
+        local allow_overage = tonumber(ARGV[4])
+        local new_usage = current + amount
 
-        current_usage = results[0]
-        previous_usage = current_usage - amount
+        if new_usage <= limit or allow_overage == 1 then
+            redis.call('INCRBY', KEYS[1], amount)
+            redis.call('EXPIRE', KEYS[1], ttl)
+            return {1, new_usage}
+        end
+
+        return {0, current}
+        """
+        allowed_flag, current_usage = self.redis.eval(
+            script,
+            1,
+            key,
+            amount,
+            ttl,
+            config.limit,
+            1 if config.allow_overage else 0
+        )
 
         # Calculate status
-        if current_usage <= config.limit:
+        if allowed_flag == 1 and current_usage <= config.limit:
             return QuotaStatus(
                 allowed=True,
                 limit=config.limit,
@@ -145,7 +165,7 @@ class RedisQuotaManager:
                 remaining=config.limit - current_usage,
                 reset_at=reset_at
             )
-        elif config.allow_overage:
+        elif allowed_flag == 1 and config.allow_overage:
             overage = current_usage - config.limit
             overage_cost = overage * config.overage_rate
             return QuotaStatus(
@@ -158,12 +178,10 @@ class RedisQuotaManager:
                 overage_cost=overage_cost
             )
         else:
-            # Rollback the increment
-            self.redis.decrby(key, amount)
             return QuotaStatus(
                 allowed=False,
                 limit=config.limit,
-                used=previous_usage,
+                used=current_usage,
                 remaining=0,
                 reset_at=reset_at
             )
@@ -284,7 +302,7 @@ class UsageTracker:
     def record_usage(self, user_id: str, resource: str,
                      amount: int = 1, metadata: Dict = None):
         """Record usage event for billing."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         month_key = f"usage:{user_id}:{resource}:{now.strftime('%Y%m')}"
         day_key = f"usage:{user_id}:{resource}:{now.strftime('%Y%m%d')}"
 
@@ -316,7 +334,7 @@ class UsageTracker:
     def get_monthly_usage(self, user_id: str, resource: str,
                           year: int = None, month: int = None) -> int:
         """Get usage for a specific month."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         year = year or now.year
         month = month or now.month
 
@@ -327,7 +345,7 @@ class UsageTracker:
     def get_daily_usage(self, user_id: str, resource: str,
                         date: datetime = None) -> int:
         """Get usage for a specific day."""
-        date = date or datetime.utcnow()
+        date = date or datetime.now(timezone.utc)
         key = f"usage:{user_id}:{resource}:{date.strftime('%Y%m%d')}"
         usage = self.redis.get(key)
         return int(usage) if usage else 0
@@ -372,15 +390,21 @@ class QuotaManager {
         switch (period) {
             case QuotaPeriod.DAILY:
                 periodId = now.toISOString().slice(0, 10).replace(/-/g, '');
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                tomorrow.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(Date.UTC(
+                    now.getUTCFullYear(),
+                    now.getUTCMonth(),
+                    now.getUTCDate() + 1
+                ));
                 ttl = Math.ceil((tomorrow - now) / 1000) + 3600;
                 break;
 
             case QuotaPeriod.MONTHLY:
-                periodId = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                periodId = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+                const nextMonth = new Date(Date.UTC(
+                    now.getUTCFullYear(),
+                    now.getUTCMonth() + 1,
+                    1
+                ));
                 ttl = Math.ceil((nextMonth - now) / 1000) + 3600;
                 break;
 
@@ -399,13 +423,18 @@ class QuotaManager {
 
         switch (period) {
             case QuotaPeriod.DAILY:
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                tomorrow.setHours(0, 0, 0, 0);
-                return tomorrow;
+                return new Date(Date.UTC(
+                    now.getUTCFullYear(),
+                    now.getUTCMonth(),
+                    now.getUTCDate() + 1
+                ));
 
             case QuotaPeriod.MONTHLY:
-                return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                return new Date(Date.UTC(
+                    now.getUTCFullYear(),
+                    now.getUTCMonth() + 1,
+                    1
+                ));
 
             default:
                 throw new Error(`Unsupported period: ${period}`);
@@ -416,15 +445,33 @@ class QuotaManager {
         const { key, ttl } = this._getPeriodKey(userId, config.period);
         const resetAt = this._getResetTime(config.period);
 
-        const pipe = this.redis.pipeline();
-        pipe.incrby(key, amount);
-        pipe.expire(key, ttl);
-        const results = await pipe.exec();
+        const script = `
+            local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+            local amount = tonumber(ARGV[1])
+            local ttl = tonumber(ARGV[2])
+            local limit = tonumber(ARGV[3])
+            local allow_overage = tonumber(ARGV[4])
+            local new_usage = current + amount
 
-        const currentUsage = results[0][1];
-        const previousUsage = currentUsage - amount;
+            if new_usage <= limit or allow_overage == 1 then
+                redis.call('INCRBY', KEYS[1], amount)
+                redis.call('EXPIRE', KEYS[1], ttl)
+                return {1, new_usage}
+            end
 
-        if (currentUsage <= config.limit) {
+            return {0, current}
+        `;
+        const [allowedFlag, currentUsage] = await this.redis.eval(
+            script,
+            1,
+            key,
+            amount,
+            ttl,
+            config.limit,
+            config.allowOverage ? 1 : 0
+        );
+
+        if (allowedFlag === 1 && currentUsage <= config.limit) {
             return {
                 allowed: true,
                 limit: config.limit,
@@ -432,7 +479,7 @@ class QuotaManager {
                 remaining: config.limit - currentUsage,
                 resetAt
             };
-        } else if (config.allowOverage) {
+        } else if (allowedFlag === 1 && config.allowOverage) {
             const overage = currentUsage - config.limit;
             return {
                 allowed: true,
@@ -444,11 +491,10 @@ class QuotaManager {
                 overageCost: overage * (config.overageRate || 0)
             };
         } else {
-            await this.redis.decrby(key, amount);
             return {
                 allowed: false,
                 limit: config.limit,
-                used: previousUsage,
+                used: currentUsage,
                 remaining: 0,
                 resetAt
             };
@@ -560,9 +606,12 @@ class BillingIntegration:
         # Check for overages
         for quota_type, config in plan_config.items():
             if config.allow_overage and config.overage_rate > 0:
+                if quota_type != 'monthly_requests':
+                    continue
+
                 usage = self.usage_tracker.get_monthly_usage(
-                    f"{user_id}:{quota_type}",
-                    'requests',  # Assuming requests
+                    user_id,
+                    'api_calls',
                     year, month
                 )
 

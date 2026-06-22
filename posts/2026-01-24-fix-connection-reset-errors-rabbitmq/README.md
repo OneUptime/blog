@@ -48,7 +48,7 @@ java.net.SocketException: Connection reset
 
 ## Cause 1: Heartbeat Timeout
 
-RabbitMQ uses heartbeats to detect dead connections. If a heartbeat is missed, the broker closes the connection.
+RabbitMQ uses heartbeats to detect dead connections. Heartbeat frames are sent about every heartbeat timeout / 2 seconds; after two missed heartbeats, the peer is considered unreachable and the TCP connection is closed.
 
 ```mermaid
 sequenceDiagram
@@ -73,48 +73,44 @@ sequenceDiagram
 
 ```python
 # heartbeat_configuration.py
-# Configure heartbeat interval to prevent timeouts
+# Configure heartbeat timeout to detect dead TCP connections
 # Default is 60 seconds, but may need adjustment
 
 import pika
 
-# Set heartbeat to 30 seconds
-# The connection will be closed if no data is received for 2x this value
+# Set heartbeat timeout to 30 seconds
+# The connection will be closed if no traffic is received for about this timeout
 # Lower values detect failures faster but generate more traffic
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='rabbitmq.example.com',
-        heartbeat=30,  # Heartbeat interval in seconds
+        heartbeat=30,  # Heartbeat timeout in seconds
         blocked_connection_timeout=300  # Timeout when connection is blocked
     )
 )
 
-# For long-running operations, use a separate thread for heartbeats
-# The BlockingConnection handles this automatically with SelectConnection
-# For manual control, use threading:
+# For long-running operations, keep the BlockingConnection I/O loop moving.
+# BlockingConnection is not thread-safe; process_data_events() must be
+# called from the connection's thread.
 
-import threading
 import time
 
-def heartbeat_sender(connection):
-    """
-    Send heartbeats on a separate thread to keep connection alive.
+def process_chunk(chunk):
+    """Process one small unit of application work."""
+    # Application-specific work goes here
+    pass
 
-    This is necessary when the main thread performs blocking operations
-    that might prevent heartbeat responses.
+def run_long_operation_in_chunks(connection, chunks):
     """
-    while connection.is_open:
+    Process long work in chunks while still servicing AMQP I/O.
+
+    This lets Pika send heartbeats and dispatch callbacks between chunks.
+    """
+    for chunk in chunks:
+        process_chunk(chunk)
         # Process any pending events including heartbeats
-        connection.process_data_events()
-        time.sleep(10)  # Check every 10 seconds
-
-# Start heartbeat thread
-heartbeat_thread = threading.Thread(
-    target=heartbeat_sender,
-    args=(connection,),
-    daemon=True
-)
-heartbeat_thread.start()
+        connection.process_data_events(time_limit=0)
+        time.sleep(0.1)
 ```
 
 ### Server-Side Heartbeat Configuration
@@ -198,7 +194,7 @@ net.ipv4.tcp_keepalive_probes = 6
 
 ## Cause 3: Resource Limits
 
-RabbitMQ may close connections when resource limits are reached.
+RabbitMQ may refuse new connections when connection or file descriptor limits are reached, and it blocks publishing connections when memory or disk alarms are triggered.
 
 ### Solution: Monitor and Adjust Limits
 
@@ -208,7 +204,7 @@ RabbitMQ may close connections when resource limits are reached.
 rabbitmqctl list_connections | wc -l
 
 # Check memory usage
-# Connections are closed when memory alarm triggers
+# Publishing connections are blocked when memory alarm triggers
 rabbitmqctl status | grep -A 5 "Memory"
 
 # Check file descriptor usage
@@ -228,8 +224,8 @@ Configure appropriate resource limits.
 # connection_max = 10000
 
 # Memory high watermark
-# Connections are blocked (not reset) when exceeded
-# Set to 40-50% of available RAM
+# Publishing connections are blocked (not reset) when exceeded
+# RabbitMQ 4.x defaults to 60%; tune carefully for your workload
 vm_memory_high_watermark.relative = 0.4
 
 # File descriptor limit (set in systemd/init scripts)
@@ -300,10 +296,9 @@ class ResilientConnection:
 
         self.connection = pika.BlockingConnection(parameters)
 
-        # Register callbacks for connection state changes
-        self.connection.add_callback_threadsafe(
-            lambda: logger.warning("Connection blocked by RabbitMQ")
-        )
+        # Register callbacks for broker resource-pressure notifications
+        self.connection.add_on_connection_blocked_callback(self.on_blocked)
+        self.connection.add_on_connection_unblocked_callback(self.on_unblocked)
 
         self.channel = self.connection.channel()
 
@@ -311,6 +306,16 @@ class ResilientConnection:
         self.channel.confirm_delivery()
 
         return self
+
+    def on_blocked(self, connection, method):
+        """Handle RabbitMQ connection.blocked notification."""
+        self.is_blocked = True
+        logger.warning("Connection blocked by RabbitMQ: %s", method.method.reason)
+
+    def on_unblocked(self, connection, method):
+        """Handle RabbitMQ connection.unblocked notification."""
+        self.is_blocked = False
+        logger.info("Connection unblocked by RabbitMQ")
 
     def publish_with_backpressure(self, exchange, routing_key, body):
         """
@@ -324,10 +329,16 @@ class ResilientConnection:
 
         for attempt in range(max_retries):
             try:
-                # Check if connection is blocked before publishing
+                # Check connection state before publishing
                 if self.connection.is_closed:
                     logger.warning("Connection closed, reconnecting...")
                     self.connect()
+
+                if self.is_blocked:
+                    logger.warning("Connection blocked, delaying publish")
+                    import time
+                    time.sleep(retry_delay)
+                    continue
 
                 self.channel.basic_publish(
                     exchange=exchange,
@@ -608,15 +619,15 @@ groups:
           summary: "High connection churn on {{ $labels.instance }}"
           description: "More than 10 new connections per second, indicating possible connection reset issues"
 
-      # Alert on blocked connections
-      - alert: RabbitMQBlockedConnections
-        expr: rabbitmq_connections_state{state="blocked"} > 0
+      # Alert on resource alarms that can block publishing connections
+      - alert: RabbitMQResourceAlarm
+        expr: (rabbitmq_process_resident_memory_bytes > rabbitmq_resident_memory_limit_bytes) or (rabbitmq_disk_space_available_bytes < rabbitmq_disk_space_available_limit_bytes)
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Blocked connections on {{ $labels.instance }}"
-          description: "{{ $value }} connections are blocked, may lead to timeouts"
+          summary: "RabbitMQ resource alarm on {{ $labels.instance }}"
+          description: "RabbitMQ is above its memory watermark or below its disk free limit, which can block publishing connections"
 
       # Alert on connection drop
       - alert: RabbitMQConnectionDrop
@@ -631,4 +642,4 @@ groups:
 
 ## Summary
 
-Connection reset errors in RabbitMQ stem from heartbeat timeouts, network infrastructure issues, resource limits, blocked connections, and client-side problems. To address these issues, configure heartbeats appropriately (30-60 seconds for most environments), enable TCP keepalives to prevent network device timeouts, monitor and adjust resource limits, handle blocked connections with proper timeouts, and implement automatic reconnection with exponential backoff. By understanding the root causes and implementing proper handling, you can build resilient messaging systems that recover gracefully from connection failures.
+Connection reset errors in RabbitMQ stem from heartbeat timeouts, network infrastructure issues, resource limits, blocked connections, and client-side problems. To address these issues, configure heartbeats appropriately for your environment, enable TCP keepalives to prevent network device timeouts, monitor and adjust resource limits, handle blocked connections with proper timeouts, and implement automatic reconnection with exponential backoff. By understanding the root causes and implementing proper handling, you can build resilient messaging systems that recover gracefully from connection failures.

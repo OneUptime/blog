@@ -57,10 +57,10 @@ Let us start with the fundamental building blocks. These classes define what a m
 
 # Core data structures for the aggregation service
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from enum import Enum
-import statistics
+import math
 
 class AggregationType(Enum):
     """Types of aggregations we support"""
@@ -86,8 +86,14 @@ class MetricPoint:
         Generate a bucket key for time-based aggregation.
         Groups timestamps into fixed windows.
         """
+        timestamp = self.timestamp
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        else:
+            timestamp = timestamp.astimezone(timezone.utc)
+
         # Round down to the nearest window boundary
-        bucket_ts = int(self.timestamp.timestamp()) // window_seconds * window_seconds
+        bucket_ts = int(timestamp.timestamp()) // window_seconds * window_seconds
         # Include tags in the key for dimensional aggregation
         tag_str = ",".join(f"{k}={v}" for k, v in sorted(self.tags.items()))
         return f"{self.name}:{bucket_ts}:{tag_str}"
@@ -135,9 +141,13 @@ class AggregatedMetric:
         """Calculate a percentile from sorted values"""
         if not sorted_values:
             return 0.0
-        index = int(len(sorted_values) * percentile / 100)
-        index = min(index, len(sorted_values) - 1)
-        return sorted_values[index]
+        position = (len(sorted_values) - 1) * percentile / 100
+        lower = math.floor(position)
+        upper = math.ceil(position)
+        if lower == upper:
+            return sorted_values[lower]
+        weight = position - lower
+        return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
 ```
 
 ---
@@ -149,11 +159,11 @@ The buffer collects incoming metrics and groups them by time window. When a wind
 ```python
 # buffer.py
 # In-memory aggregation buffer with time-based flushing
-import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, Callable, Awaitable
-from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Callable, Awaitable, List, Optional
 import threading
+
+from models import MetricPoint, AggregatedMetric
 
 class AggregationBuffer:
     """
@@ -164,7 +174,7 @@ class AggregationBuffer:
     def __init__(
         self,
         window_seconds: int = 60,
-        flush_callback: Callable[[List[AggregatedMetric]], Awaitable[None]] = None,
+        flush_callback: Optional[Callable[[List[AggregatedMetric]], Awaitable[None]]] = None,
         max_buffer_size: int = 100000
     ):
         self.window_seconds = window_seconds
@@ -178,13 +188,18 @@ class AggregationBuffer:
         self.lock = threading.Lock()
 
         # Track the current window for flush decisions
-        self.current_window_start = self._get_window_start(datetime.utcnow())
+        self.current_window_start = self._get_window_start(datetime.now(timezone.utc))
 
     def _get_window_start(self, timestamp: datetime) -> datetime:
         """Get the start of the window containing this timestamp"""
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        else:
+            timestamp = timestamp.astimezone(timezone.utc)
+
         ts = int(timestamp.timestamp())
         window_ts = ts // self.window_seconds * self.window_seconds
-        return datetime.utcfromtimestamp(window_ts)
+        return datetime.fromtimestamp(window_ts, tz=timezone.utc)
 
     def add(self, metric: MetricPoint):
         """
@@ -199,7 +214,10 @@ class AggregationBuffer:
             # Check buffer size limit
             if len(self.buckets) >= self.max_buffer_size:
                 # Drop oldest buckets or raise an error
-                oldest_keys = sorted(self.buckets.keys())[:1000]
+                oldest_keys = sorted(
+                    self.buckets,
+                    key=lambda key: self.buckets[key].window_start
+                )[:1000]
                 for key in oldest_keys:
                     del self.buckets[key]
 
@@ -220,8 +238,7 @@ class AggregationBuffer:
         Flush all windows that have completed (are in the past).
         Returns the flushed aggregates.
         """
-        now = datetime.utcnow()
-        current_window = self._get_window_start(now)
+        now = datetime.now(timezone.utc)
 
         completed = []
         keys_to_remove = []
@@ -243,6 +260,20 @@ class AggregationBuffer:
 
         return completed
 
+    async def flush_all(self) -> List[AggregatedMetric]:
+        """
+        Flush all buffered windows, including the currently open window.
+        Useful during graceful shutdown.
+        """
+        with self.lock:
+            aggregates = list(self.buckets.values())
+            self.buckets.clear()
+
+        if aggregates and self.flush_callback:
+            await self.flush_callback(aggregates)
+
+        return aggregates
+
     def get_stats(self) -> Dict:
         """Get buffer statistics for monitoring"""
         with self.lock:
@@ -250,7 +281,9 @@ class AggregationBuffer:
                 "bucket_count": len(self.buckets),
                 "max_buffer_size": self.max_buffer_size,
                 "window_seconds": self.window_seconds,
-                "current_window": self.current_window_start.isoformat()
+                "current_window": self._get_window_start(
+                    datetime.now(timezone.utc)
+                ).isoformat()
             }
 ```
 
@@ -265,8 +298,10 @@ The storage layer persists aggregated metrics and supports efficient time-range 
 # Redis-based storage for aggregated metrics
 import redis.asyncio as redis
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
+
+from models import AggregatedMetric
 
 class MetricStorage:
     """
@@ -281,21 +316,29 @@ class MetricStorage:
     ):
         self.redis_url = redis_url
         self.retention_days = retention_days
-        self.client: redis.Redis = None
+        self.client: Optional[redis.Redis] = None
 
     async def connect(self):
         """Establish Redis connection"""
-        self.client = await redis.from_url(self.redis_url)
+        self.client = redis.from_url(self.redis_url, decode_responses=True)
 
     async def close(self):
         """Close Redis connection"""
         if self.client:
-            await self.client.close()
+            await self.client.aclose()
 
     def _metric_key(self, name: str, tags: Dict[str, str]) -> str:
         """Generate a Redis key for a metric series"""
         tag_str = ",".join(f"{k}={v}" for k, v in sorted(tags.items()))
         return f"metrics:{name}:{tag_str}"
+
+    def _timestamp(self, value: datetime) -> float:
+        """Convert naive or aware datetimes to a UTC timestamp."""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.timestamp()
 
     async def store(self, aggregates: List[AggregatedMetric]):
         """
@@ -310,13 +353,14 @@ class MetricStorage:
 
         for agg in aggregates:
             key = self._metric_key(agg.name, agg.tags)
-            score = agg.window_start.timestamp()  # Use timestamp as score
+            score = self._timestamp(agg.window_start)  # Use timestamp as score
 
             # Serialize the aggregation data
             data = {
                 "window_start": agg.window_start.isoformat(),
                 "window_end": agg.window_end.isoformat(),
-                "aggregations": agg.get_aggregations()
+                "aggregations": agg.get_aggregations(),
+                "values": agg.values
             }
 
             # Add to sorted set with timestamp as score
@@ -342,10 +386,11 @@ class MetricStorage:
         key = self._metric_key(name, tags)
 
         # Query by score (timestamp) range
-        results = await self.client.zrangebyscore(
+        results = await self.client.zrange(
             key,
-            min=start.timestamp(),
-            max=end.timestamp()
+            self._timestamp(start),
+            self._timestamp(end),
+            byscore=True
         )
 
         data_points = []
@@ -371,7 +416,7 @@ class MetricStorage:
         key = self._metric_key(name, tags)
 
         # Get the last N entries by score
-        results = await self.client.zrevrange(key, 0, count - 1)
+        results = await self.client.zrange(key, 0, count - 1, desc=True)
 
         data_points = []
         for raw in results:
@@ -384,10 +429,28 @@ class MetricStorage:
         # Reverse to get chronological order
         return list(reversed(data_points))
 
+    async def query_aggregates(
+        self,
+        name: str,
+        tags: Dict[str, str],
+        start: datetime,
+        end: datetime
+    ) -> List[Dict]:
+        """Query full aggregate records for rollups."""
+        key = self._metric_key(name, tags)
+        results = await self.client.zrange(
+            key,
+            self._timestamp(start),
+            self._timestamp(end),
+            byscore=True
+        )
+
+        return [json.loads(raw) for raw in results]
+
     async def delete_old_data(self, name: str, tags: Dict[str, str]):
         """Remove data older than retention period"""
         key = self._metric_key(name, tags)
-        cutoff = datetime.utcnow() - timedelta(days=self.retention_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
 
         await self.client.zremrangebyscore(key, "-inf", cutoff.timestamp())
 ```
@@ -402,11 +465,11 @@ Now let us tie everything together into a service that ingests metrics, aggregat
 # service.py
 # Main aggregation service combining buffer, storage, and API
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Import our components
 from models import MetricPoint, AggregatedMetric
@@ -418,12 +481,12 @@ class MetricInput(BaseModel):
     name: str
     value: float
     timestamp: Optional[datetime] = None
-    tags: Dict[str, str] = {}
+    tags: Dict[str, str] = Field(default_factory=dict)
 
 class QueryInput(BaseModel):
     """API input model for querying metrics"""
     name: str
-    tags: Dict[str, str] = {}
+    tags: Dict[str, str] = Field(default_factory=dict)
     start: datetime
     end: datetime
     aggregation: str = "avg"
@@ -452,7 +515,7 @@ class AggregationService:
         )
 
         # Background task handle
-        self.flush_task: asyncio.Task = None
+        self.flush_task: Optional[asyncio.Task] = None
 
     async def start(self):
         """Start the aggregation service"""
@@ -472,7 +535,7 @@ class AggregationService:
                 pass
 
         # Final flush of any remaining data
-        await self.buffer.flush_completed_windows()
+        await self.buffer.flush_all()
         await self.storage.close()
         print("Aggregation service stopped")
 
@@ -549,7 +612,7 @@ async def ingest_metric(metric: MetricInput):
     point = MetricPoint(
         name=metric.name,
         value=metric.value,
-        timestamp=metric.timestamp or datetime.utcnow(),
+        timestamp=metric.timestamp or datetime.now(timezone.utc),
         tags=metric.tags
     )
     aggregation_service.ingest(point)
@@ -562,7 +625,7 @@ async def ingest_batch(metrics: List[MetricInput]):
         MetricPoint(
             name=m.name,
             value=m.value,
-            timestamp=m.timestamp or datetime.utcnow(),
+            timestamp=m.timestamp or datetime.now(timezone.utc),
             tags=m.tags
         )
         for m in metrics
@@ -600,8 +663,11 @@ For long-term storage, you often want multiple resolutions. For example, keep 1-
 ```python
 # rollups.py
 # Multi-resolution data rollups for efficient long-term storage
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
+
+from models import AggregatedMetric
+from storage import MetricStorage
 
 class RollupManager:
     """
@@ -633,52 +699,50 @@ class RollupManager:
         source_window, _ = self.tiers[source_tier]
         target_window, _ = self.tiers[target_tier]
 
-        # Calculate how many source windows fit in a target window
-        windows_per_rollup = target_window // source_window
+        if target_window % source_window != 0:
+            raise ValueError("target tier must be an even multiple of source tier")
 
         # Determine the time range to roll up
         # Roll up the most recent completed target window
-        now = datetime.utcnow()
-        target_end = datetime.utcfromtimestamp(
-            int(now.timestamp()) // target_window * target_window
+        now = datetime.now(timezone.utc)
+        target_end = datetime.fromtimestamp(
+            int(now.timestamp()) // target_window * target_window,
+            tz=timezone.utc
         )
         target_start = target_end - timedelta(seconds=target_window)
 
         # Query source data for the rollup period
-        source_key = f"metrics:{name}:{source_window}s"
-        target_key = f"metrics:{name}:{target_window}s"
+        source_name = name if source_tier == 0 else f"{name}:{source_window}s"
+        target_name = f"{name}:{target_window}s"
 
-        source_data = await self.storage.query(
-            name=name,
+        source_data = await self.storage.query_aggregates(
+            name=source_name,
             tags=tags,
             start=target_start,
-            end=target_end,
-            aggregation="avg"  # Get raw aggregation data
+            end=target_end
         )
 
         if not source_data:
             return
 
         # Compute rolled-up aggregates
-        total_count = sum(d.get("count", 1) for d in source_data)
-        total_sum = sum(d.get("sum", d["value"]) for d in source_data)
+        aggregate_values = [d["aggregations"] for d in source_data]
+        total_count = sum(d["count"] for d in aggregate_values)
+        total_sum = sum(d["sum"] for d in aggregate_values)
         all_values = []
         for d in source_data:
-            if "values" in d:
-                all_values.extend(d["values"])
-            else:
-                all_values.append(d["value"])
+            all_values.extend(d.get("values", []))
 
         # Create rolled-up aggregate
         rollup = AggregatedMetric(
-            name=f"{name}:{target_window}s",
+            name=target_name,
             window_start=target_start,
             window_end=target_end,
             tags=tags,
             count=total_count,
             sum=total_sum,
-            min=min(d.get("min", d["value"]) for d in source_data),
-            max=max(d.get("max", d["value"]) for d in source_data),
+            min=min(d["min"] for d in aggregate_values),
+            max=max(d["max"] for d in aggregate_values),
             values=all_values
         )
 

@@ -36,7 +36,7 @@ flowchart LR
 |---------|--------|----------|
 | `cordon` | Marks node as unschedulable | Prevent new pods during investigation |
 | `uncordon` | Marks node as schedulable | Return node to service |
-| `drain` | Cordons + evicts all pods | Prepare node for maintenance |
+| `drain` | Cordons + evicts or deletes eligible pods | Prepare node for maintenance |
 
 ## Basic Commands
 
@@ -63,13 +63,13 @@ kubectl uncordon worker-node-1
 ### Draining a Node
 
 ```bash
-# Basic drain - evicts all pods
+# Basic drain - evicts or deletes eligible pods
 kubectl drain worker-node-1
 
 # This often fails due to DaemonSets and pods without controllers
 # Use these common flags:
 
-# Ignore DaemonSet-managed pods (they'll restart on the node anyway)
+# Ignore DaemonSet-managed pods (drain does not delete them)
 kubectl drain worker-node-1 --ignore-daemonsets
 
 # Delete pods with local storage (emptyDir volumes)
@@ -99,7 +99,7 @@ kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName=worker-
 
 # Check for pods without controllers (will be deleted permanently)
 kubectl get pods --all-namespaces --field-selector spec.nodeName=worker-node-1 \
-  -o jsonpath='{range .items[?(!@.metadata.ownerReferences)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
+  -o go-template='{{range .items}}{{if not .metadata.ownerReferences}}{{.metadata.namespace}}/{{.metadata.name}}{{"\n"}}{{end}}{{end}}'
 ```
 
 ### Step 2: Check Pod Disruption Budgets
@@ -124,7 +124,7 @@ kubectl drain worker-node-1 \
   --delete-emptydir-data \
   --grace-period=60 \
   --timeout=300s \
-  --pod-selector='!critical=true'  # Skip pods with critical=true label
+  --pod-selector='critical!=true'  # Skip pods with critical=true label
 
 # Watch the drain progress
 kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName=worker-node-1 -w
@@ -169,7 +169,7 @@ kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName=worker-
 kubectl drain worker-node-1 --ignore-daemonsets
 
 # DaemonSet pods (like fluentd, node-exporter) are expected to run on every node
-# They'll automatically restart when the node comes back
+# drain ignores them because the DaemonSet controller would replace deleted pods
 ```
 
 ### Issue 2: Pods with Local Storage
@@ -197,7 +197,7 @@ kubectl get pdb -A
 # 2. Temporarily relax the PDB (not recommended for production)
 # 3. Use --disable-eviction flag (dangerous!)
 
-# Check which pods are blocking
+# List PDB selectors in the same namespaces as pods on the node
 kubectl get pods --all-namespaces --field-selector spec.nodeName=worker-node-1 \
   -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | \
 while read pod; do
@@ -275,7 +275,7 @@ for NODE in $NODES; do
   echo "Waiting for $NODE_NAME to be ready..."
   sleep 60  # Initial wait for reboot
   
-  until kubectl get node $NODE_NAME | grep -q "Ready"; do
+  until [ "$(kubectl get node $NODE_NAME -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" = "True" ]; do
     echo "Waiting for $NODE_NAME..."
     sleep 10
   done
@@ -441,7 +441,7 @@ kubectl drain worker-node-1 --ignore-daemonsets --delete-emptydir-data
 
 Safe node maintenance is crucial for cluster reliability. Key takeaways:
 
-1. **Always cordon before draining** to prevent new pods during the process
+1. **Use cordon before maintenance windows** when you need to stop new pods before the drain starts
 2. **Use Pod Disruption Budgets** to prevent service disruption
 3. **Handle edge cases** like DaemonSets, local storage, and naked pods
 4. **Monitor the drain process** and have rollback plans

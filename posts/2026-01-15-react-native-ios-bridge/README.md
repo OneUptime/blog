@@ -33,7 +33,7 @@ Before diving into the implementation details, it is important to understand whe
 
 ### Performance-Critical Operations
 
-When your application requires high-performance computations, image processing, or complex algorithms, native code often outperforms JavaScript significantly. Native modules execute on the native thread without the overhead of the JavaScript bridge.
+When your application requires high-performance computations, image processing, or complex algorithms, native code often outperforms JavaScript significantly. Legacy native modules still communicate through React Native's bridge, but they let the expensive work execute in native code instead of on the JavaScript thread.
 
 ### Accessing Platform-Specific APIs
 
@@ -223,13 +223,16 @@ class BiometricAuth: NSObject {
       return
     }
 
+    if #available(iOS 17.0, *), context.biometryType == .opticID {
+      resolve("OpticID")
+      return
+    }
+
     switch context.biometryType {
     case .faceID:
       resolve("FaceID")
     case .touchID:
       resolve("TouchID")
-    case .opticID:
-      resolve("OpticID")
     default:
       resolve("none")
     }
@@ -403,8 +406,8 @@ RCT_EXPORT_METHOD(fetchData:(NSString *)url
 
 ### Important Callback Rules
 
-1. **Callbacks can only be invoked once** - attempting to call a callback multiple times will cause a crash
-2. **Callbacks must be invoked** - failing to invoke a callback can lead to memory leaks
+1. **Callbacks are intended to be invoked once** - store them only when an API needs to call back later
+2. **Retained callbacks must eventually be released** - failing to invoke or clear a stored callback can leave JavaScript waiting and keep captured objects alive
 3. **Order matters** - callbacks in the JavaScript signature must match the native signature order
 
 ---
@@ -794,7 +797,7 @@ export default new LocationService();
 
 ## Constants Export
 
-Native modules can export constants that are available synchronously in JavaScript. This is useful for configuration values, enum mappings, or static data.
+Native modules can export constants that are available synchronously in JavaScript. This is useful for configuration values, enum mappings, or static data. In current React Native code, prefer `getConstants()` instead of reading constants directly from the module object because direct constant access is not supported by TurboModules.
 
 ### Exporting Constants in Objective-C
 
@@ -892,23 +895,26 @@ import { NativeModules } from 'react-native';
 
 const { RNAppConstants, RNFeatureFlags } = NativeModules;
 
+const appConstants = RNAppConstants.getConstants();
+const featureFlags = RNFeatureFlags.getConstants();
+
 // Constants are available synchronously
-console.log('Device model:', RNAppConstants.deviceModel);
-console.log('System version:', RNAppConstants.systemVersion);
-console.log('Screen dimensions:', RNAppConstants.screenWidth, 'x', RNAppConstants.screenHeight);
+console.log('Device model:', appConstants.deviceModel);
+console.log('System version:', appConstants.systemVersion);
+console.log('Screen dimensions:', appConstants.screenWidth, 'x', appConstants.screenHeight);
 
 // Nested constants
-console.log('App version:', RNAppConstants.buildConfiguration.version);
-console.log('Is debug:', RNAppConstants.buildConfiguration.debug);
+console.log('App version:', appConstants.buildConfiguration.version);
+console.log('Is debug:', appConstants.buildConfiguration.debug);
 
 // Feature flags
-if (RNFeatureFlags.features.darkMode) {
+if (featureFlags.features.darkMode) {
   console.log('Dark mode is enabled');
 }
 
 // Using status codes
 function handleError(code) {
-  const { statusCodes } = RNAppConstants;
+  const { statusCodes } = appConstants;
 
   switch (code) {
     case statusCodes.invalidInput:
@@ -933,9 +939,11 @@ Understanding threading is critical for native module development. Incorrect thr
 
 ### The Main Queue
 
-By default, native module methods are invoked on a background thread. UI operations must be performed on the main queue:
+Native modules should not assume which thread they are called on. UI operations must be performed on the main queue:
 
 ```objective-c
+// Requires #import <React/RCTUtils.h>
+
 RCT_EXPORT_METHOD(showAlert:(NSString *)title message:(NSString *)message)
 {
   // UI operations MUST be on main queue
@@ -952,7 +960,7 @@ RCT_EXPORT_METHOD(showAlert:(NSString *)title message:(NSString *)message)
 
     [alert addAction:okAction];
 
-    UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+    UIViewController *rootVC = RCTPresentedViewController();
     [rootVC presentViewController:alert animated:YES completion:nil];
   });
 }
@@ -1022,6 +1030,8 @@ RCT_EXPORT_METHOD(executeQuery:(NSString *)query
 ### Swift Threading
 
 ```swift
+import UIKit
+
 @objc(RNHeavyComputation)
 class RNHeavyComputation: NSObject {
 
@@ -1082,16 +1092,14 @@ TurboModules are part of React Native's New Architecture, offering significant p
 
 1. **Lazy Loading**: Modules are loaded only when first accessed
 2. **Synchronous Access**: Direct synchronous calls without bridge overhead
-3. **Type Safety**: TypeScript/Flow types are enforced at runtime
+3. **Type Safety**: TypeScript/Flow specs drive Codegen-generated native interfaces
 4. **Reduced Memory**: Lower memory footprint due to lazy initialization
 
 ### Enabling the New Architecture
 
-In your `ios/Podfile`:
+In React Native versions where the New Architecture is not already enabled by default, you can opt in from your `ios/Podfile`:
 
 ```ruby
-# Enable the New Architecture
-
 ENV['RCT_NEW_ARCH_ENABLED'] = '1'
 ```
 
@@ -1108,10 +1116,6 @@ import { TurboModuleRegistry } from 'react-native';
 export interface Spec extends TurboModule {
   add(a: number, b: number): number;
   multiply(a: number, b: number): Promise<number>;
-  getConstants(): {
-    PI: number;
-    E: number;
-  };
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('NativeCalculator');
@@ -1122,10 +1126,10 @@ export default TurboModuleRegistry.getEnforcing<Spec>('NativeCalculator');
 ```objective-c
 // RNCalculator.h
 
-#import <React/RCTBridgeModule.h>
-#import <ReactCommon/RCTTurboModule.h>
+#import <Foundation/Foundation.h>
+#import <NativeCalculatorSpec/NativeCalculatorSpec.h>
 
-@interface RNCalculator : NSObject <RCTBridgeModule, RCTTurboModule>
+@interface RNCalculator : NSObject <NativeCalculatorSpec>
 @end
 ```
 
@@ -1133,11 +1137,8 @@ export default TurboModuleRegistry.getEnforcing<Spec>('NativeCalculator');
 // RNCalculator.mm
 
 #import "RNCalculator.h"
-#import <React/RCTBridge+Private.h>
 
 @implementation RNCalculator
-
-RCT_EXPORT_MODULE(NativeCalculator);
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
     (const facebook::react::ObjCTurboModule::InitParams &)params
@@ -1145,25 +1146,22 @@ RCT_EXPORT_MODULE(NativeCalculator);
   return std::make_shared<facebook::react::NativeCalculatorSpecJSI>(params);
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(add:(double)a b:(double)b)
+- (NSNumber *)add:(double)a b:(double)b
 {
   return @(a + b);
 }
 
-RCT_EXPORT_METHOD(multiply:(double)a
-                  b:(double)b
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
+- (void)multiply:(double)a
+               b:(double)b
+         resolve:(RCTPromiseResolveBlock)resolve
+          reject:(RCTPromiseRejectBlock)reject
 {
   resolve(@(a * b));
 }
 
-- (NSDictionary *)constantsToExport
++ (NSString *)moduleName
 {
-  return @{
-    @"PI": @(M_PI),
-    @"E": @(M_E)
-  };
+  return @"NativeCalculator";
 }
 
 @end
@@ -1433,7 +1431,7 @@ const debugLocationEmitter = createDebugEmitter(
 
 ### Flipper Integration
 
-Flipper provides excellent debugging capabilities for React Native:
+React Native DevTools is the default debugging experience in modern React Native releases. For older projects that still include Flipper, the native setup looked like this:
 
 ```objective-c
 // AppDelegate.m

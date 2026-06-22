@@ -49,6 +49,10 @@ data:
         http2:
           maxConcurrentStreams: 250
 
+      # HTTP entrypoint used by the ACME HTTP-01 challenge
+      web:
+        address: ":80"
+
       # Dedicated gRPC entrypoint (optional)
       grpc:
         address: ":50051"
@@ -158,8 +162,8 @@ metadata:
 spec:
   serverName: grpc-service.default.svc
   insecureSkipVerify: false
-  rootCAsSecrets:
-    - grpc-ca-cert
+  rootCAs:
+    - secret: grpc-ca-cert
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -215,7 +219,7 @@ For better load distribution with gRPC, consider:
 
 ## Health Checks for gRPC
 
-gRPC services implement a standard health checking protocol. Configure Traefik to use it:
+gRPC services implement a standard health checking protocol. For Kubernetes `ExternalName` services, configure Traefik to use it:
 
 ```yaml
 # grpc-health-check.yaml
@@ -231,19 +235,19 @@ spec:
     - match: Host(`grpc.example.com`)
       kind: Rule
       services:
+        # Active healthCheck fields are evaluated for ExternalName services
         - name: grpc-service
           port: 50051
           scheme: h2c
           healthCheck:
-            # Path for HTTP health check
-            # gRPC health is typically via grpc.health.v1.Health/Check
-            path: /
+            # Use the standard gRPC health checking protocol
+            mode: grpc
             interval: 10s
             timeout: 5s
   tls: {}
 ```
 
-Alternatively, use Kubernetes probes in your gRPC deployment:
+For regular Kubernetes `ClusterIP` services, use Kubernetes probes in your gRPC deployment:
 
 ```yaml
 # grpc-deployment-health.yaml

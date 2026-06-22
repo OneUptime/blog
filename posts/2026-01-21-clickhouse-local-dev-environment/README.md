@@ -17,8 +17,6 @@ A well-configured local development environment accelerates ClickHouse developme
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -67,8 +65,6 @@ volumes:
 
 ```yaml
 # docker-compose-cluster.yml
-version: '3.8'
-
 services:
   clickhouse-01:
     image: clickhouse/clickhouse-server:latest
@@ -115,6 +111,8 @@ networks:
 volumes:
   keeper-data:
 ```
+
+This multi-node compose file provides the containers; add matching ClickHouse cluster configuration under `cluster-config/` and a `keeper_config.xml` file under `keeper-config/` before using replication or distributed DDL.
 
 ### Configuration Files
 
@@ -168,13 +166,13 @@ volumes:
 
 ```bash
 # Start single node
-docker-compose up -d
+docker compose up -d
 
 # Check status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f clickhouse
+docker compose logs -f clickhouse
 
 # Connect with clickhouse-client
 docker exec -it clickhouse-dev clickhouse-client
@@ -236,10 +234,10 @@ ORDER BY (metric_name, timestamp);
 INSERT INTO metrics
 SELECT
     arrayElement(['cpu_usage', 'memory_usage', 'disk_io', 'network_in', 'network_out'], (number % 5) + 1) AS metric_name,
-    now() - INTERVAL (number / 5) SECOND AS timestamp,
+    now() - INTERVAL intDiv(number, 5) SECOND AS timestamp,
     rand() / 10000000 * 100 AS value,
     map('host', concat('server-', toString(rand() % 10)), 'env', arrayElement(['prod', 'staging', 'dev'], rand() % 3 + 1)) AS tags
-FROM numbers(1000000 * 5);
+FROM numbers(30 * 24 * 60 * 60 * 5);
 ```
 
 ## IDE Integration
@@ -247,19 +245,22 @@ FROM numbers(1000000 * 5);
 ### VS Code Setup
 
 Install extensions:
-- **ClickHouse** (by JetBrains) - Query execution
+- **SQLTools** with **SQLTools ClickHouse Driver** - Query execution
 - **SQL Formatter** - SQL formatting
 - **Rainbow CSV** - CSV file viewing
 
 ```json
 // .vscode/settings.json
 {
-    "clickhouse.connections": [
+    "sqltools.connections": [
         {
             "name": "Local Dev",
-            "host": "localhost",
+            "driver": "ClickHouse",
+            "server": "http://localhost",
             "port": 8123,
+            "database": "default",
             "username": "default",
+            "passwordMode": "Use empty password",
             "password": ""
         }
     ],
@@ -401,6 +402,8 @@ FROM system.merges;
 
 ```python
 # conftest.py
+import uuid
+
 import pytest
 import clickhouse_connect
 
@@ -449,31 +452,31 @@ def test_insert_and_query(clickhouse_client, test_table):
 .PHONY: up down logs shell migrate seed test
 
 up:
-    docker-compose up -d
+	docker compose up -d
 
 down:
-    docker-compose down
+	docker compose down
 
 logs:
-    docker-compose logs -f clickhouse
+	docker compose logs -f clickhouse
 
 shell:
-    docker exec -it clickhouse-dev clickhouse-client
+	docker exec -it clickhouse-dev clickhouse-client
 
 migrate:
-    for f in sql/migrations/*.sql; do \
-        docker exec -i clickhouse-dev clickhouse-client < $$f; \
-    done
+	for f in sql/migrations/*.sql; do \
+		docker exec -i clickhouse-dev clickhouse-client < $$f; \
+	done
 
 seed:
-    docker exec -i clickhouse-dev clickhouse-client < sql/seed/sample_data.sql
+	docker exec -i clickhouse-dev clickhouse-client < sql/seed/sample_data.sql
 
 test:
-    pytest tests/ -v
+	pytest tests/ -v
 
 clean:
-    docker-compose down -v
-    rm -rf data/ logs/
+	docker compose down -v
+	rm -rf data/ logs/
 ```
 
 ## Conclusion

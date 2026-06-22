@@ -17,13 +17,13 @@ Start by installing Jest and the necessary dependencies:
 ```bash
 # For a React project with TypeScript
 
-npm install -D jest @types/jest ts-jest
+npm install -D jest jest-environment-jsdom @types/jest ts-jest
 
 # Testing utilities for React
-npm install -D @testing-library/react @testing-library/jest-dom @testing-library/user-event
+npm install -D @testing-library/react @testing-library/jest-dom @testing-library/user-event identity-obj-proxy
 
 # For projects using ES modules
-npm install -D babel-jest @babel/preset-env @babel/preset-react @babel/preset-typescript
+npm install -D babel-jest @babel/core @babel/preset-env @babel/preset-react @babel/preset-typescript
 ```
 
 ## Basic Configuration
@@ -55,7 +55,13 @@ const config = {
 
   // Transform TypeScript and JSX
   transform: {
-    '^.+\\.(ts|tsx|js|jsx)$': ['babel-jest', { presets: ['next/babel'] }],
+    '^.+\\.(ts|tsx|js|jsx)$': ['babel-jest', {
+      presets: [
+        ['@babel/preset-env', { targets: { node: 'current' } }],
+        ['@babel/preset-react', { runtime: 'automatic' }],
+        '@babel/preset-typescript',
+      ],
+    }],
   },
 
   // Ignore patterns
@@ -167,7 +173,6 @@ For TypeScript projects, configure ts-jest:
 // jest.config.js for TypeScript
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'jsdom',
 
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
@@ -182,26 +187,19 @@ module.exports = {
       tsconfig: 'tsconfig.test.json',
     }],
   },
-
-  // Type checking is slow, disable for faster tests
-  globals: {
-    'ts-jest': {
-      isolatedModules: true,
-    },
-  },
 };
 ```
 
 Create a separate tsconfig for tests:
 
 ```json
-// tsconfig.test.json
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
     "types": ["jest", "@testing-library/jest-dom"],
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "isolatedModules": true
   },
   "include": ["src/**/*", "**/*.test.ts", "**/*.test.tsx", "jest.setup.ts"]
 }
@@ -212,6 +210,9 @@ Create a separate tsconfig for tests:
 Organize your tests consistently:
 
 ```text
+__mocks__/
+├── fileMock.js
+└── styleMock.js
 src/
 ├── components/
 │   ├── Button/
@@ -227,9 +228,6 @@ src/
 ├── utils/
 │   ├── format.ts
 │   └── format.test.ts
-└── __mocks__/
-    ├── fileMock.js
-    └── styleMock.js
 ```
 
 ## Test Architecture
@@ -527,10 +525,11 @@ jobs:
         run: npm test -- --coverage --watchAll=false
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/lcov.info
           fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ## Package.json Scripts
@@ -565,7 +564,7 @@ jobs:
 | "Cannot find module" | Check moduleNameMapper in config |
 | CSS import errors | Use identity-obj-proxy mock |
 | ESM module errors | Add to transformIgnorePatterns |
-| Slow tests | Use isolatedModules, reduce maxWorkers |
+| Slow tests | Use `isolatedModules` in tsconfig, reduce maxWorkers |
 | Act warnings | Wrap state updates in act() or waitFor() |
 
 Jest with React Testing Library provides everything you need for comprehensive React testing. Start with the basic configuration and expand as your needs grow. The key is writing tests that give you confidence in your application without becoming a maintenance burden.

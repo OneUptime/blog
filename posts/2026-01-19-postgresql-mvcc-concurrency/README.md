@@ -17,12 +17,12 @@ When you update a row, PostgreSQL does not modify it in place. Instead, it creat
 ```mermaid
 flowchart TB
     subgraph Before["Before UPDATE"]
-        V1[Row Version 1<br/>xmin=100, xmax=null<br/>name='Alice']
+        V1[Row Version 1<br/>xmin=100, xmax=0<br/>name='Alice']
     end
 
     subgraph After["After UPDATE (txn 150)"]
         V1a[Row Version 1<br/>xmin=100, xmax=150<br/>name='Alice']
-        V2[Row Version 2<br/>xmin=150, xmax=null<br/>name='Alicia']
+        V2[Row Version 2<br/>xmin=150, xmax=0<br/>name='Alicia']
     end
 
     Before --> After
@@ -31,18 +31,18 @@ flowchart TB
 Key row metadata fields:
 
 - **xmin**: Transaction ID that created this row version
-- **xmax**: Transaction ID that deleted/updated this row (null if active)
+- **xmax**: Transaction ID that deleted/updated this row (0 if not deleted)
 - **ctid**: Physical location of the row
 
 ## Transaction Visibility Rules
 
-A transaction sees a row version if:
-1. The creating transaction (xmin) committed before this transaction started
+A transaction sees a row version if it is visible to the transaction's snapshot:
+1. The creating transaction (xmin) committed before the snapshot was taken
 2. The row has not been deleted, or the deleting transaction (xmax) has not committed
 
 ```sql
--- Transaction A (xid = 200) starts
-BEGIN;
+-- Transaction A (xid = 200) starts in Repeatable Read
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 
 -- Transaction B (xid = 201) updates a row
 -- Creates new version with xmin=201
@@ -97,16 +97,14 @@ The ctid changed because a new row version was created at a different physical l
 
 ## Transaction Isolation Levels
 
-PostgreSQL supports four isolation levels that affect MVCC behavior:
+PostgreSQL accepts four SQL isolation level names, but Read Uncommitted behaves like Read Committed. The main levels you will use are:
 
 ### Read Committed (Default)
 
 Each statement sees a new snapshot. Other committed changes become visible between statements.
 
 ```sql
-SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-
-BEGIN;
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT balance FROM accounts WHERE id = 1;  -- Sees 1000
 
 -- Another transaction updates balance to 1500 and commits
@@ -120,9 +118,7 @@ COMMIT;
 The entire transaction uses a single snapshot taken at the first query.
 
 ```sql
-SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-
-BEGIN;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT balance FROM accounts WHERE id = 1;  -- Sees 1000
 
 -- Another transaction updates balance to 1500 and commits
@@ -136,11 +132,12 @@ COMMIT;
 The strictest level. PostgreSQL detects conflicts that would violate serializability.
 
 ```sql
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 
 -- If two serializable transactions conflict,
 -- one will fail with:
 -- ERROR: could not serialize access due to concurrent update
+ROLLBACK;
 ```
 
 ## Common Concurrency Patterns
@@ -211,8 +208,11 @@ ORDER BY n_dead_tup DESC;
 ### Manual VACUUM
 
 ```sql
--- Regular vacuum (removes dead tuples, updates statistics)
+-- Regular vacuum (removes dead tuples)
 VACUUM accounts;
+
+-- Vacuum and update planner statistics
+VACUUM (ANALYZE) accounts;
 
 -- Vacuum with verbose output
 VACUUM VERBOSE accounts;
@@ -310,7 +310,7 @@ SELECT
     p.heap_blks_total,
     p.heap_blks_scanned,
     p.heap_blks_vacuumed,
-    round(100.0 * p.heap_blks_vacuumed / nullif(p.heap_blks_total, 0), 2) AS pct_complete
+    round(100.0 * p.heap_blks_scanned / nullif(p.heap_blks_total, 0), 2) AS pct_scanned
 FROM pg_stat_progress_vacuum p
 JOIN pg_stat_activity a ON p.pid = a.pid;
 ```

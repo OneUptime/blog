@@ -25,7 +25,6 @@ This enables queries like "find all products tagged 'electronics' AND 'wireless'
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -48,6 +47,7 @@ class InvertedIndex:
 
     def add(self, item_id, tags):
         """Add item with tags to the index"""
+        tags = list(tags)
         pipe = self.redis.pipeline()
 
         for tag in tags:
@@ -57,7 +57,8 @@ class InvertedIndex:
             pipe.sadd(self._all_tags_key(), tag)
 
         # Store item's tags for retrieval
-        pipe.sadd(self._item_key(item_id), *tags)
+        if tags:
+            pipe.sadd(self._item_key(item_id), *tags)
 
         pipe.execute()
 
@@ -97,8 +98,8 @@ class InvertedIndex:
 
         # Update item's tags
         pipe.delete(self._item_key(item_id))
-        if new_tags:
-            pipe.sadd(self._item_key(item_id), *new_tags)
+        if new_tags_set:
+            pipe.sadd(self._item_key(item_id), *new_tags_set)
 
         pipe.execute()
 
@@ -192,6 +193,7 @@ Build a full product search with multiple attribute types:
 ```python
 import redis
 import json
+import uuid
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -224,6 +226,8 @@ class ProductIndex:
             'price_range': ['100-200']
         }
         """
+        self.remove_product(product_id)
+
         pipe = self.redis.pipeline()
 
         # Store product data
@@ -283,7 +287,7 @@ class ProductIndex:
                 sets_to_intersect.append(self._attr_key(attr_type, values[0]))
             else:
                 # Multiple values - OR them first
-                temp_key = f"{self.prefix}:temp:{attr_type}:{id(values)}"
+                temp_key = f"{self.prefix}:temp:{attr_type}:{uuid.uuid4().hex}"
                 keys = [self._attr_key(attr_type, v) for v in values]
                 self.redis.sunionstore(temp_key, *keys)
                 self.redis.expire(temp_key, 60)  # Cleanup temp key
@@ -336,7 +340,7 @@ class ProductIndex:
         for facet_type in facet_types:
             # Get all values for this facet type
             pattern = f"{self.prefix}:attr:{facet_type}:*"
-            keys = self.redis.keys(pattern)
+            keys = list(self.redis.scan_iter(match=pattern))
 
             facets[facet_type] = {}
             for key in keys:
@@ -409,7 +413,6 @@ Build a simple full-text search using word tokenization:
 ```python
 import redis
 import re
-from collections import Counter
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -440,7 +443,6 @@ class TextIndex:
     def index_document(self, doc_id, text, metadata=None):
         """Index a document"""
         words = self.tokenize(text)
-        word_counts = Counter(words)
 
         pipe = self.redis.pipeline()
 
@@ -501,16 +503,15 @@ class TextIndex:
         """Get word suggestions based on prefix"""
         # This is a simple implementation - for production, use sorted sets
         pattern = f"txt:{self.name}:word:{prefix}*"
-        keys = self.redis.keys(pattern)
 
         suggestions = []
-        for key in keys[:limit]:
+        for key in self.redis.scan_iter(match=pattern):
             word = key.split(':')[-1]
             count = self.redis.scard(key)
             suggestions.append({'word': word, 'count': count})
 
         suggestions.sort(key=lambda x: x['count'], reverse=True)
-        return suggestions
+        return suggestions[:limit]
 
 # Usage
 search = TextIndex('articles', r)
@@ -572,18 +573,21 @@ class GeoIndex:
         # Add to geo index
         pipe.geoadd(self._geo_key(), (lng, lat, item_id))
 
+        item_data = {'lat': lat, 'lng': lng}
+
         # Index attributes
         if attributes:
             for attr, values in attributes.items():
                 for value in (values if isinstance(values, list) else [values]):
                     pipe.sadd(self._attr_key(attr, value), item_id)
 
-            # Store attributes for item
-            pipe.hset(self._item_key(item_id), mapping={
-                'lat': lat,
-                'lng': lng,
-                **{k: ','.join(v) if isinstance(v, list) else v for k, v in attributes.items()}
+            item_data.update({
+                k: ','.join(v) if isinstance(v, list) else v
+                for k, v in attributes.items()
             })
+
+        # Store item data
+        pipe.hset(self._item_key(item_id), mapping=item_data)
 
         pipe.execute()
 
@@ -657,7 +661,7 @@ geo.add_location('rest:3', 40.7489, -73.9680, {
 
 # Find Italian restaurants within 5km
 results = geo.search_nearby(
-    40.7500, -73.9900, 10,
+    40.7500, -73.9900, 5,
     filters={'cuisine': ['italian']}
 )
 

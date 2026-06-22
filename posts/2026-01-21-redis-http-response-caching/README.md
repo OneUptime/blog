@@ -53,6 +53,10 @@ from functools import wraps
 app = FastAPI()
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
+def get_json_response_body(response: Response):
+    """Decode the JSON body from a FastAPI JSONResponse"""
+    return json.loads(response.body.decode())
+
 def cache_response(ttl: int = 300, key_prefix: str = "api"):
     """
     Decorator to cache API responses in Redis.
@@ -83,7 +87,7 @@ def cache_response(ttl: int = 300, key_prefix: str = "api"):
             # Cache the response
             if response.status_code == 200:
                 cache_data = {
-                    'body': response.body.decode() if hasattr(response, 'body') else response,
+                    'body': get_json_response_body(response),
                     'status_code': response.status_code
                 }
                 redis_client.setex(cache_key, ttl, json.dumps(cache_data))
@@ -124,12 +128,13 @@ async def get_product(request: Request, product_id: int):
 ### Node.js with Express
 
 ```javascript
-const express = require('express');
-const redis = require('redis');
-const crypto = require('crypto');
+import express from 'express';
+import { createClient } from 'redis';
+import crypto from 'crypto';
 
 const app = express();
-const client = redis.createClient();
+const client = createClient();
+client.on('error', err => console.error('Redis Client Error', err));
 await client.connect();
 
 /**
@@ -259,7 +264,7 @@ def cache_response_per_user(ttl: int = 300):
             response = await func(request, *args, **kwargs)
 
             if response.status_code == 200:
-                redis_client.setex(cache_key, ttl, json.dumps(response.body))
+                redis_client.setex(cache_key, ttl, json.dumps(get_json_response_body(response)))
 
             return response
 
@@ -293,7 +298,8 @@ def cache_with_vary(ttl: int = 300, vary_headers: list = None):
             ]
             vary_key = ':'.join(vary_values)
 
-            cache_key = f"api:{request.url.path}:{hashlib.md5(vary_key.encode()).hexdigest()}"
+            base_key = build_cache_key(request, "api")
+            cache_key = f"{base_key}:vary:{hashlib.md5(vary_key.encode()).hexdigest()}"
 
             cached = redis_client.get(cache_key)
             if cached:
@@ -309,7 +315,7 @@ def cache_with_vary(ttl: int = 300, vary_headers: list = None):
             response = await func(request, *args, **kwargs)
 
             if response.status_code == 200:
-                redis_client.setex(cache_key, ttl, json.dumps(response.body))
+                redis_client.setex(cache_key, ttl, json.dumps(get_json_response_body(response)))
 
             response.headers['Vary'] = ', '.join(vary_headers)
             return response
@@ -405,6 +411,9 @@ async def update_product(product_id: int, data: dict):
 
 ```python
 import redis.asyncio as aioredis
+import asyncio
+import json
+import time
 
 class CacheInvalidator:
     """Event-driven cache invalidation using Redis Pub/Sub"""
@@ -415,7 +424,7 @@ class CacheInvalidator:
 
     async def publish_invalidation(self, event_type: str, entity_id: str):
         """Publish cache invalidation event"""
-        redis = await aioredis.from_url(self.redis_url)
+        redis = aioredis.from_url(self.redis_url)
         await redis.publish(
             'cache_invalidation',
             json.dumps({
@@ -424,11 +433,11 @@ class CacheInvalidator:
                 'timestamp': time.time()
             })
         )
-        await redis.close()
+        await redis.aclose()
 
     async def subscribe_invalidations(self, handler):
         """Subscribe to cache invalidation events"""
-        redis = await aioredis.from_url(self.redis_url)
+        redis = aioredis.from_url(self.redis_url)
         self.pubsub = redis.pubsub()
         await self.pubsub.subscribe('cache_invalidation')
 
@@ -499,8 +508,14 @@ async def get_product(request: Request, product_id: int):
 
         # Check If-None-Match header
         if_none_match = request.headers.get('If-None-Match')
-        if if_none_match == etag:
-            return Response(status_code=304)  # Not Modified
+        if if_none_match and etag in [tag.strip() for tag in if_none_match.split(',')]:
+            return Response(
+                status_code=304,  # Not Modified
+                headers={
+                    'ETag': etag,
+                    'Cache-Control': 'private, max-age=300'
+                }
+            )
 
         return JSONResponse(
             content=json.loads(body),
@@ -556,12 +571,15 @@ def cache_control_response(
             response = await func(request, *args, **kwargs)
 
             # Build Cache-Control header
-            directives = [scope.value, f"max-age={ttl}"]
+            directives = [scope.value]
 
-            if must_revalidate:
+            if scope != CacheScope.NO_STORE:
+                directives.append(f"max-age={ttl}")
+
+            if scope != CacheScope.NO_STORE and must_revalidate:
                 directives.append("must-revalidate")
 
-            if stale_while_revalidate > 0:
+            if scope != CacheScope.NO_STORE and stale_while_revalidate > 0:
                 directives.append(f"stale-while-revalidate={stale_while_revalidate}")
 
             response.headers['Cache-Control'] = ', '.join(directives)
@@ -648,7 +666,7 @@ def instrumented_cache_response(ttl: int = 300):
 
             if response.status_code == 200:
                 with cache_latency.labels(operation='set').time():
-                    redis_client.setex(cache_key, ttl, json.dumps(response.body))
+                    redis_client.setex(cache_key, ttl, json.dumps(get_json_response_body(response)))
 
             return response
 
@@ -694,7 +712,7 @@ def cache_response_resilient(ttl: int = 300):
 
             try:
                 if response.status_code == 200:
-                    redis_client.setex(cache_key, ttl, json.dumps(response.body))
+                    redis_client.setex(cache_key, ttl, json.dumps(get_json_response_body(response)))
             except redis.RedisError:
                 pass  # Cache unavailable - continue without caching
 

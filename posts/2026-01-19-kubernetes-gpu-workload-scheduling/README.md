@@ -66,9 +66,10 @@ nvcc --version
 
 ```bash
 # Add repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/libnvidia-container/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 # Install toolkit
@@ -123,7 +124,7 @@ spec:
       priorityClassName: system-node-critical
       containers:
         - name: nvidia-device-plugin-ctr
-          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -143,7 +144,7 @@ spec:
 
 ```bash
 # Check device plugin pods
-kubectl get pods -n kube-system -l name=nvidia-device-plugin-ds
+kubectl get pods -A | grep nvidia-device-plugin
 
 # Verify GPUs are advertised
 kubectl get nodes -o json | jq '.items[].status.capacity["nvidia.com/gpu"]'
@@ -377,7 +378,7 @@ spec:
       command: ["sleep", "infinity"]
       resources:
         limits:
-          # Request a time-sliced GPU (1/4 of a GPU)
+          # Request one shared GPU access slot
           nvidia.com/gpu: 1
 ```
 
@@ -411,14 +412,7 @@ data:
   config.yaml: |
     version: v1
     flags:
-      migStrategy: single  # or "mixed" for multiple profiles
-    sharing:
-      mig:
-        resources:
-        - name: nvidia.com/mig-1g.5gb
-          rename: nvidia.com/gpu-1g5gb
-        - name: nvidia.com/mig-3g.20gb
-          rename: nvidia.com/gpu-3g20gb
+      migStrategy: mixed
 ```
 
 ### Request MIG Instance
@@ -494,10 +488,12 @@ spec:
 
 ```bash
 # Common GFD labels
-nvidia.com/cuda.driver.major
-nvidia.com/cuda.driver.minor
-nvidia.com/cuda.runtime.major
-nvidia.com/cuda.runtime.minor
+nvidia.com/cuda.driver-version.major
+nvidia.com/cuda.driver-version.minor
+nvidia.com/cuda.driver-version.full
+nvidia.com/cuda.runtime-version.major
+nvidia.com/cuda.runtime-version.minor
+nvidia.com/cuda.runtime-version.full
 nvidia.com/gpu.compute.major
 nvidia.com/gpu.compute.minor
 nvidia.com/gpu.count
@@ -544,8 +540,13 @@ spec:
         - name: pod-resources
           hostPath:
             path: /var/lib/kubelet/pod-resources
-      nodeSelector:
-        nvidia.com/gpu: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.product
+                    operator: Exists
 ---
 apiVersion: v1
 kind: Service

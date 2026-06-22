@@ -8,7 +8,7 @@ Description: A comprehensive guide to using set -e for robust error handling in 
 
 ---
 
-Error handling is crucial for writing reliable Bash scripts. The `set -e` option (also known as `errexit`) tells Bash to exit immediately if any command returns a non-zero exit status.
+Error handling is crucial for writing reliable Bash scripts. The `set -e` option (also known as `errexit`) tells Bash to exit immediately if a command returns a non-zero exit status, with important exceptions.
 
 ## What is set -e?
 
@@ -54,7 +54,7 @@ set -euo pipefail
 flowchart TD
     A[set -e Exceptions] --> B[Part of if/while condition]
     A --> C[Negated with !]
-    A --> D[Part of && or || chain]
+    A --> D[Non-final command in && or || chain]
 ```
 
 ```bash
@@ -192,13 +192,13 @@ main "$@"
 
 ## Common Pitfalls
 
-### Pitfall 1: Subshells
+### Pitfall 1: Command Substitutions
 
 ```bash
 #!/bin/bash
 set -e
 
-# set -e does NOT propagate to command substitutions
+# set -e does NOT propagate to command substitutions by default
 result=$(false; echo "still runs")  # Does NOT exit
 
 # Fixed - enable errexit in the subshell

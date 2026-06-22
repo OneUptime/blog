@@ -49,7 +49,10 @@ flowchart TB
 ```python
 # duplicate_detection.py
 
-from typing import List, Dict, Set
+import hashlib
+import json
+from datetime import datetime
+from typing import Dict, List, Set
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -61,7 +64,7 @@ class EventRecord:
     sequence_number: int
     event_type: str
     data: dict
-    timestamp: str
+    timestamp: datetime
 
 
 class DuplicateEventDetector:
@@ -117,9 +120,13 @@ class DuplicateEventDetector:
         duplicates = []
 
         for event in events:
-            # Create content hash
-            content = f"{event.event_type}:{str(event.data)}"
-            content_hash = hash(content)
+            # Create a stable content hash
+            content = json.dumps(
+                {"type": event.event_type, "data": event.data},
+                sort_keys=True,
+                default=str
+            )
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
             for prev in content_hashes[content_hash]:
                 time_diff = abs(
@@ -152,7 +159,8 @@ if sequence_duplicates:
 
 ```python
 # idempotent_event_store.py
-import hashlib
+from __future__ import annotations
+
 import json
 from typing import Optional
 
@@ -232,7 +240,7 @@ class ConcurrencyException(Exception):
 
 ```python
 # duplicate_remediation.py
-from typing import List
+from typing import Dict, List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -294,7 +302,7 @@ class DuplicateRemediator:
 
 ```python
 # order_detection.py
-from typing import List, Tuple
+from typing import Dict, List
 
 
 class EventOrderValidator:
@@ -366,8 +374,10 @@ for aggregate_id in get_all_aggregate_ids():
 
 ```python
 # ordered_event_store.py
+from __future__ import annotations
+
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class OrderedEventStore:
@@ -407,7 +417,7 @@ class OrderedEventStore:
             # Set event metadata
             event.sequence_number = expected_version + 1
             event.global_sequence = global_seq
-            event.timestamp = datetime.utcnow()
+            event.timestamp = datetime.now(timezone.utc)
 
             # Persist
             self.store.append(aggregate_id, event)
@@ -429,6 +439,9 @@ class OrderedEventStore:
 
 ```python
 # order_remediation.py
+from typing import Dict
+
+
 class EventOrderRemediator:
     """Fix event ordering issues"""
 
@@ -639,7 +652,7 @@ from typing import Optional
 
 
 class ReliableProjectionProcessor:
-    """Projection processor with exactly-once semantics"""
+    """Projection processor with at-least-once delivery and idempotency checks"""
 
     def __init__(
         self,
@@ -697,7 +710,10 @@ class ReliableProjectionProcessor:
         if not events:
             return 0
 
-        # Process events in transaction
+        processed = 0
+
+        # For exactly-once effects, projection updates and checkpoint writes
+        # must be committed in the same transaction.
         for event in events:
             # Skip if already processed (idempotency)
             if self._is_processed(event):
@@ -715,12 +731,14 @@ class ReliableProjectionProcessor:
 
                 # Mark as processed
                 self._mark_processed(event)
+                processed += 1
 
             except Exception as e:
-                # Log and continue to next event
+                # Log and stop so the failed event is retried before advancing.
                 self._handle_failed_event(event, e)
+                break
 
-        return len(events)
+        return processed
 
     def _is_processed(self, event) -> bool:
         """Check if event was already processed"""
@@ -746,8 +764,9 @@ class ReliableProjectionProcessor:
 
 ```python
 # projection_rebuild.py
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -769,7 +788,7 @@ class ProjectionRebuilder:
         """Rebuild a single projection from scratch"""
 
         logger.info(f"Starting rebuild of projection: {projection_name}")
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         projection = self.projection_registry.get(projection_name)
 
@@ -803,7 +822,7 @@ class ProjectionRebuilder:
             # Update checkpoint periodically
             self.checkpoint_store.set_checkpoint(projection_name, current_seq)
 
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         logger.info(
             f"Rebuild complete: {processed} events in {duration:.2f}s"
@@ -1012,8 +1031,12 @@ class UnresolvableConflictException(Exception):
 ```python
 # event_store_health.py
 from prometheus_client import Gauge, Counter, Histogram
-from datetime import datetime
-import threading
+from datetime import datetime, timezone
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from typing import Dict
+
+app = FastAPI()
 
 
 class EventStoreHealthMonitor:
@@ -1048,8 +1071,9 @@ class EventStoreHealthMonitor:
 
     def run_health_check(self) -> Dict:
         """Run comprehensive health check"""
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
         issues = []
+        event_count = 0
 
         # Check event store
         try:
@@ -1095,7 +1119,7 @@ class EventStoreHealthMonitor:
                     "issues": order_issues
                 })
 
-        duration = (datetime.utcnow() - start).total_seconds()
+        duration = (datetime.now(timezone.utc) - start).total_seconds()
         self.health_check_duration.observe(duration)
 
         return {
@@ -1103,15 +1127,17 @@ class EventStoreHealthMonitor:
             "issues": issues,
             "duration_seconds": duration,
             "event_count": event_count,
-            "checked_at": datetime.utcnow().isoformat()
+            "checked_at": datetime.now(timezone.utc).isoformat()
         }
 
 
 # FastAPI health endpoint
+monitor = EventStoreHealthMonitor(event_store, projection_tracker)
+
+
 @app.get("/health/event-store")
 async def event_store_health():
     """Event store health check endpoint"""
-    monitor = EventStoreHealthMonitor(event_store, projection_tracker)
     health = monitor.run_health_check()
 
     status_code = 200 if health["healthy"] else 503

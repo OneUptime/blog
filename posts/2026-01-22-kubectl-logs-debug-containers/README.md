@@ -72,7 +72,7 @@ kubectl get pod my-pod -o jsonpath='{.spec.initContainers[*].name}'
 # Get init container logs
 kubectl logs my-pod -c init-container-name
 
-# Get logs from all init containers
+# Get logs from all containers, including init containers
 kubectl logs my-pod --all-containers=true
 ```
 
@@ -261,7 +261,7 @@ stern web-app -c nginx
 # Tail across namespaces
 stern web-app --all-namespaces
 
-# With color output
+# Raw log message output
 stern web-app --output=raw
 
 # Filter by content
@@ -301,9 +301,9 @@ kubectl logs my-pod | grep -v "DEBUG\|TRACE"
 
 ```bash
 # Kubernetes rotates logs automatically
-# Check kubelet log settings:
-# --container-log-max-size (default 10Mi)
-# --container-log-max-files (default 5)
+# Check kubelet configuration settings:
+# containerLogMaxSize (default 10Mi)
+# containerLogMaxFiles (default 5)
 
 # To access rotated logs, check node directly
 # /var/log/pods/<namespace>_<pod>_<uid>/<container>/
@@ -356,12 +356,13 @@ spec:
 
 ```python
 # Python example - structured logging
+from datetime import datetime, timezone
 import json
 import sys
 
 def log(level, message, **kwargs):
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "level": level,
         "message": message,
         **kwargs

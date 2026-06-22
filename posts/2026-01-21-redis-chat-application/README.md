@@ -8,7 +8,7 @@ Description: A comprehensive guide to building a real-time chat application usin
 
 ---
 
-Building a real-time chat application requires efficient message broadcasting across connected clients. Redis Pub/Sub provides the perfect backbone for this, enabling instant message delivery with minimal latency. This guide walks through building a complete chat system with user presence, rooms, and scalable WebSocket integration.
+Building a real-time chat application requires efficient message broadcasting across connected clients. Redis Pub/Sub provides a simple low-latency backbone for this, with Redis data structures handling state and history where durability is needed. This guide walks through building a complete chat system with user presence, rooms, and scalable WebSocket integration.
 
 ## Architecture Overview
 
@@ -430,6 +430,7 @@ Here is a Python implementation using FastAPI and WebSockets:
 import asyncio
 import json
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, Set, Optional
 from dataclasses import dataclass, asdict
@@ -437,16 +438,6 @@ from dataclasses import dataclass, asdict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import redis.asyncio as redis
-
-app = FastAPI(title="Redis Chat Server")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @dataclass
 class Message:
@@ -483,11 +474,20 @@ class ConnectionManager:
         self.user_rooms: Dict[str, Set[str]] = {}  # user_id -> set of room_ids
         self.redis: Optional[redis.Redis] = None
         self.pubsub: Optional[redis.client.PubSub] = None
+        self.listener_task: Optional[asyncio.Task] = None
 
     async def initialize(self, redis_url: str = "redis://localhost:6379"):
-        self.redis = await redis.from_url(redis_url, decode_responses=True)
+        self.redis = redis.from_url(redis_url, decode_responses=True)
         self.pubsub = self.redis.pubsub()
-        asyncio.create_task(self._listen_to_redis())
+        self.listener_task = asyncio.create_task(self._listen_to_redis())
+
+    async def close(self):
+        if self.listener_task:
+            self.listener_task.cancel()
+        if self.pubsub:
+            await self.pubsub.aclose()
+        if self.redis:
+            await self.redis.aclose()
 
     async def _listen_to_redis(self):
         """Listen for messages from Redis Pub/Sub."""
@@ -647,9 +647,24 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await manager.initialize()
+    try:
+        yield
+    finally:
+        await manager.close()
+
+
+app = FastAPI(title="Redis Chat Server", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.websocket("/ws/{user_id}/{username}")
@@ -822,7 +837,10 @@ Here is a simple JavaScript client:
                 msgElement.textContent = message.content;
             } else {
                 const time = new Date(message.timestamp).toLocaleTimeString();
-                msgElement.innerHTML = `<strong>${message.username}</strong> (${time}): ${message.content}`;
+                const username = document.createElement('strong');
+                username.textContent = message.username;
+                msgElement.appendChild(username);
+                msgElement.appendChild(document.createTextNode(` (${time}): ${message.content}`));
             }
 
             messagesDiv.appendChild(msgElement);
@@ -871,6 +889,11 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const pubClient = createClient({ url: 'redis://redis-server:6379' });
 const subClient = pubClient.duplicate();
 
+await Promise.all([
+    pubClient.connect(),
+    subClient.connect()
+]);
+
 io.adapter(createAdapter(pubClient, subClient));
 
 // Now multiple server instances can communicate via Redis
@@ -879,8 +902,6 @@ io.adapter(createAdapter(pubClient, subClient));
 Docker Compose for scaling:
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -906,6 +927,8 @@ services:
     depends_on:
       - chat-server
 ```
+
+When running multiple Socket.IO servers behind a load balancer, keep sticky sessions enabled so Engine.IO requests for the same client continue reaching a server that knows that session.
 
 ## Best Practices
 

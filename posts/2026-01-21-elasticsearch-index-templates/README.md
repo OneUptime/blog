@@ -219,7 +219,7 @@ curl -X PUT "https://localhost:9200/_index_template/logs-template" \
 
 ## Template Priority
 
-When multiple templates match an index pattern, priority determines which applies:
+When multiple composable templates match an index pattern, priority determines which single template applies:
 
 ```bash
 # General template (lower priority)
@@ -267,14 +267,6 @@ curl -X PUT "https://localhost:9200/_index_template/flexible-logs" \
       "mappings": {
         "dynamic_templates": [
           {
-            "strings_as_keywords": {
-              "match_mapping_type": "string",
-              "mapping": {
-                "type": "keyword"
-              }
-            }
-          },
-          {
             "long_strings_as_text": {
               "match_mapping_type": "string",
               "match": "*_text",
@@ -284,15 +276,8 @@ curl -X PUT "https://localhost:9200/_index_template/flexible-logs" \
             }
           },
           {
-            "integers_as_long": {
-              "match_mapping_type": "long",
-              "mapping": {
-                "type": "long"
-              }
-            }
-          },
-          {
             "ip_fields": {
+              "match_mapping_type": "string",
               "match": "*_ip",
               "mapping": {
                 "type": "ip"
@@ -301,9 +286,26 @@ curl -X PUT "https://localhost:9200/_index_template/flexible-logs" \
           },
           {
             "geo_points": {
+              "match_mapping_type": "string",
               "match": "*_location",
               "mapping": {
                 "type": "geo_point"
+              }
+            }
+          },
+          {
+            "strings_as_keywords": {
+              "match_mapping_type": "string",
+              "mapping": {
+                "type": "keyword"
+              }
+            }
+          },
+          {
+            "integers_as_long": {
+              "match_mapping_type": "long",
+              "mapping": {
+                "type": "long"
               }
             }
           }
@@ -391,11 +393,6 @@ curl -X PUT "https://localhost:9200/_index_template/logs-with-ilm" \
         "properties": {
           "@timestamp": { "type": "date" },
           "message": { "type": "text" }
-        }
-      },
-      "aliases": {
-        "logs": {
-          "is_write_index": true
         }
       }
     }
@@ -514,7 +511,8 @@ curl -X PUT "https://localhost:9200/_component_template/prod-settings" \
       "settings": {
         "number_of_shards": 3,
         "number_of_replicas": 2,
-        "index.lifecycle.name": "logs-policy"
+        "index.lifecycle.name": "logs-policy",
+        "index.lifecycle.rollover_alias": "logs-prod"
       }
     }
   }'
@@ -541,10 +539,17 @@ curl -X PUT "https://localhost:9200/_index_template/logs-prod" \
   -d '{
     "index_patterns": ["logs-prod-*"],
     "composed_of": ["base-settings", "log-mappings", "prod-settings"],
-    "priority": 200,
-    "template": {
-      "aliases": {
-        "logs-prod": {}
+    "priority": 200
+  }'
+
+# Bootstrap production write index
+curl -X PUT "https://localhost:9200/logs-prod-000001" \
+  -H "Content-Type: application/json" \
+  -u elastic:password \
+  -d '{
+    "aliases": {
+      "logs-prod": {
+        "is_write_index": true
       }
     }
   }'

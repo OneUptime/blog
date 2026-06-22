@@ -82,7 +82,7 @@ SELECT tags[1] FROM articles;  -- First element
 -- Access multiple elements
 SELECT tags[1], tags[2], tags[3] FROM articles;
 
--- Access from end (negative indexes don't work, use array_length)
+-- Access from end (negative indexes don't mean "from the end"; use array_length)
 SELECT tags[array_length(tags, 1)] AS last_tag FROM articles;
 ```
 
@@ -206,7 +206,7 @@ SELECT array_positions(ARRAY[1,2,1,3,1], 1);
 ### Sorting and Deduplication
 
 ```sql
--- Sort array elements (PostgreSQL 14+)
+-- Sort array elements
 SELECT id, (SELECT array_agg(t ORDER BY t) FROM unnest(tags) t) AS sorted_tags
 FROM articles;
 
@@ -238,11 +238,12 @@ EXPLAIN SELECT * FROM articles WHERE tags @> ARRAY['postgresql'];
 -- Shows: Bitmap Index Scan on idx_articles_tags
 ```
 
-### GiST Index
+### GiST Index for Integer Arrays
 
 ```sql
--- GiST index (alternative, smaller but slower)
-CREATE INDEX idx_articles_tags_gist ON articles USING GIST(tags gist_array_ops);
+-- GiST array index support is provided by the intarray extension for integer arrays
+CREATE EXTENSION IF NOT EXISTS intarray;
+CREATE INDEX idx_articles_ratings_gist ON articles USING GIST(ratings gist__int_ops);
 ```
 
 ### Expression Index
@@ -292,7 +293,7 @@ SELECT * FROM articles WHERE tags @> ARRAY['postgresql', 'database'];
 SELECT * FROM articles WHERE NOT ('deprecated' = ANY(tags));
 
 -- Count occurrences of a value
-SELECT id, array_length(array_positions(ratings, 5), 1) AS five_star_count
+SELECT id, cardinality(array_positions(ratings, 5)) AS five_star_count
 FROM articles;
 ```
 
@@ -384,16 +385,16 @@ SELECT * FROM articles WHERE array_length(tags, 1) > 3;    -- Need expression in
 ### Avoiding Common Pitfalls
 
 ```sql
--- WRONG: Updating single element (rewrites entire array)
+-- Occasional single-element update (rewrites the array value)
 UPDATE articles SET tags[1] = 'new_value' WHERE id = 1;
 
--- BETTER: Use array functions
-UPDATE articles SET tags = array_replace(tags, tags[1], 'new_value') WHERE id = 1;
+-- Replace every matching value
+UPDATE articles SET tags = array_replace(tags, 'old_value', 'new_value') WHERE id = 1;
 
--- WRONG: Frequent append operations
+-- Avoid frequent append operations
 UPDATE articles SET tags = tags || 'tag' WHERE id = 1;  -- Creates new array
 
--- BETTER: Batch updates when possible
+-- Batch updates when possible
 UPDATE articles SET tags = array_cat(tags, ARRAY['tag1', 'tag2', 'tag3']) WHERE id = 1;
 ```
 

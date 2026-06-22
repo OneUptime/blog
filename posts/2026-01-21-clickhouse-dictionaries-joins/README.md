@@ -115,18 +115,16 @@ Load from REST APIs or files:
 ```sql
 CREATE DICTIONARY geo_dict
 (
-    ip_start UInt32,
-    ip_end UInt32,
+    country_code String,
     country String,
     city String
 )
-PRIMARY KEY ip_start
+PRIMARY KEY country_code
 SOURCE(HTTP(
     URL 'https://example.com/geo-data.csv'
     FORMAT 'CSVWithNames'
 ))
-LAYOUT(RANGE_HASHED())
-RANGE(MIN ip_start MAX ip_end)
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 86400 MAX 86460);
 ```
 
@@ -140,10 +138,10 @@ CREATE DICTIONARY config_dict
 )
 PRIMARY KEY key
 SOURCE(FILE(
-    PATH '/etc/clickhouse-server/config_values.csv'
+    PATH './user_files/config_values.csv'
     FORMAT 'CSVWithNames'
 ))
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 LIFETIME(MIN 60 MAX 120);
 ```
 
@@ -153,7 +151,7 @@ Choose the layout based on your key type and query patterns:
 
 ### HASHED
 
-Best for single-key lookups with unique keys:
+Best for single-key lookups with unique `UInt64` keys:
 
 ```sql
 LAYOUT(HASHED())
@@ -165,7 +163,7 @@ dictHas('dict', key)
 
 ### HASHED_ARRAY
 
-For dictionaries with array attributes:
+For dictionaries with many attributes where storing attributes in arrays is more memory-efficient:
 
 ```sql
 LAYOUT(HASHED_ARRAY())
@@ -206,12 +204,12 @@ CREATE DICTIONARY exchange_rates
 )
 PRIMARY KEY currency
 SOURCE(CLICKHOUSE(TABLE 'rates'))
-LAYOUT(RANGE_HASHED())
+LAYOUT(COMPLEX_KEY_RANGE_HASHED())
 RANGE(MIN valid_from MAX valid_to)
 LIFETIME(3600);
 
 -- Query with date in range
-SELECT dictGet('exchange_rates', 'rate', currency, toDate('2024-01-15'))
+SELECT dictGet('exchange_rates', 'rate', tuple(currency), toDate('2024-01-15'))
 FROM transactions;
 ```
 
@@ -262,10 +260,10 @@ FROM events;
 
 ### Typed Functions
 
-Use typed functions for better performance:
+Use typed functions when you want ClickHouse to convert the attribute to a specific return type:
 
 ```sql
--- Typed getters (slightly faster)
+-- Typed getters
 SELECT dictGetString('users_dict', 'name', user_id) AS name
 FROM events;
 
@@ -372,7 +370,7 @@ SELECT
     name,
     hit_rate,
     found_rate,
-    queries
+    query_count
 FROM system.dictionaries;
 ```
 
@@ -441,7 +439,7 @@ CREATE DICTIONARY large_dict
     ...
 )
 LAYOUT(CACHE(SIZE_IN_CELLS 10000000))  -- 10M entries in cache
-LIFETIME(MIN 0 MAX 0);  -- Never expire, rely on LRU
+LIFETIME(MIN 300 MAX 600);  -- Expire cached entries after 5-10 minutes
 ```
 
 ### 5. Preload on Startup
@@ -503,21 +501,19 @@ FROM events;
 ```sql
 CREATE DICTIONARY geo_ip
 (
-    network String,
-    start_ip UInt32,
-    end_ip UInt32,
+    prefix String,
     country_code String,
     country_name String,
     city String
 )
-PRIMARY KEY network
-SOURCE(FILE(PATH '/var/lib/clickhouse/geo/GeoLite2-City.csv' FORMAT CSVWithNames))
-LAYOUT(IP_TRIE())
+PRIMARY KEY prefix
+SOURCE(FILE(PATH './user_files/GeoLite2-City.csv' FORMAT 'CSVWithNames'))
+LAYOUT(IP_TRIE)
 LIFETIME(86400);
 
 -- Look up IP address
 SELECT
-    dictGet('geo_ip', 'country_name', tuple(IPv4StringToNum(ip_address))) AS country
+    dictGet('geo_ip', 'country_name', toIPv4(ip_address)) AS country
 FROM access_logs;
 ```
 

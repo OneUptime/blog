@@ -40,9 +40,9 @@ Start with a simple in-memory toggle system. This works for development and smal
 # toggles/basic.py
 
 # Simple in-memory feature toggle implementation
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
-from datetime import datetime
+from typing import Dict, Any
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 @dataclass
 class FeatureToggle:
@@ -50,14 +50,8 @@ class FeatureToggle:
     name: str
     enabled: bool = False
     description: str = ""
-    created_at: datetime = None
-    metadata: Dict[str, Any] = None
-
-    def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.utcnow()
-        if self.metadata is None:
-            self.metadata = {}
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 class ToggleManager:
     """Manages feature toggles with simple on/off control"""
@@ -192,7 +186,7 @@ class FileToggleManager:
 
 ## Redis-Backed Toggles
 
-For distributed systems where multiple application instances need to share toggle state, use Redis as the backend. This enables instant propagation of toggle changes across all instances.
+For distributed systems where multiple application instances need to share toggle state, use Redis as the backend. This makes toggle changes available to all instances on their next read.
 
 ```python
 # toggles/redis_backed.py
@@ -261,8 +255,8 @@ class RedisToggleManager:
 
     def list_all_toggles(self) -> List[str]:
         """List all toggle names"""
-        keys = self.redis.keys(f"{self.prefix}*")
-        return [k.replace(self.prefix, "") for k in keys]
+        keys = self.redis.scan_iter(match=f"{self.prefix}*")
+        return [k[len(self.prefix):] for k in keys]
 
     def bulk_check(self, names: List[str]) -> Dict[str, bool]:
         """Check multiple toggles efficiently with pipelining"""

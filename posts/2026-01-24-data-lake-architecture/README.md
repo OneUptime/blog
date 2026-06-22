@@ -301,6 +301,7 @@ A metadata catalog is essential for data discovery and governance. AWS Glue Data
 # Configure AWS Glue Data Catalog for data lake metadata management
 
 import boto3
+import json
 
 def create_database(database_name: str, description: str, location: str):
     """
@@ -428,47 +429,34 @@ graph LR
 # quality/data_quality.py
 # Implement data quality checks using Great Expectations
 
-from great_expectations.core import ExpectationSuite, ExpectationConfiguration
-from great_expectations.dataset import PandasDataset
+import great_expectations as gx
 import pandas as pd
 
-def create_quality_suite(suite_name: str) -> ExpectationSuite:
+def create_quality_suite(suite_name: str) -> gx.ExpectationSuite:
     """
     Create a reusable expectation suite for data validation.
     """
-    suite = ExpectationSuite(expectation_suite_name=suite_name)
+    suite = gx.ExpectationSuite(name=suite_name)
 
     # Add common expectations
     expectations = [
         # Ensure no null values in key columns
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={"column": "id"}
-        ),
+        gx.expectations.ExpectColumnValuesToNotBeNull(column="id"),
         # Validate timestamp format
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_match_regex",
-            kwargs={
-                "column": "created_at",
-                "regex": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
-            }
+        gx.expectations.ExpectColumnValuesToMatchRegex(
+            column="created_at",
+            regex=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
         ),
         # Check for valid email format
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_match_regex",
-            kwargs={
-                "column": "email",
-                "regex": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
-                "mostly": 0.95  # Allow 5% invalid
-            }
+        gx.expectations.ExpectColumnValuesToMatchRegex(
+            column="email",
+            regex=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+            mostly=0.95  # Allow 5% invalid
         ),
-        # Ensure referential integrity
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_in_set",
-            kwargs={
-                "column": "status",
-                "value_set": ["active", "inactive", "pending", "deleted"]
-            }
+        # Ensure status values are from the allowed set
+        gx.expectations.ExpectColumnValuesToBeInSet(
+            column="status",
+            value_set=["active", "inactive", "pending", "deleted"]
         )
     ]
 
@@ -478,21 +466,25 @@ def create_quality_suite(suite_name: str) -> ExpectationSuite:
     return suite
 
 
-def validate_dataframe(df: pd.DataFrame, suite: ExpectationSuite) -> dict:
+def validate_dataframe(df: pd.DataFrame, suite: gx.ExpectationSuite) -> dict:
     """
     Validate a DataFrame against an expectation suite.
     Returns validation results with details on failures.
     """
-    dataset = PandasDataset(df)
-    results = dataset.validate(expectation_suite=suite)
+    context = gx.get_context()
+    data_source = context.data_sources.add_pandas("quality_checks")
+    data_asset = data_source.add_dataframe_asset(name="data_lake_dataframe")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe("batch")
+    batch = batch_definition.get_batch(batch_parameters={"dataframe": df})
+    results = batch.validate(suite)
 
     return {
         'success': results.success,
         'statistics': results.statistics,
         'failed_expectations': [
             {
-                'expectation': r.expectation_config.expectation_type,
-                'column': r.expectation_config.kwargs.get('column'),
+                'expectation': type(r.expectation).__name__,
+                'column': r.expectation.column,
                 'observed_value': r.result.get('observed_value')
             }
             for r in results.results if not r.success
@@ -511,14 +503,16 @@ Secure your data lake with proper access controls using IAM policies and Lake Fo
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "DataAnalystAccess",
+            "Sid": "DataAnalystListAccess",
             "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:ListBucket"
-            ],
+            "Action": "s3:ListBucket",
+            "Resource": "arn:aws:s3:::datalake-prod-curated-zone"
+        },
+        {
+            "Sid": "DataAnalystReadPublicObjects",
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
             "Resource": [
-                "arn:aws:s3:::datalake-prod-curated-zone",
                 "arn:aws:s3:::datalake-prod-curated-zone/*"
             ],
             "Condition": {

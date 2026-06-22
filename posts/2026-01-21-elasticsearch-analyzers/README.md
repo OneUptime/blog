@@ -213,7 +213,7 @@ curl -X POST "https://localhost:9200/_analyze" \
   }'
 ```
 
-Result: `[fox, run, quick]` (stemmed, stopwords removed)
+Result: `[fox, run, quickli]` (stemmed, stopwords removed)
 
 ### Available Language Analyzers
 
@@ -223,7 +223,7 @@ Result: `[fox, run, quick]` (stemmed, stopwords removed)
 - galician, german, greek, hindi, hungarian
 - indonesian, irish, italian, latvian, lithuanian
 - norwegian, persian, portuguese, romanian, russian
-- sorani, spanish, swedish, turkish, thai
+- serbian, sorani, spanish, swedish, turkish, thai
 
 ### Configure Language Analyzer
 
@@ -734,7 +734,7 @@ curl -X PUT "https://localhost:9200/products" \
           "delimiter_analyzer": {
             "type": "custom",
             "tokenizer": "whitespace",
-            "filter": ["word_delimiter", "lowercase"]
+            "filter": ["word_delimiter", "flatten_graph", "lowercase"]
           }
         }
       }
@@ -742,7 +742,7 @@ curl -X PUT "https://localhost:9200/products" \
   }'
 ```
 
-Test: `PowerShot2000` produces `[PowerShot2000, Power, Shot, 2000]`
+Test: `PowerShot2000` produces `[powershot2000, power, shot, 2000]`
 
 ## Multi-Field Analysis
 

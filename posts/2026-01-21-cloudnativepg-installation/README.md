@@ -12,7 +12,7 @@ CloudNativePG is a Kubernetes operator that covers the full lifecycle of a Postg
 
 ## Prerequisites
 
-- Kubernetes cluster version 1.25 or higher
+- A Kubernetes version supported by the CloudNativePG release you install (for CloudNativePG 1.29.x: Kubernetes 1.33, 1.34, or 1.35)
 - kubectl configured with cluster access
 - Helm 3.x (for Helm installation)
 - Cluster admin permissions
@@ -22,7 +22,7 @@ CloudNativePG is a Kubernetes operator that covers the full lifecycle of a Postg
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Verify cluster access
 kubectl get nodes
@@ -136,10 +136,10 @@ image:
   repository: ghcr.io/cloudnative-pg/cloudnative-pg
   pullPolicy: IfNotPresent
 
-# Additional environment variables
-additionalEnv:
-  - name: WATCH_NAMESPACE
-    value: ""  # Empty = watch all namespaces
+# Operator configuration
+config:
+  data:
+    WATCH_NAMESPACE: ""  # Empty = watch all namespaces
 ```
 
 Install with custom values:
@@ -160,7 +160,7 @@ For environments without Helm or preferring raw manifests.
 ```bash
 # Apply the latest release manifest
 kubectl apply --server-side -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 ```
 
 #### Install Specific Version
@@ -170,7 +170,7 @@ kubectl apply --server-side -f \
 curl -s https://api.github.com/repos/cloudnative-pg/cloudnative-pg/releases | jq '.[].tag_name'
 
 # Install specific version
-VERSION=1.22.0
+VERSION=1.29.1
 kubectl apply --server-side -f \
   https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v${VERSION}/releases/cnpg-${VERSION}.yaml
 ```
@@ -188,7 +188,7 @@ kind: Kustomization
 namespace: cnpg-system
 
 resources:
-  - https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+  - https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 
 # Optional: patch the deployment
 patches:
@@ -252,6 +252,7 @@ kubectl get pods -n cnpg-system
 # Expected output:
 # NAME                                       READY   STATUS    RESTARTS   AGE
 # cnpg-controller-manager-7f4d8b6f9d-xxxxx   1/1     Running   0          2m
+# Helm installs use cnpg-cloudnative-pg as the default deployment name.
 
 # Check deployment
 kubectl get deployment -n cnpg-system
@@ -268,19 +269,26 @@ kubectl get crd | grep cnpg
 
 # Expected CRDs:
 # backups.postgresql.cnpg.io
+# clusterimagecatalogs.postgresql.cnpg.io
 # clusters.postgresql.cnpg.io
+# databases.postgresql.cnpg.io
+# failoverquorums.postgresql.cnpg.io
+# imagecatalogs.postgresql.cnpg.io
 # poolers.postgresql.cnpg.io
+# publications.postgresql.cnpg.io
 # scheduledbackups.postgresql.cnpg.io
+# subscriptions.postgresql.cnpg.io
 ```
 
 ### Check Operator Logs
 
 ```bash
 # View operator logs
-kubectl logs -n cnpg-system deployment/cnpg-controller-manager -f
+DEPLOYMENT=cnpg-cloudnative-pg  # Helm default; use cnpg-controller-manager for manifest installs
+kubectl logs -n cnpg-system deployment/${DEPLOYMENT} -f
 
 # Check for any errors
-kubectl logs -n cnpg-system deployment/cnpg-controller-manager | grep -i error
+kubectl logs -n cnpg-system deployment/${DEPLOYMENT} | grep -i error
 ```
 
 ### Test with Simple Cluster
@@ -317,9 +325,9 @@ By default, the operator watches all namespaces. To restrict to specific namespa
 
 ```yaml
 # values.yaml
-additionalEnv:
-  - name: WATCH_NAMESPACE
-    value: "database,production"  # Comma-separated list
+config:
+  data:
+    WATCH_NAMESPACE: "database,production"  # Comma-separated list
 ```
 
 ### Manifest Patch
@@ -396,16 +404,15 @@ kubectl create secret docker-registry my-registry-secret \
 # values.yaml
 monitoring:
   podMonitorEnabled: true
-  podMonitorNamespace: monitoring
   podMonitorAdditionalLabels:
     release: prometheus
 ```
 
-### Manual ServiceMonitor
+### Manual PodMonitor
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: cnpg-controller-manager
   namespace: cnpg-system
@@ -415,7 +422,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudnative-pg
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -439,7 +446,7 @@ helm upgrade cnpg cloudnative-pg/cloudnative-pg \
 # Upgrade to specific version
 helm upgrade cnpg cloudnative-pg/cloudnative-pg \
   --namespace cnpg-system \
-  --version 0.20.0 \
+  --version 0.28.3 \
   -f values.yaml
 ```
 
@@ -448,7 +455,7 @@ helm upgrade cnpg cloudnative-pg/cloudnative-pg \
 ```bash
 # Apply new version manifest
 kubectl apply --server-side -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.22.0/releases/cnpg-1.22.0.yaml
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/releases/cnpg-1.29.1.yaml
 ```
 
 ## Uninstall
@@ -464,16 +471,22 @@ kubectl delete namespace cnpg-system
 
 # Optionally delete CRDs (WARNING: deletes all clusters!)
 kubectl delete crd backups.postgresql.cnpg.io
+kubectl delete crd clusterimagecatalogs.postgresql.cnpg.io
 kubectl delete crd clusters.postgresql.cnpg.io
+kubectl delete crd databases.postgresql.cnpg.io
+kubectl delete crd failoverquorums.postgresql.cnpg.io
+kubectl delete crd imagecatalogs.postgresql.cnpg.io
 kubectl delete crd poolers.postgresql.cnpg.io
+kubectl delete crd publications.postgresql.cnpg.io
 kubectl delete crd scheduledbackups.postgresql.cnpg.io
+kubectl delete crd subscriptions.postgresql.cnpg.io
 ```
 
 ### kubectl Uninstall
 
 ```bash
 # Delete operator resources
-kubectl delete -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.22.0/releases/cnpg-1.22.0.yaml
+kubectl delete -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/releases/cnpg-1.29.1.yaml
 ```
 
 ## Troubleshooting
@@ -488,7 +501,8 @@ kubectl get events -n cnpg-system --sort-by='.lastTimestamp'
 kubectl describe pod -n cnpg-system -l app.kubernetes.io/name=cloudnative-pg
 
 # Check RBAC
-kubectl auth can-i --list --as=system:serviceaccount:cnpg-system:cnpg-manager
+SERVICE_ACCOUNT=cnpg-cloudnative-pg  # Helm default; use cnpg-manager for manifest installs
+kubectl auth can-i --list --as=system:serviceaccount:cnpg-system:${SERVICE_ACCOUNT}
 ```
 
 ### Webhook Errors

@@ -44,7 +44,7 @@ flowchart TD
 
 ## Create React App Configuration
 
-Create React App has built-in support for environment variables.
+For existing Create React App projects, `react-scripts` has built-in support for environment variables. Create React App is deprecated for new apps, but these settings still apply to maintained CRA projects.
 
 ### Setting Up Environment Files
 
@@ -131,26 +131,25 @@ console.log('Debug mode:', env.debug);
 
 ### Environment Priority
 
-Files are loaded in this order (later files override earlier ones):
+Files are prioritized in this order (earlier files override later ones):
 
 ```bash
-# Load order for npm start (development):
-.env
+# Priority for npm start (development):
+.env.development.local
 .env.local
 .env.development
-.env.development.local
-
-# Load order for npm run build (production):
 .env
+
+# Priority for npm run build (production):
+.env.production.local
 .env.local
 .env.production
-.env.production.local
-
-# Load order for npm test:
 .env
-.env.local
-.env.test
+
+# Priority for npm test:
 .env.test.local
+.env.test
+.env
 ```
 
 ## Vite Configuration
@@ -282,9 +281,9 @@ module.exports = {
       path: `./.env.${process.env.NODE_ENV || 'development'}`,
       // Load system environment variables
       systemvars: true,
-      // Expose only variables starting with REACT_APP_
+      // Disallow empty values for variables listed in .env.example
       allowEmptyValues: false,
-      // Safe mode - only expose variables listed in .env.example
+      // Safe mode - verify variables listed in .env.example are set
       safe: true,
       // Path to .env.example file
       example: './.env.example'

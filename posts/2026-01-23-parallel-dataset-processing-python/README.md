@@ -10,7 +10,7 @@ Description: Learn how to process large datasets efficiently using parallel jobs
 
 > Processing large datasets sequentially can take hours or days. Parallel processing lets you use all your CPU cores to finish in a fraction of the time. This guide shows you how to parallelize data processing in Python the right way.
 
-Modern machines have multiple CPU cores, but Python's Global Interpreter Lock (GIL) prevents threads from running Python code in parallel. For CPU-bound tasks like data transformation, you need multiprocessing. For I/O-bound tasks, threading or async can work. This guide covers both scenarios with practical code you can adapt.
+Modern machines have multiple CPU cores, but in the standard GIL-enabled CPython build, the Global Interpreter Lock (GIL) prevents multiple threads from executing Python bytecode at the same time. For CPU-bound tasks like data transformation, multiprocessing is usually the better fit. For I/O-bound tasks, threading or async can work. This guide covers both scenarios with practical code you can adapt.
 
 ---
 
@@ -45,13 +45,13 @@ The `concurrent.futures` module provides a clean interface for parallel executio
 
 # Simple parallel processing with ProcessPoolExecutor
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Any
+from typing import List
 import time
 
 def process_item(item: dict) -> dict:
     """
     Process a single item. This runs in a separate process.
-    Must be a top-level function (not a lambda or method).
+    Use a picklable function; top-level functions are the safest option.
     """
     # Simulate CPU-intensive work
     result = item.copy()
@@ -118,7 +118,6 @@ For very large datasets, process in chunks to control memory usage and provide p
 # Process large datasets in chunks
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Iterator, Callable, TypeVar
-import math
 
 T = TypeVar('T')
 
@@ -225,10 +224,11 @@ The joblib library is popular in the data science community. It provides memory 
 # joblib_processing.py
 # Parallel processing with joblib
 from joblib import Parallel, delayed, Memory
-from typing import List, Callable
+from typing import Callable
 import numpy as np
 import tempfile
 import os
+import math
 
 # Optional: Set up caching for expensive computations
 cache_dir = tempfile.mkdtemp()
@@ -277,7 +277,7 @@ def parallel_array_processing(
         Processed array
     """
     # Split data into chunks
-    n_chunks = max(1, len(data) // chunk_size)
+    n_chunks = max(1, math.ceil(len(data) / chunk_size))
     chunks = np.array_split(data, n_chunks)
 
     # Process chunks in parallel
@@ -334,9 +334,9 @@ Production code needs to handle failures gracefully. Here's a robust pattern wit
 ```python
 # robust_parallel.py
 # Production-ready parallel processing with error handling
-from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Any, Optional, Callable
 from enum import Enum
 import time
 import logging
@@ -348,7 +348,6 @@ class ProcessingStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     TIMEOUT = "timeout"
-    RETRYING = "retrying"
 
 @dataclass
 class ProcessingResult:
@@ -403,7 +402,7 @@ def process_with_retry(
         except Exception as e:
             last_error = str(e)
             if attempts < max_retries:
-                time.sleep(retry_delay * attempts)  # Exponential backoff
+                time.sleep(retry_delay * attempts)  # Linear backoff
 
     duration = (time.time() - start_time) * 1000
     return ProcessingResult(
@@ -418,7 +417,7 @@ class ParallelProcessor:
     """
     Production-ready parallel processor with:
     - Configurable workers
-    - Timeout handling
+    - Total timeout reporting
     - Retry logic
     - Progress tracking
     - Error aggregation
@@ -459,30 +458,42 @@ class ParallelProcessor:
 
             completed = 0
 
-            for future in as_completed(futures, timeout=self.timeout * len(items)):
-                original_item = futures[future]
+            try:
+                for future in as_completed(futures, timeout=self.timeout * len(items)):
+                    original_item = futures[future]
 
-                try:
-                    result = future.result(timeout=self.timeout)
-                    batch_result.results.append(result)
+                    try:
+                        result = future.result()
+                        batch_result.results.append(result)
 
-                    if result.status == ProcessingStatus.SUCCESS:
-                        batch_result.successful += 1
-                    else:
+                        if result.status == ProcessingStatus.SUCCESS:
+                            batch_result.successful += 1
+                        else:
+                            batch_result.failed += 1
+
+                    except Exception as exc:
                         batch_result.failed += 1
+                        batch_result.results.append(ProcessingResult(
+                            item_id=original_item.get("id"),
+                            status=ProcessingStatus.FAILED,
+                            error=str(exc)
+                        ))
 
-                except TimeoutError:
-                    # Individual item timeout
-                    batch_result.failed += 1
-                    batch_result.results.append(ProcessingResult(
-                        item_id=original_item.get("id"),
-                        status=ProcessingStatus.TIMEOUT,
-                        error="Processing timeout exceeded"
-                    ))
+                    completed += 1
+                    if on_progress:
+                        on_progress(completed, len(items))
 
-                completed += 1
-                if on_progress:
-                    on_progress(completed, len(items))
+            except TimeoutError:
+                # as_completed() applies the timeout to the whole iterator.
+                for future, original_item in futures.items():
+                    if not future.done():
+                        future.cancel()
+                        batch_result.failed += 1
+                        batch_result.results.append(ProcessingResult(
+                            item_id=original_item.get("id"),
+                            status=ProcessingStatus.TIMEOUT,
+                            error="Processing timeout exceeded"
+                        ))
 
         return batch_result
 
@@ -549,20 +560,22 @@ import time
 def worker_with_shared_state(args):
     """
     Worker function that updates shared counters.
-    The shared dict is managed by the Manager and is process-safe.
+    The shared dict is managed by the Manager, and the lock keeps increments atomic.
     """
-    item, shared_counters = args
+    item, shared_counters, counter_lock = args
 
     try:
         # Process the item
         result = item["value"] ** 2
 
-        # Update shared counter (thread-safe)
-        shared_counters["processed"] += 1
+        # Update shared counter safely
+        with counter_lock:
+            shared_counters["processed"] += 1
 
         return {"id": item["id"], "result": result}
     except Exception as e:
-        shared_counters["failed"] += 1
+        with counter_lock:
+            shared_counters["failed"] += 1
         return {"id": item["id"], "error": str(e)}
 
 def process_with_shared_counters(items: List[dict]) -> Dict:
@@ -575,9 +588,10 @@ def process_with_shared_counters(items: List[dict]) -> Dict:
         shared_counters = manager.dict()
         shared_counters["processed"] = 0
         shared_counters["failed"] = 0
+        counter_lock = manager.Lock()
 
         # Prepare arguments (each worker gets item + shared dict)
-        worker_args = [(item, shared_counters) for item in items]
+        worker_args = [(item, shared_counters, counter_lock) for item in items]
 
         # Process with pool
         with Pool() as pool:
@@ -594,17 +608,18 @@ def process_with_shared_counters(items: List[dict]) -> Dict:
 # Progress tracking with shared state
 def worker_with_progress(args):
     """Worker that updates a shared progress counter"""
-    item, progress_dict, total = args
+    item, progress_dict, total, progress_lock = args
 
     # Simulate work
     time.sleep(0.1)
     result = item["value"] * 2
 
     # Update progress
-    progress_dict["completed"] += 1
+    with progress_lock:
+        progress_dict["completed"] += 1
 
-    # Calculate and store progress percentage
-    progress_dict["percentage"] = (progress_dict["completed"] / total) * 100
+        # Calculate and store progress percentage
+        progress_dict["percentage"] = (progress_dict["completed"] / total) * 100
 
     return result
 
@@ -626,7 +641,7 @@ For truly massive datasets that don't fit in memory, process with generators and
 ```python
 # streaming_parallel.py
 # Memory-efficient parallel processing for huge datasets
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from typing import Iterator, List, Callable
 import json
 import os
@@ -713,11 +728,14 @@ def parallel_stream_processing(
 
             # Limit pending futures to control memory
             if len(futures) >= max_workers * 2:
-                # Wait for some to complete
-                done_futures = [f for f in futures if f.done()]
+                # Wait for at least one future to complete
+                done_futures, pending_futures = wait(
+                    futures,
+                    return_when=FIRST_COMPLETED
+                )
                 for f in done_futures:
                     total_processed += f.result()
-                    futures.remove(f)
+                futures = list(pending_futures)
 
         # Wait for remaining futures
         for future in as_completed(futures):

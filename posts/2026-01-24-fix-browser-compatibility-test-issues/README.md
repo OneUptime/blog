@@ -249,7 +249,10 @@ def test_mobile_viewport():
 
 import pytest
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 @pytest.fixture(params=["chrome", "firefox", "safari"])
 def browser(request):
@@ -309,9 +312,12 @@ def test_keyboard_shortcuts(browser):
 # test_visual_regression.py
 # Catch visual differences between browsers
 
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 def test_visual_consistency():
+    Path("screenshots").mkdir(exist_ok=True)
+
     with sync_playwright() as p:
         browsers = {
             "chromium": p.chromium,
@@ -393,7 +399,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright pytest
+          pip install pytest-playwright
           playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
@@ -418,6 +424,7 @@ jobs:
 
 import pytest
 from datetime import datetime
+from pathlib import Path
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
@@ -432,20 +439,22 @@ def pytest_runtest_makereport(item, call):
         if driver:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             test_name = item.name
+            screenshot_dir = Path("screenshots")
+            screenshot_dir.mkdir(exist_ok=True)
 
             # Save screenshot
-            screenshot_path = f"screenshots/failure_{test_name}_{timestamp}.png"
-            driver.save_screenshot(screenshot_path)
+            screenshot_path = screenshot_dir / f"failure_{test_name}_{timestamp}.png"
+            driver.save_screenshot(str(screenshot_path))
 
             # Save page source
-            html_path = f"screenshots/failure_{test_name}_{timestamp}.html"
+            html_path = screenshot_dir / f"failure_{test_name}_{timestamp}.html"
             with open(html_path, "w") as f:
                 f.write(driver.page_source)
 
             # Save browser logs (Chrome only)
             try:
                 logs = driver.get_log("browser")
-                log_path = f"screenshots/failure_{test_name}_{timestamp}.log"
+                log_path = screenshot_dir / f"failure_{test_name}_{timestamp}.log"
                 with open(log_path, "w") as f:
                     for entry in logs:
                         f.write(f"{entry}\n")

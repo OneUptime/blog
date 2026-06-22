@@ -18,7 +18,7 @@ A flow in BullMQ consists of:
 - A **tree structure** where jobs can have multiple children
 
 ```typescript
-import { FlowProducer, Queue, Worker } from 'bullmq';
+import { FlowProducer, Job, Queue, QueueEvents, UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -202,12 +202,17 @@ const parentWorker = new Worker('parent-queue', async (job) => {
 ```typescript
 const childWorker = new Worker('child-queue', async (job) => {
   // Access parent job info
-  const parentKey = job.parentKey;
+  const parent = job.parent;
 
-  if (parentKey) {
-    const [parentQueueName, parentId] = parentKey.split(':');
+  if (parent?.id) {
+    const parentQueueName = parent.queueKey.split(':').pop();
+
+    if (!parentQueueName) {
+      throw new Error(`Could not determine parent queue from ${parent.queueKey}`);
+    }
+
     const parentQueue = new Queue(parentQueueName, { connection });
-    const parentJob = await parentQueue.getJob(parentId);
+    const parentJob = await parentQueue.getJob(parent.id);
 
     if (parentJob) {
       console.log('Parent job data:', parentJob.data);
@@ -455,7 +460,7 @@ class ResilientFlowOrchestrator {
           data: { optional: true },
           opts: {
             attempts: 2,
-            failParentOnFailure: false, // Don't fail parent if this fails
+            ignoreDependencyOnFailure: true, // Let the parent continue if this fails
           },
         },
       ],
@@ -469,15 +474,16 @@ const criticalWorker = new Worker('critical', async (job) => {
     const result = await performCriticalTask(job.data);
     return result;
   } catch (error) {
-    console.error(`Critical task failed: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Critical task failed: ${message}`);
 
     // Check if we should retry
     if (isTransientError(error)) {
       throw error; // Will be retried
     }
 
-    // Non-retryable error - fail permanently
-    throw new Error(`PERMANENT: ${error.message}`);
+    // Non-retryable error - fail permanently without using remaining attempts
+    throw new UnrecoverableError(`PERMANENT: ${message}`);
   }
 }, { connection });
 
@@ -526,20 +532,18 @@ class FlowStatusTracker {
     const childrenStatus: any[] = [];
 
     if (dependencies.processed) {
-      for (const [key, childJob] of Object.entries(dependencies.processed)) {
-        if (childJob) {
-          childrenStatus.push({
-            key,
-            state: 'completed',
-            returnvalue: childJob.returnvalue,
-          });
-        }
+      for (const [key, returnvalue] of Object.entries(dependencies.processed)) {
+        childrenStatus.push({
+          key,
+          state: 'completed',
+          returnvalue,
+        });
       }
     }
 
     if (dependencies.unprocessed) {
       for (const key of dependencies.unprocessed) {
-        const [queueName, jobId] = key.split(':');
+        const [jobId, queueName] = key.split(':').reverse();
         const childQueue = new Queue(queueName, { connection: this.connection });
         const childJob = await childQueue.getJob(jobId);
         if (childJob) {
@@ -599,7 +603,6 @@ class VideoProcessingWorkflow {
         },
         opts: {
           attempts: 3,
-          timeout: 3600000, // 1 hour
         },
       });
     }
@@ -714,11 +717,11 @@ const finalizationWorker = new Worker('video-finalization', async (job) => {
 
 2. **Keep flows shallow** - Deep nesting increases complexity and debugging difficulty.
 
-3. **Handle partial failures** - Use `failParentOnFailure: false` for optional steps.
+3. **Handle partial failures** - Use `ignoreDependencyOnFailure: true` for optional steps.
 
 4. **Monitor flow progress** - Aggregate child progress for overall flow status.
 
-5. **Set appropriate timeouts** - Long-running children should have explicit timeouts.
+5. **Set appropriate timeouts** - Long-running children should implement explicit timeouts in their processors.
 
 6. **Clean up completed flows** - Configure `removeOnComplete` to manage memory.
 

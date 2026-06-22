@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Ansible Tower, Automation Platform, DevOps, Enterprise Automation
 
-Description: Deploy and configure AWX (the open-source Ansible Tower) for enterprise automation with web UI, RBAC, job scheduling, and API-driven workflows.
+Description: Deploy and configure AWX (the upstream project for automation controller, formerly Ansible Tower) for enterprise automation with web UI, RBAC, job scheduling, and API-driven workflows.
 
 ---
 
-Ansible Tower (commercial) and AWX (open-source upstream) provide a web-based interface and API for managing Ansible automation at scale. They add features essential for enterprise use: role-based access control, job scheduling, credential management, and audit logging. AWX transforms command-line Ansible into a self-service automation platform.
+Automation controller (formerly Ansible Tower) and AWX (open-source upstream) provide a web-based interface and API for managing Ansible automation at scale. They add features essential for enterprise use: role-based access control, job scheduling, credential management, and audit logging. AWX transforms command-line Ansible into a self-service automation platform.
 
 This guide covers deploying AWX and configuring it for production use.
 
-## AWX vs Ansible Tower
+## AWX vs Automation Controller
 
-Both products share the same codebase, but differ in support and features:
+Automation controller is derived from selected, hardened AWX releases and is included with Red Hat Ansible Automation Platform. The products differ in support and packaging:
 
-| Feature | AWX | Ansible Tower |
+| Feature | AWX | Automation Controller |
 |---------|-----|---------------|
 | License | Apache 2.0 | Commercial |
 | Support | Community | Red Hat |
-| Updates | Continuous | Quarterly |
-| Clustering | Manual | Built-in HA |
+| Updates | Fast-moving upstream releases | Enterprise product releases |
+| Scaling | Community-managed | Supported with automation mesh |
 | Best for | Development, small teams | Enterprise production |
 
 ## Deploying AWX on Kubernetes
@@ -36,7 +36,11 @@ cat << 'EOF' > kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://raw.githubusercontent.com/ansible/awx-operator/2.19.1/deploy/awx-operator.yaml
+  - github.com/ansible/awx-operator/config/default?ref=2.19.1
+images:
+  - name: quay.io/ansible/awx-operator
+    newTag: 2.19.1
+namespace: awx
 EOF
 
 # Install AWX Operator using kustomize (recommended approach)
@@ -61,6 +65,8 @@ spec:
   service_type: ClusterIP
   ingress_type: ingress
   hostname: awx.example.com
+  service_labels: |
+    monitoring: awx
 
   # Admin user
   admin_user: admin
@@ -105,7 +111,7 @@ kubectl create secret generic awx-admin-password \
 kubectl apply -f awx-instance.yml
 
 # Monitor deployment
-kubectl logs -f deployment/awx-operator-controller-manager -n awx
+kubectl logs -f deployment/awx-operator-controller-manager -c awx-manager -n awx
 ```
 
 ## Initial Configuration
@@ -114,15 +120,15 @@ After deployment, configure AWX through the web UI or API.
 
 ### Creating Organizations
 
-```yaml
-# Using awx-cli or API
-# Install awx-cli
+```bash
+# Using the AWX CLI or API
+# Install the AWX CLI
 pip install awxkit
 
 # Configure authentication
-export TOWER_HOST=https://awx.example.com
-export TOWER_USERNAME=admin
-export TOWER_PASSWORD=SecurePassword123!
+export CONTROLLER_HOST=https://awx.example.com
+export CONTROLLER_USERNAME=admin
+export CONTROLLER_PASSWORD=SecurePassword123!
 ```
 
 ```bash
@@ -207,15 +213,16 @@ awx hosts associate \
 # Create job template
 awx job_templates create \
   --name "Deploy Application" \
-  --organization "Operations" \
   --project "Infrastructure Automation" \
   --playbook "playbooks/deploy.yml" \
   --inventory "Production" \
   --credential "Production Servers" \
-  --vault_credential "Ansible Vault" \
+  --vault_credential 42 \
   --ask_variables_on_launch true \
   --extra_vars '{"app_version": "latest"}'
 ```
+
+Replace `42` with the numeric ID of the vault credential.
 
 ## Role-Based Access Control
 
@@ -223,39 +230,32 @@ Configure permissions for teams and users.
 
 ```yaml
 # RBAC configuration via API
-# POST /api/v2/roles/
+# POST /api/v2/teams/<team_id>/roles/
 
 # Grant team access to inventory
 {
-  "name": "Use",
-  "type": "inventory",
-  "resource_id": 1,
-  "team_id": 1
+  "id": 21,
+  "associate": true
 }
 
 # Grant job template execute permission
+# POST /api/v2/teams/<team_id>/roles/
 {
-  "name": "Execute",
-  "type": "job_template",
-  "resource_id": 1,
-  "team_id": 1
+  "id": 34,
+  "associate": true
 }
 ```
 
 ```bash
 # Using awx-cli
 # Grant team admin access to project
-awx roles grant \
-  --type project \
-  --resource "Infrastructure Automation" \
-  --team "DevOps" \
+awx teams grant "DevOps" \
+  --project "Infrastructure Automation" \
   --role admin
 
 # Grant execute permission on job template
-awx roles grant \
-  --type job_template \
-  --resource "Deploy Application" \
-  --team "DevOps" \
+awx teams grant "DevOps" \
+  --job_template "Deploy Application" \
   --role execute
 ```
 
@@ -336,15 +336,17 @@ Automate recurring tasks with schedules.
 # Create schedule for nightly backups
 awx schedules create \
   --name "Nightly Backup" \
-  --unified_job_template "Backup Databases" \
+  --unified_job_template 12 \
   --rrule "DTSTART:20260125T020000Z RRULE:FREQ=DAILY;INTERVAL=1"
 
 # Weekly security scan
 awx schedules create \
   --name "Weekly Security Scan" \
-  --unified_job_template "Security Audit" \
+  --unified_job_template 13 \
   --rrule "DTSTART:20260125T060000Z RRULE:FREQ=WEEKLY;BYDAY=SU"
 ```
+
+Replace `12` and `13` with the numeric IDs of the job templates to schedule.
 
 ## API Integration
 
@@ -352,6 +354,7 @@ Trigger jobs from external systems.
 
 ```python
 # Python example using requests
+import time
 import requests
 
 AWX_URL = "https://awx.example.com"
@@ -424,20 +427,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger AWX Deployment
+        id: launch
         run: |
-          curl -X POST \
+          JOB_ID=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.AWX_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{"extra_vars": {"app_version": "${{ github.sha }}"}}' \
-            "${{ secrets.AWX_URL }}/api/v2/job_templates/5/launch/"
+            "${{ secrets.AWX_URL }}/api/v2/job_templates/5/launch/" \
+            | jq -r '.id')
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
 
       - name: Wait for deployment
         run: |
           # Poll job status until complete
-          JOB_ID=$(curl -s -X GET \
-            -H "Authorization: Bearer ${{ secrets.AWX_TOKEN }}" \
-            "${{ secrets.AWX_URL }}/api/v2/job_templates/5/jobs/?order_by=-id&page_size=1" \
-            | jq -r '.results[0].id')
+          JOB_ID="${{ steps.launch.outputs.job_id }}"
 
           while true; do
             STATUS=$(curl -s \
@@ -462,16 +465,37 @@ jobs:
 Protect your AWX configuration.
 
 ```bash
-# Backup AWX database
-kubectl exec -n awx deployment/awx-postgres -- \
-  pg_dump -U awx awx > awx-backup-$(date +%Y%m%d).sql
+# Create an AWXBackup custom resource
+cat << 'EOF' > awx-backup.yml
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWXBackup
+metadata:
+  name: awxbackup-2026-01-25
+  namespace: awx
+spec:
+  deployment_name: awx
+EOF
+
+kubectl apply -f awx-backup.yml
 
 # Export configuration as code
-awx export --all > awx-config-backup.json
+awx export > awx-config-backup.json
 
 # Restore from backup
-kubectl exec -i -n awx deployment/awx-postgres -- \
-  psql -U awx awx < awx-backup-20260125.sql
+cat << 'EOF' > awx-restore.yml
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWXRestore
+metadata:
+  name: awxrestore-2026-01-25
+  namespace: awx
+spec:
+  deployment_name: awx
+  backup_name: awxbackup-2026-01-25
+EOF
+
+kubectl apply -f awx-restore.yml
 ```
 
 ## Monitoring AWX
@@ -486,13 +510,21 @@ metadata:
   name: awx
   namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - awx
   selector:
     matchLabels:
-      app.kubernetes.io/component: awx
+      monitoring: awx
   endpoints:
     - port: http
       path: /api/v2/metrics/
       interval: 30s
+      authorization:
+        type: Bearer
+        credentials:
+          name: awx-prometheus-token
+          key: token
 ```
 
 ---

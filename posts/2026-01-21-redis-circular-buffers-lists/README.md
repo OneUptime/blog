@@ -50,8 +50,8 @@ class CircularBuffer:
             return
 
         pipe = self.redis.pipeline()
-        # Add all items (newest first)
-        pipe.lpush(self.key, *reversed(items))
+        # Add all items (last item becomes newest)
+        pipe.lpush(self.key, *items)
         # Trim to max size
         pipe.ltrim(self.key, 0, self.max_size - 1)
         pipe.execute()
@@ -670,7 +670,7 @@ pipe.execute()
 # Better: Lua script for guaranteed atomicity
 lua_script = """
 redis.call('LPUSH', KEYS[1], ARGV[1])
-redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]))
+redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1)
 return redis.call('LLEN', KEYS[1])
 """
 ```

@@ -8,7 +8,7 @@ Description: Learn how to use generics effectively in Go including type paramete
 
 ---
 
-Go 1.18 introduced generics, enabling you to write functions and data structures that work with multiple types while maintaining type safety. This guide covers practical patterns for effective generic code.
+Go 1.18 introduced generics, enabling you to write functions and data structures that work with multiple types while maintaining type safety. This guide covers practical patterns for effective generic code. Examples that use `cmp.Ordered` require Go 1.21 or later.
 
 ---
 
@@ -17,7 +17,10 @@ Go 1.18 introduced generics, enabling you to write functions and data structures
 ```go
 package main
 
-import "fmt"
+import (
+    "cmp"
+    "fmt"
+)
 
 // Generic function with type parameter T
 func Print[T any](value T) {
@@ -30,8 +33,8 @@ func Pair[T, U any](first T, second U) (T, U) {
 }
 
 // Generic with constraint
-func Max[T comparable](a, b T) T {
-    if a > b {  // Error: cannot compare with >
+func Max[T cmp.Ordered](a, b T) T {
+    if a > b {
         return a
     }
     return b
@@ -51,7 +54,7 @@ func main() {
 
 ## Type Constraints
 
-### Built-in Constraints
+### Predeclared and Standard Constraints
 
 ```go
 package main
@@ -408,7 +411,7 @@ func GroupBy[T any, K comparable](slice []T, keyFunc func(T) K) map[K][]T {
     return result
 }
 
-// Sort slice (Go 1.21+ slices package)
+// Sort slice (cmp.Ordered requires Go 1.21+)
 func SortSlice[T cmp.Ordered](slice []T) []T {
     result := make([]T, len(slice))
     copy(result, slice)

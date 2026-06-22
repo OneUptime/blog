@@ -180,7 +180,7 @@ spec:
 # kubeadm automatically renews certificates during control plane upgrade
 sudo kubeadm upgrade apply v1.28.0
 
-# Certificates are renewed when within 180 days of expiration
+# kubeadm renews certificates during control plane upgrade unless disabled with --certificate-renewal=false
 ```
 
 ### Manual Rotation - All Certificates
@@ -231,7 +231,7 @@ kubectl config set-credentials kubernetes-admin \
 
 ## Rotating etcd Certificates
 
-### Standalone etcd Cluster
+### External etcd Cluster Managed by kubeadm
 
 ```bash
 #!/bin/bash
@@ -245,14 +245,12 @@ BACKUP_DIR=/root/etcd-cert-backup-$(date +%Y%m%d)
 mkdir -p $BACKUP_DIR
 cp -r $ETCD_PKI_DIR/* $BACKUP_DIR/
 
-# Generate new certificates using kubeadm
-kubeadm init phase certs etcd-ca
-kubeadm init phase certs etcd-server
-kubeadm init phase certs etcd-peer
-kubeadm init phase certs etcd-healthcheck-client
-kubeadm init phase certs apiserver-etcd-client
+# Renew existing etcd certificates using kubeadm
+kubeadm certs renew etcd-server
+kubeadm certs renew etcd-peer
+kubeadm certs renew etcd-healthcheck-client
 
-# Restart etcd
+# Restart one etcd member at a time
 systemctl restart etcd
 
 # Verify etcd health
@@ -308,8 +306,8 @@ kubectl get csr
 # Approve CSR
 kubectl certificate approve <csr-name>
 
-# Auto-approve kubelet CSRs (use with caution)
-kubectl create clusterrolebinding auto-approve-csrs \
+# Auto-approve kubelet client certificate renewal CSRs (use with caution)
+kubectl create clusterrolebinding auto-approve-kubelet-client-renewals \
   --clusterrole=system:certificates.k8s.io:certificatesigningrequests:selfnodeclient \
   --group=system:nodes
 ```
@@ -343,7 +341,7 @@ kubectl certificate approve $(kubectl get csr -o name | grep $NODE_NAME)
 # EKS manages control plane certificates automatically
 # For worker nodes, certificates rotate automatically with kubelet
 
-# Check node certificate status
+# Check node group status before replacing nodes
 aws eks describe-nodegroup \
   --cluster-name my-cluster \
   --nodegroup-name my-nodegroup
@@ -379,11 +377,11 @@ gcloud container clusters update my-cluster \
 
 ```bash
 # AKS auto-rotates certificates
-# Check certificate status
+# Check cluster state before manual rotation
 az aks show \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --query "aadProfile"
+  --query "{provisioningState:provisioningState,kubernetesVersion:kubernetesVersion}"
 
 # Manually rotate certificates
 az aks rotate-certs \
@@ -475,7 +473,7 @@ spec:
     
     - name: Renew all certificates
       command: kubeadm certs renew all
-      when: "'days' in cert_status.stdout and days < 30"
+      when: cert_status.stdout is regex('(^|\n)(?!CERTIFICATE).*\\s([0-9]|[12][0-9])d\\s')
     
     - name: Restart kubelet
       systemd:
@@ -505,7 +503,7 @@ spec:
 |--------------|---------------|-----------------|
 | kubeadm | During upgrade | `kubeadm certs renew` |
 | EKS | Automatic | Node replacement |
-| GKE | Automatic | `gcloud rotate-certs` |
+| GKE | Automatic | `gcloud container clusters update --start-credential-rotation` |
 | AKS | Automatic | `az aks rotate-certs` |
 | k3s | Automatic | Restart k3s service |
 

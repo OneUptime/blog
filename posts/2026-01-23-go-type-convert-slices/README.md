@@ -14,7 +14,7 @@ Go's type system is strict about slice types, which often surprises developers c
 
 ## Why Direct Slice Conversion Fails
 
-In Go, slices of different types have incompatible memory layouts. Even though the syntax looks like it should work, this code fails:
+In Go, slice conversions are governed by the language's type conversion rules. A value of type `[]int` is not convertible to `[]float64`, and a value of type `[]string` is not convertible to `[]interface{}`. Even though the syntax looks like it should work, this code fails:
 
 ```go
 // This does NOT compile
@@ -22,7 +22,7 @@ ints := []int{1, 2, 3}
 floats := []float64(ints)  // Error: cannot convert ints (type []int) to type []float64
 ```
 
-The reason is that `int` and `float64` have different sizes in memory. Go slices are backed by arrays, and the underlying memory layout differs between types.
+The reason is that Go only permits slice conversions in specific cases, such as conversions between a string and a byte or rune slice, or between a slice and an array or array pointer with identical element types. Go slices are backed by arrays, so converting element types requires building a new backing array with converted values.
 
 ---
 
@@ -63,7 +63,7 @@ package main
 
 import "fmt"
 
-// convertToInterfaceSlice converts any typed slice to []interface{}
+// convertToInterfaceSlice converts a string slice to []interface{}
 func convertToInterfaceSlice(strings []string) []interface{} {
     // Preallocate the result slice for efficiency
     result := make([]interface{}, len(strings))
@@ -100,7 +100,7 @@ import (
     "golang.org/x/exp/constraints"
 )
 
-// Number is a constraint that includes all numeric types
+// Number is a constraint that includes integer and floating-point types
 type Number interface {
     constraints.Integer | constraints.Float
 }

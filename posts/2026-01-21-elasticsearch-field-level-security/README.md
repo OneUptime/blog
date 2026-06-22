@@ -284,6 +284,7 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/multi_index_restr
       "names": ["internal-*"],
       "privileges": ["read"],
       "field_security": {
+        "grant": ["*"],
         "except": ["confidential_notes"]
       },
       "query": {
@@ -494,8 +495,12 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/healthcare_limite
         ]
       },
       "query": {
-        "term": {
-          "department": "{{_user.metadata.department}}"
+        "template": {
+          "source": {
+            "term": {
+              "department": "{{_user.metadata.department}}"
+            }
+          }
         }
       }
     }
@@ -557,12 +562,16 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/content_editor" -
         "except": ["internal_review_notes", "legal_approval.*"]
       },
       "query": {
-        "bool": {
-          "should": [
-            {"term": {"author": "{{_user.username}}"}},
-            {"term": {"status": "published"}},
-            {"term": {"shared_with": "{{_user.username}}"}}
-          ]
+        "template": {
+          "source": {
+            "bool": {
+              "should": [
+                {"term": {"author": "{{_user.username}}"}},
+                {"term": {"status": "published"}},
+                {"term": {"shared_with": "{{_user.username}}"}}
+              ]
+            }
+          }
         }
       }
     }

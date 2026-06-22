@@ -187,6 +187,7 @@ class PaymentService {
             // Publish success event
             await this.eventBus.publish('PaymentCompleted', {
                 orderId: event.orderId,
+                items: event.items,
                 transactionId: paymentResult.transactionId
             });
 
@@ -552,8 +553,15 @@ func (r *OutboxRelay) Start(ctx context.Context) {
 }
 
 func (r *OutboxRelay) processOutbox(ctx context.Context) {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        log.Printf("Failed to begin outbox transaction: %v", err)
+        return
+    }
+    defer tx.Rollback()
+
     // Fetch unprocessed events
-    rows, err := r.db.QueryContext(ctx, `
+    rows, err := tx.QueryContext(ctx, `
         SELECT id, aggregate_id, event_type, payload, created_at
         FROM outbox_events
         WHERE processed_at IS NULL
@@ -565,7 +573,6 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
         log.Printf("Failed to query outbox: %v", err)
         return
     }
-    defer rows.Close()
 
     for rows.Next() {
         var event OutboxEvent
@@ -582,12 +589,26 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
         }
 
         // Mark as processed
-        _, err = r.db.ExecContext(ctx, `
+        _, err = tx.ExecContext(ctx, `
             UPDATE outbox_events SET processed_at = $1 WHERE id = $2
         `, time.Now(), event.ID)
         if err != nil {
             log.Printf("Failed to mark event %s as processed: %v", event.ID, err)
         }
+    }
+
+    if err := rows.Close(); err != nil {
+        log.Printf("Failed to close outbox rows: %v", err)
+        return
+    }
+
+    if err := rows.Err(); err != nil {
+        log.Printf("Failed while reading outbox rows: %v", err)
+        return
+    }
+
+    if err := tx.Commit(); err != nil {
+        log.Printf("Failed to commit outbox transaction: %v", err)
     }
 }
 ```
@@ -659,7 +680,7 @@ import json
 # Event Base Class
 
 @dataclass
-class Event:
+class Event(ABC):
     event_id: str = field(default_factory=lambda: str(uuid4()))
     aggregate_id: str = ""
     timestamp: datetime = field(default_factory=datetime.utcnow)
@@ -852,6 +873,15 @@ class EventStore:
 
         return events
 
+    def _deserialize_event(self, event_class, event_data: Dict[str, Any]) -> Event:
+        return event_class(
+            event_id=event_data["event_id"],
+            aggregate_id=event_data["aggregate_id"],
+            timestamp=datetime.fromisoformat(event_data["timestamp"]),
+            version=event_data["version"],
+            **event_data["data"]
+        )
+
 # Repository using Event Sourcing
 class OrderRepository:
     def __init__(self, event_store: EventStore):
@@ -863,11 +893,12 @@ class OrderRepository:
             return None
         return Order.load_from_events(order_id, events)
 
-    def save(self, order: Order) -> None:
+    def save(self, order: Order) -> List[Event]:
         pending_events = order.get_pending_events()
         if pending_events:
             expected_version = order.version - len(pending_events)
             self.event_store.append(order.id, pending_events, expected_version)
+        return pending_events
 
 # Usage Example
 class OrderCommandHandler:
@@ -879,10 +910,10 @@ class OrderCommandHandler:
         order = Order()
         order.create(command.customer_id, command.items)
 
-        self.repository.save(order)
+        saved_events = self.repository.save(order)
 
         # Publish events for other services
-        for event in order.get_pending_events():
+        for event in saved_events:
             self.event_publisher.publish(event)
 
         return order.id

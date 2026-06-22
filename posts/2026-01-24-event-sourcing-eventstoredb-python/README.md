@@ -39,20 +39,19 @@ Start EventStoreDB locally for development:
 
 docker run -d --name eventstore \
   -p 2113:2113 \
-  -p 1113:1113 \
-  -e EVENTSTORE_INSECURE=true \
-  -e EVENTSTORE_RUN_PROJECTIONS=All \
-  -e EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true \
-  -v eventstore-data:/var/lib/eventstore \
-  eventstore/eventstore:latest
+  -v eventstore-data:/var/lib/kurrentdb \
+  docker.kurrent.io/kurrent-lts/kurrentdb:latest \
+  --insecure \
+  --run-projections=All \
+  --enable-atom-pub-over-http
 ```
 
 ### Installing the Python Client
 
-Install the official EventStoreDB Python client:
+Install the official Python client:
 
 ```bash
-pip install esdbclient
+pip install "kurrentdbclient~=1.3"
 ```
 
 ---
@@ -66,7 +65,7 @@ Create a connection manager for your EventStoreDB instance:
 ```python
 # eventstore/client.py
 # EventStoreDB client connection management
-from esdbclient import EventStoreDBClient
+from kurrentdbclient import KurrentDBClient
 from contextlib import contextmanager
 import os
 
@@ -81,15 +80,15 @@ class EventStoreConnection:
         # Default to local development instance
         self.connection_string = connection_string or os.getenv(
             "EVENTSTORE_URL",
-            "esdb://localhost:2113?tls=false"
+            "kurrentdb://127.0.0.1:2113?tls=false"
         )
         self._client = None
 
     @property
-    def client(self) -> EventStoreDBClient:
+    def client(self) -> KurrentDBClient:
         """Lazy initialization of the EventStoreDB client."""
         if self._client is None:
-            self._client = EventStoreDBClient(uri=self.connection_string)
+            self._client = KurrentDBClient(uri=self.connection_string)
         return self._client
 
     def close(self):
@@ -103,7 +102,7 @@ class EventStoreConnection:
 _connection = EventStoreConnection()
 
 
-def get_client() -> EventStoreDBClient:
+def get_client() -> KurrentDBClient:
     """Get the EventStoreDB client instance."""
     return _connection.client
 
@@ -194,6 +193,8 @@ class OrderItemRemoved(DomainEvent):
     """Event raised when an item is removed from an order."""
     order_id: UUID = field(default_factory=uuid4)
     product_id: str = ""
+    quantity: int = 0
+    unit_price: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -329,7 +330,13 @@ class Order:
         if product_id not in self.items:
             raise ValueError(f"Product {product_id} not in order")
 
-        event = OrderItemRemoved(order_id=self.id, product_id=product_id)
+        item = self.items[product_id]
+        event = OrderItemRemoved(
+            order_id=self.id,
+            product_id=product_id,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+        )
         self._apply(event)
         self._uncommitted_events.append(event)
 
@@ -416,8 +423,9 @@ The repository handles storing events and rebuilding aggregates from event strea
 ```python
 # infrastructure/repository.py
 # Event store repository for order aggregates
-from esdbclient import EventStoreDBClient, NewEvent, StreamState
-from typing import Optional, Type
+from kurrentdbclient import KurrentDBClient, NewEvent, StreamState
+from kurrentdbclient.exceptions import NotFoundError
+from typing import Optional
 from uuid import UUID
 import json
 
@@ -449,7 +457,7 @@ class OrderRepository:
     Uses EventStoreDB as the event store.
     """
 
-    def __init__(self, client: EventStoreDBClient = None):
+    def __init__(self, client: KurrentDBClient = None):
         self.client = client or get_client()
 
     def _stream_name(self, order_id: UUID) -> str:
@@ -464,9 +472,7 @@ class OrderRepository:
         return NewEvent(
             type=event_type,
             data=event_data,
-            metadata=json.dumps({
-                "content-type": "application/json",
-            }).encode('utf-8'),
+            id=event.event_id,
         )
 
     def _deserialize_event(self, event_type: str, data: bytes) -> DomainEvent:
@@ -526,7 +532,7 @@ class OrderRepository:
         try:
             # Read all events from the stream
             events = self.client.get_stream(stream_name)
-        except Exception:
+        except NotFoundError:
             return None
 
         if not events:
@@ -549,7 +555,7 @@ class OrderRepository:
         try:
             events = list(self.client.get_stream(stream_name, limit=1))
             return len(events) > 0
-        except Exception:
+        except NotFoundError:
             return False
 ```
 
@@ -615,7 +621,7 @@ class OrderSummaryProjection:
         order_id = event['order_id']
         if order_id in self._summaries:
             summary = self._summaries[order_id]
-            summary.item_count += 1
+            summary.item_count += event['quantity']
             summary.total_amount += event['quantity'] * event['unit_price']
             summary.updated_at = datetime.fromisoformat(event['occurred_at'])
 
@@ -623,7 +629,11 @@ class OrderSummaryProjection:
         order_id = event['order_id']
         if order_id in self._summaries:
             summary = self._summaries[order_id]
-            summary.item_count = max(0, summary.item_count - 1)
+            summary.item_count = max(0, summary.item_count - event['quantity'])
+            summary.total_amount = max(
+                0.0,
+                summary.total_amount - event['quantity'] * event['unit_price'],
+            )
             summary.updated_at = datetime.fromisoformat(event['occurred_at'])
 
     def _handle_OrderSubmitted(self, event: dict):
@@ -672,9 +682,8 @@ Subscribe to event streams for real-time updates:
 
 ```python
 # subscriptions/order_processor.py
-# Persistent subscription for order events
-from esdbclient import EventStoreDBClient, PersistentSubscription
-from typing import Callable
+# Catch-up subscription for order events
+from kurrentdbclient import KurrentDBClient
 import json
 import threading
 
@@ -684,14 +693,14 @@ from projections.order_summary import OrderSummaryProjection
 
 class OrderEventSubscription:
     """
-    Persistent subscription to order events.
+    Catch-up subscription to order events.
     Processes events and updates projections in real-time.
     """
 
     def __init__(
         self,
         group_name: str = "order-processors",
-        client: EventStoreDBClient = None
+        client: KurrentDBClient = None
     ):
         self.client = client or get_client()
         self.group_name = group_name
@@ -716,10 +725,11 @@ class OrderEventSubscription:
         Main processing loop.
         Reads events from subscription and updates projections.
         """
-        # Subscribe to all order streams using a prefix filter
+        # Subscribe to all order streams using a stream-name prefix filter
         subscription = self.client.subscribe_to_all(
             filter_include=['order-'],  # Only order streams
-            from_position=None,  # Start from beginning
+            filter_by_stream_name=True,
+            filter_by_prefix=True,
         )
 
         for event in subscription:
@@ -739,6 +749,7 @@ class OrderEventSubscription:
                 print(f"Error processing event: {e}")
                 # In production, implement proper error handling
                 # Consider dead letter queues for failed events
+        subscription.stop()
 
 
 def run_subscription():

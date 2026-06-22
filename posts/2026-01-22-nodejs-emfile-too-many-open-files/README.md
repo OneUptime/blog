@@ -46,18 +46,24 @@ lsof -p <PID> | wc -l
 ### In Node.js
 
 ```javascript
-const { constants } = require('os');
-
-// Maximum open files (may not be available)
-console.log(process.getMaxListeners());
-
 // Check current file descriptors
 const fs = require('fs');
-const path = '/proc/self/fd';
+const fdPath = '/proc/self/fd';
 
-if (fs.existsSync(path)) {
-  const fds = fs.readdirSync(path);
+if (fs.existsSync(fdPath)) {
+  const fds = fs.readdirSync(fdPath);
   console.log('Open file descriptors:', fds.length);
+}
+
+// Check Linux process limits
+const limitsPath = '/proc/self/limits';
+
+if (fs.existsSync(limitsPath)) {
+  const limits = fs.readFileSync(limitsPath, 'utf8');
+  const maxOpenFiles = limits
+    .split('\n')
+    .find(line => line.startsWith('Max open files'));
+  console.log(maxOpenFiles);
 }
 ```
 
@@ -141,15 +147,10 @@ sudo launchctl load /Library/LaunchDaemons/limit.maxfiles.plist
 
 ### Docker
 
-```dockerfile
-# Dockerfile
-FROM node:18
+Set file limits when the container starts:
 
-# Increase file limits
-RUN echo "* soft nofile 65535" >> /etc/security/limits.conf && \
-    echo "* hard nofile 65535" >> /etc/security/limits.conf
-
-CMD ["node", "app.js"]
+```bash
+docker run --ulimit nofile=65535:65535 node:18 node app.js
 ```
 
 ```yaml
@@ -165,7 +166,7 @@ services:
 
 ## Solution 2: Use graceful-fs
 
-graceful-fs queues file operations when limits are reached:
+graceful-fs queues `open` and `readdir` calls and retries them when limits are reached:
 
 ```bash
 npm install graceful-fs
@@ -212,8 +213,8 @@ npm install p-limit
 ```
 
 ```javascript
-const pLimit = require('p-limit');
-const fs = require('fs').promises;
+import pLimit from 'p-limit';
+import { promises as fs } from 'node:fs';
 
 // Limit to 100 concurrent file operations
 const limit = pLimit(100);
@@ -300,7 +301,7 @@ async function readFiles(files) {
 
 ## Solution 4: Use Streams
 
-Streams use fewer file descriptors for large files:
+Streams use less memory for large files, but still limit how many streams you open at once:
 
 ```javascript
 const fs = require('fs');
@@ -385,7 +386,7 @@ async function processFile(path) {
 ## Solution 6: Handle Watch Limits
 
 ```javascript
-const chokidar = require('chokidar');
+import chokidar from 'chokidar';
 
 // Use polling for many files
 const watcher = chokidar.watch('**/*', {
@@ -414,6 +415,11 @@ const originalClose = fs.close;
 const openFiles = new Map();
 
 fs.open = function(path, flags, mode, callback) {
+  if (typeof mode === 'function') {
+    callback = mode;
+    mode = undefined;
+  }
+
   originalOpen.call(fs, path, flags, mode, (err, fd) => {
     if (!err) {
       openFiles.set(fd, { path, stack: new Error().stack });
@@ -443,7 +449,7 @@ npm install why-is-node-running
 ```
 
 ```javascript
-const log = require('why-is-node-running');
+import log from 'why-is-node-running';
 
 // After your app should have exited
 setTimeout(() => {
@@ -456,8 +462,8 @@ setTimeout(() => {
 ### Batch Operations
 
 ```javascript
-const fs = require('fs').promises;
-const pLimit = require('p-limit');
+import pLimit from 'p-limit';
+import { promises as fs } from 'node:fs';
 
 const limit = pLimit(100);
 

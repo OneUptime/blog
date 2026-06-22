@@ -63,6 +63,9 @@ Resources:
         - !Ref WebTargetGroup
       HealthCheckType: ELB
       HealthCheckGracePeriod: 300
+      DefaultInstanceWarmup: 180
+      MetricsCollection:
+        - Granularity: 1Minute
       Tags:
         - Key: Name
           Value: web-server
@@ -74,15 +77,13 @@ Resources:
     Properties:
       AutoScalingGroupName: !Ref WebServerGroup
       PolicyType: TargetTrackingScaling
+      # Time for new instances to contribute stable metrics
+      EstimatedInstanceWarmup: 180
       TargetTrackingConfiguration:
         # Maintain 60% average CPU across all instances
         TargetValue: 60.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
-        # Wait 5 minutes before scaling in
-        ScaleInCooldown: 300
-        # Scale out quickly in 1 minute
-        ScaleOutCooldown: 60
 ```
 
 ### Step Scaling Policy
@@ -148,7 +149,7 @@ Resources:
         # Scale based on prediction, with actual data as backup
         Mode: ForecastAndScale
 
-        # Analyze 14 days of history
+        # Launch predicted capacity 5 minutes early
         SchedulingBufferTime: 300
 
         MetricSpecifications:
@@ -198,17 +199,13 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ServiceScalableTarget
       TargetTrackingScalingPolicyConfiguration:
-        # Target 1000 requests per task per minute
+        # Target 1000 ALB requests per target in a one-minute interval
         TargetValue: 1000
         ScaleInCooldown: 300
         ScaleOutCooldown: 60
-        CustomizedMetricSpecification:
-          MetricName: RequestCountPerTarget
-          Namespace: AWS/ApplicationELB
-          Statistic: Sum
-          Dimensions:
-            - Name: TargetGroup
-              Value: !GetAtt TargetGroup.TargetGroupFullName
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ALBRequestCountPerTarget
+          ResourceLabel: !Sub ${LoadBalancer.LoadBalancerFullName}/${TargetGroup.TargetGroupFullName}
 ```
 
 ### DynamoDB Scaling
@@ -401,8 +398,8 @@ gantt
 ```
 
 ```yaml
-# Asymmetric cooldowns - fast out, slow in
-TargetTrackingConfiguration:
+# Asymmetric cooldowns for Application Auto Scaling - fast out, slow in
+TargetTrackingScalingPolicyConfiguration:
   TargetValue: 60.0
   ScaleOutCooldown: 60    # 1 minute - respond quickly to load
   ScaleInCooldown: 300    # 5 minutes - avoid premature scale-in
@@ -416,6 +413,7 @@ Resources:
   CPUPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
+      AutoScalingGroupName: !Ref WebServerGroup
       PolicyType: TargetTrackingScaling
       TargetTrackingConfiguration:
         TargetValue: 60.0
@@ -425,6 +423,7 @@ Resources:
   RequestCountPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
+      AutoScalingGroupName: !Ref WebServerGroup
       PolicyType: TargetTrackingScaling
       TargetTrackingConfiguration:
         TargetValue: 1000
@@ -507,18 +506,23 @@ Resources:
       AlarmActions:
         - !Ref OpsNotificationTopic
 
-  ScalingActivityAlarm:
+  LowInServiceCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: high-scaling-activity
-      AlarmDescription: Frequent scaling may indicate instability
-      MetricName: GroupTotalInstances
+      AlarmName: low-in-service-capacity
+      AlarmDescription: Too few instances are in service
+      MetricName: GroupInServiceInstances
       Namespace: AWS/AutoScaling
-      Statistic: SampleCount
-      Period: 3600  # 1 hour
+      Statistic: Average
+      Period: 300
       EvaluationPeriods: 1
-      Threshold: 10  # More than 10 scaling actions per hour
-      ComparisonOperator: GreaterThanThreshold
+      Threshold: 2
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref WebServerGroup
+      AlarmActions:
+        - !Ref OpsNotificationTopic
 ```
 
 ## Cost Optimization
@@ -532,8 +536,9 @@ Resources:
     Type: AWS::AutoScaling::ScheduledAction
     Properties:
       AutoScalingGroupName: !Ref WebServerGroup
-      # Scale down at 10 PM
+      # Scale down at 10 PM UTC
       Recurrence: "0 22 * * *"
+      TimeZone: Etc/UTC
       MinSize: 2
       MaxSize: 10
       DesiredCapacity: 2
@@ -542,8 +547,9 @@ Resources:
     Type: AWS::AutoScaling::ScheduledAction
     Properties:
       AutoScalingGroupName: !Ref WebServerGroup
-      # Scale up at 6 AM
+      # Scale up at 6 AM UTC
       Recurrence: "0 6 * * *"
+      TimeZone: Etc/UTC
       MinSize: 4
       MaxSize: 20
       DesiredCapacity: 6

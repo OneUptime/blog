@@ -51,22 +51,30 @@ func main() {
 Some types cannot be compared:
 
 ```go
-// These will NOT compile with comparable constraint:
+// These will NOT compile because the values are not comparable:
 
 // Slices
-func Bad1[T comparable](a []T) {}  // Error: slices not comparable
+func Bad1[T any](a, b []T) bool {
+    return a == b  // Error: slices not comparable
+}
 
 // Maps
-func Bad2[T comparable](a map[string]T) {}  // Error: maps not comparable
+func Bad2[T any](a, b map[string]T) bool {
+    return a == b  // Error: maps not comparable
+}
 
 // Functions
-func Bad3[T comparable](a func()) {}  // Error: functions not comparable
+func Bad3(a, b func()) bool {
+    return a == b  // Error: functions not comparable
+}
 
 // Structs with non-comparable fields
 type HasSlice struct {
     Data []int
 }
-func Bad4[T comparable](a HasSlice) {}  // Error
+func Bad4(a, b HasSlice) bool {
+    return a == b  // Error
+}
 ```
 
 ---

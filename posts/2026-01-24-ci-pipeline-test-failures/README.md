@@ -261,13 +261,12 @@ Add a lint rule to catch this:
 // .eslintrc.js
 module.exports = {
   rules: {
-    'import/no-unresolved': 'error'
+    'import/no-unresolved': ['error', { caseSensitive: true }]
   },
   settings: {
     'import/resolver': {
       node: {
-        extensions: ['.js', '.jsx', '.ts', '.tsx'],
-        caseSensitive: true
+        extensions: ['.js', '.jsx', '.ts', '.tsx']
       }
     }
   }
@@ -310,10 +309,10 @@ CI runners often have limited memory and CPU compared to development machines.
 ### Memory Issues
 
 ```yaml
-# GitHub Actions - use larger runners for memory-intensive tests
+# GitHub Actions - choose a runner with enough memory for memory-intensive tests
 jobs:
   test:
-    runs-on: ubuntu-latest-4-cores  # 16GB RAM instead of 7GB
+    runs-on: ubuntu-latest  # Public repositories get 4 vCPUs and 16GB RAM; private repositories may need a configured larger runner.
 ```
 
 ```javascript
@@ -323,13 +322,13 @@ module.exports = {
   // Run tests sequentially to reduce memory usage
   maxWorkers: 1,
 
-  // Limit concurrent test files
+  // Limit tests started with test.concurrent
   maxConcurrency: 1,
 
   // Clear mocks between tests to free memory
   clearMocks: true,
 
-  // Force garbage collection between test files
+  // Restart workers after they exceed the memory limit
   workerIdleMemoryLimit: '512MB'
 };
 ```
@@ -338,6 +337,7 @@ module.exports = {
 
 ```python
 # conftest.py
+import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
@@ -392,10 +392,6 @@ Dependencies that exist on your machine might not be available in CI.
 # Playwright setup
 - name: Install Playwright browsers
   run: npx playwright install --with-deps chromium
-
-# Or use the official action
-- name: Install Playwright
-  uses: microsoft/playwright-github-action@v1
 ```
 
 ### Caching Dependencies
@@ -404,7 +400,7 @@ Speed up CI by caching dependencies.
 
 ```yaml
 # Node.js caching
-- name: Cache node modules
+- name: Cache npm packages
   uses: actions/cache@v4
   with:
     path: ~/.npm

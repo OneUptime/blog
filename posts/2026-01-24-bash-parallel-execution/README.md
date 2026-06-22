@@ -204,7 +204,7 @@ echo "All items processed"
 #!/bin/bash
 
 # Process files in parallel (4 at a time)
-find /data -name "*.log" | xargs -P 4 -I {} gzip {}
+find /data -name "*.log" -print0 | xargs -0 -P 4 -I {} gzip {}
 
 # Parallel with multiple arguments per command
 echo -e "file1\nfile2\nfile3\nfile4" | xargs -P 4 -n 1 process_file
@@ -216,12 +216,12 @@ echo -e "file1\nfile2\nfile3\nfile4" | xargs -P 4 -n 1 process_file
 #!/bin/bash
 
 # Using xargs with a shell command
-find . -name "*.jpg" | xargs -P 4 -I {} sh -c '
-    filename="{}"
+find . -name "*.jpg" -print0 | xargs -0 -P 4 -I {} sh -c '
+    filename="$1"
     output="${filename%.jpg}_thumb.jpg"
     convert "$filename" -resize 100x100 "$output"
     echo "Created thumbnail: $output"
-'
+' sh {}
 ```
 
 ### xargs with Function Export
@@ -241,7 +241,7 @@ process_item() {
 export -f process_item
 
 # Run in parallel
-echo -e "apple\nbanana\ncherry\ndate" | xargs -P 4 -I {} bash -c 'process_item "{}"'
+echo -e "apple\nbanana\ncherry\ndate" | xargs -P 4 -I {} bash -c 'process_item "$1"' _ {}
 ```
 
 ## Method 4: GNU Parallel
@@ -288,7 +288,7 @@ find /data -name "*.csv" | parallel --bar -j 4 process_csv {}
 parallel --joblog /tmp/parallel.log -j 4 ./process.sh ::: {1..100}
 
 # Resume from failed jobs
-parallel --resume --joblog /tmp/parallel.log -j 4 ./process.sh ::: {1..100}
+parallel --resume-failed --joblog /tmp/parallel.log -j 4 ./process.sh ::: {1..100}
 ```
 
 ### Distributing Work Across Servers
@@ -297,10 +297,10 @@ parallel --resume --joblog /tmp/parallel.log -j 4 ./process.sh ::: {1..100}
 #!/bin/bash
 
 # Define remote servers
-SERVERS="server1 server2 server3 server4"
+SERVERS="server1,server2,server3,server4"
 
 # Distribute work across servers via SSH
-parallel -S $SERVERS -j 2 ./remote_task.sh ::: {1..20}
+parallel -S "$SERVERS" -j 2 ./remote_task.sh ::: {1..20}
 
 # With specific user
 parallel -S user@server1,user@server2 process_data ::: data_*.csv
@@ -353,7 +353,7 @@ process_chunk() {
     local output="${chunk}.result"
 
     # Process the chunk (example: count words)
-    wc -w "$chunk" > "$output"
+    wc -w < "$chunk" > "$output"
 }
 
 export -f process_chunk
@@ -382,11 +382,13 @@ rm -rf "$TEMP_DIR"
 
 QUEUE_FILE="/tmp/work_queue_$$"
 RESULTS_FILE="/tmp/results_$$"
+LOCK_FILE="/tmp/work_queue_lock_$$"
 NUM_WORKERS=4
 
 # Create queue file
 > "$QUEUE_FILE"
 > "$RESULTS_FILE"
+> "$LOCK_FILE"
 
 # Producer: add items to queue
 producer() {
@@ -405,10 +407,15 @@ consumer() {
     local worker_id=$1
 
     while true; do
-        # Atomically read and remove a line from queue
+        # Read and remove a line from queue while holding a lock
         local task
-        task=$(sed -n '1p' "$QUEUE_FILE" 2>/dev/null)
-        sed -i '1d' "$QUEUE_FILE" 2>/dev/null
+        {
+            flock -x 200
+            task=$(sed -n '1p' "$QUEUE_FILE" 2>/dev/null)
+            if [[ -n "$task" ]]; then
+                sed -i '1d' "$QUEUE_FILE" 2>/dev/null
+            fi
+        } 200>"$LOCK_FILE"
 
         if [[ "$task" == "DONE" ]] || [[ -z "$task" ]]; then
             break
@@ -421,9 +428,8 @@ consumer() {
     done
 }
 
-# Start producer
-producer &
-sleep 0.1  # Let producer fill queue
+# Fill queue
+producer
 
 # Start consumers
 for ((i=1; i<=NUM_WORKERS; i++)); do
@@ -437,7 +443,7 @@ echo "Results:"
 cat "$RESULTS_FILE"
 
 # Cleanup
-rm -f "$QUEUE_FILE" "$RESULTS_FILE"
+rm -f "$QUEUE_FILE" "$RESULTS_FILE" "$LOCK_FILE"
 ```
 
 ### Pattern 3: Pipeline Parallelism
@@ -539,9 +545,11 @@ run_with_fail_fast() {
         pids+=($!)
     done
 
-    # Monitor jobs
-    for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
+    # Monitor jobs as they finish
+    while ((${#pids[@]} > 0)); do
+        local finished_pid
+
+        if ! wait -n -p finished_pid "${pids[@]}"; then
             failed=true
             # Kill remaining jobs
             for p in "${pids[@]}"; do
@@ -549,6 +557,14 @@ run_with_fail_fast() {
             done
             break
         fi
+
+        local -a remaining=()
+        for p in "${pids[@]}"; do
+            if [[ "$p" != "$finished_pid" ]]; then
+                remaining+=("$p")
+            fi
+        done
+        pids=("${remaining[@]}")
     done
 
     if $failed; then

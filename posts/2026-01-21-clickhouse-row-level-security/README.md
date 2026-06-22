@@ -27,12 +27,7 @@ ORDER BY (tenant_id, record_id);
 -- Create a row policy for tenant isolation
 CREATE ROW POLICY tenant_policy ON tenant_data
 FOR SELECT
-USING tenant_id = currentUserId();
-
--- Or using a custom setting
-CREATE ROW POLICY tenant_policy ON tenant_data
-FOR SELECT
-USING tenant_id = toUInt32(getSetting('current_tenant_id'));
+USING tenant_id = toUInt32(getSetting('SQL_current_tenant_id'));
 ```
 
 ### User-Specific Policies
@@ -40,10 +35,12 @@ USING tenant_id = toUInt32(getSetting('current_tenant_id'));
 ```sql
 -- Create users for each tenant
 CREATE USER tenant_100 IDENTIFIED BY 'password'
-SETTINGS current_tenant_id = 100;
+SETTINGS SQL_current_tenant_id = 100;
 
 CREATE USER tenant_200 IDENTIFIED BY 'password'
-SETTINGS current_tenant_id = 200;
+SETTINGS SQL_current_tenant_id = 200;
+
+GRANT SELECT ON tenant_data TO tenant_100, tenant_200;
 
 -- Policy automatically filters based on user setting
 SELECT * FROM tenant_data;  -- Only sees rows for their tenant
@@ -77,8 +74,8 @@ TO analyst_role;
 CREATE ROW POLICY manager_policy ON employee_data
 FOR SELECT
 USING
-    employee_id = currentUserId()  -- Own data
-    OR manager_id = currentUserId()  -- Direct reports
+    employee_id = toUInt64(getSetting('SQL_employee_id'))  -- Own data
+    OR manager_id = toUInt64(getSetting('SQL_employee_id'))  -- Direct reports
 TO manager_role;
 
 -- Admin sees everything
@@ -99,7 +96,7 @@ SHOW CREATE ROW POLICY tenant_policy ON tenant_data;
 
 -- Modify policy
 ALTER ROW POLICY tenant_policy ON tenant_data
-USING tenant_id = toUInt32(getSetting('current_tenant_id'))
+USING tenant_id = toUInt32(getSetting('SQL_current_tenant_id'))
 TO ALL EXCEPT admin;
 
 -- Drop policy

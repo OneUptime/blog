@@ -12,7 +12,7 @@ PostgreSQL provides powerful built-in full-text search capabilities that can rep
 
 ## Prerequisites
 
-- PostgreSQL 9.6+ (improvements in 12+)
+- PostgreSQL 14+ for currently supported versions (generated columns require PostgreSQL 12+)
 - Basic understanding of text search concepts
 - Sample data to search
 
@@ -66,7 +66,7 @@ INSERT INTO articles (title, body) VALUES
 -- Basic search
 SELECT title, body
 FROM articles
-WHERE to_tsvector('english', title || ' ' || body) @@ to_tsquery('english', 'postgresql');
+WHERE to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, '')) @@ to_tsquery('english', 'postgresql');
 ```
 
 ### Add tsvector Column
@@ -255,7 +255,8 @@ CREATE TEXT SEARCH DICTIONARY syn_dict (
 );
 
 -- Synonym file format (my_synonyms.syn):
--- postgres pgsql pg
+-- postgres pgsql
+-- pg pgsql
 -- database db
 -- search find
 
@@ -359,7 +360,7 @@ CREATE TABLE articles (
         setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
         setweight(to_tsvector('english', coalesce(body, '')), 'B') ||
         setweight(to_tsvector('english', coalesce(author, '')), 'C') ||
-        setweight(to_tsvector('english', coalesce(array_to_string(tags, ' '), '')), 'D')
+        setweight(array_to_tsvector(coalesce(tags, ARRAY[]::text[])), 'D')
     ) STORED
 );
 
@@ -428,7 +429,7 @@ CREATE INDEX idx_search_gist ON articles USING GiST(search_vector);
 ```sql
 -- Use generated column (PostgreSQL 12+)
 ALTER TABLE articles ADD COLUMN search_vector tsvector
-    GENERATED ALWAYS AS (to_tsvector('english', title || ' ' || body)) STORED;
+    GENERATED ALWAYS AS (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))) STORED;
 
 -- Partial index for recent content
 CREATE INDEX idx_recent_search ON articles USING GIN(search_vector)

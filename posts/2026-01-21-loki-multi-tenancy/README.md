@@ -46,10 +46,9 @@ common:
 # Multi-tenant paths
 
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/cache
-    shared_store: s3
 
 schema_config:
   configs:
@@ -79,6 +78,11 @@ common:
     kvstore:
       store: memberlist
 
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: s3
+
 limits_config:
   # Global defaults
   ingestion_rate_mb: 16
@@ -90,7 +94,13 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-# Per-tenant overrides
+runtime_config:
+  file: /etc/loki/overrides.yaml
+```
+
+Create `/etc/loki/overrides.yaml`:
+
+```yaml
 overrides:
   tenant-a:
     ingestion_rate_mb: 32
@@ -140,6 +150,8 @@ limits_config:
 
 ### Per-Tenant Override Examples
 
+Create or update your Loki runtime overrides file:
+
 ```yaml
 overrides:
   # Development team - limited resources
@@ -185,7 +197,8 @@ server {
 
     # Extract tenant from URL path
     location ~ ^/api/v1/(?<tenant>[^/]+)/(.*)$ {
-        proxy_pass http://loki/loki/api/v1/$2;
+        rewrite ^/api/v1/[^/]+/(.*)$ /loki/api/v1/$1 break;
+        proxy_pass http://loki;
         proxy_set_header X-Scope-OrgID $tenant;
         proxy_set_header Host $host;
     }
@@ -236,7 +249,7 @@ spec:
 plugins:
   - name: request-transformer
     config:
-      add:
+      replace:
         headers:
           - "X-Scope-OrgID:$(headers.x-tenant-id)"
 
@@ -256,6 +269,8 @@ routes:
 ```
 
 ## Promtail Multi-Tenant Configuration
+
+Promtail reached end-of-life on March 2, 2026. For new deployments, use Grafana Alloy or another supported client; these examples apply only to existing Promtail deployments.
 
 ### Single Promtail to Multiple Tenants
 
@@ -394,8 +409,8 @@ sum by (tenant) (rate(loki_request_duration_seconds_count{route=~"/loki/api/v1/q
 # Active streams per tenant
 sum by (tenant) (loki_ingester_memory_streams)
 
-# Rate limiting events per tenant
-sum by (tenant) (rate(loki_distributor_lines_dropped_total[5m]))
+# Discarded samples per tenant and reason
+sum by (tenant, reason) (rate(loki_discarded_samples_total[5m]))
 ```
 
 ### Per-Tenant Alerting
@@ -404,14 +419,14 @@ sum by (tenant) (rate(loki_distributor_lines_dropped_total[5m]))
 groups:
   - name: multi-tenant-alerts
     rules:
-      - alert: TenantRateLimited
+      - alert: TenantDiscardingSamples
         expr: |
-          sum by (tenant) (rate(loki_distributor_lines_dropped_total[5m])) > 0
+          sum by (tenant, reason) (rate(loki_discarded_samples_total[5m])) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Tenant {{ $labels.tenant }} is being rate limited"
+          summary: "Tenant {{ $labels.tenant }} has discarded samples for {{ $labels.reason }}"
 
       - alert: TenantHighIngestion
         expr: |
@@ -424,12 +439,12 @@ groups:
 
       - alert: TenantNoLogs
         expr: |
-          absent(sum by (tenant) (rate(loki_distributor_lines_received_total[5m]))) == 1
+          sum by (tenant) (rate(loki_distributor_lines_received_total[30m])) == 0
         for: 30m
         labels:
           severity: warning
         annotations:
-          summary: "No logs from tenant {{ $labels.tenant }}"
+          summary: "No logs received recently from tenant {{ $labels.tenant }}"
 ```
 
 ## Best Practices

@@ -22,7 +22,7 @@ graph LR
 
 | Feature | PSP (Legacy) | PSS/PSA (Modern) |
 |---------|--------------|------------------|
-| Kubernetes Version | Pre-1.25 | 1.22+ |
+| Kubernetes Version | Pre-1.25 | 1.22+ (stable in 1.25) |
 | Configuration | Custom RBAC | Namespace labels |
 | Granularity | Per-policy | Three profiles |
 | Complexity | High | Low |
@@ -75,8 +75,8 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
 
-    # Warn on baseline violations
-    pod-security.kubernetes.io/warn: baseline
+    # Warn on restricted violations
+    pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
 
     # Audit restricted violations
@@ -256,15 +256,16 @@ securityContext:
 
 ## Exemptions
 
-### Built-in Exemptions
+### Configured Exemptions
 
-Some resources are exempt by default:
-- kube-system namespace
-- System service accounts
+Exemptions must be explicitly configured:
+- Specific usernames
+- Specific runtime classes
+- Specific namespaces, such as kube-system
 
 ### Custom Exemptions
 
-Configure in admission controller:
+Configure in admission controller. The `pod-security.admission.config.k8s.io/v1` configuration API requires Kubernetes 1.25+:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -281,7 +282,7 @@ plugins:
         warn-version: latest
       exemptions:
         usernames:
-          - system:serviceaccount:kube-system:replicaset-controller
+          - cluster-admin@example.com
         runtimeClasses:
           - special-runtime
         namespaces:
@@ -431,7 +432,7 @@ subjects:
 ```bash
 # Check audit logs for PSA violations
 # In audit log, look for:
-# annotations: authorization.k8s.io/audit-annotations
+# annotations: pod-security.kubernetes.io/audit-violations
 
 # Query audit log
 grep "pod-security.kubernetes.io" /var/log/kubernetes/audit.log
@@ -440,12 +441,11 @@ grep "pod-security.kubernetes.io" /var/log/kubernetes/audit.log
 ### Prometheus Metrics
 
 ```yaml
-# Alert on PSA warnings
+# Alert on PSA rejections
 - alert: PodSecurityViolation
   expr: |
-    increase(apiserver_admission_controller_admission_duration_seconds_count{
-      name="PodSecurity",
-      rejected="true"
+    increase(pod_security_evaluations_total{
+      decision="deny"
     }[5m]) > 0
   labels:
     severity: warning

@@ -64,6 +64,10 @@ const ALLOWED_REDIRECT_HOSTS = ['example.com', 'app.example.com'];
 function isValidRedirectUrl(url, req) {
   // Only allow relative URLs or URLs to approved hosts
   try {
+    if (url.includes('\\')) {
+      return false;
+    }
+
     // Handle relative URLs
     if (url.startsWith('/') && !url.startsWith('//')) {
       return true;
@@ -155,6 +159,9 @@ def create_oauth_state(redirect_url):
 def validate_redirect_url(url):
     """Validate and sanitize redirect URL"""
     if not url:
+        return '/'
+
+    if '\\' in url:
         return '/'
 
     # Allow relative URLs (but not protocol-relative)
@@ -275,7 +282,7 @@ Attackers will try to bypass your validation. Here are common bypasses and how t
 ```javascript
 function preventProtocolRelative(url) {
   // Reject URLs starting with //
-  if (url.startsWith('//')) {
+  if (url.startsWith('//') || url.includes('\\')) {
     return false;
   }
   return true;
@@ -300,7 +307,11 @@ function sanitizeUrl(url) {
   // Keep decoding until stable (handle double encoding)
   while (decoded !== previous) {
     previous = decoded;
-    decoded = decodeURIComponent(decoded);
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch (e) {
+      return '';
+    }
   }
 
   return decoded;
@@ -373,8 +384,8 @@ class RedirectValidator {
     // Decode any URL encoding
     let url = this.fullyDecode(redirectUrl.trim());
 
-    // Block protocol-relative URLs
-    if (url.startsWith('//')) {
+    // Block protocol-relative URLs and backslash-based URL parser bypasses
+    if (url.startsWith('//') || url.includes('\\')) {
       return defaultUrl;
     }
 
@@ -483,6 +494,7 @@ curl -I "https://example.com/redirect?url=/\evil.com"
 
 # Encoding bypass tests
 curl -I "https://example.com/redirect?url=%2F%2Fevil.com"
+curl -I "https://example.com/redirect?url=%2F%5Cevil.com"
 curl -I "https://example.com/redirect?url=https%3A%2F%2Fevil.com"
 
 # Domain confusion tests

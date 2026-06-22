@@ -14,14 +14,14 @@ VPC network configuration errors can bring your entire GCP infrastructure to a h
 
 ```mermaid
 flowchart TB
-    subgraph VPC Network
-        subgraph us-central1
+    subgraph VPC_Network[VPC Network]
+        subgraph us_central1[us-central1]
             S1[Subnet 10.0.1.0/24]
             VM1[VM Instance]
             VM1 --> S1
         end
 
-        subgraph us-east1
+        subgraph us_east1[us-east1]
             S2[Subnet 10.0.2.0/24]
             VM2[VM Instance]
             VM2 --> S2
@@ -40,7 +40,7 @@ flowchart TB
 
     R --> IGW
     R --> VPN
-    VPC Network --> PEER
+    VPC_Network --> PEER
 ```
 
 ## Common Error: "Subnetwork CIDR Range Conflicts"
@@ -96,6 +96,25 @@ locals {
     "us-west1"    = "10.0.32.0/20"  # 10.0.32.0 - 10.0.47.255
     "europe-west1" = "10.0.48.0/20" # 10.0.48.0 - 10.0.63.255
   }
+
+  secondary_ranges = {
+    "us-central1" = {
+      pods     = "10.64.0.0/14"
+      services = "172.16.0.0/20"
+    }
+    "us-east1" = {
+      pods     = "10.68.0.0/14"
+      services = "172.16.16.0/20"
+    }
+    "us-west1" = {
+      pods     = "10.72.0.0/14"
+      services = "172.16.32.0/20"
+    }
+    "europe-west1" = {
+      pods     = "10.76.0.0/14"
+      services = "172.16.48.0/20"
+    }
+  }
 }
 
 resource "google_compute_network" "vpc" {
@@ -115,12 +134,12 @@ resource "google_compute_subnetwork" "subnets" {
   # Secondary ranges for GKE
   secondary_ip_range {
     range_name    = "pods"
-    ip_cidr_range = cidrsubnet(each.value, 4, 1)
+    ip_cidr_range = local.secondary_ranges[each.key].pods
   }
 
   secondary_ip_range {
     range_name    = "services"
-    ip_cidr_range = cidrsubnet(each.value, 4, 2)
+    ip_cidr_range = local.secondary_ranges[each.key].services
   }
 }
 ```
@@ -318,11 +337,11 @@ Cannot establish VPC peering between networks.
 
 ```mermaid
 flowchart LR
-    subgraph Project A
+    subgraph Project_A[Project A]
         VPC_A[VPC A - 10.0.0.0/16]
     end
 
-    subgraph Project B
+    subgraph Project_B[Project B]
         VPC_B[VPC B - 10.1.0.0/16]
     end
 
@@ -346,7 +365,7 @@ gcloud compute networks peerings list \
 # Common issues:
 # - Overlapping CIDR ranges
 # - Peering not configured on both sides
-# - Exceeded peering limits (25 per VPC)
+# - Exceeded the Peerings per VPC network quota
 ```
 
 ### Solution
@@ -411,9 +430,10 @@ gcloud compute networks subnets describe my-subnet \
     --region=us-central1 \
     --format="get(privateIpGoogleAccess)"
 
-# Check DNS configuration
-gcloud compute networks describe my-vpc \
-    --format="get(name,autoCreateSubnetworks)"
+# Check for a private Cloud DNS zone for Google APIs
+gcloud dns managed-zones list \
+    --filter="visibility=private AND dnsName=googleapis.com." \
+    --format="table(name,dnsName,visibility)"
 ```
 
 ### Solution
@@ -424,7 +444,7 @@ gcloud compute networks subnets update my-subnet \
     --region=us-central1 \
     --enable-private-ip-google-access
 
-# For restricted.googleapis.com (VPC Service Controls)
+# For private.googleapis.com
 # Create DNS zone for Private Google Access
 gcloud dns managed-zones create google-apis \
     --dns-name="googleapis.com." \
@@ -433,7 +453,7 @@ gcloud dns managed-zones create google-apis \
     --description="Private Google Access"
 
 # Add A record
-gcloud dns record-sets create googleapis.com. \
+gcloud dns record-sets create private.googleapis.com. \
     --zone=google-apis \
     --type=A \
     --ttl=300 \
@@ -444,7 +464,7 @@ gcloud dns record-sets create "*.googleapis.com." \
     --zone=google-apis \
     --type=CNAME \
     --ttl=300 \
-    --rrdatas="googleapis.com."
+    --rrdatas="private.googleapis.com."
 ```
 
 ## Debugging VPC Connectivity
@@ -520,7 +540,9 @@ gcloud compute networks peerings list --network=$NETWORK
 echo ""
 echo "=== Cloud NAT (all regions) ==="
 for region in $(gcloud compute regions list --format="value(name)"); do
-    gcloud compute routers nats list --router-region=$region 2>/dev/null
+    for router in $(gcloud compute routers list --regions=$region --format="value(name)"); do
+        gcloud compute routers nats list --router=$router --region=$region
+    done
 done
 ```
 

@@ -66,6 +66,7 @@ props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getCla
 // Configure custom deserialization exception handler
 // This allows the application to skip bad messages instead of crashing
 import org.apache.kafka.streams.errors.DeserializationExceptionHandler;
+import org.apache.kafka.streams.errors.ErrorHandlerContext;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 public class LogAndContinueExceptionHandler implements DeserializationExceptionHandler {
@@ -74,8 +75,8 @@ public class LogAndContinueExceptionHandler implements DeserializationExceptionH
         LogAndContinueExceptionHandler.class);
 
     @Override
-    public DeserializationHandlerResponse handle(
-            ProcessorContext context,
+    public Response handleError(
+            ErrorHandlerContext context,
             ConsumerRecord<byte[], byte[]> record,
             Exception exception) {
 
@@ -96,7 +97,7 @@ public class LogAndContinueExceptionHandler implements DeserializationExceptionH
         sendToDeadLetterQueue(record, exception);
 
         // Continue processing - skip the bad record
-        return DeserializationHandlerResponse.CONTINUE;
+        return Response.resume();
     }
 
     private void sendToDeadLetterQueue(
@@ -118,7 +119,7 @@ props.put(StreamsConfig.APPLICATION_ID_CONFIG, "my-app");
 props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 
 // Use custom deserialization exception handler
-props.put(StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
+props.put(StreamsConfig.DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
     LogAndContinueExceptionHandler.class);
 ```
 
@@ -164,23 +165,25 @@ stream
     })
     .to("output-topic");
 
-// Alternative: Use branching for error handling
-KStream<String, String>[] branches = stream
+// Alternative: Use split/branch for error handling
+Map<String, KStream<String, String>> branches = stream
     .filter((key, value) -> value != null)
+    .split(Named.as("validation-"))
     .branch(
         // Branch 0: Valid records that can be processed
         (key, value) -> isValidFormat(value),
+        Branched.as("valid"))
+    .defaultBranch(
         // Branch 1: Invalid records
-        (key, value) -> true
-    );
+        Branched.as("invalid"));
 
 // Process valid records
-branches[0]
+branches.get("validation-valid")
     .mapValues(this::processValue)
     .to("output-topic");
 
 // Send invalid records to error topic
-branches[1]
+branches.get("validation-invalid")
     .to("error-topic");
 ```
 
@@ -194,6 +197,7 @@ Handle exceptions that occur when writing to output topics:
 // Configure production exception handler for output errors
 // This handles cases like broker unavailability or record too large
 import org.apache.kafka.streams.errors.ProductionExceptionHandler;
+import org.apache.kafka.streams.errors.ErrorHandlerContext;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 public class LogAndContinueProductionExceptionHandler
@@ -203,7 +207,8 @@ public class LogAndContinueProductionExceptionHandler
         LogAndContinueProductionExceptionHandler.class);
 
     @Override
-    public ProductionExceptionHandlerResponse handle(
+    public Response handleError(
+            ErrorHandlerContext context,
             ProducerRecord<byte[], byte[]> record,
             Exception exception) {
 
@@ -215,16 +220,16 @@ public class LogAndContinueProductionExceptionHandler
 
         // Check if the error is recoverable
         if (isRecoverable(exception)) {
-            // For transient errors, you might want to fail and retry
+            // For transient errors, retry the failed produce when Kafka marks it retriable
             logger.warn("Recoverable error - will retry");
-            return ProductionExceptionHandlerResponse.FAIL;
+            return Response.retry();
         }
 
         // For non-recoverable errors, skip the record
         // Send to dead letter queue for investigation
         sendToDeadLetterQueue(record, exception);
 
-        return ProductionExceptionHandlerResponse.CONTINUE;
+        return Response.resume();
     }
 
     private boolean isRecoverable(Exception exception) {
@@ -241,7 +246,7 @@ public class LogAndContinueProductionExceptionHandler
 
 // Register the handler
 Properties props = new Properties();
-props.put(StreamsConfig.DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
+props.put(StreamsConfig.PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
     LogAndContinueProductionExceptionHandler.class);
 ```
 
@@ -280,7 +285,7 @@ streams.setUncaughtExceptionHandler((exception) -> {
     if (exception instanceof StreamsException) {
         Throwable cause = exception.getCause();
 
-        // Deserialization errors - replace thread and continue
+        // Serialization errors - replace thread and continue
         if (cause instanceof SerializationException) {
             logger.warn("Serialization error - replacing thread");
             return StreamThreadExceptionResponse.REPLACE_THREAD;
@@ -305,7 +310,7 @@ streams.start();
 
 ## 5. State Store Exceptions
 
-State store access can fail during rebalancing or when corrupted:
+State store access can fail if the store is not connected to the processor, has closed, or has migrated during a rebalance:
 
 ```java
 // WRONG: Not handling state store unavailability
@@ -319,7 +324,7 @@ public class MyProcessor implements Processor<String, String, String, String> {
 
     @Override
     public void process(Record<String, String> record) {
-        // This can throw StateStoreNotAvailableException during rebalancing
+        // This can throw an InvalidStateStoreException subclass if the store is invalid
         Long count = store.get(record.key());
         store.put(record.key(), count + 1);
     }
@@ -362,7 +367,7 @@ public class ResilientProcessor implements Processor<String, String, String, Str
             ));
 
         } catch (InvalidStateStoreException e) {
-            // State store not available - likely rebalancing
+            // State store not available, closed, or migrated
             logger.warn("State store temporarily unavailable for key: {}",
                 record.key(), e);
 
@@ -372,10 +377,6 @@ public class ResilientProcessor implements Processor<String, String, String, Str
             // Option 2: Throw to trigger thread replacement
             throw new StreamsException("State store unavailable", e);
 
-        } catch (StateStoreMigratedException e) {
-            // Partition was migrated to another instance
-            logger.info("Partition migrated, skipping record: {}", record.key());
-            // The record will be processed by the new owner
         }
     }
 
@@ -456,14 +457,14 @@ public class DeadLetterQueueHandler {
     }
 }
 
-// Usage in a custom transformer
-public class SafeTransformer implements ValueTransformer<String, String> {
+// Usage in a custom processor
+public class SafeProcessor implements FixedKeyProcessor<String, String, String> {
 
-    private ProcessorContext context;
+    private FixedKeyProcessorContext<String, String> context;
     private DeadLetterQueueHandler dlqHandler;
 
     @Override
-    public void init(ProcessorContext context) {
+    public void init(FixedKeyProcessorContext<String, String> context) {
         this.context = context;
         this.dlqHandler = new DeadLetterQueueHandler(
             createDlqProducerProps(),
@@ -472,24 +473,25 @@ public class SafeTransformer implements ValueTransformer<String, String> {
     }
 
     @Override
-    public String transform(String value) {
+    public void process(FixedKeyRecord<String, String> record) {
         try {
-            return processValue(value);
+            context.forward(record.withValue(processValue(record.value())));
         } catch (Exception e) {
+            RecordMetadata metadata = context.recordMetadata().orElse(null);
+
             // Send to DLQ
             dlqHandler.sendToDeadLetterQueue(
-                context.topic(),
-                null,  // No key in ValueTransformer
-                value.getBytes(StandardCharsets.UTF_8),
+                metadata != null ? metadata.topic() : "unknown-topic",
+                record.key() != null ? record.key().getBytes(StandardCharsets.UTF_8) : null,
+                record.value() != null ? record.value().getBytes(StandardCharsets.UTF_8) : null,
                 e,
-                Map.of(
-                    "partition", String.valueOf(context.partition()),
-                    "offset", String.valueOf(context.offset())
-                )
+                metadata != null
+                    ? Map.of(
+                        "partition", String.valueOf(metadata.partition()),
+                        "offset", String.valueOf(metadata.offset())
+                    )
+                    : Map.of()
             );
-
-            // Return null to filter out the record
-            return null;
         }
     }
 
@@ -507,36 +509,39 @@ public class SafeTransformer implements ValueTransformer<String, String> {
 Implement retry logic for transient failures:
 
 ```java
-// Retry transformer with exponential backoff
+// Retry processor with exponential backoff
 // Useful for external service calls that may fail temporarily
-public class RetryTransformer implements ValueTransformer<String, String> {
+public class RetryProcessor implements FixedKeyProcessor<String, String, String> {
 
-    private static final Logger logger = LoggerFactory.getLogger(RetryTransformer.class);
+    private static final Logger logger = LoggerFactory.getLogger(RetryProcessor.class);
 
     private final int maxRetries;
     private final long initialBackoffMs;
     private final double backoffMultiplier;
+    private FixedKeyProcessorContext<String, String> context;
 
-    public RetryTransformer(int maxRetries, long initialBackoffMs, double backoffMultiplier) {
+    public RetryProcessor(int maxRetries, long initialBackoffMs, double backoffMultiplier) {
         this.maxRetries = maxRetries;
         this.initialBackoffMs = initialBackoffMs;
         this.backoffMultiplier = backoffMultiplier;
     }
 
     @Override
-    public void init(ProcessorContext context) {
-        // Initialization if needed
+    public void init(FixedKeyProcessorContext<String, String> context) {
+        this.context = context;
     }
 
     @Override
-    public String transform(String value) {
+    public void process(FixedKeyRecord<String, String> record) {
         Exception lastException = null;
         long backoffMs = initialBackoffMs;
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 // Attempt the operation
-                return callExternalService(value);
+                String result = callExternalService(record.value());
+                context.forward(record.withValue(result));
+                return;
 
             } catch (RetryableException e) {
                 lastException = e;
@@ -570,7 +575,8 @@ public class RetryTransformer implements ValueTransformer<String, String> {
         throw new StreamsException("Retries exhausted", lastException);
     }
 
-    private String callExternalService(String value) throws RetryableException {
+    private String callExternalService(String value)
+            throws RetryableException, NonRetryableException {
         // Simulated external service call
         // In reality, this would call an HTTP API, database, etc.
         return value.toUpperCase();
@@ -616,9 +622,9 @@ public class ResilientKafkaStreamsApp {
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
 
         // Error handlers
-        props.put(StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
+        props.put(StreamsConfig.DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
             LogAndContinueExceptionHandler.class);
-        props.put(StreamsConfig.DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
+        props.put(StreamsConfig.PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
             LogAndContinueProductionExceptionHandler.class);
 
         // Processing guarantees
@@ -675,8 +681,7 @@ public class ResilientKafkaStreamsApp {
         // Safe processing with null checks and error handling
         input
             .filter((key, value) -> key != null && value != null)
-            .transformValues(() -> new SafeTransformer())
-            .filter((key, value) -> value != null)  // Filter out DLQ records
+            .processValues(() -> new SafeProcessor())
             .to("output-topic");
     }
 

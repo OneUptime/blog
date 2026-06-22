@@ -41,6 +41,7 @@ class WishlistService:
     def add_item(self, user_id, product_id, metadata=None):
         """Add an item to user's wishlist."""
         key = f"{self.prefix}:{user_id}"
+        data_key = f"{key}:items"
         timestamp = time.time()
 
         item_data = {
@@ -49,40 +50,43 @@ class WishlistService:
             'metadata': metadata or {}
         }
 
-        # Use sorted set with timestamp for ordering
-        member = json.dumps(item_data)
-        r.zadd(key, {member: timestamp})
+        # Use product_id as the sorted-set member so each product is unique
+        added = r.zadd(key, {product_id: timestamp})
+        r.hset(data_key, product_id, json.dumps(item_data))
 
-        # Track in product's wishlist count
-        r.hincrby(f"{self.prefix}:product_stats", product_id, 1)
+        # Track in product's wishlist count only for new saves
+        if added:
+            r.hincrby(f"{self.prefix}:product_stats", product_id, 1)
 
         return True
 
     def remove_item(self, user_id, product_id):
         """Remove an item from user's wishlist."""
         key = f"{self.prefix}:{user_id}"
+        data_key = f"{key}:items"
 
-        # Find and remove the item
-        items = r.zrange(key, 0, -1)
-        for item in items:
-            data = json.loads(item)
-            if data['product_id'] == product_id:
-                r.zrem(key, item)
-                r.hincrby(f"{self.prefix}:product_stats", product_id, -1)
-                return True
+        removed = r.zrem(key, product_id)
+        if removed:
+            r.hdel(data_key, product_id)
+            r.hincrby(f"{self.prefix}:product_stats", product_id, -1)
+            return True
 
         return False
 
     def get_wishlist(self, user_id, limit=50, offset=0):
         """Get user's wishlist items."""
         key = f"{self.prefix}:{user_id}"
+        data_key = f"{key}:items"
 
         # Get items sorted by most recently added
-        items = r.zrevrange(key, offset, offset + limit - 1, withscores=True)
+        items = r.zrange(key, offset, offset + limit - 1, desc=True, withscores=True)
 
         wishlist = []
-        for member, score in items:
-            data = json.loads(member)
+        for product_id, score in items:
+            item_json = r.hget(data_key, product_id)
+            if not item_json:
+                continue
+            data = json.loads(item_json)
             data['score'] = score
             wishlist.append(data)
 
@@ -91,14 +95,7 @@ class WishlistService:
     def is_in_wishlist(self, user_id, product_id):
         """Check if a product is in user's wishlist."""
         key = f"{self.prefix}:{user_id}"
-        items = r.zrange(key, 0, -1)
-
-        for item in items:
-            data = json.loads(item)
-            if data['product_id'] == product_id:
-                return True
-
-        return False
+        return r.zscore(key, product_id) is not None
 
     def get_wishlist_count(self, user_id):
         """Get count of items in wishlist."""
@@ -115,12 +112,11 @@ class WishlistService:
         key = f"{self.prefix}:{user_id}"
 
         # Update product stats before clearing
-        items = r.zrange(key, 0, -1)
-        for item in items:
-            data = json.loads(item)
-            r.hincrby(f"{self.prefix}:product_stats", data['product_id'], -1)
+        product_ids = r.zrange(key, 0, -1)
+        for product_id in product_ids:
+            r.hincrby(f"{self.prefix}:product_stats", product_id, -1)
 
-        r.delete(key)
+        r.delete(key, f"{key}:items")
 
 # Usage
 
@@ -157,6 +153,7 @@ class WishlistService {
 
   async addItem(userId, productId, metadata = {}) {
     const key = `${this.prefix}:${userId}`;
+    const dataKey = `${key}:items`;
     const timestamp = Date.now() / 1000;
 
     const itemData = {
@@ -165,29 +162,29 @@ class WishlistService {
       metadata
     };
 
-    const member = JSON.stringify(itemData);
-
-    await redis.pipeline()
-      .zadd(key, timestamp, member)
-      .hincrby(`${this.prefix}:product_stats`, productId, 1)
+    const results = await redis.pipeline()
+      .zadd(key, timestamp, productId)
+      .hset(dataKey, productId, JSON.stringify(itemData))
       .exec();
+
+    if (results[0][1] === 1) {
+      await redis.hincrby(`${this.prefix}:product_stats`, productId, 1);
+    }
 
     return true;
   }
 
   async removeItem(userId, productId) {
     const key = `${this.prefix}:${userId}`;
-    const items = await redis.zrange(key, 0, -1);
+    const dataKey = `${key}:items`;
+    const removed = await redis.zrem(key, productId);
 
-    for (const item of items) {
-      const data = JSON.parse(item);
-      if (data.product_id === productId) {
-        await redis.pipeline()
-          .zrem(key, item)
-          .hincrby(`${this.prefix}:product_stats`, productId, -1)
-          .exec();
-        return true;
-      }
+    if (removed) {
+      await redis.pipeline()
+        .hdel(dataKey, productId)
+        .hincrby(`${this.prefix}:product_stats`, productId, -1)
+        .exec();
+      return true;
     }
 
     return false;
@@ -195,13 +192,18 @@ class WishlistService {
 
   async getWishlist(userId, limit = 50, offset = 0) {
     const key = `${this.prefix}:${userId}`;
-    const items = await redis.zrevrange(
-      key, offset, offset + limit - 1, 'WITHSCORES'
+    const dataKey = `${key}:items`;
+    const items = await redis.zrange(
+      key, offset, offset + limit - 1, 'REV', 'WITHSCORES'
     );
 
     const wishlist = [];
     for (let i = 0; i < items.length; i += 2) {
-      const data = JSON.parse(items[i]);
+      const itemJson = await redis.hget(dataKey, items[i]);
+      if (!itemJson) {
+        continue;
+      }
+      const data = JSON.parse(itemJson);
       data.score = parseFloat(items[i + 1]);
       wishlist.push(data);
     }
@@ -211,16 +213,7 @@ class WishlistService {
 
   async isInWishlist(userId, productId) {
     const key = `${this.prefix}:${userId}`;
-    const items = await redis.zrange(key, 0, -1);
-
-    for (const item of items) {
-      const data = JSON.parse(item);
-      if (data.product_id === productId) {
-        return true;
-      }
-    }
-
-    return false;
+    return (await redis.zscore(key, productId)) !== null;
   }
 
   async toggleItem(userId, productId, metadata = {}) {
@@ -288,6 +281,7 @@ class CollectionService:
     def add_to_collection(self, collection_id, product_id, metadata=None):
         """Add an item to a collection."""
         items_key = f"{self.prefix}:items:{collection_id}"
+        data_key = f"{self.prefix}:item_data:{collection_id}"
         timestamp = time.time()
 
         item_data = {
@@ -296,10 +290,10 @@ class CollectionService:
             'metadata': metadata or {}
         }
 
-        member = json.dumps(item_data)
-        added = r.zadd(items_key, {member: timestamp}, nx=True)
+        added = r.zadd(items_key, {product_id: timestamp}, nx=True)
 
         if added:
+            r.hset(data_key, product_id, json.dumps(item_data))
             r.hincrby(f"{self.prefix}:meta:{collection_id}", 'item_count', 1)
 
         return added > 0
@@ -307,14 +301,13 @@ class CollectionService:
     def remove_from_collection(self, collection_id, product_id):
         """Remove an item from a collection."""
         items_key = f"{self.prefix}:items:{collection_id}"
-        items = r.zrange(items_key, 0, -1)
+        data_key = f"{self.prefix}:item_data:{collection_id}"
 
-        for item in items:
-            data = json.loads(item)
-            if data['product_id'] == product_id:
-                r.zrem(items_key, item)
-                r.hincrby(f"{self.prefix}:meta:{collection_id}", 'item_count', -1)
-                return True
+        removed = r.zrem(items_key, product_id)
+        if removed:
+            r.hdel(data_key, product_id)
+            r.hincrby(f"{self.prefix}:meta:{collection_id}", 'item_count', -1)
+            return True
 
         return False
 
@@ -336,10 +329,12 @@ class CollectionService:
 
         if include_items:
             items_key = f"{self.prefix}:items:{collection_id}"
-            items = r.zrevrange(items_key, 0, limit - 1, withscores=True)
+            data_key = f"{self.prefix}:item_data:{collection_id}"
+            items = r.zrange(items_key, 0, limit - 1, desc=True, withscores=True)
             collection['items'] = [
-                {**json.loads(item), 'score': score}
-                for item, score in items
+                {**json.loads(r.hget(data_key, product_id)), 'score': score}
+                for product_id, score in items
+                if r.hget(data_key, product_id)
             ]
 
         return collection
@@ -366,6 +361,7 @@ class CollectionService:
         pipe = r.pipeline()
         pipe.delete(f"{self.prefix}:meta:{collection_id}")
         pipe.delete(f"{self.prefix}:items:{collection_id}")
+        pipe.delete(f"{self.prefix}:item_data:{collection_id}")
         pipe.srem(f"{self.prefix}:user:{user_id}", collection_id)
         pipe.execute()
 
@@ -375,11 +371,13 @@ class CollectionService:
         """Move an item between collections."""
         # Get item data from source
         items_key = f"{self.prefix}:items:{from_collection}"
+        data_key = f"{self.prefix}:item_data:{from_collection}"
         items = r.zrange(items_key, 0, -1, withscores=True)
 
-        for item, score in items:
-            data = json.loads(item)
-            if data['product_id'] == product_id:
+        for item_product_id, score in items:
+            if item_product_id == product_id:
+                item_json = r.hget(data_key, product_id)
+                data = json.loads(item_json) if item_json else {}
                 # Add to destination
                 self.add_to_collection(to_collection, product_id, data.get('metadata'))
                 # Remove from source
@@ -524,7 +522,7 @@ class SharedWishlistService:
             return None
 
         items_key = f"{self.prefix}:{list_id}:items"
-        items = r.zrevrange(items_key, 0, -1, withscores=True)
+        items = r.zrange(items_key, 0, -1, desc=True, withscores=True)
 
         # If viewer is owner, show all claims
         # If viewer is not owner, hide who claimed what
@@ -663,9 +661,16 @@ print(f"Users to notify: {users}")
 ```python
 # For fast lookup, maintain a separate set
 def add_item_optimized(user_id, product_id):
+    timestamp = time.time()
+    data = {
+        'product_id': product_id,
+        'added_at': int(timestamp)
+    }
+
     pipe = r.pipeline()
     # Main wishlist with full data
-    pipe.zadd(f"wishlist:{user_id}", {json.dumps(data): timestamp})
+    pipe.zadd(f"wishlist:{user_id}", {product_id: timestamp})
+    pipe.hset(f"wishlist:{user_id}:items", product_id, json.dumps(data))
     # Fast lookup set
     pipe.sadd(f"wishlist:lookup:{user_id}", product_id)
     pipe.execute()

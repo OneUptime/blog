@@ -48,6 +48,7 @@ Start with a simple pipeline that reads data, transforms it, and writes results.
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+import json
 
 def run_basic_pipeline():
     """
@@ -74,9 +75,13 @@ def run_basic_pipeline():
         )
 
         # Write output
-        processed | 'WriteOutput' >> beam.io.WriteToText(
-            'gs://bucket/processed/output',
-            file_name_suffix='.json'
+        (
+            processed
+            | 'SerializeJSON' >> beam.Map(json.dumps)
+            | 'WriteOutput' >> beam.io.WriteToText(
+                'gs://bucket/processed/output',
+                file_name_suffix='.json'
+            )
         )
 
 
@@ -98,8 +103,8 @@ def extract_relevant_fields(event: dict) -> dict:
 
 def add_processing_timestamp(event: dict) -> dict:
     """Add a processing timestamp to track when we handled this event."""
-    from datetime import datetime
-    event['processed_at'] = datetime.utcnow().isoformat()
+    from datetime import datetime, timezone
+    event['processed_at'] = datetime.now(timezone.utc).isoformat()
     return event
 
 
@@ -118,10 +123,10 @@ For real-time processing, Beam provides windowing and triggering mechanisms.
 # Apache Beam pipeline for streaming data with windowing
 
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.transforms.window import FixedWindows, SlidingWindows, Sessions
-from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime, AccumulationMode
-import apache_beam.transforms.window as window
+from apache_beam.transforms.window import FixedWindows, TimestampedValue
+from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime, AccumulationMode, Repeatedly
 
 def run_streaming_pipeline():
     """
@@ -145,21 +150,22 @@ def run_streaming_pipeline():
             | 'DecodeBytes' >> beam.Map(lambda x: x.decode('utf-8'))
             | 'ParseJSON' >> beam.Map(parse_json_event)
             | 'ExtractTimestamp' >> beam.Map(extract_event_timestamp)
-                .with_output_types(beam.typehints.Dict[str, object])
+                .with_output_types(dict)
         )
 
         # Apply windowing - 5 minute fixed windows
         windowed_events = (
             events
             | 'AddEventTimestamp' >> beam.Map(
-                lambda x: beam.window.TimestampedValue(x, x['timestamp'])
+                lambda x: TimestampedValue(x, x['timestamp'].timestamp())
             )
             | 'Window' >> beam.WindowInto(
                 FixedWindows(5 * 60),  # 5 minutes
                 trigger=AfterWatermark(
-                    early=AfterProcessingTime(60),  # Early results every minute
-                    late=AfterProcessingTime(60)    # Late data handling
+                    early=Repeatedly(AfterProcessingTime(60)),  # Early results every minute
+                    late=Repeatedly(AfterProcessingTime(60))    # Late data handling
                 ),
+                allowed_lateness=10 * 60,
                 accumulation_mode=AccumulationMode.ACCUMULATING
             )
         )
@@ -175,7 +181,7 @@ def run_streaming_pipeline():
         # Write to BigQuery
         user_metrics | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
             table='my-project:analytics.user_metrics',
-            schema='user_id:STRING,window_start:TIMESTAMP,event_count:INTEGER,actions:STRING',
+            schema='user_id:STRING,window_start:TIMESTAMP,window_end:TIMESTAMP,event_count:INTEGER,actions:STRING',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
@@ -195,7 +201,7 @@ class ComputeUserMetrics(beam.DoFn):
         window_end = window.end.to_utc_datetime()
 
         # Compute metrics
-        actions = [e.get('action') for e in events_list]
+        actions = [e.get('action') for e in events_list if e.get('action')]
 
         yield {
             'user_id': user_id,
@@ -208,10 +214,18 @@ class ComputeUserMetrics(beam.DoFn):
 
 def extract_event_timestamp(event: dict) -> dict:
     """Extract and parse the event timestamp."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     timestamp_str = event.get('created_at', '')
-    event['timestamp'] = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    event['timestamp'] = timestamp
     return event
+
+
+def parse_json_event(line: str) -> dict:
+    """Parse a JSON line into a dictionary."""
+    return json.loads(line)
 ```
 
 ---
@@ -226,6 +240,7 @@ Production pipelines need robust error handling to prevent data loss.
 
 import apache_beam as beam
 from apache_beam import pvalue
+from apache_beam.options.pipeline_options import PipelineOptions
 
 class ProcessWithErrorHandling(beam.DoFn):
     """
@@ -244,7 +259,8 @@ class ProcessWithErrorHandling(beam.DoFn):
         except Exception as e:
             # On failure, emit to dead letter queue with error details
             error_record = {
-                'original_data': element,
+                'original_data': element.decode('utf-8', errors='replace')
+                    if isinstance(element, bytes) else str(element),
                 'error_type': type(e).__name__,
                 'error_message': str(e),
                 'timestamp': self.get_current_timestamp()
@@ -272,19 +288,19 @@ class ProcessWithErrorHandling(beam.DoFn):
             'event_id': data['id'],
             'user_id': data['user_id'],
             'action': data['action'].lower(),
-            'metadata': data.get('metadata', {})
+            'metadata': json.dumps(data.get('metadata', {}))
         }
 
     def get_current_timestamp(self):
-        from datetime import datetime
-        return datetime.utcnow().isoformat()
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).isoformat()
 
 
 def run_pipeline_with_error_handling():
     """
     Pipeline with dead letter queue for handling failures.
     """
-    options = PipelineOptions()
+    options = PipelineOptions(['--streaming'])
 
     with beam.Pipeline(options=options) as pipeline:
         # Read input
@@ -303,12 +319,14 @@ def run_pipeline_with_error_handling():
         # Handle successful records
         results[ProcessWithErrorHandling.SUCCESS_TAG] | 'WriteSuccess' >> beam.io.WriteToBigQuery(
             table='my-project:events.processed',
+            schema='event_id:STRING,user_id:STRING,action:STRING,metadata:STRING',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
         )
 
         # Handle failed records - dead letter queue
         results[ProcessWithErrorHandling.FAILURE_TAG] | 'WriteFailures' >> beam.io.WriteToBigQuery(
             table='my-project:events.dead_letter',
+            schema='original_data:STRING,error_type:STRING,error_message:STRING,timestamp:TIMESTAMP',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
         )
 ```
@@ -457,7 +475,7 @@ def deploy_to_dataflow(
         '--max_num_workers=10',
         '--autoscaling_algorithm=THROUGHPUT_BASED',
         '--enable_streaming_engine',  # For streaming pipelines
-        '--experiments=enable_prime',  # Enable Dataflow Prime
+        '--dataflow_service_options=enable_prime',  # Enable Dataflow Prime
     ]
 
     if template_location:
@@ -534,7 +552,24 @@ Optimize your Beam pipelines for better throughput and lower latency.
 # Performance-optimized Apache Beam pipeline
 
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions
+
+def parse_event(element):
+    """Parse a Pub/Sub message into a dictionary."""
+    if isinstance(element, bytes):
+        element = element.decode('utf-8')
+    return json.loads(element)
+
+
+def transform_event(event):
+    """Transform the event into the BigQuery row format."""
+    return {
+        'event_id': event.get('id'),
+        'user_id': event.get('user_id'),
+        'action': event.get('action'),
+        'timestamp': event.get('created_at')
+    }
 
 def run_optimized_pipeline():
     """
@@ -544,10 +579,11 @@ def run_optimized_pipeline():
         '--runner=DataflowRunner',
         '--project=my-project',
         '--region=us-central1',
+        '--streaming',
+        '--temp_location=gs://bucket/temp',
         # Performance tuning options
-        '--number_of_worker_harness_threads=0',  # Auto-tune
-        '--experiments=shuffle_mode=service',     # Use Dataflow Shuffle
-        '--experiments=use_runner_v2',            # Use Runner V2
+        '--number_of_worker_harness_threads=4',
+        '--dataflow_service_options=enable_prime',
     ])
 
     with beam.Pipeline(options=options) as pipeline:
@@ -568,11 +604,12 @@ def run_optimized_pipeline():
             | 'Transform' >> beam.Map(transform_event)
         )
 
-        # Use batched writes
-        processed | 'BatchWrite' >> beam.io.WriteToBigQuery(
+        # Use the Storage Write API for streaming writes
+        processed | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
             table='my-project:dataset.table',
-            method=beam.io.WriteToBigQuery.Method.FILE_LOADS,
-            triggering_frequency=60,  # Batch writes every 60 seconds
+            schema='event_id:STRING,user_id:STRING,action:STRING,timestamp:TIMESTAMP',
+            method=beam.io.WriteToBigQuery.Method.STORAGE_WRITE_API,
+            triggering_frequency=5,
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
         )
 ```

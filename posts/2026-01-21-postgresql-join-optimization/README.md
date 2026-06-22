@@ -66,7 +66,7 @@ JOIN customers c ON o.customer_id = c.id;
 
 ### Merge Join
 
-Best for: Pre-sorted data, range conditions
+Best for: Pre-sorted data, merge-joinable conditions
 
 ```sql
 -- Merge join is efficient when:
@@ -90,7 +90,7 @@ ORDER BY o.customer_id;
 
 ### Foreign Key Indexes
 
-Always index foreign key columns:
+Index foreign key columns that are frequently used in joins:
 
 ```sql
 -- Create indexes on foreign keys
@@ -122,14 +122,14 @@ WHERE c.region = 'US';
 
 ### Covering Indexes
 
-Avoid table lookups by including needed columns:
+Reduce table lookups by including needed columns:
 
 ```sql
 -- Covering index includes columns needed by query
 CREATE INDEX idx_orders_covering ON orders(customer_id)
 INCLUDE (order_date, total, status);
 
--- Index-only scan possible
+-- Index-only scan possible when PostgreSQL can satisfy visibility checks
 EXPLAIN ANALYZE
 SELECT customer_id, order_date, total
 FROM orders
@@ -156,7 +156,8 @@ WHERE c.region = 'US';
 ### Explicit Join Order (When Needed)
 
 ```sql
--- Force specific join order with explicit subquery
+-- Express selective inputs explicitly; use join_collapse_limit when
+-- you need PostgreSQL to honor explicit JOIN order
 EXPLAIN ANALYZE
 SELECT *
 FROM (
@@ -184,13 +185,13 @@ SET join_collapse_limit = 1;  -- Use explicit join order
 ### Push Predicates Down
 
 ```sql
--- Less efficient: filter after join
+-- PostgreSQL usually pushes these filters down during planning
 SELECT c.name, o.total
 FROM customers c
 JOIN orders o ON o.customer_id = c.id
 WHERE c.region = 'US' AND o.order_date >= '2025-01-01';
 
--- More efficient: subqueries can help planner
+-- Equivalent form that can make selective inputs clearer
 SELECT c.name, o.total
 FROM (
     SELECT * FROM customers WHERE region = 'US'
@@ -322,10 +323,10 @@ JOIN customers c ON o.customer_id = c.id;
 
 ### Build Hash on Smaller Table
 
-PostgreSQL automatically builds hash on smaller table:
+PostgreSQL usually builds the hash table on the estimated smaller or cheaper input:
 
 ```sql
--- Planner should choose customers (smaller) for hash build
+-- Planner should usually choose customers (smaller) for hash build
 EXPLAIN ANALYZE
 SELECT *
 FROM orders o  -- Large table
@@ -383,7 +384,7 @@ SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id;
 ### Joining on Functions
 
 ```sql
--- SLOW: Function on join column prevents index use
+-- SLOW: Function on join column prevents use of a plain index
 SELECT * FROM orders o
 JOIN customers c ON LOWER(o.customer_name) = LOWER(c.name);
 

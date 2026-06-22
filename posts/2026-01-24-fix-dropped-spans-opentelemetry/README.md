@@ -97,7 +97,7 @@ const spanProcessor = new BatchSpanProcessor(exporter, {
 });
 
 const sdk = new NodeSDK({
-  spanProcessor: spanProcessor,
+  spanProcessors: [spanProcessor],
   // ... other config
 });
 ```
@@ -107,8 +107,15 @@ const sdk = new NodeSDK({
 ```python
 # tracing.py - Configure batch processor with larger queue
 
+import os
+
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+provider = TracerProvider()
+trace.set_tracer_provider(provider)
 
 exporter = OTLPSpanExporter(
     endpoint="https://oneuptime.com/otlp/v1/traces",
@@ -137,17 +144,29 @@ When the OpenTelemetry Collector runs out of memory, it must drop data to preven
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  otlp_http:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
+
 processors:
-  # Memory limiter MUST be first in the pipeline
+  # Memory limiter should be first in the pipeline
   memory_limiter:
     # Check memory usage at this interval
     check_interval: 1s
 
-    # Hard limit - collector will drop data above this
+    # Hard limit - collector targets this process heap limit
     limit_mib: 1500
 
-    # Soft limit - collector will start refusing data
-    spike_limit_mib: 500
+    # Expected spike size; soft limit is limit_mib - spike_limit_mib
+    spike_limit_mib: 300
 
   batch:
     send_batch_size: 512
@@ -157,9 +176,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      # Memory limiter must be first
+      # Memory limiter should be first
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ---
@@ -173,12 +192,12 @@ Network issues between your application and the collector, or between the collec
 ```yaml
 # otel-collector-config.yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     encoding: json
     headers:
       Content-Type: application/json
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
     # Timeout for each export attempt
     timeout: 30s
@@ -190,7 +209,7 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-    # Queue configuration with persistent storage
+    # Queue configuration; add a storage extension for persistence
     sending_queue:
       enabled: true
       num_consumers: 10
@@ -257,7 +276,7 @@ When troubleshooting dropped spans, check these items in order:
 3. **Collector**
    - Memory limiter configured
    - Adequate resources allocated
-   - Sending queue enabled with persistence
+   - Sending queue enabled, with persistent storage when restart durability is required
    - Receiver limits appropriate for traffic
 
 4. **Monitoring**

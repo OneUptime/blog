@@ -79,12 +79,15 @@ Common unassigned reasons:
 | CLUSTER_RECOVERED | Cluster recovery process |
 | INDEX_REOPENED | Index was reopened |
 | DANGLING_INDEX_IMPORTED | Dangling index imported |
+| FORCED_EMPTY_PRIMARY | Empty primary was forced using the reroute API |
+| INDEX_CLOSED | Index was closed |
+| MANUAL_ALLOCATION | Allocation was manually changed using the reroute API |
 | NEW_INDEX_RESTORED | Restored from snapshot |
 | EXISTING_INDEX_RESTORED | Restored from snapshot |
-| REPLICA_ADDED | Replica added |
 | ALLOCATION_FAILED | Allocation attempt failed |
 | NODE_LEFT | Node left the cluster |
-| REROUTE_CANCELLED | Reroute was cancelled |
+| NODE_RESTARTING | Node was registered as restarting |
+| PRIMARY_FAILED | Primary failed while a replica was initializing |
 | REINITIALIZED | Shard reinitialized |
 | REALLOCATED_REPLICA | Replica reallocated |
 
@@ -200,7 +203,7 @@ Free up disk space:
 # Delete old indices
 curl -u elastic:password -X DELETE "localhost:9200/logs-2023.*"
 
-# Force merge to reduce segment count
+# Force merge only indices that are no longer receiving writes
 curl -u elastic:password -X POST "localhost:9200/logs-*/_forcemerge?max_num_segments=1"
 ```
 
@@ -289,7 +292,7 @@ curl -u elastic:password -X POST "localhost:9200/_cluster/reroute" -H 'Content-T
 }'
 ```
 
-### 6. Too Many Shards per Node
+### 6. Cluster Shard Limit Reached
 
 **Check current limit:**
 ```bash
@@ -297,6 +300,8 @@ curl -u elastic:password -X GET "localhost:9200/_cluster/settings?include_defaul
 ```
 
 **Increase limit temporarily:**
+This setting limits the total number of open primary and replica shards in the cluster, calculated from the number of non-frozen data nodes. Prefer deleting indices or adding data nodes before increasing it.
+
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
@@ -373,6 +378,8 @@ curl -u elastic:password -X GET "localhost:9200/_recovery?pretty&active_only=tru
 ```
 
 ### Speed Up Recovery
+
+Use these settings carefully. Increasing recovery concurrency or bandwidth can add load to the cluster and may not make recovery complete faster if disk, CPU, or network resources are already saturated.
 
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'

@@ -45,7 +45,7 @@ npm ls lodash
 #     `-- lodash@3.10.1  <-- Version conflict!
 ```
 
-Fix conflicts with resolutions:
+Fix conflicts with overrides:
 
 ```json
 {
@@ -182,11 +182,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install safety
-        run: pip install safety
-
-      - name: Run safety check
-        run: safety check -r requirements.txt
+      - name: Run Safety
+        uses: pyupio/safety-action@v1
+        with:
+          api-key: ${{ secrets.SAFETY_API_KEY }}
 
       - name: Run pip-audit
         run: |
@@ -341,7 +340,7 @@ updates:
       "platformAutomerge": true
     },
     {
-      "matchPackagePatterns": ["^@types/"],
+      "matchPackageNames": ["@types/**"],
       "groupName": "TypeScript type definitions",
       "automerge": true
     },

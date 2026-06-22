@@ -49,14 +49,20 @@ First, set up your project in the Google Cloud Console.
 2. Click the project dropdown and select "New Project"
 3. Enter a project name and click "Create"
 
-### Enable the Required APIs
+### Enable APIs Your App Uses
 
 ```bash
-# Using gcloud CLI to enable APIs
+# Basic OpenID Connect sign-in does not require enabling a separate API.
+# Enable Google APIs only if your app calls them after sign-in.
 
-gcloud services enable oauth2.googleapis.com
+# Optional: People API
 gcloud services enable people.googleapis.com
-gcloud services enable plus.googleapis.com
+
+# Optional: Google Calendar API
+gcloud services enable calendar-json.googleapis.com
+
+# Optional: Google Drive API
+gcloud services enable drive.googleapis.com
 ```
 
 ## Step 2: Configure the OAuth Consent Screen
@@ -107,8 +113,8 @@ Add the scopes your application needs:
 GOOGLE_SCOPES = [
     # Basic profile information (required for sign-in)
     "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
+    "email",
+    "profile",
 
     # Optional: Access to Google Calendar
     # "https://www.googleapis.com/auth/calendar.readonly",
@@ -176,6 +182,7 @@ const express = require('express');
 const axios = require('axios');
 const querystring = require('querystring');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 app.use(express.json());
@@ -191,11 +198,19 @@ const config = {
 // Google OAuth2 endpoints
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+const googleClient = new OAuth2Client(config.clientId);
 
 // Generate a random state for CSRF protection
 function generateState() {
     return require('crypto').randomBytes(32).toString('hex');
+}
+
+// Keep post-login redirects within your own app
+function normalizeReturnTo(returnTo) {
+    return typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')
+        ? returnTo
+        : '/';
 }
 
 // Store states temporarily (use Redis in production)
@@ -208,7 +223,7 @@ app.get('/auth/google', (req, res) => {
     // Store state with timestamp for verification
     stateStore.set(state, {
         createdAt: Date.now(),
-        returnTo: req.query.returnTo || '/'
+        returnTo: normalizeReturnTo(req.query.returnTo)
     });
 
     const params = querystring.stringify({
@@ -268,8 +283,12 @@ app.get('/auth/google/callback', async (req, res) => {
 
         const { access_token, refresh_token, id_token, expires_in } = tokenResponse.data;
 
-        // Step 4: Decode the ID token to get user info
-        const decodedIdToken = jwt.decode(id_token);
+        // Step 4: Verify the ID token before trusting identity claims
+        const ticket = await googleClient.verifyIdToken({
+            idToken: id_token,
+            audience: config.clientId
+        });
+        const idInfo = ticket.getPayload();
 
         // Alternatively, fetch user info from the API
         const userInfoResponse = await axios.get(GOOGLE_USERINFO_URL, {
@@ -282,12 +301,16 @@ app.get('/auth/google/callback', async (req, res) => {
 
         // Step 5: Create or update user in your database
         const user = await findOrCreateUser({
-            googleId: userInfo.sub,
-            email: userInfo.email,
-            name: userInfo.name,
-            picture: userInfo.picture,
-            emailVerified: userInfo.email_verified
+            googleId: idInfo.sub,
+            email: idInfo.email,
+            name: userInfo.name || idInfo.name,
+            picture: userInfo.picture || idInfo.picture,
+            emailVerified: idInfo.email_verified
         });
+
+        if (refresh_token) {
+            await storeRefreshToken(user.id, refresh_token);
+        }
 
         // Step 6: Create session or JWT for your application
         const sessionToken = createSessionToken(user);
@@ -321,6 +344,11 @@ async function findOrCreateUser(googleUser) {
     };
 }
 
+// Helper function to store refresh token securely
+async function storeRefreshToken(userId, refreshToken) {
+    // Store encrypted in your database or secret store
+}
+
 // Helper function to create session token
 function createSessionToken(user) {
     return jwt.sign(
@@ -341,7 +369,8 @@ app.listen(3000, () => {
 # app.py
 import os
 import secrets
-from flask import Flask, redirect, request, session, url_for, jsonify
+from urllib.parse import urlencode
+from flask import Flask, redirect, request, session, jsonify
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import requests
@@ -357,10 +386,17 @@ GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:50
 # Google OAuth2 endpoints
 GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
-GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
+GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
 
 # Scopes
 SCOPES = ['openid', 'email', 'profile']
+
+
+def normalize_return_to(return_to):
+    """Keep post-login redirects within your own app."""
+    if isinstance(return_to, str) and return_to.startswith('/') and not return_to.startswith('//'):
+        return return_to
+    return '/'
 
 
 @app.route('/auth/google')
@@ -369,7 +405,7 @@ def google_login():
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
     session['oauth_state'] = state
-    session['return_to'] = request.args.get('return_to', '/')
+    session['return_to'] = normalize_return_to(request.args.get('return_to'))
 
     # Build authorization URL
     params = {
@@ -382,7 +418,7 @@ def google_login():
         'prompt': 'consent'
     }
 
-    auth_url = f"{GOOGLE_AUTH_URL}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
     return redirect(auth_url)
 
 
@@ -442,8 +478,8 @@ def google_callback():
         session['user'] = {
             'id': id_info['sub'],
             'email': id_info['email'],
-            'name': id_info.get('name'),
-            'picture': id_info.get('picture'),
+            'name': user_info.get('name') or id_info.get('name'),
+            'picture': user_info.get('picture') or id_info.get('picture'),
             'email_verified': id_info.get('email_verified', False)
         }
 
@@ -710,13 +746,11 @@ export function App() {
 class TokenManager {
     constructor() {
         this.accessToken = null;
-        this.refreshToken = null;
         this.expiresAt = null;
     }
 
-    setTokens(accessToken, refreshToken, expiresIn) {
+    setTokens(accessToken, expiresIn) {
         this.accessToken = accessToken;
-        this.refreshToken = refreshToken;
         // Set expiration 5 minutes before actual expiry
         this.expiresAt = Date.now() + (expiresIn - 300) * 1000;
     }
@@ -736,14 +770,12 @@ class TokenManager {
 
     async refreshAccessToken() {
         try {
+            // The server should use the refresh token stored for the current session.
             const response = await fetch('/auth/refresh', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    refresh_token: this.refreshToken
-                })
+                }
             });
 
             if (!response.ok) {
@@ -751,7 +783,7 @@ class TokenManager {
             }
 
             const data = await response.json();
-            this.setTokens(data.access_token, data.refresh_token, data.expires_in);
+            this.setTokens(data.access_token, data.expires_in);
             return this.accessToken;
         } catch (error) {
             // Refresh failed, user needs to re-authenticate
@@ -763,7 +795,6 @@ class TokenManager {
 
     clearTokens() {
         this.accessToken = null;
-        this.refreshToken = null;
         this.expiresAt = null;
     }
 }

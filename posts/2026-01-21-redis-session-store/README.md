@@ -47,10 +47,11 @@ npm install express express-session connect-redis redis
 ```javascript
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
 
 const app = express();
+app.use(express.json());
 
 // Create Redis client
 const redisClient = createClient({
@@ -131,7 +132,7 @@ app.listen(3000);
 
 ```javascript
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 
 // Production-ready configuration
 const sessionConfig = {
@@ -141,7 +142,7 @@ const sessionConfig = {
         ttl: 86400,              // Session TTL in seconds (24 hours)
         disableTouch: false,     // Update TTL on each request
         serializer: {
-            // Custom serialization for better security
+            // Explicit JSON serialization
             parse: (str) => JSON.parse(str),
             stringify: (obj) => JSON.stringify(obj)
         }
@@ -214,6 +215,7 @@ pip install flask flask-session redis
 ```python
 from flask import Flask, session, request, jsonify
 from flask_session import Session
+from datetime import datetime, timezone
 import redis
 import os
 
@@ -230,11 +232,11 @@ app.config['SESSION_REDIS'] = redis.Redis(
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 app.config['SESSION_KEY_PREFIX'] = 'flask_sess:'
-app.config['SESSION_USE_SIGNER'] = True  # Sign session cookie
+app.config['SESSION_ID_LENGTH'] = 32  # Session ID entropy in bytes
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 
 # Cookie settings
-app.config['SESSION_COOKIE_SECURE'] = True      # HTTPS only
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'  # Enable for HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True    # No JS access
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # CSRF protection
 
@@ -252,7 +254,7 @@ def login():
         session['user_id'] = user['id']
         session['username'] = user['username']
         session['role'] = user['role']
-        session['login_time'] = datetime.utcnow().isoformat()
+        session['login_time'] = datetime.now(timezone.utc).isoformat()
 
         return jsonify({'success': True, 'user': user['username']})
 
@@ -288,7 +290,6 @@ if __name__ == '__main__':
 import redis
 import json
 import uuid
-from datetime import timedelta
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 
@@ -341,10 +342,10 @@ class RedisSessionInterface(SessionInterface):
 
         # Save session to Redis
         redis_key = self.get_redis_key(session.sid)
-        self.redis.setex(
+        self.redis.set(
             redis_key,
-            self.ttl,
-            json.dumps(dict(session))
+            json.dumps(dict(session)),
+            ex=self.ttl
         )
 
         # Set cookie
@@ -352,7 +353,7 @@ class RedisSessionInterface(SessionInterface):
             app.config['SESSION_COOKIE_NAME'],
             session.sid,
             httponly=True,
-            secure=app.config.get('SESSION_COOKIE_SECURE', True),
+            secure=app.config.get('SESSION_COOKIE_SECURE', False),
             samesite='Lax',
             max_age=self.ttl
         )
@@ -411,6 +412,7 @@ from django.http import JsonResponse
 from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_protect
+from datetime import datetime, timezone
 import json
 
 @csrf_protect
@@ -427,7 +429,7 @@ def login_view(request):
 
         # Store additional data in session
         request.session['login_ip'] = get_client_ip(request)
-        request.session['login_time'] = str(datetime.utcnow())
+        request.session['login_time'] = datetime.now(timezone.utc).isoformat()
 
         return JsonResponse({
             'success': True,
@@ -472,6 +474,8 @@ def get_client_ip(request):
 
 ```python
 # Python - regenerate session ID on login
+import json
+
 def regenerate_session(old_session_data, redis_client):
     """
     Regenerate session ID while preserving data.
@@ -483,10 +487,10 @@ def regenerate_session(old_session_data, redis_client):
     new_sid = str(uuid.uuid4())
 
     # Copy data to new session
-    redis_client.setex(
+    redis_client.set(
         f"session:{new_sid}",
-        86400,
-        json.dumps(old_session_data)
+        json.dumps(old_session_data),
+        ex=86400
     )
 
     return new_sid
@@ -507,6 +511,7 @@ app.post('/login', (req, res) => {
         req.session.userId = user.id;
 
         req.session.save((err) => {
+            if (err) return res.status(500).json({ error: 'Session save error' });
             res.json({ success: true });
         });
     });
@@ -519,6 +524,7 @@ app.post('/login', (req, res) => {
 import redis
 import json
 import time
+import uuid
 
 class SessionManager:
     """Manage concurrent sessions per user"""
@@ -539,10 +545,10 @@ class SessionManager:
         )
 
         # Store session data
-        self.redis.setex(
+        self.redis.set(
             f"session:{session_id}",
-            86400,
-            json.dumps({**session_data, 'user_id': user_id})
+            json.dumps({**session_data, 'user_id': user_id}),
+            ex=86400
         )
 
         # Remove oldest sessions if over limit
@@ -604,6 +610,10 @@ class SessionManager:
 ### 3. Session Timeout and Activity Tracking
 
 ```python
+import json
+import time
+import uuid
+
 class ActivityAwareSession:
     """Session with activity-based timeout"""
 
@@ -623,10 +633,10 @@ class ActivityAwareSession:
             'last_activity': now
         }
 
-        self.redis.setex(
+        self.redis.set(
             f"session:{session_id}",
-            self.absolute_timeout,
-            json.dumps(session_data)
+            json.dumps(session_data),
+            ex=self.absolute_timeout
         )
 
         return session_id
@@ -656,10 +666,10 @@ class ActivityAwareSession:
         session['last_activity'] = now
         remaining_ttl = self.absolute_timeout - (now - session['created_at'])
 
-        self.redis.setex(
+        self.redis.set(
             session_key,
-            int(remaining_ttl),
-            json.dumps(session)
+            json.dumps(session),
+            ex=int(remaining_ttl)
         )
 
         return session
@@ -672,21 +682,24 @@ class ActivityAwareSession:
 ### Redis Cluster for Sessions
 
 ```javascript
-const Redis = require('ioredis');
+const { createCluster } = require('redis');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 
 // Redis Cluster configuration
-const cluster = new Redis.Cluster([
-    { host: 'redis-1.example.com', port: 6379 },
-    { host: 'redis-2.example.com', port: 6379 },
-    { host: 'redis-3.example.com', port: 6379 }
-], {
-    redisOptions: {
+const cluster = createCluster({
+    rootNodes: [
+        { url: 'redis://redis-1.example.com:6379' },
+        { url: 'redis://redis-2.example.com:6379' },
+        { url: 'redis://redis-3.example.com:6379' }
+    ],
+    defaults: {
         password: process.env.REDIS_PASSWORD
-    },
-    scaleReads: 'slave'  // Read from replicas
+    }
 });
+
+cluster.on('error', (err) => console.error('Redis Cluster Error', err));
+cluster.connect().catch(console.error);
 
 app.use(session({
     store: new RedisStore({ client: cluster }),
@@ -726,6 +739,7 @@ function getRedisClient(sessionId) {
 
 ```python
 from prometheus_client import Counter, Gauge, Histogram
+import time
 
 # Metrics
 session_operations = Counter(
@@ -774,7 +788,7 @@ Redis provides an excellent foundation for session storage:
 - **Secure**: Support for TLS and authentication
 
 Key takeaways:
-- Use signed cookies and regenerate session IDs on login
+- Use secure cookies and regenerate session IDs on login
 - Implement both idle and absolute timeouts
 - Monitor session metrics for security and capacity planning
 - Consider Redis Cluster for high-scale deployments

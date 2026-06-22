@@ -20,7 +20,9 @@ Data corruption can occur due to hardware failures, bugs, or improper shutdowns.
 sudo -u postgres psql -c "SHOW data_checksums;"
 
 # Verify checksums (offline)
+sudo systemctl stop postgresql
 pg_checksums -D /var/lib/postgresql/16/main --check
+sudo systemctl start postgresql
 ```
 
 ### amcheck Extension
@@ -32,13 +34,19 @@ CREATE EXTENSION amcheck;
 SELECT bt_index_check('idx_users_email');
 
 -- Check with parent verification (slower)
-SELECT bt_index_check('idx_users_email', true);
+SELECT bt_index_parent_check('idx_users_email', true);
 
--- Check all indexes
+-- Check all valid B-tree indexes
 SELECT bt_index_check(c.oid)
 FROM pg_index i
+JOIN pg_opclass op ON i.indclass[0] = op.oid
+JOIN pg_am am ON op.opcmethod = am.oid
 JOIN pg_class c ON c.oid = i.indexrelid
-WHERE c.relkind = 'i';
+WHERE am.amname = 'btree'
+AND c.relkind = 'i'
+AND c.relpersistence != 't'
+AND i.indisready
+AND i.indisvalid;
 ```
 
 ### Check for Errors
@@ -53,13 +61,12 @@ grep -i "error\|corrupt\|invalid\|checksum" /var/log/postgresql/*.log
 ### From Backup (Safest)
 
 ```bash
-# Stop PostgreSQL
-sudo systemctl stop postgresql
-
-# Restore from backup
+# Restore a logical backup while PostgreSQL is running
+createdb myapp
 pg_restore -d myapp /path/to/backup.dump
 
-# Or use PITR
+# Or stop PostgreSQL and use PITR
+sudo systemctl stop postgresql
 sudo -u postgres pgbackrest --stanza=main restore
 ```
 
@@ -86,7 +93,7 @@ REINDEX DATABASE CONCURRENTLY myapp;
 sudo systemctl stop postgresql
 
 # Reset WAL
-sudo -u postgres pg_resetwal -D /var/lib/postgresql/16/main
+sudo -u postgres pg_resetwal -f -D /var/lib/postgresql/16/main
 
 # Start PostgreSQL
 sudo systemctl start postgresql
@@ -131,14 +138,16 @@ ALTER TABLE users_new RENAME TO users;
 initdb --data-checksums -D /var/lib/postgresql/16/main
 
 # Existing cluster (PostgreSQL 12+)
+sudo systemctl stop postgresql
 pg_checksums --enable -D /var/lib/postgresql/16/main
+sudo systemctl start postgresql
 ```
 
 ### Regular Verification
 
 ```bash
-# Scheduled verification
-0 3 * * 0 postgres pg_checksums -D /var/lib/postgresql/16/main --check >> /var/log/pg_checksum.log 2>&1
+# Scheduled offline verification during a maintenance window
+0 3 * * 0 root systemctl stop postgresql && sudo -u postgres pg_checksums -D /var/lib/postgresql/16/main --check >> /var/log/pg_checksum.log 2>&1; systemctl start postgresql
 ```
 
 ## Best Practices

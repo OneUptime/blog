@@ -8,13 +8,13 @@ Description: A comprehensive guide to masking sensitive data in Grafana Loki log
 
 ---
 
-Logs often contain sensitive information like personal identifiable information (PII), credit card numbers, passwords, and API keys. Properly masking this data before it reaches Loki is essential for security and compliance. This guide covers techniques for redacting sensitive data in your logging pipeline.
+Logs often contain sensitive information like personal identifiable information (PII), credit card numbers, passwords, and API keys. Properly masking this data before it reaches Loki is essential for security and compliance. This guide covers techniques for redacting sensitive data in your logging pipeline. Promtail is now deprecated and has reached end-of-life; these examples are for existing Promtail deployments. For new deployments, use Grafana Alloy's Loki processing stages.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- Promtail configured for log collection
+- Promtail configured for log collection in an existing deployment
 - Understanding of data privacy requirements
 - Knowledge of sensitive data patterns in your logs
 - Access to modify Promtail configuration
@@ -42,8 +42,8 @@ Before starting, ensure you have:
 ```yaml
 pipeline_stages:
   - replace:
-      expression: 'password=\S+'
-      replace: 'password=REDACTED'
+      expression: 'password=(\S+)'
+      replace: 'REDACTED'
 ```
 
 ### Multiple Replacements
@@ -51,16 +51,16 @@ pipeline_stages:
 ```yaml
 pipeline_stages:
   - replace:
-      expression: 'password=\S+'
-      replace: 'password=[REDACTED]'
+      expression: 'password=(\S+)'
+      replace: '[REDACTED]'
 
   - replace:
-      expression: 'api_key=\S+'
-      replace: 'api_key=[REDACTED]'
+      expression: 'api_key=(\S+)'
+      replace: '[REDACTED]'
 
   - replace:
-      expression: 'secret=\S+'
-      replace: 'secret=[REDACTED]'
+      expression: 'secret=(\S+)'
+      replace: '[REDACTED]'
 ```
 
 ## Common Masking Patterns
@@ -71,13 +71,13 @@ pipeline_stages:
 pipeline_stages:
   # Full email masking
   - replace:
-      expression: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+      expression: '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
       replace: '[EMAIL_REDACTED]'
 
   # Partial masking (keep domain)
   - replace:
-      expression: '([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-      replace: '***@$2'
+      expression: '([a-zA-Z0-9._%+-]+)@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+      replace: '***'
 ```
 
 ### Credit Card Numbers
@@ -86,12 +86,12 @@ pipeline_stages:
 pipeline_stages:
   # Mask credit card numbers (keep last 4)
   - replace:
-      expression: '\b(\d{4})[- ]?(\d{4})[- ]?(\d{4})[- ]?(\d{4})\b'
-      replace: '****-****-****-$4'
+      expression: '\b(\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?)\d{4}\b'
+      replace: '****-****-****-'
 
   # Full redaction
   - replace:
-      expression: '\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'
+      expression: '\b(\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4})\b'
       replace: '[CARD_REDACTED]'
 ```
 
@@ -101,12 +101,12 @@ pipeline_stages:
 pipeline_stages:
   # US SSN format
   - replace:
-      expression: '\b\d{3}-\d{2}-\d{4}\b'
+      expression: '\b(\d{3}-\d{2}-\d{4})\b'
       replace: '***-**-****'
 
   # Full redaction
   - replace:
-      expression: '\b\d{3}[- ]?\d{2}[- ]?\d{4}\b'
+      expression: '\b(\d{3}[- ]?\d{2}[- ]?\d{4})\b'
       replace: '[SSN_REDACTED]'
 ```
 
@@ -116,12 +116,12 @@ pipeline_stages:
 pipeline_stages:
   # US phone numbers
   - replace:
-      expression: '\b(\+?1?[- ]?)?\(?(\d{3})\)?[- ]?(\d{3})[- ]?(\d{4})\b'
+      expression: '\b((?:\+?1?[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4})\b'
       replace: '[PHONE_REDACTED]'
 
   # International format
   - replace:
-      expression: '\+\d{1,3}[- ]?\d{3,14}'
+      expression: '(\+\d{1,3}[- ]?\d{3,14})'
       replace: '[PHONE_REDACTED]'
 ```
 
@@ -131,13 +131,13 @@ pipeline_stages:
 pipeline_stages:
   # Full IP masking
   - replace:
-      expression: '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+      expression: '\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'
       replace: '[IP_REDACTED]'
 
   # Partial masking (keep first octet)
   - replace:
-      expression: '\b(\d{1,3})\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
-      replace: '$1.xxx.xxx.xxx'
+      expression: '\b\d{1,3}\.(\d{1,3}\.\d{1,3}\.\d{1,3})\b'
+      replace: 'xxx.xxx.xxx'
 ```
 
 ### API Keys and Tokens
@@ -146,23 +146,23 @@ pipeline_stages:
 pipeline_stages:
   # Bearer tokens
   - replace:
-      expression: 'Bearer\s+[A-Za-z0-9\-_=]+'
-      replace: 'Bearer [TOKEN_REDACTED]'
+      expression: 'Bearer\s+([A-Za-z0-9\-_=]+)'
+      replace: '[TOKEN_REDACTED]'
 
   # API keys (common formats)
   - replace:
-      expression: '(api[_-]?key|apikey|api_secret)[\s:=]+["\']?[A-Za-z0-9\-_]{20,}["\']?'
-      replace: '$1=[KEY_REDACTED]'
+      expression: '(?:api[_-]?key|apikey|api_secret)[\s:=]+["'']?([A-Za-z0-9\-_]{20,})["'']?'
+      replace: '[KEY_REDACTED]'
 
   # AWS access keys
   - replace:
-      expression: 'AKIA[0-9A-Z]{16}'
+      expression: '(AKIA[0-9A-Z]{16})'
       replace: '[AWS_KEY_REDACTED]'
 
   # AWS secret keys
   - replace:
-      expression: '(?i)(aws[_-]?secret[_-]?access[_-]?key|secret[_-]?key)[\s:=]+["\']?[A-Za-z0-9/+=]{40}["\']?'
-      replace: '$1=[AWS_SECRET_REDACTED]'
+      expression: '(?i)(?:aws[_-]?secret[_-]?access[_-]?key|secret[_-]?key)[\s:=]+["'']?([A-Za-z0-9/+=]{40})["'']?'
+      replace: '[AWS_SECRET_REDACTED]'
 ```
 
 ### Passwords
@@ -171,18 +171,18 @@ pipeline_stages:
 pipeline_stages:
   # Password in URL
   - replace:
-      expression: '(://[^:]+:)[^@]+(@)'
-      replace: '$1[PASSWORD]$2'
+      expression: '://[^:]+:([^@]+)@'
+      replace: '[PASSWORD]'
 
   # Password parameter
   - replace:
-      expression: '(password|passwd|pwd)[\s:=]+["\']?[^\s"'']+["\']?'
-      replace: '$1=[REDACTED]'
+      expression: '(?:password|passwd|pwd)[\s:=]+["'']?([^\s"'']+)["'']?'
+      replace: '[REDACTED]'
 
   # JSON password field
   - replace:
-      expression: '"(password|passwd|pwd)":\s*"[^"]+"'
-      replace: '"$1":"[REDACTED]"'
+      expression: '"(?:password|passwd|pwd)":\s*"([^"]+)"'
+      replace: '[REDACTED]'
 ```
 
 ### Names (PII)
@@ -191,13 +191,13 @@ pipeline_stages:
 pipeline_stages:
   # Common name patterns in JSON
   - replace:
-      expression: '"(first_?name|last_?name|full_?name|name)":\s*"[^"]+"'
-      replace: '"$1":"[NAME_REDACTED]"'
+      expression: '"(?:first_?name|last_?name|full_?name|name)":\s*"([^"]+)"'
+      replace: '[NAME_REDACTED]'
 
   # User fields
   - replace:
-      expression: '"(user_?name|username)":\s*"[^"]+"'
-      replace: '"$1":"[USERNAME_REDACTED]"'
+      expression: '"(?:user_?name|username)":\s*"([^"]+)"'
+      replace: '[USERNAME_REDACTED]'
 ```
 
 ### Addresses
@@ -206,13 +206,13 @@ pipeline_stages:
 pipeline_stages:
   # Street address
   - replace:
-      expression: '"(address|street|street_?address)":\s*"[^"]+"'
-      replace: '"$1":"[ADDRESS_REDACTED]"'
+      expression: '"(?:address|street|street_?address)":\s*"([^"]+)"'
+      replace: '[ADDRESS_REDACTED]'
 
   # Zip/Postal codes
   - replace:
-      expression: '"(zip|zip_?code|postal_?code)":\s*"[0-9A-Z\s-]+"'
-      replace: '"$1":"[REDACTED]"'
+      expression: '"(?:zip|zip_?code|postal_?code)":\s*"([0-9A-Z\s-]+)"'
+      replace: '[REDACTED]'
 ```
 
 ## JSON Field Masking
@@ -231,13 +231,21 @@ pipeline_stages:
   # Mask specific fields
   - replace:
       source: user_email
-      expression: '.*'
+      expression: '(.*)'
       replace: '[EMAIL_REDACTED]'
 
   - replace:
       source: user_ssn
-      expression: '.*'
+      expression: '(.*)'
       replace: '[SSN_REDACTED]'
+
+  - template:
+      source: masked_output
+      template: |
+        level={{ .level }} message={{ .message }} user_email={{ .user_email }} user_ssn={{ .user_ssn }}
+
+  - output:
+      source: masked_output
 ```
 
 ### Template-Based Masking
@@ -273,57 +281,57 @@ scrape_configs:
     pipeline_stages:
       # Credentials and secrets
       - replace:
-          expression: '(password|passwd|pwd|secret|api[_-]?key|apikey|token|auth)[\s:=]+["\']?[\w\-/+=]{8,}["\']?'
-          replace: '$1=[REDACTED]'
+          expression: '(?:password|passwd|pwd|secret|api[_-]?key|apikey|token|auth)[\s:=]+["'']?([\w\-/+=]{8,})["'']?'
+          replace: '[REDACTED]'
 
       # Bearer tokens
       - replace:
-          expression: 'Bearer\s+[A-Za-z0-9\-_.~+/]+=*'
-          replace: 'Bearer [TOKEN_REDACTED]'
+          expression: 'Bearer\s+([A-Za-z0-9\-_.~+/]+=*)'
+          replace: '[TOKEN_REDACTED]'
 
       # Basic auth in URLs
       - replace:
-          expression: '(https?://[^:]+:)[^@]+(@)'
-          replace: '$1[PASSWORD]$2'
+          expression: 'https?://[^:]+:([^@]+)@'
+          replace: '[PASSWORD]'
 
       # Email addresses
       - replace:
-          expression: '\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
+          expression: '\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b'
           replace: '[EMAIL_REDACTED]'
 
       # Credit card numbers
       - replace:
-          expression: '\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'
+          expression: '\b(\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4})\b'
           replace: '[CARD_REDACTED]'
 
       # SSN
       - replace:
-          expression: '\b\d{3}[- ]?\d{2}[- ]?\d{4}\b'
+          expression: '\b(\d{3}[- ]?\d{2}[- ]?\d{4})\b'
           replace: '[SSN_REDACTED]'
 
       # Phone numbers
       - replace:
-          expression: '\b(\+?1?[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}\b'
+          expression: '\b((?:\+?1?[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4})\b'
           replace: '[PHONE_REDACTED]'
 
       # IP addresses (optional - may want to keep for debugging)
       # - replace:
-      #     expression: '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+      #     expression: '\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'
       #     replace: '[IP_REDACTED]'
 
       # AWS credentials
       - replace:
-          expression: 'AKIA[0-9A-Z]{16}'
+          expression: '(AKIA[0-9A-Z]{16})'
           replace: '[AWS_ACCESS_KEY_REDACTED]'
 
       - replace:
-          expression: '(?i)aws[_-]?secret[_-]?access[_-]?key[\s:=]+["\']?[A-Za-z0-9/+=]{40}["\']?'
-          replace: 'aws_secret_access_key=[AWS_SECRET_REDACTED]'
+          expression: '(?i)aws[_-]?secret[_-]?access[_-]?key[\s:=]+["'']?([A-Za-z0-9/+=]{40})["'']?'
+          replace: '[AWS_SECRET_REDACTED]'
 
       # JSON string fields containing PII
       - replace:
-          expression: '"(ssn|social_security|tax_id)":\s*"[^"]+"'
-          replace: '"$1":"[REDACTED]"'
+          expression: '"(?:ssn|social_security|tax_id)":\s*"([^"]+)"'
+          replace: '[REDACTED]'
 
       # Parse and add labels
       - json:
@@ -344,8 +352,8 @@ pipeline_stages:
       selector: '{env="production"}'
       stages:
         - replace:
-            expression: 'email=\S+'
-            replace: 'email=[REDACTED]'
+            expression: 'email=(\S+)'
+            replace: '[REDACTED]'
 ```
 
 ### Mask Based on Log Level
@@ -364,8 +372,8 @@ pipeline_stages:
       selector: '{level="debug"}'
       stages:
         - replace:
-            expression: '(user_id|session_id)=\S+'
-            replace: '$1=[REDACTED]'
+            expression: '(?:user_id|session_id)=(\S+)'
+            replace: '[REDACTED]'
 ```
 
 ## Testing Masking Rules
@@ -446,7 +454,7 @@ groups:
 ### Defense in Depth
 
 1. **Application Level**: Sanitize before logging
-2. **Promtail Level**: Mask in pipeline
+2. **Collector Level**: Mask in Promtail pipelines for existing deployments or Grafana Alloy for new deployments
 3. **Access Control**: Restrict Loki access
 4. **Retention**: Limit how long logs are kept
 
@@ -473,12 +481,12 @@ phone_pattern: '(\+?1?[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}'
 ```yaml
 # Bad - masks too much
 - replace:
-    expression: '\d+'
+    expression: '(\d+)'
     replace: '[NUMBER]'
 
 # Good - specific patterns
 - replace:
-    expression: '\b\d{3}-\d{2}-\d{4}\b'  # SSN format only
+    expression: '\b(\d{3}-\d{2}-\d{4})\b'  # SSN format only
     replace: '[SSN_REDACTED]'
 ```
 
@@ -486,7 +494,7 @@ phone_pattern: '(\+?1?[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}'
 
 Masking sensitive data in logs is essential for security and compliance. Key takeaways:
 
-- Use replace stage for pattern-based masking
+- Use replace stage with capture groups for pattern-based masking in existing Promtail deployments
 - Cover all PII types: emails, cards, SSNs, phones
 - Mask credentials and API keys
 - Test masking rules thoroughly

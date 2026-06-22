@@ -15,8 +15,8 @@ Robust error handling is essential for building reliable BullMQ applications. Jo
 Start by classifying errors to handle them appropriately:
 
 ```typescript
-import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Queue, Worker, Job, UnrecoverableError } from 'bullmq';
+import IORedis from 'ioredis';
 
 // Error types
 class RetryableError extends Error {
@@ -159,7 +159,7 @@ const retryHandler = new SmartRetryHandler();
 Create a worker with comprehensive error handling:
 
 ```typescript
-const connection = new Redis({
+const connection = new IORedis({
   host: 'localhost',
   port: 6379,
   maxRetriesPerRequest: null,
@@ -177,7 +177,7 @@ function createResilientWorker<T, R>(
   queueName: string,
   processor: JobProcessor<T, R>,
   options: {
-    connection: Redis;
+    connection: IORedis;
     concurrency?: number;
     retryConfig?: Partial<RetryConfig>;
   }
@@ -211,7 +211,7 @@ function createResilientWorker<T, R>(
         if (!shouldRetry) {
           // Mark as permanent failure
           await job.log('Error classified as permanent, will not retry');
-          throw new Error(`[PERMANENT] ${err.message}`);
+          throw new UnrecoverableError(err.message);
         }
 
         // Let BullMQ handle the retry
@@ -221,6 +221,11 @@ function createResilientWorker<T, R>(
     {
       connection: options.connection,
       concurrency: options.concurrency || 1,
+      settings: {
+        backoffStrategy: (attemptsMade: number, _type: string, err: Error) => {
+          return retryHandler.getRetryDelay(err, attemptsMade);
+        },
+      },
     }
   );
 
@@ -231,7 +236,7 @@ function createResilientWorker<T, R>(
 
   worker.on('failed', (job, error) => {
     if (job) {
-      const isPermanent = error.message.startsWith('[PERMANENT]');
+      const isPermanent = error instanceof UnrecoverableError;
       console.error(`Job ${job.id} failed ${isPermanent ? 'permanently' : 'temporarily'}:`, error.message);
     }
   });
@@ -346,6 +351,16 @@ const worker = createResilientWorker(
   },
   { connection }
 );
+
+const queue = new Queue('api-calls', {
+  connection,
+  defaultJobOptions: {
+    attempts: defaultRetryConfig.maxRetries + 1,
+    backoff: {
+      type: 'smart',
+    },
+  },
+});
 ```
 
 ## Error Recovery Strategies

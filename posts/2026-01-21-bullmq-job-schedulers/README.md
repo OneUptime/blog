@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Job Scheduling, Cron, Task Automation, Background Job
 
-Description: A comprehensive guide to advanced job scheduling patterns in BullMQ, including delayed jobs, repeatable schedules, dynamic scheduling, timezone handling, and building a complete job scheduling system.
+Description: A comprehensive guide to advanced job scheduling patterns in BullMQ, including delayed jobs, recurring schedules, dynamic scheduling, timezone handling, and building a complete job scheduling system.
 
 ---
 
@@ -15,11 +15,11 @@ Job scheduling is a core capability of BullMQ that goes beyond simple cron jobs.
 BullMQ supports three main scheduling approaches:
 
 1. **Delayed Jobs**: Run once after a specific delay
-2. **Repeatable Jobs**: Run on a recurring schedule
-3. **Scheduled Jobs**: Run at a specific future time
+2. **Job Schedulers**: Run on a recurring schedule
+3. **Delayed Jobs with calculated delays**: Run at a specific future time
 
 ```typescript
-import { Queue, Worker } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 
 const connection = new Redis({
@@ -35,13 +35,16 @@ await queue.add('reminder', { message: 'Follow up' }, {
   delay: 60000, // 1 minute from now
 });
 
-// Repeatable job - runs on schedule
-await queue.add('daily-report', {}, {
-  repeat: { pattern: '0 9 * * *' }, // Every day at 9 AM
+// Job Scheduler - runs on schedule
+await queue.upsertJobScheduler('daily-report-scheduler', {
+  pattern: '0 9 * * *', // Every day at 9 AM
+}, {
+  name: 'daily-report',
+  data: {},
 });
 
 // Scheduled at specific time
-const futureTime = new Date('2024-12-25T10:00:00');
+const futureTime = new Date('2026-12-25T10:00:00');
 await queue.add('christmas-greeting', {}, {
   delay: futureTime.getTime() - Date.now(),
 });
@@ -79,7 +82,7 @@ interface ScheduledJobConfig {
 
 class JobScheduler {
   private queue: Queue;
-  private scheduledJobs: Map<string, string> = new Map(); // name -> jobKey
+  private scheduledJobs: Map<string, { type: 'once' | 'scheduler'; id: string }> = new Map();
 
   constructor(connection: Redis) {
     this.queue = new Queue('scheduler', { connection });
@@ -87,15 +90,16 @@ class JobScheduler {
 
   async schedule(config: ScheduledJobConfig): Promise<string> {
     const { name, data, schedule, options } = config;
-    const jobId = `scheduled_${name}_${Date.now()}`;
 
     switch (schedule.type) {
-      case 'once':
+      case 'once': {
+        const jobId = `scheduled_${name}_${Date.now()}`;
         return this.scheduleOnce(jobId, name, data, schedule, options);
+      }
       case 'recurring':
-        return this.scheduleRecurring(jobId, name, data, schedule, options);
+        return this.scheduleRecurring(`scheduler_${name}`, name, data, schedule, options);
       case 'cron':
-        return this.scheduleCron(jobId, name, data, schedule, options);
+        return this.scheduleCron(`scheduler_${name}`, name, data, schedule, options);
       default:
         throw new Error(`Unknown schedule type: ${schedule.type}`);
     }
@@ -115,24 +119,24 @@ class JobScheduler {
       if (delay < 0) {
         throw new Error('Scheduled time is in the past');
       }
-    } else if (schedule.delay) {
+    } else if (schedule.delay !== undefined) {
       delay = schedule.delay;
     } else {
       throw new Error('Either scheduledTime or delay must be provided');
     }
 
-    const job = await this.queue.add(name, data, {
+    await this.queue.add(name, data, {
       jobId,
       delay,
       ...options,
     });
 
-    this.scheduledJobs.set(name, jobId);
+    this.scheduledJobs.set(name, { type: 'once', id: jobId });
     return jobId;
   }
 
   private async scheduleRecurring(
-    jobId: string,
+    schedulerId: string,
     name: string,
     data: any,
     schedule: ScheduledJobConfig['schedule'],
@@ -142,23 +146,27 @@ class JobScheduler {
       throw new Error('Interval required for recurring schedule');
     }
 
-    const job = await this.queue.add(name, data, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      schedulerId,
+      {
         every: schedule.interval,
         startDate: schedule.startDate,
         endDate: schedule.endDate,
         limit: schedule.limit,
       },
-      ...options,
-    });
+      {
+        name,
+        data,
+        opts: options,
+      }
+    );
 
-    const key = `${name}:::${schedule.interval}`;
-    this.scheduledJobs.set(name, key);
-    return key;
+    this.scheduledJobs.set(name, { type: 'scheduler', id: schedulerId });
+    return schedulerId;
   }
 
   private async scheduleCron(
-    jobId: string,
+    schedulerId: string,
     name: string,
     data: any,
     schedule: ScheduledJobConfig['schedule'],
@@ -168,37 +176,37 @@ class JobScheduler {
       throw new Error('Cron pattern required for cron schedule');
     }
 
-    const job = await this.queue.add(name, data, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      schedulerId,
+      {
         pattern: schedule.pattern,
         tz: schedule.timezone,
         startDate: schedule.startDate,
         endDate: schedule.endDate,
         limit: schedule.limit,
       },
-      ...options,
-    });
+      {
+        name,
+        data,
+        opts: options,
+      }
+    );
 
-    const key = `${name}:${schedule.pattern}::${schedule.timezone || ''}`;
-    this.scheduledJobs.set(name, key);
-    return key;
+    this.scheduledJobs.set(name, { type: 'scheduler', id: schedulerId });
+    return schedulerId;
   }
 
   async cancel(name: string): Promise<boolean> {
-    const key = this.scheduledJobs.get(name);
-    if (!key) {
+    const scheduled = this.scheduledJobs.get(name);
+    if (!scheduled) {
       return false;
     }
 
-    // Check if it's a repeatable job
-    const repeatableJobs = await this.queue.getRepeatableJobs();
-    const repeatable = repeatableJobs.find(j => j.name === name);
-
-    if (repeatable) {
-      await this.queue.removeRepeatableByKey(repeatable.key);
+    if (scheduled.type === 'scheduler') {
+      await this.queue.removeJobScheduler(scheduled.id);
     } else {
       // It's a one-time delayed job
-      const job = await this.queue.getJob(key);
+      const job = await this.queue.getJob(scheduled.id);
       if (job) {
         await job.remove();
       }
@@ -209,13 +217,13 @@ class JobScheduler {
   }
 
   async listScheduled(): Promise<any[]> {
-    const [repeatable, delayed] = await Promise.all([
-      this.queue.getRepeatableJobs(),
+    const [schedulers, delayed] = await Promise.all([
+      this.queue.getJobSchedulers(0, -1, true),
       this.queue.getDelayed(),
     ]);
 
     return [
-      ...repeatable.map(j => ({
+      ...schedulers.map(j => ({
         name: j.name,
         type: j.pattern ? 'cron' : 'recurring',
         pattern: j.pattern,
@@ -252,45 +260,41 @@ class DynamicScheduler {
     name: string,
     newSchedule: { pattern?: string; every?: number; timezone?: string }
   ): Promise<void> {
-    // Find and remove existing schedule
-    const existing = await this.queue.getRepeatableJobs();
-    const job = existing.find(j => j.name === name);
-
-    if (job) {
-      await this.queue.removeRepeatableByKey(job.key);
-    }
-
     // Get stored job data
     const jobDataKey = `scheduler:data:${name}`;
     const storedData = await this.redis.get(jobDataKey);
     const data = storedData ? JSON.parse(storedData) : {};
 
-    // Create new schedule
-    await this.queue.add(name, data, {
-      repeat: {
+    // Create or update schedule
+    await this.queue.upsertJobScheduler(
+      name,
+      {
         pattern: newSchedule.pattern,
         every: newSchedule.every,
         tz: newSchedule.timezone,
       },
-    });
+      {
+        name,
+        data,
+      }
+    );
 
     console.log(`Updated schedule for ${name}`);
   }
 
   async pauseSchedule(name: string): Promise<void> {
-    const jobs = await this.queue.getRepeatableJobs();
-    const job = jobs.find(j => j.name === name);
+    const job = await this.queue.getJobScheduler(name);
 
     if (job) {
       // Store current config
       await this.redis.hset(`scheduler:paused:${name}`, {
-        key: job.key,
+        id: name,
         pattern: job.pattern || '',
         every: job.every?.toString() || '',
         tz: job.tz || '',
       });
 
-      await this.queue.removeRepeatableByKey(job.key);
+      await this.queue.removeJobScheduler(name);
       console.log(`Paused schedule: ${name}`);
     }
   }
@@ -306,13 +310,18 @@ class DynamicScheduler {
     const storedData = await this.redis.get(jobDataKey);
     const data = storedData ? JSON.parse(storedData) : {};
 
-    await this.queue.add(name, data, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      paused.id || name,
+      {
         pattern: paused.pattern || undefined,
         every: paused.every ? parseInt(paused.every) : undefined,
         tz: paused.tz || undefined,
       },
-    });
+      {
+        name,
+        data,
+      }
+    );
 
     await this.redis.del(`scheduler:paused:${name}`);
     console.log(`Resumed schedule: ${name}`);
@@ -343,12 +352,17 @@ class TimezoneScheduler {
     const dayPattern = daysOfWeek ? daysOfWeek.join(',') : '*';
     const pattern = `${localTime.minute} ${localTime.hour} * * ${dayPattern}`;
 
-    await this.queue.add(name, { ...data, timezone }, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      name,
+      {
         pattern,
         tz: timezone,
       },
-    });
+      {
+        name,
+        data: { ...data, timezone },
+      }
+    );
 
     console.log(`Scheduled ${name} for ${localTime.hour}:${localTime.minute} in ${timezone}`);
   }
@@ -375,12 +389,17 @@ class TimezoneScheduler {
     // 9 AM to 5 PM, Monday to Friday
     const pattern = `*/${intervalMinutes} 9-17 * * 1-5`;
 
-    await this.queue.add(name, data, {
-      repeat: {
+    await this.queue.upsertJobScheduler(
+      name,
+      {
         pattern,
         tz: timezone,
       },
-    });
+      {
+        name,
+        data,
+      }
+    );
   }
 }
 
@@ -477,8 +496,9 @@ class TemplatedScheduler {
       repeatOptions.tz = timezoneOverride || template.timezone;
     }
 
-    await this.queue.add(jobName, data, {
-      repeat: repeatOptions,
+    await this.queue.upsertJobScheduler(jobName, repeatOptions, {
+      name: jobName,
+      data,
     });
 
     console.log(`Scheduled ${jobName} using template ${template.name}`);
@@ -495,6 +515,8 @@ class TemplatedScheduler {
 Monitor schedule execution:
 
 ```typescript
+import { Queue, QueueEvents } from 'bullmq';
+
 class ScheduleMonitor {
   private queue: Queue;
   private queueEvents: QueueEvents;
@@ -509,27 +531,27 @@ class ScheduleMonitor {
 
   private setupMonitoring() {
     this.queueEvents.on('completed', ({ jobId }) => {
-      this.recordExecution(jobId);
+      this.recordExecution(jobId).catch(err => {
+        console.error(`Failed to record schedule execution for ${jobId}`, err);
+      });
     });
 
     // Check for missed schedules periodically
     setInterval(() => this.checkMissedSchedules(), 60000);
   }
 
-  private recordExecution(jobId: string) {
-    // Extract schedule name from job ID
-    const parts = jobId.split(':');
-    if (parts.length >= 2) {
-      const scheduleName = parts[0];
-      this.lastExecutions.set(scheduleName, Date.now());
+  private async recordExecution(jobId: string) {
+    const job = await this.queue.getJob(jobId);
+    if (job) {
+      this.lastExecutions.set(job.name, Date.now());
     }
   }
 
   private async checkMissedSchedules() {
-    const repeatableJobs = await this.queue.getRepeatableJobs();
+    const schedulers = await this.queue.getJobSchedulers(0, -1, true);
     const now = Date.now();
 
-    for (const job of repeatableJobs) {
+    for (const job of schedulers) {
       const expectedInterval = job.every || this.cronToInterval(job.pattern);
       if (!expectedInterval) continue;
 
@@ -561,7 +583,7 @@ class ScheduleMonitor {
   }
 
   async getScheduleHealth(): Promise<any[]> {
-    const jobs = await this.queue.getRepeatableJobs();
+    const jobs = await this.queue.getJobSchedulers(0, -1, true);
     const now = Date.now();
 
     return jobs.map(job => {
@@ -603,4 +625,4 @@ class ScheduleMonitor {
 
 ## Conclusion
 
-BullMQ provides powerful job scheduling capabilities that go far beyond simple cron jobs. By combining delayed jobs, repeatable schedules, and custom scheduling logic, you can build sophisticated automation systems. Remember to handle timezones properly, monitor schedule health, and clean up old schedules to maintain a healthy scheduling system.
+BullMQ provides powerful job scheduling capabilities that go far beyond simple cron jobs. By combining delayed jobs, recurring schedules, and custom scheduling logic, you can build sophisticated automation systems. Remember to handle timezones properly, monitor schedule health, and clean up old schedules to maintain a healthy scheduling system.

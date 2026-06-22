@@ -64,7 +64,7 @@ import org.apache.kafka.clients.consumer.*;
 
 import java.util.*;
 
-public class User {
+class User {
     private String id;
     private String name;
     private String email;
@@ -95,6 +95,7 @@ public class JsonSchemaKafkaClient {
             KafkaJsonSchemaSerializer.class.getName());
         props.put("schema.registry.url", "http://localhost:8081");
         props.put("auto.register.schemas", true);
+        props.put("json.fail.invalid.schema", true);
 
         return new KafkaProducer<>(props);
     }
@@ -109,6 +110,7 @@ public class JsonSchemaKafkaClient {
             KafkaJsonSchemaDeserializer.class.getName());
         props.put("schema.registry.url", "http://localhost:8081");
         props.put("json.value.type", User.class.getName());
+        props.put("json.fail.invalid.schema", true);
 
         return new KafkaConsumer<>(props);
     }
@@ -132,10 +134,10 @@ public class JsonSchemaKafkaClient {
 ## Python Implementation
 
 ```python
-from confluent_kafka import Producer, Consumer
+from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.json_schema import JSONSerializer, JSONDeserializer
-import json
+from confluent_kafka.schema_registry.json_schema import JSONSerializer
+from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
 
 user_schema_str = """
 {
@@ -165,19 +167,25 @@ def dict_to_user(data, ctx):
 
 def create_json_producer():
     schema_registry_client = SchemaRegistryClient({'url': 'http://localhost:8081'})
-    json_serializer = JSONSerializer(user_schema_str, schema_registry_client, user_to_dict)
+    string_serializer = StringSerializer('utf_8')
+    json_serializer = JSONSerializer(
+        user_schema_str,
+        schema_registry_client,
+        user_to_dict,
+        conf={'validate': True}
+    )
 
-    from confluent_kafka import SerializingProducer
-    return SerializingProducer({
-        'bootstrap.servers': 'localhost:9092',
-        'key.serializer': lambda x, _: x.encode() if x else None,
-        'value.serializer': json_serializer
-    })
+    return Producer({'bootstrap.servers': 'localhost:9092'}), string_serializer, json_serializer
 
 def main():
-    producer = create_json_producer()
+    topic = 'users-json'
+    producer, string_serializer, json_serializer = create_json_producer()
     user = User(id="user-123", name="John Doe", email="john@example.com")
-    producer.produce(topic='users-json', key=user.id, value=user)
+    producer.produce(
+        topic=topic,
+        key=string_serializer(user.id),
+        value=json_serializer(user, SerializationContext(topic, MessageField.VALUE))
+    )
     producer.flush()
     print("Sent user with JSON Schema validation")
 
@@ -198,7 +206,7 @@ curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 ## Best Practices
 
 1. **Define required fields**: Ensure critical fields are always present
-2. **Use format validations**: email, date-time, uri formats
+2. **Use format annotations**: email, date-time, uri formats where supported by your validator
 3. **Set string constraints**: minLength, maxLength, pattern
 4. **Add descriptions**: Document field purposes
 

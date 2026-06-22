@@ -90,7 +90,7 @@ Create a client connection that handles reconnection and configuration.
 
 ```typescript
 // src/infrastructure/eventstore-client.ts
-import { EventStoreDBClient, jsonEvent } from '@eventstore/db-client';
+import { EventStoreDBClient } from '@eventstore/db-client';
 
 // Connection string for local development
 // Use esdb+discover:// for clustered deployments
@@ -268,7 +268,6 @@ Create a repository that handles appending events to streams and reading event h
 import {
   EventStoreDBClient,
   jsonEvent,
-  JSONEventType,
   StreamNotFoundError,
   WrongExpectedVersionError,
   AppendExpectedRevision
@@ -585,6 +584,7 @@ Subscriptions allow you to build read models that update in real-time as events 
 
 ```typescript
 // src/projections/order-read-model.ts
+import { streamNameFilter } from '@eventstore/db-client';
 import { eventStoreClient } from '../infrastructure/eventstore-client';
 import { OrderEvent } from '../domain/events/order-events';
 
@@ -657,10 +657,7 @@ export async function startOrderProjection(): Promise<void> {
 
   // Subscribe to all streams matching the order pattern
   const subscription = eventStoreClient.subscribeToAll({
-    filter: {
-      filterOn: 'streamName',
-      prefixes: ['order-'],
-    },
+    filter: streamNameFilter({ prefixes: ['order-'] }),
     fromPosition: 'start', // Start from beginning to rebuild read model
   });
 
@@ -711,8 +708,8 @@ Create a simple application that demonstrates the complete event sourcing flow.
 import { v4 as uuidv4 } from 'uuid';
 import { verifyConnection } from './infrastructure/eventstore-client';
 import { OrderRepository } from './infrastructure/order-repository';
-import { Order, OrderItem } from './domain/aggregates/order';
-import { EventMetadata } from './domain/events/order-events';
+import { Order } from './domain/aggregates/order';
+import { EventMetadata, OrderItem } from './domain/events/order-events';
 import { startOrderProjection, getOrderSummary } from './projections/order-read-model';
 
 async function main() {

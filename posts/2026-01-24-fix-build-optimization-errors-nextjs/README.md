@@ -55,7 +55,7 @@ For Windows:
 // package.json
 {
   "scripts": {
-    "build": "set NODE_OPTIONS=--max-old-space-size=4096 && next build"
+    "build": "set \"NODE_OPTIONS=--max-old-space-size=4096\" && next build"
   }
 }
 ```
@@ -88,6 +88,8 @@ Module not found: Can't resolve 'some-module'
 
 ```javascript
 // next.config.js
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Add webpack configuration for module resolution
@@ -95,18 +97,20 @@ const nextConfig = {
     // Add aliases for common paths
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@components': './components',
-      '@lib': './lib',
-      '@utils': './utils',
+      '@components': path.resolve(__dirname, 'components'),
+      '@lib': path.resolve(__dirname, 'lib'),
+      '@utils': path.resolve(__dirname, 'utils'),
     };
 
-    // Handle specific module resolution issues
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      net: false,
-      tls: false,
-    };
+    if (!isServer) {
+      // Handle client-side module resolution issues
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
 
     return config;
   },
@@ -114,6 +118,8 @@ const nextConfig = {
 
 module.exports = nextConfig;
 ```
+
+If you are using Next.js 16 or later, run builds that depend on a custom webpack configuration with `next build --webpack`, or migrate the configuration to Turbopack.
 
 For path aliases, configure tsconfig.json or jsconfig.json:
 
@@ -164,7 +170,7 @@ module.exports = withBundleAnalyzer(nextConfig);
 // package.json
 {
   "scripts": {
-    "analyze": "ANALYZE=true next build"
+    "analyze": "ANALYZE=true next build --webpack"
   }
 }
 ```
@@ -173,9 +179,11 @@ module.exports = withBundleAnalyzer(nextConfig);
 
 ```jsx
 // Before: Static import (included in initial bundle)
-import HeavyComponent from './HeavyComponent';
+// import HeavyComponent from './HeavyComponent';
 
 // After: Dynamic import (loaded on demand)
+'use client';
+
 import dynamic from 'next/dynamic';
 
 const HeavyComponent = dynamic(() => import('./HeavyComponent'), {
@@ -248,6 +256,8 @@ export async function getStaticProps({ params }) {
 
 ```javascript
 // app/posts/[id]/page.js (App Router)
+import { notFound } from 'next/navigation';
+
 export async function generateStaticParams() {
   const posts = await fetch('https://api.example.com/posts?limit=100');
   const data = await posts.json();
@@ -356,12 +366,11 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '*.amazonaws.com',
+        hostname: '**.amazonaws.com',
+        port: '',
+        pathname: '/**',
       },
     ],
-
-    // Or use domains for simpler configuration
-    domains: ['images.example.com', 'cdn.example.com'],
 
     // Configure image sizes
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
@@ -404,42 +413,39 @@ ESLint: error
 
 ### Solution: Configure ESLint for Next.js
 
+For current Next.js versions, run ESLint through the ESLint CLI and configure the flat config file:
+
 ```javascript
-// .eslintrc.js
-module.exports = {
-  extends: [
-    'next/core-web-vitals',  // Strict rules
-    // Or use 'next' for less strict rules
-  ],
-  rules: {
-    // Customize rules as needed
-    'react/no-unescaped-entities': 'off',
-    '@next/next/no-img-element': 'warn',
+// eslint.config.mjs
+import { defineConfig, globalIgnores } from 'eslint/config';
+import nextVitals from 'eslint-config-next/core-web-vitals';
+
+export default defineConfig([
+  ...nextVitals,
+  {
+    rules: {
+      // Customize rules as needed
+      'react/no-unescaped-entities': 'off',
+      '@next/next/no-img-element': 'warn',
+    },
   },
-  // Ignore specific files
-  ignorePatterns: [
+  globalIgnores([
     'node_modules/',
     '.next/',
     'out/',
     'public/',
-  ],
-};
+  ]),
+]);
 ```
 
-```javascript
-// next.config.js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  eslint: {
-    // Only run ESLint on specific directories
-    dirs: ['pages', 'components', 'lib', 'app'],
-
-    // Ignore ESLint during builds (not recommended)
-    ignoreDuringBuilds: false,  // Set to true only for debugging
-  },
-};
-
-module.exports = nextConfig;
+```json
+// package.json
+{
+  "scripts": {
+    "lint": "eslint .",
+    "build": "npm run lint && next build"
+  }
+}
 ```
 
 ## Common Error 8: CSS/PostCSS Build Errors
@@ -498,26 +504,7 @@ export const config = {
 };
 ```
 
-```javascript
-// next.config.js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Expose environment variables
-  env: {
-    CUSTOM_VAR: process.env.CUSTOM_VAR,
-  },
-
-  // For runtime configuration
-  publicRuntimeConfig: {
-    apiUrl: process.env.NEXT_PUBLIC_API_URL,
-  },
-  serverRuntimeConfig: {
-    apiKey: process.env.API_KEY,
-  },
-};
-
-module.exports = nextConfig;
-```
+Use `NEXT_PUBLIC_` variables for values that must be available in browser code, and read server-only variables directly from `process.env` in server code. Avoid `publicRuntimeConfig` and `serverRuntimeConfig` in new projects because Next.js has deprecated runtime config.
 
 ## Common Error 10: Webpack 5 Compatibility Issues
 
@@ -582,7 +569,7 @@ const nextConfig = {
   // Compression
   compress: true,
 
-  // Power state
+  // Powered-by header
   poweredByHeader: false,
 
   // Generate ETags
@@ -695,8 +682,8 @@ buildWithMetrics();
 ## Debugging Build Issues
 
 ```bash
-# Enable verbose logging
-NEXT_DEBUG=true next build
+# Enable verbose build output
+next build --debug
 
 # Check for duplicate packages
 npm ls react
@@ -711,8 +698,8 @@ rm -rf node_modules
 rm package-lock.json
 npm install
 
-# Build with specific Node version
-nvm use 18
+# Build with a supported Node version
+nvm use 20
 next build
 ```
 

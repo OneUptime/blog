@@ -36,7 +36,7 @@ app.listen(3000);
 
 Output:
 ```text
-GET / 200 5.123 ms - 23
+GET / 200 5.123 ms - 20
 ```
 
 ## Predefined Formats
@@ -49,7 +49,7 @@ app.use(morgan('combined'));
 
 Output:
 ```text
-::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 23 "-" "Mozilla/5.0..."
+::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 20 "-" "Mozilla/5.0..."
 ```
 
 ### common (Apache Common Log Format)
@@ -60,7 +60,7 @@ app.use(morgan('common'));
 
 Output:
 ```text
-::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 23
+::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 20
 ```
 
 ### dev (Concise colored output for development)
@@ -71,7 +71,7 @@ app.use(morgan('dev'));
 
 Output:
 ```text
-GET / 200 5.123 ms - 23
+GET / 200 5.123 ms - 20
 ```
 
 ### short
@@ -82,7 +82,7 @@ app.use(morgan('short'));
 
 Output:
 ```text
-::1 - GET / HTTP/1.1 200 23 - 5.123 ms
+::1 - GET / HTTP/1.1 200 20 - 5.123 ms
 ```
 
 ### tiny
@@ -93,7 +93,7 @@ app.use(morgan('tiny'));
 
 Output:
 ```text
-GET / 200 23 - 5.123 ms
+GET / 200 20 - 5.123 ms
 ```
 
 ## Custom Formats
@@ -177,9 +177,13 @@ const fs = require('fs');
 const path = require('path');
 const morgan = require('morgan');
 
+// Ensure logs directory exists
+const logsDir = path.join(__dirname, 'logs');
+fs.mkdirSync(logsDir, { recursive: true });
+
 // Create write stream
 const accessLogStream = fs.createWriteStream(
-  path.join(__dirname, 'logs', 'access.log'),
+  path.join(logsDir, 'access.log'),
   { flags: 'a' }  // Append mode
 );
 
@@ -219,6 +223,7 @@ const fs = require('fs');
 app.use(morgan('dev'));
 
 // Log to file in production
+fs.mkdirSync('./logs', { recursive: true });
 const accessLogStream = fs.createWriteStream('./logs/access.log', { flags: 'a' });
 app.use(morgan('combined', { stream: accessLogStream }));
 ```
@@ -248,6 +253,7 @@ app.use(morgan('dev', {
 
 ```javascript
 // Error logging (4xx, 5xx only)
+fs.mkdirSync('./logs', { recursive: true });
 app.use(morgan('combined', {
   skip: (req, res) => res.statusCode < 400,
   stream: fs.createWriteStream('./logs/error.log', { flags: 'a' }),
@@ -270,8 +276,11 @@ const path = require('path');
 function setupLogging(app) {
   if (process.env.NODE_ENV === 'production') {
     // Production: Log to files in combined format
+    const logsDir = path.join(__dirname, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+
     const accessLogStream = fs.createWriteStream(
-      path.join(__dirname, 'logs', 'access.log'),
+      path.join(logsDir, 'access.log'),
       { flags: 'a' }
     );
     
@@ -298,7 +307,10 @@ npm install winston
 
 ```javascript
 const morgan = require('morgan');
+const fs = require('fs');
 const winston = require('winston');
+
+fs.mkdirSync('logs', { recursive: true });
 
 // Create Winston logger
 const logger = winston.createLogger({
@@ -330,7 +342,10 @@ app.use(morgan('combined', { stream }));
 
 ```javascript
 const morgan = require('morgan');
+const fs = require('fs');
 const winston = require('winston');
+
+fs.mkdirSync('logs', { recursive: true });
 
 const logger = winston.createLogger({
   format: winston.format.json(),

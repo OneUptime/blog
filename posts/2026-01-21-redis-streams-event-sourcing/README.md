@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Stream, Event Sourcing, Message Queue, Consumer Group, XADD, XREAD, Event-Driven
 
-Description: A comprehensive guide to using Redis Streams for event sourcing and message processing, covering XADD, XREAD, consumer groups, exactly-once processing, and practical examples in Python, Node.
+Description: A comprehensive guide to using Redis Streams for event sourcing and message processing, covering XADD, XREAD, consumer groups, at-least-once processing, and practical examples in Python, Node.
 
 ---
 
-Redis Streams is a powerful data structure for building event-driven architectures and implementing event sourcing patterns. Unlike Redis Pub/Sub, Streams persist messages and support consumer groups for distributed processing with delivery guarantees.
+Redis Streams is a powerful data structure for building event-driven architectures and implementing event sourcing patterns. Unlike Redis Pub/Sub, Streams persist messages and support consumer groups for distributed processing with acknowledgments and recovery of pending messages.
 
 In this guide, we will explore Redis Streams in depth, covering essential commands, consumer groups, and practical implementations for event sourcing and message processing systems.
 
@@ -53,7 +53,7 @@ Special IDs:
 - `+` - Maximum possible ID
 - `$` - Last entry ID (for XREAD)
 - `>` - Never delivered entries (for XREADGROUP)
-- `0` - Beginning of stream (for XREADGROUP)
+- `0` - Pending entries for the current consumer from the beginning of its pending list (for XREADGROUP)
 
 ## Essential Stream Commands
 
@@ -231,7 +231,7 @@ import json
 import time
 import uuid
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Callable
 from dataclasses import dataclass, asdict
 
@@ -252,7 +252,7 @@ class Event:
 
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
         if self.event_id is None:
             self.event_id = str(uuid.uuid4())
 
@@ -929,6 +929,7 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "strings"
     "time"
 
     "github.com/google/uuid"
@@ -1032,7 +1033,7 @@ func NewConsumerGroupHandler(stream, group, consumer string) *ConsumerGroupHandl
 
 func (h *ConsumerGroupHandler) EnsureGroupExists() error {
     err := client.XGroupCreateMkStream(ctx, h.Stream, h.Group, "0").Err()
-    if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+    if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
         return err
     }
     return nil

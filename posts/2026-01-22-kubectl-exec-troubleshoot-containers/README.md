@@ -174,11 +174,11 @@ kubectl debug my-pod -it --image=busybox --target=my-container
 # Use a more comprehensive debug image
 kubectl debug my-pod -it --image=nicolaka/netshoot --target=my-container
 
-# Debug with shared process namespace
-kubectl debug my-pod -it --image=busybox --share-processes
+# Debug a copy of the pod with a shared process namespace
+kubectl debug my-pod -it --image=busybox --share-processes --copy-to=my-pod-debug
 ```
 
-The debug container shares the pod's network and can see other container processes.
+The debug container shares the pod's network. To see other container processes, use `--target` with a runtime that supports process namespace targeting, or debug a copied pod with `--share-processes`.
 
 ## Running Complex Commands
 
@@ -387,7 +387,7 @@ kubectl debug my-pod -it --image=nicolaka/netshoot
 # Remove any files created during debugging
 kubectl exec my-pod -- rm /tmp/debug-file.txt
 
-# Remove debug containers
+# Remove debug pods created with --copy-to
 kubectl delete pod debug-pod
 ```
 

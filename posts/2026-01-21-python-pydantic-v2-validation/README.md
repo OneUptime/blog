@@ -19,7 +19,7 @@ Pydantic v2 is 5 to 50 times faster than v1 thanks to its Rust-based validation 
 Install Pydantic v2:
 
 ```bash
-pip install pydantic>=2.0
+pip install "pydantic>=2.0"
 ```
 
 For settings management and extra features:
@@ -41,7 +41,7 @@ Start with simple model definitions:
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -74,7 +74,7 @@ class User(BaseModel):
     # String with length validation
     name: str = Field(min_length=2, max_length=100)
 
-    # Email field (Pydantic provides built-in email validation)
+    # Email field with regex validation
     email: str = Field(pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
     # Optional field with default
@@ -90,7 +90,7 @@ class User(BaseModel):
     address: Optional[Address] = None
 
     # Datetime with default
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # Creating instances
@@ -254,7 +254,7 @@ Add computed fields that derive from other data:
 from pydantic import BaseModel, Field, computed_field
 from typing import List
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime, timezone
 
 
 class OrderItem(BaseModel):
@@ -280,7 +280,7 @@ class Order(BaseModel):
     items: List[OrderItem]
     discount_percent: Decimal = Decimal("0")
     tax_rate: Decimal = Decimal("0.08")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @computed_field
     @property
@@ -359,9 +359,11 @@ class StrictUser(BaseModel):
         extra='forbid',
         # Validate default values
         validate_default=True,
-        # Revalidate instances when attributes change
+        # Validate values when attributes change
+        validate_assignment=True,
+        # Revalidate model/dataclass instances passed during validation
         revalidate_instances='always',
-        # Use enum values in serialization
+        # Store enum values instead of raw enum members
         use_enum_values=True,
         # Enable JSON schema generation
         json_schema_extra={
@@ -426,7 +428,8 @@ print(user.model_dump())
 class AliasedModel(BaseModel):
     """Model using field aliases."""
     model_config = ConfigDict(
-        populate_by_name=True,  # Allow using both alias and field name
+        validate_by_name=True,  # Allow using field names
+        validate_by_alias=True,  # Allow using aliases
     )
 
     # API returns camelCase, but we use snake_case internally
@@ -459,6 +462,9 @@ class DatabaseSettings(BaseSettings):
     """Database configuration."""
     model_config = SettingsConfigDict(
         env_prefix='DB_',  # Environment variables start with DB_
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore',
     )
 
     host: str = "localhost"
@@ -476,7 +482,12 @@ class DatabaseSettings(BaseSettings):
 
 class RedisSettings(BaseSettings):
     """Redis configuration."""
-    model_config = SettingsConfigDict(env_prefix='REDIS_')
+    model_config = SettingsConfigDict(
+        env_prefix='REDIS_',
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore',
+    )
 
     host: str = "localhost"
     port: int = 6379
@@ -549,9 +560,9 @@ Pydantic works seamlessly with FastAPI:
 # Pydantic models with FastAPI
 
 from fastapi import FastAPI, HTTPException, Query, Path
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = FastAPI()
 
@@ -628,7 +639,7 @@ async def create_user(user: CreateUserRequest) -> UserResponse:
         id=user_counter,
         name=user.name,
         email=user.email,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     users_db[user_counter] = new_user
 
@@ -733,8 +744,8 @@ class Invoice(BaseModel):
 
     @field_serializer('amount', 'tax')
     def serialize_decimal(self, value: Decimal) -> str:
-        """Serialize decimals as formatted strings."""
-        return f"${value:.2f}"
+        """Serialize decimals as strings."""
+        return f"{value:.2f}"
 
     @field_serializer('created_at')
     def serialize_datetime(self, value: datetime) -> str:
@@ -743,8 +754,8 @@ class Invoice(BaseModel):
 
     @field_serializer('due_date')
     def serialize_date(self, value: date) -> str:
-        """Serialize date in readable format."""
-        return value.strftime("%B %d, %Y")
+        """Serialize date in ISO format."""
+        return value.isoformat()
 
 
 # Create invoice
@@ -761,7 +772,7 @@ invoice = Invoice(
 
 # Different serialization modes
 print(invoice.model_dump())
-# amount and tax are "$1500.00", "$120.00"
+# amount and tax are "1500.00", "120.00"
 # internal_notes is excluded
 
 print(invoice.model_dump(mode='json'))
@@ -773,7 +784,7 @@ print(invoice.model_dump(by_alias=True))
 print(invoice.model_dump(exclude={'id', 'status'}))
 # Exclude specific fields
 
-print(invoice.model_dump(include={'customer_name', 'amount', 'total'}))
+print(invoice.model_dump(include={'customer_name', 'amount', 'tax'}))
 # Include only specific fields
 
 # JSON output

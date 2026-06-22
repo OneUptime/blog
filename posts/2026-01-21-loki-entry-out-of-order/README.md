@@ -8,7 +8,7 @@ Description: A comprehensive guide to diagnosing and resolving Loki 'entry out o
 
 ---
 
-The "entry out of order" error in Grafana Loki occurs when logs are pushed with timestamps older than logs already received for the same stream. Loki requires logs within a stream to be ordered by timestamp, and violations cause ingestion failures. This guide explains why this happens and how to fix it.
+The "entry out of order" error in Grafana Loki occurs when logs are pushed with timestamps older than Loki can accept for the same stream. Loki accepts some out-of-order writes by default in current versions, but entries that are too far behind the newest entry in the stream still cause ingestion failures. This guide explains why this happens and how to fix it.
 
 ## Understanding the Error
 
@@ -16,8 +16,8 @@ The "entry out of order" error in Grafana Loki occurs when logs are pushed with 
 
 ```text
 entry out of order for stream
-entry with timestamp older than existing entries
-stream rate limit exceeded
+entry too far behind, entry timestamp is: <timestamp>, oldest acceptable timestamp is: <cutoff>
+entry for stream <stream_labels> has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>
 ```
 
 ### How Loki Stream Ordering Works
@@ -32,6 +32,8 @@ Stream: {job="app", service="api", instance="pod-1"}
 
 If Entry 4 arrives with timestamp=1000, it is rejected as out of order.
 ```
+
+In Loki 2.4 and later, unordered writes are enabled by default. Entries are still rejected if they are too far behind the newest entry in the stream; by default, the acceptable window is half of `max_chunk_age`.
 
 ### Common Causes
 
@@ -74,36 +76,27 @@ docker logs loki 2>&1 | grep -i "stream"
 docker logs promtail 2>&1 | grep -i "timestamp\|order\|skipping"
 ```
 
-## Solution 1: Enable Unordered Writes
+## Solution 1: Configure Unordered Writes
 
-The simplest solution is to enable unordered writes in Loki:
+For Loki 2.4 and later, unordered writes are enabled by default. In current Loki versions, the `unordered_writes` setting is deprecated and defaults to `true`, so new configurations usually only need to tune `max_chunk_age` when the default window is too small:
 
 ```yaml
 # loki-config.yaml
-limits_config:
-  # Allow out-of-order writes within a window
-  unordered_writes: true
-
 ingester:
-  # Configure the out-of-order window
+  # Configure the chunk age; the accepted out-of-order window is half this value.
   max_chunk_age: 2h
-
-  # Allow entries within this window to be out of order
-  wal:
-    enabled: true
-    dir: /loki/wal
 ```
 
-### Loki 2.4+ Out-of-Order Configuration
+### Loki 2.4+ Out-of-Order Window
 
 ```yaml
 # loki-config.yaml (Loki 2.4+)
-limits_config:
-  # Maximum time window for accepting out-of-order writes
-  out_of_order_time_window: 30m
+ingester:
+  # Entries can be up to 30 minutes behind the newest entry in the stream.
+  max_chunk_age: 1h
 ```
 
-This allows entries up to 30 minutes out of order within the same stream.
+This allows entries up to 30 minutes out of order within the same stream because Loki accepts entries newer than `time_of_most_recent_line - (max_chunk_age / 2)`.
 
 ## Solution 2: Fix Timestamp Extraction
 
@@ -128,8 +121,19 @@ scrape_configs:
           format: RFC3339Nano
           # Action on parse failure
           action_on_failure: fudge  # or skip
+```
 
-      # Alternative: JSON timestamp extraction
+```yaml
+# promtail-config.yaml
+scrape_configs:
+  - job_name: application-json
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: application
+          __path__: /var/log/app/*.json
+    pipeline_stages:
       - json:
           expressions:
             ts: timestamp
@@ -190,8 +194,8 @@ pipeline_stages:
       format: RFC3339
       # Options:
       # fudge: use last known timestamp + 1 nanosecond
-      # skip: drop the log line
-      # keep: use current time (default)
+      # skip: keep the time when Promtail scraped the log entry
+      # default: fudge
       action_on_failure: fudge
 ```
 
@@ -227,13 +231,11 @@ pipeline_stages:
   - json:
       expressions:
         thread_id: thread
-        request_id: request_id
   - labels:
       thread_id:
-      request_id:
 ```
 
-This creates unique streams per thread/request, avoiding ordering conflicts.
+This creates separate streams per thread, avoiding ordering conflicts. Avoid labels with unbounded values such as request IDs or trace IDs; use structured metadata for high-cardinality fields instead.
 
 ## Solution 4: Client-Side Ordering
 
@@ -266,11 +268,10 @@ clients:
     Match       *
     Host        loki
     Port        3100
-    # Enable ordering
+    # Send each record as JSON
     line_format json
-    # Batch settings
-    batch_wait  1
-    batch_size  102400
+    # Keep one flush worker for predictable output behavior
+    workers      0
     # Retry settings
     Retry_Limit 5
 ```
@@ -351,20 +352,7 @@ systemctl start chronyd
 
 ### Kubernetes Time Sync
 
-```yaml
-# Pod spec with host time
-spec:
-  containers:
-    - name: app
-      volumeMounts:
-        - name: localtime
-          mountPath: /etc/localtime
-          readOnly: true
-  volumes:
-    - name: localtime
-      hostPath:
-        path: /etc/localtime
-```
+Containers use the host kernel clock, so synchronize time on Kubernetes nodes rather than mounting `/etc/localtime` into pods. Mounting `/etc/localtime` only affects timezone data, not clock synchronization.
 
 ## Solution 7: Handle Log File Rotation
 
@@ -384,7 +372,7 @@ scrape_configs:
       - timestamp:
           source: time
           format: RFC3339
-          # Skip logs older than 1 hour (from rotated files)
+          # On timestamp parse failure, keep the time when Promtail scraped the entry
           action_on_failure: skip
 
 # Alternative: Use file discovery to handle rotation
@@ -416,7 +404,7 @@ groups:
     rules:
       - alert: LokiOutOfOrderEntries
         expr: |
-          rate(loki_discarded_samples_total{reason="out_of_order"}[5m]) > 0
+          rate(loki_discarded_samples_total{reason=~"out_of_order|too_far_behind"}[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -426,7 +414,7 @@ groups:
 
       - alert: LokiHighTimestampMismatch
         expr: |
-          rate(loki_discarded_samples_total{reason="timestamp_too_old"}[5m]) > 10
+          rate(loki_discarded_samples_total{reason="greater_than_max_sample_age"}[5m]) > 10
         for: 5m
         labels:
           severity: warning
@@ -446,7 +434,11 @@ groups:
       "legendFormat": "Out of order"
     },
     {
-      "expr": "rate(loki_discarded_samples_total{reason=\"timestamp_too_old\"}[5m])",
+      "expr": "rate(loki_discarded_samples_total{reason=\"too_far_behind\"}[5m])",
+      "legendFormat": "Too far behind"
+    },
+    {
+      "expr": "rate(loki_discarded_samples_total{reason=\"greater_than_max_sample_age\"}[5m])",
       "legendFormat": "Timestamp too old"
     }
   ]
@@ -455,7 +447,7 @@ groups:
 
 ## Best Practices
 
-1. **Enable Out-of-Order Writes**: Use `out_of_order_time_window` for tolerance
+1. **Enable Out-of-Order Writes**: Keep the default unordered-write behavior and tune `max_chunk_age` only when needed
 2. **Extract Timestamps**: Always parse timestamps from log content
 3. **Unique Stream Labels**: Include instance/pod identifiers in labels
 4. **Sync Time**: Ensure NTP is configured on all hosts
@@ -469,9 +461,11 @@ groups:
 ```yaml
 # loki-config.yaml
 limits_config:
-  out_of_order_time_window: 30m
   reject_old_samples: true
   reject_old_samples_max_age: 168h
+ingester:
+  # Allows entries up to 30 minutes behind the newest entry in the stream
+  max_chunk_age: 1h
 ```
 
 ### Promtail Timestamp Best Practice
@@ -493,7 +487,7 @@ pipeline_stages:
 The "entry out of order" error is common when multiple sources write to the same Loki stream or when timestamps are not properly synchronized. By enabling out-of-order writes, properly extracting timestamps, ensuring unique stream labels, and maintaining time synchronization, you can eliminate these errors and achieve reliable log ingestion.
 
 Key takeaways:
-- Enable `out_of_order_time_window` for tolerance
+- Keep the default unordered-write behavior and tune `max_chunk_age` for tolerance
 - Extract timestamps from log content using pipeline stages
 - Use unique labels (instance, pod, container) per log source
 - Configure NTP on all hosts

@@ -89,7 +89,7 @@ resource "aws_lambda_function" "processor" {
   function_name = "data-processor"
   role          = aws_iam_role.lambda.arn  # Implicit dependency on role
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 
   # Explicit dependency on policy attachment
@@ -101,18 +101,14 @@ resource "aws_lambda_function" "processor" {
 ### When depends_on is Necessary
 
 ```hcl
-# S3 bucket for logs
-resource "aws_s3_bucket" "logs" {
-  bucket = "my-app-logs"
+# IAM policy for CloudWatch Logs delivery
+resource "aws_iam_role_policy" "cloudwatch_to_firehose" {
+  name   = "cloudwatch-to-firehose"
+  role   = aws_iam_role.cloudwatch.id
+  policy = data.aws_iam_policy_document.cloudwatch_to_firehose.json
 }
 
-# Bucket policy (no direct reference from bucket)
-resource "aws_s3_bucket_policy" "logs" {
-  bucket = aws_s3_bucket.logs.id
-  policy = data.aws_iam_policy_document.logs.json
-}
-
-# CloudWatch log group that writes to S3
+# CloudWatch log group that sends events to Firehose
 resource "aws_cloudwatch_log_subscription_filter" "logs" {
   name            = "log-subscription"
   log_group_name  = aws_cloudwatch_log_group.app.name
@@ -120,8 +116,8 @@ resource "aws_cloudwatch_log_subscription_filter" "logs" {
   destination_arn = aws_kinesis_firehose_delivery_stream.logs.arn
   role_arn        = aws_iam_role.cloudwatch.arn
 
-  # Policy must be attached before subscription can write
-  depends_on = [aws_s3_bucket_policy.logs]
+  # Policy must be attached before CloudWatch Logs can deliver events
+  depends_on = [aws_iam_role_policy.cloudwatch_to_firehose]
 }
 ```
 
@@ -241,22 +237,20 @@ resource "aws_security_group" "api" {
 }
 
 # Separate rules break the cycle
-resource "aws_security_group_rule" "web_to_api" {
-  type                     = "egress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.web.id
-  source_security_group_id = aws_security_group.api.id
+resource "aws_vpc_security_group_egress_rule" "web_to_api" {
+  security_group_id            = aws_security_group.web.id
+  referenced_security_group_id = aws_security_group.api.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "api_from_web" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.api.id
-  source_security_group_id = aws_security_group.web.id
+resource "aws_vpc_security_group_ingress_rule" "api_from_web" {
+  security_group_id            = aws_security_group.api.id
+  referenced_security_group_id = aws_security_group.web.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -349,11 +343,12 @@ Resource Already Exists
 When Terraform tries to create a resource that already exists, check if the dependency order ensures proper cleanup.
 
 ```hcl
-# Problem: DNS record not deleted before new one created
+# Problem: DNS record already exists outside Terraform state
 resource "aws_route53_record" "www" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "www"
-  type    = "A"
+  zone_id         = data.aws_route53_zone.main.zone_id
+  name            = "www"
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = aws_lb.main.dns_name
@@ -361,10 +356,7 @@ resource "aws_route53_record" "www" {
     evaluate_target_health = true
   }
 
-  # Solution: Use create_before_destroy
-  lifecycle {
-    create_before_destroy = true
-  }
+  # Solution: allow Terraform to overwrite the existing Route 53 record
 }
 ```
 
@@ -400,7 +392,7 @@ resource "aws_lambda_function" "processor" {
   function_name = "processor"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 
   # IMPORTANT: Lambda execution role needs CloudWatch Logs permissions

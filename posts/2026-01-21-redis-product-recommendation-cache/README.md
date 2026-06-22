@@ -28,7 +28,7 @@ Recommendation systems typically generate:
 import redis
 import json
 import time
-from datetime import datetime
+import uuid
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -68,7 +68,7 @@ class RecommendationCache:
         key = f"{self.prefix}:user:{user_id}"
 
         # Get top recommendations by score (descending)
-        results = r.zrevrange(key, offset, offset + limit - 1, withscores=True)
+        results = r.zrange(key, offset, offset + limit - 1, desc=True, withscores=True)
 
         recommendations = []
         for member, score in results:
@@ -100,7 +100,7 @@ class RecommendationCache:
     def get_similar_products(self, product_id, limit=10):
         """Get products similar to a given product."""
         key = f"{self.prefix}:similar:{product_id}"
-        results = r.zrevrange(key, 0, limit - 1, withscores=True)
+        results = r.zrange(key, 0, limit - 1, desc=True, withscores=True)
 
         return [
             {**json.loads(member), 'similarity_score': score}
@@ -125,7 +125,7 @@ class RecommendationCache:
     def get_bought_together(self, product_id, limit=5):
         """Get frequently bought together products."""
         key = f"{self.prefix}:bought_together:{product_id}"
-        results = r.zrevrange(key, 0, limit - 1, withscores=True)
+        results = r.zrange(key, 0, limit - 1, desc=True, withscores=True)
 
         return [
             {'product_id': product_id, 'frequency': int(score)}
@@ -150,7 +150,7 @@ class RecommendationCache:
     def get_category_recommendations(self, category_id, limit=20):
         """Get top products in a category."""
         key = f"{self.prefix}:category:{category_id}"
-        results = r.zrevrange(key, 0, limit - 1, withscores=True)
+        results = r.zrange(key, 0, limit - 1, desc=True, withscores=True)
 
         return [
             {'product_id': pid, 'score': score}
@@ -219,8 +219,8 @@ class RecommendationCache {
 
   async getUserRecommendations(userId, limit = 10, offset = 0) {
     const key = `${this.prefix}:user:${userId}`;
-    const results = await redis.zrevrange(
-      key, offset, offset + limit - 1, 'WITHSCORES'
+    const results = await redis.zrange(
+      key, offset, offset + limit - 1, 'REV', 'WITHSCORES'
     );
 
     const recommendations = [];
@@ -254,7 +254,7 @@ class RecommendationCache {
 
   async getSimilarProducts(productId, limit = 10) {
     const key = `${this.prefix}:similar:${productId}`;
-    const results = await redis.zrevrange(key, 0, limit - 1, 'WITHSCORES');
+    const results = await redis.zrange(key, 0, limit - 1, 'REV', 'WITHSCORES');
 
     const products = [];
     for (let i = 0; i < results.length; i += 2) {
@@ -326,10 +326,12 @@ class TrendingProductsCache:
         # Purchases count more than views
         hourly_key = f"{self.prefix}:hourly:{hour_bucket}"
         pipe.zincrby(hourly_key, 10, product_id)
+        pipe.expire(hourly_key, 7200)
 
         if category_id:
             cat_key = f"{self.prefix}:category:{category_id}:hourly:{hour_bucket}"
             pipe.zincrby(cat_key, 10, product_id)
+            pipe.expire(cat_key, 7200)
 
         pipe.execute()
 
@@ -351,15 +353,15 @@ class TrendingProductsCache:
             ]
 
         # Union the hourly buckets with time decay
-        temp_key = f"{self.prefix}:temp:{int(time.time())}"
+        temp_key = f"{self.prefix}:temp:{uuid.uuid4().hex}"
 
         if len(keys) == 1:
-            results = r.zrevrange(keys[0], 0, limit - 1, withscores=True)
+            results = r.zrange(keys[0], 0, limit - 1, desc=True, withscores=True)
         else:
             # Weight recent hours more heavily
             weights = [1.0 / (i + 1) for i in range(len(keys))]
             r.zunionstore(temp_key, dict(zip(keys, weights)))
-            results = r.zrevrange(temp_key, 0, limit - 1, withscores=True)
+            results = r.zrange(temp_key, 0, limit - 1, desc=True, withscores=True)
             r.delete(temp_key)
 
         return [
@@ -406,44 +408,46 @@ class RecentlyViewedCache:
     def add_view(self, user_id, product_id, metadata=None):
         """Add a product to user's recently viewed list."""
         key = f"{self.prefix}:{user_id}"
+        metadata_key = f"{key}:metadata"
         timestamp = time.time()
-
-        # Store with timestamp as score
-        member = json.dumps({
-            'product_id': product_id,
-            'metadata': metadata or {}
-        })
 
         pipe = r.pipeline()
 
-        # Remove old entry for this product (if exists)
-        # This ensures the product moves to the front
-        pipe.zrem(key, member)
-
         # Add with current timestamp
-        pipe.zadd(key, {member: timestamp})
-
-        # Trim to max items
-        pipe.zremrangebyrank(key, 0, -self.max_items - 1)
+        pipe.zadd(key, {product_id: timestamp})
+        pipe.hset(metadata_key, product_id, json.dumps(metadata or {}))
 
         # Set TTL
         pipe.expire(key, 86400 * 30)  # 30 days
-
+        pipe.expire(metadata_key, 86400 * 30)
         pipe.execute()
+
+        # Trim to max items
+        old_products = r.zrange(key, 0, -self.max_items - 1)
+        if old_products:
+            pipe = r.pipeline()
+            pipe.zrem(key, *old_products)
+            pipe.hdel(metadata_key, *old_products)
+            pipe.execute()
 
     def get_recently_viewed(self, user_id, limit=10, exclude_product=None):
         """Get user's recently viewed products."""
         key = f"{self.prefix}:{user_id}"
+        metadata_key = f"{key}:metadata"
 
         # Get more than needed in case we need to exclude
         fetch_limit = limit + 1 if exclude_product else limit
-        results = r.zrevrange(key, 0, fetch_limit - 1, withscores=True)
+        results = r.zrange(key, 0, fetch_limit - 1, desc=True, withscores=True)
 
         products = []
-        for member, score in results:
-            data = json.loads(member)
-            if exclude_product and data['product_id'] == exclude_product:
+        for product_id, score in results:
+            if exclude_product and product_id == exclude_product:
                 continue
+            metadata = r.hget(metadata_key, product_id)
+            data = {
+                'product_id': product_id,
+                'metadata': json.loads(metadata) if metadata else {}
+            }
             data['viewed_at'] = int(score)
             products.append(data)
             if len(products) >= limit:
@@ -454,7 +458,7 @@ class RecentlyViewedCache:
     def clear_history(self, user_id):
         """Clear user's viewing history."""
         key = f"{self.prefix}:{user_id}"
-        r.delete(key)
+        r.delete(key, f"{key}:metadata")
 
     def get_cross_user_popular(self, product_ids, limit=10):
         """
@@ -617,9 +621,12 @@ def warm_recommendation_cache(user_ids, recommendation_model):
 def get_cache_stats():
     """Get recommendation cache statistics."""
     info = r.info('stats')
+    hits = info.get('keyspace_hits', 0)
+    misses = info.get('keyspace_misses', 0)
+    total = hits + misses
 
     return {
-        'hit_rate': calculate_hit_rate(),
+        'hit_rate': hits / total if total else 0,
         'memory_used': r.info('memory')['used_memory_human'],
         'keys_count': r.dbsize()
     }

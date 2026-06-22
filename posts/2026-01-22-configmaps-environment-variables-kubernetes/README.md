@@ -274,7 +274,7 @@ kubectl rollout restart deployment/api-server
 kubectl delete pods -l app=api-server
 ```
 
-For automatic restarts, use annotations with checksums:
+For automatic restarts in Helm charts, use annotations with checksums:
 
 ```yaml
 # In deployment template

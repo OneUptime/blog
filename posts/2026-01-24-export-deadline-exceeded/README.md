@@ -130,7 +130,6 @@ import (
 
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
-    "google.golang.org/grpc"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
@@ -139,8 +138,6 @@ func initTracer() (*trace.TracerProvider, error) {
     // Create exporter with extended timeout
     exporter, err := otlptracegrpc.New(ctx,
         otlptracegrpc.WithEndpoint("collector.example.com:4317"),
-        // Set connection timeout
-        otlptracegrpc.WithDialOption(grpc.WithBlock()),
         // Set RPC timeout
         otlptracegrpc.WithTimeout(30*time.Second),
         // Retry configuration
@@ -242,10 +239,12 @@ exporters:
 package main
 
 import (
+    "context"
+    "time"
+
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "google.golang.org/grpc"
     "google.golang.org/grpc/keepalive"
-    "time"
 )
 
 func createExporter() (*otlptracegrpc.Exporter, error) {
@@ -285,7 +284,6 @@ exporters:
     retry_on_failure:
       enabled: true
       initial_interval: 1s      # First retry after 1 second
-      randomization_factor: 0.5 # Add jitter to prevent thundering herd
       multiplier: 1.5           # Exponential backoff multiplier
       max_interval: 30s         # Maximum wait between retries
       max_elapsed_time: 5m      # Give up after 5 minutes
@@ -296,6 +294,13 @@ exporters:
       num_consumers: 10    # Parallel export workers
       queue_size: 10000    # Buffer up to 10000 batches
       storage: file_storage/otlp_queue  # Persist queue to disk
+
+extensions:
+  file_storage/otlp_queue:
+    directory: /var/lib/otelcol/otlp_queue
+
+service:
+  extensions: [file_storage/otlp_queue]
 ```
 
 ### SDK-Level Retry (Node.js)
@@ -479,8 +484,15 @@ service:
   telemetry:
     metrics:
       # Expose collector metrics
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
 extensions:
   health_check:
@@ -520,14 +532,14 @@ groups:
           summary: "OpenTelemetry export queue building up"
           description: "Export queue has {{ $value }} items waiting"
 
-      # Alert on deadline exceeded errors
-      - alert: ExportDeadlineExceeded
-        expr: rate(otelcol_exporter_send_failed_spans{error=~".*deadline.*"}[5m]) > 0
+      # Alert on exporter send failures; check Collector logs for deadline exceeded details
+      - alert: ExportSendFailures
+        expr: rate(otelcol_exporter_send_failed_spans[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Export deadline exceeded errors detected"
+          summary: "OpenTelemetry exporter send failures detected"
 ```
 
 ### Dashboard Queries
@@ -538,10 +550,8 @@ sum(rate(otelcol_exporter_sent_spans[5m])) by (exporter) /
 (sum(rate(otelcol_exporter_sent_spans[5m])) by (exporter) +
  sum(rate(otelcol_exporter_send_failed_spans[5m])) by (exporter))
 
-# Average export latency
-histogram_quantile(0.95,
-  sum(rate(otelcol_exporter_send_latency_bucket[5m])) by (le, exporter)
-)
+# In-flight export requests
+otelcol_exporter_in_flight_requests
 
 # Queue utilization
 otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
@@ -556,6 +566,7 @@ Prevent cascade failures when the backend is overloaded.
 import time
 from enum import Enum
 from threading import Lock
+from opentelemetry.sdk.trace.export import SpanExportResult
 
 class CircuitState(Enum):
     CLOSED = "closed"      # Normal operation
@@ -626,21 +637,24 @@ class CircuitBreakerExporter:
         self.exporter = exporter
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
-    def export(self, spans, result_callback):
+    def export(self, spans):
         if not self.circuit_breaker.can_execute():
             # Circuit is open - fail fast
             print("Circuit breaker open, skipping export")
-            result_callback({"code": 1, "error": "Circuit breaker open"})
-            return
+            return SpanExportResult.FAILURE
 
-        def wrapped_callback(result):
-            if result.get("code") == 0:
-                self.circuit_breaker.record_success()
-            else:
-                self.circuit_breaker.record_failure()
-            result_callback(result)
+        result = self.exporter.export(spans)
+        if result == SpanExportResult.SUCCESS:
+            self.circuit_breaker.record_success()
+        else:
+            self.circuit_breaker.record_failure()
+        return result
 
-        self.exporter.export(spans, wrapped_callback)
+    def shutdown(self):
+        return self.exporter.shutdown()
+
+    def force_flush(self, timeout_millis=30000):
+        return self.exporter.force_flush(timeout_millis)
 ```
 
 ## Diagnostic Checklist

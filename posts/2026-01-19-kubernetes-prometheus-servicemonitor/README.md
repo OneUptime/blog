@@ -25,11 +25,12 @@ flowchart TD
     subgraph "Prometheus Operator"
         SM[ServiceMonitor] --> |Discovers| SVC
         PM[PodMonitor] --> |Discovers| POD1
+        OP[Operator] --> |Generates scrape config from| SM
+        OP --> |Generates scrape config from| PM
     end
     
     subgraph "Prometheus"
-        PROM[Prometheus] --> |Reads| SM
-        PROM --> |Reads| PM
+        OP --> |Updates| PROM[Prometheus]
         PROM --> |Scrapes| POD1
         PROM --> |Scrapes| POD2
         PROM --> |Scrapes| POD3
@@ -96,7 +97,7 @@ metadata:
   namespace: production
   labels:
     app: my-app
-    # Labels for ServiceMonitor to select
+    # Optional label used by some monitoring conventions
     prometheus.io/scrape: "true"
 spec:
   selector:
@@ -196,10 +197,11 @@ spec:
         password:
           name: prometheus-auth-secret
           key: password
-      # Or Bearer Token
-      # bearerTokenSecret:
-      #   name: prometheus-auth-secret
-      #   key: token
+      # Or Authorization header (Bearer by default)
+      # authorization:
+      #   credentials:
+      #     name: prometheus-auth-secret
+      #     key: token
 ---
 apiVersion: v1
 kind: Secret
@@ -210,6 +212,7 @@ type: Opaque
 stringData:
   username: prometheus
   password: secure-password
+  token: secure-token
 ```
 
 ### With TLS
@@ -298,7 +301,7 @@ spec:
 Use PodMonitor when:
 - Pods don't have a Service
 - You need to scrape specific pods directly
-- DaemonSet or Job metrics
+- DaemonSet or running Job pod metrics
 
 ```yaml
 # podmonitor.yaml
@@ -411,7 +414,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: 15s  # Go apps can handle frequent scrapes
+      interval: 15s  # Use shorter intervals only if the app can handle them
 ```
 
 ### NGINX Ingress Controller
@@ -476,13 +479,11 @@ spec:
       - staging
 ```
 
-### Label-Based Selection
+### Current Namespace (Default)
 
 ```yaml
 spec:
-  namespaceSelector:
-    matchLabels:
-      monitoring: enabled
+  namespaceSelector: {}  # Monitor Services in the ServiceMonitor's namespace
 ```
 
 ## Troubleshooting ServiceMonitors

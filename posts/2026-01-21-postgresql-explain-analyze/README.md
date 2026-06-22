@@ -55,7 +55,7 @@ Output:
 
 ## EXPLAIN Options
 
-### All Available Options
+### Common Options
 
 ```sql
 EXPLAIN (
@@ -70,6 +70,8 @@ EXPLAIN (
 )
 SELECT * FROM users WHERE id = 1;
 ```
+
+`EXPLAIN ANALYZE` executes the statement. For writes, wrap the command in a transaction and roll it back if you only want to inspect the plan.
 
 ### Recommended Analysis Command
 
@@ -179,7 +181,7 @@ Index Only Scan using users_id_email_idx on users (cost=0.42..4.44 rows=1 width=
 
 When used:
 - All needed columns in index
-- Index is up to date (low heap fetches)
+- Heap pages are marked all-visible in the visibility map (low heap fetches)
 
 ### Bitmap Index Scan
 
@@ -400,7 +402,7 @@ ON products(category_id, created_at DESC)
 WHERE price > 100;
 ```
 
-### Example 3: Join Order
+### Example 3: Materializing a Filtered Subset
 
 ```sql
 EXPLAIN ANALYZE
@@ -410,7 +412,7 @@ JOIN customers c ON c.id = o.customer_id
 WHERE o.status = 'pending';
 ```
 
-If PostgreSQL chooses wrong join order, use CTE to force order:
+If PostgreSQL repeatedly misestimates a filtered subset, a `MATERIALIZED` CTE can act as an optimization fence. Verify this carefully because it can also prevent useful predicate pushdown:
 
 ```sql
 EXPLAIN ANALYZE

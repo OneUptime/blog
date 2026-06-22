@@ -38,13 +38,8 @@ SELECT
     blocked.wait_event_type,
     blocked.wait_event
 FROM pg_stat_activity blocked
-JOIN pg_locks blocked_locks ON blocked.pid = blocked_locks.pid
-JOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype
-    AND blocked_locks.relation = blocking_locks.relation
-    AND blocked_locks.pid != blocking_locks.pid
-JOIN pg_stat_activity blocking ON blocking_locks.pid = blocking.pid
-WHERE NOT blocked_locks.granted
-AND blocking_locks.granted;
+JOIN pg_stat_activity blocking ON blocking.pid = ANY(pg_blocking_pids(blocked.pid))
+WHERE blocked.wait_event_type = 'Lock';
 ```
 
 ## Monitor Lock Waits
@@ -70,10 +65,10 @@ SELECT deadlocks FROM pg_stat_database WHERE datname = 'myapp';
 
 ```sql
 -- Terminate blocking session
-SELECT pg_terminate_backend(blocking_pid);
+SELECT pg_terminate_backend(12345); -- Replace with blocking_pid
 
 -- Cancel query (gentler)
-SELECT pg_cancel_backend(blocking_pid);
+SELECT pg_cancel_backend(12345); -- Replace with blocking_pid
 ```
 
 ## Lock Timeout
@@ -82,7 +77,7 @@ SELECT pg_cancel_backend(blocking_pid);
 -- Set lock timeout for session
 SET lock_timeout = '10s';
 
--- For specific statement
+-- For current transaction
 SET LOCAL lock_timeout = '5s';
 ```
 

@@ -405,7 +405,7 @@ jobs:
         run: npx wait-on http://localhost:3000
 
       - name: Run Cypress tests
-        uses: cypress-io/github-action@v6
+        uses: cypress-io/github-action@v7
         with:
           browser: chrome
           record: true
@@ -432,14 +432,8 @@ cy.pause(); // Execution stops here for debugging
 // Use cy.debug() to log element info
 cy.get('[data-testid="form"]').debug();
 
-// Enable Chrome DevTools in headed mode
-// Add to cypress.config.js
-module.exports = defineConfig({
-  e2e: {
-    chromeWebSecurity: false,
-    experimentalModifyObstructiveThirdPartyCode: true
-  }
-});
+// In headed or open mode, open Chrome DevTools from the browser
+// and inspect the Command Log output as the test runs.
 ```
 
 ## Conclusion

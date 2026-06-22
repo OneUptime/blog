@@ -18,7 +18,7 @@ Before optimizing, understand what drives Redis costs:
 |-------------|--------|----------------------|
 | Instance Size | High | Right-sizing, reserved capacity |
 | Memory Usage | High | Data optimization, TTLs |
-| Data Transfer | Medium | VPC endpoints, compression |
+| Data Transfer | Medium | Same-region and same-AZ placement, compression |
 | Backup Storage | Low-Medium | Retention policies |
 | Multi-AZ/Replication | Medium | Architecture review |
 
@@ -77,7 +77,7 @@ print(json.dumps(usage, indent=2))
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def get_elasticache_metrics(cluster_id, days=7):
     """Get ElastiCache metrics for right-sizing analysis"""
@@ -94,7 +94,7 @@ def get_elasticache_metrics(cluster_id, days=7):
     ]
 
     results = {}
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=days)
 
     for metric_name, unit in metrics_to_fetch:
@@ -132,7 +132,6 @@ print(f"Average Memory: {metrics.get('DatabaseMemoryUsagePercentage', {}).get('a
 print(f"Max Memory: {metrics.get('DatabaseMemoryUsagePercentage', {}).get('max', 0):.2f}%")
 
 # Recommendation logic
-avg_mem = metrics.get('DatabaseMemoryUsagePercentage', {}).get('average', 100)
 max_mem = metrics.get('DatabaseMemoryUsagePercentage', {}).get('max', 100)
 
 if max_mem < 50:
@@ -155,7 +154,7 @@ else:
 
 ## Strategy 2: Use Reserved Capacity
 
-Reserved instances can save 30-55% compared to on-demand pricing.
+For node-based ElastiCache, reserved nodes can reduce costs for predictable workloads. AWS also offers Database Savings Plans for eligible ElastiCache usage, so compare both options against current regional pricing before committing.
 
 ### AWS ElastiCache Reserved Nodes
 
@@ -190,7 +189,7 @@ def calculate_reserved_savings(
     on_demand_total = on_demand_hourly * hours_per_month * total_months * node_count
 
     # Reserved cost (upfront + hourly)
-    reserved_total = upfront_cost + (reserved_hourly * hours_per_month * total_months * node_count)
+    reserved_total = (upfront_cost * node_count) + (reserved_hourly * hours_per_month * total_months * node_count)
 
     savings = on_demand_total - reserved_total
     savings_percent = (savings / on_demand_total) * 100
@@ -204,9 +203,7 @@ def calculate_reserved_savings(
         'monthly_reserved': reserved_total / total_months
     }
 
-# Example: cache.r6g.large
-# On-demand: $0.182/hour
-# 1-year All Upfront: $1,037 upfront, $0/hour
+# Illustrative example only; replace with current region, engine, and node prices
 result = calculate_reserved_savings(
     on_demand_hourly=0.182,
     reserved_hourly=0,
@@ -396,6 +393,8 @@ large_keys = find_large_keys(r, threshold_bytes=50000)
 ### Use Read Replicas Wisely
 
 ```python
+import redis
+
 class ReadWriteSplitClient:
     """Split reads and writes between primary and replicas"""
 
@@ -433,7 +432,6 @@ class ReadWriteSplitClient:
 ### Implement Caching Tiers
 
 ```python
-from functools import lru_cache
 import redis
 import time
 
@@ -525,6 +523,8 @@ compressed_redis.set('large_key', large_data)
 
 ### Identify and Remove Unused Keys
 
+`OBJECT IDLETIME` is available only when Redis is not using an LFU `maxmemory-policy` such as `allkeys-lfu` or `volatile-lfu`. If you use an LFU policy, use `OBJECT FREQ` or application-level access tracking instead.
+
 ```python
 def analyze_key_access_patterns(redis_client, tracking_period_days=7):
     """Analyze key access patterns using Redis OBJECT IDLETIME"""
@@ -604,12 +604,12 @@ def cleanup_idle_keys(redis_client, max_idle_days=30, dry_run=True):
 
 ## Strategy 6: Optimize Network Costs
 
-### Use VPC Endpoints
+### Use Private Networking Correctly
 
-VPC endpoints eliminate data transfer charges for traffic between your application and Redis.
+ElastiCache interface VPC endpoints are for ElastiCache API operations, not Redis data-plane traffic to cache nodes. To reduce Redis network costs, keep applications and Redis in the same region and, where practical, prefer same-AZ reads.
 
 ```hcl
-# AWS VPC Endpoint for ElastiCache
+# AWS VPC Endpoint for ElastiCache API operations
 resource "aws_vpc_endpoint" "elasticache" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.elasticache"
@@ -623,6 +623,9 @@ resource "aws_vpc_endpoint" "elasticache" {
 ### Minimize Cross-AZ Traffic
 
 ```python
+import redis
+import requests
+
 class AZAwareRedis:
     """Redis client that prefers same-AZ replicas"""
 
@@ -644,10 +647,16 @@ nodes = {
     'us-east-1b': 'redis-replica-2.example.com',
 }
 
-# Get current AZ (from instance metadata)
-import requests
+# Get current AZ from EC2 Instance Metadata Service v2
+token = requests.put(
+    'http://169.254.169.254/latest/api/token',
+    headers={'X-aws-ec2-metadata-token-ttl-seconds': '21600'},
+    timeout=2
+).text
 current_az = requests.get(
-    'http://169.254.169.254/latest/meta-data/placement/availability-zone'
+    'http://169.254.169.254/latest/meta-data/placement/availability-zone',
+    headers={'X-aws-ec2-metadata-token': token},
+    timeout=2
 ).text
 
 client = AZAwareRedis(nodes, current_az)
@@ -688,7 +697,6 @@ def get_elasticache_costs(days=30):
 
     costs = {}
     for result in response['ResultsByTime']:
-        date = result['TimePeriod']['Start']
         for group in result['Groups']:
             usage_type = group['Keys'][0]
             cost = float(group['Metrics']['UnblendedCost']['Amount'])
@@ -767,7 +775,7 @@ Use this checklist to ensure you've covered all optimization areas:
 - [ ] Evaluated cluster mode necessity
 
 ### Network
-- [ ] Using VPC endpoints to avoid data transfer costs
+- [ ] Keeping applications and Redis in the same region and minimizing unnecessary data transfer
 - [ ] Minimizing cross-AZ traffic
 - [ ] Applications in same region as Redis
 
@@ -783,7 +791,7 @@ Use this checklist to ensure you've covered all optimization areas:
 Optimizing Redis costs in the cloud requires a multi-faceted approach. The most impactful strategies are:
 
 1. **Right-sizing**: Ensure your instances match actual usage patterns
-2. **Reserved capacity**: Use reserved instances for predictable workloads (30-55% savings)
+2. **Reserved capacity**: Use reserved nodes or Database Savings Plans for predictable workloads
 3. **Data optimization**: Set TTLs, use efficient data structures, and clean up unused data
 4. **Architecture review**: Evaluate if you need all replicas and consider tiered caching
 

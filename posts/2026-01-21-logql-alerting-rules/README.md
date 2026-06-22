@@ -47,8 +47,9 @@ ruler:
     dir: /loki/ruler-wal
   remote_write:
     enabled: true
-    client:
-      url: http://prometheus:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://prometheus:9090/api/v1/write
 ```
 
 ### S3-Based Rule Storage
@@ -72,7 +73,10 @@ ruler:
 ```yaml
 ruler:
   storage:
-    type: configdb
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /tmp/loki/rules
   enable_api: true
   alertmanager_url: http://alertmanager:9093
 ```
@@ -145,7 +149,7 @@ groups:
             sum(rate({namespace="production", app="api"} | json | status_code >= 500 [5m]))
             /
             sum(rate({namespace="production", app="api"} | json [5m]))
-          ) > 0.01
+          ) * 100 > 1
         for: 5m
         labels:
           severity: critical
@@ -159,7 +163,7 @@ groups:
             sum(rate({namespace="production", app="api"} | json | status_code >= 400 | status_code < 500 [5m]))
             /
             sum(rate({namespace="production", app="api"} | json [5m]))
-          ) > 0.05
+          ) * 100 > 5
         for: 10m
         labels:
           severity: warning
@@ -181,6 +185,7 @@ groups:
             {namespace="production", app="api"}
             | json
             | unwrap duration_ms
+            | __error__=""
             [5m]
           ) > 5000
         for: 5m
@@ -196,6 +201,7 @@ groups:
             {namespace="production", app="api"}
             | json
             | unwrap duration_ms
+            | __error__=""
             [5m]
           ) > 1000
         for: 10m
@@ -328,7 +334,7 @@ groups:
           severity: warning
         annotations:
           summary: "High log volume from {{ $labels.app }}"
-          description: "Log volume is {{ $value | humanizeBytes }}/s"
+          description: "Log volume is {{ $value | humanize1024 }}B/s"
 
       - alert: LogVolumeSpike
         expr: |
@@ -374,6 +380,7 @@ groups:
             {namespace="production"}
             | json
             | unwrap duration
+            | __error__=""
             [5m]
           ) by (app)
 ```
@@ -396,25 +403,27 @@ curl -H "X-Scope-OrgID: production" http://loki:3100/loki/api/v1/rules
 
 ```bash
 curl -X POST http://loki:3100/loki/api/v1/rules/production \
+  -H "X-Scope-OrgID: production" \
   -H "Content-Type: application/yaml" \
   -d '
-groups:
-  - name: test-alerts
-    rules:
-      - alert: TestAlert
-        expr: sum(rate({namespace="production"}[5m])) > 0
-        for: 1m
-        labels:
-          severity: info
-        annotations:
-          summary: "Test alert"
+name: test-alerts
+rules:
+  - alert: TestAlert
+    expr: sum(rate({namespace="production"}[5m])) > 0
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: "Test alert"
 '
 ```
 
 ### Delete Rules
 
 ```bash
-curl -X DELETE http://loki:3100/loki/api/v1/rules/production/test-alerts
+curl -X DELETE \
+  -H "X-Scope-OrgID: production" \
+  http://loki:3100/loki/api/v1/rules/production/test-alerts
 ```
 
 ## Alertmanager Integration
@@ -436,12 +445,12 @@ route:
   repeat_interval: 4h
   receiver: 'default'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty'
       continue: true
-    - match:
-        team: security
+    - matchers:
+        - team="security"
       receiver: 'security-team'
 
 receivers:
@@ -452,7 +461,7 @@ receivers:
 
   - name: 'pagerduty'
     pagerduty_configs:
-      - service_key: '<pagerduty-key>'
+      - routing_key: '<pagerduty-key>'
         severity: critical
 
   - name: 'security-team'
@@ -481,7 +490,7 @@ annotations:
     Service: {{ $labels.app }}
     Namespace: {{ $labels.namespace }}
     Value: {{ $value | printf "%.2f" }}
-    Time: {{ now | date "2006-01-02 15:04:05" }}
+    Time: {{ now | humanizeTimestamp }}
   runbook_url: "https://runbooks.example.com/{{ $labels.alertname }}"
   dashboard_url: |
     https://grafana.example.com/d/loki-logs?var-namespace={{ $labels.namespace }}&var-app={{ $labels.app }}
@@ -517,7 +526,7 @@ data:
           - alert: HighP99Latency
             expr: |
               quantile_over_time(0.99,
-                {namespace="production"} | json | unwrap duration_ms [5m]
+                {namespace="production"} | json | unwrap duration_ms | __error__="" [5m]
               ) > 5000
             for: 5m
             labels:

@@ -668,6 +668,10 @@ spec:
             name: myapp-vsvc
             routes:
             - primary
+          destinationRule:
+            name: myapp-destrule
+            canarySubsetName: canary
+            stableSubsetName: stable
       # Canary steps
       steps:
       - setWeight: 10
@@ -683,11 +687,17 @@ spec:
       - analysis:
           templates:
           - templateName: success-rate
+          args:
+          - name: service-name
+            value: myapp
       - setWeight: 50
       - pause: {duration: 10m}
       - analysis:
           templates:
           - templateName: success-rate
+          args:
+          - name: service-name
+            value: myapp
       - setWeight: 75
       - pause: {duration: 10m}
       - setWeight: 100
@@ -751,8 +761,21 @@ spec:
             }[5m])) by (le)
           ) * 1000
 ---
+# Kubernetes Service targeted by the Istio VirtualService
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+---
 # Istio VirtualService for traffic splitting
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp-vsvc
@@ -772,7 +795,7 @@ spec:
       weight: 0
 ---
 # Destination rule for subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp-destrule
@@ -944,8 +967,8 @@ class CanaryDashboard:
         print(f"Canary Weight: {snapshot.weight}%")
         print(f"\n{'Metric':<25} {'Stable':<15} {'Canary':<15}")
         print(f"{'-'*55}")
-        print(f"{'Success Rate':<25} {snapshot.stable_success_rate:.2%:<15} {snapshot.canary_success_rate:.2%:<15}")
-        print(f"{'P99 Latency (ms)':<25} {snapshot.stable_latency_p99:.0f:<15} {snapshot.canary_latency_p99:.0f:<15}")
+        print(f"{'Success Rate':<25} {snapshot.stable_success_rate:<15.2%} {snapshot.canary_success_rate:<15.2%}")
+        print(f"{'P99 Latency (ms)':<25} {snapshot.stable_latency_p99:<15.0f} {snapshot.canary_latency_p99:<15.0f}")
         print(f"{'Requests/min':<25} {snapshot.stable_requests:<15} {snapshot.canary_requests:<15}")
         print(f"{'='*60}")
 ```

@@ -244,8 +244,10 @@ class RateLimiter:
             keys_to_remove = []
 
             for client_id, bucket in self.buckets.items():
-                if bucket.tokens >= inactive_threshold:
-                    keys_to_remove.append(client_id)
+                with bucket.lock:
+                    bucket._refill_unlocked()
+                    if bucket.tokens >= inactive_threshold:
+                        keys_to_remove.append(client_id)
 
             for key in keys_to_remove:
                 del self.buckets[key]
@@ -264,7 +266,7 @@ For async applications like FastAPI, we need an async-compatible implementation:
 # Async token bucket for use with FastAPI and asyncio
 import asyncio
 import time
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 from dataclasses import dataclass
 
 @dataclass
@@ -397,7 +399,6 @@ Here is a complete FastAPI application with token bucket rate limiting:
 # FastAPI application with token bucket rate limiting
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
 from async_token_bucket import AsyncRateLimiter
 
 # Create rate limiter instances for different tiers
@@ -410,6 +411,7 @@ def get_client_id(request: Request) -> str:
     """
     Extract client identifier from request.
     Uses X-API-Key header or falls back to IP address.
+    Only trust X-Forwarded-For if your app is behind a trusted proxy.
     """
     # Prefer API key for authenticated clients
     api_key = request.headers.get("X-API-Key")
@@ -443,29 +445,34 @@ def is_premium_key(api_key: str) -> bool:
     # In production, check against database
     return api_key.startswith("premium_")
 
-async def rate_limit_dependency(
-    request: Request,
-    limiter: AsyncRateLimiter = Depends(get_rate_limiter)
-):
+def rate_limit_dependency(tokens: float = 1.0):
     """
-    FastAPI dependency that enforces rate limiting.
-    Raises 429 if rate limit exceeded.
+    Create a FastAPI dependency that enforces rate limiting.
     """
-    client_id = get_client_id(request)
-    allowed, wait_time = await limiter.is_allowed(client_id)
+    async def dependency(
+        request: Request,
+        limiter: AsyncRateLimiter = Depends(get_rate_limiter)
+    ):
+        """
+        Raises 429 if rate limit exceeded.
+        """
+        client_id = get_client_id(request)
+        allowed, wait_time = await limiter.is_allowed(client_id, tokens=tokens)
 
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error": "Rate limit exceeded",
-                "retry_after": wait_time
-            },
-            headers={
-                "Retry-After": str(int(wait_time) + 1),
-                "X-RateLimit-Reset": str(int(wait_time))
-            }
-        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "Rate limit exceeded",
+                    "retry_after": wait_time
+                },
+                headers={
+                    "Retry-After": str(int(wait_time) + 1),
+                    "X-RateLimit-Reset": str(int(wait_time))
+                }
+            )
+
+    return dependency
 
 # Apply rate limiting to all routes
 @app.middleware("http")
@@ -511,11 +518,11 @@ async def get_data():
 
 @app.get("/api/expensive")
 async def expensive_operation(
-    _: None = Depends(rate_limit_dependency)
+    _: None = Depends(rate_limit_dependency(tokens=10))
 ):
     """
     Expensive endpoint with additional rate limit check.
-    Consumes 10 tokens instead of 1.
+    Consumes 10 additional tokens.
     """
     # This uses the dependency for explicit control
     return {"result": "Expensive computation complete"}
@@ -545,7 +552,7 @@ For distributed systems where rate limits must be shared across multiple instanc
 # Distributed token bucket using Redis
 import redis.asyncio as redis
 import time
-from typing import Tuple, Optional
+from typing import Tuple
 
 class RedisTokenBucket:
     """
@@ -592,7 +599,7 @@ class RedisTokenBucket:
     end
 
     -- Save state
-    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+    redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
     redis.call('EXPIRE', key, ttl)
 
     return {allowed, tostring(wait_time), tostring(tokens)}
@@ -617,7 +624,7 @@ class RedisTokenBucket:
 
     async def connect(self):
         """Connect to Redis and load Lua script"""
-        self.client = await redis.from_url(self.redis_url)
+        self.client = redis.from_url(self.redis_url)
 
         # Load the Lua script
         self.script_sha = await self.client.script_load(self.LUA_SCRIPT)
@@ -625,7 +632,7 @@ class RedisTokenBucket:
     async def close(self):
         """Close Redis connection"""
         if self.client:
-            await self.client.close()
+            await self.client.aclose()
 
     async def consume(
         self,
@@ -718,8 +725,17 @@ Some endpoints are more expensive than others. Here is how to charge different t
 # variable_cost.py
 # Rate limiting with variable token costs per endpoint
 from fastapi import FastAPI, Request, Depends, HTTPException
+from async_token_bucket import AsyncRateLimiter
 
 app = FastAPI()
+rate_limiter = AsyncRateLimiter(capacity=100, refill_rate=10)
+
+def get_client_id(request: Request) -> str:
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        return f"key:{api_key}"
+
+    return f"ip:{request.client.host}"
 
 # Define token costs for different operations
 OPERATION_COSTS = {
@@ -730,39 +746,39 @@ OPERATION_COSTS = {
     "bulk_import": 100
 }
 
-async def rate_limit_with_cost(
-    request: Request,
-    operation: str
-):
+def rate_limit_with_cost(operation: str):
     """
-    Rate limit based on operation cost.
+    Create a dependency that rate limits based on operation cost.
     """
-    client_id = get_client_id(request)
-    cost = OPERATION_COSTS.get(operation, 1)
+    async def dependency(request: Request):
+        client_id = get_client_id(request)
+        cost = OPERATION_COSTS.get(operation, 1)
 
-    allowed, wait_time = await rate_limiter.is_allowed(client_id, tokens=cost)
+        allowed, wait_time = await rate_limiter.is_allowed(client_id, tokens=cost)
 
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error": "Rate limit exceeded",
-                "operation_cost": cost,
-                "retry_after": wait_time
-            }
-        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "Rate limit exceeded",
+                    "operation_cost": cost,
+                    "retry_after": wait_time
+                }
+            )
+
+    return dependency
 
 @app.get("/items/{item_id}")
 async def get_item(
     item_id: int,
-    _: None = Depends(lambda r: rate_limit_with_cost(r, "read"))
+    _: None = Depends(rate_limit_with_cost("read"))
 ):
     """Read operation - costs 1 token"""
     return {"item_id": item_id}
 
 @app.post("/items")
 async def create_item(
-    _: None = Depends(lambda r: rate_limit_with_cost(r, "write"))
+    _: None = Depends(rate_limit_with_cost("write"))
 ):
     """Write operation - costs 5 tokens"""
     return {"status": "created"}
@@ -770,14 +786,14 @@ async def create_item(
 @app.get("/search")
 async def search(
     q: str,
-    _: None = Depends(lambda r: rate_limit_with_cost(r, "search"))
+    _: None = Depends(rate_limit_with_cost("search"))
 ):
     """Search operation - costs 10 tokens"""
     return {"results": []}
 
 @app.post("/export")
 async def export_data(
-    _: None = Depends(lambda r: rate_limit_with_cost(r, "export"))
+    _: None = Depends(rate_limit_with_cost("export"))
 ):
     """Export operation - costs 50 tokens"""
     return {"download_url": "..."}

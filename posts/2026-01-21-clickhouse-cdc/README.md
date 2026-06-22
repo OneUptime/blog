@@ -50,7 +50,7 @@ CREATE TABLE users
     _version UInt64,
     _deleted UInt8 DEFAULT 0
 )
-ENGINE = ReplacingMergeTree(_version)
+ENGINE = ReplacingMergeTree(_version, _deleted)
 ORDER BY user_id;
 
 -- Insert initial record
@@ -127,13 +127,13 @@ INSERT INTO users_vcmt VALUES (1, 'john.doe@example.com', 'John Doe', -1, 2);
         "database.user": "debezium",
         "database.password": "secret",
         "database.dbname": "app",
-        "database.server.name": "app",
+        "topic.prefix": "app",
         "table.include.list": "public.users,public.orders",
         "plugin.name": "pgoutput",
         "transforms": "unwrap",
         "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
         "transforms.unwrap.add.fields": "op,table,source.ts_ms",
-        "transforms.unwrap.delete.handling.mode": "rewrite"
+        "transforms.unwrap.delete.tombstone.handling.mode": "rewrite"
     }
 }
 ```
@@ -194,13 +194,20 @@ FROM users_kafka
 WHERE __op IN ('c', 'u', 'd', 'r');  -- create, update, delete, read (snapshot)
 ```
 
-## Direct PostgreSQL CDC
+## Direct PostgreSQL Incremental Sync
 
 ### Using PostgreSQL Engine
 
 ```sql
 -- Connect to PostgreSQL and query current state
 CREATE TABLE pg_users
+(
+    user_id UInt64,
+    email String,
+    name String,
+    status String,
+    updated_at DateTime64(3)
+)
 ENGINE = PostgreSQL('postgres:5432', 'app', 'users', 'readonly', 'password');
 
 -- Incremental sync with modified timestamp
@@ -232,7 +239,7 @@ WHERE updated_at > (SELECT max(updated_at) FROM users_sync);
 ### Scheduled Sync
 
 ```sql
--- Create dictionary for timestamp tracking
+-- Create table for timestamp tracking
 CREATE TABLE sync_state
 (
     table_name String,
@@ -332,16 +339,13 @@ CREATE TABLE users
     _version UInt64,
     _deleted UInt8 DEFAULT 0
 )
-ENGINE = ReplacingMergeTree(_version)
+ENGINE = ReplacingMergeTree(_version, _deleted)
 ORDER BY user_id
 SETTINGS
-    -- Merge more aggressively to remove old versions
-    merge_with_ttl_timeout = 3600,
-
-    -- Allow more parts before merge
+    -- Allow more active parts before inserts fail
     parts_to_throw_insert = 500,
 
-    -- Index for version lookups
+    -- Sparse primary index mark granularity
     index_granularity = 8192;
 
 -- Add index for time-based queries
@@ -361,9 +365,9 @@ SELECT count() FROM users WHERE status = 'active';
 -- With FINAL (accurate but slower)
 SELECT count() FROM users FINAL WHERE status = 'active' AND _deleted = 0;
 
--- Better: Pre-aggregate current state
+-- Better: Maintain a separate serving table when needed
 CREATE MATERIALIZED VIEW users_current
-ENGINE = ReplacingMergeTree(_version)
+ENGINE = ReplacingMergeTree(_version, _deleted)
 ORDER BY user_id
 AS SELECT * FROM users;
 ```
@@ -373,13 +377,15 @@ AS SELECT * FROM users;
 ### Lag Monitoring
 
 ```sql
--- Check Kafka consumer lag
+-- Check Kafka consumer offsets and librdkafka statistics
 SELECT
     database,
     table,
     consumer_id,
-    broker_id,
-    lag
+    assignments.topic,
+    assignments.partition_id,
+    assignments.current_offset,
+    rdkafka_stat
 FROM system.kafka_consumers
 WHERE database = 'default' AND table = 'users_kafka';
 
@@ -393,7 +399,7 @@ FROM users;
 ### Data Quality Checks
 
 ```sql
--- Duplicate check (should be 0 after merge)
+-- Duplicate check (should be 0 after a full FINAL merge)
 SELECT
     user_id,
     count() AS versions
@@ -441,7 +447,7 @@ CREATE TABLE cdc_table
     created_at DateTime64(3),
     updated_at DateTime64(3)
 )
-ENGINE = ReplacingMergeTree(_version)
+ENGINE = ReplacingMergeTree(_version, _deleted)
 ORDER BY id;
 ```
 
@@ -466,4 +472,4 @@ TTL error_time + INTERVAL 7 DAY;
 
 ---
 
-CDC with ClickHouse requires choosing the right table engine (ReplacingMergeTree for most cases), properly handling deletes with soft delete flags, and using FINAL or LIMIT BY for deduplication. Integrate with Debezium via Kafka for real-time CDC, or use direct PostgreSQL connections for simpler batch sync. Monitor lag and data quality to ensure consistency between source and ClickHouse.
+CDC with ClickHouse requires choosing the right table engine (ReplacingMergeTree for most cases), properly handling deletes with soft delete flags, and using FINAL or LIMIT BY for deduplication. Integrate with Debezium via Kafka for real-time CDC, or use direct PostgreSQL connections for simpler batch sync. Monitor offsets, freshness, and data quality to ensure consistency between source and ClickHouse.

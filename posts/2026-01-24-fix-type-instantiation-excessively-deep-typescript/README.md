@@ -12,13 +12,13 @@ The "Type instantiation is excessively deep and possibly infinite" error occurs 
 
 ## Understanding the Error
 
-TypeScript has a built-in recursion limit of 50 levels for type instantiation. When a type references itself too many times or creates deep nesting, the compiler stops with this error to prevent infinite loops.
+TypeScript has internal recursion and instantiation limits for type checking. In current TypeScript versions, the exact thresholds are compiler implementation details, so avoid depending on a specific number. When a type references itself too many times or creates deep nesting, the compiler stops with this error to prevent infinite loops.
 
 ```mermaid
 flowchart TD
     A[Type Definition] --> B{Contains Recursion?}
     B -->|No| C[Type Resolved]
-    B -->|Yes| D{Depth < 50?}
+    B -->|Yes| D{Under compiler limit?}
     D -->|Yes| E[Continue Resolution]
     E --> B
     D -->|No| F[Error: Excessively Deep]
@@ -34,15 +34,18 @@ flowchart TD
 The most common cause is a type that recursively references itself without a proper base case:
 
 ```typescript
-// BAD: This type causes infinite recursion
-// The compiler cannot determine when to stop
+// This recursive shape is valid by itself
 type InfiniteNested<T> = {
   value: T;
   children: InfiniteNested<T>[];  // Always recurses
 };
 
-// Attempting to use deeply nested operations triggers the error
-type DeepValue = InfiniteNested<string>["children"][0]["children"][0];  // Error!
+// BAD: A type-level traversal with no base case triggers the error
+type NestedChild<T> = T extends { children: (infer C)[] }
+  ? NestedChild<C>
+  : T;
+
+type DeepValue = NestedChild<InfiniteNested<string>>;  // Error!
 ```
 
 ### 2. Mapped Types with Recursion
@@ -107,7 +110,7 @@ type DeepReadonlyLimited<T, D extends number = 10> = D extends 0
 type SafeReadonly = DeepReadonlyLimited<ComplexType>;
 ```
 
-### Solution 2: Use Intersection Types for Termination
+### Solution 2: Track Seen Types for Termination
 
 Create explicit termination conditions using never:
 
@@ -126,18 +129,18 @@ type TreeNode<T, MaxDepth extends number = 5> = MaxDepth extends 0
   ? { value: T; children: never[] }
   : {
       value: T;
-      children: TreeNode<T, Subtract<MaxDepth, 1>>[];
+      children: TreeNode<T, Prev[MaxDepth]>[];
     };
 
-// Helper type for subtraction
-type Subtract<N extends number, M extends 1> = [
+// Helper type for moving to the previous depth
+type Prev = [
   never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-][N];
+];
 ```
 
 ### Solution 3: Simplify Conditional Types
 
-Flatten nested conditionals using union types:
+Flatten nested conditionals using a recursive helper with an explicit limit:
 
 ```typescript
 // BAD: Deeply nested conditionals
@@ -191,9 +194,9 @@ type Transform<T> = T extends Array<any>
     : HandleObject<T>;
 ```
 
-### Solution 5: Use Type Aliases for Caching
+### Solution 5: Use Type Aliases for Reuse
 
-TypeScript caches type alias results. Using named aliases instead of inline types reduces redundant calculations:
+Using named aliases instead of repeating inline types gives TypeScript a reusable named instantiation and reduces redundant type expressions:
 
 ```typescript
 // BAD: Inline types computed multiple times
@@ -204,8 +207,7 @@ function process<T>(
   // ...
 }
 
-// GOOD: Named alias computed once and cached
-// TypeScript can reuse the cached result
+// GOOD: Named alias avoids repeating the same type expression
 type Processed<T> = T extends object ? { [K in keyof T]: T[K] } : T;
 
 function process<T>(input: Processed<T>): Processed<T> {
@@ -218,7 +220,7 @@ function process<T>(input: Processed<T>): Processed<T> {
 A common use case that triggers this error is typing arbitrary JSON:
 
 ```typescript
-// BAD: Naive JSON type causes infinite instantiation
+// This recursive JSON type is valid by itself
 type JsonValue =
   | string
   | number
@@ -227,7 +229,7 @@ type JsonValue =
   | JsonValue[]  // Recursive
   | { [key: string]: JsonValue };  // Recursive
 
-// Deep operations on JsonValue trigger the error
+// BAD: Deep recursive transformations on JsonValue can trigger the error
 type DeepPartialJson<T extends JsonValue> = T extends object
   ? { [K in keyof T]?: DeepPartialJson<T[K] & JsonValue> }
   : T;

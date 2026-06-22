@@ -45,9 +45,9 @@ flowchart TB
 
 | Feature | Fluent Bit | Fluentd |
 |---------|------------|---------|
-| Memory Footprint | ~450KB | ~40MB |
+| Memory Footprint | ~450KB | >60MB |
 | Dependencies | None (C) | Ruby runtime |
-| Plugins | 70+ built-in | 1000+ available |
+| Plugins | 100+ built-in | 1000+ available |
 | Use Case | Edge/Node collection | Aggregation/Processing |
 | Performance | Higher throughput | More flexible |
 
@@ -139,7 +139,7 @@ data:
         # Refresh interval for watching new files
         Refresh_Interval  10
         # Database file for tracking position
-        DB                /var/log/fluent-bit-containers.db
+        DB                /var/lib/fluent-bit/fluent-bit-containers.db
         DB.Sync           Normal
 
     [INPUT]
@@ -148,7 +148,7 @@ data:
         Tag               systemd.*
         # Read from systemd journal
         Read_From_Tail    On
-        DB                /var/log/fluent-bit-systemd.db
+        DB                /var/lib/fluent-bit/fluent-bit-systemd.db
 
     [FILTER]
         # Enrich logs with Kubernetes metadata
@@ -252,7 +252,7 @@ spec:
         - operator: Exists
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:2.2
+          image: fluent/fluent-bit:5.0.7
           ports:
             - containerPort: 2020
               name: metrics
@@ -261,10 +261,13 @@ spec:
             - name: varlog
               mountPath: /var/log
               readOnly: true
-            # Mount container runtime logs (for containerd)
+            # Mount Docker container runtime logs
             - name: containers
               mountPath: /var/lib/docker/containers
               readOnly: true
+            # Mount writable state for tail offset databases
+            - name: state
+              mountPath: /var/lib/fluent-bit
             # Mount configuration
             - name: config
               mountPath: /fluent-bit/etc/
@@ -289,9 +292,29 @@ spec:
         - name: containers
           hostPath:
             path: /var/lib/docker/containers
+        - name: state
+          hostPath:
+            path: /var/lib/fluent-bit
+            type: DirectoryOrCreate
         - name: config
           configMap:
             name: fluent-bit-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluent-bit
+  namespace: logging
+  labels:
+    app: fluent-bit
+spec:
+  selector:
+    app: fluent-bit
+  ports:
+    - port: 2020
+      targetPort: metrics
+      name: metrics
 ```
 
 ### Fluent Bit to Grafana Loki
@@ -321,7 +344,7 @@ data:
         Mem_Buf_Limit     50MB
         Skip_Long_Lines   On
         Refresh_Interval  10
-        DB                /var/log/fluent-bit.db
+        DB                /var/lib/fluent-bit/fluent-bit.db
 
     [FILTER]
         Name                kubernetes
@@ -391,8 +414,9 @@ data:
       </record>
     </filter>
 
-    # Route logs based on namespace
-    <match kube.production.**>
+    # Route logs based on namespace in the expanded container log tag:
+    # kube.var.log.containers.<pod>_<namespace>_<container>-<id>.log
+    <match /^kube\.var\.log\.containers\.[^_]+_production_.+\.log$/>
       @type elasticsearch
       host elasticsearch.logging.svc.cluster.local
       port 9200
@@ -410,7 +434,7 @@ data:
       </buffer>
     </match>
 
-    <match kube.staging.**>
+    <match /^kube\.var\.log\.containers\.[^_]+_staging_.+\.log$/>
       @type elasticsearch
       host elasticsearch.logging.svc.cluster.local
       port 9200
@@ -459,7 +483,7 @@ spec:
     spec:
       containers:
         - name: fluentd
-          image: fluent/fluentd-kubernetes-daemonset:v1.16-debian-elasticsearch8
+          image: fluent/fluentd-kubernetes-daemonset:v1.19-debian-elasticsearch8-1
           env:
             - name: CLUSTER_NAME
               value: "production"
@@ -577,6 +601,7 @@ metadata:
   name: elasticsearch
   namespace: logging
 spec:
+  clusterIP: None
   selector:
     app: elasticsearch
   ports:
@@ -596,11 +621,19 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
-  annotations:
-    # Tell Fluent Bit to use JSON parser for this app
-    fluentbit.io/parser: json
+  labels:
+    app: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
+      annotations:
+        # Tell Fluent Bit to use JSON parser for this app
+        fluentbit.io/parser: json
     spec:
       containers:
         - name: app
@@ -643,7 +676,7 @@ spec:
 
 ### Multi-line Log Parsing
 
-```yaml
+```ini
 # For Java stack traces and similar multi-line logs
 [FILTER]
     Name                    multiline

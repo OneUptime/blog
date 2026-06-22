@@ -15,10 +15,10 @@ Batch processing is essential for efficient handling of large volumes of jobs. I
 BullMQ provides `addBulk` for efficiently adding multiple jobs:
 
 ```typescript
-import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Queue } from 'bullmq';
+import IORedis from 'ioredis';
 
-const connection = new Redis({
+const connection = new IORedis({
   host: 'localhost',
   port: 6379,
   maxRetriesPerRequest: null,
@@ -43,6 +43,9 @@ console.log(`Added ${jobs.length} jobs`);
 Configure individual job options in bulk operations:
 
 ```typescript
+import { Queue } from 'bullmq';
+import IORedis from 'ioredis';
+
 interface TaskJobData {
   userId: string;
   taskType: string;
@@ -52,7 +55,7 @@ interface TaskJobData {
 class BulkJobService {
   private queue: Queue<TaskJobData>;
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.queue = new Queue('tasks', {
       connection,
       defaultJobOptions: {
@@ -106,6 +109,9 @@ class BulkJobService {
 Collect jobs and process them in batches:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
+
 interface BatchableJobData {
   itemId: string;
   action: string;
@@ -113,15 +119,13 @@ interface BatchableJobData {
 }
 
 class BatchProcessor {
-  private queue: Queue<BatchableJobData>;
   private batchQueue: Queue<{ items: BatchableJobData[] }>;
   private pendingItems: BatchableJobData[] = [];
   private batchSize: number = 100;
   private flushInterval: number = 5000;
-  private flushTimer: NodeJS.Timer | null = null;
+  private flushTimer: NodeJS.Timeout | null = null;
 
-  constructor(connection: Redis) {
-    this.queue = new Queue('items', { connection });
+  constructor(connection: IORedis) {
     this.batchQueue = new Queue('batches', { connection });
     this.startFlushTimer();
   }
@@ -192,6 +196,9 @@ const batchWorker = new Worker<{ items: BatchableJobData[] }>(
 Process large datasets in manageable chunks:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
+
 interface DataImportJob {
   importId: string;
   sourceUrl: string;
@@ -211,7 +218,7 @@ class ChunkedImportService {
   private chunkQueue: Queue<ChunkJob>;
   private chunkSize: number = 1000;
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.masterQueue = new Queue('data-import', { connection });
     this.chunkQueue = new Queue('import-chunks', { connection });
     this.createWorkers(connection);
@@ -227,7 +234,7 @@ class ChunkedImportService {
     });
   }
 
-  private createWorkers(connection: Redis) {
+  private createWorkers(connection: IORedis) {
     // Master worker - splits data into chunks
     new Worker<DataImportJob>('data-import', async (job) => {
       const { importId, sourceUrl, totalRecords } = job.data;
@@ -263,7 +270,7 @@ class ChunkedImportService {
       // Add all chunk jobs
       await this.chunkQueue.addBulk(chunkJobs);
 
-      // Wait for all chunks to complete (or use flows for this)
+      // Chunks are now queued; use flows if the import must wait for every chunk
       return {
         importId,
         totalRecords,
@@ -286,7 +293,10 @@ class ChunkedImportService {
           await processRecord(records[i]);
           processed++;
         } catch (error) {
-          errors.push({ index: i, error: error.message });
+          errors.push({
+            index: i,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
 
         if (i % 100 === 0) {
@@ -315,6 +325,7 @@ Collect and aggregate results from multiple batch jobs:
 
 ```typescript
 import { FlowProducer, Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 
 interface BatchItemData {
   batchId: string;
@@ -332,7 +343,7 @@ class BatchWithAggregation {
   private itemQueue: Queue<BatchItemData>;
   private aggregateQueue: Queue<AggregationData>;
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.flowProducer = new FlowProducer({ connection });
     this.itemQueue = new Queue('batch-items', { connection });
     this.aggregateQueue = new Queue('batch-aggregate', { connection });
@@ -364,19 +375,27 @@ class BatchWithAggregation {
     });
   }
 
-  private createWorkers(connection: Redis) {
+  private createWorkers(connection: IORedis) {
     // Item worker
     new Worker<BatchItemData>('batch-items', async (job) => {
       const { itemIndex, data } = job.data;
 
-      // Process individual item
-      const result = await processItem(data);
+      try {
+        // Process individual item
+        const result = await processItem(data);
 
-      return {
-        itemIndex,
-        success: true,
-        result,
-      };
+        return {
+          itemIndex,
+          success: true,
+          result,
+        };
+      } catch (error) {
+        return {
+          itemIndex,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     }, {
       connection,
       concurrency: 10,
@@ -412,6 +431,9 @@ class BatchWithAggregation {
 Process items using a sliding window approach:
 
 ```typescript
+import { Queue } from 'bullmq';
+import IORedis from 'ioredis';
+
 class SlidingWindowProcessor {
   private queue: Queue;
   private windowSize: number = 100;
@@ -419,7 +441,7 @@ class SlidingWindowProcessor {
   private currentWindow: any[] = [];
   private windowStart: number = Date.now();
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.queue = new Queue('windowed-processing', { connection });
     this.startWindowTimer();
   }
@@ -468,6 +490,9 @@ class SlidingWindowProcessor {
 Process batches in parallel while respecting rate limits:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
+
 interface RateLimitedBatchJob {
   batchId: string;
   items: any[];
@@ -476,7 +501,7 @@ interface RateLimitedBatchJob {
 class RateLimitedBatchProcessor {
   private queue: Queue<RateLimitedBatchJob>;
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.queue = new Queue('rate-limited-batch', { connection });
     this.createWorker(connection);
   }
@@ -486,7 +511,7 @@ class RateLimitedBatchProcessor {
     return this.queue.add('process', { batchId, items });
   }
 
-  private createWorker(connection: Redis) {
+  private createWorker(connection: IORedis) {
     new Worker<RateLimitedBatchJob>('rate-limited-batch', async (job) => {
       const { batchId, items } = job.data;
 
@@ -524,7 +549,7 @@ class RateLimitedBatchProcessor {
       connection,
       concurrency: 3, // 3 batches in parallel
       limiter: {
-        max: 5, // Max 5 batches per second
+        max: 5, // Max 5 batch jobs per second across this queue
         duration: 1000,
       },
     });
@@ -537,6 +562,9 @@ class RateLimitedBatchProcessor {
 Batch database operations for better performance:
 
 ```typescript
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
+
 interface DatabaseBatchJob {
   operation: 'insert' | 'update' | 'delete';
   table: string;
@@ -546,7 +574,7 @@ interface DatabaseBatchJob {
 class DatabaseBatchProcessor {
   private queue: Queue<DatabaseBatchJob>;
 
-  constructor(connection: Redis) {
+  constructor(connection: IORedis) {
     this.queue = new Queue('db-batch', { connection });
     this.createWorker(connection);
   }
@@ -593,7 +621,7 @@ class DatabaseBatchProcessor {
     return chunks;
   }
 
-  private createWorker(connection: Redis) {
+  private createWorker(connection: IORedis) {
     new Worker<DatabaseBatchJob>('db-batch', async (job) => {
       const { operation, table, records } = job.data;
 

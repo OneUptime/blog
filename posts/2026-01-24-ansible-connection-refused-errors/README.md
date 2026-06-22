@@ -234,7 +234,7 @@ sudo iptables -L -n -v
 sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 
 # Save iptables rules (Debian/Ubuntu)
-sudo iptables-save > /etc/iptables/rules.v4
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 
 # Save iptables rules (RHEL/CentOS)
 sudo service iptables save
@@ -376,10 +376,10 @@ timeout = 30
 
 [ssh_connection]
 # Seconds for SSH connect timeout
-connect_timeout = 30
+timeout = 30
 
 # SSH arguments for connection handling
-ssh_args = -o ConnectTimeout=30 -o ConnectionAttempts=3
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=60s -o ConnectTimeout=30 -o ConnectionAttempts=3
 ```
 
 ```yaml
@@ -646,7 +646,7 @@ all:
 ```ini
 # ansible.cfg - global jump host configuration
 [ssh_connection]
-ssh_args = -o ProxyJump=bastion_user@bastion.example.com
+ssh_common_args = -o ProxyJump=bastion_user@bastion.example.com
 ```
 
 ## Conclusion

@@ -22,7 +22,7 @@ The kubernetes.core collection provides modules for managing Kubernetes resource
 ansible-galaxy collection install kubernetes.core
 
 # Install required Python dependencies
-pip install kubernetes openshift
+pip install kubernetes PyYAML jsonpatch
 
 # Verify installation
 ansible-doc kubernetes.core.k8s
@@ -209,7 +209,7 @@ Apply existing YAML manifests from files.
         kubeconfig: ~/.kube/config
         state: present
         apply: yes
-        src: kustomize/production/
+        definition: "{{ lookup('kubernetes.core.kustomize', dir='kustomize/production/') }}"
 ```
 
 ## Managing ConfigMaps and Secrets
@@ -295,7 +295,7 @@ Implement rolling updates and blue-green deployments.
     - name: Update deployment image
       kubernetes.core.k8s:
         kubeconfig: ~/.kube/config
-        state: present
+        state: patched
         definition:
           apiVersion: apps/v1
           kind: Deployment
@@ -324,6 +324,7 @@ Implement rolling updates and blue-green deployments.
       register: deployment_status
       until: >
         deployment_status.resources[0].status.readyReplicas is defined and
+        deployment_status.resources[0].spec.replicas is defined and
         deployment_status.resources[0].status.readyReplicas == deployment_status.resources[0].spec.replicas
       retries: 30
       delay: 10
@@ -370,6 +371,7 @@ Retrieve information about cluster resources.
     - name: Check deployment health
       assert:
         that:
+          - deployment_info.resources[0].status.availableReplicas is defined
           - deployment_info.resources[0].status.availableReplicas >= 2
         fail_msg: "Deployment has insufficient replicas"
         success_msg: "Deployment is healthy"

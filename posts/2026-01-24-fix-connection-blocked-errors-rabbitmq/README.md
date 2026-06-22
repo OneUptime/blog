@@ -37,9 +37,9 @@ flowchart TD
 
 ### What Triggers Connection Blocking?
 
-1. **Memory high watermark exceeded** - Default is 40% of available RAM
+1. **Memory high watermark exceeded** - Default is 60% of available RAM in RabbitMQ 4.x (40% in RabbitMQ 3.13 and earlier)
 2. **Disk free space alarm** - Default is 50MB minimum free space
-3. **File descriptor limit reached** - Too many open connections/files
+3. **File descriptor limit reached** - Too many open connections/files can cause RabbitMQ to refuse new client connections
 
 ---
 
@@ -66,7 +66,7 @@ rabbitmqctl status | grep -A 5 "Disk"
 
 ```bash
 # List all connections and their state
-rabbitmqctl list_connections name state blocked_by
+rabbitmqctl list_connections name state
 
 # Filter for blocked connections
 rabbitmqctl list_connections name state | grep blocked
@@ -90,7 +90,7 @@ In the RabbitMQ Management UI, look for:
 
 ```bash
 # Get detailed memory breakdown
-rabbitmqctl status --formatter=json | jq '.memory'
+rabbitmqctl status --formatter json | jq '.memory'
 
 # Key areas to examine:
 # - connection_readers: Memory for receiving data
@@ -113,7 +113,7 @@ def analyze_queue_memory():
     result = subprocess.run(
         ['rabbitmqctl', 'list_queues',
          'name', 'messages', 'memory', 'consumers',
-         '--formatter=json'],
+         '--formatter', 'json'],
         capture_output=True,
         text=True
     )
@@ -126,15 +126,13 @@ def analyze_queue_memory():
     print("Top Memory-Consuming Queues:")
     print("-" * 60)
 
-    total_memory = 0
+    total_memory = sum(q.get('memory', 0) for q in queues)
     for queue in sorted_queues[:10]:
         name = queue['name']
         messages = queue['messages']
         memory_bytes = queue['memory']
         memory_mb = memory_bytes / (1024 * 1024)
         consumers = queue['consumers']
-
-        total_memory += memory_bytes
 
         print(f"{name}")
         print(f"  Messages: {messages:,}")
@@ -157,33 +155,37 @@ if __name__ == '__main__':
 ```ini
 # rabbitmq.conf
 
-# Increase memory threshold (default is 0.4 = 40%)
+# Increase memory threshold (default is 0.6 = 60% in RabbitMQ 4.x)
 # Only increase if you have sufficient RAM
-vm_memory_high_watermark.relative = 0.6
+vm_memory_high_watermark.relative = 0.7
 
 # Or set an absolute value
 vm_memory_high_watermark.absolute = 2GB
 
-# Configure paging threshold (when messages start being paged to disk)
+# RabbitMQ 3.13 and earlier with CQv1 only:
+# configure when messages start being paged to disk
 vm_memory_high_watermark_paging_ratio = 0.75
 ```
 
 ```bash
 # Apply memory changes at runtime (temporary)
-rabbitmqctl set_vm_memory_high_watermark 0.6
+rabbitmqctl set_vm_memory_high_watermark 0.7
 
 # Or set absolute value
 rabbitmqctl set_vm_memory_high_watermark absolute 2GB
 ```
 
-### 2. Enable Message Paging
+### 2. Review Queue Paging Behavior
 
 ```ini
 # rabbitmq.conf
 
-# Configure queue to page messages to disk earlier
-# This reduces memory pressure at the cost of performance
-queue_master_locator = min-masters
+# RabbitMQ 4.x, quorum queues, streams, and classic queues v2
+# actively move queue data to disk and do not generally build
+# large in-memory backlogs.
+#
+# For RabbitMQ 3.13 and earlier with CQv1, tune paging with:
+vm_memory_high_watermark_paging_ratio = 0.5
 ```
 
 ### 3. Set Queue Length Limits
@@ -260,17 +262,14 @@ rabbitmqctl set_disk_free_limit mem_relative 1.5
 # Clear old log files
 sudo find /var/log/rabbitmq -name "*.log.*" -mtime +7 -delete
 
-# Compact Mnesia database (requires node restart)
-rabbitmqctl stop_app
-rabbitmqctl reset  # WARNING: Clears all data!
-rabbitmqctl start_app
+# If queues contain disposable messages, purge only the affected queues
+rabbitmqctl purge_queue queue-name
 
 # For quorum queues - check WAL size
 du -sh /var/lib/rabbitmq/mnesia/*/quorum/
 
-# Force quorum queue checkpoint (reduces WAL size)
-# This is done automatically but can be triggered
-rabbitmqctl eval 'rabbit_quorum_queue:force_checkpoint_all().'
+# Quorum queue WAL cleanup is automatic; if disk does not recover,
+# consume, purge, or delete queues that contain unneeded messages
 ```
 
 ---
@@ -316,12 +315,12 @@ class ResilientPublisher:
 
         logger.info("Connected to RabbitMQ")
 
-    def _on_blocked(self, frame):
+    def _on_blocked(self, connection, method_frame):
         """Called when connection is blocked"""
         self.blocked = True
-        logger.warning(f"Connection blocked: {frame.reason}")
+        logger.warning(f"Connection blocked: {method_frame.method.reason}")
 
-    def _on_unblocked(self, frame):
+    def _on_unblocked(self, connection, method_frame):
         """Called when connection is unblocked"""
         self.blocked = False
         logger.info("Connection unblocked")
@@ -400,7 +399,7 @@ if __name__ == '__main__':
 const amqp = require('amqplib');
 
 class ResilientPublisher {
-    constructor(url = 'amqp://localhost') {
+    constructor(url = 'amqp://localhost?heartbeat=60') {
         this.url = url;
         this.connection = null;
         this.channel = null;
@@ -408,11 +407,8 @@ class ResilientPublisher {
     }
 
     async connect() {
-        // Connect with socket options
-        this.connection = await amqp.connect(this.url, {
-            // Heartbeat interval in seconds
-            heartbeat: 60
-        });
+        // Heartbeat is an AMQP tuning parameter, supplied in the URL
+        this.connection = await amqp.connect(this.url);
 
         // Handle connection blocked event
         this.connection.on('blocked', (reason) => {
@@ -577,20 +573,17 @@ flowchart TD
 ```python
 import pika
 import time
-from collections import deque
-import threading
 
 class ThrottledPublisher:
-    def __init__(self, host='localhost', max_pending=1000):
+    def __init__(self, host='localhost', max_per_second=500):
         self.host = host
-        self.max_pending = max_pending
-        self.pending_confirms = 0
-        self.lock = threading.Lock()
+        self.min_interval = 1.0 / max_per_second
+        self.last_publish_at = 0
         self.connection = None
         self.channel = None
 
     def connect(self):
-        """Connect with async confirm handling"""
+        """Connect with publisher confirms enabled"""
         parameters = pika.ConnectionParameters(
             host=self.host,
             heartbeat=60
@@ -600,46 +593,26 @@ class ThrottledPublisher:
         self.channel = self.connection.channel()
         self.channel.confirm_delivery()
 
-    def _wait_for_confirms(self, target_pending):
-        """Wait until pending confirms drop below target"""
-        while self.pending_confirms > target_pending:
-            # Process events to receive confirmations
-            self.connection.process_data_events(time_limit=0.1)
-
     def publish(self, queue, message):
-        """Publish with backpressure based on pending confirms"""
+        """Publish with simple producer-side throttling"""
 
-        # Throttle if too many pending confirms
-        if self.pending_confirms >= self.max_pending:
-            print(f"Throttling: {self.pending_confirms} pending confirms")
-            self._wait_for_confirms(self.max_pending // 2)
+        elapsed = time.monotonic() - self.last_publish_at
+        if elapsed < self.min_interval:
+            time.sleep(self.min_interval - elapsed)
 
-        with self.lock:
-            self.pending_confirms += 1
-
-        try:
-            self.channel.basic_publish(
-                exchange='',
-                routing_key=queue,
-                body=message,
-                properties=pika.BasicProperties(delivery_mode=2)
-            )
-
-            with self.lock:
-                self.pending_confirms -= 1
-
-        except Exception as e:
-            with self.lock:
-                self.pending_confirms -= 1
-            raise e
+        self.channel.basic_publish(
+            exchange='',
+            routing_key=queue,
+            body=message,
+            properties=pika.BasicProperties(delivery_mode=2)
+        )
+        self.last_publish_at = time.monotonic()
 
     def close(self):
-        # Wait for all confirms before closing
-        self._wait_for_confirms(0)
         self.connection.close()
 
 # Usage
-publisher = ThrottledPublisher(max_pending=500)
+publisher = ThrottledPublisher(max_per_second=500)
 publisher.connect()
 
 for i in range(10000):
@@ -655,12 +628,12 @@ import pika
 import time
 
 def create_rate_limited_queue(channel, queue_name, messages_per_second):
-    """Create a queue with built-in rate limiting using TTL"""
+    """Create a queue and delayed exchange for producer-side pacing"""
 
     # Calculate delay in milliseconds
     delay_ms = int(1000 / messages_per_second)
 
-    # Create a delayed message exchange pattern
+    # Requires the rabbitmq_delayed_message_exchange plugin
     channel.exchange_declare(
         exchange=f'{queue_name}-delayed',
         exchange_type='x-delayed-message',
@@ -672,9 +645,7 @@ def create_rate_limited_queue(channel, queue_name, messages_per_second):
         queue=queue_name,
         durable=True,
         arguments={
-            'x-queue-type': 'quorum',
-            # Consumer rate limiting via prefetch
-            'x-max-priority': 10
+            'x-queue-type': 'quorum'
         }
     )
 
@@ -686,15 +657,15 @@ def create_rate_limited_queue(channel, queue_name, messages_per_second):
 
     return delay_ms
 
-def publish_rate_limited(channel, exchange, routing_key, message, delay_ms):
-    """Publish message with delay for rate limiting"""
+def publish_rate_limited(channel, exchange, routing_key, message, delay_ms, sequence=0):
+    """Publish message with increasing delay for producer-side pacing"""
     channel.basic_publish(
         exchange=exchange,
         routing_key=routing_key,
         body=message,
         properties=pika.BasicProperties(
             delivery_mode=2,
-            headers={'x-delay': delay_ms}
+            headers={'x-delay': delay_ms * (sequence + 1)}
         )
     )
 ```
@@ -730,15 +701,15 @@ groups:
           summary: "RabbitMQ disk alarm triggered"
           description: "Disk free space is below the threshold"
 
-      # Alert on blocked connections
-      - alert: RabbitMQConnectionsBlocked
-        expr: rabbitmq_connections_state{state="blocked"} > 0
+      # Alert when publishers are blocked by a resource alarm
+      - alert: RabbitMQPublishersBlockedByResourceAlarm
+        expr: rabbitmq_alarms_memory_used_watermark == 1 or rabbitmq_alarms_free_disk_space_watermark == 1
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "RabbitMQ has blocked connections"
-          description: "{{ $value }} connections are currently blocked"
+          summary: "RabbitMQ publishers are blocked by a resource alarm"
+          description: "RabbitMQ is blocking publishers because a memory or disk alarm is active"
 ```
 
 ### Monitoring Script
@@ -754,7 +725,7 @@ import sys
 def check_alarms():
     """Check for active alarms"""
     result = subprocess.run(
-        ['rabbitmqctl', 'status', '--formatter=json'],
+        ['rabbitmqctl', 'status', '--formatter', 'json'],
         capture_output=True,
         text=True
     )
@@ -774,7 +745,7 @@ def check_alarms():
 def check_memory():
     """Check memory usage"""
     result = subprocess.run(
-        ['rabbitmqctl', 'status', '--formatter=json'],
+        ['rabbitmqctl', 'status', '--formatter', 'json'],
         capture_output=True,
         text=True
     )
@@ -782,12 +753,15 @@ def check_memory():
     status = json.loads(result.stdout)
     memory = status.get('memory', {})
 
-    total = memory.get('total', {}).get('erlang', 0)
+    total_memory = memory.get('total', 0)
+    if isinstance(total_memory, dict):
+        total_memory = total_memory.get('erlang', 0)
+
     limit = status.get('vm_memory_high_watermark_limit', 0)
 
     if limit > 0:
-        usage_pct = (total / limit) * 100
-        print(f"Memory: {total / (1024**2):.1f}MB / {limit / (1024**2):.1f}MB ({usage_pct:.1f}%)")
+        usage_pct = (total_memory / limit) * 100
+        print(f"Memory: {total_memory / (1024**2):.1f}MB / {limit / (1024**2):.1f}MB ({usage_pct:.1f}%)")
 
         if usage_pct > 90:
             print("WARNING: Memory usage above 90%")
@@ -798,7 +772,7 @@ def check_memory():
 def check_disk():
     """Check disk free space"""
     result = subprocess.run(
-        ['rabbitmqctl', 'status', '--formatter=json'],
+        ['rabbitmqctl', 'status', '--formatter', 'json'],
         capture_output=True,
         text=True
     )
@@ -818,7 +792,7 @@ def check_disk():
 def check_blocked_connections():
     """Check for blocked connections"""
     result = subprocess.run(
-        ['rabbitmqctl', 'list_connections', 'name', 'state', '--formatter=json'],
+        ['rabbitmqctl', 'list_connections', 'name', 'state', '--formatter', 'json'],
         capture_output=True,
         text=True
     )
@@ -964,5 +938,5 @@ Key takeaways:
 *Need comprehensive monitoring for your RabbitMQ clusters? [OneUptime](https://oneuptime.com) provides real-time alerts for memory pressure, disk space issues, and connection blocking events.*
 
 **Related Reading:**
-- [How to Configure RabbitMQ Quorum Queues](https://oneuptime.com/blog)
-- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog)
+- [How to Configure RabbitMQ Quorum Queues](https://oneuptime.com/blog/post/2026-01-24-configure-rabbitmq-quorum-queues/view)
+- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog/post/2026-01-24-monitor-rabbitmq-prometheus/view)

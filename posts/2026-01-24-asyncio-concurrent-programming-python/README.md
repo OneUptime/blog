@@ -214,7 +214,7 @@ async def might_fail(n):
     return f"Task {n} succeeded"
 
 async def main():
-    # By default, first exception cancels all tasks
+    # By default, the first exception is raised to the caller
     try:
         results = await asyncio.gather(
             might_fail(1),
@@ -312,6 +312,8 @@ print(f"Comments: {len(data['comments'])}")
 ### Async Context Manager
 
 ```python
+import asyncio
+
 class AsyncDatabaseConnection:
     """Example async context manager for database connections."""
 
@@ -339,6 +341,8 @@ asyncio.run(main())
 ### Async Iterator
 
 ```python
+import asyncio
+
 class AsyncRange:
     """Example async iterator."""
 

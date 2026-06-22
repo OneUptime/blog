@@ -26,7 +26,7 @@ All containers in a pod:
 - Share the same network namespace (localhost communication)
 - Can share volumes
 - Are scheduled together on the same node
-- Have the same lifecycle (start and stop together)
+- Share the pod lifecycle (created and terminated as part of the same pod)
 
 ## Basic Multi-Container Pod
 
@@ -77,6 +77,8 @@ spec:
           readOnly: true
         - name: fluentd-config
           mountPath: /fluentd/etc
+        - name: fluentd-pos
+          mountPath: /fluentd/log
 
   volumes:
     - name: logs
@@ -84,6 +86,8 @@ spec:
     - name: fluentd-config
       configMap:
         name: fluentd-config
+    - name: fluentd-pos
+      emptyDir: {}
 ```
 
 Fluentd ConfigMap:
@@ -98,7 +102,7 @@ data:
     <source>
       @type tail
       path /var/log/app/*.log
-      pos_file /var/log/app/app.log.pos
+      pos_file /fluentd/log/app.log.pos
       tag app
       <parse>
         @type json
@@ -178,11 +182,18 @@ spec:
       volumeMounts:
         - name: nginx-config
           mountPath: /etc/nginx/conf.d
+        - name: basic-auth
+          mountPath: /etc/nginx/.htpasswd
+          subPath: .htpasswd
+          readOnly: true
 
   volumes:
     - name: nginx-config
       configMap:
         name: ambassador-nginx-config
+    - name: basic-auth
+      secret:
+        secretName: ambassador-basic-auth
 ```
 
 Ambassador nginx config:
@@ -244,7 +255,7 @@ spec:
         - --web.listen-address=:9102
 
   # Main app sends StatsD metrics to localhost:9125
-  # Prometheus scrapes localhost:9102
+  # Prometheus scrapes the pod IP on port 9102
 ```
 
 ### Pattern 5: Configuration Sync Sidecar
@@ -258,7 +269,7 @@ metadata:
   name: app-with-config-sync
 spec:
   containers:
-    # Main application reads config from shared volume
+    # Main application reads config from /etc/app/config/current
     - name: app
       image: myapp:v1
       volumeMounts:
@@ -271,10 +282,12 @@ spec:
       env:
         - name: GITSYNC_REPO
           value: "https://github.com/org/config-repo"
-        - name: GITSYNC_BRANCH
+        - name: GITSYNC_REF
           value: "main"
         - name: GITSYNC_ROOT
           value: "/config"
+        - name: GITSYNC_LINK
+          value: "current"
         - name: GITSYNC_PERIOD
           value: "60s"
       volumeMounts:
@@ -449,9 +462,9 @@ spec:
         periodSeconds: 10
 ```
 
-## Native Sidecar Containers (Kubernetes 1.28+)
+## Native Sidecar Containers (Kubernetes 1.33+ Stable)
 
-Kubernetes 1.28 introduced native sidecar support with `restartPolicy: Always`:
+Kubernetes introduced native sidecar support as an alpha feature in 1.28; it is stable in 1.33 and later. Native sidecars use `restartPolicy: Always` on an init container:
 
 ```yaml
 apiVersion: v1

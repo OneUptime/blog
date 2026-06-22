@@ -58,7 +58,7 @@ import json
 import yaml
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -78,7 +78,7 @@ class ConfigValue(Generic[T]):
     """
     value: T
     source: ConfigSource
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"ConfigValue({self.value}, source={self.source.value})"
@@ -235,9 +235,8 @@ The file watcher monitors configuration files and triggers reload on changes.
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Dict, Set
+from typing import Callable, Dict, Optional
 import hashlib
-import os
 
 class FileWatcher:
     """
@@ -338,11 +337,11 @@ class FileWatcher:
                 pass
 
     def _get_file_hash(self, path: Path) -> str:
-        """Calculate MD5 hash of file contents"""
+        """Calculate a content hash for the file"""
         if not path.exists():
             return ""
 
-        hasher = hashlib.md5()
+        hasher = hashlib.blake2b(digest_size=16)
         with open(path, "rb") as f:
             # Read in chunks for large files
             for chunk in iter(lambda: f.read(8192), b""):
@@ -360,7 +359,7 @@ The main configuration manager ties everything together.
 ```python
 # config_manager.py
 # Configuration manager with hot reload support
-from typing import Any, Dict, Optional, Callable, List
+from typing import Any, Dict, Optional, Callable, List, Tuple
 from pathlib import Path
 import json
 import yaml
@@ -368,6 +367,8 @@ import os
 import threading
 import logging
 from copy import deepcopy
+from config_core import ConfigSchema, ConfigValidationError
+from file_watcher import FileWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -401,6 +402,7 @@ class ConfigManager:
         self._watcher = FileWatcher(poll_interval=watch_interval)
         self._change_callbacks: List[Callable[[Dict], None]] = []
         self._config_files: List[Path] = []
+        self._env_sources: List[Tuple[str, Optional[Dict[str, str]]]] = []
 
     def load_file(
         self,
@@ -445,12 +447,24 @@ class ConfigManager:
             prefix: Only load vars starting with this prefix
             mapping: Map env var names to config keys
         """
+        self._env_sources.append((prefix, mapping.copy() if mapping else None))
+
+        with self._lock:
+            self._apply_env_to(self._config, prefix, mapping)
+
+    def _apply_env_to(
+        self,
+        target: Dict[str, Any],
+        prefix: str = "",
+        mapping: Optional[Dict[str, str]] = None
+    ):
+        """Apply environment variables to a config dictionary"""
         if mapping:
             # Use explicit mapping
             for env_var, config_key in mapping.items():
                 value = os.environ.get(env_var)
                 if value is not None:
-                    self._set_from_env(config_key, value)
+                    self._set_from_env(target, config_key, value)
         else:
             # Load all vars with prefix
             for key, value in os.environ.items():
@@ -460,9 +474,9 @@ class ConfigManager:
                 # Convert env var name to config key
                 # APP_DATABASE_HOST -> database.host
                 config_key = key[len(prefix):].lower().replace("_", ".")
-                self._set_from_env(config_key, value)
+                self._set_from_env(target, config_key, value)
 
-    def _set_from_env(self, key: str, value: str):
+    def _set_from_env(self, target: Dict[str, Any], key: str, value: str):
         """Set a config value from an environment variable"""
         # Try to parse as JSON for complex types
         try:
@@ -471,8 +485,7 @@ class ConfigManager:
             # Keep as string
             parsed = value
 
-        with self._lock:
-            self._set_nested(self._config, key, parsed)
+        self._set_nested(target, key, parsed)
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -528,29 +541,40 @@ class ConfigManager:
             return True
 
         with self._lock:
-            errors = self.schema.validate(self._config)
-
-        if errors:
-            raise ConfigValidationError(errors)
+            self._config = self.schema.apply_defaults(self._config)
+            self._validate_config(self._config)
 
         return True
 
+    def _validate_config(self, config: Dict[str, Any]):
+        """Validate the provided configuration dictionary"""
+        if not self.schema:
+            return
+
+        errors = self.schema.validate(config)
+        if errors:
+            raise ConfigValidationError(errors)
+
     def reload(self):
         """Manually reload all configuration files"""
-        with self._lock:
-            self._config = {}
+        new_config: Dict[str, Any] = {}
 
+        with self._lock:
             for path in self._config_files:
                 if path.exists():
                     config = self._read_file(path)
-                    self._deep_merge(self._config, config)
+                    self._deep_merge(new_config, config)
 
-        # Apply defaults from schema
-        if self.schema:
-            with self._lock:
-                self._config = self.schema.apply_defaults(self._config)
+            # Apply defaults from schema before higher-priority env vars
+            if self.schema:
+                new_config = self.schema.apply_defaults(new_config)
 
-        self.validate()
+            for prefix, mapping in self._env_sources:
+                self._apply_env_to(new_config, prefix, mapping)
+
+            self._validate_config(new_config)
+            self._config = new_config
+
         self._notify_change()
         logger.info("Configuration reloaded")
 
@@ -676,6 +700,7 @@ def on_config_change(new_config):
     print(f"Config updated! Debug mode: {new_config.get('debug')}")
 
     # Update application components that cache config
+    # Replace these with your application's own update functions.
     update_rate_limiter(new_config.get("rate_limit", {}))
     update_feature_flags(new_config.get("feature_flags", {}))
 
@@ -792,10 +817,9 @@ async def check_feature(name: str, cfg = Depends(get_config)):
 # test_config.py
 # Tests for configuration system
 import pytest
-import tempfile
-from pathlib import Path
 import yaml
 import time
+from config_manager import ConfigManager, ConfigSchema, ConfigValidationError
 
 class TestConfigManager:
     """Tests for ConfigManager"""

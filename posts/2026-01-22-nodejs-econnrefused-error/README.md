@@ -95,7 +95,7 @@ const pool = new Pool({
 });
 
 // With connection string
-const pool = new Pool({
+const poolFromConnectionString = new Pool({
   connectionString: 'postgresql://postgres:password@localhost:5432/mydb',
 });
 ```
@@ -164,7 +164,6 @@ docker inspect <container_name> | grep IPAddress
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   app:
     build: .
@@ -341,7 +340,7 @@ async function waitForService(url, timeout = 30000, interval = 1000) {
 }
 
 // Usage before starting app
-await waitForService('http://localhost:5432');
+await waitForService('http://localhost:3000/health');
 ```
 
 ### Docker Wait Script
@@ -369,7 +368,7 @@ exit 1
 # docker-compose.yml
 services:
   app:
-    command: ["./wait-for-it.sh", "db", "5432", "--", "node", "app.js"]
+    command: ["sh", "-c", "./wait-for-it.sh db 5432 30 && node app.js"]
 ```
 
 ## Common Scenarios and Solutions

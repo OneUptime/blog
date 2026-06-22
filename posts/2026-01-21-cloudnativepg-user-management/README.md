@@ -50,6 +50,7 @@ Create the password secret:
 
 ```bash
 kubectl create secret generic app-user-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=app_user \
   --from-literal=password=$(openssl rand -base64 24)
 ```
@@ -169,7 +170,7 @@ spec:
       owner: app_user
       postInitSQL:
         - CREATE DATABASE analytics OWNER app_user
-        - CREATE DATABASE reporting OWNER readonly_user
+        - CREATE DATABASE reporting OWNER app_user
         - CREATE DATABASE staging OWNER app_user
 ```
 
@@ -181,7 +182,7 @@ spec:
     initdb:
       database: myapp
       owner: app_user
-      postInitSQL:
+      postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
         - CREATE EXTENSION IF NOT EXISTS "pg_stat_statements"
         - CREATE EXTENSION IF NOT EXISTS "pgcrypto"
@@ -194,7 +195,9 @@ spec:
   bootstrap:
     initdb:
       database: myapp
-      postInitSQL:
+      owner: app_user
+      postInitApplicationSQL:
+        - CREATE ROLE readonly_user
         - CREATE SCHEMA IF NOT EXISTS app
         - CREATE SCHEMA IF NOT EXISTS audit
         - GRANT USAGE ON SCHEMA app TO app_user
@@ -211,11 +214,13 @@ spec:
 # Generate random password
 
 kubectl create secret generic app-user-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=app_user \
   --from-literal=password=$(openssl rand -base64 32)
 
 # Or use a password generator
 kubectl create secret generic app-user-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=app_user \
   --from-literal=password=$(tr -dc 'A-Za-z0-9!@#$%^&*' </dev/urandom | head -c 32)
 ```
@@ -230,6 +235,7 @@ NEW_PASSWORD=$(openssl rand -base64 32)
 
 # Update secret
 kubectl create secret generic app-user-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=app_user \
   --from-literal=password=$NEW_PASSWORD \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -246,7 +252,7 @@ spec:
       - name: temp_user
         ensure: present
         login: true
-        validUntil: "2026-06-01T00:00:00Z"
+        validUntil: "2027-06-01T00:00:00Z"
         passwordSecret:
           name: temp-user-credentials
 ```
@@ -255,14 +261,14 @@ spec:
 
 ### Cluster Secrets
 
-CloudNativePG creates several secrets automatically:
+CloudNativePG creates up to two credential secrets automatically:
 
 ```bash
 # List cluster secrets
 kubectl get secrets -l cnpg.io/cluster=postgres-cluster
 
 # Secrets created:
-# postgres-cluster-superuser - Superuser (postgres) credentials
+# postgres-cluster-superuser - Superuser (postgres) credentials, if enableSuperuserAccess is true
 # postgres-cluster-app - Application user credentials
 ```
 
@@ -284,11 +290,14 @@ kubectl get secret postgres-cluster-app -o jsonpath='{.data.uri}' | base64 -d
 
 ### Via Post-Init SQL
 
+Managed roles are created after database bootstrapping, so any role referenced by post-init SQL must already exist, be the bootstrap owner, or be created in the same bootstrap SQL.
+
 ```yaml
 spec:
   bootstrap:
     initdb:
       database: myapp
+      owner: app_user
       postInitApplicationSQLRefs:
         configMapRefs:
           - name: database-grants
@@ -304,6 +313,12 @@ metadata:
   name: database-grants
 data:
   grants.sql: |
+    -- Create roles needed by this bootstrap script
+    CREATE ROLE readonly_user;
+
+    -- Create schema
+    CREATE SCHEMA IF NOT EXISTS app;
+
     -- Grant schema access
     GRANT USAGE ON SCHEMA public TO app_user;
     GRANT USAGE ON SCHEMA app TO app_user;
@@ -329,13 +344,11 @@ data:
 ### Manual Privilege Management
 
 ```bash
-# Connect as superuser
-kubectl exec -it postgres-cluster-1 -- psql -U postgres
-
 # Grant privileges
-GRANT CONNECT ON DATABASE myapp TO app_user;
-GRANT USAGE ON SCHEMA public TO app_user;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+kubectl exec -it postgres-cluster-1 -- psql -U postgres -d myapp \
+  -c "GRANT CONNECT ON DATABASE myapp TO app_user;" \
+  -c "GRANT USAGE ON SCHEMA public TO app_user;" \
+  -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;"
 ```
 
 ## Row-Level Security
@@ -346,8 +359,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 spec:
   bootstrap:
     initdb:
-      postInitSQL:
+      database: myapp
+      postInitApplicationSQL:
         - |
+          -- Create table
+          CREATE TABLE IF NOT EXISTS customers (
+            id bigserial PRIMARY KEY,
+            tenant_id integer NOT NULL
+          );
+
           -- Enable RLS on table
           ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 
@@ -384,13 +404,13 @@ spec:
 ### Manual Removal
 
 ```bash
-# Connect as superuser
-kubectl exec -it postgres-cluster-1 -- psql -U postgres
-
 # Remove user
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM old_user;
-REVOKE ALL PRIVILEGES ON DATABASE myapp FROM old_user;
-DROP USER old_user;
+kubectl exec -it postgres-cluster-1 -- psql -U postgres -d myapp \
+  -c "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM old_user;" \
+  -c "REVOKE ALL PRIVILEGES ON DATABASE myapp FROM old_user;" \
+  -c "REASSIGN OWNED BY old_user TO postgres;" \
+  -c "DROP OWNED BY old_user;" \
+  -c "DROP ROLE old_user;"
 ```
 
 ## Integration with External Systems
@@ -404,9 +424,9 @@ spec:
       server: ldap.example.com
       port: 389
       scheme: ldap
-      bindAsAuth: true
-      prefix: "uid="
-      suffix: ",ou=users,dc=example,dc=com"
+      bindAsAuth:
+        prefix: "uid="
+        suffix: ",ou=users,dc=example,dc=com"
 ```
 
 Update pg_hba.conf:
@@ -464,13 +484,18 @@ spec:
       secret:
         name: owner-credentials
       postInitSQL:
-        # Extensions
-        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
-        - CREATE EXTENSION IF NOT EXISTS "pg_stat_statements"
-
         # Additional databases
         - CREATE DATABASE analytics OWNER app_owner
         - CREATE DATABASE staging OWNER app_owner
+
+        # Roles referenced by bootstrap grants
+        - CREATE ROLE app_user
+        - CREATE ROLE readonly_user
+
+      postInitApplicationSQL:
+        # Extensions
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
+        - CREATE EXTENSION IF NOT EXISTS "pg_stat_statements"
 
         # Schemas
         - CREATE SCHEMA IF NOT EXISTS app

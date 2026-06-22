@@ -53,7 +53,7 @@ message HealthCheckResponse {
         UNKNOWN = 0;        // Status cannot be determined
         SERVING = 1;        // Service is healthy and accepting requests
         NOT_SERVING = 2;    // Service is unhealthy
-        SERVICE_UNKNOWN = 3; // Requested service not found
+        SERVICE_UNKNOWN = 3; // Used only by Watch when the requested service is not known
     }
     ServingStatus status = 1;
 }
@@ -220,7 +220,7 @@ from grpc_health.v1 import health
 from grpc_health.v1 import health_pb2
 from grpc_health.v1 import health_pb2_grpc
 
-class HealthServicer(health_pb2_grpc.HealthServicer):
+class HealthServicer(health.HealthServicer):
     """Custom health servicer with dependency checking."""
 
     def __init__(self):
@@ -228,7 +228,7 @@ class HealthServicer(health_pb2_grpc.HealthServicer):
         self._lock = threading.RLock()
         self._watchers = {}
 
-    def set_status(self, service: str, status: health_pb2.HealthCheckResponse.ServingStatus):
+    def set_status(self, service: str, status: int):
         """Set the health status for a service."""
         with self._lock:
             self._status[service] = status
@@ -240,10 +240,10 @@ class HealthServicer(health_pb2_grpc.HealthServicer):
     def Check(self, request, context):
         """Handle unary health check request."""
         with self._lock:
-            status = self._status.get(
-                request.service,
-                health_pb2.HealthCheckResponse.SERVICE_UNKNOWN
-            )
+            status = self._status.get(request.service)
+
+        if status is None:
+            context.abort(grpc.StatusCode.NOT_FOUND, "unknown service")
 
         return health_pb2.HealthCheckResponse(status=status)
 
@@ -404,7 +404,7 @@ import (
 
 func main() {
     // Create connection with health checking enabled
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         // Enable client-side health checking
@@ -472,7 +472,7 @@ flowchart TD
     B --> C[Liveness Probe]
     B --> D[Readiness Probe]
     B --> E[Startup Probe]
-    C --> F[grpc-health-probe]
+    C --> F[Native gRPC Probe]
     D --> F
     E --> F
     F --> G[gRPC Health Service]
@@ -552,10 +552,11 @@ spec:
   type: ClusterIP
 ```
 
-### Using grpc-health-probe Binary (Pre-Kubernetes 1.24)
+### Using grpc-health-probe Binary (Older Kubernetes or Advanced Probe Options)
 
 ```yaml
-# For Kubernetes versions before 1.24
+# For Kubernetes versions without stable native gRPC probes, or when
+# you need probe options such as TLS, metadata, or finer timeout tuning
 # Requires grpc-health-probe binary in container
 
 apiVersion: apps/v1
@@ -603,9 +604,11 @@ COPY . .
 RUN go build -o server .
 
 # Download grpc-health-probe
-RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.38 && \
     wget -qO/bin/grpc_health_probe \
-    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
+    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-${TARGETOS}-${TARGETARCH} && \
     chmod +x /bin/grpc_health_probe
 
 FROM gcr.io/distroless/base-debian11
@@ -702,7 +705,7 @@ server {
         grpc_pass grpcs://grpc_backends;
 
         # Health check configuration (NGINX Plus only)
-        health_check type=grpc grpc_status=12;  # 12 = UNIMPLEMENTED is OK
+        health_check type=grpc grpc_service=myapp.UserService;
     }
 
     # Health check endpoint for external monitoring
@@ -722,7 +725,6 @@ server {
 package main
 
 import (
-    "context"
     "log"
     "net"
     "os"
@@ -959,7 +961,7 @@ import (
 
 func TestHealthCheck(t *testing.T) {
     // Connect to server
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -1007,7 +1009,7 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestHealthCheckWatch(t *testing.T) {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )

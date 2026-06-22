@@ -33,7 +33,7 @@ CREATE TABLE events (
     properties Map(String, String),
     INDEX tenant_idx tenant_id TYPE set(0) GRANULARITY 4
 ) ENGINE = MergeTree()
-PARTITION BY (tenant_id, toYYYYMM(event_time))
+PARTITION BY toYYYYMM(event_time)
 ORDER BY (tenant_id, event_time, event_id)
 SETTINGS index_granularity = 8192;
 
@@ -83,6 +83,7 @@ For maximum isolation and compliance requirements:
             <replica>
                 <host>tenant1-node1.example.com</host>
                 <port>9440</port>
+                <secure>1</secure>
             </replica>
         </shard>
     </tenant_enterprise_1>
@@ -91,6 +92,7 @@ For maximum isolation and compliance requirements:
             <replica>
                 <host>tenant2-node1.example.com</host>
                 <port>9440</port>
+                <secure>1</secure>
             </replica>
         </shard>
     </tenant_enterprise_2>
@@ -112,19 +114,18 @@ CREATE TABLE tenants (
 ) ENGINE = MergeTree()
 ORDER BY tenant_id;
 
+-- Custom settings require a configured prefix, for example:
+-- <custom_settings_prefixes>SQL_</custom_settings_prefixes>
+
+-- Create tenant-specific users with a tenant setting
+CREATE USER tenant_123 IDENTIFIED BY 'secure_password'
+SETTINGS SQL_tenant_id = 123;
+
 -- Create row policies for tenant isolation
 CREATE ROW POLICY tenant_policy ON events
 FOR SELECT
-USING tenant_id = currentUser()::UInt32;
-
--- Or use a user setting for tenant_id
-CREATE ROW POLICY tenant_policy ON events
-FOR SELECT
-USING tenant_id = getSetting('tenant_id')::UInt32;
-
--- Alternative: Create tenant-specific users
-CREATE USER tenant_123 IDENTIFIED BY 'secure_password'
-SETTINGS tenant_id = 123;
+USING tenant_id = getSetting('SQL_tenant_id')
+TO tenant_123;
 
 GRANT SELECT ON events TO tenant_123;
 ```
@@ -141,7 +142,7 @@ CREATE TABLE events_base (
     user_id UInt64,
     properties Map(String, String)
 ) ENGINE = MergeTree()
-PARTITION BY (tenant_id, toYYYYMM(event_time))
+PARTITION BY toYYYYMM(event_time)
 ORDER BY (tenant_id, event_time, event_id);
 
 -- Create tenant-specific views
@@ -158,6 +159,10 @@ Resource Quotas and Limits
 ### Setting User Quotas
 
 ```sql
+-- Create roles for tenant plans
+CREATE ROLE tenant_basic_role;
+CREATE ROLE tenant_premium_role;
+
 -- Create quota definitions
 CREATE QUOTA tenant_basic_quota
 FOR INTERVAL 1 hour MAX queries = 1000,
@@ -173,7 +178,7 @@ TO tenant_premium_role;
 
 -- Apply quota to users
 CREATE USER tenant_123 IDENTIFIED BY 'password'
-DEFAULT ROLE tenant_basic_role;
+ROLE tenant_basic_role DEFAULT ROLE tenant_basic_role;
 ```
 
 ### Query Complexity Limits
@@ -190,7 +195,7 @@ CREATE SETTINGS PROFILE tenant_standard_profile SETTINGS
     read_overflow_mode = 'throw';
 
 -- Assign profile to user
-ALTER USER tenant_123 SETTINGS PROFILE 'tenant_standard_profile';
+ALTER USER tenant_123 ADD PROFILES 'tenant_standard_profile';
 ```
 
 ### Per-Tenant Resource Isolation
@@ -231,7 +236,7 @@ ALTER USER tenant_123 SETTINGS PROFILE 'tenant_standard_profile';
 ```python
 # Python example of query routing
 
-import clickhouse_driver
+import clickhouse_connect
 
 class TenantQueryRouter:
     def __init__(self, config):
@@ -249,61 +254,67 @@ class TenantQueryRouter:
             return self.get_shared_connection(tenant_id)
 
     def get_shared_connection(self, tenant_id):
-        conn = clickhouse_driver.connect(
+        conn = clickhouse_connect.get_client(
             host=self.config['shared_host'],
-            port=9440,
+            port=8443,
             secure=True,
-            settings={'tenant_id': tenant_id}
+            username=self.config['shared_user'],
+            password=self.config['shared_password']
         )
         return conn
 
     def execute_query(self, tenant_id, query, params=None):
         conn = self.get_connection(tenant_id)
+        settings = {'SQL_tenant_id': tenant_id}
 
         # Inject tenant filter for shared tables
         if self.is_shared_table(query):
-            query = self.inject_tenant_filter(query, tenant_id)
+            query, params = self.inject_tenant_filter(query, tenant_id, params)
 
-        return conn.execute(query, params)
+        return conn.query(query, parameters=params, settings=settings)
 
-    def inject_tenant_filter(self, query, tenant_id):
-        # Add tenant_id filter to WHERE clause
-        if 'WHERE' in query.upper():
-            return query.replace('WHERE', f'WHERE tenant_id = {tenant_id} AND')
-        else:
-            # Handle queries without WHERE
-            return f"{query} WHERE tenant_id = {tenant_id}"
+    def inject_tenant_filter(self, query, tenant_id, params=None):
+        # Use query templates that include this placeholder in the WHERE clause.
+        params = params or {}
+        params['tenant_id'] = tenant_id
+        return query.replace(
+            '{tenant_filter}',
+            'tenant_id = {tenant_id:UInt32}'
+        ), params
 ```
 
 ### Proxy-Based Routing
 
 ```yaml
-# Example: Using ClickHouse Proxy for routing
-# docker-compose.yml
-services:
-  clickhouse-proxy:
-    image: clickhouse-proxy:latest
-    ports:
-      - "8123:8123"
-    environment:
-      - ROUTING_CONFIG=/etc/proxy/routing.yaml
-    volumes:
-      - ./routing.yaml:/etc/proxy/routing.yaml
+# Example: chproxy routing by proxy user
+server:
+  http:
+    listen_addr: ":8123"
 
-# routing.yaml
-routes:
-  - match:
-      header:
-        X-Tenant-ID: "enterprise-*"
-    backend:
-      cluster: enterprise_cluster
-  - match:
-      header:
-        X-Tenant-ID: "*"
-    backend:
-      cluster: shared_cluster
-      settings:
-        add_tenant_filter: true
+users:
+  - name: "tenant_shared"
+    password: "proxy_password"
+    to_cluster: "shared_cluster"
+    to_user: "shared_clickhouse_user"
+    params: "tenant-shared"
+
+param_groups:
+  - name: "tenant-shared"
+    params:
+      - key: "max_execution_time"
+        value: "30"
+
+clusters:
+  - name: "shared_cluster"
+    nodes: ["clickhouse-shared-1:8123", "clickhouse-shared-2:8123"]
+    users:
+      - name: "shared_clickhouse_user"
+        password: "clickhouse_password"
+  - name: "enterprise_cluster"
+    nodes: ["clickhouse-enterprise-1:8123"]
+    users:
+      - name: "enterprise_clickhouse_user"
+        password: "clickhouse_password"
 ```
 
 ## Data Partitioning Strategies
@@ -311,7 +322,7 @@ routes:
 ### Optimal Partitioning for Multi-Tenant
 
 ```sql
--- Partition by tenant and time for efficient queries
+-- Partition by tenant bucket and time when tenant count is large
 CREATE TABLE tenant_events (
     tenant_id UInt32,
     event_time DateTime64(3),
@@ -321,7 +332,7 @@ CREATE TABLE tenant_events (
 PARTITION BY (tenant_id % 100, toYYYYMM(event_time))  -- Bucket tenants
 ORDER BY (tenant_id, event_time);
 
--- For fewer large tenants, partition directly
+-- For a small number of large tenants, partition directly only if cardinality stays low
 CREATE TABLE enterprise_events (
     tenant_id UInt32,
     event_time DateTime64(3),
@@ -343,15 +354,16 @@ CREATE TABLE events_with_ttl (
     event_type LowCardinality(String),
     event_data String
 ) ENGINE = MergeTree()
-PARTITION BY (tenant_id, toYYYYMM(event_time))
+PARTITION BY toYYYYMM(event_time)
 ORDER BY (tenant_id, event_time)
-TTL event_time + INTERVAL
+TTL event_time + toIntervalDay(
     CASE
         WHEN tenant_plan = 'basic' THEN 30
         WHEN tenant_plan = 'standard' THEN 90
         WHEN tenant_plan = 'premium' THEN 365
         ELSE 30
-    END DAY;
+    END
+);
 ```
 
 ## Monitoring Multi-Tenant Usage
@@ -359,30 +371,31 @@ TTL event_time + INTERVAL
 ### Per-Tenant Query Metrics
 
 ```sql
--- Create a view for tenant query analytics
+-- Create a view for tenant query analytics.
+-- Enable log_query_settings = 1 so SQL_tenant_id is recorded in system.query_log.
 CREATE MATERIALIZED VIEW tenant_query_stats_mv
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (tenant_id, query_date, query_hour)
 AS SELECT
-    toUInt32(getSetting('tenant_id')) AS tenant_id,
+    toUInt32OrZero(Settings['SQL_tenant_id']) AS tenant_id,
     toDate(event_time) AS query_date,
     toHour(event_time) AS query_hour,
-    count() AS query_count,
-    sum(read_rows) AS total_rows_read,
-    sum(read_bytes) AS total_bytes_read,
-    sum(result_rows) AS total_result_rows,
-    max(query_duration_ms) AS max_query_duration,
-    avg(query_duration_ms) AS avg_query_duration
+    countState() AS query_count,
+    sumState(read_rows) AS total_rows_read,
+    sumState(read_bytes) AS total_bytes_read,
+    sumState(result_rows) AS total_result_rows,
+    maxState(query_duration_ms) AS max_query_duration,
+    avgState(query_duration_ms) AS avg_query_duration
 FROM system.query_log
-WHERE type = 'QueryFinish'
+WHERE type = 'QueryFinish' AND Settings['SQL_tenant_id'] != ''
 GROUP BY tenant_id, query_date, query_hour;
 
 -- Query tenant usage
 SELECT
     tenant_id,
-    sum(query_count) AS total_queries,
-    sum(total_bytes_read) AS total_bytes,
-    max(max_query_duration) AS slowest_query_ms
+    countMerge(query_count) AS total_queries,
+    sumMerge(total_bytes_read) AS total_bytes,
+    maxMerge(max_query_duration) AS slowest_query_ms
 FROM tenant_query_stats_mv
 WHERE query_date >= today() - 7
 GROUP BY tenant_id
@@ -394,36 +407,36 @@ Resource Consumption Dashboard
 ```sql
 -- Current running queries per tenant
 SELECT
-    getSetting('tenant_id') AS tenant_id,
+    Settings['SQL_tenant_id'] AS tenant_id,
     count() AS running_queries,
     sum(memory_usage) AS total_memory,
     max(elapsed) AS max_elapsed
 FROM system.processes
+WHERE Settings['SQL_tenant_id'] != ''
 GROUP BY tenant_id;
 
--- Tenant storage usage
+-- Tenant row and payload usage
 SELECT
     tenant_id,
-    sum(bytes_on_disk) AS storage_bytes,
-    sum(rows) AS total_rows,
-    count() AS part_count
-FROM system.parts
-WHERE active AND table = 'events'
+    count() AS total_rows,
+    sum(length(toString(properties))) AS payload_bytes
+FROM events
 GROUP BY tenant_id
-ORDER BY storage_bytes DESC;
+ORDER BY payload_bytes DESC;
 ```
 
 ## Tenant Onboarding Automation
 
 ```sql
--- Stored procedure for tenant setup (using parameterized queries)
+-- SQL template for tenant setup (using query parameters)
 -- Create tenant metadata
 INSERT INTO tenants (tenant_id, tenant_name, plan)
 VALUES ({tenant_id:UInt32}, {tenant_name:String}, {plan:String});
 
 -- Create tenant user
 CREATE USER {tenant_user:Identifier} IDENTIFIED BY {password:String}
-SETTINGS PROFILE '{profile:Identifier}';
+SETTINGS PROFILE {profile:String},
+         SQL_tenant_id = {tenant_id:UInt32};
 
 -- Grant permissions
 GRANT SELECT ON events TO {tenant_user:Identifier};
@@ -440,38 +453,44 @@ TO {tenant_user:Identifier};
 ```python
 def onboard_tenant(client, tenant_id, tenant_name, plan):
     """Automate tenant onboarding in ClickHouse"""
+    tenant_id = int(tenant_id)
+    tenant_user = f'tenant_{tenant_id}'
+    policy_name = f'{tenant_user}_policy'
 
     # Create tenant record
-    client.execute('''
-        INSERT INTO tenants (tenant_id, tenant_name, plan)
-        VALUES (%(tenant_id)s, %(tenant_name)s, %(plan)s)
-    ''', {'tenant_id': tenant_id, 'tenant_name': tenant_name, 'plan': plan})
+    client.insert(
+        'tenants',
+        [[tenant_id, tenant_name, plan]],
+        column_names=['tenant_id', 'tenant_name', 'plan']
+    )
 
     # Create user with appropriate profile
     profile = 'tenant_premium_profile' if plan == 'premium' else 'tenant_basic_profile'
     password = generate_secure_password()
+    password_sql = password.replace('\\', '\\\\').replace("'", "\\'")
 
-    client.execute(f'''
-        CREATE USER tenant_{tenant_id}
-        IDENTIFIED BY '{password}'
-        SETTINGS PROFILE '{profile}'
+    client.command(f'''
+        CREATE USER {tenant_user}
+        IDENTIFIED BY '{password_sql}'
+        SETTINGS PROFILE '{profile}',
+                 SQL_tenant_id = {tenant_id}
     ''')
 
     # Create row policy for isolation
-    client.execute(f'''
-        CREATE ROW POLICY tenant_{tenant_id}_policy ON events
+    client.command(f'''
+        CREATE ROW POLICY {policy_name} ON events
         FOR SELECT USING tenant_id = {tenant_id}
-        TO tenant_{tenant_id}
+        TO {tenant_user}
     ''')
 
     # Grant necessary permissions
-    client.execute(f'''
-        GRANT SELECT ON default.* TO tenant_{tenant_id}
+    client.command(f'''
+        GRANT SELECT ON default.* TO {tenant_user}
     ''')
 
     return {
         'tenant_id': tenant_id,
-        'username': f'tenant_{tenant_id}',
+        'username': tenant_user,
         'password': password
     }
 ```
@@ -515,7 +534,7 @@ graph TB
 |--------|----------------|
 | Data Isolation | Use row policies + tenant_id in ORDER BY |
 | Resource Limits | Configure quotas and profiles per plan |
-| Query Performance | Partition by tenant_id for hot data |
+| Query Performance | Keep partitions low-cardinality and put tenant_id first in ORDER BY |
 | Monitoring | Track per-tenant usage for billing |
 | Onboarding | Automate user/policy creation |
 | Security | Separate credentials per tenant |
@@ -527,7 +546,7 @@ Building a multi-tenant analytics platform with ClickHouse requires:
 1. **Choose the right isolation pattern** - Shared tables for most cases, dedicated for enterprise
 2. **Implement row-level security** - Use row policies for data isolation
 3. **Configure resource quotas** - Prevent noisy neighbors with limits
-4. **Optimize partitioning** - Include tenant_id in partition key and ORDER BY
+4. **Optimize partitioning** - Keep partition keys low-cardinality and include tenant_id in ORDER BY
 5. **Monitor per-tenant usage** - Track queries, storage, and resources
 6. **Automate tenant management** - Script onboarding and offboarding
 

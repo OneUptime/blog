@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Set, Data Structure, Tag, Unique Collections, SADD, SINTER, Set Operation
 
-Description: A comprehensive guide to using Redis Sets for managing unique collections and tag systems, covering SADD, SMEMBERS, SINTER commands, set operations, and practical examples in Python, Node.
+Description: A comprehensive guide to using Redis Sets for managing unique collections and tag systems, covering SADD, SMEMBERS, SINTER commands, set operations, and practical examples in Python, Node, and Go.
 
 ---
 
@@ -19,7 +19,7 @@ Redis Sets guarantee uniqueness - adding the same element multiple times results
 - All elements are unique strings
 - Unordered (no guaranteed iteration order)
 - O(1) add, remove, and membership check
-- Maximum 2^32 - 1 members (over 4 billion)
+- Maximum 2^32 members (over 4 billion)
 - Support for set operations (union, intersection, difference)
 
 Common use cases:
@@ -185,10 +185,9 @@ SMOVE source destination "element"
 ### Python Implementation
 
 ```python
-import redis
 from datetime import datetime, timedelta
 from typing import Set, List, Dict, Optional
-import json
+import redis
 
 # Connect to Redis
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -284,7 +283,7 @@ class UniqueVisitorTracker:
     def _hourly_key(self, date: datetime) -> str:
         return f"{self.namespace}:hourly:{date.strftime('%Y-%m-%d-%H')}"
 
-    def track_visit(self, visitor_id: str, timestamp: datetime = None) -> None:
+    def track_visit(self, visitor_id: str, timestamp: Optional[datetime] = None) -> None:
         """Track a visitor."""
         if timestamp is None:
             timestamp = datetime.now()
@@ -1053,7 +1052,7 @@ func main() {
 
 1. **Use SINTER for filtering** - More efficient than fetching all and filtering in app
 2. **Avoid SMEMBERS on large sets** - Use SSCAN for iteration
-3. **Consider memory** - Sets with many small values use listpack encoding
+3. **Consider memory** - Redis 7.2+ can use listpack encoding for small sets; older versions use intset for small integer-only sets
 4. **Use pipelines** - Batch operations for better performance
 5. **Set appropriate TTL** - For temporary sets like daily visitors
 

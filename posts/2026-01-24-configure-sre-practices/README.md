@@ -100,19 +100,19 @@ groups:
   - name: slo-alerts
     rules:
       # Fast burn alert - catches rapid degradation
-      # Triggers if burning 14x normal rate over 1 hour
-      # and 7x over 5 minutes
+      # Triggers if burning 14.4x normal rate over 1 hour
+      # and 14.4x over 5 minutes
       - alert: SLOFastBurn
         expr: |
           (
             sum(rate(http_requests_total{status=~"5.."}[1h]))
             / sum(rate(http_requests_total[1h]))
-          ) > (14 * 0.001)
+          ) > (14.4 * 0.001)
           and
           (
             sum(rate(http_requests_total{status=~"5.."}[5m]))
             / sum(rate(http_requests_total[5m]))
-          ) > (7 * 0.001)
+          ) > (14.4 * 0.001)
         labels:
           severity: critical
         annotations:
@@ -206,29 +206,33 @@ processors:
 
   # Filter out health check noise
   filter:
-    spans:
-      exclude:
-        match_type: strict
-        span_names:
-          - "health_check"
-          - "readiness_probe"
+    error_mode: ignore
+    trace_conditions:
+      - span.name == "health_check"
+      - span.name == "readiness_probe"
 
 exporters:
-  otlphttp:
-    endpoint: "https://otlp.oneuptime.com"
+  otlp_http:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "Content-Type": "application/json"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, filter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp_http]
 ```
 
 ## Step 6: Configure Incident Management Workflows

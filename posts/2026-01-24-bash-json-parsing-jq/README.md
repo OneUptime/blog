@@ -263,7 +263,7 @@ echo "$services" | jq '{
     total: length,
     healthy: [.[] | select(.healthy == true)] | length,
     unhealthy: [.[] | select(.healthy == false)] | length,
-    avg_response: [.[] | select(.response_time != null) | .response_time] | add / length
+    avg_response: ([.[] | select(.response_time != null) | .response_time] | add / length)
 }'
 ```
 

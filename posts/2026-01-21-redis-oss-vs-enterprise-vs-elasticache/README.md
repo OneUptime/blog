@@ -15,11 +15,11 @@ Choosing how to deploy Redis involves trade-offs between control, operational ov
 | Aspect | Redis OSS (Self-Hosted) | Redis Enterprise | AWS ElastiCache |
 |--------|------------------------|------------------|-----------------|
 | Management | You manage everything | Fully managed | Fully managed |
-| Licensing | SSPL | Commercial | AWS service |
+| Licensing | RSALv2/SSPLv1/AGPLv3 (Redis 8+) | Commercial | AWS service |
 | High Availability | DIY with Sentinel/Cluster | Built-in | Built-in |
 | Multi-AZ | Manual setup | Automatic | Automatic |
 | Active-Active Geo | Not available | Yes | Global Datastore |
-| Modules | Community modules | Enterprise modules | Limited |
+| Modules | Community modules/Redis 8 features | Advanced Redis features | Limited |
 | Support | Community | 24/7 Enterprise | AWS Support |
 | Cost Model | Infrastructure only | Subscription | Pay-as-you-go |
 
@@ -78,13 +78,13 @@ helm install redis bitnami/redis \
 
 ```text
 Small (r6g.large, 2 vCPU, 16GB):
-- 3-node cluster: ~$450/month
+- 3-node cluster: ~$220/month
 
 Medium (r6g.xlarge, 4 vCPU, 32GB):
-- 6-node cluster: ~$1,800/month
+- 6-node cluster: ~$880/month
 
 Large (r6g.2xlarge, 8 vCPU, 64GB):
-- 6-node cluster: ~$3,600/month
+- 6-node cluster: ~$1,770/month
 
 + Storage, network, operations time
 ```
@@ -105,17 +105,36 @@ Redis Enterprise is the commercial offering from Redis Ltd. with advanced featur
 ```bash
 # Create Active-Active database via REST API
 curl -k -X POST https://cluster1.redis.local:9443/v1/crdbs \
+  -u "admin@example.com:password" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "global-db",
-    "memory_size": 1073741824,
-    "port": 12000,
-    "replication": true,
-    "participating_clusters": [
-      {"url": "https://cluster1.redis.local:9443"},
-      {"url": "https://cluster2.redis.local:9443"}
-    ],
-    "causal_consistency": true
+    "default_db_config": {
+      "name": "global-db",
+      "memory_size": 1073741824
+    },
+    "instances": [
+      {
+        "cluster": {
+          "url": "https://cluster1.redis.local:9443",
+          "credentials": {
+            "username": "admin@example.com",
+            "password": "password"
+          },
+          "name": "cluster-1"
+        }
+      },
+      {
+        "cluster": {
+          "url": "https://cluster2.redis.local:9443",
+          "credentials": {
+            "username": "admin@example.com",
+            "password": "password"
+          },
+          "name": "cluster-2"
+        }
+      }
+    ]
   }'
 ```
 
@@ -136,16 +155,16 @@ Extend memory with SSD storage:
 
 **Cost savings**: 80% reduction for read-heavy workloads
 
-#### Enterprise Modules
+#### Redis Enterprise Capabilities
 
 | Module | Description |
 |--------|-------------|
 | RediSearch | Full-text search with aggregations |
 | RedisJSON | Native JSON document support |
-| RedisGraph | Graph database with Cypher queries |
 | RedisTimeSeries | Time-series data with downsampling |
 | RedisBloom | Probabilistic data structures |
-| RedisAI | ML model serving |
+
+**Note**: RedisGraph has reached end-of-life and should not be selected for new projects.
 
 ```python
 # RediSearch example
@@ -177,9 +196,9 @@ results = r.ft('products').search('professional widget')
 
 | Tier | Features | Use Case |
 |------|----------|----------|
-| Essentials | Basic managed Redis | Development, small apps |
-| Pro | Modules, Active-Passive | Production workloads |
-| Enterprise | Active-Active, Flash | Global, mission-critical |
+| Free | 30 MB shared database | Evaluation and demos |
+| Essentials | Shared managed Redis | Development, small apps |
+| Pro | Dedicated infrastructure, Active-Active, auto-tiering | Production and global workloads |
 
 ### Pricing
 
@@ -187,10 +206,9 @@ results = r.ft('products').search('professional widget')
 
 | Configuration | Approximate Monthly Cost |
 |---------------|-------------------------|
-| 1GB RAM, single AZ | $50-80 |
-| 10GB RAM, Multi-AZ | $500-800 |
-| 100GB RAM, Multi-AZ | $4,000-6,000 |
-| Active-Active (2 regions) | 2x above |
+| Essentials | From about $5/month |
+| Pro | From about $200/month minimum |
+| Active-Active (multi-region) | Available on Pro; cost varies by regions and size |
 
 **Note**: Pricing varies by cloud provider and region.
 
@@ -212,7 +230,7 @@ results = r.ft('products').search('professional widget')
 
 - Global applications needing Active-Active
 - Large datasets benefiting from Flash storage
-- Teams wanting advanced search/graph/time-series
+- Teams wanting advanced search, JSON, or time-series capabilities
 - Enterprises requiring SLA and support
 
 ## AWS ElastiCache for Redis
@@ -287,7 +305,7 @@ aws elasticache create-global-replication-group \
 # Add secondary region
 aws elasticache create-replication-group \
   --replication-group-id eu-west-secondary \
-  --global-replication-group-id my-global-redis \
+  --global-replication-group-id global-redis-id \
   --region eu-west-1
 ```
 
@@ -299,6 +317,12 @@ aws elasticache create-replication-group \
 # Use r6gd instances with local SSD
 aws elasticache create-replication-group \
   --cache-node-type cache.r6gd.xlarge \
+  --replication-group-id tiered-redis \
+  --replication-group-description "Tiered Redis cluster" \
+  --engine redis \
+  --engine-version 7.0 \
+  --num-node-groups 2 \
+  --replicas-per-node-group 1 \
   --data-tiering-enabled
 ```
 
@@ -308,15 +332,22 @@ Automatically tiers data between memory and SSD.
 
 ```python
 # IAM authentication
-import redis
-import boto3
+from urllib.parse import urlencode
 
-# Get auth token
-client = boto3.client('elasticache')
-token = client.generate_auth_token(
-    ReplicationGroupId='my-redis',
-    User='my-user'
-)
+import redis
+from botocore.auth import SigV4QueryAuth
+from botocore.awsrequest import AWSRequest
+from botocore.session import get_session
+
+region = 'us-east-1'
+cache_name = 'my-redis'
+user = 'my-user'
+
+credentials = get_session().get_credentials().get_frozen_credentials()
+query = urlencode({'Action': 'connect', 'User': user})
+request = AWSRequest(method='GET', url=f'http://{cache_name}/?{query}')
+SigV4QueryAuth(credentials, 'elasticache', region, expires=900).add_auth(request)
+token = request.url.replace('http://', '')
 
 r = redis.Redis(
     host='my-cluster.xxxxx.cache.amazonaws.com',
@@ -334,12 +365,12 @@ r = redis.Redis(
 | Instance Type | Memory | Price/Hour | Monthly (approx) |
 |---------------|--------|------------|------------------|
 | cache.t3.micro | 0.5 GB | $0.017 | $12 |
-| cache.r6g.large | 13.07 GB | $0.157 | $114 |
-| cache.r6g.xlarge | 26.32 GB | $0.314 | $229 |
-| cache.r6g.2xlarge | 52.82 GB | $0.628 | $458 |
+| cache.r6g.large | 13.07 GB | $0.206 | $150 |
+| cache.r6g.xlarge | 26.32 GB | $0.411 | $300 |
+| cache.r6g.2xlarge | 52.82 GB | $0.821 | $599 |
 
 **Reserved Instances** (1-year, no upfront):
-- ~30% savings vs on-demand
+- Up to about 48% savings vs on-demand depending on payment option and term
 
 **Data Transfer**:
 - Within AZ: Free
@@ -357,7 +388,7 @@ r = redis.Redis(
 ### Cons
 
 - **AWS Lock-in**: Only runs on AWS
-- **Limited Modules**: No RediSearch, RedisGraph, etc.
+- **Limited Modules**: No Redis Search, RedisJSON, RedisTimeSeries, etc. on the Redis OSS engine
 - **No Active-Active**: Global Datastore is read-only secondary
 - **Version Lag**: Newer Redis versions delayed
 - **Configuration Limits**: Fewer tunable parameters
@@ -386,11 +417,11 @@ r = redis.Redis(
 | Vertical | Restart required | Online | Online |
 | Horizontal | Cluster reshard | Online | Cluster reshard |
 | **Data** |
-| Max Memory | Hardware limit | Hardware limit | 6.1 TB per cluster |
+| Max Memory | Hardware limit | Hardware limit | Depends on node type and shard count; up to 500 nodes |
 | Flash/SSD Tiering | No | Yes | Yes (r6gd) |
 | Backup/Restore | Manual | Automated | Automated |
 | **Features** |
-| Redis Modules | Community | Enterprise | Limited |
+| Redis Modules | Community/Redis 8 features | Advanced Redis features | Limited |
 | Lua Scripting | Yes | Yes | Yes |
 | Streams | Yes | Yes | Yes |
 | Pub/Sub | Yes | Yes | Yes |
@@ -402,7 +433,7 @@ r = redis.Redis(
 | **Operations** |
 | Monitoring | Manual | Built-in | CloudWatch |
 | Alerting | Manual | Built-in | CloudWatch |
-| Auto-scaling | No | Yes | No (manual) |
+| Auto-scaling | No | Yes | Yes (target tracking/scheduled for shards or replicas) |
 | **Support** |
 | Community | Yes | Yes | Yes |
 | Commercial | No | 24/7 SLA | AWS Support |
@@ -424,7 +455,7 @@ r = redis.Redis(
 ```text
 [ ] You need Active-Active geo-replication
 [ ] Large datasets benefit from Flash storage
-[ ] Advanced modules (Search, Graph) are required
+[ ] Advanced features such as Search, JSON, time series, or probabilistic data structures are required
 [ ] Multi-cloud deployment is needed
 [ ] You want enterprise support with SLA
 ```
@@ -446,10 +477,12 @@ r = redis.Redis(
 ```bash
 # 1. Create ElastiCache cluster
 
-# 2. Migrate data using replication
-redis-cli -h old-server SLAVEOF elasticache-endpoint 6379
+# 2. Migrate data using ElastiCache online migration
+aws elasticache start-migration \
+  --replication-group-id target-redis \
+  --customer-node-endpoint-list "Address='old-server',Port=6379"
 
-# Or use AWS Database Migration Service
+# Or use DUMP/RESTORE for smaller datasets
 
 # 3. Cut over application
 # Update connection string
@@ -460,13 +493,25 @@ REDIS_URL=elasticache-endpoint:6379
 
 ```bash
 # 1. Export snapshot from ElastiCache
-aws elasticache create-snapshot --snapshot-name migration-snapshot
+aws elasticache create-snapshot \
+  --replication-group-id my-redis \
+  --snapshot-name migration-snapshot
 
 # 2. Download RDB file from S3
 
 # 3. Import to Redis Enterprise
-curl -k -X POST https://cluster.redis.local:9443/v1/bdbs/import \
-  -d '{"rdb_file": "s3://bucket/snapshot.rdb"}'
+curl -k -X POST https://cluster.redis.local:9443/v1/bdbs/1/actions/import \
+  -u "admin@example.com:password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_import_sources": [
+      {
+        "type": "s3",
+        "bucket_name": "bucket",
+        "path": "snapshot.rdb"
+      }
+    ]
+  }'
 ```
 
 ### Cross-Platform Data Migration
@@ -524,7 +569,7 @@ All three options provide excellent Redis performance - the difference is in fea
 
 ## Related Resources
 
-- [Redis Documentation](https://redis.io/documentation)
-- [Redis Enterprise Documentation](https://docs.redis.com/latest/)
+- [Redis Documentation](https://redis.io/docs/latest/)
+- [Redis Enterprise Documentation](https://redis.io/docs/latest/operate/rs/)
 - [AWS ElastiCache Documentation](https://docs.aws.amazon.com/elasticache/)
 - [AWS ElastiCache Pricing](https://aws.amazon.com/elasticache/pricing/)

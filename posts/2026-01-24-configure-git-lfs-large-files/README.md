@@ -119,8 +119,8 @@ git lfs track "data/large-dataset.csv"
 # Track entire directories
 git lfs track "assets/videos/**"
 
-# Track by size pattern (files over certain size)
-# Note: This requires additional configuration
+# Git LFS tracking is pattern-based, not size-based
+# Use git lfs migrate import --above=10mb for existing history
 ```
 
 This creates or updates a `.gitattributes` file:
@@ -318,7 +318,7 @@ git lfs ls-files
 ### Configure Transfer Settings
 
 ```bash
-# Set concurrent transfers (default: 3)
+# Set concurrent transfers (default: 8)
 git config lfs.concurrenttransfers 8
 
 # Set transfer timeout
@@ -450,7 +450,7 @@ Most Git hosts have LFS bandwidth and storage limits:
 
 ```bash
 # Check what is using space
-git lfs ls-files -s | sort -k1 -h
+git lfs ls-files -s
 ````
 
 ### 5. Use .lfsconfig for Team Settings

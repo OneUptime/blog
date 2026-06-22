@@ -138,9 +138,11 @@ else:
 
 ## Partition Handling Strategies
 
-RabbitMQ provides three strategies for handling network partitions:
+In RabbitMQ versions that support `cluster_partition_handling`, the most commonly used partition handling modes are:
 
-### 1. Ignore Mode (Default - Not Recommended for Production)
+> Note: In RabbitMQ 4.3 and newer, `cluster_partition_handling` and related configuration keys are deprecated and accepted only for backwards compatibility; they have no effect. Modern replicated features such as quorum queues, streams, and Khepri rely on Raft majority semantics for partition behavior.
+
+### 1. Ignore Mode (Default in Older Versions - Not Recommended for Production)
 
 ```ini
 # rabbitmq.conf
@@ -161,7 +163,7 @@ flowchart TD
 
 **When to use**: Never in production. Only for development or testing.
 
-### 2. Pause Minority Mode (Recommended)
+### 2. Pause Minority Mode (Recommended in Supported 3+ Node Clusters)
 
 ```ini
 # rabbitmq.conf
@@ -181,7 +183,7 @@ flowchart TD
 
 **Behavior**: Nodes on the minority side pause until partition heals.
 
-**Best for**: Clusters with 3+ nodes where you want automatic recovery.
+**Best for**: RabbitMQ versions that support `cluster_partition_handling`, with clusters of 3+ nodes where you want automatic recovery.
 
 ```python
 # Example: 3-node cluster behavior
@@ -212,7 +214,7 @@ flowchart TD
 
 **Behavior**: After partition heals, winning partition is chosen and losing nodes restart.
 
-**Best for**: Two-node clusters or when automatic recovery is critical.
+**Best for**: RabbitMQ versions that support `cluster_partition_handling`, when continuity of service is more important than preserving consistency across partitions.
 
 ---
 
@@ -220,7 +222,7 @@ flowchart TD
 
 ### Automatic Recovery (Pause Minority)
 
-When using pause_minority, recovery is automatic:
+When using `pause_minority` on RabbitMQ versions that support it, recovery is automatic:
 
 ```bash
 # Check which nodes are paused
@@ -246,10 +248,12 @@ ssh rabbitmq-3 'rabbitmqctl cluster_status'
 # Step 3: Stop RabbitMQ on the nodes to rejoin
 ssh rabbitmq-3 'rabbitmqctl stop_app'
 
-# Step 4: Reset the node (WARNING: This clears local data)
-ssh rabbitmq-3 'rabbitmqctl reset'
+# Step 4: Start the application after the trusted partition is available
+ssh rabbitmq-3 'rabbitmqctl start_app'
 
-# Step 5: Rejoin the cluster
+# Step 5: If the node cannot rejoin cleanly, reset it (WARNING: this clears local data)
+ssh rabbitmq-3 'rabbitmqctl stop_app'
+ssh rabbitmq-3 'rabbitmqctl reset'
 ssh rabbitmq-3 'rabbitmqctl join_cluster rabbit@rabbitmq-1'
 
 # Step 6: Start the application
@@ -285,9 +289,9 @@ ssh "$MAIN_NODE" 'rabbitmqctl cluster_status'
 echo "Stopping app on $RECOVERY_NODE..."
 ssh "$RECOVERY_NODE" 'rabbitmqctl stop_app'
 
-# Force reset (use with caution - loses local state)
+# Reset (use with caution - loses local state)
 echo "Resetting $RECOVERY_NODE..."
-ssh "$RECOVERY_NODE" 'rabbitmqctl force_reset'
+ssh "$RECOVERY_NODE" 'rabbitmqctl reset'
 
 # Rejoin cluster
 echo "Rejoining cluster..."
@@ -363,14 +367,17 @@ sysctl -p
 ```ini
 # rabbitmq.conf
 
-# Erlang distribution buffer size
-distribution_buffer_size = 128000
-
 # Configure clustering settings
 cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
 cluster_formation.classic_config.nodes.1 = rabbit@rabbitmq-1
 cluster_formation.classic_config.nodes.2 = rabbit@rabbitmq-2
 cluster_formation.classic_config.nodes.3 = rabbit@rabbitmq-3
+```
+
+```bash
+# rabbitmq-env.conf
+# Erlang distribution buffer size, in kilobytes
+RABBITMQ_DISTRIBUTION_BUFFER_SIZE=128000
 ```
 
 ### 3. Use Quorum Queues
@@ -406,7 +413,9 @@ groups:
   - name: rabbitmq_cluster
     rules:
       - alert: RabbitMQNetworkPartition
-        expr: rabbitmq_partitions > 0
+        # Custom metric exported by the health check script or a management API exporter.
+        # RabbitMQ's built-in rabbitmq_prometheus plugin does not emit a partition metric.
+        expr: rabbitmq_cluster_partitions > 0
         for: 1m
         labels:
           severity: critical
@@ -595,7 +604,8 @@ frontend rabbitmq_management
 backend rabbitmq_management_back
     mode http
     balance roundrobin
-    option httpchk GET /api/health/checks/alarms
+    option httpchk
+    http-check send meth GET uri /api/health/checks/alarms hdr Authorization "Basic <base64-user-pass>"
     http-check expect status 200
 
     server rabbitmq1 rabbitmq-1:15672 check inter 10s
@@ -616,14 +626,14 @@ rabbitmqctl cluster_status
 # Check for partitions
 rabbitmqctl cluster_status | grep -A5 "Network Partitions"
 
-# Force sync a queue
-rabbitmqctl sync_queue <queue_name>
+# Check queue availability and state
+rabbitmqctl list_queues name type state
 
 # List nodes in cluster
 rabbitmqctl cluster_status | grep -A10 "Running Nodes"
 
-# Check if node is paused (pause_minority)
-rabbitmqctl eval 'rabbit_node_monitor:partitions().'
+# Check cluster status, including network partitions
+rabbitmq-diagnostics cluster_status
 ```
 
 ### Emergency Recovery Checklist
@@ -631,7 +641,7 @@ rabbitmqctl eval 'rabbit_node_monitor:partitions().'
 1. **Identify the partition** - Check cluster_status on all nodes
 2. **Determine data state** - Which side has the most recent data
 3. **Stop minority nodes** - rabbitmqctl stop_app
-4. **Reset if necessary** - rabbitmqctl force_reset (loses local data)
+4. **Reset if necessary** - rabbitmqctl reset (loses local data)
 5. **Rejoin cluster** - rabbitmqctl join_cluster rabbit@<main-node>
 6. **Start application** - rabbitmqctl start_app
 7. **Verify cluster** - rabbitmqctl cluster_status
@@ -643,7 +653,7 @@ rabbitmqctl eval 'rabbit_node_monitor:partitions().'
 
 Network partitions are a reality in distributed systems. Proper handling requires:
 
-- **Use pause_minority** for 3+ node clusters
+- **Use Raft-based replicated queues and streams** in current RabbitMQ versions, or **pause_minority** for supported older 3+ node clusters
 - **Monitor continuously** for early detection
 - **Have recovery procedures** documented and tested
 - **Use quorum queues** for better partition tolerance

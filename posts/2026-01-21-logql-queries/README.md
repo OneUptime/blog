@@ -233,7 +233,7 @@ Filter on label values after parsing.
 {namespace="production"} | json | size > 1MB
 
 # Numeric string to number
-{namespace="production"} | json | unwrap response_time | response_time > 100
+{namespace="production"} | json | response_time > 100
 ```
 
 ## Line Format Expression
@@ -251,17 +251,17 @@ Transform the output line.
 {namespace="production"} | json | line_format `{{ if eq .level "error" }}ERROR: {{ end }}{{.message}}`
 
 # Template functions
-{namespace="production"} | json | line_format "{{.message | ToUpper}}"
+{namespace="production"} | json | line_format "{{.message | upper}}"
 ```
 
 ### Template Functions
 
 ```logql
 # String manipulation
-line_format "{{ .message | ToLower }}"
-line_format "{{ .message | ToUpper }}"
-line_format "{{ .message | Title }}"
-line_format "{{ .message | Trim }}"
+line_format "{{ .message | lower }}"
+line_format "{{ .message | upper }}"
+line_format "{{ .message | title }}"
+line_format "{{ .message | trim }}"
 
 # Substring
 line_format "{{ .id | trunc 8 }}"
@@ -279,16 +279,16 @@ Modify labels dynamically.
 
 ```logql
 # Rename label
-{namespace="production"} | json | label_format service="{{.app}}"
+{namespace="production"} | json | label_format service=app
 
 # Create new label from field
-{namespace="production"} | json | label_format error_type="{{.error.type}}"
+{namespace="production"} | json | label_format error_type="{{.error_type}}"
 
 # Combine labels
 {namespace="production"} | json | label_format full_name="{{.namespace}}/{{.pod}}"
 
 # Drop label
-{namespace="production"} | json | label_format pod=""
+{namespace="production"} | json | drop pod
 ```
 
 ## Drop and Keep

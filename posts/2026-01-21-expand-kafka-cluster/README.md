@@ -21,7 +21,7 @@ When you add new brokers to a Kafka cluster, they do not automatically receive a
 
 Before expanding your cluster, ensure you have:
 
-- Kafka installed and running (version 2.4+ recommended for KRaft, or ZooKeeper-based clusters)
+- Kafka installed and running (Kafka 3.3+ for production KRaft clusters, Kafka 4.0+ for KRaft-only clusters, or ZooKeeper-based clusters on Kafka 3.x and earlier)
 - Administrative access to the cluster
 - Sufficient disk space and network capacity on new brokers
 - A maintenance window for partition reassignment
@@ -31,7 +31,7 @@ Before expanding your cluster, ensure you have:
 Create the configuration file for each new broker. Here is an example `server.properties` for a new broker:
 
 ```properties
-# Unique broker ID - must be unique across the cluster
+# Unique broker ID for ZooKeeper mode - must be unique across the cluster
 
 broker.id=4
 
@@ -45,8 +45,11 @@ log.dirs=/var/kafka-logs
 # ZooKeeper connection (for ZooKeeper-based clusters)
 zookeeper.connect=zk1:2181,zk2:2181,zk3:2181/kafka
 
-# For KRaft mode, use controller.quorum.voters instead
+# For KRaft mode, replace broker.id and zookeeper.connect with node.id plus KRaft metadata settings
+# node.id=4
+# process.roles=broker
 # controller.quorum.voters=1@controller1:9093,2@controller2:9093,3@controller3:9093
+# controller.listener.names=CONTROLLER
 
 # Replication settings
 default.replication.factor=3
@@ -63,6 +66,13 @@ log.segment.bytes=1073741824
 Start each new broker using the Kafka startup script:
 
 ```bash
+# KRaft only: format the new broker's storage once with the existing cluster ID
+# For static KRaft quorums, omit --no-initial-controllers
+bin/kafka-storage.sh format \
+  --cluster-id <existing-cluster-id> \
+  --config config/server.properties \
+  --no-initial-controllers
+
 # Start the new broker
 bin/kafka-server-start.sh -daemon config/server.properties
 
@@ -76,9 +86,6 @@ Check that all brokers are visible in the cluster:
 
 ```bash
 # List all brokers in the cluster
-bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log --command "broker"
-
-# Or using kafka-broker-api-versions
 bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 ```
 
@@ -158,7 +165,6 @@ Here is a Java program to automate partition reassignment:
 ```java
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.TopicPartitionReplica;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -276,11 +282,10 @@ public class KafkaClusterExpander {
 
 ## Automating Cluster Expansion with Python
 
-Here is a Python implementation using `kafka-python` and `confluent-kafka`:
+Here is a Python implementation using `confluent-kafka` to inspect the cluster and generate a reassignment plan for the CLI:
 
 ```python
-from confluent_kafka.admin import AdminClient, NewPartitions
-from confluent_kafka import KafkaException
+from confluent_kafka.admin import AdminClient
 import json
 import time
 
@@ -443,6 +448,7 @@ cd cruise-control
 # Configure Cruise Control
 cat > config/cruisecontrol.properties << EOF
 bootstrap.servers=localhost:9092
+# ZooKeeper-based clusters only; remove this for KRaft clusters
 zookeeper.connect=localhost:2181
 num.metric.fetchers=1
 metric.sampler.class=com.linkedin.kafka.cruisecontrol.monitor.sampling.CruiseControlMetricsReporterSampler
@@ -488,7 +494,7 @@ print(calculate_partition_distribution(100, 3, 5))
 
 ### 2. Throttle Reassignment Traffic
 
-Always throttle reassignment to avoid impacting production traffic:
+Always throttle reassignment to avoid impacting production traffic. The safest option is to use `--throttle` with `kafka-reassign-partitions.sh`; if needed, you can inspect or adjust the broker-level throttle values with `kafka-configs.sh`:
 
 ```bash
 # Set throttle to 100MB/s per broker

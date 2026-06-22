@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix TaskAssignmentException errors in Kaf
 
 ---
 
-The `TaskAssignmentException` in Kafka Streams occurs when the stream processing application fails to properly assign partitions to tasks during rebalancing. This error can cause application restarts, processing delays, and data inconsistencies. This guide covers the root causes and practical solutions.
+The `TaskAssignmentException` in Kafka Streams occurs when the stream processing application fails to assign stream tasks to threads during rebalancing. This error can cause application restarts and processing delays. This guide covers the root causes and practical solutions.
 
 ## Understanding the Exception
 
@@ -33,14 +33,14 @@ flowchart TB
     end
 ```
 
-### Common Error Messages
+### Common Related Error Messages
 
 ```text
 org.apache.kafka.streams.errors.TaskAssignmentException:
-    Task assignment failed due to following errors:
+    Task assignment failed due to the following errors:
     - assigned partitions [topic-0, topic-1] have mismatched task ids
 
-org.apache.kafka.streams.errors.TaskAssignmentException:
+org.apache.kafka.streams.errors.StreamsException:
     Topic not found: internal-changelog-topic
 
 org.apache.kafka.streams.errors.TaskAssignmentException:
@@ -49,9 +49,9 @@ org.apache.kafka.streams.errors.TaskAssignmentException:
 
 ## Root Causes and Solutions
 
-### Cause 1: Application ID Mismatch
+### Cause 1: Application ID Changes
 
-Different application instances using different `application.id` values will not coordinate properly and cause assignment failures.
+Different application instances using different `application.id` values are treated as different Kafka Streams applications. They will not share the same consumer group, internal topics, or local state directories, which can look like assignment or state-restoration problems during deployments.
 
 ```java
 // WRONG: Hardcoded unique IDs per instance
@@ -120,9 +120,8 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 # If topics are missing or misconfigured, reset the application
 kafka-streams-application-reset.sh \
     --application-id my-streams-app \
-    --bootstrap-servers localhost:9092 \
-    --input-topics orders,products \
-    --intermediate-topics my-streams-app-KSTREAM-REPARTITION-0-repartition
+    --bootstrap-server localhost:9092 \
+    --input-topics orders,products
 ```
 
 **Configure internal topic settings in your application:**
@@ -139,11 +138,8 @@ props.put(StreamsConfig.REPLICATION_FACTOR_CONFIG, 3);
 // Topology optimization reduces unnecessary repartitioning
 props.put(StreamsConfig.TOPOLOGY_OPTIMIZATION_CONFIG, StreamsConfig.OPTIMIZE);
 
-// Configure default topic settings via admin client
-Map<String, String> topicConfigs = new HashMap<>();
-topicConfigs.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-topicConfigs.put(TopicConfig.RETENTION_MS_CONFIG, "-1");  // Keep forever for changelogs
-props.put(StreamsConfig.topicPrefix("changelog."), topicConfigs);
+// Configure default topic settings for internal topics
+props.put(StreamsConfig.topicPrefix(TopicConfig.RETENTION_MS_CONFIG), "-1");  // Keep forever
 ```
 
 ### Cause 3: Partition Count Mismatch
@@ -160,7 +156,7 @@ KStream<String, Order> orders = builder.stream("orders");
 // products topic has 5 partitions - MISMATCH!
 KTable<String, Product> products = builder.table("products");
 
-// This join requires repartitioning
+// This join requires the topics to be co-partitioned by key
 KStream<String, EnrichedOrder> enriched = orders.join(
     products,
     (order, product) -> new EnrichedOrder(order, product),
@@ -234,16 +230,13 @@ props.put(StreamsConfig.APPLICATION_ID_CONFIG, "my-streams-app");
 // Default: 10000 (10 seconds)
 props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 30000);
 
-// Increase max poll interval for slow processing
+// Increase max poll interval for slow processing or large rebalances.
+// In the Java consumer group protocol, this also bounds the rebalance timeout.
 // Default: 300000 (5 minutes)
 props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);
 
 // Heartbeat interval should be 1/3 of session timeout
 props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000);
-
-// Increase rebalance timeout for large state restoration
-// Default: 60000 (1 minute)
-props.put(StreamsConfig.consumerPrefix(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG), 900000);
 ```
 
 ### Cause 5: State Store Restoration Failures
@@ -266,7 +259,7 @@ props.put(StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG, 1);
 props.put(StreamsConfig.STATE_DIR_CONFIG, "/ssd/kafka-streams");
 
 // Enable state store caching to reduce changelog traffic
-props.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 100 * 1024 * 1024);  // 100MB
+props.put(StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG, 100 * 1024 * 1024);  // 100MB
 ```
 
 **Monitor state restoration progress:**
@@ -324,17 +317,18 @@ flowchart LR
 # Reset the streams application
 kafka-streams-application-reset.sh \
     --application-id my-streams-app \
-    --bootstrap-servers localhost:9092 \
+    --bootstrap-server localhost:9092 \
     --input-topics orders \
     --to-earliest
 
-# For more aggressive reset (deletes internal topics)
+# To delete specific internal topics during reset, first run with --dry-run
+# to list eligible topics, then pass the subset to --internal-topics
 kafka-streams-application-reset.sh \
     --application-id my-streams-app \
-    --bootstrap-servers localhost:9092 \
+    --bootstrap-server localhost:9092 \
     --input-topics orders \
     --to-earliest \
-    --force
+    --internal-topics my-streams-app-KSTREAM-AGGREGATE-STATE-STORE-0-changelog
 ```
 
 **Or handle programmatically:**
@@ -378,7 +372,8 @@ public class ResilientStreamsApp {
                 runStreamsApp();
                 break;  // Exit loop on clean shutdown
             } catch (StreamsException e) {
-                if (e.getCause() instanceof TaskAssignmentException) {
+                if (e instanceof TaskAssignmentException ||
+                    e.getCause() instanceof TaskAssignmentException) {
                     retryCount++;
                     log.warn("TaskAssignmentException caught, attempt {} of {}",
                         retryCount, MAX_RETRIES, e);
@@ -404,6 +399,8 @@ public class ResilientStreamsApp {
         Topology topology = buildTopology();
 
         KafkaStreams streams = new KafkaStreams(topology, props);
+        CountDownLatch shutdownLatch = new CountDownLatch(1);
+        AtomicReference<Throwable> fatalError = new AtomicReference<>();
 
         // Set up state listener to detect issues early
         streams.setStateListener((newState, oldState) -> {
@@ -417,10 +414,11 @@ public class ResilientStreamsApp {
         // Set up uncaught exception handler
         streams.setUncaughtExceptionHandler(exception -> {
             log.error("Uncaught exception in streams", exception);
+            fatalError.set(exception);
+            shutdownLatch.countDown();
 
             if (exception instanceof TaskAssignmentException) {
-                // Try to recover by replacing the thread
-                return StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.REPLACE_THREAD;
+                return StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.SHUTDOWN_CLIENT;
             }
 
             // For other exceptions, shutdown the client
@@ -433,7 +431,23 @@ public class ResilientStreamsApp {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutdown hook triggered");
             streams.close(Duration.ofSeconds(30));
+            shutdownLatch.countDown();
         }));
+
+        try {
+            shutdownLatch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            streams.close(Duration.ofSeconds(30));
+        }
+
+        Throwable error = fatalError.get();
+        if (error instanceof StreamsException) {
+            throw (StreamsException) error;
+        } else if (error != null) {
+            throw new StreamsException(error);
+        }
     }
 
     private static void sleep(Duration duration) {
@@ -499,7 +513,7 @@ Key metrics to monitor:
 | `task-closed-rate` | Rate of task closure | Sudden spikes |
 | `rebalance-total` | Total rebalances | Frequent rebalances |
 | `rebalance-latency-avg` | Average rebalance time | > 60 seconds |
-| `restoration-rate` | State restoration rate | Prolonged restoration |
+| `restore-rate` | State store restore rate | Prolonged restoration |
 
 ## Best Practices
 
@@ -513,11 +527,14 @@ Key metrics to monitor:
 8. **Use incremental cooperative rebalancing** - Reduces stop-the-world rebalancing
 
 ```java
-// Enable cooperative rebalancing (Kafka 2.4+)
+// Kafka Streams 2.4+ supports cooperative rebalancing through its built-in
+// StreamsPartitionAssignor. Do not configure CooperativeStickyAssignor for
+// Kafka Streams applications.
 Properties props = new Properties();
-props.put(StreamsConfig.UPGRADE_FROM_CONFIG, StreamsConfig.UPGRADE_FROM_24);
-props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
-    CooperativeStickyAssignor.class.getName());
+
+// During a rolling upgrade from older Kafka Streams versions, set upgrade.from
+// for the first rolling bounce, then remove it during a second rolling bounce.
+props.put(StreamsConfig.UPGRADE_FROM_CONFIG, StreamsConfig.UPGRADE_FROM_23);
 ```
 
 ---

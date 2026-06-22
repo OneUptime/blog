@@ -12,7 +12,7 @@ Table partitioning divides large tables into smaller, more manageable pieces whi
 
 ## Prerequisites
 
-- PostgreSQL 10+ (native partitioning)
+- PostgreSQL 11+ for the examples below (PostgreSQL 10 supports native range and list partitioning, but hash partitioning and parent-level partitioned indexes were added in PostgreSQL 11)
 - Large tables that would benefit from partitioning
 - Understanding of your data access patterns
 
@@ -153,15 +153,17 @@ CREATE TABLE events_2026_01_other PARTITION OF events_2026_01
 
 ## Indexes on Partitioned Tables
 
-### Global Indexes (PostgreSQL 11+)
+### Partitioned Indexes (PostgreSQL 11+)
 
 ```sql
--- Index defined on parent applies to all partitions
+-- Index defined on parent creates matching indexes on all partitions
 CREATE INDEX idx_orders_customer ON orders(customer_id);
 
 -- Unique index requires partition key
 CREATE UNIQUE INDEX idx_orders_id_created ON orders(id, created_at);
 ```
+
+PostgreSQL does not create a single global index across all partitions. Indexes and unique constraints declared on a partitioned table are virtual parent objects backed by indexes on the individual partitions.
 
 ### Partition-Local Indexes
 
@@ -195,6 +197,7 @@ ALTER TABLE orders DETACH PARTITION orders_2025_q1;
 
 -- Now can move, archive, or drop
 -- Move to archive schema
+CREATE SCHEMA IF NOT EXISTS archive;
 ALTER TABLE orders_2025_q1 SET SCHEMA archive;
 
 -- Or drop
@@ -207,7 +210,7 @@ DROP TABLE orders_2025_q1;
 -- Create table matching partition structure
 CREATE TABLE orders_2024_q4 (LIKE orders INCLUDING ALL);
 
--- Add constraint (required for attachment)
+-- Add constraint to avoid a validation scan during attachment
 ALTER TABLE orders_2024_q4 ADD CONSTRAINT partition_check
     CHECK (created_at >= '2024-10-01' AND created_at < '2025-01-01');
 
@@ -314,7 +317,7 @@ WHERE created_at >= '2026-01-01'
 
 Output shows pruning:
 ```text
-Seq Scan on orders_2026_01 orders  (cost=...)
+Seq Scan on orders_2026_q1 orders  (cost=...)
   Filter: (created_at >= '2026-01-01' AND created_at < '2026-02-01')
 ```
 

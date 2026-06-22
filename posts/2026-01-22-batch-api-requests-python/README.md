@@ -42,13 +42,13 @@ async def fetch_users_individually(user_ids: list[str]) -> list[dict]:
             users.append(user)
         return users
 
-# Even with concurrency, you still have N connections
+# Even with concurrency, you still have N requests
 async def fetch_users_concurrent(user_ids: list[str]) -> list[dict]:
     """Fetch users concurrently - still N requests"""
     async with httpx.AsyncClient() as client:
         tasks = [fetch_user(client, uid) for uid in user_ids]
         return await asyncio.gather(*tasks)
-        # Faster due to parallelism, but still creates N connections
+        # Faster due to parallelism, but still sends N requests
         # May hit rate limits or overwhelm the server
 ```
 
@@ -57,6 +57,8 @@ The batched approach sends one request for all users:
 ```python
 # batched_approach.py
 # Batching reduces N requests to 1 request
+import httpx
+
 async def fetch_users_batched(user_ids: list[str]) -> list[dict]:
     """Fetch multiple users in a single request"""
     async with httpx.AsyncClient() as client:
@@ -81,7 +83,7 @@ If you are building an API, provide batch endpoints for resources that clients c
 # FastAPI batch endpoint implementation
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict
 import asyncio
 
 app = FastAPI()
@@ -110,7 +112,7 @@ async def batch_get_users(request: BatchRequest):
         )
 
     # Deduplicate IDs
-    unique_ids = list(set(request.ids))
+    unique_ids = list(dict.fromkeys(request.ids))
 
     # Fetch all users in parallel from database
     results = {}
@@ -161,9 +163,8 @@ When consuming external APIs that do not support batching, you can implement cli
 # client_batcher.py
 # Client-side request batching implementation
 import asyncio
-from typing import Dict, List, Callable, TypeVar, Generic
-from dataclasses import dataclass, field
-from collections import defaultdict
+from typing import Awaitable, Dict, List, Callable, TypeVar, Generic
+from dataclasses import dataclass
 
 T = TypeVar('T')
 
@@ -181,7 +182,7 @@ class RequestBatcher(Generic[T]):
 
     def __init__(
         self,
-        batch_fn: Callable[[List[str]], Dict[str, T]],
+        batch_fn: Callable[[List[str]], Awaitable[Dict[str, T]]],
         max_batch_size: int = 100,
         batch_window_ms: int = 10
     ):
@@ -200,7 +201,7 @@ class RequestBatcher(Generic[T]):
         """
         async with self._lock:
             # Create a future that will hold the result
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             self._pending.append(PendingRequest(key=key, future=future))
 
             # Schedule batch execution if not already scheduled
@@ -231,18 +232,22 @@ class RequestBatcher(Generic[T]):
             return
 
         # Get unique keys
-        keys = list(set(req.key for req in pending))
+        keys = list(dict.fromkeys(req.key for req in pending))
 
         # Split into chunks if exceeds max batch size
         for i in range(0, len(keys), self.max_batch_size):
             chunk_keys = keys[i:i + self.max_batch_size]
+            chunk_key_set = set(chunk_keys)
+            chunk_pending = [
+                req for req in pending if req.key in chunk_key_set
+            ]
 
             try:
                 # Execute batch fetch
                 results = await self.batch_fn(chunk_keys)
 
                 # Resolve futures for this chunk
-                for req in pending:
+                for req in chunk_pending:
                     if req.key in results:
                         req.future.set_result(results[req.key])
                     else:
@@ -285,8 +290,7 @@ The DataLoader pattern, popularized by GraphQL, provides automatic batching with
 # dataloader.py
 # DataLoader implementation with batching and caching
 import asyncio
-from typing import Dict, List, Callable, TypeVar, Generic, Optional, Any
-from functools import wraps
+from typing import Awaitable, Dict, List, Callable, TypeVar, Generic, Optional
 
 T = TypeVar('T')
 
@@ -299,7 +303,7 @@ class DataLoader(Generic[T]):
 
     def __init__(
         self,
-        batch_load_fn: Callable[[List[str]], List[Optional[T]]],
+        batch_load_fn: Callable[[List[str]], Awaitable[List[Optional[T]]]],
         max_batch_size: int = 100,
         cache: bool = True
     ):
@@ -318,14 +322,14 @@ class DataLoader(Generic[T]):
             return self._cache[key]
 
         # Add to batch queue
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         self._queue.append((key, future))
 
         # Schedule batch execution
         if not self._batch_scheduled:
             self._batch_scheduled = True
             # Execute on next tick
-            asyncio.get_event_loop().call_soon(
+            asyncio.get_running_loop().call_soon(
                 lambda: asyncio.create_task(self._dispatch())
             )
 
@@ -367,18 +371,22 @@ class DataLoader(Generic[T]):
                 keys.append(key)
 
         try:
-            # Call batch function
-            values = await self.batch_load_fn(keys)
+            value_map = {}
 
-            # Batch function must return same number of results
-            if len(values) != len(keys):
-                raise ValueError(
-                    f"Batch function returned {len(values)} results "
-                    f"for {len(keys)} keys"
-                )
+            # Call batch function in chunks
+            for i in range(0, len(keys), self.max_batch_size):
+                batch_keys = keys[i:i + self.max_batch_size]
+                values = await self.batch_load_fn(batch_keys)
 
-            # Build key -> value mapping
-            value_map = dict(zip(keys, values))
+                # Batch function must return same number of results
+                if len(values) != len(batch_keys):
+                    raise ValueError(
+                        f"Batch function returned {len(values)} results "
+                        f"for {len(batch_keys)} keys"
+                    )
+
+                # Build key -> value mapping
+                value_map.update(dict(zip(batch_keys, values)))
 
             # Cache and resolve futures
             for key, future in queue:
@@ -414,8 +422,12 @@ async def resolve_order(order):
     user = await user_loader.load(order["user_id"])
     return {"order": order, "user": user}
 
-orders = [{"id": 1, "user_id": "u1"}, {"id": 2, "user_id": "u2"}]
-results = await asyncio.gather(*[resolve_order(o) for o in orders])
+async def main():
+    orders = [{"id": 1, "user_id": "u1"}, {"id": 2, "user_id": "u2"}]
+    results = await asyncio.gather(*[resolve_order(o) for o in orders])
+    return results
+
+# asyncio.run(main())
 # Only one DB query for both users
 ```
 
@@ -429,8 +441,12 @@ Batching is not just for reads. Write operations benefit even more from batching
 # bulk_writes.py
 # Batch write operations for better performance
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, ValidationError
+from pymongo import UpdateOne
 import asyncio
+
+app = FastAPI()
 
 class BulkCreateRequest(BaseModel):
     items: List[dict]
@@ -465,7 +481,7 @@ async def bulk_write_items(request: BulkCreateRequest):
     for i, item in enumerate(request.items):
         try:
             validated = ItemModel(**item)
-            valid_items.append(validated.dict())
+            valid_items.append(validated.model_dump())
         except ValidationError as e:
             result.errors.append({
                 "index": i,
@@ -562,14 +578,17 @@ class WriteBuffer:
 
 ## GraphQL Batching
 
-GraphQL naturally supports request batching. Here is how to implement it with Strawberry.
+GraphQL APIs commonly use DataLoader to batch backend data fetching. Here is how to implement it with Strawberry.
 
 ```python
 # graphql_batching.py
 # GraphQL with DataLoader for automatic batching
+from __future__ import annotations
+
 import strawberry
 from strawberry.dataloader import DataLoader
 from typing import List, Optional
+from collections import defaultdict
 
 # Batch load functions
 async def load_users(keys: List[str]) -> List[Optional[User]]:
@@ -610,7 +629,7 @@ class User:
 @strawberry.type
 class Query:
     @strawberry.field
-    async def users(self, ids: List[str], info) -> List[User]:
+    async def users(self, ids: List[str], info) -> List[Optional[User]]:
         loader = info.context["user_loader"]
         return await loader.load_many(ids)
 
@@ -636,6 +655,7 @@ Here is a benchmark comparing individual requests versus batching.
 import asyncio
 import time
 import httpx
+from typing import List
 
 async def benchmark_individual(client: httpx.AsyncClient, ids: List[str]):
     """Fetch items one at a time"""

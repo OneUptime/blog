@@ -130,9 +130,9 @@ iostat -x 1 3
 Example output:
 
 ```text
-Device  r/s    w/s   rkB/s   wkB/s  rrqm/s wrqm/s %rrqm %wrqm r_await w_await aqu-sz rareq-sz wareq-sz  svctm  %util
-sda    45.00  30.00  720.00  480.00   5.00  10.00 10.00 25.00    2.50    4.00   0.25    16.00    16.00   0.80  6.00
-nvme0n1 1200.00 800.00 48000.00 32000.00  0.00   0.00  0.00  0.00    0.15    0.20   0.30    40.00    40.00   0.05  10.00
+Device      r/s   rkB/s rrqm/s %rrqm r_await rareq-sz    w/s   wkB/s wrqm/s %wrqm w_await wareq-sz aqu-sz %util
+sda       45.00  720.00   5.00 10.00    2.50    16.00  30.00  480.00  10.00 25.00    4.00    16.00   0.25   6.00
+nvme0n1 1200.00 48000.00 0.00  0.00    0.15    40.00 800.00 32000.00 0.00  0.00    0.20    40.00   0.30  10.00
 ```
 
 ### Metric Definitions
@@ -143,15 +143,16 @@ nvme0n1 1200.00 800.00 48000.00 32000.00  0.00   0.00  0.00  0.00    0.15    0.2
 | `w/s` | Write requests per second | High values indicate write-heavy workload |
 | `rkB/s` | Kilobytes read per second | Throughput for reads |
 | `wkB/s` | Kilobytes written per second | Throughput for writes |
-| `rrqm/s` | Read requests merged per second | Higher is better (efficiency) |
-| `wrqm/s` | Write requests merged per second | Higher is better (efficiency) |
+| `rrqm/s` | Read requests merged per second | High values can indicate effective request merging |
+| `wrqm/s` | Write requests merged per second | High values can indicate effective request merging |
 | `r_await` | Average read request time (ms) | Lower is better, watch for spikes |
 | `w_await` | Average write request time (ms) | Lower is better, watch for spikes |
 | `aqu-sz` | Average queue length | High values indicate saturation |
 | `rareq-sz` | Average read request size (KB) | Larger is generally better for throughput |
 | `wareq-sz` | Average write request size (KB) | Larger is generally better for throughput |
-| `svctm` | Service time (deprecated) | Use await instead |
-| `%util` | Percentage of time device was busy | 100% means saturated |
+| `%util` | Percentage of elapsed time during which I/O requests were issued | Near 100% can indicate saturation on devices serving requests serially |
+
+Note: Older `iostat -x` output may include `svctm`, but it is deprecated. Use `await`, `r_await`, and `w_await` instead.
 
 ---
 
@@ -201,7 +202,7 @@ iostat -x 1 | awk '/^sd|^nvme/ {print $1, $NF}'
 - **Below 70%**: Generally healthy
 - **70-90%**: Monitor closely, may indicate approaching saturation
 - **Above 90%**: Disk is becoming a bottleneck
-- **100%**: Disk is saturated, requests are queuing
+- **100%**: Often saturated on devices serving requests serially; confirm with `await` and `aqu-sz`
 
 Note: For SSDs and NVMe, %util can be misleading due to parallelism. Focus on `await` metrics instead.
 
@@ -292,32 +293,26 @@ log_message() {
 
 # Function to check metrics
 check_metrics() {
-    # Get iostat output, skip header
-    iostat -x 1 2 | tail -n +7 | while read line; do
-        # Skip empty lines and header
-        [[ -z "$line" ]] && continue
-        [[ "$line" =~ ^Device ]] && continue
-
-        # Parse the line
-        device=$(echo "$line" | awk '{print $1}')
-        r_await=$(echo "$line" | awk '{print $10}')
-        w_await=$(echo "$line" | awk '{print $11}')
-        util=$(echo "$line" | awk '{print $NF}')
-
-        # Remove decimal for comparison
-        util_int=${util%.*}
-        r_await_int=${r_await%.*}
-        w_await_int=${w_await%.*}
+    # Get one interval report and map columns by name.
+    iostat -x -y 1 1 | awk '
+        /^Device/ {
+            for (i = 1; i <= NF; i++) col[$i] = i
+            next
+        }
+        /^(sd|nvme|vd|xvd|dm-)/ && col["r_await"] && col["w_await"] && col["%util"] {
+            print $1, $(col["r_await"]), $(col["w_await"]), $(col["%util"])
+        }
+    ' | while read -r device r_await w_await util; do
 
         # Check utilization threshold
-        if [[ "$util_int" -gt "$THRESHOLD_UTIL" ]]; then
+        if awk "BEGIN {exit !($util > $THRESHOLD_UTIL)}"; then
             message="HIGH UTIL: $device at ${util}%"
             log_message "$message"
             $ALERT_SCRIPT "$message" 2>/dev/null
         fi
 
         # Check await threshold
-        if [[ "$r_await_int" -gt "$THRESHOLD_AWAIT" ]] || [[ "$w_await_int" -gt "$THRESHOLD_AWAIT" ]]; then
+        if awk "BEGIN {exit !($r_await > $THRESHOLD_AWAIT || $w_await > $THRESHOLD_AWAIT)}"; then
             message="HIGH LATENCY: $device r_await=${r_await}ms w_await=${w_await}ms"
             log_message "$message"
             $ALERT_SCRIPT "$message" 2>/dev/null
@@ -336,7 +331,7 @@ done
 Make it executable and run as a service:
 
 ```bash
-chmod +x /usr/local/bin/iostat-monitor.sh
+sudo chmod +x /usr/local/bin/iostat-monitor.sh
 
 # Create systemd service
 cat << 'EOF' | sudo tee /etc/systemd/system/iostat-monitor.service
@@ -439,14 +434,24 @@ Identify the pattern from iostat:
 
 ```bash
 # Sequential I/O indicators
-iostat -x 1 | awk '/^sda/ && $NF > 50 {
-    if ($14 > 64) print "Sequential read pattern"
-    if ($15 > 64) print "Sequential write pattern"
+iostat -x 1 | awk '
+/^Device/ {
+    for (i = 1; i <= NF; i++) col[$i] = i
+    next
+}
+/^sda/ && $(col["%util"]) > 50 {
+    if ($(col["rareq-sz"]) > 64) print "Sequential read pattern"
+    if ($(col["wareq-sz"]) > 64) print "Sequential write pattern"
 }'
 
 # Random I/O indicators
-iostat -x 1 | awk '/^sda/ && ($6 + $7) > 1000 {
-    if ($14 < 16 && $15 < 16) print "Random I/O pattern"
+iostat -x 1 | awk '
+/^Device/ {
+    for (i = 1; i <= NF; i++) col[$i] = i
+    next
+}
+/^sda/ && ($(col["r/s"]) + $(col["w/s"])) > 1000 {
+    if ($(col["rareq-sz"]) < 16 && $(col["wareq-sz"]) < 16) print "Random I/O pattern"
 }'
 ```
 
@@ -472,7 +477,14 @@ iostat -xm sda 1 3
 
 ```bash
 # Identify the problem
-iostat -x sda 1 | awk '$10 > 20 || $11 > 20 {print "High latency:", $0}'
+iostat -x sda 1 | awk '
+/^Device/ {
+    for (i = 1; i <= NF; i++) col[$i] = i
+    next
+}
+/^sda/ && ($(col["r_await"]) > 20 || $(col["w_await"]) > 20) {
+    print "High latency:", $0
+}'
 
 # Solutions:
 # 1. Check for disk errors
@@ -489,7 +501,14 @@ echo "mq-deadline" | sudo tee /sys/block/sda/queue/scheduler
 
 ```bash
 # Monitor queue depth
-iostat -x 1 | awk '/^sda/ && $12 > 4 {print "High queue:", $12}'
+iostat -x 1 | awk '
+/^Device/ {
+    for (i = 1; i <= NF; i++) col[$i] = i
+    next
+}
+/^sda/ && $(col["aqu-sz"]) > 4 {
+    print "High queue:", $(col["aqu-sz"])
+}'
 
 # Solutions:
 # 1. Spread load across multiple disks
@@ -581,40 +600,44 @@ Export iostat metrics to Prometheus:
 # Export iostat metrics for Prometheus
 
 OUTPUT_FILE="/var/lib/node_exporter/textfile_collector/iostat.prom"
+TMP_FILE="${OUTPUT_FILE}.tmp"
+
+cat << EOF > "$TMP_FILE"
+# HELP node_disk_reads_per_second Disk reads per second
+# TYPE node_disk_reads_per_second gauge
+# HELP node_disk_writes_per_second Disk writes per second
+# TYPE node_disk_writes_per_second gauge
+# HELP node_disk_read_kbytes_per_second Disk read throughput in KiB/s
+# TYPE node_disk_read_kbytes_per_second gauge
+# HELP node_disk_write_kbytes_per_second Disk write throughput in KiB/s
+# TYPE node_disk_write_kbytes_per_second gauge
+# HELP node_disk_read_await_ms Average read latency in ms
+# TYPE node_disk_read_await_ms gauge
+# HELP node_disk_write_await_ms Average write latency in ms
+# TYPE node_disk_write_await_ms gauge
+# HELP node_disk_util_percent Disk utilization percentage
+# TYPE node_disk_util_percent gauge
+EOF
 
 # Get iostat data
-iostat -x 1 2 | tail -n +7 | while read line; do
-    [[ -z "$line" ]] && continue
-    [[ "$line" =~ ^Device ]] && continue
+iostat -x -y 1 1 | awk '
+    /^Device/ {
+        for (i = 1; i <= NF; i++) col[$i] = i
+        next
+    }
+    /^(sd|nvme|vd|xvd|dm-)/ && col["r/s"] && col["w/s"] && col["rkB/s"] && col["wkB/s"] {
+        device = $1
+        print "node_disk_reads_per_second{device=\"" device "\"} " $(col["r/s"])
+        print "node_disk_writes_per_second{device=\"" device "\"} " $(col["w/s"])
+        print "node_disk_read_kbytes_per_second{device=\"" device "\"} " $(col["rkB/s"])
+        print "node_disk_write_kbytes_per_second{device=\"" device "\"} " $(col["wkB/s"])
+        print "node_disk_read_await_ms{device=\"" device "\"} " $(col["r_await"])
+        print "node_disk_write_await_ms{device=\"" device "\"} " $(col["w_await"])
+        print "node_disk_util_percent{device=\"" device "\"} " $(col["%util"])
+    }
+' >> "$TMP_FILE"
 
-    device=$(echo "$line" | awk '{print $1}')
-    r_s=$(echo "$line" | awk '{print $2}')
-    w_s=$(echo "$line" | awk '{print $3}')
-    rkB_s=$(echo "$line" | awk '{print $4}')
-    wkB_s=$(echo "$line" | awk '{print $5}')
-    r_await=$(echo "$line" | awk '{print $10}')
-    w_await=$(echo "$line" | awk '{print $11}')
-    util=$(echo "$line" | awk '{print $NF}')
-
-    cat << EOF >> "${OUTPUT_FILE}.tmp"
-# HELP node_disk_reads_per_second Disk reads per second
-node_disk_reads_per_second{device="$device"} $r_s
-# HELP node_disk_writes_per_second Disk writes per second
-node_disk_writes_per_second{device="$device"} $w_s
-# HELP node_disk_read_bytes_per_second Disk read throughput in KB/s
-node_disk_read_kbytes_per_second{device="$device"} $rkB_s
-# HELP node_disk_write_bytes_per_second Disk write throughput in KB/s
-node_disk_write_kbytes_per_second{device="$device"} $wkB_s
-# HELP node_disk_read_await_ms Average read latency in ms
-node_disk_read_await_ms{device="$device"} $r_await
-# HELP node_disk_write_await_ms Average write latency in ms
-node_disk_write_await_ms{device="$device"} $w_await
-# HELP node_disk_util_percent Disk utilization percentage
-node_disk_util_percent{device="$device"} $util
-EOF
-done
-
-mv "${OUTPUT_FILE}.tmp" "$OUTPUT_FILE"
+mv "$TMP_FILE" "$OUTPUT_FILE"
 ```
 
 ---
@@ -641,19 +664,23 @@ lsblk
 # Ensure you are not running in a container without disk stats
 cat /proc/diskstats
 
-# Check if sysstat is collecting data
-sudo systemctl status sysstat
-
-# Enable sysstat data collection
-sudo systemctl enable sysstat
-sudo systemctl start sysstat
+# iostat reads live counters from /proc/diskstats and /sys
+# If these counters do not change, check the host, kernel, or container permissions
+watch -n 1 'cat /proc/diskstats | head'
 ```
 
 ### Issue 3: Misleading %util on SSDs
 
 ```bash
 # For SSDs, focus on await and queue metrics instead
-iostat -x nvme0n1 1 | awk 'NR>6 {print "await:", $10, $11, "queue:", $12}'
+iostat -x nvme0n1 1 | awk '
+/^Device/ {
+    for (i = 1; i <= NF; i++) col[$i] = i
+    next
+}
+/^nvme0n1/ {
+    print "await:", $(col["r_await"]), $(col["w_await"]), "queue:", $(col["aqu-sz"])
+}'
 
 # NVMe can handle multiple parallel operations
 # %util of 100% does not mean saturated

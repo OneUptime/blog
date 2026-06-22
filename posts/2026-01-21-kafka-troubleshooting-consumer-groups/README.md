@@ -43,17 +43,17 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 ### Understanding Output
 
 ```text
-GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG      CONSUMER-ID                                   HOST            CLIENT-ID
-my-group        my-topic        0          1000            1050            50       consumer-1-abc123                             /10.0.0.1       consumer-1
-my-group        my-topic        1          2000            2000            0        consumer-2-def456                             /10.0.0.2       consumer-2
-my-group        my-topic        2          1500            1800            300      -                                             -               -
+TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG      CONSUMER-ID                                   HOST            CLIENT-ID
+my-topic        0          1000            1050            50       consumer-1-abc123                             /10.0.0.1       consumer-1
+my-topic        1          2000            2000            0        consumer-2-def456                             /10.0.0.2       consumer-2
+my-topic        2          1500            1800            300      -                                             -               -
 ```
 
 Key columns:
-- **CURRENT-OFFSET**: Last committed offset
-- **LOG-END-OFFSET**: Latest available offset
+- **CURRENT-OFFSET**: Committed offset for the next record the group will consume
+- **LOG-END-OFFSET**: End offset of the partition
 - **LAG**: Messages behind (LOG-END-OFFSET - CURRENT-OFFSET)
-- **CONSUMER-ID**: Active consumer (- means unassigned)
+- **CONSUMER-ID**: Active consumer (- means no active consumer for that partition)
 
 ## Rebalancing Issues
 
@@ -189,7 +189,7 @@ props.put("spring.deserializer.value.delegate.class",
 ```bash
 # Check current lag
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --describe --group my-group | grep -v "^$" | tail -n +3 | awk '{sum += $6} END {print "Total lag: " sum}'
+  --describe --group my-group | grep -v "^$" | tail -n +2 | awk '{sum += $5} END {print "Total lag: " sum}'
 
 # Monitor lag over time
 watch -n 5 'kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-group'
@@ -265,16 +265,17 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 ```java
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.GroupState;
 import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 
 public class ConsumerGroupDiagnostic {
-    private final AdminClient admin;
+    private final Admin admin;
 
     public ConsumerGroupDiagnostic(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.admin = AdminClient.create(props);
+        this.admin = Admin.create(props);
     }
 
     public void diagnose(String groupId) throws Exception {
@@ -286,18 +287,18 @@ public class ConsumerGroupDiagnostic {
         ConsumerGroupDescription description =
             descResult.describedGroups().get(groupId).get();
 
-        System.out.println("State: " + description.state());
+        System.out.println("State: " + description.groupState());
         System.out.println("Protocol: " + description.partitionAssignor());
         System.out.println("Coordinator: " + description.coordinator());
         System.out.println("Members: " + description.members().size());
 
         // Check for issues
-        if (description.state() == ConsumerGroupState.EMPTY) {
+        if (description.groupState() == GroupState.EMPTY) {
             System.out.println("\n[WARNING] Group is EMPTY - no active consumers");
         }
 
-        if (description.state() == ConsumerGroupState.PREPARING_REBALANCE ||
-            description.state() == ConsumerGroupState.COMPLETING_REBALANCE) {
+        if (description.groupState() == GroupState.PREPARING_REBALANCE ||
+            description.groupState() == GroupState.COMPLETING_REBALANCE) {
             System.out.println("\n[WARNING] Group is rebalancing");
         }
 
@@ -371,7 +372,7 @@ public class ConsumerGroupDiagnostic {
 
 - [ ] Check `max.poll.interval.ms` vs processing time
 - [ ] Check `session.timeout.ms` vs network latency
-- [ ] Verify `heartbeat.interval.ms` < `session.timeout.ms / 3`
+- [ ] Verify `heartbeat.interval.ms` is lower than `session.timeout.ms` and typically no higher than `session.timeout.ms / 3`
 - [ ] Consider static membership for k8s
 - [ ] Use cooperative rebalancing
 

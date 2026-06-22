@@ -46,7 +46,6 @@ RabbitMQ has native support for dead letter exchanges (DLX). Here's how to confi
 
 # RabbitMQ dead letter queue configuration
 import pika
-from typing import Optional
 
 class RabbitMQConfig:
     """Configuration for RabbitMQ connections and queues."""
@@ -117,9 +116,9 @@ def setup_queues_with_dlq(config: RabbitMQConfig) -> None:
             "x-dead-letter-exchange": "dlx.exchange",
             # Use this routing key for dead-lettered messages
             "x-dead-letter-routing-key": "orders",
-            # Optional: max retries before dead-lettering
+            # Optional: reject and dead-letter new messages when full
             "x-max-length": 100000,  # Queue capacity
-            "x-overflow": "reject-publish"  # Reject new messages when full
+            "x-overflow": "reject-publish-dlx"
         }
     )
 
@@ -140,8 +139,9 @@ import pika
 import json
 import time
 from dataclasses import dataclass
-from typing import Callable, Any, Optional
-from functools import wraps
+from typing import Callable, Optional
+
+from dlq_setup import RabbitMQConfig
 
 @dataclass
 class Message:
@@ -245,8 +245,11 @@ class MessageConsumer:
             headers=headers
         )
 
-        # Wait before republishing
-        time.sleep(delay)
+        # Wait before republishing while still servicing connection events
+        if self.connection:
+            self.connection.sleep(delay)
+        else:
+            time.sleep(delay)
 
         # Republish to the same queue
         self.channel.basic_publish(
@@ -320,29 +323,29 @@ class MessageConsumer:
             # Transient error - retry if under limit
             if retry_count < self.max_retries:
                 print(f"Retrying message (attempt {retry_count + 1}): {e}")
-                channel.basic_ack(delivery_tag=method.delivery_tag)
                 self._republish_with_delay(body, properties, retry_count, str(e))
+                channel.basic_ack(delivery_tag=method.delivery_tag)
             else:
                 print(f"Max retries exceeded, sending to DLQ: {e}")
-                channel.basic_ack(delivery_tag=method.delivery_tag)
                 self._send_to_dlq(body, properties, f"Max retries exceeded: {e}")
+                channel.basic_ack(delivery_tag=method.delivery_tag)
 
         except PermanentError as e:
             # Permanent error - send directly to DLQ
             print(f"Permanent error, sending to DLQ: {e}")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             self._send_to_dlq(body, properties, str(e))
+            channel.basic_ack(delivery_tag=method.delivery_tag)
 
         except Exception as e:
             # Unexpected error - treat as retryable
             if retry_count < self.max_retries:
                 print(f"Unexpected error, retrying: {e}")
-                channel.basic_ack(delivery_tag=method.delivery_tag)
                 self._republish_with_delay(body, properties, retry_count, str(e))
+                channel.basic_ack(delivery_tag=method.delivery_tag)
             else:
                 print(f"Max retries exceeded for unexpected error: {e}")
-                channel.basic_ack(delivery_tag=method.delivery_tag)
                 self._send_to_dlq(body, properties, f"Unexpected error: {e}")
+                channel.basic_ack(delivery_tag=method.delivery_tag)
 
     def start_consuming(self) -> None:
         """Start consuming messages from the queue."""
@@ -379,6 +382,8 @@ import json
 from dataclasses import dataclass
 from typing import List, Optional, Callable
 from datetime import datetime
+
+from dlq_setup import RabbitMQConfig
 
 @dataclass
 class DeadLetteredMessage:
@@ -453,7 +458,7 @@ class DLQProcessor:
             )
             messages.append(message)
 
-            # Reject without requeue to put it back
+            # Requeue the message so it remains available after inspection
             self.channel.basic_nack(
                 delivery_tag=method.delivery_tag,
                 requeue=True
@@ -463,14 +468,13 @@ class DLQProcessor:
 
     def replay_message(
         self,
-        delivery_tag: int,
         target_queue: Optional[str] = None
     ) -> bool:
         """
-        Replay a single message from the DLQ to its original queue.
+        Replay the next message from the DLQ to its original queue.
         Resets retry count and clears error history.
         """
-        # Get the specific message
+        # Get the next message
         method, properties, body = self.channel.basic_get(
             queue=self.dlq_name,
             auto_ack=False
@@ -526,8 +530,9 @@ class DLQProcessor:
         """
         replayed = 0
         processed = 0
+        initial_depth = self.get_queue_depth()
 
-        while limit is None or replayed < limit:
+        while processed < initial_depth and (limit is None or replayed < limit):
             method, properties, body = self.channel.basic_get(
                 queue=self.dlq_name,
                 auto_ack=False
@@ -729,7 +734,9 @@ def inspect_and_replay_dlq():
 # Metrics and alerting for DLQ
 from dataclasses import dataclass
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from dlq_processor import DLQProcessor
 
 @dataclass
 class DLQMetrics:

@@ -139,13 +139,12 @@ describe('User Repository', () => {
 
   it('should return null for non-existent user', async () => {
     // FAILS: User from previous test still exists
-    const user = await userRepo.findByEmail('nonexistent@example.com');
+    const user = await userRepo.findByEmail('test@example.com');
     expect(user).toBeNull();
-    // Actually checking wrong email, but database state is polluted
   });
 
   it('should enforce unique email', async () => {
-    // FAILS: test@example.com already exists from first test
+    await userRepo.create({ email: 'test@example.com', name: 'Test' });
     await expect(userRepo.create({ email: 'test@example.com', name: 'Another' }))
       .rejects.toThrow('unique constraint');
   });
@@ -336,6 +335,8 @@ class Cache {
 }
 
 // tests/cache.test.js
+const cache = require('../src/cache');
+
 describe('Cache', () => {
   beforeEach(() => {
     cache.clear();  // Reset state before each test
@@ -462,17 +463,20 @@ module.exports = {
   // Randomize test order to expose isolation issues
   randomize: true,
 
-  // Or use a seed for reproducible ordering
-  // randomize: true,
-  // seed: 12345
+  // Print the seed so a random order can be reproduced
+  showSeed: true
 };
+```
+
+```bash
+# Or use a seed for reproducible ordering
+jest --randomize --seed=12345
 ```
 
 ### Run Tests in Isolation
 
 ```bash
-# Run each test file in a separate process
-
+# Run tests serially in the current process while debugging open handles
 jest --runInBand --detectOpenHandles
 
 # Run a single test to see if it passes alone

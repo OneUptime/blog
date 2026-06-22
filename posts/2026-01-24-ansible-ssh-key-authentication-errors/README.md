@@ -87,7 +87,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 **Solution 3: Specify the correct key in Ansible**
 
-```yaml
+```ini
 # In your ansible.cfg file
 [defaults]
 private_key_file = ~/.ssh/ansible_key
@@ -122,7 +122,7 @@ ls -la ~/.ssh/
 # Expected output for private key: -rw-------
 ```
 
-### Error 3: Could Not Load Host Key
+### Error 3: No Matching Host Key Type Found
 
 ```bash
 # Error message
@@ -142,7 +142,7 @@ fatal: [server1]: UNREACHABLE! => {
 Host *
     # Enable legacy host key algorithms for older servers
     HostKeyAlgorithms +ssh-rsa
-    PubkeyAcceptedKeyTypes +ssh-rsa
+    PubkeyAcceptedAlgorithms +ssh-rsa
 ```
 
 **Solution 2: Configure in Ansible**
@@ -150,7 +150,7 @@ Host *
 ```ini
 # In ansible.cfg
 [ssh_connection]
-ssh_args = -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedKeyTypes=+ssh-rsa
+ssh_args = -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
 ```
 
 **Solution 3: Generate a new key with modern algorithm (recommended)**
@@ -249,8 +249,8 @@ chmod 600 ~/.ssh/id_rsa_converted
 **Solution 2: Convert old format to new OpenSSH format**
 
 ```bash
-# Convert to new OpenSSH format (useful for keys created before OpenSSH 7.8)
-ssh-keygen -p -f ~/.ssh/id_rsa -m pem -N ""
+# Rewrite the key in OpenSSH's default private key format
+ssh-keygen -p -f ~/.ssh/id_rsa
 
 # Or create a new key entirely
 ssh-keygen -t ed25519 -f ~/.ssh/new_ansible_key
@@ -339,16 +339,15 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o ServerAliveInterval=30
 timeout = 30
 ```
 
-### 3. Use ansible-vault for Key Passphrases
-
-```yaml
-# group_vars/all/vault.yml (encrypted with ansible-vault)
-ansible_ssh_private_key_passphrase: "your-secure-passphrase"
-```
+### 3. Use ssh-agent for Key Passphrases
 
 ```bash
-# Run playbook with vault password
-ansible-playbook site.yml --ask-vault-pass
+# Start ssh-agent and add your passphrase-protected private key
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/ansible_automation_key
+
+# Run playbook after the key is loaded
+ansible-playbook site.yml
 ```
 
 ## SSH Key Authentication Troubleshooting Flowchart
@@ -413,7 +412,7 @@ all:
           ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/legacy_rsa_key
           # Enable ssh-rsa for older servers
-          ansible_ssh_common_args: '-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedKeyTypes=+ssh-rsa'
+          ansible_ssh_common_args: '-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa'
 
     cloud_servers:
       hosts:
@@ -451,7 +450,7 @@ all:
         group: "{{ ansible_user }}"
 
     - name: Add public key to authorized_keys
-      authorized_key:
+      ansible.posix.authorized_key:
         user: "{{ ansible_user }}"
         state: present
         key: "{{ new_public_key }}"

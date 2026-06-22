@@ -10,7 +10,7 @@ Description: Learn Python type hints for better code documentation, IDE support,
 
 > Type hints make Python code more readable and catch bugs before runtime. While Python remains dynamically typed, type hints provide documentation, enable better IDE support, and allow static analysis tools to find errors early.
 
-Type hints were introduced in Python 3.5 and have evolved significantly. They do not affect runtime behavior but provide valuable information for developers and tools. This guide covers practical type hint usage from basics to advanced patterns.
+Type hints were introduced in Python 3.5 and have evolved significantly. They do not enforce types at runtime but provide valuable information for developers and tools. This guide covers practical type hint usage from basics to advanced patterns.
 
 ---
 
@@ -19,6 +19,8 @@ Type hints were introduced in Python 3.5 and have evolved significantly. They do
 ### Variable Annotations
 
 ```python
+# Variable annotation syntax requires Python 3.6+
+
 # Basic types
 
 name: str = "Alice"
@@ -61,7 +63,7 @@ result = add("hello", "world")  # Returns "helloworld"
 
 ## Common Types
 
-### Collections from typing Module
+### Collections from typing Module (Python 3.8 and Earlier)
 
 ```python
 from typing import List, Dict, Set, Tuple, Optional
@@ -129,7 +131,8 @@ def process_id_new(id: int | str) -> str:
 ### Callable Types
 
 ```python
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
 # Function that takes specific arguments
 def apply_operation(
@@ -143,7 +146,7 @@ def apply_operation(
 result = apply_operation(5, 3, lambda a, b: a + b)
 
 # More complex callable
-Handler = Callable[[str, Dict[str, Any]], bool]
+Handler = Callable[[str, dict[str, Any]], bool]
 
 def register_handler(event: str, handler: Handler) -> None:
     pass
@@ -152,23 +155,23 @@ def register_handler(event: str, handler: Handler) -> None:
 ### TypeVar for Generics
 
 ```python
-from typing import TypeVar, List
+from typing import TypeVar
 
 # Generic type variable
 T = TypeVar('T')
 
-def first_item(items: List[T]) -> T:
+def first_item(items: list[T]) -> T:
     """Return first item, maintaining type."""
     return items[0]
 
 # Usage preserves type
-names: List[str] = ["Alice", "Bob"]
+names: list[str] = ["Alice", "Bob"]
 first: str = first_item(names)  # Type is str
 
-numbers: List[int] = [1, 2, 3]
+numbers: list[int] = [1, 2, 3]
 first_num: int = first_item(numbers)  # Type is int
 
-# Bounded TypeVar
+# Constrained TypeVar
 Number = TypeVar('Number', int, float)
 
 def add_numbers(a: Number, b: Number) -> Number:
@@ -186,7 +189,7 @@ class Stack(Generic[T]):
     """A generic stack implementation."""
 
     def __init__(self) -> None:
-        self._items: List[T] = []
+        self._items: list[T] = []
 
     def push(self, item: T) -> None:
         self._items.append(item)
@@ -228,7 +231,7 @@ user: UserDict = {
 }
 create_user(user)
 
-# Optional fields with total=False
+# With total=False, all fields are optional
 class PartialUser(TypedDict, total=False):
     name: str
     age: int
@@ -244,7 +247,7 @@ def set_status(status: Literal["active", "inactive", "pending"]) -> None:
     print(f"Status set to: {status}")
 
 set_status("active")   # OK
-set_status("invalid")  # Type error!
+set_status("invalid")  # Type checker error!
 
 # Combining with Union
 Mode = Literal["read", "write", "append"]
@@ -286,16 +289,14 @@ render(Square())
 ## Type Aliases
 
 ```python
-from typing import Dict, List, Tuple, Union
-
 # Simple aliases
 UserId = int
 Username = str
 
 # Complex aliases
-UserData = Dict[str, Union[str, int, bool]]
-Coordinate = Tuple[float, float]
-Matrix = List[List[float]]
+UserData = dict[str, str | int | bool]
+Coordinate = tuple[float, float]
+Matrix = list[list[float]]
 
 def get_user(user_id: UserId) -> UserData:
     return {"name": "Alice", "age": 30, "active": True}
@@ -303,10 +304,8 @@ def get_user(user_id: UserId) -> UserData:
 def calculate_distance(p1: Coordinate, p2: Coordinate) -> float:
     return ((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)**0.5
 
-# Python 3.10+ TypeAlias
-from typing import TypeAlias
-
-Vector: TypeAlias = List[float]
+# Python 3.12+ type statement
+type Vector = list[float]
 ```
 
 ---
@@ -409,7 +408,7 @@ result = unsafe_function()  # type: ignore
 ### API Response Types
 
 ```python
-from typing import TypedDict, List, Optional
+from typing import Optional, TypedDict
 
 class Address(TypedDict):
     street: str
@@ -422,7 +421,7 @@ class User(TypedDict):
     name: str
     email: str
     address: Address
-    tags: List[str]
+    tags: list[str]
 
 class APIResponse(TypedDict):
     data: User
@@ -442,7 +441,7 @@ def parse_response(response: dict) -> APIResponse:
 
 ```python
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 @dataclass
 class DatabaseConfig:
@@ -456,7 +455,7 @@ class DatabaseConfig:
 class AppConfig:
     debug: bool
     database: DatabaseConfig
-    allowed_hosts: List[str]
+    allowed_hosts: list[str]
 
 # Type-safe configuration
 config = AppConfig(
@@ -498,24 +497,26 @@ def greet(name: str) -> str:
 ### 1. Start Gradually
 
 ```python
+from typing import Any
+
 # Start with function signatures
-def process_data(data: List[Dict[str, Any]]) -> List[str]:
+def process_data(data: list[dict[str, Any]]) -> list[str]:
     pass
 
 # Add variable annotations where helpful
-result: List[str] = []
+result: list[str] = []
 ```
 
 ### 2. Use Type Aliases for Readability
 
 ```python
 # Instead of
-def process(data: Dict[str, List[Tuple[int, str]]]) -> None:
+def process(data: dict[str, list[tuple[int, str]]]) -> None:
     pass
 
 # Use aliases
-Record = Tuple[int, str]
-DataStore = Dict[str, List[Record]]
+Record = tuple[int, str]
+DataStore = dict[str, list[Record]]
 
 def process(data: DataStore) -> None:
     pass
@@ -536,7 +537,7 @@ def cleanup(resource: Closeable) -> None:
 ### 4. Document Complex Types
 
 ```python
-from typing import Dict, List, TypedDict
+from typing import TypedDict
 
 class UserProfile(TypedDict):
     """
@@ -549,7 +550,7 @@ class UserProfile(TypedDict):
     """
     name: str
     email: str
-    roles: List[str]
+    roles: list[str]
 ```
 
 ---

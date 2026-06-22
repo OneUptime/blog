@@ -61,20 +61,15 @@ module.exports = {
         classNameTemplate: '{classname}',
         // Include error messages
         ancestorSeparator: ' > ',
-        // Use suite name instead of file path
-        usePathForSuiteName: true,
         // Include console output in report
-        includeConsoleOutput: true,
+        includeConsoleOutput: 'true',
         // Include short console output
-        includeShortConsoleOutput: false,
+        includeShortConsoleOutput: 'false',
         // Report test file path
-        reportTestSuiteErrors: true
+        reportTestSuiteErrors: 'true'
       }
     ]
-  ],
-
-  // Ensure tests complete before report generation
-  testResultsProcessor: 'jest-junit'
+  ]
 };
 ```
 
@@ -98,12 +93,12 @@ module.exports = {
       {
         outputDirectory: './reports',
         outputName: 'junit.xml',
-        // Include full error stack traces
-        addFileAttribute: true,
-        // Don't strip ANSI codes from output
-        noStackTrace: false,
-        // Include error cause chain
-        reportTestSuiteErrors: true
+        // Include the source file path as a testcase attribute
+        addFileAttribute: 'true',
+        // Keep stack traces in failure output
+        noStackTrace: 'false',
+        // Report suites that fail before tests run
+        reportTestSuiteErrors: 'true'
       }
     ]
   ],
@@ -165,24 +160,27 @@ def sanitize_for_xml(text):
     # Remove control characters except tab, newline, carriage return
     return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', str(text))
 
-@pytest.hookimpl(tryfirst=True)
+@pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Sanitize error messages for XML compatibility"""
-    if call.excinfo is not None:
-        # Sanitize exception message
-        if hasattr(call.excinfo, 'value'):
-            original_str = str(call.excinfo.value)
-            sanitized = sanitize_for_xml(original_str)
-            if original_str != sanitized:
-                # Log warning about sanitization
-                print(f"Warning: Sanitized test output for XML compatibility")
+    outcome = yield
+    report = outcome.get_result()
+
+    # Sanitize captured stdout/stderr sections before reporters consume them
+    report.sections[:] = [
+        (name, sanitize_for_xml(content))
+        for name, content in report.sections
+    ]
+
+    if report.failed and getattr(report, 'longrepr', None):
+        report.longrepr = sanitize_for_xml(report.longreprtext)
 ```
 
 ## Fixing CI/CD Integration Issues
 
 ### GitHub Actions
 
-GitHub Actions can parse JUnit reports natively. Common issues include wrong paths and missing artifact uploads.
+GitHub Actions can store JUnit reports as artifacts, and you can use a reporting action to publish them as checks or workflow summaries. Common issues include wrong paths and missing artifact uploads.
 
 ```yaml
 # .github/workflows/test.yaml
@@ -224,7 +222,7 @@ jobs:
 
       - name: Publish test report
         if: always()
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         with:
           report_paths: 'reports/junit.xml'
           fail_on_failure: true
@@ -257,8 +255,8 @@ test:
     when: always
     expire_in: 1 week
 
-  # Don't fail the job on test failures
-  # (let the report show what failed)
+  # Keep test failures failing the job; artifacts.when: always
+  # still uploads the report for GitLab to display.
   allow_failure: false
 ```
 
@@ -288,7 +286,7 @@ pipeline {
             // Publish JUnit results
             junit(
                 testResults: 'reports/junit.xml',
-                allowEmptyResults: true,
+                allowEmptyResults: false,
                 skipPublishingChecks: false
             )
 
@@ -369,7 +367,7 @@ if __name__ == '__main__':
 
 ### Handling Parallel Test Execution
 
-When tests run in parallel, ensure each worker writes to a unique file:
+When tests run in parallel CI jobs or across multiple Jest projects, ensure each Jest process writes to a unique file:
 
 ```javascript
 // jest.config.js for parallel execution
@@ -379,10 +377,11 @@ module.exports = {
     [
       'jest-junit',
       {
-        // Use worker ID in filename to avoid conflicts
+        // Create a unique file name to avoid conflicts
         outputDirectory: './reports',
-        outputName: `junit-${process.env.JEST_WORKER_ID || 'main'}.xml`,
-        usePathForSuiteName: true
+        outputName: 'junit.xml',
+        uniqueOutputName: 'true',
+        suiteNameTemplate: '{filepath}'
       }
     ]
   ],
@@ -424,10 +423,7 @@ module.exports = {
       'jest-junit',
       {
         outputDirectory: './reports',
-        outputName: 'junit.xml',
-        // Enable debug output
-        testCasePropertiesFile: 'test-case-properties.json',
-        testCasePropertiesDirectory: './reports'
+        outputName: 'junit.xml'
       }
     ]
   ],

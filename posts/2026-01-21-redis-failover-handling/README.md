@@ -133,6 +133,7 @@ def get_key(key):
 
 ```python
 import redis
+import time
 from redis.sentinel import Sentinel
 
 class ResilientRedisClient:
@@ -218,6 +219,7 @@ value = client.get('key')
 ### Implementation
 
 ```python
+import redis
 import time
 from enum import Enum
 from threading import Lock
@@ -459,8 +461,8 @@ redis.on('error', (err) => {
     console.error('Redis error:', err);
 });
 
-redis.on('+switch-master', (data) => {
-    console.log('Master switched:', data);
+redis.on('ready', () => {
+    console.log('Redis ready');
 });
 
 redis.on('reconnecting', (delay) => {
@@ -475,6 +477,10 @@ redis.on('reconnecting', (delay) => {
 ### READONLY Error Recovery
 
 ```python
+import redis
+import time
+from redis.sentinel import Sentinel
+
 class ReadOnlyErrorHandler:
     """Handle READONLY errors during failover"""
 
@@ -530,18 +536,20 @@ class ReadOnlyErrorHandler:
 ### Cluster MOVED/ASK Handling
 
 ```python
+from redis.backoff import ExponentialBackoff
 from redis.cluster import RedisCluster
+from redis.exceptions import AskError, ClusterDownError, ClusterError, MovedError
+from redis.retry import Retry
 
 # RedisCluster handles MOVED/ASK automatically
+retry = Retry(ExponentialBackoff(), 3)
+
 rc = RedisCluster(
     host='cluster-node',
     password='password',
-    cluster_error_retry_attempts=3,  # Retry on cluster errors
-    retry_on_timeout=True
+    retry=retry,
+    reinitialize_steps=1  # Refresh cluster topology after each MOVED error
 )
-
-# For more control, handle manually
-from redis.cluster import ClusterDownError, MovedError, AskError
 
 def execute_with_cluster_awareness(rc, command, *args, **kwargs):
     """Execute with cluster-aware error handling"""
@@ -557,15 +565,16 @@ def execute_with_cluster_awareness(rc, command, *args, **kwargs):
             time.sleep(2)
 
         except MovedError as e:
-            # Key moved to different node - refresh slots
+            # Key moved to a different node. RedisCluster refreshes topology
+            # according to the reinitialize_steps setting.
             print(f"MOVED to {e.host}:{e.port}")
-            rc.reinitialize_steps()  # Refresh slot mapping
 
         except AskError as e:
-            # Slot migrating - retry will follow redirect
+            # Slot migrating. RedisCluster handles ASK redirects internally;
+            # this branch only runs if the redirect could not be completed.
             print(f"ASK redirect to {e.host}:{e.port}")
 
-    raise redis.ClusterError("Failed after max retries")
+    raise ClusterError("Failed after max retries")
 ```
 
 ---
@@ -632,7 +641,9 @@ class RedisWithLocalFallback:
 
 ```python
 import queue
+import redis
 import threading
+import time
 
 class BufferedRedisClient:
     """Buffer writes during failover, replay when recovered"""
@@ -702,6 +713,7 @@ class BufferedRedisClient:
 ## Monitoring Failover
 
 ```python
+import redis
 from prometheus_client import Counter, Gauge, Histogram
 
 # Metrics

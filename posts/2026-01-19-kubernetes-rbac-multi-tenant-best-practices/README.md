@@ -190,12 +190,28 @@ kind: ClusterRole
 metadata:
   name: namespace-reader
 rules:
-  # Read all common resources
-  - apiGroups: ["", "apps", "batch", "networking.k8s.io", "autoscaling"]
-    resources: ["*"]
+  # Read common core resources, but not Secrets
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "configmaps", "events", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch"]
   
-  # Explicitly deny secret content but allow listing
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  
+  # RBAC rules are additive, so grant only Secret list if you want names visible
   # This lets users know secrets exist without reading values
   - apiGroups: [""]
     resources: ["secrets"]
@@ -224,8 +240,16 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   
   # Read-only for everything else
-  - apiGroups: ["", "apps", "batch"]
-    resources: ["pods", "services", "replicasets", "jobs"]
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -291,7 +315,13 @@ metadata:
   name: order-service
   namespace: team-alpha
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       # Use the dedicated service account
       serviceAccountName: order-service
@@ -317,9 +347,25 @@ kind: ClusterRole
 metadata:
   name: platform-observer
 rules:
-  # Read all resources in all namespaces
-  - apiGroups: ["*"]
-    resources: ["*"]
+  # Read common non-secret resources in all namespaces
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "configmaps", "events", "persistentvolumeclaims", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
   
   # Explicitly exclude sensitive resources
@@ -359,7 +405,8 @@ rules:
     resources: ["*"]
     verbs: ["*"]
   
-  # Can create RoleBindings (but only reference existing ClusterRoles)
+  # Can create RoleBindings. Kubernetes blocks binding permissions they don't already hold
+  # unless they also have the special "bind" permission for the target Role or ClusterRole.
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -372,21 +419,29 @@ rules:
   # Cannot create ClusterRoles or ClusterRoleBindings
 ```
 
-Combine with an aggregation label so you can extend it later:
+To make this extensible, define `namespace-admin` as an aggregate role and put additional permission sets in separate labeled ClusterRoles:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: namespace-admin
-  labels:
-    # Aggregation label for extensibility
-    rbac.company.io/aggregate-to-namespace-admin: "true"
 aggregationRule:
   clusterRoleSelectors:
     - matchLabels:
         rbac.company.io/aggregate-to-namespace-admin: "true"
 rules: []  # Rules are automatically filled by aggregation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: namespace-admin-rbac
+  labels:
+    rbac.company.io/aggregate-to-namespace-admin: "true"
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
 ## Pattern 6: CI/CD Service Account
@@ -450,27 +505,12 @@ roleRef:
 
 ### Generate Token for External CI
 
-For external CI systems (GitHub Actions, GitLab CI), create a long-lived token:
-
-```yaml
-# Long-lived token for external CI system
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cicd-deployer-token
-  namespace: team-alpha
-  annotations:
-    kubernetes.io/service-account.name: cicd-deployer
-type: kubernetes.io/service-account-token
-```
-
-Retrieve and use in CI:
+For external CI systems (GitHub Actions, GitLab CI), request a short-lived token for each job:
 
 ```bash
-# Get the token for CI configuration
+# Get a time-bound token for CI configuration
 # Store this securely in your CI system's secrets
-kubectl get secret cicd-deployer-token -n team-alpha \
-  -o jsonpath='{.data.token}' | base64 -d
+kubectl create token cicd-deployer -n team-alpha --duration=1h
 ```
 
 ## Auditing RBAC Configuration
@@ -633,7 +673,7 @@ roleRef:
 
 Enable audit logging to track RBAC-related events:
 
-This audit policy logs all RBAC changes and authorization failures for security monitoring:
+This audit policy logs all RBAC changes and enough request metadata to filter authorization failures downstream:
 
 ```yaml
 # Audit policy for RBAC monitoring
@@ -647,7 +687,7 @@ rules:
         resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
     verbs: ["create", "update", "patch", "delete"]
   
-  # Log authorization failures
+  # Log request metadata; filter authorization.k8s.io/decision=forbid in your log backend
   - level: Metadata
     omitStages:
       - RequestReceived
@@ -659,15 +699,17 @@ rules:
 
 ### Alert on Suspicious RBAC Changes
 
-Create alerts for concerning patterns:
+Create alerts for concerning patterns from your audit logs:
 
-```promql
-# PromQL: Alert on new ClusterRoleBindings to cluster-admin
-# Integrate with your alerting system
-sum(increase(apiserver_audit_event_total{
-  verb="create",
-  objectRef_resource="clusterrolebindings"
-}[5m])) > 0
+```bash
+# Example audit log filter: new ClusterRoleBindings
+# Wire the same field filters into your log backend's alerting system
+jq -r '
+  select(.verb == "create") |
+  select(.objectRef.resource == "clusterrolebindings") |
+  select((.responseStatus.code | tostring) | test("^2")) |
+  "ALERT: \(.user.username) created ClusterRoleBinding \(.objectRef.name)"
+' /var/log/kubernetes/audit.log
 ```
 
 ## RBAC Best Practices Summary

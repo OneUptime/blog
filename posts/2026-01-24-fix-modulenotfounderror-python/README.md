@@ -10,7 +10,7 @@ Description: Understand and resolve Python's ModuleNotFoundError with practical 
 
 > "ModuleNotFoundError: No module named 'xyz'" is one of the most common errors Python developers encounter. While the message seems straightforward, the causes can range from a simple typo to complex environment configuration issues. This guide walks through the most common causes and their solutions.
 
-The `ModuleNotFoundError` (introduced in Python 3.6, previously `ImportError`) occurs when Python cannot find the module you are trying to import. Understanding why this happens requires knowing how Python's import system works.
+The `ModuleNotFoundError` (introduced in Python 3.6 as a subclass of `ImportError`) occurs when Python cannot find the module you are trying to import. Understanding why this happens requires knowing how Python's import system works.
 
 ---
 
@@ -95,8 +95,11 @@ which python3
 
 # On Windows
 where python
+```
 
-# Check the environment in Python
+Check the environment in Python:
+
+```python
 import sys
 print(sys.executable)
 print(sys.prefix)
@@ -152,20 +155,33 @@ python3.10 script.py
 
 Some packages have different names on PyPI versus what you import:
 
-```python
+```bash
 # Package name: opencv-python
 # Import name: cv2
 pip install opencv-python
-import cv2
+```
 
+```python
+import cv2
+```
+
+```bash
 # Package name: Pillow
 # Import name: PIL
 pip install Pillow
-from PIL import Image
+```
 
+```python
+from PIL import Image
+```
+
+```bash
 # Package name: scikit-learn
 # Import name: sklearn
 pip install scikit-learn
+```
+
+```python
 import sklearn
 ```
 
@@ -211,21 +227,21 @@ python -c "import random; print(random.__file__)"
 
 ## Common Cause 6: Package Structure Issues
 
-For your own packages, incorrect structure causes import failures:
+For your own packages, make sure the directory you want to import from is on `sys.path`. A missing `__init__.py` does not by itself break imports on Python 3.3+, but adding one makes the directory a regular package:
 
 ```text
 myproject/
     main.py
     utils/
-        helper.py       # Missing __init__.py!
+        helper.py       # No __init__.py: namespace package on Python 3.3+
 ```
 
 ```python
 # main.py
-from utils import helper  # ModuleNotFoundError
+from utils import helper  # Works when main.py's directory is in sys.path
 ```
 
-### Solution: Add __init__.py Files
+### Solution: Add __init__.py Files for Regular Packages
 
 ```text
 myproject/
@@ -423,6 +439,8 @@ deactivate
 
 ```python
 # At the top of your main script, verify critical imports
+import sys
+
 def check_dependencies():
     missing = []
 
@@ -455,7 +473,7 @@ When you see `ModuleNotFoundError`:
 2. **Check environment**: `which python` and verify venv is active
 3. **Check naming**: Is the import name different from package name?
 4. **Check for conflicts**: Any local files shadowing modules?
-5. **Check structure**: Are `__init__.py` files in place?
+5. **Check structure**: Is the parent directory on `sys.path`, and do you need `__init__.py` for a regular package?
 6. **Check IDE config**: Is your IDE using the right interpreter?
 
 Most import errors come down to environment issues. When in doubt, create a fresh virtual environment, install your dependencies explicitly, and ensure your IDE is configured to use that environment.

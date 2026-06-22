@@ -21,9 +21,9 @@ flowchart TD
     B -->|Over Limit| D[Timeout Error]
 
     D --> E{Platform}
-    E -->|Vercel Hobby| F[10 seconds]
-    E -->|Vercel Pro| G[60 seconds]
-    E -->|Vercel Enterprise| H[900 seconds]
+    E -->|Vercel Hobby| F[10s default, configurable up to 60s]
+    E -->|Vercel Pro| G[15s default, configurable up to 300s]
+    E -->|Vercel Enterprise| H[Limits vary by contract/runtime]
     E -->|AWS Lambda| I[15 minutes max]
     E -->|Self-hosted| J[Configurable]
 
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
 
 ## Solution 3: Implement Background Jobs
 
-For long-running tasks, use a background job pattern:
+For long-running tasks, use a background job pattern. In production serverless deployments, use a durable queue and worker instead of relying on work started inside the same API route invocation.
 
 ```mermaid
 flowchart LR
@@ -222,7 +222,8 @@ flowchart LR
 
 ```javascript
 // lib/job-queue.js
-// Simple in-memory job queue (use Redis/database in production)
+// Simple in-memory job queue for local demos only.
+// Use Redis, a database, or a managed queue with a separate worker in production.
 const jobs = new Map();
 
 export function createJob(taskFn) {
@@ -325,7 +326,8 @@ Edge functions run closer to users and have different timeout characteristics:
 
 ```javascript
 // pages/api/fast-data.js
-// Edge runtime has 30 second timeout on Vercel
+// Vercel Edge Functions must start sending a response within 25 seconds.
+// Streaming responses can continue for up to 300 seconds.
 export const config = {
   runtime: 'edge',
 };
@@ -398,7 +400,6 @@ export default async function handler(req, res) {
 ### Vercel Configuration
 
 ```json
-// vercel.json
 {
   "functions": {
     "pages/api/long-running.js": {

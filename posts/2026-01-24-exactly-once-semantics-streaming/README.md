@@ -34,7 +34,7 @@ flowchart LR
     style ExactlyOnce fill:#90EE90
 ```
 
-Exactly-once means each record is processed exactly one time, with its effects appearing exactly once in the output. This requires coordination between producers, brokers, and consumers.
+Exactly-once means each record's effects appear exactly once in the output, even if the system retries work after failures. This requires coordination between producers, brokers, and consumers, and external side effects still need transactions or idempotency.
 
 ---
 
@@ -53,7 +53,7 @@ from kafka import KafkaProducer
 producer = KafkaProducer(
     bootstrap_servers=['localhost:9092'],
     retries=3,  # Retries enabled
-    # Missing: enable_idempotence=True
+    enable_idempotence=False  # Explicitly disables broker-side deduplication
 )
 
 # If this send times out but actually succeeds, retry creates duplicate
@@ -82,7 +82,7 @@ for message in consumer:
 
 ### 3. Non-Transactional Sink Writes
 
-Writing to external systems without transactions breaks exactly-once:
+Writing to external systems without transactions or idempotency breaks exactly-once:
 
 ```python
 # Problem: Database write and offset commit are separate operations
@@ -138,15 +138,15 @@ For end-to-end exactly-once, use Kafka transactions that atomically commit offse
 ```python
 # Solution: Transactional producer-consumer pattern
 from kafka import KafkaProducer, KafkaConsumer
-from kafka.errors import KafkaError
+from kafka.structs import OffsetAndMetadata
 import json
 
 class ExactlyOnceProcessor:
-    def __init__(self, input_topic, output_topic, group_id):
+    def __init__(self, input_topic, output_topic, group_id, instance_id):
         # Transactional producer with unique transaction ID
         self.producer = KafkaProducer(
             bootstrap_servers=['localhost:9092'],
-            transactional_id=f'{group_id}-processor',  # Unique per instance
+            transactional_id=f'{group_id}-{instance_id}',  # Unique per running instance
             enable_idempotence=True,
             acks='all',
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
@@ -184,22 +184,29 @@ class ExactlyOnceProcessor:
                     self.producer.send(self.output_topic, value=result)
 
             # Atomically commit offsets and produced messages
+            offsets = {
+                topic_partition: OffsetAndMetadata(
+                    self.consumer.position(topic_partition),
+                    None
+                )
+                for topic_partition in messages.keys()
+            }
             self.producer.send_offsets_to_transaction(
-                self.consumer.position(self.consumer.assignment()),
-                self.consumer.group_id
+                offsets,
+                self.consumer.group_metadata()
             )
 
             # Commit the transaction
             self.producer.commit_transaction()
 
-        except KafkaError as e:
+        except Exception as e:
             # Abort on any error - no partial commits
             self.producer.abort_transaction()
             raise
 
     def transform(self, value):
         """Transform input record to output"""
-        data = json.loads(value)
+        data = json.loads(value.decode('utf-8'))
         data['processed'] = True
         data['processor_id'] = 'exactly-once-demo'
         return data
@@ -213,10 +220,17 @@ Flink provides exactly-once through checkpointing and two-phase commit:
 
 ```java
 // Flink exactly-once configuration
+import java.util.Properties;
+
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.CheckpointingMode;
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 
 public class ExactlyOnceFlinkJob {
 
@@ -242,32 +256,42 @@ public class ExactlyOnceFlinkJob {
         consumerProps.setProperty("group.id", "flink-exactly-once");
         consumerProps.setProperty("isolation.level", "read_committed");
 
-        FlinkKafkaConsumer<String> consumer = new FlinkKafkaConsumer<>(
-            "input-topic",
-            new SimpleStringSchema(),
-            consumerProps
-        );
-        // Commit offsets only on checkpoints
-        consumer.setCommitOffsetsOnCheckpoints(true);
+        KafkaSource<String> consumer = KafkaSource.<String>builder()
+            .setBootstrapServers("localhost:9092")
+            .setTopics("input-topic")
+            .setGroupId("flink-exactly-once")
+            .setStartingOffsets(OffsetsInitializer.earliest())
+            .setProperties(consumerProps)
+            .setValueOnlyDeserializer(new SimpleStringSchema())
+            .build();
 
         // Configure Kafka producer with exactly-once
         Properties producerProps = new Properties();
-        producerProps.setProperty("bootstrap.servers", "localhost:9092");
         producerProps.setProperty("transaction.timeout.ms", "900000");
 
-        FlinkKafkaProducer<String> producer = new FlinkKafkaProducer<>(
-            "output-topic",
-            new SimpleStringSchema(),
-            producerProps,
-            FlinkKafkaProducer.Semantic.EXACTLY_ONCE  // Enable exactly-once
-        );
+        KafkaSink<String> producer = KafkaSink.<String>builder()
+            .setBootstrapServers("localhost:9092")
+            .setRecordSerializer(
+                KafkaRecordSerializationSchema.builder()
+                    .setTopic("output-topic")
+                    .setValueSerializationSchema(new SimpleStringSchema())
+                    .build()
+            )
+            .setKafkaProducerConfig(producerProps)
+            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+            .setTransactionalIdPrefix("flink-exactly-once-output")
+            .build();
 
         // Build the pipeline
-        env.addSource(consumer)
-            .map(value -> processRecord(value))
-            .addSink(producer);
+        env.fromSource(consumer, WatermarkStrategy.noWatermarks(), "Kafka Source")
+            .map(ExactlyOnceFlinkJob::processRecord)
+            .sinkTo(producer);
 
         env.execute("Exactly-Once Streaming Job");
+    }
+
+    private static String processRecord(String value) {
+        return value;
     }
 }
 ```
@@ -358,7 +382,7 @@ class IdempotentSinkProcessor:
 
 ## Fix 5: Outbox Pattern for Cross-System Consistency
 
-When you need exactly-once across multiple systems, use the outbox pattern:
+When you need consistency across a database and Kafka, use the outbox pattern. The database update and outbox event are committed together; the relay can still retry publication, so consumers should use the event ID for deduplication.
 
 ```mermaid
 flowchart LR
@@ -450,7 +474,8 @@ class OutboxProcessor:
             for event in events:
                 event_id, agg_type, agg_id, event_type, payload = event
 
-                # Publish to Kafka with event_id as key for ordering
+                # Publish to Kafka with aggregate_id as key for per-order ordering
+                # and event_id as a stable deduplication identifier
                 producer.send(
                     f'{agg_type.lower()}-events',
                     key=agg_id.encode(),
@@ -479,21 +504,21 @@ class OutboxProcessor:
 ### Check Producer Idempotence Status
 
 ```bash
-# Verify producer configuration
-kafka-configs.sh --bootstrap-server localhost:9092 \
-  --describe --entity-type brokers --entity-default | grep -i idempotence
+# Verify client-side producer configuration in your application config
+grep -E 'enable[._]idempotence|transactional[._]id|max[._]in[._]flight|acks|retries' \
+  config/producer.properties
 
 # Check for duplicate messages in topic
 kafka-console-consumer.sh --bootstrap-server localhost:9092 \
   --topic orders --from-beginning --property print.key=true \
-  --property print.timestamp=true | sort | uniq -d
+  --property print.timestamp=true --timeout-ms 10000 | sort | uniq -d
 ```
 
 ### Monitor Consumer Lag and Commits
 
 ```python
 # Check consumer group status
-from kafka.admin import KafkaAdminClient, ConsumerGroupDescription
+from kafka.admin import KafkaAdminClient
 
 admin = KafkaAdminClient(bootstrap_servers=['localhost:9092'])
 
@@ -511,7 +536,7 @@ for group in groups:
 
 ## Best Practices
 
-1. **Always enable idempotent producers** - Set `enable.idempotence=true` for all producers
+1. **Always enable or verify idempotent producers** - Set `enable.idempotence=true` and avoid conflicting producer settings
 2. **Disable auto-commit** - Use manual offset management with transactions
 3. **Use read_committed isolation** - Consumers should only see committed messages
 4. **Implement idempotent sinks** - Use upserts with unique keys for database writes

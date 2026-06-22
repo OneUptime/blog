@@ -102,16 +102,16 @@ class GatewayCache:
         response.ttl = ttl
         response.cached_at = time.time()
 
-        self.redis.setex(
+        self.redis.set(
             cache_key,
-            ttl,
             json.dumps({
                 "status_code": response.status_code,
                 "headers": response.headers,
                 "body": response.body,
                 "cached_at": response.cached_at,
                 "ttl": response.ttl
-            })
+            }),
+            ex=ttl
         )
 
     def invalidate(self, method: str, path: str,
@@ -239,6 +239,7 @@ import redis
 import json
 import time
 import threading
+import hashlib
 from typing import Dict, Any, Callable, Optional
 import logging
 
@@ -277,10 +278,10 @@ class RequestCoalescer:
                 result = executor()
 
                 # Store result for waiters
-                self.redis.setex(
+                self.redis.set(
                     result_key,
-                    self.timeout,
-                    json.dumps(result)
+                    json.dumps(result),
+                    ex=self.timeout
                 )
 
                 # Publish completion
@@ -443,10 +444,10 @@ class ResponseAggregator:
                     data = await response.json()
 
                     # Cache successful response
-                    self.redis.setex(
+                    self.redis.set(
                         cache_key,
-                        call.cache_ttl,
-                        json.dumps(data)
+                        json.dumps(data),
+                        ex=call.cache_ttl
                     )
 
                     return call.service, data, None
@@ -524,6 +525,7 @@ import redis
 import json
 import time
 import threading
+import requests
 from typing import Dict, Any, Callable, Optional
 from dataclasses import dataclass
 import logging
@@ -596,12 +598,12 @@ class StaleWhileRevalidateCache:
         now = time.time()
 
         pipe = self.redis.pipeline()
-        pipe.setex(data_key, stale_ttl, json.dumps(data))
-        pipe.setex(meta_key, stale_ttl, json.dumps({
+        pipe.set(data_key, json.dumps(data), ex=stale_ttl)
+        pipe.set(meta_key, json.dumps({
             "cached_at": now,
             "ttl": ttl,
             "stale_ttl": stale_ttl
-        }))
+        }), ex=stale_ttl)
         pipe.execute()
 
     def _background_revalidate(self, key: str, fetcher: Callable,
@@ -674,7 +676,7 @@ class TaggedCache:
         pipe = self.redis.pipeline()
 
         # Store value
-        pipe.setex(cache_key, ttl, json.dumps(value))
+        pipe.set(cache_key, json.dumps(value), ex=ttl)
 
         # Associate with tags
         for tag in tags:

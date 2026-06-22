@@ -55,7 +55,7 @@ int main() {
     // The +1 offset means the pointer is not aligned to 4-byte boundary
     int *misaligned = (int *)(buffer + 1);
 
-    // This access may cause a bus error on strict alignment architectures
+    // This access has undefined behavior in C and may cause a bus error on strict alignment architectures
     // On x86/x64, this might work but be slower
     // On ARM or SPARC, this will likely cause SIGBUS
     *misaligned = 42;  // Potential bus error!
@@ -66,7 +66,7 @@ int main() {
 
 ### 2. Memory-Mapped File Problems
 
-Bus errors commonly occur with memory-mapped files when the underlying file is truncated or removed.
+Bus errors commonly occur with memory-mapped files when the underlying file is truncated while it is still mapped.
 
 ```c
 /*
@@ -79,16 +79,27 @@ Bus errors commonly occur with memory-mapped files when the underlying file is t
 
 int main() {
     int fd = open("test.txt", O_RDWR);
+    if (fd < 0) {
+        perror("open");
+        return 1;
+    }
 
     // Memory map the file
     char *mapped = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
                         MAP_SHARED, fd, 0);
+    if (mapped == MAP_FAILED) {
+        perror("mmap");
+        close(fd);
+        return 1;
+    }
 
     // If another process truncates the file while we have it mapped,
     // accessing the mapped region will cause a bus error
 
-    // This access causes SIGBUS if file was truncated
-    char c = mapped[1000];  // Bus error if offset beyond file size!
+    // This access causes SIGBUS if the corresponding page is beyond
+    // the file's current end after truncation
+    char c = mapped[4095];  // Potential bus error if the file is truncated to zero bytes!
+    (void)c;
 
     munmap(mapped, 4096);
     close(fd);
@@ -159,7 +170,7 @@ strace -f ./your_program 2>&1 | tee strace_output.txt
 grep -E '(SIGBUS|mmap|munmap)' strace_output.txt
 
 # Trace memory-related system calls specifically
-strace -e trace=memory ./your_program
+strace -e trace=%memory ./your_program
 ```
 
 ### Step 4: Check for Memory-Mapped File Issues
@@ -256,12 +267,15 @@ static volatile sig_atomic_t got_sigbus = 0;
 
 // Signal handler for SIGBUS
 void sigbus_handler(int sig) {
+    (void)sig;
     got_sigbus = 1;
     siglongjmp(jump_buffer, 1);
 }
 
 // Safe memory-mapped file access
 int safe_mmap_access(const char *filename) {
+    got_sigbus = 0;
+
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
         perror("open failed");
@@ -298,12 +312,13 @@ int safe_mmap_access(const char *filename) {
     sa.sa_flags = 0;
     sigaction(SIGBUS, &sa, &old_sa);
 
-    // Safe access with signal handling
+    // Defensive access with signal handling
     if (sigsetjmp(jump_buffer, 1) == 0) {
         // Normal execution - access the mapped memory
         for (off_t i = 0; i < st.st_size; i++) {
             // Process each byte
             char c = mapped[i];
+            (void)c;
             // ... do something with c
         }
     } else {
@@ -333,18 +348,23 @@ int safe_mmap_access(const char *filename) {
 /*
  * Use madvise to hint to the kernel about memory access patterns
  */
+#include <stdio.h>
 #include <sys/mman.h>
 
 void setup_mmap_hints(void *addr, size_t length) {
     // Tell the kernel we will access sequentially
     // This helps the kernel prefetch data and handle page faults better
-    madvise(addr, length, MADV_SEQUENTIAL);
+    if (madvise(addr, length, MADV_SEQUENTIAL) != 0) {
+        perror("madvise MADV_SEQUENTIAL");
+    }
 
     // Or if random access pattern
     // madvise(addr, length, MADV_RANDOM);
 
     // Advise that the pages will be needed soon
-    madvise(addr, length, MADV_WILLNEED);
+    if (madvise(addr, length, MADV_WILLNEED) != 0) {
+        perror("madvise MADV_WILLNEED");
+    }
 }
 ```
 
@@ -355,8 +375,9 @@ void setup_mmap_hints(void *addr, size_t length) {
 # This requires a reboot and runs from GRUB or boot menu
 # Schedule memtest86+ at next boot
 
-# On systems with memtest installed
-sudo memtest86+
+# On Debian/Ubuntu systems, install memtest86+ and select it from the boot menu
+sudo apt install memtest86+
+sudo reboot
 
 # Check SMART status of storage devices
 # This helps identify failing drives that might cause bus errors
@@ -370,13 +391,14 @@ dmesg | grep -iE '(error|hardware|bus|memory|mce)'
 
 # Check for Machine Check Exceptions (MCEs)
 # These indicate hardware errors reported by the CPU
-sudo mcelog --client
+# On many current distributions, rasdaemon is preferred for RAS/MCE logging
+sudo apt install rasdaemon    # Debian/Ubuntu
+sudo yum install rasdaemon    # RHEL/CentOS
+sudo systemctl enable --now rasdaemon
 
-# Install and configure mcelog for continuous monitoring
-sudo apt install mcelog    # Debian/Ubuntu
-sudo yum install mcelog    # RHEL/CentOS
-sudo systemctl enable mcelog
-sudo systemctl start mcelog
+# On systems that still use mcelog, especially supported x86 systems:
+sudo mcelog --client
+sudo systemctl enable --now mcelog
 ```
 
 ### Fix 5: Stack Overflow Prevention
@@ -462,8 +484,9 @@ flowchart LR
 # This is slower but provides detailed memory error information
 valgrind --tool=memcheck --leak-check=full ./your_program
 
-# For alignment issues specifically
-valgrind --tool=exp-sgcheck ./your_program
+# For alignment undefined behavior, use a compiler sanitizer
+gcc -fsanitize=undefined -g -o program program.c
+./program
 
 # Generate a detailed report
 valgrind --tool=memcheck --xml=yes --xml-file=valgrind_report.xml ./your_program
@@ -482,9 +505,9 @@ valgrind --tool=memcheck --xml=yes --xml-file=valgrind_report.xml ./your_program
 ### 2. Testing Strategies
 
 ```bash
-# Test with Address Sanitizer during development
-# Compile with sanitizer flags
-gcc -fsanitize=address -g -o program program.c
+# Test with sanitizers during development
+# AddressSanitizer catches many memory errors; UndefinedBehaviorSanitizer catches misaligned dereferences
+gcc -fsanitize=address,undefined -g -o program program.c
 
 # Run the sanitized program
 ./program

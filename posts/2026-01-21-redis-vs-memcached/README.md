@@ -84,7 +84,7 @@ r.sismember('user:1:tags', 'premium')
 
 # Sorted Sets - leaderboards
 r.zadd('leaderboard', {'alice': 1500, 'bob': 1200})
-top_players = r.zrevrange('leaderboard', 0, 9, withscores=True)
+top_players = r.zrange('leaderboard', 0, 9, desc=True, withscores=True)
 
 # HyperLogLog - unique counts
 r.pfadd('visitors:today', 'user1', 'user2', 'user1')
@@ -99,7 +99,7 @@ unique_count = r.pfcount('visitors:today')  # Approximate: 2
 
 Memcached is purely in-memory with no persistence:
 
-- Data is lost on restart
+- Data is normally lost on restart (warm restart can recover a cache across clean restarts, but it is not durable database persistence)
 - Suitable only for cacheable data
 - No backup/restore capabilities
 - Simpler operation (no disk I/O concerns)
@@ -146,7 +146,7 @@ echo "stats slabs" | nc localhost 11211
 ```
 
 **Pros**:
-- No memory fragmentation
+- Minimizes external memory fragmentation
 - Predictable memory usage
 - Efficient for uniform-sized objects
 
@@ -219,9 +219,9 @@ redis-cli -c -h node1 cluster nodes
 
 **Redis Cluster Features**:
 - 16384 hash slots distributed across nodes
-- Automatic slot rebalancing
+- Online slot resharding and rebalancing
 - Master-replica failover
-- Cross-slot transactions with hash tags
+- Same-slot transactions with hash tags
 
 ```python
 # Hash tags ensure keys go to same slot
@@ -475,8 +475,8 @@ class RedisMemcacheCompat:
 
 | Service | Pricing Model | Starting Price |
 |---------|--------------|----------------|
-| ElastiCache for Redis | Per node-hour | ~$0.017/hour (t3.micro) |
-| ElastiCache for Memcached | Per node-hour | ~$0.017/hour (t3.micro) |
+| ElastiCache for Redis OSS | Per node-hour | ~$0.017/hour (cache.t3.micro, varies by region) |
+| ElastiCache for Memcached | Per node-hour | ~$0.017/hour (cache.t3.micro, varies by region) |
 
 **Note**: Pricing is similar, but Redis offers more features for the same cost.
 

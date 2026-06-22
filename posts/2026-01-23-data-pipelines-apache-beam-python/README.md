@@ -47,7 +47,7 @@ pip install apache-beam
 # With Google Cloud Dataflow support
 pip install apache-beam[gcp]
 
-# With all extras for local development
+# With interactive Beam support
 pip install apache-beam[interactive]
 ```
 
@@ -274,7 +274,8 @@ Apache Beam supports many data sources and sinks out of the box.
 # io/reading.py
 # Reading from different data sources
 import apache_beam as beam
-from apache_beam.io import ReadFromText, ReadFromParquet
+from apache_beam.io import ReadFromText
+from apache_beam.io.parquetio import ReadFromParquet
 from apache_beam.io.gcp.bigquery import ReadFromBigQuery
 
 with beam.Pipeline() as pipeline:
@@ -307,7 +308,8 @@ with beam.Pipeline() as pipeline:
 # io/writing.py
 # Writing to different data sinks
 import apache_beam as beam
-from apache_beam.io import WriteToText, WriteToParquet
+from apache_beam.io import WriteToText
+from apache_beam.io.parquetio import WriteToParquet
 from apache_beam.io.gcp.bigquery import WriteToBigQuery
 import pyarrow
 
@@ -356,6 +358,7 @@ When processing streaming data, windowing groups elements into finite chunks for
 import apache_beam as beam
 from apache_beam import window
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+import json
 
 def run_streaming_pipeline():
     """Streaming pipeline with windowing"""
@@ -374,7 +377,7 @@ def run_streaming_pipeline():
         fixed_windowed = (
             events
             | 'FixedWindow' >> beam.WindowInto(window.FixedWindows(5 * 60))  # 5 minutes
-            | 'CountPerWindow' >> beam.combiners.Count.Globally()
+            | 'CountPerWindow' >> beam.combiners.Count.Globally().without_defaults()
         )
 
         # Sliding windows: 10-minute windows every 5 minutes (overlapping)
@@ -383,6 +386,7 @@ def run_streaming_pipeline():
             | 'SlidingWindow' >> beam.WindowInto(
                 window.SlidingWindows(10 * 60, 5 * 60)  # 10 min window, 5 min period
             )
+            | 'ExtractValue' >> beam.Map(lambda e: e['value'])
             | 'AveragePerWindow' >> beam.CombineGlobally(
                 beam.combiners.MeanCombineFn()
             ).without_defaults()
@@ -423,7 +427,7 @@ class SafeProcessFn(DoFn):
         try:
             # Attempt to process the element
             result = self._transform(element)
-            yield beam.pvalue.TaggedOutput(self.OUTPUT_TAG_SUCCESS, result)
+            yield result
         except Exception as e:
             # Capture the error and original element
             error_record = {

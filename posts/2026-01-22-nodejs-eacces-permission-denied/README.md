@@ -33,46 +33,46 @@ Error: listen EACCES: permission denied 0.0.0.0:80
 
 ## Fixing Global npm Permission Issues
 
-### Solution 1: Change npm's Default Directory (Recommended)
+### Solution 1: Change npm's Default Directory
 
 Create a directory for global installations:
 
 ```bash
 # Create directory for global packages
 
-mkdir ~/.npm-global
+mkdir -p ~/.local/bin
 
 # Configure npm to use this directory
-npm config set prefix '~/.npm-global'
+npm config set prefix ~/.local
 
-# Add to PATH in ~/.bashrc or ~/.zshrc
-echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
-source ~/.bashrc
+# Add to PATH in ~/.profile
+echo 'export PATH=~/.local/bin:$PATH' >> ~/.profile
+source ~/.profile
 ```
 
 Verify:
 
 ```bash
 npm config get prefix
-# Should show /home/username/.npm-global
+# Should show /home/username/.local
 ```
 
-### Solution 2: Use Node Version Manager (nvm)
+### Solution 2: Use Node Version Manager (nvm) (Recommended)
 
 nvm installs Node.js in your home directory, avoiding permission issues:
 
 ```bash
 # Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 
 # Restart terminal or run
 source ~/.bashrc
 
-# Install Node.js
-nvm install node
+# Install the latest LTS Node.js
+nvm install --lts
 
-# Use specific version
-nvm use 20
+# Use the latest LTS version
+nvm use --lts
 ```
 
 ### Solution 3: Fix npm Cache Permissions
@@ -82,13 +82,13 @@ nvm use 20
 npm cache clean --force
 
 # Fix ownership of npm directories
-sudo chown -R $(whoami) ~/.npm
-sudo chown -R $(whoami) ~/.npm-global
+sudo chown -R "$(whoami):$(id -gn)" ~/.npm
+sudo chown -R "$(whoami):$(id -gn)" ~/.local
 ```
 
 ### Avoid: Using sudo with npm
 
-Never install packages with sudo:
+Avoid installing packages with sudo:
 
 ```bash
 # WRONG - Don't do this
@@ -128,8 +128,8 @@ chmod 644 /path/to/file
 # Make directory accessible
 chmod 755 /path/to/directory
 
-# Make directory and contents writable
-chmod -R 755 /path/to/directory
+# Make directory and contents writable by the owner
+chmod -R u+rwX,go+rX,go-w /path/to/directory
 ```
 
 ### Common Permission Values
@@ -143,7 +143,9 @@ chmod -R 755 /path/to/directory
 
 ## Handling in Node.js Code
 
-### Check Access Before Operations
+### Check Access for Diagnostics
+
+Use `access()` for diagnostics or explicit checks, but don't use it as a preflight check immediately before `open()`, `readFile()`, or `writeFile()`. Open, read, or write the file directly and handle the error to avoid race conditions.
 
 ```javascript
 const fs = require('fs');
@@ -288,7 +290,7 @@ sudo setcap 'cap_net_bind_service=+ep' $(which node)
 
 ```dockerfile
 # Dockerfile
-FROM node:20
+FROM node:24
 
 # Create app directory
 WORKDIR /app
@@ -299,8 +301,8 @@ RUN groupadd -r nodejs && useradd -r -g nodejs nodejs
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install production dependencies
+RUN npm ci --omit=dev
 
 # Copy app source
 COPY --chown=nodejs:nodejs . .
@@ -316,7 +318,6 @@ CMD ["node", "server.js"]
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   app:
     build: .
@@ -328,7 +329,7 @@ services:
 Run with:
 
 ```bash
-UID=$(id -u) GID=$(id -g) docker-compose up
+UID=$(id -u) GID=$(id -g) docker compose up
 ```
 
 ## Debugging Permission Issues
@@ -369,7 +370,12 @@ function diagnosePermissions(filePath) {
       try {
         const dirStats = fs.statSync(dir);
         console.log(`  Mode: ${dirStats.mode.toString(8)}`);
-        console.log(`  Writable: ${!!(dirStats.mode & fs.constants.W_OK)}`);
+        try {
+          fs.accessSync(dir, fs.constants.W_OK);
+          console.log('  Writable: Yes');
+        } catch (e) {
+          console.log(`  Writable: No - ${e.code}`);
+        }
       } catch (e) {
         console.log(`  Cannot access: ${e.message}`);
       }
@@ -433,6 +439,6 @@ ls -la $(npm config get cache)
 | Best Practice | Description |
 |---------------|-------------|
 | Use nvm | Avoid system Node.js |
-| Never use sudo npm | Creates permission issues |
-| Use ~/.npm-global | Safe global install location |
-| Check access before write | Graceful error handling |
+| Avoid sudo npm | Reduces permission issues |
+| Use ~/.local | Safe global install location |
+| Handle write errors directly | Graceful error handling |

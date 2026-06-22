@@ -91,11 +91,11 @@ scrape_configs:
         action: keep
         regex: true
       # Use custom port if specified
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: $1
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
       # Add pod labels as metric labels
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
@@ -170,18 +170,17 @@ common:
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
-    shared_store: filesystem
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-shipper-active
+    cache_location: /loki/tsdb-shipper-cache
 
 limits_config:
   retention_period: 744h        # 31 days retention
@@ -191,77 +190,71 @@ limits_config:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
+  delete_request_store: filesystem
   retention_enabled: true
 ```
 
-### Configuring Promtail for Log Collection
+### Configuring Grafana Alloy for Log Collection
 
-Promtail ships logs to Loki. Configure it to collect from your applications:
+Grafana Alloy ships logs to Loki. Configure it to collect from your applications:
 
-```yaml
-# promtail-config.yaml
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
+```alloy
+// alloy-config.alloy
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 
-positions:
-  filename: /tmp/positions.yaml
+discovery.kubernetes "pod" {
+  role = "pod"
+}
 
-clients:
-  - url: http://loki:3100/loki/api/v1/push
+discovery.relabel "pod_logs" {
+  targets = discovery.kubernetes.pod.targets
 
-scrape_configs:
-  # Collect container logs from Kubernetes
-  - job_name: kubernetes-pods
-    kubernetes_sd_configs:
-      - role: pod
-    pipeline_stages:
-      # Parse JSON logs if present
-      - json:
-          expressions:
-            level: level
-            message: msg
-            timestamp: time
+  // Keep pods with logging annotation
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_loki_io_scrape"]
+    action        = "keep"
+    regex         = "true"
+  }
 
-      # Add log level as label
-      - labels:
-          level:
+  // Use namespace and pod name as labels
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    action        = "replace"
+    target_label  = "namespace"
+  }
 
-      # Parse timestamp from log
-      - timestamp:
-          source: timestamp
-          format: RFC3339Nano
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    action        = "replace"
+    target_label  = "pod"
+  }
 
-    relabel_configs:
-      # Keep pods with logging annotation
-      - source_labels: [__meta_kubernetes_pod_annotation_loki_io_scrape]
-        action: keep
-        regex: true
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    action        = "replace"
+    target_label  = "app"
+  }
 
-      # Use namespace and pod name as labels
-      - source_labels: [__meta_kubernetes_namespace]
-        action: replace
-        target_label: namespace
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    action        = "replace"
+    target_label  = "container"
+  }
+}
 
-      - source_labels: [__meta_kubernetes_pod_name]
-        action: replace
-        target_label: pod
-
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        action: replace
-        target_label: app
-
-      # Set the path to the log file
-      - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
-        target_label: __path__
-        separator: /
-        replacement: /var/log/pods/*$1/$2/*.log
+loki.source.kubernetes "pod_logs" {
+  targets    = discovery.relabel.pod_logs.output
+  forward_to = [loki.write.default.receiver]
+}
 ```
 
 ## Setting Up Tempo for Traces
 
-Tempo stores and queries distributed traces. Here is a production configuration:
+Tempo stores and queries distributed traces. Here is a single-binary local configuration:
 
 ```yaml
 # tempo-config.yaml
@@ -387,15 +380,13 @@ Your applications need to emit telemetry data. Here is a Node.js example using O
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
-const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { PrometheusExporter } = require('@opentelemetry/exporter-prometheus');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-app',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT || 'production',
+const resource = resourceFromAttributes({
+  'service.name': process.env.SERVICE_NAME || 'my-app',
+  'service.version': process.env.SERVICE_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.ENVIRONMENT || 'production',
 });
 
 const sdk = new NodeSDK({
@@ -403,11 +394,9 @@ const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://tempo:4317',
   }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://prometheus:4317',
-    }),
-    exportIntervalMillis: 30000,
+  metricReader: new PrometheusExporter({
+    port: 9464,
+    endpoint: '/metrics',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -479,12 +468,12 @@ services:
     ports:
       - "3100:3100"
 
-  promtail:
-    image: grafana/promtail:latest
+  alloy:
+    image: grafana/alloy:latest
     volumes:
-      - ./promtail-config.yaml:/etc/promtail/config.yml
+      - ./alloy-config.alloy:/etc/alloy/config.alloy
       - /var/log:/var/log
-    command: -config.file=/etc/promtail/config.yml
+    command: run /etc/alloy/config.alloy
 
   tempo:
     image: grafana/tempo:latest

@@ -139,19 +139,19 @@ ALTER ROLE db_datareader ADD MEMBER [myuser];
 ALTER ROLE db_datawriter ADD MEMBER [myuser];
 ```
 
-#### Azure AD Authentication Issues
+#### Microsoft Entra ID Authentication Issues
 
-For Azure Active Directory authentication:
+For Microsoft Entra ID authentication:
 
 ```csharp
-// Using Azure AD interactive authentication
+// Using Microsoft Entra interactive authentication
 string connectionString =
     "Server=tcp:myserver.database.windows.net,1433;" +
     "Initial Catalog=mydatabase;" +
     "Authentication=Active Directory Interactive;" +
     "Encrypt=True;";
 
-// Using Azure AD with Managed Identity
+// Using Microsoft Entra authentication with a managed identity
 string connectionString =
     "Server=tcp:myserver.database.windows.net,1433;" +
     "Initial Catalog=mydatabase;" +
@@ -159,10 +159,10 @@ string connectionString =
     "Encrypt=True;";
 ```
 
-To configure Azure AD admin:
+To configure the Microsoft Entra admin:
 
 ```bash
-# Set Azure AD admin for the SQL server
+# Set the Microsoft Entra admin for the SQL server
 az sql server ad-admin create \
     --resource-group myResourceGroup \
     --server myserver \
@@ -364,12 +364,15 @@ occurred during the pre-login handshake. (provider: SSL Provider, error: 0)
 
 #### Update TLS Configuration
 
-Azure SQL requires TLS 1.2 or higher:
+Azure SQL requires TLS 1.2 or higher. Make sure your application runs on a runtime and SQL client driver that support TLS 1.2, such as current versions of Microsoft.Data.SqlClient:
 
 ```csharp
-// Ensure TLS 1.2 is enabled in your application
-System.Net.ServicePointManager.SecurityProtocol =
-    SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+// Use a current Microsoft.Data.SqlClient package and keep encryption enabled.
+var builder = new SqlConnectionStringBuilder(connectionString)
+{
+    Encrypt = true,
+    TrustServerCertificate = false
+};
 ```
 
 For Node.js applications:
@@ -475,8 +478,8 @@ SELECT
     blocked.wait_time,
     blocking_text.text AS blocking_query
 FROM sys.dm_exec_requests blocked
-JOIN sys.dm_exec_sessions blocking ON blocked.blocking_session_id = blocking.session_id
-CROSS APPLY sys.dm_exec_sql_text(blocking.most_recent_sql_handle) blocking_text
+JOIN sys.dm_exec_requests blocking ON blocked.blocking_session_id = blocking.session_id
+CROSS APPLY sys.dm_exec_sql_text(blocking.sql_handle) blocking_text
 WHERE blocked.blocking_session_id > 0;
 ```
 
@@ -489,7 +492,7 @@ WHERE blocked.blocking_session_id > 0;
 5. **Monitor connection metrics**: Track connection counts and wait times
 6. **Keep firewall rules tight**: Only allow necessary IP ranges
 7. **Use managed identity when possible**: Avoid storing credentials in code
-8. **Enable Advanced Threat Protection**: Detect anomalous database activities
+8. **Enable Microsoft Defender for SQL**: Detect anomalous database activities
 
 ## Conclusion
 

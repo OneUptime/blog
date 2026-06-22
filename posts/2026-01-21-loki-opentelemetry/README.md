@@ -14,7 +14,7 @@ OpenTelemetry has become the standard for collecting observability data across m
 
 Before starting, ensure you have:
 
-- Grafana Loki 2.9 or later (with OTLP support)
+- Grafana Loki 3.0 or later (with OTLP support)
 - OpenTelemetry Collector 0.80 or later
 - Basic understanding of OpenTelemetry concepts
 - Applications instrumented with OpenTelemetry SDKs
@@ -52,11 +52,10 @@ version: "3.8"
 
 services:
   loki:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.4.2
     container_name: loki
     ports:
       - "3100:3100"
-      - "3101:3101"  # OTLP gRPC
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
       - loki-data:/loki
@@ -74,6 +73,7 @@ services:
       - "8889:8889"   # Prometheus exporter
     volumes:
       - ./otel-collector-config.yaml:/etc/otel/config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     command: --config=/etc/otel/config.yaml
     networks:
       - observability
@@ -119,11 +119,10 @@ server:
 
 distributor:
   otlp_config:
-    default_labels_enabled:
-      exporter: true
-      job: true
-      instance: true
-      level: true
+    default_resource_attributes_as_index_labels:
+      - service.name
+      - service.namespace
+      - deployment.environment
 
 common:
   instance_addr: 127.0.0.1
@@ -203,7 +202,7 @@ receivers:
       - type: remove
         field: attributes.time
 
-  # Collect journald logs
+  # Optional: collect journald logs when the Collector runs on a host with journalctl
   journald:
     directory: /var/log/journal
     units:
@@ -255,19 +254,6 @@ exporters:
     tls:
       insecure: true
 
-  # Alternative: Use Loki exporter (more control over labels)
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    tenant_id: default
-    labels:
-      attributes:
-        severity: ""
-        http.method: ""
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
-        deployment.environment: "env"
-
   # Debug exporter for troubleshooting
   debug:
     verbosity: detailed
@@ -288,13 +274,18 @@ service:
     logs/files:
       receivers: [filelog]
       processors: [memory_limiter, batch, resource, attributes]
-      exporters: [loki]
+      exporters: [otlphttp]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Instrumenting Applications
@@ -396,19 +387,18 @@ if __name__ == '__main__':
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { LoggerProvider, SimpleLogRecordProcessor } = require('@opentelemetry/sdk-logs');
+const { LoggerProvider, BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
 const logsAPI = require('@opentelemetry/api-logs');
 const { SeverityNumber } = require('@opentelemetry/api-logs');
 
 // Define service resource
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'user-service',
-  [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'production',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+const resource = resourceFromAttributes({
+  'service.name': 'user-service',
+  'service.namespace': 'production',
+  'service.version': '1.0.0',
+  'deployment.environment': 'production',
 });
 
 // Initialize trace exporter
@@ -422,8 +412,10 @@ const logExporter = new OTLPLogExporter({
 });
 
 // Configure logger provider
-const loggerProvider = new LoggerProvider({ resource });
-loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
+const loggerProvider = new LoggerProvider({
+  resource,
+  processors: [new BatchLogRecordProcessor(logExporter)],
+});
 logsAPI.logs.setGlobalLoggerProvider(loggerProvider);
 
 // Initialize SDK
@@ -457,7 +449,7 @@ function log(level, message, attributes = {}) {
 
 // Express application
 const express = require('express');
-const { trace, context } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 
 const app = express();
 app.use(express.json());
@@ -523,28 +515,26 @@ import (
     "context"
     "log/slog"
     "net/http"
-    "os"
     "time"
 
     "go.opentelemetry.io/contrib/bridges/otelslog"
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/log/global"
     "go.opentelemetry.io/otel/sdk/log"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "go.opentelemetry.io/otel/trace"
 )
 
 func initProvider(ctx context.Context) (func(), error) {
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName("payment-service"),
-            semconv.ServiceNamespace("production"),
-            semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            attribute.String("service.name", "payment-service"),
+            attribute.String("service.namespace", "production"),
+            attribute.String("service.version", "1.0.0"),
+            attribute.String("deployment.environment", "production"),
         ),
     )
     if err != nil {
@@ -614,8 +604,8 @@ func main() {
         amount := r.URL.Query().Get("amount")
 
         span.SetAttributes(
-            semconv.HTTPMethod(r.Method),
-            semconv.HTTPURL(r.URL.String()),
+            attribute.String("http.request.method", r.Method),
+            attribute.String("url.full", r.URL.String()),
         )
 
         slog.InfoContext(ctx, "Processing payment",
@@ -674,37 +664,58 @@ processors:
     timeout: 1s
     send_batch_size: 1000
 
+connectors:
   # Route logs to different tenants based on attributes
   routing:
-    default_exporters: [loki/default]
+    default_pipelines: [logs/default]
     table:
-      - statement: route() where resource.attributes["deployment.environment"] == "production"
-        exporters: [loki/production]
-      - statement: route() where resource.attributes["deployment.environment"] == "staging"
-        exporters: [loki/staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [logs/production]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [logs/staging]
 
 exporters:
-  loki/default:
-    endpoint: http://loki:3100/loki/api/v1/push
-    tenant_id: default
+  otlphttp/default:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+    headers:
+      X-Scope-OrgID: default
 
-  loki/production:
-    endpoint: http://loki:3100/loki/api/v1/push
-    tenant_id: production
+  otlphttp/production:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+    headers:
+      X-Scope-OrgID: production
 
-  loki/staging:
-    endpoint: http://loki:3100/loki/api/v1/push
-    tenant_id: staging
+  otlphttp/staging:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+    headers:
+      X-Scope-OrgID: staging
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [loki/default, loki/production, loki/staging]
+      processors: [batch]
+      exporters: [routing]
+    logs/default:
+      receivers: [routing]
+      exporters: [otlphttp/default]
+    logs/production:
+      receivers: [routing]
+      exporters: [otlphttp/production]
+    logs/staging:
+      receivers: [routing]
+      exporters: [otlphttp/staging]
 ```
 
-### Log Filtering and Sampling
+### Log Filtering and Transformation
 
 ```yaml
 processors:
@@ -719,22 +730,6 @@ processors:
         record_attributes:
           - key: http.target
             value: "/health"
-
-  # Tail sampling for high-volume logs
-  tail_sampling:
-    decision_wait: 10s
-    num_traces: 100
-    expected_new_traces_per_sec: 10
-    policies:
-      - name: errors-policy
-        type: status_code
-        status_code: {status_codes: [ERROR]}
-      - name: slow-traces
-        type: latency
-        latency: {threshold_ms: 1000}
-      - name: probabilistic-sample
-        type: probabilistic
-        probabilistic: {sampling_percentage: 10}
 
   # Transform to add computed attributes
   transform:
@@ -802,24 +797,24 @@ services:
 {service_name="order-service"}
 
 # Filter by severity
-{service_name="order-service"} | json | severity_text="ERROR"
+{service_name="order-service"} | severity_text="ERROR"
 
 # Query by deployment environment
-{env="production", service_name="order-service"}
+{deployment_environment="production", service_name="order-service"}
 
 # Access structured metadata
 {service_name="order-service"} | host_name=~".*pod-1.*"
 
 # Correlate with trace ID (if present)
-{service_name="order-service"} | json | trace_id="abc123"
+{service_name="order-service"} | trace_id="abc123"
 
 # Count logs by severity
-sum by (severity_text) (
+sum by (detected_level) (
   count_over_time({service_name="order-service"}[5m])
 )
 
 # Error rate by service
-sum(rate({service_name=~".+"} | json | severity_text="ERROR" [5m])) by (service_name)
+sum(rate({service_name=~".+"} | severity_text="ERROR" [5m])) by (service_name)
 ```
 
 ## Monitoring the Collector
@@ -871,13 +866,13 @@ exporters:
 service:
   pipelines:
     logs:
-      exporters: [debug, loki]
+      exporters: [debug, otlphttp]
 ```
 
 3. Verify Loki is receiving:
 ```bash
 curl -s 'http://loki:3100/loki/api/v1/query' \
-  --data-urlencode 'query={job="opentelemetry"}' | jq
+  --data-urlencode 'query={service_name=~".+"}' | jq
 ```
 
 ### Label Configuration Issues
@@ -886,14 +881,13 @@ Verify labels are being set correctly:
 
 ```yaml
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"  # Maps to Loki label
-      attributes:
-        severity: "level"
-    # Avoid high-cardinality labels
+  otlphttp:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+# Configure low-cardinality labels in Loki's
+# distributor.otlp_config.default_resource_attributes_as_index_labels
 ```
 
 ## Best Practices

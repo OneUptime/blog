@@ -69,14 +69,12 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_mapping?pretty"
 curl -u elastic:password -X GET "localhost:9200/my-index/_settings?pretty"
 ```
 
-### Validate a Document
+### Test a Document
 
 ```bash
-curl -u elastic:password -X POST "localhost:9200/my-index/_validate/query?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X POST "localhost:9200/my-index/_doc?pretty" -H 'Content-Type: application/json' -d'
 {
-  "query": {
-    "match_all": {}
-  }
+  "count": "not_a_number"
 }'
 ```
 
@@ -142,7 +140,14 @@ curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/coerce-types" -
         "field": "count",
         "type": "long",
         "ignore_missing": true,
-        "ignore_failure": true
+        "on_failure": [
+          {
+            "set": {
+              "field": "count",
+              "value": 0
+            }
+          }
+        ]
       }
     }
   ]
@@ -180,6 +185,27 @@ curl -u elastic:password -X PUT "localhost:9200/my-index" -H 'Content-Type: appl
         "properties": {
           "name": {"type": "keyword"},
           "color": {"type": "keyword"}
+        }
+      }
+    }
+  }
+}'
+```
+
+Then query it with a nested query:
+
+```bash
+curl -u elastic:password -X GET "localhost:9200/my-index/_search" -H 'Content-Type: application/json' -d'
+{
+  "query": {
+    "nested": {
+      "path": "items",
+      "query": {
+        "bool": {
+          "must": [
+            {"term": {"items.name": "apple"}},
+            {"term": {"items.color": "red"}}
+          ]
         }
       }
     }
@@ -283,11 +309,15 @@ for failure in failed:
 }
 ```
 
-**Solution 1:** Increase queue size:
+**Solution 1:** Reduce write pressure by lowering bulk size or concurrency. Elasticsearch uses bounded write queues to protect the node; making the client send less work at once is usually safer than increasing queue size.
 
-```yaml
-# elasticsearch.yml
-thread_pool.write.queue_size: 2000
+```python
+def chunks(items, size):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+for batch in chunks(documents, 500):
+    failed = bulk_index_with_error_handling("http://localhost:9200", batch)
 ```
 
 **Solution 2:** Implement backoff in client:
@@ -333,7 +363,7 @@ curl -u elastic:password -X GET "localhost:9200/_nodes/stats/thread_pool?pretty"
 **Monitor rejection rate:**
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/_cat/thread_pool/write?v&h=node_name,name,active,queue,rejected"
+curl -u elastic:password -X GET "localhost:9200/_cat/thread_pool/write,write_coordination?v&h=node_name,name,active,queue,rejected"
 ```
 
 ## Index Write Blocks
@@ -393,16 +423,14 @@ curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/safe-pipeline" 
     {
       "grok": {
         "field": "message",
-        "patterns": ["%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:msg}"],
-        "ignore_failure": true
+        "patterns": ["%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:msg}"]
       }
     },
     {
       "date": {
         "field": "timestamp",
         "formats": ["ISO8601"],
-        "target_field": "@timestamp",
-        "ignore_failure": true
+        "target_field": "@timestamp"
       }
     }
   ],
@@ -454,8 +482,8 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_mapping?pretty"
 ### Step 4: Validate Document Against Mapping
 
 ```bash
-# Use the _validate API
-curl -u elastic:password -X POST "localhost:9200/my-index/_doc?dry_run=true" -H 'Content-Type: application/json' -d'
+# Elasticsearch does not have a dry-run option for indexing; index one test document to see mapping errors
+curl -u elastic:password -X POST "localhost:9200/my-index/_doc?pretty" -H 'Content-Type: application/json' -d'
 {
   "your": "document"
 }'
@@ -507,7 +535,7 @@ Route failed documents to a separate index for analysis:
 # Ingest pipeline with DLQ
 curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/with-dlq" -H 'Content-Type: application/json' -d'
 {
-  "processors": [...],
+  "processors": [],
   "on_failure": [
     {
       "set": {
@@ -535,7 +563,7 @@ curl -u elastic:password -X PUT "localhost:9200/_ingest/pipeline/with-dlq" -H 'C
 curl -u elastic:password -X GET "localhost:9200/_cat/nodes?v&h=name,indexing.index_total,indexing.index_failed"
 
 # Thread pool rejections
-curl -u elastic:password -X GET "localhost:9200/_cat/thread_pool/write?v&h=name,rejected"
+curl -u elastic:password -X GET "localhost:9200/_cat/thread_pool/write,write_coordination?v&h=name,rejected"
 ```
 
 ## Summary

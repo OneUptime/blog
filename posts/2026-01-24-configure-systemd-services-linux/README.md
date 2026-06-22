@@ -44,7 +44,7 @@ flowchart TD
 |------|---------|
 | /etc/systemd/system/ | Administrator-created units (highest priority) |
 | /run/systemd/system/ | Runtime units |
-| /lib/systemd/system/ | Package-installed units |
+| /usr/lib/systemd/system/ (or /lib/systemd/system/ on some distributions) | Package-installed units |
 
 ## Basic Service Management
 
@@ -91,7 +91,7 @@ systemctl is-active nginx
 [Unit]
 Description=My Application Service
 Documentation=https://docs.example.com/myapp
-After=network.target
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -149,11 +149,16 @@ ConditionFileIsExecutable=/opt/myapp/bin/myapp
 ```ini
 [Service]
 # Service types
-Type=simple      # Default: ExecStart is main process
-Type=forking     # Traditional daemons that fork
-Type=oneshot     # Short-lived tasks
-Type=notify      # Sends notification when ready
-Type=dbus        # Acquires D-Bus name when ready
+# Default: ExecStart is main process
+Type=simple
+# Traditional daemons that fork
+Type=forking
+# Short-lived tasks
+Type=oneshot
+# Sends notification when ready
+Type=notify
+# Acquires configured D-Bus name when ready
+Type=dbus
 
 # Process user/group
 User=myapp
@@ -175,11 +180,16 @@ ExecReload=/bin/kill -HUP $MAINPID
 ExecStop=/opt/myapp/bin/graceful-stop.sh
 
 # Restart behavior
-Restart=always           # Always restart
-Restart=on-failure       # Restart on non-zero exit
-Restart=on-abnormal      # Restart on signal/timeout
-Restart=on-abort         # Restart on signal only
-RestartSec=5             # Wait 5 seconds before restart
+# Always restart
+Restart=always
+# Restart on unsuccessful exit, signal, timeout, or watchdog
+Restart=on-failure
+# Restart on signal, timeout, or watchdog
+Restart=on-abnormal
+# Restart on uncaught signal only
+Restart=on-abort
+# Wait 5 seconds before restart
+RestartSec=5
 
 # Timeouts
 TimeoutStartSec=30
@@ -194,8 +204,10 @@ PIDFile=/run/myapp/myapp.pid
 ```ini
 [Install]
 # Target to enable under
-WantedBy=multi-user.target    # Standard services
-WantedBy=graphical.target     # Desktop services
+# Standard services
+WantedBy=multi-user.target
+# Desktop services
+WantedBy=graphical.target
 
 # Alias names
 Alias=myapp.service
@@ -216,8 +228,8 @@ flowchart TD
     B --> B1[ExecStart is main process]
     B --> B2[systemd tracks this PID]
 
-    C --> C1[Main process forks and exits]
-    C --> C2[Requires PIDFile]
+    C --> C1[Parent process forks and exits]
+    C --> C2[PIDFile recommended]
 
     D --> D1[Runs once and exits]
     D --> D2[Good for scripts]
@@ -242,7 +254,7 @@ ExecStart=/opt/myapp/bin/myapp
 Type=forking
 PIDFile=/run/myapp.pid
 ExecStart=/opt/myapp/bin/myapp --daemon
-# systemd waits for main process to exit and tracks forked process
+# systemd waits for the parent process to exit and tracks the forked process
 ```
 
 ### Type=oneshot (Scripts and One-time Tasks)
@@ -251,7 +263,8 @@ ExecStart=/opt/myapp/bin/myapp --daemon
 [Service]
 Type=oneshot
 ExecStart=/opt/myapp/bin/init-database.sh
-RemainAfterExit=yes    # Consider active even after exit
+# Consider active even after exit
+RemainAfterExit=yes
 # Good for initialization scripts
 ```
 
@@ -272,7 +285,6 @@ Resource Limits
 ```ini
 [Service]
 # Memory limits
-MemoryLimit=512M
 MemoryMax=1G
 
 # CPU limits
@@ -298,7 +310,8 @@ IODeviceWeight=/dev/sda 200
 # Run as unprivileged user
 User=myapp
 Group=myapp
-DynamicUser=yes    # Create ephemeral user
+# Create ephemeral user
+DynamicUser=yes
 
 # Filesystem restrictions
 ReadOnlyPaths=/
@@ -307,7 +320,8 @@ TemporaryFileSystem=/tmp
 PrivateTmp=yes
 
 # Network restrictions
-PrivateNetwork=yes    # No network access
+# Only loopback network access
+PrivateNetwork=yes
 RestrictAddressFamilies=AF_INET AF_INET6
 
 # System call restrictions
@@ -352,13 +366,18 @@ After=network.target postgresql.service
 Before=nginx.service
 
 # Requirements (what must be present)
-Wants=redis.service        # Weak: start if available
-Requires=postgresql.service # Strong: fail if unavailable
-Requisite=docker.service   # Must be running already
+# Weak: start if available
+Wants=redis.service
+# Strong: start dependency too; fail if dependency start fails
+Requires=postgresql.service
+# Must already be running
+Requisite=docker.service
 
 # Binding (lifecycle coupling)
-BindsTo=docker.service     # Stop when dependency stops
-PartOf=myapp.target        # Stop/restart together
+# Stop when dependency stops
+BindsTo=docker.service
+# Stop/restart when the listed unit is stopped/restarted
+PartOf=myapp.target
 ```
 
 ### Creating a Target for Service Groups
@@ -423,7 +442,8 @@ OnCalendar=daily
 # Or specific time: OnCalendar=*-*-* 02:00:00
 # Or interval: OnBootSec=5min
 #              OnUnitActiveSec=1h
-Persistent=true    # Run if missed
+# Run if missed
+Persistent=true
 
 [Install]
 WantedBy=timers.target

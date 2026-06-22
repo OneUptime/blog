@@ -26,7 +26,7 @@ Before diving into implementation, let's understand what makes a good matchmakin
 flowchart LR
     Player["Player Client"]
     MM["Matchmaking Service"]
-    Redis["Redis Cluster"]
+    Redis["Redis"]
     Game["Game Server"]
 
     Player --> MM --> Redis
@@ -80,7 +80,7 @@ class MatchmakingQueue:
             "queue_time": player.queue_time
         }
 
-        # Use pipeline for atomic operation
+        # Use a transactional pipeline for atomic operation
         pipe = self.redis.pipeline()
 
         # Store player info in hash
@@ -678,16 +678,18 @@ class MatchmakingService {
 // Usage
 const matchmaking = new MatchmakingService({ host: 'localhost', port: 6379 });
 
-// Add a player to queue
-await matchmaking.addPlayerToQueue({
-    playerId: 'player123',
-    skillRating: 1500,
-    region: 'na',
-    gameMode: 'ranked'
-});
+(async () => {
+    // Add a player to queue
+    await matchmaking.addPlayerToQueue({
+        playerId: 'player123',
+        skillRating: 1500,
+        region: 'na',
+        gameMode: 'ranked'
+    });
 
-// Start the matchmaking service
-matchmaking.start();
+    // Start the matchmaking service
+    matchmaking.start();
+})();
 ```
 
 ## Advanced Features
@@ -712,7 +714,7 @@ class PartyMatchmaking:
         # Calculate average skill rating for the party
         total_skill = 0
         for member_id in all_members:
-            player_data = self.redis.hgetall(f"player:{member_id}")
+            player_data = self.redis.hgetall(f"matchmaking:player:{member_id}")
             skill = int(player_data.get(b"skill_rating", 1000))
             total_skill += skill
 
@@ -951,7 +953,7 @@ class MatchmakingMetrics:
 
 ## Best Practices
 
-1. **Use Redis Cluster** for high-volume matchmaking systems to handle the load across multiple nodes.
+1. **Use Redis Cluster** for high-volume matchmaking systems to handle the load across multiple nodes. If you use transactions or multi-key operations in Cluster mode, design related keys with hash tags so they are stored in the same hash slot.
 
 2. **Implement graceful degradation** - if the matchmaking service is overwhelmed, expand skill ranges faster or reduce match quality requirements temporarily.
 

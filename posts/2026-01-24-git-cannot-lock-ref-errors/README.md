@@ -83,7 +83,7 @@ ps aux | grep git
 tasklist | findstr git
 ```
 
-If no git processes are running, it is safe to remove the lock file.
+If no git processes are running and no Git-enabled IDE or background job is using the repository, it is generally safe to remove the lock file.
 
 ---
 
@@ -234,7 +234,7 @@ This is a naming conflict rather than a true lock issue. Choose branch naming co
 
 ## Using Git GC and Prune
 
-Sometimes garbage collection resolves lock issues by cleaning up stale references.
+After removing stale locks, garbage collection can clean up unreachable objects and stale repository metadata. It does not replace removing the specific lock file that is blocking the operation.
 
 ```bash
 # Run garbage collection
@@ -244,14 +244,14 @@ git gc
 find .git -name "*.lock" -type f -delete
 git gc
 
-# More aggressive cleanup
+# More aggressive cleanup (use only when no other process is writing to the repository)
 git gc --prune=now --aggressive
 
-# Remove unreachable objects
+# Remove unreachable loose objects directly (git gc is preferred in most cases)
 git prune
 ```
 
-Garbage collection repacks loose objects and can resolve inconsistencies that lead to lock problems.
+Garbage collection runs repository housekeeping tasks such as compressing file revisions, packing refs, pruning reflog data, and pruning stale worktree metadata. The `--prune=now` option increases the risk of corruption if another process is writing to the repository at the same time, so use it only when the repository is idle.
 
 ---
 
@@ -300,7 +300,7 @@ git fetch && git pull  # Sequential execution
 If you must interrupt a git operation, try to do it gracefully.
 
 ```bash
-# Sending SIGTERM (Ctrl+C) usually allows cleanup
+# Sending SIGINT (Ctrl+C) usually allows cleanup
 # Git catches this and removes lock files
 
 # Avoid SIGKILL (kill -9) when possible
@@ -330,7 +330,7 @@ Instead of running parallel operations on the same repository, use worktrees.
 git worktree add ../repo-feature-branch feature-branch
 
 # Now you have two directories, each with its own working copy
-# No lock conflicts between them
+# Less branch switching in one directory
 ls ../
 # repo/
 # repo-feature-branch/
@@ -339,7 +339,7 @@ ls ../
 git worktree remove ../repo-feature-branch
 ```
 
-Worktrees let you work on multiple branches simultaneously without lock conflicts.
+Worktrees let you work on multiple branches simultaneously with separate working trees. They still share the repository's object database and most refs, so avoid running concurrent operations that update the same shared references.
 
 ---
 

@@ -71,10 +71,10 @@ Key characteristics:
 | Real-time Ingestion | Async inserts, Kafka engine | Native streaming ingestion |
 | Batch Ingestion | INSERT, file imports | Hadoop, Spark, native batch |
 | JOINs | Supported (with limitations) | Very limited |
-| Subqueries | Full support | Limited support |
-| Exact COUNT DISTINCT | Native | Approximate (HyperLogLog) |
+| Subqueries | Full support | Supported with broker memory limits |
+| Exact COUNT DISTINCT | Native | Configurable with limitations |
 | Approximate Queries | Optional | Native (datasketches) |
-| Update/Delete | Mutations (async) | Not supported |
+| Update/Delete | Mutations (async) | No row-level DML |
 | Pre-aggregation | Materialized views | Roll-up at ingestion |
 
 ## Query Performance Comparison
@@ -128,12 +128,12 @@ WITH daily_stats AS (
 SELECT
     user_id,
     avg(daily_events) AS avg_daily_events,
-    percentile(0.95)(daily_revenue) AS p95_revenue
+    quantile(0.95)(daily_revenue) AS p95_revenue
 FROM daily_stats
 GROUP BY user_id
 HAVING avg_daily_events > 10;
 
--- Druid: Would require multiple queries or Druid SQL limitations
+-- Druid: Similar queries may hit subquery limits at scale
 -- Often solved with pre-aggregation at ingestion time
 ```
 
@@ -146,8 +146,11 @@ SELECT uniqExact(user_id) AS exact_users FROM events;
 -- ClickHouse: Approximate (faster)
 SELECT uniq(user_id) AS approx_users FROM events;
 
--- Druid: Always approximate by default
+-- Druid: Approximate by default
 SELECT APPROX_COUNT_DISTINCT(user_id) AS users FROM events;
+
+-- Druid: Exact COUNT DISTINCT can be enabled with useApproximateCountDistinct=false
+SELECT COUNT(DISTINCT user_id) AS exact_users FROM events;
 
 -- Druid: Theta sketches for set operations
 SELECT
@@ -173,7 +176,7 @@ CREATE TABLE events_kafka (
     user_id UInt64,
     event_type String,
     revenue Float64
-) ENGINE = Kafka
+) ENGINE = Kafka()
 SETTINGS
     kafka_broker_list = 'kafka:9092',
     kafka_topic_list = 'events',
@@ -188,32 +191,36 @@ SELECT * FROM events_kafka;
 Druid streaming:
 
 ```json
-// Kafka ingestion spec
 {
   "type": "kafka",
-  "dataSchema": {
-    "dataSource": "events",
-    "timestampSpec": {
-      "column": "timestamp",
-      "format": "auto"
+  "spec": {
+    "dataSchema": {
+      "dataSource": "events",
+      "timestampSpec": {
+        "column": "timestamp",
+        "format": "auto"
+      },
+      "dimensionsSpec": {
+        "dimensions": ["user_id", "event_type"]
+      },
+      "metricsSpec": [
+        {"type": "count", "name": "count"},
+        {"type": "doubleSum", "name": "revenue", "fieldName": "revenue"}
+      ],
+      "granularitySpec": {
+        "type": "uniform",
+        "segmentGranularity": "HOUR",
+        "queryGranularity": "MINUTE"
+      }
     },
-    "dimensionsSpec": {
-      "dimensions": ["user_id", "event_type"]
-    },
-    "metricsSpec": [
-      {"type": "count", "name": "count"},
-      {"type": "doubleSum", "name": "revenue", "fieldName": "revenue"}
-    ],
-    "granularitySpec": {
-      "type": "uniform",
-      "segmentGranularity": "HOUR",
-      "queryGranularity": "MINUTE"
-    }
-  },
-  "ioConfig": {
-    "topic": "events",
-    "consumerProperties": {
-      "bootstrap.servers": "kafka:9092"
+    "ioConfig": {
+      "topic": "events",
+      "inputFormat": {
+        "type": "json"
+      },
+      "consumerProperties": {
+        "bootstrap.servers": "kafka:9092"
+      }
     }
   }
 }
@@ -226,7 +233,7 @@ ClickHouse batch:
 ```sql
 -- Simple INSERT from files
 INSERT INTO events
-SELECT * FROM file('events.parquet', Parquet);
+SELECT * FROM file('events.parquet', 'Parquet');
 
 -- From S3
 INSERT INTO events
@@ -240,7 +247,6 @@ SELECT * FROM s3(
 Druid batch:
 
 ```json
-// Batch ingestion task
 {
   "type": "index_parallel",
   "spec": {
@@ -267,16 +273,15 @@ Druid batch:
 ### Druid Roll-Up (Native)
 
 ```json
-// Roll-up at ingestion reduces storage
 {
   "granularitySpec": {
     "segmentGranularity": "DAY",
-    "queryGranularity": "HOUR",  // Data rolled up to hourly
+    "queryGranularity": "HOUR",
     "rollup": true
   },
   "metricsSpec": [
     {"type": "count", "name": "event_count"},
-    {"type": "longSum", "name": "total_revenue", "fieldName": "revenue"},
+    {"type": "doubleSum", "name": "total_revenue", "fieldName": "revenue"},
     {"type": "hyperUnique", "name": "unique_users", "fieldName": "user_id"}
   ]
 }
@@ -285,14 +290,14 @@ Druid batch:
 ### ClickHouse Equivalent (Materialized Views)
 
 ```sql
--- SummingMergeTree for roll-up
+-- AggregatingMergeTree for roll-up with aggregate states
 CREATE TABLE events_hourly (
     hour DateTime,
     country String,
     event_count UInt64,
     total_revenue Float64,
     unique_users AggregateFunction(uniq, UInt64)
-) ENGINE = SummingMergeTree()
+) ENGINE = AggregatingMergeTree()
 ORDER BY (hour, country);
 
 -- Continuous aggregation
@@ -435,7 +440,7 @@ Druid scales by component:
 |--------|------------|--------------|
 | Simple aggregation (1B rows) | 50-200ms | 50-200ms |
 | Complex query with JOINs | 200-500ms | Not recommended |
-| Exact COUNT DISTINCT (100M) | 500ms-2s | N/A (approximate only) |
+| Exact COUNT DISTINCT (100M) | 500ms-2s | Supported with limits |
 | Ingestion rate | 1-2M rows/s | 500K-1M rows/s |
 | Query concurrency | 100s | 1000s |
 | Storage efficiency | Higher | Lower (segments) |

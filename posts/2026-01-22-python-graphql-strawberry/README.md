@@ -8,7 +8,7 @@ Description: Learn how to build type-safe GraphQL APIs in Python using Strawberr
 
 ---
 
-> GraphQL gives clients the power to request exactly the data they need. Strawberry is a modern Python library that leverages Python's type hints to create GraphQL APIs with minimal boilerplate. It catches errors at development time rather than runtime, making your APIs more reliable.
+> GraphQL gives clients the power to request exactly the data they need. Strawberry is a modern Python library that leverages Python's type hints to create GraphQL APIs with minimal boilerplate. It works well with static type checkers and validates your schema when it is created, making your APIs more reliable.
 
 Unlike schema-first approaches, Strawberry uses a code-first philosophy. You define your types using Python classes and dataclasses, and Strawberry generates the GraphQL schema automatically. This keeps your code DRY and fully type-checked.
 
@@ -64,7 +64,7 @@ Start with a simple schema using Python dataclasses:
 import strawberry
 from typing import List, Optional
 from dataclasses import field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @strawberry.type
@@ -76,7 +76,7 @@ class Author:
     id: strawberry.ID
     name: str
     bio: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @strawberry.type
@@ -172,10 +172,9 @@ Mutations handle create, update, and delete operations:
 
 import strawberry
 from typing import Optional
-from dataclasses import dataclass
 
 # Import types from schema
-from schema import Book, Author, BOOKS_DB, AUTHORS_DB
+from schema import Book, Query, BOOKS_DB, AUTHORS_DB
 
 
 @strawberry.input
@@ -329,6 +328,9 @@ import asyncio
 from typing import AsyncGenerator
 from datetime import datetime
 
+from schema import Query
+from mutations import Mutation
+
 
 @strawberry.type
 class BookEvent:
@@ -345,7 +347,7 @@ book_event_queue: asyncio.Queue = asyncio.Queue()
 
 
 async def publish_book_event(event: BookEvent):
-    """Publish an event to all subscribers."""
+    """Publish an event to the queue."""
     await book_event_queue.put(event)
 
 
@@ -371,7 +373,7 @@ class Subscription:
                 )
                 yield event
             except asyncio.TimeoutError:
-                # Send heartbeat to keep connection alive
+                # Keep waiting without closing the subscription generator
                 continue
 
     @strawberry.subscription
@@ -606,7 +608,7 @@ schema = strawberry.Schema(
 graphql_app = GraphQLRouter(
     schema,
     context_getter=get_context_with_auth,
-    graphiql=True  # Enable GraphiQL interface
+    graphql_ide="graphiql"  # Enable GraphiQL interface
 )
 
 # Create FastAPI app
@@ -647,7 +649,7 @@ Implement field-level authorization:
 # Authentication and authorization for GraphQL
 
 import strawberry
-from strawberry.permission import BasePermission
+from strawberry.permission import BasePermission, PermissionExtension
 from strawberry.types import Info
 from typing import Any
 
@@ -692,13 +694,17 @@ class SecureQuery:
         """Available to everyone."""
         return "This is public"
 
-    @strawberry.field(permission_classes=[IsAuthenticated])
+    @strawberry.field(
+        extensions=[PermissionExtension(permissions=[IsAuthenticated()])]
+    )
     def user_data(self, info: Info) -> str:
         """Only available to authenticated users."""
         user = info.context["user"]
         return f"Hello, {user['name']}"
 
-    @strawberry.field(permission_classes=[HasRole("admin")])
+    @strawberry.field(
+        extensions=[PermissionExtension(permissions=[HasRole("admin")])]
+    )
     def admin_data(self) -> str:
         """Only available to admins."""
         return "Secret admin information"
@@ -708,14 +714,18 @@ class SecureQuery:
 class SecureMutation:
     """Mutation with protected operations."""
 
-    @strawberry.mutation(permission_classes=[IsAuthenticated])
+    @strawberry.mutation(
+        extensions=[PermissionExtension(permissions=[IsAuthenticated()])]
+    )
     def update_profile(self, name: str, info: Info) -> str:
         """Update user profile (requires auth)."""
         user = info.context["user"]
         # Update user in database
         return f"Updated profile for {user['id']}"
 
-    @strawberry.mutation(permission_classes=[HasRole("admin")])
+    @strawberry.mutation(
+        extensions=[PermissionExtension(permissions=[HasRole("admin")])]
+    )
     def delete_user(self, user_id: str) -> str:
         """Delete a user (admin only)."""
         # Delete user from database
@@ -734,18 +744,13 @@ Validate input with custom scalars and validators:
 
 import strawberry
 import re
-from typing import NewType, Annotated
-from pydantic import BaseModel, EmailStr, field_validator
+from typing import NewType
+from pydantic import BaseModel, field_validator
+from strawberry.schema.config import StrawberryConfig
 
 
-# Custom scalar for email validation
-@strawberry.scalar(
-    description="Valid email address",
-    serialize=lambda v: str(v),
-    parse_value=lambda v: validate_email(v)
-)
-class Email:
-    pass
+Email = NewType("Email", str)
+ISBN = NewType("ISBN", str)
 
 
 def validate_email(value: str) -> str:
@@ -754,16 +759,6 @@ def validate_email(value: str) -> str:
     if not re.match(pattern, value):
         raise ValueError(f"Invalid email: {value}")
     return value
-
-
-# Custom scalar for ISBN
-@strawberry.scalar(
-    description="Valid ISBN-13",
-    serialize=lambda v: str(v),
-    parse_value=lambda v: validate_isbn(v)
-)
-class ISBN:
-    pass
 
 
 def validate_isbn(value: str) -> str:
@@ -785,7 +780,6 @@ class CreateUserInput:
     email: Email
     age: int
 
-    @strawberry.field
     def __post_init__(self):
         """Additional validation after field parsing."""
         if len(self.name) < 2:
@@ -814,13 +808,19 @@ class BookInputModel(BaseModel):
         return v
 
 
-@strawberry.experimental.pydantic.input(model=BookInputModel)
+@strawberry.experimental.pydantic.input(model=BookInputModel, all_fields=True)
 class BookInput:
     """
     Strawberry input type backed by Pydantic model.
-    Gets all validation from the Pydantic model.
+    Call to_pydantic() to apply validation from the Pydantic model.
     """
     pass
+
+
+@strawberry.type
+class Query:
+    """Placeholder query root for the validation example."""
+    health: str = "ok"
 
 
 @strawberry.type
@@ -836,8 +836,31 @@ class ValidationMutation:
     @strawberry.mutation
     def create_book(self, input: BookInput) -> str:
         """Create book with Pydantic validation."""
-        # Pydantic validation applied automatically
-        return f"Created book: {input.title}"
+        # Pydantic validation runs during conversion
+        book = input.to_pydantic()
+        return f"Created book: {book.title}"
+
+
+schema = strawberry.Schema(
+    query=Query,
+    mutation=ValidationMutation,
+    config=StrawberryConfig(
+        scalar_map={
+            Email: strawberry.scalar(
+                name="Email",
+                description="Valid email address",
+                serialize=lambda v: str(v),
+                parse_value=validate_email,
+            ),
+            ISBN: strawberry.scalar(
+                name="ISBN",
+                description="Valid ISBN-13",
+                serialize=lambda v: str(v),
+                parse_value=validate_isbn,
+            ),
+        }
+    ),
+)
 ```
 
 ---
@@ -854,7 +877,7 @@ import strawberry
 from strawberry.fastapi import GraphQLRouter
 from fastapi import FastAPI
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # Types
@@ -876,9 +899,8 @@ class Post:
 
     @strawberry.field
     async def author(self, info: strawberry.Info) -> User:
-        """Resolve author using DataLoader."""
-        loader = info.context["user_loader"]
-        return await loader.load(self.author_id)
+        """Resolve author from the in-memory store."""
+        return users_db[self.author_id]
 
 
 # Simple in-memory store
@@ -930,7 +952,7 @@ class Mutation:
             id=user_id,
             name=input.name,
             email=input.email,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         users_db[user_id] = user
         return user
@@ -946,7 +968,7 @@ class Mutation:
             title=input.title,
             content=input.content,
             author_id=input.author_id,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         posts_db[post_id] = post
         return post

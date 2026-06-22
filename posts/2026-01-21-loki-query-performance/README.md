@@ -48,7 +48,7 @@ histogram_quantile(0.99, sum(rate(loki_query_scheduler_queue_duration_seconds_bu
 ### Basic Configuration
 
 ```yaml
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 2048
   compress_responses: true
   log_queries_longer_than: 10s
@@ -71,8 +71,8 @@ query_range:
   # For very large queries
   # split_queries_by_interval: 5m
 
-frontend:
-  # Maximum query length before splitting
+limits_config:
+  # Maximum query length
   max_query_length: 12h
 ```
 
@@ -139,6 +139,8 @@ chunk_store_config:
 ### Index Cache
 
 ```yaml
+# Only needed for legacy BoltDB index storage. TSDB indexes use the attached
+# disk or persistent volume as cache.
 storage_config:
   index_queries_cache_config:
     embedded_cache:
@@ -153,12 +155,12 @@ storage_config:
 # For 1TB daily ingestion
 chunk_cache: 4GB
 results_cache: 1GB
-index_cache: 512MB
+index_cache: 512MB  # Legacy BoltDB only
 
 # For 10TB daily ingestion
 chunk_cache: 16GB
 results_cache: 4GB
-index_cache: 2GB
+index_cache: 2GB  # Legacy BoltDB only
 ```
 
 ## Memcached Deployment
@@ -172,16 +174,26 @@ metadata:
 spec:
   serviceName: memcached
   replicas: 3
+  selector:
+    matchLabels:
+      app: memcached
   template:
+    metadata:
+      labels:
+        app: memcached
     spec:
       containers:
         - name: memcached
           image: memcached:1.6
           args:
-            - -m 8192      # 8GB memory
-            - -I 5m        # 5MB max item size
-            - -c 16384     # Max connections
-            - -t 4         # Threads
+            - -m
+            - "8192"       # 8GB memory
+            - -I
+            - 5m           # 5MB max item size
+            - -c
+            - "16384"      # Max connections
+            - -t
+            - "4"          # Threads
           ports:
             - containerPort: 11211
           resources:
@@ -288,7 +300,13 @@ metadata:
   name: loki-query-scheduler
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: loki-query-scheduler
   template:
+    metadata:
+      labels:
+        app: loki-query-scheduler
     spec:
       containers:
         - name: scheduler
@@ -310,7 +328,7 @@ spec:
 histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{route=~"/loki/api/v1/query.*"}[5m])) by (le))
 
 # Cache hit rate
-sum(rate(loki_cache_hits_total[5m])) / sum(rate(loki_cache_request_total[5m]))
+sum(rate(loki_cache_hits_total[5m])) / sum(rate(loki_cache_fetched_keys_total[5m]))
 
 # Query queue depth
 loki_query_scheduler_queue_length
@@ -344,7 +362,7 @@ groups:
 
       - alert: LokiLowCacheHitRate
         expr: |
-          sum(rate(loki_cache_hits_total[5m])) / sum(rate(loki_cache_request_total[5m])) < 0.5
+          sum(rate(loki_cache_hits_total[5m])) / sum(rate(loki_cache_fetched_keys_total[5m])) < 0.5
         for: 15m
         labels:
           severity: warning
@@ -357,7 +375,7 @@ groups:
 ### Identify Slow Queries
 
 ```yaml
-query_frontend:
+frontend:
   log_queries_longer_than: 10s
 ```
 
@@ -369,10 +387,9 @@ kubectl logs -n loki loki-query-frontend | grep "slow query"
 ### Query Profiling
 
 ```bash
-# Get query stats
+# Get query execution stats
 curl -G "http://loki:3100/loki/api/v1/query" \
-  --data-urlencode 'query={job="app"}' \
-  -H "X-Query-Tags: explain=true"
+  --data-urlencode 'query={job="app"}'
 ```
 
 ### Common Issues
@@ -422,7 +439,7 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
 
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 4096
   compress_responses: true
   log_queries_longer_than: 10s
@@ -458,6 +475,8 @@ chunk_store_config:
       service: memcache
 
 storage_config:
+  # Only needed for legacy BoltDB index storage. TSDB indexes use the attached
+  # disk or persistent volume as cache.
   index_queries_cache_config:
     memcached:
       batch_size: 256
@@ -507,4 +526,4 @@ Query performance optimization requires attention to both configuration and quer
 - Set appropriate limits
 - Scale queriers based on load
 
-With proper tuning, Loki can provide sub-second query responses even for large datasets.
+With proper tuning, Loki can significantly improve query latency even for large datasets.

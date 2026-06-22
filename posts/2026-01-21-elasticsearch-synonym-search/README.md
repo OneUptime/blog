@@ -17,7 +17,7 @@ Synonyms improve search by:
 - Matching different terms for the same concept
 - Handling industry jargon and abbreviations
 - Supporting regional language variations
-- Improving search recall without hurting precision
+- Improving search recall while monitoring precision
 
 ## Basic Synonym Filter
 
@@ -91,7 +91,7 @@ For large synonym lists, use a file:
 
 ### Create Synonym File
 
-Create `/etc/elasticsearch/synonyms/products.txt`:
+Create `/etc/elasticsearch/synonyms/products.txt` (the `synonyms_path` below is relative to the Elasticsearch `config` directory):
 
 ```text
 # Product synonyms
@@ -249,7 +249,7 @@ curl -X PUT "https://localhost:9200/products" \
           "my_synonyms": {
             "type": "synonym",
             "lenient": true,
-            "synonyms": ["laptop, notebook", "invalid syntax here"]
+            "synonyms": ["laptop, notebook", "invalid =>"]
           }
         }
       }
@@ -385,7 +385,7 @@ curl -X PUT "https://localhost:9200/products" \
   }'
 ```
 
-**Pros**: Update synonyms without reindexing
+**Pros**: Update synonyms without reindexing, especially when using reloadable file-based synonyms or synonyms sets
 **Cons**: Slightly slower search
 
 ## Updateable Synonyms
@@ -430,6 +430,9 @@ Reload synonyms after updating file:
 
 ```bash
 curl -X POST "https://localhost:9200/products/_reload_search_analyzers" \
+  -u elastic:password
+
+curl -X POST "https://localhost:9200/products/_cache/clear?request=true" \
   -u elastic:password
 ```
 
@@ -499,7 +502,7 @@ Now "Laptop", "LAPTOP", and "laptop" all match "notebook".
 
 ## Combining with Stemming
 
-Order matters - apply synonyms before stemming:
+Order matters - lowercase should usually run before synonyms. Place stemming before or after synonyms based on how your synonym rules are written; filters before the synonym filter are also applied to synonym entries:
 
 ```bash
 curl -X PUT "https://localhost:9200/products" \
@@ -520,8 +523,8 @@ curl -X PUT "https://localhost:9200/products" \
             "tokenizer": "standard",
             "filter": [
               "lowercase",
-              "my_synonyms",
-              "porter_stem"
+              "porter_stem",
+              "my_synonyms"
             ]
           }
         }
@@ -601,12 +604,7 @@ curl -X PUT "https://localhost:9200/ecommerce" \
               "phone, mobile, cellphone, smartphone",
               "tv, television, telly, flat screen",
               "fridge, refrigerator, icebox",
-              "couch, sofa, settee, loveseat"
-            ]
-          },
-          "size_synonyms": {
-            "type": "synonym",
-            "synonyms": [
+              "couch, sofa, settee, loveseat",
               "xs => extra small",
               "s, sm => small",
               "m, md => medium",
@@ -624,7 +622,7 @@ curl -X PUT "https://localhost:9200/ecommerce" \
           "search_analyzer": {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "product_synonyms", "size_synonyms", "porter_stem"]
+            "filter": ["lowercase", "product_synonyms", "porter_stem"]
           }
         }
       }
@@ -652,16 +650,9 @@ curl -X PUT "https://localhost:9200/ecommerce" \
 
 # Index some products
 curl -X POST "https://localhost:9200/ecommerce/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
-{"index":{}}
-{"name":"MacBook Pro Laptop","description":"Powerful notebook computer","size":"standard"}
-{"index":{}}
-{"name":"Samsung TV 55 inch","description":"Large flat screen television","size":"lg"}
-{"index":{}}
-{"name":"iPhone Smartphone","description":"Latest mobile phone","size":"standard"}
-'
+  --data-binary $'{"index":{}}\n{"name":"MacBook Pro Laptop","description":"Powerful notebook computer","size":"standard"}\n{"index":{}}\n{"name":"Samsung TV 55 inch","description":"Large flat screen television","size":"lg"}\n{"index":{}}\n{"name":"iPhone Smartphone","description":"Latest mobile phone","size":"standard"}\n'
 
 # Search with synonyms
 curl -X GET "https://localhost:9200/ecommerce/_search" \
@@ -749,7 +740,7 @@ Synonyms are essential for improving search recall:
 
 1. **Use synonym_graph** for multi-word synonym support
 2. **Search-time synonyms** allow updates without reindexing
-3. **Order matters** - lowercase before synonyms, synonyms before stemming
+3. **Order matters** - lowercase before synonyms; place stemming based on how your synonym rules are written
 4. **Test thoroughly** with the analyze endpoint
 5. **Keep focused** - too many synonyms hurt precision
 

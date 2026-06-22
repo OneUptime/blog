@@ -14,9 +14,9 @@ Writing files is a fundamental operation in Node.js applications, from saving us
 
 ```javascript
 // Modern approach with fs/promises (recommended)
-const fs = require('fs/promises');
+const fsPromises = require('fs/promises');
 
-await fs.writeFile('output.txt', 'Hello, World!');
+await fsPromises.writeFile('output.txt', 'Hello, World!');
 
 // Callback approach
 const fs = require('fs');
@@ -177,13 +177,10 @@ For large files, streams prevent loading everything into memory:
 ```javascript
 const fs = require('fs');
 
-function writeLargeFile(filename, dataGenerator) {
-  return new Promise((resolve, reject) => {
-    const stream = fs.createWriteStream(filename);
-    
-    stream.on('error', reject);
-    stream.on('finish', resolve);
-    
+async function writeLargeFile(filename, dataGenerator) {
+  const stream = fs.createWriteStream(filename);
+  
+  try {
     // Write data in chunks
     for (const chunk of dataGenerator()) {
       // Check if we should wait for drain
@@ -191,14 +188,20 @@ function writeLargeFile(filename, dataGenerator) {
       
       if (!canContinue) {
         // Buffer is full, wait for drain
-        stream.once('drain', () => {
-          // Continue writing
-        });
+        await new Promise(resolve => stream.once('drain', resolve));
       }
     }
     
     stream.end();
-  });
+    
+    await new Promise((resolve, reject) => {
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    });
+  } catch (error) {
+    stream.destroy();
+    throw error;
+  }
 }
 
 // Generator function for test data
@@ -262,10 +265,15 @@ async function writeCompressed(filename, data) {
 const { Transform } = require('stream');
 
 async function writeCSV(filename, records) {
+  function escapeCSV(value) {
+    const str = String(value ?? '');
+    return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
   const toCSV = new Transform({
     objectMode: true,
     transform(record, encoding, callback) {
-      const line = Object.values(record).join(',') + '\n';
+      const line = Object.values(record).map(escapeCSV).join(',') + '\n';
       callback(null, line);
     },
   });
@@ -307,7 +315,6 @@ To prevent partial writes on crash:
 
 ```javascript
 const fs = require('fs/promises');
-const path = require('path');
 const crypto = require('crypto');
 
 async function atomicWrite(filepath, content) {
@@ -317,7 +324,7 @@ async function atomicWrite(filepath, content) {
   try {
     await fs.writeFile(tempPath, content);
     
-    // Rename is atomic on most filesystems
+    // Rename is atomic on most filesystems when source and target are in the same directory
     await fs.rename(tempPath, filepath);
   } catch (error) {
     // Clean up temp file on error
@@ -350,7 +357,7 @@ async function writeMultipleFiles(files) {
 // With concurrency limit
 async function writeWithLimit(files, concurrency = 10) {
   const results = [];
-  const executing = [];
+  const executing = new Set();
   
   for (const file of files) {
     const promise = fs.writeFile(file.path, file.content)
@@ -358,13 +365,11 @@ async function writeWithLimit(files, concurrency = 10) {
       .catch(err => ({ path: file.path, success: false, error: err }));
     
     results.push(promise);
-    executing.push(promise);
+    executing.add(promise);
+    promise.finally(() => executing.delete(promise));
     
-    if (executing.length >= concurrency) {
+    if (executing.size >= concurrency) {
       await Promise.race(executing);
-      // Remove completed promises
-      executing.splice(0, executing.length, 
-        ...executing.filter(p => !p.settled));
     }
   }
   

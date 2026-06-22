@@ -289,9 +289,15 @@ class SlidingWindowCounter:
             else:
                 # Request denied
                 # Estimate when a slot opens up
-                retry_after = self.window_seconds * (
-                    1 - (self.max_requests - curr_counter.count) / max(prev_counter.count, 1)
-                )
+                if curr_counter.count >= self.max_requests:
+                    retry_after = self.window_seconds - time_into_window
+                elif prev_counter.count > 0:
+                    required_time_into_window = self.window_seconds * (
+                        1 - (self.max_requests - curr_counter.count) / prev_counter.count
+                    )
+                    retry_after = required_time_into_window - time_into_window
+                else:
+                    retry_after = self.window_seconds - time_into_window
 
                 return RateLimitResult(
                     allowed=False,
@@ -302,9 +308,30 @@ class SlidingWindowCounter:
 
     def get_usage(self, key: str) -> float:
         """Get current usage ratio (0.0 to 1.0)"""
-        result = self.check(key)
-        # Don't count the check itself
-        return 1 - (result.remaining + 1) / self.max_requests
+        now = time.time()
+        current_window_start = self._get_window_start(now)
+        prev_window_start = current_window_start - self.window_seconds
+
+        with self._lock:
+            if key not in self._windows:
+                return 0.0
+
+            prev_counter, curr_counter = self._windows[key]
+
+            if curr_counter.window_start != current_window_start:
+                if curr_counter.window_start == prev_window_start:
+                    prev_counter = curr_counter
+                else:
+                    prev_counter = WindowCounter(0, prev_window_start)
+
+                curr_counter = WindowCounter(0, current_window_start)
+                self._windows[key] = (prev_counter, curr_counter)
+
+            time_into_window = now - current_window_start
+            prev_ratio = 1 - (time_into_window / self.window_seconds)
+            weighted_count = prev_counter.count * prev_ratio + curr_counter.count
+
+            return min(1.0, weighted_count / self.max_requests)
 ```
 
 ---
@@ -318,6 +345,7 @@ For distributed systems, use Redis to share rate limit state across instances.
 # Distributed sliding window rate limiter using Redis
 import redis
 import time
+import uuid
 from typing import Optional
 
 class RedisSlidingWindow:
@@ -357,13 +385,14 @@ class RedisSlidingWindow:
         """
         Check if request is allowed using Redis sorted set.
 
-        Uses MULTI/EXEC for atomic operations.
+        Batches cleanup and count operations. Use check_lua() below when the
+        check and insert must be atomic under concurrent requests.
         """
         key = self._get_key(identifier)
         now = time.time()
         window_start = now - self.window_seconds
 
-        # Use pipeline for atomic operations
+        # Use pipeline to batch operations
         pipe = self.redis.pipeline()
 
         # Remove old entries outside the window
@@ -378,8 +407,7 @@ class RedisSlidingWindow:
 
         if current_count < self.max_requests:
             # Request allowed - add timestamp with score = timestamp
-            # Using timestamp as both score and value ensures uniqueness
-            unique_value = f"{now}:{id(self)}"  # Ensure uniqueness
+            unique_value = f"{now}:{uuid.uuid4()}"  # Ensure uniqueness
 
             pipe = self.redis.pipeline()
             pipe.zadd(key, {unique_value: now})
@@ -439,7 +467,7 @@ class RedisSlidingWindow:
 
         if count < max_requests then
             -- Add new entry
-            redis.call('ZADD', key, now, now .. ':' .. math.random())
+            redis.call('ZADD', key, now, ARGV[4])
             redis.call('EXPIRE', key, window + 1)
 
             -- Get oldest for reset calculation
@@ -449,7 +477,7 @@ class RedisSlidingWindow:
                 reset_after = (tonumber(oldest[2]) + window) - now
             end
 
-            return {1, max_requests - count - 1, reset_after, 0}
+            return {1, max_requests - count - 1, tostring(reset_after), '0'}
         else
             -- Denied - calculate retry
             local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
@@ -458,7 +486,7 @@ class RedisSlidingWindow:
                 retry_after = (tonumber(oldest[2]) + window) - now
             end
 
-            return {0, 0, retry_after, retry_after}
+            return {0, 0, tostring(retry_after), tostring(retry_after)}
         end
         """
 
@@ -468,7 +496,7 @@ class RedisSlidingWindow:
         # Execute atomically
         result = check_script(
             keys=[key],
-            args=[now, self.window_seconds, self.max_requests]
+            args=[now, self.window_seconds, self.max_requests, f"{now}:{uuid.uuid4()}"]
         )
 
         return RateLimitResult(
@@ -497,6 +525,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Callable, Optional
+import math
 import redis
 
 # Initialize rate limiter
@@ -558,7 +587,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "X-RateLimit-Limit": str(self.limiter.max_requests),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(int(result.reset_after)),
-                    "Retry-After": str(int(result.retry_after))
+                    "Retry-After": str(math.ceil(result.retry_after))
                 }
             )
 
@@ -597,6 +626,7 @@ For different limits on different endpoints, use a dependency.
 # Per-endpoint rate limiting with configurable limits
 from fastapi import Depends, HTTPException, Request
 from functools import wraps
+import math
 
 class EndpointRateLimiter:
     """
@@ -638,7 +668,7 @@ class EndpointRateLimiter:
                     "error": "Rate limit exceeded for this endpoint",
                     "retry_after": result.retry_after
                 },
-                headers={"Retry-After": str(int(result.retry_after))}
+                headers={"Retry-After": str(math.ceil(result.retry_after))}
             )
 
         return result
@@ -759,7 +789,7 @@ class TestSlidingWindowCounter:
 # Low traffic, need precision: use log
 limiter = SlidingWindowLog(max_requests=100, window_seconds=60)
 
-# High traffic, distributed: use Redis counter
+# High traffic, distributed: use Redis
 limiter = RedisSlidingWindow(redis, max_requests=10000, window_seconds=60)
 ```
 

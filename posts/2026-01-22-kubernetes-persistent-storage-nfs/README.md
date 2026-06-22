@@ -41,7 +41,7 @@ sudo chmod 777 /srv/nfs/kubedata
 # Configure exports
 sudo nano /etc/exports
 
-# Add this line (adjust IP range for your cluster)
+# Add this line (adjust IP range for your Kubernetes nodes)
 /srv/nfs/kubedata    10.0.0.0/8(rw,sync,no_subtree_check,no_root_squash)
 
 # Apply configuration
@@ -89,9 +89,10 @@ sudo apt install nfs-common
 sudo yum install nfs-utils
 
 # Verify NFS mount works
-sudo mount -t nfs 192.168.1.100:/srv/nfs/kubedata /mnt
-ls /mnt
-sudo umount /mnt
+sudo mkdir -p /mnt/nfs-test
+sudo mount -t nfs 192.168.1.100:/srv/nfs/kubedata /mnt/nfs-test
+ls /mnt/nfs-test
+sudo umount /mnt/nfs-test
 ```
 
 ## Static NFS Provisioning
@@ -352,7 +353,7 @@ spec:
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
-| ReadWriteOnce (RWO) | Single node read-write | Single pod access |
+| ReadWriteOnce (RWO) | Single node read-write | Pods scheduled on one node |
 | ReadOnlyMany (ROX) | Multiple nodes read-only | Shared config/assets |
 | ReadWriteMany (RWX) | Multiple nodes read-write | Shared data between pods |
 
@@ -405,8 +406,10 @@ kubectl describe pod my-pod
 # Warning  FailedMount  Unable to mount volumes: mount failed
 
 # Verify NFS client is installed on node
-kubectl debug node/node-1 -it --image=busybox
-mount -t nfs 192.168.1.100:/srv/nfs/kubedata /mnt
+kubectl debug node/node-1 -it --image=ubuntu --profile=sysadmin
+chroot /host
+mkdir -p /mnt/nfs-test
+mount -t nfs 192.168.1.100:/srv/nfs/kubedata /mnt/nfs-test
 
 # Check NFS server is accessible
 showmount -e 192.168.1.100
@@ -481,11 +484,12 @@ spec:
 
 ```bash
 # /etc/exports - specific IP ranges
-/srv/nfs/kubedata    10.244.0.0/16(rw,sync,no_subtree_check)
-/srv/nfs/kubedata    10.96.0.0/12(rw,sync,no_subtree_check)
+/srv/nfs/kubedata    10.0.1.0/24(rw,sync,no_subtree_check)
 ```
 
 ### Use Network Policies
+
+NetworkPolicy applies to selected pod traffic. Because Kubernetes mounts NFS volumes from nodes, also restrict NFS access with host firewalls, cloud security groups, or NFS export rules for your node IP ranges.
 
 ```yaml
 apiVersion: networking.k8s.io/v1

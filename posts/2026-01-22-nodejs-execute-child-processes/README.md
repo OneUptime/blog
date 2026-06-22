@@ -124,7 +124,7 @@ try {
 ```javascript
 const { execSync } = require('child_process');
 
-const output = execSync('npm run build', {
+execSync('npm run build', {
   cwd: '/path/to/project',
   stdio: 'inherit',  // Inherit stdio from parent (shows output live)
   timeout: 120000,
@@ -425,10 +425,10 @@ const { spawn } = require('child_process');
 
 function npmRun(script, options = {}) {
   return new Promise((resolve, reject) => {
-    const npm = spawn('npm', ['run', script], {
+    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const npm = spawn(npmCommand, ['run', script], {
       cwd: options.cwd || process.cwd(),
       stdio: 'inherit',
-      shell: true,
     });
     
     npm.on('close', (code) => {
@@ -439,8 +439,12 @@ function npmRun(script, options = {}) {
 }
 
 // Usage
-await npmRun('build');
-await npmRun('test');
+async function main() {
+  await npmRun('build');
+  await npmRun('test');
+}
+
+main().catch(console.error);
 ```
 
 ### Command Runner Utility
@@ -459,7 +463,6 @@ class CommandRunner {
       const child = spawn(command, args, {
         cwd: this.cwd,
         env: this.env,
-        shell: true,
       });
       
       let stdout = '';
@@ -491,9 +494,13 @@ class CommandRunner {
 }
 
 // Usage
-const runner = new CommandRunner({ cwd: '/path/to/project' });
-await runner.run('npm', ['install']);
-await runner.run('npm', ['test']);
+async function main() {
+  const runner = new CommandRunner({ cwd: '/path/to/project' });
+  await runner.run('npm', ['install']);
+  await runner.run('npm', ['test']);
+}
+
+main().catch(console.error);
 ```
 
 ## Security Considerations
@@ -505,6 +512,10 @@ const { spawn, exec } = require('child_process');
 
 // DANGEROUS - shell injection vulnerability
 const userInput = 'file.txt; rm -rf /';
+const callback = (error, stdout, stderr) => {
+  if (error) throw error;
+  console.log(stdout);
+};
 exec(`cat ${userInput}`, callback);  // DON'T DO THIS
 
 // SAFE - use spawn with arguments
@@ -512,8 +523,8 @@ const filename = 'file.txt; rm -rf /';  // Malicious input
 spawn('cat', [filename]);  // filename treated as literal argument
 
 // SAFE - escape user input if shell is needed
-const { escape } = require('shell-escape');
-exec(`cat ${escape(userInput)}`, callback);
+const shellEscape = require('shell-escape');
+exec(`cat ${shellEscape([userInput])}`, callback);
 ```
 
 ### Limit Capabilities

@@ -17,7 +17,7 @@ Redis offers key benefits for event-driven systems:
 - **Low latency**: Sub-millisecond event delivery
 - **Multiple patterns**: Pub/Sub for broadcasts, Streams for reliable delivery
 - **Consumer groups**: Scalable event processing with acknowledgments
-- **Built-in persistence**: Durable event storage with AOF
+- **Built-in persistence**: Streams can be persisted with Redis persistence options such as AOF or RDB
 - **Simple operations**: No separate message broker needed
 
 ## Event Bus Architecture
@@ -349,14 +349,17 @@ class StreamEventBus:
             handlers.extend(self._handlers["*"])
 
         # Process
+        success = True
         for handler in handlers:
             try:
                 handler(event)
             except Exception as e:
+                success = False
                 logger.error(f"Handler error for {event.event_type}: {e}")
 
-        # Acknowledge
-        self.redis.xack(stream_key, self._consumer_group, message_id)
+        # Acknowledge only after successful processing
+        if success:
+            self.redis.xack(stream_key, self._consumer_group, message_id)
 ```
 
 ## Pattern 3: Event Router
@@ -367,6 +370,7 @@ Route events to specific consumers based on content:
 import redis
 import json
 import re
+import time
 from typing import Dict, Any, Callable, List, Optional
 from dataclasses import dataclass
 import logging
@@ -704,6 +708,9 @@ class EventDrivenSagaCoordinator:
             **saga_state["data"]
         })
 
+        # Continue compensating previous completed steps
+        self._compensate(saga_id, saga_state, definition, step_index - 1)
+
     def _complete_saga(self, saga_id: str, saga_state: Dict):
         """Mark saga as completed."""
         saga_state["state"] = SagaState.COMPLETED.value
@@ -768,6 +775,7 @@ Separate commands and queries with events:
 import redis
 import json
 import time
+import uuid
 from typing import Dict, Any, Callable, Optional
 import logging
 

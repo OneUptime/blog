@@ -42,7 +42,7 @@ flowchart TD
 | Intercept Traffic | Route cluster traffic to local service |
 | Cluster Access | Connect to in-cluster services |
 | Fast Iteration | No image builds needed |
-| Preview URLs | Share intercepted services |
+| HTTP Filters | Route only matching HTTP requests |
 | Personal Intercepts | Per-developer filtering |
 
 ## Installation
@@ -54,10 +54,9 @@ flowchart TD
 
 brew install telepresence
 
-# Linux
-curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence -o telepresence
-chmod +x telepresence
-sudo mv telepresence /usr/local/bin/
+# Linux (AMD64 standalone binary)
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 -o /usr/local/bin/telepresence
+sudo chmod a+x /usr/local/bin/telepresence
 
 # Windows
 choco install telepresence
@@ -66,13 +65,11 @@ choco install telepresence
 ### Install Traffic Manager
 
 ```bash
-# Connect to cluster (installs traffic manager automatically)
-telepresence connect
-
-# Or install manually
+# Install traffic manager
 telepresence helm install
 
-# Verify connection
+# Connect and verify
+telepresence connect
 telepresence status
 ```
 
@@ -82,7 +79,7 @@ telepresence status
 # Connect to cluster
 telepresence connect
 
-# List available services
+# List available workloads
 telepresence list
 
 # Intercept a service
@@ -133,8 +130,8 @@ redis-cli -h redis-service.default.svc.cluster.local
 # Verify DNS works
 nslookup backend-service.default.svc.cluster.local
 
-# Ping service
-ping backend-service.default.svc.cluster.local
+# Test service connectivity
+curl http://backend-service.default.svc.cluster.local:8080/api/health
 ```
 
 ## Intercepting Services
@@ -152,8 +149,8 @@ telepresence intercept api-service --port 8080:8080
 ### Intercept with Environment Variables
 
 ```bash
-# Capture environment variables from the pod
-telepresence intercept api-service --port 8080:8080 --env-file api.env
+# Capture environment variables from the pod in shell syntax
+telepresence intercept api-service --port 8080:8080 --env-file api.env --env-syntax sh:export
 
 # Source the environment
 source api.env
@@ -184,25 +181,12 @@ telepresence intercept api-service \
 
 ### Header Configuration
 
-```yaml
-# intercept-spec.yaml
-apiVersion: getambassador.io/v1alpha1
-kind: InterceptSpecification
-metadata:
-  name: personal-intercept
-spec:
-  workload: api-service
-  namespace: default
-  localPort: 8080
-  remotePort: 8080
-  headers:
-    x-telepresence-id: dev-john
-    x-feature-flag: experimental
-```
-
 ```bash
-# Apply intercept specification
-telepresence intercept --specification intercept-spec.yaml
+# Require multiple matching headers
+telepresence intercept api-service \
+  --port 8080:8080 \
+  --http-header "x-telepresence-id=dev-john" \
+  --http-header "x-feature-flag=experimental"
 ```
 
 ## Development Workflows
@@ -214,7 +198,7 @@ telepresence intercept --specification intercept-spec.yaml
 telepresence connect
 
 # 2. Start intercept with env vars
-telepresence intercept api-service --port 5000:8080 --env-file api.env
+telepresence intercept api-service --port 5000:8080 --env-file api.env --env-syntax sh:export
 
 # 3. Source environment
 source api.env
@@ -244,7 +228,7 @@ npm run dev
 ```bash
 # 1. Connect and intercept
 telepresence connect
-telepresence intercept backend-service --port 8080:8080 --env-file backend.env
+telepresence intercept backend-service --port 8080:8080 --env-file backend.env --env-syntax sh:export
 
 # 2. Source environment
 source backend.env
@@ -279,31 +263,28 @@ telepresence intercept api-service \
     myapp:dev
 ```
 
-## Preview URLs
+## HTTP Path Filters
 
-### Creating Preview URL
+### Creating Path-Filtered Intercepts
 
 ```bash
-# Login to Ambassador Cloud
-telepresence login
-
-# Create intercept with preview URL
+# Create an intercept for one path prefix
 telepresence intercept api-service \
   --port 8080:8080 \
-  --preview-url=true
+  --http-path-prefix /api/dev
 
 # Output:
 #    Intercept name    : api-service
 #    State             : ACTIVE
 #    Workload kind     : Deployment
-#    Preview URL       : https://abc123.preview.edgestack.me
+#    Intercepting      : HTTP requests with path prefix "/api/dev"
 ```
 
-### Share Preview URL
+### Test Filtered Traffic
 
 ```bash
-# Preview URL can be shared with team members
-# They can test your local changes without deployment
+# Requests matching the path filter go to your local service
+curl http://api-service.default.svc.cluster.local:8080/api/dev/health
 ```
 
 ## Configuration
@@ -329,35 +310,25 @@ images:
   registry: docker.io/datawire
   agentImage: tel2:2.x.x
 
-cloud:
-  skipLogin: false
-
 grpc:
   maxReceiveSize: 10Mi
 
 intercept:
   defaultPort: 8080
-  
-telepresenceAPI:
-  port: 9980
 ```
 
-### Namespace-Specific Settings
+### Namespace Mapping Settings
 
 ```yaml
 # ~/.config/telepresence/config.yml
 intercept:
   defaultPort: 8080
 
-# Namespace-specific configurations
-namespaces:
-  development:
-    env:
-      DATABASE_HOST: localhost
-      REDIS_HOST: localhost
-  staging:
-    env:
-      DEBUG: "true"
+# Namespaces considered for DNS and outbound connections
+cluster:
+  mappedNamespaces:
+    - development
+    - staging
 ```
 
 ## Integration with IDEs
@@ -390,7 +361,7 @@ namespaces:
     {
       "label": "telepresence-intercept",
       "type": "shell",
-      "command": "telepresence intercept api-service --port 8080:8080 --env-file api.env",
+      "command": "telepresence intercept api-service --port 8080:8080 --env-file api.env --env-syntax compose",
       "isBackground": true,
       "problemMatcher": []
     },
@@ -450,8 +421,8 @@ telepresence connect
 
 # Start intercepts
 echo "Setting up intercepts..."
-telepresence intercept api-service --port 8080:8080 --env-file api.env &
-telepresence intercept worker-service --port 8081:8080 --env-file worker.env &
+telepresence intercept api-service --port 8080:8080 --env-file api.env --env-syntax compose &
+telepresence intercept worker-service --port 8081:8080 --env-file worker.env --env-syntax compose &
 
 wait
 
@@ -502,8 +473,8 @@ services:
 ```bash
 # Start development with Telepresence
 telepresence connect
-telepresence intercept api-service --port 8080:8080 --env-file api.env
-telepresence intercept frontend-service --port 3000:80 --env-file frontend.env
+telepresence intercept api-service --port 8080:8080 --env-file api.env --env-syntax compose
+telepresence intercept frontend-service --port 3000:80 --env-file frontend.env --env-syntax compose
 
 docker-compose -f docker-compose.telepresence.yml up
 ```
@@ -521,7 +492,6 @@ telepresence gather-logs
 
 # Reset connection
 telepresence quit
-telepresence uninstall --everything
 telepresence connect
 
 # Check traffic manager
@@ -554,7 +524,7 @@ Telepresence transforms Kubernetes development by:
 1. **Eliminating build-deploy cycles** - Code locally, run against cluster
 2. **Accessing cluster resources** - Databases, caches, other services
 3. **Personal intercepts** - No conflicts with team members
-4. **Preview URLs** - Share work without deploying
+4. **HTTP filters** - Route only matching requests
 5. **Environment parity** - Same env vars and configs as production
 
 For monitoring your applications during development, check out [OneUptime's local debugging tools](https://oneuptime.com/product/metrics).

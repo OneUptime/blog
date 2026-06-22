@@ -59,7 +59,7 @@ func main() {
     
     // Access values with type assertions
     name := result["name"].(string)
-    age := result["age"].(float64) // JSON numbers are float64
+    age := result["age"].(float64) // JSON numbers in interface{} values are float64 by default
     active := result["active"].(bool)
     
     fmt.Printf("Name: %s, Age: %.0f, Active: %v\n", name, age, active)
@@ -71,7 +71,7 @@ func main() {
 
 ## Type Assertions for Dynamic Values
 
-JSON unmarshals to specific Go types:
+When unmarshaling into `interface{}` values, JSON unmarshals to specific Go types:
 
 | JSON Type | Go Type |
 |-----------|---------|
@@ -396,6 +396,7 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "io"
     "strings"
 )
 
@@ -404,10 +405,12 @@ func main() {
     
     decoder := json.NewDecoder(strings.NewReader(jsonStream))
     
-    for decoder.More() {
+    for {
         var obj map[string]interface{}
-        if err := decoder.Decode(&obj); err != nil {
+        if err := decoder.Decode(&obj); err == io.EOF {
             break
+        } else if err != nil {
+            panic(err)
         }
         fmt.Printf("Parsed: %v\n", obj)
     }
@@ -593,7 +596,7 @@ When dealing with dynamic JSON in Go:
 
 **Key Points:**
 
-1. JSON numbers always unmarshal to `float64`
+1. JSON numbers unmarshal to `float64` in `interface{}` values by default
 2. Use two-value type assertions (`v, ok := x.(T)`) to avoid panics
 3. `json.RawMessage` lets you defer parsing
 4. Create helper functions for clean, repeated access patterns

@@ -369,9 +369,9 @@ done
 On Linux, UDP DNS packets can hit conntrack race conditions. Enable TCP fallback:
 
 ```yaml
-# CoreDNS ConfigMap - enable TCP
+# CoreDNS ConfigMap - force TCP to upstream resolvers
 forward . /etc/resolv.conf {
-   prefer_udp
+   force_tcp
    max_concurrent 1000
 }
 ```
@@ -584,7 +584,7 @@ histogram_quantile(0.99,
 
 # Cache hit rate
 rate(coredns_cache_hits_total[5m]) / 
-  (rate(coredns_cache_hits_total[5m]) + rate(coredns_cache_misses_total[5m]))
+  rate(coredns_cache_requests_total[5m])
 
 # Error rate
 rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m])

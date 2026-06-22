@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Offset Management, Consumer, At-Least-Once, Exactly-Once, Java, Python
 
-Description: A comprehensive guide to implementing manual offset commit in Kafka consumers, covering commit strategies, at-least-once and exactly-once semantics, error handling.
+Description: A comprehensive guide to implementing manual offset commit in Kafka consumers, covering commit strategies, at-least-once semantics, and error handling.
 
 ---
 
-Manual offset commit gives you precise control over when Kafka marks messages as processed. This is essential for implementing at-least-once or exactly-once delivery semantics. This guide covers different commit strategies and their trade-offs.
+Manual offset commit gives you precise control over when Kafka marks messages as processed. This is essential for implementing at-least-once delivery semantics and is one building block for exactly-once pipelines. This guide covers different commit strategies and their trade-offs.
 
 ## Understanding Offset Commits
 
@@ -17,7 +17,7 @@ Manual offset commit gives you precise control over when Kafka marks messages as
 | Feature | Auto Commit | Manual Commit |
 |---------|-------------|---------------|
 | Control | Time-based | Application-controlled |
-| Delivery | At-most-once risk | At-least-once guaranteed |
+| Delivery | Can commit before processing completes | Enables at-least-once when you commit after processing |
 | Complexity | Simple | More code required |
 | Use Case | Non-critical data | Business-critical processing |
 
@@ -63,7 +63,7 @@ consumer = Consumer(config)
 
 ### Commit After Each Message
 
-Safest but slowest approach - guarantees at-most-one message loss on failure.
+Safest but slowest approach - minimizes the amount of work that may be reprocessed after a failure.
 
 ```java
 import org.apache.kafka.clients.consumer.*;
@@ -425,6 +425,7 @@ class AsyncCommitConsumer:
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
             'enable.auto.commit': False,
+            'on_commit': self.commit_callback,
         }
         self.consumer = Consumer(self.config)
         self.pending_commits = 0
@@ -455,8 +456,7 @@ class AsyncCommitConsumer:
 
                 # Async commit
                 self.pending_commits += 1
-                self.consumer.commit(asynchronous=True,
-                                    callback=self.commit_callback)
+                self.consumer.commit(asynchronous=True)
 
         finally:
             # Final sync commit
@@ -492,22 +492,21 @@ public class TransactionalConsumer {
                         // Process record
                         processAndStore(record);
 
-                        // Commit Kafka offset within same transaction context
-                        Map<TopicPartition, OffsetAndMetadata> offset =
-                            Collections.singletonMap(
-                                new TopicPartition(record.topic(), record.partition()),
-                                new OffsetAndMetadata(record.offset() + 1)
-                            );
-                        consumer.commitSync(offset);
+                        // Store Kafka offset in the same external transaction
+                        database.storeOffset(
+                            record.topic(),
+                            record.partition(),
+                            record.offset() + 1
+                        );
 
                         // Commit external transaction
                         database.commit();
 
                     } catch (Exception e) {
-                        // Rollback everything
+                        // Roll back both the data change and stored offset
                         database.rollback();
                         System.err.println("Processing failed: " + e.getMessage());
-                        // Don't commit offset - will reprocess
+                        // Don't advance the stored offset - will reprocess
                     }
                 }
             }
@@ -636,9 +635,9 @@ try {
 Manual offset commit provides precise control over message acknowledgment:
 
 1. **Choose commit strategy** based on your durability requirements
-2. **Use synchronous commit** for at-least-once guarantees
+2. **Use synchronous commit after successful processing** for at-least-once processing
 3. **Use async commit** for better performance with acceptable risk
 4. **Handle failures** with idempotent processing
-5. **Always sync commit on shutdown** to prevent message loss
+5. **Always sync commit processed offsets on shutdown** to reduce duplicate processing
 
 The right strategy depends on your specific requirements for message delivery guarantees and processing performance.

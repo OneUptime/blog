@@ -156,8 +156,10 @@ class TurnBasedGameManager:
                 self.keys.player_state(game_id, player_id),
                 mapping={k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in state.items()}
             )
+            pipe.expire(self.keys.player_state(game_id, player_id), 7200)
             # Map player to game
             pipe.set(self.keys.player_active_game(player_id), game_id)
+            pipe.expire(self.keys.player_active_game(player_id), 7200)
 
         # Add players to game's player set
         pipe.sadd(self.keys.game_players(game_id), *player_ids)
@@ -223,13 +225,14 @@ class TurnBasedGameManager:
         if result["success"]:
             # Record action in history
             action_record = {
-                "turn": self.redis.hget(game_info_key, "current_turn"),
+                "turn": int(self.redis.hget(game_info_key, "current_turn")),
                 "player_id": player_id,
                 "action": action,
                 "timestamp": time.time(),
                 "result": result
             }
             self.redis.lpush(actions_key, json.dumps(action_record))
+            self.redis.expire(actions_key, 7200)
 
             # Advance to next turn
             self._advance_turn(game_id)
@@ -324,6 +327,26 @@ class TurnBasedGameManager:
             "target_health": new_health,
             "target_eliminated": new_health <= 0
         }
+
+    def _handle_use_item(
+        self,
+        game_id: str,
+        player_id: str,
+        action: Dict,
+        player_state: Dict
+    ) -> Dict:
+        """Handle item usage."""
+        item_id = action.get("item_id")
+        if not item_id:
+            return {"error": "Missing item_id", "success": False}
+
+        self.redis.hset(
+            self.keys.player_state(game_id, player_id),
+            "last_action_time",
+            str(time.time())
+        )
+
+        return {"success": True, "item_id": item_id}
 
     def _advance_turn(self, game_id: str):
         """Advance to the next player's turn."""
@@ -745,8 +768,10 @@ class GameStateManager {
             };
 
             pipeline.hset(`game:${gameId}:player:${playerId}`, playerState);
+            pipeline.expire(`game:${gameId}:player:${playerId}`, 3600);
             pipeline.sadd(`game:${gameId}:players`, playerId);
         }
+        pipeline.expire(`game:${gameId}:players`, 3600);
 
         await pipeline.exec();
 
@@ -789,7 +814,7 @@ class GameStateManager {
             end
 
             -- Update state
-            redis.call('HMSET', playerKey,
+            redis.call('HSET', playerKey,
                 'positionX', x,
                 'positionY', y,
                 'velocityX', vx,
@@ -938,24 +963,28 @@ class GameStateManager {
 }
 
 // Usage example
-const gameManager = new GameStateManager({ host: 'localhost', port: 6379 });
+async function main() {
+    const gameManager = new GameStateManager({ host: 'localhost', port: 6379 });
 
-// Create a game
-const game = await gameManager.createGame('game123', ['player1', 'player2']);
+    // Create a game
+    const game = await gameManager.createGame('game123', ['player1', 'player2']);
 
-// Update player position
-await gameManager.updatePlayerPosition('game123', 'player1', {
-    x: 100,
-    y: 200,
-    vx: 5,
-    vy: 0,
-    tick: 1
-});
+    // Update player position
+    await gameManager.updatePlayerPosition('game123', 'player1', {
+        x: 100,
+        y: 200,
+        vx: 5,
+        vy: 0,
+        tick: 1
+    });
 
-// Subscribe to updates
-gameManager.subscribeToGame('game123', (channel, data) => {
-    console.log(`Received on ${channel}:`, data);
-});
+    // Subscribe to updates
+    gameManager.subscribeToGame('game123', (channel, data) => {
+        console.log(`Received on ${channel}:`, data);
+    });
+}
+
+main().catch(console.error);
 ```
 
 ## Handling State Synchronization

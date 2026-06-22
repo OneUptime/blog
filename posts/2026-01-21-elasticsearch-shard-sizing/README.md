@@ -27,9 +27,9 @@ Shards are the unit of:
 ### The Golden Rules
 
 1. **Target shard size**: 10GB - 50GB per shard
-2. **Maximum recommended**: 50GB per shard
+2. **Typical upper guideline**: 50GB per shard, or 200 million documents per shard
 3. **Minimum practical**: 1GB per shard (for very small indices)
-4. **Shards per GB heap**: ~20 shards per GB of heap memory
+4. **Shard limits**: Stay within Elasticsearch's default limit of 1,000 non-frozen shards per data node
 
 ### Calculating Shard Count
 
@@ -196,6 +196,21 @@ curl -X PUT "https://localhost:9200/_index_template/logs-template" \
   }'
 ```
 
+Bootstrap the initial write index:
+
+```bash
+curl -X PUT "https://localhost:9200/logs-000001" \
+  -H "Content-Type: application/json" \
+  -u elastic:password \
+  -d '{
+    "aliases": {
+      "logs": {
+        "is_write_index": true
+      }
+    }
+  }'
+```
+
 ## Shrinking Indices
 
 Reduce shard count for older, read-only indices:
@@ -205,6 +220,7 @@ Reduce shard count for older, read-only indices:
 1. Index must be read-only
 2. All shards must be on the same node
 3. Index health must be green
+4. Target shard count must be a factor of the source index shard count
 
 ### Shrink Process
 
@@ -253,13 +269,14 @@ curl -X PUT "https://localhost:9200/products/_settings" \
     }
   }'
 
-# Step 2: Split the index (must split to multiple of original)
+# Step 2: Split the index (target shards must be a multiple of source shards)
 curl -X POST "https://localhost:9200/products/_split/products-split" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "settings": {
-      "index.number_of_shards": 6
+      "index.number_of_shards": 6,
+      "index.blocks.write": false
     }
   }'
 
@@ -275,7 +292,7 @@ curl -X POST "https://localhost:9200/_aliases" \
   }'
 ```
 
-Note: Split factor must be a whole number (e.g., 2 to 4, 2 to 6, 3 to 9).
+Note: Split factor must be a whole number (e.g., 2 to 4, 2 to 6, 3 to 9), and the target shard count must be a divisor of the source index's `index.number_of_routing_shards`.
 
 ## Cluster-Level Shard Limits
 
@@ -287,6 +304,13 @@ curl -X GET "https://localhost:9200/_cluster/health?pretty" \
 ```
 
 Look at `active_shards` and `unassigned_shards`.
+
+For the total shard count, use cluster stats:
+
+```bash
+curl -X GET "https://localhost:9200/_cluster/stats?filter_path=indices.shards.total" \
+  -u elastic:password
+```
 
 ### Configure Shard Limits
 
@@ -309,7 +333,7 @@ max_shards = number_of_nodes * cluster.max_shards_per_node
 ```
 
 Example:
-- 5 nodes
+- 5 non-frozen data nodes
 - 1000 shards per node limit
 - Maximum: 5000 total shards
 
@@ -436,13 +460,12 @@ Solution: Rebalance or use shard allocation filtering.
 
 ```text
 Heap per node: 31GB
-Shards per GB heap: ~20
-Max shards per node: ~620
+Default non-frozen shard limit per data node: 1000
 
 5-node cluster with 31GB heap each:
-Max total shards: ~3100
-With 1 replica: ~1550 primary shards
-At 30GB per shard: ~46TB raw capacity
+Max total open shards by default: 5000
+With 1 replica: up to 2500 primary shards
+At 30GB per primary shard: ~75TB primary data capacity
 ```
 
 ## Conclusion

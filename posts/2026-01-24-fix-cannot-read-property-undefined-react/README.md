@@ -173,7 +173,7 @@ function SearchForm() {
 function SearchForm() {
   const handleSubmit = (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
+    const formData = new FormData(e.currentTarget);
     const query = formData.get('query') ?? '';
     search(query);
   };
@@ -347,7 +347,7 @@ function UserProfile({ user, isLoading }: UserProfileProps) {
 
 ## Error Boundaries for Runtime Errors
 
-Even with defensive coding, errors can slip through. Error boundaries catch them:
+Even with defensive coding, errors can slip through during rendering. Error boundaries catch rendering errors in child components:
 
 ```javascript
 import { Component } from 'react';
@@ -420,7 +420,7 @@ graph TD
 | Undefined fallback | Nullish coalescing `??` |
 | Array might be undefined | Default to empty array `[]` |
 | Context outside provider | Validate in custom hook |
-| Runtime errors | Error boundaries |
+| Render-time errors | Error boundaries |
 
 ## Quick Reference
 

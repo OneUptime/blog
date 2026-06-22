@@ -49,23 +49,21 @@ Great Expectations is the standard library for data validation in Python:
 
 pip install great_expectations
 
-# Initialize a new project
-great_expectations init
+# Create a file-based GX context
+python -c "import great_expectations as gx; gx.get_context(mode='file')"
 ```
 
 ### Project Structure
 
 ```text
-great_expectations/
+gx/
 ├── great_expectations.yml
 ├── expectations/
-│   └── my_suite.json
-├── checkpoints/
-│   └── my_checkpoint.yml
-├── plugins/
+│   └── .ge_store_backend_id
 ├── uncommitted/
 │   ├── config_variables.yml
-│   └── data_docs/
+│   └── validations/
+│       └── .ge_store_backend_id
 └── .gitignore
 ```
 
@@ -77,103 +75,72 @@ great_expectations/
 # create_expectations.py
 
 import great_expectations as gx
-from great_expectations.core.expectation_configuration import ExpectationConfiguration
+from datetime import datetime
 
 # Initialize context
-context = gx.get_context()
+context = gx.get_context(mode="file")
 
 # Create a new expectation suite
 suite_name = "orders_validation_suite"
-suite = context.add_expectation_suite(expectation_suite_name=suite_name)
+suite = gx.ExpectationSuite(name=suite_name)
+suite = context.suites.add(suite)
 
 # Add expectations programmatically
 expectations = [
     # Primary key must exist and be unique
-    ExpectationConfiguration(
-        expectation_type="expect_column_to_exist",
-        kwargs={"column": "order_id"}
-    ),
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_be_unique",
-        kwargs={"column": "order_id"}
-    ),
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_not_be_null",
-        kwargs={"column": "order_id"}
-    ),
+    gx.expectations.ExpectColumnToExist(column="order_id"),
+    gx.expectations.ExpectColumnValuesToBeUnique(column="order_id"),
+    gx.expectations.ExpectColumnValuesToNotBeNull(column="order_id"),
 
     # Customer ID must be valid
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_not_be_null",
-        kwargs={"column": "customer_id"}
-    ),
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_be_of_type",
-        kwargs={"column": "customer_id", "type_": "int64"}
-    ),
+    gx.expectations.ExpectColumnValuesToNotBeNull(column="customer_id"),
+    gx.expectations.ExpectColumnValuesToBeOfType(column="customer_id", type_="int64"),
 
     # Order amount must be positive
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_be_between",
-        kwargs={
-            "column": "order_amount",
-            "min_value": 0.01,
-            "max_value": 1000000,
-            "mostly": 0.99  # Allow 1% exceptions
-        }
+    gx.expectations.ExpectColumnValuesToBeBetween(
+        column="order_amount",
+        min_value=0.01,
+        max_value=1000000,
+        mostly=0.99  # Allow 1% exceptions
     ),
 
     # Status must be from allowed values
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_be_in_set",
-        kwargs={
-            "column": "status",
-            "value_set": ["pending", "confirmed", "shipped", "delivered", "cancelled"]
-        }
+    gx.expectations.ExpectColumnValuesToBeInSet(
+        column="status",
+        value_set=["pending", "confirmed", "shipped", "delivered", "cancelled"]
     ),
 
     # Email format validation
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_match_regex",
-        kwargs={
-            "column": "customer_email",
-            "regex": r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
-            "mostly": 0.95
-        }
+    gx.expectations.ExpectColumnValuesToMatchRegex(
+        column="customer_email",
+        regex=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
+        mostly=0.95
     ),
 
     # Date must be reasonable
-    ExpectationConfiguration(
-        expectation_type="expect_column_values_to_be_between",
-        kwargs={
-            "column": "order_date",
-            "min_value": "2020-01-01",
-            "max_value": "2030-12-31",
-            "parse_strings_as_datetimes": True
-        }
+    gx.expectations.ExpectColumnValuesToBeBetween(
+        column="order_date",
+        min_value=datetime(2020, 1, 1),
+        max_value=datetime(2030, 12, 31)
     ),
 
     # Table-level expectations
-    ExpectationConfiguration(
-        expectation_type="expect_table_row_count_to_be_between",
-        kwargs={"min_value": 1000, "max_value": 10000000}
+    gx.expectations.ExpectTableRowCountToBeBetween(
+        min_value=1000,
+        max_value=10000000
     ),
-    ExpectationConfiguration(
-        expectation_type="expect_table_columns_to_match_set",
-        kwargs={
-            "column_set": [
-                "order_id", "customer_id", "customer_email",
-                "order_amount", "status", "order_date", "updated_at"
-            ],
-            "exact_match": False
-        }
+    gx.expectations.ExpectTableColumnsToMatchSet(
+        column_set=[
+            "order_id", "customer_id", "customer_email",
+            "order_amount", "status", "order_date", "updated_at"
+        ],
+        exact_match=False
     )
 ]
 
 for expectation in expectations:
     suite.add_expectation(expectation)
 
-context.update_expectation_suite(expectation_suite=suite)
 print(f"Created expectation suite: {suite_name}")
 ```
 
@@ -191,25 +158,37 @@ from datetime import datetime
 def validate_dataframe(df: pd.DataFrame, suite_name: str) -> dict:
     """Validate a DataFrame against an expectation suite."""
 
-    context = gx.get_context()
+    context = gx.get_context(mode="file")
 
-    # Create a batch from the DataFrame
-    datasource = context.sources.add_or_update_pandas(name="pandas_datasource")
-    data_asset = datasource.add_dataframe_asset(name="orders_data")
+    if "order_date" in df.columns:
+        df = df.copy()
+        df["order_date"] = pd.to_datetime(df["order_date"], errors="coerce")
 
-    batch_request = data_asset.build_batch_request(dataframe=df)
+    # Create a batch definition for the DataFrame
+    data_source = context.data_sources.add_or_update_pandas(name="pandas_datasource")
+    if "orders_data" in data_source.get_asset_names():
+        data_asset = data_source.get_asset("orders_data")
+    else:
+        data_asset = data_source.add_dataframe_asset(name="orders_data")
 
-    # Get the expectation suite
-    expectation_suite = context.get_expectation_suite(suite_name)
+    batch_definition_name = "orders_batch"
+    if any(bd.name == batch_definition_name for bd in data_asset.batch_definitions):
+        batch_definition = data_asset.get_batch_definition(batch_definition_name)
+    else:
+        batch_definition = data_asset.add_batch_definition_whole_dataframe(
+            batch_definition_name
+        )
 
-    # Create a validator
-    validator = context.get_validator(
-        batch_request=batch_request,
-        expectation_suite=expectation_suite
+    # Get the expectation suite and connect it to the batch definition
+    expectation_suite = context.suites.get(name=suite_name)
+    validation_definition = gx.ValidationDefinition(
+        data=batch_definition,
+        suite=expectation_suite,
+        name="orders_validation"
     )
 
     # Run validation
-    results = validator.validate()
+    results = validation_definition.run(batch_parameters={"dataframe": df})
 
     return {
         "success": results.success,
@@ -230,9 +209,10 @@ def handle_validation_results(results: dict):
     failed = []
     for result in results["results"]:
         if not result.success:
+            config = result.expectation_config
             failed.append({
-                "expectation": result.expectation_config.expectation_type,
-                "column": result.expectation_config.kwargs.get("column", "table-level"),
+                "expectation": config.type,
+                "column": config.kwargs.get("column", "table-level"),
                 "observed_value": result.result.get("observed_value"),
                 "details": result.result
             })
@@ -562,37 +542,41 @@ version: 2
 models:
   - name: fct_orders
     description: "Order fact table"
-    tests:
+    data_tests:
       - dbt_utils.recency:
-          datepart: hour
-          field: updated_at
-          interval: 24
+          arguments:
+            datepart: hour
+            field: updated_at
+            interval: 24
       - dbt_utils.at_least_one
 
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: order_amount
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              inclusive: false
+              arguments:
+                min_value: 0
+                inclusive: false
 
       - name: customer_id
-        tests:
+        data_tests:
           - not_null
           - relationships:
-              to: ref('dim_customers')
-              field: customer_id
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
 
       - name: status
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
+              arguments:
+                values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
 ```
 
 ---

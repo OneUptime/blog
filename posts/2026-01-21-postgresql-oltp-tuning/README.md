@@ -143,11 +143,15 @@ min_wal_size = 1GB
 ### Monitor Checkpoints
 
 ```sql
--- Check checkpoint frequency
+-- PostgreSQL 17+: check checkpoint frequency
+SELECT * FROM pg_stat_checkpointer;
+
+-- PostgreSQL 14-16: checkpoint stats are in pg_stat_bgwriter
 SELECT * FROM pg_stat_bgwriter;
 
--- If checkpoints_timed >> checkpoints_req, good
--- If checkpoints_req is high, increase max_wal_size
+-- PostgreSQL 17+: if num_timed >> num_requested, good
+-- PostgreSQL 14-16: if checkpoints_timed >> checkpoints_req, good
+-- If requested checkpoints are high, increase max_wal_size
 ```
 
 ## WAL Configuration
@@ -176,10 +180,12 @@ wal_compression = on
 ### WAL Level
 
 ```conf
-# Minimal if no replication needed
+# Minimal only if no replication, WAL archiving, or PITR is needed
+# PostgreSQL will not start with wal_level = minimal if max_wal_senders > 0
+max_wal_senders = 0
 wal_level = minimal
 
-# Replica for streaming replication
+# Replica for streaming replication, WAL archiving, and PITR
 wal_level = replica
 ```
 
@@ -442,7 +448,7 @@ deadlock_timeout = 1s
 ### Key Metrics
 
 ```sql
--- Transactions per second
+-- Transaction counters and average TPS since stats reset
 SELECT
     datname,
     xact_commit + xact_rollback AS total_xacts,
@@ -450,6 +456,11 @@ SELECT
     xact_rollback,
     blks_hit,
     blks_read,
+    ROUND(
+        (xact_commit + xact_rollback)::numeric /
+        NULLIF(EXTRACT(EPOCH FROM (NOW() - stats_reset)), 0),
+        2
+    ) AS avg_tps_since_reset,
     ROUND(100.0 * blks_hit / NULLIF(blks_hit + blks_read, 0), 2) AS cache_hit_ratio
 FROM pg_stat_database
 WHERE datname = 'myapp';
@@ -479,7 +490,10 @@ LIMIT 10;
 ### pg_stat_statements Analysis
 
 ```sql
--- Enable extension
+-- Enable in postgresql.conf, then restart PostgreSQL:
+-- shared_preload_libraries = 'pg_stat_statements'
+
+-- Enable extension in the database:
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Top queries by total time

@@ -45,7 +45,7 @@ flowchart TD
 
 ```bash
 #!/bin/bash
-# A subshell is a child process that inherits a copy of the parent's environment
+# A subshell is a child process that inherits a copy of the parent's shell execution environment
 
 echo "Parent PID: $$"
 echo "Parent BASHPID: $BASHPID"
@@ -118,7 +118,7 @@ echo "After subshell: counter=$counter, pwd=$(pwd)"
 
 ```bash
 #!/bin/bash
-# Each command in a pipeline runs in its own subshell
+# Each command in a pipeline usually runs in its own subshell
 
 count=0
 
@@ -132,6 +132,7 @@ echo "Final count: $count"  # Still 0!
 
 # The while loop ran in a subshell due to the pipe
 # Its modifications to $count were lost
+# Bash's lastpipe option can change this for the final pipeline command
 ```
 
 ### Command Substitution
@@ -159,7 +160,7 @@ echo "Outside: var=$var"  # Still "original"
 # <() and >() create subshells
 
 # Process substitution - commands run in subshells
-diff <(ls /dir1) <(ls /dir2)
+diff <(ls /etc) <(ls /usr)
 
 # Reading from process substitution
 while read -r line; do
@@ -178,7 +179,7 @@ done < <(echo -e "a\nb\nc")
 flowchart LR
     subgraph "Creates Subshell"
         A["( commands )"]
-        B["cmd1 | cmd2"]
+        B["cmd1 | cmd2<br/>(except lastpipe cases)"]
         C["$( command )"]
         D["command &"]
         E["<( command )"]
@@ -188,7 +189,7 @@ flowchart LR
         F["{ commands; }"]
         G["source script"]
         H[". script"]
-        I["builtin commands"]
+        I["standalone builtin commands"]
     end
 ```
 
@@ -216,14 +217,15 @@ while read -r line; do
 done < <(cat file.txt)
 echo "Count: $count"  # Correct count
 
-# SOLUTION 2: Here string (for simple cases)
+# SOLUTION 2: Here string (for simple cases where trailing blank lines don't matter)
 count=0
 while read -r line; do
     count=$((count + 1))
 done <<< "$(cat file.txt)"
 echo "Count: $count"  # Correct count
 
-# SOLUTION 3: lastpipe option (Bash 4.2+)
+# SOLUTION 3: lastpipe option (Bash 4.2+, with job control disabled)
+set +m  # Job control is off by default in non-interactive scripts
 shopt -s lastpipe
 count=0
 cat file.txt | while read -r line; do
@@ -670,9 +672,10 @@ echo "Starting"
     exit 1  # Only exits subshell, not script
     echo "Never reached"
 )
+subshell_status=$?
 
 echo "Script continues after subshell exit"
-echo "Subshell exit code was: $?"
+echo "Subshell exit code was: $subshell_status"
 ```
 
 ### Variable Export
@@ -731,7 +734,7 @@ my_outer_func() {
 3. **Prefer brace groups** when isolation is not needed
 4. **Always handle subshell exit codes** when they matter
 5. **Be aware of implicit subshells** in pipelines and command substitution
-6. **Use lastpipe** when you need pipeline results in current shell
+6. **Use lastpipe** when you need the final pipeline command to run in the current shell, with job control disabled
 
 ---
 
@@ -740,7 +743,7 @@ my_outer_func() {
 Understanding subshells is crucial for writing reliable Bash scripts:
 
 - **Parentheses `()`** create explicit subshells with isolated environments
-- **Pipelines** run commands in subshells, losing variable modifications
+- **Pipelines** usually run commands in subshells, losing variable modifications
 - **Command substitution `$()`** runs in a subshell
 - **Process substitution `<()`** allows reading from subshell output without pipeline issues
 - **Brace groups `{}`** group commands without creating subshells

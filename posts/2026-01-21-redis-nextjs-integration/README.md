@@ -8,12 +8,12 @@ Description: A comprehensive guide to integrating Redis with Next.js application
 
 ---
 
-Next.js applications can significantly benefit from Redis for caching, session management, and real-time features. This guide covers practical patterns for using Redis with both API routes and Server Components in Next.js 14+.
+Next.js applications can significantly benefit from Redis for caching, session management, and real-time features. This guide covers practical patterns for using Redis with both API routes and Server Components in Next.js 15+.
 
 ## Installation
 
 ```bash
-npm install ioredis @upstash/redis
+npm install ioredis @upstash/redis @upstash/ratelimit nanoid
 ```
 
 ## Redis Client Setup
@@ -163,9 +163,10 @@ import { db } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const cacheKey = `post:${params.id}`;
+  const { id } = await params;
+  const cacheKey = `post:${id}`;
 
   // Check cache
   const cached = await getCache(cacheKey);
@@ -180,7 +181,7 @@ export async function GET(
 
   // Fetch from database
   const post = await db.post.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { author: true, comments: true },
   });
 
@@ -307,7 +308,7 @@ export async function POST(request: NextRequest) {
 
     if (tag) {
       // Revalidate by tag
-      revalidateTag(tag);
+      revalidateTag(tag, 'max');
       await invalidateTag(tag);
     }
 
@@ -344,7 +345,21 @@ export async function POST(request: NextRequest) {
 
     case 'product.updated':
       await redis.del(`product:${payload.data.id}`);
-      await redis.del('products:*'); // Pattern delete
+
+      // Delete matching product cache keys
+      const stream = redis.scanStream({ match: 'products:*', count: 100 });
+      const productKeys: string[] = [];
+
+      for await (const keys of stream) {
+        productKeys.push(...keys);
+      }
+
+      if (productKeys.length > 0) {
+        const pipeline = redis.pipeline();
+        productKeys.forEach((key) => pipeline.del(key));
+        await pipeline.exec();
+      }
+
       revalidatePath('/products');
       revalidatePath(`/products/${payload.data.id}`);
       break;
@@ -380,10 +395,15 @@ export async function middleware(request: NextRequest) {
   const session = await redis.get<{ userId: string }>(`session:${sessionId}`);
 
   if (session) {
-    // Add user info to headers for API routes
-    const response = NextResponse.next();
-    response.headers.set('x-user-id', session.userId);
-    return response;
+    // Add user info to upstream request headers for API routes
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-id', session.userId);
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
   }
 
   return NextResponse.next();
@@ -405,6 +425,7 @@ import { nanoid } from 'nanoid';
 
 export async function POST(request: NextRequest) {
   const { userId, email } = await request.json();
+  const cookieStore = await cookies();
 
   const sessionId = nanoid(32);
   const session = {
@@ -417,7 +438,7 @@ export async function POST(request: NextRequest) {
   await redis.setex(`session:${sessionId}`, 86400, JSON.stringify(session));
 
   // Set cookie
-  cookies().set('session_id', sessionId, {
+  cookieStore.set('session_id', sessionId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -428,7 +449,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  const sessionId = cookies().get('session_id')?.value;
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get('session_id')?.value;
 
   if (!sessionId) {
     return NextResponse.json({ user: null });
@@ -444,11 +466,12 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  const sessionId = cookies().get('session_id')?.value;
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get('session_id')?.value;
 
   if (sessionId) {
     await redis.del(`session:${sessionId}`);
-    cookies().delete('session_id');
+    cookieStore.delete('session_id');
   }
 
   return NextResponse.json({ success: true });
@@ -481,7 +504,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const ip = request.ip ?? '127.0.0.1';
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const ip =
+    forwardedFor?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip') ??
+    '127.0.0.1';
   const { success, limit, reset, remaining } = await ratelimit.limit(ip);
 
   if (!success) {

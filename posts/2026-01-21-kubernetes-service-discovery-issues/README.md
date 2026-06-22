@@ -31,13 +31,13 @@ When a pod accesses `my-service`, it:
 ```bash
 # Create debug pod
 
-kubectl run debug --image=busybox:1.36 --restart=Never -- sleep 3600
+kubectl run debug --image=busybox:1.36 --restart=Never --command -- sleep 3600
 
 # Test DNS resolution
 kubectl exec debug -- nslookup my-service
 
 # Test connectivity
-kubectl exec debug -- wget -qO- --timeout=5 http://my-service:8080/health
+kubectl exec debug -- wget -qO- -T 5 http://my-service:8080/health
 ```
 
 ## Common Issues and Solutions
@@ -55,12 +55,12 @@ kubectl expose deployment my-app --port=8080 --name=my-service
 ### Issue 2: Service Has No Endpoints
 
 ```bash
-# Check service endpoints
-kubectl get endpoints my-service
+# Check service EndpointSlices
+kubectl get endpointslices -l kubernetes.io/service-name=my-service
 
-# Output shows no endpoints:
-# NAME         ENDPOINTS   AGE
-# my-service   <none>      5m
+# Output shows no endpoint addresses:
+# NAME              ADDRESSTYPE   PORTS   ENDPOINTS   AGE
+# my-service-abcde  IPv4          8080    <none>      5m
 
 # Check if selector matches pods
 kubectl describe svc my-service | grep Selector
@@ -88,16 +88,27 @@ spec:
 ---
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
       labels:
         app: my-app    # Must match service selector
+    spec:
+      containers:
+        - name: my-app
+          image: my-app:latest
+          ports:
+            - containerPort: 8080
 ```
 
 ### Issue 3: Pods Failing Readiness Probes
 
-Only pods passing readiness probes are added to endpoints:
+By default, pods failing readiness probes are not used as ready service endpoints:
 
 ```bash
 # Check pod readiness
@@ -209,7 +220,7 @@ spec:
 # Cross-namespace access requires full name
 kubectl exec debug -- wget -qO- http://my-service.other-namespace.svc.cluster.local:8080
 
-# Or configure service to reference external namespace
+# Or create a local ExternalName alias if you want a short local name
 ```
 
 ### Issue 8: Headless Service Misconfiguration
@@ -245,19 +256,19 @@ spec:
 ### Using dnsutils Pod
 
 ```bash
-kubectl run dnsutils --image=registry.k8s.io/e2e-test-images/jessie-dnsutils:1.3 --restart=Never -- sleep infinity
+kubectl run dnsutils --image=registry.k8s.io/e2e-test-images/jessie-dnsutils:1.3 --restart=Never --command -- sleep infinity
 
 # DNS lookup with details
 kubectl exec dnsutils -- dig my-service.default.svc.cluster.local
 
-# DNS trace
-kubectl exec dnsutils -- dig +trace my-service.default.svc.cluster.local
+# DNS lookup using the pod's search path
+kubectl exec dnsutils -- dig +search my-service
 ```
 
 ### Using netshoot Pod
 
 ```bash
-kubectl run netshoot --image=nicolaka/netshoot --restart=Never -- sleep infinity
+kubectl run netshoot --image=nicolaka/netshoot --restart=Never --command -- sleep infinity
 
 # Full network diagnostics
 kubectl exec -it netshoot -- bash
@@ -342,9 +353,9 @@ echo "=== Checking Service: $SERVICE in $NAMESPACE ==="
 echo -e "\n--- Service ---"
 kubectl get svc $SERVICE -n $NAMESPACE
 
-# Check endpoints
-echo -e "\n--- Endpoints ---"
-kubectl get endpoints $SERVICE -n $NAMESPACE
+# Check EndpointSlices
+echo -e "\n--- EndpointSlices ---"
+kubectl get endpointslices -n $NAMESPACE -l kubernetes.io/service-name=$SERVICE
 
 # Check pods matching selector
 echo -e "\n--- Matching Pods ---"
@@ -353,7 +364,7 @@ kubectl get pods -n $NAMESPACE -l $SELECTOR
 
 # Check DNS resolution
 echo -e "\n--- DNS Resolution ---"
-kubectl run dns-test-$RANDOM --image=busybox:1.36 --rm -it --restart=Never -- nslookup $SERVICE.$NAMESPACE.svc.cluster.local
+kubectl run dns-test-$RANDOM --image=busybox:1.36 --rm -it --restart=Never --command -- nslookup $SERVICE.$NAMESPACE.svc.cluster.local
 
 # Check CoreDNS
 echo -e "\n--- CoreDNS Status ---"
@@ -433,7 +444,7 @@ spec:
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
 | DNS not resolving | CoreDNS issue | Restart CoreDNS |
-| No endpoints | Selector mismatch | Fix labels |
+| No endpoint addresses | Selector mismatch | Fix labels |
 | Endpoints present, no connection | Network policy | Check policies |
 | Intermittent failures | Pod not ready | Fix readiness probe |
 | Connection refused | Wrong port | Check targetPort |
@@ -441,4 +452,4 @@ spec:
 
 ---
 
-Service discovery issues usually stem from one of a few common causes: missing services, selector mismatches, DNS problems, or network policies. Start with `kubectl get endpoints` to verify the service has healthy backends, then trace through DNS and network connectivity. Most issues resolve once you identify whether the problem is at the service, DNS, or network level.
+Service discovery issues usually stem from one of a few common causes: missing services, selector mismatches, DNS problems, or network policies. Start with `kubectl get endpointslices -l kubernetes.io/service-name=<service-name>` to verify the service has healthy backends, then trace through DNS and network connectivity. Most issues resolve once you identify whether the problem is at the service, DNS, or network level.

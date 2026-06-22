@@ -190,13 +190,13 @@ SET attributes = jsonb_set(
 )
 WHERE name = 'Laptop';
 
--- Set nested path (create if missing)
+-- Set nested path (create key if parent exists)
 UPDATE products
 SET attributes = jsonb_set(
     attributes,
-    '{warranty,years}',
+    '{specs,warranty_years}',
     '2'::jsonb,
-    true  -- create_missing
+    true  -- create_if_missing
 )
 WHERE name = 'Laptop';
 
@@ -252,7 +252,7 @@ SELECT * FROM products WHERE attributes @> '{"brand": "Dell"}';
 ### GIN with jsonb_path_ops (Optimized)
 
 ```sql
--- Smaller index, only supports @>
+-- Smaller index, supports @>, @?, and @@
 CREATE INDEX idx_products_attributes_path
 ON products USING GIN (attributes jsonb_path_ops);
 

@@ -119,7 +119,7 @@ LIMIT 50;
 
 **Symptoms:**
 ```sql
--- Check ZooKeeper session state
+-- Check replication metadata in ZooKeeper/Keeper
 SELECT *
 FROM system.zookeeper
 WHERE path = '/clickhouse/tables/01/events';
@@ -127,10 +127,10 @@ WHERE path = '/clickhouse/tables/01/events';
 -- Errors related to ZK
 SELECT
     type,
-    exception
+    last_exception
 FROM system.replication_queue
-WHERE exception LIKE '%ZooKeeper%'
-  OR exception LIKE '%Coordination%';
+WHERE last_exception LIKE '%ZooKeeper%'
+  OR last_exception LIKE '%Coordination%';
 ```
 
 **Fixes:**
@@ -247,16 +247,17 @@ OPTIMIZE TABLE events PARTITION '202401' FINAL;
 
 **Symptoms:**
 ```sql
--- Large data transfers pending
+-- Large data transfers currently running
 SELECT
     database,
     table,
-    type,
-    new_part_name,
-    formatReadableSize(bytes_to_merge) AS size
-FROM system.replication_queue
-WHERE type IN ('GET_PART', 'MERGE_PARTS')
-ORDER BY bytes_to_merge DESC;
+    elapsed,
+    progress,
+    result_part_name,
+    formatReadableSize(total_size_bytes_compressed) AS size,
+    source_replica_hostname
+FROM system.replicated_fetches
+ORDER BY total_size_bytes_compressed DESC;
 ```
 
 **Fixes:**
@@ -312,7 +313,7 @@ LIMIT 20;
 ### Clear Stuck Queue Entries
 
 ```sql
--- Remove stuck entries (use with caution)
+-- Reinitialize the replica queue from ZooKeeper/Keeper (use with caution)
 SYSTEM RESTART REPLICA events;
 
 -- Or detach and reattach
@@ -323,12 +324,14 @@ ATTACH TABLE events;
 ### Re-sync Replica
 
 ```sql
--- Force re-sync from another replica
--- WARNING: This clears local data
+-- Fetch a partition from another replica into the detached directory
 ALTER TABLE events FETCH PARTITION '202401'
 FROM '/clickhouse/tables/01/events';
 
--- Or for all data
+-- Attach the fetched partition so it becomes available
+ALTER TABLE events ATTACH PARTITION '202401';
+
+-- Restore replica metadata after ZooKeeper/Keeper metadata loss
 SYSTEM RESTORE REPLICA events;
 ```
 
@@ -338,10 +341,15 @@ SYSTEM RESTORE REPLICA events;
 # 1. Stop ClickHouse on corrupt replica
 sudo systemctl stop clickhouse-server
 
-# 2. Remove local data (ZK metadata preserved)
-rm -rf /var/lib/clickhouse/data/default/events/*
+# 2. Move the affected table's local data parts aside
+# First find the actual table path with:
+# SELECT DISTINCT path FROM system.parts WHERE database = 'default' AND table = 'events';
+sudo mv /var/lib/clickhouse/store/<table-uuid> /var/lib/clickhouse/store/<table-uuid>.bak
 
-# 3. Start ClickHouse - will re-sync from healthy replica
+# 3. Allow ClickHouse to recover when local data differs from Keeper metadata
+sudo -u clickhouse touch /var/lib/clickhouse/flags/force_restore_data
+
+# 4. Start ClickHouse - it will fetch missing parts from healthy replicas
 sudo systemctl start clickhouse-server
 ```
 
@@ -388,12 +396,12 @@ WHERE absolute_delay > 300  -- 5 minutes lag
 ### Prometheus Metrics
 
 ```yaml
-# Prometheus alert rules
+# Prometheus alert rules if you export the replication_health view as metrics
 groups:
   - name: clickhouse_replication
     rules:
       - alert: ClickHouseReplicationLag
-        expr: clickhouse_replicas_absolute_delay > 300
+        expr: clickhouse_replication_health_absolute_delay > 300
         for: 5m
         labels:
           severity: warning
@@ -401,7 +409,7 @@ groups:
           summary: "ClickHouse replication lag > 5 minutes"
 
       - alert: ClickHouseReplicaReadOnly
-        expr: clickhouse_replicas_is_readonly == 1
+        expr: clickhouse_replication_health_is_readonly == 1
         for: 1m
         labels:
           severity: critical
@@ -412,22 +420,15 @@ groups:
 ### Grafana Dashboard Query
 
 ```sql
--- Time-series of replication lag
+-- Current replication lag for a Grafana table panel
 SELECT
-    toStartOfMinute(event_time) AS time,
     database,
     table,
-    max(absolute_delay) AS max_lag
-FROM (
-    SELECT
-        now() AS event_time,
-        database,
-        table,
-        absolute_delay
-    FROM system.replicas
-)
-GROUP BY time, database, table
-ORDER BY time;
+    replica_name,
+    absolute_delay AS lag_seconds,
+    queue_size
+FROM system.replicas
+ORDER BY absolute_delay DESC;
 ```
 
 ## Prevention Best Practices
@@ -447,8 +448,10 @@ ORDER BY time;
     <background_schedule_pool_size>32</background_schedule_pool_size>
 
     <!-- Replication settings -->
-    <max_replicated_fetches_network_bandwidth>100000000</max_replicated_fetches_network_bandwidth>
-    <max_replicated_sends_network_bandwidth>100000000</max_replicated_sends_network_bandwidth>
+    <merge_tree>
+        <max_replicated_fetches_network_bandwidth>100000000</max_replicated_fetches_network_bandwidth>
+        <max_replicated_sends_network_bandwidth>100000000</max_replicated_sends_network_bandwidth>
+    </merge_tree>
 </clickhouse>
 ```
 

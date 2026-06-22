@@ -23,7 +23,6 @@ npm install prom-client bullmq ioredis
 Create a metrics exporter for BullMQ:
 
 ```typescript
-import { Queue, Worker, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from 'prom-client';
 
@@ -92,6 +91,8 @@ Create a comprehensive metrics collector:
 
 ```typescript
 import { Queue, QueueEvents } from 'bullmq';
+import { Redis } from 'ioredis';
+import { jobsActive, jobsDelayed, jobsFailed, jobsProcessed, jobsWaiting, jobDuration } from './metrics';
 
 interface QueueMetricsConfig {
   queue: Queue;
@@ -196,6 +197,7 @@ Expose metrics via HTTP:
 
 ```typescript
 import express from 'express';
+import { Redis } from 'ioredis';
 import { register, BullMQMetricsCollector } from './metrics';
 
 const app = express();
@@ -244,7 +246,7 @@ process.on('SIGTERM', async () => {
 Add more detailed metrics:
 
 ```typescript
-import { Counter, Gauge, Histogram, Summary } from 'prom-client';
+import { Counter, Gauge, Histogram } from 'prom-client';
 
 // Job-specific metrics
 const jobAttempts = new Histogram({
@@ -287,9 +289,9 @@ const redisMemoryUsage = new Gauge({
 });
 
 // Worker metrics
-const workersActive = new Gauge({
-  name: 'bullmq_workers_active',
-  help: 'Number of active workers',
+const workerActiveJobs = new Gauge({
+  name: 'bullmq_worker_active_jobs',
+  help: 'Number of jobs currently being processed by workers',
   labelNames: ['queue'],
   registers: [register],
 });
@@ -323,6 +325,18 @@ const jobErrors = new Counter({
 Implement the advanced metrics:
 
 ```typescript
+import { Queue, QueueEvents } from 'bullmq';
+import { Redis } from 'ioredis';
+import {
+  jobAttempts,
+  jobDataSize,
+  jobErrors,
+  jobThroughput,
+  jobWaitTime,
+  queuePaused,
+  redisMemoryUsage,
+} from './metrics';
+
 class EnhancedBullMQMetricsCollector {
   private queues: Map<string, Queue> = new Map();
   private queueEvents: Map<string, QueueEvents> = new Map();
@@ -439,6 +453,8 @@ Add metrics to workers:
 
 ```typescript
 import { Worker, Job } from 'bullmq';
+import { Redis } from 'ioredis';
+import { jobDuration, jobErrors, workerActiveJobs, workerConcurrency } from './metrics';
 
 class MetricizedWorker {
   private worker: Worker;
@@ -484,15 +500,15 @@ class MetricizedWorker {
 
   private setupWorkerMetrics(queueName: string): void {
     this.worker.on('active', () => {
-      workersActive.inc({ queue: queueName });
+      workerActiveJobs.inc({ queue: queueName });
     });
 
     this.worker.on('completed', () => {
-      workersActive.dec({ queue: queueName });
+      workerActiveJobs.dec({ queue: queueName });
     });
 
     this.worker.on('failed', () => {
-      workersActive.dec({ queue: queueName });
+      workerActiveJobs.dec({ queue: queueName });
     });
 
     this.worker.on('error', (error) => {
@@ -500,6 +516,7 @@ class MetricizedWorker {
     });
 
     this.worker.on('stalled', () => {
+      workerActiveJobs.dec({ queue: queueName });
       jobErrors.inc({ queue: queueName, error_type: 'stalled' });
     });
   }
@@ -522,6 +539,9 @@ Configure Prometheus to scrape metrics:
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 scrape_configs:
   - job_name: 'bullmq'
@@ -585,7 +605,7 @@ Create a Grafana dashboard JSON:
         "type": "graph",
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(bullmq_job_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, sum by (queue, le) (rate(bullmq_job_duration_seconds_bucket[5m])))",
             "legendFormat": "{{queue}}"
           }
         ]
@@ -616,8 +636,8 @@ groups:
     rules:
       - alert: BullMQHighFailureRate
         expr: |
-          rate(bullmq_jobs_processed_total{status="failed"}[5m]) /
-          rate(bullmq_jobs_processed_total[5m]) > 0.1
+          sum by (queue) (rate(bullmq_jobs_processed_total{status="failed"}[5m])) /
+          sum by (queue) (rate(bullmq_jobs_processed_total[5m])) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -636,7 +656,7 @@ groups:
 
       - alert: BullMQSlowProcessing
         expr: |
-          histogram_quantile(0.95, rate(bullmq_job_duration_seconds_bucket[5m])) > 60
+          histogram_quantile(0.95, sum by (queue, le) (rate(bullmq_job_duration_seconds_bucket[5m]))) > 60
         for: 5m
         labels:
           severity: warning
@@ -644,14 +664,14 @@ groups:
           summary: Slow job processing on {{ $labels.queue }}
           description: 95th percentile processing time exceeds 60 seconds
 
-      - alert: BullMQNoWorkers
-        expr: bullmq_workers_active == 0 and bullmq_jobs_waiting > 0
+      - alert: BullMQBacklogNotProcessing
+        expr: sum by (queue) (bullmq_worker_active_jobs) == 0 and bullmq_jobs_waiting > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: No active workers for {{ $labels.queue }}
-          description: Queue {{ $labels.queue }} has jobs but no workers
+          summary: Queue backlog is not being processed for {{ $labels.queue }}
+          description: Queue {{ $labels.queue }} has waiting jobs but no active processing
 
       - alert: BullMQQueuePaused
         expr: bullmq_queue_paused == 1
@@ -678,8 +698,6 @@ Complete setup with Prometheus and Grafana:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -735,7 +753,7 @@ volumes:
 
 7. **Track job wait times** - Important for latency SLOs.
 
-8. **Use summaries for percentiles** - When bucket sizes are unclear.
+8. **Use summaries carefully** - Summaries are useful for non-aggregated percentiles, but histograms are better when you need to aggregate across workers or instances.
 
 9. **Clean up stale metrics** - Remove metrics for deleted queues.
 

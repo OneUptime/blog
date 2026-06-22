@@ -8,33 +8,38 @@ Description: Learn how to properly forward refs through components, handle commo
 
 ---
 
-Refs do not automatically pass through components. This guide covers proper ref forwarding patterns.
+Refs do not automatically pass through components. In React 19, pass `ref` as a prop and forward it yourself. In React 18 and earlier, use `forwardRef` for the same pattern.
 
 ## The Problem
 
 ```typescript
+import { useRef, type ReactNode, type Ref } from 'react';
+
 // This will NOT work - ref is lost
-function CustomButton({ children }) {
+function CustomButton({ children }: { children: ReactNode; ref?: Ref<HTMLButtonElement> }) {
   return <button>{children}</button>;
 }
 
 // Parent tries to use ref
 function Parent() {
-  const buttonRef = useRef(null);
-  return <CustomButton ref={buttonRef}>Click</CustomButton>; // Warning!
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  return <CustomButton ref={buttonRef}>Click</CustomButton>; // ref stays null
 }
 ```
 
-## Solution: forwardRef
+## Solution: Pass the ref Through
 
 ```typescript
-import { forwardRef, useRef, useEffect } from 'react';
+import { useRef, useEffect, type ReactNode, type Ref } from 'react';
 
-const CustomButton = forwardRef<HTMLButtonElement, { children: React.ReactNode }>(
-  function CustomButton({ children }, ref) {
-    return <button ref={ref}>{children}</button>;
-  }
-);
+interface CustomButtonProps {
+  children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
+}
+
+function CustomButton({ children, ref }: CustomButtonProps) {
+  return <button ref={ref}>{children}</button>;
+}
 
 function Parent() {
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -56,7 +61,7 @@ flowchart TD
         C1 -.->|lost| D1[DOM]
     end
 
-    subgraph With["With forwardRef"]
+    subgraph With["With forwarded ref"]
         P2[Parent] -->|ref| C2[Component]
         C2 -->|forwarded| D2[DOM]
     end
@@ -65,7 +70,7 @@ flowchart TD
 ## useImperativeHandle: Custom Ref API
 
 ```typescript
-import { forwardRef, useRef, useImperativeHandle, useState } from 'react';
+import { useRef, useImperativeHandle, useState, type Ref } from 'react';
 
 interface InputHandle {
   focus: () => void;
@@ -73,29 +78,32 @@ interface InputHandle {
   getValue: () => string;
 }
 
-const CustomInput = forwardRef<InputHandle, { label: string }>(
-  function CustomInput({ label }, ref) {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [value, setValue] = useState('');
+interface CustomInputProps {
+  label: string;
+  ref?: Ref<InputHandle>;
+}
 
-    useImperativeHandle(ref, () => ({
-      focus() { inputRef.current?.focus(); },
-      clear() { setValue(''); },
-      getValue() { return value; },
-    }), [value]);
+function CustomInput({ label, ref }: CustomInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState('');
 
-    return (
-      <div>
-        <label>{label}</label>
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </div>
-    );
-  }
-);
+  useImperativeHandle(ref, () => ({
+    focus() { inputRef.current?.focus(); },
+    clear() { setValue(''); },
+    getValue() { return value; },
+  }), [value]);
+
+  return (
+    <div>
+      <label>{label}</label>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+    </div>
+  );
+}
 
 // Usage
 function Form() {
@@ -118,32 +126,57 @@ function Form() {
 ## Common Mistakes
 
 ```typescript
+import { useImperativeHandle, type ReactNode, type Ref } from 'react';
+
 // BAD: Wrong element type
-const Button = forwardRef<HTMLDivElement, Props>( // Should be HTMLButtonElement
-  (props, ref) => <button ref={ref} {...props} />
-);
+interface BadButtonProps {
+  children: ReactNode;
+  ref?: Ref<HTMLDivElement>; // Should be HTMLButtonElement
+}
+
+function BadButton({ ref, ...props }: BadButtonProps) {
+  return <button ref={ref} {...props} />;
+}
 
 // BAD: Missing dependencies
-useImperativeHandle(ref, () => ({
-  getValue: () => value,
-}), []); // Missing value in deps
+interface InputHandle {
+  getValue: () => string;
+}
+
+function BadInput({ ref, value }: { ref?: Ref<InputHandle>; value: string }) {
+  useImperativeHandle(ref, () => ({
+    getValue: () => value,
+  }), []); // Missing value in deps
+
+  return null;
+}
 
 // GOOD: Correct types and deps
-const Button = forwardRef<HTMLButtonElement, Props>(
-  (props, ref) => <button ref={ref} {...props} />
-);
+interface ButtonProps {
+  children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
+}
 
-useImperativeHandle(ref, () => ({
-  getValue: () => value,
-}), [value]);
+function Button({ ref, ...props }: ButtonProps) {
+  return <button ref={ref} {...props} />;
+}
+
+function Input({ ref, value }: { ref?: Ref<InputHandle>; value: string }) {
+  useImperativeHandle(ref, () => ({
+    getValue: () => value,
+  }), [value]);
+
+  return null;
+}
 ```
 
 ## Summary
 
 | Concept | Use Case |
 |---------|----------|
-| forwardRef | Pass ref through component |
+| ref prop | Pass ref through component in React 19 |
+| forwardRef | Pass ref through component in React 18 and earlier |
 | useImperativeHandle | Custom ref API |
 | Callback refs | Measure elements |
 
-Use forwardRef when building reusable components and useImperativeHandle when you need a custom imperative API.
+Pass `ref` through reusable components when parents need access to the underlying node, and use useImperativeHandle when you need a custom imperative API. Use forwardRef for React 18 and earlier.

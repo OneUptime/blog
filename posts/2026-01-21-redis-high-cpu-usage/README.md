@@ -87,7 +87,7 @@ def analyze_slow_log(host='localhost', port=6379, count=1000):
     command_times = {}
 
     for entry in entries:
-        cmd = entry['command'][0].upper() if entry['command'] else 'UNKNOWN'
+        cmd = entry['command'].split()[0].upper() if entry['command'] else 'UNKNOWN'
         duration_us = entry['duration']
 
         command_counts[cmd] += 1
@@ -419,7 +419,7 @@ value = cached_redis.get('frequently:accessed:key')  # Subsequent calls use loca
 # Enable IO threading for better CPU utilization
 # redis.conf
 
-# Number of IO threads (0 = disabled)
+# Number of IO threads (1 = main thread only; use more to add I/O threads)
 io-threads 4
 
 # Enable threaded reads (in addition to writes)
@@ -497,13 +497,13 @@ groups:
           description: "Redis is using more than 80% CPU"
 
       - alert: RedisSlowCommands
-        expr: rate(redis_slowlog_length[5m]) > 10
+        expr: redis_slowlog_length > 10
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Redis slow commands increasing"
-          description: "More than 10 slow commands per minute"
+          description: "More than 10 entries are currently in the Redis slow log"
 ```
 
 ## CPU Optimization Checklist

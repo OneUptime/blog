@@ -273,11 +273,7 @@ class ReliableCommandQueue:
             "created_at": str(time.time())
         }
 
-        message_id = self.redis.xadd(
-            stream_key,
-            message,
-            maxlen=1000  # Keep last 1000 commands
-        )
+        message_id = self.redis.xadd(stream_key, message)
 
         return message_id
 
@@ -684,23 +680,30 @@ class CommandQueue {
 // Usage
 const commandQueue = new CommandQueue({ host: 'localhost', port: 6379 });
 
-// Send a command
-const commandId = await commandQueue.enqueueCommand(
-    'device-001',
-    'set_config',
-    { reportingInterval: 30, ledEnabled: true },
-    { priority: 2, ttlSeconds: 300 }
-);
+async function main() {
+    // Send a command
+    const commandId = await commandQueue.enqueueCommand(
+        'device-001',
+        'set_config',
+        { reportingInterval: 30, ledEnabled: true },
+        { priority: 2, ttlSeconds: 300 }
+    );
 
-// Device retrieves commands
-const commands = await commandQueue.getPendingCommands('device-001');
+    // Start waiting before the device publishes the acknowledgment
+    const ackPromise = commandQueue.waitForAcknowledgment(commandId);
 
-// Device acknowledges
-await commandQueue.acknowledgeCommand(commandId, true, { applied: true });
+    // Device retrieves commands
+    const commands = await commandQueue.getPendingCommands('device-001');
 
-// Wait for acknowledgment (from sender side)
-const ack = await commandQueue.waitForAcknowledgment(commandId);
-console.log('Command acknowledged:', ack);
+    // Device acknowledges
+    await commandQueue.acknowledgeCommand(commandId, true, { applied: true });
+
+    // Wait for acknowledgment (from sender side)
+    const ack = await ackPromise;
+    console.log('Command acknowledged:', ack);
+}
+
+main().catch(console.error);
 ```
 
 ## Best Practices

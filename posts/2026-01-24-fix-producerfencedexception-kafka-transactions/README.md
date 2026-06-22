@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix ProducerFencedException in Kafka tran
 
 ---
 
-> The ProducerFencedException is Kafka's way of enforcing exactly-once semantics by ensuring only one active producer can write to a transactional session at any given time. Understanding why it occurs is the key to fixing it.
+> The ProducerFencedException is Kafka's way of enforcing exactly-once semantics by ensuring only one active producer can use a transactional producer identity at any given time. Understanding why it occurs is the key to fixing it.
 
 When working with Kafka transactions for exactly-once processing, encountering a `ProducerFencedException` can halt your application unexpectedly. This guide explains why this exception occurs and provides practical solutions to prevent and handle it.
 
@@ -46,7 +46,7 @@ sequenceDiagram
 
 ### 1. Multiple Producer Instances with Same Transactional ID
 
-The most common cause is running multiple producer instances that share the same `transactional.id`. Each transactional producer must have a unique ID.
+The most common cause is running multiple active producer instances that share the same `transactional.id`. Each active transactional producer must have a unique ID, while the same logical producer should keep the same ID across restarts so Kafka can fence any old zombie instance.
 
 ```java
 // WRONG: Using the same transactional ID across instances
@@ -56,16 +56,16 @@ props.put("transactional.id", "my-app-producer"); // Same ID in all instances
 ```
 
 ```java
-// CORRECT: Use unique transactional IDs per instance
-// Include instance identifier in the transactional ID
+// CORRECT: Use unique transactional IDs per active logical producer
+// Include a stable shard, task, pod, or instance identifier in the transactional ID
 Properties props = new Properties();
-String instanceId = System.getenv("HOSTNAME"); // Or use UUID, pod name, etc.
+String instanceId = System.getenv("HOSTNAME"); // Or use a stable shard/task ID
 props.put("transactional.id", "my-app-producer-" + instanceId);
 ```
 
-### 2. Producer Restart Without Proper Cleanup
+### 2. Overlapping Producer Restart Without Proper Cleanup
 
-When a producer restarts without properly closing, the new instance with the same transactional ID will fence the old one.
+When a producer restarts without properly closing, the new instance with the same transactional ID will intentionally fence the old one. This is the correct zombie-producer protection, but your application should expect the old instance to fail and shut down cleanly.
 
 ```java
 // Proper producer lifecycle management
@@ -103,7 +103,7 @@ public class TransactionalProducerManager {
     public void shutdown() {
         if (producer != null) {
             try {
-                // Close will abort any in-progress transaction
+                // Close the producer to release network and buffer resources
                 producer.close(Duration.ofSeconds(30));
             } catch (Exception e) {
                 System.err.println("Error closing producer: " + e.getMessage());
@@ -115,7 +115,7 @@ public class TransactionalProducerManager {
 
 ### 3. Transaction Timeout Exceeded
 
-If a transaction takes longer than `transaction.timeout.ms`, the coordinator will abort it and the producer will be fenced.
+If a transaction takes longer than `transaction.timeout.ms`, the coordinator will proactively abort it. This does not by itself mean another producer has fenced the current one, but it can cause the transaction to fail and should be handled by aborting or retrying according to your application's error handling.
 
 ```java
 Properties props = new Properties();
@@ -128,34 +128,33 @@ props.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, 120000); // 2 minutes
 
 ## Handling ProducerFencedException
 
-When you catch a `ProducerFencedException`, the producer is in an unrecoverable state and must be recreated.
+When you catch a `ProducerFencedException`, the producer is in an unrecoverable state and must be closed. Do not continue with a new random `transactional.id` in the fenced process; that can allow a stale instance to keep producing alongside the instance that legitimately took over.
 
 ```java
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
 import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.KafkaException;
+import java.time.Duration;
+import java.util.List;
+import java.util.Properties;
 
 public class RobustTransactionalProducer {
     private KafkaProducer<String, String> producer;
     private final Properties baseProps;
-    private final String transactionalIdPrefix;
-    private int instanceGeneration = 0;
+    private final String transactionalId;
 
-    public RobustTransactionalProducer(Properties baseProps, String transactionalIdPrefix) {
+    public RobustTransactionalProducer(Properties baseProps, String transactionalId) {
         this.baseProps = baseProps;
-        this.transactionalIdPrefix = transactionalIdPrefix;
+        this.transactionalId = transactionalId;
         createProducer();
     }
 
-    // Create a new producer with incremented generation
+    // Create a producer for this logical transactional identity
     private void createProducer() {
-        instanceGeneration++;
         Properties props = new Properties();
         props.putAll(baseProps);
-
-        // Use generation to create unique transactional ID after fencing
-        String transactionalId = transactionalIdPrefix + "-gen-" + instanceGeneration;
         props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionalId);
 
         producer = new KafkaProducer<>(props);
@@ -177,7 +176,7 @@ public class RobustTransactionalProducer {
 
         } catch (ProducerFencedException e) {
             // This producer has been fenced by a newer instance
-            // Cannot recover - must create a new producer
+            // Cannot recover in this process - must close and stop
             System.err.println("Producer fenced: " + e.getMessage());
             handleFatalError(e);
 
@@ -191,7 +190,7 @@ public class RobustTransactionalProducer {
             System.err.println("Authorization failed: " + e.getMessage());
             handleFatalError(e);
 
-        } catch (Exception e) {
+        } catch (KafkaException e) {
             // Other errors - attempt to abort and retry
             System.err.println("Transaction error: " + e.getMessage());
             try {
@@ -203,7 +202,7 @@ public class RobustTransactionalProducer {
         }
     }
 
-    // Handle fatal errors by recreating the producer
+    // Handle fatal transactional errors by closing the producer and stopping this instance
     private void handleFatalError(Exception e) {
         try {
             producer.close(Duration.ofSeconds(5));
@@ -211,8 +210,7 @@ public class RobustTransactionalProducer {
             // Ignore close errors
         }
 
-        // Create a new producer instance
-        createProducer();
+        throw new IllegalStateException("Transactional producer cannot continue after fatal error", e);
     }
 
     public void close() {
@@ -251,8 +249,7 @@ flowchart TD
         M -->|Yes| N[ProducerFencedException]
         M -->|No| O[abortTransaction]
         O --> H
-        N --> P[Recreate Producer]
-        P --> A
+        N --> P[Close Producer and Stop Instance]
     end
 ```
 
@@ -265,7 +262,8 @@ flowchart TD
 ```java
 public class TransactionalIdGenerator {
 
-    // Generate unique transactional ID for Kubernetes deployments
+    // Generate unique transactional ID for Kubernetes deployments.
+    // Prefer a stable pod/task identity when the same logical producer restarts.
     public static String generateForKubernetes(String appName) {
         String podName = System.getenv("HOSTNAME");
         String namespace = System.getenv("POD_NAMESPACE");
@@ -274,8 +272,12 @@ public class TransactionalIdGenerator {
             return String.format("%s-%s-%s", appName, namespace, podName);
         }
 
-        // Fallback to UUID if not in Kubernetes
-        return appName + "-" + UUID.randomUUID().toString();
+        // Fallback to a configured instance ID outside Kubernetes
+        String instanceId = System.getenv("INSTANCE_ID");
+        if (instanceId == null) {
+            throw new IllegalStateException("INSTANCE_ID must be set for transactional producers");
+        }
+        return appName + "-" + instanceId;
     }
 
     // Generate for partitioned processing (one producer per partition)
@@ -283,7 +285,7 @@ public class TransactionalIdGenerator {
         return String.format("%s-partition-%d", appName, partition);
     }
 
-    // Generate with timestamp for ephemeral instances
+    // Generate with timestamp for short-lived producers where restart fencing is not required
     public static String generateEphemeral(String appName) {
         return String.format("%s-%d-%s",
             appName,
@@ -408,7 +410,11 @@ public class ExactlyOnceProcessor {
         // Producer configuration for exactly-once
         Properties producerProps = new Properties();
         producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        producerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, groupId + "-processor");
+        String instanceId = System.getenv("INSTANCE_ID");
+        if (instanceId == null) {
+            throw new IllegalStateException("INSTANCE_ID must be set for each active processor instance");
+        }
+        producerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, groupId + "-processor-" + instanceId);
         producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -494,10 +500,10 @@ When troubleshooting `ProducerFencedException`, check:
 # Check transaction state on broker
 
 kafka-transactions.sh --bootstrap-server localhost:9092 \
-  --describe --transactional-id "your-transactional-id"
+  describe --transactional-id "your-transactional-id"
 
 # List all transactional IDs
-kafka-transactions.sh --bootstrap-server localhost:9092 --list
+kafka-transactions.sh --bootstrap-server localhost:9092 list
 ```
 
 ---
@@ -506,8 +512,8 @@ kafka-transactions.sh --bootstrap-server localhost:9092 --list
 
 The `ProducerFencedException` is a protection mechanism, not a bug. To avoid it:
 
-1. **Use unique transactional IDs** per producer instance
-2. **Handle the exception properly** by recreating the producer
+1. **Use unique transactional IDs** per active logical producer
+2. **Handle the exception properly** by closing the fenced producer and stopping that instance
 3. **Implement graceful shutdown** to clean up transactions
 4. **Set appropriate timeouts** for your transaction duration
 5. **Monitor transaction metrics** to detect issues early

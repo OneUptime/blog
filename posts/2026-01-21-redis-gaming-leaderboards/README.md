@@ -55,7 +55,7 @@ class Leaderboard:
         return r.zscore(self.key, player_id)
 
     def get_rank(self, player_id: str) -> Optional[int]:
-        """Get a player's rank (0-indexed, highest score = rank 0)."""
+        """Get a player's rank (1-indexed, highest score = rank 1)."""
         rank = r.zrevrank(self.key, player_id)
         return rank + 1 if rank is not None else None
 
@@ -174,25 +174,32 @@ class TimeBasedLeaderboard:
         now = datetime.now()
         pipe = r.pipeline()
         keys = {}
+        score_result_indexes = {}
+        result_index = 0
 
         for period in periods:
             key = self._get_key(period, now)
             keys[period] = key
+            score_result_indexes[period] = result_index
             pipe.zincrby(key, score, player_id)
+            result_index += 1
 
             # Set expiration for non-alltime leaderboards
             if period == "daily":
                 pipe.expire(key, 2 * 24 * 3600)  # 2 days
+                result_index += 1
             elif period == "weekly":
                 pipe.expire(key, 14 * 24 * 3600)  # 2 weeks
+                result_index += 1
             elif period == "monthly":
                 pipe.expire(key, 62 * 24 * 3600)  # ~2 months
+                result_index += 1
 
         results = pipe.execute()
 
         return {
-            period: results[i * 2]
-            for i, period in enumerate(periods)
+            period: results[score_result_indexes[period]]
+            for period in periods
         }
 
     def get_leaderboard(self, period: str, limit: int = 10,
@@ -284,7 +291,7 @@ class MultiGameLeaderboard:
                 new_best = True
             else:
                 new_best = False
-            final_score = max(score, current_score or 0)
+            final_score = max(score, current_score if current_score is not None else score)
 
         elif score_type == "lowest":
             if current_score is None or score < current_score:
@@ -292,7 +299,7 @@ class MultiGameLeaderboard:
                 new_best = True
             else:
                 new_best = False
-            final_score = min(score, current_score or float('inf'))
+            final_score = min(score, current_score if current_score is not None else score)
 
         elif score_type == "cumulative":
             final_score = r.zincrby(key, score, player_id)
@@ -380,7 +387,7 @@ class MultiGameLeaderboard:
                 "score": score,
                 "rank": rank + 1 if rank is not None else None,
                 "total_players": total,
-                "percentile": round((1 - rank / total) * 100, 1) if rank and total else 0
+                "percentile": round((1 - rank / total) * 100, 1) if rank is not None and total else 0
             })
 
         return rankings
@@ -451,7 +458,7 @@ class LeaderboardWithProfiles:
         return {
             "player_id": player_id,
             "username": profile.get("username", player_id),
-            "score": max(score, current or 0),
+            "score": max(score, current if current is not None else score),
             "rank": rank + 1 if rank is not None else None,
             "new_high_score": current is None or score > current
         }
@@ -783,6 +790,8 @@ def atomic_submit_score(leaderboard_key: str, player_id: str,
 ### Batch Score Updates with Pipelining
 
 ```python
+import random
+
 def batch_update_scores(game_id: str, scores: List[Tuple[str, float]]) -> None:
     """Update multiple scores efficiently using pipelining."""
     key = f"leaderboard:{game_id}"

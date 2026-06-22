@@ -158,6 +158,7 @@ import (
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/klog/v2"
 )
@@ -246,7 +247,7 @@ func mutatePod(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse
     if pod.Annotations["inject-sidecar"] == "true" {
         sidecar := corev1.Container{
             Name:  "sidecar",
-            Image: "busybox:latest",
+            Image: "myregistry.io/busybox:1.36.1",
             Command: []string{
                 "/bin/sh",
                 "-c",
@@ -261,6 +262,10 @@ func mutatePod(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse
                     corev1.ResourceCPU:    resource.MustParse("50m"),
                     corev1.ResourceMemory: resource.MustParse("64Mi"),
                 },
+            },
+            SecurityContext: &corev1.SecurityContext{
+                RunAsNonRoot: boolPtr(true),
+                RunAsUser:    int64Ptr(1000),
             },
         }
 
@@ -282,6 +287,20 @@ func mutatePod(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse
     // 3. Set default resource requests if not specified
     for i, container := range pod.Spec.Containers {
         if container.Resources.Requests == nil {
+            if container.Resources.Limits == nil {
+                patches = append(patches, Patch{
+                    Op:   "add",
+                    Path: fmt.Sprintf("/spec/containers/%d/resources", i),
+                    Value: corev1.ResourceRequirements{
+                        Requests: corev1.ResourceList{
+                            corev1.ResourceCPU:    resource.MustParse("100m"),
+                            corev1.ResourceMemory: resource.MustParse("128Mi"),
+                        },
+                    },
+                })
+                continue
+            }
+
             patches = append(patches, Patch{
                 Op:   "add",
                 Path: fmt.Sprintf("/spec/containers/%d/resources/requests", i),
@@ -328,6 +347,10 @@ func mutatePod(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse
 
 func boolPtr(b bool) *bool {
     return &b
+}
+
+func int64Ptr(i int64) *int64 {
+    return &i
 }
 ```
 
@@ -491,6 +514,17 @@ func validatePod(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionRespon
 ```yaml
 # deploy/deployment.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admission-webhook
+  namespace: webhook-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -576,6 +610,8 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: pod-mutating-webhook
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-system/admission-webhook
 webhooks:
   - name: pod-mutator.mycompany.io
     clientConfig:
@@ -584,7 +620,7 @@ webhooks:
         namespace: webhook-system
         path: /mutate
         port: 443
-      caBundle: ${CA_BUNDLE}  # Base64-encoded CA cert
+      caBundle: ${CA_BUNDLE}  # Base64-encoded CA cert, or injected by cert-manager
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]
@@ -604,6 +640,8 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: pod-validating-webhook
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-system/admission-webhook
 webhooks:
   - name: pod-validator.mycompany.io
     clientConfig:
@@ -612,7 +650,7 @@ webhooks:
         namespace: webhook-system
         path: /validate
         port: 443
-      caBundle: ${CA_BUNDLE}
+      caBundle: ${CA_BUNDLE}  # Base64-encoded CA cert, or injected by cert-manager
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: [""]
@@ -753,6 +791,7 @@ import (
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
 )
@@ -831,12 +870,22 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: test-pod
+  labels:
+    app: test-pod
+    env: development
   annotations:
     inject-sidecar: "true"
 spec:
   containers:
     - name: app
-      image: nginx
+      image: myregistry.io/nginx:1.25.0
+      resources:
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
 EOF
 
 # Check if sidecar was injected

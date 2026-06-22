@@ -8,7 +8,7 @@ Description: A comprehensive guide to using Redis HyperLogLog for estimating uni
 
 ---
 
-Redis HyperLogLog is a probabilistic data structure that estimates the cardinality (count of unique elements) of a set using only 12 KB of memory, regardless of the number of elements. With a standard error of 0.81%, HyperLogLog is perfect for counting unique visitors, unique events, or any scenario where approximate counts are acceptable.
+Redis HyperLogLog is a probabilistic data structure that estimates the cardinality (count of unique elements) of a set using up to 12 KB of memory, regardless of the number of elements. With a standard error of 0.81%, HyperLogLog is perfect for counting unique visitors, unique events, or any scenario where approximate counts are acceptable.
 
 In this guide, we will explore Redis HyperLogLog in depth, covering essential commands, use cases, and practical implementations for analytics and tracking applications.
 
@@ -16,8 +16,8 @@ In this guide, we will explore Redis HyperLogLog in depth, covering essential co
 
 HyperLogLog is a probabilistic algorithm that trades perfect accuracy for extreme memory efficiency:
 
-- **Fixed memory**: Always 12 KB per HyperLogLog
-- **Standard error**: 0.81% (99% of estimates within 2% of actual)
+- **Bounded memory**: Up to 12 KB per HyperLogLog
+- **Standard error**: 0.81% (probabilistic estimate, not a hard per-count guarantee)
 - **No element retrieval**: Cannot get back individual elements
 - **Supports union**: Can merge multiple HyperLogLogs
 
@@ -41,14 +41,14 @@ When NOT to use HyperLogLog:
 # Add single element
 
 PFADD visitors "user123"
-# Returns 1 if cardinality changed, 0 otherwise
+# Returns 1 if at least one internal HyperLogLog register changed, 0 otherwise
 
 # Add multiple elements
 PFADD visitors "user456" "user789" "user101"
 
-# Returns 1 even if only some elements are new
+# Returns 1 if the approximated cardinality changes
 PFADD visitors "user123" "user999"
-# Returns 1 (user999 is new)
+# May return 1, but adding a new element can still return 0
 ```
 
 ### PFCOUNT - Get Cardinality
@@ -80,9 +80,9 @@ Consider counting 10 million unique user IDs (average 20 bytes each):
 | Method | Memory Usage |
 |--------|--------------|
 | Set | ~200 MB |
-| HyperLogLog | 12 KB |
+| HyperLogLog | Up to 12 KB |
 
-That's a 17,000x memory reduction!
+That's roughly a 17,000x reduction compared with storing only the raw IDs!
 
 ## Practical Examples
 
@@ -93,7 +93,6 @@ import redis
 from datetime import datetime, timedelta
 from typing import List, Dict
 import random
-import string
 
 # Connect to Redis
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -719,7 +718,6 @@ func init() {
     client = redis.NewClient(&redis.Options{
         Addr: "localhost:6379",
     })
-    rand.Seed(time.Now().UnixNano())
 }
 
 // =============================================================================
@@ -966,7 +964,7 @@ func main() {
 
 Redis HyperLogLog provides an extremely memory-efficient way to count unique elements with acceptable accuracy. Key takeaways:
 
-- Use only 12 KB regardless of element count
+- Uses up to 12 KB regardless of element count
 - Standard error of 0.81%
 - Perfect for unique visitor counting and analytics
 - Use PFMERGE to combine multiple HyperLogLogs

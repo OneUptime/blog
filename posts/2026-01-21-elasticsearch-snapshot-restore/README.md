@@ -14,9 +14,9 @@ Backups are critical for disaster recovery and data protection. Elasticsearch pr
 
 Snapshots are:
 - Incremental (only changed data is stored)
-- Point-in-time copies of indices
+- Views of each shard's data at a point between the snapshot start and end times
 - Stored in snapshot repositories
-- Restorable to same or different clusters
+- Restorable to same or different clusters when versions and index formats are compatible
 
 ## Repository Configuration
 
@@ -44,7 +44,7 @@ curl -X PUT "https://localhost:9200/_snapshot/local_backup" \
 
 ### AWS S3 Repository
 
-Install the S3 plugin:
+S3 repository support is included in Elasticsearch 8.x and later. For Elasticsearch 7.x, install the S3 plugin:
 
 ```bash
 bin/elasticsearch-plugin install repository-s3
@@ -79,7 +79,7 @@ curl -X PUT "https://localhost:9200/_snapshot/s3_backup" \
 
 ### Google Cloud Storage Repository
 
-Install the GCS plugin:
+GCS repository support is included in Elasticsearch 8.x and later. For Elasticsearch 7.x, install the GCS plugin:
 
 ```bash
 bin/elasticsearch-plugin install repository-gcs
@@ -110,7 +110,7 @@ curl -X PUT "https://localhost:9200/_snapshot/gcs_backup" \
 
 ### Azure Blob Storage Repository
 
-Install the Azure plugin:
+Azure repository support is included in Elasticsearch 8.x and later. For Elasticsearch 7.x, install the Azure plugin:
 
 ```bash
 bin/elasticsearch-plugin install repository-azure
@@ -369,7 +369,7 @@ curl -X POST "https://localhost:9200/_snapshot/s3_backup/snapshot_2024_01_15/_re
 
 ### Partial Restore
 
-Restore only specific shards:
+Restore a partial snapshot when some shards were unavailable during snapshot creation:
 
 ```bash
 curl -X POST "https://localhost:9200/_snapshot/s3_backup/snapshot_2024_01_15/_restore?wait_for_completion=true" \
@@ -406,7 +406,7 @@ curl -X DELETE "https://localhost:9200/_snapshot/s3_backup/snapshot_2024_01_01,s
 curl -X POST "https://localhost:9200/_snapshot/s3_backup/_verify" \
   -u elastic:password
 
-# Repository stats
+# Repository configuration
 curl -X GET "https://localhost:9200/_snapshot/s3_backup" \
   -u elastic:password
 ```
@@ -515,7 +515,7 @@ Snapshots are automatically incremental - no extra configuration needed.
 
 ```bash
 # Restore to test index
-curl -X POST "https://localhost:9200/_snapshot/s3_backup/latest/_restore" \
+curl -X POST "https://localhost:9200/_snapshot/s3_backup/snapshot_2024_01_15/_restore" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{

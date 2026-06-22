@@ -17,10 +17,12 @@ Audit logs capture:
 - **Authentication events** - Login attempts, successes, and failures
 - **Authorization events** - Access granted or denied
 - **Security configuration changes** - User, role, and API key modifications
-- **Index operations** - CRUD operations on indices
+- **Index access operations** - Authorization events for index actions when enabled
 - **System access** - Anonymous access attempts
 
 ## Enabling Audit Logging
+
+Audit logging is available only on certain Elastic subscription levels.
 
 ### Basic Configuration
 
@@ -36,31 +38,27 @@ Restart Elasticsearch:
 systemctl restart elasticsearch
 ```
 
-### Audit Log Output Options
+### Audit Log Output
 
-#### File Output (Default)
+#### File Output
 
 ```yaml
 xpack.security.audit.enabled: true
-xpack.security.audit.outputs: [logfile]
 ```
 
 Logs are written to `$ES_HOME/logs/<cluster_name>_audit.json`
 
-#### Index Output
+#### Shipping Audit Logs to Elasticsearch
+
+The `logfile` audit output is the supported Elasticsearch audit output. To query audit events in Elasticsearch, ship the audit JSON file with Filebeat, Elastic Agent, or another log shipper.
 
 ```yaml
-xpack.security.audit.enabled: true
-xpack.security.audit.outputs: [index]
-```
-
-Logs are written to `.security-audit-*` indices.
-
-#### Both Outputs
-
-```yaml
-xpack.security.audit.enabled: true
-xpack.security.audit.outputs: [logfile, index]
+# modules.d/elasticsearch.yml
+- module: elasticsearch
+  audit:
+    enabled: true
+    var.paths:
+      - /var/log/elasticsearch/*_audit.json
 ```
 
 ## Configuring Event Types
@@ -109,7 +107,7 @@ xpack.security.audit.logfile.events.exclude:
 
 ### Filter by User
 
-Include specific users:
+Ignore specific users:
 
 ```yaml
 xpack.security.audit.logfile.events.include:
@@ -118,7 +116,7 @@ xpack.security.audit.logfile.events.include:
 
 xpack.security.audit.logfile.events.emit_request_body: true
 
-# Only audit specific users
+# Ignore selected system users
 
 xpack.security.audit.logfile.events.ignore_filters:
   system_users:
@@ -178,9 +176,6 @@ xpack.security.audit.logfile.events.ignore_filters:
 # Enable audit logging
 xpack.security.audit.enabled: true
 
-# Output to both file and index
-xpack.security.audit.outputs: [logfile, index]
-
 # Events to include
 xpack.security.audit.logfile.events.include:
   - authentication_success
@@ -216,27 +211,19 @@ Each audit event is a JSON object:
 
 ```json
 {
-  "@timestamp": "2024-01-21T10:30:00.000Z",
-  "node": {
-    "name": "node-1",
-    "id": "abc123"
-  },
-  "event": {
-    "type": "authentication_success",
-    "action": "authenticate"
-  },
-  "user": {
-    "name": "john_doe",
-    "realm": "native"
-  },
-  "origin": {
-    "type": "rest",
-    "address": "192.168.1.100"
-  },
-  "request": {
-    "id": "xyz789",
-    "name": "SearchRequest"
-  }
+  "type": "audit",
+  "timestamp": "2024-01-21T10:30:00,000+0000",
+  "node.id": "abc123",
+  "event.type": "rest",
+  "event.action": "authentication_success",
+  "authentication.type": "REALM",
+  "user.name": "john_doe",
+  "user.realm": "native",
+  "origin.type": "rest",
+  "origin.address": "192.168.1.100",
+  "url.path": "/_search",
+  "request.method": "GET",
+  "request.id": "xyz789"
 }
 ```
 
@@ -244,10 +231,10 @@ Each audit event is a JSON object:
 
 | Field | Description |
 |-------|-------------|
-| @timestamp | Event timestamp |
-| node.name | Node that handled the request |
-| event.type | Type of audit event |
-| event.action | Specific action performed |
+| timestamp | Event timestamp in the raw audit log |
+| node.id | Node that handled the request |
+| event.type | Internal processing layer (rest, transport, ip_filter, security_config_change) |
+| event.action | Audit action performed |
 | user.name | Username |
 | user.realm | Authentication realm |
 | origin.type | Request origin (rest, transport) |
@@ -259,16 +246,18 @@ Each audit event is a JSON object:
 
 ## Querying Audit Logs
 
-### From Audit Index
+The examples below assume your log shipper writes Elasticsearch audit events to an `audit-logs-*` index or data stream.
+
+### From Shipped Audit Logs
 
 ```bash
 # Get recent authentication failures
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "bool": {
       "must": [
-        {"term": {"event.type": "authentication_failed"}},
+        {"term": {"event.action": "authentication_failed"}},
         {"range": {"@timestamp": {"gte": "now-1h"}}}
       ]
     }
@@ -281,12 +270,12 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
 ### Access Denied Events
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "bool": {
       "must": [
-        {"term": {"event.type": "access_denied"}},
+        {"term": {"event.action": "access_denied"}},
         {"range": {"@timestamp": {"gte": "now-24h"}}}
       ]
     }
@@ -305,7 +294,7 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
 ### Security Configuration Changes
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "term": {"event.type": "security_config_change"}
@@ -318,7 +307,7 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
 ### Events by User
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "bool": {
@@ -335,14 +324,14 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
 ### Events by IP Address
 
 ```bash
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "term": {"origin.address": "192.168.1.100"}
   },
   "aggs": {
     "event_types": {
-      "terms": {"field": "event.type.keyword"}
+      "terms": {"field": "event.action.keyword"}
     }
   }
 }'
@@ -358,21 +347,21 @@ tail -100 /var/log/elasticsearch/cluster_audit.json | jq '.'
 
 # Filter authentication failures
 cat /var/log/elasticsearch/cluster_audit.json | \
-  jq 'select(.event.type == "authentication_failed")'
+  jq 'select(.["event.action"] == "authentication_failed")'
 
 # Count events by type
 cat /var/log/elasticsearch/cluster_audit.json | \
-  jq -r '.event.type' | sort | uniq -c | sort -rn
+  jq -r '.["event.action"]' | sort | uniq -c | sort -rn
 
 # Get unique users with access denied
 cat /var/log/elasticsearch/cluster_audit.json | \
-  jq -r 'select(.event.type == "access_denied") | .user.name' | \
+  jq -r 'select(.["event.action"] == "access_denied") | .["user.name"]' | \
   sort | uniq
 ```
 
 ### Log Rotation
 
-Configure log rotation in `log4j2.properties`:
+Elasticsearch rotates audit logs by default daily or at 1GB. For self-managed clusters, you can customize the audit appender in `log4j2.properties`, although Elastic recommends using the default Log4j2 configuration:
 
 ```properties
 appender.audit_rolling.type = RollingFile
@@ -389,7 +378,7 @@ appender.audit_rolling.strategy.type = DefaultRolloverStrategy
 appender.audit_rolling.strategy.max = 30
 ```
 
-## Index-Based Audit Log Management
+## Shipped Audit Log Management
 
 ### ILM Policy for Audit Logs
 
@@ -440,12 +429,26 @@ curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/audit-logs-policy" -
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/_index_template/audit-logs" -H 'Content-Type: application/json' -d'
 {
-  "index_patterns": [".security-audit-*"],
+  "index_patterns": ["audit-logs-*"],
   "template": {
     "settings": {
       "number_of_shards": 1,
       "number_of_replicas": 1,
-      "index.lifecycle.name": "audit-logs-policy"
+      "index.lifecycle.name": "audit-logs-policy",
+      "index.lifecycle.rollover_alias": "audit-logs"
+    }
+  }
+}'
+```
+
+### Bootstrap Write Index
+
+```bash
+curl -u elastic:password -X PUT "localhost:9200/audit-logs-000001" -H 'Content-Type: application/json' -d'
+{
+  "aliases": {
+    "audit-logs": {
+      "is_write_index": true
     }
   }
 }'
@@ -468,12 +471,12 @@ curl -u elastic:password -X PUT "localhost:9200/_watcher/watch/failed_login_aler
   "input": {
     "search": {
       "request": {
-        "indices": [".security-audit-*"],
+        "indices": ["audit-logs-*"],
         "body": {
           "query": {
             "bool": {
               "must": [
-                {"term": {"event.type": "authentication_failed"}},
+                {"term": {"event.action": "authentication_failed"}},
                 {"range": {"@timestamp": {"gte": "now-5m"}}}
               ]
             }
@@ -519,7 +522,7 @@ curl -u elastic:password -X PUT "localhost:9200/_watcher/watch/security_config_c
   "input": {
     "search": {
       "request": {
-        "indices": [".security-audit-*"],
+        "indices": ["audit-logs-*"],
         "body": {
           "query": {
             "bool": {
@@ -591,7 +594,6 @@ Track all access to protected health information:
 
 ```yaml
 xpack.security.audit.enabled: true
-xpack.security.audit.outputs: [logfile, index]
 xpack.security.audit.logfile.events.include:
   - authentication_success
   - authentication_failed
@@ -646,7 +648,7 @@ Implement regular audit log review process:
 
 ```bash
 # Daily summary script
-curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X GET "localhost:9200/audit-logs-*/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "query": {
@@ -654,10 +656,10 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
   },
   "aggs": {
     "event_summary": {
-      "terms": {"field": "event.type.keyword"}
+      "terms": {"field": "event.action.keyword"}
     },
     "failed_users": {
-      "filter": {"term": {"event.type": "authentication_failed"}},
+      "filter": {"term": {"event.action": "authentication_failed"}},
       "aggs": {
         "users": {"terms": {"field": "user.name.keyword"}}
       }
@@ -671,8 +673,8 @@ curl -u elastic:password -X GET "localhost:9200/.security-audit-*/_search?pretty
 Implement appropriate retention based on compliance needs:
 
 ```bash
-# Delete old audit indices
-curl -u elastic:password -X DELETE "localhost:9200/.security-audit-2023*"
+# Delete old shipped audit indices
+curl -u elastic:password -X DELETE "localhost:9200/audit-logs-2023*"
 ```
 
 ## Summary

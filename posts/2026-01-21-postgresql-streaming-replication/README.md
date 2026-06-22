@@ -70,8 +70,7 @@ host    replication     replicator      192.168.1.11/32         scram-sha-256
 -- Create replication user
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'secure_password';
 
--- Grant additional permissions if needed
-GRANT pg_read_all_data TO replicator;
+-- No additional table privileges are required for physical streaming replication
 ```
 
 ### Create Replication Slot (Recommended)
@@ -111,7 +110,7 @@ sudo -u postgres pg_basebackup \
     -v \
     -R \
     -X stream \
-    -C -S replica1_slot
+    -S replica1_slot
 ```
 
 Options explained:
@@ -122,7 +121,7 @@ Options explained:
 - `-v`: Verbose
 - `-R`: Create standby.signal and postgresql.auto.conf
 - `-X stream`: Stream WAL during backup
-- `-C -S`: Create replication slot
+- `-S`: Use the existing replication slot (`-C -S` creates the slot if you did not create it earlier)
 
 ### Verify Configuration
 
@@ -132,7 +131,7 @@ Check `postgresql.auto.conf` was created:
 cat /var/lib/postgresql/16/main/postgresql.auto.conf
 ```
 
-Expected content:
+Example content:
 ```conf
 primary_conninfo = 'host=primary.example.com port=5432 user=replicator password=secure_password'
 primary_slot_name = 'replica1_slot'
@@ -181,7 +180,8 @@ SELECT
     slot_name,
     active,
     restart_lsn,
-    confirmed_flush_lsn
+    wal_status,
+    safe_wal_size
 FROM pg_replication_slots;
 
 -- Check WAL positions
@@ -258,7 +258,7 @@ SELECT pg_promote();
 
 ### Reconfigure Old Primary as Replica
 
-After failover, convert old primary to replica:
+After failover, convert old primary to replica if it did not diverge from the promoted primary. If it accepted writes after the failover point, use `pg_rewind` or take a new base backup instead.
 
 ```bash
 # On old primary
@@ -277,11 +277,13 @@ sudo systemctl start postgresql
 
 ### Using pg_rewind (Faster)
 
+`pg_rewind` requires the target cluster to have data checksums enabled or `wal_log_hints = on`, and the source connection must use a role with sufficient permissions for a normal database connection.
+
 ```bash
 # On old primary (after it's stopped)
 sudo -u postgres pg_rewind \
     --target-pgdata=/var/lib/postgresql/16/main \
-    --source-server="host=new_primary.example.com user=replicator dbname=postgres"
+    --source-server="host=new_primary.example.com user=postgres dbname=postgres"
 
 # Create standby.signal and start
 ```
@@ -324,7 +326,7 @@ FROM pg_stat_replication;
 -- Replication lag (seconds)
 SELECT
     client_addr,
-    EXTRACT(EPOCH FROM (NOW() - replay_lag)) AS lag_seconds
+    EXTRACT(EPOCH FROM replay_lag) AS lag_seconds
 FROM pg_stat_replication;
 
 -- Slot lag (bytes)
@@ -338,7 +340,7 @@ FROM pg_replication_slots;
 
 ```yaml
 # Replication lag
-pg_replication_lag
+pg_stat_replication_pg_wal_lsn_diff
 
 # Slots behind
 pg_replication_slots_pg_wal_lsn_diff
@@ -351,7 +353,7 @@ groups:
   - name: postgresql-replication
     rules:
       - alert: PostgreSQLReplicationLag
-        expr: pg_replication_lag > 30
+        expr: pg_stat_replication_pg_wal_lsn_diff > 104857600
         for: 5m
         labels:
           severity: warning
@@ -359,7 +361,7 @@ groups:
           summary: "High replication lag"
 
       - alert: PostgreSQLReplicationDown
-        expr: pg_stat_replication_pg_current_wal_lsn == 0
+        expr: absent(pg_stat_replication_pg_wal_lsn_diff)
         for: 2m
         labels:
           severity: critical

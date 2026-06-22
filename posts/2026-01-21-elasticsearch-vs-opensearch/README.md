@@ -8,7 +8,7 @@ Description: A comprehensive comparison of Elasticsearch and OpenSearch, coverin
 
 ---
 
-OpenSearch is a fork of Elasticsearch created by AWS after Elastic changed to a non-open-source license. This guide compares both to help you make an informed decision.
+OpenSearch is a fork of Elasticsearch created by AWS after Elastic changed Elasticsearch and Kibana from Apache 2.0 to source-available licenses. This guide compares both to help you make an informed decision.
 
 ## Background
 
@@ -16,17 +16,18 @@ OpenSearch is a fork of Elasticsearch created by AWS after Elastic changed to a 
 
 - **2021**: Elastic changed Elasticsearch license from Apache 2.0 to SSPL/Elastic License
 - **2021**: AWS forked Elasticsearch 7.10.2 to create OpenSearch under Apache 2.0
+- **2024**: Elastic added AGPLv3 as a source-code licensing option for free portions of Elasticsearch and Kibana, while official distributions remain under Elastic License terms
 - **Since then**: Both projects have diverged with independent development
 
 ### Licensing
 
 | Aspect | Elasticsearch | OpenSearch |
 |--------|---------------|------------|
-| License | Elastic License 2.0 / SSPL | Apache 2.0 |
-| Commercial Use | Allowed with restrictions | Fully allowed |
-| SaaS Offering | Not allowed without agreement | Allowed |
+| License | Elastic License 2.0 / SSPL / AGPLv3 source-code options | Apache 2.0 |
+| Commercial Use | Allowed, subject to chosen license terms | Fully allowed |
+| SaaS Offering | Restricted under Elastic License; other options have copyleft obligations | Allowed |
 | Modification | Allowed | Allowed |
-| Patent Grant | Limited | Yes |
+| Patent Grant | Depends on chosen license | Yes |
 
 ## Feature Comparison
 
@@ -45,14 +46,14 @@ OpenSearch is a fork of Elasticsearch created by AWS after Elastic changed to a 
 
 | Feature | Elasticsearch | OpenSearch |
 |---------|---------------|------------|
-| Vector search (kNN) | Native (8.0+) | Native (2.0+) |
+| Vector search (kNN) | Native approximate kNN (8.0+) | Native `knn_vector` support (1.0+), Lucene HNSW engine (2.2+) |
 | ML inference | Elastic ML | OpenSearch ML |
-| Security (RBAC) | Basic (free), Advanced (paid) | Free |
-| Alerting | Paid (Watcher) | Free |
+| Security (RBAC) | Basic RBAC (free), advanced controls (paid) | Free |
+| Alerting | Basic Kibana alerting (free), Watcher and advanced connectors (paid) | Free |
 | Index Lifecycle Management | Yes | Yes (ISM) |
 | Cross-cluster replication | Paid | Free |
 | Anomaly detection | Paid | Free |
-| SQL support | Paid | Free |
+| SQL support | REST SQL APIs free; JDBC/ODBC clients paid | Free |
 
 ### Elasticsearch-Only Features
 
@@ -64,6 +65,7 @@ OpenSearch is a fork of Elasticsearch created by AWS after Elastic changed to a 
 - Machine Learning (advanced)
 - Searchable snapshots (frozen tier)
 - Runtime fields
+- ES|QL
 ```
 
 ### OpenSearch-Only Features
@@ -90,7 +92,7 @@ Most core APIs are compatible between Elasticsearch 7.x and OpenSearch:
 curl -X GET "localhost:9200/_cluster/health"
 curl -X GET "localhost:9200/_cat/indices"
 curl -X PUT "localhost:9200/my-index"
-curl -X POST "localhost:9200/my-index/_doc" -d '{"field": "value"}'
+curl -X POST "localhost:9200/my-index/_doc" -H "Content-Type: application/json" -d '{"field": "value"}'
 curl -X GET "localhost:9200/my-index/_search"
 ```
 
@@ -99,13 +101,13 @@ curl -X GET "localhost:9200/my-index/_search"
 OpenSearch has diverged in some areas:
 
 ```bash
-# Elasticsearch 8.x removed type parameter
+# Elasticsearch 8.x removed mapping types; use typeless document APIs
 curl -X PUT "localhost:9200/index/_doc/1" # ES 8.x
 curl -X PUT "localhost:9200/index/_doc/1" # OpenSearch (compatible)
 
 # Security API differences
 # Elasticsearch
-curl -X POST "localhost:9200/_security/user/newuser"
+curl -X PUT "localhost:9200/_security/user/newuser"
 
 # OpenSearch
 curl -X PUT "localhost:9200/_plugins/_security/api/internalusers/newuser"
@@ -179,7 +181,7 @@ Elasticsearch has made significant improvements in vector search:
 | Provider | Service |
 |----------|---------|
 | Elastic | Elastic Cloud |
-| AWS | Amazon OpenSearch (forked) |
+| AWS | Elastic Cloud on AWS |
 | GCP | Elastic Cloud on GCP |
 | Azure | Elastic Cloud on Azure |
 
@@ -208,11 +210,11 @@ Elasticsearch has made significant improvements in vector search:
 ```plaintext
 Elastic Cloud:
 - Standard: ~$95/month (2GB RAM, 60GB storage)
-- Includes all features
+- Feature availability depends on subscription tier
 
 Amazon OpenSearch:
 - t3.small.search: ~$25/month
-- Includes all features
+- Feature availability depends on engine version and service configuration
 
 Note: Prices are approximate and vary by configuration.
 ```
@@ -249,7 +251,6 @@ discovery.type: single-node
 
 # Enable security
 xpack.security.enabled: true
-xpack.security.transport.ssl.enabled: true
 
 # Enable ML
 xpack.ml.enabled: true
@@ -284,9 +285,7 @@ node.name: node-1
 network.host: 0.0.0.0
 discovery.type: single-node
 
-# Security plugin enabled by default
-plugins.security.ssl.transport.enabled: true
-plugins.security.ssl.http.enabled: true
+# Security plugin is installed by default; configure production TLS certificates separately
 ```
 
 ## Migration Considerations
@@ -296,7 +295,7 @@ plugins.security.ssl.http.enabled: true
 ```bash
 # Check compatibility
 # OpenSearch 1.x compatible with ES 7.10.x
-# OpenSearch 2.x has breaking changes
+# OpenSearch 2.x and 3.x have breaking changes
 
 # Client library changes
 # Before (Elasticsearch)
@@ -309,7 +308,8 @@ pip install opensearch-py
 ### From OpenSearch to Elasticsearch
 
 ```bash
-# Snapshot and restore works for data
+# Snapshot restore only works when source and target versions are compatible
+# For incompatible versions, use reindexing, Logstash, or an ingestion pipeline
 # Security configurations need reconfiguration
 # Custom plugins may not be compatible
 ```

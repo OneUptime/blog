@@ -47,7 +47,7 @@ const events = new QueueEvents('tasks', { connection });
 
 ```typescript
 // RabbitMQ - AMQP message broker
-import amqp from 'amqplib';
+import * as amqp from 'amqplib';
 
 // Connection to RabbitMQ broker
 const connection = await amqp.connect('amqp://localhost');
@@ -74,7 +74,7 @@ channel.consume('tasks', async (msg) => {
 // - Push-based (broker pushes to consumers)
 // - Exchange/Queue/Binding model
 // - Multiple exchange types (direct, fanout, topic, headers)
-// - Built-in clustering and federation
+// - Native clustering and federation support
 ```
 
 ### AWS SQS Architecture
@@ -113,7 +113,7 @@ for (const message of response.Messages || []) {
 // Architecture characteristics:
 // - Pull-based with long polling
 // - Fully managed (no infrastructure)
-// - At-least-once delivery
+// - Standard queues provide at-least-once delivery
 // - FIFO queues available
 ```
 
@@ -131,14 +131,14 @@ const features: FeatureMatrix[] = [
   {
     feature: 'Backend',
     bullmq: 'Redis',
-    rabbitmq: 'Erlang/OTP',
+    rabbitmq: 'RabbitMQ broker (Erlang/OTP)',
     sqs: 'AWS Managed',
   },
   {
     feature: 'Protocol',
     bullmq: 'Redis Protocol',
     rabbitmq: 'AMQP 0-9-1',
-    sqs: 'HTTP/REST',
+    sqs: 'HTTPS API',
   },
   {
     feature: 'Message Delivery',
@@ -149,13 +149,13 @@ const features: FeatureMatrix[] = [
   {
     feature: 'Job Priorities',
     bullmq: 'Yes (numeric)',
-    rabbitmq: 'Yes (0-255)',
+    rabbitmq: 'Yes (1-255, queue argument)',
     sqs: 'No (use multiple queues)',
   },
   {
     feature: 'Delayed Jobs',
     bullmq: 'Yes (native)',
-    rabbitmq: 'Plugin required',
+    rabbitmq: 'TTL/DLX or plugin',
     sqs: 'Yes (up to 15 min)',
   },
   {
@@ -166,7 +166,7 @@ const features: FeatureMatrix[] = [
   },
   {
     feature: 'Repeatable Jobs',
-    bullmq: 'Yes (cron/interval)',
+    bullmq: 'Yes (Job Schedulers; legacy repeatable jobs)',
     rabbitmq: 'No (external scheduler)',
     sqs: 'No (use EventBridge)',
   },
@@ -186,18 +186,18 @@ const features: FeatureMatrix[] = [
     feature: 'Message Routing',
     bullmq: 'Queue names',
     rabbitmq: 'Exchanges/Bindings',
-    sqs: 'Queue per topic',
+    sqs: 'Queue URL; SNS/EventBridge for fanout',
   },
   {
     feature: 'Dead Letter Queue',
-    bullmq: 'Manual implementation',
-    rabbitmq: 'Built-in',
-    sqs: 'Built-in',
+    bullmq: 'Failed set; DLQ manual',
+    rabbitmq: 'DLX configured',
+    sqs: 'Redrive policy',
   },
   {
     feature: 'FIFO Ordering',
-    bullmq: 'Yes (default)',
-    rabbitmq: 'Per queue',
+    bullmq: 'FIFO start order by default',
+    rabbitmq: 'FIFO per queue, with caveats',
     sqs: 'FIFO queues only',
   },
   {
@@ -210,7 +210,7 @@ const features: FeatureMatrix[] = [
     feature: 'Persistence',
     bullmq: 'Redis persistence',
     rabbitmq: 'Disk persistence',
-    sqs: 'Fully persistent',
+    sqs: 'Durable within retention period',
   },
 ];
 ```
@@ -295,7 +295,8 @@ async function fulfillOrder(order: OrderData): Promise<any> { return {}; }
 
 ```typescript
 // rabbitmq-implementation.ts
-import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import * as amqp from 'amqplib';
+import { Channel, ChannelModel } from 'amqplib';
 
 interface OrderData {
   orderId: string;
@@ -304,12 +305,13 @@ interface OrderData {
 }
 
 class RabbitMQOrderProcessor {
-  private connection: Connection | null = null;
+  private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
 
   async connect(): Promise<void> {
-    this.connection = await amqp.connect('amqp://localhost');
-    this.channel = await this.connection.createChannel();
+    const connection = await amqp.connect('amqp://localhost');
+    this.connection = connection;
+    this.channel = await connection.createChannel();
 
     // Declare exchanges and queues
     await this.channel.assertExchange('orders', 'direct', { durable: true });
@@ -551,32 +553,34 @@ interface ThroughputResult {
   latencyP99: number;
 }
 
-// Typical benchmarks (10,000 messages, 10 consumers)
+// Illustrative benchmarks (10,000 messages, 10 consumers).
+// Actual throughput and latency depend on workload, batching, topology,
+// network distance, broker configuration, and hardware.
 const throughputResults: ThroughputResult[] = [
   {
     system: 'BullMQ',
-    messagesPerSecond: 15000,
-    latencyP50: 5,  // ms
-    latencyP99: 25, // ms
+    messagesPerSecond: 15000, // Example Redis-backed job throughput
+    latencyP50: 5,  // ms, local network example
+    latencyP99: 25, // ms, local network example
   },
   {
     system: 'RabbitMQ',
-    messagesPerSecond: 25000,
-    latencyP50: 3,  // ms
-    latencyP99: 15, // ms
+    messagesPerSecond: 25000, // Example broker throughput for simple routing
+    latencyP50: 3,  // ms, local network example
+    latencyP99: 15, // ms, local network example
   },
   {
     system: 'AWS SQS',
-    messagesPerSecond: 3000, // Standard queue
-    latencyP50: 20, // ms
-    latencyP99: 100, // ms (network latency)
+    messagesPerSecond: 3000, // Example application-side polling throughput
+    latencyP50: 20, // ms, regional network example
+    latencyP99: 100, // ms, regional network example
   },
 ];
 
 // Notes:
 // - RabbitMQ: Highest throughput for simple pub/sub
 // - BullMQ: Best for job processing features
-// - SQS: Network latency dominates, but infinitely scalable
+// - SQS: Network latency dominates; standard queues scale automatically to very high throughput
 ```
 
 ### Memory and Resource Usage
@@ -606,7 +610,7 @@ const resourceComparison: ResourceUsage[] = [
     system: 'AWS SQS',
     memoryPerQueue: 'Managed (no local resources)',
     connections: 'HTTP connections (pooled)',
-    persistence: 'Fully managed, multi-AZ',
+    persistence: 'Managed durable storage, retention-limited',
   },
 ];
 ```
@@ -620,7 +624,7 @@ const resourceComparison: ResourceUsage[] = [
 const bullmqUseCases = {
   bestFor: [
     'Background job processing',
-    'Scheduled/cron tasks',
+    'Scheduled/cron tasks with Job Schedulers',
     'Jobs with dependencies (workflows)',
     'Rate-limited API calls',
     'Progress tracking needed',
@@ -706,8 +710,8 @@ const sqsUseCases = {
     'Serverless architectures (Lambda)',
     'AWS-native applications',
     'No infrastructure management needed',
-    'Unlimited scalability required',
-    'Multi-region deployment',
+    'Very high managed throughput required',
+    'AWS regional deployment with queues per region',
     'Integration with AWS services',
     'Compliance requirements (SOC, HIPAA)',
   ],
@@ -743,7 +747,8 @@ const sqsUseCases = {
 // Using multiple queue systems for different purposes
 
 import { Queue, Worker } from 'bullmq';
-import amqp from 'amqplib';
+import * as amqp from 'amqplib';
+import { Channel } from 'amqplib';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
 interface HybridQueueSystem {
@@ -755,7 +760,7 @@ interface HybridQueueSystem {
 
   // RabbitMQ for event distribution
   rabbitmq: {
-    channel: amqp.Channel;
+    channel: Channel;
   };
 
   // SQS for external service integration
@@ -767,7 +772,7 @@ interface HybridQueueSystem {
 class HybridOrderSystem {
   private bullmqQueue!: Queue;
   private bullmqWorker!: Worker;
-  private rabbitChannel!: amqp.Channel;
+  private rabbitChannel!: Channel;
   private sqsClient: SQSClient;
 
   constructor() {
@@ -835,7 +840,7 @@ class HybridOrderSystem {
 
 ```typescript
 // rabbitmq-to-bullmq-migration.ts
-import amqp from 'amqplib';
+import * as amqp from 'amqplib';
 import { Queue, Worker } from 'bullmq';
 
 // Pattern translation
@@ -959,7 +964,7 @@ const costComparison: CostAnalysis[] = [
   {
     system: 'AWS SQS',
     infrastructure: 'Fully managed',
-    scaling: 'Automatic',
+    scaling: 'Automatic within SQS quotas',
     estimatedMonthlyCost: '$12-40 (SQS requests only)',
   },
 ];
@@ -1021,9 +1026,9 @@ const decisionMatrix: DecisionCriteria[] = [
     reason: 'Built-in progress updates',
   },
   {
-    criteria: 'Global distribution',
+    criteria: 'AWS regional distribution',
     winner: 'SQS',
-    reason: 'Multi-region AWS support',
+    reason: 'Deploy queues in the AWS Regions you need',
   },
 ];
 ```

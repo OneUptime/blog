@@ -26,6 +26,9 @@ sudo dnf install pgpool-II
 ```conf
 # /etc/pgpool2/pgpool.conf
 
+# Clustering mode
+backend_clustering_mode = 'streaming_replication'
+
 # Backend servers
 backend_hostname0 = 'primary.example.com'
 backend_port0 = 5432
@@ -65,12 +68,12 @@ max_pool = 4  # Connections per child
 # Enable load balancing
 load_balance_mode = on
 
-# Read queries go to replicas
+# Eligible SELECT queries are load balanced across backends
 # Write queries go to primary
 
-# Whitelist functions for load balancing
-white_function_list = ''
-black_function_list = 'currval,lastval,nextval,setval'
+# Function lists for load balancing
+read_only_function_list = ''
+write_function_list = 'currval,lastval,nextval,setval'
 ```
 
 ## Failover Configuration
@@ -96,24 +99,28 @@ health_check_max_retries = 3
 
 FAILED_NODE_ID=$1
 FAILED_HOST=$2
-NEW_PRIMARY_ID=$5
-NEW_PRIMARY_HOST=$6
+NEW_MAIN_ID=$5
+NEW_MAIN_HOST=$6
+OLD_PRIMARY_ID=$8
 
-if [ $FAILED_NODE_ID -eq 0 ]; then
+if [ "$FAILED_NODE_ID" -eq "$OLD_PRIMARY_ID" ] && [ "$NEW_MAIN_ID" -ge 0 ]; then
     # Primary failed, promote replica
-    ssh -T $NEW_PRIMARY_HOST "sudo -u postgres pg_ctl promote -D /var/lib/postgresql/16/main"
+    ssh -T "$NEW_MAIN_HOST" "sudo -u postgres pg_ctl promote -D /var/lib/postgresql/16/main"
 fi
 ```
 
 ## Authentication
 
 ```conf
+# /etc/pgpool2/pgpool.conf
+enable_pool_hba = on
+
 # /etc/pgpool2/pool_hba.conf
 host all all 0.0.0.0/0 scram-sha-256
 
 # /etc/pgpool2/pool_passwd
-# Generate with: pg_md5 -m -u username password
-myuser:md5hash
+# Generate with: pg_enc -m -k /path/to/.pgpoolkey -u username -p
+myuser:AESencryptedpassword
 ```
 
 ## Client Connection

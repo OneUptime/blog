@@ -137,7 +137,7 @@ catch {
 # Get all VMs with the specified tag
 Write-Output "Finding VMs with tag $TagName = $TagValue..."
 $vms = Get-AzVM | Where-Object {
-    $_.Tags[$TagName] -eq $TagValue
+    $_.Tags -and $_.Tags[$TagName] -eq $TagValue
 }
 
 if ($vms.Count -eq 0) {
@@ -209,8 +209,7 @@ This runbook finds and deletes managed disks that are not attached
 to any VM. It can run in dry-run mode to preview changes.
 """
 
-import os
-import sys
+from datetime import datetime, timezone
 import automationassets
 from azure.identity import ManagedIdentityCredential
 from azure.mgmt.compute import ComputeManagementClient
@@ -224,15 +223,25 @@ def get_automation_variable(name):
         print(f"Warning: Could not get variable {name}: {e}")
         return None
 
+def get_bool(value, default=False):
+    """Convert Automation variable values to a boolean."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "y")
+
+def get_int(value, default):
+    """Convert Automation variable values to an integer."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 def main():
     # Get parameters from automation variables
-    dry_run = get_automation_variable("DiskCleanup_DryRun")
-    if dry_run is None:
-        dry_run = True  # Default to dry run for safety
-
-    retention_days = get_automation_variable("DiskCleanup_RetentionDays")
-    if retention_days is None:
-        retention_days = 30
+    dry_run = get_bool(get_automation_variable("DiskCleanup_DryRun"), default=True)
+    retention_days = get_int(get_automation_variable("DiskCleanup_RetentionDays"), default=30)
 
     print(f"Running in {'dry-run' if dry_run else 'live'} mode")
     print(f"Looking for disks unattached for more than {retention_days} days")
@@ -246,6 +255,7 @@ def main():
 
     total_disks_found = 0
     total_size_gb = 0
+    now = datetime.now(timezone.utc)
 
     for subscription in subscriptions:
         sub_id = subscription.subscription_id
@@ -260,12 +270,23 @@ def main():
         for disk in disks:
             # Check if disk is unattached
             if disk.disk_state == "Unattached":
+                if disk.time_created:
+                    disk_created = disk.time_created
+                    if disk_created.tzinfo is None:
+                        disk_created = disk_created.replace(tzinfo=timezone.utc)
+                    age_days = (now - disk_created).days
+                    if age_days < retention_days:
+                        continue
+                else:
+                    age_days = "Unknown"
+
                 disk_size = disk.disk_size_gb or 0
 
                 print(f"  Found unattached disk: {disk.name}")
                 print(f"    Resource Group: {disk.id.split('/')[4]}")
                 print(f"    Size: {disk_size} GB")
                 print(f"    SKU: {disk.sku.name if disk.sku else 'Unknown'}")
+                print(f"    Age: {age_days} days")
 
                 total_disks_found += 1
                 total_size_gb += disk_size
@@ -276,7 +297,8 @@ def main():
                         rg_name = disk.id.split('/')[4]
 
                         print(f"    Deleting disk {disk.name}...")
-                        compute_client.disks.begin_delete(rg_name, disk.name)
+                        poller = compute_client.disks.begin_delete(rg_name, disk.name)
+                        poller.result()
                         print(f"    Successfully deleted {disk.name}")
                     except Exception as e:
                         print(f"    Error deleting disk: {e}")
@@ -300,40 +322,64 @@ if __name__ == "__main__":
 
 Create schedules to run runbooks automatically:
 
-```bash
+```powershell
 # Create a schedule for stopping VMs at 7 PM on weekdays
-az automation schedule create \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --name "WeekdayEvening" \
-    --description "Run at 7 PM on weekdays" \
-    --start-time "2026-01-25T19:00:00Z" \
-    --frequency Week \
-    --interval 1 \
-    --time-zone "Eastern Standard Time"
+$weekdays = @(
+    [System.DayOfWeek]::Monday,
+    [System.DayOfWeek]::Tuesday,
+    [System.DayOfWeek]::Wednesday,
+    [System.DayOfWeek]::Thursday,
+    [System.DayOfWeek]::Friday
+)
+
+New-AzAutomationSchedule `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Name "WeekdayEvening" `
+    -Description "Run at 7 PM on weekdays" `
+    -StartTime "2026-07-01 19:00:00" `
+    -WeekInterval 1 `
+    -DaysOfWeek $weekdays `
+    -TimeZone "America/New_York"
 
 # Link the schedule to a runbook with parameters
-az automation job-schedule create \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --runbook-name "Start-Stop-VMs" \
-    --schedule-name "WeekdayEvening" \
-    --parameters Action=Stop TagName=AutoShutdown TagValue=true
+$parameters = @{
+    Action = "Stop"
+    TagName = "AutoShutdown"
+    TagValue = "true"
+}
+
+Register-AzAutomationScheduledRunbook `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -RunbookName "Start-Stop-VMs" `
+    -ScheduleName "WeekdayEvening" `
+    -Parameters $parameters
 ```
 
 ## Creating Webhooks for External Triggers
 
 Webhooks allow external systems to trigger runbooks:
 
-```bash
+```powershell
 # Create a webhook (note: the URI is only shown once!)
-az automation webhook create \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --name "TriggerVMStart" \
-    --runbook-name "Start-Stop-VMs" \
-    --expiry-time "2027-01-24T00:00:00Z" \
-    --parameters Action=Start TagName=Environment TagValue=Development
+$parameters = @{
+    Action = "Start"
+    TagName = "Environment"
+    TagValue = "Development"
+}
+
+$webhook = New-AzAutomationWebhook `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Name "TriggerVMStart" `
+    -RunbookName "Start-Stop-VMs" `
+    -ExpiryTime "2027-01-24T00:00:00Z" `
+    -IsEnabled $true `
+    -Parameters $parameters `
+    -Force
+
+$webhook.WebhookURI
 ```
 
 Call the webhook from external systems:
@@ -342,31 +388,31 @@ Call the webhook from external systems:
 # Example: Trigger from curl
 curl -X POST "https://webhook-uri-from-above" \
     -H "Content-Type: application/json" \
-    -d '{"TagName": "Environment", "TagValue": "Production"}'
+    -d '{}'
 ```
 
 ## Monitoring and Troubleshooting
 
 ### View Job History
 
-```bash
+```powershell
 # List recent jobs
-az automation job list \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --output table
+Get-AzAutomationJob `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation"
 
 # Get job details
-az automation job show \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --name "job-id-here"
+Get-AzAutomationJob `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Id "job-id-here"
 
 # Get job output
-az automation job-output \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --job-name "job-id-here"
+Get-AzAutomationJobOutput `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Id "job-id-here" `
+    -Stream Any
 ```
 
 ### Common Issues and Solutions
@@ -390,19 +436,19 @@ catch {
 
 **Issue: Module not found**
 
-```bash
+```powershell
 # Import required modules
-az automation module create \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --name Az.Accounts \
-    --content-link "https://www.powershellgallery.com/api/v2/package/Az.Accounts"
+New-AzAutomationModule `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Name "Az.Accounts" `
+    -ContentLinkUri "https://www.powershellgallery.com/api/v2/package/Az.Accounts"
 
-az automation module create \
-    --automation-account-name myAutomationAccount \
-    --resource-group rg-automation \
-    --name Az.Compute \
-    --content-link "https://www.powershellgallery.com/api/v2/package/Az.Compute"
+New-AzAutomationModule `
+    -AutomationAccountName "myAutomationAccount" `
+    -ResourceGroupName "rg-automation" `
+    -Name "Az.Compute" `
+    -ContentLinkUri "https://www.powershellgallery.com/api/v2/package/Az.Compute"
 ```
 
 **Issue: Runbook timeout**

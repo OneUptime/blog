@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing multi-level caching with Redi
 
 ---
 
-> When milliseconds matter, even Redis network latency can be too slow. Multi-level caching combines a fast local in-memory cache (L1) with Redis as a distributed cache (L2), giving you sub-microsecond local hits while maintaining consistency across multiple application instances.
+> When milliseconds matter, even Redis network latency can be too slow. Multi-level caching combines a fast local in-memory cache (L1) with Redis as a distributed cache (L2), giving you sub-microsecond local hits while sharing cached data across multiple application instances.
 
 The L1/L2 cache pattern is inspired by CPU cache hierarchies - small, fast caches backed by larger, slower ones.
 
@@ -46,7 +46,7 @@ flowchart TB
 import redis
 import json
 import time
-from typing import Any, Optional, Callable
+from typing import Any, Optional, Callable, List
 from functools import wraps
 from collections import OrderedDict
 import threading
@@ -59,8 +59,8 @@ class LRUCache:
         self.max_size = max_size
         self.lock = threading.RLock()
 
-    def get(self, key: str) -> Optional[tuple]:
-        """Get value and TTL expiry time"""
+    def get(self, key: str) -> Optional[Any]:
+        """Get value if present and unexpired"""
         with self.lock:
             if key not in self.cache:
                 return None
@@ -156,7 +156,7 @@ class MultiLevelCache:
         self.l1.set(key, value, l1_ttl)
 
         # Set in L2
-        self.l2.setex(key, l2_ttl, json.dumps(value, default=str))
+        self.l2.set(key, json.dumps(value, default=str), ex=l2_ttl)
 
     def delete(self, key: str):
         """Delete from both cache levels"""
@@ -271,7 +271,7 @@ product = get_product(123)
 ## Node.js Implementation
 
 ```javascript
-const Redis = require('redis');
+import { createClient } from 'redis';
 
 class LRUCache {
     constructor(maxSize = 1000) {
@@ -366,7 +366,7 @@ class MultiLevelCache {
         this.l1.set(key, value, l1TtlMs);
 
         // Set in L2
-        await this.l2.setEx(key, l2Ttl, JSON.stringify(value));
+        await this.l2.set(key, JSON.stringify(value), { EX: l2Ttl });
     }
 
     async delete(key) {
@@ -401,7 +401,8 @@ class MultiLevelCache {
 }
 
 // Usage
-const redisClient = Redis.createClient();
+const redisClient = createClient();
+redisClient.on('error', err => console.log('Redis Client Error', err));
 await redisClient.connect();
 
 const cache = new MultiLevelCache({
@@ -433,7 +434,7 @@ import json
 class DistributedMultiLevelCache:
     """
     Multi-level cache with distributed invalidation via Pub/Sub.
-    Ensures L1 caches across all instances stay consistent.
+    Helps L1 caches across active instances stay consistent.
     """
 
     def __init__(self, redis_client, channel: str = "cache_invalidation"):
@@ -476,7 +477,7 @@ class DistributedMultiLevelCache:
     def set(self, key: str, value: Any):
         """Set in both levels"""
         self.l1.set(key, value, self.l1_ttl)
-        self.l2.setex(key, self.l2_ttl, json.dumps(value, default=str))
+        self.l2.set(key, json.dumps(value, default=str), ex=self.l2_ttl)
 
     def get(self, key: str) -> Optional[Any]:
         """Get from cache hierarchy"""
@@ -499,7 +500,8 @@ class DistributedMultiLevelCache:
         self.l1.delete(key)
         self.l2.delete(key)
 
-        # Notify other instances to invalidate their L1
+        # Notify other active instances to invalidate their L1.
+        # Redis Pub/Sub is at-most-once, so missed messages are not replayed.
         self.l2.publish(self.channel, json.dumps({
             'action': 'delete',
             'key': key
@@ -596,7 +598,7 @@ class VersionedMultiLevelCache:
         }
 
         # Set L2
-        self.l2.setex(full_key, ttl, json.dumps(value, default=str))
+        self.l2.set(full_key, json.dumps(value, default=str), ex=ttl)
 
     def invalidate_namespace(self, namespace: str):
         """
@@ -679,7 +681,7 @@ class AdaptiveMultiLevelCache:
         l1_ttl = self._calculate_l1_ttl(key)
 
         self.l1.set(key, value, l1_ttl)
-        self.l2.setex(key, l2_ttl, json.dumps(value, default=str))
+        self.l2.set(key, json.dumps(value, default=str), ex=l2_ttl)
 ```
 
 ### Read-Through with Write-Around
@@ -717,7 +719,7 @@ class ReadThroughWriteAroundCache:
 
         if value:
             self.l1.set(key, value, 60)
-            self.l2.setex(key, 300, json.dumps(value, default=str))
+            self.l2.set(key, json.dumps(value, default=str), ex=300)
 
         return value
 
@@ -857,7 +859,7 @@ class WarmableMultiLevelCache(MultiLevelCache):
 Multi-level caching provides the best of both worlds:
 
 - **L1 (local)**: Sub-microsecond access for hot data
-- **L2 (Redis)**: Shared cache across instances with persistence
+- **L2 (Redis)**: Shared cache across instances with optional persistence
 
 Key takeaways:
 - Use shorter TTLs for L1 than L2

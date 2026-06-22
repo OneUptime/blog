@@ -26,7 +26,7 @@ Start by creating a new project and installing the required dependencies:
 mkdir bullmq-typescript-example
 cd bullmq-typescript-example
 npm init -y
-npm install bullmq ioredis
+npm install bullmq
 npm install -D typescript @types/node ts-node nodemon
 ```
 
@@ -78,7 +78,7 @@ Update your `package.json` scripts:
 Create a directory structure for your project:
 
 ```bash
-mkdir -p src/jobs src/queues src/workers src/types
+mkdir -p src/jobs src/queues src/services src/workers/processors src/types
 ```
 
 First, define your job data types in `src/types/jobs.ts`:
@@ -160,20 +160,19 @@ Create a reusable queue factory in `src/queues/queue-factory.ts`:
 ```typescript
 // src/queues/queue-factory.ts
 
-import { Queue, QueueOptions, JobsOptions } from 'bullmq';
-import { Redis } from 'ioredis';
+import { Queue, QueueOptions } from 'bullmq';
 
-// Shared Redis connection for all queues
-const connection = new Redis({
+// Shared Redis connection options for all queues and workers
+const connection = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
-});
+};
 
 // Default queue options
-const defaultQueueOptions: Partial<QueueOptions> = {
+const defaultQueueOptions: QueueOptions = {
   connection,
   defaultJobOptions: {
     attempts: 3,
@@ -196,10 +195,16 @@ const defaultQueueOptions: Partial<QueueOptions> = {
 export function createQueue<TData, TResult = void>(
   name: string,
   options?: Partial<QueueOptions>
-): Queue<TData, TResult> {
-  return new Queue<TData, TResult>(name, {
+): Queue<TData, TResult, string> {
+  const { defaultJobOptions, ...queueOptions } = options || {};
+
+  return new Queue<TData, TResult, string>(name, {
     ...defaultQueueOptions,
-    ...options,
+    ...queueOptions,
+    defaultJobOptions: {
+      ...defaultQueueOptions.defaultJobOptions,
+      ...defaultJobOptions,
+    },
   });
 }
 
@@ -246,7 +251,6 @@ export const imageQueue = createQueue<ImageProcessingJobData, ImageProcessingJob
   {
     defaultJobOptions: {
       attempts: 3,
-      timeout: 300000, // 5 minutes
     },
   }
 );
@@ -257,12 +261,11 @@ export const reportQueue = createQueue<ReportGenerationJobData, ReportGeneration
   {
     defaultJobOptions: {
       attempts: 2,
-      timeout: 600000, // 10 minutes
     },
   }
 );
 
-// Webhook delivery queue with rate limiting
+// Webhook delivery queue
 export const webhookQueue = createQueue<WebhookDeliveryJobData, WebhookDeliveryJobResult>(
   'webhook-delivery',
   {
@@ -288,7 +291,7 @@ import { Worker, WorkerOptions, Job, Processor } from 'bullmq';
 import { connection } from '../queues/queue-factory';
 
 // Default worker options
-const defaultWorkerOptions: Partial<WorkerOptions> = {
+const defaultWorkerOptions: WorkerOptions = {
   connection,
   concurrency: 5,
   limiter: {
@@ -559,8 +562,8 @@ export class JobService {
   async deliverWebhook(data: WebhookDeliveryJobData, options?: JobsOptions) {
     const job = await webhookQueue.add('deliver-webhook', data, {
       ...options,
-      // Use URL as job ID to prevent duplicates
-      jobId: `webhook_${Buffer.from(data.url).toString('base64')}_${Date.now()}`,
+      // Use URL as job ID to prevent duplicate delivery jobs for the same URL
+      jobId: `webhook_${Buffer.from(data.url).toString('base64url')}`,
     });
     console.log(`Webhook job created: ${job.id}`);
     return job;
@@ -664,7 +667,15 @@ For more complex scenarios, you can use discriminated unions and generic utiliti
 ```typescript
 // src/types/advanced.ts
 
-import { Job, Queue, Worker } from 'bullmq';
+import { Job, Queue } from 'bullmq';
+import {
+  EmailJobData,
+  EmailJobResult,
+  ImageProcessingJobData,
+  ImageProcessingJobResult,
+  WebhookDeliveryJobData,
+  WebhookDeliveryJobResult,
+} from './jobs';
 
 // Discriminated union for job types
 export type JobDefinition =
@@ -712,6 +723,8 @@ Create custom error types for better error handling:
 
 ```typescript
 // src/types/errors.ts
+
+import { Job } from 'bullmq';
 
 export class JobProcessingError extends Error {
   constructor(

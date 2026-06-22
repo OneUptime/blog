@@ -14,10 +14,12 @@ Encrypting log data in transit is crucial for security and compliance. Grafana L
 
 Before starting, ensure you have:
 
-- Grafana Loki 2.4 or later
+- Grafana Loki 3.x for the configuration examples using TSDB schema v13
 - OpenSSL or similar tool for certificate generation
 - Understanding of PKI and certificate concepts
-- Access to configure clients (Promtail, Grafana, etc.)
+- Access to configure clients (Grafana Alloy, Grafana, Fluent Bit, Vector, etc.)
+
+Note: Promtail reached end of life on March 2, 2026. The Promtail examples below are retained for legacy installations; use Grafana Alloy or another supported client for new deployments.
 
 ## TLS Architecture
 
@@ -60,7 +62,10 @@ openssl genrsa -out ca/ca.key 4096
 
 # Generate CA certificate
 openssl req -new -x509 -days 3650 -key ca/ca.key -out ca/ca.crt \
-    -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/OU=Platform/CN=Loki CA"
+    -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/OU=Platform/CN=Loki CA" \
+    -addext "basicConstraints = critical,CA:TRUE" \
+    -addext "keyUsage = critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier = hash"
 
 # Verify CA certificate
 openssl x509 -in ca/ca.crt -text -noout | head -20
@@ -116,7 +121,8 @@ openssl req -new -key server/loki.key -out server/loki.csr \
 cat > server/loki-ext.conf << EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
@@ -157,10 +163,18 @@ openssl genrsa -out clients/${CLIENT_NAME}.key 2048
 openssl req -new -key clients/${CLIENT_NAME}.key -out clients/${CLIENT_NAME}.csr \
     -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/OU=Platform/CN=${CLIENT_NAME}"
 
+# Create client certificate extension config
+cat > clients/${CLIENT_NAME}-ext.conf << EOF
+basicConstraints=CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = clientAuth
+EOF
+
 # Sign with CA
 openssl x509 -req -in clients/${CLIENT_NAME}.csr \
     -CA ca/ca.crt -CAkey ca/ca.key -CAcreateserial \
-    -out clients/${CLIENT_NAME}.crt -days 365
+    -out clients/${CLIENT_NAME}.crt -days 365 \
+    -extfile clients/${CLIENT_NAME}-ext.conf
 
 # Verify
 openssl verify -CAfile ca/ca.crt clients/${CLIENT_NAME}.crt
@@ -208,14 +222,14 @@ server:
 common:
   instance_addr: 127.0.0.1
   path_prefix: /loki
-  storage:
-    filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
   replication_factor: 1
   ring:
     kvstore:
       store: inmemory
+
+storage_config:
+  filesystem:
+    directory: /loki/chunks
 
 schema_config:
   configs:
@@ -262,7 +276,7 @@ version: "3.8"
 
 services:
   loki:
-    image: grafana/loki:2.9.4
+    image: grafana/loki:3.7.2
     container_name: loki
     ports:
       - "3100:3100"
@@ -464,10 +478,12 @@ server:
     cert_file: /etc/loki/certs/server.crt
     key_file: /etc/loki/certs/server.key
     client_ca_file: /etc/loki/certs/ca.crt
+    client_auth_type: RequireAndVerifyClientCert
   grpc_tls_config:
     cert_file: /etc/loki/certs/server.crt
     key_file: /etc/loki/certs/server.key
     client_ca_file: /etc/loki/certs/ca.crt
+    client_auth_type: RequireAndVerifyClientCert
 
 # Ingester client TLS (for distributors connecting to ingesters)
 ingester_client:
@@ -490,8 +506,8 @@ frontend:
 memberlist:
   bind_port: 7946
   tls_enabled: true
-  tls_cert_path: /etc/loki/certs/memberlist.crt
-  tls_key_path: /etc/loki/certs/memberlist.key
+  tls_cert_path: /etc/loki/certs/client.crt
+  tls_key_path: /etc/loki/certs/client.key
   tls_ca_path: /etc/loki/certs/ca.crt
 ```
 
@@ -524,27 +540,30 @@ spec:
 ### Loki Helm Values with TLS
 
 ```yaml
-# values.yaml
+# values.yaml for a single-binary Loki Helm deployment
 loki:
   server:
     http_tls_config:
       cert_file: /etc/loki/certs/tls.crt
       key_file: /etc/loki/certs/tls.key
       client_ca_file: /etc/loki/certs/ca.crt
+      client_auth_type: RequireAndVerifyClientCert
     grpc_tls_config:
       cert_file: /etc/loki/certs/tls.crt
       key_file: /etc/loki/certs/tls.key
       client_ca_file: /etc/loki/certs/ca.crt
+      client_auth_type: RequireAndVerifyClientCert
 
-extraVolumes:
-  - name: tls-certs
-    secret:
-      secretName: loki-tls-secret
+singleBinary:
+  extraVolumes:
+    - name: tls-certs
+      secret:
+        secretName: loki-tls-secret
 
-extraVolumeMounts:
-  - name: tls-certs
-    mountPath: /etc/loki/certs
-    readOnly: true
+  extraVolumeMounts:
+    - name: tls-certs
+      mountPath: /etc/loki/certs
+      readOnly: true
 ```
 
 ## Testing TLS Configuration
@@ -610,13 +629,28 @@ CA_KEY="${CERT_DIR}/ca.key"
 # Generate new server certificate
 openssl genrsa -out ${CERT_DIR}/loki-new.key 2048
 
+cat > ${CERT_DIR}/loki-new-ext.conf << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = loki.example.com
+DNS.2 = loki
+DNS.3 = localhost
+IP.1 = 127.0.0.1
+EOF
+
 openssl req -new -key ${CERT_DIR}/loki-new.key \
     -out ${CERT_DIR}/loki-new.csr \
     -subj "/CN=loki.example.com"
 
 openssl x509 -req -in ${CERT_DIR}/loki-new.csr \
     -CA ${CA_CERT} -CAkey ${CA_KEY} -CAcreateserial \
-    -out ${CERT_DIR}/loki-new.crt -days 365
+    -out ${CERT_DIR}/loki-new.crt -days 365 \
+    -extfile ${CERT_DIR}/loki-new-ext.conf
 
 # Atomic swap
 mv ${CERT_DIR}/loki.crt ${CERT_DIR}/loki-old.crt
@@ -629,7 +663,7 @@ mv ${CERT_DIR}/loki-new.key ${CERT_DIR}/loki.key
 docker restart loki
 
 # Cleanup
-rm -f ${CERT_DIR}/loki-new.csr ${CERT_DIR}/*.srl
+rm -f ${CERT_DIR}/loki-new.csr ${CERT_DIR}/loki-new-ext.conf ${CERT_DIR}/*.srl
 
 echo "Certificates rotated successfully"
 ```

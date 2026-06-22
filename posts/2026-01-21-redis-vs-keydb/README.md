@@ -8,22 +8,22 @@ Description: A detailed comparison of Redis and KeyDB covering multi-threading a
 
 ---
 
-KeyDB is a high-performance fork of Redis that introduces multi-threading and other enhancements while maintaining full Redis compatibility. This guide compares both systems to help you decide if KeyDB's performance benefits are worth the trade-offs.
+KeyDB is a high-performance fork of Redis that introduces multi-threading and other enhancements while maintaining compatibility with the Redis protocol and common Redis clients. This guide compares both systems to help you decide if KeyDB's performance benefits are worth the trade-offs.
 
 ## What is KeyDB?
 
-KeyDB was created by EQ Alpha Inc. in 2019 as a multi-threaded fork of Redis. It aims to provide higher throughput by utilizing multiple CPU cores while maintaining 100% compatibility with Redis clients and commands.
+KeyDB was created by EQ Alpha Inc. in 2019 as a multi-threaded fork of Redis. It aims to provide higher throughput by utilizing multiple CPU cores while maintaining compatibility with Redis clients and the Redis protocol.
 
 ## Quick Comparison
 
 | Feature | Redis | KeyDB |
 |---------|-------|-------|
 | Threading | Single-threaded (I/O threads in 6.0+) | Multi-threaded |
-| License | SSPL (Server Side Public License) | BSD 3-Clause |
+| License | AGPLv3 for Redis 8.0+; Redis 7.4-7.8 also used RSALv2/SSPLv1 | BSD 3-Clause |
 | Active-Active Replication | Enterprise only | Open source |
-| Flash/SSD Storage | Enterprise only | Open source |
-| Namespaces | No | Yes (multi-tenant) |
-| Subkey Expires | No | Yes |
+| Flash/SSD Storage | Redis Software/Enterprise feature | Available in KeyDB builds with FLASH support |
+| Logical databases and ACL key patterns | Yes | Yes |
+| Subkey Expires | Hash-field expiration in Redis 7.4+/8.0+; no set-member expiration | Yes |
 | Protocol | RESP | RESP (compatible) |
 | Clustering | Redis Cluster | Redis Cluster compatible |
 | Persistence | RDB, AOF | RDB, AOF |
@@ -78,11 +78,11 @@ Each thread handles the full request lifecycle (read, execute, write).
 ### Benchmark Setup
 
 ```bash
-# KeyDB benchmark (same tool as Redis)
-keydb-benchmark -h localhost -p 6379 -n 1000000 -c 100 -t set,get --threads 4
+# KeyDB benchmark (KeyDB recommends memtier for high-throughput tests)
+memtier_benchmark -s localhost -p 6379 --requests=20000 --clients=100 --threads=4 --test-time=60 --ratio=1:1
 
 # Redis benchmark
-redis-benchmark -h localhost -p 6379 -n 1000000 -c 100 -t set,get
+redis-benchmark -h localhost -p 6379 -n 1000000 -c 100 -t set,get -P 10 --threads 4
 ```
 
 ### Throughput Results
@@ -138,29 +138,32 @@ KeyDB offers multi-master replication in the open-source version:
 
 ```bash
 # keydb.conf on Node 1
-replicaof 192.168.1.2 6379
 multi-master yes
+active-replica yes
+replicaof 192.168.1.2 6379
 
 # keydb.conf on Node 2
-replicaof 192.168.1.1 6379
 multi-master yes
+active-replica yes
+replicaof 192.168.1.1 6379
 ```
 
 Both nodes accept writes and replicate to each other.
 
-**Conflict Resolution**: Last-write-wins based on timestamp
+**Conflict Resolution**: KeyDB defaults to last-operation-wins behavior, but the documentation warns that when multiple masters contain conflicting values for the same key, which value is retained is undefined.
 
 ```python
 # Node 1: SET key "value1" at T1
 # Node 2: SET key "value2" at T2
-# Result: If T2 > T1, "value2" wins on both nodes
+# Result: Conflict handling is last-operation-wins, but same-key conflicts
+# across multiple masters should be treated as application-level conflicts.
 ```
 
 **Redis Equivalent**: Requires Redis Enterprise or custom implementation.
 
 ### Subkey Expires
 
-KeyDB allows expiration on hash fields and set members:
+KeyDB allows expiration on subkeys such as hash fields and set members:
 
 ```bash
 # KeyDB - expire a hash field
@@ -170,17 +173,20 @@ EXPIREMEMBER user:1:sessions sess_abc 3600
 EXPIREMEMBER user:1:tokens token_xyz 1800
 ```
 
-**Redis Equivalent**: Must use separate keys or manual cleanup:
+**Redis Equivalent**: Redis 7.4+/8.0+ supports hash-field expiration with commands such as `HEXPIRE`, but set members still require separate keys or manual cleanup:
 
-```python
-# Redis workaround
-r.set('user:1:session:sess_abc', 'data', ex=3600)
+```bash
+# Redis 7.4+/8.0+ - expire a hash field
+HEXPIRE user:1:sessions 3600 FIELDS 1 sess_abc
+
+# Redis workaround for set members
+SET user:1:token:token_xyz data EX 1800
 # Or use sorted sets with timestamps
 ```
 
-### Namespaces (Multi-Tenancy)
+### Logical Databases and ACL Key Patterns
 
-KeyDB supports database namespaces for multi-tenant isolation:
+Both Redis and KeyDB support numbered logical databases:
 
 ```bash
 # keydb.conf
@@ -192,22 +198,22 @@ SELECT 0  # Tenant A
 SELECT 1  # Tenant B
 ```
 
-While Redis also has SELECT, KeyDB adds namespace authentication:
+Both Redis and KeyDB ACLs can restrict users to key patterns:
 
 ```bash
-# KeyDB ACL with namespace
+# ACL with a tenant key prefix
 ACL SETUSER tenant_a on >password ~tenant_a:* +@all
 ```
 
 ### FLASH Storage Support
 
-KeyDB Pro (and open-source with compilation flag) supports NVMe/SSD storage:
+KeyDB supports NVMe/SSD-backed FLASH storage in builds that include FLASH support:
 
 ```bash
 # keydb.conf
 storage-provider flash /mnt/nvme/keydb
 maxmemory 10gb
-flash-max-memory 100gb  # Extend to SSD
+maxmemory-policy allkeys-lfu
 ```
 
 This allows datasets larger than RAM with automatic tiering.
@@ -218,7 +224,7 @@ This allows datasets larger than RAM with automatic tiering.
 
 ### Protocol Compatibility
 
-KeyDB is 100% compatible with Redis protocol (RESP):
+KeyDB is compatible with the Redis protocol (RESP):
 
 ```python
 import redis
@@ -231,7 +237,7 @@ r.get('key')
 
 ### Command Compatibility
 
-KeyDB supports all Redis commands:
+KeyDB maintains compatibility with the Redis command set it tracks, and standard Redis commands work as expected:
 
 ```bash
 # All standard Redis commands work
@@ -274,7 +280,7 @@ sentinel down-after-milliseconds mymaster 5000
 # keydb.conf
 
 # Threading
-server-threads 4              # Worker threads (default: 1)
+server-threads 4              # Worker threads (default: 2)
 server-thread-affinity true   # Pin threads to CPU cores
 
 # Active replication
@@ -319,10 +325,10 @@ io-threads-do-reads yes
 
 | Aspect | Redis | KeyDB |
 |--------|-------|-------|
-| Commercial Support | Redis Ltd. | Snap Inc. |
+| Commercial Support | Redis Ltd. | No paid support services; community support managed by Snap Inc. |
 | Community Support | Extensive | Growing |
 | Documentation | Comprehensive | Good (Redis-compatible) |
-| Updates | Regular releases | Regular releases |
+| Updates | Regular releases | Latest GitHub release was KeyDB v6.3.4 in October 2023 |
 
 ### Operational Differences
 
@@ -356,8 +362,8 @@ keydb-cli INFO memory
 
 ```bash
 # Ubuntu/Debian
-curl -fsSL https://download.keydb.dev/keydb-ppa/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/keydb-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/keydb-archive-keyring.gpg] https://download.keydb.dev/keydb-ppa $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/keydb.list
+echo "deb https://download.keydb.dev/open-source-dist $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/keydb.list
+sudo wget -O /etc/apt/trusted.gpg.d/keydb.gpg https://download.keydb.dev/open-source-dist/keyring.gpg
 sudo apt update && sudo apt install keydb
 ```
 
@@ -419,9 +425,9 @@ redis-server --replicaof keydb-master 6379
 
 1. **Need Higher Throughput**: High-concurrency workloads
 2. **Multi-Master Required**: Active-active without Enterprise
-3. **Large Datasets**: Need FLASH storage extension
-4. **Subkey Expiration**: Need field-level TTL
-5. **Open-Source License**: Prefer BSD over SSPL
+3. **Large Datasets**: Need FLASH storage extension and can accept its beta/experimental status
+4. **Subkey Expiration**: Need set-member TTL or KeyDB's subkey expiration semantics
+5. **Open-Source License**: Prefer BSD over AGPLv3/RSALv2/SSPLv1 options
 
 ### Stick with Redis If:
 
@@ -471,7 +477,7 @@ benchmark_operations('keydb-host', 6379)
 
 ## Conclusion
 
-KeyDB offers significant performance improvements for high-concurrency workloads through multi-threading, along with features like active-active replication and FLASH storage in its open-source version. However, Redis remains the more established choice with a larger ecosystem.
+KeyDB offers significant performance improvements for high-concurrency workloads through multi-threading, along with features like active-active replication and FLASH storage in supported builds. However, Redis remains the more established choice with a larger ecosystem.
 
 **Key Decision Factors**:
 

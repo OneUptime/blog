@@ -17,62 +17,80 @@ This guide covers deploying Jaeger in Kubernetes and instrumenting applications 
 ```mermaid
 flowchart LR
     subgraph "Applications"
-        A1[Service A] --> |Traces| AG[OTel Agent]
-        A2[Service B] --> |Traces| AG
-        A3[Service C] --> |Traces| AG
+        A1[Service A] --> |OTLP Traces| AG[OTel Collector]
+        A2[Service B] --> |OTLP Traces| AG
+        A3[Service C] --> |OTLP Traces| AG
     end
     
     subgraph "Jaeger Backend"
-        AG --> COL[Collector]
-        COL --> Q[Query]
+        AG --> COL[Jaeger v2 Collector]
         COL --> ST[(Storage<br/>Elasticsearch/<br/>Cassandra)]
-        Q --> ST
+        Q[Jaeger Query/UI] --> ST
     end
     
-    subgraph "UI"
-        Q --> UI[Jaeger UI]
-    end
+    Q --> UI[Jaeger UI]
 ```
 
 ## Deploying Jaeger
 
-### Using Jaeger Operator
+### Using OpenTelemetry Operator
 
 ```bash
-# Install cert-manager (required for Jaeger Operator)
+# Install cert-manager (required for OpenTelemetry Operator webhooks)
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.1/cert-manager.yaml
 
 # Wait for cert-manager
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
 
-# Install Jaeger Operator
+# Install OpenTelemetry Operator for Jaeger v2
 kubectl create namespace observability
-kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.51.0/jaeger-operator.yaml -n observability
+kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
 
 # Verify operator
-kubectl get deployment jaeger-operator -n observability
+kubectl get deployment -n opentelemetry-operator-system
 ```
 
 ### All-in-One Deployment (Development)
 
 ```yaml
 # jaeger-allinone.yaml
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
 metadata:
-  name: jaeger
+  name: jaeger-inmemory-instance
   namespace: observability
 spec:
-  strategy: allInOne
-  allInOne:
-    image: jaegertracing/all-in-one:latest
-    options:
-      log-level: info
-  storage:
-    type: memory
-  ingress:
-    enabled: true
+  image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
+  ports:
+    - name: jaeger
+      port: 16686
+  config:
+    service:
+      extensions: [jaeger_storage, jaeger_query]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [jaeger_storage_exporter]
+    extensions:
+      jaeger_query:
+        storage:
+          traces: memstore
+      jaeger_storage:
+        backends:
+          memstore:
+            memory:
+              max_traces: 100000
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: memstore
 ```
 
 ```bash
@@ -83,58 +101,137 @@ kubectl apply -f jaeger-allinone.yaml
 
 ```yaml
 # jaeger-production.yaml
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: jaeger-storage-instance
+  namespace: observability
+spec:
+  mode: deployment
+  replicas: 2
+  image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
+  ports:
+    - name: jaeger
+      port: 16686
+  env:
+    - name: ES_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: jaeger-es-secret
+          key: ES_USERNAME
+    - name: ES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: jaeger-es-secret
+          key: ES_PASSWORD
+  resources:
+    limits:
+      cpu: 1
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  config:
+    service:
+      extensions: [jaeger_storage, jaeger_query]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [jaeger_storage_exporter]
+    extensions:
+      jaeger_query:
+        storage:
+          traces: es_storage
+      jaeger_storage:
+        backends:
+          es_storage:
+            elasticsearch:
+              server_urls:
+                - https://elasticsearch-es-http.observability.svc:9200
+              auth:
+                basic:
+                  username: ${env:ES_USERNAME}
+                  password: ${env:ES_PASSWORD}
+              tls:
+                ca: /es/certificates/ca.crt
+              indices:
+                index_prefix: jaeger
+                spans:
+                  shards: 5
+                  replicas: 1
+                services:
+                  shards: 5
+                  replicas: 1
+                dependencies:
+                  shards: 5
+                  replicas: 1
+                sampling:
+                  shards: 5
+                  replicas: 1
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: es_storage
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8888"
+  volumeMounts:
+    - name: es-ca
+      mountPath: /es/certificates
+      readOnly: true
+  volumes:
+    - name: es-ca
+      secret:
+        secretName: elasticsearch-es-http-certs-public
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: jaeger
   namespace: observability
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
-  strategy: production
-  
-  collector:
-    replicas: 2
-    maxReplicas: 5
-    resources:
-      limits:
-        cpu: 1
-        memory: 1Gi
-      requests:
-        cpu: 200m
-        memory: 256Mi
-    options:
-      collector.num-workers: 50
-      collector.queue-size: 2000
-  
-  query:
-    replicas: 2
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-    options:
-      query.max-clock-skew-adjustment: 500ms
-  
-  storage:
-    type: elasticsearch
-    options:
-      es:
-        server-urls: https://elasticsearch-master:9200
-        index-prefix: jaeger
-        tls:
-          ca: /es/certificates/ca.crt
-        num-shards: 5
-        num-replicas: 1
-    secretName: jaeger-es-secret
-  
-  ingress:
-    enabled: true
-    annotations:
-      kubernetes.io/ingress.class: nginx
-    hosts:
-      - jaeger.example.com
+  rules:
+    - host: jaeger.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger-storage-instance-collector
+                port:
+                  number: 16686
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: jaeger-storage-instance
+  namespace: observability
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: jaeger-storage-instance-collector
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ---
 apiVersion: v1
 kind: Secret
@@ -227,20 +324,20 @@ data:
         spike_limit_mib: 200
     
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.observability.svc:14250
+      otlp/jaeger:
+        endpoint: jaeger-inmemory-instance-collector.observability.svc:4317
         tls:
           insecure: true
       
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
     
     service:
       pipelines:
         traces:
           receivers: [otlp, jaeger]
           processors: [memory_limiter, batch]
-          exporters: [jaeger]
+          exporters: [otlp/jaeger]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -268,6 +365,7 @@ spec:
             - containerPort: 14250  # Jaeger gRPC
             - containerPort: 14268  # Jaeger HTTP
             - containerPort: 6831   # Jaeger compact
+              protocol: UDP
           resources:
             limits:
               cpu: 1
@@ -319,10 +417,10 @@ import (
     "net/http"
     
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -341,9 +439,9 @@ func initTracer() (*sdktrace.TracerProvider, error) {
     // Create resource with service info
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName("my-go-service"),
-            semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            attribute.String("service.name", "my-go-service"),
+            attribute.String("service.version", "1.0.0"),
+            attribute.String("deployment.environment.name", "production"),
         ),
     )
     if err != nil {
@@ -402,7 +500,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 resource = Resource.create({
     "service.name": "my-python-service",
     "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -501,16 +599,15 @@ otel:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    'service.name': 'my-node-service',
+    'service.version': '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
-    url: 'grpc://otel-collector.observability:4317',
+    url: 'http://otel-collector.observability:4317',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -566,9 +663,6 @@ spec:
     metadata:
       labels:
         app: my-service
-      annotations:
-        # Jaeger sidecar injection (if using sidecar mode)
-        sidecar.jaegertracing.io/inject: "true"
     spec:
       containers:
         - name: app
@@ -578,48 +672,69 @@ spec:
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.observability:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
             - name: OTEL_SERVICE_NAME
               value: "my-service"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "deployment.environment=production,service.version=1.0.0"
-            # For Jaeger native SDK
-            - name: JAEGER_AGENT_HOST
-              value: "otel-collector.observability"
-            - name: JAEGER_AGENT_PORT
-              value: "6831"
+              value: "deployment.environment.name=production,service.version=1.0.0"
 ```
 
 ## Sampling Strategies
 
 ```yaml
 # jaeger-with-sampling.yaml
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: jaeger
+  name: otel-collector-config
   namespace: observability
-spec:
-  strategy: production
-  
-  sampling:
-    options:
-      default_strategy:
-        type: probabilistic
-        param: 0.1  # Sample 10% of traces
-      
-      # Per-service sampling
-      service_strategies:
-        - service: critical-service
-          type: probabilistic
-          param: 1.0  # Sample 100%
-        
-        - service: high-volume-service
-          type: ratelimiting
-          param: 100  # Max 100 traces/second
-        
-        - service: debug-service
-          type: const
-          param: 1  # Sample all
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 100000
+        policies:
+          - name: errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: probabilistic-10-percent
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 10
+
+    exporters:
+      otlp/jaeger:
+        endpoint: jaeger-inmemory-instance-collector.observability.svc:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [tail_sampling]
+          exporters: [otlp/jaeger]
+```
+
+For SDK-level sampling, configure the OpenTelemetry SDK in each application:
+
+```yaml
+env:
+  - name: OTEL_TRACES_SAMPLER
+    value: "traceidratio"
+  - name: OTEL_TRACES_SAMPLER_ARG
+    value: "0.1"
 ```
 
 ## Querying Traces
@@ -628,7 +743,7 @@ spec:
 
 ```bash
 # Port forward Jaeger UI
-kubectl port-forward svc/jaeger-query 16686:16686 -n observability
+kubectl port-forward svc/jaeger-inmemory-instance-collector 16686:16686 -n observability
 
 # Access at http://localhost:16686
 ```
@@ -648,6 +763,8 @@ curl "http://localhost:16686/api/traces/<trace-id>"
 
 ## Alerting on Traces
 
+These Prometheus rules assume you have enabled Jaeger Service Performance Monitoring or an OpenTelemetry span metrics connector that exports `calls_total` and `duration_seconds_bucket`.
+
 ```yaml
 # PrometheusRule for trace-based alerts
 apiVersion: monitoring.coreos.com/v1
@@ -661,24 +778,24 @@ spec:
       rules:
         - alert: HighTraceErrorRate
           expr: |
-            sum(rate(jaeger_spans_total{error="true"}[5m])) by (service) /
-            sum(rate(jaeger_spans_total[5m])) by (service) > 0.05
+            sum(rate(calls_total{status_code="Error"}[5m])) by (service_name) /
+            sum(rate(calls_total[5m])) by (service_name) > 0.05
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High error rate in traces for {{ $labels.service }}"
+            summary: "High error rate in traces for {{ $labels.service_name }}"
         
         - alert: SlowTraces
           expr: |
             histogram_quantile(0.99, 
-              sum(rate(jaeger_span_duration_seconds_bucket[5m])) by (service, le)
+              sum(rate(duration_seconds_bucket[5m])) by (service_name, le)
             ) > 5
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "P99 latency above 5s for {{ $labels.service }}"
+            summary: "P99 latency above 5s for {{ $labels.service_name }}"
 ```
 
 ## Best Practices
@@ -687,12 +804,16 @@ spec:
 
 ```go
 // Good
-span := tracer.Start(ctx, "processOrder")
-span := tracer.Start(ctx, "fetchUserFromDB")
+_, span := tracer.Start(ctx, "processOrder")
+span.End()
+_, span = tracer.Start(ctx, "fetchUserFromDB")
+span.End()
 
 // Bad
-span := tracer.Start(ctx, "handler")
-span := tracer.Start(ctx, "function1")
+_, span = tracer.Start(ctx, "handler")
+span.End()
+_, span = tracer.Start(ctx, "function1")
+span.End()
 ```
 
 ### 2. Add Useful Attributes
@@ -716,7 +837,7 @@ req, _ := http.NewRequestWithContext(ctx, "GET", "http://other-service/api", nil
 
 Distributed tracing with Jaeger provides crucial visibility into microservices. Key takeaways:
 
-1. **Deploy Jaeger Operator** for easy management
+1. **Deploy Jaeger v2 with the OpenTelemetry Operator** for easy management
 2. **Use OpenTelemetry** for vendor-neutral instrumentation  
 3. **Configure sampling** to manage volume
 4. **Add meaningful attributes** to spans

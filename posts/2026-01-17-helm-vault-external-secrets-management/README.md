@@ -272,10 +272,16 @@ kubectl exec -n vault vault-0 -- vault secrets enable -path=secret kv-v2
 # Create a policy
 kubectl exec -n vault vault-0 -- vault policy write app-policy - <<EOF
 path "secret/data/app/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+path "secret/metadata/app/*" {
+  capabilities = ["list"]
 }
 path "secret/data/shared/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+path "secret/metadata/shared/*" {
+  capabilities = ["list"]
 }
 EOF
 
@@ -346,7 +352,7 @@ helm install external-secrets external-secrets/external-secrets \
 
 ```yaml
 # vault-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -377,7 +383,7 @@ spec:
 
 ```yaml
 # vault-cluster-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-cluster-store
@@ -401,7 +407,7 @@ spec:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -452,7 +458,7 @@ spec:
 
 ```yaml
 # multi-source-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: multi-source-secrets
@@ -485,7 +491,7 @@ spec:
 
 ```yaml
 # aws-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
@@ -507,7 +513,7 @@ spec:
 
 ```yaml
 # aws-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: aws-secrets
@@ -544,8 +550,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
     metadata:
+      labels:
+        app: app
       annotations:
         # Enable Vault Agent injection
         vault.hashicorp.com/agent-inject: "true"
@@ -576,10 +587,10 @@ spec:
         - name: app
           image: my-app:latest
           # Secrets are mounted at /vault/secrets/
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - exec /app/start.sh
 ```
 
 ### Inject Secrets as Environment Variables
@@ -591,8 +602,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
     metadata:
+      labels:
+        app: app
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "app-role"
@@ -612,7 +628,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - source /vault/secrets/env && exec /app/start.sh
+            - . /vault/secrets/env && exec /app/start.sh
 ```
 
 ## Secrets Store CSI Driver
@@ -700,7 +716,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       serviceAccountName: app-sa
       containers:
@@ -737,7 +759,7 @@ secrets:
   
   vault:
     enabled: true
-    path: "secret/data/{{ .Release.Namespace }}/app"
+    path: "{{ .Release.Namespace }}/app"
     refreshInterval: "1h"
     
   aws:
@@ -760,7 +782,7 @@ secrets:
 # templates/external-secret.yaml
 {{- if .Values.secrets.enabled }}
 {{- if .Values.secrets.vault.enabled }}
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: {{ include "app.fullname" . }}
@@ -779,7 +801,7 @@ spec:
     {{- range .Values.secrets.keys }}
     - secretKey: {{ .name }}
       remoteRef:
-        key: {{ $.Values.secrets.vault.path }}
+        key: {{ tpl $.Values.secrets.vault.path $ | quote }}
         property: {{ .vaultKey }}
     {{- end }}
 {{- end }}

@@ -26,7 +26,7 @@ Before diving in, you should have:
 
 ## Understanding CQRS
 
-The core idea of CQRS is simple: use different models for reading and writing. Commands change state but do not return data. Queries return data but do not change state.
+The core idea of CQRS is simple: use different models for reading and writing. Commands change state and usually return only an acknowledgment or identifier, not read-model data. Queries return data but do not change state.
 
 ```mermaid
 graph LR
@@ -55,12 +55,11 @@ Create a new TypeScript project for our CQRS implementation.
 mkdir cqrs-typescript
 cd cqrs-typescript
 npm init -y
-npm install uuid reflect-metadata
-npm install -D typescript @types/node @types/uuid ts-node
+npm install -D typescript @types/node ts-node
 npx tsc --init
 ```
 
-Configure TypeScript with decorator support.
+Configure TypeScript for Node.js.
 
 ```json
 {
@@ -72,8 +71,7 @@ Configure TypeScript with decorator support.
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
+    "types": ["node"],
     "skipLibCheck": true
   },
   "include": ["src/**/*"]
@@ -348,7 +346,6 @@ The domain model handles business logic and produces events.
 ```typescript
 // src/orders/domain/order.ts
 import { DomainEvent } from '../../core/interfaces';
-import { v4 as uuidv4 } from 'uuid';
 
 // Domain events for the order aggregate
 export interface OrderCreatedEvent extends DomainEvent {
@@ -573,6 +570,41 @@ export class Order {
 
 ---
 
+## Implementing the Order Repository
+
+The repository persists events and reconstructs aggregates from their event history.
+
+```typescript
+// src/orders/infrastructure/order-repository.ts
+import { Order, OrderDomainEvent } from '../domain/order';
+
+// In-memory event store
+// Replace with a database-backed event store in production
+export class OrderRepository {
+  private eventsByAggregateId = new Map<string, OrderDomainEvent[]>();
+
+  async save(order: Order): Promise<void> {
+    const orderId = order.getId();
+    const existingEvents = this.eventsByAggregateId.get(orderId) || [];
+    const newEvents = order.getUncommittedEvents();
+
+    this.eventsByAggregateId.set(orderId, [...existingEvents, ...newEvents]);
+  }
+
+  async getById(orderId: string): Promise<Order | null> {
+    const events = this.eventsByAggregateId.get(orderId);
+
+    if (!events || events.length === 0) {
+      return null;
+    }
+
+    return Order.fromEvents(orderId, events);
+  }
+}
+```
+
+---
+
 ## Implementing Command Handlers
 
 Command handlers coordinate between the command, domain, and persistence.
@@ -639,6 +671,27 @@ export class AddItemToOrderHandler implements CommandHandler<AddItemToOrderComma
     });
 
     // Persist and publish
+    await this.repository.save(order);
+    await this.eventBus.publishAll(order.getUncommittedEvents());
+    order.clearUncommittedEvents();
+  }
+}
+
+export class RemoveItemFromOrderHandler implements CommandHandler<RemoveItemFromOrderCommand> {
+  constructor(
+    private repository: OrderRepository,
+    private eventBus: EventBus
+  ) {}
+
+  async execute(command: RemoveItemFromOrderCommand): Promise<void> {
+    const order = await this.repository.getById(command.orderId);
+
+    if (!order) {
+      throw new Error(`Order not found: ${command.orderId}`);
+    }
+
+    order.removeItem(command.productId);
+
     await this.repository.save(order);
     await this.eventBus.publishAll(order.getUncommittedEvents());
     order.clearUncommittedEvents();
@@ -763,6 +816,7 @@ import { EventHandler, DomainEvent } from '../../core/interfaces';
 import {
   OrderCreatedEvent,
   ItemAddedToOrderEvent,
+  ItemRemovedFromOrderEvent,
   OrderSubmittedEvent,
   OrderCancelledEvent
 } from '../domain/order';
@@ -836,6 +890,20 @@ export class ItemAddedEventHandler implements EventHandler<ItemAddedToOrderEvent
 
     readModelStore.upsert(order);
     console.log(`Read model updated: Item added to order ${event.aggregateId}`);
+  }
+}
+
+export class ItemRemovedEventHandler implements EventHandler<ItemRemovedFromOrderEvent> {
+  async handle(event: ItemRemovedFromOrderEvent): Promise<void> {
+    const order = readModelStore.getById(event.aggregateId);
+    if (!order) return;
+
+    order.items = order.items.filter(item => item.productId !== event.productId);
+    order.totalAmount = order.items.reduce((sum, item) => sum + item.lineTotal, 0);
+    order.updatedAt = event.occurredAt;
+
+    readModelStore.upsert(order);
+    console.log(`Read model updated: Item removed from order ${event.aggregateId}`);
   }
 }
 
@@ -940,7 +1008,7 @@ Create the application bootstrap that registers all handlers.
 
 ```typescript
 // src/app.ts
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { CommandBus } from './core/command-bus';
 import { QueryBus } from './core/query-bus';
 import { EventBus } from './core/event-bus';
@@ -948,6 +1016,7 @@ import { OrderRepository } from './orders/infrastructure/order-repository';
 import {
   CreateOrderHandler,
   AddItemToOrderHandler,
+  RemoveItemFromOrderHandler,
   SubmitOrderHandler,
   CancelOrderHandler,
 } from './orders/commands/handlers';
@@ -959,6 +1028,7 @@ import {
 import {
   OrderCreatedEventHandler,
   ItemAddedEventHandler,
+  ItemRemovedEventHandler,
   OrderSubmittedEventHandler,
   OrderCancelledEventHandler,
 } from './orders/infrastructure/read-model-store';
@@ -977,6 +1047,8 @@ async function main() {
     new CreateOrderHandler(orderRepository, eventBus));
   commandBus.register('AddItemToOrder', () =>
     new AddItemToOrderHandler(orderRepository, eventBus));
+  commandBus.register('RemoveItemFromOrder', () =>
+    new RemoveItemFromOrderHandler(orderRepository, eventBus));
   commandBus.register('SubmitOrder', () =>
     new SubmitOrderHandler(orderRepository, eventBus));
   commandBus.register('CancelOrder', () =>
@@ -990,12 +1062,13 @@ async function main() {
   // Register event handlers for read model updates
   eventBus.subscribe('OrderCreated', () => new OrderCreatedEventHandler());
   eventBus.subscribe('ItemAddedToOrder', () => new ItemAddedEventHandler());
+  eventBus.subscribe('ItemRemovedFromOrder', () => new ItemRemovedEventHandler());
   eventBus.subscribe('OrderSubmitted', () => new OrderSubmittedEventHandler());
   eventBus.subscribe('OrderCancelled', () => new OrderCancelledEventHandler());
 
   // Demo usage
   console.log('\n=== Creating an order ===');
-  const orderId = uuidv4();
+  const orderId = randomUUID();
   const customerId = 'customer-123';
 
   const createCommand: CreateOrderCommand = {

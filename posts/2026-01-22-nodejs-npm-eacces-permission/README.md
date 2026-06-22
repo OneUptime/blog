@@ -25,7 +25,7 @@ This happens because:
 - Your user does not have write permissions to these directories
 - Default npm configuration points to restricted paths
 
-## Solution 1: Change npm's Default Directory (Recommended)
+## Solution 1: Change npm's Default Directory
 
 Create a directory for global packages in your home folder:
 
@@ -63,7 +63,7 @@ nvm installs Node.js in your home directory, avoiding permission issues entirely
 
 ```bash
 # Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 
 # Restart terminal or source profile
 source ~/.bashrc
@@ -111,14 +111,14 @@ sudo chown -R $(whoami) /usr/local/share
 Avoid global installs entirely using npx:
 
 ```bash
-# Instead of: npm install -g create-react-app
-npx create-react-app my-app
+# Instead of: npm install -g create-vite
+npx create-vite@latest my-app
 
 # Instead of: npm install -g typescript && tsc
 npx tsc
 
 # Run specific version
-npx typescript@4.5 --version
+npx --package typescript@4.5 tsc --version
 ```
 
 ## Fix for Cache Permission Errors
@@ -134,7 +134,7 @@ Fix npm cache permissions:
 npm config get cache
 
 # Fix permissions
-sudo chown -R $(whoami) ~/.npm
+sudo chown -R $(id -u):$(id -g) "$(npm config get cache)"
 
 # Or clear and rebuild cache
 npm cache clean --force
@@ -180,8 +180,8 @@ npm install -g typescript
 ### Fix Homebrew Permissions
 
 ```bash
-sudo chown -R $(whoami) /usr/local/Cellar
-sudo chown -R $(whoami) /usr/local/lib/node_modules
+brew doctor
+sudo chown -R $(whoami) "$(brew --prefix)/lib/node_modules"
 ```
 
 ## Windows Solutions
@@ -193,9 +193,9 @@ On Windows, run Command Prompt or PowerShell as Administrator:
 npm install -g typescript
 ```
 
-Or change npm prefix to user directory:
+Or change npm prefix to user directory in Command Prompt:
 
-```powershell
+```cmd
 # Create directory
 mkdir %APPDATA%\npm-global
 
@@ -218,22 +218,21 @@ In Docker, avoid running npm as root:
 
 ```dockerfile
 # Create non-root user
-FROM node:18
+FROM node:24
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN mkdir -p /home/appuser/app && chown -R appuser:appuser /home/appuser
+RUN mkdir -p /home/node/app && chown -R node:node /home/node
 
-WORKDIR /home/appuser/app
+WORKDIR /home/node/app
 
 # Copy as root, then change ownership
-COPY --chown=appuser:appuser package*.json ./
+COPY --chown=node:node package*.json ./
 
 # Switch to non-root user
-USER appuser
+USER node
 
 RUN npm install
 
-COPY --chown=appuser:appuser . .
+COPY --chown=node:node . .
 
 CMD ["node", "index.js"]
 ```
@@ -330,7 +329,7 @@ rm -rf ~/.nvm
 rm -rf /usr/local/lib/node_modules
 
 # Fresh install via nvm (recommended)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 nvm install node
 ```
 

@@ -74,7 +74,7 @@ const configPath = path.resolve(projectRoot, 'config', 'app.json');
 ```javascript
 const path = require('path');
 
-// join: Simply concatenates
+// join: Joins and normalizes segments
 path.join('a', 'b', 'c');
 // a/b/c
 
@@ -203,8 +203,7 @@ path.normalize('/users/john/../jane/./docs//file.txt');
 // /users/jane/docs/file.txt
 
 // Fix slashes
-path.normalize('users\\john\\docs');
-// users/john/docs (on Unix)
+path.win32.normalize('users\\john\\docs');
 // users\john\docs (on Windows)
 ```
 
@@ -236,8 +235,8 @@ path.isAbsolute('./relative');      // false
 path.isAbsolute('../parent');       // false
 
 // Windows
-path.isAbsolute('C:\\Users');       // true (Windows)
-path.isAbsolute('\\server\\share'); // true (Windows UNC)
+path.win32.isAbsolute('C:\\Users');         // true
+path.win32.isAbsolute('\\\\server\\share'); // true (Windows UNC)
 ```
 
 ## Platform-Specific Paths
@@ -315,9 +314,11 @@ const path = require('path');
 
 // Prevent directory traversal attacks
 function safePath(baseDir, userInput) {
-  const resolved = path.resolve(baseDir, userInput);
+  const resolvedBase = path.resolve(baseDir);
+  const resolved = path.resolve(resolvedBase, userInput);
+  const relative = path.relative(resolvedBase, resolved);
   
-  if (!resolved.startsWith(baseDir)) {
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error('Invalid path: attempted directory traversal');
   }
   

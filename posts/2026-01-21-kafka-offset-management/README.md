@@ -15,14 +15,14 @@ Consumer offsets track processing progress in Kafka. Proper offset management is
 ```text
 Topic: orders, Partition: 0
 
-Offsets:  0  1  2  3  4  5  6  7  8  9
+Offsets:  0  1  2  3  4  5  6  7  8  9  10
          [m][m][m][m][m][m][m][m][m][m]
-                   ^           ^
-                   |           |
-            committed    log-end
-               offset     offset
+                      ^                 ^
+                      |                 |
+               committed           log-end
+                  offset            offset
 
-Lag = log-end offset - committed offset = 9 - 3 = 6
+Lag = log-end offset - committed offset = 10 - 4 = 6
 ```
 
 ## Viewing Offsets
@@ -69,6 +69,8 @@ kafka-get-offsets.sh --bootstrap-server localhost:9092 \
 ```
 
 ## Resetting Offsets
+
+Resetting offsets requires the consumer group to have no active members.
 
 ### Reset to Earliest
 
@@ -260,38 +262,35 @@ public class OffsetManager {
 ### Python - Offset Management
 
 ```python
-from kafka import KafkaAdminClient, TopicPartition
+from kafka import KafkaAdminClient
 from kafka.admin import OffsetSpec
+from kafka.structs import TopicPartition
 
 class OffsetManager:
     def __init__(self, bootstrap_servers):
         self.admin = KafkaAdminClient(bootstrap_servers=bootstrap_servers)
 
     def get_consumer_group_offsets(self, group_id):
-        return self.admin.list_consumer_group_offsets(group_id)
+        return self.admin.list_group_offsets({group_id: None})[group_id]
 
     def reset_to_earliest(self, group_id, topic):
         # Get partitions
         metadata = self.admin.describe_topics([topic])
         partitions = [
-            TopicPartition(topic, p.partition)
-            for p in metadata[0].partitions
+            TopicPartition(topic, p["partition"])
+            for p in metadata[0]["partitions"]
         ]
 
-        # Get earliest offsets
-        earliest = self.admin.list_offsets({
-            tp: OffsetSpec.earliest() for tp in partitions
+        # Reset offsets; the group must have no active members
+        return self.admin.reset_group_offsets(group_id, {
+            tp: OffsetSpec.EARLIEST for tp in partitions
         })
-
-        # Set offsets
-        new_offsets = {tp: offset.offset for tp, offset in earliest.items()}
-        self.admin.alter_consumer_group_offsets(group_id, new_offsets)
 
     def get_lag(self, group_id):
         committed = self.get_consumer_group_offsets(group_id)
 
-        latest = self.admin.list_offsets({
-            tp: OffsetSpec.latest() for tp in committed.keys()
+        latest = self.admin.list_partition_offsets({
+            tp: OffsetSpec.LATEST for tp in committed.keys()
         })
 
         lag = {}

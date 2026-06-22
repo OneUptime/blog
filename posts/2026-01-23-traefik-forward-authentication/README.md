@@ -97,10 +97,11 @@ Create a simple authentication service:
 ```python
 # auth_service.py
 from flask import Flask, request, Response
+import os
 import jwt
 
 app = Flask(__name__)
-SECRET_KEY = "your-secret-key"
+SECRET_KEY = os.environ["SECRET_KEY"]
 
 @app.route('/verify')
 def verify():
@@ -199,12 +200,13 @@ spec:
     spec:
       containers:
         - name: oauth2-proxy
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.0
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.3
           args:
             - --provider=google
             - --email-domain=yourcompany.com
             - --upstream=http://localhost:8080
             - --http-address=0.0.0.0:4180
+            - --reverse-proxy=true
             - --cookie-secure=true
             - --cookie-domain=.example.com
             - --set-xauthrequest=true
@@ -322,14 +324,13 @@ spec:
       - X-User-Email
       - X-User-Role
       - X-Tenant-ID
-    # Headers from auth response copied to client response
-    # (useful for setting cookies)
+    # Headers from auth response added to backend request by regex
     authResponseHeadersRegex: "^X-Auth-"
 ```
 
 ## Caching Authentication Results
 
-Reduce load on auth service with response caching:
+Traefik does not cache forward authentication responses directly. Reduce load on identity providers by caching validation results in your auth service:
 
 ```yaml
 # auth-with-cache.yaml
@@ -345,7 +346,7 @@ spec:
       - Authorization
     authResponseHeaders:
       - X-User-ID
-    # Trust headers that auth service sets
+    # Trust X-Forwarded-* headers from the reverse proxy
     trustForwardHeader: true
 ```
 
@@ -355,10 +356,12 @@ Implement caching in your auth service:
 # cached_auth_service.py
 from flask import Flask, request, Response
 from functools import lru_cache
+import os
 import jwt
 import time
 
 app = Flask(__name__)
+SECRET_KEY = os.environ["SECRET_KEY"]
 
 @lru_cache(maxsize=1000)
 def validate_token_cached(token, timestamp):
@@ -468,8 +471,11 @@ Customize error responses from the auth service:
 ```python
 # auth_with_errors.py
 from flask import Flask, request, Response, jsonify
+import os
+import jwt
 
 app = Flask(__name__)
+SECRET_KEY = os.environ["SECRET_KEY"]
 
 @app.route('/verify')
 def verify():

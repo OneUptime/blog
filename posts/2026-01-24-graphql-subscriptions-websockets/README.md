@@ -425,7 +425,8 @@ Here is how to use subscriptions in a React component.
 
 ```jsx
 // ChatRoom.jsx - React component using subscriptions
-import { useQuery, useMutation, useSubscription, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useQuery, useMutation, useSubscription } from '@apollo/client/react';
 import { useState } from 'react';
 
 // Query to get existing messages

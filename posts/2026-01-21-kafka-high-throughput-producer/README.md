@@ -29,7 +29,7 @@ Producer throughput is influenced by several factors:
 
 batch.size=65536
 
-# Time to wait for batch to fill (default: 0)
+# Time to wait for batch to fill (default: 5)
 linger.ms=20
 
 # Maximum size of a request (default: 1048576)
@@ -47,7 +47,7 @@ compression.type=lz4
 
 # For zstd, you can also set compression level
 # compression.type=zstd
-# compression.level=3
+# compression.zstd.level=3
 ```
 
 ### Async and Retry Settings
@@ -403,7 +403,6 @@ class AsyncHighThroughputProducer:
         self.producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
             # Batching
-            batch_size=65536,
             linger_ms=20,
             # Compression
             compression_type='lz4',
@@ -464,7 +463,10 @@ if __name__ == '__main__':
 ## Node.js High-Throughput Producer
 
 ```javascript
-const { Kafka, CompressionTypes, Partitioners } = require('kafkajs');
+const { Kafka, CompressionTypes, CompressionCodecs, Partitioners } = require('kafkajs');
+const LZ4 = require('kafkajs-lz4');
+
+CompressionCodecs[CompressionTypes.LZ4] = new LZ4().codec;
 
 class HighThroughputProducer {
   constructor(brokers) {
@@ -586,7 +588,7 @@ benchmark().catch(console.error);
 | Type | CPU Usage | Compression Ratio | Best For |
 |------|-----------|-------------------|----------|
 | none | Lowest | 1:1 | Already compressed data |
-| gzip | High | Best | Batch jobs, storage |
+| gzip | High | High | Batch jobs, storage |
 | snappy | Low | Good | Balanced workloads |
 | lz4 | Low | Good | Real-time streaming |
 | zstd | Medium | Excellent | Best ratio with good speed |
@@ -629,9 +631,9 @@ props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 134217728);  // 128MB
 // But may affect ordering if retries occur
 props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
-// For strict ordering with retries
-props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
+// For idempotent ordering with retries
 props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+props.put(ProducerConfig.ACKS_CONFIG, "all");
 ```
 
 ## Monitoring Producer Performance

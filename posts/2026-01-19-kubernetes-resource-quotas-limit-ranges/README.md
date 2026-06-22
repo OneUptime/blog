@@ -434,14 +434,27 @@ kubectl get quota -n development -o json | jq '.items[].status'
 
 # Calculate usage percentage
 kubectl get quota -n development -o json | jq '
+  def quantity:
+    tostring as $v |
+    if $v | test("m$") then ($v | sub("m$"; "") | tonumber) / 1000
+    elif $v | test("Ki$") then ($v | sub("Ki$"; "") | tonumber) * 1024
+    elif $v | test("Mi$") then ($v | sub("Mi$"; "") | tonumber) * 1024 * 1024
+    elif $v | test("Gi$") then ($v | sub("Gi$"; "") | tonumber) * 1024 * 1024 * 1024
+    elif $v | test("Ti$") then ($v | sub("Ti$"; "") | tonumber) * 1024 * 1024 * 1024 * 1024
+    elif $v | test("k$") then ($v | sub("k$"; "") | tonumber) * 1000
+    elif $v | test("M$") then ($v | sub("M$"; "") | tonumber) * 1000 * 1000
+    elif $v | test("G$") then ($v | sub("G$"; "") | tonumber) * 1000 * 1000 * 1000
+    else ($v | tonumber)
+    end;
   .items[] | 
-  .status | 
-  to_entries | 
+  .status as $status |
+  $status.hard |
+  to_entries |
   map({
     resource: .key,
-    used: .value.used,
-    hard: .value.hard,
-    percent: ((.value.used | split(" ")[0] | tonumber) / (.value.hard | split(" ")[0] | tonumber) * 100 | floor)
+    used: $status.used[.key],
+    hard: .value,
+    percent: ((($status.used[.key] | quantity) / (.value | quantity) * 100) | floor)
   })
 '
 ```
@@ -462,6 +475,7 @@ spec:
         - alert: NamespaceCPUQuotaHigh
           expr: |
             kube_resourcequota{type="used", resource="requests.cpu"} / 
+            ignoring(type)
             kube_resourcequota{type="hard", resource="requests.cpu"} > 0.8
           for: 5m
           labels:
@@ -473,6 +487,7 @@ spec:
         - alert: NamespaceMemoryQuotaHigh
           expr: |
             kube_resourcequota{type="used", resource="requests.memory"} / 
+            ignoring(type)
             kube_resourcequota{type="hard", resource="requests.memory"} > 0.8
           for: 5m
           labels:
@@ -482,6 +497,7 @@ spec:
         - alert: NamespacePodQuotaNearLimit
           expr: |
             kube_resourcequota{type="used", resource="pods"} / 
+            ignoring(type)
             kube_resourcequota{type="hard", resource="pods"} > 0.9
           for: 5m
           labels:
@@ -500,7 +516,7 @@ sum by (namespace) (kube_resourcequota{type="used", resource="requests.cpu"}) /
 sum by (namespace) (kube_resourcequota{type="hard", resource="requests.cpu"}) > 0.9
 
 # Trend of quota usage over time
-sum by (namespace) (increase(kube_resourcequota{type="used", resource="pods"}[24h]))
+sum by (namespace) (max_over_time(kube_resourcequota{type="used", resource="pods"}[24h]))
 ```
 
 ## Troubleshooting
@@ -535,7 +551,7 @@ kubectl get limitrange -n development -o yaml
 
 ```bash
 # Error: must specify requests.cpu, requests.memory
-# When quota exists, all pods must specify requests
+# When CPU or memory request quotas exist, pods must specify requests
 
 # Find pods without requests
 kubectl get pods -n development -o json | jq -r '

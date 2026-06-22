@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Security, CORS, Web Development, API, Node.js, Python, Go, Header, Cross-Origin
 
-Description: Learn how to configure Cross-Origin Resource Sharing (CORS) securely to protect your APIs from unauthorized cross-origin requests while enabling legitimate access.
+Description: Learn how to configure Cross-Origin Resource Sharing (CORS) securely to control which browser-based origins can read your API responses while enabling legitimate access.
 
 ---
 
-> Cross-Origin Resource Sharing (CORS) is a security feature that controls how web pages from one origin can request resources from another origin. Misconfigured CORS can expose your API to attacks, while overly restrictive settings can break legitimate functionality. This guide shows you how to configure CORS correctly.
+> Cross-Origin Resource Sharing (CORS) is a browser-enforced security feature that controls how web pages from one origin can read responses from another origin. Misconfigured CORS can expose your API to attacks, while overly restrictive settings can break legitimate functionality. This guide shows you how to configure CORS correctly.
 
-CORS misconfiguration is a common security issue that can lead to data theft, session hijacking, and other attacks.
+CORS misconfiguration is a common security issue that can lead to data exposure and other browser-based attacks when combined with cookies or other credentials.
 
 ---
 
@@ -64,10 +64,10 @@ graph TD
 
 Simple requests do not trigger a preflight. They include:
 - Methods: GET, HEAD, POST
-- Headers: Accept, Accept-Language, Content-Language, Content-Type (with restrictions)
+- Headers: Accept, Accept-Language, Content-Language, Content-Type (with restrictions), Range (with a single range value)
 - Content-Type: application/x-www-form-urlencoded, multipart/form-data, text/plain
 
-All other requests require a preflight OPTIONS request.
+Other browser CORS requests require a preflight OPTIONS request.
 
 ---
 
@@ -141,15 +141,16 @@ const corsOptions = {
     optionsSuccessStatus: 204
 };
 
-// Apply CORS middleware
 const app = require('express')();
-app.use(cors(corsOptions));
 
 // For specific routes only
 app.get('/api/public', cors({ origin: '*' }), (req, res) => {
     // This endpoint allows all origins
     res.json({ message: 'Public data' });
 });
+
+// Apply CORS middleware after public routes
+app.use(cors(corsOptions));
 
 // Handle CORS errors gracefully
 app.use((err, req, res, next) => {
@@ -232,6 +233,7 @@ def cors_restricted(allowed_origins):
             if origin and origin in allowed_origins:
                 response.headers['Access-Control-Allow-Origin'] = origin
                 response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers.add('Vary', 'Origin')
 
             return response
         return wrapped
@@ -277,6 +279,7 @@ package main
 
 import (
     "net/http"
+    "strconv"
     "strings"
 )
 
@@ -328,7 +331,7 @@ func CORSMiddleware(config CORSConfig) func(http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             origin := r.Header.Get("Origin")
 
-            // No origin header means same-origin request
+            // No Origin header usually means a same-origin request or a non-browser client
             if origin == "" {
                 next.ServeHTTP(w, r)
                 return
@@ -342,11 +345,12 @@ func CORSMiddleware(config CORSConfig) func(http.Handler) http.Handler {
             }
 
             // Set CORS headers
+            w.Header().Add("Vary", "Origin")
             w.Header().Set("Access-Control-Allow-Origin", origin)
             w.Header().Set("Access-Control-Allow-Methods", methodsHeader)
             w.Header().Set("Access-Control-Allow-Headers", headersHeader)
             w.Header().Set("Access-Control-Expose-Headers", exposedHeader)
-            w.Header().Set("Access-Control-Max-Age", "86400")
+            w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
 
             if config.AllowCredentials {
                 w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -532,7 +536,7 @@ curl -s "$API_URL/api/public" \
 ## Key Takeaways
 
 1. **Never use wildcard origins in production** - Always specify exact allowed origins
-2. **Validate origins server-side** - Do not rely only on browser enforcement
+2. **Validate origins for CORS responses** - Do not use CORS as a substitute for authentication and authorization
 3. **Credentials require specific origins** - Cannot use `*` with `credentials: true`
 4. **Limit allowed methods and headers** - Only permit what your API actually needs
 5. **Cache preflight responses** - Use `max-age` to reduce preflight requests

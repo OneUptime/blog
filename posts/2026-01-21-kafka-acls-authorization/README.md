@@ -17,7 +17,7 @@ Enable ACL authorizer in server.properties:
 ```properties
 # Enable authorization
 
-authorizer.class.name=kafka.security.authorizer.AclAuthorizer
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
 
 # Super users (bypass ACLs)
 super.users=User:admin
@@ -116,9 +116,10 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
 
 ```bash
 # Grant transactional write permission
-kafka-acls.sh --bootstrap-server admin:9092 \
+kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
   --add --allow-principal User:transactional-producer \
+  --operation Describe \
   --operation Write \
   --transactional-id "tx-" --resource-pattern-type prefixed
 
@@ -161,10 +162,13 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
   --operation Read \
   --topic orders
 
-# Remove all ACLs for a principal
+# Remove producer ACLs for a principal on a topic
 kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
-  --remove --principal User:old-service
+  --remove --allow-principal User:old-service \
+  --operation Write \
+  --operation Describe \
+  --topic orders
 ```
 
 ## Java Admin Client
@@ -306,6 +310,7 @@ APP_ID="order-processing"
 kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
   --add --allow-principal $PRINCIPAL \
+  --operation Describe \
   --operation Read \
   --topic orders
 
@@ -313,6 +318,7 @@ kafka-acls.sh --bootstrap-server localhost:9092 \
 kafka-acls.sh --bootstrap-server localhost:9092 \
   --command-config admin.properties \
   --add --allow-principal $PRINCIPAL \
+  --operation Describe \
   --operation Write \
   --topic processed-orders
 

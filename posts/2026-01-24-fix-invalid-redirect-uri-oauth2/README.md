@@ -113,18 +113,20 @@ In the Google Cloud Console, add all redirect URIs you need:
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
-        'APP': {
-            'client_id': 'your-client-id.apps.googleusercontent.com',
-            'secret': 'your-client-secret',
-            'key': ''
-        },
         'SCOPE': [
             'profile',
             'email',
         ],
         'AUTH_PARAMS': {
             'access_type': 'online',
-        }
+        },
+        'APPS': [
+            {
+                'client_id': 'your-client-id.apps.googleusercontent.com',
+                'secret': 'your-client-secret',
+                'key': ''
+            }
+        ]
     }
 }
 
@@ -162,8 +164,7 @@ passport.use(new GitHubStrategy({
 
 Azure AD requires explicit redirect URI registration:
 
-```csharp
-// appsettings.json for ASP.NET Core
+```json
 {
   "AzureAd": {
     "Instance": "https://login.microsoftonline.com/",
@@ -172,10 +173,9 @@ Azure AD requires explicit redirect URI registration:
     "CallbackPath": "/signin-oidc"
   }
 }
-
-// The full redirect URI will be: https://yourapp.com/signin-oidc
-// Register this exact URI in Azure Portal > App registrations > Authentication
 ```
+
+The full redirect URI will be `https://yourapp.com/signin-oidc`. Register this exact URI in Azure Portal > App registrations > Authentication.
 
 ## Debugging Invalid Redirect URI Errors
 
@@ -273,8 +273,19 @@ Here is a complete Node.js example with proper redirect URI handling:
 const express = require('express');
 const axios = require('axios');
 const querystring = require('querystring');
+const session = require('express-session');
 
 const app = express();
+
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'replace-this-development-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production'
+    }
+}));
 
 // Configuration
 const OAUTH_CONFIG = {
@@ -282,17 +293,15 @@ const OAUTH_CONFIG = {
     clientSecret: process.env.OAUTH_CLIENT_SECRET,
     authorizationEndpoint: 'https://provider.com/oauth/authorize',
     tokenEndpoint: 'https://provider.com/oauth/token',
-    // Dynamically determine redirect URI based on environment
-    getRedirectUri: (req) => {
-        const protocol = req.secure ? 'https' : 'http';
-        const host = req.get('host');
-        return `${protocol}://${host}/auth/callback`;
-    }
+    // Use a redirect URI registered with the provider for this environment
+    redirectUri: process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/auth/callback'
 };
 
 // Initiate OAuth flow
 app.get('/auth/login', (req, res) => {
-    const redirectUri = OAUTH_CONFIG.getRedirectUri(req);
+    const redirectUri = OAUTH_CONFIG.redirectUri;
+    const state = generateRandomState();
+    req.session.oauthState = state;
 
     // Log for debugging
     console.log(`Using redirect URI: ${redirectUri}`);
@@ -302,7 +311,7 @@ app.get('/auth/login', (req, res) => {
         redirect_uri: redirectUri,
         response_type: 'code',
         scope: 'openid profile email',
-        state: generateRandomState() // Implement CSRF protection
+        state: state
     });
 
     res.redirect(`${OAUTH_CONFIG.authorizationEndpoint}?${params}`);
@@ -315,17 +324,17 @@ app.get('/auth/callback', async (req, res) => {
     // Handle errors from the provider
     if (error) {
         console.error(`OAuth error: ${error}`);
-        return res.redirect('/login?error=' + error);
+        return res.redirect('/login?error=' + encodeURIComponent(error));
     }
 
     // Verify state to prevent CSRF
-    if (!verifyState(state)) {
+    if (!verifyState(req, state)) {
         return res.status(403).send('Invalid state parameter');
     }
 
     try {
         // Exchange code for tokens
-        const redirectUri = OAUTH_CONFIG.getRedirectUri(req);
+        const redirectUri = OAUTH_CONFIG.redirectUri;
 
         const tokenResponse = await axios.post(
             OAUTH_CONFIG.tokenEndpoint,
@@ -359,10 +368,10 @@ function generateRandomState() {
     return require('crypto').randomBytes(16).toString('hex');
 }
 
-function verifyState(state) {
-    // Implement proper state verification
-    // Compare with stored state from session
-    return true; // Placeholder
+function verifyState(req, state) {
+    const expectedState = req.session.oauthState;
+    delete req.session.oauthState;
+    return Boolean(state && expectedState && state === expectedState);
 }
 
 app.listen(3000, () => {

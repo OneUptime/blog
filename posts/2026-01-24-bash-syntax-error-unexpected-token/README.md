@@ -64,7 +64,7 @@ One of the most common causes is unbalanced quotes.
 echo "Hello World
 echo "Next line"
 
-# Error: syntax error near unexpected token `echo'
+# Error: unexpected EOF while looking for matching `"'
 
 # CORRECT
 echo "Hello World"
@@ -72,13 +72,13 @@ echo "Next line"
 ```
 
 ```bash
-# WRONG - Quote inside unescaped string
-message="He said "Hello" to me"
+# WRONG - Apostrophe inside an unescaped single-quoted string
+message='Don't do this'
 
-# Error: syntax error near unexpected token `Hello'
+# Error: unexpected EOF while looking for matching `''
 
-# CORRECT - Escape inner quotes
-message="He said \"Hello\" to me"
+# CORRECT - Escape the apostrophe
+message='Don'\''t do this'
 
 # CORRECT - Use single quotes for outer
 message='He said "Hello" to me'
@@ -105,19 +105,21 @@ echo \(this will also work\)
 ```
 
 ```bash
-# WRONG - Spaces inside function definition parentheses in older Bash
-function greet ( ) {
+# WRONG - Trying to declare parameters in function parentheses
+function greet (name) {
     echo "Hello"
 }
 
-# CORRECT - No spaces inside parentheses
+# CORRECT - Use positional parameters
 function greet() {
-    echo "Hello"
+    local name="$1"
+    echo "Hello $name"
 }
 
 # CORRECT - Alternative syntax
 greet() {
-    echo "Hello"
+    local name="$1"
+    echo "Hello $name"
 }
 ```
 
@@ -131,7 +133,7 @@ if [ "$x" -eq 1 ]
     echo "One"
 fi
 
-# Error: syntax error near unexpected token `echo'
+# Error: syntax error near unexpected token `fi'
 
 # CORRECT
 if [ "$x" -eq 1 ]; then
@@ -182,7 +184,7 @@ if [ "$x" -eq 1 ] then
     echo "One"
 fi
 
-# Error: syntax error near unexpected token `then'
+# Error: syntax error near unexpected token `fi'
 
 # CORRECT - Add semicolon
 if [ "$x" -eq 1 ]; then
@@ -235,8 +237,7 @@ tr -d '\r' < script.sh > script_fixed.sh
 
 # Verify the fix
 file script.sh
-# Should show: ASCII text
-# Not: ASCII text, with CRLF line terminators
+# Should not show: with CRLF line terminators
 ```
 
 ### Non-Breaking Spaces and Unicode Characters
@@ -325,7 +326,7 @@ shellcheck script.sh
 # In script.sh line 10:
 # if [ $x == 1 ]; then
 #    ^-- SC2086: Double quote to prevent globbing and word splitting.
-#       ^-- SC2039: In POSIX sh, == is undefined.
+#       ^-- SC3014: In POSIX sh, == in place of = is undefined.
 ```
 
 ### 4. Binary Search for Errors

@@ -45,10 +45,10 @@ flowchart TD
 ```bash
 # Install standard Gateway API CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
-# For experimental features (GRPCRoute, TCPRoute, etc.)
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/experimental-install.yaml
+# For experimental channel features, if needed
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
 
 # Verify installation
 kubectl get crds | grep gateway
@@ -61,7 +61,7 @@ kubectl get crds | grep gateway
 ```bash
 # Install Envoy Gateway
 helm install eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.0.0 \
+  --version v1.4.6 \
   --namespace envoy-gateway-system \
   --create-namespace
 
@@ -73,8 +73,10 @@ kubectl get pods -n envoy-gateway-system
 
 ```bash
 # Install NGINX Gateway Fabric
-kubectl apply -f https://github.com/nginxinc/nginx-gateway-fabric/releases/download/v1.1.0/crds.yaml
-kubectl apply -f https://github.com/nginxinc/nginx-gateway-fabric/releases/download/v1.1.0/nginx-gateway.yaml
+kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v2.6.5" | kubectl apply -f -
+helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \
+  --namespace nginx-gateway \
+  --create-namespace
 
 # Verify
 kubectl get pods -n nginx-gateway
@@ -84,8 +86,8 @@ kubectl get pods -n nginx-gateway
 
 ```bash
 # Istio already supports Gateway API
-# Just enable it in your Istio installation
-istioctl install --set profile=default --set values.pilot.env.PILOT_ENABLE_GATEWAY_API=true
+# Install Istio after installing the Gateway API CRDs
+istioctl install --set profile=minimal -y
 ```
 
 ## Core Concepts
@@ -228,7 +230,7 @@ spec:
         - name: api-v2
           port: 80
     
-    # Route based on header presence
+    # Route based on header value
     - matches:
         - headers:
             - name: X-Beta-User
@@ -405,7 +407,7 @@ spec:
 
 ```yaml
 # grpcroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-api
@@ -446,7 +448,7 @@ spec:
 
 ```yaml
 # tcproute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TCPRoute
 metadata:
   name: database-route
@@ -463,7 +465,7 @@ spec:
           port: 5432
 ---
 # udproute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: UDPRoute
 metadata:
   name: dns-route
@@ -483,7 +485,7 @@ spec:
 
 ```yaml
 # tlsroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: tls-passthrough
@@ -509,35 +511,32 @@ spec:
 
 ```yaml
 # reference-grant.yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-production-routes
+  name: allow-gateway-certs
   namespace: gateway-system
 spec:
   from:
     - group: gateway.networking.k8s.io
-      kind: HTTPRoute
+      kind: Gateway
       namespace: production
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: staging
   to:
     - group: ""
       kind: Secret
       name: wildcard-tls
 ---
 # Allow backend references
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-gateway-to-backends
-  namespace: production
+  name: allow-routes-to-backends
+  namespace: shared-services
 spec:
   from:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      namespace: gateway-system
+      namespace: production
   to:
     - group: ""
       kind: Service
@@ -549,21 +548,21 @@ spec:
 
 ```yaml
 # backend-tls-policy.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: backend-tls
   namespace: production
 spec:
-  targetRef:
-    group: ""
-    kind: Service
-    name: secure-backend
-  tls:
-    caCertRefs:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: secure-backend
+  validation:
+    caCertificateRefs:
       - name: backend-ca
         group: ""
-        kind: Secret
+        kind: ConfigMap
     hostname: secure-backend.production.svc.cluster.local
 ```
 
@@ -734,10 +733,12 @@ histogram_quantile(0.99, sum(rate(envoy_http_downstream_rq_time_bucket[5m])) by 
 | GatewayClass | Define controller type | ✅ v1 |
 | Gateway | Configure listeners | ✅ v1 |
 | HTTPRoute | HTTP/HTTPS routing | ✅ v1 |
-| GRPCRoute | gRPC routing | ⚠️ v1alpha2 |
-| TCPRoute | TCP routing | ⚠️ v1alpha2 |
-| TLSRoute | TLS passthrough | ⚠️ v1alpha2 |
-| ReferenceGrant | Cross-namespace refs | ✅ v1beta1 |
+| GRPCRoute | gRPC routing | ✅ v1 |
+| TCPRoute | TCP routing | ✅ v1 |
+| UDPRoute | UDP routing | ✅ v1 |
+| TLSRoute | TLS passthrough | ✅ v1 |
+| ReferenceGrant | Cross-namespace refs | ✅ v1 |
+| BackendTLSPolicy | Backend TLS validation | ✅ v1 |
 
 ## Related Posts
 

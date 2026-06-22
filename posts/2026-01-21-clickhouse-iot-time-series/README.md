@@ -36,7 +36,7 @@ CREATE TABLE sensor_readings_hf (
     value Float64,
     quality UInt8
 ) ENGINE = MergeTree()
-PARTITION BY (device_id, toYYYYMMDD(timestamp))  -- Daily partitions per device
+PARTITION BY toYYYYMMDD(timestamp)  -- Daily partitions; keep device_id in ORDER BY
 ORDER BY (device_id, sensor_id, timestamp)
 TTL timestamp + INTERVAL 7 DAY  -- Keep raw data for 7 days
 SETTINGS index_granularity = 8192;
@@ -121,7 +121,7 @@ INSERT INTO sensor_readings
 SELECT
     rand() % 1000 AS device_id,
     rand() % 50 AS sensor_id,
-    now64(3) - (number * 100) AS timestamp,  -- 100ms intervals
+    now64(3) - toIntervalMillisecond(number * 100) AS timestamp,  -- 100ms intervals
     rand() / 1000000000.0 * 100 AS value,
     0 AS quality
 FROM numbers(100000);
@@ -132,18 +132,21 @@ FROM numbers(100000);
 ```xml
 <!-- Enable async inserts for high-throughput ingestion -->
 <clickhouse>
-    <async_insert>1</async_insert>
-    <async_insert_threads>4</async_insert_threads>
-    <async_insert_max_data_size>10000000</async_insert_max_data_size>
-    <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
-    <wait_for_async_insert>0</wait_for_async_insert>
+    <profiles>
+        <default>
+            <async_insert>1</async_insert>
+            <async_insert_max_data_size>10000000</async_insert_max_data_size>
+            <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
+            <wait_for_async_insert>1</wait_for_async_insert>
+        </default>
+    </profiles>
 </clickhouse>
 ```
 
 ```sql
 -- Insert with async settings
 INSERT INTO sensor_readings
-SETTINGS async_insert = 1, wait_for_async_insert = 0
+SETTINGS async_insert = 1, wait_for_async_insert = 1
 VALUES (1001, 1, now64(3), 25.5, 0);
 ```
 
@@ -178,14 +181,12 @@ CREATE TABLE sensor_readings_1m (
     device_id UInt32,
     sensor_id UInt16,
     timestamp DateTime,
-    min_value Float64,
-    max_value Float64,
-    avg_value Float64,
-    count UInt32,
-    sum_value Float64,
-    first_value Float64,
-    last_value Float64
-) ENGINE = SummingMergeTree()
+    min_value SimpleAggregateFunction(min, Float64),
+    max_value SimpleAggregateFunction(max, Float64),
+    sum_value SimpleAggregateFunction(sum, Float64),
+    count SimpleAggregateFunction(sum, UInt64),
+    avg_value Float64 ALIAS sum_value / count
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (device_id, sensor_id, timestamp)
 TTL timestamp + INTERVAL 90 DAY;
@@ -197,13 +198,10 @@ AS SELECT
     device_id,
     sensor_id,
     toStartOfMinute(timestamp) AS timestamp,
-    min(value) AS min_value,
-    max(value) AS max_value,
-    avg(value) AS avg_value,
-    count() AS count,
-    sum(value) AS sum_value,
-    argMin(value, timestamp) AS first_value,
-    argMax(value, timestamp) AS last_value
+    minSimpleState(value) AS min_value,
+    maxSimpleState(value) AS max_value,
+    sumSimpleState(value) AS sum_value,
+    sumSimpleState(toUInt64(1)) AS count
 FROM sensor_readings
 GROUP BY device_id, sensor_id, timestamp;
 
@@ -212,15 +210,12 @@ CREATE TABLE sensor_readings_1h (
     device_id UInt32,
     sensor_id UInt16,
     timestamp DateTime,
-    min_value Float64,
-    max_value Float64,
-    avg_value Float64,
-    count UInt32,
-    stddev_value Float64,
-    p50_value Float64,
-    p95_value Float64,
-    p99_value Float64
-) ENGINE = SummingMergeTree()
+    min_value SimpleAggregateFunction(min, Float64),
+    max_value SimpleAggregateFunction(max, Float64),
+    sum_value SimpleAggregateFunction(sum, Float64),
+    count SimpleAggregateFunction(sum, UInt64),
+    avg_value Float64 ALIAS sum_value / count
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (device_id, sensor_id, timestamp)
 TTL timestamp + INTERVAL 2 YEAR;
@@ -231,14 +226,10 @@ AS SELECT
     device_id,
     sensor_id,
     toStartOfHour(timestamp) AS timestamp,
-    min(min_value) AS min_value,
-    max(max_value) AS max_value,
-    sum(sum_value) / sum(count) AS avg_value,
-    sum(count) AS count,
-    0 AS stddev_value,  -- Calculated differently
-    0 AS p50_value,
-    0 AS p95_value,
-    0 AS p99_value
+    minSimpleState(min_value) AS min_value,
+    maxSimpleState(max_value) AS max_value,
+    sumSimpleState(sum_value) AS sum_value,
+    sumSimpleState(count) AS count
 FROM sensor_readings_1m
 GROUP BY device_id, sensor_id, timestamp;
 ```
@@ -272,12 +263,13 @@ FROM (
         device_id,
         sensor_id,
         timestamp,
-        avg_value,
-        min_value,
-        max_value
+        sum(sum_value) / sum(count) AS avg_value,
+        min(min_value) AS min_value,
+        max(max_value) AS max_value
     FROM sensor_readings_1m
     WHERE hours_diff > 1 AND hours_diff <= 24
       AND timestamp BETWEEN start_time AND end_time
+    GROUP BY device_id, sensor_id, timestamp
 
     UNION ALL
 
@@ -286,12 +278,13 @@ FROM (
         device_id,
         sensor_id,
         timestamp,
-        avg_value,
-        min_value,
-        max_value
+        sum(sum_value) / sum(count) AS avg_value,
+        min(min_value) AS min_value,
+        max(max_value) AS max_value
     FROM sensor_readings_1h
     WHERE hours_diff > 24
       AND timestamp BETWEEN start_time AND end_time
+    GROUP BY device_id, sensor_id, timestamp
 )
 ORDER BY timestamp;
 ```
@@ -383,12 +376,12 @@ SELECT
     sr.sensor_id,
     sr.timestamp,
     sr.value,
-    (sr.value - s.mean_value) / s.stddev_value AS z_score
+    (sr.value - s.mean_value) / nullIf(s.stddev_value, 0) AS z_score
 FROM sensor_readings sr
 JOIN stats s ON sr.device_id = s.device_id AND sr.sensor_id = s.sensor_id
 WHERE sr.timestamp >= now() - INTERVAL 1 HOUR
-  AND abs((sr.value - s.mean_value) / s.stddev_value) > 3  -- 3 sigma
-ORDER BY abs((sr.value - s.mean_value) / s.stddev_value) DESC;
+  AND abs((sr.value - s.mean_value) / nullIf(s.stddev_value, 0)) > 3  -- 3 sigma
+ORDER BY abs((sr.value - s.mean_value) / nullIf(s.stddev_value, 0)) DESC;
 
 -- Threshold-based alerts
 SELECT
@@ -417,12 +410,19 @@ SELECT
     device_id,
     sensor_id,
     timestamp,
-    dateDiff('second', lagInFrame(timestamp, 1) OVER (
-        PARTITION BY device_id, sensor_id ORDER BY timestamp
-    ), timestamp) AS gap_seconds
-FROM sensor_readings
-WHERE timestamp >= now() - INTERVAL 1 HOUR
-HAVING gap_seconds > (SELECT seconds FROM expected_interval) * 2
+    gap_seconds
+FROM (
+    SELECT
+        device_id,
+        sensor_id,
+        timestamp,
+        dateDiff('second', lagInFrame(timestamp, 1) OVER (
+            PARTITION BY device_id, sensor_id ORDER BY timestamp
+        ), timestamp) AS gap_seconds
+    FROM sensor_readings
+    WHERE timestamp >= now() - INTERVAL 1 HOUR
+)
+WHERE gap_seconds > (SELECT seconds FROM expected_interval) * 2
 ORDER BY gap_seconds DESC;
 
 -- Device uptime calculation
@@ -481,8 +481,8 @@ CREATE TABLE sensor_readings_tiered (
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (device_id, sensor_id, timestamp)
 TTL
-    timestamp + INTERVAL 7 DAY TO VOLUME 'hot',
-    timestamp + INTERVAL 30 DAY TO VOLUME 'warm',
+    timestamp + INTERVAL 7 DAY TO VOLUME 'warm',
+    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
     timestamp + INTERVAL 365 DAY DELETE
 SETTINGS storage_policy = 'tiered';
 

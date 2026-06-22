@@ -71,6 +71,7 @@ memberlist:
     - loki-memberlist:7946
 
   # Node identification
+  # Requires starting Loki with -config.expand-env=true
   node_name: ${POD_NAME}
   advertise_addr: ${POD_IP}
 
@@ -92,8 +93,6 @@ memberlist:
   # Timing
   retransmit_factor: 4
   push_pull_interval: 30s
-  probe_interval: 1s
-  probe_timeout: 500ms
 
   # Message settings
   packet_dial_timeout: 5s
@@ -189,6 +188,9 @@ spec:
   serviceName: loki-ingester
   replicas: 3
   podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: loki-ingester
   template:
     metadata:
       labels:
@@ -200,6 +202,7 @@ spec:
           image: grafana/loki:2.9.4
           args:
             - -config.file=/etc/loki/config.yaml
+            - -config.expand-env=true
             - -target=ingester
           env:
             - name: POD_NAME
@@ -229,6 +232,9 @@ metadata:
   namespace: loki
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: loki-distributor
   template:
     metadata:
       labels:
@@ -240,8 +246,13 @@ spec:
           image: grafana/loki:2.9.4
           args:
             - -config.file=/etc/loki/config.yaml
+            - -config.expand-env=true
             - -target=distributor
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -262,7 +273,6 @@ spec:
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 7946 | TCP | Gossip communication |
-| 7946 | UDP | Gossip communication |
 
 ### Network Policies
 
@@ -287,8 +297,6 @@ spec:
       ports:
         - port: 7946
           protocol: TCP
-        - port: 7946
-          protocol: UDP
   egress:
     - to:
         - podSelector:
@@ -297,8 +305,6 @@ spec:
       ports:
         - port: 7946
           protocol: TCP
-        - port: 7946
-          protocol: UDP
 ```
 
 ### Firewall Rules
@@ -307,12 +313,11 @@ spec:
 # Allow memberlist traffic between Loki pods
 
 iptables -A INPUT -p tcp --dport 7946 -j ACCEPT
-iptables -A INPUT -p udp --dport 7946 -j ACCEPT
 ```
 
 ## DNS-Based Discovery
 
-### Using DNS SRV Records
+### Using DNS A/AAAA Records
 
 ```yaml
 memberlist:
@@ -350,10 +355,10 @@ rate(memberlist_client_messages_out_total[5m])
 
 ```bash
 # Check ring status
-curl http://loki:3100/ring
+curl http://loki:3100/distributor/ring
 
-# Check memberlist status
-curl http://loki:3100/memberlist
+# Check service status
+curl http://loki:3100/services
 ```
 
 ### Alerts
@@ -392,9 +397,9 @@ memberlist:
   # Continue gossiping to dead nodes briefly
   gossip_to_dead_nodes_time: 15s
 
-  # Probe settings
-  probe_interval: 1s
-  probe_timeout: 500ms
+  # Packet timeout settings
+  packet_dial_timeout: 5s
+  packet_write_timeout: 5s
 ```
 
 ### Graceful Shutdown
@@ -446,10 +451,10 @@ kubectl logs -n loki loki-ingester-0 | grep -i memberlist
 #### 2. Split Brain
 
 ```bash
-# Check ring status from multiple pods
-for pod in loki-ingester-{0,1,2}; do
+# Check ring status from multiple distributor pods
+for pod in $(kubectl get pods -n loki -l app=loki-distributor -o name); do
   echo "=== $pod ==="
-  kubectl exec -n loki $pod -- curl -s localhost:3100/ring | head -20
+  kubectl exec -n loki "${pod#pod/}" -- curl -s localhost:3100/distributor/ring | head -20
 done
 ```
 
@@ -473,8 +478,8 @@ server:
 ### Ring Status API
 
 ```bash
-# Get detailed ring status
-curl http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
+# View distributor ring status
+curl http://loki:3100/distributor/ring
 ```
 
 ## Production Best Practices
@@ -498,7 +503,7 @@ curl http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
 ### Network
 
 1. Ensure low latency between nodes
-2. Allow both TCP and UDP on gossip port
+2. Allow TCP on the gossip port
 3. Use dedicated network for gossip if possible
 
 ## Complete Configuration Example
@@ -514,6 +519,7 @@ server:
 memberlist:
   join_members:
     - dns+loki-memberlist.loki.svc.cluster.local:7946
+  # Requires starting Loki with -config.expand-env=true
   node_name: ${POD_NAME}
   advertise_addr: ${POD_IP}
   bind_addr:

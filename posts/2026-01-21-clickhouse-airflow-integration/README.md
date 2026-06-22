@@ -56,13 +56,15 @@ graph TB
 ### Install ClickHouse Provider
 
 ```bash
-pip install apache-airflow-providers-clickhouse
+pip install -U airflow-clickhouse-plugin
 ```
 
 ### Configure Connection
 
 ```python
 # In Airflow UI: Admin > Connections > Add
+# Choose SQLite or another SQL connection type; the plugin reads the standard
+# host, port, login, password, schema, and extra fields.
 
 # Or via environment variable
 AIRFLOW_CONN_CLICKHOUSE_DEFAULT = 'clickhouse://user:password@clickhouse.example.com:8123/analytics'
@@ -75,7 +77,7 @@ from airflow.models import Connection
 
 connection = Connection(
     conn_id='clickhouse_analytics',
-    conn_type='clickhouse',
+    conn_type='sqlite',
     host='clickhouse.example.com',
     port=8123,
     login='airflow_user',
@@ -94,7 +96,7 @@ connection = Connection(
 
 ```python
 from airflow import DAG
-from airflow.providers.clickhouse.operators.clickhouse import ClickHouseOperator
+from airflow_clickhouse_plugin.operators.clickhouse import ClickHouseOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -106,7 +108,7 @@ default_args = {
 with DAG(
     'clickhouse_etl',
     default_args=default_args,
-    schedule_interval='0 2 * * *',
+    schedule='0 2 * * *',
     start_date=datetime(2024, 1, 1),
     catchup=False,
 ) as dag:
@@ -142,7 +144,7 @@ with DAG(
 ### Parameterized Queries
 
 ```python
-from airflow.providers.clickhouse.operators.clickhouse import ClickHouseOperator
+from airflow_clickhouse_plugin.operators.clickhouse import ClickHouseOperator
 
 aggregate_metrics = ClickHouseOperator(
     task_id='aggregate_daily_metrics',
@@ -156,7 +158,7 @@ aggregate_metrics = ClickHouseOperator(
             countIf(event_type = 'purchase') AS purchases,
             sumIf(amount, event_type = 'purchase') AS revenue
         FROM events
-        WHERE toDate(timestamp) = toDate('{{ ds }}')
+        WHERE toDate(timestamp) = %(date)s
         GROUP BY date
     """,
     parameters={
@@ -168,14 +170,14 @@ aggregate_metrics = ClickHouseOperator(
 ## Custom ClickHouse Hook
 
 ```python
-from airflow.providers.clickhouse.hooks.clickhouse import ClickHouseHook
+from airflow_clickhouse_plugin.hooks.clickhouse import ClickHouseHook
 from airflow.decorators import task
 
 @task
 def extract_metrics(execution_date):
     hook = ClickHouseHook(clickhouse_conn_id='clickhouse_analytics')
 
-    result = hook.run(
+    result = hook.execute(
         sql="""
             SELECT
                 toDate(timestamp) AS date,
@@ -185,7 +187,7 @@ def extract_metrics(execution_date):
             WHERE toDate(timestamp) = %(date)s
             GROUP BY date
         """,
-        parameters={'date': execution_date}
+        params={'date': execution_date}
     )
 
     return result
@@ -193,20 +195,22 @@ def extract_metrics(execution_date):
 @task
 def process_metrics(metrics):
     # Process the extracted data
-    for row in metrics:
-        print(f"Date: {row['date']}, Events: {row['events']}, Users: {row['users']}")
+    for date, events, users in metrics:
+        print(f"Date: {date}, Events: {events}, Users: {users}")
     return metrics
 
 @task
 def load_to_summary(metrics):
     hook = ClickHouseHook(clickhouse_conn_id='clickhouse_analytics')
 
-    hook.run(
+    rows = [(row[0], row[1], row[2]) for row in metrics]
+
+    hook.execute(
         sql="""
             INSERT INTO metrics_summary (date, events, users)
             VALUES
         """,
-        parameters=metrics
+        params=rows
     )
 ```
 
@@ -214,8 +218,7 @@ def load_to_summary(metrics):
 
 ```python
 from airflow import DAG
-from airflow.providers.clickhouse.operators.clickhouse import ClickHouseOperator
-from airflow.operators.python import PythonOperator, BranchPythonOperator
+from airflow_clickhouse_plugin.operators.clickhouse import ClickHouseOperator
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime, timedelta
 
@@ -229,7 +232,7 @@ default_args = {
 with DAG(
     'clickhouse_analytics_pipeline',
     default_args=default_args,
-    schedule_interval='0 3 * * *',
+    schedule='0 3 * * *',
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=['clickhouse', 'analytics'],
@@ -336,23 +339,24 @@ with DAG(
 ## Data Quality Checks
 
 ```python
-from airflow.providers.clickhouse.operators.clickhouse import ClickHouseOperator
+from airflow_clickhouse_plugin.operators.clickhouse import ClickHouseOperator
 from airflow.operators.python import BranchPythonOperator
+from airflow.operators.empty import EmptyOperator
 
 def check_data_quality(**context):
-    from airflow.providers.clickhouse.hooks.clickhouse import ClickHouseHook
+    from airflow_clickhouse_plugin.hooks.clickhouse import ClickHouseHook
 
     hook = ClickHouseHook(clickhouse_conn_id='clickhouse_analytics')
+    ds = context['ds']
 
     # Check row counts
-    result = hook.run("""
+    result = hook.execute("""
         SELECT
-            (SELECT count() FROM staging.events WHERE toDate(timestamp) = '{{ ds }}') AS staged,
-            (SELECT count() FROM analytics.events_enriched WHERE toDate(timestamp) = '{{ ds }}') AS transformed
-    """)
+            (SELECT count() FROM staging.events WHERE toDate(timestamp) = %(date)s) AS staged,
+            (SELECT count() FROM analytics.events_enriched WHERE toDate(timestamp) = %(date)s) AS transformed
+    """, params={'date': ds})
 
-    staged = result[0]['staged']
-    transformed = result[0]['transformed']
+    staged, transformed = result[0]
 
     if transformed < staged * 0.95:
         return 'alert_data_loss'
@@ -371,6 +375,10 @@ alert_data_loss = ClickHouseOperator(
         VALUES (now(), 'DATA_LOSS', 'Potential data loss detected for {{ ds }}')
     """
 )
+
+continue_pipeline = EmptyOperator(task_id='continue_pipeline')
+
+data_quality_check >> [alert_data_loss, continue_pipeline]
 ```
 
 ## Partitioned Processing
@@ -380,7 +388,7 @@ from airflow.decorators import dag, task
 from datetime import datetime
 
 @dag(
-    schedule_interval='0 4 * * *',
+    schedule='0 4 * * *',
     start_date=datetime(2024, 1, 1),
     catchup=True,
 )
@@ -388,30 +396,31 @@ def clickhouse_backfill_dag():
 
     @task
     def get_partitions_to_process(ds):
-        from airflow.providers.clickhouse.hooks.clickhouse import ClickHouseHook
+        from airflow_clickhouse_plugin.hooks.clickhouse import ClickHouseHook
 
         hook = ClickHouseHook(clickhouse_conn_id='clickhouse_analytics')
-        result = hook.run(f"""
+        result = hook.execute("""
             SELECT DISTINCT partition
             FROM system.parts
             WHERE table = 'raw_events'
-              AND partition >= '{ds}'
+              AND active
+              AND partition >= %(date)s
             ORDER BY partition
             LIMIT 10
-        """)
+        """, params={'date': ds})
 
-        return [row['partition'] for row in result]
+        return [row[0] for row in result]
 
     @task
     def process_partition(partition):
-        from airflow.providers.clickhouse.hooks.clickhouse import ClickHouseHook
+        from airflow_clickhouse_plugin.hooks.clickhouse import ClickHouseHook
 
         hook = ClickHouseHook(clickhouse_conn_id='clickhouse_analytics')
-        hook.run(f"""
+        hook.execute("""
             INSERT INTO analytics.events_processed
             SELECT * FROM raw_events
-            WHERE partition = '{partition}'
-        """)
+            WHERE _partition_id = %(partition)s
+        """, params={'partition': partition})
 
         return partition
 
@@ -424,7 +433,7 @@ clickhouse_backfill_dag()
 ## Monitoring and Alerting
 
 ```python
-from airflow.providers.clickhouse.operators.clickhouse import ClickHouseOperator
+from airflow_clickhouse_plugin.operators.clickhouse import ClickHouseOperator
 from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 
 monitor_pipeline = ClickHouseOperator(
@@ -440,13 +449,13 @@ monitor_pipeline = ClickHouseOperator(
             '{{ ds }}',
             '{{ task.task_id }}',
             (SELECT count() FROM analytics.events_enriched WHERE toDate(timestamp) = '{{ ds }}'),
-            {{ task_instance.duration }}
+            {{ task_instance.duration or 0 }}
     """
 )
 
 alert_on_failure = SlackWebhookOperator(
     task_id='alert_on_failure',
-    http_conn_id='slack_webhook',
+    slack_webhook_conn_id='slack_webhook',
     message='Pipeline failed: {{ dag.dag_id }} - {{ ds }}',
     trigger_rule='one_failed',
 )

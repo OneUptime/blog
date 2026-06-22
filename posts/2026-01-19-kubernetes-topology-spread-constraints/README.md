@@ -148,7 +148,7 @@ topologySpreadConstraints:
         app: myapp
 
 # maxSkew: 2 - Allow up to 2 difference
-# Example with 6 pods: 4-2-0 is OK, 5-1-0 is NOT OK
+# Example with 6 pods across 3 zones: 3-2-1 is OK, 4-2-0 is NOT OK
 ```
 
 ### whenUnsatisfiable
@@ -173,10 +173,12 @@ topologySpreadConstraints:
         app: myapp
 ```
 
-### minDomains (Kubernetes 1.25+)
+### minDomains (Kubernetes 1.30+)
 
 ```yaml
 # Require minimum number of domains
+# In Kubernetes 1.28-1.29, this requires the MinDomainsInPodTopologySpread
+# feature gate to be enabled.
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
@@ -198,8 +200,8 @@ topologySpreadConstraints:
     # Honor: Consider nodes matching affinity rules (default)
     # Ignore: Consider all nodes regardless of affinity
     nodeAffinityPolicy: Honor
-    # Honor: Exclude nodes with taints (default)
-    # Ignore: Include nodes with taints
+    # Honor: Include only untainted nodes and tainted nodes tolerated by the pod
+    # Ignore: Include all nodes regardless of taints (default)
     nodeTaintsPolicy: Honor
     labelSelector:
       matchLabels:
@@ -267,7 +269,7 @@ spec:
         app: balanced-app
     spec:
       topologySpreadConstraints:
-        # Hard: Must have at least 1 pod per zone
+        # Hard: Limit skew across zones
         - maxSkew: 2
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
@@ -627,14 +629,31 @@ kubectl get events --field-selector reason=FailedScheduling
 sum by (zone) (
   kube_pod_info{pod=~"myapp.*"}
   * on(node) group_left(zone)
-  kube_node_labels{label_topology_kubernetes_io_zone!=""}
+  label_replace(
+    kube_node_labels{label_topology_kubernetes_io_zone!=""},
+    "zone", "$1", "label_topology_kubernetes_io_zone", "(.*)"
+  )
 )
 
 # Skew across zones
 max(
-  count by (zone) (kube_pod_info{pod=~"myapp.*"} * on(node) group_left(zone) kube_node_labels)
+  sum by (zone) (
+    kube_pod_info{pod=~"myapp.*"}
+    * on(node) group_left(zone)
+    label_replace(
+      kube_node_labels{label_topology_kubernetes_io_zone!=""},
+      "zone", "$1", "label_topology_kubernetes_io_zone", "(.*)"
+    )
+  )
 ) - min(
-  count by (zone) (kube_pod_info{pod=~"myapp.*"} * on(node) group_left(zone) kube_node_labels)
+  sum by (zone) (
+    kube_pod_info{pod=~"myapp.*"}
+    * on(node) group_left(zone)
+    label_replace(
+      kube_node_labels{label_topology_kubernetes_io_zone!=""},
+      "zone", "$1", "label_topology_kubernetes_io_zone", "(.*)"
+    )
+  )
 )
 ```
 

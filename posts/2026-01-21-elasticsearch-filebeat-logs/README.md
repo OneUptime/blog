@@ -635,7 +635,7 @@ journalctl -u filebeat -f
 Check harvester state:
 
 ```bash
-cat /var/lib/filebeat/registry/filebeat/data.json | jq '.'
+cat /var/lib/filebeat/registry/filebeat/log.json | jq '.'
 ```
 
 ## Troubleshooting

@@ -116,19 +116,17 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: app
           env:
-            # Write connection (primary)
-            - name: DATABASE_WRITE_URL
-              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-cluster-rw:5432/myapp"
-
-            # Read connection (replicas)
-            - name: DATABASE_READ_URL
-              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-cluster-ro:5432/myapp"
-
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -139,6 +137,14 @@ spec:
                 secretKeyRef:
                   name: postgres-cluster-app
                   key: password
+
+            # Write connection (primary)
+            - name: DATABASE_WRITE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-cluster-rw:5432/myapp"
+
+            # Read connection (replicas)
+            - name: DATABASE_READ_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-cluster-ro:5432/myapp"
 ```
 
 ### Connection Pool for Reads
@@ -234,7 +240,7 @@ spec:
     cnpg.io/instanceRole: replica
   ports:
     - port: 5432
-  # Round-robin by default
+  # Traffic is distributed by kube-proxy or your cluster dataplane.
 ```
 
 ### Weighted Load Balancing with Pooler
@@ -363,6 +369,10 @@ spec:
   instances: 1
 
   # Replica cluster from primary
+  bootstrap:
+    pg_basebackup:
+      source: postgres-primary
+
   replica:
     enabled: true
     source: postgres-primary
@@ -393,9 +403,17 @@ spec:
       connectionParameters:
         host: postgres-primary-rw.production.svc
         user: streaming_replica
-      password:
+        sslmode: verify-full
+        dbname: postgres
+      sslKey:
         name: postgres-primary-replication
-        key: password
+        key: tls.key
+      sslCert:
+        name: postgres-primary-replication
+        key: tls.crt
+      sslRootCert:
+        name: postgres-primary-ca
+        key: ca.crt
 ```
 
 ### Geo-Distributed Replicas
@@ -426,6 +444,10 @@ metadata:
 spec:
   instances: 3
 
+  bootstrap:
+    pg_basebackup:
+      source: postgres-us-east
+
   replica:
     enabled: true
     source: postgres-us-east
@@ -435,9 +457,17 @@ spec:
       connectionParameters:
         host: postgres-us-east-rw.us-east.svc.cluster.local
         user: streaming_replica
-      password:
+        sslmode: verify-full
+        dbname: postgres
+      sslKey:
         name: us-east-replication
-        key: password
+        key: tls.key
+      sslCert:
+        name: us-east-replication
+        key: tls.crt
+      sslRootCert:
+        name: us-east-ca
+        key: ca.crt
 ```
 
 ## Scaling Strategies
@@ -464,29 +494,13 @@ kubectl patch cluster postgres-cluster --type merge -p '{
 }'
 ```
 
-### Auto-Scaling (HPA)
+### Pooler Scaling
 
-Scale pooler instances based on load:
+Scale pooler instances based on observed load:
 
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: postgres-read-pooler-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: postgresql.cnpg.io/v1
-    kind: Pooler
-    name: postgres-read-pooler
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
+```bash
+kubectl patch pooler postgres-read-pooler --type merge \
+  -p '{"spec":{"instances":5}}'
 ```
 
 ## Monitoring Read Replicas
@@ -497,8 +511,11 @@ spec:
 # Replication lag (seconds)
 cnpg_pg_replication_lag
 
-# Replica status
-cnpg_collector_up{role="replica"}
+# Instance exporter status
+cnpg_collector_up
+
+# In-recovery status, useful for identifying replicas
+cnpg_pg_replication_in_recovery
 
 # WAL positions
 cnpg_pg_stat_replication_sent_lag_bytes
@@ -523,7 +540,7 @@ groups:
           description: "Replica {{ $labels.pod }} has {{ $value }}s lag"
 
       - alert: ReplicaDown
-        expr: count(cnpg_collector_up{role="replica"}) == 0
+        expr: count(cnpg_pg_replication_in_recovery == 1) == 0
         for: 2m
         labels:
           severity: critical
@@ -531,7 +548,7 @@ groups:
           summary: "No read replicas available"
 
       - alert: InsufficientReplicas
-        expr: count(cnpg_collector_up{role="replica"}) < 2
+        expr: count(cnpg_pg_replication_in_recovery == 1) < 2
         for: 5m
         labels:
           severity: warning

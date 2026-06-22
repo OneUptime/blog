@@ -33,6 +33,8 @@ flowchart TB
 
 ```xml
 <project>
+    <modelVersion>4.0.0</modelVersion>
+
     <groupId>com.example</groupId>
     <artifactId>my-kafka-connector</artifactId>
     <version>1.0.0</version>
@@ -58,12 +60,29 @@ flowchart TB
             <artifactId>okhttp</artifactId>
             <version>4.12.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.2</version>
+        </dependency>
 
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.10.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-kafka</artifactId>
+            <version>2.0.5</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <version>2.0.5</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -197,6 +216,7 @@ public class HttpSourceConnectorConfig extends AbstractConfig {
         .define(POLL_INTERVAL_CONFIG,
             ConfigDef.Type.LONG,
             60000L,
+            ConfigDef.Range.atLeast(1),
             ConfigDef.Importance.MEDIUM,
             "Poll interval in milliseconds")
         .define(AUTH_HEADER_CONFIG,
@@ -207,6 +227,7 @@ public class HttpSourceConnectorConfig extends AbstractConfig {
         .define(BATCH_SIZE_CONFIG,
             ConfigDef.Type.INT,
             100,
+            ConfigDef.Range.atLeast(1),
             ConfigDef.Importance.LOW,
             "Maximum records per poll");
 
@@ -216,7 +237,7 @@ public class HttpSourceConnectorConfig extends AbstractConfig {
 
     public void validate() {
         String endpoints = getString(ENDPOINTS_CONFIG);
-        if (endpoints == null || endpoints.isEmpty()) {
+        if (endpoints == null || endpoints.trim().isEmpty()) {
             throw new ConfigException("At least one endpoint must be specified");
         }
     }
@@ -296,7 +317,11 @@ public class HttpSourceTask extends SourceTask {
 
         for (String endpoint : endpoints) {
             try {
-                List<SourceRecord> endpointRecords = pollEndpoint(endpoint.trim());
+                int remaining = config.getBatchSize() - records.size();
+                if (remaining <= 0) {
+                    break;
+                }
+                List<SourceRecord> endpointRecords = pollEndpoint(endpoint.trim(), remaining);
                 records.addAll(endpointRecords);
             } catch (Exception e) {
                 // Log error but continue with other endpoints
@@ -308,7 +333,7 @@ public class HttpSourceTask extends SourceTask {
         return records;
     }
 
-    private List<SourceRecord> pollEndpoint(String endpoint) throws Exception {
+    private List<SourceRecord> pollEndpoint(String endpoint, int maxRecords) throws Exception {
         List<SourceRecord> records = new ArrayList<>();
 
         // Get last offset for this endpoint
@@ -318,8 +343,13 @@ public class HttpSourceTask extends SourceTask {
         String lastId = lastOffset != null ? (String) lastOffset.get("last_id") : "0";
 
         // Build request
+        HttpUrl url = Objects.requireNonNull(HttpUrl.parse(endpoint), "Invalid endpoint: " + endpoint)
+            .newBuilder()
+            .addQueryParameter("since_id", lastId)
+            .build();
+
         Request.Builder requestBuilder = new Request.Builder()
-            .url(endpoint + "?since_id=" + lastId)
+            .url(url)
             .get();
 
         if (config.getAuthHeader() != null) {
@@ -332,13 +362,19 @@ public class HttpSourceTask extends SourceTask {
                 throw new RuntimeException("HTTP error: " + response.code());
             }
 
-            JsonNode root = objectMapper.readTree(response.body().string());
+            ResponseBody responseBody = response.body();
+            if (responseBody == null) {
+                throw new RuntimeException("Empty HTTP response body");
+            }
+
+            JsonNode root = objectMapper.readTree(responseBody.string());
             JsonNode items = root.get("items");
 
             if (items != null && items.isArray()) {
-                String newLastId = lastId;
-
                 for (JsonNode item : items) {
+                    if (records.size() >= maxRecords) {
+                        break;
+                    }
                     String id = item.get("id").asText();
                     String value = objectMapper.writeValueAsString(item);
 
@@ -356,7 +392,6 @@ public class HttpSourceTask extends SourceTask {
                     );
 
                     records.add(record);
-                    newLastId = id;
                 }
             }
         }
@@ -429,11 +464,73 @@ public class HttpSinkConnector extends SinkConnector {
 }
 ```
 
+### Sink Configuration
+
+```java
+package com.example.connect;
+
+import org.apache.kafka.common.config.AbstractConfig;
+import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.config.ConfigException;
+
+import java.util.Map;
+
+public class HttpSinkConnectorConfig extends AbstractConfig {
+    public static final String ENDPOINT_CONFIG = "http.endpoint";
+    public static final String AUTH_HEADER_CONFIG = "http.auth.header";
+    public static final String BATCH_SIZE_CONFIG = "batch.size";
+
+    public static final ConfigDef CONFIG_DEF = new ConfigDef()
+        .define(ENDPOINT_CONFIG,
+            ConfigDef.Type.STRING,
+            ConfigDef.NO_DEFAULT_VALUE,
+            ConfigDef.Importance.HIGH,
+            "HTTP endpoint to write records to")
+        .define(AUTH_HEADER_CONFIG,
+            ConfigDef.Type.PASSWORD,
+            null,
+            ConfigDef.Importance.MEDIUM,
+            "Authorization header value")
+        .define(BATCH_SIZE_CONFIG,
+            ConfigDef.Type.INT,
+            100,
+            ConfigDef.Range.atLeast(1),
+            ConfigDef.Importance.LOW,
+            "Maximum records per HTTP request");
+
+    public HttpSinkConnectorConfig(Map<String, String> props) {
+        super(CONFIG_DEF, props);
+    }
+
+    public void validate() {
+        String endpoint = getString(ENDPOINT_CONFIG);
+        if (endpoint == null || endpoint.isEmpty()) {
+            throw new ConfigException("HTTP endpoint must be specified");
+        }
+    }
+
+    public String getEndpoint() {
+        return getString(ENDPOINT_CONFIG);
+    }
+
+    public String getAuthHeader() {
+        return getPassword(AUTH_HEADER_CONFIG) != null
+            ? getPassword(AUTH_HEADER_CONFIG).value()
+            : null;
+    }
+
+    public int getBatchSize() {
+        return getInt(BATCH_SIZE_CONFIG);
+    }
+}
+```
+
 ### Sink Task
 
 ```java
 package com.example.connect;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.apache.kafka.connect.errors.RetriableException;
@@ -445,6 +542,7 @@ import java.util.concurrent.TimeUnit;
 public class HttpSinkTask extends SinkTask {
     private HttpSinkConnectorConfig config;
     private OkHttpClient httpClient;
+    private ObjectMapper objectMapper;
     private static final MediaType JSON = MediaType.parse("application/json");
 
     @Override
@@ -455,6 +553,7 @@ public class HttpSinkTask extends SinkTask {
     @Override
     public void start(Map<String, String> props) {
         this.config = new HttpSinkConnectorConfig(props);
+        this.objectMapper = new ObjectMapper();
 
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -491,7 +590,10 @@ public class HttpSinkTask extends SinkTask {
             StringBuilder jsonBuilder = new StringBuilder("[");
             for (int i = 0; i < records.size(); i++) {
                 if (i > 0) jsonBuilder.append(",");
-                jsonBuilder.append(records.get(i).value().toString());
+                Object value = records.get(i).value();
+                jsonBuilder.append(value instanceof String
+                    ? value
+                    : objectMapper.writeValueAsString(value));
             }
             jsonBuilder.append("]");
 
@@ -545,10 +647,10 @@ import org.apache.kafka.connect.errors.ConnectException;
 public void put(Collection<SinkRecord> records) {
     try {
         sendRecords(records);
-    } catch (TemporaryException e) {
+    } catch (java.io.IOException e) {
         // Will be retried
         throw new RetriableException(e);
-    } catch (PermanentException e) {
+    } catch (IllegalArgumentException e) {
         // Will fail the task
         throw new ConnectException(e);
     }
@@ -558,14 +660,23 @@ public void put(Collection<SinkRecord> records) {
 ### Dead Letter Queue
 
 ```java
+import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.sink.ErrantRecordReporter;
+
 @Override
 public void put(Collection<SinkRecord> records) {
+    ErrantRecordReporter reporter = context.errantRecordReporter();
+
     for (SinkRecord record : records) {
         try {
             processRecord(record);
         } catch (Exception e) {
             // Report error for DLQ
-            context.errantRecordReporter().report(record, e);
+            if (reporter != null) {
+                reporter.report(record, e);
+            } else {
+                throw new ConnectException("Failed to process record and no DLQ is configured", e);
+            }
         }
     }
 }
@@ -578,6 +689,11 @@ public void put(Collection<SinkRecord> records) {
 ```java
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
+import org.apache.kafka.common.config.ConfigDef;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 class HttpSourceConnectorTest {
     private HttpSourceConnector connector;
@@ -614,11 +730,15 @@ class HttpSourceConnectorTest {
 ```java
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.junit.jupiter.api.*;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.kafka.ConfluentKafkaContainer;
 
+@Testcontainers
 class HttpSourceConnectorIntegrationTest {
     // Use testcontainers for Kafka
     @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));
+    static ConfluentKafkaContainer kafka = new ConfluentKafkaContainer("confluentinc/cp-kafka:7.5.0");
 
     @Test
     void testConnectorProducesRecords() throws Exception {
@@ -638,9 +758,8 @@ class HttpSourceConnectorIntegrationTest {
 my-connector/
 ├── lib/
 │   ├── my-connector-1.0.0.jar
-│   └── dependencies/
-│       ├── okhttp-4.12.0.jar
-│       └── ...
+│   ├── okhttp-4.12.0.jar
+│   └── ...
 └── manifest.json
 ```
 
@@ -648,17 +767,21 @@ my-connector/
 
 ```json
 {
+  "component_types": ["source", "sink"],
   "name": "http-connector",
   "version": "1.0.0",
   "title": "HTTP Source and Sink Connector",
   "description": "Kafka Connect connector for HTTP APIs",
   "owner": {
     "name": "Your Company",
+    "username": "yourcompany",
+    "type": "organization",
     "url": "https://example.com"
   },
   "tags": ["http", "api", "rest"],
   "features": {
-    "supported_encodings": ["json"],
+    "kafka_connect_api": true,
+    "supported_encodings": ["any"],
     "single_message_transforms": true
   }
 }
@@ -670,11 +793,11 @@ my-connector/
 #!/bin/bash
 mvn clean package
 
-mkdir -p target/connector/lib
-cp target/my-connector-1.0.0-jar-with-dependencies.jar target/connector/lib/
-cp manifest.json target/connector/
+mkdir -p target/yourcompany-http-connector-1.0.0/lib
+cp target/my-connector-1.0.0-jar-with-dependencies.jar target/yourcompany-http-connector-1.0.0/lib/
+cp manifest.json target/yourcompany-http-connector-1.0.0/
 
-cd target && zip -r my-connector-1.0.0.zip connector
+cd target && zip -r yourcompany-http-connector-1.0.0.zip yourcompany-http-connector-1.0.0
 ```
 
 ## Deployment
@@ -686,7 +809,7 @@ cd target && zip -r my-connector-1.0.0.zip connector
 cp -r my-connector /usr/share/java/
 
 # Or extract from zip
-unzip my-connector-1.0.0.zip -d /usr/share/confluent-hub-components/
+unzip yourcompany-http-connector-1.0.0.zip -d /usr/share/confluent-hub-components/
 ```
 
 ### Configuration
@@ -699,6 +822,7 @@ unzip my-connector-1.0.0.zip -d /usr/share/confluent-hub-components/
     "http.endpoints": "https://api.example.com/events",
     "topic": "events",
     "poll.interval.ms": "30000",
+    "batch.size": "100",
     "tasks.max": "2"
   }
 }

@@ -33,7 +33,7 @@ flowchart TD
 | Used | Active process memory | No (without killing) |
 | Buffers | Filesystem metadata cache | Yes |
 | Cache | Page cache for files | Yes |
-| Available | Free + reclaimable cache | - |
+| Available | Estimate of memory available for new applications without swapping | - |
 | Swap | Disk-based virtual memory | - |
 
 ## Quick Diagnosis Commands
@@ -74,7 +74,7 @@ Mem:           15Gi       12Gi       500Mi       200Mi       2.5Gi       2.0Gi
 **Key metric**: `available` (not `free`)
 
 - `free` = completely unused memory
-- `available` = free + reclaimable cache/buffers
+- `available` = an estimate based on free memory, page cache, and reclaimable slabs
 - `available` is what matters for new allocations
 
 ### When is Memory Actually Low?
@@ -99,11 +99,12 @@ flowchart LR
 watch -n 5 'ps aux --sort=-%mem | head -10'
 
 # Check specific process memory over time
-pidstat -r -p $(pgrep myapp) 1
+pid=$(pgrep -n myapp)
+pidstat -r -p "$pid" 1
 
 # Get detailed memory map of process
-pmap -x $(pgrep myapp)
-cat /proc/$(pgrep myapp)/smaps | grep -E "^(Rss|Pss|Shared|Private)"
+pmap -x "$pid"
+cat /proc/"$pid"/smaps | grep -E "^(Rss|Pss|Shared|Private)"
 ```
 
 **Solutions**:
@@ -182,19 +183,21 @@ done | sort -rn | head -20
 ```bash
 # Protect critical processes from OOM killer
 # Lower values = less likely to be killed (-1000 to 1000)
-echo -500 | sudo tee /proc/$(pgrep mysqld)/oom_score_adj
+pid=$(pgrep -n mysqld)
+echo -500 | sudo tee /proc/"$pid"/oom_score_adj
 
 # Or disable OOM killer for a process (use carefully)
-echo -1000 | sudo tee /proc/$(pgrep critical_app)/oom_score_adj
+pid=$(pgrep -n critical_app)
+echo -1000 | sudo tee /proc/"$pid"/oom_score_adj
 
 # Make permanent via systemd
 # Add to service file:
 # [Service]
 # OOMScoreAdjust=-500
 
-# Configure OOM killer behavior system-wide
-# More aggressive (reclaim memory sooner)
-echo 1 | sudo tee /proc/sys/vm/overcommit_memory
+# Tune system-wide OOM victim selection
+# 1 = kill the allocating task instead of scanning all tasks
+echo 1 | sudo tee /proc/sys/vm/oom_kill_allocating_task
 ```
 
 ### Cause 4: Fork/Exec Failures
@@ -375,24 +378,27 @@ MemorySwapMax=500M
 # Set max virtual memory (in KB)
 ulimit -v 1048576    # 1GB
 
-# Set max resident set size
+# Set max resident set size (ignored on Linux 2.4.30 and later)
 ulimit -m 524288     # 512MB
 
 # Add to /etc/security/limits.conf for persistence
 # myuser hard as 1048576
 ```
 
-**Using cgroups**:
+**Using cgroups v2**:
 
 ```bash
+# Enable the memory controller for child cgroups
+echo +memory | sudo tee /sys/fs/cgroup/cgroup.subtree_control
+
 # Create a cgroup
-sudo cgcreate -g memory:/limited
+sudo mkdir /sys/fs/cgroup/limited
 
 # Set memory limit
-echo 1G | sudo tee /sys/fs/cgroup/memory/limited/memory.limit_in_bytes
+echo 1G | sudo tee /sys/fs/cgroup/limited/memory.max
 
 # Move process to cgroup
-echo 12345 | sudo tee /sys/fs/cgroup/memory/limited/cgroup.procs
+echo 12345 | sudo tee /sys/fs/cgroup/limited/cgroup.procs
 ```
 
 ## Monitoring and Alerting

@@ -19,18 +19,18 @@ bash: [: abc: integer expression expected
 bash: [: : integer expression expected
 ```
 
-It means Bash expected a number but received something else - a string, an empty value, or a number with spaces.
+It means Bash expected a number but received something else - a string, an empty value, embedded whitespace, or a floating-point number.
 
 ```mermaid
 flowchart TD
     A[Integer Expression Expected] --> B{What was provided?}
     B --> C[Empty String]
     B --> D[Non-numeric String]
-    B --> E[String with Spaces]
+    B --> E[Embedded Whitespace]
     B --> F[Floating Point Number]
     C --> G[Use default value or validate]
     D --> H[Validate before comparing]
-    E --> I[Quote the variable]
+    E --> I[Normalize or validate]
     F --> J[Use bc or awk for decimals]
 ```
 
@@ -44,7 +44,7 @@ flowchart TD
 # Problematic - count is empty
 
 count=""
-if [ $count -gt 0 ]; then  # FAILS
+if [ "$count" -gt 0 ]; then  # FAILS
     echo "Count is positive"
 fi
 
@@ -84,15 +84,15 @@ fi
 ```bash
 #!/bin/bash
 
-count="  42  "
+count="4 2"
 
-# Fixed - trim whitespace
+# Fixed - remove embedded whitespace
 count=$(echo "$count" | tr -d ' ')
 if [ "$count" -gt 0 ]; then
     echo "Positive"
 fi
 
-# Or use arithmetic expansion (handles whitespace)
+# Or use arithmetic expansion for leading/trailing whitespace
 count="  42  "
 if (( count > 0 )); then
     echo "Positive"
@@ -191,7 +191,7 @@ if [[ -z "$age" ]]; then
 fi
 
 if [[ ! "$age" =~ ^[0-9]+$ ]]; then
-    echo "Error: Age must be a positive integer" >&2
+    echo "Error: Age must be a non-negative integer" >&2
     exit 1
 fi
 

@@ -49,7 +49,7 @@ services:
       - "3100:3100"
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
-      - ./loki-rules:/loki/rules
+      - ./loki-rules:/loki/rules/fake
       - loki-data:/loki
     command: -config.file=/etc/loki/config.yaml
     networks:
@@ -172,6 +172,9 @@ global:
   resolve_timeout: 5m
   slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
 
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
 route:
   group_by: ['alertname', 'severity', 'service']
   group_wait: 30s
@@ -180,19 +183,19 @@ route:
   receiver: 'slack-notifications'
   routes:
     # Critical alerts go to both Slack and PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'critical-alerts'
       continue: true
 
     # Warning alerts only to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
 
     # Info alerts to a separate channel
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       receiver: 'slack-info'
       group_wait: 1m
       repeat_interval: 24h
@@ -238,7 +241,7 @@ receivers:
         title: '{{ template "slack.title" . }}'
         text: '{{ template "slack.text" . }}'
     pagerduty_configs:
-      - service_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
+      - routing_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
         severity: critical
         description: '{{ template "pagerduty.description" . }}'
         details:
@@ -247,10 +250,10 @@ receivers:
           num_resolved: '{{ .Alerts.Resolved | len }}'
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'service']
 ```
 
@@ -271,7 +274,7 @@ Create `alertmanager-templates/slack.tmpl`:
 *Service:* {{ .Labels.service }}
 {{ if .Labels.instance }}*Instance:* {{ .Labels.instance }}{{ end }}
 *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
-{{ if .EndsAt }}*Ended:* {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
+{{ if eq .Status "resolved" }}*Ended:* {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
 
 *Labels:*
 {{ range .Labels.SortedPairs }}  - {{ .Name }}: `{{ .Value }}`
@@ -281,11 +284,11 @@ Create `alertmanager-templates/slack.tmpl`:
 {{- end }}
 
 {{ define "slack.grafana_url" -}}
-http://grafana:3000/explore?left={"datasource":"Loki","queries":[{"expr":"{service=\"{{ .CommonLabels.service }}\"}"}]}
+https://grafana.example.com/explore?left={"datasource":"Loki","queries":[{"expr":"{service=\"{{ .CommonLabels.service }}\"}"}]}
 {{- end }}
 
 {{ define "slack.silence_url" -}}
-http://alertmanager:9093/#/silences/new?filter={alertname="{{ .CommonLabels.alertname }}"}
+https://alertmanager.example.com/#/silences/new?filter={alertname="{{ .CommonLabels.alertname }}"}
 {{- end }}
 ```
 
@@ -308,7 +311,7 @@ Add to `alertmanager.yaml`:
 receivers:
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
+      - routing_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
         severity: critical
         class: 'log-alert'
         component: '{{ .CommonLabels.service }}'
@@ -326,7 +329,7 @@ receivers:
 
   - name: 'pagerduty-high'
     pagerduty_configs:
-      - service_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
+      - routing_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
         severity: error
         description: '{{ template "pagerduty.description" . }}'
         details:
@@ -370,7 +373,7 @@ http://grafana.example.com/explore?left={"datasource":"Loki","queries":[{"expr":
 
 ### Alert Rules Configuration
 
-Create `loki-rules/alerts.yaml`:
+Create `loki-rules/alerts.yaml`. In this Docker Compose setup, the `loki-rules` directory is mounted at `/loki/rules/fake`, where `fake` is the tenant ID Loki uses when authentication is disabled:
 
 ```yaml
 groups:
@@ -612,15 +615,15 @@ route:
   receiver: 'default'
   routes:
     # Business hours - route to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
       active_time_intervals:
         - business_hours
 
     # Outside business hours - route critical to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       mute_time_intervals:
         - business_hours
@@ -640,20 +643,20 @@ time_intervals:
 route:
   receiver: 'default'
   routes:
-    - match:
-        team: platform
+    - matchers:
+        - team="platform"
       receiver: 'platform-team-slack'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'platform-team-pagerduty'
 
-    - match:
-        team: backend
+    - matchers:
+        - team="backend"
       receiver: 'backend-team-slack'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'backend-team-pagerduty'
 
 receivers:
@@ -664,7 +667,7 @@ receivers:
 
   - name: 'platform-team-pagerduty'
     pagerduty_configs:
-      - service_key: 'PLATFORM_TEAM_KEY'
+      - routing_key: 'PLATFORM_TEAM_KEY'
 
   - name: 'backend-team-slack'
     slack_configs:
@@ -673,7 +676,7 @@ receivers:
 
   - name: 'backend-team-pagerduty'
     pagerduty_configs:
-      - service_key: 'BACKEND_TEAM_KEY'
+      - routing_key: 'BACKEND_TEAM_KEY'
 ```
 
 ## Managing Silences

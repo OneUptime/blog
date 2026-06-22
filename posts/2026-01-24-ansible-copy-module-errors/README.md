@@ -19,18 +19,16 @@ Understanding how the copy module works internally helps diagnose issues faster.
 ```mermaid
 flowchart TD
     A[Copy Module Invoked] --> B[Read Source File]
-    B --> C{File Size Check}
-    C -->|Small File| D[Base64 Encode]
-    C -->|Large File| E[SFTP Transfer]
-    D --> F[Transfer via SSH]
-    E --> F
-    F --> G[Create Temp File on Remote]
-    G --> H[Set Permissions]
-    H --> I{Checksum Verify}
-    I -->|Match| J[Move to Destination]
-    I -->|Mismatch| K[Error: Transfer Failed]
-    J --> L[Set Owner/Group/Mode]
-    L --> M[Success]
+    B --> C[Calculate Source Checksum]
+    C --> D[Transfer via Configured SSH File Transfer Method]
+    D --> E[Create Temp File on Remote]
+    E --> F{Validate if validate is set}
+    F -->|Pass| G{Checksum Verify}
+    F -->|Fail| H[Error: Validation Failed]
+    G -->|Match| I[Move to Destination]
+    G -->|Mismatch| J[Error: Transfer Failed]
+    I --> K[Set Owner/Group/Mode]
+    K --> L[Success]
 ```
 
 ---
@@ -158,10 +156,10 @@ fatal: [webserver]: FAILED! => {
 
 # Solution: Understand Ansible file search order
 # Ansible searches for files in this order:
-# 1. Role's files/ directory (when in a role)
-# 2. Playbook's files/ directory
-# 3. Role's root directory
-# 4. Playbook directory
+# 1. Current role's files/ directory, then the role directory
+# 2. Parent roles' files/ directories, then their role directories
+# 3. Current task file's directory
+# 4. Current play file's directory
 
 # Option 1: Place file in files/ directory
 # project/
@@ -244,29 +242,17 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```text
-fatal: [webserver]: FAILED! => {
-    "changed": false,
-    "msg": "Timeout (12s) waiting for privilege escalation prompt"
-}
-```
+The task hangs or takes a long time during transfer of large files.
 
-Or the task hangs during transfer of large files.
+If you see a message such as `Timeout (12s) waiting for privilege escalation prompt`, troubleshoot become authentication separately; that error is not caused by file size.
 
 ### Solution
 
 ```yaml
-# Problem: Default timeout too short for large files
-# Solution 1: Increase async timeout for large file transfers
-- name: Copy large file with extended timeout
-  ansible.builtin.copy:
-    src: large_file.tar.gz
-    dest: /opt/backups/large_file.tar.gz
-  become: yes
-  async: 3600  # 1 hour timeout
-  poll: 30     # Check every 30 seconds
+# Problem: Copy is inefficient for very large files
+# Note: ansible.builtin.copy does not support async mode.
 
-# Solution 2: Use synchronize module for better performance
+# Solution 1: Use synchronize module for better performance
 # The synchronize module uses rsync which is more efficient for large files
 - name: Copy large file using synchronize
   ansible.posix.synchronize:
@@ -276,7 +262,7 @@ Or the task hangs during transfer of large files.
     compress: yes
   become: yes
 
-# Solution 3: Use get_url for files available via HTTP
+# Solution 2: Use get_url for files available via HTTP
 - name: Download large file directly to remote host
   ansible.builtin.get_url:
     url: https://releases.example.com/large_file.tar.gz
@@ -304,13 +290,13 @@ fatal: [webserver]: FAILED! => {
 #### Cause 1: File corruption during transfer
 
 ```yaml
-# Solution: Force checksum validation and retry
+# Solution: Force SHA1 checksum validation and retry
 - name: Copy file with explicit checksum
   ansible.builtin.copy:
     src: important_file.bin
     dest: /opt/data/important_file.bin
     # Force checksum validation
-    checksum: "{{ lookup('file', 'checksums/important_file.bin.sha256') }}"
+    checksum: "{{ lookup('file', 'checksums/important_file.bin.sha1') }}"
   become: yes
   register: copy_result
   retries: 3
@@ -321,7 +307,7 @@ fatal: [webserver]: FAILED! => {
 #### Cause 2: Binary vs text mode issues
 
 ```yaml
-# Solution: Ensure consistent line endings
+# Solution: Copy transfers files as-is
 - name: Copy text file preserving line endings
   ansible.builtin.copy:
     src: script.sh
@@ -402,12 +388,18 @@ fatal: [webserver]: FAILED! => {
   become: yes
 
 # Solution 2: Remove symlink first if replacing
+- name: Check existing destination
+  ansible.builtin.stat:
+    path: /etc/myapp/config.conf
+  register: config_dest
+  become: yes
+
 - name: Remove existing symlink
   ansible.builtin.file:
     path: /etc/myapp/config.conf
     state: absent
   become: yes
-  when: ansible_facts['lnk_source'] is defined
+  when: config_dest.stat.islnk | default(false)
 
 - name: Copy actual file
   ansible.builtin.copy:
@@ -496,7 +488,8 @@ fatal: [webserver]: FAILED! => {
 ### Solution
 
 ```yaml
-# Copying directories requires dest to end with /
+# When src is a directory, dest must be a directory too.
+# A trailing slash on src copies the directory contents.
 - name: Copy directory correctly
   ansible.builtin.copy:
     src: myapp_configs/
@@ -563,9 +556,10 @@ fatal: [webserver]: FAILED! => {
         dest: /etc/myapp/config.conf
       become: yes
 
-# Solution 3: Use pipelining to avoid temp files
+# Solution 3: Use pipelining to reduce module transfer overhead
+# Note: copy still needs a usable remote temp directory for transferred files.
 # ansible.cfg
-# [ssh_connection]
+# [connection]
 # pipelining = True
 ```
 
@@ -619,7 +613,7 @@ ansible -m copy -a "src=config.conf dest=/etc/myapp/config.conf" webserver -vvvv
       register: dest_dir
 
     - name: Check disk space
-      ansible.builtin.shell: df -k /etc/myapp | tail -1 | awk '{print $4}'
+      ansible.builtin.shell: df -k /etc | tail -1 | awk '{print $4}'
       register: available_space
       changed_when: false
 
@@ -686,18 +680,12 @@ ansible -m copy -a "src=config.conf dest=/etc/myapp/config.conf" webserver -vvvv
 
 ```yaml
 - name: Copy and validate configuration
-  block:
-    - name: Copy configuration file
-      ansible.builtin.copy:
-        src: nginx.conf
-        dest: /etc/nginx/nginx.conf
-        validate: /usr/sbin/nginx -t -c %s
-      become: yes
-
-  rescue:
-    - name: Restore from backup on validation failure
-      ansible.builtin.command: cp /etc/nginx/nginx.conf.bak /etc/nginx/nginx.conf
-      become: yes
+  ansible.builtin.copy:
+    src: nginx.conf
+    dest: /etc/nginx/nginx.conf
+    backup: yes
+    validate: /usr/sbin/nginx -t -c %s
+  become: yes
 ```
 
 ---

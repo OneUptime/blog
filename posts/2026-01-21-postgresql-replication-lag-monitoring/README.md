@@ -91,7 +91,7 @@ SELECT
     flush_lag AS flush_lag_interval,
     replay_lag AS replay_lag_interval
 FROM pg_stat_replication
-ORDER BY replay_lag DESC NULLS LAST;
+ORDER BY pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) DESC NULLS LAST;
 ```
 
 ## Prometheus Monitoring
@@ -103,6 +103,7 @@ ORDER BY replay_lag DESC NULLS LAST;
 
 pg_stat_replication_pg_wal_lsn_diff
 pg_replication_lag_seconds
+pg_replication_is_replica
 ```
 
 ### Alert Rules
@@ -131,12 +132,12 @@ groups:
           description: "Replica {{ $labels.instance }} is {{ $value }}s behind"
 
       - alert: PostgreSQLReplicationDown
-        expr: pg_replication_is_replica == 1 and pg_replication_lag_seconds == -1
+        expr: up == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Replication appears to be down"
+          summary: "PostgreSQL exporter cannot scrape the replica"
 ```
 
 ## Monitoring Script
@@ -148,9 +149,13 @@ groups:
 THRESHOLD_WARNING=30
 THRESHOLD_CRITICAL=300
 
-LAG=$(psql -h replica -U postgres -t -c "
-SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::integer
-WHERE pg_is_in_recovery();
+LAG=$(psql -h replica -U postgres -tA -c "
+SELECT CASE
+    WHEN NOT pg_is_in_recovery() THEN 0
+    WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+    WHEN pg_last_xact_replay_timestamp() IS NULL THEN 0
+    ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())))::integer
+END;
 ")
 
 if [ "$LAG" -gt "$THRESHOLD_CRITICAL" ]; then

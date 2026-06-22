@@ -201,6 +201,9 @@ if queue_exists(channel, 'orders'):
     print("Queue exists - using existing properties")
     # Work with the queue as-is
 else:
+    # The failed passive declaration closed the channel
+    channel = connection.channel()
+
     # Queue doesn't exist, safe to create with desired properties
     channel.queue_declare(
         queue='orders',
@@ -425,7 +428,9 @@ class RabbitMQClient:
                                 "with original properties"
                             )
                             return True
-                        except:
+                        except ChannelClosedByBroker:
+                            # Passive declare also closes the channel on NOT_FOUND
+                            self.connect()
                             continue
                 else:
                     raise

@@ -28,24 +28,27 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 }'
 ```
 
-### Cluster-Level Default Configuration
+### Default Configuration for New Indices
 
 ```bash
-curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
+curl -u elastic:password -X PUT "localhost:9200/_index_template/slowlog-defaults" -H 'Content-Type: application/json' -d'
 {
-  "persistent": {
-    "index.search.slowlog.threshold.query.warn": "10s",
-    "index.search.slowlog.threshold.query.info": "5s"
+  "index_patterns": ["my-index-*"],
+  "template": {
+    "settings": {
+      "index.search.slowlog.threshold.query.warn": "10s",
+      "index.search.slowlog.threshold.query.info": "5s"
+    }
   }
 }'
 ```
 
-### Include Source in Slow Logs
+### Include User in Slow Logs
 
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-Type: application/json' -d'
 {
-  "index.search.slowlog.source": "1000"
+  "index.search.slowlog.include.user": true
 }'
 ```
 
@@ -53,25 +56,25 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 
 ### Log Location
 
-Default location: `$ES_HOME/logs/<cluster_name>_index_search_slowlog.json`
+Default location: the Elasticsearch logs directory, with a filename ending in `_index_search_slowlog.json`
 
 ### Sample Slow Log Entry
 
 ```json
 {
   "@timestamp": "2024-01-21T10:30:00.000Z",
-  "level": "WARN",
-  "component": "i.s.s.query",
-  "cluster.name": "production",
-  "node.name": "node-1",
-  "message": "[my-index][0]",
-  "took": "15.2s",
-  "took_millis": 15200,
-  "total_hits": "10000 hits",
-  "stats": [],
-  "search_type": "QUERY_THEN_FETCH",
-  "total_shards": 5,
-  "source": "{\"query\":{\"match\":{\"message\":\"error\"}}}"
+  "log.level": "WARN",
+  "log.logger": "index.search.slowlog.query",
+  "elasticsearch.cluster.name": "production",
+  "elasticsearch.node.name": "node-1",
+  "elasticsearch.slowlog.message": "[my-index][0]",
+  "elasticsearch.slowlog.took": "15.2s",
+  "elasticsearch.slowlog.took_millis": 15200,
+  "elasticsearch.slowlog.total_hits": "10000 hits",
+  "elasticsearch.slowlog.stats": "[]",
+  "elasticsearch.slowlog.search_type": "QUERY_THEN_FETCH",
+  "elasticsearch.slowlog.total_shards": 5,
+  "elasticsearch.slowlog.source": "{\"query\":{\"match\":{\"message\":\"error\"}}}"
 }
 ```
 
@@ -80,10 +83,10 @@ Default location: `$ES_HOME/logs/<cluster_name>_index_search_slowlog.json`
 ```bash
 # Find slowest queries
 
-cat elasticsearch_index_search_slowlog.json | jq -s 'sort_by(.took_millis) | reverse | .[0:10] | .[] | {took: .took, source: .source}'
+cat elasticsearch_index_search_slowlog.json | jq -s 'sort_by(."elasticsearch.slowlog.took_millis") | reverse | .[0:10] | .[] | {took: ."elasticsearch.slowlog.took", source: ."elasticsearch.slowlog.source"}'
 
 # Count queries by index
-cat elasticsearch_index_search_slowlog.json | jq -r '.message' | sort | uniq -c | sort -rn
+cat elasticsearch_index_search_slowlog.json | jq -r '."elasticsearch.slowlog.message"' | sort | uniq -c | sort -rn
 ```
 
 ## Query Profiling
@@ -119,11 +122,17 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Con
                 "time_in_nanos": 5234567,
                 "breakdown": {
                   "score": 1234567,
+                  "score_count": 10000,
+                  "build_scorer": 345678,
                   "build_scorer_count": 1,
+                  "match": 456789,
                   "match_count": 10000,
                   "create_weight": 234567,
+                  "create_weight_count": 1,
                   "next_doc": 2345678,
-                  "advance": 123456
+                  "next_doc_count": 10000,
+                  "advance": 123456,
+                  "advance_count": 10
                 }
               }
             ],
@@ -152,6 +161,8 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Con
 | next_doc | Time advancing to next document |
 | advance | Time skipping to document |
 | match | Time checking matches |
+
+Metrics ending in `_count` show how many times the corresponding operation was invoked.
 
 ## Common Slow Query Patterns
 
@@ -220,7 +231,7 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Con
 }
 ```
 
-**Solution:** Use search_after for deep pagination:
+**Solution:** Use search_after with a stable, doc-values-enabled tie-breaker field for deep pagination:
 ```json
 {
   "size": 100,
@@ -229,7 +240,7 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Con
   },
   "sort": [
     {"@timestamp": "desc"},
-    {"_id": "desc"}
+    {"tie_breaker_id": "desc"}
   ],
   "search_after": ["2024-01-21T10:30:00.000Z", "doc-id-123"]
 }
@@ -323,7 +334,7 @@ curl -u elastic:password -X GET "localhost:9200/my-index/_search?pretty" -H 'Con
 }
 ```
 
-Filters are cached by default.
+Frequently used filters are eligible for automatic query caching.
 
 ### Limit Fields Retrieved
 
@@ -338,6 +349,8 @@ Filters are cached by default.
 ```
 
 ### Use Stored Fields
+
+Use stored fields only for fields explicitly mapped with `"store": true`; otherwise, prefer `_source` filtering.
 
 ```json
 {
@@ -454,7 +467,7 @@ curl -u elastic:password -X POST "localhost:9200/_tasks/task-id/_cancel"
 Key metrics to track:
 
 ```bash
-# Query latency percentiles
+# Search timing counters
 curl -u elastic:password -X GET "localhost:9200/_nodes/stats/indices/search?pretty" | jq '.nodes[].indices.search'
 
 # Cache hit rates

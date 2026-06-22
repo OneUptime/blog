@@ -8,7 +8,7 @@ Description: Learn how to fix 'cannot use X as type any' errors in Go when worki
 
 ---
 
-The "cannot use X as type any" error typically occurs when working with generics and constraints in Go. The `any` type is an alias for `interface{}`, but generic constraints work differently than regular interface types.
+The "cannot use X as type any" error typically occurs when code expects an `any` value or `[]any` slice but receives a different static type. The `any` type is an alias for `interface{}`, but type parameters only allow operations supported by their constraints.
 
 ---
 
@@ -27,9 +27,9 @@ func main() {
     // This works - any value satisfies 'any'
     Print(x)
     
-    // But this might not work with constraints
-    var s []interface{}
-    // Cannot use s as type []any in generic context
+    // []any and []interface{} are identical, but []int is not []any
+    var ints []int
+    _ = ints
 }
 ```
 
@@ -44,19 +44,16 @@ func main() {
 ```go
 package main
 
-func ProcessSlice[T any](items []T) {
+func ProcessAnySlice(items []any) {
     for _, item := range items {
         _ = item
     }
 }
 
 func main() {
-    // Works - concrete type
-    ProcessSlice([]int{1, 2, 3})
-    
-    // Error: cannot use []interface{} as []any
-    var items []interface{} = []interface{}{1, "hello", true}
-    ProcessSlice(items)  // May cause issues in some contexts
+    // Error: cannot use []int as []any
+    ints := []int{1, 2, 3}
+    ProcessAnySlice(ints)
 }
 ```
 
@@ -73,14 +70,20 @@ func ProcessSlice[T any](items []T) {
     }
 }
 
+func ProcessAnySlice(items []any) {
+    for _, item := range items {
+        fmt.Println(item)
+    }
+}
+
 func main() {
-    // Option 1: Use concrete types
+    // Option 1: Use generics when you want to accept any element type
     ints := []int{1, 2, 3}
     ProcessSlice(ints)
     
-    // Option 2: Explicitly specify type parameter
+    // Option 2: Use []any when the function specifically needs []any
     mixed := []any{1, "hello", true}
-    ProcessSlice[any](mixed)
+    ProcessAnySlice(mixed)
 }
 ```
 
@@ -93,6 +96,8 @@ func main() {
 ```go
 package main
 
+import "fmt"
+
 type Stringer interface {
     String() string
 }
@@ -104,7 +109,7 @@ func PrintAll[T Stringer](items []T) {
 }
 
 func main() {
-    // Error: MyInt does not implement Stringer
+    // Error: int does not implement Stringer
     nums := []int{1, 2, 3}
     PrintAll(nums)
 }
@@ -165,6 +170,7 @@ func main() {
     // But direct assignment might be confusing
     var x any = 42
     var y interface{} = x  // Works - they're the same
+    _ = y
 }
 ```
 
@@ -353,6 +359,7 @@ func main() {
     
     // Must type assert to use
     n := first.(int)  // Runtime check needed
+    _ = n
 }
 ```
 
@@ -399,7 +406,7 @@ graph TD
 
 | Error Context | Solution |
 |---------------|----------|
-| Slice type mismatch | Explicit type parameter `[any]` |
+| Slice type mismatch | Use a generic function or convert elements to `[]any` |
 | Missing methods | Add appropriate constraint |
 | Cannot compare | Use `comparable` constraint |
 | Type assertion | Convert to `any` first |
@@ -408,7 +415,7 @@ graph TD
 **Key Points:**
 
 1. `any` is an alias for `interface{}`
-2. Generic constraints are stricter than interfaces
+2. Type parameters only support operations permitted by their constraints
 3. Use `comparable` for equality operations
 4. Convert to `any` before type assertions
 5. Prefer returning `T` over `any` in generics

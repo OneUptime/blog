@@ -72,16 +72,19 @@ First, create the native UIKit view in Objective-C or Swift:
 ```swift
 // CircularProgressView.swift
 import UIKit
+import React
 
 @objc(CircularProgressView)
 class CircularProgressView: UIView {
 
     private let progressLayer = CAShapeLayer()
     private let backgroundLayer = CAShapeLayer()
+    private var shouldAnimateProgressUpdates = true
 
     @objc var progress: CGFloat = 0 {
         didSet {
-            updateProgress()
+            progress = max(0, min(1, progress))
+            updateProgress(animated: shouldAnimateProgressUpdates)
         }
     }
 
@@ -151,9 +154,16 @@ class CircularProgressView: UIView {
         progressLayer.lineWidth = lineWidth
     }
 
-    private func updateProgress() {
+    @objc(setProgress:animated:)
+    func setProgress(_ progress: CGFloat, animated: Bool) {
+        shouldAnimateProgressUpdates = animated
+        self.progress = max(0, min(1, progress))
+        shouldAnimateProgressUpdates = true
+    }
+
+    private func updateProgress(animated: Bool) {
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.3)
+        CATransaction.setAnimationDuration(animated ? 0.3 : 0)
         progressLayer.strokeEnd = progress
         CATransaction.commit()
 
@@ -184,7 +194,6 @@ RCT_EXPORT_MODULE(CircularProgressView)
     return [[CircularProgressView alloc] init];
 }
 
-RCT_EXPORT_VIEW_PROPERTY(progress, CGFloat)
 RCT_EXPORT_VIEW_PROPERTY(progressColor, UIColor)
 RCT_EXPORT_VIEW_PROPERTY(trackColor, UIColor)
 RCT_EXPORT_VIEW_PROPERTY(lineWidth, CGFloat)
@@ -203,13 +212,13 @@ RCT_CUSTOM_VIEW_PROPERTY(progress, CGFloat, CircularProgressView) {
 
 ```typescript
 // CircularProgressView.tsx
-import React from 'react';
+import React, { forwardRef } from 'react';
 import {
   requireNativeComponent,
   ViewStyle,
+  StyleProp,
   NativeSyntheticEvent,
   StyleSheet,
-  View,
 } from 'react-native';
 
 interface ProgressChangeEvent {
@@ -222,37 +231,46 @@ interface CircularProgressViewProps {
   trackColor?: string;
   lineWidth?: number;
   onProgressChange?: (event: NativeSyntheticEvent<ProgressChangeEvent>) => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
-const NativeCircularProgressView =
+export const NativeCircularProgressView =
   requireNativeComponent<CircularProgressViewProps>('CircularProgressView');
 
-export const CircularProgressView: React.FC<CircularProgressViewProps> = ({
-  progress,
-  progressColor = '#007AFF',
-  trackColor = '#E5E5EA',
-  lineWidth = 8,
-  onProgressChange,
-  style,
-}) => {
-  const handleProgressChange = (
-    event: NativeSyntheticEvent<ProgressChangeEvent>
+export const CircularProgressView = forwardRef<
+  React.ComponentRef<typeof NativeCircularProgressView>,
+  CircularProgressViewProps
+>(
+  (
+    {
+      progress,
+      progressColor = '#007AFF',
+      trackColor = '#E5E5EA',
+      lineWidth = 8,
+      onProgressChange,
+      style,
+    },
+    ref
   ) => {
-    onProgressChange?.(event);
-  };
+    const handleProgressChange = (
+      event: NativeSyntheticEvent<ProgressChangeEvent>
+    ) => {
+      onProgressChange?.(event);
+    };
 
-  return (
-    <NativeCircularProgressView
-      progress={Math.max(0, Math.min(1, progress))}
-      progressColor={progressColor}
-      trackColor={trackColor}
-      lineWidth={lineWidth}
-      onProgressChange={handleProgressChange}
-      style={[styles.default, style]}
-    />
-  );
-};
+    return (
+      <NativeCircularProgressView
+        ref={ref}
+        progress={Math.max(0, Math.min(1, progress))}
+        progressColor={progressColor}
+        trackColor={trackColor}
+        lineWidth={lineWidth}
+        onProgressChange={handleProgressChange}
+        style={[styles.default, style]}
+      />
+    );
+  }
+);
 
 const styles = StyleSheet.create({
   default: {
@@ -297,11 +315,12 @@ class CircularProgressView(context: Context) : View(context) {
     private val rectF = RectF()
     private var animator: ValueAnimator? = null
     private var currentProgress = 0f
+    private var storedProgress = 0f
 
-    var progress: Float = 0f
+    var progress: Float
+        get() = storedProgress
         set(value) {
-            field = value.coerceIn(0f, 1f)
-            animateProgress(field)
+            setProgress(value, animated = true)
         }
 
     var progressColor: Int = 0xFF007AFF.toInt()
@@ -350,6 +369,18 @@ class CircularProgressView(context: Context) : View(context) {
         // Draw progress arc
         val sweepAngle = currentProgress * 360f
         canvas.drawArc(rectF, -90f, sweepAngle, false, progressPaint)
+    }
+
+    fun setProgress(targetProgress: Float, animated: Boolean) {
+        storedProgress = targetProgress.coerceIn(0f, 1f)
+        if (animated) {
+            animateProgress(storedProgress)
+        } else {
+            animator?.cancel()
+            currentProgress = storedProgress
+            invalidate()
+            dispatchProgressChange(storedProgress)
+        }
     }
 
     private fun animateProgress(targetProgress: Float) {
@@ -453,10 +484,15 @@ class CircularProgressViewManager : SimpleViewManager<CircularProgressView>() {
         when (commandId) {
             COMMAND_SET_PROGRESS_ANIMATED -> {
                 val progress = args?.getDouble(0)?.toFloat() ?: return
-                view.progress = progress
+                val animated = if (args != null && args.size() > 1) {
+                    args.getBoolean(1)
+                } else {
+                    true
+                }
+                view.setProgress(progress, animated)
             }
             COMMAND_RESET -> {
-                view.progress = 0f
+                view.setProgress(0f, animated = true)
             }
         }
     }
@@ -681,9 +717,12 @@ RCT_EXPORT_METHOD(setNativeProgress:(nonnull NSNumber *)reactTag
 
 ```typescript
 // CircularProgressViewCommands.ts
+import type * as React from 'react';
 import { UIManager, findNodeHandle } from 'react-native';
+import { NativeCircularProgressView } from './CircularProgressView';
 
-type CircularProgressViewRef = React.Component<any> | null;
+type CircularProgressViewRef =
+  React.ComponentRef<typeof NativeCircularProgressView> | null;
 
 export const CircularProgressViewCommands = {
   setProgressAnimated: (
@@ -898,84 +937,78 @@ Fabric is React Native's new rendering system that provides significant improvem
 |--------|--------|--------|
 | Threading | Async bridge | Synchronous JSI |
 | Communication | JSON serialization | Direct C++ calls |
-| View Updates | Batched | Immediate |
+| View Updates | Batched asynchronously | Supports synchronous updates for some interactions |
 | Memory | High overhead | Optimized |
 
 ### Implementing Fabric Components
 
-```cpp
-// CircularProgressViewComponentDescriptor.h
-#pragma once
+```typescript
+// CircularProgressViewNativeComponent.ts
+import type {
+  CodegenTypes,
+  HostComponent,
+  ViewProps,
+} from 'react-native';
+import { codegenNativeComponent } from 'react-native';
 
-#include <react/renderer/components/rncore/Props.h>
-#include <react/renderer/core/ConcreteComponentDescriptor.h>
-
-namespace facebook::react {
-
-class CircularProgressViewProps : public ViewProps {
-public:
-    CircularProgressViewProps() = default;
-    CircularProgressViewProps(
-        const PropsParserContext& context,
-        const CircularProgressViewProps& sourceProps,
-        const RawProps& rawProps
-    );
-
-    float progress{0.0f};
-    SharedColor progressColor{};
-    SharedColor trackColor{};
-    float lineWidth{8.0f};
+type ProgressChangeEvent = {
+  progress: CodegenTypes.Double;
 };
 
-class CircularProgressViewEventEmitter : public ViewEventEmitter {
-public:
-    using ViewEventEmitter::ViewEventEmitter;
+export interface NativeProps extends ViewProps {
+  progress?: CodegenTypes.Float;
+  progressColor?: string;
+  trackColor?: string;
+  lineWidth?: CodegenTypes.Float;
+  onProgressChange?: CodegenTypes.DirectEventHandler<ProgressChangeEvent> | null;
+}
 
-    void onProgressChange(float progress) const;
-};
-
-using CircularProgressViewComponentDescriptor =
-    ConcreteComponentDescriptor<CircularProgressViewShadowNode>;
-
-} // namespace facebook::react
+export default codegenNativeComponent<NativeProps>(
+  'CircularProgressView'
+) as HostComponent<NativeProps>;
 ```
+
+With Fabric, you define the component's props and events in a JavaScript or TypeScript spec file and let React Native Codegen generate the C++, Objective-C++, and Java/Kotlin interfaces that connect the native implementation to JavaScript.
 
 ### iOS Fabric Implementation
 
 ```objective-c
 // CircularProgressViewComponentView.mm
 #import "CircularProgressViewComponentView.h"
-#import <react/renderer/components/rncore/ComponentDescriptors.h>
-#import <react/renderer/components/rncore/Props.h>
+
+#import <react/renderer/components/AppSpec/ComponentDescriptors.h>
+#import <react/renderer/components/AppSpec/Props.h>
+#import <react/renderer/components/AppSpec/RCTComponentViewHelpers.h>
 
 using namespace facebook::react;
+
+@interface CircularProgressViewComponentView ()
+    <RCTCircularProgressViewViewProtocol>
+@end
 
 @implementation CircularProgressViewComponentView {
     CircularProgressView *_view;
 }
 
-+ (ComponentDescriptorProvider)componentDescriptorProvider {
-    return concreteComponentDescriptorProvider<
-        CircularProgressViewComponentDescriptor
-    >();
-}
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    if (self = [super initWithFrame:frame]) {
-        _view = [[CircularProgressView alloc] initWithFrame:frame];
-        self.contentView = _view;
+- (instancetype)init {
+    if (self = [super init]) {
+        _view = [CircularProgressView new];
+        [self addSubview:_view];
     }
     return self;
 }
 
-- (void)updateProps:(const Props::Shared&)props
-           oldProps:(const Props::Shared&)oldProps {
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    _view.frame = self.bounds;
+}
+
+- (void)updateProps:(Props::Shared const &)props
+           oldProps:(Props::Shared const &)oldProps {
     const auto &oldViewProps =
-        *std::static_pointer_cast<const CircularProgressViewProps>(
-            _props ?: std::make_shared<const CircularProgressViewProps>()
-        );
+        *std::static_pointer_cast<CircularProgressViewProps const>(_props);
     const auto &newViewProps =
-        *std::static_pointer_cast<const CircularProgressViewProps>(props);
+        *std::static_pointer_cast<CircularProgressViewProps const>(props);
 
     if (oldViewProps.progress != newViewProps.progress) {
         _view.progress = newViewProps.progress;
@@ -986,6 +1019,12 @@ using namespace facebook::react;
     }
 
     [super updateProps:props oldProps:oldProps];
+}
+
++ (ComponentDescriptorProvider)componentDescriptorProvider {
+    return concreteComponentDescriptorProvider<
+        CircularProgressViewComponentDescriptor
+    >();
 }
 
 @end
@@ -1288,7 +1327,7 @@ As React Native continues to evolve with Fabric and the New Architecture, the li
 
 ## Additional Resources
 
-- [React Native Documentation - Native UI Components](https://reactnative.dev/docs/native-components-ios)
+- [React Native Documentation - Native UI Components](https://reactnative.dev/docs/legacy/native-components-ios)
 - [React Native New Architecture Guide](https://reactnative.dev/docs/the-new-architecture/landing-page)
 - [Fabric Renderer](https://reactnative.dev/architecture/fabric-renderer)
 - [React Native GitHub Repository](https://github.com/facebook/react-native)

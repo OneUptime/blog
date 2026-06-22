@@ -194,7 +194,7 @@ listen_addresses = '*'
 sudo nano /etc/postgresql/14/main/pg_hba.conf
 
 # Add line for remote access
-host    all    all    0.0.0.0/0    md5
+host    all    all    0.0.0.0/0    scram-sha-256
 
 # Restart PostgreSQL
 sudo systemctl restart postgresql
@@ -239,7 +239,7 @@ sudo service iptables save
 # List nftables rules
 sudo nft list ruleset
 
-# Add rule to allow port 80
+# Add rule to allow port 80 (assuming the inet filter/input chain exists)
 sudo nft add rule inet filter input tcp dport 80 accept
 ```
 
@@ -464,7 +464,7 @@ sudo ss -tulnp | grep 3306
 # Connection works locally but not remotely
 curl localhost:80          # Works
 curl 192.168.1.100:80      # Also works locally
-# From remote: Connection refused
+# From remote: Connection refused (with reject rules) or timeout (with drop rules)
 
 # Check firewall
 sudo iptables -L -n | grep 80
@@ -539,7 +539,7 @@ echo "=== Diagnosis complete ==="
 
 | Symptom | Likely Cause | Command to Check |
 |---------|--------------|------------------|
-| Connection refused on all ports | Service not running | `systemctl status <service>` |
+| Connection refused on a service port | Service not running or not listening | `systemctl status <service>` |
 | Works locally, not remotely | Wrong bind address | `ss -tulnp \| grep <port>` |
 | Works locally, not remotely | Firewall blocking | `sudo ufw status` or `firewall-cmd --list-all` |
 | Intermittent failures | Service crashing | `journalctl -u <service> -f` |
@@ -547,4 +547,4 @@ echo "=== Diagnosis complete ==="
 
 ## Conclusion
 
-"Connection refused" errors always indicate that something actively rejected the connection, which is actually helpful for troubleshooting since it means the network path is working. Work through the checklist systematically: verify the service is running, check it is listening on the correct interface and port, ensure firewalls allow the connection, and verify security modules like SELinux or AppArmor are not blocking access. With this methodical approach, you can quickly identify and resolve the root cause of any connection refused error.
+"Connection refused" errors usually indicate that something actively rejected the connection, which is actually helpful for troubleshooting since it means at least part of the network path is working. Work through the checklist systematically: verify the service is running, check it is listening on the correct interface and port, ensure firewalls allow the connection, and verify security modules like SELinux or AppArmor are not blocking access. With this methodical approach, you can quickly identify and resolve the root cause of any connection refused error.

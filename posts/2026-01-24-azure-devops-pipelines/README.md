@@ -112,10 +112,9 @@ stages:
               projects: '**/*Tests.csproj'
               arguments: '--configuration $(buildConfiguration) --collect:"XPlat Code Coverage"'
 
-          - task: PublishCodeCoverageResults@1
+          - task: PublishCodeCoverageResults@2
             displayName: 'Publish code coverage'
             inputs:
-              codeCoverageTool: 'Cobertura'
               summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
 
           - task: DotNetCoreCLI@2
@@ -158,9 +157,9 @@ stages:
         pool:
           vmImage: 'ubuntu-latest'
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: '20.x'
+              version: '20.x'
             displayName: 'Install Node.js'
 
           - script: |
@@ -372,7 +371,7 @@ variables:
 
 steps:
   - script: |
-      echo "Using secret: $(mySecret)"
+      echo "Secret variable has been mapped to MY_SECRET"
       echo "Using local: $(localVariable)"
     displayName: 'Use variables'
     env:

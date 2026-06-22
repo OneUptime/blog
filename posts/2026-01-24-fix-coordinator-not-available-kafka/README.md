@@ -92,12 +92,13 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
     --config compression.type=lz4
 ```
 
-Ensure your broker configuration allows auto-creation.
+Ensure your internal topic settings can be satisfied by the current cluster size.
 
 ```properties
 # server.properties
-auto.create.topics.enable=true
+offsets.topic.num.partitions=50
 offsets.topic.replication.factor=3
+transaction.state.log.num.partitions=50
 transaction.state.log.replication.factor=3
 transaction.state.log.min.isr=2
 ```
@@ -117,7 +118,7 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
     --describe \
     --topic __consumer_offsets
 
-# Look for partitions with no leader (leader=-1)
+# Look for partitions with no leader (Leader: -1)
 ```
 
 #### Solution
@@ -146,7 +147,7 @@ kafka-leader-election.sh --bootstrap-server localhost:9092 \
 
 ### Cause 3: Under-Replicated Partitions
 
-If the internal topics have under-replicated partitions, the coordinator may become unavailable.
+If the internal topics have under-replicated partitions, the coordinator may become unavailable, especially for transactional producers when the transaction state log cannot meet its minimum ISR.
 
 #### Diagnosis
 
@@ -194,7 +195,9 @@ Network problems between clients and the coordinator broker cause this error.
 # Test connectivity to all brokers
 for broker in kafka1:9092 kafka2:9092 kafka3:9092; do
     echo "Testing $broker..."
-    nc -zv $broker 2>&1 | head -1
+    host="${broker%:*}"
+    port="${broker##*:}"
+    nc -zv "$host" "$port" 2>&1 | head -1
 done
 
 # Check DNS resolution
@@ -250,6 +253,7 @@ public class ResilientConsumer {
 
     private KafkaConsumer<String, String> consumer;
     private final Properties props;
+    private List<String> topics = Collections.emptyList();
 
     public ResilientConsumer(Properties props) {
         this.props = props;
@@ -260,11 +264,12 @@ public class ResilientConsumer {
      */
     public void connect(List<String> topics) {
         int retries = 0;
+        this.topics = new ArrayList<>(topics);
 
         while (retries < MAX_RETRIES) {
             try {
                 consumer = new KafkaConsumer<>(props);
-                consumer.subscribe(topics);
+                consumer.subscribe(this.topics);
 
                 // Test the connection by polling
                 consumer.poll(Duration.ofMillis(1000));
@@ -322,13 +327,15 @@ public class ResilientConsumer {
     }
 
     private void reconnect() {
+        List<String> currentTopics = new ArrayList<>(topics);
+
         if (consumer != null) {
             try {
                 consumer.close();
             } catch (Exception ignored) {}
         }
 
-        connect(new ArrayList<>(consumer.subscription()));
+        connect(currentTopics);
     }
 
     public interface MessageHandler {
@@ -361,7 +368,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 Adjust the minimum ISR requirement or ensure enough brokers are available.
 
 ```properties
-# server.properties - Lower the minimum ISR for recovery
+# server.properties - Lower the minimum ISR for recovery, then restart brokers
 # WARNING: This reduces durability guarantees
 offsets.topic.replication.factor=3
 min.insync.replicas=1  # Temporarily lower from 2
@@ -680,6 +687,9 @@ Set up monitoring to detect coordinator issues before they impact applications.
 
 ```yaml
 # Prometheus alerting rules
+# Metric names depend on your JMX exporter mapping. The referenced Kafka JMX
+# MBeans include kafka.controller:type=KafkaController,name=ActiveControllerCount
+# and kafka.server:type=group-coordinator-metrics,name=consumer-group-rebalance-count.
 groups:
   - name: kafka_coordinator_alerts
     rules:

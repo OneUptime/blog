@@ -92,15 +92,17 @@ args = parser.parse_args()
 ### Type Conversion
 
 ```python
+from pathlib import Path
+
 parser = argparse.ArgumentParser()
 
 # Automatic type conversion
 parser.add_argument('--count', type=int, default=10)
 parser.add_argument('--threshold', type=float, default=0.5)
 
-# File type (opens file automatically)
-parser.add_argument('--input', type=argparse.FileType('r'))
-parser.add_argument('--output', type=argparse.FileType('w'))
+# Path type (open files after parsing)
+parser.add_argument('--input', type=Path)
+parser.add_argument('--output', type=Path)
 
 args = parser.parse_args()
 print(f"Count: {args.count}")  # Integer, not string
@@ -339,6 +341,7 @@ group = parser.add_mutually_exclusive_group(required=True)
 
 import argparse
 import sys
+from contextlib import nullcontext
 
 def main():
     parser = argparse.ArgumentParser(
@@ -354,17 +357,15 @@ Examples:
 
     parser.add_argument(
         'input',
-        type=argparse.FileType('r'),
-        default=sys.stdin,
+        default='-',
         nargs='?',
-        help='Input file (default: stdin)'
+        help='Input file (default: stdin; use - for stdin)'
     )
 
     parser.add_argument(
         '-o', '--output',
-        type=argparse.FileType('w'),
-        default=sys.stdout,
-        help='Output file (default: stdout)'
+        default='-',
+        help='Output file (default: stdout; use - for stdout)'
     )
 
     transform = parser.add_mutually_exclusive_group()
@@ -380,18 +381,29 @@ Examples:
 
     args = parser.parse_args()
 
-    # Process
-    content = args.input.read()
+    input_context = (
+        nullcontext(sys.stdin)
+        if args.input == '-'
+        else open(args.input, 'r', encoding='utf-8')
+    )
+    output_context = (
+        nullcontext(sys.stdout)
+        if args.output == '-'
+        else open(args.output, 'w', encoding='utf-8')
+    )
 
-    if args.upper:
-        content = content.upper()
-    elif args.lower:
-        content = content.lower()
+    with input_context as input_file, output_context as output_file:
+        content = input_file.read()
 
-    if args.replace:
-        content = content.replace(args.replace[0], args.replace[1])
+        if args.upper:
+            content = content.upper()
+        elif args.lower:
+            content = content.lower()
 
-    args.output.write(content)
+        if args.replace:
+            content = content.replace(args.replace[0], args.replace[1])
+
+        output_file.write(content)
 
 if __name__ == '__main__':
     main()
@@ -405,7 +417,19 @@ if __name__ == '__main__':
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+def load_config(path):
+    if not path.exists():
+        return {}
+    with path.open('r', encoding='utf-8') as file:
+        return json.load(file)
+
+def save_config(path, config):
+    with path.open('w', encoding='utf-8') as file:
+        json.dump(config, file, indent=2)
+        file.write('\n')
 
 def cmd_get(args):
     config = load_config(args.config_file)

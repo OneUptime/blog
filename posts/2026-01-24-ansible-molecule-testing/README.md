@@ -39,18 +39,23 @@ flowchart LR
 Install Molecule with your preferred driver support.
 
 ```bash
-# Install Molecule with Docker driver (most common)
+# Recommended install for Ansible development tools
+python3 -m pip install ansible-dev-tools
 
-pip install molecule[docker]
+# Install Molecule with Docker driver (most common)
+python3 -m pip install molecule molecule-plugins[docker]
 
 # Install with Podman driver (rootless containers)
-pip install molecule[podman]
+python3 -m pip install molecule molecule-plugins[podman]
 
 # Install with multiple drivers
-pip install molecule[docker,podman,vagrant]
+python3 -m pip install molecule molecule-plugins[docker,podman,vagrant]
 
 # Install Ansible lint for code quality checks
-pip install ansible-lint
+python3 -m pip install ansible-lint yamllint
+
+# Install Testinfra if you use the Testinfra verifier
+python3 -m pip install pytest-testinfra
 ```
 
 Verify the installation:
@@ -60,10 +65,10 @@ Verify the installation:
 molecule --version
 
 # Expected output shows installed version and drivers
-# molecule 6.0.3 using python 3.11
-#     ansible:2.16.3
-#     default:6.0.3 from molecule
-#     docker:2.1.0 from molecule_docker
+# molecule 26.4.0 using python 3.12
+#     ansible:2.21.0
+#     default:26.4.0 from molecule
+#     docker:25.8.12 from molecule_plugins
 ```
 
 ## Initializing a Role with Molecule
@@ -71,8 +76,10 @@ molecule --version
 Create a new role with Molecule scaffolding.
 
 ```bash
-# Create a new role with Molecule scenario
-molecule init role my_role --driver-name docker
+# Create a new role, then add a Molecule scenario
+ansible-galaxy role init my_role
+cd my_role
+molecule init scenario --driver-name docker
 
 # Or add Molecule to an existing role
 cd existing_role
@@ -538,9 +545,16 @@ The prepare playbook runs before converge to set up prerequisites.
         state: present
 
     # Add external repository if needed
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
+    - name: Add Docker apt repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components:
+          - stable
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        install_python_debian: true
         state: present
       when: ansible_os_family == "Debian"
 
@@ -586,10 +600,6 @@ jobs:
         scenario:
           - default
           - ha-cluster
-        distro:
-          - ubuntu2204
-          - rockylinux9
-          - debian12
 
     steps:
       - name: Checkout repository
@@ -603,13 +613,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install molecule[docker] ansible-lint yamllint
+          pip install molecule molecule-plugins[docker] ansible-lint yamllint
 
       - name: Run Molecule tests
         run: |
           molecule test --scenario-name ${{ matrix.scenario }}
         env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
 ```
@@ -648,9 +657,9 @@ molecule:
     DOCKER_TLS_VERIFY: "1"
   before_script:
     - apk add --no-cache python3 py3-pip gcc musl-dev python3-dev libffi-dev
-    - pip install molecule[docker] ansible-lint --break-system-packages
+    - pip install molecule molecule-plugins[docker] ansible-lint --break-system-packages
   script:
-    - molecule test
+    - molecule test --scenario-name "$SCENARIO"
   parallel:
     matrix:
       - SCENARIO: [default, ha-cluster]

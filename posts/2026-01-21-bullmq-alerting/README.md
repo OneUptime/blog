@@ -94,7 +94,7 @@ const alertConfigs: AlertConfig[] = [
 Create a robust alert manager:
 
 ```typescript
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { EventEmitter } from 'events';
 
@@ -118,9 +118,11 @@ interface NotificationChannel {
 class AlertManager extends EventEmitter {
   private queues: Map<string, Queue> = new Map();
   private alerts: Map<string, Alert> = new Map();
+  private alertHistory: Alert[] = [];
   private alertCooldowns: Map<string, number> = new Map();
   private channels: NotificationChannel[] = [];
   private checkInterval: NodeJS.Timeout | null = null;
+  private checkIntervalMs = 30000;
   private metricsHistory: Map<string, QueueMetrics[]> = new Map();
 
   constructor(
@@ -141,6 +143,7 @@ class AlertManager extends EventEmitter {
   }
 
   start(intervalMs: number = 30000): void {
+    this.checkIntervalMs = intervalMs;
     this.checkInterval = setInterval(() => this.checkAllQueues(), intervalMs);
     this.checkAllQueues(); // Initial check
   }
@@ -164,7 +167,7 @@ class AlertManager extends EventEmitter {
     }
   }
 
-  private async collectMetrics(name: string, queue: Queue): Promise<QueueMetrics> {
+  protected async collectMetrics(name: string, queue: Queue): Promise<QueueMetrics> {
     const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
       queue.getWaitingCount(),
       queue.getActiveCount(),
@@ -186,7 +189,7 @@ class AlertManager extends EventEmitter {
       const failedDiff = failed - previousMetrics.failed;
       const totalProcessed = completedDiff + failedDiff;
 
-      processingRate = completedDiff * 2; // Per minute (assuming 30s interval)
+      processingRate = (completedDiff / Math.max(this.checkIntervalMs, 1)) * 60000;
       failureRate = totalProcessed > 0 ? (failedDiff / totalProcessed) * 100 : 0;
     }
 
@@ -240,7 +243,7 @@ class AlertManager extends EventEmitter {
 
       if (config.condition(metrics)) {
         // Alert condition is true
-        if (!existingAlert && !isInCooldown) {
+        if ((!existingAlert || existingAlert.resolved) && !isInCooldown) {
           await this.fireAlert(name, config, metrics);
         }
       } else {
@@ -276,6 +279,7 @@ class AlertManager extends EventEmitter {
     };
 
     this.alerts.set(alertKey, alert);
+    this.alertHistory.push(alert);
     this.alertCooldowns.set(alertKey, Date.now());
     this.emit('alert', alert);
 
@@ -312,7 +316,7 @@ class AlertManager extends EventEmitter {
   }
 
   getAlertHistory(): Alert[] {
-    return Array.from(this.alerts.values());
+    return this.alertHistory;
   }
 }
 ```
@@ -327,14 +331,13 @@ import fetch from 'node-fetch';
 class SlackChannel implements NotificationChannel {
   name = 'slack';
 
-  constructor(private webhookUrl: string, private channel?: string) {}
+  constructor(private webhookUrl: string) {}
 
   async send(alert: Alert): Promise<void> {
     const color = this.getColor(alert.severity);
     const emoji = alert.resolved ? ':white_check_mark:' : this.getEmoji(alert.severity);
 
     const payload = {
-      channel: this.channel,
       attachments: [
         {
           color,
@@ -386,11 +389,15 @@ class SlackChannel implements NotificationChannel {
       ],
     };
 
-    await fetch(this.webhookUrl, {
+    const response = await fetch(this.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      throw new Error(`Slack webhook error: ${response.statusText}`);
+    }
   }
 
   private getColor(severity: string): string {

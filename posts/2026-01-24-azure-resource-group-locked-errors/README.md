@@ -287,10 +287,12 @@ stages:
             inputs:
               deploymentScope: 'Resource Group'
               azureResourceManagerConnection: 'Production'
+              action: 'Create Or Update Resource Group'
               resourceGroupName: '$(resourceGroup)'
               location: 'East US'
               templateLocation: 'Linked artifact'
               csmFile: '$(Pipeline.Workspace)/templates/main.json'
+              deploymentMode: 'Incremental'
 
           - task: AzureCLI@2
             displayName: 'Restore deployment lock'
@@ -323,12 +325,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Manage Lock and Deploy
-        uses: azure/CLI@v1
+        uses: azure/cli@v2
         with:
           inlineScript: |
             RG="prod-rg"
@@ -406,6 +408,9 @@ done
       "effect": "deployIfNotExists",
       "details": {
         "type": "Microsoft.Authorization/locks",
+        "roleDefinitionIds": [
+          "/providers/Microsoft.Authorization/roleDefinitions/f1a07417-d97a-45cb-824c-7a7467783830"
+        ],
         "existenceCondition": {
           "field": "Microsoft.Authorization/locks/level",
           "equals": "CanNotDelete"

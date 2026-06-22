@@ -556,7 +556,7 @@ npm install inquirer
 ```javascript
 // cli.js
 const { program } = require('commander');
-const inquirer = require('inquirer');
+const { default: inquirer } = require('inquirer');
 
 program
   .command('init')

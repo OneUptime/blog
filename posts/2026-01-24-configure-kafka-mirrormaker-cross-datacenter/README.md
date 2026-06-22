@@ -120,7 +120,7 @@ checkpoints.topic.replication.factor = 3
 heartbeats.topic.replication.factor = 3
 offset-syncs.topic.replication.factor = 3
 
-# Refresh interval for topic discovery (ms)
+# Refresh interval for topic discovery (seconds)
 refresh.topics.interval.seconds = 60
 
 # Emit checkpoints every 60 seconds
@@ -249,12 +249,7 @@ public class CustomReplicationPolicy implements ReplicationPolicy {
 
     @Override
     public String upstreamTopic(String topic) {
-        return topic;
-    }
-
-    @Override
-    public boolean isMirrorTopic(String topic) {
-        return false;
+        return null; // Topic is not recognized as a remote topic
     }
 
     @Override
@@ -351,16 +346,16 @@ target.ssl.truststore.location = /opt/kafka/config/mm2/target-truststore.jks
 target.ssl.truststore.password = truststore-password
 
 # Producer security for replicating to target
-source->target.producer.security.protocol = SASL_SSL
-source->target.producer.sasl.mechanism = PLAIN
-source->target.producer.sasl.jaas.config = org.apache.kafka.common.security.plain.PlainLoginModule required \
+target.producer.security.protocol = SASL_SSL
+target.producer.sasl.mechanism = PLAIN
+target.producer.sasl.jaas.config = org.apache.kafka.common.security.plain.PlainLoginModule required \
     username="mm2-producer" \
     password="producer-password";
 
 # Consumer security for reading from source
-source->target.consumer.security.protocol = SASL_SSL
-source->target.consumer.sasl.mechanism = PLAIN
-source->target.consumer.sasl.jaas.config = org.apache.kafka.common.security.plain.PlainLoginModule required \
+source.consumer.security.protocol = SASL_SSL
+source.consumer.sasl.mechanism = PLAIN
+source.consumer.sasl.jaas.config = org.apache.kafka.common.security.plain.PlainLoginModule required \
     username="mm2-consumer" \
     password="consumer-password";
 ```
@@ -374,43 +369,45 @@ source->target.consumer.sasl.jaas.config = org.apache.kafka.common.security.plai
 tasks.max = 10
 
 # Producer optimization
-source->target.producer.batch.size = 524288
-source->target.producer.linger.ms = 100
-source->target.producer.buffer.memory = 67108864
-source->target.producer.compression.type = lz4
-source->target.producer.acks = all
-source->target.producer.max.in.flight.requests.per.connection = 5
+target.producer.batch.size = 524288
+target.producer.linger.ms = 100
+target.producer.buffer.memory = 67108864
+target.producer.compression.type = lz4
+target.producer.acks = all
+target.producer.max.in.flight.requests.per.connection = 5
 
 # Consumer optimization
-source->target.consumer.fetch.min.bytes = 1048576
-source->target.consumer.fetch.max.wait.ms = 500
-source->target.consumer.max.poll.records = 5000
-source->target.consumer.auto.offset.reset = earliest
+source.consumer.fetch.min.bytes = 1048576
+source.consumer.fetch.max.wait.ms = 500
+source.consumer.max.poll.records = 5000
+source.consumer.auto.offset.reset = earliest
 
 # Offset commit interval
 offset.flush.interval.ms = 30000
 
 # Admin client timeouts
-source->target.admin.request.timeout.ms = 60000
-source->target.admin.default.api.timeout.ms = 120000
+source.admin.request.timeout.ms = 60000
+source.admin.default.api.timeout.ms = 120000
+target.admin.request.timeout.ms = 60000
+target.admin.default.api.timeout.ms = 120000
 ```
 
 ### Network Optimization
 
 ```properties
 # Increase socket buffers for WAN replication
-source->target.producer.send.buffer.bytes = 1048576
-source->target.producer.receive.buffer.bytes = 1048576
-source->target.consumer.send.buffer.bytes = 1048576
-source->target.consumer.receive.buffer.bytes = 1048576
+target.producer.send.buffer.bytes = 1048576
+target.producer.receive.buffer.bytes = 1048576
+source.consumer.send.buffer.bytes = 1048576
+source.consumer.receive.buffer.bytes = 1048576
 
 # Retry configuration for network issues
-source->target.producer.retries = 2147483647
-source->target.producer.retry.backoff.ms = 500
-source->target.producer.delivery.timeout.ms = 300000
+target.producer.retries = 2147483647
+target.producer.retry.backoff.ms = 500
+target.producer.delivery.timeout.ms = 300000
 
 # Request timeout
-source->target.producer.request.timeout.ms = 60000
+target.producer.request.timeout.ms = 60000
 ```
 
 ## Monitoring MirrorMaker 2
@@ -461,7 +458,7 @@ Key JMX metrics to monitor:
 ### Prometheus Monitoring
 
 ```yaml
-# prometheus.yml scrape config
+# prometheus.yml scrape config when a JMX exporter agent is exposing /metrics
 scrape_configs:
   - job_name: 'kafka-mm2'
     static_configs:
@@ -473,7 +470,7 @@ scrape_configs:
 
 ```bash
 # Check MM2 internal topics
-/opt/kafka/bin/kafka-topics.sh --bootstrap-server target:9092 --list | grep mm2
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server target:9092 --list | grep -E "mm2|heartbeats|checkpoints"
 
 # Check heartbeats topic
 /opt/kafka/bin/kafka-console-consumer.sh \
@@ -524,6 +521,9 @@ sequenceDiagram
 
 ```java
 import org.apache.kafka.connect.mirror.RemoteClusterUtils;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
 import java.util.*;
 
 public class OffsetTranslator {
@@ -534,7 +534,7 @@ public class OffsetTranslator {
     public Map<TopicPartition, OffsetAndMetadata> translateOffsets(
             String consumerGroup,
             String sourceCluster,
-            Properties targetConfig) throws Exception {
+            Map<String, Object> targetConfig) throws Exception {
 
         // Get translated offsets using MM2's checkpoint data
         Map<TopicPartition, OffsetAndMetadata> translatedOffsets =
@@ -552,19 +552,18 @@ public class OffsetTranslator {
     }
 
     /**
-     * Get replication lag between clusters.
+     * Check whether the source cluster is reachable through MM2 heartbeats.
      */
-    public long getReplicationLag(String sourceCluster, Properties targetConfig)
+    public int getReplicationHops(String sourceCluster, Map<String, Object> targetConfig)
             throws Exception {
 
-        long lag = RemoteClusterUtils.replicationLag(
+        int hops = RemoteClusterUtils.replicationHops(
             targetConfig,
-            sourceCluster,
-            Duration.ofSeconds(30)
+            sourceCluster
         );
 
-        System.out.printf("Replication lag from %s: %d ms%n", sourceCluster, lag);
-        return lag;
+        System.out.printf("Replication hops from %s: %d%n", sourceCluster, hops);
+        return hops;
     }
 }
 ```
@@ -594,21 +593,21 @@ flowchart TD
 SOURCE_BOOTSTRAP="kafka-dc1-1:9092"
 TARGET_BOOTSTRAP="kafka-dc2-1:9092"
 CONSUMER_GROUP="order-processor"
+MM2_CONSUMER_GROUP="source->target.MirrorSourceConnector"
 
 # Function to check if source is healthy
 check_source_health() {
     /opt/kafka/bin/kafka-broker-api-versions.sh \
-        --bootstrap-server $SOURCE_BOOTSTRAP \
-        --timeout 5000 > /dev/null 2>&1
+        --bootstrap-server $SOURCE_BOOTSTRAP > /dev/null 2>&1
     return $?
 }
 
-# Function to get replication lag
+# Function to get MM2 source-consumer lag while the source cluster is reachable
 get_replication_lag() {
     /opt/kafka/bin/kafka-consumer-groups.sh \
-        --bootstrap-server $TARGET_BOOTSTRAP \
-        --describe --group mm2-source-connector \
-        2>/dev/null | awk '{sum += $6} END {print sum}'
+        --bootstrap-server $SOURCE_BOOTSTRAP \
+        --describe --group "$MM2_CONSUMER_GROUP" \
+        2>/dev/null | awk '{sum += $6} END {print sum + 0}'
 }
 
 # Function to translate offsets
@@ -632,19 +631,21 @@ main() {
             echo "Failover cancelled."
             exit 0
         fi
-    fi
 
-    # Wait for replication to catch up
-    echo "Waiting for replication lag to clear..."
-    while true; do
-        lag=$(get_replication_lag)
-        if [ "$lag" -lt 100 ]; then
-            echo "Replication lag is acceptable: $lag"
-            break
-        fi
-        echo "Current lag: $lag - waiting..."
-        sleep 5
-    done
+        # Wait for replication to catch up while the source is reachable
+        echo "Waiting for replication lag to clear..."
+        while true; do
+            lag=$(get_replication_lag)
+            if [ "$lag" -lt 100 ]; then
+                echo "Replication lag is acceptable: $lag"
+                break
+            fi
+            echo "Current lag: $lag - waiting..."
+            sleep 5
+        done
+    else
+        echo "Source cluster is unreachable; skipping source-side lag check."
+    fi
 
     # Translate offsets
     translate_offsets
@@ -728,8 +729,8 @@ primary->region-asia.tasks.max = 20
 /opt/kafka/bin/kafka-topics.sh --bootstrap-server source:9092 --list | grep -E "orders.*"
 
 # Issue: Consumer offsets not syncing
-# Verify checkpoint connector is running
-curl -s http://localhost:8083/connectors/MirrorCheckpointConnector/status | jq
+# Verify the checkpoint connector started in dedicated MM2 logs
+journalctl -u kafka-mm2 | grep MirrorCheckpointConnector
 
 # Issue: High replication lag
 # Check network latency

@@ -14,17 +14,17 @@ Choosing the right log management solution is critical for effective observabili
 
 ### Elasticsearch Architecture
 
-Elasticsearch indexes the full content of every log line:
+Elasticsearch indexes document fields according to their mappings. For log data, the message field is commonly indexed as full text, while structured fields are often indexed as keywords, numbers, dates, or other field types:
 
 ```text
 Log Entry -> Tokenization -> Inverted Index -> Distributed Storage
 ```
 
 Key components:
-- **Master Nodes**: Cluster coordination
+- **Master-eligible Nodes**: Cluster coordination
 - **Data Nodes**: Store data and execute queries
 - **Ingest Nodes**: Pre-process documents
-- **Coordinating Nodes**: Route requests
+- **Coordinating Nodes**: Route requests (every Elasticsearch node is implicitly a coordinating node; dedicated coordinating-only nodes are optional)
 
 ### Loki Architecture
 
@@ -51,10 +51,10 @@ Key components:
 | Query Speed (labels) | Fast | Fast |
 | Setup Complexity | Lower | Higher |
 | Resource Usage | Lower | Higher |
-| Schema Management | Minimal | Required |
-| Full-Text Search | Basic | Advanced |
-| Aggregations | Basic | Advanced |
-| Alerting | Native | Requires setup |
+| Schema Management | Minimal | Recommended for production |
+| Full-Text Search | Basic line filtering | Advanced |
+| Aggregations | LogQL metric aggregations | Advanced |
+| Alerting | Loki ruler / Grafana alerting | Elastic/Kibana alerting |
 | Visualization | Grafana | Kibana |
 
 ## Storage and Cost Analysis
@@ -152,7 +152,7 @@ sum(rate({service="api-server"} |= "error" [5m])) by (service)
 | Regex search | Fast | Slower |
 | Time-range queries | Fast | Fast |
 | Aggregations | Very Fast | Moderate |
-| High cardinality | Handles well | Struggles |
+| High cardinality fields | Handles better | Avoid as labels; use log content or structured metadata |
 
 ## Use Case Recommendations
 
@@ -213,15 +213,19 @@ sum(rate({service="api-server"} |= "error" [5m])) by (service)
 
 mappings:
   properties:
-    kubernetes.namespace: { type: keyword }
-    kubernetes.pod: { type: keyword }
+    kubernetes:
+      properties:
+        namespace: { type: keyword }
+        pod:
+          properties:
+            name: { type: keyword }
     level: { type: keyword }
     message: { type: text }
 
 # Equivalent Loki labels
 labels:
   namespace: kubernetes.namespace
-  pod: kubernetes.pod
+  pod: kubernetes.pod.name
   level: level
 # message stored in log line, not indexed
 ```
@@ -293,27 +297,27 @@ Use cases:
 - **Loki**: Application logs, Kubernetes workloads
 - **Elasticsearch**: Security logs, compliance, full-text search
 
-## Performance Benchmarks
+## Performance Characteristics
 
 ### Ingestion Performance
 
 | Metric | Loki | Elasticsearch |
 |--------|------|---------------|
-| Lines/sec (3 nodes) | 500K | 200K |
-| Bytes/sec | 250MB | 100MB |
-| CPU usage | Lower | Higher |
-| Memory usage | Lower | Higher |
+| Ingestion throughput | Often higher for low-cardinality labels | Often lower when indexing many fields |
+| Indexing work | Lower | Higher |
+| CPU usage | Lower for comparable retention/query needs | Higher for full indexing and analysis |
+| Memory usage | Lower for comparable retention/query needs | Higher for full indexing and shard management |
 
 ### Query Performance
 
 | Query Type | Loki | Elasticsearch |
 |------------|------|---------------|
-| Label filter (1hr) | 2s | 1s |
-| Text search (1hr) | 10s | 2s |
-| Regex (1hr) | 15s | 5s |
-| Aggregation (1hr) | 5s | 2s |
+| Label filter | Fast when labels are selective | Fast when fields are indexed |
+| Text search | Slower because matching log chunks are scanned | Faster when text fields are indexed |
+| Regex | Slower because matching log chunks are scanned | Faster when fields are indexed, but expensive regex patterns can still be costly |
+| Aggregation | Good for LogQL metric queries | Strong for broad analytics aggregations |
 
-*Note: Benchmarks vary significantly based on hardware, configuration, and query complexity.*
+*Note: Performance varies significantly based on hardware, configuration, index and label design, retention, storage backend, and query complexity.*
 
 ## Operational Comparison
 

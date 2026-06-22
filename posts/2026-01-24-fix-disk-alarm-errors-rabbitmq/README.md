@@ -39,11 +39,11 @@ First, check the current status of your RabbitMQ node to see if a disk alarm is 
 rabbitmqctl status | grep -A 5 "Alarms"
 ```
 
-You can also check the management UI or use the API to get detailed alarm information.
+You can also check the management UI or use the API to check whether alarms are active.
 
 ```bash
-# Query the health check endpoint to see alarm details
-# This API endpoint returns alarm status in JSON format
+# Query the health check endpoint to see whether alarms are active
+# This API endpoint returns HTTP 200 when no alarms are active and 503 when alarms are active
 # Replace localhost with your RabbitMQ host if needed
 curl -u guest:guest http://localhost:15672/api/health/checks/alarms
 ```
@@ -97,12 +97,12 @@ rabbitmqctl purge_queue <queue_name>
 
 ### Solution 3: Adjust the Disk Free Limit
 
-If your current threshold is too conservative, you can lower it temporarily while you address the underlying issue.
+If your current threshold does not match your environment, you can adjust it temporarily while you address the underlying issue.
 
 ```bash
 # Set a new disk free limit at runtime
 # This takes effect immediately without restarting the broker
-# Use absolute values like "1GB" or relative values like "mem_relative,1.0"
+# Use absolute values like "1GB" or the mem_relative form shown below
 rabbitmqctl set_disk_free_limit "1GB"
 
 # Alternatively, set it relative to available memory
@@ -123,7 +123,7 @@ For a lasting solution, update your RabbitMQ configuration file to set appropria
 disk_free_limit.absolute = 2GB
 
 %% Alternative: Set limit relative to total memory
-%% This example sets the limit to 1.5 times the total system memory
+%% This example sets the limit to 1.5 times the available RAM
 %% Useful when running on systems with varying memory configurations
 %% disk_free_limit.relative = 1.5
 ```
@@ -133,7 +133,7 @@ Or using the advanced config format for more complex scenarios.
 ```erlang
 %% advanced.config - For complex configurations
 %% This format is useful when you need to set multiple related options
-%% The disk_free_limit is specified in bytes (5GB = 5368709120)
+%% This example uses a memory-relative disk free limit
 [
   {rabbit, [
     {disk_free_limit, {mem_relative, 1.5}},
@@ -215,7 +215,7 @@ flowchart TD
 Configure message TTL to prevent unbounded queue growth.
 
 ```bash
-# Create a queue with a message TTL of 1 hour (3600000 milliseconds)
+# Apply a message TTL policy of 1 hour (3600000 milliseconds)
 # Messages older than this are automatically removed
 # This prevents queues from growing indefinitely if consumers fall behind
 rabbitmqctl set_policy TTL ".*" '{"message-ttl":3600000}' --apply-to queues

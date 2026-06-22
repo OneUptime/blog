@@ -29,6 +29,8 @@ func Sum(numbers []int) int {
     return total
 }
 
+var sumResult int
+
 func BenchmarkSum(b *testing.B) {
     numbers := make([]int, 1000)
     for i := range numbers {
@@ -40,7 +42,7 @@ func BenchmarkSum(b *testing.B) {
     
     // Run the function b.N times
     for i := 0; i < b.N; i++ {
-        Sum(numbers)
+        sumResult = Sum(numbers)
     }
 }
 ```
@@ -56,7 +58,7 @@ BenchmarkSum-8    1000000    1050 ns/op
 ```
 
 This means:
-- `8`: Number of CPU cores used (GOMAXPROCS)
+- `8`: GOMAXPROCS value used for the benchmark
 - `1000000`: Number of iterations
 - `1050 ns/op`: Time per operation (nanoseconds)
 
@@ -93,13 +95,15 @@ go test -bench=. -count=5
 ## Memory Allocation Benchmarks
 
 ```go
+var stringResult string
+
 func BenchmarkConcat(b *testing.B) {
     for i := 0; i < b.N; i++ {
         s := ""
         for j := 0; j < 100; j++ {
             s += "x"  // Allocates each iteration
         }
-        _ = s
+        stringResult = s
     }
 }
 
@@ -109,7 +113,7 @@ func BenchmarkBuilder(b *testing.B) {
         for j := 0; j < 100; j++ {
             sb.WriteString("x")
         }
-        _ = sb.String()
+        stringResult = sb.String()
     }
 }
 ```
@@ -355,6 +359,8 @@ Sum-8       4.00 ± 0%      2.00 ± 0%     -50.00%  (p=0.000 n=10+10)
 ### Pattern 1: Table-Driven Benchmarks
 
 ```go
+var hashResult []byte
+
 func BenchmarkHash(b *testing.B) {
     benchmarks := []struct {
         name string
@@ -372,7 +378,7 @@ func BenchmarkHash(b *testing.B) {
             for i := 0; i < b.N; i++ {
                 bm.hash.Reset()
                 bm.hash.Write(data)
-                bm.hash.Sum(nil)
+                hashResult = bm.hash.Sum(nil)
             }
         })
     }
@@ -385,7 +391,10 @@ func BenchmarkHash(b *testing.B) {
 func BenchmarkParallelWork(b *testing.B) {
     for _, procs := range []int{1, 2, 4, 8} {
         b.Run(fmt.Sprintf("procs=%d", procs), func(b *testing.B) {
-            runtime.GOMAXPROCS(procs)
+            old := runtime.GOMAXPROCS(procs)
+            b.Cleanup(func() {
+                runtime.GOMAXPROCS(old)
+            })
             b.RunParallel(func(pb *testing.PB) {
                 for pb.Next() {
                     doWork()

@@ -70,7 +70,6 @@ sequenceDiagram
 from enum import Enum
 from dataclasses import dataclass
 from typing import List, Optional, Callable
-import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -231,7 +230,7 @@ class OrderSaga:
             items=order_data["items"],
             status="PENDING"
         )
-        return {"order_id": order.id, "total": order.total}
+        return {"order_id": order.id, "total": order.total, "items": order.items}
 
     async def _cancel_order(self, order_id: str):
         """Cancel the order."""
@@ -281,8 +280,7 @@ class OrderSaga:
 ```python
 # saga/choreography.py
 from dataclasses import dataclass
-from typing import Any
-import json
+from datetime import UTC, datetime
 
 @dataclass
 class DomainEvent:
@@ -327,7 +325,7 @@ class OrderService:
                 "total": order.total,
                 "items": order.items
             },
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             saga_id=f"order-{order.id}"
         ))
 
@@ -351,7 +349,7 @@ class OrderService:
                 "order_id": order_id,
                 "items": order.items
             },
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             saga_id=event.saga_id
         ))
 
@@ -378,7 +376,7 @@ class OrderService:
             event_type="OrderConfirmed",
             aggregate_id=order_id,
             payload={"order_id": order_id, "user_id": order.user_id},
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             saga_id=event.saga_id
         ))
 
@@ -397,7 +395,7 @@ class OrderService:
                 "order_id": order_id,
                 "reason": "Inventory unavailable"
             },
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             saga_id=event.saga_id
         ))
 
@@ -430,10 +428,17 @@ flowchart LR
 ```python
 # eventsourcing/event_store.py
 from dataclasses import dataclass, field
-from typing import List, Optional, Type
-from datetime import datetime
+from typing import List, Optional
+from datetime import UTC, datetime
 import json
 import uuid
+
+class ConcurrencyError(Exception):
+    """Raised when optimistic concurrency checks fail."""
+
+
+class InvalidOperationError(Exception):
+    """Raised when an aggregate command is invalid for its current state."""
 
 @dataclass
 class Event:
@@ -443,7 +448,7 @@ class Event:
     aggregate_type: str = ""
     event_type: str = ""
     version: int = 0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     data: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
@@ -719,10 +724,11 @@ flowchart LR
 ```python
 # outbox/outbox_pattern.py
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List
 import json
 import asyncio
+import uuid
 
 @dataclass
 class OutboxMessage:
@@ -757,9 +763,10 @@ class OutboxRepository:
             message.created_at
         )
 
-    async def get_unpublished(self, batch_size: int = 100) -> List[OutboxMessage]:
+    async def get_unpublished(self, batch_size: int = 100, connection=None) -> List[OutboxMessage]:
         """Get unpublished messages."""
-        rows = await self.db.fetch(
+        conn = connection or self.db
+        rows = await conn.fetch(
             """
             SELECT * FROM outbox
             WHERE published_at IS NULL
@@ -772,9 +779,10 @@ class OutboxRepository:
 
         return [self._row_to_message(row) for row in rows]
 
-    async def mark_published(self, message_ids: List[str]):
+    async def mark_published(self, message_ids: List[str], connection=None):
         """Mark messages as published."""
-        await self.db.execute(
+        conn = connection or self.db
+        await conn.execute(
             """
             UPDATE outbox
             SET published_at = NOW()
@@ -807,10 +815,10 @@ class OrderServiceWithOutbox:
         Create order and outbox message in the same transaction.
         This ensures the event is reliably published.
         """
-        async with self.db.transaction() as tx:
+        async with self.db.transaction():
             # Create the order
             order_id = str(uuid.uuid4())
-            await tx.execute(
+            await self.db.execute(
                 """
                 INSERT INTO orders (id, user_id, items, total, status, created_at)
                 VALUES ($1, $2, $3, $4, $5, NOW())
@@ -834,10 +842,10 @@ class OrderServiceWithOutbox:
                     "items": order_data["items"],
                     "total": order_data["total"]
                 },
-                created_at=datetime.utcnow()
+                created_at=datetime.now(UTC)
             )
 
-            await self.outbox.save(outbox_message, connection=tx)
+            await self.outbox.save(outbox_message)
 
         return {"order_id": order_id, "status": "PENDING"}
 
@@ -869,35 +877,36 @@ class OutboxPublisher:
 
     async def _publish_batch(self):
         """Publish a batch of outbox messages."""
-        messages = await self.outbox.get_unpublished(batch_size=100)
+        async with self.outbox.db.transaction():
+            messages = await self.outbox.get_unpublished(batch_size=100)
 
-        if not messages:
-            return
+            if not messages:
+                return
 
-        published_ids = []
+            published_ids = []
 
-        for message in messages:
-            try:
-                await self.broker.publish(
-                    topic=f"{message.aggregate_type}.{message.event_type}",
-                    key=message.aggregate_id,
-                    value=json.dumps({
-                        "event_id": message.id,
-                        "event_type": message.event_type,
-                        "aggregate_id": message.aggregate_id,
-                        "payload": message.payload,
-                        "timestamp": message.created_at.isoformat()
-                    })
-                )
-                published_ids.append(message.id)
+            for message in messages:
+                try:
+                    await self.broker.publish(
+                        topic=f"{message.aggregate_type}.{message.event_type}",
+                        key=message.aggregate_id,
+                        value=json.dumps({
+                            "event_id": message.id,
+                            "event_type": message.event_type,
+                            "aggregate_id": message.aggregate_id,
+                            "payload": message.payload,
+                            "timestamp": message.created_at.isoformat()
+                        })
+                    )
+                    published_ids.append(message.id)
 
-            except Exception as e:
-                print(f"Failed to publish message {message.id}: {e}")
-                # Continue with other messages
+                except Exception as e:
+                    print(f"Failed to publish message {message.id}: {e}")
+                    # Continue with other messages
 
-        if published_ids:
-            await self.outbox.mark_published(published_ids)
-            print(f"Published {len(published_ids)} messages")
+            if published_ids:
+                await self.outbox.mark_published(published_ids)
+                print(f"Published {len(published_ids)} messages")
 ```
 
 ---
@@ -911,6 +920,7 @@ Ensure message handlers can be safely retried without causing duplicate effects.
 from functools import wraps
 from typing import Callable
 import hashlib
+import json
 
 class IdempotencyStore:
     """Store for tracking processed message IDs."""
@@ -924,10 +934,21 @@ class IdempotencyStore:
         key = f"idempotency:{message_id}"
         return await self.redis.exists(key)
 
+    async def try_mark_processing(self, message_id: str) -> bool:
+        """Atomically claim a message for processing."""
+        key = f"idempotency:{message_id}"
+        return await self.redis.set(key, "processing", ex=self.ttl, nx=True)
+
     async def mark_processed(self, message_id: str, result: str = "ok"):
         """Mark a message as processed."""
         key = f"idempotency:{message_id}"
-        await self.redis.setex(key, self.ttl, result)
+        await self.redis.set(key, result, ex=self.ttl)
+
+    async def clear_processing(self, message_id: str):
+        """Clear processing marker after a failed attempt."""
+        key = f"idempotency:{message_id}"
+        await self.redis.delete(key)
+
 
     async def get_result(self, message_id: str) -> str:
         """Get the result of a previously processed message."""
@@ -950,7 +971,7 @@ def idempotent(store: IdempotencyStore):
                 message_id = hashlib.sha256(content.encode()).hexdigest()
 
             # Check if already processed
-            if await store.is_processed(message_id):
+            if not await store.try_mark_processing(message_id):
                 print(f"Message {message_id} already processed, skipping")
                 return await store.get_result(message_id)
 
@@ -961,6 +982,7 @@ def idempotent(store: IdempotencyStore):
 
             except Exception as e:
                 # Don't mark as processed on failure - allow retry
+                await store.clear_processing(message_id)
                 raise
 
         return wrapper
@@ -993,7 +1015,8 @@ async def handle_payment_completed(message: dict):
 ```python
 # consistency/checker.py
 from dataclasses import dataclass
-from typing import List, Dict
+from datetime import UTC, datetime
+from typing import Any, List, Dict
 import asyncio
 
 @dataclass
@@ -1009,7 +1032,7 @@ class ConsistencyChecker:
     Periodic checker that detects data inconsistencies across services.
     """
 
-    def __init__(self, services: Dict[str, any]):
+    def __init__(self, services: Dict[str, Any]):
         self.services = services
         self.inconsistencies: List[InconsistencyReport] = []
 
@@ -1036,7 +1059,7 @@ class ConsistencyChecker:
                         "order": order_state,
                         "payment": payment_state
                     },
-                    detected_at=datetime.utcnow().isoformat()
+                    detected_at=datetime.now(UTC).isoformat()
                 ))
 
         # Check order-inventory consistency
@@ -1050,7 +1073,7 @@ class ConsistencyChecker:
                         "order": order_state,
                         "inventory": inventory_state
                     },
-                    detected_at=datetime.utcnow().isoformat()
+                    detected_at=datetime.now(UTC).isoformat()
                 ))
 
         return reports
@@ -1080,7 +1103,7 @@ class ConsistencyReconciler:
     Reconciles detected inconsistencies by triggering corrective actions.
     """
 
-    def __init__(self, services: Dict[str, any], event_bus):
+    def __init__(self, services: Dict[str, Any], event_bus):
         self.services = services
         self.event_bus = event_bus
 

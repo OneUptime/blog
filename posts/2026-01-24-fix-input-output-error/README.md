@@ -193,8 +193,8 @@ sudo badblocks -wvs /dev/sdb
 
 # Check specific region around error
 # If error reported at sector 123456789:
-# Check 1000 sectors around it
-sudo badblocks -v /dev/sda 123457789 123455789
+# Check about 1000 512-byte sectors on each side
+sudo badblocks -b 512 -v /dev/sda 123457789 123455789
 
 # Use hdparm to read specific sector
 sudo hdparm --read-sector 123456789 /dev/sda
@@ -242,7 +242,7 @@ flowchart TD
 sudo apt install gddrescue
 
 # Create disk image, skipping bad sectors initially
-sudo ddrescue -d /dev/sda /backup/sda.img /backup/sda.log
+sudo ddrescue -d -n /dev/sda /backup/sda.img /backup/sda.log
 
 # Second pass - try harder on bad sectors
 sudo ddrescue -d -r3 /dev/sda /backup/sda.img /backup/sda.log
@@ -253,7 +253,7 @@ sudo ddrescue -d -r3 /dev/sda /backup/sda.img /backup/sda.log
 # logfile Allows resuming interrupted recovery
 
 # For specific partitions
-sudo ddrescue -d /dev/sda1 /backup/sda1.img /backup/sda1.log
+sudo ddrescue -d -n /dev/sda1 /backup/sda1.img /backup/sda1.log
 ```
 
 ### Step 2: Check and Repair Filesystem
@@ -282,11 +282,11 @@ sudo reboot
 ### Step 3: Mark Bad Blocks
 
 ```bash
-# Find bad blocks and create list
-sudo badblocks -v /dev/sda1 > /tmp/badblocks.txt
+# Let e2fsck run badblocks with the correct filesystem block size
+sudo e2fsck -c /dev/sda1
 
-# Tell filesystem to avoid bad blocks (ext4)
-sudo e2fsck -l /tmp/badblocks.txt /dev/sda1
+# For a non-destructive read-write bad block test, specify -c twice
+sudo e2fsck -cc /dev/sda1
 
 # View bad blocks already marked
 sudo dumpe2fs -b /dev/sda1
@@ -300,7 +300,8 @@ sudo dumpe2fs -b /dev/sda1
 # WARNING: This destroys data in that sector
 sudo hdparm --write-sector 123456789 --yes-i-know-what-i-am-doing /dev/sda
 
-# For SSD, try TRIM to reclaim blocks
+# After data recovery and filesystem repair, TRIM can discard unused SSD blocks
+# Do not run this before recovering data you still need
 sudo fstrim -v /mount/point
 ```
 
@@ -314,7 +315,7 @@ sudo fstrim -v /mount/point
 # Solution: Replace drive immediately
 # 1. Get new drive
 # 2. Clone using ddrescue
-sudo ddrescue -d /dev/sda /dev/sdb /tmp/rescue.log
+sudo ddrescue -d -f /dev/sda /dev/sdb /tmp/rescue.log
 
 # 3. Or restore from backup to new drive
 ```
@@ -386,8 +387,8 @@ dmesg | grep -i usb | tail -20
 
 ```bash
 # Enable SMART daemon
-sudo systemctl enable smartd
-sudo systemctl start smartd
+sudo systemctl enable --now smartd        # RHEL/Fedora
+sudo systemctl enable --now smartmontools # Debian/Ubuntu
 
 # Configure /etc/smartd.conf
 # Monitor all drives, email on issues
@@ -413,13 +414,13 @@ DRIVES=$(lsblk -d -o NAME,TYPE | grep disk | awk '{print $1}')
 ALERT_EMAIL="admin@example.com"
 
 for drive in $DRIVES; do
-    # Skip non-rotational (SSD may not support all SMART)
-    if [ "$(cat /sys/block/$drive/queue/rotational)" = "0" ]; then
+    # Check SMART health
+    HEALTH=$(smartctl -H /dev/$drive 2>/dev/null | grep "result" | awk -F: '{print $2}' | xargs)
+
+    # Skip devices that do not report SMART health
+    if [ -z "$HEALTH" ]; then
         continue
     fi
-
-    # Check SMART health
-    HEALTH=$(smartctl -H /dev/$drive | grep "result" | awk -F: '{print $2}' | xargs)
 
     if [ "$HEALTH" != "PASSED" ]; then
         echo "ALERT: Drive $drive SMART health: $HEALTH" | \
@@ -427,7 +428,7 @@ for drive in $DRIVES; do
     fi
 
     # Check for reallocated sectors
-    REALLOCATED=$(smartctl -A /dev/$drive | grep "Reallocated_Sector_Ct" | awk '{print $10}')
+    REALLOCATED=$(smartctl -A /dev/$drive 2>/dev/null | grep "Reallocated_Sector_Ct" | awk '{print $10}')
 
     if [ -n "$REALLOCATED" ] && [ "$REALLOCATED" -gt 0 ]; then
         echo "WARNING: Drive $drive has $REALLOCATED reallocated sectors" | \
@@ -445,8 +446,8 @@ sudo crontab -e
 # Daily SMART health check at 6am
 0 6 * * * /usr/local/bin/check-disk-health.sh
 
-# Weekly filesystem check report
-0 7 * * 0 /sbin/fsck -n /dev/sda1 > /var/log/fsck-weekly.log 2>&1
+# Weekly SMART self-test log report
+0 7 * * 0 /usr/sbin/smartctl -l selftest /dev/sda > /var/log/smart-selftest-weekly.log 2>&1
 ```
 
 ## Recovery Tools Comparison

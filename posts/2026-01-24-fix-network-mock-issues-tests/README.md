@@ -185,7 +185,7 @@ const recorded = nock.recorder.play();
 console.log(JSON.stringify(recorded, null, 2));
 ```
 
-## Python: Mocking with Responses and HTTPretty
+## Python: Mocking with Responses
 
 ### Using the Responses Library
 
@@ -194,6 +194,7 @@ console.log(JSON.stringify(recorded, null, 2));
 
 import responses
 import requests
+import pytest
 from myapp.api import fetch_user, create_order
 
 class TestAPIClient:
@@ -254,6 +255,7 @@ class TestAPIClient:
 ```python
 import responses
 import re
+import json
 from urllib.parse import parse_qs, urlparse
 
 @responses.activate
@@ -309,6 +311,7 @@ def test_post_with_body_validation():
 # conftest.py
 import pytest
 import responses
+import re
 
 @pytest.fixture
 def mock_user_api():
@@ -394,7 +397,7 @@ nock('https://api.example.com')
   .get('/endpoint')
   .reply(200, {});
 
-// Axios - works out of the box with nock
+// Axios - works with nock when it uses the Node HTTP adapter
 // Fetch in Node 18+ - works out of the box with nock
 // Got - works out of the box with nock
 ```
@@ -440,6 +443,8 @@ it('should timeout after 3 seconds', async () => {
 # test_error_handling.py
 import responses
 import requests
+import pytest
+from json import JSONDecodeError
 
 @responses.activate
 def test_handles_rate_limiting():

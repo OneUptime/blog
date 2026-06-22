@@ -224,15 +224,17 @@ type I interface {
     M()
 }
 
-type T struct{}
+type ValueT struct{}
 
 // If M has VALUE receiver:
-func (t T) M() {}
-// Both T and *T implement I
+func (t ValueT) M() {}
+// Both ValueT and *ValueT implement I
+
+type PointerT struct{}
 
 // If M has POINTER receiver:
-func (t *T) M() {}
-// Only *T implements I
+func (t *PointerT) M() {}
+// Only *PointerT implements I
 ```
 
 Quick reference table:
@@ -298,7 +300,7 @@ func main() {
 
 ## Embedding with Pointer Receivers
 
-When embedding types with pointer receiver methods, the outer type needs to embed a pointer:
+When embedding types with pointer receiver methods, embed a pointer if you want the outer value type itself to implement the interface:
 
 ```go
 type Logger struct{}
@@ -311,12 +313,13 @@ type Loggable interface {
     Log(string)
 }
 
-// WRONG: Service doesn't implement Loggable
+// ServiceBroken does not implement Loggable as a value.
+// However, *ServiceBroken does implement Loggable.
 type ServiceBroken struct {
     Logger // Embeds Logger value
 }
 
-// CORRECT: *Service implements Loggable
+// Service and *Service both implement Loggable
 type Service struct {
     *Logger // Embeds *Logger
 }
@@ -324,7 +327,7 @@ type Service struct {
 func main() {
     // Works with embedded pointer
     s := Service{Logger: &Logger{}}
-    var l Loggable = &s
+    var l Loggable = s
     l.Log("hello")
 }
 ```

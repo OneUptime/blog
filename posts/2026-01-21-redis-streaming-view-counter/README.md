@@ -38,6 +38,7 @@ flowchart LR
 ```python
 import redis
 import time
+import hashlib
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
@@ -146,7 +147,11 @@ class StreamViewCounter:
 
         watch_time = 0
         if session_data:
-            started_at = float(session_data.get(b"started_at", time.time()))
+            started_at = float(
+                session_data.get(b"started_at") or
+                session_data.get("started_at") or
+                time.time()
+            )
             watch_time = time.time() - started_at
 
             # Accumulate total watch time
@@ -729,22 +734,26 @@ class EngagementTracker {
 // Usage
 const viewCounter = new StreamViewCounter({ host: 'localhost', port: 6379 });
 
-// Viewer joins
-await viewCounter.joinStream('stream123', 'viewer456', { region: 'US' });
+async function main() {
+    // Viewer joins
+    await viewCounter.joinStream('stream123', 'viewer456', { region: 'US' });
 
-// Heartbeat loop
-setInterval(async () => {
-    await viewCounter.heartbeat('stream123', 'viewer456');
-}, 30000);
+    // Heartbeat loop
+    setInterval(async () => {
+        await viewCounter.heartbeat('stream123', 'viewer456');
+    }, 30000);
 
-// Subscribe to updates
-const unsubscribe = viewCounter.subscribeToUpdates('stream123', (update) => {
-    console.log(`Current viewers: ${update.concurrentViewers}`);
-});
+    // Subscribe to updates
+    const unsubscribe = viewCounter.subscribeToUpdates('stream123', (update) => {
+        console.log(`Current viewers: ${update.concurrentViewers}`);
+    });
 
-// Get stats
-const stats = await viewCounter.getStreamStats('stream123');
-console.log(stats);
+    // Get stats
+    const stats = await viewCounter.getStreamStats('stream123');
+    console.log(stats);
+}
+
+main().catch(console.error);
 ```
 
 ## Handling Scale: Sharding and Aggregation
@@ -758,8 +767,11 @@ class ShardedViewCounter:
         self.num_shards = len(redis_clients)
 
     def _get_shard(self, viewer_id: str) -> redis.Redis:
-        """Get the shard for a viewer based on consistent hashing."""
-        shard_index = hash(viewer_id) % self.num_shards
+        """Get the shard for a viewer based on a stable hash."""
+        shard_index = (
+            int(hashlib.sha256(viewer_id.encode()).hexdigest(), 16) %
+            self.num_shards
+        )
         return self.shards[shard_index]
 
     def join_stream(
@@ -796,28 +808,19 @@ class ShardedViewCounter:
         return total
 
     def get_unique_viewers(self, stream_id: str) -> int:
-        """Get unique viewers by merging HyperLogLogs."""
-        # Merge all shard HLLs into a temporary key
-        merge_key = f"stream:{stream_id}:unique_merged:{int(time.time())}"
+        """Get unique viewers by summing per-shard HyperLogLog counts."""
+        total = 0
 
-        # Collect all HLL keys
-        hll_keys = [
-            f"stream:{stream_id}:shard:{i}:unique"
-            for i in range(self.num_shards)
-        ]
+        for i, shard in enumerate(self.shards):
+            hll_key = f"stream:{stream_id}:shard:{i}:unique"
+            total += shard.pfcount(hll_key)
 
-        # Use first shard for merge operation
-        # PFMERGE all into one
-        self.shards[0].pfmerge(merge_key, *hll_keys)
-        count = self.shards[0].pfcount(merge_key)
-        self.shards[0].delete(merge_key)
-
-        return count
+        return total
 ```
 
 ## Best Practices
 
-1. **Use HyperLogLog** for unique viewer counts - it provides ~2% accuracy with minimal memory.
+1. **Use HyperLogLog** for unique viewer counts - Redis provides a standard error of 0.81% with minimal memory.
 
 2. **Implement heartbeats** - Don't rely on explicit "leave" events; viewers may disconnect unexpectedly.
 

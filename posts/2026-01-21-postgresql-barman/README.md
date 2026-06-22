@@ -115,14 +115,18 @@ max_replication_slots = 3
 -- Create user for streaming backup
 CREATE USER barman WITH REPLICATION PASSWORD 'secure_password';
 
--- Grant access to monitoring functions
+-- PostgreSQL 10-14: grant access to backup functions
 GRANT EXECUTE ON FUNCTION pg_start_backup(text, boolean, boolean) TO barman;
 GRANT EXECUTE ON FUNCTION pg_stop_backup() TO barman;
 GRANT EXECUTE ON FUNCTION pg_stop_backup(boolean, boolean) TO barman;
+
+-- PostgreSQL 15+: renamed backup functions
+GRANT EXECUTE ON FUNCTION pg_backup_start(text, boolean) TO barman;
+GRANT EXECUTE ON FUNCTION pg_backup_stop(boolean) TO barman;
+
+-- All supported PostgreSQL versions
 GRANT EXECUTE ON FUNCTION pg_switch_wal() TO barman;
 GRANT EXECUTE ON FUNCTION pg_create_restore_point(text) TO barman;
-
--- PostgreSQL 15+
 GRANT pg_read_all_settings TO barman;
 GRANT pg_read_all_stats TO barman;
 ```
@@ -156,7 +160,6 @@ log_file = /var/log/barman/barman.log
 log_level = INFO
 compression = gzip
 parallel_jobs = 4
-network_compression = true
 ```
 
 ### Server Configuration
@@ -170,6 +173,7 @@ ssh_command = ssh postgres@postgres-server
 conninfo = host=postgres-server user=barman dbname=postgres
 streaming_conninfo = host=postgres-server user=barman dbname=postgres
 backup_method = postgres
+archiver = on
 streaming_archiver = on
 slot_name = barman
 
@@ -184,8 +188,7 @@ minimum_redundancy = 1
 # Parallel backup
 parallel_jobs = 4
 
-# Reuse backup for incremental
-reuse_backup = link
+# Block-level incremental backups with this method require PostgreSQL 17+
 ```
 
 ### Create Directories
@@ -260,13 +263,13 @@ sudo -u barman barman backup main --immediate-checkpoint
 
 ```bash
 # List all backups
-sudo -u barman barman list-backup main
+sudo -u barman barman list-backups main
 
 # Detailed backup info
 sudo -u barman barman show-backup main latest
 
-# JSON output
-sudo -u barman barman list-backup main --format=json
+# Minimal machine-readable output
+sudo -u barman barman list-backups main --minimal
 ```
 
 ### Backup Information
@@ -312,9 +315,6 @@ minimum_redundancy = 1
 ### Apply Retention
 
 ```bash
-# Check what would be deleted
-sudo -u barman barman delete main --dry-run
-
 # Delete expired backups
 sudo -u barman barman delete main oldest
 
@@ -328,7 +328,7 @@ sudo -u barman barman cron
 
 ```bash
 # List available recovery targets
-sudo -u barman barman list-backup main
+sudo -u barman barman list-backups main
 
 # Get WAL range
 sudo -u barman barman show-backup main latest
@@ -337,30 +337,30 @@ sudo -u barman barman show-backup main latest
 ### Full Recovery
 
 ```bash
-# Recover to original location (on PostgreSQL server)
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+# Restore to original location (on PostgreSQL server)
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --remote-ssh-command "ssh postgres@postgres-server"
 
-# Recover to different host
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+# Restore to different host
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --remote-ssh-command "ssh postgres@new-server"
 ```
 
 ### Point-in-Time Recovery
 
 ```bash
-# Recover to specific time
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+# Restore to specific time
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --target-time "2025-01-21 14:30:00" \
     --remote-ssh-command "ssh postgres@postgres-server"
 
-# Recover to specific transaction
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+# Restore to specific transaction
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --target-xid 12345678 \
     --remote-ssh-command "ssh postgres@postgres-server"
 
-# Recover to specific LSN
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+# Restore to specific LSN
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --target-lsn "0/1234567" \
     --remote-ssh-command "ssh postgres@postgres-server"
 ```
@@ -369,12 +369,12 @@ sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
 
 ```bash
 # Recovery with standby mode
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --standby-mode \
     --remote-ssh-command "ssh postgres@new-standby"
 
 # Get WAL from Barman
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --get-wal \
     --remote-ssh-command "ssh postgres@postgres-server"
 ```
@@ -407,7 +407,7 @@ sudo -u barman barman check all
 sudo -u barman barman backup all
 
 # List backups for all servers
-sudo -u barman barman list-backup all
+sudo -u barman barman list-backups all
 ```
 
 ## Monitoring
@@ -484,15 +484,15 @@ sudo -u barman barman check main --nagios
 # Parallel backup
 parallel_jobs = 4
 
-# Network compression
-network_compression = true
+# Backup compression for the postgres backup method
+backup_compression = gzip
 ```
 
 ### Parallel Recovery
 
 ```bash
 # Recovery with parallel jobs
-sudo -u barman barman recover main latest /var/lib/postgresql/16/main \
+sudo -u barman barman restore main latest /var/lib/postgresql/16/main \
     --jobs 4 \
     --remote-ssh-command "ssh postgres@postgres-server"
 ```
@@ -509,7 +509,7 @@ sudo -u barman ssh postgres@postgres-server 'echo OK'
 sudo -u barman psql -h postgres-server -U barman -d postgres -c "SELECT 1"
 
 # Check streaming
-sudo -u barman barman receive-wal --test main
+sudo -u barman barman replication-status main --target wal-streamer
 
 # Check WAL archive
 sudo -u barman barman switch-wal --archive main
@@ -539,7 +539,7 @@ sudo -u barman barman receive-wal main
 2. **Test recoveries** - Regular restore testing
 3. **Monitor backup age** - Alert on stale backups
 4. **Use streaming** - Lower RPO than archive-only
-5. **Enable compression** - Save storage space
+5. **Enable compression** - Save storage space for WALs or backups
 6. **Minimum redundancy** - Never go below 1 backup
 7. **Document procedures** - Clear recovery runbooks
 
@@ -548,7 +548,7 @@ sudo -u barman barman receive-wal main
 Barman provides comprehensive PostgreSQL backup management:
 
 1. **Centralized management** - Single point for all servers
-2. **Multiple backup methods** - rsync and streaming
+2. **Multiple backup methods** - rsync, streaming, and snapshots
 3. **Point-in-time recovery** - Precise data restoration
 4. **Retention policies** - Automated backup lifecycle
 5. **Parallel operations** - Fast backup and recovery

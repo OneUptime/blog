@@ -25,9 +25,9 @@ A secondary index allows you to query data by attributes other than the primary 
 Redis Sorted Sets are ideal for secondary indexes because:
 
 - **Ordered data**: Elements are automatically sorted by score
-- **Range queries**: Efficient ZRANGEBYSCORE for numeric ranges
-- **Lexicographic queries**: ZRANGEBYLEX for string prefix matching
-- **O(log N) operations**: Fast insert, delete, and lookup
+- **Range queries**: Efficient `ZRANGE ... BYSCORE` for numeric ranges
+- **Lexicographic queries**: `ZRANGE ... BYLEX` for string prefix matching
+- **Efficient operations**: `ZADD`/`ZREM` run in O(log N), and range reads run in O(log N + M) where M is the number of returned elements
 - **Atomic operations**: Thread-safe index updates
 
 ## Basic Secondary Index Patterns
@@ -64,15 +64,15 @@ ZADD idx:users:age 25 user:2
 ZADD idx:users:age 35 user:3
 
 # Find users between ages 25-32
-ZRANGEBYSCORE idx:users:age 25 32
+ZRANGE idx:users:age 25 32 BYSCORE
 # Returns: ["user:2", "user:1"]
 
 # Find users older than 28
-ZRANGEBYSCORE idx:users:age 28 +inf
+ZRANGE idx:users:age 28 +inf BYSCORE
 # Returns: ["user:1", "user:3"]
 
 # Find users younger than 30
-ZRANGEBYSCORE idx:users:age -inf 30
+ZRANGE idx:users:age -inf 30 BYSCORE
 # Returns: ["user:2", "user:1"]
 ```
 
@@ -232,15 +232,19 @@ class RedisSecondaryIndex:
         min_val = min_val if min_val is not None else '-inf'
         max_val = max_val if max_val is not None else '+inf'
 
+        range_kwargs = {'byscore': True}
+        if limit is not None:
+            range_kwargs.update({'offset': offset, 'num': limit})
+
         if descending:
-            results = self.redis.zrevrangebyscore(
+            results = self.redis.zrange(
                 idx_key, max_val, min_val,
-                start=offset, num=limit if limit else -1
+                desc=True, **range_kwargs
             )
         else:
-            results = self.redis.zrangebyscore(
+            results = self.redis.zrange(
                 idx_key, min_val, max_val,
-                start=offset, num=limit if limit else -1
+                **range_kwargs
             )
 
         return results
@@ -251,11 +255,13 @@ class RedisSecondaryIndex:
         idx_key = self._key('idx', entity_type, field)
         prefix_lower = prefix.lower()
 
-        results = self.redis.zrangebylex(
+        results = self.redis.execute_command(
+            'ZRANGE',
             idx_key,
             f"[{prefix_lower}",
             f"[{prefix_lower}\xff",
-            start=0, num=limit
+            'BYLEX',
+            'LIMIT', 0, limit
         )
 
         # Extract entity IDs from "value:entity_id" format
@@ -480,15 +486,18 @@ class RedisSecondaryIndex {
         const max = maxVal !== undefined ? maxVal : '+inf';
 
         if (options.descending) {
-            return await this.client.zRangeByScore(idxKey, max, min, {
-                REV: true,
-                LIMIT: options.limit ? { offset: options.offset || 0, count: options.limit } : undefined
-            });
+            const args = ['ZRANGE', idxKey, String(max), String(min), 'BYSCORE', 'REV'];
+            if (options.limit) {
+                args.push('LIMIT', String(options.offset || 0), String(options.limit));
+            }
+            return await this.client.sendCommand(args);
         }
 
-        return await this.client.zRangeByScore(idxKey, min, max, {
-            LIMIT: options.limit ? { offset: options.offset || 0, count: options.limit } : undefined
-        });
+        const args = ['ZRANGE', idxKey, String(min), String(max), 'BYSCORE'];
+        if (options.limit) {
+            args.push('LIMIT', String(options.offset || 0), String(options.limit));
+        }
+        return await this.client.sendCommand(args);
     }
 
     async findByTagsOr(entityType, field, tags) {
@@ -640,13 +649,13 @@ class TimeBasedIndex:
     def get_events_in_range(self, entity_type: str, start_time: float, end_time: float) -> List[str]:
         """Get events within a time range."""
         key = f"{self.prefix}:idx:{entity_type}:timeline" if self.prefix else f"idx:{entity_type}:timeline"
-        return self.redis.zrangebyscore(key, start_time, end_time)
+        return self.redis.zrange(key, start_time, end_time, byscore=True)
 
     def get_recent_events(self, entity_type: str, seconds: int, limit: int = 100) -> List[str]:
         """Get events from the last N seconds."""
         key = f"{self.prefix}:idx:{entity_type}:timeline" if self.prefix else f"idx:{entity_type}:timeline"
         cutoff = time.time() - seconds
-        return self.redis.zrevrangebyscore(key, '+inf', cutoff, start=0, num=limit)
+        return self.redis.zrange(key, '+inf', cutoff, byscore=True, desc=True, offset=0, num=limit)
 
     def cleanup_old_events(self, entity_type: str, max_age_seconds: int) -> int:
         """Remove events older than max_age_seconds."""
@@ -690,8 +699,8 @@ class GeoIndex:
                     radius: float, unit: str = 'km', limit: int = 10) -> List[Dict]:
         """Find entities within radius."""
         key = f"{self.prefix}:idx:{entity_type}:geo" if self.prefix else f"idx:{entity_type}:geo"
-        results = self.redis.georadius(
-            key, longitude, latitude, radius, unit=unit,
+        results = self.redis.geosearch(
+            key, longitude=longitude, latitude=latitude, radius=radius, unit=unit,
             withdist=True, withcoord=True, count=limit, sort='ASC'
         )
 
@@ -754,13 +763,21 @@ def update_user(self, user_id: str, updates: Dict[str, Any],
                     idx_key = self._key('idx', 'user', field)
                     pipe.zadd(idx_key, {user_id: float(new_value)})
 
-                elif index_type == 'tag':
-                    # Remove from old index
+                elif index_type == 'string':
                     old_idx = self._key('idx', 'user', field, str(old_value).lower())
-                    pipe.srem(old_idx, user_id)
-                    # Add to new index
+                    pipe.delete(old_idx)
                     new_idx = self._key('idx', 'user', field, str(new_value).lower())
-                    pipe.sadd(new_idx, user_id)
+                    pipe.set(new_idx, user_id)
+
+                elif index_type == 'tag':
+                    old_tags = old_value if isinstance(old_value, list) else [old_value]
+                    new_tags = new_value if isinstance(new_value, list) else [new_value]
+                    for tag in old_tags:
+                        old_idx = self._key('idx', 'user', field, str(tag).lower())
+                        pipe.srem(old_idx, user_id)
+                    for tag in new_tags:
+                        new_idx = self._key('idx', 'user', field, str(tag).lower())
+                        pipe.sadd(new_idx, user_id)
 
     pipe.execute()
 ```

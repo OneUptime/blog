@@ -196,11 +196,11 @@ sudo semanage port -a -t http_port_t -p tcp 8080
 # Allow SSH on a non-standard port
 sudo semanage port -a -t ssh_port_t -p tcp 2222
 
-# Modify existing port assignment
-sudo semanage port -m -t http_port_t -p tcp 8081
+# Modify an existing port assignment
+sudo semanage port -m -t http_port_t -p tcp 8080
 
 # Delete custom port assignment
-sudo semanage port -d -t http_port_t -p tcp 8080
+sudo semanage port -d -p tcp 8080
 
 # Verify
 sudo semanage port -l | grep 8080
@@ -368,10 +368,13 @@ module myapp 1.0;
 
 require {
     type httpd_t;
-    type myapp_data_t;
+    attribute file_type;
     class file { read write open getattr };
     class dir { search getattr };
 }
+
+type myapp_data_t;
+typeattribute myapp_data_t file_type;
 
 # Allow Apache to read myapp data files
 allow httpd_t myapp_data_t:file { read open getattr };
@@ -488,9 +491,9 @@ docker run -v /host/path:/container/path:Z myimage
 sudo semanage fcontext -a -t container_file_t "/host/path(/.*)?"
 sudo restorecon -Rv /host/path/
 
-# Option 3: Enable boolean for NFS/Samba mounts
-sudo setsebool -P virt_use_nfs on
-sudo setsebool -P virt_use_samba on
+# Option 3: For NFS/CIFS-backed volumes, check container policy support
+# Modern container-selinux policy allows container_t to manage nfs_t and cifs_t content.
+sudo semanage boolean -l | grep container
 ```
 
 ### Scenario 5: NFS Mount Permission Issues

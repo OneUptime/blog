@@ -29,7 +29,7 @@ match = re.search(r'support@\w+\.com', text)
 
 if match:
     print(f"Found: {match.group()}")  # support@example.com
-    print(f"Position: {match.start()}-{match.end()}")  # 14-34
+    print(f"Position: {match.start()}-{match.end()}")  # 14-33
 ```
 
 ### Using re.match()
@@ -75,13 +75,13 @@ print(matches)  # [('alice', 'gmail', 'com'), ('bob', 'yahoo', 'com')]
 ```python
 import re
 
-# \d - digit [0-9]
+# \d - Unicode decimal digit (or [0-9] with re.ASCII)
 re.findall(r'\d+', "abc123def456")  # ['123', '456']
 
-# \w - word character [a-zA-Z0-9_]
+# \w - Unicode word character (or [a-zA-Z0-9_] with re.ASCII)
 re.findall(r'\w+', "hello_world 123")  # ['hello_world', '123']
 
-# \s - whitespace [ \t\n\r\f\v]
+# \s - Unicode whitespace (or [ \t\n\r\f\v] with re.ASCII)
 re.split(r'\s+', "split   on    whitespace")  # ['split', 'on', 'whitespace']
 
 # . - any character except newline
@@ -357,7 +357,7 @@ print(f"Valid: {valid}, Errors: {errors}")
 
 ## Compiling Patterns
 
-For patterns used multiple times, compile for efficiency:
+For patterns used repeatedly, especially inside loops, compile to save some overhead:
 
 ```python
 # Compile pattern once
@@ -425,7 +425,7 @@ re.findall(r'<div>.*?</div>', text)
 
 text = "Price: $5.00 (USD)"
 
-# Wrong - . matches any character
+# Wrong - $ is an anchor and . matches any character
 re.findall(r'$5.00', text)  # []
 
 # Correct - escape special characters
@@ -454,6 +454,6 @@ Essential patterns:
 - `\d` digits, `\w` word characters, `\s` whitespace
 - `*` zero+, `+` one+, `?` zero/one, `{n,m}` specific count
 - `^` start, `$` end, `\b` word boundary
-- `()` groups, `(?:)` non-capturing, `(?P<name>)` named
+- `()` groups, `(?:)` non-capturing, `(?P<name>...)` named
 
 Regex is powerful but can be hard to read. Comment complex patterns with `re.VERBOSE` and consider simpler string methods when they suffice.

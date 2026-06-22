@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NodeJS, Microservice, Architecture, REST API, gRPC
 
-Description: Learn how to design and build microservices architecture in Node.js including service communication, API gateways, service discovery, and best practices.
+Description: Learn how to design and build microservices architecture in Node.js including service communication, API gateways, Docker Compose, and best practices.
 
 ---
 
@@ -192,6 +192,7 @@ const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 
 const app = express();
 
@@ -238,9 +239,12 @@ const createProxy = (target) => createProxyMiddleware({
   target,
   changeOrigin: true,
   pathRewrite: (path, req) => path.replace(/^\/api\/[^\/]+/, ''),
-  onError: (err, req, res) => {
-    console.error('Proxy error:', err);
-    res.status(503).json({ error: 'Service unavailable' });
+  on: {
+    error: (err, req, res) => {
+      console.error('Proxy error:', err);
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Service unavailable' }));
+    },
   },
 });
 
@@ -283,6 +287,15 @@ app.listen(PORT, () => {
 ```javascript
 // services/shared/http-client.js
 const axios = require('axios');
+const { randomUUID } = require('crypto');
+
+function generateRequestId() {
+  return randomUUID();
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 class ServiceClient {
   constructor(baseURL, options = {}) {
@@ -324,7 +337,11 @@ class ServiceClient {
 
 // Usage
 const userService = new ServiceClient(process.env.USER_SERVICE_URL);
-const user = await userService.get(`/users/${userId}`);
+
+async function fetchUser(userId) {
+  const response = await userService.get(`/users/${userId}`);
+  return response.data;
+}
 ```
 
 ### Message Queue Communication
@@ -372,7 +389,7 @@ class MessageQueue {
         this.channel.ack(msg);
       } catch (error) {
         console.error('Message processing error:', error);
-        this.channel.nack(msg, false, false);  // Dead letter
+        this.channel.nack(msg, false, false);  // Reject without requeue
       }
     });
   }
@@ -390,7 +407,7 @@ module.exports = new MessageQueue();
 
 ```javascript
 // services/order-service/src/events.js
-const mq = require('./shared/message-queue');
+const mq = require('../../shared/message-queue');
 
 // Publish order created event
 async function publishOrderCreated(order) {
@@ -418,7 +435,7 @@ app.post('/orders', async (req, res) => {
 
 ```javascript
 // services/notification-service/src/index.js
-const mq = require('./shared/message-queue');
+const mq = require('../../shared/message-queue');
 
 async function start() {
   await mq.connect(process.env.RABBITMQ_URL);
@@ -495,6 +512,7 @@ message ListUsersRequest {
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
+const mongoose = require('mongoose');
 
 const PROTO_PATH = path.join(__dirname, '../proto/user.proto');
 
@@ -506,6 +524,12 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 });
 
 const userProto = grpc.loadPackageDefinition(packageDefinition).user;
+
+const User = mongoose.model('User', {
+  email: { type: String, required: true, unique: true },
+  name: String,
+  createdAt: { type: Date, default: Date.now },
+});
 
 // Implementation
 const userService = {
@@ -548,11 +572,14 @@ const userService = {
 };
 
 // Start server
-const server = new grpc.Server();
-server.addService(userProto.UserService.service, userService);
-server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () => {
-  console.log('gRPC server running on port 50051');
-});
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/users')
+  .then(() => {
+    const server = new grpc.Server();
+    server.addService(userProto.UserService.service, userService);
+    server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () => {
+      console.log('gRPC server running on port 50051');
+    });
+  });
 ```
 
 ### gRPC Client
@@ -561,6 +588,7 @@ server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () =>
 // services/order-service/src/grpc-client.js
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
+const path = require('path');
 
 const PROTO_PATH = path.join(__dirname, '../proto/user.proto');
 
@@ -591,7 +619,7 @@ app.post('/orders', async (req, res) => {
     if (error.code === grpc.status.NOT_FOUND) {
       return res.status(404).json({ error: 'User not found' });
     }
-    throw error;
+    res.status(500).json({ error: 'Failed to create order' });
   }
 });
 ```
@@ -600,8 +628,6 @@ app.post('/orders', async (req, res) => {
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   gateway:

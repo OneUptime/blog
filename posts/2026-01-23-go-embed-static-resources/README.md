@@ -20,7 +20,7 @@ Go's `embed` package lets you include files at compile time:
 package main
 
 import (
-    "embed"
+    _ "embed"
     "fmt"
 )
 
@@ -63,6 +63,7 @@ package main
 
 import (
     _ "embed"
+    "fmt"
 )
 
 //go:embed image.png
@@ -81,6 +82,7 @@ package main
 
 import (
     "embed"
+    "fmt"
     "io/fs"
     "log"
 )
@@ -343,12 +345,12 @@ import (
     "embed"
 )
 
-// Normal embed - excludes .gitkeep, _hidden, etc.
-//go:embed static/*
+// Normal embed - recursively excludes files starting with . or _
+//go:embed static
 var publicAssets embed.FS
 
 // With all: prefix - includes ALL files
-//go:embed all:static/*
+//go:embed all:static
 var allAssets embed.FS
 ```
 
@@ -369,8 +371,8 @@ import (
 //go:embed *.go
 var sourceFiles embed.FS
 
-// All JSON files recursively
-//go:embed config/**/*.json
+// JSON files one directory below config/
+//go:embed config/*/*.json
 var configFiles embed.FS
 
 // Multiple specific files

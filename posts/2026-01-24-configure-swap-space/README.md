@@ -128,9 +128,9 @@ swapon --show
 # Add to /etc/fstab for persistence across reboots
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-# Alternative fstab entry with UUID (more robust)
-# First get the UUID
-sudo blkid /swapfile
+# UUID fstab entries are more useful for swap partitions than swap files.
+# For a swap partition, first get the UUID:
+sudo blkid /dev/sdb1
 
 # Then add to fstab:
 # UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx none swap sw 0 0
@@ -138,7 +138,7 @@ sudo blkid /swapfile
 
 ## Creating a Swap Partition
 
-Swap partitions can offer slightly better performance than swap files:
+Swap partitions are useful when you want a dedicated swap area or when your filesystem does not support swap files reliably:
 
 ### Using fdisk
 
@@ -214,7 +214,7 @@ flowchart TD
 Swappiness controls how aggressively Linux uses swap:
 
 ```bash
-# Check current swappiness (0-100, default is usually 60)
+# Check current swappiness (0-200, default is usually 60)
 cat /proc/sys/vm/swappiness
 
 # Temporarily change swappiness
@@ -232,10 +232,10 @@ sudo sysctl -p /etc/sysctl.d/99-swappiness.conf
 ```mermaid
 graph LR
     subgraph "Swappiness Values"
-        A[0] -->|Minimal Swap| B[Only swap to avoid OOM]
+        A[0] -->|Minimal Swap| B[Avoid swap until low watermarks]
         C[10] -->|Low| D[Prefer RAM, swap if needed]
         E[60] -->|Default| F[Balanced approach]
-        G[100] -->|Aggressive| H[Freely use swap]
+        G[100+] -->|Aggressive| H[Swap is equal or cheaper]
     end
 
     style A fill:#69db7c,stroke:#333
@@ -250,6 +250,7 @@ graph LR
 | 10-30 | Desktop systems with plenty of RAM |
 | 60 | General purpose servers (default) |
 | 80-100 | Systems with limited RAM |
+| 100+ | In-memory swap such as zram or zswap, or faster swap devices |
 
 ### Additional Memory Tuning Parameters
 
@@ -258,7 +259,7 @@ graph LR
 # Default: 100 (cache and swap equally weighted)
 sudo sysctl vm.vfs_cache_pressure=50
 
-# Minimum free memory (in KB) before swapping
+# Minimum free memory (in KB) the VM keeps reserved
 sudo sysctl vm.min_free_kbytes=65536
 
 # View all VM parameters
@@ -352,8 +353,8 @@ sudo hdparm -I /dev/sda | grep TRIM
 # Enable discard option for swap partition (in /etc/fstab)
 /dev/sda2 none swap sw,discard 0 0
 
-# For swap files, discard may not work directly
-# Use periodic fstrim instead
+# For swap files, discard support depends on the filesystem
+# Use periodic fstrim for filesystem-level trimming
 sudo fstrim -v /
 
 # Configure automatic TRIM via systemd
@@ -560,9 +561,10 @@ cat /proc/sys/vm/vfs_cache_pressure
 # Review memory pressure
 cat /proc/pressure/memory
 
-# Force reclaim from cache before swapping
+# Drop clean caches for testing/debugging only
+sync
 echo 3 | sudo tee /proc/sys/vm/drop_caches
-# Note: This drops page cache, use with caution
+# Note: This drops page cache and reclaimable slab objects, use with caution
 ```
 
 ### Swap File Creation Fails
@@ -576,6 +578,9 @@ sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
 sudo truncate -s 0 /swapfile
 sudo chattr +C /swapfile  # Disable copy-on-write
 sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
 ```
 
 ### System Unresponsive Due to Swapping
@@ -583,7 +588,7 @@ sudo fallocate -l 4G /swapfile
 ```bash
 # Emergency: Free up memory
 sync
-echo 3 > /proc/sys/vm/drop_caches
+echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 # Identify memory hogs
 ps aux --sort=-%mem | head -10
@@ -610,7 +615,7 @@ sudo sysctl vm.swappiness=1
 Proper swap configuration is essential for system stability and performance. While modern systems with abundant RAM may rarely use swap, having it configured correctly provides a safety net against out-of-memory situations.
 
 Key takeaways:
-- Use swap files for flexibility, partitions for slight performance gains
+- Use swap files for flexibility, partitions for dedicated swap areas
 - Set swappiness based on your workload (lower for databases, default for general use)
 - Monitor swap usage as part of system health
 - Consider zswap or zram for better performance on systems with limited RAM

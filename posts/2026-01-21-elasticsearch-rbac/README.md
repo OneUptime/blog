@@ -33,7 +33,8 @@ xpack.security.transport.ssl.enabled: true
 Set up built-in user passwords:
 
 ```bash
-/usr/share/elasticsearch/bin/elasticsearch-setup-passwords interactive
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -i
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -u kibana_system -i
 ```
 
 ## Built-in Roles
@@ -41,7 +42,7 @@ Set up built-in user passwords:
 Elasticsearch includes several built-in roles:
 
 ```bash
-# List all built-in roles
+# List roles
 curl -u elastic:password -X GET "localhost:9200/_security/role?pretty"
 ```
 
@@ -112,7 +113,8 @@ Common index privileges:
 |-----------|-------------|
 | read | Read operations (search, get) |
 | write | Write operations (index, delete) |
-| create | Create documents |
+| create | Index documents; use `create_doc` when documents must not overwrite existing documents |
+| create_doc | Create documents without updates or overwrites |
 | delete | Delete documents |
 | create_index | Create indices |
 | delete_index | Delete indices |
@@ -328,6 +330,26 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/project_analytics
 
 ### Create Service Account Role
 
+Define the application privileges before assigning them to a role:
+
+```bash
+curl -u elastic:password -X PUT "localhost:9200/_security/privilege" -H 'Content-Type: application/json' -d'
+{
+  "myapp": {
+    "read": {
+      "application": "myapp",
+      "name": "read",
+      "actions": ["data:read/*"]
+    },
+    "write": {
+      "application": "myapp",
+      "name": "write",
+      "actions": ["data:write/*"]
+    }
+  }
+}'
+```
+
 ```bash
 curl -u elastic:password -X PUT "localhost:9200/_security/role/app_service" -H 'Content-Type: application/json' -d'
 {
@@ -384,8 +406,8 @@ curl -u elastic:password -X POST "localhost:9200/_security/api_key" -H 'Content-
   "expiration": "30d"
 }'
 
-# Response contains api_key to use
-# Use as: Authorization: ApiKey <base64(id:api_key)>
+# Response contains encoded, id, and api_key values
+# Use as: Authorization: ApiKey <encoded>
 ```
 
 ## Role Mappings
@@ -405,7 +427,7 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role_mapping/admins" -
   }
 }'
 
-# Map by realm and username pattern
+# Map by realm and group
 curl -u elastic:password -X PUT "localhost:9200/_security/role_mapping/developers" -H 'Content-Type: application/json' -d'
 {
   "roles": ["logs_reader", "monitoring_user"],
@@ -518,12 +540,7 @@ curl -u elastic:password -X PUT "localhost:9200/_security/role/data_engineer" -H
 curl -u elastic:password -X PUT "localhost:9200/_security/role/security_admin" -H 'Content-Type: application/json' -d'
 {
   "cluster": ["manage_security", "monitor"],
-  "indices": [
-    {
-      "names": [".security*"],
-      "privileges": ["all"]
-    }
-  ]
+  "indices": []
 }'
 ```
 

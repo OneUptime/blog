@@ -14,8 +14,9 @@ Controlling who can access what log data is critical for security and compliance
 
 Before starting, ensure you have:
 
-- Grafana Loki 2.4 or later
+- Grafana Loki 3.0 or later
 - Grafana 9.0 or later
+- Grafana Alloy for shipping audit logs
 - Reverse proxy (NGINX, Traefik, or similar)
 - Understanding of multi-tenancy concepts
 - Optional: Identity provider (LDAP, OIDC)
@@ -78,7 +79,20 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-# Per-tenant overrides
+querier:
+  # Required only when administrators need to query multiple tenants
+  # with a pipe-separated X-Scope-OrgID header, for example team-a|team-b.
+  multi_tenant_queries_enabled: true
+
+runtime_config:
+  file: /etc/loki/overrides.yaml
+```
+
+Per-tenant limits live in the runtime configuration file:
+
+```yaml
+# /etc/loki/overrides.yaml
+
 overrides:
   # Team A gets higher limits
   team-a:
@@ -243,12 +257,14 @@ user_tenants := {
 # Allow if user has access to requested tenant
 allow if {
     input.tenant in user_tenants[input.user]
+    not deny
 }
 
 # Allow cross-tenant queries for admins
 allow if {
     input.user == "admin"
     input.action == "query"
+    not deny
 }
 
 # Deny write access to certain tenants
@@ -259,7 +275,7 @@ deny if {
 }
 ```
 
-### NGINX with OPA
+### NGINX with OPA-Backed Authorization
 
 ```nginx
 server {
@@ -271,7 +287,9 @@ server {
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     location /loki/api/v1/push {
-        # Check authorization with OPA
+        # Check authorization with an OPA-backed service that returns
+        # 2xx for allow, 401/403 for deny, and X-Tenant for the selected tenant.
+        set $loki_action push;
         auth_request /auth;
         auth_request_set $tenant $upstream_http_x_tenant;
 
@@ -280,6 +298,8 @@ server {
     }
 
     location /loki/api/v1/query {
+        # Repeat for /query_range and other read endpoints you expose.
+        set $loki_action query;
         auth_request /auth;
         auth_request_set $tenant $upstream_http_x_tenant;
 
@@ -290,13 +310,13 @@ server {
     # OPA authorization endpoint
     location = /auth {
         internal;
-        proxy_pass http://opa:8181/v1/data/loki/authz/allow;
+        proxy_pass http://loki-authz:8080/auth;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
         proxy_set_header X-Original-URI $request_uri;
         proxy_set_header X-User $remote_user;
         proxy_set_header X-Tenant $http_x_scope_orgid;
-        proxy_set_header X-Action $request_method;
+        proxy_set_header X-Action $loki_action;
     }
 }
 ```
@@ -313,6 +333,7 @@ apiVersion: 1
 
 datasources:
   - name: Loki - Team A
+    uid: loki-team-a
     type: loki
     access: proxy
     url: http://loki:3100
@@ -323,6 +344,7 @@ datasources:
       httpHeaderValue1: 'team-a'
 
   - name: Loki - Team B
+    uid: loki-team-b
     type: loki
     access: proxy
     url: http://loki:3100
@@ -333,6 +355,7 @@ datasources:
       httpHeaderValue1: 'team-b'
 
   - name: Loki - All (Admin)
+    uid: loki-admin
     type: loki
     access: proxy
     url: http://loki:3100
@@ -347,39 +370,57 @@ datasources:
 
 ```yaml
 # grafana-provisioning/access-control/datasources.yaml
-apiVersion: 1
+apiVersion: 2
 
-accessControl:
+roles:
   # Team A can only access their data source
-  - role: team-a-viewer
+  - name: team-a-viewer
+    uid: team-a-viewer
+    version: 1
     permissions:
       - action: datasources:read
-        scope: datasources:name:Loki - Team A
+        scope: datasources:uid:loki-team-a
       - action: datasources:query
-        scope: datasources:name:Loki - Team A
+        scope: datasources:uid:loki-team-a
 
-  - role: team-a-editor
+  - name: team-a-editor
+    uid: team-a-editor
+    version: 1
     permissions:
       - action: datasources:read
-        scope: datasources:name:Loki - Team A
+        scope: datasources:uid:loki-team-a
       - action: datasources:query
-        scope: datasources:name:Loki - Team A
+        scope: datasources:uid:loki-team-a
       - action: datasources:explore
-        scope: datasources:name:Loki - Team A
 
   # Team B permissions
-  - role: team-b-viewer
+  - name: team-b-viewer
+    uid: team-b-viewer
+    version: 1
     permissions:
       - action: datasources:read
-        scope: datasources:name:Loki - Team B
+        scope: datasources:uid:loki-team-b
       - action: datasources:query
-        scope: datasources:name:Loki - Team B
+        scope: datasources:uid:loki-team-b
 
   # Admin has access to all
-  - role: loki-admin
+  - name: loki-admin
+    uid: loki-admin
+    version: 1
     permissions:
       - action: datasources:*
-        scope: datasources:name:Loki*
+        scope: datasources:*
+
+teams:
+  - name: Team A
+    roles:
+      - uid: team-a-viewer
+  - name: Team B
+    roles:
+      - uid: team-b-viewer
+  - name: Loki Admins
+    roles:
+      - uid: loki-admin
 ```
 
 ### Dynamic Tenant from Grafana User
@@ -429,6 +470,7 @@ Create a custom proxy that filters queries by allowed labels:
 from flask import Flask, request, Response
 import requests
 import json
+import re
 
 app = Flask(__name__)
 
@@ -460,17 +502,18 @@ def add_label_filter(query, tenant):
     label_selectors = []
     for label, allowed_values in filters.items():
         if allowed_values != [".*"]:
-            values = "|".join(allowed_values)
+            values = "|".join(re.escape(value) for value in allowed_values)
             label_selectors.append(f'{label}=~"{values}"')
 
     if label_selectors:
         filter_str = ", ".join(label_selectors)
-        # Inject filter into query
-        if query.startswith("{"):
+        # Inject filter into simple LogQL log stream selector queries.
+        if query.lstrip().startswith("{"):
             # Add to existing selector
             return query.replace("{", "{" + filter_str + ", ", 1)
-        else:
-            return "{" + filter_str + "} " + query
+
+        # Deny unsupported query shapes instead of forwarding an unfiltered query.
+        return None
 
     return query
 
@@ -512,18 +555,26 @@ def proxy_push():
     # Validate labels in push request
     data = request.json
     allowed_filters = TENANT_LABEL_FILTERS.get(tenant, {})
+    if not allowed_filters:
+        return Response(
+            json.dumps({"error": "Access denied"}),
+            status=403,
+            mimetype='application/json'
+        )
 
     for stream in data.get('streams', []):
         labels = stream.get('stream', {})
-        for label, value in labels.items():
-            if label in allowed_filters:
-                allowed = allowed_filters[label]
-                if allowed != [".*"] and value not in allowed:
-                    return Response(
-                        json.dumps({"error": f"Label {label}={value} not allowed"}),
-                        status=403,
-                        mimetype='application/json'
-                    )
+        for label, allowed in allowed_filters.items():
+            if allowed == [".*"]:
+                continue
+
+            value = labels.get(label)
+            if value not in allowed:
+                return Response(
+                    json.dumps({"error": f"Label {label}={value} not allowed"}),
+                    status=403,
+                    mimetype='application/json'
+                )
 
     # Forward to Loki
     resp = requests.post(
@@ -568,26 +619,42 @@ location /loki/ {
 
 ### Audit Log Pipeline to Loki
 
-```yaml
-# promtail-config.yaml for audit logs
-scrape_configs:
-  - job_name: loki-audit
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: loki-audit
-          __path__: /var/log/nginx/loki_audit.log
-    pipeline_stages:
-      - regex:
-          expression: '^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+)[^"]*" (?P<status>\d+) (?P<bytes>\d+) "tenant:(?P<tenant>[^"]*)" "query:(?P<query>[^"]*)"'
-      - labels:
-          user:
-          tenant:
-          status:
-      - timestamp:
-          source: time
-          format: "02/Jan/2006:15:04:05 -0700"
+```alloy
+# config.alloy for audit logs
+loki.source.file "loki_audit" {
+  targets = [
+    {__path__ = "/var/log/nginx/loki_audit.log", job = "loki-audit"},
+  ]
+  forward_to = [loki.process.loki_audit.receiver]
+}
+
+loki.process "loki_audit" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.regex {
+    expression = "^(?P<ip>\\S+) - (?P<user>\\S+) \\[(?P<time>[^\\]]+)\\] \"(?P<method>\\S+) (?P<path>\\S+)[^\"]*\" (?P<status>\\d+) (?P<bytes>\\d+) \"tenant:(?P<tenant>[^\"]*)\" \"query:(?P<query>[^\"]*)\""
+  }
+
+  stage.labels {
+    values = {
+      user   = "user",
+      tenant = "tenant",
+      status = "status",
+    }
+  }
+
+  stage.timestamp {
+    source = "time"
+    format = "02/Jan/2006:15:04:05 -0700"
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url       = "http://loki:3100/loki/api/v1/push"
+    tenant_id = "audit"
+  }
+}
 ```
 
 ## Best Practices
@@ -615,9 +682,10 @@ curl -v -H "X-Scope-OrgID: team-a" http://loki:3100/loki/api/v1/labels
 ### Test Access Denial
 
 ```bash
-# Try accessing another tenant's data (should fail)
+# Try accessing another tenant's data through the label-filtering proxy
+# (should return no results)
 curl -H "X-Scope-OrgID: team-a" \
-  -G "http://loki:3100/loki/api/v1/query" \
+  -G "http://label-filter-proxy:8080/loki/api/v1/query" \
   --data-urlencode 'query={namespace="team-b-prod"}'
 ```
 

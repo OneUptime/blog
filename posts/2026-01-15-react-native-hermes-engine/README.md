@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React Native, Hermes, Performance, JavaScript Engine, Mobile Development, Optimization
 
-Description: Learn how to enable and optimize the Hermes JavaScript engine in React Native for improved performance and smaller bundle sizes.
+Description: Learn how to enable and optimize the Hermes JavaScript engine in React Native for improved performance and smaller app sizes.
 
 ---
 
@@ -24,7 +24,7 @@ Hermes focuses on three primary objectives:
 
 1. **Fast Application Startup** - Hermes significantly reduces the time it takes for your app to become interactive
 2. **Reduced Memory Usage** - Optimized memory management leads to better performance on resource-constrained devices
-3. **Smaller Application Size** - Bytecode precompilation results in smaller JavaScript bundle sizes
+3. **Smaller Application Size** - Hermes can reduce overall app size compared with JavaScriptCore
 
 ### How Hermes Works
 
@@ -49,7 +49,7 @@ Before Hermes, React Native used JavaScriptCore (JSC) as its default JavaScript 
 
 | Feature | Hermes | JavaScriptCore |
 |---------|--------|----------------|
-| Compilation | Ahead-of-Time (AOT) | Just-in-Time (JIT) |
+| Compilation | Ahead-of-Time (AOT) bytecode | Runtime parsing/compilation; JIT only where the platform allows it |
 | Bytecode Format | Custom optimized format | WebKit bytecode |
 | Target Platform | Mobile-first | Browser-first |
 | Memory Model | Optimized for mobile | General purpose |
@@ -69,7 +69,7 @@ Memory Usage:
 - Hermes: ~136 MB
 - Improvement: ~26% reduction
 
-Bundle Size:
+App Size:
 - JSC: ~12 MB
 - Hermes: ~8 MB
 - Improvement: ~33% smaller
@@ -86,7 +86,6 @@ Hermes is recommended when:
 
 JSC might still be preferred when:
 
-- You rely heavily on JIT compilation for compute-intensive operations
 - You need specific JavaScript features not yet supported by Hermes
 - You have existing debugging workflows tied to JSC
 
@@ -96,7 +95,7 @@ Starting with React Native 0.70, Hermes is enabled by default for new projects. 
 
 ### Step 1: Update android/gradle.properties
 
-First, ensure your project is configured to use the new architecture settings:
+First, ensure your project is configured to use Hermes. The new architecture flag is separate and should only be enabled when you are ready to adopt Fabric and TurboModules:
 
 ```properties
 # android/gradle.properties
@@ -105,13 +104,13 @@ First, ensure your project is configured to use the new architecture settings:
 
 hermesEnabled=true
 
-# Optional: Enable new architecture
-newArchEnabled=true
+# Optional: enable the new architecture separately
+newArchEnabled=false
 ```
 
-### Step 2: Configure android/app/build.gradle
+### Step 2: Configure android/app/build.gradle for older projects
 
-Verify that your build.gradle file is set up correctly:
+For React Native versions before the Gradle plugin configuration was introduced, verify that your build.gradle file is set up correctly:
 
 ```groovy
 // android/app/build.gradle
@@ -140,14 +139,13 @@ android {
 }
 
 dependencies {
-    // Hermes is included automatically with React Native
-    implementation "com.facebook.react:hermes-android"
+    // React Native adds the matching Hermes dependency when enableHermes is true
 }
 ```
 
 ### Step 3: For React Native 0.70+
 
-With newer versions of React Native, the configuration is simplified:
+With newer versions of React Native, the configuration is simplified. Hermes is already the default in current React Native templates, but you can keep the flag explicit:
 
 ```groovy
 // android/app/build.gradle
@@ -204,7 +202,7 @@ export default App;
 
 ## Enabling Hermes on iOS
 
-Hermes support for iOS was introduced in React Native 0.64 and has been continuously improved. Here is how to enable it on iOS.
+Hermes support for iOS was introduced in React Native 0.64 and has been continuously improved. Hermes is enabled by default in current React Native templates, but older projects can still enable it explicitly.
 
 ### Step 1: Update Podfile
 
@@ -243,17 +241,13 @@ target 'YourAppName' do
 end
 ```
 
-### Step 2: For React Native 0.70+ with New Architecture
+### Step 2: For React Native 0.70+ projects
 
-If you are using the new architecture:
+If you want to keep the setting explicit in a newer project:
 
 ```ruby
 # ios/Podfile
 
-# Enable Hermes (default in RN 0.70+)
-ENV['USE_HERMES'] = '1'
-
-# Or set in the Podfile directly
 hermes_enabled = true
 
 target 'YourAppName' do
@@ -271,12 +265,6 @@ After updating your Podfile, install the pods and rebuild:
 # Navigate to ios directory
 cd ios
 
-# Clean pod cache (optional but recommended)
-pod cache clean --all
-
-# Remove existing Pods
-rm -rf Pods Podfile.lock
-
 # Install pods
 pod install
 
@@ -289,12 +277,15 @@ npx react-native run-ios
 
 ### Step 4: Xcode Configuration
 
-Ensure your Xcode project is configured correctly:
+If the iOS build fails after changing engines, clean derived data and rebuild:
 
-1. Open the `.xcworkspace` file in Xcode
-2. Navigate to Build Settings
-3. Search for "HERMES" and verify the settings
-4. Ensure the Hermes framework is properly linked
+```bash
+cd ios
+rm -rf Pods Podfile.lock
+pod install
+cd ..
+npx react-native run-ios --mode Debug
+```
 
 ### Verifying Hermes on iOS
 
@@ -304,7 +295,7 @@ Use the same JavaScript check as Android:
 const checkHermes = () => {
     if (global.HermesInternal) {
         console.log('Hermes is enabled on iOS');
-        console.log('Hermes version:', HermesInternal?.getRuntimeProperties?.()?.['OSS Release Version']);
+        console.log('Hermes version:', global.HermesInternal?.getRuntimeProperties?.()?.['OSS Release Version']);
     } else {
         console.log('Hermes is not enabled');
     }
@@ -315,33 +306,30 @@ checkHermes();
 
 ## Performance Benefits
 
-Enabling Hermes brings numerous performance improvements to your React Native application. Let us examine these benefits in detail.
+Using Hermes brings numerous performance improvements to many React Native applications. Let us examine these benefits in detail.
 
 ### Faster Startup Time
 
 The most significant benefit of Hermes is reduced Time-to-Interactive (TTI). This is achieved through:
 
 1. **Bytecode Precompilation**: JavaScript is compiled to bytecode at build time
-2. **Lazy Compilation**: Only necessary code is loaded initially
+2. **On-demand Bytecode Loading**: Bytecode can be loaded into memory as needed
 3. **Optimized Parsing**: Reduced parsing overhead at runtime
 
 ```javascript
-// Measuring startup time improvement
-import { PerformanceObserver, performance } from 'perf_hooks';
-
 // Before Hermes
 // App startup: ~4000ms
 
 // After Hermes
 // App startup: ~1800ms
 
-// Example performance measurement
+// Example performance measurement inside React Native JavaScript
 const measureStartup = () => {
-    const startTime = performance.now();
+    const startTime = global.performance.now();
 
     // Your app initialization code
 
-    const endTime = performance.now();
+    const endTime = global.performance.now();
     console.log(`Startup time: ${endTime - startTime}ms`);
 };
 ```
@@ -351,9 +339,6 @@ const measureStartup = () => {
 Hermes contributes to smoother animations and interactions:
 
 ```javascript
-// Example: Measuring frame rates with Hermes
-import { InteractionManager } from 'react-native';
-
 const measureFrameRate = () => {
     let frameCount = 0;
     let lastTime = Date.now();
@@ -398,22 +383,22 @@ First Contentful Paint (FCP):
 - Improvement: 43%
 ```
 
-## Bundle Size Improvements
+## App Size Improvements
 
-One of Hermes's key advantages is significant reduction in JavaScript bundle size.
+One of Hermes's key advantages is a reduction in overall application size for many apps.
 
-### How Hermes Reduces Bundle Size
+### How Hermes Reduces App Size
 
-Hermes achieves smaller bundle sizes through:
+Hermes can help reduce application size through:
 
-1. **Bytecode vs Source Code**: Bytecode is more compact than minified JavaScript
-2. **Dead Code Elimination**: Unused code is removed during compilation
+1. **Bytecode vs Source Code**: Hermes bytecode can be more compact and faster to load than plain JavaScript
+2. **Bundled Engine Size**: Hermes is optimized for React Native and is bundled with a matching React Native release
 3. **Optimized Data Structures**: More efficient representation of code
 
-### Measuring Bundle Size
+### Measuring Bytecode Size
 
 ```bash
-# Generate source map and analyze bundle size
+# Generate a JavaScript bundle and source map
 npx react-native bundle \
     --platform android \
     --dev false \
@@ -421,23 +406,26 @@ npx react-native bundle \
     --bundle-output bundle.js \
     --sourcemap-output bundle.map
 
+# Compile the generated bundle to Hermes bytecode with the hermesc binary
+hermesc -O -emit-binary -out bundle.hbc bundle.js
+
 # Compare file sizes
 ls -la bundle.js
 ls -la bundle.hbc  # Hermes bytecode bundle
 ```
 
-### Bundle Size Comparison Example
+### App Size Comparison Example
 
 ```text
-Bundle Size Analysis:
+App Size Analysis:
 
 Plain JavaScript Bundle:
 - bundle.js: 4.2 MB
 - Minified: 1.8 MB
 
 Hermes Bytecode Bundle:
-- bundle.hbc: 1.2 MB
-- Improvement: ~33% smaller than minified JS
+- bundle.hbc: size varies by app and React Native version
+- Improvement: measure against your own release build
 
 Total APK Size Impact:
 - Without Hermes: 45 MB
@@ -445,20 +433,17 @@ Total APK Size Impact:
 - Savings: 7 MB (15.5%)
 ```
 
-### Optimizing Bundle Size with Hermes
+### Optimizing App Size with Hermes
 
 ```javascript
 // babel.config.js - Optimize for Hermes
 module.exports = {
-    presets: ['module:metro-react-native-babel-preset'],
+    presets: ['module:@react-native/babel-preset'],
     plugins: [
         // Remove console logs in production
         ['transform-remove-console', { exclude: ['error', 'warn'] }],
         // Optimize lodash imports
         'lodash',
-        // Enable optional chaining and nullish coalescing
-        '@babel/plugin-proposal-optional-chaining',
-        '@babel/plugin-proposal-nullish-coalescing-operator',
     ],
 };
 ```
@@ -491,23 +476,12 @@ Compilation Pipeline:
 
 ```groovy
 // android/app/build.gradle
-project.ext.react = [
-    enableHermes: true,
+react {
+    hermesEnabled = true
 
-    // Debug build flags
-    hermesFlagsDebug: [
-        "-O",           // Enable optimizations
-        "-output-source-map",  // Generate source maps for debugging
-        "-w",           // Suppress warnings
-    ],
-
-    // Release build flags
-    hermesFlagsRelease: [
-        "-O",           // Enable optimizations
-        "-w",           // Suppress warnings
-        // Note: Source maps are optional for release
-    ],
-]
+    // Flags passed to the Hermes compiler
+    hermesFlags = ["-O", "-output-source-map"]
+}
 ```
 
 ### Manual Bytecode Compilation
@@ -532,34 +506,39 @@ hermesc -emit-binary -output-source-map -out bundle.hbc bundle.js
 hbcdump bundle.hbc
 
 # Get bytecode information
-hermesc -dump-bytecode bundle.hbc
+hbcdump -pretty-disassemble -c disassemble bundle.hbc
 ```
 
 ## Debugging with Hermes
 
 Debugging React Native applications with Hermes requires some specific approaches and tools.
 
-### Chrome DevTools Integration
+### React Native DevTools Integration
 
-Hermes supports debugging through Chrome DevTools using the Chrome DevTools Protocol (CDP):
+Hermes supports the modern React Native DevTools debugging experience:
 
 1. Run your app in debug mode
-2. Open Chrome and navigate to `chrome://inspect`
-3. Click "Configure" and add `localhost:8081`
-4. Your app should appear under "Remote Target"
+2. Open the React Native Dev Menu and select "Open DevTools"
+3. Or press `j` in the React Native CLI terminal
+4. Use the Console, Sources, Components, Profiler, Network, and Memory panels to inspect the running app
 
-### Flipper Integration
+### React Native DevTools and Flipper
 
-Flipper is the recommended debugging tool for React Native with Hermes:
+React Native DevTools is the default debugging experience in current React Native versions. Flipper's bundled React Native integration was deprecated in React Native 0.73 and removed from newer templates, although Flipper can still be added manually for native debugging:
 
-```javascript
+```java
 // Enable Flipper in your app
 // android/app/src/debug/java/com/yourapp/ReactNativeFlipper.java
 
+import android.content.Context;
+
+import com.facebook.flipper.core.FlipperClient;
 import com.facebook.flipper.android.AndroidFlipperClient;
 import com.facebook.flipper.plugins.inspector.DescriptorMapping;
 import com.facebook.flipper.plugins.inspector.InspectorFlipperPlugin;
+import com.facebook.flipper.plugins.network.NetworkFlipperPlugin;
 import com.facebook.flipper.plugins.react.ReactFlipperPlugin;
+import com.facebook.react.ReactInstanceManager;
 
 public class ReactNativeFlipper {
     public static void initializeFlipper(Context context, ReactInstanceManager reactInstanceManager) {
@@ -567,7 +546,7 @@ public class ReactNativeFlipper {
 
         client.addPlugin(new InspectorFlipperPlugin(context, DescriptorMapping.withDefaults()));
         client.addPlugin(new ReactFlipperPlugin());
-        client.addPlugin(NetworkFlipperPlugin());
+        client.addPlugin(new NetworkFlipperPlugin());
 
         client.start();
     }
@@ -576,11 +555,13 @@ public class ReactNativeFlipper {
 
 ### Source Maps for Debugging
 
-Enable source maps to debug original source code instead of bytecode:
+Hermes source maps are generated during native builds when source map output is enabled. For Metro configuration, extend React Native's default config rather than replacing it:
 
 ```javascript
 // metro.config.js
-module.exports = {
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+
+const config = {
     transformer: {
         getTransformOptions: async () => ({
             transform: {
@@ -589,14 +570,9 @@ module.exports = {
             },
         }),
     },
-    // Enable source maps
-    serializer: {
-        createModuleIdFactory: () => {
-            let id = 0;
-            return (path) => id++;
-        },
-    },
 };
+
+module.exports = mergeConfig(getDefaultConfig(__dirname), config);
 ```
 
 ### Console Logging with Hermes
@@ -681,11 +657,14 @@ const ProfiledComponent = () => {
 
 ### Analyzing Profiler Output
 
-The Hermes profiler outputs data in Chrome trace format:
+The Hermes profiler output can be converted to a Chrome DevTools-compatible format:
 
 ```bash
 # Convert Hermes profile to Chrome trace format
-hermes-profile-transformer profile.cpuprofile
+npx react-native profile-hermes
+
+# Or use the standalone transformer package
+npx hermes-profile-transformer profile.cpuprofile
 
 # Open the trace in Chrome
 # 1. Open Chrome
@@ -737,7 +716,7 @@ Hermes:
 ```javascript
 // Optimize memory usage with Hermes
 
-// 1. Use WeakRef for caching (supported in Hermes)
+// 1. Use WeakMap for object-keyed caching
 const cache = new WeakMap();
 
 const getCachedData = (key) => {
@@ -785,9 +764,9 @@ class DataManager {
 // Monitor memory in development
 const logMemoryUsage = () => {
     if (global.HermesInternal) {
-        const heapInfo = global.HermesInternal.getHeapSnapshot?.();
-        if (heapInfo) {
-            console.log('Heap Info:', heapInfo);
+        const runtimeProperties = global.HermesInternal.getRuntimeProperties?.();
+        if (runtimeProperties) {
+            console.log('Hermes Runtime Properties:', runtimeProperties);
         }
     }
 
@@ -805,26 +784,26 @@ if (__DEV__) {
 
 ### Garbage Collection with Hermes
 
-Hermes uses a generational garbage collector optimized for mobile:
+Hermes uses a garbage collector optimized for mobile:
 
 ```javascript
 // Understanding GC behavior
-// Hermes uses incremental garbage collection to avoid long pauses
+// Hermes is designed to reduce memory use and GC pause impact in mobile apps
 
 // Force garbage collection (development only)
 if (__DEV__ && global.gc) {
     global.gc();
 }
 
-// Monitor GC activity
+// Monitor operation timing; use native profilers for precise memory data
 const monitorGC = () => {
-    const initialMemory = performance.memory?.usedJSHeapSize;
+    const start = global.performance.now();
 
     // Perform operations
     performOperations();
 
-    const finalMemory = performance.memory?.usedJSHeapSize;
-    console.log(`Memory delta: ${(finalMemory - initialMemory) / 1024}KB`);
+    const end = global.performance.now();
+    console.log(`Operation time: ${end - start}ms`);
 };
 ```
 
@@ -837,22 +816,25 @@ While Hermes provides excellent performance, there are some compatibility consid
 Hermes supports ES6+ features with some exceptions:
 
 ```javascript
-// Supported ES6+ Features
+// Supported JavaScript syntax in React Native through Hermes and Babel
+const obj = { property: 'supported' };
+const value = null;
+
 const supportedFeatures = {
     arrowFunctions: () => 'supported',
     classes: class Example {},
     templateLiterals: `supported`,
-    destructuring: { a, b } = { a: 1, b: 2 },
-    spreadOperator: [...array],
-    asyncAwait: async () => await promise,
+    destructuring: (() => {
+        const { a, b } = { a: 1, b: 2 };
+        return { a, b };
+    })(),
+    spreadOperator: [1, 2, 3],
+    asyncAwait: async (promise) => await promise,
     optionalChaining: obj?.property,
     nullishCoalescing: value ?? 'default',
 };
 
-// Features requiring polyfills or alternatives
-// 1. Proxy objects (limited support)
-// 2. Reflect API (partial support)
-// 3. Some Intl features
+// Use feature detection for runtime APIs such as Intl, WeakRef, or BigInt.
 ```
 
 ### Checking Feature Support
@@ -889,7 +871,7 @@ Some libraries may need configuration for Hermes:
 ```javascript
 // babel.config.js - Handling library compatibility
 module.exports = {
-    presets: ['module:metro-react-native-babel-preset'],
+    presets: ['module:@react-native/babel-preset'],
     plugins: [
         // Ensure compatibility with older syntax
         '@babel/plugin-transform-flow-strip-types',
@@ -897,8 +879,7 @@ module.exports = {
         // Handle decorator syntax
         ['@babel/plugin-proposal-decorators', { legacy: true }],
 
-        // Class properties
-        ['@babel/plugin-proposal-class-properties', { loose: true }],
+        // Add library-specific transforms only when a dependency requires them
     ],
 };
 ```
@@ -975,12 +956,6 @@ android {
         }
     }
 
-    // Enable build cache
-    buildCache {
-        local {
-            enabled true
-        }
-    }
 }
 ```
 
@@ -988,48 +963,44 @@ android {
 
 ```javascript
 // metro.config.js
-const { getDefaultConfig } = require('metro-config');
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
-module.exports = (async () => {
-    const {
-        resolver: { sourceExts, assetExts },
-    } = await getDefaultConfig();
+const defaultConfig = getDefaultConfig(__dirname);
+const { assetExts, sourceExts } = defaultConfig.resolver;
 
-    return {
-        transformer: {
-            getTransformOptions: async () => ({
-                transform: {
-                    experimentalImportSupport: false,
-                    // Enable inline requires for Hermes optimization
-                    inlineRequires: true,
-                },
-            }),
-            babelTransformerPath: require.resolve('react-native-svg-transformer'),
-        },
-        resolver: {
-            assetExts: assetExts.filter(ext => ext !== 'svg'),
-            sourceExts: [...sourceExts, 'svg'],
-        },
-    };
-})();
+const config = {
+    transformer: {
+        getTransformOptions: async () => ({
+            transform: {
+                experimentalImportSupport: false,
+                inlineRequires: true,
+            },
+        }),
+        babelTransformerPath: require.resolve('react-native-svg-transformer'),
+    },
+    resolver: {
+        assetExts: assetExts.filter(ext => ext !== 'svg'),
+        sourceExts: [...sourceExts, 'svg'],
+    },
+};
+
+module.exports = mergeConfig(defaultConfig, config);
 ```
 
 ### Performance Monitoring
 
 ```javascript
 // Implement performance monitoring
-import { Performance } from 'react-native';
-
 class PerformanceMonitor {
     static marks = {};
 
     static mark(name) {
-        this.marks[name] = performance.now();
+        this.marks[name] = global.performance.now();
     }
 
     static measure(name, startMark, endMark) {
         const start = this.marks[startMark];
-        const end = this.marks[endMark] || performance.now();
+        const end = this.marks[endMark] || global.performance.now();
         const duration = end - start;
 
         console.log(`[Performance] ${name}: ${duration.toFixed(2)}ms`);
@@ -1125,7 +1096,7 @@ describe('Performance Tests', () => {
 ```bash
 # Clear all caches and rebuild
 cd android && ./gradlew clean && cd ..
-cd ios && pod cache clean --all && rm -rf Pods && pod install && cd ..
+cd ios && rm -rf Pods Podfile.lock && pod install && cd ..
 rm -rf node_modules
 npm install
 npx react-native start --reset-cache
@@ -1137,7 +1108,7 @@ npx react-native start --reset-cache
 // Debug Hermes-specific issues
 if (global.HermesInternal) {
     console.log('Hermes Runtime Properties:');
-    console.log(HermesInternal.getRuntimeProperties?.());
+    console.log(global.HermesInternal.getRuntimeProperties?.());
 }
 
 // Check for unsupported features
@@ -1177,12 +1148,12 @@ Hermes is a powerful JavaScript engine that can significantly improve the perfor
 
 - Up to 50-70% faster app startup times
 - 20-30% reduction in memory usage
-- 30-40% smaller bundle sizes
+- Smaller app sizes for many apps
 - Smoother animations and interactions
 
 Key takeaways:
 
-1. **Enable Hermes** in your project configuration for both platforms
+1. **Use Hermes** in your project configuration for both platforms
 2. **Use bytecode precompilation** to optimize startup time
 3. **Monitor performance** using the Hermes profiler and debugging tools
 4. **Follow best practices** for code organization and optimization

@@ -56,6 +56,9 @@ on:
 jobs:
   detect-drift:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         environment: [staging, production]
@@ -66,6 +69,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.0
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -88,12 +92,14 @@ jobs:
           if [ $EXIT_CODE -eq 2 ]; then
             echo "drift_detected=true" >> $GITHUB_OUTPUT
             echo "DRIFT DETECTED in ${{ matrix.environment }}"
-          else
+          elif [ $EXIT_CODE -eq 0 ]; then
             echo "drift_detected=false" >> $GITHUB_OUTPUT
             echo "No drift detected"
+          else
+            echo "Terraform plan failed"
+            exit $EXIT_CODE
           fi
         working-directory: terraform/environments/${{ matrix.environment }}
-        continue-on-error: true
 
       - name: Create drift report
         if: steps.plan.outputs.drift_detected == 'true'
@@ -143,16 +149,21 @@ for manifest in $MANIFEST_DIR/*.yaml; do
   echo "Checking $manifest..."
 
   # Get the resource name and kind from the manifest
-  RESOURCE_KIND=$(yq '.kind' $manifest)
-  RESOURCE_NAME=$(yq '.metadata.name' $manifest)
+  RESOURCE_KIND=$(yq '.kind' "$manifest")
+  RESOURCE_NAME=$(yq '.metadata.name' "$manifest")
 
-  # Perform a dry-run apply and check for differences
-  DIFF_OUTPUT=$(kubectl diff -f $manifest 2>&1)
+  # Diff the would-be applied manifest against the live object
+  DIFF_OUTPUT=$(kubectl diff -n "$NAMESPACE" -f "$manifest" 2>&1)
+  EXIT_CODE=$?
 
-  if [ -n "$DIFF_OUTPUT" ]; then
+  if [ $EXIT_CODE -eq 1 ]; then
     echo "DRIFT DETECTED: $RESOURCE_KIND/$RESOURCE_NAME"
     echo "$DIFF_OUTPUT"
     drift_found=true
+  elif [ $EXIT_CODE -gt 1 ]; then
+    echo "Error checking $RESOURCE_KIND/$RESOURCE_NAME"
+    echo "$DIFF_OUTPUT"
+    exit $EXIT_CODE
   fi
 done
 
@@ -227,7 +238,7 @@ terraform import aws_s3_bucket.manually_created my-manually-created-bucket
 
 # Verify the import
 terraform plan
-# Should show no changes if import was successful
+# Should show no changes if the configuration matches the imported bucket
 ```
 
 ## Preventing Environment Drift
@@ -289,8 +300,8 @@ terraform {
 
 # In Terraform Cloud workspace settings:
 # - Enable "Health Assessments"
-# - Set assessment interval (e.g., every 24 hours)
-# - Configure drift detection notifications
+# - Review the health assessment schedule
+# - Configure health assessment notifications
 ```
 
 ### Lock Down Manual Access
@@ -349,8 +360,14 @@ kind: Deployment
 metadata:
   name: web-api
 spec:
+  selector:
+    matchLabels:
+      app: web-api
   replicas: 1
   template:
+    metadata:
+      labels:
+        app: web-api
     spec:
       containers:
         - name: api
@@ -458,7 +475,7 @@ def main():
 
         if diff:
             print(f"DRIFT in {deployment}:")
-            print(json.dumps(dict(diff), indent=2))
+            print(diff.to_json(indent=2))
             drift_found = True
         else:
             print(f"OK: {deployment} - configurations match")

@@ -23,7 +23,7 @@ Kafka Broker (JMX) -> JMX Exporter -> Prometheus -> Grafana
 ### Download JMX Exporter
 
 ```bash
-wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.19.0/jmx_prometheus_javaagent-0.19.0.jar
+wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar
 ```
 
 ### Kafka JMX Configuration
@@ -35,6 +35,45 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
+  # Common broker counters
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count
+    name: kafka_server_brokertopicmetrics_messagesin_total
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count
+    name: kafka_server_brokertopicmetrics_bytesin_total
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count
+    name: kafka_server_brokertopicmetrics_bytesout_total
+    type: COUNTER
+
+  - pattern: kafka.server<type=ReplicaManager, name=IsrShrinksPerSec><>Count
+    name: kafka_server_replicamanager_isrshrinks_total
+    type: COUNTER
+
+  # Request latency percentiles
+  - pattern: kafka.network<type=RequestMetrics, name=(TotalTimeMs|RequestQueueTimeMs|RemoteTimeMs), request=(.+)><>99thPercentile
+    name: kafka_network_requestmetrics_$1_99thpercentile
+    type: GAUGE
+    labels:
+      request: "$2"
+
+  # Consumer lag metrics are published by consumers, not brokers
+  - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=(.+), topic=(.+), partition=(.+)><>records-lag
+    name: kafka_consumer_fetch_manager_records_lag
+    type: GAUGE
+    labels:
+      clientid: "$1"
+      topic: "$2"
+      partition: "$3"
+
+  - pattern: kafka.consumer<type=consumer-fetch-manager-metrics, client-id=(.+)><>records-lag-max
+    name: kafka_consumer_fetch_manager_records_lag_max
+    type: GAUGE
+    labels:
+      clientid: "$1"
+
   # Broker metrics
   - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
     name: kafka_server_$1_$2
@@ -107,6 +146,10 @@ rules:
       topic: "$3"
       partition: "$4"
 
+  - pattern: kafka.log<type=(.+), name=(.+)><>Value
+    name: kafka_log_$1_$2
+    type: GAUGE
+
   # Consumer group metrics
   - pattern: kafka.server<type=group-coordinator-metrics, name=(.+)><>Value
     name: kafka_coordinator_$1
@@ -152,22 +195,18 @@ rules:
 Add to `kafka-server-start.sh` or set environment variable:
 
 ```bash
-export KAFKA_OPTS="-javaagent:/path/to/jmx_prometheus_javaagent-0.19.0.jar=9404:/path/to/kafka-jmx-config.yml"
+export KAFKA_OPTS="-javaagent:/path/to/jmx_prometheus_javaagent-1.0.1.jar=9404:/path/to/kafka-jmx-config.yml"
 ```
 
-Or in `server.properties`:
+For remote JMX access, set `JMX_PORT` as an environment variable before starting Kafka. This is separate from the JMX exporter Java agent above:
 
-```properties
-# Enable JMX
-
+```bash
 JMX_PORT=9999
 ```
 
 ## Docker Compose Setup
 
 ```yaml
-version: '3.8'
-
 services:
   kafka:
     image: apache/kafka:3.7.0
@@ -183,10 +222,13 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_OPTS: "-javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx_exporter/kafka-jmx-config.yml"
     volumes:
-      - ./jmx_prometheus_javaagent-0.19.0.jar:/opt/jmx_exporter/jmx_prometheus_javaagent.jar
+      - ./jmx_prometheus_javaagent-1.0.1.jar:/opt/jmx_exporter/jmx_prometheus_javaagent.jar
       - ./kafka-jmx-config.yml:/opt/jmx_exporter/kafka-jmx-config.yml
     networks:
       - monitoring
@@ -264,10 +306,11 @@ scrape_configs:
         labels:
           cluster: 'production'
 
+  # Include this only when Kafka Connect also runs a Prometheus/JMX exporter.
   - job_name: 'kafka-connect'
     static_configs:
       - targets:
-          - kafka-connect:8083
+          - kafka-connect:9404
 
   - job_name: 'kafka-lag-exporter'
     static_configs:
@@ -290,17 +333,17 @@ scrape_configs:
 
 | Metric | Description |
 |--------|-------------|
-| kafka_server_brokertopicmetrics_messagesin_total | Messages in per second |
-| kafka_server_brokertopicmetrics_bytesin_total | Bytes in per second |
-| kafka_server_brokertopicmetrics_bytesout_total | Bytes out per second |
+| kafka_server_brokertopicmetrics_messagesin_total | Cumulative messages in; use `rate(...[5m])` for per-second rate |
+| kafka_server_brokertopicmetrics_bytesin_total | Cumulative bytes in; use `rate(...[5m])` for per-second rate |
+| kafka_server_brokertopicmetrics_bytesout_total | Cumulative bytes out; use `rate(...[5m])` for per-second rate |
 
 ### Latency
 
 | Metric | Description |
 |--------|-------------|
-| kafka_network_requestmetrics_totaltimems | Request total time |
-| kafka_network_requestmetrics_requestqueuetimems | Request queue time |
-| kafka_network_requestmetrics_remotetimems | Remote time |
+| kafka_network_requestmetrics_totaltimems_99thpercentile | Request total time p99 |
+| kafka_network_requestmetrics_requestqueuetimems_99thpercentile | Request queue time p99 |
+| kafka_network_requestmetrics_remotetimems_99thpercentile | Remote time p99 |
 
 ### Consumer Lag
 
@@ -358,7 +401,7 @@ groups:
 
       # High request latency
       - alert: KafkaHighRequestLatency
-        expr: kafka_network_requestmetrics_totaltimems{quantile="0.99"} > 1000
+        expr: kafka_network_requestmetrics_totaltimems_99thpercentile > 1000
         for: 5m
         labels:
           severity: warning
@@ -374,7 +417,7 @@ groups:
           severity: warning
         annotations:
           summary: "High Kafka consumer lag"
-          description: "Consumer {{ $labels.client_id }} has lag of {{ $value }}"
+          description: "Consumer {{ $labels.clientid }} has lag of {{ $value }}"
 
       # Broker down
       - alert: KafkaBrokerDown
@@ -396,15 +439,15 @@ groups:
           summary: "Kafka ISR is shrinking"
           description: "ISR shrinks detected on broker {{ $labels.instance }}"
 
-      # Disk space
-      - alert: KafkaLogDirectoryLow
-        expr: kafka_log_log_size / kafka_log_log_size_max > 0.8
-        for: 10m
+      # Offline log directories
+      - alert: KafkaOfflineLogDirectory
+        expr: kafka_log_logmanager_offlinelogdirectorycount > 0
+        for: 1m
         labels:
-          severity: warning
+          severity: critical
         annotations:
-          summary: "Kafka log directory space is low"
-          description: "Log directory usage is {{ $value | humanizePercentage }}"
+          summary: "Kafka has an offline log directory"
+          description: "Broker {{ $labels.instance }} has {{ $value }} offline log directories"
 ```
 
 ## Grafana Dashboards
@@ -417,16 +460,16 @@ groups:
     "title": "Kafka Overview",
     "panels": [
       {
-        "title": "Messages In/Out Rate",
-        "type": "graph",
+        "title": "Messages In / Bytes Out Rate",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total[5m]))",
             "legendFormat": "Messages In"
           },
           {
-            "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesout_total[5m]))",
-            "legendFormat": "Messages Out"
+            "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total[5m]))",
+            "legendFormat": "Bytes Out"
           }
         ]
       },
@@ -457,21 +500,21 @@ groups:
       },
       {
         "title": "Request Latency (p99)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, sum(rate(kafka_network_requestmetrics_totaltimems_bucket[5m])) by (le, request))",
+            "expr": "avg(kafka_network_requestmetrics_totaltimems_99thpercentile) by (request)",
             "legendFormat": "{{ request }}"
           }
         ]
       },
       {
         "title": "Consumer Lag by Group",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(kafka_consumer_fetch_manager_records_lag) by (client_id)",
-            "legendFormat": "{{ client_id }}"
+            "expr": "sum(kafka_consumer_fetch_manager_records_lag) by (clientid)",
+            "legendFormat": "{{ clientid }}"
           }
         ]
       }
@@ -484,26 +527,15 @@ groups:
 
 For detailed consumer lag monitoring, use kafka-lag-exporter:
 
-```yaml
-# kafka-lag-exporter deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kafka-lag-exporter
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-        - name: kafka-lag-exporter
-          image: seglo/kafka-lag-exporter:latest
-          ports:
-            - containerPort: 8000
-          env:
-            - name: KAFKA_LAG_EXPORTER_CLUSTERS_0_NAME
-              value: "production"
-            - name: KAFKA_LAG_EXPORTER_CLUSTERS_0_BOOTSTRAP_BROKERS
-              value: "kafka:9092"
+```bash
+helm repo add kafka-lag-exporter https://seglo.github.io/kafka-lag-exporter/repo/
+helm repo update
+
+helm install kafka-lag-exporter kafka-lag-exporter/kafka-lag-exporter \
+  --namespace monitoring \
+  --create-namespace \
+  --set 'clusters[0].name=production' \
+  --set 'clusters[0].bootstrapBrokers=kafka:9092'
 ```
 
 ## Best Practices

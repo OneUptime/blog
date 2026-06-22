@@ -106,22 +106,30 @@ ports:
   web:
     port: 8000
     exposedPort: 80
-    expose: true
+    expose:
+      default: true
     protocol: TCP
     # Redirect to websecure
-    redirectTo:
-      port: websecure
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     port: 8443
     exposedPort: 443
-    expose: true
+    expose:
+      default: true
     protocol: TCP
-    tls:
-      enabled: true
+    http:
+      tls:
+        enabled: true
   # Dashboard (internal only)
   traefik:
     port: 9000
-    expose: false
+    expose:
+      default: false
 
 # Enable Kubernetes Ingress provider
 providers:
@@ -135,12 +143,11 @@ providers:
     allowCrossNamespace: true
 
 # Logs
-logs:
-  general:
-    level: INFO
-  access:
-    enabled: true
-    format: json
+log:
+  level: INFO
+accessLog:
+  enabled: true
+  format: json
 
 # Metrics
 metrics:
@@ -149,6 +156,8 @@ metrics:
     addEntryPointsLabels: true
     addServicesLabels: true
     buckets: "0.1,0.3,1.2,5.0"
+    service:
+      enabled: true
 
 # Affinity
 affinity:
@@ -209,7 +218,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wildcard-cert
-  namespace: traefik
+  namespace: default
 spec:
   secretName: wildcard-tls
   issuerRef:
@@ -268,7 +277,7 @@ spec:
     - match: Host(`myapp.example.com`) && PathPrefix(`/api`)
       kind: Rule
       middlewares:
-        - name: api-auth
+        - name: basic-auth
       services:
         - name: myapp-api
           port: 8080
@@ -330,7 +339,6 @@ metadata:
 spec:
   headers:
     frameDeny: true
-    sslRedirect: true
     browserXssFilter: true
     contentTypeNosniff: true
     stsIncludeSubdomains: true
@@ -500,7 +508,7 @@ extraObjects:
 
 ```bash
 # Generate htpasswd
-htpasswd -nb admin secure-password | base64
+htpasswd -nb admin secure-password
 
 # Create secret
 kubectl create secret generic traefik-dashboard-auth \
@@ -549,7 +557,7 @@ histogram_quantile(0.95,
 )
 
 # Active connections
-traefik_entrypoint_open_connections
+traefik_open_connections
 ```
 
 ## TCP/UDP Services
@@ -571,8 +579,6 @@ spec:
       services:
         - name: postgres
           port: 5432
-  tls:
-    passthrough: true
 ```
 
 ### Enable TCP EntryPoint
@@ -582,7 +588,9 @@ spec:
 ports:
   postgres:
     port: 5432
-    expose: true
+    exposedPort: 5432
+    expose:
+      default: true
     protocol: TCP
 ```
 

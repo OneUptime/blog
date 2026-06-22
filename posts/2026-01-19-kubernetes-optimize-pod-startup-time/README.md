@@ -66,7 +66,7 @@ CREATED=$(kubectl get pod $POD_NAME -n $NAMESPACE \
 READY=$(kubectl get pod $POD_NAME -n $NAMESPACE \
   -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}')
 
-# Calculate difference (requires dateutils)
+# Calculate difference (requires GNU date/coreutils)
 CREATED_SEC=$(date -d "$CREATED" +%s)
 READY_SEC=$(date -d "$READY" +%s)
 STARTUP_TIME=$((READY_SEC - CREATED_SEC))
@@ -85,10 +85,10 @@ avg(
   kube_pod_status_ready_time - kube_pod_created
 ) by (namespace, pod)
 
-# P99 startup time by deployment
+# P99 pod start duration from kubelet metrics
 histogram_quantile(0.99,
-  sum by (deployment, le) (
-    rate(kubelet_pod_start_duration_seconds_bucket[1h])
+  sum by (le) (
+    rate(kubelet_pod_start_total_duration_seconds_bucket[1h])
   )
 )
 ```
@@ -114,7 +114,7 @@ FROM python:3.11-slim AS builder
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-FROM gcr.io/distroless/python3-debian11
+FROM gcr.io/distroless/python3-debian12
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY app.py /app/
 CMD ["/app/app.py"]
@@ -124,7 +124,7 @@ CMD ["/app/app.py"]
 
 ```dockerfile
 # Build stage
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -142,18 +142,18 @@ ENTRYPOINT ["/main"]
 
 ```dockerfile
 # Bad: Creates many layers, cache invalidation issues
-FROM node:18-alpine
+FROM node:24-alpine
 COPY . /app
 RUN npm install
 RUN npm run build
 
 # Good: Optimized layer caching
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Copy package files first (cached if unchanged)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy source code (changes more frequently)
 COPY . .
@@ -190,7 +190,7 @@ spec:
           command: ['echo', 'Image pulled']
       containers:
         - name: pause
-          image: k8s.gcr.io/pause:3.9
+          image: registry.k8s.io/pause:3.9
       tolerations:
         - operator: Exists
 ```
@@ -214,39 +214,52 @@ spec:
 
 ### Local Image Cache
 
-```yaml
+```toml
 # Use a registry mirror/cache
 # containerd config (/etc/containerd/config.toml)
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-    endpoint = ["https://registry-mirror.internal:5000"]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-    endpoint = ["https://registry-mirror.internal:5000"]
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."https://registry-mirror.internal:5000"]
+  capabilities = ["pull", "resolve"]
 ```
 
 ## Init Container Optimization
 
-### Parallelize Init Containers (K8s 1.28+)
+### Use Sidecar Init Containers for Long-Running Helpers (K8s 1.29+, stable in 1.33)
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: parallel-init
+  name: sidecar-init
 spec:
   initContainers:
-    # These run in parallel with restartPolicy: Always
-    - name: init-db
-      image: busybox
-      restartPolicy: Always  # Sidecar mode - runs in parallel
-      command: ['sh', '-c', 'until nc -z db:5432; do sleep 1; done']
-    - name: init-cache
+    # restartPolicy: Always makes this a sidecar container.
+    # It starts before the app container and keeps running for the Pod lifetime.
+    - name: log-forwarder
       image: busybox
       restartPolicy: Always
-      command: ['sh', '-c', 'until nc -z redis:6379; do sleep 1; done']
+      command: ['sh', '-c', 'tail -F /var/log/app.log']
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log
   containers:
     - name: app
       image: myapp:latest
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log
+  volumes:
+    - name: logs
+      emptyDir: {}
 ```
 
 ### Optimize Init Container Logic
@@ -314,7 +327,7 @@ spec:
         failureThreshold: 30
         periodSeconds: 10
         timeoutSeconds: 5
-      # Liveness probe only starts after startup probe succeeds
+      # Liveness and readiness probes only start after startup probe succeeds
       livenessProbe:
         httpGet:
           path: /health
@@ -370,7 +383,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 ```
 
-Resource Optimization
+## Resource Optimization
 
 ### Burst Resources for Startup
 
@@ -389,7 +402,7 @@ spec:
           memory: 256Mi
         limits:
           cpu: "2"        # Allow burst during startup
-          memory: 1Gi     # Allow more memory during init
+          memory: 1Gi     # Allow more memory during startup
 ```
 
 ### Guaranteed QoS for Critical Apps
@@ -409,7 +422,7 @@ spec:
           memory: 512Mi
         limits:
           cpu: 500m       # Same as request = Guaranteed QoS
-          memory: 512Mi   # Prioritized scheduling
+          memory: 512Mi   # Best eviction protection under node pressure
 ```
 
 ## Application-Level Optimization
@@ -461,7 +474,7 @@ spec:
 
 ```dockerfile
 # Node.js: Generate node_modules before runtime
-FROM node:18-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -491,7 +504,7 @@ kind: Pod
 metadata:
   name: fast-schedule
 spec:
-  # Spread across nodes for faster scheduling
+  # Balance matching Pods across nodes
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
@@ -510,7 +523,8 @@ metadata:
   name: cache-affinity
 spec:
   affinity:
-    # Prefer nodes that already have the image
+    # Prefer nodes that already have the image.
+    # This requires you to label nodes when the image is cached.
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
@@ -525,8 +539,8 @@ spec:
 ### Startup Time Dashboard
 
 ```promql
-# Average startup time by deployment
-avg by (deployment) (
+# Average startup time by namespace
+avg by (namespace) (
   kube_pod_status_ready_time - kube_pod_created
 )
 
@@ -535,10 +549,8 @@ avg by (deployment) (
 
 # Image pull time
 histogram_quantile(0.95,
-  sum by (image, le) (
-    rate(kubelet_docker_operations_duration_seconds_bucket{
-      operation_type="pull_image"
-    }[1h])
+  sum by (image_size_in_bytes, le) (
+    rate(kubelet_image_pull_duration_seconds_bucket[1h])
   )
 )
 ```
@@ -569,7 +581,7 @@ spec:
 1. **Optimize images** - Use multi-stage builds, minimal base images
 2. **Pre-pull images** - Use DaemonSets to cache images on nodes
 3. **Tune probes** - Use startup probes for slow apps
-4. **Optimize init containers** - Run in parallel where possible
+4. **Optimize init containers** - Keep checks fast and use sidecars only for long-running helpers
 5. **Lazy load** - Initialize only what's needed for readiness
 6. **Monitor continuously** - Track startup times in dashboards
 
@@ -579,7 +591,7 @@ Optimizing pod startup time requires a multi-faceted approach. Key takeaways:
 
 1. **Image size matters** - Smaller images = faster pulls
 2. **Cache strategically** - Pre-pull images, use registry mirrors
-3. **Parallelize initialization** - Use sidecar init containers
+3. **Streamline initialization** - Keep init work minimal and use sidecar init containers for long-running helpers
 4. **Configure probes properly** - Allow adequate startup time
 5. **Measure everything** - You can't optimize what you don't measure
 

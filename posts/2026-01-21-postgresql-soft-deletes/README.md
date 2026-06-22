@@ -73,6 +73,10 @@ CREATE POLICY admin_see_all ON users
 CREATE OR REPLACE FUNCTION soft_delete_trigger()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF OLD.deleted_at IS NOT NULL THEN
+        RETURN OLD;  -- Allow purging already soft-deleted rows
+    END IF;
+
     UPDATE users SET deleted_at = NOW() WHERE id = OLD.id;
     RETURN NULL;  -- Prevent actual delete
 END;

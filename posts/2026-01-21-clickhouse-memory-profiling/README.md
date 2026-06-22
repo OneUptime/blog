@@ -50,9 +50,7 @@ SELECT
     query_id,
     query,
     memory_usage,
-    peak_memory_usage,
-    formatReadableSize(memory_usage) AS memory_readable,
-    formatReadableSize(peak_memory_usage) AS peak_readable
+    formatReadableSize(memory_usage) AS memory_readable
 FROM system.query_log
 WHERE type = 'QueryFinish'
 ORDER BY event_time DESC
@@ -66,14 +64,13 @@ LIMIT 10;
 SELECT
     query,
     formatReadableSize(memory_usage) AS memory,
-    formatReadableSize(peak_memory_usage) AS peak_memory,
     query_duration_ms,
     read_rows,
     result_rows
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_time >= now() - INTERVAL 1 HOUR
-ORDER BY peak_memory_usage DESC
+ORDER BY memory_usage DESC
 LIMIT 20;
 
 -- Memory usage by query type
@@ -81,7 +78,7 @@ SELECT
     query_kind,
     count() AS queries,
     formatReadableSize(avg(memory_usage)) AS avg_memory,
-    formatReadableSize(max(peak_memory_usage)) AS max_peak
+    formatReadableSize(max(memory_usage)) AS max_memory
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_time >= now() - INTERVAL 1 DAY
@@ -89,16 +86,16 @@ GROUP BY query_kind
 ORDER BY avg(memory_usage) DESC;
 ```
 
-## EXPLAIN for Memory Estimation
+## EXPLAIN for Query Analysis
 
 ```sql
--- Estimate memory before running
+-- Estimate rows, marks, and parts to read before running
 EXPLAIN ESTIMATE
 SELECT user_id, count()
 FROM events
 GROUP BY user_id;
 
--- Detailed query plan with memory
+-- Detailed query plan
 EXPLAIN PLAN
 SELECT user_id, count()
 FROM events
@@ -119,11 +116,10 @@ GROUP BY user_id;
 -- High memory: grouping by high-cardinality column
 SELECT user_id, count() FROM events GROUP BY user_id;
 
--- Lower memory: limit cardinality
-SELECT user_id, count()
+-- Lower memory: group by a lower-cardinality expression
+SELECT toDate(event_time) AS day, count()
 FROM events
-GROUP BY user_id
-LIMIT 100000;
+GROUP BY day;
 
 -- Or use approximate functions
 SELECT uniq(user_id) FROM events;
@@ -143,10 +139,10 @@ GROUP BY column
 ORDER BY sum(data_uncompressed_bytes) DESC;
 ```
 
-### 3. Streaming Aggregation
+### 3. External Aggregation
 
 ```sql
--- Enable partial aggregation for large GROUP BYs
+-- Enable external aggregation and sorting for large GROUP BYs and ORDER BYs
 SET max_bytes_before_external_group_by = 5000000000;  -- 5GB before spilling
 SET max_bytes_before_external_sort = 5000000000;
 
@@ -159,21 +155,21 @@ GROUP BY user_id;
 ### 4. Subquery Optimization
 
 ```sql
--- Memory-heavy: IN with large subquery
+-- Potentially memory-heavy: IN with large subquery
 SELECT * FROM events
 WHERE user_id IN (SELECT user_id FROM users WHERE country = 'US');
 
--- Better: Use JOIN
+-- Alternative: use ANY INNER JOIN when you need JOIN semantics
 SELECT e.*
 FROM events e
-INNER JOIN users u ON e.user_id = u.user_id
+ANY INNER JOIN users u ON e.user_id = u.user_id
 WHERE u.country = 'US';
 ```
 
 ## Memory Settings Configuration
 
 ```xml
-<!-- config.xml settings -->
+<!-- Server config.xml and user profile settings, typically in users.xml or users.d/*.xml -->
 <clickhouse>
     <!-- Server-level limits -->
     <max_server_memory_usage_to_ram_ratio>0.9</max_server_memory_usage_to_ram_ratio>
@@ -219,7 +215,7 @@ Effective memory profiling involves:
 
 1. **Enable profiling** with appropriate settings
 2. **Analyze query_log** for memory patterns
-3. **Use EXPLAIN** to estimate before running
+3. **Use EXPLAIN** to inspect the plan and read estimates before running
 4. **Optimize queries** to reduce memory
 5. **Configure limits** to prevent OOM
 6. **Monitor real-time** usage

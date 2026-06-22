@@ -94,7 +94,7 @@ First, ensure your `jest.config.js` is properly configured:
 // jest.config.js
 module.exports = {
   preset: 'react-native',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFiles: ['<rootDir>/jest.setup.js'],
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-navigation)/)',
   ],
@@ -115,9 +115,11 @@ module.exports = {
 import 'react-native-gesture-handler/jestSetup';
 
 // Silence specific warnings during tests
+const originalWarn = console.warn;
+
 jest.spyOn(console, 'warn').mockImplementation((message) => {
   if (message.includes('Animated: `useNativeDriver`')) return;
-  console.warn(message);
+  originalWarn(message);
 });
 
 // Global timeout for async operations
@@ -179,11 +181,12 @@ jest.mock('react-native', () => {
 // jest.setup.js
 jest.mock('react-native/Libraries/Utilities/Platform', () => ({
   OS: 'ios', // or 'android' depending on test needs
-  select: jest.fn((specifics) => specifics.ios || specifics.default),
-  Version: 14,
+  select: jest.fn((specifics) => specifics.ios ?? specifics.native ?? specifics.default),
+  Version: '14.0',
   isPad: false,
-  isTVOS: false,
   isTV: false,
+  isVision: false,
+  isTesting: true,
   constants: {
     reactNativeVersion: { major: 0, minor: 72, patch: 0 },
   },
@@ -201,8 +204,7 @@ jest.mock('react-native/Libraries/Utilities/Dimensions', () => ({
     scale: 3,
     fontScale: 1,
   }),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
 ```
 
@@ -214,8 +216,8 @@ jest.mock('react-native/Libraries/Linking/Linking', () => ({
   openURL: jest.fn(() => Promise.resolve()),
   canOpenURL: jest.fn(() => Promise.resolve(true)),
   getInitialURL: jest.fn(() => Promise.resolve(null)),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  openSettings: jest.fn(() => Promise.resolve()),
 }));
 ```
 
@@ -471,7 +473,7 @@ Many native modules return promises that need careful handling in tests.
 
 ```typescript
 // Mock that resolves immediately
-jest.mock('react-native-biometrics', () => ({
+const mockBiometrics = {
   isSensorAvailable: jest.fn(() =>
     Promise.resolve({
       available: true,
@@ -483,18 +485,24 @@ jest.mock('react-native-biometrics', () => ({
       success: true,
     })
   ),
-}));
+};
+
+jest.mock('react-native-biometrics', () =>
+  jest.fn(() => mockBiometrics)
+);
 
 // Test async behavior
-import BiometricModule from 'react-native-biometrics';
+import ReactNativeBiometrics from 'react-native-biometrics';
 
 test('handles biometric authentication', async () => {
-  const result = await BiometricModule.simplePrompt({
+  const rnBiometrics = new ReactNativeBiometrics();
+
+  const result = await rnBiometrics.simplePrompt({
     promptMessage: 'Authenticate',
   });
 
   expect(result.success).toBe(true);
-  expect(BiometricModule.simplePrompt).toHaveBeenCalledWith({
+  expect(mockBiometrics.simplePrompt).toHaveBeenCalledWith({
     promptMessage: 'Authenticate',
   });
 });
@@ -504,17 +512,26 @@ test('handles biometric authentication', async () => {
 
 ```typescript
 // In your test file, override the mock for specific tests
-import BiometricModule from 'react-native-biometrics';
+import ReactNativeBiometrics from 'react-native-biometrics';
 
-jest.mock('react-native-biometrics');
+const mockBiometrics = {
+  isSensorAvailable: jest.fn(),
+  simplePrompt: jest.fn(),
+};
+
+jest.mock('react-native-biometrics', () =>
+  jest.fn(() => mockBiometrics)
+);
 
 describe('Biometric Authentication', () => {
+  const rnBiometrics = new ReactNativeBiometrics();
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   test('handles successful authentication', async () => {
-    (BiometricModule.simplePrompt as jest.Mock).mockResolvedValueOnce({
+    (rnBiometrics.simplePrompt as jest.Mock).mockResolvedValueOnce({
       success: true,
     });
 
@@ -523,7 +540,7 @@ describe('Biometric Authentication', () => {
   });
 
   test('handles failed authentication', async () => {
-    (BiometricModule.simplePrompt as jest.Mock).mockResolvedValueOnce({
+    (rnBiometrics.simplePrompt as jest.Mock).mockResolvedValueOnce({
       success: false,
       error: 'User cancelled',
     });
@@ -533,7 +550,7 @@ describe('Biometric Authentication', () => {
   });
 
   test('handles biometric not available', async () => {
-    (BiometricModule.isSensorAvailable as jest.Mock).mockResolvedValueOnce({
+    (rnBiometrics.isSensorAvailable as jest.Mock).mockResolvedValueOnce({
       available: false,
       error: 'No biometric hardware',
     });
@@ -544,7 +561,7 @@ describe('Biometric Authentication', () => {
   });
 
   test('handles unexpected errors', async () => {
-    (BiometricModule.simplePrompt as jest.Mock).mockRejectedValueOnce(
+    (rnBiometrics.simplePrompt as jest.Mock).mockRejectedValueOnce(
       new Error('Hardware error')
     );
 
@@ -612,7 +629,7 @@ export const simulateStateChange = (state: string) => {
 
 ## Mocking Navigation Libraries
 
-React Navigation is widely used and requires comprehensive mocking.
+React Navigation is widely used and often requires test setup for its native dependencies. Prefer rendering a real navigator when you want to test navigation behavior; use mocks when you only need isolated component tests.
 
 ### Mocking React Navigation Core
 
@@ -998,14 +1015,14 @@ export default AsyncStorage;
 // __mocks__/react-native-mmkv.ts
 let mockStorage: Record<string, any> = {};
 
-export class MMKV {
+class MockMMKV {
   private id: string;
 
   constructor(configuration?: { id?: string }) {
     this.id = configuration?.id || 'default';
   }
 
-  set(key: string, value: boolean | string | number | Uint8Array): void {
+  set(key: string, value: boolean | string | number | ArrayBuffer): void {
     mockStorage[`${this.id}:${key}`] = value;
   }
 
@@ -1021,16 +1038,19 @@ export class MMKV {
     return mockStorage[`${this.id}:${key}`] as number | undefined;
   }
 
-  getBuffer(key: string): Uint8Array | undefined {
-    return mockStorage[`${this.id}:${key}`] as Uint8Array | undefined;
+  getBuffer(key: string): ArrayBuffer | undefined {
+    return mockStorage[`${this.id}:${key}`] as ArrayBuffer | undefined;
   }
 
   contains(key: string): boolean {
     return `${this.id}:${key}` in mockStorage;
   }
 
-  delete(key: string): void {
-    delete mockStorage[`${this.id}:${key}`];
+  remove(key: string): boolean {
+    const storageKey = `${this.id}:${key}`;
+    const didExist = storageKey in mockStorage;
+    delete mockStorage[storageKey];
+    return didExist;
   }
 
   getAllKeys(): string[] {
@@ -1047,7 +1067,11 @@ export class MMKV {
       .forEach((k) => delete mockStorage[k]);
   }
 
-  recrypt(_key: string | undefined): void {
+  encrypt(_key: string, _type?: 'AES-128' | 'AES-256'): void {
+    // No-op for tests
+  }
+
+  decrypt(): void {
     // No-op for tests
   }
 
@@ -1057,6 +1081,12 @@ export class MMKV {
     return () => {};
   }
 }
+
+export const createMMKV = jest.fn((configuration?: { id?: string }) => {
+  return new MockMMKV(configuration);
+});
+
+export const MMKV = MockMMKV;
 
 // Helper functions for testing
 export const resetMMKVMock = () => {
@@ -1072,24 +1102,24 @@ export const setMMKVMockData = (
   });
 };
 
-export const useMMKVBoolean = jest.fn((key: string, instance?: MMKV) => {
-  const mmkv = instance || new MMKV();
+export const useMMKVBoolean = jest.fn((key: string, instance?: MockMMKV) => {
+  const mmkv = instance || createMMKV();
   return [
     mmkv.getBoolean(key),
     (value: boolean) => mmkv.set(key, value),
   ] as const;
 });
 
-export const useMMKVString = jest.fn((key: string, instance?: MMKV) => {
-  const mmkv = instance || new MMKV();
+export const useMMKVString = jest.fn((key: string, instance?: MockMMKV) => {
+  const mmkv = instance || createMMKV();
   return [
     mmkv.getString(key),
     (value: string) => mmkv.set(key, value),
   ] as const;
 });
 
-export const useMMKVNumber = jest.fn((key: string, instance?: MMKV) => {
-  const mmkv = instance || new MMKV();
+export const useMMKVNumber = jest.fn((key: string, instance?: MockMMKV) => {
+  const mmkv = instance || createMMKV();
   return [
     mmkv.getNumber(key),
     (value: number) => mmkv.set(key, value),
@@ -1105,7 +1135,7 @@ Properly typing your mocks ensures type safety and better IDE support.
 
 ```typescript
 // types/testing.d.ts
-import type { Mock } from 'jest';
+import type { Mock } from 'jest-mock';
 
 declare global {
   namespace jest {
@@ -1200,10 +1230,10 @@ declare module 'react-native-biometrics' {
     cancelButtonText?: string;
   }
 
-  export function isSensorAvailable(): Promise<BiometryResult>;
-  export function simplePrompt(
-    options: SimplePromptOptions
-  ): Promise<SimplePromptResult>;
+  export default class ReactNativeBiometrics {
+    isSensorAvailable(): Promise<BiometryResult>;
+    simplePrompt(options: SimplePromptOptions): Promise<SimplePromptResult>;
+  }
 }
 ```
 
@@ -1310,6 +1340,18 @@ function checkForUpdates() {
       }
     } catch (error) {
       // npm outdated exits with code 1 when updates exist
+      const output = error.stdout?.toString();
+      if (!output) return;
+
+      const outdated = JSON.parse(output);
+      if (outdated[pkg]) {
+        console.warn(`
+          Warning: ${pkg} has updates available.
+          Current: ${outdated[pkg].current}
+          Latest: ${outdated[pkg].latest}
+          Please review the mock in __mocks__/${pkg}.ts
+        `);
+      }
     }
   });
 }

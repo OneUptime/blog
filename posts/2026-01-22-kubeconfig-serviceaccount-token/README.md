@@ -67,7 +67,7 @@ kubectl apply -f serviceaccount.yaml
 
 ## Step 2: Get the Token
 
-### Method A: Create a Long-Lived Token (Kubernetes 1.24+)
+### Method A: Create a Long-Lived Token Secret
 
 ```yaml
 # token-secret.yaml
@@ -84,8 +84,8 @@ type: kubernetes.io/service-account-token
 ```bash
 kubectl apply -f token-secret.yaml
 
-# Wait a moment for the token to be populated
-sleep 2
+# Wait for the token to be populated
+kubectl wait --for=jsonpath='{.data.token}' secret/ci-deployer-token -n production --timeout=60s
 
 # Get the token
 TOKEN=$(kubectl get secret ci-deployer-token -n production -o jsonpath='{.data.token}' | base64 -d)
@@ -94,7 +94,7 @@ TOKEN=$(kubectl get secret ci-deployer-token -n production -o jsonpath='{.data.t
 ### Method B: Request a Time-Bound Token
 
 ```bash
-# Create token valid for 1 year (8760 hours)
+# Request a token valid for 1 year (8760 hours); the API server may issue a shorter or longer lifetime
 TOKEN=$(kubectl create token ci-deployer -n production --duration=8760h)
 ```
 
@@ -105,7 +105,7 @@ TOKEN=$(kubectl create token ci-deployer -n production --duration=8760h)
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 
 # Get the cluster CA certificate
-kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > ca.crt
+kubectl config view --raw --flatten --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > ca.crt
 
 # Or if using a secret-based token
 kubectl get secret ci-deployer-token -n production -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
@@ -157,9 +157,9 @@ APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.serv
 CLUSTER_NAME=$(kubectl config view --minify -o jsonpath='{.clusters[0].name}')
 
 # Get CA certificate (base64 encoded)
-CA_DATA=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+CA_DATA=$(kubectl config view --raw --flatten --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
 
-# Create token (valid for 1 year)
+# Request token (valid for up to 1 year, depending on API server settings)
 TOKEN=$(kubectl create token $SA_NAME -n $NAMESPACE --duration=8760h)
 
 # Generate kubeconfig
@@ -213,7 +213,7 @@ export KUBECONFIG=$KUBECONFIG_FILE
 # Get cluster info from current context
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --kubeconfig=$HOME/.kube/config)
 CLUSTER_NAME=$(kubectl config view --minify -o jsonpath='{.clusters[0].name}' --kubeconfig=$HOME/.kube/config)
-CA_DATA=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' --kubeconfig=$HOME/.kube/config)
+CA_DATA=$(kubectl config view --raw --flatten --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' --kubeconfig=$HOME/.kube/config)
 
 # Create token
 TOKEN=$(kubectl create token $SA_NAME -n $NAMESPACE --duration=8760h --kubeconfig=$HOME/.kube/config)
@@ -325,7 +325,7 @@ SA_NAME=ci-deployer
 NAMESPACE=production
 KUBECONFIG_FILE=/secure/path/kubeconfig-ci.yaml
 
-# Generate new token
+# Request a new token
 NEW_TOKEN=$(kubectl create token $SA_NAME -n $NAMESPACE --duration=8760h)
 
 # Update kubeconfig

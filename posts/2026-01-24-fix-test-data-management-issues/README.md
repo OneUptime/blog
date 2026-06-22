@@ -60,7 +60,6 @@ The cleanest approach wraps each test in a database transaction that rolls back 
 import { Pool, PoolClient } from 'pg';
 
 let pool: Pool;
-let client: PoolClient;
 
 export async function setupTestDatabase() {
   pool = new Pool({
@@ -69,12 +68,12 @@ export async function setupTestDatabase() {
 }
 
 export async function beginTransaction() {
-  client = await pool.connect();
+  const client = await pool.connect();
   await client.query('BEGIN');
   return client;
 }
 
-export async function rollbackTransaction() {
+export async function rollbackTransaction(client: PoolClient) {
   await client.query('ROLLBACK');
   client.release();
 }
@@ -89,20 +88,23 @@ Use this in your test setup:
 ```typescript
 // test/users.test.ts
 import { describe, beforeAll, beforeEach, afterEach, afterAll, it, expect } from 'vitest';
+import { PoolClient } from 'pg';
 import { setupTestDatabase, beginTransaction, rollbackTransaction, teardownTestDatabase } from './helpers/database';
 
 describe('User Service', () => {
+  let client: PoolClient;
+
   beforeAll(async () => {
     await setupTestDatabase();
   });
 
   beforeEach(async () => {
-    await beginTransaction();
+    client = await beginTransaction();
   });
 
   afterEach(async () => {
     // All changes are rolled back - database returns to original state
-    await rollbackTransaction();
+    await rollbackTransaction(client);
   });
 
   afterAll(async () => {
@@ -110,10 +112,13 @@ describe('User Service', () => {
   });
 
   it('should create a user', async () => {
-    const user = await userService.create({
-      email: 'test@example.com',
-      name: 'Test User',
-    });
+    const user = await userService.create(
+      {
+        email: 'test@example.com',
+        name: 'Test User',
+      },
+      client
+    );
 
     expect(user.id).toBeDefined();
     expect(user.email).toBe('test@example.com');
@@ -227,7 +232,7 @@ export const productFixtures = {
   discountedProduct: {
     name: 'Sale Item',
     price: 99.99,
-    discountPercent: 20,
+    discount_percent: 20,
     sku: 'TEST-003',
     inventory: 50,
   },
@@ -250,7 +255,7 @@ export const orderFixtures = {
       { sku: 'TEST-003', quantity: 1 },
     ],
     total: 109.98,
-    completedAt: new Date('2024-01-15'),
+    completed_at: new Date('2024-01-15'),
   },
 };
 ```
@@ -261,13 +266,21 @@ Load fixtures dynamically:
 // test/helpers/fixtures.ts
 import { db } from '../../src/database';
 
+function quoteIdentifier(identifier: string) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(identifier)) {
+    throw new Error(`Invalid SQL identifier: ${identifier}`);
+  }
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
 export async function loadFixture(tableName: string, data: Record<string, unknown>) {
   const columns = Object.keys(data);
   const values = Object.values(data);
   const placeholders = columns.map((_, i) => `$${i + 1}`);
+  const columnList = columns.map(quoteIdentifier).join(', ');
 
   const result = await db.query(
-    `INSERT INTO ${tableName} (${columns.join(', ')})
+    `INSERT INTO ${quoteIdentifier(tableName)} (${columnList})
      VALUES (${placeholders.join(', ')})
      RETURNING *`,
     values
@@ -293,7 +306,7 @@ import { createProduct } from '../factories/product.factory';
 
 export async function seedTestDatabase() {
   // Clear existing data
-  await db.query('TRUNCATE users, products, orders CASCADE');
+  await db.query('TRUNCATE users, products, orders RESTART IDENTITY CASCADE');
 
   // Create base users
   const admin = await createUser({
@@ -317,7 +330,7 @@ export async function seedTestDatabase() {
 }
 
 export async function clearTestDatabase() {
-  await db.query('TRUNCATE users, products, orders CASCADE');
+  await db.query('TRUNCATE users, products, orders RESTART IDENTITY CASCADE');
 }
 ```
 
@@ -327,7 +340,7 @@ For complex objects with many relationships:
 
 ```typescript
 // test/builders/order.builder.ts
-import { Order, OrderItem, User, Product } from '../../src/types';
+import { Order, User, Product } from '../../src/types';
 import { createUser } from '../factories/user.factory';
 import { createProduct } from '../factories/product.factory';
 import { db } from '../../src/database';
@@ -393,11 +406,10 @@ export class OrderBuilder {
 
 // Usage in tests
 it('should calculate shipping for heavy orders', async () => {
-  const order = await new OrderBuilder()
-    .withStatus('confirmed')
-    .withItem(5, { weight: 10 })  // 5 heavy items
-    .withItem(2, { weight: 1 })   // 2 light items
-    .build();
+  const builder = new OrderBuilder().withStatus('confirmed');
+  await builder.withItem(5, { weight: 10 }); // 5 heavy items
+  await builder.withItem(2, { weight: 1 });  // 2 light items
+  const order = await builder.build();
 
   const shipping = await shippingService.calculate(order.id);
 
@@ -437,24 +449,31 @@ Proper cleanup prevents data leakage between tests:
 // test/helpers/cleanup.ts
 import { db } from '../../src/database';
 
+function quoteIdentifier(identifier: string) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(identifier)) {
+    throw new Error(`Invalid SQL identifier: ${identifier}`);
+  }
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
 // Clean specific tables in dependency order
 export async function cleanupTables(...tables: string[]) {
   for (const table of tables) {
-    await db.query(`DELETE FROM ${table}`);
+    await db.query(`DELETE FROM ${quoteIdentifier(table)}`);
   }
 }
 
 // Reset sequences after cleanup
 export async function resetSequences(...tables: string[]) {
   for (const table of tables) {
-    await db.query(`ALTER SEQUENCE ${table}_id_seq RESTART WITH 1`);
+    await db.query(`ALTER SEQUENCE ${quoteIdentifier(`${table}_id_seq`)} RESTART WITH 1`);
   }
 }
 
 // Full cleanup with cascade
 export async function fullCleanup() {
   const tables = ['order_items', 'orders', 'products', 'users'];
-  await db.query(`TRUNCATE ${tables.join(', ')} CASCADE`);
+  await db.query(`TRUNCATE ${tables.map(quoteIdentifier).join(', ')} RESTART IDENTITY CASCADE`);
 }
 ```
 

@@ -19,7 +19,7 @@ This guide walks you through setting up comprehensive monitoring for your React 
 - OneUptime provides full-stack observability for React Native apps through OpenTelemetry integration
 - Track app startup times, screen render performance, and user interactions
 - Monitor network requests with automatic correlation to backend traces
-- Capture errors and crashes with full stack traces and device context
+- Capture JavaScript errors with stack traces and device context
 - Set up alerts for performance regressions and error spikes
 - Build dashboards to visualize app health and user experience metrics
 
@@ -89,7 +89,7 @@ Before starting, ensure you have:
 - React Native 0.70 or higher
 - Node.js 18 or higher
 - A OneUptime account with an OTLP endpoint configured
-- Your OneUptime project API key
+- Your OneUptime telemetry ingestion token
 
 ### Installing Dependencies
 
@@ -97,20 +97,21 @@ Install the OpenTelemetry packages for React Native:
 
 ```bash
 npm install @opentelemetry/api \
+  @opentelemetry/core \
   @opentelemetry/sdk-trace-base \
   @opentelemetry/sdk-trace-web \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
-  @opentelemetry/semantic-conventions \
-  @opentelemetry/instrumentation-fetch \
-  @opentelemetry/instrumentation-xml-http-request
+  @opentelemetry/semantic-conventions
 ```
 
 For React Native specific functionality:
 
 ```bash
 npm install @react-native-async-storage/async-storage \
-  react-native-device-info
+  @react-native-community/netinfo \
+  react-native-device-info \
+  uuid
 ```
 
 ### Basic Configuration
@@ -121,14 +122,20 @@ Create a telemetry configuration file that initializes OpenTelemetry before your
 // src/telemetry/config.ts
 import { WebTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import type { Resource } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} from '@opentelemetry/semantic-conventions';
 import DeviceInfo from 'react-native-device-info';
 import { Platform } from 'react-native';
+import { MobileSampler } from './sampling';
 
 // Configuration for your OneUptime instance
-const ONEUPTIME_OTLP_ENDPOINT = 'https://otlp.oneuptime.com/v1/traces';
-const ONEUPTIME_API_KEY = process.env.ONEUPTIME_API_KEY || '';
+const ONEUPTIME_OTLP_ENDPOINT = 'https://oneuptime.com/otlp/v1/traces';
+const ONEUPTIME_INGESTION_TOKEN = 'YOUR_ONEUPTIME_INGESTION_TOKEN';
 
 // Build resource attributes that identify your app and device
 async function buildResource(): Promise<Resource> {
@@ -138,10 +145,10 @@ async function buildResource(): Promise<Resource> {
   const appVersion = DeviceInfo.getVersion();
   const buildNumber = DeviceInfo.getBuildNumber();
 
-  return new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-react-native-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: appVersion,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: __DEV__ ? 'development' : 'production',
+  return defaultResource().merge(resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-react-native-app',
+    [ATTR_SERVICE_VERSION]: appVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: __DEV__ ? 'development' : 'production',
 
     // Mobile-specific attributes
     'device.id': deviceId,
@@ -149,7 +156,7 @@ async function buildResource(): Promise<Resource> {
     'os.type': Platform.OS,
     'os.version': systemVersion,
     'app.build': buildNumber,
-  });
+  }));
 }
 
 // Initialize the tracer provider
@@ -166,24 +173,24 @@ export async function initializeTelemetry(): Promise<void> {
   const exporter = new OTLPTraceExporter({
     url: ONEUPTIME_OTLP_ENDPOINT,
     headers: {
-      'x-oneuptime-token': ONEUPTIME_API_KEY,
+      'x-oneuptime-token': ONEUPTIME_INGESTION_TOKEN,
     },
   });
 
   // Create the tracer provider with batched span processing
   tracerProvider = new WebTracerProvider({
     resource,
+    sampler: __DEV__ ? undefined : new MobileSampler(0.15),
+    spanProcessors: [
+      // Batch spans for efficient network usage on mobile
+      new BatchSpanProcessor(exporter, {
+        maxQueueSize: 100,
+        maxExportBatchSize: 50,
+        scheduledDelayMillis: 5000,
+        exportTimeoutMillis: 30000,
+      }),
+    ],
   });
-
-  // Batch spans for efficient network usage on mobile
-  tracerProvider.addSpanProcessor(
-    new BatchSpanProcessor(exporter, {
-      maxQueueSize: 100,
-      maxExportBatchSize: 50,
-      scheduledDelayMillis: 5000,
-      exportTimeoutMillis: 30000,
-    })
-  );
 
   // Register as the global tracer provider
   tracerProvider.register();
@@ -280,7 +287,8 @@ In production, you may want to sample traces to reduce data volume while maintai
 
 ```typescript
 // src/telemetry/sampling.ts
-import { Sampler, SamplingResult, SamplingDecision, Context, Link, SpanKind, Attributes } from '@opentelemetry/api';
+import { Context, Link, SpanKind, Attributes } from '@opentelemetry/api';
+import { Sampler, SamplingResult, SamplingDecision } from '@opentelemetry/sdk-trace-base';
 
 // Custom sampler that always captures errors and samples regular traces
 export class MobileSampler implements Sampler {
@@ -400,7 +408,7 @@ Track how long screens take to render:
 
 ```typescript
 // src/telemetry/screens.ts
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { getTracer } from './tracer';
 import { SpanStatusCode, Span } from '@opentelemetry/api';
 
@@ -465,12 +473,12 @@ Track UI smoothness with frame rate monitoring:
 
 ```typescript
 // src/telemetry/frameRate.ts
-import { InteractionManager } from 'react-native';
 import { getTracer } from './tracer';
 
 let frameCount = 0;
 let lastFrameTime = Date.now();
-let monitoringInterval: NodeJS.Timeout | null = null;
+let monitoringInterval: ReturnType<typeof setInterval> | null = null;
+let animationFrameId: number | null = null;
 
 export function startFrameRateMonitoring(): void {
   if (monitoringInterval) {
@@ -509,21 +517,26 @@ export function startFrameRateMonitoring(): void {
     lastFrameTime = currentTime;
   }, 1000);
 
-  // Count frames using InteractionManager
   const countFrame = (): void => {
     frameCount++;
-    if (monitoringInterval) {
-      InteractionManager.runAfterInteractions(countFrame);
+    if (monitoringInterval && typeof requestAnimationFrame === 'function') {
+      animationFrameId = requestAnimationFrame(countFrame);
     }
   };
 
-  InteractionManager.runAfterInteractions(countFrame);
+  if (typeof requestAnimationFrame === 'function') {
+    animationFrameId = requestAnimationFrame(countFrame);
+  }
 }
 
 export function stopFrameRateMonitoring(): void {
   if (monitoringInterval) {
     clearInterval(monitoringInterval);
     monitoringInterval = null;
+  }
+  if (animationFrameId !== null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
   }
 }
 ```
@@ -592,9 +605,10 @@ export function setupGlobalErrorHandlers(
   getContext: () => ErrorContext
 ): void {
   // Handle JavaScript errors
-  const originalHandler = ErrorUtils.getGlobalHandler();
+  const errorUtils = (globalThis as any).ErrorUtils;
+  const originalHandler = errorUtils?.getGlobalHandler?.();
 
-  ErrorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {
+  errorUtils?.setGlobalHandler?.((error: Error, isFatal: boolean) => {
     reportError(error, {
       ...getContext(),
     }).catch(console.error);
@@ -619,17 +633,17 @@ export function setupGlobalErrorHandlers(
   });
 
   // Handle unhandled promise rejections
-  const rejectionHandler = (id: string, rejection: Error): void => {
-    reportError(rejection, {
+  const rejectionHandler = (id: string, rejection: unknown): void => {
+    const error = rejection instanceof Error ? rejection : new Error(String(rejection));
+    reportError(error, {
       ...getContext(),
     }).catch(console.error);
   };
 
-  // @ts-ignore - React Native specific API
-  if (global.HermesInternal) {
+  const hermesInternal = (globalThis as any).HermesInternal;
+  if (hermesInternal) {
     // Hermes engine
-    // @ts-ignore
-    global.HermesInternal.enablePromiseRejectionTracker({
+    hermesInternal.enablePromiseRejectionTracker({
       allRejections: true,
       onUnhandled: rejectionHandler,
     });
@@ -765,7 +779,6 @@ Create spans for user interactions to understand user behavior:
 ```typescript
 // src/telemetry/interactions.ts
 import { getTracer, withSpan } from './tracer';
-import { SpanStatusCode } from '@opentelemetry/api';
 
 // Track button presses
 export function trackButtonPress(
@@ -852,8 +865,7 @@ Trace important business operations:
 
 ```typescript
 // src/telemetry/business.ts
-import { withSpan, getTracer } from './tracer';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { withSpan } from './tracer';
 
 // Track purchase flow
 export async function trackPurchase<T>(
@@ -1105,7 +1117,8 @@ Create a fetch wrapper that automatically traces all network requests:
 
 ```typescript
 // src/telemetry/network.ts
-import { getTracer, getSessionAttributes } from './tracer';
+import { getTracer } from './tracer';
+import { getSessionAttributes } from './session';
 import { SpanStatusCode, propagation, context } from '@opentelemetry/api';
 
 interface RequestConfig {
@@ -1315,73 +1328,7 @@ Notification: PagerDuty, Slack
 
 ### Programmatic Alert Configuration
 
-You can also configure alerts through the OneUptime API:
-
-```typescript
-// scripts/setup-alerts.ts
-import fetch from 'node-fetch';
-
-const ONEUPTIME_API_URL = 'https://oneuptime.com/api';
-const ONEUPTIME_API_KEY = process.env.ONEUPTIME_API_KEY;
-const PROJECT_ID = process.env.ONEUPTIME_PROJECT_ID;
-
-interface AlertRule {
-  name: string;
-  query: string;
-  threshold: number;
-  duration: string;
-  severity: 'critical' | 'warning' | 'info';
-  channels: string[];
-}
-
-const alertRules: AlertRule[] = [
-  {
-    name: 'Mobile App High Error Rate',
-    query: 'count(spans{error=true, service.name="my-react-native-app"})',
-    threshold: 50,
-    duration: '5m',
-    severity: 'critical',
-    channels: ['pagerduty', 'slack'],
-  },
-  {
-    name: 'Mobile App Slow Startup',
-    query: 'avg(spans{name="app.startup", service.name="my-react-native-app"}.startup.duration_ms)',
-    threshold: 5000,
-    duration: '10m',
-    severity: 'warning',
-    channels: ['slack'],
-  },
-  {
-    name: 'Mobile App Frame Rate Drop',
-    query: 'avg(spans{name="metrics.frame_rate", service.name="my-react-native-app"}.frame_rate.fps)',
-    threshold: 30,
-    duration: '5m',
-    severity: 'warning',
-    channels: ['slack'],
-  },
-];
-
-async function createAlertRules(): Promise<void> {
-  for (const rule of alertRules) {
-    const response = await fetch(`${ONEUPTIME_API_URL}/projects/${PROJECT_ID}/alerts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${ONEUPTIME_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(rule),
-    });
-
-    if (response.ok) {
-      console.log(`Created alert rule: ${rule.name}`);
-    } else {
-      console.error(`Failed to create alert rule: ${rule.name}`, await response.text());
-    }
-  }
-}
-
-createAlertRules().catch(console.error);
-```
+For programmatic alert setup, use OneUptime's documented automation surfaces: the OneUptime API reference, CLI, MCP server, or Terraform provider. Avoid hardcoding REST paths unless they come from the current API reference for your OneUptime version.
 
 ---
 
@@ -1405,7 +1352,7 @@ Build dashboards to visualize your mobile app's health.
 
 3. **Active Sessions**
    - Metric: Count of unique `session.id`
-   - Visualization: Real-time counter
+   - Visualization: Value widget
    - Breakdown: By platform (iOS/Android)
 
 4. **Network Request Performance**
@@ -1423,69 +1370,9 @@ Build dashboards to visualize your mobile app's health.
    - Visualization: Bar chart
    - Breakdown: By screen name
 
-### Dashboard JSON Configuration
+### Dashboard Widget Configuration
 
-```json
-{
-  "name": "React Native App Health",
-  "description": "Real-time monitoring dashboard for mobile app performance",
-  "widgets": [
-    {
-      "type": "line_chart",
-      "title": "App Startup Time (p95)",
-      "query": "percentile(spans{name='app.startup'}.startup.duration_ms, 95)",
-      "position": { "x": 0, "y": 0, "w": 6, "h": 3 }
-    },
-    {
-      "type": "counter",
-      "title": "Active Sessions",
-      "query": "count_distinct(spans{}.session.id)",
-      "position": { "x": 6, "y": 0, "w": 3, "h": 3 }
-    },
-    {
-      "type": "counter",
-      "title": "Errors (Last Hour)",
-      "query": "count(spans{error=true})",
-      "position": { "x": 9, "y": 0, "w": 3, "h": 3 }
-    },
-    {
-      "type": "bar_chart",
-      "title": "Screen Render Times",
-      "query": "avg(spans{name=~'screen.render.*'}.render.duration_ms) by screen.name",
-      "position": { "x": 0, "y": 3, "w": 6, "h": 4 }
-    },
-    {
-      "type": "line_chart",
-      "title": "HTTP Request Duration (p95)",
-      "query": "percentile(spans{name=~'http.*'}.http.duration_ms, 95)",
-      "position": { "x": 6, "y": 3, "w": 6, "h": 4 }
-    },
-    {
-      "type": "gauge",
-      "title": "Frame Rate",
-      "query": "avg(spans{name='metrics.frame_rate'}.frame_rate.fps)",
-      "thresholds": [
-        { "value": 30, "color": "red" },
-        { "value": 45, "color": "yellow" },
-        { "value": 60, "color": "green" }
-      ],
-      "position": { "x": 0, "y": 7, "w": 4, "h": 3 }
-    },
-    {
-      "type": "pie_chart",
-      "title": "Errors by Type",
-      "query": "count(spans{error=true}) by error.type",
-      "position": { "x": 4, "y": 7, "w": 4, "h": 3 }
-    },
-    {
-      "type": "table",
-      "title": "Top Slow Screens",
-      "query": "topk(10, avg(spans{name=~'screen.render.*'}.render.duration_ms) by screen.name)",
-      "position": { "x": 8, "y": 7, "w": 4, "h": 3 }
-    }
-  ]
-}
-```
+Use OneUptime's dashboard editor to add supported widgets such as Chart, Value, Gauge, Table, and Trace List. For example, use Chart widgets for startup and HTTP latency trends, Value widgets for current error rate and active sessions, a Gauge for frame rate, a Table for slow screens grouped by `screen.name`, and a Trace List filtered to `service.name = my-react-native-app` for recent mobile traces.
 
 ---
 
@@ -1523,70 +1410,52 @@ jobs:
       - name: Run telemetry tests
         run: npm run test:telemetry
         env:
-          ONEUPTIME_API_KEY: ${{ secrets.ONEUPTIME_API_KEY }}
+          ONEUPTIME_INGESTION_TOKEN: ${{ secrets.ONEUPTIME_INGESTION_TOKEN }}
 
       - name: Verify span exports
         run: |
           npm run test:integration -- --grep "telemetry"
 
-  notify-deployment:
+  verify-oneuptime-token:
     runs-on: ubuntu-latest
     needs: [test-telemetry]
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Notify OneUptime of deployment
+      - name: Verify OneUptime ingestion token
         run: |
-          curl -X POST "https://oneuptime.com/api/deployments" \
-            -H "Authorization: Bearer ${{ secrets.ONEUPTIME_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "service": "my-react-native-app",
-              "version": "${{ github.sha }}",
-              "environment": "production",
-              "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-            }'
+          curl -f -i \
+            -H "x-oneuptime-token: ${{ secrets.ONEUPTIME_INGESTION_TOKEN }}" \
+            "https://oneuptime.com/otlp/v1/validate"
 ```
 
 ### Deployment Markers
 
-Create deployment markers in OneUptime to correlate releases with metrics:
+Create deployment spans to correlate releases with metrics:
 
 ```typescript
-// scripts/mark-deployment.ts
-import fetch from 'node-fetch';
+// src/telemetry/deployment.ts
+import { SpanStatusCode } from '@opentelemetry/api';
+import { getTracer } from './tracer';
 
-async function markDeployment(): Promise<void> {
-  const version = process.env.APP_VERSION || 'unknown';
-  const environment = process.env.DEPLOY_ENV || 'production';
-  const commitSha = process.env.GITHUB_SHA || 'unknown';
-
-  const response = await fetch('https://oneuptime.com/api/deployments', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.ONEUPTIME_API_KEY}`,
-      'Content-Type': 'application/json',
+export function recordDeploymentMarker(metadata: {
+  version: string;
+  environment: string;
+  commitSha: string;
+  triggeredBy?: string;
+}): void {
+  const span = getTracer().startSpan('deployment.marker', {
+    attributes: {
+      'service.name': 'my-react-native-app',
+      'service.version': metadata.version,
+      'deployment.environment.name': metadata.environment,
+      'vcs.commit.id': metadata.commitSha,
+      'deployment.triggered_by': metadata.triggeredBy || 'unknown',
     },
-    body: JSON.stringify({
-      service: 'my-react-native-app',
-      version,
-      environment,
-      commitSha,
-      timestamp: new Date().toISOString(),
-      metadata: {
-        platform: 'react-native',
-        triggeredBy: process.env.GITHUB_ACTOR || 'ci',
-      },
-    }),
   });
 
-  if (response.ok) {
-    console.log(`Deployment marker created for version ${version}`);
-  } else {
-    console.error('Failed to create deployment marker:', await response.text());
-  }
+  span.setStatus({ code: SpanStatusCode.OK });
+  span.end();
 }
-
-markDeployment().catch(console.error);
 ```
 
 ---
@@ -1600,7 +1469,11 @@ Mobile devices have limited bandwidth and battery. Use intelligent sampling:
 ```typescript
 // Always capture errors and slow operations
 // Sample regular traces at 10-20% in production
-const sampler = new MobileSampler(0.15);
+const tracerProvider = new WebTracerProvider({
+  resource,
+  sampler: new MobileSampler(0.15),
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 ```
 
 ### 2. Batch Telemetry
@@ -1697,10 +1570,10 @@ Track which app version generated telemetry:
 
 ```typescript
 // Always include app version in resource attributes
-const resource = new Resource({
+const resource = defaultResource().merge(resourceFromAttributes({
   'service.version': DeviceInfo.getVersion(),
   'app.build': DeviceInfo.getBuildNumber(),
-});
+}));
 ```
 
 ### 7. Monitor the Monitor
@@ -1709,10 +1582,29 @@ Track telemetry SDK health:
 
 ```typescript
 // Track export failures
-exporter.on('error', (error) => {
-  console.error('Telemetry export failed:', error);
-  // Could increment a local counter and alert if threshold exceeded
-});
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
+import { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
+
+class ReportingTraceExporter implements SpanExporter {
+  constructor(private readonly delegate: SpanExporter) {}
+
+  export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
+    this.delegate.export(spans, (result) => {
+      if (result.code !== ExportResultCode.SUCCESS) {
+        console.error('Telemetry export failed:', result.error);
+      }
+      resultCallback(result);
+    });
+  }
+
+  shutdown(): Promise<void> {
+    return this.delegate.shutdown();
+  }
+
+  forceFlush(): Promise<void> {
+    return this.delegate.forceFlush?.() ?? Promise.resolve();
+  }
+}
 ```
 
 ### 8. Set Meaningful Thresholds

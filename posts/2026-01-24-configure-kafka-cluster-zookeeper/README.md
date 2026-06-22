@@ -8,7 +8,7 @@ Description: Learn how to configure a production-ready Apache Kafka cluster with
 
 ---
 
-> ZooKeeper is the coordination service that manages Kafka cluster metadata, broker registration, and leader election. While Kafka is moving toward KRaft mode, many production clusters still rely on ZooKeeper. This guide covers setting up a robust Kafka cluster with ZooKeeper.
+> ZooKeeper is the coordination service that manages Kafka cluster metadata, broker registration, and leader election in Kafka 3.x and Confluent Platform 7.x clusters running in ZooKeeper mode. Kafka 4.0 and later support KRaft mode only, but many existing production clusters still rely on ZooKeeper. This guide covers setting up a robust Kafka cluster with ZooKeeper for those legacy deployments.
 
 Proper cluster configuration ensures high availability and fault tolerance for your message streaming platform.
 
@@ -490,12 +490,13 @@ zkCli.sh -server zk1.example.com:2181 ls /kafka/brokers/ids
 # This confirms all brokers are registered with ZooKeeper
 kafka-broker-api-versions.sh --bootstrap-server kafka1.example.com:9092
 
-# Describe cluster metadata
-kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --command "describe"
+# Check the active controller stored in ZooKeeper
+# The JSON output includes the brokerid of the current controller
+zkCli.sh -server zk1.example.com:2181 get /kafka/controller
 
 # Check cluster controller
 # The controller handles partition leader election
-kafka-metadata.sh --bootstrap-server kafka1.example.com:9092 --describe --controllers
+zkCli.sh -server zk1.example.com:2181 get /kafka/controller_epoch
 ```
 
 ### Create and Verify Topic
@@ -565,7 +566,7 @@ security.inter.broker.protocol=SASL_PLAINTEXT
 sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
 sasl.enabled.mechanisms=SCRAM-SHA-512
 
-# Path to JAAS configuration file
+# Inline JAAS configuration for this listener
 listener.name.sasl_plaintext.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="admin" \
     password="admin-secret";
@@ -576,12 +577,12 @@ listener.name.sasl_plaintext.scram-sha-512.sasl.jaas.config=org.apache.kafka.com
 ```bash
 # Create admin user with SCRAM-SHA-512 mechanism
 # This user can be used for inter-broker communication
-kafka-configs.sh --bootstrap-server kafka1.example.com:9092 \
+kafka-configs.sh --zookeeper zk1.example.com:2181/kafka \
     --alter --add-config 'SCRAM-SHA-512=[password=admin-secret]' \
     --entity-type users --entity-name admin
 
 # Create application user with limited permissions
-kafka-configs.sh --bootstrap-server kafka1.example.com:9092 \
+kafka-configs.sh --zookeeper zk1.example.com:2181/kafka \
     --alter --add-config 'SCRAM-SHA-512=[password=app-secret]' \
     --entity-type users --entity-name app-user
 ```

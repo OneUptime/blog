@@ -43,7 +43,7 @@ flowchart TB
     Reader --> Metadata
 ```
 
-Hudi stores data in base files (Parquet) with delta log files for recent changes, tracked by a timeline of commits.
+Hudi stores data in base files (Parquet). Merge-on-Read tables also use delta log files for recent changes, and all table actions are tracked by a timeline of commits.
 
 ---
 
@@ -123,8 +123,7 @@ hudi_mor_options = {
     'hoodie.compact.inline.max.delta.commits': '5',
 
     # Index for MoR tables
-    'hoodie.index.type': 'BLOOM',
-    'hoodie.bloom.index.update.partition.path': 'true'
+    'hoodie.index.type': 'BLOOM'
 }
 
 # Write streaming data to MoR table
@@ -147,7 +146,7 @@ bloom_index_options = {
     # Number of entries per bloom filter
     'hoodie.bloom.index.filter.dynamic.max.entries': '100000',
     # False positive rate (lower = more accurate but larger filters)
-    'hoodie.bloom.index.filter.fpp': '0.000001',
+    'hoodie.index.bloom.fpp': '0.000001',
     # Parallelize bloom filter lookups
     'hoodie.bloom.index.parallelism': '200',
     # Prune files based on partition path
@@ -160,13 +159,10 @@ simple_index_options = {
     'hoodie.simple.index.parallelism': '200'
 }
 
-# HBase Index - Best for very large tables with random updates
-hbase_index_options = {
-    'hoodie.index.type': 'HBASE',
-    'hoodie.index.hbase.zkquorum': 'zk1:2181,zk2:2181,zk3:2181',
-    'hoodie.index.hbase.zkport': '2181',
-    'hoodie.index.hbase.table': 'hudi_index_orders',
-    'hoodie.index.hbase.rollback.sync': 'false'
+# Record Level Index - Best for very large tables with random updates
+record_index_options = {
+    'hoodie.index.type': 'GLOBAL_RECORD_LEVEL_INDEX',
+    'hoodie.metadata.enable': 'true'
 }
 
 # Bucket Index - Best for tables with predictable key distribution
@@ -192,8 +188,8 @@ inline_compaction_options = {
     # Compaction strategy
     'hoodie.compaction.strategy': 'org.apache.hudi.table.action.compact.strategy.LogFileSizeBasedCompactionStrategy',
     # Target file size after compaction
-    'hoodie.compaction.target.io': '512000000',  # 500MB
-    # Parallelism for compaction
+    'hoodie.compaction.target.io': '500',  # 500MB
+    # Read log blocks lazily during compaction
     'hoodie.compaction.lazy.block.read': 'true'
 }
 
@@ -213,19 +209,15 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder \
     .appName("HudiCompaction") \
     .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.hudi.catalog.HoodieCatalog") \
+    .config("spark.sql.extensions", "org.apache.spark.sql.hudi.HoodieSparkSessionExtension") \
     .getOrCreate()
 
-# Run pending compactions
-spark.read.format("hudi") \
-    .option("hoodie.datasource.query.type", "snapshot") \
-    .load("s3://my-bucket/hudi/events") \
-    .createOrReplaceTempView("events")
-
-# Execute compaction via SQL
+# Execute pending compactions via SQL
 spark.sql("""
     CALL run_compaction(
         op => 'RUN',
-        table => 'spark_catalog.default.events'
+        path => 's3://my-bucket/hudi/events'
     )
 """)
 ```
@@ -244,7 +236,7 @@ clustering_options = {
     'hoodie.clustering.inline.max.commits': '4',
 
     # Clustering strategy - sort by frequently queried columns
-    'hoodie.clustering.plan.strategy.class': 'org.apache.hudi.client.clustering.plan.strategy.SparkSortAndSizeExecutionStrategy',
+    'hoodie.clustering.execution.strategy.class': 'org.apache.hudi.client.clustering.run.strategy.SparkSortAndSizeExecutionStrategy',
     'hoodie.clustering.plan.strategy.sort.columns': 'customer_id,order_date',
 
     # Target file size after clustering
@@ -254,8 +246,8 @@ clustering_options = {
     # Max groups to create per clustering operation
     'hoodie.clustering.plan.strategy.max.num.groups': '30',
 
-    # Preserve Hudi metadata during clustering
-    'hoodie.clustering.preserve.commit.metadata': 'true'
+    # Max parallel jobs submitted during clustering
+    'hoodie.clustering.max.parallelism': '15'
 }
 ```
 
@@ -327,7 +319,7 @@ time_travel_options = {
     'hoodie.cleaner.policy': 'KEEP_LATEST_COMMITS',
     'hoodie.cleaner.commits.retained': '168',  # Keep 7 days (hourly commits)
 
-    # Archive older commits but keep them queryable
+    # Archive older timeline instants while retaining recent file versions for time travel
     'hoodie.archive.automatic': 'true',
     'hoodie.archive.min.commits': '200',
     'hoodie.archive.max.commits': '250',
@@ -389,9 +381,8 @@ def read_cdc_changes(spark, table_path, begin_time, end_time):
 # Process CDC records
 cdc_df = read_cdc_changes(spark, "s3://my-bucket/hudi/orders_cdc", "20260124000000", "20260124120000")
 
-# CDC columns: _hoodie_operation (INSERT/UPDATE/DELETE),
-#              _hoodie_change_key, before/after images
-cdc_df.select("_hoodie_operation", "order_id", "amount").show()
+# CDC columns include op (i/u/d), ts_ms, and before/after images
+cdc_df.select("op", "ts_ms", "before", "after").show(truncate=False)
 ```
 
 ---
@@ -452,6 +443,11 @@ Handle schema changes without rewriting the entire table:
 ```python
 # Enable schema evolution
 schema_evolution_options = {
+    'hoodie.table.name': 'orders',
+    'hoodie.datasource.write.recordkey.field': 'order_id',
+    'hoodie.datasource.write.partitionpath.field': 'order_date',
+    'hoodie.datasource.write.precombine.field': 'updated_at',
+
     'hoodie.avro.schema.validate': 'true',
     'hoodie.schema.on.read.enable': 'true',
 
@@ -460,11 +456,12 @@ schema_evolution_options = {
 }
 
 # Write with new column - Hudi handles schema evolution
+from pyspark.sql.functions import lit
+
 df_with_new_column = df.withColumn("new_field", lit("default_value"))
 
 df_with_new_column.write.format("hudi") \
     .options(**schema_evolution_options) \
-    .option("hoodie.table.name", "orders") \
     .mode("append") \
     .save("s3://my-bucket/hudi/orders")
 ```

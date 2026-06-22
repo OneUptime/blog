@@ -16,11 +16,11 @@ As your analytics workload grows, a single ClickHouse node may not handle all th
 flowchart TD
     LB[Load Balancer]
 
-    subgraph Primary[Primary Replica]
+    subgraph WritePreferred[Write-Preferred Replica]
         P1[(clickhouse-1)]
     end
 
-    subgraph Secondary[Secondary Replicas]
+    subgraph Other[Other Replicas]
         R2[(clickhouse-2)]
         R3[(clickhouse-3)]
     end
@@ -30,10 +30,12 @@ flowchart TD
     LB --> R2
     LB --> R3
 
-    P1 <--> |Sync| R2
-    P1 <--> |Sync| R3
-    R2 <--> |Sync| R3
+    P1 <--> |Async replication| R2
+    P1 <--> |Async replication| R3
+    R2 <--> |Async replication| R3
 ```
+
+ClickHouse does not require a primary replica for replicated tables. Writes can go to any available replica that has an active Keeper/ZooKeeper session. Many deployments still route writes to one preferred replica for operational simplicity.
 
 ## Setting Up Replicas
 
@@ -240,12 +242,12 @@ spec:
     - name: native
       port: 9000
       targetPort: 9000
-  sessionAffinity: None  # Round-robin across pods
+  sessionAffinity: None  # No client-IP affinity; traffic is distributed across ready endpoints
 ```
 
 ## Read-Write Splitting
 
-### Write to Primary, Read from Any
+### Write to Preferred Replica, Read from Any
 
 ```python
 # Python implementation
@@ -279,7 +281,7 @@ class ClickHouseCluster:
 import random
 
 read_weights = {
-    'clickhouse-1': 1,  # Primary, also handles writes
+    'clickhouse-1': 1,  # Preferred write replica, also handles reads
     'clickhouse-2': 2,  # Dedicated read replica
     'clickhouse-3': 2,  # Dedicated read replica
 }
@@ -327,16 +329,16 @@ SET load_balancing = 'in_order';
 
 ```sql
 -- Use multiple replicas for single query
+SET enable_parallel_replicas = 1;
 SET max_parallel_replicas = 3;
-SET parallel_replicas_mode = 'read_tasks';
 
 -- Query parts across all replicas simultaneously
 SELECT user_id, count()
 FROM events
 GROUP BY user_id
 SETTINGS
-    max_parallel_replicas = 3,
-    parallel_replicas_mode = 'read_tasks';
+    enable_parallel_replicas = 1,
+    max_parallel_replicas = 3;
 ```
 
 ## Handling Replica Lag
@@ -365,7 +367,7 @@ WHERE absolute_delay > 60;
 ### Read from Synced Replicas Only
 
 ```sql
--- Wait for replica to sync before reading
+-- With quorum inserts, require sequential consistency for reads
 SET select_sequential_consistency = 1;
 
 -- Or specify maximum lag tolerance
@@ -405,21 +407,25 @@ ORDER BY queries DESC;
 ### Replication Queue Depth
 
 ```sql
--- Monitor queue depth over time
+-- Monitor current queue depth
 SELECT
-    toStartOfMinute(event_time) AS minute,
-    avg(queue_size) AS avg_queue,
-    max(queue_size) AS max_queue
-FROM system.replication_queue
-WHERE event_time >= now() - INTERVAL 1 HOUR
-GROUP BY minute
-ORDER BY minute;
+    hostName() AS replica,
+    database,
+    table,
+    count() AS queue_size,
+    sum(is_currently_executing) AS executing
+FROM clusterAllReplicas('my_cluster', system.replication_queue)
+GROUP BY
+    replica,
+    database,
+    table
+ORDER BY queue_size DESC;
 ```
 
 Resource Usage per Replica
 
 ```sql
--- CPU and memory per replica
+-- Current queries per replica
 SELECT
     hostName() AS replica,
     value AS current_queries
@@ -434,12 +440,12 @@ WHERE metric = 'Query';
 ```mermaid
 flowchart LR
     subgraph Before
-        A1[Primary]
+        A1[Write-preferred replica]
         A2[Replica 1]
     end
 
     subgraph After
-        B1[Primary]
+        B1[Write-preferred replica]
         B2[Replica 1]
         B3[Replica 2]
         B4[Replica 3]
@@ -496,8 +502,8 @@ SET load_balancing = 'nearest_hostname';
 ### Pattern 3: Tiered Replicas
 
 ```text
-Primary Replica:
-  - Handles all writes
+Write-Preferred Replica:
+  - Handles application-routed writes
   - Handles real-time queries
   - Fast NVMe storage
 
@@ -528,8 +534,8 @@ Archive Replica:
 ### Load Balancer Health Checks
 
 ```sql
--- Custom health check endpoint
--- Returns 200 if healthy, 503 if not
+-- Example query for a custom health-check wrapper.
+-- The wrapper should map OK to HTTP 200 and Service Unavailable to HTTP 503.
 
 SELECT
     CASE
@@ -555,8 +561,8 @@ pool = ChPool(
     connections_max=20
 )
 
-with pool.pull() as conn:
-    result = conn.execute('SELECT 1')
+with pool.get_client() as client:
+    result = client.execute('SELECT 1')
 ```
 
 ---

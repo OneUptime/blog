@@ -8,7 +8,7 @@ Description: A comprehensive guide to using Redis Geospatial indexes for locatio
 
 ---
 
-Redis Geospatial indexes provide efficient storage and querying of location data. Built on top of Sorted Sets using geohash encoding, Redis geo commands enable proximity searches, distance calculations, and location-based queries with O(log N) complexity.
+Redis Geospatial indexes provide efficient storage and querying of location data. Built on top of Sorted Sets using geohash encoding, Redis geo commands enable proximity searches, distance calculations, and location-based queries with efficient indexed lookups.
 
 In this guide, we will explore Redis Geospatial commands in depth, covering essential operations and practical implementations for building location-aware applications.
 
@@ -131,6 +131,7 @@ DEL locations
 ```python
 import redis
 import math
+import uuid
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
@@ -215,7 +216,7 @@ class StoreLocator:
         stores = []
         for item in results:
             store_id = item[0]
-            distance = item[1]
+            distance = float(item[1])
             coords = item[2]
 
             # Get metadata
@@ -313,7 +314,7 @@ class DriverLocator:
         drivers = []
         for item in results:
             driver_id = item[0]
-            distance = item[1]
+            distance = float(item[1])
             coords = item[2]
 
             info = client.hgetall(f"{self.info_prefix}:{driver_id}")
@@ -407,7 +408,7 @@ class Geofence:
         zones_inside = []
         for item in nearby:
             zone_id = item[0]
-            distance_km = item[1]
+            distance_km = float(item[1])
 
             # Get zone radius
             info = client.hgetall(f"{self.zone_info_prefix}:{zone_id}")
@@ -426,12 +427,12 @@ class Geofence:
 
     def is_inside_zone(self, longitude: float, latitude: float, zone_id: str) -> bool:
         """Check if location is inside specific zone."""
-        distance = client.geodist(self.zones_key, zone_id, "__temp__", unit="m")
-        if distance is None:
-            # Add temp point to calculate distance
-            client.geoadd(self.zones_key, (longitude, latitude, "__temp__"))
-            distance = client.geodist(self.zones_key, zone_id, "__temp__", unit="m")
-            client.zrem(self.zones_key, "__temp__")
+        temp_member = f"__temp__:{uuid.uuid4()}"
+        client.geoadd(self.zones_key, (longitude, latitude, temp_member))
+        try:
+            distance = client.geodist(self.zones_key, zone_id, temp_member, unit="m")
+        finally:
+            client.zrem(self.zones_key, temp_member)
 
         if distance is None:
             return False
@@ -491,7 +492,7 @@ class VenueFinder:
         venues = []
         for item in results:
             venue_id = item[0]
-            distance = item[1]
+            distance = float(item[1])
             coords = item[2]
 
             info = client.hgetall(f"{self.info_prefix}:{venue_id}")
@@ -670,10 +671,10 @@ class StoreLocator {
     );
 
     const stores = [];
-    for (let i = 0; i < results.length; i += 3) {
-      const storeId = results[i];
-      const distance = parseFloat(results[i + 1]);
-      const coords = results[i + 2];
+    for (const item of results) {
+      const storeId = item[0];
+      const distance = parseFloat(item[1]);
+      const coords = item[2];
 
       const metadata = await redis.hgetall(`${this.metadataPrefix}:${storeId}`);
 
@@ -744,10 +745,10 @@ class DriverLocator {
     );
 
     const drivers = [];
-    for (let i = 0; i < results.length; i += 3) {
-      const driverId = results[i];
-      const distance = parseFloat(results[i + 1]);
-      const coords = results[i + 2];
+    for (const item of results) {
+      const driverId = item[0];
+      const distance = parseFloat(item[1]);
+      const coords = item[2];
 
       const info = await redis.hgetall(`${this.infoPrefix}:${driverId}`);
 
@@ -809,9 +810,9 @@ class Geofence {
     );
 
     const zonesInside = [];
-    for (let i = 0; i < results.length; i += 2) {
-      const zoneId = results[i];
-      const distanceKm = parseFloat(results[i + 1]);
+    for (const item of results) {
+      const zoneId = item[0];
+      const distanceKm = parseFloat(item[1]);
 
       const info = await redis.hgetall(`${this.zoneInfoPrefix}:${zoneId}`);
       const radiusKm = parseFloat(info.radiusMeters) / 1000;
@@ -886,7 +887,6 @@ package main
 import (
     "context"
     "fmt"
-    "math"
 
     "github.com/redis/go-redis/v9"
 )
@@ -949,19 +949,6 @@ type NearbyStore struct {
 }
 
 func (s *StoreLocator) FindNearby(longitude, latitude, radius float64, unit string, limit int) ([]NearbyStore, error) {
-    results, err := client.GeoSearch(ctx, s.Key, &redis.GeoSearchQuery{
-        Longitude:  longitude,
-        Latitude:   latitude,
-        Radius:     radius,
-        RadiusUnit: unit,
-        Sort:       "ASC",
-        Count:      limit,
-    }).Result()
-    if err != nil {
-        return nil, err
-    }
-
-    // Get with distances
     resultsWithDist, err := client.GeoSearchLocation(ctx, s.Key, &redis.GeoSearchLocationQuery{
         GeoSearchQuery: redis.GeoSearchQuery{
             Longitude:  longitude,
@@ -978,7 +965,7 @@ func (s *StoreLocator) FindNearby(longitude, latitude, radius float64, unit stri
         return nil, err
     }
 
-    stores := make([]NearbyStore, len(results))
+    stores := make([]NearbyStore, len(resultsWithDist))
     for i, loc := range resultsWithDist {
         meta, _ := client.HGetAll(ctx, s.MetadataPrefix+":"+loc.Name).Result()
 

@@ -77,6 +77,7 @@ Open your `tsconfig.json` and add the `baseUrl` and `paths` options under `compi
 
 ```json
 {
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
@@ -93,8 +94,7 @@ Open your `tsconfig.json` and add the `baseUrl` and `paths` options under `compi
       "@store/*": ["src/store/*"],
       "@api/*": ["src/api/*"]
     }
-  },
-  "extends": "@react-native/typescript-config/tsconfig.json"
+  }
 }
 ```
 
@@ -109,6 +109,7 @@ Here is a more complete `tsconfig.json` for a React Native project:
 
 ```json
 {
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "target": "esnext",
     "module": "commonjs",
@@ -149,7 +150,7 @@ Here is a more complete `tsconfig.json` for a React Native project:
 }
 ```
 
-Note that TypeScript configuration alone only provides type checking and IDE support. The actual module resolution at runtime requires Babel configuration, which we will cover next.
+Note that TypeScript configuration alone only provides type checking and IDE support. TypeScript does not rewrite these import paths in the emitted JavaScript, so runtime or bundler resolution still requires Babel configuration, which we will cover next.
 
 ---
 
@@ -187,6 +188,8 @@ module.exports = {
           '.ios.tsx',
           '.android.tsx',
           '.tsx',
+          '.ios.js',
+          '.android.js',
           '.jsx',
           '.js',
           '.json',
@@ -268,23 +271,35 @@ const path = require('path');
 
 const defaultConfig = getDefaultConfig(__dirname);
 
+const aliases = {
+  '@': path.resolve(__dirname, 'src'),
+  '@components': path.resolve(__dirname, 'src/components'),
+  '@screens': path.resolve(__dirname, 'src/screens'),
+  '@hooks': path.resolve(__dirname, 'src/hooks'),
+  '@utils': path.resolve(__dirname, 'src/utils'),
+  '@services': path.resolve(__dirname, 'src/services'),
+  '@constants': path.resolve(__dirname, 'src/constants'),
+  '@assets': path.resolve(__dirname, 'src/assets'),
+  '@types': path.resolve(__dirname, 'src/types'),
+  '@navigation': path.resolve(__dirname, 'src/navigation'),
+  '@store': path.resolve(__dirname, 'src/store'),
+  '@api': path.resolve(__dirname, 'src/api'),
+  '@theme': path.resolve(__dirname, 'src/theme'),
+};
+
 const config = {
-  watchFolders: [path.resolve(__dirname, 'src')],
   resolver: {
-    extraNodeModules: {
-      '@': path.resolve(__dirname, 'src'),
-      '@components': path.resolve(__dirname, 'src/components'),
-      '@screens': path.resolve(__dirname, 'src/screens'),
-      '@hooks': path.resolve(__dirname, 'src/hooks'),
-      '@utils': path.resolve(__dirname, 'src/utils'),
-      '@services': path.resolve(__dirname, 'src/services'),
-      '@constants': path.resolve(__dirname, 'src/constants'),
-      '@assets': path.resolve(__dirname, 'src/assets'),
-      '@types': path.resolve(__dirname, 'src/types'),
-      '@navigation': path.resolve(__dirname, 'src/navigation'),
-      '@store': path.resolve(__dirname, 'src/store'),
-      '@api': path.resolve(__dirname, 'src/api'),
-      '@theme': path.resolve(__dirname, 'src/theme'),
+    resolveRequest: (context, moduleName, platform) => {
+      const alias = Object.keys(aliases)
+        .sort((a, b) => b.length - a.length)
+        .find((key) => moduleName === key || moduleName.startsWith(`${key}/`));
+
+      if (alias) {
+        const targetPath = path.join(aliases[alias], moduleName.slice(alias.length));
+        return context.resolveRequest(context, targetPath, platform);
+      }
+
+      return context.resolveRequest(context, moduleName, platform);
     },
   },
 };
@@ -301,7 +316,7 @@ You typically need explicit Metro configuration when:
 3. Using symlinked packages
 4. Customizing the bundler behavior
 
-For standard projects, the Babel plugin alone is usually sufficient.
+For standard projects, the Babel plugin alone is usually sufficient. If you configure Metro directly, use `resolveRequest` for these scoped-style aliases; `extraNodeModules` maps package names, so an import such as `@components/ui/Button` is treated like a scoped package name rather than a simple `@components` prefix.
 
 ---
 
@@ -444,7 +459,7 @@ Update your `jest.config.js`:
 module.exports = {
   preset: 'react-native',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
+  setupFilesAfterEnv: ['@testing-library/react-native/extend-expect'],
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-navigation)/)',
   ],
@@ -750,10 +765,10 @@ Follow these conventions to maintain a clean and intuitive alias system.
 
 ### Use the @ Prefix
 
-The `@` prefix is a widely adopted convention that clearly distinguishes path aliases from npm packages:
+The `@` prefix is a widely adopted convention for aliases, but it also overlaps with npm scoped package syntax. Pick names that do not collide with packages your project uses:
 
 ```typescript
-// Good - clear distinction from npm packages
+// Good - clear project convention
 import { Button } from '@components/Button';
 
 // Avoid - could be confused with an npm package
@@ -881,14 +896,14 @@ function migrateFile(filePath) {
   let modified = false;
 
   // Match import statements with relative paths
-  const importRegex = /from\s+['"](\.\.[\/\w-]+)['"]/g;
+  const importRegex = /from\s+['"](\.{1,2}\/[^'"]+)['"]/g;
 
   content = content.replace(importRegex, (match, importPath) => {
     const absolutePath = path.resolve(path.dirname(filePath), importPath);
-    const relativeToCwd = path.relative(process.cwd(), absolutePath);
+    const relativeToCwd = path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
 
     for (const [srcPath, alias] of Object.entries(aliasMap)) {
-      if (relativeToCwd.startsWith(srcPath)) {
+      if (relativeToCwd === srcPath || relativeToCwd.startsWith(`${srcPath}/`)) {
         const newPath = relativeToCwd.replace(srcPath, alias);
         modified = true;
         return `from '${newPath}'`;
@@ -1034,6 +1049,7 @@ const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const defaultConfig = getDefaultConfig(projectRoot);
+const sharedRoot = path.resolve(workspaceRoot, 'packages/shared/src');
 
 const config = {
   watchFolders: [
@@ -1045,8 +1061,13 @@ const config = {
       path.resolve(projectRoot, 'node_modules'),
       path.resolve(workspaceRoot, 'node_modules'),
     ],
-    extraNodeModules: {
-      '@shared': path.resolve(workspaceRoot, 'packages/shared/src'),
+    resolveRequest: (context, moduleName, platform) => {
+      if (moduleName === '@shared' || moduleName.startsWith('@shared/')) {
+        const targetPath = path.join(sharedRoot, moduleName.slice('@shared'.length));
+        return context.resolveRequest(context, targetPath, platform);
+      }
+
+      return context.resolveRequest(context, moduleName, platform);
     },
   },
 };
@@ -1109,10 +1130,10 @@ By following this guide, you will have a fully configured React Native project w
 
 ## Additional Resources
 
-- [TypeScript Module Resolution Documentation](https://www.typescriptlang.org/docs/handbook/module-resolution.html)
+- [TypeScript TSConfig paths Documentation](https://www.typescriptlang.org/tsconfig/#paths)
 - [babel-plugin-module-resolver GitHub](https://github.com/tleunen/babel-plugin-module-resolver)
-- [Metro Bundler Documentation](https://facebook.github.io/metro/)
-- [React Native TypeScript Template](https://github.com/react-native-community/react-native-template-typescript)
+- [Metro Bundler Documentation](https://metrobundler.dev/docs/configuration/)
+- [React Native TypeScript Documentation](https://reactnative.dev/docs/typescript)
 - [ESLint Import Plugin](https://github.com/import-js/eslint-plugin-import)
 
 ---

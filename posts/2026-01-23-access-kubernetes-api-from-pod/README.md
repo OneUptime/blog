@@ -124,7 +124,7 @@ TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
 curl --cacert $CACERT --header "Authorization: Bearer $TOKEN" \
-  $APISERVER/api/v1/namespaces/default/pods | jq .items[].metadata.name
+  $APISERVER/api/v1/namespaces/default/pods
 ```
 
 ## Method 3: Using Python Client
@@ -145,7 +145,7 @@ def list_pods():
 
     # Read namespace from mounted file
     with open('/var/run/secrets/kubernetes.io/serviceaccount/namespace') as f:
-        namespace = f.read()
+        namespace = f.read().strip()
 
     # List pods
     pods = v1.list_namespaced_pod(namespace=namespace)
@@ -181,6 +181,7 @@ import (
     "context"
     "fmt"
     "os"
+    "strings"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
@@ -205,9 +206,10 @@ func main() {
     if err != nil {
         panic(err.Error())
     }
+    namespaceName := strings.TrimSpace(string(namespace))
 
     // List pods
-    pods, err := clientset.CoreV1().Pods(string(namespace)).List(
+    pods, err := clientset.CoreV1().Pods(namespaceName).List(
         context.TODO(),
         metav1.ListOptions{},
     )
@@ -343,7 +345,6 @@ spec:
       - serviceAccountToken:
           path: token
           expirationSeconds: 3600  # Token expires in 1 hour
-          audience: api  # Audience claim
 ```
 
 ### Principle of Least Privilege

@@ -61,10 +61,10 @@ orders-events-v3
 ### Version Router
 
 ```java
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.clients.producer.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.Map;
 
 public class EventVersionRouter {
 
@@ -98,7 +98,8 @@ public class EventVersionRouter {
         if (event.has("eventType")) {
             String eventType = event.get("eventType").asText();
             if (eventType.contains(".v")) {
-                return eventType.substring(eventType.lastIndexOf(".v") + 2);
+                String suffix = eventType.substring(eventType.lastIndexOf(".v") + 2);
+                return suffix.contains(".") ? suffix : suffix + ".0";
             }
         }
 
@@ -119,8 +120,35 @@ interface EventHandler {
 ### Versioned Event Classes
 
 ```java
+import java.math.BigDecimal;
+
+class EventMetadata {
+    private String eventId;
+    private String eventType;
+    private String version = "1.0";
+    private String timestamp;
+
+    public String getEventId() { return eventId; }
+    public void setEventId(String eventId) { this.eventId = eventId; }
+    public String getEventType() { return eventType; }
+    public void setEventType(String eventType) { this.eventType = eventType; }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+    public String getTimestamp() { return timestamp; }
+    public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+
+    public EventMetadata copy() {
+        EventMetadata copy = new EventMetadata();
+        copy.setEventId(eventId);
+        copy.setEventType(eventType);
+        copy.setVersion(version);
+        copy.setTimestamp(timestamp);
+        return copy;
+    }
+}
+
 // Base event with version support
-public abstract class VersionedEvent {
+abstract class VersionedEvent {
     private EventMetadata metadata;
 
     public abstract String getSchemaVersion();
@@ -130,7 +158,7 @@ public abstract class VersionedEvent {
 }
 
 // V1 Order Created Event
-public class OrderCreatedEventV1 extends VersionedEvent {
+class OrderCreatedEventV1 extends VersionedEvent {
     private String orderId;
     private String customerId;
     private BigDecimal amount;
@@ -142,7 +170,7 @@ public class OrderCreatedEventV1 extends VersionedEvent {
 }
 
 // V2 Order Created Event - breaking change: customerInfo object
-public class OrderCreatedEventV2 extends VersionedEvent {
+class OrderCreatedEventV2 extends VersionedEvent {
     private String orderId;
     private CustomerInfo customerInfo;  // Changed from customerId
     private MonetaryAmount amount;       // Changed from BigDecimal
@@ -153,14 +181,14 @@ public class OrderCreatedEventV2 extends VersionedEvent {
     // Getters and setters
 }
 
-public class CustomerInfo {
+class CustomerInfo {
     private String id;
     private String email;
     private String name;
     // Getters and setters
 }
 
-public class MonetaryAmount {
+class MonetaryAmount {
     private BigDecimal value;
     private String currency;
     // Getters and setters
@@ -170,6 +198,11 @@ public class MonetaryAmount {
 ### Event Upcaster (Version Transformer)
 
 ```java
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
+
 public class EventUpcaster {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -181,7 +214,9 @@ public class EventUpcaster {
         OrderCreatedEventV2 v2Event = new OrderCreatedEventV2();
 
         // Copy metadata
-        EventMetadata metadata = v1Event.getMetadata();
+        EventMetadata metadata = v1Event.getMetadata() != null
+            ? v1Event.getMetadata().copy()
+            : new EventMetadata();
         metadata.setVersion("2.0");
         v2Event.setMetadata(metadata);
 
@@ -207,7 +242,7 @@ public class EventUpcaster {
      */
     public String upcastEvent(String eventJson, String targetVersion) throws Exception {
         JsonNode event = mapper.readTree(eventJson);
-        String currentVersion = event.get("metadata").get("version").asText();
+        String currentVersion = event.path("metadata").path("version").asText("1.0");
 
         if (currentVersion.equals(targetVersion)) {
             return eventJson;
@@ -226,24 +261,28 @@ public class EventUpcaster {
         ObjectNode v2Event = mapper.createObjectNode();
 
         // Copy and update metadata
-        ObjectNode metadata = (ObjectNode) v1Event.get("metadata").deepCopy();
+        ObjectNode metadata = mapper.createObjectNode();
+        if (v1Event.path("metadata").isObject()) {
+            metadata.setAll((ObjectNode) v1Event.path("metadata"));
+        }
         metadata.put("version", "2.0");
         v2Event.set("metadata", metadata);
 
         // Transform data
         ObjectNode data = mapper.createObjectNode();
-        JsonNode v1Data = v1Event.get("data");
+        JsonNode v1Data = v1Event.path("data");
 
-        data.put("orderId", v1Data.get("orderId").asText());
+        data.put("orderId", v1Data.path("orderId").asText());
 
         // Transform customerId to customerInfo
         ObjectNode customerInfo = mapper.createObjectNode();
-        customerInfo.put("id", v1Data.get("customerId").asText());
+        customerInfo.put("id", v1Data.path("customerId").asText());
         data.set("customerInfo", customerInfo);
 
         // Transform amount to MonetaryAmount
         ObjectNode amount = mapper.createObjectNode();
-        amount.put("value", v1Data.get("amount").asDouble());
+        JsonNode amountNode = v1Data.path("amount");
+        amount.put("value", amountNode.isNumber() ? amountNode.decimalValue() : BigDecimal.ZERO);
         amount.put("currency", "USD");
         data.set("amount", amount);
 
@@ -257,6 +296,14 @@ public class EventUpcaster {
 ### Multi-Version Consumer
 
 ```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Properties;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+
 public class MultiVersionConsumer {
 
     private final KafkaConsumer<String, String> consumer;
@@ -284,9 +331,6 @@ public class MultiVersionConsumer {
     }
 
     private void processEvent(String eventJson) throws Exception {
-        JsonNode event = mapper.readTree(eventJson);
-        String version = event.get("metadata").get("version").asText();
-
         // Always process as latest version
         String upcastedEvent = upcaster.upcastEvent(eventJson, "2.0");
         OrderCreatedEventV2 orderEvent = mapper.readValue(
@@ -311,10 +355,10 @@ public class MultiVersionConsumer {
 
 ```python
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Callable
 from abc import ABC, abstractmethod
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 import uuid
 
 @dataclass
@@ -322,7 +366,7 @@ class EventMetadata:
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     event_type: str = ""
     version: str = "1.0"
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
 
 class VersionedEvent(ABC):
     @abstractmethod
@@ -448,7 +492,8 @@ class EventVersionRouter:
         # Check event type for version suffix
         event_type = event.get("eventType", "")
         if ".v" in event_type:
-            return event_type.split(".v")[-1]
+            suffix = event_type.split(".v")[-1]
+            return suffix if "." in suffix else f"{suffix}.0"
 
         return "1.0"
 
@@ -532,22 +577,30 @@ if __name__ == '__main__':
 ### Dual-Write Pattern
 
 ```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
 public class DualWriteProducer {
 
     private final KafkaProducer<String, String> producer;
     private final ObjectMapper mapper = new ObjectMapper();
+
+    public DualWriteProducer(KafkaProducer<String, String> producer) {
+        this.producer = producer;
+    }
 
     public void publishOrder(OrderCreatedEventV2 event) throws Exception {
         String key = event.getOrderId();
 
         // Write V2 to new topic
         producer.send(new ProducerRecord<>("orders-v2", key,
-            mapper.writeValueAsString(event)));
+            mapper.writeValueAsString(event))).get();
 
         // Convert and write V1 to old topic for backward compatibility
         OrderCreatedEventV1 v1Event = downcastToV1(event);
         producer.send(new ProducerRecord<>("orders-v1", key,
-            mapper.writeValueAsString(v1Event)));
+            mapper.writeValueAsString(v1Event))).get();
     }
 
     private OrderCreatedEventV1 downcastToV1(OrderCreatedEventV2 v2Event) {
@@ -563,7 +616,27 @@ public class DualWriteProducer {
 ### Gradual Migration with Consumer Groups
 
 ```java
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
 public class MigrationConsumer {
+
+    private final EventUpcaster upcaster = new EventUpcaster();
+    private final KafkaProducer<String, String> producer;
+    private final Properties consumerProps;
+
+    public MigrationConsumer(KafkaProducer<String, String> producer, Properties consumerProps) {
+        this.producer = producer;
+        this.consumerProps = consumerProps;
+    }
 
     public void startMigration(String oldTopic, String newTopic, String targetVersion) {
         // Phase 1: Read from old topic, upcast, write to new topic
@@ -577,8 +650,14 @@ public class MigrationConsumer {
             while (!Thread.interrupted()) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
                 for (ConsumerRecord<String, String> record : records) {
-                    String upcasted = upcaster.upcastEvent(record.value(), targetVersion);
-                    producer.send(new ProducerRecord<>(newTopic, record.key(), upcasted));
+                    try {
+                        String upcasted = upcaster.upcastEvent(record.value(), targetVersion);
+                        producer.send(new ProducerRecord<>(newTopic, record.key(), upcasted)).get();
+                    } catch (Exception e) {
+                        System.err.println("Failed to migrate record: " + record.key());
+                        e.printStackTrace();
+                        continue;
+                    }
                 }
                 consumer.commitSync();
             }
@@ -596,6 +675,17 @@ public class MigrationConsumer {
                 }
             }
         });
+    }
+
+    private KafkaConsumer<String, String> createConsumer(String groupId) {
+        Properties props = new Properties();
+        props.putAll(consumerProps);
+        props.put("group.id", groupId);
+        return new KafkaConsumer<>(props);
+    }
+
+    private void processLatestVersion(String eventJson) {
+        // Process the already-upcast event with the application handler
     }
 }
 ```

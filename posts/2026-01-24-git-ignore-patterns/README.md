@@ -12,12 +12,12 @@ Git ignore patterns tell Git which files and directories to exclude from version
 
 ## How Git Ignore Works
 
-Git checks ignore rules from multiple sources in this order:
+Git checks ignore rules from multiple sources in this precedence order, from highest to lowest:
 
 ```mermaid
 flowchart TD
     A[File to check] --> B{Command line patterns?}
-    B -->|Match| C[Ignored]
+    B -->|Match| C[Outcome decided]
     B -->|No match| D{.gitignore in same directory?}
     D -->|Match| C
     D -->|No match| E{.gitignore in parent directories?}
@@ -26,10 +26,10 @@ flowchart TD
     F -->|Match| C
     F -->|No match| G{Global gitignore?}
     G -->|Match| C
-    G -->|No match| H[Tracked]
+    G -->|No match| H[Not ignored]
 ```
 
-Later rules can override earlier ones, and more specific paths take precedence.
+Within the same precedence level, the last matching pattern decides the outcome. Lower-level `.gitignore` files override higher-level `.gitignore` files for paths below them.
 
 ## Basic Syntax
 
@@ -74,7 +74,7 @@ docs/*.pdf
 | `/file.txt` | Ignore file.txt only in root |
 | `dir/` | Ignore directory named dir |
 | `*.log` | Ignore all .log files |
-| `**/logs` | Ignore logs directory anywhere |
+| `**/logs` | Ignore file or directory named logs anywhere |
 | `**/logs/*.log` | Ignore .log files inside any logs directory |
 | `!important.log` | Do not ignore this file (negation) |
 
@@ -84,7 +84,7 @@ Git supports several wildcard characters:
 
 ```gitignore
 # Single asterisk matches within directory
-# Matches: log.txt, debug.log, but NOT logs/error.txt
+# Matches: log.txt, debug.txt, but NOT logs/error.txt
 *.txt
 
 # Double asterisk matches across directories
@@ -345,7 +345,7 @@ git check-ignore -v myfile.txt
 git check-ignore -v file1.txt file2.log config.json
 
 # Check why a file is NOT ignored (verbose)
-git check-ignore -v --no-index file.txt
+git check-ignore -v --non-matching --no-index file.txt
 ```
 
 List all ignored files:
@@ -358,7 +358,7 @@ git status --ignored
 git status --ignored --untracked-files=all
 
 # List just the ignored files
-git ls-files --ignored --exclude-standard
+git ls-files --others --ignored --exclude-standard
 ```
 
 ## Ignoring Previously Tracked Files
@@ -423,9 +423,9 @@ Start with templates from gitignore.io or GitHub:
 # Generate gitignore for your stack
 curl -sL https://www.toptal.com/developers/gitignore/api/node,react,visualstudiocode > .gitignore
 
-# Or use the gi command line tool
+# Or use the gitignore command line tool
 # Install: npm install -g gitignore
-gi node,react,vscode > .gitignore
+gitignore node > .gitignore
 ```
 
 GitHub maintains templates: https://github.com/github/gitignore

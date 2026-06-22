@@ -85,6 +85,12 @@ global:
   acls:
     manageSystemACLs: true
 
+  # Enable metrics
+  metrics:
+    enabled: true
+    enableAgentMetrics: true
+    enableGatewayMetrics: true
+
 server:
   replicas: 3
   bootstrapExpect: 3
@@ -159,11 +165,6 @@ ui:
     hosts:
       - host: consul.example.com
 
-# Enable metrics
-metrics:
-  enabled: true
-  enableAgentMetrics: true
-  enableGatewayMetrics: true
 ```
 
 ### Generate Gossip Encryption Key
@@ -203,7 +204,8 @@ spec:
 ### Manual Service Registration
 
 ```yaml
-# consul-service-registration.yaml
+# consul-service-registration.yaml - mount this into a Consul agent config directory
+# or register it with the Consul API/CLI.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -283,10 +285,10 @@ spec:
     - name: test
       image: busybox
       command: ['sh', '-c', 'while true; do nslookup my-app.service.consul; sleep 10; done']
-  dnsPolicy: ClusterFirst
+  dnsPolicy: None
   dnsConfig:
     nameservers:
-      - 10.96.0.10  # Consul DNS service
+      - 10.35.240.78  # Consul DNS service ClusterIP
     searches:
       - service.consul
 ```
@@ -340,10 +342,10 @@ data:
         reload
         loadbalance
     }
-    consul:53 {
+    consul {
         errors
         cache 30
-        forward . consul-dns.consul.svc:8600
+        forward . 10.35.240.78  # Replace with the consul-dns service ClusterIP
     }
 ```
 
@@ -524,10 +526,7 @@ spec:
     metadata:
       annotations:
         consul.hashicorp.com/connect-inject: "true"
-        # Define health check
-        consul.hashicorp.com/health-check-http: "/health"
-        consul.hashicorp.com/health-check-interval: "10s"
-        consul.hashicorp.com/health-check-timeout: "5s"
+        # Consul syncs Kubernetes readiness status for injected pods
     spec:
       containers:
         - name: app
@@ -547,7 +546,6 @@ spec:
 ### Custom Health Checks
 
 ```json
-// Consul health check configuration
 {
   "service": {
     "name": "my-app",
@@ -565,7 +563,7 @@ spec:
       },
       {
         "name": "Script Check",
-        "script": "/health-check.sh",
+        "args": ["/health-check.sh"],
         "interval": "30s"
       }
     ]

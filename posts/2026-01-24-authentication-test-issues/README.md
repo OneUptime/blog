@@ -163,8 +163,10 @@ class IsolatedTestClient(FlaskClient):
     def reset_session(self):
         """Clear all session data."""
         self._session_data = {}
-        # Clear cookies
-        self.cookie_jar.clear()
+        self.environ_base.pop('HTTP_AUTHORIZATION', None)
+        self.delete_cookie(
+            self.application.config.get('SESSION_COOKIE_NAME', 'session')
+        )
 
 @pytest.fixture
 def client(app):
@@ -254,8 +256,8 @@ class OAuthMock {
       });
 
     // Mock userinfo endpoint
-    const userinfoMock = nock('https://www.googleapis.com')
-      .get('/oauth2/v3/userinfo')
+    const userinfoMock = nock('https://openidconnect.googleapis.com')
+      .get('/v1/userinfo')
       .reply(200, defaultUser);
 
     this.mocks.push(tokenMock, userinfoMock);
@@ -335,8 +337,8 @@ class OAuthMock {
    */
   _createMockIdToken(payload) {
     // Create a simple mock token (header.payload.signature)
-    const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64');
-    const body = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64url');
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
     return `${header}.${body}.mock-signature`;
   }
 
@@ -450,7 +452,7 @@ class CSRFTestMixin:
 
         # Also add to headers for APIs
         headers = kwargs.get('headers', {})
-        headers['X-CSRF-Token'] = csrf_token
+        headers['X-CSRFToken'] = csrf_token
         kwargs['headers'] = headers
 
         return client.post(url, data=data, **kwargs)
@@ -489,6 +491,7 @@ User authentication state in the test database becoming inconsistent.
 ```python
 # factories.py
 import bcrypt
+import secrets
 from datetime import datetime, timedelta
 
 class TestUserFactory:
@@ -545,6 +548,10 @@ class TestUserFactory:
 
         user._test_session = session
         return user
+
+    def _generate_session_token(self):
+        """Create a URL-safe session token for tests."""
+        return secrets.token_urlsafe(32)
 
     def create_unverified(self, **overrides):
         """Create an unverified user."""

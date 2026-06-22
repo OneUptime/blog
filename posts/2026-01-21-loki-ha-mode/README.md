@@ -95,7 +95,6 @@ ingester:
     final_sleep: 30s
   chunk_idle_period: 30m
   chunk_retain_period: 1m
-  max_transfer_retries: 0
   wal:
     enabled: true
     dir: /loki/wal
@@ -110,7 +109,7 @@ querier:
   max_concurrent: 20
   query_ingesters_within: 3h
 
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 4096
   compress_responses: true
 
@@ -119,9 +118,9 @@ query_scheduler:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
+  delete_request_store: s3
   compactor_ring:
     kvstore:
       store: memberlist
@@ -153,7 +152,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: s3
 
 limits_config:
   ingestion_rate_mb: 32
@@ -215,9 +213,10 @@ spec:
       terminationGracePeriodSeconds: 300
       containers:
         - name: ingester
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.1
           args:
             - -config.file=/etc/loki/config.yaml
+            - -config.expand-env=true
             - -target=ingester
           env:
             - name: POD_IP
@@ -300,9 +299,10 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: distributor
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.1
           args:
             - -config.file=/etc/loki/config.yaml
+            - -config.expand-env=true
             - -target=distributor
           env:
             - name: POD_IP
@@ -362,9 +362,10 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: querier
-          image: grafana/loki:2.9.4
+          image: grafana/loki:3.7.1
           args:
             - -config.file=/etc/loki/config.yaml
+            - -config.expand-env=true
             - -target=querier
           env:
             - name: POD_IP
@@ -405,7 +406,7 @@ spec:
 ```bash
 # Port-forward to any Loki component
 
-kubectl port-forward -n loki svc/loki-distributor 3100:3100
+kubectl port-forward -n loki deployment/loki-distributor 3100:3100
 
 # View ring status
 curl http://localhost:3100/ring
@@ -458,7 +459,7 @@ groups:
 When an ingester fails:
 
 1. Ring detects failure via heartbeat
-2. Tokens are transferred to healthy ingesters
+2. Distributors continue writes to healthy ingesters when quorum can be satisfied
 3. WAL enables data recovery on restart
 
 ```yaml
@@ -536,7 +537,7 @@ curl -X POST "http://loki:3100/loki/api/v1/push" \
 kubectl delete pod -n loki loki-ingester-0
 
 # Query should still work
-curl -G "http://loki:3100/loki/api/v1/query" \
+curl -G "http://loki:3100/loki/api/v1/query_range" \
   -H "X-Scope-OrgID: test" \
   --data-urlencode 'query={test="ha"}'
 ```
@@ -583,4 +584,4 @@ High availability in Loki requires proper configuration of replication, ring coo
 - Monitor ring health continuously
 - Test failure scenarios regularly
 
-With proper HA configuration, your Loki deployment can survive component failures without data loss.
+With proper HA configuration, your Loki deployment can survive common component failures while minimizing the risk of data loss.

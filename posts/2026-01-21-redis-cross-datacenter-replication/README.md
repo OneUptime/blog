@@ -20,9 +20,9 @@ Choose the right pattern based on your consistency requirements, write patterns,
 
 | Pattern | Consistency | Write Location | Failover | Complexity |
 |---------|-------------|----------------|----------|------------|
-| Active-Passive | Strong | Single DC | Manual/Auto | Low |
+| Active-Passive | Single-writer, asynchronous replicas | Single DC | Manual/Auto | Low |
 | Active-Active | Eventual | Any DC | Automatic | High |
-| Read Replicas | Strong (writes) | Single DC | Manual | Medium |
+| Read Replicas | Single-writer, potentially stale reads | Single DC | Manual | Medium |
 
 ### Architecture Options
 
@@ -104,6 +104,8 @@ appendonly yes
 ```bash
 # sentinel.conf - DC1
 port 26379
+sentinel resolve-hostnames yes
+sentinel announce-hostnames yes
 sentinel monitor mymaster dc1-master.example.com 6379 2
 sentinel auth-pass mymaster your-password
 sentinel down-after-milliseconds mymaster 10000
@@ -116,6 +118,8 @@ sentinel announce-port 26379
 
 # sentinel.conf - DC2
 port 26379
+sentinel resolve-hostnames yes
+sentinel announce-hostnames yes
 sentinel monitor mymaster dc1-master.example.com 6379 2
 sentinel auth-pass mymaster your-password
 sentinel down-after-milliseconds mymaster 10000
@@ -172,10 +176,7 @@ class CrossDCFailover:
         print("Initiating failover to DC2...")
 
         # Get DC2 replica info
-        dc2_sentinel_client = redis.Redis(
-            host=self.dc2_sentinel.sentinels[0][0],
-            port=self.dc2_sentinel.sentinels[0][1]
-        )
+        dc2_sentinel_client = self.dc2_sentinel.sentinels[0]
 
         # Get DC2 replica address
         replicas = dc2_sentinel_client.execute_command(
@@ -252,8 +253,16 @@ class CrossDCFailover:
 
 # Usage
 failover = CrossDCFailover(
-    dc1_sentinels=[('dc1-sentinel1', 26379), ('dc1-sentinel2', 26379)],
-    dc2_sentinels=[('dc2-sentinel1', 26379), ('dc2-sentinel2', 26379)],
+    dc1_sentinels=[
+        ('dc1-sentinel1', 26379),
+        ('dc1-sentinel2', 26379),
+        ('dc1-sentinel3', 26379)
+    ],
+    dc2_sentinels=[
+        ('dc2-sentinel1', 26379),
+        ('dc2-sentinel2', 26379),
+        ('dc2-sentinel3', 26379)
+    ],
     master_name='mymaster',
     password='password'
 )
@@ -279,12 +288,11 @@ import redis
 import time
 import json
 from typing import Any, Optional
-import hashlib
 
 class ActiveActiveRedis:
     """
     Application-level active-active Redis.
-    Uses last-write-wins with vector clocks for conflict resolution.
+    Uses last-write-wins timestamps with a DC ID tie-breaker for conflict resolution.
     """
 
     def __init__(self, local_redis, remote_redis, dc_id):
@@ -495,12 +503,12 @@ remote_redis = redis.Redis(
 )
 ```
 
-### Bandwidth Optimization
+### Full Resync Optimization
 
 ```bash
-# Enable compression for cross-DC replication
+# Use diskless sync to avoid writing the RDB snapshot to disk during full resyncs
 # In redis.conf:
-repl-compression yes
+repl-diskless-sync yes
 
 # Increase output buffer for remote replicas
 client-output-buffer-limit replica 1gb 512mb 120
@@ -575,7 +583,7 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
 
 ### DR Runbook
 
-```markdown
+````markdown
 ## Redis Cross-DC Disaster Recovery Runbook
 
 ### Scenario 1: DC1 (Primary) Complete Failure
@@ -591,13 +599,13 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
    - Document potential data loss
 
 3. **Initiate failover**
-   ```bash
+   ```
    # On DC2 replica
    redis-cli -a password REPLICAOF NO ONE
 
    # Verify new master
    redis-cli -a password INFO replication
-   ```bash
+   ```
 
 4. **Update application configuration**
    - Point applications to DC2 Redis
@@ -616,25 +624,25 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
    - Check Redis process health
 
 2. **Sync DC1 from DC2**
-   ```bash
+   ```
    # On DC1 (former master, now needs data from DC2)
    redis-cli -a password REPLICAOF dc2-master 6379
-   ```bash
+   ```
 
 3. **Wait for full sync**
    - Monitor replication progress
    - Verify data consistency
 
 4. **Promote DC1 back to master**
-   ```bash
+   ```
    redis-cli -a password REPLICAOF NO ONE
-   ```bash
+   ```
 
 5. **Reconfigure DC2 as replica**
-   ```bash
+   ```
    redis-cli -h dc2-redis -a password REPLICAOF dc1-master 6379
-   ```bash
-```text
+   ```
+````
 
 ---
 
@@ -684,7 +692,7 @@ CRITICAL_LAG_SECONDS = 120
 
 Cross-datacenter Redis replication enables disaster recovery and global distribution:
 
-- **Active-Passive**: Simple, strong consistency for DR
+- **Active-Passive**: Simple, single-writer DR with asynchronous replicas
 - **Active-Active**: Complex, eventual consistency for global writes
 - **Read Replicas**: Balance between simplicity and performance
 

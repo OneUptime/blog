@@ -66,7 +66,7 @@ curl -X GET "https://localhost:9200/products/_search" \
     "size": 100,
     "sort": [
       { "created_at": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
     "query": {
       "match": { "category": "electronics" }
@@ -74,7 +74,7 @@ curl -X GET "https://localhost:9200/products/_search" \
   }'
 
 # Response includes sort values for last document
-# "sort": ["2024-01-15T10:30:00.000Z", "abc123"]
+# "sort": ["2024-01-15T10:30:00.000Z", "product-abc123"]
 
 # Next page - use sort values from last result
 curl -X GET "https://localhost:9200/products/_search" \
@@ -84,9 +84,9 @@ curl -X GET "https://localhost:9200/products/_search" \
     "size": 100,
     "sort": [
       { "created_at": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ],
-    "search_after": ["2024-01-15T10:30:00.000Z", "abc123"],
+    "search_after": ["2024-01-15T10:30:00.000Z", "product-abc123"],
     "query": {
       "match": { "category": "electronics" }
     }
@@ -95,7 +95,7 @@ curl -X GET "https://localhost:9200/products/_search" \
 
 ### Tiebreaker Field
 
-Always include a unique tiebreaker field in sort:
+Always include a unique tiebreaker field with doc_values enabled in sort:
 
 ```bash
 curl -X GET "https://localhost:9200/products/_search" \
@@ -105,12 +105,13 @@ curl -X GET "https://localhost:9200/products/_search" \
     "size": 100,
     "sort": [
       { "price": "desc" },
-      { "_id": "asc" }
+      { "tie_breaker_id": "asc" }
     ]
   }'
 ```
 
 Without a tiebreaker, documents with the same sort value may be skipped or duplicated.
+If you want to use the document ID for this, copy it into a separate keyword field with doc_values, such as `tie_breaker_id`, and sort on that field.
 
 ### Limitations of search_after
 
@@ -153,15 +154,14 @@ curl -X GET "https://localhost:9200/_search" \
     },
     "size": 100,
     "sort": [
-      { "created_at": "desc" },
-      { "_id": "asc" }
+      { "created_at": "desc" }
     ],
     "query": {
       "match_all": {}
     }
   }'
 
-# Next page
+# Next page - use the latest pit_id from the previous search response
 curl -X GET "https://localhost:9200/_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -172,10 +172,9 @@ curl -X GET "https://localhost:9200/_search" \
     },
     "size": 100,
     "sort": [
-      { "created_at": "desc" },
-      { "_id": "asc" }
+      { "created_at": "desc" }
     ],
-    "search_after": ["2024-01-15T10:30:00.000Z", "abc123"],
+    "search_after": ["2024-01-15T10:30:00.000Z", 4294967298],
     "query": {
       "match_all": {}
     }
@@ -247,8 +246,12 @@ curl -X DELETE "https://localhost:9200/_search/scroll" \
   }'
 
 # Clear all scrolls
-curl -X DELETE "https://localhost:9200/_search/scroll/_all" \
-  -u elastic:password
+curl -X DELETE "https://localhost:9200/_search/scroll" \
+  -H "Content-Type: application/json" \
+  -u elastic:password \
+  -d '{
+    "scroll_id": "_all"
+  }'
 ```
 
 ### Scroll vs PIT
@@ -256,9 +259,9 @@ curl -X DELETE "https://localhost:9200/_search/scroll/_all" \
 | Feature | Scroll | PIT + search_after |
 |---------|--------|--------------------|
 | Consistency | Yes | Yes |
-| Sorting | No custom sort | Any sort |
+| Sorting | Custom sort supported, `_doc` is fastest | Any sort |
 | Resource usage | Higher | Lower |
-| Parallel requests | No | Yes |
+| Parallel requests | Via sliced scroll | Via sliced searches |
 | Use case | Batch export | Real-time pagination |
 
 **Recommendation**: Use PIT + search_after instead of scroll for new applications.
@@ -268,10 +271,10 @@ curl -X DELETE "https://localhost:9200/_search/scroll/_all" \
 ### Python Export with PIT
 
 ```python
-from elasticsearch import Elasticsearch
 import json
+from elasticsearch import Elasticsearch
 
-es = Elasticsearch(['localhost:9200'])
+es = Elasticsearch('http://localhost:9200')
 
 def export_all_documents(index_name, output_file):
     # Create PIT
@@ -294,7 +297,8 @@ def export_all_documents(index_name, output_file):
                         'keep_alive': '5m'
                     },
                     'size': 1000,
-                    'sort': [{'_id': 'asc'}],
+                    'sort': [{'_shard_doc': 'asc'}],
+                    'track_total_hits': False,
                     'query': {'match_all': {}}
                 }
 
@@ -302,7 +306,8 @@ def export_all_documents(index_name, output_file):
                     query['search_after'] = search_after
 
                 # Execute search
-                response = es.search(body=query)
+                response = es.search(**query)
+                pit_id = response.get('pit_id', pit_id)
                 hits = response['hits']['hits']
 
                 if not hits:
@@ -345,11 +350,11 @@ RESPONSE=$(curl -s -X POST "https://localhost:9200/$INDEX/_search?scroll=$SCROLL
     "query": {"match_all": {}}
   }')
 
-SCROLL_ID=$(echo $RESPONSE | jq -r '._scroll_id')
-HITS=$(echo $RESPONSE | jq -r '.hits.hits | length')
+SCROLL_ID=$(printf '%s\n' "$RESPONSE" | jq -r '._scroll_id')
+HITS=$(printf '%s\n' "$RESPONSE" | jq -r '.hits.hits | length')
 
 # Extract documents
-echo $RESPONSE | jq -c '.hits.hits[]._source' >> $OUTPUT
+printf '%s\n' "$RESPONSE" | jq -c '.hits.hits[]._source' >> "$OUTPUT"
 TOTAL=$HITS
 
 # Continue scrolling
@@ -362,10 +367,10 @@ while [ "$HITS" -gt 0 ]; do
       "scroll_id": "'$SCROLL_ID'"
     }')
 
-  SCROLL_ID=$(echo $RESPONSE | jq -r '._scroll_id')
-  HITS=$(echo $RESPONSE | jq -r '.hits.hits | length')
+  SCROLL_ID=$(printf '%s\n' "$RESPONSE" | jq -r '._scroll_id')
+  HITS=$(printf '%s\n' "$RESPONSE" | jq -r '.hits.hits | length')
 
-  echo $RESPONSE | jq -c '.hits.hits[]._source' >> $OUTPUT
+  printf '%s\n' "$RESPONSE" | jq -c '.hits.hits[]._source' >> "$OUTPUT"
   TOTAL=$((TOTAL + HITS))
 
   echo "Exported $TOTAL documents..."
@@ -422,25 +427,28 @@ curl -X POST "https://localhost:9200/products/_search?scroll=5m" \
 from concurrent.futures import ThreadPoolExecutor
 from elasticsearch import Elasticsearch
 
-es = Elasticsearch(['localhost:9200'])
+es = Elasticsearch('http://localhost:9200')
 
 def process_slice(slice_id, max_slices, pit_id):
     search_after = None
+    current_pit_id = pit_id
     results = []
 
     while True:
         query = {
-            'pit': {'id': pit_id, 'keep_alive': '5m'},
+            'pit': {'id': current_pit_id, 'keep_alive': '5m'},
             'size': 1000,
-            'sort': [{'_id': 'asc'}],
+            'sort': [{'_shard_doc': 'asc'}],
             'slice': {'id': slice_id, 'max': max_slices},
+            'track_total_hits': False,
             'query': {'match_all': {}}
         }
 
         if search_after:
             query['search_after'] = search_after
 
-        response = es.search(body=query)
+        response = es.search(**query)
+        current_pit_id = response.get('pit_id', current_pit_id)
         hits = response['hits']['hits']
 
         if not hits:
@@ -449,7 +457,7 @@ def process_slice(slice_id, max_slices, pit_id):
         results.extend([hit['_source'] for hit in hits])
         search_after = hits[-1]['sort']
 
-    return results
+    return results, current_pit_id
 
 # Create PIT
 pit = es.open_point_in_time(index='products', keep_alive='10m')
@@ -463,11 +471,15 @@ with ThreadPoolExecutor(max_workers=max_slices) as executor:
     ]
 
     all_results = []
+    pit_ids = set()
     for future in futures:
-        all_results.extend(future.result())
+        results, latest_pit_id = future.result()
+        all_results.extend(results)
+        pit_ids.add(latest_pit_id)
 
 # Clean up
-es.close_point_in_time(id=pit['id'])
+for pit_id in pit_ids:
+    es.close_point_in_time(id=pit_id)
 ```
 
 ## Choosing the Right Approach
@@ -494,7 +506,8 @@ curl -X GET "https://localhost:9200/_search" \
   -d '{
     "pit": {"id": "...", "keep_alive": "5m"},
     "size": 2000,
-    "sort": [{"_id": "asc"}]
+    "sort": [{"_shard_doc": "asc"}],
+    "track_total_hits": false
   }'
 ```
 
@@ -508,7 +521,7 @@ curl -X GET "https://localhost:9200/_search" \
     "pit": {"id": "...", "keep_alive": "5m"},
     "_source": ["name", "price"],
     "size": 1000,
-    "sort": [{"_id": "asc"}]
+    "sort": [{"_shard_doc": "asc"}]
   }'
 ```
 
@@ -528,7 +541,7 @@ curl -X GET "https://localhost:9200/_search" \
       }
     },
     "size": 1000,
-    "sort": [{"_id": "asc"}]
+    "sort": [{"_shard_doc": "asc"}]
   }'
 ```
 
@@ -543,7 +556,7 @@ curl -X POST "https://localhost:9200/products/_pit?keep_alive=30m" \
 ## Best Practices Summary
 
 1. **Use PIT + search_after** for most large result scenarios
-2. **Include tiebreaker** in sort (usually _id)
+2. **Include tiebreaker** in sort (use `_shard_doc` with PIT, or a unique field with doc_values)
 3. **Clean up resources** - delete PITs and clear scrolls
 4. **Fetch only needed fields** to reduce transfer size
 5. **Use filters** instead of queries for non-scoring

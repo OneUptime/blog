@@ -89,6 +89,7 @@ resource "aws_db_instance" "main" {
   # Engine configuration
   engine               = "postgres"
   engine_version       = "15.4"
+  db_name              = var.database_name
   instance_class       = var.db_instance_class
   parameter_group_name = aws_db_parameter_group.postgres.name
 
@@ -140,11 +141,6 @@ resource "aws_db_instance" "main" {
 
   lifecycle {
     prevent_destroy = true
-
-    # Ignore password changes made via Secrets Manager
-    ignore_changes = [
-      manage_master_user_password,
-    ]
   }
 }
 
@@ -212,7 +208,7 @@ resource "aws_db_instance" "replica" {
   monitoring_interval                   = 60
   monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
 
-  # No backups on replicas (they get it from primary)
+  # Disable automated backups on replicas used only for read scaling
   backup_retention_period = 0
 
   tags = {
@@ -420,18 +416,17 @@ resource "aws_elasticache_replication_group" "main" {
 ## Database Secrets Management
 
 ```hcl
-# Generate random password
-resource "random_password" "db" {
-  length  = 32
-  special = true
-  # Exclude characters that cause issues in connection strings
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+# RDS creates the master password secret when manage_master_user_password = true
+output "db_master_user_secret_arn" {
+  description = "Secrets Manager ARN for the RDS-managed master user password"
+  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  sensitive   = true
 }
 
-# Store in Secrets Manager
-resource "aws_secretsmanager_secret" "db" {
-  name        = "${var.environment}/database/credentials"
-  description = "Database credentials for ${var.environment}"
+# Store non-sensitive connection details for applications
+resource "aws_secretsmanager_secret" "db_connection" {
+  name        = "${var.environment}/database/connection"
+  description = "Database connection details for ${var.environment}"
 
   # Rotation configuration
   # rotation_lambda_arn = aws_lambda_function.rotate_secret.arn
@@ -444,17 +439,15 @@ resource "aws_secretsmanager_secret" "db" {
   }
 }
 
-resource "aws_secretsmanager_secret_version" "db" {
-  secret_id = aws_secretsmanager_secret.db.id
+resource "aws_secretsmanager_secret_version" "db_connection" {
+  secret_id = aws_secretsmanager_secret.db_connection.id
 
   secret_string = jsonencode({
-    username = var.db_username
-    password = random_password.db.result
-    host     = aws_db_instance.main.address
-    port     = aws_db_instance.main.port
-    database = var.database_name
-    # Full connection string
-    connection_string = "postgresql://${var.db_username}:${random_password.db.result}@${aws_db_instance.main.endpoint}/${var.database_name}"
+    username          = var.db_username
+    host              = aws_db_instance.main.address
+    port              = aws_db_instance.main.port
+    database          = var.database_name
+    master_secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
   })
 }
 ```
@@ -522,6 +515,66 @@ variable "read_replica_count" {
   type        = number
   default     = 1
 }
+
+variable "replica_instance_class" {
+  description = "RDS read replica instance class"
+  type        = string
+  default     = "db.t3.medium"
+}
+
+variable "enable_cross_region_replica" {
+  description = "Whether to create a cross-region read replica"
+  type        = bool
+  default     = false
+}
+
+variable "dr_replica_instance_class" {
+  description = "Cross-region read replica instance class"
+  type        = string
+  default     = "db.t3.medium"
+}
+
+variable "dr_kms_key_arn" {
+  description = "KMS key ARN for the cross-region read replica"
+  type        = string
+  default     = null
+}
+
+variable "dr_db_subnet_group_name" {
+  description = "DB subnet group name in the DR region"
+  type        = string
+  default     = null
+}
+
+variable "dr_security_group_id" {
+  description = "Security group ID in the DR region"
+  type        = string
+  default     = null
+}
+
+variable "aurora_instance_count" {
+  description = "Number of Aurora cluster instances"
+  type        = number
+  default     = 2
+}
+
+variable "redis_node_type" {
+  description = "ElastiCache Redis node type"
+  type        = string
+  default     = "cache.t4g.micro"
+}
+
+variable "redis_auth_token" {
+  description = "Auth token for Redis when transit encryption is enabled"
+  type        = string
+  sensitive   = true
+}
+
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for ElastiCache notifications"
+  type        = string
+  default     = null
+}
 ```
 
 ## Outputs
@@ -543,8 +596,14 @@ output "db_name" {
 }
 
 output "secret_arn" {
-  description = "Secrets Manager secret ARN"
-  value       = aws_secretsmanager_secret.db.arn
+  description = "Secrets Manager secret ARN for database connection details"
+  value       = aws_secretsmanager_secret.db_connection.arn
+}
+
+output "master_user_secret_arn" {
+  description = "RDS-managed Secrets Manager secret ARN for the master user password"
+  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  sensitive   = true
 }
 
 output "replica_endpoints" {

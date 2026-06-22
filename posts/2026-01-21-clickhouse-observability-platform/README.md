@@ -70,7 +70,7 @@ CREATE TABLE logs (
     attributes Map(String, String),
     resource_attributes Map(String, String),
     -- Indexes for search
-    INDEX body_idx body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4,
+    INDEX body_idx body TYPE text(tokenizer = 'splitByNonAlpha'),
     INDEX trace_idx trace_id TYPE bloom_filter GRANULARITY 4,
     INDEX severity_idx severity_number TYPE minmax GRANULARITY 4
 ) ENGINE = MergeTree()
@@ -91,7 +91,7 @@ CREATE TABLE traces (
     -- Timing
     start_time DateTime64(6),
     end_time DateTime64(6),
-    duration_ns UInt64 MATERIALIZED toUInt64((end_time - start_time) * 1000000000),
+    duration_ns UInt64 MATERIALIZED toUInt64(dateDiff('nanosecond', start_time, end_time)),
     -- Span info
     service LowCardinality(String),
     operation_name String,
@@ -110,7 +110,7 @@ CREATE TABLE traces (
     -- Indexes
     INDEX trace_idx trace_id TYPE bloom_filter GRANULARITY 4,
     INDEX service_idx service TYPE bloom_filter GRANULARITY 4,
-    INDEX operation_idx operation_name TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
+    INDEX operation_idx operation_name TYPE text(tokenizer = 'splitByNonAlpha')
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(start_time)
 ORDER BY (service, start_time, trace_id)
@@ -153,7 +153,7 @@ WITH bucket_data AS (
         toStartOfMinute(timestamp) AS minute,
         service,
         le,
-        max(count) AS count
+        max(count) - min(count) AS count
     FROM histogram_buckets
     WHERE metric_name = 'http_request_duration_seconds'
       AND timestamp >= now() - INTERVAL 1 HOUR
@@ -192,20 +192,39 @@ ORDER BY minute, service;
 
 ```sql
 -- Service health metrics
+WITH metric_deltas AS (
+    SELECT
+        service,
+        metric_name,
+        max(value) - min(value) AS delta
+    FROM metrics
+    WHERE timestamp >= now() - INTERVAL 5 MINUTE
+      AND metric_name IN ('http_requests_total', 'http_errors_total')
+    GROUP BY service, metric_name
+),
+instant_metrics AS (
+    SELECT
+        service,
+        avgIf(value, metric_name = 'http_request_duration_seconds' AND labels['quantile'] = '0.99') AS p99_latency,
+        avgIf(value, metric_name = 'process_cpu_usage') AS avg_cpu
+    FROM metrics
+    WHERE timestamp >= now() - INTERVAL 5 MINUTE
+    GROUP BY service
+)
 SELECT
-    service,
+    i.service,
     -- Request rate
-    countIf(metric_name = 'http_requests_total') AS request_samples,
+    sumIf(d.delta, d.metric_name = 'http_requests_total') / 300 AS request_rate,
     -- Error rate
-    sumIf(value, metric_name = 'http_errors_total') /
-        nullIf(sumIf(value, metric_name = 'http_requests_total'), 0) * 100 AS error_rate,
+    sumIf(d.delta, d.metric_name = 'http_errors_total') /
+        nullIf(sumIf(d.delta, d.metric_name = 'http_requests_total'), 0) * 100 AS error_rate,
     -- Latency
-    avgIf(value, metric_name = 'http_request_duration_seconds' AND labels['quantile'] = '0.99') AS p99_latency,
+    i.p99_latency,
     -- Saturation (CPU)
-    avgIf(value, metric_name = 'process_cpu_usage') AS avg_cpu
-FROM metrics
-WHERE timestamp >= now() - INTERVAL 5 MINUTE
-GROUP BY service
+    i.avg_cpu
+FROM instant_metrics i
+LEFT JOIN metric_deltas d ON i.service = d.service
+GROUP BY i.service, i.p99_latency, i.avg_cpu
 ORDER BY error_rate DESC;
 ```
 
@@ -323,22 +342,10 @@ SELECT
     status_code,
     start_time,
     end_time,
-    -- Calculate depth in trace
-    length(splitByString(',',
-        arrayStringConcat(
-            arrayMap(x -> x.1,
-                arrayFilter(x -> x.2 <= start_time,
-                    arrayZip(
-                        groupArray(span_id) OVER (),
-                        groupArray(start_time) OVER ()
-                    )
-                )
-            ), ','
-        )
-    )) AS depth
+    row_number() OVER (PARTITION BY trace_id ORDER BY start_time) AS display_order
 FROM traces
 WHERE trace_id = 'abc123'
-ORDER BY start_time;
+ORDER BY display_order;
 
 -- Simpler trace view
 SELECT

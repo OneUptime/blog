@@ -44,8 +44,8 @@ Total slots: 16384 (0 to 16383)
 Key to slot: CRC16(key) mod 16384
 
 Example:
-- "user:1000" -> CRC16("user:1000") mod 16384 = 7186
-- Key goes to node holding slots 5461-10922 (Master 2)
+- "user:1000" -> CRC16("user:1000") mod 16384 = 1649
+- Key goes to node holding slots 0-5460 (Master 1)
 ```
 
 ### Hash Tags for Multi-Key Operations
@@ -133,12 +133,10 @@ services:
   redis-node-1:
     image: redis:7-alpine
     container_name: redis-node-1
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7000 --cluster-announce-ip 172.20.0.11 --cluster-announce-port 7000 --cluster-announce-bus-port 17000
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-1:/data
-    environment:
-      - REDIS_PORT=7000
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.11
@@ -149,12 +147,10 @@ services:
   redis-node-2:
     image: redis:7-alpine
     container_name: redis-node-2
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7001 --cluster-announce-ip 172.20.0.12 --cluster-announce-port 7001 --cluster-announce-bus-port 17001
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-2:/data
-    environment:
-      - REDIS_PORT=7001
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.12
@@ -165,12 +161,10 @@ services:
   redis-node-3:
     image: redis:7-alpine
     container_name: redis-node-3
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7002 --cluster-announce-ip 172.20.0.13 --cluster-announce-port 7002 --cluster-announce-bus-port 17002
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-3:/data
-    environment:
-      - REDIS_PORT=7002
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.13
@@ -181,12 +175,10 @@ services:
   redis-node-4:
     image: redis:7-alpine
     container_name: redis-node-4
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7003 --cluster-announce-ip 172.20.0.14 --cluster-announce-port 7003 --cluster-announce-bus-port 17003
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-4:/data
-    environment:
-      - REDIS_PORT=7003
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.14
@@ -197,12 +189,10 @@ services:
   redis-node-5:
     image: redis:7-alpine
     container_name: redis-node-5
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7004 --cluster-announce-ip 172.20.0.15 --cluster-announce-port 7004 --cluster-announce-bus-port 17004
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-5:/data
-    environment:
-      - REDIS_PORT=7004
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.15
@@ -213,12 +203,10 @@ services:
   redis-node-6:
     image: redis:7-alpine
     container_name: redis-node-6
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf --port 7005 --cluster-announce-ip 172.20.0.16 --cluster-announce-port 7005 --cluster-announce-bus-port 17005
     volumes:
       - ./redis-cluster.conf:/etc/redis/redis.conf
       - redis-data-6:/data
-    environment:
-      - REDIS_PORT=7005
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.16
@@ -275,7 +263,7 @@ appendonly yes
 
 ## Client Configuration
 
-### Python with redis-py-cluster
+### Python with redis-py
 
 ```python
 from redis.cluster import RedisCluster
@@ -299,7 +287,7 @@ rc.set('{user:1000}.email', 'john@example.com')
 # MGET works with hash tags
 values = rc.mget('{user:1000}.name', '{user:1000}.email')
 
-# Pipeline (must use hash tags for multiple keys)
+# Pipeline with related keys in the same hash slot
 pipe = rc.pipeline()
 pipe.set('{order:123}.status', 'pending')
 pipe.set('{order:123}.total', '99.99')
@@ -309,7 +297,9 @@ pipe.execute()
 ### Python with Connection Pool
 
 ```python
-from redis.cluster import RedisCluster, ClusterNode
+from redis.backoff import ExponentialBackoff
+from redis.cluster import RedisCluster, ClusterNode, LoadBalancingStrategy
+from redis.retry import Retry
 
 # Define startup nodes
 startup_nodes = [
@@ -328,11 +318,10 @@ rc = RedisCluster(
     max_connections=50,
 
     # Retry settings
-    retry_on_timeout=True,
-    cluster_error_retry_attempts=3,
+    retry=Retry(ExponentialBackoff(), 3),
 
     # Read from replicas
-    read_from_replicas=True
+    load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN
 )
 
 # Check cluster info
@@ -554,9 +543,9 @@ redis-cli -c -p 7000 -a password CLUSTER GETKEYSINSLOT 1000 10
 ### Monitoring Script
 
 ```python
-import redis
-from prometheus_client import Gauge, Counter, start_http_server
 import time
+import redis
+from prometheus_client import Gauge, start_http_server
 
 # Metrics
 cluster_state = Gauge('redis_cluster_state', 'Cluster state (1=ok, 0=fail)')
@@ -629,6 +618,8 @@ rc.set(f"user:{user_id}:settings", settings_data)  # Different slot
 
 ```python
 # This will fail without hash tags
+import redis
+
 try:
     rc.mget('key1', 'key2', 'key3')  # CROSSSLOT error if different slots
 except redis.exceptions.RedisClusterException:
@@ -698,10 +689,14 @@ rc.mset({'{myapp}.key1': 'val1', '{myapp}.key2': 'val2'})  # Works
 # ASK 1234 192.168.1.1:7001 - Slot being migrated
 
 # Ensure client handles redirections
+from redis.backoff import ExponentialBackoff
+from redis.cluster import RedisCluster
+from redis.retry import Retry
+
 rc = RedisCluster(
     host='localhost',
     port=7000,
-    cluster_error_retry_attempts=3  # Retry on redirect
+    retry=Retry(ExponentialBackoff(), 3)  # Retry on transient cluster errors
 )
 ```
 

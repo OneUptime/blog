@@ -37,7 +37,7 @@ flowchart LR
 | Server verified | ✅ | ✅ |
 | Client verified | ❌ | ✅ |
 | Man-in-middle protection | ✅ | ✅ |
-| Zero-trust compliant | ❌ | ✅ |
+| Mutual workload identity | ❌ | ✅ |
 
 ## Method 1: cert-manager with Self-Signed CA
 
@@ -46,10 +46,10 @@ flowchart LR
 ```bash
 # Install cert-manager
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify installation
-kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=300s
+kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
 ```
 
 ### Create Certificate Authority
@@ -202,9 +202,9 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
     "log"
     "net/http"
+    "os"
 )
 
 func main() {
@@ -215,12 +215,14 @@ func main() {
     }
 
     // Load CA certificate for client verification
-    caCert, err := ioutil.ReadFile("/certs/ca.crt")
+    caCert, err := os.ReadFile("/certs/ca.crt")
     if err != nil {
         log.Fatal(err)
     }
     caCertPool := x509.NewCertPool()
-    caCertPool.AppendCertsFromPEM(caCert)
+    if !caCertPool.AppendCertsFromPEM(caCert) {
+        log.Fatal("failed to parse CA certificate")
+    }
 
     // Configure TLS with client certificate requirement
     tlsConfig := &tls.Config{
@@ -238,8 +240,11 @@ func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         // Access client certificate info
         if len(r.TLS.PeerCertificates) > 0 {
-            clientCN := r.TLS.PeerCertificates[0].Subject.CommonName
-            log.Printf("Request from client: %s", clientCN)
+            clientID := r.TLS.PeerCertificates[0].Subject.CommonName
+            if clientID == "" && len(r.TLS.PeerCertificates[0].DNSNames) > 0 {
+                clientID = r.TLS.PeerCertificates[0].DNSNames[0]
+            }
+            log.Printf("Request from client: %s", clientID)
         }
         w.Write([]byte("Hello from mTLS server!"))
     })
@@ -258,9 +263,10 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "io"
     "log"
     "net/http"
+    "os"
 )
 
 func createMTLSClient() *http.Client {
@@ -271,12 +277,14 @@ func createMTLSClient() *http.Client {
     }
 
     // Load CA certificate for server verification
-    caCert, err := ioutil.ReadFile("/certs/ca.crt")
+    caCert, err := os.ReadFile("/certs/ca.crt")
     if err != nil {
         log.Fatal(err)
     }
     caCertPool := x509.NewCertPool()
-    caCertPool.AppendCertsFromPEM(caCert)
+    if !caCertPool.AppendCertsFromPEM(caCert) {
+        log.Fatal("failed to parse CA certificate")
+    }
 
     tlsConfig := &tls.Config{
         Certificates: []tls.Certificate{cert},
@@ -300,7 +308,7 @@ func main() {
     }
     defer resp.Body.Close()
 
-    body, _ := ioutil.ReadAll(resp.Body)
+    body, _ := io.ReadAll(resp.Body)
     log.Printf("Response: %s", body)
 }
 ```
@@ -346,6 +354,17 @@ def make_mtls_request():
 
 ```yaml
 # spire-server.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: spire
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -365,7 +384,7 @@ spec:
       serviceAccountName: spire-server
       containers:
         - name: spire-server
-          image: ghcr.io/spiffe/spire-server:1.8.5
+          image: ghcr.io/spiffe/spire-server:1.15.1
           args: ["-config", "/run/spire/config/server.conf"]
           ports:
             - containerPort: 8081
@@ -386,6 +405,19 @@ spec:
         resources:
           requests:
             storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: spire
+spec:
+  selector:
+    app: spire-server
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: 8081
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -430,6 +462,12 @@ data:
 
 ```yaml
 # spire-agent.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: spire
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -447,15 +485,19 @@ spec:
       serviceAccountName: spire-agent
       hostPID: true
       hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: spire-agent
-          image: ghcr.io/spiffe/spire-agent:1.8.5
+          image: ghcr.io/spiffe/spire-agent:1.15.1
           args: ["-config", "/run/spire/config/agent.conf"]
           volumeMounts:
             - name: config
               mountPath: /run/spire/config
             - name: spire-agent-socket
               mountPath: /run/spire/sockets
+            - name: spire-agent-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
       volumes:
         - name: config
           configMap:
@@ -464,6 +506,13 @@ spec:
           hostPath:
             path: /run/spire/sockets
             type: DirectoryOrCreate
+        - name: spire-agent-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent
+                  expirationSeconds: 600
+                  audience: spire-server
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -498,6 +547,15 @@ data:
 ### Register Workloads
 
 ```bash
+# Register SPIRE agent
+kubectl exec -n spire spire-server-0 -- \
+  /opt/spire/bin/spire-server entry create \
+  -spiffeID spiffe://production.local/ns/spire/sa/spire-agent \
+  -selector k8s_psat:cluster:production \
+  -selector k8s_psat:agent_ns:spire \
+  -selector k8s_psat:agent_sa:spire-agent \
+  -node
+
 # Register service-a
 kubectl exec -n spire spire-server-0 -- \
   /opt/spire/bin/spire-server entry create \
@@ -633,7 +691,7 @@ kubectl create secret generic $SERVICE_NAME-mtls \
     --dry-run=client -o yaml
 ```
 
-### Network Policies for mTLS
+### Network Policies to Limit mTLS Traffic
 
 ```yaml
 # mtls-network-policy.yaml

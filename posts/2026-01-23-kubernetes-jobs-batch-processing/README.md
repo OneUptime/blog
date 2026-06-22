@@ -30,7 +30,7 @@ spec:
 
 Key differences from Deployments:
 - `restartPolicy` must be `Never` or `OnFailure`
-- Job completes when pod succeeds
+- Job completes when the required pod completions succeed
 - `backoffLimit` controls retry attempts
 
 ## Job Completion Modes
@@ -86,19 +86,13 @@ kind: Job
 metadata:
   name: work-queue
 spec:
-  completions: null       # Not set
   parallelism: 5         # Run 5 workers
-  completionMode: Indexed # Each pod gets unique index
   template:
     spec:
       containers:
         - name: worker
           image: worker:v1
-          env:
-            - name: JOB_COMPLETION_INDEX
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          command: ["python", "worker.py", "--until-empty"]
       restartPolicy: Never
 ```
 
@@ -200,7 +194,7 @@ spec:
           containerName: main
           operator: In
           values: [42]
-      # Retry on OOM
+      # Ignore pod disruptions
       - action: Ignore
         onPodConditions:
           - type: DisruptionTarget
@@ -385,13 +379,13 @@ spec:
 
 ```bash
 # Delete completed jobs
-kubectl delete jobs --field-selector=status.successful=1
+kubectl get jobs -o json | jq -r '.items[] | select(.status.conditions[]? | .type == "Complete" and .status == "True") | .metadata.name' | xargs -r kubectl delete job
 
 # Delete failed jobs
-kubectl delete jobs --field-selector=status.successful=0
+kubectl get jobs -o json | jq -r '.items[] | select(.status.conditions[]? | .type == "Failed" and .status == "True") | .metadata.name' | xargs -r kubectl delete job
 
 # Delete all jobs older than 1 day
-kubectl get jobs -o json | jq -r '.items[] | select(.status.completionTime < (now - 86400 | todate)) | .metadata.name' | xargs kubectl delete job
+kubectl get jobs -o json | jq -r '.items[] | select(.status.completionTime != null and (.status.completionTime | fromdateiso8601) < (now - 86400)) | .metadata.name' | xargs -r kubectl delete job
 ```
 
 Resource Management
@@ -504,7 +498,7 @@ batch_v1.create_namespaced_job(namespace="default", body=job)
 
 ## Best Practices
 
-1. **Always set backoffLimit** to prevent infinite retries
+1. **Always set backoffLimit** to make retry behavior explicit
 2. **Use ttlSecondsAfterFinished** for automatic cleanup
 3. **Set resource limits** to prevent runaway jobs
 4. **Use activeDeadlineSeconds** for time-sensitive jobs

@@ -170,9 +170,9 @@ class ProgressTracker:
 
         # Check if achievement should be unlocked
         if new_progress >= target:
-            self._unlock_achievement(player_id, achievement_id, achievement)
-            result["unlocked"] = True
-            result["points_earned"] = int(achievement.get("points", 0))
+            if self._unlock_achievement(player_id, achievement_id, achievement):
+                result["unlocked"] = True
+                result["points_earned"] = int(achievement.get("points", 0))
 
         return result
 
@@ -203,8 +203,8 @@ class ProgressTracker:
         }
 
         if value >= target:
-            self._unlock_achievement(player_id, achievement_id, achievement)
-            result["unlocked"] = True
+            if self._unlock_achievement(player_id, achievement_id, achievement):
+                result["unlocked"] = True
 
         return result
 
@@ -236,7 +236,7 @@ class ProgressTracker:
         player_id: str,
         achievement_id: str,
         achievement: Dict
-    ):
+    ) -> bool:
         """Unlock an achievement for a player."""
         unlocked_key = f"player:{player_id}:achievements"
         unlock_times_key = f"player:{player_id}:achievement_times"
@@ -245,11 +245,11 @@ class ProgressTracker:
         unlock_time = time.time()
         points = int(achievement.get("points", 0))
 
+        # SADD returns 1 only when this achievement was newly unlocked.
+        if not self.redis.sadd(unlocked_key, achievement_id):
+            return False
+
         pipe = self.redis.pipeline()
-
-        # Add to unlocked set
-        pipe.sadd(unlocked_key, achievement_id)
-
         # Record unlock time
         pipe.hset(unlock_times_key, achievement_id, unlock_time)
 
@@ -274,6 +274,7 @@ class ProgressTracker:
 
         # Check for meta-achievements
         self._check_meta_achievements(player_id)
+        return True
 
     def _notify_unlock(
         self,
@@ -361,13 +362,12 @@ class CollectionTracker:
         """Get collection completion status."""
         bitmap_key = f"player:{player_id}:collection:{collection_id}"
 
-        collected_count = self.redis.bitcount(bitmap_key)
-
         # Get which items are collected
         collected_items = []
         for i in range(total_items):
             if self.redis.getbit(bitmap_key, i):
                 collected_items.append(i)
+        collected_count = len(collected_items)
 
         return {
             "collection_id": collection_id,
@@ -527,6 +527,10 @@ class TieredAchievementTracker:
     def __init__(self, redis_client: redis.Redis):
         self.redis = redis_client
 
+    def _hash_get(self, data: Dict, key: str, default: str = None):
+        """Get a hash value from clients with or without decode_responses."""
+        return data.get(key, data.get(key.encode(), default))
+
     def define_tiered_achievement(
         self,
         base_id: str,
@@ -576,9 +580,11 @@ class TieredAchievementTracker:
         if not tier_data:
             return []
 
-        tiers = json.loads(tier_data[b"tiers"])
+        tiers = json.loads(self._hash_get(tier_data, "tiers", "[]"))
         tracker = ProgressTracker(self.redis)
         unlocked_tiers = []
+
+        self.redis.set(f"player:{player_id}:progress:{base_id}", new_value)
 
         for tier in tiers:
             tier_achievement_id = f"{base_id}_{tier['level']}"
@@ -618,7 +624,7 @@ class TieredAchievementTracker:
         if not tier_data:
             return None
 
-        tiers = json.loads(tier_data[b"tiers"])
+        tiers = json.loads(self._hash_get(tier_data, "tiers", "[]"))
         progress_key = f"player:{player_id}:progress:{base_id}"
         current_progress = int(self.redis.get(progress_key) or 0)
 
@@ -649,7 +655,11 @@ class TieredAchievementTracker:
 
         return {
             "base_id": base_id,
-            "name": tier_data.get(b"name", b"").decode(),
+            "name": (
+                self._hash_get(tier_data, "name", b"").decode()
+                if isinstance(self._hash_get(tier_data, "name", ""), bytes)
+                else self._hash_get(tier_data, "name", "")
+            ),
             "current_progress": current_progress,
             "current_tier": current_tier,
             "next_tier": next_tier,
@@ -671,8 +681,7 @@ class AchievementSystem {
     // Register an achievement
     async registerAchievement(achievement) {
         const key = `achievement:${achievement.id}`;
-
-        await this.redis.hset(key, {
+        const achievementData = {
             id: achievement.id,
             name: achievement.name,
             description: achievement.description,
@@ -682,7 +691,9 @@ class AchievementSystem {
             category: achievement.category,
             hidden: achievement.hidden ? 'true' : 'false',
             iconUrl: achievement.iconUrl || ''
-        });
+        };
+
+        await this.redis.hset(key, ...Object.entries(achievementData).flat());
 
         await this.redis.sadd('achievements:all', achievement.id);
         await this.redis.sadd(`achievements:category:${achievement.category}`, achievement.id);
@@ -720,9 +731,11 @@ class AchievementSystem {
 
         // Check for unlock
         if (newProgress >= target) {
-            await this.unlockAchievement(playerId, achievementId, achievement);
-            result.unlocked = true;
-            result.pointsEarned = parseInt(achievement.points);
+            const unlocked = await this.unlockAchievement(playerId, achievementId, achievement);
+            if (unlocked) {
+                result.unlocked = true;
+                result.pointsEarned = parseInt(achievement.points);
+            }
         }
 
         return result;
@@ -730,11 +743,15 @@ class AchievementSystem {
 
     // Unlock achievement
     async unlockAchievement(playerId, achievementId, achievement) {
-        const pipeline = this.redis.pipeline();
         const unlockTime = Date.now();
 
-        // Add to unlocked set
-        pipeline.sadd(`player:${playerId}:achievements`, achievementId);
+        // SADD returns 1 only when this achievement was newly unlocked.
+        const added = await this.redis.sadd(`player:${playerId}:achievements`, achievementId);
+        if (!added) {
+            return false;
+        }
+
+        const pipeline = this.redis.pipeline();
 
         // Record unlock time
         pipeline.hset(`player:${playerId}:achievement_times`, achievementId, unlockTime);
@@ -767,6 +784,8 @@ class AchievementSystem {
                 timestamp: unlockTime
             })
         );
+
+        return true;
     }
 
     // Get player's achievement status

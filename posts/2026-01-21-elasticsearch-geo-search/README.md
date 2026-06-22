@@ -25,7 +25,11 @@ curl -X PUT "https://localhost:9200/stores" \
       "properties": {
         "name": { "type": "text" },
         "location": { "type": "geo_point" },
-        "address": { "type": "text" }
+        "address": { "type": "text" },
+        "phone": { "type": "keyword" },
+        "hours": { "type": "object" },
+        "services": { "type": "keyword" },
+        "is_open": { "type": "boolean" }
       }
     }
   }'
@@ -207,7 +211,7 @@ curl -X GET "https://localhost:9200/stores/_search" \
   }'
 ```
 
-## Geo Polygon Query
+## Geo Shape Polygon Query
 
 Find documents within a polygon:
 
@@ -217,14 +221,19 @@ curl -X GET "https://localhost:9200/stores/_search" \
   -u elastic:password \
   -d '{
     "query": {
-      "geo_polygon": {
+      "geo_shape": {
         "location": {
-          "points": [
-            { "lat": 40.7, "lon": -74.0 },
-            { "lat": 40.8, "lon": -74.0 },
-            { "lat": 40.8, "lon": -73.9 },
-            { "lat": 40.7, "lon": -73.9 }
-          ]
+          "shape": {
+            "type": "polygon",
+            "coordinates": [[
+              [-74.0, 40.7],
+              [-74.0, 40.8],
+              [-73.9, 40.8],
+              [-73.9, 40.7],
+              [-74.0, 40.7]
+            ]]
+          },
+          "relation": "intersects"
         }
       }
     }
@@ -266,16 +275,15 @@ curl -X PUT "https://localhost:9200/regions/_doc/2" \
     }
   }'
 
-# Circle (as envelope)
+# Bounding box (envelope)
 curl -X PUT "https://localhost:9200/regions/_doc/3" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "name": "Delivery Zone",
     "boundary": {
-      "type": "circle",
-      "coordinates": [-73.9857, 40.7484],
-      "radius": "5km"
+      "type": "envelope",
+      "coordinates": [[-74.0307, 40.7934], [-73.9407, 40.7034]]
     }
   }'
 ```
@@ -305,8 +313,8 @@ curl -X GET "https://localhost:9200/regions/_search" \
 
 - `intersects`: Any overlap (default)
 - `disjoint`: No overlap
-- `within`: Shape completely inside indexed shape
-- `contains`: Indexed shape completely inside query shape
+- `within`: Indexed shape completely inside query shape
+- `contains`: Indexed shape completely contains query shape
 
 ## Sorting by Distance
 

@@ -58,10 +58,12 @@ This error means the Endpoints API hasn't been enabled for your project or the s
 
 gcloud services enable servicemanagement.googleapis.com
 gcloud services enable servicecontrol.googleapis.com
-gcloud services enable endpoints.googleapis.com
+
+# Enable your deployed Endpoints service name after deployment
+gcloud services enable your-api.endpoints.your-project.cloud.goog
 
 # Verify APIs are enabled
-gcloud services list --enabled | grep -E "(servicemanagement|servicecontrol|endpoints)"
+gcloud services list --enabled | grep -E "(servicemanagement|servicecontrol|your-api)"
 ```
 
 ### Deploy Your API Configuration
@@ -71,7 +73,7 @@ gcloud services list --enabled | grep -E "(servicemanagement|servicecontrol|endp
 gcloud endpoints services deploy openapi.yaml
 
 # For gRPC services, deploy the descriptor and config
-gcloud endpoints services deploy api_descriptor.pb service_config.yaml
+gcloud endpoints services deploy api_descriptor.pb api_config.yaml
 
 # Verify deployment
 gcloud endpoints services describe your-api.endpoints.your-project.cloud.goog
@@ -143,7 +145,7 @@ paths:
 
 ```bash
 # Decode a JWT token to inspect claims (without verification)
-echo "YOUR_JWT_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+echo "YOUR_JWT_TOKEN" | cut -d'.' -f2 | tr '_-' '/+' | base64 --decode 2>/dev/null | jq .
 
 # Check required claims:
 # - iss (issuer): Must match x-google-issuer
@@ -157,17 +159,16 @@ echo "YOUR_JWT_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
 ```python
 # Client-side: Ensure token is fresh before requests
 import google.auth.transport.requests
-from google.oauth2 import id_token
 
-def get_valid_token(client_id):
+def get_valid_token(audience):
     """Get a valid Google ID token."""
     request = google.auth.transport.requests.Request()
 
-    # For service accounts
+    # For service accounts on Google Cloud runtimes such as Cloud Run or Compute Engine
     from google.auth import compute_engine
     credentials = compute_engine.IDTokenCredentials(
         request=request,
-        target_audience=client_id
+        target_audience=audience
     )
     credentials.refresh(request)
     return credentials.token
@@ -175,7 +176,7 @@ def get_valid_token(client_id):
 # Make request with token
 import requests
 
-token = get_valid_token("your-api.endpoints.your-project.cloud.goog")
+token = get_valid_token("https://your-api.endpoints.your-project.cloud.goog")
 response = requests.get(
     "https://your-api.endpoints.your-project.cloud.goog/api/data",
     headers={"Authorization": f"Bearer {token}"}
@@ -198,10 +199,10 @@ steps:
       - '-c'
       - |
         gcloud run deploy my-api \
-          --image="gcr.io/my-project/my-api:latest" \
+          --image="gcr.io/my-project/endpoints-runtime-serverless:ESPv2_VERSION-my-api.endpoints.my-project.cloud.goog-CONFIG_ID" \
           --platform=managed \
           --region=us-central1 \
-          --set-env-vars="^@^ENDPOINTS_SERVICE_NAME=my-api.endpoints.my-project.cloud.goog" \
+          --set-env-vars=ESPv2_ARGS=--service_control_network_fail_policy=close \
           --allow-unauthenticated
 ```
 
@@ -288,12 +289,12 @@ API quota limits have been reached.
 
 ```bash
 # View current quota usage
-gcloud endpoints quota list \
+gcloud alpha endpoints quota list \
     --service=my-api.endpoints.my-project.cloud.goog \
-    --consumer=project:my-project
+    --consumer=projects/my-project
 
-# Request quota increase (opens browser)
-gcloud endpoints quota update --help
+# Review quota override options
+gcloud alpha endpoints quota --help
 ```
 
 ### Configure Quotas in OpenAPI
@@ -362,10 +363,13 @@ gcloud endpoints services deploy openapi.yaml
 docker run -d \
     --name esp \
     -p 8080:8080 \
-    gcr.io/endpoints-release/endpoints-runtime:2 \
+    gcr.io/endpoints-release/endpoints-runtime:1 \
     --service=my-api.endpoints.my-project.cloud.goog \
-    --rollout_strategy=managed \  # Or fixed with --version=CONFIG_ID
+    --rollout_strategy=managed \
     --backend=http://localhost:8081
+
+# Or use a fixed configuration:
+# --rollout_strategy=fixed --version=CONFIG_ID
 ```
 
 ## Complete Debugging Workflow
@@ -442,12 +446,12 @@ x-google-backend:
 
 ```bash
 # Set up uptime checks
-gcloud monitoring uptime-check-configs create my-api-check \
-    --display-name="My API Health Check" \
+gcloud monitoring uptime create "My API Health Check" \
     --resource-type=uptime-url \
-    --hostname="my-api.endpoints.my-project.cloud.goog" \
+    --resource-labels=host=my-api.endpoints.my-project.cloud.goog,project_id=my-project \
+    --protocol=https \
     --path="/health" \
-    --check-interval=60s
+    --period=1
 ```
 
 ---

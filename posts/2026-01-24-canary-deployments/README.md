@@ -272,9 +272,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: myapp-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -311,8 +310,10 @@ Flagger works with service meshes like Istio and Linkerd for traffic management.
 ```bash
 # Install Flagger with Istio support
 helm repo add flagger https://flagger.app
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
 helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 ```
@@ -336,7 +337,7 @@ spec:
     port: 80
     targetPort: 8080
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - myapp.example.com
   # Canary analysis configuration
@@ -347,7 +348,7 @@ spec:
     maxWeight: 50
     # Increment step
     stepWeight: 10
-    # Number of successful checks before promotion
+    # Max number of failed metric checks before rollback
     threshold: 5
     # Metrics for analysis
     metrics:
@@ -512,6 +513,14 @@ spec:
 # Combined canary + feature flag strategy
 strategy:
   canary:
+    canaryService: myapp-canary
+    stableService: myapp-stable
+    trafficRouting:
+      managedRoutes:
+        - name: internal-users
+      istio:
+        virtualService:
+          name: myapp
     steps:
       # First, enable for internal users only
       - setHeaderRoute:

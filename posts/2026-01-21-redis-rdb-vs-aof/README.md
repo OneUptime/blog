@@ -216,7 +216,7 @@ class PersistenceAdvisor:
             needs_fast_restart):
             reasoning.append("Relaxed durability + fast restart favors RDB-only")
             config = {
-                'save': '900 1\nsave 300 10\nsave 60 10000',
+                'save': '900 1\n300 10\n60 10000',
                 'appendonly': 'no',
                 'rdbcompression': 'yes',
                 'rdbchecksum': 'yes'
@@ -242,7 +242,7 @@ class PersistenceAdvisor:
             reasoning.append("High write throughput uses everysec for performance")
 
         config = {
-            'save': '900 1\nsave 300 10\nsave 60 10000',
+            'save': '900 1\n300 10\n60 10000',
             'appendonly': 'yes',
             'appendfsync': fsync_policy,
             'aof-use-rdb-preamble': 'yes',
@@ -252,8 +252,9 @@ class PersistenceAdvisor:
 
         if large_dataset:
             warnings.append("Large dataset may cause long AOF rewrites")
+            warnings.append("no-appendfsync-on-rewrite yes weakens durability during rewrites")
             config['no-appendfsync-on-rewrite'] = 'yes'
-            reasoning.append("Disabled fsync during rewrite for large dataset")
+            reasoning.append("Disabled fsync during rewrite to reduce latency for large dataset")
 
         return PersistenceRecommendation(
             strategy=PersistenceStrategy.HYBRID,
@@ -431,6 +432,7 @@ class RedisPersistenceConfig {
         if (datasetSizeGB > 10) {
             config['no-appendfsync-on-rewrite'] = 'yes';
             warnings.push('Large dataset may cause long AOF rewrites');
+            warnings.push('no-appendfsync-on-rewrite yes weakens durability during rewrites');
         }
 
         return {
@@ -490,24 +492,25 @@ console.log(advisor.generateConfig(recommendation));
 
 ## Hybrid Persistence with RDB Preamble
 
-Redis 7.0+ supports a hybrid format that combines RDB and AOF benefits:
+Redis 4.0+ supports a hybrid AOF rewrite format that combines RDB and AOF benefits. Redis 7.0+ uses multi-part AOF files and stores the base file in RDB format by default:
 
 ```bash
-# Enable RDB preamble for AOF (Redis 7.0+)
+# Enable RDB preamble for AOF (Redis 4.0+; default yes in Redis 7.0+)
 aof-use-rdb-preamble yes
 ```
 
 With this option:
-- AOF rewrite creates an RDB snapshot as the file header
+- AOF rewrite creates an RDB snapshot as the base file or file header
 - Subsequent writes are appended as AOF commands
 - Recovery loads the RDB portion quickly, then replays recent commands
 
 ### Hybrid File Structure
 
 ```text
-appendonly.aof
-|-- RDB preamble (compact binary snapshot)
-|-- AOF commands (human-readable, recent writes)
+appendonlydir/
+|-- appendonly.aof.1.base.rdb    # RDB base snapshot
+|-- appendonly.aof.1.incr.aof    # AOF commands with recent writes
+|-- appendonly.aof.manifest      # Redis 7.0+ manifest
 ```
 
 This provides:
@@ -541,11 +544,11 @@ redis-cli DBSIZE
 sudo systemctl stop redis
 
 # Copy AOF file
-cp /backup/appendonly.aof /var/lib/redis/appendonly.aof
-chown redis:redis /var/lib/redis/appendonly.aof
+cp -a /backup/appendonlydir /var/lib/redis/appendonlydir
+chown -R redis:redis /var/lib/redis/appendonlydir
 
 # Check for corruption
-redis-check-aof /var/lib/redis/appendonly.aof
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # Start Redis
 sudo systemctl start redis
@@ -558,7 +561,7 @@ When both RDB and AOF are present, Redis uses AOF by default (more complete):
 ```bash
 # Redis prioritizes AOF over RDB when both exist
 # Ensure AOF is valid before starting
-redis-check-aof --fix /var/lib/redis/appendonly.aof
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # Start Redis - it will load from AOF
 sudo systemctl start redis
@@ -640,4 +643,4 @@ print(f"Hybrid: {hybrid:.0f} ops/sec ({hybrid/baseline*100:.1f}%)")
 
 ## Conclusion
 
-Choosing between RDB and AOF depends on your specific requirements for durability, recovery time, and performance. For most production deployments, the hybrid approach provides the best balance - RDB for fast recovery and efficient backups, combined with AOF for minimal data loss. Redis 7.0's RDB preamble feature makes hybrid persistence even more attractive by combining the best aspects of both approaches.
+Choosing between RDB and AOF depends on your specific requirements for durability, recovery time, and performance. For most production deployments, the hybrid approach provides the best balance - RDB for fast recovery and efficient backups, combined with AOF for minimal data loss. Redis 7.0's multi-part AOF format uses RDB base files by default, which makes hybrid persistence even more attractive by combining the best aspects of both approaches.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Apache Kafka, Kafka Streams, Testing, TopologyTestDriver, Unit Testing, Integration Testing
 
-Description: Learn how to test Kafka Streams applications using TopologyTestDriver for unit tests and embedded Kafka for integration tests, including testing stateful operations, windowed aggregations.
+Description: Learn how to test Kafka Streams applications using TopologyTestDriver for unit tests and Testcontainers-managed Kafka for integration tests, including testing stateful operations, windowed aggregations.
 
 ---
 
@@ -35,8 +35,20 @@ Testing Kafka Streams applications requires different strategies for unit testin
     </dependency>
     <dependency>
         <groupId>org.testcontainers</groupId>
-        <artifactId>kafka</artifactId>
-        <version>1.19.0</version>
+        <artifactId>testcontainers-kafka</artifactId>
+        <version>2.0.5</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-junit-jupiter</artifactId>
+        <version>2.0.5</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>3.26.3</version>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -195,6 +207,10 @@ public class WindowedAggregationTest {
         StreamsBuilder builder = new StreamsBuilder();
 
         TimeWindows windows = TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5));
+        Serde<Windowed<String>> windowedSerde = WindowedSerdes.timeWindowedSerdeFrom(
+            String.class,
+            Duration.ofMinutes(5).toMillis()
+        );
 
         builder.stream("input", Consumed.with(Serdes.String(), Serdes.Long()))
             .groupByKey()
@@ -212,7 +228,7 @@ public class WindowedAggregationTest {
         inputTopic = testDriver.createInputTopic(
             "input", new StringSerializer(), new LongSerializer());
         outputTopic = testDriver.createOutputTopic(
-            "output", windowedDeserializer, new LongDeserializer());
+            "output", windowedSerde.deserializer(), new LongDeserializer());
     }
 
     @Test
@@ -390,23 +406,19 @@ public class ErrorHandlingTest {
 ## Integration Testing with Testcontainers
 
 ```java
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.kafka.ConfluentKafkaContainer;
 
+@Testcontainers
 public class KafkaStreamsIntegrationTest {
     @Container
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.5.0")
-    );
+    static ConfluentKafkaContainer kafka = new ConfluentKafkaContainer(
+        "confluentinc/cp-kafka:7.5.0");
 
     private KafkaStreams streams;
     private KafkaProducer<String, String> producer;
     private KafkaConsumer<String, String> consumer;
-
-    @BeforeAll
-    static void startKafka() {
-        kafka.start();
-    }
 
     @BeforeEach
     void setup() {

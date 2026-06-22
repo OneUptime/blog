@@ -148,8 +148,6 @@ volumes:
     "keys.format.class": "io.confluent.connect.s3.format.json.JsonFormat",
 
     "s3.part.size": "26214400",
-    "s3.compression.type": "gzip",
-    "s3.compression.level": "6",
 
     "retry.backoff.ms": "5000",
     "s3.retry.backoff.ms": "1000",
@@ -275,9 +273,9 @@ Path: `topics/orders/country=US/city=NYC/orders+0+0000000000.json`
 }
 ```
 
-Path: `topics/orders/2024/01/15/orders+0+0000000000.json`
+Path: `topics/orders/year=2024/month=01/day=15/orders+0+0000000000.json`
 
-### Custom Partitioner
+### Custom Time-Based Partitioning
 
 ```json
 {
@@ -315,19 +313,20 @@ Flush after 10,000 records.
 }
 ```
 
-Rotate every 10 minutes regardless of size.
+Rotate when record timestamps cross 10-minute spans.
 
 ### Scheduled Rotation
 
 ```json
 {
   "config": {
+    "timezone": "UTC",
     "rotate.schedule.interval.ms": "3600000"
   }
 }
 ```
 
-Rotate on schedule (hourly boundaries).
+Rotate on schedule (hourly boundaries). Set `timezone` when using scheduled rotation.
 
 ### Combined Strategy
 
@@ -336,6 +335,7 @@ Rotate on schedule (hourly boundaries).
   "config": {
     "flush.size": "10000",
     "rotate.interval.ms": "600000",
+    "timezone": "UTC",
     "rotate.schedule.interval.ms": "3600000"
   }
 }
@@ -348,15 +348,18 @@ Rotate when any condition is met.
 ```json
 {
   "config": {
-    "s3.part.size": "5242880",
-    "store.url": "true",
-    "store.kafka.keys": "true",
-    "store.kafka.headers": "true"
+    "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
+    "timestamp.extractor": "Record",
+    "partition.duration.ms": "3600000",
+    "path.format": "'year'=YYYY/'month'=MM/'day'=dd/'hour'=HH",
+    "locale": "en-US",
+    "timezone": "UTC",
+    "rotate.interval.ms": "600000"
   }
 }
 ```
 
-Note: The S3 Sink uses offset tracking to ensure at-least-once delivery. For exactly-once semantics in the consumer, deduplicate using stored Kafka metadata.
+Note: The S3 Sink can provide exactly-once semantics to consumers of S3 objects when it uses a deterministic partitioner. The default and field partitioners are deterministic; for `TimeBasedPartitioner`, use a deterministic timestamp extractor such as `Record` or `RecordField` and `rotate.interval.ms`. Do not use `rotate.schedule.interval.ms` when exactly-once guarantees are required.
 
 ## Compression
 
@@ -429,7 +432,7 @@ Note: The S3 Sink uses offset tracking to ensure at-least-once delivery. For exa
 ```json
 {
   "config": {
-    "s3.sse.customer.algorithm": "AES256",
+    "s3.ssea.name": "AES256",
     "s3.sse.customer.key": "${secrets:s3-encryption:key}"
   }
 }
@@ -463,18 +466,16 @@ curl http://localhost:8083/connectors/s3-sink/tasks | jq
 
 ```yaml
 # JMX metrics
-kafka.connect:type=sink-task-metrics,connector=s3-sink
+kafka.connect:type=sink-task-metrics,connector=s3-sink,task=0
   - sink-record-send-rate
   - sink-record-send-total
-  - offset-commit-success-percentage
+  - sink-record-active-count
 
 kafka.connect:type=connector-metrics,connector=s3-sink
-  - connector-status
+  - status
 
-io.confluent.connect.s3:type=s3-sink-connector-metrics
-  - s3-part-upload-time-ms
-  - s3-part-upload-count
-  - records-written
+kafka.connect:type=connector-task-metrics,connector=s3-sink,task=0
+  - offset-commit-success-percentage
 ```
 
 ### S3 Metrics
@@ -559,7 +560,7 @@ resource "aws_glue_crawler" "orders_crawler" {
 
 ## Best Practices
 
-1. **Use Parquet or Avro** - Columnar formats for analytics
+1. **Use Parquet or Avro** - Parquet for columnar analytics, Avro for schema evolution
 2. **Time-based partitioning** - Enables efficient queries
 3. **Appropriate flush size** - Balance file size vs latency
 4. **Schema Registry** - Handle schema evolution

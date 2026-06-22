@@ -51,9 +51,9 @@ GROUP BY engine;
 
 -- Check for unsupported features
 -- ClickHouse Cloud supports most features, but verify:
--- - Custom UDFs
--- - External dictionaries (external sources)
--- - Kafka/RabbitMQ engines (use ClickPipes instead)
+-- - Custom UDFs (public beta in ClickHouse Cloud)
+-- - External dictionaries (verify supported sources)
+-- - Kafka/RabbitMQ engines (supported, but ClickPipes is recommended for managed ingestion)
 ```
 
 ## Migration Methods
@@ -61,19 +61,23 @@ GROUP BY engine;
 ### Method 1: Remote Table Copy
 
 ```sql
--- On ClickHouse Cloud: Create table structure
-CREATE TABLE events AS remote(
-    'self-hosted-host:9000',
+-- On ClickHouse Cloud: Create table structure over a secure native connection
+CREATE TABLE events
+ENGINE = MergeTree()
+ORDER BY (timestamp, event_id)
+AS SELECT *
+FROM remoteSecure(
+    'self-hosted-host:9440',
     'default',
     'events',
     'user',
     'password'
-) ENGINE = MergeTree()
-ORDER BY (timestamp, event_id);
+)
+LIMIT 0;
 
--- Copy data using remote() function
+-- Copy data using remoteSecure() function
 INSERT INTO events
-SELECT * FROM remote(
+SELECT * FROM remoteSecure(
     'self-hosted-host:9440',
     'default',
     'events',
@@ -88,7 +92,7 @@ SETTINGS max_execution_time = 0;
 ```sql
 -- Self-hosted: Export to S3
 INSERT INTO FUNCTION s3(
-    'https://bucket.s3.amazonaws.com/migration/events/',
+    'https://bucket.s3.amazonaws.com/migration/events/events.parquet',
     'access_key',
     'secret_key',
     'Parquet'
@@ -103,34 +107,23 @@ SELECT * FROM s3(
 );
 ```
 
-### Method 3: clickhouse-backup Tool
+### Method 3: Native BACKUP/RESTORE
 
-```bash
-# Install clickhouse-backup on self-hosted
+```sql
+-- Self-hosted: Create a native backup in S3
+BACKUP DATABASE analytics
+TO S3(
+    'https://migration-bucket.s3.amazonaws.com/backups/analytics.zip',
+    'access_key',
+    'secret_key'
+);
 
-wget https://github.com/AlexAkulov/clickhouse-backup/releases/latest/download/clickhouse-backup-linux-amd64.tar.gz
-tar -xzf clickhouse-backup-linux-amd64.tar.gz
-
-# Configure for S3
-cat > /etc/clickhouse-backup/config.yml << EOF
-general:
-  remote_storage: s3
-s3:
-  access_key: "your-access-key"
-  secret_key: "your-secret-key"
-  bucket: "migration-bucket"
-  region: "us-east-1"
-  path: "backups"
-EOF
-
-# Create backup
-clickhouse-backup create backup_$(date +%Y%m%d)
-
-# Upload to S3
-clickhouse-backup upload backup_$(date +%Y%m%d)
-
-# On ClickHouse Cloud: Restore using support team
-# Contact ClickHouse Cloud support for restoration
+-- ClickHouse Cloud: Restore from S3 using configured role-based access
+RESTORE DATABASE analytics
+FROM S3(
+    'https://migration-bucket.s3.amazonaws.com/backups/analytics.zip',
+    extra_credentials(role_arn = 'arn:aws:iam::123456789012:role/ClickHouseAccessRole')
+);
 ```
 
 ## Schema Migration
@@ -176,7 +169,7 @@ ORDER BY product_id;
 
 -- Then create dictionary from table
 CREATE DICTIONARY products_dict (...)
-SOURCE(CLICKHOUSE(TABLE 'products'))
+SOURCE(CLICKHOUSE(HOST 'localhost' PORT tcpPort() USER 'default' DB 'default' TABLE 'products'))
 ...;
 ```
 
@@ -233,7 +226,7 @@ class ClickHouseMigrator:
             # Export chunk
             self.source.command(f"""
                 INSERT INTO FUNCTION s3(
-                    'https://bucket.s3.amazonaws.com/migration/{table}/{current_date}/',
+                    'https://bucket.s3.amazonaws.com/migration/{table}/{current_date}.parquet',
                     'key', 'secret', 'Parquet'
                 )
                 SELECT * FROM {database}.{table}
@@ -245,7 +238,7 @@ class ClickHouseMigrator:
             self.target.command(f"""
                 INSERT INTO {database}.{table}
                 SELECT * FROM s3(
-                    'https://bucket.s3.amazonaws.com/migration/{table}/{current_date}/*.parquet',
+                    'https://bucket.s3.amazonaws.com/migration/{table}/{current_date}.parquet',
                     'Parquet'
                 )
             """)
@@ -375,7 +368,7 @@ Migrating to ClickHouse Cloud involves:
 
 1. **Assessment** - Evaluate current setup
 2. **Schema migration** - Adapt for cloud compatibility
-3. **Data transfer** - Use S3 or remote() function
+3. **Data transfer** - Use S3 or remoteSecure() function
 4. **Validation** - Verify data integrity
 5. **Cutover** - Switch traffic with minimal downtime
 

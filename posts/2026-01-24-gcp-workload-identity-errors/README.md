@@ -8,7 +8,7 @@ Description: A practical troubleshooting guide for fixing Workload Identity erro
 
 ---
 
-Workload Identity is the recommended way for GKE workloads to access Google Cloud APIs. It eliminates the need for service account keys by letting Kubernetes service accounts impersonate IAM service accounts. However, the configuration involves multiple components that must align perfectly. When something goes wrong, the error messages can be cryptic. This guide covers the most common Workload Identity errors and how to fix them.
+Workload Identity is the recommended way for GKE workloads to access Google Cloud APIs. It eliminates the need for service account keys by letting Kubernetes service accounts authenticate through the GKE metadata server, and it can also link Kubernetes service accounts to IAM service accounts when you need service account impersonation. However, the configuration involves multiple components that must align perfectly. When something goes wrong, the error messages can be cryptic. This guide covers the most common Workload Identity errors and how to fix them.
 
 ## How Workload Identity Works
 
@@ -17,19 +17,17 @@ Understanding the flow helps diagnose issues faster:
 ```mermaid
 sequenceDiagram
     participant Pod as Pod
-    participant KSA as Kubernetes SA
     participant GKE as GKE Metadata Server
-    participant IAM as Cloud IAM
-    participant GSA as Google SA
+    participant IAM as IAM and STS
+    participant Credentials as IAM Credentials API
     participant API as GCP API
 
-    Pod->>KSA: Request token
-    KSA->>GKE: Forward request
-    GKE->>IAM: Validate binding
-    IAM->>GSA: Check permissions
-    GSA-->>IAM: Permissions granted
-    IAM-->>GKE: Issue token
-    GKE-->>Pod: Return token
+    Pod->>GKE: Request credentials
+    GKE->>IAM: Validate Kubernetes identity
+    IAM-->>GKE: Return federated token
+    GKE->>Credentials: Generate access token if linked to an IAM service account
+    Credentials-->>GKE: Return access token
+    GKE-->>Pod: Return credentials
     Pod->>API: Call with token
     API-->>Pod: Response
 ```
@@ -59,7 +57,7 @@ gcloud container clusters update my-cluster \
     --zone us-central1-a \
     --workload-pool=my-project.svc.id.goog
 
-# This requires node pool recreation to take effect
+# Existing node pools are unaffected until you create new node pools or update them
 ```
 
 ### Check Node Pool Configuration
@@ -78,11 +76,13 @@ gcloud container node-pools describe default-pool \
 ### Update Node Pool
 
 ```bash
-# Update existing node pool (causes rolling restart)
+# Update existing node pool
 gcloud container node-pools update default-pool \
     --cluster my-cluster \
     --zone us-central1-a \
     --workload-metadata=GKE_METADATA
+
+# This immediately enables Workload Identity for workloads on the node pool
 ```
 
 ## Error: "Permission 'iam.serviceAccounts.getAccessToken' denied"
@@ -160,7 +160,13 @@ metadata:
   name: my-app
   namespace: my-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       # Must match the annotated KSA name
       serviceAccountName: my-ksa
@@ -190,7 +196,7 @@ curl -H "Metadata-Flavor: Google" \
 
 ### Check Network Policy
 
-If you have network policies, ensure GKE metadata traffic is allowed:
+If you have network policies, ensure GKE metadata traffic is allowed. For GKE Dataplane V2 clusters:
 
 ```yaml
 # network-policy.yaml
@@ -212,7 +218,21 @@ spec:
         - protocol: TCP
           port: 80
         - protocol: TCP
-          port: 988
+          port: 8080
+```
+
+For clusters running GKE 1.21.0-gke.1000 and later without GKE Dataplane V2, allow `169.254.169.252/32` on ports `988` and `987` instead:
+
+```yaml
+egress:
+  - to:
+      - ipBlock:
+          cidr: 169.254.169.252/32
+    ports:
+      - protocol: TCP
+        port: 988
+      - protocol: TCP
+        port: 987
 ```
 
 ## Error: "The caller does not have permission" on GCP API Calls
@@ -352,7 +372,7 @@ kubectl delete pod workload-identity-test -n my-namespace
 
 ## Common Pitfalls to Avoid
 
-**Using the default service account**: The default KSA in each namespace doesn't have Workload Identity configured. Always create a dedicated KSA.
+**Using the default service account**: The default KSA in each namespace doesn't have Workload Identity configured unless you explicitly annotate and bind it. Prefer a dedicated KSA.
 
 **Forgetting to restart pods**: After fixing configuration, pods using cached credentials need to restart.
 

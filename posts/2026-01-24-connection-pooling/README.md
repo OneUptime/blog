@@ -45,10 +45,10 @@ sequenceDiagram
 // pg-pool.js - PostgreSQL pool with proper configuration
 const { Pool } = require('pg');
 
-// Calculate pool size based on application needs
+// Estimate pool size based on application needs
 // Formula: connections = (core_count * 2) + effective_spindle_count
 // For SSDs, effective_spindle_count is typically 1
-const poolSize = (process.env.CPU_CORES || 4) * 2 + 1;
+const poolSize = (Number(process.env.CPU_CORES) || 4) * 2 + 1;
 
 const pool = new Pool({
   // Connection settings
@@ -59,7 +59,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 
   // Pool sizing
-  min: Math.floor(poolSize / 2),  // Minimum connections to maintain
+  min: Math.floor(poolSize / 2),  // Minimum idle clients to retain once created
   max: poolSize,                   // Maximum connections
 
   // Timeouts
@@ -111,6 +111,8 @@ module.exports = { pool, getPoolStats };
 
 ```javascript
 // db.js - Safe query execution with connection management
+const { pool } = require('./pg-pool');
+
 class Database {
   constructor(pool) {
     this.pool = pool;
@@ -207,8 +209,8 @@ const pool = mysql.createPool({
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
 
-  // Handle connection issues
-  multipleStatements: false,  // Prevent SQL injection
+  // Reduce risk from stacked statements; still use parameterized queries
+  multipleStatements: false,
 
   // Timezone handling
   timezone: 'Z',              // UTC
@@ -249,6 +251,7 @@ HTTP clients also benefit from connection pooling via keep-alive:
 // http-pool.js - HTTP client with connection pooling
 const http = require('http');
 const https = require('https');
+const { Agent: UndiciAgent } = require('undici');
 
 // Create agents with connection pooling
 const httpAgent = new http.Agent({
@@ -272,13 +275,23 @@ const httpsAgent = new https.Agent({
   rejectUnauthorized: true
 });
 
-// Using with fetch (Node.js 18+)
+const fetchHttpDispatcher = new UndiciAgent({
+  keepAliveTimeout: 30000,
+  connections: 50
+});
+
+const fetchHttpsDispatcher = new UndiciAgent({
+  keepAliveTimeout: 30000,
+  connections: 50
+});
+
+// Using with fetch (Node.js 18+ uses Undici dispatchers)
 async function fetchWithPooling(url, options = {}) {
   const isHttps = url.startsWith('https');
 
   return fetch(url, {
     ...options,
-    agent: isHttps ? httpsAgent : httpAgent
+    dispatcher: isHttps ? fetchHttpsDispatcher : fetchHttpDispatcher
   });
 }
 
@@ -300,13 +313,20 @@ function getAgentStats(agent) {
   };
 }
 
-module.exports = { httpAgent, httpsAgent, apiClient, getAgentStats };
+module.exports = {
+  httpAgent,
+  httpsAgent,
+  fetchHttpDispatcher,
+  fetchHttpsDispatcher,
+  apiClient,
+  getAgentStats
+};
 ```
 
 ## Redis Connection Pooling
 
 ```javascript
-// redis-pool.js - Redis connection pool with ioredis
+// redis-pool.js - Redis connections with ioredis
 const Redis = require('ioredis');
 
 // Single connection is often sufficient for Redis
@@ -330,11 +350,11 @@ const redis = new Redis({
   // Keep-alive
   keepAlive: 30000,
 
-  // Connection pool (if needed for high throughput)
+  // Retry behavior for commands waiting on reconnect
   maxRetriesPerRequest: 3
 });
 
-// For high-throughput scenarios, use Cluster with multiple connections
+// For sharded or replicated Redis deployments, Cluster maintains connections to multiple nodes
 const cluster = new Redis.Cluster([
   { host: 'redis-1', port: 6379 },
   { host: 'redis-2', port: 6379 },
@@ -346,7 +366,7 @@ const cluster = new Redis.Cluster([
     commandTimeout: 5000
   },
 
-  // Pool settings per node
+  // NAT mapping for cluster nodes
   natMap: {
     'redis-1:6379': { host: 'external-1', port: 6379 },
     'redis-2:6379': { host: 'external-2', port: 6379 },
@@ -444,12 +464,12 @@ monitor.registerPool('postgres', pgPool, () => ({
   waiting: pgPool.waitingCount
 }));
 
-// Register MySQL pool
+// Register MySQL pool using server-wide connection status
 monitor.registerPool('mysql', mysqlPool, async () => {
   const [rows] = await mysqlPool.query('SHOW STATUS LIKE "Threads%"');
   return {
-    total: parseInt(rows.find(r => r.Variable_name === 'Threads_connected')?.Value || 0),
-    idle: parseInt(rows.find(r => r.Variable_name === 'Threads_cached')?.Value || 0)
+    total: parseInt(rows.find(r => r.Variable_name === 'Threads_connected')?.Value || 0, 10),
+    waiting: 0
   };
 });
 
@@ -490,8 +510,8 @@ graph TD
 
 ```sql
 -- PostgreSQL: Check and set max connections
-SHOW max_connections;  -- Default: 100
-ALTER SYSTEM SET max_connections = 200;
+SHOW max_connections;  -- Default is typically 100
+ALTER SYSTEM SET max_connections = 200;  -- Requires restart
 
 -- MySQL: Check connection limits
 SHOW VARIABLES LIKE 'max_connections';
@@ -529,7 +549,7 @@ class ProductionPool {
       // Prevent runaway queries
       statement_timeout: 30000,
 
-      // Validate connections before use
+      // Allow Node.js to exit once all clients are idle
       allowExitOnIdle: true
     });
 

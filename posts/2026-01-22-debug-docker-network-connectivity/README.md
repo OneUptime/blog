@@ -169,8 +169,11 @@ curl http://localhost:3000
 sudo lsof -i :3000
 sudo netstat -tlnp | grep 3000
 
-# Verify Docker is listening
-sudo ss -tlnp | grep docker
+# Check whether the host port is bound by docker-proxy or another process
+sudo ss -tlnp | grep ':3000'
+
+# Docker may publish ports through firewall NAT rules instead of a listening process
+sudo iptables -t nat -L DOCKER -n -v
 ```
 
 ### Container Not Accessible from Host
@@ -221,8 +224,8 @@ sudo firewall-cmd --zone=docker --list-all
 # On systems with ufw
 sudo ufw status
 
-# Allow Docker interface
-sudo ufw allow in on docker0
+# Docker and ufw can interact unexpectedly; inspect Docker's user chain
+sudo iptables -L DOCKER-USER -n -v
 ```
 
 ## Common Issues and Solutions

@@ -58,25 +58,23 @@ App launch time is often the first impression users have of your application. He
 
 ### Basic Launch Time Measurement
 
-```javascript
+```typescript
 // App.tsx
 import React, { useEffect } from 'react';
-import { PerformanceObserver, performance } from 'perf_hooks';
 
-const APP_START_TIME = Date.now();
+const APP_START_TIME = globalThis.performance?.now?.() ?? Date.now();
 
 const App: React.FC = () => {
   useEffect(() => {
-    const launchTime = Date.now() - APP_START_TIME;
+    const now = globalThis.performance?.now?.() ?? Date.now();
+    const launchTime = now - APP_START_TIME;
     console.log(`App launch time: ${launchTime}ms`);
 
     // Send to analytics
     trackMetric('app_launch_time', launchTime);
   }, []);
 
-  return (
-    // Your app content
-  );
+  return <>{/* Your app content */}</>;
 };
 
 export default App;
@@ -84,7 +82,7 @@ export default App;
 
 ### Native Module for Precise Measurement
 
-For more accurate measurements, create a native module.
+For more accurate measurements, create and register a native module. In newer React Native apps, prefer the Turbo Native Modules flow; the examples below use the legacy native module APIs for brevity.
 
 #### iOS Implementation (AppLaunchMetrics.m)
 
@@ -212,12 +210,10 @@ Maintaining 60 FPS is crucial for a smooth user experience. Here's how to monito
 
 ```typescript
 // utils/frameRateMonitor.ts
-import { FrameRateLogger } from 'react-native';
-
 class FrameRateMonitor {
   private isMonitoring: boolean = false;
   private frameRates: number[] = [];
-  private intervalId: NodeJS.Timeout | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
 
   start(): void {
     if (this.isMonitoring) return;
@@ -267,7 +263,6 @@ export const frameRateMonitor = new FrameRateMonitor();
 ```typescript
 // hooks/useFrameRate.ts
 import { useEffect, useRef, useState } from 'react';
-import { InteractionManager } from 'react-native';
 
 interface FrameRateMetrics {
   currentFPS: number;
@@ -325,7 +320,7 @@ export const useFrameRate = (sampleDuration: number = 1000): FrameRateMetrics =>
       animationFrameId.current = requestAnimationFrame(measureFrame);
     };
 
-    InteractionManager.runAfterInteractions(() => {
+    requestIdleCallback(() => {
       animationFrameId.current = requestAnimationFrame(measureFrame);
     });
 
@@ -349,7 +344,7 @@ Monitoring memory usage helps prevent crashes and ensures optimal performance.
 
 ```typescript
 // utils/memoryMonitor.ts
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
 interface MemoryInfo {
   usedMemory: number;
@@ -415,7 +410,7 @@ class MemoryMonitor {
   }
 
   getMemoryTrend(): 'increasing' | 'stable' | 'decreasing' {
-    if (this.memoryHistory.length < 10) return 'stable';
+    if (this.memoryHistory.length < 20) return 'stable';
 
     const recent = this.memoryHistory.slice(-10);
     const earlier = this.memoryHistory.slice(-20, -10);
@@ -494,7 +489,7 @@ export const useMemoryMonitor = (intervalMs: number = 5000): MemoryMetrics => {
   }, []);
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const handleAppStateChange = (state: AppStateStatus) => {
       if (state === 'active') {
@@ -1042,7 +1037,7 @@ Understanding the performance of both threads is crucial for React Native optimi
 
 ```typescript
 // utils/threadPerformance.ts
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
 interface ThreadMetrics {
   jsThread: {
@@ -1256,7 +1251,7 @@ export const performanceMarks = new PerformanceMarksManager();
 
 ```typescript
 // hooks/usePerformanceMarks.ts
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { performanceMarks } from '../utils/performanceMarks';
 
 interface UsePerformanceMarksResult {
@@ -1355,7 +1350,7 @@ class PerformanceReporter {
   }
 
   private generateSessionId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 
   async collectAndReport(): Promise<void> {
@@ -1464,7 +1459,7 @@ export const setupPerformanceReporting = (
   intervalMs: number = 60000
 ): () => void => {
   const reporter = createPerformanceReporter(endpoint);
-  let intervalId: NodeJS.Timeout | null = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
   let isActive = true;
 
   const startReporting = () => {
@@ -1526,7 +1521,7 @@ interface PerformanceBudget {
   jsExecutionTime: number;
 }
 
-interface BudgetViolation {
+export interface BudgetViolation {
   metric: keyof PerformanceBudget;
   budget: number;
   actual: number;
@@ -1818,7 +1813,7 @@ export const PerformanceProvider: React.FC<PerformanceProviderProps> = ({
 
   useEffect(() => {
     let cleanupReporting: (() => void) | null = null;
-    let statsInterval: NodeJS.Timeout | null = null;
+    let statsInterval: ReturnType<typeof setInterval> | null = null;
 
     if (isMonitoring) {
       // Enable network monitoring

@@ -10,9 +10,9 @@ Description: Learn how to configure RabbitMQ lazy queues to optimize memory usag
 
 > Lazy queues in RabbitMQ store messages on disk as early as possible, reducing RAM usage significantly. This guide covers when and how to configure lazy queues for optimal performance.
 
-> **Important**: Starting with RabbitMQ 3.12, the `x-queue-mode=lazy` argument is **ignored**. All classic queues in 3.12+ automatically behave like lazy queues - messages are written to disk and only a small subset is kept in memory. The explicit lazy queue configuration described in this guide applies to RabbitMQ 3.11 and earlier. For RabbitMQ 3.12+, you can remove `x-queue-mode: lazy` from your queue declarations as it has no effect. For new high-volume deployments on 3.12+, use quorum queues with `x-max-in-memory-length: 0`.
+> **Important**: Starting with RabbitMQ 3.12, the `x-queue-mode=lazy` argument is **ignored**. All classic queues in 3.12+ behave similarly to lazy queues - messages are generally written to disk and only a small subset is kept in memory. The explicit lazy queue configuration described in this guide applies to RabbitMQ 3.11 and earlier. For RabbitMQ 3.12+, you can remove `x-queue-mode: lazy` from your queue declarations as it has no effect. For new deployments that need replication and stronger data safety, use quorum queues.
 
-Standard RabbitMQ queues keep messages in memory for fast delivery. However, when dealing with millions of messages or memory-constrained environments, lazy queues offer a better alternative by writing messages to disk immediately.
+In RabbitMQ 3.11 and earlier, standard classic queues could keep more message data in memory for fast delivery. However, when dealing with millions of messages or memory-constrained environments, lazy queues offer a better alternative by writing messages to disk immediately.
 
 ---
 
@@ -97,24 +97,28 @@ Using the HTTP API:
 # Create policy via HTTP API
 curl -u guest:guest -X PUT \
     -H "Content-Type: application/json" \
-    -d '{"pattern":"^lazy\\.", "definition":{"queue-mode":"lazy"}, "apply-to":"queues"}' \
+    -d '{"pattern":"^lazy\\.", "definition":{"queue-mode":"lazy"}, "priority":1, "apply-to":"queues"}' \
     http://localhost:15672/api/policies/%2F/lazy-queues
 ```
 
-### Method 3: Default Queue Mode in Configuration
+### Method 3: Broad Policy for New and Existing Queues
 
-```ini
-# rabbitmq.conf - Set default queue mode for all new queues
-# Note: This affects ALL queues unless overridden
+```bash
+# Set lazy mode for all matching classic queues in RabbitMQ 3.11 and earlier
+# Note: This affects all queues matched by the policy pattern
 
-queue.default_queue_mode = lazy
+rabbitmqctl set_policy all-classic-lazy \
+    ".*" \
+    '{"queue-mode":"lazy"}' \
+    --priority 1 \
+    --apply-to queues
 ```
 
 ---
 
 ## RabbitMQ 3.12+ Quorum Queues
 
-In RabbitMQ 3.12 and later, classic queue modes are deprecated. Use quorum queues instead:
+In RabbitMQ 3.12 and later, classic queue lazy mode is no longer supported. Use quorum queues when you need replication and stronger data safety:
 
 ```python
 import pika
@@ -122,18 +126,16 @@ import pika
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
 
-# Quorum queues with lazy-like behavior
+# Quorum queue declaration
 channel.queue_declare(
     queue='orders-quorum',
     durable=True,
     arguments={
         'x-queue-type': 'quorum',  # Quorum queue type
-        'x-max-in-memory-length': 0,  # Keep 0 messages in memory (lazy-like)
-        'x-max-in-memory-bytes': 0,   # Keep 0 bytes in memory
     }
 )
 
-print("Quorum queue with lazy behavior created")
+print("Quorum queue created")
 ```
 
 ---
@@ -374,7 +376,7 @@ rabbitmq_queue_memory{queue="orders-lazy"}
 
 ### Converting Existing Queues to Lazy
 
-You cannot change the queue mode of an existing queue. You must create a new queue and migrate messages:
+You cannot redeclare an existing queue with different hardcoded `x-arguments`. If lazy mode was hardcoded in queue declarations instead of applied by policy, create a new queue and migrate messages:
 
 ```python
 import pika
@@ -444,7 +446,7 @@ rabbitmqctl set_parameter shovel migrate-orders \
       "dest-uri": "amqp://localhost",
       "dest-queue": "orders-lazy",
       "ack-mode": "on-confirm",
-      "delete-after": "queue-length"}'
+      "src-delete-after": "queue-length"}'
 
 # Monitor shovel status
 rabbitmqctl shovel_status
@@ -571,8 +573,8 @@ channel.basic_qos(prefetch_count=100)  # Fetch 100 messages at a time
 
 Lazy queues are essential for managing memory in high-volume RabbitMQ deployments:
 
-- **Use lazy queues** for high-volume, bursty, or long-retention scenarios
-- **Use standard queues** for low-latency, real-time requirements
+- **Use lazy queues** on RabbitMQ 3.11 and earlier for high-volume, bursty, or long-retention scenarios
+- **Use modern classic queues** on RabbitMQ 3.12+ for non-replicated queues with low, stable memory use
 - **Apply via policies** for consistent configuration without code changes
 - **Monitor disk I/O** as the trade-off for reduced memory usage
 - **Consider quorum queues** in RabbitMQ 3.12+ for better durability

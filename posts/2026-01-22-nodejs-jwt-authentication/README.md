@@ -13,7 +13,7 @@ JWT (JSON Web Token) is a popular method for implementing stateless authenticati
 ## Installation
 
 ```bash
-npm install jsonwebtoken bcrypt express
+npm install jsonwebtoken bcrypt express cookie-parser ioredis
 ```
 
 ## Basic JWT Implementation
@@ -89,6 +89,7 @@ app.post('/auth/register', async (req, res) => {
     id: users.length + 1,
     email,
     name,
+    role: 'user',
     password: hashedPassword,
     createdAt: new Date(),
   };
@@ -171,7 +172,7 @@ app.post('/auth/logout', (req, res) => {
 // Helper functions
 function generateAccessToken(user) {
   return jwt.sign(
-    { userId: user.id, email: user.email },
+    { userId: user.id, email: user.email, role: user.role },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   );
@@ -402,7 +403,7 @@ async function blacklistToken(token) {
   // Store until token would expire
   const ttl = decoded.exp - Math.floor(Date.now() / 1000);
   if (ttl > 0) {
-    await redis.setex(`blacklist:${token}`, ttl, '1');
+    await redis.set(`blacklist:${token}`, '1', 'EX', ttl);
   }
 }
 
@@ -518,11 +519,10 @@ if (!JWT_SECRET) {
 // Good: Minimal payload
 const token = jwt.sign({
   sub: user.id,  // Subject (user ID)
-  iat: Date.now(),  // Issued at (automatic)
 }, JWT_SECRET, { expiresIn: '15m' });
 
 // Bad: Sensitive data in payload
-const token = jwt.sign({
+const badToken = jwt.sign({
   userId: user.id,
   email: user.email,
   password: user.password,  // NEVER DO THIS

@@ -48,7 +48,7 @@ Cloud CDN works by caching responses from your backend services. When a user req
 
 ### Prerequisites
 
-Cloud CDN requires a Cloud Load Balancer with a backend service. Here is how to set it up from scratch.
+Cloud CDN requires a supported Cloud Load Balancer with a backend service or backend bucket. Here is how to set up the backend service portion for instance group or NEG backends.
 
 ```bash
 # Create a health check
@@ -65,11 +65,19 @@ gcloud compute backend-services create my-backend \
     --enable-cdn \
     --global
 
-# Add your backend (instance group, NEG, or Cloud Storage bucket)
+# Add your backend (instance group or NEG)
 gcloud compute backend-services add-backend my-backend \
     --instance-group=my-instance-group \
     --instance-group-zone=us-central1-a \
     --global
+```
+
+For Cloud Storage origins, create a backend bucket with Cloud CDN enabled instead of adding the bucket to a backend service:
+
+```bash
+gcloud compute backend-buckets create my-bucket-backend \
+    --gcs-bucket-name=my-storage-bucket \
+    --enable-cdn
 ```
 
 ### Enable CDN on Existing Backend
@@ -293,8 +301,8 @@ gcloud compute url-maps invalidate-cdn-cache my-url-map \
     --path="/*"
 
 # Check invalidation status
-gcloud compute operations list \
-    --filter="operationType=invalidateCache"
+gcloud logging read 'protoPayload.methodName="v1.compute.urlMaps.invalidateCache"' \
+    --limit=10
 ```
 
 ### Automating Invalidation in CI/CD
@@ -315,7 +323,6 @@ steps:
 ```python
 # Python script for selective invalidation
 from google.cloud import compute_v1
-import hashlib
 
 def invalidate_changed_files(url_map: str, changed_files: list):
     """Invalidate only files that changed."""
@@ -327,19 +334,17 @@ def invalidate_changed_files(url_map: str, changed_files: list):
         print("No files need invalidation")
         return
 
-    # Batch invalidation (max 50 paths per request)
-    for i in range(0, len(paths), 50):
-        batch = paths[i:i+50]
+    # Cloud CDN invalidates one path pattern per request.
+    for path in paths:
         request = compute_v1.InvalidateCacheUrlMapRequest(
             project="my-project",
             url_map=url_map,
             cache_invalidation_rule_resource={
-                "path": batch[0] if len(batch) == 1 else None,
-                "host": "*"
+                "path": path
             }
         )
         client.invalidate_cache(request=request)
-        print(f"Invalidated {len(batch)} paths")
+        print(f"Invalidated {path}")
 
 def should_invalidate(filepath: str) -> bool:
     """Check if file type should trigger CDN invalidation."""
@@ -422,9 +427,9 @@ signed_url = generate_signed_url(
 gcloud monitoring metrics list --filter="metric.type:cdn"
 
 # Check CDN logs
-gcloud logging read 'resource.type="http_load_balancer" AND jsonPayload.cacheHit=true' \
+gcloud logging read 'resource.type="http_load_balancer" AND httpRequest.cacheHit=true' \
     --limit=100 \
-    --format="table(timestamp,httpRequest.requestUrl,jsonPayload.cacheHit)"
+    --format="table(timestamp,httpRequest.requestUrl,httpRequest.cacheHit,jsonPayload.statusDetails)"
 ```
 
 ### Debug Cache Headers
@@ -434,9 +439,10 @@ gcloud logging read 'resource.type="http_load_balancer" AND jsonPayload.cacheHit
 curl -I https://your-cdn-url.com/image.png
 
 # Look for these headers:
-# X-Cache-Status: hit (or miss)
-# Age: 3600 (seconds since cached)
+# Age: 3600 (seconds since cached; present on cached responses)
 # Cache-Control: public, max-age=3600
+# A cache status header such as X-Cache-Status only appears if you configure
+# a custom response header for it on the load balancer.
 ```
 
 ### Common Issues
@@ -465,7 +471,7 @@ gcloud compute backend-services describe my-backend \
 def get_user():
     response = make_response(jsonify(user_data))
     response.headers['Cache-Control'] = 'private, no-store, no-cache'
-    response.headers['Vary'] = 'Authorization'  # Different cache per auth token
+    response.headers['Vary'] = 'Authorization'  # Prevent shared caches from reusing auth-specific responses
     return response
 ```
 

@@ -212,32 +212,9 @@ subjects:
     namespace: production
 ```
 
-## Method 2: Using ConfigMap Lock
+## Method 2: Using ConfigMap Lock (Legacy)
 
-```go
-// configmap-leader-election.go
-package main
-
-import (
-    "context"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/tools/leaderelection/resourcelock"
-)
-
-func createConfigMapLock(clientset *kubernetes.Clientset, name, namespace, identity string) *resourcelock.ConfigMapLock {
-    return &resourcelock.ConfigMapLock{
-        ConfigMapMeta: metav1.ObjectMeta{
-            Name:      name,
-            Namespace: namespace,
-        },
-        Client: clientset.CoreV1(),
-        LockConfig: resourcelock.ResourceLockConfig{
-            Identity: identity,
-        },
-    }
-}
-```
+Older client-go versions supported ConfigMap-based locks, but current client-go uses Lease locks. Prefer Method 1 for Go applications. If you use a ConfigMap-based leader election implementation such as the Python client example below, grant access to ConfigMaps:
 
 ```yaml
 # RBAC for ConfigMap lock
@@ -284,62 +261,61 @@ spec:
           ports:
             - containerPort: 8080
           env:
-            # Leader election sidecar writes to this file
-            - name: LEADER_ELECTION_FILE
-              value: /leader-election/is-leader
-          volumeMounts:
-            - name: leader-election
-              mountPath: /leader-election
-          # Only process if leader
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - |
-                    while [ ! -f /leader-election/is-leader ]; do
-                      echo "Waiting to become leader..."
-                      sleep 1
-                    done
+            # Application polls this endpoint and runs leader-only work
+            # only when {"name":"$(hostname)"} is returned.
+            - name: LEADER_ELECTION_URL
+              value: http://localhost:4040
         
         # Leader election sidecar
         - name: leader-elector
           image: gcr.io/google_containers/leader-elector:0.5
           args:
             - --election=my-app-leader
-            - --http=0.0.0.0:4040
+            - --id=$(POD_NAME)
             - --election-namespace=$(POD_NAMESPACE)
+            - --use-cluster-credentials
+            - --http=0.0.0.0:4040
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
           ports:
             - containerPort: 4040
-          volumeMounts:
-            - name: leader-election
-              mountPath: /leader-election
-          # Write leader status to shared volume
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - |
-                    while true; do
-                      if curl -s localhost:4040 | grep -q "$(hostname)"; then
-                        touch /leader-election/is-leader
-                      else
-                        rm -f /leader-election/is-leader
-                      fi
-                      sleep 1
-                    done
-      
-      volumes:
-        - name: leader-election
-          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-app
+  namespace: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: my-app-leader-election
+  namespace: production
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: my-app-leader-election
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: my-app-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: my-app
+    namespace: production
 ```
 
 ## Method 4: Python Implementation
@@ -386,11 +362,6 @@ class LeaderElector:
     def on_stopped_leading(self):
         print(f"Pod {self.pod_name} stopped leading")
         self.is_leader = False
-    
-    def on_new_leader(self, leader_identity):
-        print(f"New leader elected: {leader_identity}")
-        if leader_identity != self.pod_name:
-            self.is_leader = False
     
     def run_leader_tasks(self):
         """Your leader-only logic here"""
@@ -458,6 +429,36 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: python-leader-app
+  namespace: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: python-leader-app-leader-election
+  namespace: production
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: python-leader-app-leader-election
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: python-leader-app-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: python-leader-app
+    namespace: production
 ```
 
 ## Method 5: Using Controller-Runtime (Kubernetes Operators)
@@ -468,6 +469,8 @@ package main
 
 import (
     "os"
+    "time"
+
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -594,6 +597,8 @@ topologySpreadConstraints:
 ```go
 // metrics.go
 import (
+    "context"
+
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -657,7 +662,7 @@ spec:
 | Method | Complexity | Best For |
 |--------|------------|----------|
 | Lease Lock | Low | New applications |
-| ConfigMap Lock | Low | Legacy compatibility |
+| ConfigMap Lock | Low | Legacy compatibility and Python client |
 | Sidecar | Medium | Language-agnostic |
 | Controller-Runtime | Low | Kubernetes operators |
 

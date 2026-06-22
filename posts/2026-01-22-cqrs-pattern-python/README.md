@@ -82,7 +82,7 @@ Commands represent intentions to change state. They should be immutable and cont
 
 # Command definitions for the application
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID, uuid4
 
@@ -94,7 +94,7 @@ class Command:
     frozen=True ensures immutability.
     """
     command_id: UUID = field(default_factory=uuid4)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass(frozen=True)
@@ -148,9 +148,10 @@ Handlers contain the business logic for processing commands:
 # domain/handlers/command_handlers.py
 # Command handlers with business logic
 from dataclasses import dataclass
-from typing import Protocol, TypeVar, Generic
+from typing import Optional, Protocol, TypeVar
 from uuid import UUID, uuid4
 import hashlib
+import os
 
 from domain.commands import (
     Command,
@@ -166,20 +167,20 @@ from domain.commands import (
 C = TypeVar('C', bound=Command)
 
 
-class CommandHandler(Protocol[C]):
-    """Protocol defining the command handler interface."""
-
-    def handle(self, command: C) -> UUID:
-        """Handle the command and return the entity ID."""
-        ...
-
-
 @dataclass
 class CommandResult:
     """Result of command execution."""
     success: bool
-    entity_id: UUID = None
-    error: str = None
+    entity_id: Optional[UUID] = None
+    error: Optional[str] = None
+
+
+class CommandHandler(Protocol[C]):
+    """Protocol defining the command handler interface."""
+
+    def handle(self, command: C) -> CommandResult:
+        """Handle the command and return the execution result."""
+        ...
 
 
 class CreateUserHandler:
@@ -188,9 +189,10 @@ class CreateUserHandler:
     Validates input and creates the user.
     """
 
-    def __init__(self, user_repository, email_service=None):
+    def __init__(self, user_repository, email_service=None, event_bus=None):
         self.user_repository = user_repository
         self.email_service = email_service
+        self.event_bus = event_bus
 
     def handle(self, command: CreateUser) -> CommandResult:
         # Validate email uniqueness
@@ -224,6 +226,16 @@ class CreateUserHandler:
         # Persist to write store
         self.user_repository.save(user)
 
+        # Publish event for read model synchronization
+        if self.event_bus:
+            self.event_bus.publish("user_created", {
+                'user_id': user_id,
+                'email': command.email,
+                'username': command.username,
+                'full_name': command.full_name,
+                'timestamp': command.timestamp,
+            })
+
         # Send welcome email (side effect)
         if self.email_service:
             self.email_service.send_welcome(command.email)
@@ -231,15 +243,23 @@ class CreateUserHandler:
         return CommandResult(success=True, entity_id=user_id)
 
     def _hash_password(self, password: str) -> str:
-        # Use bcrypt in production
-        return hashlib.sha256(password.encode()).hexdigest()
+        # Use a dedicated password-hashing library such as bcrypt in production.
+        salt = os.urandom(16)
+        digest = hashlib.pbkdf2_hmac(
+            'sha256',
+            password.encode(),
+            salt,
+            600_000,
+        )
+        return f"pbkdf2_sha256${salt.hex()}${digest.hex()}"
 
 
 class UpdateUserProfileHandler:
     """Handler for UpdateUserProfile command."""
 
-    def __init__(self, user_repository):
+    def __init__(self, user_repository, event_bus=None):
         self.user_repository = user_repository
+        self.event_bus = event_bus
 
     def handle(self, command: UpdateUserProfile) -> CommandResult:
         # Load existing user
@@ -260,16 +280,28 @@ class UpdateUserProfileHandler:
         # Persist changes
         self.user_repository.save(user)
 
+        if self.event_bus:
+            event = {
+                'user_id': command.user_id,
+                'timestamp': command.timestamp,
+            }
+            for field in ['full_name', 'bio', 'avatar_url']:
+                value = getattr(command, field)
+                if value is not None:
+                    event[field] = value
+            self.event_bus.publish("user_updated", event)
+
         return CommandResult(success=True, entity_id=command.user_id)
 
 
 class CreateOrderHandler:
     """Handler for CreateOrder command."""
 
-    def __init__(self, order_repository, inventory_service, customer_repository):
+    def __init__(self, order_repository, inventory_service, customer_repository, event_bus=None):
         self.order_repository = order_repository
         self.inventory_service = inventory_service
         self.customer_repository = customer_repository
+        self.event_bus = event_bus
 
     def handle(self, command: CreateOrder) -> CommandResult:
         # Validate customer exists
@@ -306,6 +338,16 @@ class CreateOrderHandler:
         # Reserve inventory
         for product_id, quantity, _ in command.items:
             self.inventory_service.reserve(product_id, quantity, order_id)
+
+        if self.event_bus:
+            self.event_bus.publish("order_created", {
+                'order_id': order_id,
+                'customer_id': command.customer_id,
+                'items': list(command.items),
+                'total': total,
+                'shipping_address': command.shipping_address,
+                'timestamp': command.timestamp,
+            })
 
         return CommandResult(success=True, entity_id=order_id)
 ```
@@ -722,6 +764,7 @@ class ReadModelSynchronizer:
             'items': event['items'],
             'total': event['total'],
             'status': 'pending',
+            'shipping_address': event['shipping_address'],
             'created_at': event['timestamp'],
         }
 
@@ -730,6 +773,8 @@ class ReadModelSynchronizer:
         if customer:
             order_view['customer_name'] = customer.get('full_name', customer['email'])
             order_view['customer_email'] = customer['email']
+        else:
+            order_view['customer_name'] = 'Unknown'
 
         self.read_model.upsert_order(order_view)
 
@@ -767,6 +812,9 @@ class InMemoryReadModelStore:
 
     def get_user(self, user_id: str) -> Dict[str, Any]:
         return self._users.get(user_id)
+
+    def find_user_by_id(self, user_id: str) -> Dict[str, Any]:
+        return self.get_user(user_id)
 
     def update_user(self, user_id: str, updates: Dict[str, Any]):
         if user_id in self._users:
@@ -909,6 +957,15 @@ async def create_user(
 
     # Query the created user for response
     user = mediator.send_query(GetUserById(user_id=result.entity_id))
+
+    if not user:
+        return UserResponse(
+            id=str(result.entity_id),
+            email=request.email,
+            username=request.username,
+            full_name=request.full_name,
+            is_active=True,
+        )
 
     return UserResponse(
         id=user.id,

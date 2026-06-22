@@ -28,7 +28,7 @@ CREATE USER MAPPING FOR local_user
     SERVER remote_server
     OPTIONS (user 'remote_user', password 'password');
 
--- Import foreign table
+-- Create foreign table
 CREATE FOREIGN TABLE remote_users (
     id INTEGER,
     name VARCHAR(100),

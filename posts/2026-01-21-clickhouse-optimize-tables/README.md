@@ -8,7 +8,7 @@ Description: A comprehensive guide to compacting and optimizing ClickHouse table
 
 ---
 
-Regular table optimization in ClickHouse improves query performance and storage efficiency by consolidating parts and applying pending mutations.
+Occasional table optimization in ClickHouse can improve query performance and storage efficiency by consolidating parts and reducing fragmentation.
 
 ## Understanding Parts and Merges
 
@@ -49,20 +49,20 @@ OPTIMIZE TABLE events;
 -- Force merge all parts into one per partition
 OPTIMIZE TABLE events FINAL;
 
--- Optimize specific partition
-OPTIMIZE TABLE events PARTITION '202401';
+-- Optimize specific partition for a table partitioned by toYYYYMM(...)
+OPTIMIZE TABLE events PARTITION 202401;
 
--- Deduplicate during optimization (ReplacingMergeTree)
+-- Deduplicate identical rows during optimization
 OPTIMIZE TABLE events FINAL DEDUPLICATE;
 
--- Deduplicate specific columns
+-- Deduplicate specific columns; include ORDER BY and PARTITION BY columns
 OPTIMIZE TABLE events FINAL DEDUPLICATE BY user_id, timestamp;
 ```
 
-### Non-Blocking Optimization
+### Background Merge Monitoring
 
 ```sql
--- Run optimization asynchronously
+-- Resume automatic background merges if they were stopped
 SYSTEM START MERGES events;
 
 -- Check merge progress
@@ -85,15 +85,15 @@ FROM system.merges;
         <!-- Maximum parts per partition before blocking inserts -->
         <parts_to_throw_insert>300</parts_to_throw_insert>
 
-        <!-- Target number of parts per partition -->
+        <!-- Parts per partition before inserts are delayed -->
         <parts_to_delay_insert>150</parts_to_delay_insert>
 
         <!-- Maximum total parts -->
         <max_parts_in_total>100000</max_parts_in_total>
-
-        <!-- Background merge threads -->
-        <background_pool_size>16</background_pool_size>
     </merge_tree>
+
+    <!-- Background merge and mutation threads -->
+    <background_pool_size>16</background_pool_size>
 </clickhouse>
 ```
 
@@ -134,35 +134,35 @@ ORDER BY partition;
 TABLES=("events" "logs" "metrics")
 
 for table in "${TABLES[@]}"; do
-    clickhouse-client --query "OPTIMIZE TABLE $table PARTITION tuple(toYYYYMM(now() - INTERVAL 1 MONTH))"
+    clickhouse-client --query "OPTIMIZE TABLE $table PARTITION toYYYYMM(now() - INTERVAL 1 MONTH)"
 done
 ```
 
 ## Storage Reclamation
 
 ```sql
--- Check for unused parts
+-- Check for inactive parts pending cleanup
 SELECT
     table,
     count() AS inactive_parts,
-    formatReadableSize(sum(bytes_on_disk)) AS recoverable_space
+    formatReadableSize(sum(bytes_on_disk)) AS pending_cleanup_space
 FROM system.parts
 WHERE NOT active
 GROUP BY table;
 
--- Force cleanup of inactive parts
+-- Clear read caches; inactive parts are removed automatically after old_parts_lifetime
 SYSTEM DROP MARK CACHE;
 SYSTEM DROP UNCOMPRESSED CACHE;
 
 -- Truncate old partitions
-ALTER TABLE events DROP PARTITION '202301';
+ALTER TABLE events DROP PARTITION 202301;
 ```
 
 ## Conclusion
 
 Table optimization in ClickHouse involves:
 
-1. **Regular OPTIMIZE** to merge small parts
+1. **Occasional OPTIMIZE** to merge small parts when needed
 2. **FINAL option** for complete consolidation
 3. **Configuration tuning** for automatic merges
 4. **Monitoring** parts count and size

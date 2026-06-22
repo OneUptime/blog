@@ -73,14 +73,14 @@ sudo systemctl enable rabbitmq-server
 
 ## Step 2: Check the Listening Address
 
-By default, RabbitMQ only listens on localhost. If you are connecting from a different machine, you need to configure it to listen on all interfaces.
+By default, RabbitMQ listens on port 5672 on all available interfaces. If it has been configured to listen only on localhost or on a specific IP address, remote clients will not be able to connect.
 
 Create or edit `/etc/rabbitmq/rabbitmq.conf`:
 
 ```ini
-# Allow connections from any interface (use with caution in production)
+# Allow connections from any IPv4 interface (use with caution in production)
 # 0.0.0.0 means listen on all available network interfaces
-listeners.tcp.default = 5672
+listeners.tcp.1 = 0.0.0.0:5672
 
 # Or bind to a specific IP address for better security
 # listeners.tcp.1 = 192.168.1.100:5672
@@ -320,7 +320,7 @@ sudo journalctl -u rabbitmq-server -f
 | RabbitMQ not running | Start the service with `systemctl start rabbitmq-server` |
 | Wrong port | Verify port 5672 (AMQP) or 5671 (AMQPS) |
 | Firewall blocking | Open port in UFW/iptables/cloud security groups |
-| Listening on localhost only | Configure `listeners.tcp.default` in rabbitmq.conf |
+| Listening on localhost only | Configure `listeners.tcp.1` in rabbitmq.conf |
 | Guest user remote access | Create a new user for remote connections |
 | DNS resolution failure | Use IP address or fix DNS configuration |
 
