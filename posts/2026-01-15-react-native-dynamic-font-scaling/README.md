@@ -832,7 +832,10 @@ Create a development tool for testing different scales:
 
 ```typescript
 import { useState } from 'react';
-import { View, Text, Slider, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+// Slider was removed from react-native core; install and import it from
+// the community package: npm install @react-native-community/slider
+import Slider from '@react-native-community/slider';
 
 // Development-only font scale simulator
 function FontScaleSimulator({ children }: { children: React.ReactNode }) {
@@ -1072,18 +1075,19 @@ function PlatformAwareText({ children, style, ...props }: TextProps) {
   );
 }
 
-// iOS-specific: Respond to content size category changes
-import { AccessibilityInfo } from 'react-native';
+// Detect whether the user prefers larger text via the system font scale.
+// (React Native has no direct content size category API, so derive it from
+// PixelRatio.getFontScale().)
+import { PixelRatio } from 'react-native';
 
-function useIsLargeText(): boolean {
-  const [isLarge, setIsLarge] = useState(false);
+function useIsLargeText(threshold: number = 1.3): boolean {
+  const [isLarge, setIsLarge] = useState(
+    PixelRatio.getFontScale() >= threshold
+  );
 
   useEffect(() => {
-    // iOS only
-    if (Platform.OS === 'ios') {
-      AccessibilityInfo.isReduceMotionEnabled().then(setIsLarge);
-    }
-  }, []);
+    setIsLarge(PixelRatio.getFontScale() >= threshold);
+  }, [threshold]);
 
   return isLarge;
 }
