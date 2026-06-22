@@ -112,11 +112,12 @@ extraArgs:
   - --source=service
   - --source=ingress
   - --publish-internal-services
-  # IPv6 specific arguments
+  # Registry/ownership configuration
   - --txt-owner-id=k8s-cluster-1
   - --txt-prefix=external-dns-
 
-# Enable both A and AAAA record creation
+# AAAA records are created automatically from a service's IPv6 address;
+# policy: sync lets External-DNS create and delete both A and AAAA records
 policy: sync
 registry: txt
 
@@ -188,7 +189,7 @@ spec:
             - --txt-prefix=_externaldns.
             # Cloudflare zone filter
             - --domain-filter=example.com
-            # Enable both A and AAAA records
+            # Cloudflare API pagination (max 5000 records per page)
             - --cloudflare-dns-records-per-page=5000
           env:
             - name: CF_API_TOKEN
