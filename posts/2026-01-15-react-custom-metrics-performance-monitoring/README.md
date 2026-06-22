@@ -177,9 +177,11 @@ renderDuration.record(45.2, { component: 'Dashboard' });
 Captures point-in-time measurements via callbacks. Use for memory usage, CPU load, or any value you sample periodically.
 
 ```typescript
-meter.createObservableGauge('memory_usage_bytes', {
+const memoryGauge = meter.createObservableGauge('memory_usage_bytes', {
   description: 'Current memory usage in bytes',
-}, (observableResult) => {
+});
+
+memoryGauge.addCallback((observableResult) => {
   const memory = performance.memory?.usedJSHeapSize || 0;
   observableResult.observe(memory);
 });
@@ -998,18 +1000,13 @@ Capture Core Web Vitals alongside custom metrics:
 
 ```typescript
 // src/telemetry/webVitals.ts
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
 import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('web-vitals');
 
 const clsHistogram = meter.createHistogram('web_vital_cls', {
   description: 'Cumulative Layout Shift',
-});
-
-const fidHistogram = meter.createHistogram('web_vital_fid_ms', {
-  description: 'First Input Delay in milliseconds',
-  unit: 'ms',
 });
 
 const lcpHistogram = meter.createHistogram('web_vital_lcp_ms', {
@@ -1037,13 +1034,6 @@ export function initWebVitals() {
 
   onCLS((metric) => {
     clsHistogram.record(metric.value, {
-      page,
-      rating: metric.rating,
-    });
-  });
-
-  onFID((metric) => {
-    fidHistogram.record(metric.value, {
       page,
       rating: metric.rating,
     });
@@ -1090,9 +1080,11 @@ import { metrics } from '@opentelemetry/api';
 const meter = metrics.getMeter('performance-metrics');
 
 // Create observable gauges for memory
-meter.createObservableGauge('js_heap_size_bytes', {
+const heapSizeGauge = meter.createObservableGauge('js_heap_size_bytes', {
   description: 'JavaScript heap size in bytes',
-}, (observableResult) => {
+});
+
+heapSizeGauge.addCallback((observableResult) => {
   const memory = (performance as any).memory;
   if (memory) {
     observableResult.observe(memory.usedJSHeapSize, { type: 'used' });
@@ -1102,9 +1094,11 @@ meter.createObservableGauge('js_heap_size_bytes', {
 });
 
 // Create observable gauge for DOM metrics
-meter.createObservableGauge('dom_nodes_count', {
+const domNodesGauge = meter.createObservableGauge('dom_nodes_count', {
   description: 'Number of DOM nodes',
-}, (observableResult) => {
+});
+
+domNodesGauge.addCallback((observableResult) => {
   observableResult.observe(document.getElementsByTagName('*').length);
 });
 
@@ -1127,16 +1121,20 @@ if ('PerformanceObserver' in window) {
   }
 }
 
-meter.createObservableGauge('long_tasks_total', {
+const longTasksGauge = meter.createObservableGauge('long_tasks_total', {
   description: 'Total number of long tasks',
-}, (observableResult) => {
+});
+
+longTasksGauge.addCallback((observableResult) => {
   observableResult.observe(longTaskCount);
 });
 
-meter.createObservableGauge('long_task_duration_avg_ms', {
+const longTaskDurationGauge = meter.createObservableGauge('long_task_duration_avg_ms', {
   description: 'Average long task duration in milliseconds',
   unit: 'ms',
-}, (observableResult) => {
+});
+
+longTaskDurationGauge.addCallback((observableResult) => {
   if (longTaskDurations.length > 0) {
     const avg = longTaskDurations.reduce((a, b) => a + b, 0) / longTaskDurations.length;
     observableResult.observe(avg);
@@ -1264,7 +1262,7 @@ export class ConsoleMetricExporter implements PushMetricExporter {
 | **Business** | `cart_additions_total` | Counter | E-commerce engagement |
 | **Business** | `order_value_usd` | Histogram | Revenue distribution |
 | **Web Vitals** | `web_vital_lcp_ms` | Histogram | Largest Contentful Paint |
-| **Web Vitals** | `web_vital_fid_ms` | Histogram | First Input Delay |
+| **Web Vitals** | `web_vital_inp_ms` | Histogram | Interaction to Next Paint |
 | **Web Vitals** | `web_vital_cls` | Histogram | Cumulative Layout Shift |
 | **System** | `js_heap_size_bytes` | Observable Gauge | Memory usage |
 | **System** | `dom_nodes_count` | Observable Gauge | DOM complexity |
