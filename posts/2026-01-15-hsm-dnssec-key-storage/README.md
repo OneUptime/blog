@@ -211,50 +211,55 @@ aws cloudhsmv2 create-hsm \
 
 ### Step 2: Activate and Configure Users
 
+# Client SDK 3 (cloudhsm_mgmt_util / the cloudhsm-client daemon) has reached
+# end of support. Use Client SDK 5's cloudhsm-cli, shown below.
+
 ```bash
-# Connect to CloudHSM CLI
-/opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
+# Activate the new cluster - this sets the first admin password
+sudo cloudhsm-cli cluster activate
 
-# Login as PRECO (default user)
-aws-cloudhsm> loginHSM PRECO admin password
+# Open an interactive session
+sudo cloudhsm-cli interactive
 
-# Change admin password
-aws-cloudhsm> changePswd PRECO admin <new-password>
+# Log in as the admin you just created
+aws-cloudhsm > login --username admin --role admin
 
-# Create Crypto User for DNSSEC operations
-aws-cloudhsm> createUser CU dnssec-user <password>
+# Change the admin password if needed
+aws-cloudhsm > user change-password --username admin --role admin
 
-# Logout
-aws-cloudhsm> logoutHSM
+# Create a Crypto User for DNSSEC operations
+aws-cloudhsm > user create --username dnssec-user --role crypto-user
+
+# Leave the session
+aws-cloudhsm > quit
 ```
 
 ### Step 3: Install CloudHSM Client
 
 ```bash
-# Download and install the client
-wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-latest.el7.x86_64.rpm
-sudo yum install -y cloudhsm-client-latest.el7.x86_64.rpm
+# Download and install the Client SDK 5 CLI
+wget https://pkgs.cloudhsm.amazonaws.com/cloudhsm-cli-latest.el7.x86_64.rpm
+sudo yum install -y ./cloudhsm-cli-latest.el7.x86_64.rpm
 
-# Configure the client
-sudo /opt/cloudhsm/bin/configure -a <hsm-ip-address>
-
-# Start the client daemon
-sudo systemctl start cloudhsm-client
-sudo systemctl enable cloudhsm-client
+# Bootstrap the CLI against your cluster (no persistent daemon in SDK 5)
+sudo /opt/cloudhsm/bin/configure-cli -a <hsm-ip-address>
 ```
 
 ### Step 4: Set Up PKCS#11 Library
 
 ```bash
-# Install PKCS#11 library
-wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-pkcs11-latest.el7.x86_64.rpm
-sudo yum install -y cloudhsm-client-pkcs11-latest.el7.x86_64.rpm
+# Install the Client SDK 5 PKCS#11 library
+wget https://pkgs.cloudhsm.amazonaws.com/cloudhsm-pkcs11-latest.el7.x86_64.rpm
+sudo yum install -y ./cloudhsm-pkcs11-latest.el7.x86_64.rpm
+
+# Bootstrap the PKCS#11 library against your cluster
+sudo /opt/cloudhsm/bin/configure-pkcs11 -a <hsm-ip-address>
 
 # The PKCS#11 library is at:
 # /opt/cloudhsm/lib/libcloudhsm_pkcs11.so
 
-# Set environment variable for PKCS#11
-export CLOUDHSM_PKCS11_PIN="dnssec-user:<password>"
+# Authenticate using the CLOUDHSM_PIN format <user>:<password>
+export CLOUDHSM_PIN="dnssec-user:<password>"
 ```
 
 ## Setting Up YubiHSM 2 for DNSSEC
@@ -329,16 +334,19 @@ wget https://downloads.isc.org/isc/bind9/9.18.24/bind-9.18.24.tar.xz
 tar xf bind-9.18.24.tar.xz
 cd bind-9.18.24
 
-# Configure with PKCS#11 native support
+# BIND 9.18 removed native PKCS#11; it now talks to the HSM through
+# the OpenSSL engine_pkcs11 provider (part of the OpenSC libp11 project).
+# No PKCS#11-specific configure flag is needed - build against OpenSSL 1.1.x:
 ./configure \
   --prefix=/usr/local/bind9 \
-  --with-openssl \
-  --enable-native-pkcs11 \
-  --with-pkcs11=/usr/safenet/lunaclient/lib/libCryptoki2_64.so
+  --with-openssl
 
 # Build and install
 make -j$(nproc)
 sudo make install
+
+# Install the PKCS#11 engine and tools that BIND will use at runtime
+sudo apt install -y libengine-pkcs11-openssl opensc
 ```
 
 ### Step 2: Configure BIND for HSM
@@ -351,75 +359,88 @@ options {
 
     dnssec-validation auto;
 
-    // HSM configuration
-    // Use PKCS#11 URI for key reference
+    // HSM-backed keys are read from the key directory as ordinary
+    // DNSSEC key files; the private key reference points into the HSM.
+    key-directory "/var/named/keys";
 };
-
-// Include HSM key configuration
-include "/usr/local/bind9/etc/dnssec-keys.conf";
 ```
 
-Create `/usr/local/bind9/etc/dnssec-keys.conf`:
+With engine_pkcs11 there is no special key-store statement in `named.conf`.
+Instead, point the OpenSSL engine at the HSM's PKCS#11 module (the engine is
+configured in `openssl.cnf`), then generate the key files with
+`dnssec-keyfromlabel` so BIND references the HSM-resident keys like ordinary
+DNSSEC key files. A minimal engine configuration in `/etc/ssl/openssl.cnf`:
 
-```c
-// Key Signing Key (KSK) - stored in HSM
-// PKCS#11 URI format: pkcs11:token=<token>;object=<label>;pin-source=<file>
-key-store "hsm-store" {
-    pkcs11-lib "/usr/safenet/lunaclient/lib/libCryptoki2_64.so";
-    pkcs11-slot 0;
-    pkcs11-pin-file "/usr/local/bind9/etc/hsm-pin";
-};
+```ini
+# /etc/ssl/openssl.cnf
+openssl_conf = openssl_init
+
+[openssl_init]
+engines = engine_section
+
+[engine_section]
+pkcs11 = pkcs11_section
+
+[pkcs11_section]
+engine_id = pkcs11
+dynamic_path = /usr/lib/x86_64-linux-gnu/engines-1.1/pkcs11.so
+MODULE_PATH = /usr/safenet/lunaclient/lib/libCryptoki2_64.so
+init = 0
 ```
 
 ### Step 3: Generate DNSSEC Keys in HSM
 
+Generate the raw key pairs on the HSM with OpenSC's `pkcs11-tool`. The DNSSEC
+algorithm is assigned later by `dnssec-keyfromlabel`, so here you only choose
+the key type and size:
+
 ```bash
-# Generate KSK (Key Signing Key)
-pkcs11-keygen -a RSASHA256 -b 2048 -l ksk-example-com \
-  -m /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
-  -s 0 -p <pin>
+# Generate KSK (Key Signing Key) - RSA 2048
+pkcs11-tool --module /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
+  --slot 0 --login --pin <pin> \
+  --keypairgen --key-type rsa:2048 --label ksk-example-com
 
-# Generate ZSK (Zone Signing Key)
-pkcs11-keygen -a RSASHA256 -b 1024 -l zsk-example-com \
-  -m /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
-  -s 0 -p <pin>
+# Generate ZSK (Zone Signing Key) - RSA 2048
+pkcs11-tool --module /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
+  --slot 0 --login --pin <pin> \
+  --keypairgen --key-type rsa:2048 --label zsk-example-com
 
-# Alternative: ECDSA keys (recommended for new deployments)
-pkcs11-keygen -a ECDSAP256SHA256 -l ksk-example-com-ecdsa \
-  -m /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
-  -s 0 -p <pin>
+# Alternative: ECDSA P-256 keys (recommended for new deployments)
+pkcs11-tool --module /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
+  --slot 0 --login --pin <pin> \
+  --keypairgen --key-type EC:prime256v1 --label ksk-example-com-ecdsa
 ```
 
 ### Step 4: Create DNSKEY Files
 
 ```bash
 # List keys in HSM
-pkcs11-list -m /usr/safenet/lunaclient/lib/libCryptoki2_64.so -s 0 -p <pin>
+pkcs11-tool --module /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
+  --slot 0 --login --pin <pin> --list-objects
 
-# Export public key to DNSKEY format
-pkcs11-keyfromlabel -a RSASHA256 -l ksk-example-com \
-  -m /usr/safenet/lunaclient/lib/libCryptoki2_64.so \
-  -s 0 -p <pin> \
-  example.com > Kexample.com.+008+12345.key
+# Create the BIND key files (.key and .private) that point at the HSM key.
+# dnssec-keyfromlabel writes a PKCS#11 label reference into the .private file,
+# so the private key never leaves the HSM. -f KSK marks it as a Key Signing Key.
+dnssec-keyfromlabel -E pkcs11 -a RSASHA256 -f KSK \
+  -l "pkcs11:object=ksk-example-com" \
+  example.com
 
-# Create private key reference file
-cat > Kexample.com.+008+12345.private << EOF
-Private-key-format: v1.3
-Algorithm: 8 (RSASHA256)
-Engine: pkcs11
-Label: ksk-example-com
-EOF
+# Repeat for the ZSK (no -f KSK flag)
+dnssec-keyfromlabel -E pkcs11 -a RSASHA256 \
+  -l "pkcs11:object=zsk-example-com" \
+  example.com
 ```
 
 ### Step 5: Sign the Zone
 
 ```bash
-# Sign zone with HSM keys
-dnssec-signzone -S -K /var/named/keys \
+# Sign zone with HSM keys (-E pkcs11 routes signing through the HSM engine)
+dnssec-signzone -E pkcs11 -S -K /var/named/keys \
   -o example.com \
   -e +31536000 \
   /var/named/example.com.zone
 
+# The -E pkcs11 flag selects the OpenSSL engine_pkcs11 provider
 # The -S flag uses smart signing with key management
 # -K specifies the key directory
 # -e sets signature expiration (1 year)
@@ -710,29 +731,26 @@ echo "=========================================="
 
 # Verify HSM connectivity
 echo "[1/6] Verifying HSM connectivity..."
-pkcs11-tokens -m ${HSM_LIB}
+pkcs11-tool --module ${HSM_LIB} --list-slots
 
 # Prompt for HSM PIN (entered by Security Officer)
 echo "[2/6] HSM PIN required (Security Officer to enter):"
 read -s -p "HSM PIN: " HSM_PIN
 echo
 
-# Generate the KSK
+# Generate the KSK (key stays non-extractable inside the HSM)
 echo "[3/6] Generating KSK..."
-pkcs11-keygen -a ${ALGORITHM} -b ${KEY_SIZE} \
-  -l ${LABEL} \
-  -m ${HSM_LIB} \
-  -s ${HSM_SLOT} \
-  -p ${HSM_PIN} \
-  -E  # Extractable flag for backup
+pkcs11-tool --module ${HSM_LIB} --slot ${HSM_SLOT} \
+  --login --pin ${HSM_PIN} \
+  --keypairgen --key-type rsa:${KEY_SIZE} \
+  --label ${LABEL}
 
-echo "[4/6] Exporting public key..."
-PUBLIC_KEY_FILE="K${ZONE}.+008+$(date +%s).key"
-pkcs11-keyfromlabel -a ${ALGORITHM} -l ${LABEL} \
-  -m ${HSM_LIB} \
-  -s ${HSM_SLOT} \
-  -p ${HSM_PIN} \
-  ${ZONE} > ${PUBLIC_KEY_FILE}
+echo "[4/6] Creating DNSSEC key files..."
+# dnssec-keyfromlabel prints the key basename (Kexample.com.+008+NNNNN)
+KEY_NAME=$(dnssec-keyfromlabel -E pkcs11 -a ${ALGORITHM} -f KSK \
+  -l "pkcs11:object=${LABEL}" \
+  ${ZONE})
+PUBLIC_KEY_FILE="${KEY_NAME}.key"
 
 echo "[5/6] Calculating DS record..."
 dnssec-dsfromkey -2 ${PUBLIC_KEY_FILE}
@@ -764,10 +782,10 @@ echo "Starting ZSK rollover for ${ZONE}"
 
 # Phase 1: Pre-publication
 echo "[Phase 1] Generating new ZSK..."
-pkcs11-keygen -a RSASHA256 -b 1024 \
-  -l ${NEW_ZSK_LABEL} \
-  -m ${HSM_LIB} \
-  -s ${HSM_SLOT}
+pkcs11-tool --module ${HSM_LIB} --slot ${HSM_SLOT} \
+  --login --pin env:HSM_PIN \
+  --keypairgen --key-type rsa:2048 \
+  --label ${NEW_ZSK_LABEL}
 
 echo "[Phase 1] Adding new ZSK to zone (not signing yet)..."
 # Publish new DNSKEY but don't use for signing
@@ -791,9 +809,9 @@ echo "[Phase 3] Removing old ZSK from zone..."
 rndc reload ${ZONE}
 
 echo "[Phase 3] Archiving old key..."
-pkcs11-destroy -l ${OLD_ZSK_LABEL} \
-  -m ${HSM_LIB} \
-  -s ${HSM_SLOT}
+pkcs11-tool --module ${HSM_LIB} --slot ${HSM_SLOT} \
+  --login --pin env:HSM_PIN \
+  --delete-object --type privkey --label ${OLD_ZSK_LABEL}
 
 echo "ZSK rollover complete"
 ```
@@ -921,8 +939,8 @@ HSM_LIB="/usr/safenet/lunaclient/lib/libCryptoki2_64.so"
 ALERT_EMAIL="security@example.com"
 
 check_hsm_status() {
-    local status=$(pkcs11-tokens -m ${HSM_LIB} 2>&1)
-    if echo "$status" | grep -q "Token present"; then
+    local status=$(pkcs11-tool --module ${HSM_LIB} --list-token-slots 2>&1)
+    if echo "$status" | grep -q "token present"; then
         echo "HSM Status: OK"
         return 0
     else
@@ -933,7 +951,7 @@ check_hsm_status() {
 
 check_key_count() {
     local expected=$1
-    local count=$(pkcs11-list -m ${HSM_LIB} -s 0 2>&1 | grep -c "Private Key")
+    local count=$(pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin env:HSM_PIN --list-objects 2>&1 | grep -c "Private Key Object")
     if [ "$count" -ge "$expected" ]; then
         echo "Key Count: OK ($count keys)"
         return 0
@@ -1032,8 +1050,8 @@ sha256sum ${BACKUP_DIR}/${DATE}/partition-backup.bak > \
 cat > ${BACKUP_DIR}/${DATE}/manifest.txt << EOF
 Backup Date: $(date)
 Partition: dnssec-production
-HSM Serial: $(pkcs11-tokens -m ${HSM_LIB} | grep Serial)
-Key Count: $(pkcs11-list -m ${HSM_LIB} -s 0 | grep -c "Private Key")
+HSM Serial: $(pkcs11-tool --module ${HSM_LIB} --list-token-slots | grep -i serial)
+Key Count: $(pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin env:HSM_PIN --list-objects | grep -c "Private Key Object")
 EOF
 
 # Store off-site (encrypted)
@@ -1075,7 +1093,7 @@ echo "Restoring to HSM..."
 
 # Verify restoration
 echo "Verifying restored keys..."
-pkcs11-list -m ${HSM_LIB} -s 0
+pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin env:HSM_PIN --list-objects
 
 echo "Restore complete"
 ```
@@ -1157,7 +1175,7 @@ pkcs11-tool --module ${HSM_LIB} \
 
 # Trace PKCS#11 calls
 strace -f -e trace=open,read,write,ioctl \
-  pkcs11-list -m ${HSM_LIB} -s 0 2>&1 | \
+  pkcs11-tool --module ${HSM_LIB} --slot 0 --list-objects 2>&1 | \
   tee /tmp/pkcs11-strace.log
 ```
 
@@ -1236,34 +1254,36 @@ echo "All connectivity tests passed"
 | Component | Purpose | Configuration File | Key Command |
 |-----------|---------|-------------------|-------------|
 | HSM | Hardware key storage | Vendor-specific | pkcs11-tool |
-| PKCS#11 | HSM interface API | N/A | pkcs11-keygen |
+| PKCS#11 | HSM interface API | N/A | pkcs11-tool |
 | BIND 9 | DNS server | named.conf | dnssec-signzone |
 | PowerDNS | DNS server | pdns.conf | pdnsutil |
 | OpenDNSSEC | Key management | conf.xml, kasp.xml | ods-enforcer |
-| KSK | Signs DNSKEY RRset | In HSM | pkcs11-keygen |
-| ZSK | Signs zone data | In HSM | pkcs11-keygen |
+| KSK | Signs DNSKEY RRset | In HSM | pkcs11-tool / dnssec-keyfromlabel |
+| ZSK | Signs zone data | In HSM | pkcs11-tool / dnssec-keyfromlabel |
 | DS Record | Parent zone link | Registrar | dnssec-dsfromkey |
 
 ### Quick Reference Commands
 
 ```bash
 # List HSM tokens
-pkcs11-tool --module ${HSM_LIB} --list-tokens
+pkcs11-tool --module ${HSM_LIB} --list-token-slots
 
 # List keys in HSM
 pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin ${PIN} --list-objects
 
-# Generate RSA key
-pkcs11-keygen -a RSASHA256 -b 2048 -l key-label -m ${HSM_LIB} -s 0
+# Generate RSA key on the HSM
+pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin ${PIN} \
+  --keypairgen --key-type rsa:2048 --label key-label
 
-# Generate ECDSA key
-pkcs11-keygen -a ECDSAP256SHA256 -l key-label -m ${HSM_LIB} -s 0
+# Generate ECDSA P-256 key on the HSM
+pkcs11-tool --module ${HSM_LIB} --slot 0 --login --pin ${PIN} \
+  --keypairgen --key-type EC:prime256v1 --label key-label
 
-# Export public key
-pkcs11-keyfromlabel -a RSASHA256 -l key-label -m ${HSM_LIB} -s 0 zone.com
+# Create DNSSEC key files referencing the HSM key
+dnssec-keyfromlabel -E pkcs11 -a RSASHA256 -l "pkcs11:object=key-label" zone.com
 
-# Sign zone
-dnssec-signzone -S -K /path/to/keys -o zone.com zone.com.zone
+# Sign zone (through the HSM engine)
+dnssec-signzone -E pkcs11 -S -K /path/to/keys -o zone.com zone.com.zone
 
 # OpenDNSSEC key status
 ods-enforcer key list --verbose
