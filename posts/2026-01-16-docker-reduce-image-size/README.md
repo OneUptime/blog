@@ -25,15 +25,15 @@ Common Base Image Sizes
 ├────────────────────────────────────────────────────────────┤
 │  python:3.11-alpine    │████│                     50 MB    │
 ├────────────────────────────────────────────────────────────┤
-│  node:20               │████████████████████████████ 1.1 GB│
+│  node:22               │████████████████████████████ 1.1 GB│
 ├────────────────────────────────────────────────────────────┤
-│  node:20-slim          │██████████│              200 MB    │
+│  node:22-slim          │██████████│              200 MB    │
 ├────────────────────────────────────────────────────────────┤
-│  node:20-alpine        │██████│                  135 MB    │
+│  node:22-alpine        │██████│                  135 MB    │
 ├────────────────────────────────────────────────────────────┤
-│  alpine:3.19           │██│                        7 MB    │
+│  alpine:3.24           │██│                        7 MB    │
 ├────────────────────────────────────────────────────────────┤
-│  gcr.io/distroless/base│██│                       20 MB    │
+│  gcr.io/distroless/base-debian13│██│              20 MB    │
 ├────────────────────────────────────────────────────────────┤
 │  scratch               │                           0 MB    │
 └────────────────────────────────────────────────────────────┘
@@ -53,7 +53,7 @@ RUN apt-get update && apt-get install -y curl
 # Result: ~100MB
 
 # Alpine equivalent
-FROM alpine:3.19
+FROM alpine:3.24
 RUN apk add --no-cache curl
 # Result: ~12MB
 ```
@@ -61,18 +61,15 @@ RUN apk add --no-cache curl
 ### Node.js with Alpine
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
 # Install build dependencies for native modules
-RUN apk add --no-cache python3 make g++
-
 COPY package*.json ./
-RUN npm ci --only=production
-
-# Remove build dependencies
-RUN apk del python3 make g++
+RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
+    npm ci --omit=dev && \
+    apk del .build-deps
 
 COPY . .
 CMD ["node", "index.js"]
@@ -86,13 +83,14 @@ FROM python:3.11-alpine
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache \
+RUN apk add --no-cache libffi
+COPY requirements.txt .
+RUN apk add --no-cache --virtual .build-deps \
     gcc \
     musl-dev \
-    libffi-dev
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+    libffi-dev && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apk del .build-deps
 
 COPY . .
 CMD ["python", "app.py"]
@@ -119,13 +117,13 @@ Google's Distroless images contain only the application and runtime dependencies
 
 ```dockerfile
 # Build stage
-FROM golang:1.21 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -o main .
 
 # Distroless runtime
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 COPY --from=builder /app/main /
 CMD ["/main"]
 ```
@@ -134,14 +132,14 @@ CMD ["/main"]
 
 ```dockerfile
 # Build stage
-FROM node:20 AS builder
+FROM node:22-trixie AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Distroless runtime
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs22-debian13
 WORKDIR /app
 COPY --from=builder /app .
 CMD ["index.js"]
@@ -151,13 +149,13 @@ CMD ["index.js"]
 
 ```dockerfile
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim-trixie AS builder
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -t /app/deps
 
 # Distroless runtime
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian13
 WORKDIR /app
 COPY --from=builder /app/deps /app/deps
 COPY . .
@@ -169,12 +167,12 @@ CMD ["app.py"]
 
 | Image | Use Case | Size |
 |-------|----------|------|
-| gcr.io/distroless/static | Static binaries (Go, Rust) | ~2MB |
-| gcr.io/distroless/base | Dynamically linked | ~20MB |
-| gcr.io/distroless/cc | C/C++ applications | ~21MB |
-| gcr.io/distroless/python3 | Python applications | ~50MB |
-| gcr.io/distroless/java | Java applications | ~190MB |
-| gcr.io/distroless/nodejs | Node.js applications | ~120MB |
+| gcr.io/distroless/static-debian13 | Static binaries (Go, Rust) | ~2MB |
+| gcr.io/distroless/base-debian13 | Dynamically linked | ~20MB |
+| gcr.io/distroless/cc-debian13 | C/C++ applications | ~21MB |
+| gcr.io/distroless/python3-debian13 | Python applications | ~50MB |
+| gcr.io/distroless/java21-debian13 | Java applications | ~190MB |
+| gcr.io/distroless/nodejs22-debian13 | Node.js applications | ~120MB |
 
 ## Scratch Images
 
@@ -183,7 +181,7 @@ Scratch is an empty base image, perfect for statically compiled binaries.
 ### Go with Scratch
 
 ```dockerfile
-FROM golang:1.21 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 COPY . .
 
@@ -201,7 +199,7 @@ ENTRYPOINT ["/main"]
 ### Rust with Scratch
 
 ```dockerfile
-FROM rust:1.73 AS builder
+FROM rust:1.93 AS builder
 WORKDIR /app
 COPY . .
 
@@ -238,7 +236,7 @@ COPY --from=builder /app/main /
 
 ```dockerfile
 # Stage 1: Build
-FROM node:20 AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -246,13 +244,13 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production dependencies only
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Stage 3: Minimal runtime
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -262,12 +260,12 @@ CMD ["node", "dist/index.js"]
 ### Selective File Copying
 
 ```dockerfile
-FROM node:20 AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN npm ci && npm run build
 
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Only copy what's needed
@@ -301,14 +299,14 @@ RUN yum install -y package && \
 RUN pip install --no-cache-dir -r requirements.txt
 
 # npm
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 ```
 
 ### Remove Unnecessary Files
 
 ```dockerfile
 # After npm install, remove dev dependencies
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Remove test files
 RUN rm -rf test/ tests/ __tests__/ *.test.js *.spec.js
@@ -336,13 +334,13 @@ FROM python:3.11-alpine
 ### Compress Binaries
 
 ```dockerfile
-FROM golang:1.21 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 COPY . .
 
 # Build and compress
-RUN go build -ldflags="-s -w" -o main .
-RUN apt-get update && apt-get install -y upx
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main .
+RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl && rm -rf /var/lib/apt/lists/*
 RUN upx --best main
 
 FROM scratch
@@ -443,4 +441,3 @@ container-diff diff myimage:v1 myimage:v2
 | scratch | 0MB | No | No | Static binaries |
 
 Start with multi-stage builds to separate build and runtime environments. Choose the smallest base image compatible with your application: Alpine for most use cases, Distroless for enhanced security, or scratch for statically compiled binaries. For more on Docker build optimization, see our post on [Optimizing Docker Build Times](https://oneuptime.com/blog/post/2026-01-16-docker-optimize-build-times/view).
-
