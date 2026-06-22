@@ -12,7 +12,7 @@ DHCP (Dynamic Host Configuration Protocol) automatically assigns IP addresses an
 
 ## Prerequisites
 
-- Ubuntu 20.04 or later
+- Ubuntu 20.04 or 22.04 for supported ISC DHCP packages (Ubuntu 24.04 and later should use Kea or dnsmasq instead)
 - Static IP on the server
 - Root or sudo access
 - Understanding of your network topology
@@ -391,7 +391,9 @@ sudo tail -f /var/log/dhcpd.log
 ```bash
 # Allow DHCP traffic
 sudo ufw allow 67/udp
-sudo ufw allow 68/udp
+
+# If outbound traffic is restricted, allow replies to DHCP clients
+sudo ufw allow out 68/udp
 
 # For failover
 sudo ufw allow 647/tcp
