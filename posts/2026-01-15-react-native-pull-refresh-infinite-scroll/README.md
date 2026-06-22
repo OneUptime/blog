@@ -363,16 +363,16 @@ export default InfiniteScrollList;
 
 ## onEndReached Configuration
 
-The `onEndReachedThreshold` prop determines how far from the end the user must scroll before `onEndReached` is triggered. Understanding this value is crucial:
+The `onEndReachedThreshold` prop determines how far from the end the user must scroll before `onEndReached` is triggered. It is measured in units of the visible length of the list (i.e., screen heights), not as a percentage of the total content. The default value is `2`. Understanding this value is crucial:
 
 ```typescript
-// Trigger when user is within last 50% of content
+// Trigger when the end of content is within half a screen height of the end
 onEndReachedThreshold={0.5}
 
-// Trigger when user is within last 20% of content
+// Trigger when the end of content is within 0.2 screen heights of the end
 onEndReachedThreshold={0.2}
 
-// Trigger when user reaches the very end
+// Trigger only when the end of content is reached
 onEndReachedThreshold={0}
 
 // Trigger when user is 1 screen height away from end
