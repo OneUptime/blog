@@ -52,7 +52,7 @@ flowchart TB
 ```bash
 # Add Sealed Secrets Helm repository
 
-helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+helm repo add sealed-secrets https://bitnami.github.io/sealed-secrets
 helm repo update
 
 # Create namespace
@@ -86,14 +86,15 @@ resources:
     cpu: 200m
     memory: 256Mi
 
-# Security context
-securityContext:
+# Container security context
+containerSecurityContext:
+  enabled: true
   runAsNonRoot: true
   runAsUser: 1001
-  fsGroup: 65534
 
 # Pod security context
 podSecurityContext:
+  enabled: true
   fsGroup: 65534
 
 # Service configuration
@@ -108,14 +109,11 @@ metrics:
     namespace: monitoring
     interval: 30s
 
-# Command args
-commandArgs:
-  # Key rotation interval (default: 30d)
-  - --key-renew-period=720h
-  # Key cutoff time
-  - --key-cutoff-time=48h
-  # Update status
-  - --update-status
+# Key renewal interval (default: 30d)
+keyrenewperiod: "720h"
+
+# Update status
+updateStatus: true
 
 # Network policy
 networkPolicy:
@@ -134,7 +132,7 @@ serviceAccount:
 # Pod annotations
 podAnnotations:
   prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
+  prometheus.io/port: "8081"
 
 # Node selector
 nodeSelector: {}
@@ -171,8 +169,8 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
 brew install kubeseal
 
 # Linux
-KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami-labs/sealed-secrets/releases/latest | jq -r '.tag_name' | cut -c2-)
-wget "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
+KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami/sealed-secrets/releases/latest | jq -r '.tag_name' | cut -c2-)
+wget "https://github.com/bitnami/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
 tar -xvzf kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 
@@ -214,8 +212,7 @@ kubectl get secret my-secret
 # Create sealed secret from literal
 echo -n "mypassword" | kubeseal --raw \
   --namespace default \
-  --name my-secret \
-  --from-file=/dev/stdin
+  --name my-secret
 
 # Full secret from stdin
 kubectl create secret generic my-secret \
@@ -234,7 +231,7 @@ kubeseal --format yaml < secret.yaml > sealed-secret.yaml
 kubeseal --scope namespace-wide --format yaml < secret.yaml > sealed-secret.yaml
 
 # Cluster-wide scope - can be used anywhere
-kubeseal --scope cluster-wide --format yaml < sealed-secret.yaml > sealed-secret.yaml
+kubeseal --scope cluster-wide --format yaml < secret.yaml > cluster-wide-sealed-secret.yaml
 ```
 
 ### SealedSecret Manifest
@@ -404,17 +401,19 @@ kubectl rollout restart deployment/sealed-secrets-controller -n sealed-secrets
 
 ```yaml
 # sealed-secrets-values.yaml
-commandArgs:
-  # Rotate keys every 30 days
-  - --key-renew-period=720h
-  # Keep old keys for 48 hours after rotation
-  - --key-cutoff-time=48h
+# Renew sealing keys every 30 days
+keyrenewperiod: "720h"
+
+# Generate a new key early; value must be RFC1123 format, for example from date -R
+keycutofftime: "Mon, 22 Jun 2026 14:00:00 +0000"
 ```
 
 ```bash
-# Manual key rotation
-kubectl annotate sealedsecret my-secret \
-  sealedsecrets.bitnami.com/managed="true"
+# Trigger early key renewal with Helm
+helm upgrade sealed-secrets sealed-secrets/sealed-secrets \
+  --namespace sealed-secrets \
+  --reuse-values \
+  --set-string keycutofftime="$(date -R)"
 ```
 
 ### Multiple Key Pairs
@@ -514,9 +513,10 @@ jobs:
       
       - name: Install kubeseal
         run: |
-          wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/kubeseal-0.24.0-linux-amd64.tar.gz
-          tar -xvzf kubeseal-0.24.0-linux-amd64.tar.gz kubeseal
-          sudo install kubeseal /usr/local/bin/
+          KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami/sealed-secrets/releases/latest | jq -r '.tag_name' | cut -c2-)
+          wget "https://github.com/bitnami/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
+          tar -xvzf kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz kubeseal
+          sudo install -m 755 kubeseal /usr/local/bin/kubeseal
           
       - name: Seal secret
         env:
@@ -556,11 +556,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: sealed-secrets
+      app.kubernetes.io/component: metrics
   namespaceSelector:
     matchNames:
       - sealed-secrets
   endpoints:
-    - port: http
+    - port: metrics
       interval: 30s
 ```
 
