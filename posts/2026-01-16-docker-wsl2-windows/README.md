@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WSL2, Window, Linux, DevOps
+Tags: Docker, WSL2, Windows, Linux, DevOps
 
 Description: Learn how to set up Docker with WSL2 on Windows for optimal performance, configure integration with Linux distributions, and troubleshoot common issues.
 
@@ -18,8 +18,8 @@ flowchart TB
         subgraph DockerDesktop["Docker Desktop"]
             subgraph WSL2["WSL2 VM"]
                 subgraph Kernel["Linux Kernel (Real)"]
-                    Ubuntu[Ubuntu Distro]
-                    Docker[Docker Daemon<br/>containerd]
+                    DockerDistro[docker-desktop distro<br/>Docker daemon + containerd]
+                    Ubuntu[Ubuntu distro<br/>Docker CLI integration]
                 end
             end
         end
@@ -120,11 +120,8 @@ wsl --shutdown
 ### Docker Desktop Settings
 
 ```text
-Settings > Resources > Advanced
-- CPUs: 4 (adjust based on system)
-- Memory: 8 GB
-- Swap: 2 GB
-- Disk image size: 64 GB
+In WSL 2 mode, CPU, memory, and swap limits are configured in .wslconfig.
+Use Settings > Resources > Advanced for Docker Desktop disk image settings.
 ```
 
 ## File System Best Practices
@@ -177,8 +174,6 @@ code .
 
 ```yaml
 # ~/projects/myapp/docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -200,7 +195,7 @@ volumes:
 ```bash
 # Run from WSL2 terminal
 cd ~/projects/myapp
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Git Configuration
@@ -252,16 +247,21 @@ services:
 ```bash
 # Install NVIDIA drivers on Windows (not in WSL2)
 
-# In WSL2 Ubuntu, install NVIDIA Container Toolkit
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# If using Docker Engine directly in WSL2, install NVIDIA Container Toolkit in Ubuntu
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 sudo apt-get update
-sudo apt-get install -y nvidia-docker2
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo service docker restart
 
 # Test GPU access
-docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.5.0-base-ubuntu22.04 nvidia-smi
 ```
 
 ## Troubleshooting
@@ -269,12 +269,12 @@ docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
 ### Docker Desktop Not Starting
 
 ```powershell
-# Reset WSL2
+# Restart WSL2
 wsl --shutdown
-wsl --unregister docker-desktop
-wsl --unregister docker-desktop-data
 
 # Restart Docker Desktop
+# If Docker Desktop still fails, use Troubleshoot > Reset to factory defaults
+# after backing up any containers, images, and volumes you need.
 ```
 
 ### Slow File Operations
@@ -322,7 +322,7 @@ netsh int ip reset
 # Fix file permissions
 sudo chown -R $USER:$USER ~/projects
 
-# For Docker socket
+# For Docker Engine socket (native Docker Engine in WSL2)
 sudo usermod -aG docker $USER
 newgrp docker
 ```
@@ -343,13 +343,17 @@ sudo apt-get install ca-certificates curl gnupg
 
 # Add Docker repository
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker
 sudo apt-get update
@@ -413,4 +417,3 @@ echo "Setup complete. Please log out and back in for group changes to take effec
 | Git | Configure credential helper for Windows |
 
 WSL2 provides excellent Docker performance on Windows when properly configured. Keep projects in the WSL2 filesystem, use VS Code Remote - WSL, and configure memory limits to prevent resource exhaustion. For alternative Docker runtimes, see our post on [Docker Desktop Alternatives](https://oneuptime.com/blog/post/2026-01-16-docker-desktop-alternatives/view).
-

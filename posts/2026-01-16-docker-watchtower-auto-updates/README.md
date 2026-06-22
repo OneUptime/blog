@@ -31,8 +31,6 @@ Watchtower will:
 ## Docker Compose Setup
 
 ```yaml
-version: '3.8'
-
 services:
   watchtower:
     image: containrrr/watchtower
@@ -107,6 +105,7 @@ Add labels to containers you don't want updated:
 ```bash
 docker run -d \
   --name database \
+  -e POSTGRES_PASSWORD=change-me \
   --label com.centurylinklabs.watchtower.enable=false \
   postgres:15
 ```
@@ -116,6 +115,8 @@ docker run -d \
 services:
   database:
     image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=change-me
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
 ```
@@ -278,6 +279,13 @@ Run commands before and after updates:
 
 ```yaml
 services:
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_LIFECYCLE_HOOKS=true
+
   app:
     image: my-app
     labels:
@@ -288,8 +296,6 @@ services:
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 services:
   watchtower:
     image: containrrr/watchtower
@@ -331,6 +337,8 @@ services:
   database:
     image: postgres:15
     restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=change-me
     labels:
       # Don't auto-update database
       - "com.centurylinklabs.watchtower.enable=false"
@@ -450,6 +458,6 @@ Run Watchtower in staging environment before production to catch issues with new
 | Cleanup images | `WATCHTOWER_CLEANUP=true` | `--cleanup` |
 | Label filter | `WATCHTOWER_LABEL_ENABLE=true` | `--label-enable` |
 | Run once | - | `--run-once` |
-| Notifications | `WATCHTOWER_NOTIFICATION_URL=...` | - |
+| Notifications | `WATCHTOWER_NOTIFICATION_URL=...` | `--notification-url "..."` |
 
 Watchtower simplifies container updates for development and simple production environments. For complex deployments, combine it with proper CI/CD pipelines, health checks, and selective container targeting to maintain reliability while staying current.
