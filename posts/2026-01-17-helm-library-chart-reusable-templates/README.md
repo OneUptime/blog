@@ -147,7 +147,10 @@ Create the name of the service account to use
 Create image reference
 */}}
 {{- define "common-lib.image" -}}
-{{- $registry := .Values.image.registry | default .Values.global.imageRegistry | default "" -}}
+{{- $registry := .Values.image.registry | default "" -}}
+{{- if .Values.global }}
+{{- $registry = $registry | default .Values.global.imageRegistry -}}
+{{- end }}
 {{- $repository := .Values.image.repository -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- if $registry }}
@@ -599,9 +602,9 @@ helm template myapp ./myapp --debug
 # Check if library is loaded
 helm template myapp ./myapp --show-only templates/deployment.yaml
 
-# Verify library templates
-helm template common-lib ./common-lib
-# Should produce no output (library charts don't render)
+# Verify Helm recognizes it as a library chart
+helm install common-lib ./common-lib
+# Should fail with: Error: library charts are not installable
 ```
 
 ## Wrap-up
