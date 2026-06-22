@@ -175,13 +175,13 @@ net.ipv6.conf.default.temp_valid_lft = 86400
 net.ipv6.conf.all.temp_prefered_lft = 14400
 net.ipv6.conf.default.temp_prefered_lft = 14400
 
-# Maximum number of temporary addresses per interface
+# Maximum number of autoconfigured addresses per interface
 # Default is 16, which is usually sufficient
 net.ipv6.conf.all.max_addresses = 16
 net.ipv6.conf.default.max_addresses = 16
 
-# Regenerate advance: seconds before expiry to generate new address
-# Ensures seamless transition between addresses
+# Number of attempts to generate a valid temporary address before giving up
+# Kernel default is 5; lowering it is rarely necessary
 net.ipv6.conf.all.regen_max_retry = 3
 net.ipv6.conf.default.regen_max_retry = 3
 EOF
@@ -258,12 +258,8 @@ IPv6PrivacyExtensions=prefer-public
 # Alternative: use 'yes' to strongly prefer temporary addresses
 # IPv6PrivacyExtensions=yes
 
-[IPv6PrivacyExtensions]
-# Prefer temporary addresses for outgoing connections
-PreferTemporaryAddresses=yes
-
 [DHCPv6]
-# Use privacy extensions even with DHCPv6
+# Use the address provided by the DHCPv6 server, if any
 UseAddress=yes
 EOF
 ```
@@ -923,8 +919,8 @@ sudo ip link set eth0 down && sudo ip link set eth0 up
 | `use_tempaddr` | 0 (disabled) | 2 (prefer temp) | Enable and prefer temporary addresses |
 | `temp_valid_lft` | 604800 (7 days) | 86400 (1 day) | How long address remains valid |
 | `temp_prefered_lft` | 86400 (1 day) | 14400 (4 hours) | When to generate new address |
-| `max_addresses` | 16 | 16 | Maximum temporary addresses per interface |
-| `regen_max_retry` | 3 | 3 | Retries for address generation |
+| `max_addresses` | 16 | 16 | Maximum autoconfigured addresses per interface |
+| `regen_max_retry` | 5 | 3 | Attempts to generate a valid temporary address |
 
 | Address Flag | Meaning |
 |-------------|---------|
