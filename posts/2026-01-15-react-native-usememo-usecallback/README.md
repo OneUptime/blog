@@ -139,7 +139,7 @@ const SearchComponent: React.FC = () => {
     setResults(data);
   };
 
-  // This causes SearchInput to re-render every time
+  // This breaks memoization for SearchInput because the prop changes every time
   return (
     <View>
       <SearchInput onSearch={handleSearch} />
@@ -186,7 +186,7 @@ const ProductList: React.FC<ProductListProps> = ({ products }) => {
   const [sortBy, setSortBy] = useState<'name' | 'price'>('name');
   const [showInStockOnly, setShowInStockOnly] = useState<boolean>(false);
 
-  // Without useMemo, this runs on every keystroke and any state change
+  // Without useMemo, this runs on every render, even when these inputs have not changed
   const processedProducts = useMemo<Product[]>(() => {
     console.log('Processing products...');
 
@@ -482,17 +482,29 @@ interface UseDebounceOptions {
 const useDebounce = ({ delay, callback }: UseDebounceOptions) => {
   // Store callback in ref to avoid dependency issues
   const callbackRef = useRef(callback);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     callbackRef.current = callback;
   }, [callback]);
 
-  const debouncedFn = useCallback((value: string) => {
-    const timeoutId = setTimeout(() => {
-      callbackRef.current(value);
-    }, delay);
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
-    return () => clearTimeout(timeoutId);
+  const debouncedFn = useCallback((value: string) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      callbackRef.current(value);
+      timeoutRef.current = null;
+    }, delay);
   }, [delay]); // Only depends on delay, not callback
 
   return debouncedFn;
@@ -881,7 +893,6 @@ const OptimizedList: React.FC = () => {
         data={filteredItems}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        extraData={items} // Ensure re-render when items change
       />
     </View>
   );
@@ -1718,7 +1729,7 @@ const MemoizedDataRow = memo(DataRowComponent, (prevProps, nextProps) => {
   if (prevProps.row !== nextProps.row) return false;
   if (prevProps.isEven !== nextProps.isEven) return false;
   if (prevProps.onPress !== nextProps.onPress) return false;
-  if (prevProps.columns.length !== nextProps.columns.length) return false;
+  if (prevProps.columns !== nextProps.columns) return false;
   return true;
 }) as typeof DataRowComponent;
 
@@ -1760,6 +1771,13 @@ function DataGrid<T extends { id: string }>({
     [onSort]
   );
 
+  const sortHandlers = useMemo(() => {
+    return columns.reduce((acc, column) => {
+      acc[String(column.key)] = () => handleSort(column.key);
+      return acc;
+    }, {} as Record<string, () => void>);
+  }, [columns, handleSort]);
+
   // Memoize row press handlers
   const rowPressHandlers = useMemo(() => {
     if (!onRowPress) return {};
@@ -1790,7 +1808,7 @@ function DataGrid<T extends { id: string }>({
                 sortDirection={
                   sortConfig?.key === column.key ? sortConfig.direction : null
                 }
-                onSort={() => handleSort(column.key)}
+                onSort={sortHandlers[String(column.key)]}
               />
             ))}
           </View>
