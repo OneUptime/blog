@@ -21,7 +21,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -90,6 +90,14 @@ resource "docker_image" "app" {
 ### Registry Authentication
 
 ```hcl
+provider "docker" {
+  registry_auth {
+    address     = "registry.example.com"
+    username    = var.registry_username
+    password    = var.registry_password
+  }
+}
+
 resource "docker_registry_image" "app" {
   name = "registry.example.com/myapp:${var.version}"
 
@@ -188,7 +196,7 @@ resource "docker_container" "worker" {
   memory_swap = 1024 # MB
   cpu_shares  = 1024
 
-  # CPU quota (in microseconds per 100ms period)
+  # Pin container execution to CPUs 0 and 1
   cpu_set = "0-1"
 }
 ```
@@ -298,7 +306,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -562,4 +570,3 @@ modules/
 | docker_registry_image | Push to registries |
 
 Terraform provides declarative, version-controlled Docker infrastructure management. Use it for reproducible deployments, multi-environment management, and CI/CD integration. For deploying with Ansible as an alternative, see our post on [Deploying Docker with Ansible](https://oneuptime.com/blog/post/2026-01-16-docker-ansible/view).
-
