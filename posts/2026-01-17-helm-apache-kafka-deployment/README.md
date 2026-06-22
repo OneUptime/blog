@@ -72,8 +72,11 @@ helm repo update
 helm install strimzi-cluster-operator strimzi/strimzi-kafka-operator \
   --namespace kafka \
   --create-namespace \
+  --version 0.38.0 \
   --set watchAnyNamespace=true
 ```
+
+This ZooKeeper-based example uses Strimzi 0.38.0 with Kafka 3.6.0. Newer Strimzi releases use KRaft-based Kafka deployments and Strimzi 1.0+ uses the `kafka.strimzi.io/v1` API instead of `v1beta2`.
 
 ### Option 2: Bitnami Chart
 
@@ -113,6 +116,8 @@ spec:
         port: 9093
         type: internal
         tls: true
+        authentication:
+          type: tls
       - name: external
         port: 9094
         type: loadbalancer
@@ -130,6 +135,9 @@ spec:
       log.retention.hours: 168
       log.retention.bytes: 10737418240
       num.partitions: 3
+
+    authorization:
+      type: simple
     
     storage:
       type: jbod
@@ -207,6 +215,10 @@ spec:
         limits:
           memory: 512Mi
           cpu: "500m"
+
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
 ```
 
 ### Metrics Configuration
@@ -222,6 +234,14 @@ data:
   kafka-metrics-config.yml: |
     lowercaseOutputName: true
     rules:
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(MessagesInPerSec|BytesInPerSec|BytesOutPerSec), topic=(.+)><>Count
+        name: kafka_server_brokertopicmetrics_$1_total
+        type: COUNTER
+        labels:
+          topic: "$2"
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=(MessagesInPerSec|BytesInPerSec|BytesOutPerSec)><>Count
+        name: kafka_server_brokertopicmetrics_$1_total
+        type: COUNTER
       - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
         name: kafka_server_$1_$2
         type: GAUGE
@@ -271,69 +291,66 @@ kubectl -n kafka get pods -w
 ```yaml
 # kafka-bitnami-values.yaml
 
-# Kafka configuration
-replicaCount: 3
-
-# ZooKeeper configuration (or use KRaft)
-zookeeper:
-  enabled: true
+# Kafka controller-eligible nodes (KRaft mode)
+controller:
   replicaCount: 3
   persistence:
     enabled: true
     storageClass: fast-storage
-    size: 20Gi
+    size: 100Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
 
-# Kraft mode (ZooKeeper-less) - Kafka 3.3+
-kraft:
-  enabled: false
+# Optional broker-only nodes
+broker:
+  replicaCount: 0
 
-# Persistence
-persistence:
-  enabled: true
-  storageClass: fast-storage
-  size: 100Gi
-
-# Resources
-resources:
-  requests:
-    cpu: 500m
-    memory: 1Gi
-  limits:
-    cpu: 2
-    memory: 4Gi
-
-# Kafka configuration
-config: |
-  offsets.topic.replication.factor=3
-  transaction.state.log.replication.factor=3
-  transaction.state.log.min.isr=2
-  default.replication.factor=3
-  min.insync.replicas=2
-  num.partitions=3
-  log.retention.hours=168
+# Kafka configuration overrides
+overrideConfiguration:
+  offsets.topic.replication.factor: 3
+  transaction.state.log.replication.factor: 3
+  transaction.state.log.min.isr: 2
+  default.replication.factor: 3
+  min.insync.replicas: 2
+  num.partitions: 3
+  log.retention.hours: 168
 
 # External access
 externalAccess:
   enabled: true
-  service:
-    type: LoadBalancer
-    ports:
-      external: 9094
+  controller:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9094
+defaultInitContainers:
   autoDiscovery:
     enabled: true
+rbac:
+  create: true
 
 # SASL authentication
-auth:
-  clientProtocol: sasl
-  interBrokerProtocol: sasl
-  sasl:
-    mechanisms: scram-sha-512
-    interBrokerMechanism: scram-sha-512
+listeners:
+  client:
+    protocol: SASL_PLAINTEXT
+  interbroker:
+    protocol: SASL_PLAINTEXT
+  controller:
+    protocol: SASL_PLAINTEXT
+  external:
+    protocol: SASL_PLAINTEXT
+sasl:
+  enabledMechanisms: PLAIN,SCRAM-SHA-256,SCRAM-SHA-512
+  interBrokerMechanism: PLAIN
+  controllerMechanism: PLAIN
 
 # Metrics
 metrics:
-  kafka:
-    enabled: true
   jmx:
     enabled: true
   serviceMonitor:
@@ -467,6 +484,44 @@ spec:
           patternType: literal
         operations:
           - Read
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: my-connect
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: connect-
+          patternType: prefix
+        operations:
+          - Read
+          - Write
+          - Create
+          - Describe
+      - resource:
+          type: topic
+          name: cdc
+          patternType: prefix
+        operations:
+          - Read
+          - Write
+          - Create
+          - Describe
+      - resource:
+          type: group
+          name: connect-cluster
+          patternType: literal
+        operations:
+          - Read
 ```
 
 ## Client Configuration
@@ -479,7 +534,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka-producer
-  namespace: default
+  namespace: kafka
 spec:
   replicas: 1
   selector:
@@ -499,22 +554,37 @@ spec:
             - name: KAFKA_SECURITY_PROTOCOL
               value: "SSL"
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: "/certs/ca.crt"
+              value: "/cluster-ca/ca.p12"
+            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-cluster-cluster-ca-cert
+                  key: ca.password
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PKCS12"
             - name: KAFKA_SSL_KEYSTORE_LOCATION
-              value: "/certs/user.p12"
+              value: "/user/user.p12"
             - name: KAFKA_SSL_KEYSTORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: app-producer
                   key: user.password
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: "PKCS12"
           volumeMounts:
-            - name: kafka-certs
-              mountPath: /certs
+            - name: user-certs
+              mountPath: /user
+              readOnly: true
+            - name: cluster-ca
+              mountPath: /cluster-ca
               readOnly: true
       volumes:
-        - name: kafka-certs
+        - name: user-certs
           secret:
             secretName: app-producer
+        - name: cluster-ca
+          secret:
+            secretName: my-cluster-cluster-ca-cert
 ```
 
 ### Consumer Application
@@ -525,7 +595,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka-consumer
-  namespace: default
+  namespace: kafka
 spec:
   replicas: 3
   selector:
@@ -546,14 +616,38 @@ spec:
               value: "app-consumer-group"
             - name: KAFKA_SECURITY_PROTOCOL
               value: "SSL"
+            - name: KAFKA_SSL_TRUSTSTORE_LOCATION
+              value: "/cluster-ca/ca.p12"
+            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-cluster-cluster-ca-cert
+                  key: ca.password
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PKCS12"
+            - name: KAFKA_SSL_KEYSTORE_LOCATION
+              value: "/user/user.p12"
+            - name: KAFKA_SSL_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-consumer
+                  key: user.password
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: "PKCS12"
           volumeMounts:
-            - name: kafka-certs
-              mountPath: /certs
+            - name: user-certs
+              mountPath: /user
+              readOnly: true
+            - name: cluster-ca
+              mountPath: /cluster-ca
               readOnly: true
       volumes:
-        - name: kafka-certs
+        - name: user-certs
           secret:
             secretName: app-consumer
+        - name: cluster-ca
+          secret:
+            secretName: my-cluster-cluster-ca-cert
 ```
 
 ## Kafka Connect
@@ -577,6 +671,12 @@ spec:
     trustedCertificates:
       - secretName: my-cluster-cluster-ca-cert
         certificate: ca.crt
+  authentication:
+    type: tls
+    certificateAndKey:
+      secretName: my-connect
+      certificate: user.crt
+      key: user.key
   config:
     group.id: connect-cluster
     offset.storage.topic: connect-offsets
@@ -628,25 +728,33 @@ spec:
 
 ## Monitoring
 
-### ServiceMonitor
+### PodMonitor
 
 ```yaml
-# kafka-servicemonitor.yaml
+# kafka-podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: kafka
   namespace: monitoring
 spec:
   selector:
-    matchLabels:
-      strimzi.io/cluster: my-cluster
-      strimzi.io/kind: Kafka
+    matchExpressions:
+      - key: strimzi.io/cluster
+        operator: In
+        values:
+          - my-cluster
+      - key: strimzi.io/kind
+        operator: In
+        values:
+          - Kafka
+          - KafkaConnect
   namespaceSelector:
     matchNames:
       - kafka
-  endpoints:
+  podMetricsEndpoints:
     - port: tcp-prometheus
+      path: /metrics
       interval: 30s
 ```
 
