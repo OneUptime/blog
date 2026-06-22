@@ -106,8 +106,6 @@ done
 ## Docker Compose for Event Processing
 
 ```yaml
-version: '3.8'
-
 services:
   event-monitor:
     image: alpine
@@ -124,15 +122,13 @@ services:
 ## Complete Monitoring Setup
 
 ```yaml
-version: '3.8'
-
 services:
   event-exporter:
-    image: ghcr.io/prometheus-community/docker-event-exporter:latest
+    image: ghcr.io/neuroforgede/docker-engine-events-exporter:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - "9153:9153"
+      - "9000:9000"
 
   prometheus:
     image: prom/prometheus:v2.47.0
@@ -147,7 +143,7 @@ services:
 scrape_configs:
   - job_name: 'docker-events'
     static_configs:
-      - targets: ['event-exporter:9153']
+      - targets: ['event-exporter:9000']
 ```
 
 ## Summary
@@ -162,4 +158,3 @@ scrape_configs:
 | health_status | Health check result |
 
 Docker events provide valuable insights into container operations. Use them for debugging, triggering automated responses, and feeding monitoring systems. For comprehensive monitoring, integrate with Prometheus as described in our post on [Docker Prometheus and Grafana](https://oneuptime.com/blog/post/2026-01-16-docker-prometheus-grafana/view).
-
