@@ -34,7 +34,7 @@ The official `postgres` image provides several features:
 
 | Environment Variable | Purpose |
 |---------------------|---------|
-| `POSTGRES_PASSWORD` | Required. Sets superuser password |
+| `POSTGRES_PASSWORD` | Required unless `POSTGRES_HOST_AUTH_METHOD=trust`. Sets superuser password |
 | `POSTGRES_USER` | Optional. Creates a user (default: postgres) |
 | `POSTGRES_DB` | Optional. Creates a database (default: username) |
 | `PGDATA` | Optional. Data directory (default: /var/lib/postgresql/data) |
@@ -87,8 +87,6 @@ docker run --rm -v pgdata:/data alpine ls -la /data
 ### Basic Setup
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -110,8 +108,6 @@ volumes:
 ### Production-Ready Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -292,6 +288,14 @@ psql "postgresql://myapp:password@localhost:5432/myapp_db"
 services:
   postgres:
     image: postgres:15
+    environment:
+      POSTGRES_USER: myapp
+      POSTGRES_DB: myapp_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myapp -d myapp_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
 
@@ -355,8 +359,6 @@ docker exec -i postgres pg_restore -U myapp -d myapp_db < backup.dump
 ### Automated Backups
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
