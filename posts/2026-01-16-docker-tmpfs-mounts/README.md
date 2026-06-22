@@ -124,7 +124,7 @@ services:
     image: postgres:15
     tmpfs:
       # Temporary sort and hash files
-      - /var/lib/postgresql/data/pg_stat_tmp:size=100M
+      - /var/lib/postgresql/data/base/pgsql_tmp:size=100M
     volumes:
       - pgdata:/var/lib/postgresql/data
 ```
@@ -230,7 +230,7 @@ services:
 ```yaml
 services:
   java:
-    image: openjdk:21
+    image: eclipse-temurin:21
     tmpfs:
       - /tmp:size=500M
     environment:
@@ -242,7 +242,7 @@ services:
 ```yaml
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     tmpfs:
       - /tmp:size=1G
     environment:
@@ -272,7 +272,7 @@ services:
   secret-handler:
     image: myapp
     tmpfs:
-      # Secrets disappear when container stops
+      # Secrets are not persisted in the container filesystem
       - /run/secrets:size=10M,mode=0700,uid=1000
 ```
 
@@ -411,5 +411,4 @@ docker run --tmpfs /tmp:mode=1777 myapp
 | Test database | 1G-4G | default |
 | Sensitive secrets | 10M | mode=0700 |
 
-tmpfs mounts provide dramatic I/O improvements for temporary data but consume RAM. Use them for caches, session storage, and test databases. Always set size limits and consider security options like noexec for production. For more on container performance, see our post on [Docker Daemon Tuning](https://oneuptime.com/blog/post/2026-01-16-docker-daemon-tuning/view).
-
+tmpfs mounts provide dramatic I/O improvements for temporary data but consume RAM, and data may be written to swap if swap is enabled on the host. Use them for caches, session storage, and test databases. Always set size limits and consider security options like noexec for production. For more on container performance, see our post on [Docker Daemon Tuning](https://oneuptime.com/blog/post/2026-01-16-docker-daemon-tuning/view).
