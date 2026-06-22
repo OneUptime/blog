@@ -55,8 +55,6 @@ docker run -d \
 ### Docker Compose Installation
 
 ```yaml
-version: '3.8'
-
 services:
   gitlab-runner:
     image: gitlab/gitlab-runner:latest
@@ -78,9 +76,8 @@ gitlab-runner register
 
 # You'll be prompted for:
 # - GitLab instance URL
-# - Registration token
+# - Runner authentication token
 # - Runner description
-# - Tags
 # - Executor type (choose docker)
 # - Default Docker image
 ```
@@ -92,20 +89,15 @@ gitlab-runner register
 gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "PROJECT_REGISTRATION_TOKEN" \
+  --token "RUNNER_AUTHENTICATION_TOKEN" \
   --executor "docker" \
   --docker-image "alpine:latest" \
-  --description "docker-runner" \
-  --tag-list "docker,linux" \
-  --run-untagged="true" \
-  --locked="false"
+  --description "docker-runner"
 ```
 
 ### Registration with Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   gitlab-runner:
     image: gitlab/gitlab-runner:latest
@@ -113,12 +105,6 @@ services:
     volumes:
       - ./config:/etc/gitlab-runner
       - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - CI_SERVER_URL=https://gitlab.com/
-      - REGISTRATION_TOKEN=${GITLAB_REGISTRATION_TOKEN}
-      - RUNNER_NAME=docker-runner
-      - RUNNER_EXECUTOR=docker
-      - DOCKER_IMAGE=alpine:latest
 
   register:
     image: gitlab/gitlab-runner:latest
@@ -127,8 +113,8 @@ services:
     command: >
       register
         --non-interactive
-        --url "${CI_SERVER_URL}"
-        --registration-token "${REGISTRATION_TOKEN}"
+        --url "https://gitlab.com/"
+        --token "${GITLAB_RUNNER_TOKEN}"
         --executor "docker"
         --docker-image "alpine:latest"
         --description "docker-runner"
@@ -318,11 +304,6 @@ build:
     volumes = ["/cache"]
     cache_dir = "/cache"
     disable_cache = false
-
-  [runners.cache]
-    Type = "local"
-    Path = "/cache"
-    Shared = true
 ```
 
 ### S3 Cache
@@ -443,7 +424,6 @@ concurrent = 10
   url = "https://gitlab.com/"
   token = "TOKEN_1"
   executor = "docker"
-  tag_list = ["build"]
 
   [runners.docker]
     image = "docker:latest"
@@ -456,7 +436,6 @@ concurrent = 10
   url = "https://gitlab.com/"
   token = "TOKEN_2"
   executor = "docker"
-  tag_list = ["test"]
 
   [runners.docker]
     image = "node:20"
@@ -469,7 +448,6 @@ concurrent = 10
   url = "https://gitlab.com/"
   token = "TOKEN_3"
   executor = "docker"
-  tag_list = ["deploy"]
 
   [runners.docker]
     image = "alpine:latest"
@@ -479,8 +457,6 @@ concurrent = 10
 ### Docker Compose Multi-Runner
 
 ```yaml
-version: '3.8'
-
 services:
   runner-build:
     image: gitlab/gitlab-runner:latest
@@ -488,8 +464,6 @@ services:
     volumes:
       - ./config-build:/etc/gitlab-runner
       - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - RUNNER_TAG_LIST=build,docker
 
   runner-test:
     image: gitlab/gitlab-runner:latest
@@ -497,8 +471,6 @@ services:
     volumes:
       - ./config-test:/etc/gitlab-runner
       - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - RUNNER_TAG_LIST=test
 
   runner-deploy:
     image: gitlab/gitlab-runner:latest
@@ -506,8 +478,6 @@ services:
     volumes:
       - ./config-deploy:/etc/gitlab-runner
       - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - RUNNER_TAG_LIST=deploy
 ```
 
 ## Security Configuration
@@ -544,8 +514,6 @@ services:
 ### Using Docker Socket Proxy
 
 ```yaml
-version: '3.8'
-
 services:
   docker-proxy:
     image: tecnativa/docker-socket-proxy
@@ -605,12 +573,13 @@ build:
     DOCKER_TLS_CERTDIR: "/certs"
   <<: *docker_login
   script:
-    - docker build
-        --cache-from $CI_REGISTRY_IMAGE:latest
-        --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-        --tag $CI_REGISTRY_IMAGE:latest
-        --build-arg BUILDKIT_INLINE_CACHE=1
-        .
+    - >
+      docker build
+      --cache-from $CI_REGISTRY_IMAGE:latest
+      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+      --tag $CI_REGISTRY_IMAGE:latest
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - docker push $CI_REGISTRY_IMAGE:latest
   tags:
@@ -659,13 +628,15 @@ security:scan:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
   script:
-    - docker run --rm
-        -v /var/run/docker.sock:/var/run/docker.sock
-        aquasec/trivy image
-        --exit-code 1
-        --severity HIGH,CRITICAL
-        $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - >
+      docker run --rm
+      -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image
+      --exit-code 1
+      --severity HIGH,CRITICAL
+      $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   allow_failure: true
   tags:
     - docker
@@ -677,9 +648,10 @@ deploy:staging:
   before_script:
     - apk add --no-cache curl
   script:
-    - curl -X POST
-        -H "Authorization: Bearer $DEPLOY_TOKEN"
-        "$DEPLOY_URL/staging?image=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - >
+      curl -X POST
+      -H "Authorization: Bearer $DEPLOY_TOKEN"
+      "$DEPLOY_URL/staging?image=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
   environment:
     name: staging
     url: https://staging.example.com
@@ -694,9 +666,10 @@ deploy:production:
   before_script:
     - apk add --no-cache curl
   script:
-    - curl -X POST
-        -H "Authorization: Bearer $DEPLOY_TOKEN"
-        "$DEPLOY_URL/production?image=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - >
+      curl -X POST
+      -H "Authorization: Bearer $DEPLOY_TOKEN"
+      "$DEPLOY_URL/production?image=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
   environment:
     name: production
     url: https://example.com
@@ -769,4 +742,3 @@ docker exec gitlab-runner ls -la /cache
 | S3/GCS cache | Distributed runners | Good |
 
 For building Docker images, socket binding offers better performance than DinD but requires careful security configuration. Use GitLab's built-in container registry for seamless integration, and configure caching to speed up repeated builds. For more on Docker socket security, see our post on [Docker Socket Binding in CI/CD Pipelines](https://oneuptime.com/blog/post/2026-01-16-docker-socket-binding-cicd/view).
-
