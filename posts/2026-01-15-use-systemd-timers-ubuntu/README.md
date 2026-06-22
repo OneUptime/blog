@@ -238,9 +238,8 @@ OnCalendar=*-*-* 08,20:00:00
 # Every quarter (Jan, Apr, Jul, Oct) on the 1st at midnight
 OnCalendar=*-01,04,07,10-01 00:00:00
 
-# Last day of every month (requires calculation)
-# Note: systemd doesn't support "last day" directly
-# Use a script that checks the date instead
+# Last day of every month
+OnCalendar=*-*~01 00:00:00
 
 # Every Saturday and Sunday at 10 AM
 OnCalendar=Sat,Sun *-*-* 10:00:00
@@ -291,7 +290,7 @@ systemd-analyze calendar "Mon..Fri *-*-* 09:00:00"
 systemd-analyze calendar --iterations=5 "daily"
 
 # Test with specific timezone
-systemd-analyze calendar --timezone=America/New_York "daily"
+systemd-analyze calendar "daily America/New_York"
 ```
 
 Example output:
@@ -300,13 +299,13 @@ Example output:
 $ systemd-analyze calendar --iterations=5 "Mon..Fri *-*-* 09:00:00"
   Original form: Mon..Fri *-*-* 09:00:00
 Normalized form: Mon..Fri *-*-* 09:00:00
-    Next elapse: Mon 2026-01-20 09:00:00 UTC
-       (in UTC): Mon 2026-01-20 09:00:00 UTC
+    Next elapse: Tue 2026-01-20 09:00:00 UTC
+       (in UTC): Tue 2026-01-20 09:00:00 UTC
        From now: 4 days left
-       Iter. #2: Tue 2026-01-21 09:00:00 UTC
-       Iter. #3: Wed 2026-01-22 09:00:00 UTC
-       Iter. #4: Thu 2026-01-23 09:00:00 UTC
-       Iter. #5: Fri 2026-01-24 09:00:00 UTC
+       Iter. #2: Wed 2026-01-21 09:00:00 UTC
+       Iter. #3: Thu 2026-01-22 09:00:00 UTC
+       Iter. #4: Fri 2026-01-23 09:00:00 UTC
+       Iter. #5: Mon 2026-01-26 09:00:00 UTC
 ```
 
 ## Monotonic Timers (OnBootSec, OnUnitActiveSec)
@@ -409,7 +408,7 @@ OnCalendar=*-*-* 02:00:00
 # Also run 30 minutes after boot (catches missed backups)
 OnBootSec=30min
 
-# Persistent ensures we catch up after downtime
+# Persistent catches up missed OnCalendar runs after downtime
 Persistent=true
 
 [Install]
@@ -527,15 +526,25 @@ PrivateTmp=true
 
 ### Conditional Execution
 
-Use conditions to control when timers trigger:
+Use conditions to control whether timer-activated services run:
+
+```ini
+# /etc/systemd/system/laptop-backup.service
+[Unit]
+Description=Backup when on AC power
+
+# Only run if on AC power (for laptops)
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/laptop-backup.sh
+```
 
 ```ini
 # /etc/systemd/system/laptop-backup.timer
 [Unit]
-Description=Backup when on AC power
-
-# Only activate if on AC power (for laptops)
-ConditionACPower=true
+Description=Hourly laptop backup timer
 
 [Timer]
 OnCalendar=hourly
@@ -734,7 +743,7 @@ Here's how to convert common cron expressions to systemd timer syntax:
 | `0 0 * * *` | Daily at midnight | `*-*-* 00:00:00` or `daily` |
 | `0 3 * * *` | Daily at 3 AM | `*-*-* 03:00:00` |
 | `*/15 * * * *` | Every 15 minutes | `*-*-* *:00,15,30,45:00` |
-| `0 0 * * 0` | Weekly on Sunday | `Sun *-*-* 00:00:00` or `weekly` |
+| `0 0 * * 0` | Weekly on Sunday | `Sun *-*-* 00:00:00` |
 | `0 0 1 * *` | Monthly on 1st | `*-*-01 00:00:00` or `monthly` |
 | `0 0 1 1 *` | Yearly on Jan 1st | `*-01-01 00:00:00` or `yearly` |
 | `0 9-17 * * 1-5` | Weekdays 9-5 hourly | `Mon..Fri *-*-* 09..17:00:00` |
@@ -821,7 +830,7 @@ StandardError=journal
 
 Benefits of migration:
 - Logs automatically go to journal (no manual redirection)
-- Persistent ensures backup runs after downtime
+- Persistent ensures the daily backup runs after downtime
 - Better integration with system services
 
 ## Practical Examples
@@ -1289,19 +1298,19 @@ sudo timedatectl set-timezone America/New_York
 # OnCalendar=*-*-* 03:00:00 UTC
 ```
 
-#### Persistent Timer Running Multiple Times
+#### Timer Running Multiple Times After Boot
 
 **Symptom**: Timer runs multiple times after boot.
 
-**Cause**: Persistent timer catching up on missed runs.
+**Cause**: Multiple triggers may be configured, such as both `OnBootSec` and a persistent `OnCalendar` schedule. `Persistent=true` catches up a missed calendar event with a single activation, not one activation per missed interval.
 
 **Solution**:
 ```ini
-# Option 1: Reduce accuracy to batch catch-up runs
-AccuracySec=1h
-
-# Option 2: Disable persistence if not needed
+# Option 1: Disable persistence if not needed
 Persistent=false
+
+# Option 2: Remove overlapping boot-time triggers if not needed
+# OnBootSec=30min
 
 # Option 3: Design your script to be idempotent
 # (safe to run multiple times)
