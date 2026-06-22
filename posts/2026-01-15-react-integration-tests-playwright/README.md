@@ -270,7 +270,7 @@ The Page Object Pattern encapsulates page-specific locators and actions in reusa
 
 ```typescript
 // tests/pages/BasePage.ts
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
 
 export abstract class BasePage {
   // Each page object wraps a Playwright page
