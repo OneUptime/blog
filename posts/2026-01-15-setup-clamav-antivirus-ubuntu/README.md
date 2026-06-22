@@ -134,9 +134,8 @@ MaxAttempts 5
 # Notify clamd when database is updated
 NotifyClamd /etc/clamav/clamd.conf
 
-# SafeBrowsing database for phishing protection (optional)
-# Uncomment to enable Google Safe Browsing database
-# SafeBrowsing yes
+# Download bytecode.cvd, which includes additional detection mechanisms
+Bytecode yes
 ```
 
 ### Set Up Automatic Updates
@@ -215,10 +214,10 @@ When the ClamAV daemon is running, use clamdscan for significantly faster scanni
 
 ```bash
 # Scan using the daemon (much faster for multiple scans)
-clamdscan /path/to/directory
+clamdscan /path/to/file
 
-# Recursive scan with daemon
-clamdscan -r /path/to/directory
+# Directory scan with daemon
+clamdscan /path/to/directory
 
 # Multi-threaded scanning (uses multiple daemon workers)
 clamdscan --multiscan /path/to/directory
@@ -275,8 +274,8 @@ OnAccessPrevention yes
 # Extra scanning on file modification
 OnAccessExtraScanning yes
 
-# Disable DDD (prevents scanning all files on directory access)
-OnAccessDisableDDD yes
+# Keep DDD enabled for recursive include paths and extra scanning
+OnAccessDisableDDD no
 ```
 
 ### Start On-Access Scanning
@@ -430,8 +429,8 @@ MaxScanTime 120000
 # Scan inside archive files
 ScanArchive yes
 
-# Maximum depth for nested archives
-ArchiveBlockEncrypted no
+# Alert on encrypted archives only
+AlertEncryptedArchive no
 
 # Alert on encrypted archives (may contain hidden malware)
 AlertEncrypted no
@@ -480,7 +479,7 @@ IncludePUA RAT
 # ========================================
 
 # Enable algorithmic detection
-AlgorithmicDetection yes
+HeuristicAlerts yes
 
 # Heuristic scan precedence (enable for faster scanning)
 HeuristicScanPrecedence yes
@@ -539,8 +538,8 @@ OnAccessPrevention yes
 # Extra scanning on file modification
 OnAccessExtraScanning yes
 
-# Disable Directory Data Dependency
-OnAccessDisableDDD yes
+# Keep Directory Data Dependency enabled for recursive include paths
+OnAccessDisableDDD no
 
 # ========================================
 # Network Settings (Optional)
@@ -761,8 +760,8 @@ Add scheduling entries:
 # Weekly full system scan on Sunday at 3:00 AM
 0 3 * * 0 clamscan -r --exclude-dir="^/proc" --exclude-dir="^/sys" --exclude-dir="^/dev" -l /var/log/clamav/weekly-scan.log /
 
-# Check for virus definition updates every 2 hours
-0 */2 * * * /usr/bin/freshclam --quiet
+# Optional: if you disable the clamav-freshclam service, update definitions every 2 hours
+# 0 */2 * * * /usr/bin/freshclam --quiet
 ```
 
 ### Using Systemd Timers (Alternative to Cron)
@@ -882,7 +881,7 @@ LogTime yes
 LogVerbose no
 
 # Log clean messages (disable in production)
-LogClean no
+LogClean Off
 
 # Use syslog
 LogSyslog yes
@@ -903,14 +902,14 @@ OnFail Defer
 # Add header to scanned messages
 AddHeader Add
 
-# Header format for clean messages
+# Run a custom action when an infected message is found
 VirusAction /usr/local/bin/virus-action.sh
 
 # ===========================================
 # Performance Settings
 # ===========================================
 
-# Maximum number of children processes
+# Maximum message size to scan
 MaxFileSize 25M
 
 # Timeout for communication with clamd
@@ -1453,7 +1452,7 @@ Make executable and schedule:
 sudo chmod +x /usr/local/bin/clamav-monitor.sh
 
 # Add to crontab for regular monitoring
-echo "*/15 * * * * /usr/local/bin/clamav-monitor.sh >> /var/log/clamav/monitor.log 2>&1" | sudo tee -a /etc/cron.d/clamav-monitor
+echo "*/15 * * * * root /usr/local/bin/clamav-monitor.sh >> /var/log/clamav/monitor.log 2>&1" | sudo tee -a /etc/cron.d/clamav-monitor
 ```
 
 ### Prometheus Metrics Exporter
