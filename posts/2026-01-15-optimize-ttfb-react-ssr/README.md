@@ -246,7 +246,7 @@ Caching is one of the most effective ways to reduce TTFB. Let us explore differe
 ### In-Memory Caching with LRU
 
 ```typescript
-import LRUCache from 'lru-cache';
+import { LRUCache } from 'lru-cache';
 import { createHash } from 'crypto';
 
 interface CachedPage {
@@ -540,7 +540,7 @@ Not all components need to be re-rendered on every request. Caching at the compo
 ```typescript
 import { ReactElement, ComponentType } from 'react';
 import { renderToString } from 'react-dom/server';
-import LRUCache from 'lru-cache';
+import { LRUCache } from 'lru-cache';
 
 interface ComponentCacheOptions {
   maxAge: number;
@@ -667,7 +667,7 @@ Database queries are often the biggest contributor to TTFB in SSR applications. 
 
 ```typescript
 import { Pool, QueryResult } from 'pg';
-import LRUCache from 'lru-cache';
+import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 
 interface QueryCacheConfig {
