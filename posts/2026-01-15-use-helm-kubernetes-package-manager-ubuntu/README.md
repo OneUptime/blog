@@ -68,7 +68,7 @@ The easiest way to install Helm is using the official installation script provid
 ```bash
 # Download and run the official Helm installation script
 # This script automatically detects your OS and installs the appropriate binary
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
 ```
 
 ### Method 2: Using Snap Package Manager
@@ -83,17 +83,28 @@ sudo snap install helm --classic
 
 ### Method 3: Using APT Repository
 
-For more control over updates, you can add the official Helm repository to APT.
+For more control over updates, you can add the Helm APT repository listed in the official Helm installation docs.
 
 ```bash
+# Set the expected Helm APT signing key fingerprint
+HELM_BUILDKITE_APT_KEY_ID="DDF78C3E6EBB2D2CC223C95C62BA89D07698DBC6"
+
 # Install required dependencies for adding repositories
-sudo apt install -y apt-transport-https gnupg
+sudo apt install -y curl gpg apt-transport-https
 
 # Add the Helm GPG key for package verification
-curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey > /tmp/helm.gpg
 
-# Add the Helm stable repository to APT sources
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+# Verify the key fingerprint before trusting it
+if [ "$(gpg --show-keys --with-colons /tmp/helm.gpg | awk -F: '$1 == "fpr" {print $10}' | head -n 1)" != "${HELM_BUILDKITE_APT_KEY_ID}" ]; then
+  echo "ERROR: Unexpected Helm APT key ID"
+  exit 1
+fi
+
+cat /tmp/helm.gpg | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+
+# Add the Helm APT repository to APT sources
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
 
 # Update package lists and install Helm
 sudo apt update
@@ -106,7 +117,7 @@ For environments with restricted internet access or specific version requirement
 
 ```bash
 # Download Helm binary (replace VERSION with desired version)
-VERSION="v3.14.0"
+VERSION="v4.2.2"
 wget https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz
 
 # Extract the archive
@@ -128,7 +139,7 @@ After installation, verify that Helm is working correctly.
 helm version
 
 # Expected output similar to:
-# version.BuildInfo{Version:"v3.14.0", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.21.5"}
+# version.BuildInfo{Version:"v4.2.2", GitCommit:"...", GitTreeState:"clean", GoVersion:"..."}
 ```
 
 ## Helm Concepts: Charts, Releases, and Repositories
@@ -183,7 +194,6 @@ helm repo list
 
 # The output shows repository names and URLs
 # NAME            URL
-# stable          https://charts.helm.sh/stable
 # bitnami         https://charts.bitnami.com/bitnami
 ```
 
@@ -402,7 +412,7 @@ helm install my-app mychart \
   --set "ingress.hosts[0].paths[0].path=/"
 
 # Set string values that might be interpreted as numbers
-helm install my-app mychart --set image.tag="1.0"
+helm install my-app mychart --set-string image.tag="1.0"
 ```
 
 ### Using Values Files
@@ -708,11 +718,13 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.env }}
           env:
-            {{- range .Values.env }}
+            {{- range . }}
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
+          {{- end }}
           {{- if .Values.envFrom }}
           envFrom:
             {{- toYaml .Values.envFrom | nindent 12 }}
@@ -952,13 +964,13 @@ data:
   # Range over lists
   allowed-hosts: |
     {{- range .Values.allowedHosts }}
-    - {{ . | quote }}
+    {{ printf "- %s" (. | quote) | nindent 4 }}
     {{- end }}
 
   # Range over maps
   feature-flags: |
     {{- range $key, $value := .Values.features }}
-    {{ $key }}: {{ $value | quote }}
+    {{ printf "%s: %s" $key ($value | quote) | nindent 4 }}
     {{- end }}
 
   # toYaml for complex structures
@@ -994,7 +1006,7 @@ appVersion: "1.0.0"
 dependencies:
   # PostgreSQL database dependency
   - name: postgresql
-    version: "12.x.x"
+    version: ">=0.0.0"
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
     tags:
@@ -1002,7 +1014,7 @@ dependencies:
 
   # Redis cache dependency
   - name: redis
-    version: "17.x.x"
+    version: ">=0.0.0"
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
     tags:
@@ -1015,7 +1027,7 @@ dependencies:
 
   # Optional dependency with alias
   - name: nginx
-    version: "13.x.x"
+    version: ">=0.0.0"
     repository: https://charts.bitnami.com/bitnami
     alias: webserver
     condition: webserver.enabled
@@ -1039,8 +1051,8 @@ helm dependency list myapp/
 
 # Output shows:
 # NAME          VERSION   REPOSITORY                              STATUS
-# postgresql    12.x.x    https://charts.bitnami.com/bitnami      ok
-# redis         17.x.x    https://charts.bitnami.com/bitnami      ok
+# postgresql    >=0.0.0   https://charts.bitnami.com/bitnami      ok
+# redis         >=0.0.0   https://charts.bitnami.com/bitnami      ok
 ```
 
 ### Configuring Dependencies
@@ -1115,7 +1127,7 @@ Reference these conditions in your templates.
 # Conditionally configure database connection
 
 env:
-  {{- if .Values.postgresql.enabled }}
+  {{ if .Values.postgresql.enabled }}
   # Use bundled PostgreSQL
   - name: DB_HOST
     value: {{ include "myapp.fullname" . }}-postgresql
