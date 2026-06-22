@@ -55,12 +55,14 @@ cd my-react-app
 ### Step 2: Install Testing Dependencies
 
 ```bash
-npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
+npm install -D vitest @vitest/ui @vitest/coverage-v8 @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
 ```
 
 Here is what each package does:
 
 - **vitest**: The test runner and assertion library
+- **@vitest/ui**: Provides the browser-based Vitest UI
+- **@vitest/coverage-v8**: Enables V8-based coverage reports
 - **@testing-library/react**: Provides utilities for testing React components
 - **@testing-library/jest-dom**: Adds custom DOM element matchers
 - **@testing-library/user-event**: Simulates user interactions more realistically
@@ -71,7 +73,7 @@ Here is what each package does:
 Create or update your `vite.config.ts` file:
 
 ```typescript
-/// <reference types="vitest" />
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -102,14 +104,10 @@ export default defineConfig({
 Create the test setup file at `src/test/setup.ts`:
 
 ```typescript
-import '@testing-library/jest-dom';
-import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { vi } from 'vitest';
 
-// Cleanup after each test
-afterEach(() => {
-  cleanup();
-});
+// React Testing Library registers automatic cleanup when Vitest globals are enabled
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -153,12 +151,12 @@ Object.defineProperty(window, 'ResizeObserver', {
 
 ### Step 5: Update TypeScript Configuration
 
-Add Vitest types to your `tsconfig.json`:
+Add Vitest and jest-dom types to your app TypeScript configuration, such as `tsconfig.app.json` in a current Vite React project:
 
 ```json
 {
   "compilerOptions": {
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   }
 }
 ```
@@ -197,7 +195,7 @@ export function Button({
   onClick,
   disabled = false,
   variant = 'primary',
-}: ButtonProps): JSX.Element {
+}: ButtonProps): React.JSX.Element {
   const baseClasses = 'px-4 py-2 rounded font-medium transition-colors';
 
   const variantClasses = {
@@ -277,12 +275,13 @@ Here is a form component with input validation:
 ```tsx
 // src/components/LoginForm.tsx
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => void;
 }
 
-export function LoginForm({ onSubmit }: LoginFormProps): JSX.Element {
+export function LoginForm({ onSubmit }: LoginFormProps): React.JSX.Element {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -306,7 +305,7 @@ export function LoginForm({ onSubmit }: LoginFormProps): JSX.Element {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent): void => {
+  const handleSubmit = (e: FormEvent): void => {
     e.preventDefault();
     if (validate()) {
       onSubmit(email, password);
@@ -445,7 +444,7 @@ interface UserProfileProps {
   fetchUser: (id: number) => Promise<User>;
 }
 
-export function UserProfile({ userId, fetchUser }: UserProfileProps): JSX.Element {
+export function UserProfile({ userId, fetchUser }: UserProfileProps): React.JSX.Element {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -662,7 +661,8 @@ Testing components that consume React Context:
 
 ```tsx
 // src/context/ThemeContext.tsx
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState } from 'react';
+import type { ReactNode } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -681,7 +681,7 @@ interface ThemeProviderProps {
 export function ThemeProvider({
   children,
   initialTheme = 'light',
-}: ThemeProviderProps): JSX.Element {
+}: ThemeProviderProps): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   const toggleTheme = (): void => {
@@ -708,7 +708,7 @@ export function useTheme(): ThemeContextType {
 // src/components/ThemeToggle.tsx
 import { useTheme } from '../context/ThemeContext';
 
-export function ThemeToggle(): JSX.Element {
+export function ThemeToggle(): React.JSX.Element {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -779,7 +779,7 @@ Testing components that use React Router:
 // src/components/Navigation.tsx
 import { Link, useLocation } from 'react-router-dom';
 
-export function Navigation(): JSX.Element {
+export function Navigation(): React.JSX.Element {
   const location = useLocation();
 
   const isActive = (path: string): boolean => location.pathname === path;
@@ -938,7 +938,8 @@ describe('Timer tests', () => {
 
 ```tsx
 // src/components/ErrorBoundary.tsx
-import { Component, ReactNode, ErrorInfo } from 'react';
+import { Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -979,7 +980,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ErrorBoundary } from './ErrorBoundary';
 
-const ThrowError = (): JSX.Element => {
+const ThrowError = (): React.JSX.Element => {
   throw new Error('Test error');
 };
 
@@ -1018,7 +1019,7 @@ describe('ErrorBoundary', () => {
 
 ```tsx
 // src/components/Modal.tsx
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ModalProps {
@@ -1027,7 +1028,7 @@ interface ModalProps {
   children: ReactNode;
 }
 
-export function Modal({ isOpen, onClose, children }: ModalProps): JSX.Element | null {
+export function Modal({ isOpen, onClose, children }: ModalProps): React.JSX.Element | null {
   if (!isOpen) return null;
 
   return createPortal(
@@ -1173,7 +1174,7 @@ fireEvent.change(input, { target: { value: 'hello' } });
 
 ### 4. Clean Up After Each Test
 
-Vitest with React Testing Library automatically cleans up after each test when using the setup file we created. However, be aware of cleanup for:
+With `globals: true`, React Testing Library automatically cleans up after each test. However, be aware of cleanup for:
 
 - Mocked modules
 - Fake timers
