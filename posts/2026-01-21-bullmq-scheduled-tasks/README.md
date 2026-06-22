@@ -210,7 +210,7 @@ class TaskSchedulerService {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
-    // Remove the job
+    // Remove any one-time delayed job
     const job = await this.queue.getJob(`task_${taskId}`);
     if (job) {
       await job.remove();
@@ -265,7 +265,7 @@ class TaskSchedulerService {
   async deleteTask(taskId: string): Promise<void> {
     await this.unscheduleTask(taskId);
     this.tasks.delete(taskId);
-    await this.redis.del(`task:${taskId}`);
+    await this.redis.del(`task:definition:${taskId}`);
   }
 
   async getAllTasks(): Promise<TaskDefinition[]> {
@@ -282,7 +282,7 @@ class TaskSchedulerService {
     if (!task) return null;
 
     const activeJobs = await this.queue.getActive();
-    const isRunning = activeJobs.some((j) => j.id === `task_${taskId}`);
+    const isRunning = activeJobs.some((j) => j.data.taskId === taskId);
 
     return {
       task,
@@ -312,7 +312,7 @@ class TaskSchedulerService {
 
   private async persistTask(task: TaskDefinition): Promise<void> {
     await this.redis.set(
-      `task:${task.id}`,
+      `task:definition:${task.id}`,
       JSON.stringify(task),
       'EX',
       86400 * 365 // Keep for 1 year
@@ -325,20 +325,25 @@ class TaskSchedulerService {
   }
 
   async loadTasks(): Promise<void> {
-    const keys = await this.redis.keys('task:*');
+    const stream = this.redis.scanStream({
+      match: 'task:definition:*',
+      count: 100,
+    });
 
-    for (const key of keys) {
-      const data = await this.redis.get(key);
-      if (data) {
-        const task = JSON.parse(data) as TaskDefinition;
-        task.createdAt = new Date(task.createdAt);
-        task.lastRunAt = task.lastRunAt ? new Date(task.lastRunAt) : undefined;
-        task.nextRunAt = task.nextRunAt ? new Date(task.nextRunAt) : undefined;
-        task.schedule.runAt = task.schedule.runAt ? new Date(task.schedule.runAt) : undefined;
-        this.tasks.set(task.id, task);
+    for await (const keys of stream) {
+      for (const key of keys as string[]) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const task = JSON.parse(data) as TaskDefinition;
+          task.createdAt = new Date(task.createdAt);
+          task.lastRunAt = task.lastRunAt ? new Date(task.lastRunAt) : undefined;
+          task.nextRunAt = task.nextRunAt ? new Date(task.nextRunAt) : undefined;
+          task.schedule.runAt = task.schedule.runAt ? new Date(task.schedule.runAt) : undefined;
+          this.tasks.set(task.id, task);
 
-        if (task.enabled) {
-          await this.scheduleTask(task);
+          if (task.enabled) {
+            await this.scheduleTask(task);
+          }
         }
       }
     }
@@ -548,6 +553,9 @@ class DependentTaskScheduler {
 Create task groups for complex workflows:
 
 ```typescript
+import { Job, Queue, Worker } from 'bullmq';
+import Redis from 'ioredis';
+
 interface TaskGroup {
   id: string;
   name: string;
@@ -749,7 +757,7 @@ function createTaskRouter(scheduler: TaskSchedulerService): express.Router {
 
 ## Best Practices
 
-1. **Use unique job IDs** - Prevent duplicate scheduled jobs.
+1. **Use unique job IDs for one-time tasks** - Prevent duplicate delayed or manually triggered jobs. Scheduler-produced recurring jobs use BullMQ-managed IDs.
 
 2. **Handle timezone properly** - Use timezone option for cron patterns.
 
@@ -771,4 +779,4 @@ function createTaskRouter(scheduler: TaskSchedulerService): express.Router {
 
 ## Conclusion
 
-BullMQ's repeatable jobs feature provides a solid foundation for building a scheduled task system. By implementing proper task management, execution tracking, and API endpoints, you can create a flexible scheduler that handles both simple recurring tasks and complex workflows. Remember to handle edge cases like task failures, overlapping executions, and system restarts.
+BullMQ's Job Schedulers API provides a solid foundation for building a scheduled task system. By implementing proper task management, execution tracking, and API endpoints, you can create a flexible scheduler that handles both simple recurring tasks and complex workflows. Remember to handle edge cases like task failures, overlapping executions, and system restarts.
