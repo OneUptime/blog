@@ -40,8 +40,7 @@ services:
 
 ```bash
 # Container name is different from hostname
-docker run --name my-container --hostname my-hostname alpine hostname
-# Output: my-hostname
+docker run -d --name my-container --hostname my-hostname alpine sleep 3600
 
 # Container name is for Docker CLI
 docker exec my-container hostname
@@ -95,7 +94,7 @@ services:
 
 ```bash
 # Add DNS options
-docker run --dns-opt timeout:2 --dns-opt attempts:3 myimage
+docker run --dns-option timeout:2 --dns-option attempts:3 myimage
 ```
 
 ```yaml
@@ -197,8 +196,9 @@ docker run --rm --network mynet alpine ping db  # Works
 
 ### Configure Docker Daemon
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["8.8.8.8", "8.8.4.4"],
   "dns-opts": ["timeout:2", "attempts:3"],
@@ -248,8 +248,6 @@ docker network connect --alias db mynet mycontainer
 ## Complete DNS Example
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp
@@ -400,9 +398,8 @@ networks:
 | Domain | - | `domainname: domain` |
 | DNS servers | `--dns IP` | `dns: [IP]` |
 | DNS search | `--dns-search domain` | `dns_search: [domain]` |
-| DNS options | `--dns-opt option` | `dns_opt: [option]` |
+| DNS options | `--dns-option option` | `dns_opt: [option]` |
 | Host entries | `--add-host name:IP` | `extra_hosts: ["name:IP"]` |
 | Network alias | `--network-alias name` | `networks: {net: {aliases: []}}` |
 
 Proper DNS and hostname configuration ensures containers can communicate reliably. Use custom networks for automatic service discovery, configure appropriate DNS servers for your environment, and use extra_hosts for special cases like accessing the host machine.
-
