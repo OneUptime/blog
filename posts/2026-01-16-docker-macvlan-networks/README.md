@@ -72,8 +72,6 @@ docker run -d \
 ## Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx:alpine
@@ -96,7 +94,7 @@ networks:
       config:
         - subnet: 192.168.1.0/24
           gateway: 192.168.1.1
-          ip_range: 192.168.1.48/28  # Reserve IPs 48-63 for containers
+          ip_range: 192.168.1.48/28  # Use this range for container IPs
 ```
 
 ## Host-to-Container Communication
@@ -130,8 +128,6 @@ iface macvlan0 inet manual
 ## Multiple Macvlan Networks
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     image: nginx:alpine
@@ -174,17 +170,15 @@ networks:
           gateway: 10.0.0.1
 ```
 
-## DHCP with Macvlan
+## Dynamic IP Allocation with Macvlan
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
     networks:
       dhcp_net:
-        # No IP specified - will use DHCP
+        # No IP specified - Docker IPAM assigns one from ip_range
 
 networks:
   dhcp_net:
@@ -192,7 +186,10 @@ networks:
     driver_opts:
       parent: eth0
     ipam:
-      driver: null  # Disable Docker IPAM, use network DHCP
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+          ip_range: 192.168.1.48/28
 ```
 
 ## Macvlan Modes
@@ -223,8 +220,6 @@ docker network create -d macvlan \
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   # Web server accessible directly on LAN
   nginx:
@@ -270,7 +265,7 @@ networks:
       config:
         - subnet: 192.168.1.0/24
           gateway: 192.168.1.1
-          ip_range: 192.168.1.50/29
+          ip_range: 192.168.1.48/29
           aux_addresses:
             host: 192.168.1.200
 
@@ -306,4 +301,3 @@ arp -a | grep 192.168.1.50
 | VEPA | Via switch | Needs config | Yes |
 
 Macvlan networks provide direct LAN connectivity without NAT or port mapping. Use them when containers need to appear as regular network devices. For multi-host networking, see our post on [Docker Overlay Networks](https://oneuptime.com/blog/post/2026-01-16-docker-overlay-networks/view).
-
