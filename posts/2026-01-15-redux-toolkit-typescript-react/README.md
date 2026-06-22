@@ -50,6 +50,8 @@ src/
     store.ts          # Store configuration
     hooks.ts          # Typed hooks
   features/
+    api/
+      baseApi.ts      # Shared RTK Query API
     auth/
       authSlice.ts    # Auth state slice
       authApi.ts      # RTK Query API for auth
@@ -70,12 +72,11 @@ src/
 ```typescript
 // src/app/store.ts
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
+import { setupListeners } from '@reduxjs/toolkit/query';
 import authReducer from '../features/auth/authSlice';
 import usersReducer from '../features/users/usersSlice';
 import postsReducer from '../features/posts/postsSlice';
-import { authApi } from '../features/auth/authApi';
-import { usersApi } from '../features/users/usersApi';
-import { postsApi } from '../features/posts/postsApi';
+import { baseApi } from '../features/api/baseApi';
 
 // Combine all reducers
 const rootReducer = combineReducers({
@@ -83,9 +84,7 @@ const rootReducer = combineReducers({
   users: usersReducer,
   posts: postsReducer,
   // RTK Query reducers
-  [authApi.reducerPath]: authApi.reducer,
-  [usersApi.reducerPath]: usersApi.reducer,
-  [postsApi.reducerPath]: postsApi.reducer,
+  [baseApi.reducerPath]: baseApi.reducer,
 });
 
 // Configure store with middleware
@@ -97,17 +96,17 @@ export const store = configureStore({
         // Ignore these action types for serializable check
         ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
       },
-    }).concat(
-      authApi.middleware,
-      usersApi.middleware,
-      postsApi.middleware
-    ),
+    }).concat(baseApi.middleware),
   devTools: process.env.NODE_ENV !== 'production',
 });
+
+// Enable refetchOnFocus/refetchOnReconnect behaviors for RTK Query
+setupListeners(store.dispatch);
 
 // Infer types from store itself
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
+export type AppStore = typeof store;
 ```
 
 ### Typed Hooks
@@ -117,12 +116,12 @@ Create custom hooks that are properly typed:
 ```typescript
 // src/app/hooks.ts
 import { useDispatch, useSelector, useStore } from 'react-redux';
-import type { RootState, AppDispatch } from './store';
+import type { RootState, AppDispatch, AppStore } from './store';
 
 // Use throughout your app instead of plain `useDispatch` and `useSelector`
 export const useAppDispatch = useDispatch.withTypes<AppDispatch>();
 export const useAppSelector = useSelector.withTypes<RootState>();
-export const useAppStore = useStore.withTypes<typeof store>();
+export const useAppStore = useStore.withTypes<AppStore>();
 ```
 
 These typed hooks provide:
@@ -167,7 +166,7 @@ interface User {
   avatar?: string;
 }
 
-interface AuthState {
+export interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
@@ -380,7 +379,7 @@ export const {
 
 export default postsSlice.reducer;
 
-// Memoized selectors
+// Selectors
 export const selectAllPosts = (state: { posts: PostsState }) => state.posts.posts;
 export const selectSelectedPost = (state: { posts: PostsState }) =>
   state.posts.selectedPost;
@@ -411,8 +410,6 @@ export const selectFilteredPosts = (state: { posts: PostsState }) => {
 import {
   createSlice,
   createAsyncThunk,
-  PayloadAction,
-  SerializedError,
 } from '@reduxjs/toolkit';
 
 interface User {
@@ -616,7 +613,7 @@ export const selectUsersError = (state: { users: UsersState }) =>
 ### Thunk with Access to State
 
 ```typescript
-import { RootState } from '../../app/store';
+import type { RootState } from '../../app/store';
 
 export const fetchUserPostsIfNeeded = createAsyncThunk<
   Post[],
@@ -1187,7 +1184,7 @@ interface PostFormData {
   title: string;
   content: string;
   tags: string;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'archived';
 }
 
 interface PostEditorProps {
@@ -1290,12 +1287,13 @@ const PostEditor: React.FC<PostEditorProps> = ({ authorId }) => {
           onChange={(e) =>
             setFormData({
               ...formData,
-              status: e.target.value as 'draft' | 'published',
+              status: e.target.value as 'draft' | 'published' | 'archived',
             })
           }
         >
           <option value="draft">Draft</option>
           <option value="published">Published</option>
+          <option value="archived">Archived</option>
         </select>
       </div>
 
@@ -1642,7 +1640,7 @@ For relational data, normalize the state to avoid duplication:
 
 ```typescript
 // src/features/entities/entitiesSlice.ts
-import { createSlice, createEntityAdapter, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createEntityAdapter } from '@reduxjs/toolkit';
 
 interface User {
   id: string;
@@ -1651,9 +1649,8 @@ interface User {
 }
 
 // Create entity adapter with custom sorting
-const usersAdapter = createEntityAdapter<User>({
-  selectId: (user) => user.id,
-  sortComparer: (a, b) => a.name.localeCompare(b.name),
+const usersAdapter = createEntityAdapter({
+  sortComparer: (a: User, b: User) => a.name.localeCompare(b.name),
 });
 
 // Adapter provides initial state with ids[] and entities{}
@@ -1751,7 +1748,7 @@ export const rtkQueryErrorLogger: Middleware = () => (next) => (action) => {
 | **createSlice** | Define reducers and actions together | `createSlice()`, `PayloadAction` |
 | **createAsyncThunk** | Handle async logic with lifecycle actions | `createAsyncThunk<Return, Arg, Config>()` |
 | **RTK Query** | Data fetching and caching | `createApi()`, `fetchBaseQuery()` |
-| **createEntityAdapter** | Normalize collections | `createEntityAdapter<T>()` |
+| **createEntityAdapter** | Normalize collections | `createEntityAdapter()` |
 | **createSelector** | Memoized derived state | `createSelector()` |
 | **Typed Hooks** | Type-safe React hooks | `useDispatch.withTypes()`, `useSelector.withTypes()` |
 | **PayloadAction** | Type action payloads | `PayloadAction<T>` |
