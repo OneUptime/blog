@@ -526,6 +526,8 @@ spec:
       rules:
         - alert: CertificateExpiringSoon
           expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() > 0
+            and
             certmanager_certificate_expiration_timestamp_seconds - time() < 604800
           for: 1h
           labels:
