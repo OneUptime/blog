@@ -501,11 +501,11 @@ export const useDetailsRoute = () => {
 ### Type the navigation prop in screen components
 
 ```typescript
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { StackScreenProps } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 
-// Using composite props
-type DetailsScreenProps = NativeStackScreenProps<RootStackParamList, 'Details'>;
+// StackScreenProps types both navigation and route in one helper
+type DetailsScreenProps = StackScreenProps<RootStackParamList, 'Details'>;
 
 const DetailsScreen: React.FC<DetailsScreenProps> = ({ navigation, route }) => {
   // Both navigation and route are fully typed
@@ -1453,13 +1453,11 @@ const DetailsScreen: React.FC<DetailsScreenProps> = React.memo(
 // Lazy load screens for better performance
 const ProfileScreen = React.lazy(() => import('../screens/ProfileScreen'));
 
-// In navigator
+// In navigator (wrap the navigator in a <Suspense> boundary so the
+// lazily-imported screen has a fallback while it loads)
 <Stack.Screen
   name="Profile"
   component={ProfileScreen}
-  options={{
-    lazy: true, // Enable lazy loading
-  }}
 />
 ```
 
@@ -1481,10 +1479,12 @@ const DetailsScreen: React.FC<DetailsScreenProps> = ({ navigation }) => {
         return false; // Use default behavior
       };
 
-      BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress
+      );
 
-      return () =>
-        BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
     }, [hasUnsavedChanges])
   );
 
