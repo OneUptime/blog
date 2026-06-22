@@ -443,10 +443,11 @@ sudo systemctl restart mysql
 sudo apt install phpmyadmin -y
 
 # During installation:
-# - Select "nginx" (press space, then Enter)
-# - Choose "Yes" to configure database
+# - The web server prompt only lists apache2 and lighttpd, not nginx.
+#   Leave both unselected (press TAB to highlight <Ok>, then Enter)
+# - Choose "Yes" to configure database with dbconfig-common
 
-# Create symlink
+# Create symlink so Nginx can serve phpMyAdmin
 sudo ln -s /usr/share/phpmyadmin /var/www/mysite/phpmyadmin
 
 # Secure with authentication (recommended)
