@@ -124,16 +124,15 @@ The power of Incoming Email Monitor lies in its flexible criteria system. You ca
 
 | Field | Description |
 |-------|-------------|
-| **Email Received At** | Check based on when emails arrive or don't arrive |
+| **Email Received** | Check based on when emails arrive or don't arrive |
 | **Email Subject** | Match content in the email subject line |
-| **Email From** | Match the sender's email address |
+| **Email From Address** | Match the sender's email address |
 | **Email Body** | Match content in the email body |
-| **Email To** | Match the recipient email address |
-| **JavaScript Expression** | Write custom logic for complex matching |
+| **Email To Address** | Match the recipient email address |
 
 ### Filter Types
 
-#### For Email Received At
+#### For Email Received
 
 - **Received In Minutes**: Email was received within X minutes
 - **Not Received In Minutes**: Email was NOT received within X minutes
@@ -174,7 +173,7 @@ Monitor for backup failure notifications. This configuration detects when your b
 Ensure daily reports arrive on time. This is useful when you expect regular reports via email.
 
 **Criteria for "Offline" status:**
-- Check: `Email Received At`
+- Check: `Email Received`
 - Filter: `Not Received In Minutes`
 - Value: `1500` (25 hours)
 
@@ -183,7 +182,7 @@ Ensure daily reports arrive on time. This is useful when you expect regular repo
 Only process emails from a specific sender with critical content. This allows you to focus on high-priority alerts.
 
 **Criteria:**
-- Check: `Email From`
+- Check: `Email From Address`
 - Filter: `Equal To`
 - Value: `alerts@your-service.com`
 
@@ -192,24 +191,24 @@ Combined with:
 - Filter: `Contains`
 - Value: `CRITICAL`
 
-### Example 4: JavaScript Expression for Complex Logic
+### Example 4: Combine Multiple Checks for Precision
 
-Use JavaScript for advanced filtering scenarios. The expression has access to the email object with properties like `subject`, `from`, `body`, and `to`.
+For more advanced filtering, add several criteria filters to the same criteria instance. All of the filters must match for the status change to trigger, which lets you narrow alerts down to exactly the emails you care about.
 
-**Criteria:**
-- Check: `JavaScript Expression`
-- Filter: `Evaluates To True`
-- Value:
-```javascript
-// Check if the email is a high-priority alert
-// by examining multiple conditions
-const isHighPriority = subject.includes('URGENT') || subject.includes('CRITICAL');
-const isFromAlertSystem = from.includes('alerts@');
-const hasErrorKeyword = body.toLowerCase().includes('error');
+**Criteria for "Offline" status (all must match):**
+- Check: `Email Subject`
+- Filter: `Contains`
+- Value: `CRITICAL`
 
-// Return true to trigger the criteria match
-isHighPriority && isFromAlertSystem && hasErrorKeyword;
-```
+Combined with:
+- Check: `Email From Address`
+- Filter: `Contains`
+- Value: `alerts@`
+
+Combined with:
+- Check: `Email Body`
+- Filter: `Contains`
+- Value: `error`
 
 ---
 
@@ -326,10 +325,10 @@ For HTTP-based monitoring, check out our guides on [Monitoring IoT Devices](http
 
 ### Criteria Not Matching
 
-1. Check case sensitivity in your criteria - most string matches are case-insensitive but verify
+1. Check case sensitivity in your criteria - string matches (Contains, Equal To, Starts With, Ends With) are case-insensitive
 2. View the email content in the monitor's summary view to see exactly what was received
 3. Test with simpler criteria first, then add complexity
-4. Use the JavaScript Expression option for debugging complex conditions
+4. Break complex conditions into multiple criteria filters and confirm each one matches independently
 
 ### Status Not Updating
 
