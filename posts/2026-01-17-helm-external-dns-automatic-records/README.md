@@ -68,7 +68,9 @@ helm install external-dns external-dns/external-dns \
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ChangeResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources"
       ],
       "Resource": [
         "arn:aws:route53:::hostedzone/HOSTED_ZONE_ID"
@@ -77,8 +79,7 @@ helm install external-dns external-dns/external-dns \
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets"
+        "route53:ListHostedZones"
       ],
       "Resource": ["*"]
     }
@@ -90,12 +91,12 @@ helm install external-dns external-dns/external-dns \
 
 ```yaml
 # external-dns-route53.yaml
-provider: aws
+provider:
+  name: aws
 
-aws:
-  region: us-east-1
-  zoneType: public  # or private
-  
+extraArgs:
+  - --aws-zone-type=public  # or private
+
 # Use IRSA (IAM Roles for Service Accounts)
 serviceAccount:
   create: true
@@ -153,9 +154,10 @@ helm install external-dns external-dns/external-dns \
 # Create API token with:
 # - Zone:DNS:Edit
 # - Zone:Zone:Read
+# - Access to All zones, or set zoneIdFilters for restricted tokens
 
 # Store in secret
-kubectl create namespace external-dns
+kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic cloudflare-api-token \
   --namespace external-dns \
   --from-literal=cloudflare_api_token=YOUR_API_TOKEN
@@ -165,10 +167,12 @@ kubectl create secret generic cloudflare-api-token \
 
 ```yaml
 # external-dns-cloudflare.yaml
-provider: cloudflare
+provider:
+  name: cloudflare
 
-cloudflare:
-  proxied: false  # Set true for CloudFlare proxy
+# CloudFlare proxy is disabled by default. To enable it globally, add:
+# extraArgs:
+#   - --cloudflare-proxied
   
 # API token from secret
 env:
@@ -221,22 +225,22 @@ helm install external-dns external-dns/external-dns \
 
 ```yaml
 # external-dns-azure.yaml
-provider: azure
+provider:
+  name: azure
 
-azure:
-  resourceGroup: my-dns-rg
-  tenantId: TENANT_ID
-  subscriptionId: SUBSCRIPTION_ID
-  useManagedIdentityExtension: true
-  userAssignedIdentityID: CLIENT_ID  # For user-assigned identity
+extraArgs:
+  - --azure-config-file=/etc/kubernetes/azure.json
 
-# Or use service principal
-# azure:
-#   resourceGroup: my-dns-rg
-#   tenantId: TENANT_ID
-#   subscriptionId: SUBSCRIPTION_ID
-#   aadClientId: CLIENT_ID
-#   aadClientSecret: CLIENT_SECRET
+extraVolumes:
+  - name: azure-config-file
+    secret:
+      secretName: azure-config-file
+
+extraVolumeMounts:
+  - name: azure-config-file
+    mountPath: /etc/kubernetes/azure.json
+    subPath: azure.json
+    readOnly: true
 
 # Domain filters
 domainFilters:
@@ -258,6 +262,7 @@ txtOwnerId: my-cluster
 
 ```bash
 # Create secret for service principal
+kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic azure-config-file \
   --namespace external-dns \
   --from-file=azure.json=/path/to/azure.json
@@ -292,6 +297,7 @@ gcloud iam service-accounts keys create credentials.json \
   --iam-account external-dns@PROJECT_ID.iam.gserviceaccount.com
 
 # Create Kubernetes secret
+kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic google-credentials \
   --namespace external-dns \
   --from-file=credentials.json=credentials.json
@@ -301,11 +307,11 @@ kubectl create secret generic google-credentials \
 
 ```yaml
 # external-dns-gcp.yaml
-provider: google
+provider:
+  name: google
 
-google:
-  project: my-gcp-project
-  serviceAccountSecretKey: credentials.json
+extraArgs:
+  - --google-project=my-gcp-project
 
 extraVolumes:
   - name: google-credentials
@@ -383,14 +389,11 @@ kind: Service
 metadata:
   name: myapp
   annotations:
-    # Create A record
-    external-dns.alpha.kubernetes.io/hostname: myapp.example.com
-    
     # Multiple hostnames
     external-dns.alpha.kubernetes.io/hostname: "api.example.com,myapp.example.com"
     
     # TTL
-    external-dns.alpha.kubernetes.io/ttl: "60"
+    external-dns.alpha.kubernetes.io/ttl: "300"
 spec:
   type: LoadBalancer
   selector:
@@ -408,7 +411,8 @@ spec:
 # Run separate instances per provider
 # external-dns-aws.yaml
 fullnameOverride: external-dns-aws
-provider: aws
+provider:
+  name: aws
 sources:
   - ingress
 extraArgs:
@@ -416,7 +420,8 @@ extraArgs:
 
 # external-dns-cloudflare.yaml  
 fullnameOverride: external-dns-cloudflare
-provider: cloudflare
+provider:
+  name: cloudflare
 sources:
   - ingress
 extraArgs:
@@ -461,9 +466,9 @@ policy: sync  # sync, upsert-only, create-only
 ### Prometheus Metrics
 
 ```yaml
-# Enable metrics
-metrics:
-  enabled: true
+# Expose metrics service and create a ServiceMonitor
+service:
+  port: 7979
   
 serviceMonitor:
   enabled: true
@@ -537,7 +542,7 @@ kubectl logs -n external-dns deployment/external-dns -f
 
 # Verify source detection
 kubectl get ingress -A -o wide
-kubectl get svc -A -l "external-dns.alpha.kubernetes.io/hostname"
+kubectl get svc -A -o wide
 
 # Test DNS resolution
 dig myapp.example.com
