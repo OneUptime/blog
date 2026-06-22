@@ -112,7 +112,6 @@ zone "example.com" {
     type master;
     file "/var/named/zones/example.com.zone";
     key-directory "/var/named/keys";
-    auto-dnssec maintain;
     inline-signing yes;
     dnssec-policy default;
 };
@@ -122,8 +121,9 @@ zone "example.com" {
 
 ```bash
 # Enable NSEC3 with recommended parameters
-# Algorithm 1 (SHA-1), 0 iterations, 8-byte salt
-rndc signing -nsec3param 1 0 8 $(openssl rand -hex 8) example.com
+# Format: hash flags iterations salt zone
+# Algorithm 1 (SHA-1), flags 0 (no opt-out), 0 iterations, random 8-byte salt
+rndc signing -nsec3param 1 0 0 $(openssl rand -hex 8) example.com
 
 # Verify NSEC3 is active
 rndc signing -list example.com
@@ -183,7 +183,7 @@ chmod 600 /var/named/keys/*.private
 ```bash
 # Sign zone with NSEC3 parameters
 dnssec-signzone -3 $(openssl rand -hex 8) \
-    -A -N INCREMENT \
+    -N INCREMENT \
     -o example.com \
     -t /var/named/zones/example.com.zone
 
@@ -230,15 +230,12 @@ gpgsql-dbname=pdns
 gpgsql-user=pdns
 gpgsql-password=secret
 
-# DNSSEC settings
+# Default zone settings
 default-soa-content=ns1.example.com hostmaster.@ 0 10800 3600 604800 3600
 default-ttl=3600
 
-# Enable DNSSEC
-dnssec=yes
-
-# NSEC3 defaults (can be overridden per zone)
-default-nsec3-params=1 0 0 -
+# DNSSEC and NSEC3 are enabled per-zone with pdnsutil
+# (pdnsutil secure-zone / pdnsutil set-nsec3), not via global pdns.conf settings
 ```
 
 ### Using PowerDNS API
@@ -295,13 +292,8 @@ keystore:
     backend: pem
     config: /var/lib/knot/keys
 
-key:
-  - id: example-ksk
-    algorithm: ECDSAP256SHA256
-    ksk: yes
-
-  - id: example-zsk
-    algorithm: ECDSAP256SHA256
+# DNSSEC signing keys are generated automatically from the policy below
+# (the 'key' section in knot.conf is for TSIG keys, not DNSSEC keys)
 
 policy:
   - id: nsec3-policy
@@ -339,10 +331,9 @@ keymgr example.com list
 ### Managing NSEC3 Salt Rotation
 
 ```bash
-# Rotate salt manually
-knotc zone-nsec3-salt example.com
-
-# Salt rotation is automatic based on nsec3-salt-lifetime in policy
+# Salt rotation is automatic based on nsec3-salt-lifetime in the policy.
+# There is no dedicated manual salt command; force a re-sign if needed:
+knotc zone-sign example.com
 ```
 
 ## Configuring NSEC3 with NSD
@@ -367,14 +358,14 @@ zone:
 
 ```bash
 # Install ldns tools
-apt-get install ldns-utils
+apt-get install ldnsutils
 
 # Generate keys
 ldns-keygen -a ECDSAP256SHA256 -k example.com  # KSK
 ldns-keygen -a ECDSAP256SHA256 example.com     # ZSK
 
 # Sign zone with NSEC3
-ldns-signzone -n -p \
+ldns-signzone -n \
     -s $(openssl rand -hex 8) \
     -t 0 \
     example.com.zone \
@@ -382,9 +373,9 @@ ldns-signzone -n -p \
 
 # Options:
 # -n : Use NSEC3 instead of NSEC
-# -p : Add time-based salt
-# -s : Salt value
+# -s : Salt value (hex string, or - for empty)
 # -t : Number of iterations (0 recommended)
+# -p : Set the opt-out flag on all NSEC3 RRs (only for TLDs; off by default)
 ```
 
 ### Automating Zone Signing
@@ -445,7 +436,7 @@ delv @localhost example.com NSEC3PARAM
 
 ```bash
 # Install drill (part of ldns)
-apt-get install ldns-utils
+apt-get install ldnsutils
 
 # Chase DNSSEC chain
 drill -TD example.com
@@ -772,7 +763,7 @@ Some implementations use "white lies" to provide minimal NSEC3 responses:
 # - Faster response generation
 
 # Implementations:
-# - Knot DNS: On by default
+# - Knot DNS: Via the onlinesign module (not enabled by default)
 # - PowerDNS: Narrow mode
 # - BIND: Not supported
 ```
@@ -797,9 +788,9 @@ Some implementations use "white lies" to provide minimal NSEC3 responses:
 ### Compact Denial of Existence
 
 ```bash
-# RFC 9077 introduces improvements:
+# Recent improvements to denial of existence:
 
-# 1. Aggressive Use of DNSSEC-Validated Cache
+# 1. Aggressive Use of DNSSEC-Validated Cache (RFC 8198, TTLs refined by RFC 9077)
 # Resolvers can synthesize NXDOMAIN from cached NSEC3
 
 # 2. NSEC3 Parameter Recommendations (RFC 9276)
