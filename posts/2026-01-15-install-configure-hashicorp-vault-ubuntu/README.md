@@ -473,8 +473,8 @@ telemetry {
   disable_hostname = true
 }
 
-# Access metrics
-curl https://vault.example.com:8200/v1/sys/metrics?format=prometheus
+# Access metrics (the endpoint requires authentication by default)
+curl -H "X-Vault-Token: $VAULT_TOKEN" "https://vault.example.com:8200/v1/sys/metrics?format=prometheus"
 ```
 
 ## Troubleshooting
