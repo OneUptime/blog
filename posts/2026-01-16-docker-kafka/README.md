@@ -8,7 +8,7 @@ Description: Learn how to set up Apache Kafka in Docker Compose with Zookeeper o
 
 ---
 
-Apache Kafka is a distributed event streaming platform for high-throughput data pipelines. This guide covers setting up Kafka in Docker with both traditional Zookeeper and the newer KRaft (Zookeeper-less) modes.
+Apache Kafka is a distributed event streaming platform for high-throughput data pipelines. This guide covers setting up Kafka in Docker with both traditional Zookeeper and the newer KRaft (Zookeeper-less) modes. The Zookeeper examples use Confluent Platform 7.5.0; Confluent Platform 8.0 and later require KRaft.
 
 ## Kafka with Zookeeper
 
@@ -33,6 +33,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -91,6 +92,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -107,6 +109,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 2
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:29092,PLAINTEXT_HOST://localhost:9093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -120,6 +123,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 3
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:29092,PLAINTEXT_HOST://localhost:9094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -189,6 +193,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -241,22 +246,22 @@ volumes:
 ```bash
 # Create topic
 
-docker exec kafka kafka-topics --create \
+docker compose exec kafka kafka-topics --create \
   --bootstrap-server localhost:9092 \
   --topic my-topic \
   --partitions 3 \
   --replication-factor 1
 
 # List topics
-docker exec kafka kafka-topics --list --bootstrap-server localhost:9092
+docker compose exec kafka kafka-topics --list --bootstrap-server localhost:9092
 
 # Produce messages
-docker exec -it kafka kafka-console-producer \
+docker compose exec kafka kafka-console-producer \
   --bootstrap-server localhost:9092 \
   --topic my-topic
 
 # Consume messages
-docker exec kafka kafka-console-consumer \
+docker compose exec kafka kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic my-topic \
   --from-beginning
@@ -272,4 +277,3 @@ docker exec kafka kafka-console-consumer \
 | Kafka UI | 8080 | Web interface |
 
 Kafka in Docker enables powerful event streaming for microservices. Use KRaft mode for simpler deployments, multi-broker clusters for production, and Kafka UI for easy management.
-
