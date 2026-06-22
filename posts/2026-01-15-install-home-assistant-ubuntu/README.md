@@ -420,19 +420,15 @@ Navigate to Settings, then Devices & Services, then Add Integration. Search for 
 
 ### MQTT Integration
 
-MQTT is essential for many DIY devices and commercial IoT products. Configure it to use the Mosquitto broker from our Docker Compose setup.
+MQTT is essential for many DIY devices and commercial IoT products. The broker connection is configured through the UI — the `mqtt:` broker and port options were removed from `configuration.yaml` in Home Assistant 2022.6, so the integration must be added via a config flow.
 
-```yaml
-# Add to configuration.yaml for MQTT
-mqtt:
-  broker: localhost
-  port: 1883
-  # Uncomment for authenticated broker
-  # username: homeassistant
-  # password: your-mqtt-password
-  discovery: true
-  discovery_prefix: homeassistant
-```
+Navigate to Settings, then Devices & Services, then Add Integration, and search for MQTT. Enter the broker connection details when prompted:
+
+- **Broker**: `localhost` (the Mosquitto broker from our Docker Compose setup, since Home Assistant runs with `network_mode: host`)
+- **Port**: `1883`
+- **Username/Password**: only if your broker requires authentication
+
+MQTT discovery is enabled by default with the `homeassistant` discovery prefix, which you can adjust later by reconfiguring the integration.
 
 ### Philips Hue Integration
 
@@ -444,14 +440,9 @@ Chromecast devices are auto-discovered. Add the integration to control media pla
 
 ### Weather Integration
 
-Add weather data for automations based on conditions.
+Add weather data for automations based on conditions. OpenWeatherMap is configured through the UI — the YAML `weather:` platform setup was removed in favor of a config flow.
 
-```yaml
-# Add weather integration to configuration.yaml
-weather:
-  - platform: openweathermap
-    api_key: your-openweathermap-api-key
-```
+Navigate to Settings, then Devices & Services, then Add Integration, search for OpenWeatherMap, and enter your API key when prompted. The integration creates a `weather.openweathermap` entity (plus related sensors) that you can reference in automations and dashboards.
 
 ## Automations and Scripts
 
