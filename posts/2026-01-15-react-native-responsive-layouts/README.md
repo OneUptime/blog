@@ -1066,7 +1066,7 @@ export const DEVICE_CONFIGS: DeviceConfig[] = [
 
 // Debug component for testing responsive layouts
 import React from 'react';
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 
 const ResponsiveDebugOverlay: React.FC<{ visible?: boolean }> = ({
   visible = __DEV__
