@@ -96,7 +96,7 @@ cat /proc/cmdline
 
 ## Enabling cgroups v2 on Ubuntu
 
-Modern Ubuntu versions (20.04 LTS and later) support cgroups v2, but it may not be enabled by default. Here is how to enable it.
+Modern Ubuntu versions (20.04 LTS and later) support cgroups v2. Ubuntu 22.04 LTS and later generally use cgroups v2 by default, while Ubuntu 20.04 LTS and some upgraded or customized systems may still use cgroups v1 or a hybrid setup. Here is how to enable cgroups v2 when it is not already active.
 
 ### Step 1: Update GRUB Configuration
 
@@ -104,12 +104,12 @@ Modern Ubuntu versions (20.04 LTS and later) support cgroups v2, but it may not 
 # Edit the GRUB configuration file
 sudo nano /etc/default/grub
 
-# Find the line starting with GRUB_CMDLINE_LINUX_DEFAULT
+# Find the line starting with GRUB_CMDLINE_LINUX
 # Add the following parameters to enable cgroups v2:
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash systemd.unified_cgroup_hierarchy=1"
+GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1"
 
 # If you want to completely disable cgroups v1 (recommended for clean setup):
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all"
+GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all"
 ```
 
 ### Step 2: Update GRUB and Reboot
@@ -148,7 +148,7 @@ cgroups v2 uses a hierarchical tree structure where each cgroup can have child c
 
 ### Root cgroup
 
-The root cgroup is located at `/sys/fs/cgroup/` and contains all processes by default.
+The root cgroup is located at `/sys/fs/cgroup/`. At boot, processes start in the root cgroup, but on a running Ubuntu system managed by systemd most processes are organized under child cgroups such as `system.slice`, `user.slice`, and `machine.slice`.
 
 ```bash
 # View the root cgroup directory
@@ -185,12 +185,13 @@ tree /sys/fs/cgroup/myapp/
 
 ### The No Internal Process Constraint
 
-In cgroups v2, a cgroup with controllers enabled cannot have processes directly in it if it has child cgroups. This is called the "no internal process" constraint.
+In cgroups v2, a non-root domain cgroup cannot enable domain controllers for its children while it has processes directly in it. This is called the "no internal process" constraint.
 
 ```bash
-# Example: This structure is INVALID if controllers are enabled
+# Example: This structure is INVALID if domain controllers are enabled
 /sys/fs/cgroup/myapp/
-├── cgroup.procs         # Contains PIDs (INVALID with controllers + children)
+├── cgroup.subtree_control  # Contains domain controllers such as cpu or memory
+├── cgroup.procs         # Contains PIDs (INVALID with domain controllers enabled)
 ├── webserver/
 │   └── cgroup.procs     # Contains PIDs
 └── database/
@@ -198,6 +199,7 @@ In cgroups v2, a cgroup with controllers enabled cannot have processes directly 
 
 # Correct structure: Processes only in leaf cgroups
 /sys/fs/cgroup/myapp/
+├── cgroup.subtree_control  # Contains domain controllers such as cpu or memory
 ├── cgroup.procs         # Empty (no direct processes)
 ├── webserver/
 │   └── cgroup.procs     # Contains PIDs
@@ -420,8 +422,8 @@ echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control
 # Set hard limit to 512 MB
 echo "536870912" | sudo tee /sys/fs/cgroup/limited_memory/memory.max
 
-# Alternative: Use human-readable suffixes (if supported by your kernel)
-# echo "512M" | sudo tee /sys/fs/cgroup/limited_memory/memory.max
+# cgroupfs memory limits are written as bytes; use systemd properties such as
+# MemoryMax=512M if you want human-readable units at the systemd layer.
 
 # Set limit to 1 GB
 echo "1073741824" | sudo tee /sys/fs/cgroup/limited_memory/memory.max
@@ -1178,7 +1180,7 @@ systemd organizes cgroups into a hierarchy of slices:
 # /etc/systemd/system/myapp.slice
 [Unit]
 Description=My Application Slice
-Documentation=https://example.com/docs
+Documentation=https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html
 Before=slices.target
 
 [Slice]
@@ -1330,7 +1332,7 @@ cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.subtree_control
 
 ### Enabling Delegation via systemd
 
-Create a user service that enables delegation:
+Create a user slice that enables delegation:
 
 ```ini
 # ~/.config/systemd/user/delegate.slice
