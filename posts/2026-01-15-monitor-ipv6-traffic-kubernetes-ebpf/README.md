@@ -426,13 +426,12 @@ char LICENSE[] SEC("license") = "GPL";
 package main
 
 import (
-	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -861,9 +860,8 @@ Export eBPF data as Prometheus metrics for integration with existing monitoring.
 package main
 
 import (
+	"log"
 	"net/http"
-	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
