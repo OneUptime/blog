@@ -58,7 +58,7 @@ If you prefer MacPorts over Homebrew, Helm is available in the ports collection.
 
 ```bash
 # Install Helm via MacPorts
-sudo port install helm-3
+sudo port install helm-4.2
 
 # Verify installation
 helm version
@@ -70,7 +70,7 @@ For environments where package managers aren't available, download the binary di
 
 ```bash
 # Download the latest Helm release for macOS (Intel or Apple Silicon auto-detected)
-curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
 
 # Make the installer script executable
 chmod 700 get_helm.sh
@@ -86,18 +86,23 @@ helm version
 
 ### Method 1: Package Manager (Debian/Ubuntu)
 
-Debian-based distributions can use the official Helm apt repository for seamless updates.
+Debian-based distributions can use the current Helm apt repository for seamless updates.
 
 ```bash
 # Install prerequisites for HTTPS repositories
-sudo apt-get update
-sudo apt-get install -y apt-transport-https gnupg
+HELM_BUILDKITE_APT_KEY_ID="DDF78C3E6EBB2D2CC223C95C62BA89D07698DBC6"
+sudo apt-get install curl gpg apt-transport-https --yes
 
 # Add the Helm GPG signing key
-curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey > "${TMPDIR:-/tmp}/helm.gpg"
+
+# Verify the key fingerprint before trusting it
+if [ "$(gpg --show-keys --with-colons "${TMPDIR:-/tmp}/helm.gpg" | awk -F: '$1 == "fpr" {print $10}' | head -n 1)" != "${HELM_BUILDKITE_APT_KEY_ID}" ]; then echo "ERROR: Unexpected Helm APT key ID: potential key compromise"; exit 1; fi
+
+cat "${TMPDIR:-/tmp}/helm.gpg" | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
 
 # Add the Helm apt repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
 
 # Update package list and install Helm
 sudo apt-get update
@@ -107,15 +112,11 @@ sudo apt-get install helm
 helm version
 ```
 
-### Method 2: Package Manager (RHEL/CentOS/Fedora)
+### Method 2: Package Manager (Fedora)
 
-Red Hat-based distributions can use dnf or yum with the official repository.
+Fedora 35 and later include Helm in the official repository.
 
 ```bash
-# Add the Helm yum/dnf repository
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://baltocdn.com/helm/stable/rpm/
-
 # Install Helm
 sudo dnf install helm
 
@@ -141,7 +142,7 @@ The official installer script works on any Linux distribution. It auto-detects y
 
 ```bash
 # Download the official Helm installer script
-curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
 
 # Make it executable
 chmod 700 get_helm.sh
@@ -159,16 +160,16 @@ For complete control over the installation process, download and extract the bin
 
 ```bash
 # Download Helm for Linux AMD64 (adjust version as needed)
-wget https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
+wget https://get.helm.sh/helm-v4.2.2-linux-amd64.tar.gz
 
 # Extract the archive
-tar -zxvf helm-v3.14.0-linux-amd64.tar.gz
+tar -zxvf helm-v4.2.2-linux-amd64.tar.gz
 
 # Move the binary to a location in your PATH
 sudo mv linux-amd64/helm /usr/local/bin/helm
 
 # Clean up
-rm -rf linux-amd64 helm-v3.14.0-linux-amd64.tar.gz
+rm -rf linux-amd64 helm-v4.2.2-linux-amd64.tar.gz
 
 # Verify installation
 helm version
@@ -218,7 +219,7 @@ For manual installation, download the Windows binary directly.
 
 ```powershell
 # Download Helm for Windows (using PowerShell)
-Invoke-WebRequest -Uri https://get.helm.sh/helm-v3.14.0-windows-amd64.zip -OutFile helm.zip
+Invoke-WebRequest -Uri https://get.helm.sh/helm-v4.2.2-windows-amd64.zip -OutFile helm.zip
 
 # Extract the archive
 Expand-Archive -Path helm.zip -DestinationPath .
@@ -243,7 +244,7 @@ After installation on any platform, run these commands to confirm everything wor
 helm version
 
 # Expected output:
-# version.BuildInfo{Version:"v3.14.0", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.21.5"}
+# version.BuildInfo{Version:"v4.2.2", GitCommit:"...", GitTreeState:"clean", GoVersion:"..."}
 
 # If you have a Kubernetes cluster configured, list releases
 helm list --all-namespaces
@@ -302,7 +303,7 @@ helm search repo bitnami
 | --- | --- | --- |
 | `helm: command not found` | Binary not in PATH | Add installation directory to PATH |
 | `Error: Kubernetes cluster unreachable` | No kubeconfig or wrong context | Run `kubectl config current-context` to verify |
-| `Error: could not find tiller` | Old Helm 2 documentation | Helm 3 doesn't use Tiller- ignore these references |
+| `Error: could not find tiller` | Old Helm 2 documentation | Helm 3 and later don't use Tiller- ignore these references |
 | Permission denied errors | Installation needs sudo | Use package manager or install to user directory |
 | Version mismatch warnings | Old Helm with new cluster | Upgrade Helm to latest stable version |
 
