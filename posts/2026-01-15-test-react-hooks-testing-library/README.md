@@ -301,7 +301,7 @@ export function useFetch(url) {
 
 ```javascript
 // tests/hooks/useFetch.test.js
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useFetch } from '@/hooks/useFetch';
 
 // Mock the global fetch function
@@ -404,8 +404,8 @@ import { createContext, useContext, useState, useCallback } from 'react';
 
 const ThemeContext = createContext(null);
 
-export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState('light');
+export function ThemeProvider({ children, initialTheme = 'light' }) {
+  const [theme, setTheme] = useState(initialTheme);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
@@ -532,9 +532,11 @@ When hooks depend on other hooks or external modules:
 
 ```javascript
 // src/hooks/useLocalStorage.js
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export function useLocalStorage(key, initialValue) {
+  const shouldSkipNextWrite = useRef(false);
+
   // Initialize state from localStorage or use initial value
   const [storedValue, setStoredValue] = useState(() => {
     try {
@@ -548,6 +550,11 @@ export function useLocalStorage(key, initialValue) {
 
   // Update localStorage when state changes
   useEffect(() => {
+    if (shouldSkipNextWrite.current) {
+      shouldSkipNextWrite.current = false;
+      return;
+    }
+
     try {
       window.localStorage.setItem(key, JSON.stringify(storedValue));
     } catch (error) {
@@ -565,6 +572,7 @@ export function useLocalStorage(key, initialValue) {
   const removeValue = useCallback(() => {
     try {
       window.localStorage.removeItem(key);
+      shouldSkipNextWrite.current = true;
       setStoredValue(initialValue);
     } catch (error) {
       console.error(`Error removing localStorage key "${key}":`, error);
