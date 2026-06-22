@@ -34,25 +34,25 @@ sudo rm -rf /usr/local/go
 
 ### Step 2: Download the Latest Go Version
 
-Visit the [official Go downloads page](https://go.dev/dl/) to find the latest version. As of this writing, Go 1.22 is the latest stable release.
+Visit the [official Go downloads page](https://go.dev/dl/) to find the latest version. As of this writing, Go 1.26.4 is the latest stable release.
 
 ```bash
 # Download Go (replace version number with the latest)
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.26.4.linux-amd64.tar.gz
 
 # Verify the download (optional but recommended)
 # Check the SHA256 checksum on the downloads page
-sha256sum go1.22.0.linux-amd64.tar.gz
+sha256sum go1.26.4.linux-amd64.tar.gz
 ```
 
 ### Step 3: Extract and Install Go
 
 ```bash
 # Extract the archive to /usr/local
-sudo tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.26.4.linux-amd64.tar.gz
 
 # Clean up the downloaded archive
-rm go1.22.0.linux-amd64.tar.gz
+rm go1.26.4.linux-amd64.tar.gz
 ```
 
 ### Step 4: Verify the Installation
@@ -60,7 +60,7 @@ rm go1.22.0.linux-amd64.tar.gz
 ```bash
 # Check Go version
 /usr/local/go/bin/go version
-# Output: go version go1.22.0 linux/amd64
+# Output: go version go1.26.4 linux/amd64
 ```
 
 ## Setting Up GOPATH and GOROOT
@@ -87,8 +87,7 @@ export GOROOT=/usr/local/go
 export GOPATH=$HOME/go
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 
-# Optional: Enable Go modules (default in Go 1.16+)
-export GO111MODULE=on
+# Go modules are enabled by default in current Go releases
 ```
 
 Apply the changes:
@@ -135,7 +134,7 @@ cat go.mod
 # Output:
 # module github.com/yourusername/myapp
 #
-# go 1.22
+# go 1.25.0
 ```
 
 ### The go.mod File Explained
@@ -145,7 +144,7 @@ cat go.mod
 
 module github.com/yourusername/myapp  // Module path (import path prefix)
 
-go 1.22  // Minimum Go version required
+go 1.25.0  // Minimum Go version required
 
 require (
     github.com/gin-gonic/gin v1.9.1      // Direct dependency
@@ -1045,7 +1044,7 @@ Use `replace` directives in `go.mod` for local development or forks:
 // go.mod
 module github.com/yourusername/myapp
 
-go 1.22
+go 1.25.0
 
 require (
     github.com/gin-gonic/gin v1.9.1
@@ -1195,7 +1194,7 @@ staticcheck ./...
 
 # golangci-lint - Meta linter (runs multiple linters)
 # Install
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.12.2
 
 # Or using go install
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -1204,7 +1203,7 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 golangci-lint run
 
 # Run with specific linters
-golangci-lint run --enable=gofmt,govet,errcheck
+golangci-lint run --enable=govet,errcheck,staticcheck
 ```
 
 ### golangci-lint Configuration
@@ -1213,18 +1212,18 @@ Create `.golangci.yml` in your project root:
 
 ```yaml
 # .golangci.yml - golangci-lint configuration
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
   enable:
-    - gofmt
     - govet
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
     - typecheck
     - gocritic
@@ -1235,25 +1234,29 @@ linters:
     - nakedret
     - prealloc
 
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 100
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-  misspell:
-    locale: US
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    misspell:
+      locale: US
 
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
-        - gocritic
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt
 ```
 
 ### Documentation Tools
@@ -1389,19 +1392,23 @@ EOF
 
 # Create .golangci.yml
 cat > .golangci.yml << 'EOF'
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
   enable:
-    - gofmt
     - govet
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
     - misspell
+
+formatters:
+  enable:
+    - gofmt
 EOF
 
 # Create Makefile
