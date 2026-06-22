@@ -789,50 +789,41 @@ npm install react-native-reanimated
 ### Custom Animated Screen Component
 
 ```typescript
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  interpolate,
-  Extrapolate,
-} from 'react-native-reanimated';
+import { Animated } from 'react-native';
 import { useCardAnimation } from '@react-navigation/stack';
 
+// useCardAnimation returns the screen's card animation values from the
+// legacy React Native Animated API (current.progress is an
+// Animated.AnimatedInterpolation), so interpolate directly on it rather
+// than reading a Reanimated shared value.
 function AnimatedScreen({ children }) {
   const { current } = useCardAnimation();
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        {
-          scale: interpolate(
-            current.progress.value,
-            [0, 1],
-            [0.9, 1],
-            Extrapolate.CLAMP
-          ),
-        },
-        {
-          rotateZ: `${interpolate(
-            current.progress.value,
-            [0, 1],
-            [-5, 0],
-            Extrapolate.CLAMP
-          )}deg`,
-        },
-      ],
-      opacity: interpolate(
-        current.progress.value,
-        [0, 0.5, 1],
-        [0, 0.5, 1],
-        Extrapolate.CLAMP
-      ),
-    };
+  const scale = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
+    extrapolate: 'clamp',
+  });
+
+  const rotateZ = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-5deg', '0deg'],
+    extrapolate: 'clamp',
+  });
+
+  const opacity = current.progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.5, 1],
+    extrapolate: 'clamp',
   });
 
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
+    <Animated.View
+      style={[
+        styles.container,
+        { transform: [{ scale }, { rotateZ }], opacity },
+      ]}
+    >
       {children}
     </Animated.View>
   );
@@ -921,13 +912,16 @@ Smooth animations require careful attention to performance.
 ### Enable Native Driver
 
 ```typescript
-// Always use native driver when possible
+// React Navigation's stack runs card transitions on the native driver
+// automatically, so the transitionSpec config does not accept a
+// useNativeDriver flag. Keep interpolations limited to transform and
+// opacity (the only properties the native driver supports) so the
+// animation stays on the native thread.
 const transitionSpec: TransitionSpec = {
   animation: 'timing',
   config: {
     duration: 300,
     easing: Easing.out(Easing.poly(4)),
-    useNativeDriver: true, // Important for performance
   },
 };
 ```
