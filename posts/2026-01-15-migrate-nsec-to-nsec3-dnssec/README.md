@@ -242,9 +242,9 @@ zone "example.com" {
     type master;
     file "/var/named/zones/example.com.zone";
 
-    // Enable inline signing
+    // Enable inline signing (dnssec-policy manages signing automatically;
+    // do not combine with the legacy auto-dnssec statement)
     inline-signing yes;
-    auto-dnssec maintain;
 
     // Configure NSEC3
     dnssec-policy "nsec3-policy";
@@ -288,7 +288,6 @@ cd /var/named/zones
 dnssec-signzone \
     -3 - \                    # Use NSEC3 with empty salt
     -H 0 \                    # 0 iterations
-    -A \                      # Generate NSEC3 for all types
     -o example.com \          # Zone origin
     -f example.com.zone.signed \  # Output file
     -k /var/named/keys/Kexample.com.+013+12345.key \  # KSK
@@ -573,7 +572,6 @@ zone "example.com" {
     type master;
     file "/var/named/zones/example.com.zone";
     inline-signing yes;
-    auto-dnssec maintain;
 
     // Remove or comment out NSEC3 configuration
     // dnssec-policy "nsec3-policy";
