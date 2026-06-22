@@ -1150,10 +1150,9 @@ fastlane add_plugin firebase_app_distribution
 
 # Badge for app icons
 fastlane add_plugin badge
-
-# Slack notifications
-fastlane add_plugin slack
 ```
+
+Note that Slack notifications do not require a plugin. The `slack` action is built into fastlane out of the box, so you can use it directly without running `add_plugin`.
 
 ### Firebase App Distribution Lane
 
