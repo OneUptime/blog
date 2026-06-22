@@ -55,39 +55,33 @@ sudo apt install -y curl gnupg software-properties-common apt-transport-https
 
 ## Installing Sonarr
 
-Sonarr requires Mono runtime on Ubuntu. The Sonarr team provides official packages through their repository.
+Sonarr v4 runs on .NET, so Mono is no longer required. The Sonarr team provides an official installation script that downloads the application and sets up a systemd service. (The old `apt.sonarr.tv` repository only served Sonarr v3.)
 
-### Step 1: Add the Sonarr Repository
+### Step 1: Download the Install Script
 
-Add the GPG key and repository for Sonarr.
+Download the official Sonarr v4 install script.
 
 ```bash
-# Add the Sonarr GPG signing key to verify package authenticity
-# The key is stored in the shared keyrings directory for apt
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/sonarr-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 2009837CBFFD68F45BC180471F4F90DE2A9B4BF8
-
-# Add the Sonarr repository to your sources list
-# Uses the signed-by option to reference the GPG key we just added
-echo "deb [signed-by=/usr/share/keyrings/sonarr-keyring.gpg] https://apt.sonarr.tv/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/sonarr.list
+# Download the official Sonarr v4 install script
+curl -o install-sonarr.sh https://raw.githubusercontent.com/Sonarr/Sonarr/develop/distribution/debian/install.sh
 ```
 
-### Step 2: Install Sonarr
+### Step 2: Run the Installer
 
-Install Sonarr from the official repository.
+Run the script to install Sonarr.
 
 ```bash
-# Update package lists to include the new Sonarr repository
-sudo apt update
-
-# Install Sonarr - this includes all required dependencies
-# During installation, you will be prompted to select a user/group
-# Choose an existing media user or let it create the 'sonarr' user
-sudo apt install -y sonarr
+# Run the installer with root privileges
+# You will be prompted to select the user and group Sonarr runs as
+# (defaults: user "sonarr", group "media"). The script installs Sonarr
+# to /opt/Sonarr, stores its data in /var/lib/sonarr, and creates a
+# systemd service that it enables and starts automatically.
+sudo bash install-sonarr.sh
 ```
 
 ### Step 3: Configure the Sonarr Service
 
-Sonarr runs as a systemd service. Verify and enable it.
+The installer already sets up Sonarr as a systemd service and starts it. Confirm it is enabled and running.
 
 ```bash
 # Enable Sonarr to start automatically on system boot
@@ -107,30 +101,25 @@ Sonarr runs on port 8989 by default. Access the web interface at `http://your-se
 
 Radarr installation follows a similar pattern to Sonarr.
 
-### Step 1: Add the Radarr Repository
+### Step 1: Download the Install Script
 
-Add the GPG key and repository for Radarr.
+Radarr does not provide an apt repository or deb package. Use the official Servarr install script instead.
 
 ```bash
-# Add the Radarr GPG signing key for package verification
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/radarr-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 56B6D6F206EB0BE7D4E1FB5F5EBC09EDB8AEB2A9
-
-# Add the Radarr repository to your sources list
-# The repository URL structure follows the same pattern as Sonarr
-echo "deb [signed-by=/usr/share/keyrings/radarr-keyring.gpg] https://apt.radarr.video/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/radarr.list
+# Download the official Servarr install script
+curl -o servarr-install-script.sh https://raw.githubusercontent.com/Servarr/Wiki/master/servarr/servarr-install-script.sh
 ```
 
 ### Step 2: Install Radarr
 
-Install Radarr from the official repository.
+Run the script and select Radarr when prompted.
 
 ```bash
-# Update package lists to include the new Radarr repository
-sudo apt update
-
-# Install Radarr with all dependencies
-# Use the same user/group as Sonarr for consistent permissions
-sudo apt install -y radarr
+# Run the installer and choose "radarr" when asked which app to install.
+# Use the same group ("media") as Sonarr for consistent permissions.
+# The script installs Radarr to /opt/Radarr, stores data in /var/lib/radarr,
+# and creates a systemd service running as user "radarr".
+sudo bash servarr-install-script.sh
 ```
 
 ### Step 3: Configure the Radarr Service
@@ -154,28 +143,24 @@ Radarr runs on port 7878 by default. Access it at `http://your-server-ip:7878`.
 
 Prowlarr is an indexer manager that syncs your indexers across Sonarr, Radarr, and other applications. Instead of adding indexers to each application individually, configure them once in Prowlarr.
 
-### Step 1: Add the Prowlarr Repository
+### Step 1: Download the Install Script
 
-Add the GPG key and repository for Prowlarr.
+Like Radarr, Prowlarr has no apt repository. Install it with the same official Servarr install script.
 
 ```bash
-# Add the Prowlarr GPG signing key
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/prowlarr-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 1B506F11B1E02F912F53A82E5F88F4D7E28CE38F
-
-# Add the Prowlarr repository
-echo "deb [signed-by=/usr/share/keyrings/prowlarr-keyring.gpg] https://apt.prowlarr.com/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/prowlarr.list
+# Download the official Servarr install script (skip if already downloaded)
+curl -o servarr-install-script.sh https://raw.githubusercontent.com/Servarr/Wiki/master/servarr/servarr-install-script.sh
 ```
 
 ### Step 2: Install Prowlarr
 
-Install Prowlarr from the repository.
+Run the script and select Prowlarr when prompted.
 
 ```bash
-# Update package lists
-sudo apt update
-
-# Install Prowlarr
-sudo apt install -y prowlarr
+# Run the installer and choose "prowlarr" when asked which app to install.
+# The script installs Prowlarr to /opt/Prowlarr, stores data in
+# /var/lib/prowlarr, and creates a systemd service running as user "prowlarr".
+sudo bash servarr-install-script.sh
 ```
 
 ### Step 3: Configure the Prowlarr Service
