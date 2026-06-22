@@ -16,14 +16,14 @@ Galera Cluster is a synchronous multi-master replication plugin for MySQL and Ma
 
 ### What is Galera Cluster?
 
-Galera Cluster implements synchronous replication using a certification-based approach. Unlike traditional MySQL replication (which is asynchronous), Galera ensures that all nodes have the same data at any given moment.
+Galera Cluster implements virtually synchronous replication using a certification-based approach. Unlike traditional MySQL replication (which is asynchronous), Galera commits transactions in the same global order across the cluster, though a node can still have a short apply queue unless you enforce causal reads with settings such as `wsrep_sync_wait`.
 
 ### Key Features
 
-- **Synchronous Replication**: All nodes are guaranteed to have the same data
+- **Synchronous Replication**: Transactions are certified and ordered consistently across the cluster
 - **Multi-Master Topology**: Read and write to any node
 - **Automatic Node Provisioning**: New nodes automatically sync with the cluster
-- **No Slave Lag**: No replication delay between nodes
+- **No Traditional Slave Lag**: No asynchronous replica delay, though apply queues and flow control still need monitoring
 - **Automatic Membership Control**: Failed nodes are automatically removed
 - **True Parallel Replication**: Transactions are applied in parallel across nodes
 
@@ -32,7 +32,7 @@ Galera Cluster implements synchronous replication using a certification-based ap
 1. A client sends a write transaction to any node
 2. The node broadcasts the transaction to all other nodes (writeset)
 3. Each node certifies the transaction against pending transactions
-4. If certification passes, the transaction is committed on all nodes
+4. If certification passes, the transaction is ordered for commit across the cluster and applied on each node
 5. If certification fails, the transaction is rolled back
 
 ### Architecture Overview
@@ -268,8 +268,8 @@ wsrep_provider_options="gcache.size=512M; gcache.recover=yes"
 # InnoDB Settings for Galera
 # ============================================
 
-# Flush logs at each transaction commit (required for durability)
-innodb_flush_log_at_trx_commit=2
+# Flush logs at each transaction commit for crash durability
+innodb_flush_log_at_trx_commit=1
 
 # Buffer pool size (set to 50-70% of available RAM)
 innodb_buffer_pool_size=1G
@@ -277,7 +277,7 @@ innodb_buffer_pool_size=1G
 # Log file size (larger = better write performance, longer recovery)
 innodb_log_file_size=256M
 
-# Disable doublewrite buffer (Galera provides its own protection)
+# Keep the InnoDB doublewrite buffer enabled for crash recovery
 innodb_doublewrite=1
 ```
 
@@ -320,7 +320,7 @@ wsrep_log_conflicts=ON
 wsrep_provider_options="gcache.size=512M; gcache.recover=yes"
 
 # InnoDB Settings
-innodb_flush_log_at_trx_commit=2
+innodb_flush_log_at_trx_commit=1
 innodb_buffer_pool_size=1G
 innodb_log_file_size=256M
 innodb_doublewrite=1
@@ -365,7 +365,7 @@ wsrep_log_conflicts=ON
 wsrep_provider_options="gcache.size=512M; gcache.recover=yes"
 
 # InnoDB Settings
-innodb_flush_log_at_trx_commit=2
+innodb_flush_log_at_trx_commit=1
 innodb_buffer_pool_size=1G
 innodb_log_file_size=256M
 innodb_doublewrite=1
@@ -488,7 +488,7 @@ HAProxy distributes database connections across all cluster nodes for high avail
 
 ### Install HAProxy
 
-On a separate server or one of the nodes:
+On a separate server (recommended). If you install HAProxy on one of the database nodes, bind HAProxy to a different IP address or a different frontend port so it does not conflict with MariaDB on port 3306.
 
 ```bash
 # Install HAProxy
@@ -905,37 +905,8 @@ Split-brain occurs when the cluster partitions and each partition believes it's 
 ```ini
 # In 60-galera.cnf - add to wsrep_provider_options
 
-wsrep_provider_options="
-    # Size of the write-set cache
-    gcache.size=512M;
-
-    # Enable gcache recovery after crash
-    gcache.recover=yes;
-
-    # Protocol version (auto-negotiated)
-    # pc.version=3;
-
-    # Wait for quorum on startup
-    pc.wait_prim=yes;
-
-    # Bootstrap only with this many nodes (0 = disabled)
-    pc.bootstrap=0;
-
-    # Weight of this node in voting (default: 1)
-    pc.weight=1;
-
-    # Enable automatic eviction of inactive nodes
-    evs.auto_evict=1;
-
-    # Inactive timeout before eviction (in seconds)
-    evs.inactive_timeout=PT15S;
-
-    # Suspect timeout (in seconds)
-    evs.suspect_timeout=PT5S;
-
-    # Consensus timeout
-    evs.consensus_timeout=PT30S
-"
+# Keep wsrep_provider_options on one semicolon-separated line.
+wsrep_provider_options="gcache.size=512M; gcache.recover=yes; pc.wait_prim=yes; pc.weight=1; evs.auto_evict=1; evs.inactive_timeout=PT15S; evs.suspect_timeout=PT5S"
 ```
 
 ### Handling Network Partitions
@@ -968,7 +939,7 @@ For even-numbered clusters or geo-distributed setups, use an arbitrator:
 sudo apt install -y galera-arbitrator-4
 
 # Configure arbitrator (on a separate lightweight server)
-sudo nano /etc/default/garbd
+sudo nano /etc/default/garb
 ```
 
 ```ini
@@ -1103,8 +1074,8 @@ BACKUP_DIR=$(ls -d ${RESTORE_DIR}/full_backup_*)
 # Prepare backup if not already prepared
 mariabackup --prepare --target-dir="$BACKUP_DIR"
 
-# Remove existing data directory
-sudo rm -rf "${MYSQL_DATA}/*"
+# Remove existing data directory contents
+sudo rm -rf "${MYSQL_DATA:?}/"*
 
 # Restore backup
 mariabackup --copy-back --target-dir="$BACKUP_DIR"
@@ -1236,11 +1207,7 @@ mysql -e "SHOW STATUS LIKE 'wsrep_local_recv_queue';"
 wsrep_provider_options="gcache.size=1G; ..."
 
 # 3. Tune flow control parameters
-wsrep_provider_options="
-    gcs.fc_limit=500;
-    gcs.fc_factor=1.0;
-    gcs.fc_master_slave=yes
-"
+wsrep_provider_options="gcs.fc_limit=500; gcs.fc_factor=1.0; gcs.fc_single_primary=yes"
 ```
 
 ### Problem: Certification Failures
