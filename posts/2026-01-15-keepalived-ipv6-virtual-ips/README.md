@@ -97,11 +97,8 @@ global_defs {
     vrrp_version 3
     vrrp_iptables
 
-    # Enable IPv6 forwarding for this instance
+    # Run check/notify scripts under tightened security
     enable_script_security
-
-    # Logging configuration
-    log_level 4
 }
 
 vrrp_instance VI_IPv6 {
@@ -143,7 +140,6 @@ global_defs {
     vrrp_iptables
 
     enable_script_security
-    log_level 4
 }
 
 vrrp_instance VI_IPv6 {
@@ -269,7 +265,8 @@ vrrp_instance VI_IPv6_MULTI {
         2001:db8:1::102/64
     }
 
-    # Optionally specify the interface per VIP
+    # Addresses added on failover but NOT sent in VRRP adverts.
+    # Useful for large VIP sets or addresses on a different interface/family.
     virtual_ipaddress_excluded {
         2001:db8:2::100/64 dev eth1
     }
@@ -805,11 +802,11 @@ sudo tcpdump -i eth0 -n ip6 proto 112 -c 10
 **Fixes:**
 
 ```bash
-# Reduce advertisement interval (minimum 1 second for VRRPv3)
+# VRRPv2 only allows whole-second intervals (minimum 1 second)
 # In keepalived.conf:
 advert_int 1
 
-# For sub-second failover (requires VRRPv3):
+# For sub-second failover (requires VRRPv3, which uses centisecond units):
 advert_int 0.1  # 100ms
 ```
 
