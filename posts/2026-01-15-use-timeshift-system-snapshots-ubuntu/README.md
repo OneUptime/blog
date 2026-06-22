@@ -117,23 +117,18 @@ sudo apt install timeshift
 # Verify installation
 timeshift --version
 
-# Expected output:
-# Timeshift v22.11.1
+# Example output on Ubuntu 24.04:
+# Timeshift v24.01.1
 ```
 
-### Installation via PPA (for latest version)
+### Installation from Source (Advanced)
 
-If you want the most recent version of Timeshift, you can add the developer's PPA:
+The Ubuntu repository package is the recommended installation method for most users. If you specifically need a newer upstream release, check the Linux Mint Timeshift repository and build from source instead of relying on older third-party PPAs:
 
 ```bash
-# Add the Timeshift PPA
-sudo add-apt-repository -y ppa:teejee2008/timeshift
-
-# Update package lists
-sudo apt update
-
-# Install or upgrade Timeshift
-sudo apt install timeshift
+# Clone the upstream source, then follow the current build instructions
+sudo apt install git
+git clone https://github.com/linuxmint/timeshift.git
 ```
 
 ### Verifying Installation
@@ -255,9 +250,9 @@ sudo timeshift --create --comments "Before upgrading to Ubuntu 24.04"
 sudo timeshift --create --verbose --comments "Pre-kernel-update snapshot"
 
 # Example output:
-# /dev/sda3 is mounted at: /run/timeshift/backup
+# /dev/sda3 is mounted at: /run/timeshift/12345/backup
 # Creating new snapshot...(RSYNC)
-# Saving to device: /dev/sda3, mounted at path: /run/timeshift/backup
+# Saving to device: /dev/sda3, mounted at path: /run/timeshift/12345/backup
 # Syncing files with rsync...
 # Created snapshot: 2026-01-15_10-30-45
 # Tagged snapshot '2026-01-15_10-30-45': ondemand
@@ -488,15 +483,13 @@ If your system fails to boot, you have several options:
 # 2. Open terminal and install Timeshift
 sudo apt update && sudo apt install timeshift
 
-# 3. List snapshots from the installed system
-# First, mount your system partition
-sudo mount /dev/sda2 /mnt
+# 3. Identify the installed system partition and snapshot device
+lsblk -f
 
-# 4. Run Timeshift restore targeting the mounted system
-sudo timeshift --restore --target /mnt --snapshot "2026-01-15_10-30-45"
+# 4. Run Timeshift restore targeting the installed system partition
+sudo timeshift --restore --target /dev/sda2 --snapshot "2026-01-15_10-30-45"
 
-# 5. Unmount and reboot
-sudo umount /mnt
+# 5. Reboot after the restore completes
 sudo reboot
 ```
 
@@ -507,14 +500,14 @@ Sometimes you only need to restore specific files, not the entire system:
 
 ```bash
 # Snapshots are stored in a readable format
-# Navigate to the snapshot directory
-ls /run/timeshift/backup/timeshift/snapshots/
+# Find the current Timeshift mount path
+find /run/timeshift -path "*/timeshift/snapshots" -type d 2>/dev/null
 
 # Example: Restore a specific configuration file
-sudo cp /run/timeshift/backup/timeshift/snapshots/2026-01-15_10-30-45/localhost/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+sudo cp /run/timeshift/*/backup/timeshift/snapshots/2026-01-15_10-30-45/localhost/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Example: Compare a file before restoring
-diff /etc/apt/sources.list /run/timeshift/backup/timeshift/snapshots/2026-01-15_10-30-45/localhost/etc/apt/sources.list
+diff /etc/apt/sources.list /run/timeshift/*/backup/timeshift/snapshots/2026-01-15_10-30-45/localhost/etc/apt/sources.list
 ```
 
 ## Booting from Snapshot (GRUB)
@@ -524,8 +517,12 @@ For BTRFS systems, Timeshift can integrate with GRUB to allow booting directly i
 ### Installing GRUB-BTRFS (for BTRFS users)
 
 ```bash
-# Install grub-btrfs for snapshot boot menu entries
-sudo apt install grub-btrfs
+# Ubuntu does not provide grub-btrfs in the official repositories.
+# Install it only after reviewing the upstream instructions:
+sudo apt install git build-essential gawk inotify-tools
+git clone https://github.com/Antynea/grub-btrfs.git
+cd grub-btrfs
+sudo make install
 
 # Update GRUB configuration
 sudo update-grub
@@ -558,12 +555,8 @@ RSYNC snapshots do not integrate directly with GRUB. For RSYNC users, the Live U
 # Create a bootable USB with Ubuntu
 # Boot from USB, install Timeshift, and restore
 
-# Alternative: Add a recovery option to GRUB
-# Edit /etc/grub.d/40_custom
-sudo nano /etc/grub.d/40_custom
-
-# Add recovery menu entry pointing to snapshot
-# This is an advanced configuration - use with caution
+# Do not try to point a custom GRUB entry directly at an RSYNC snapshot;
+# restore the snapshot from Timeshift or a Live USB instead.
 ```
 
 ## Command-Line Usage
@@ -582,7 +575,7 @@ sudo timeshift --list
 # Example output:
 # Device : /dev/sda3
 # UUID   : efgh5678-ij90-...
-# Path   : /run/timeshift/backup
+# Path   : /run/timeshift/12345/backup
 # Mode   : RSYNC
 # Status : OK
 #
@@ -614,7 +607,7 @@ sudo timeshift --delete-all
 # Restore with specific options
 sudo timeshift --restore \
   --snapshot "2026-01-15_10-30-45" \
-  --target /mnt \
+  --target /dev/sda2 \
   --skip-grub \
   --verbose
 
@@ -627,9 +620,9 @@ sudo timeshift --create --scripted
 # Specify snapshot device
 sudo timeshift --create --snapshot-device /dev/sdb1
 
-# Clone system to another device
+# Restore system files to another target device
 sudo timeshift --restore --snapshot "2026-01-15_10-30-45" \
-  --target-device /dev/sdc1 --clone
+  --target-device /dev/sdc1
 ```
 
 ### Scripting Examples
@@ -643,16 +636,12 @@ sudo timeshift --restore --snapshot "2026-01-15_10-30-45" \
 # This script creates a Timeshift snapshot before running apt upgrade
 # Run with: sudo ./pre-upgrade-snapshot.sh
 
-set -e  # Exit on error
-
 echo "Creating pre-upgrade snapshot..."
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
 
 # Create snapshot with descriptive comment
-sudo timeshift --create --scripted \
-  --comments "Pre-upgrade snapshot ${TIMESTAMP}"
-
-if [ $? -eq 0 ]; then
+if sudo timeshift --create --scripted \
+  --comments "Pre-upgrade snapshot ${TIMESTAMP}"; then
     echo "Snapshot created successfully"
     echo "Proceeding with system upgrade..."
     sudo apt update && sudo apt upgrade -y
@@ -699,7 +688,8 @@ THRESHOLD=80  # Percentage
 EMAIL="admin@example.com"
 
 # Get snapshot device usage
-USAGE=$(df /run/timeshift/backup 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//')
+BACKUP_PATH=$(find /run/timeshift -maxdepth 3 -type d -name backup 2>/dev/null | head -1)
+USAGE=$(df "${BACKUP_PATH:-/timeshift}" 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//')
 
 if [ -z "$USAGE" ]; then
     echo "Error: Could not determine snapshot storage usage"
@@ -830,7 +820,8 @@ sudo timeshift --list | head -10
 # Check disk space
 echo ""
 echo "Disk Space:"
-df -h /run/timeshift/backup 2>/dev/null || echo "Snapshot device not mounted"
+BACKUP_PATH=$(find /run/timeshift -maxdepth 3 -type d -name backup 2>/dev/null | head -1)
+df -h "${BACKUP_PATH:-/timeshift}" 2>/dev/null || echo "Snapshot device not mounted"
 
 # Check last snapshot date
 echo ""
@@ -840,7 +831,7 @@ sudo timeshift --list | grep -E "^0" || echo "No snapshots found"
 # Check for errors in system log
 echo ""
 echo "Recent Timeshift Errors:"
-journalctl -u timeshift --since "7 days ago" --no-pager | grep -i error | tail -5 || echo "No errors found"
+journalctl --since "7 days ago" --no-pager | grep -i timeshift | grep -i error | tail -5 || echo "No errors found"
 ```
 
 ## Troubleshooting
@@ -856,8 +847,8 @@ Here are solutions to common Timeshift issues.
 lsblk -f
 mount | grep timeshift
 
-# Solution 2: Manually mount the device
-sudo mount /dev/sda3 /run/timeshift/backup
+# Solution 2: List devices detected by Timeshift
+sudo timeshift --list-devices
 
 # Solution 3: Reconfigure Timeshift
 sudo timeshift-gtk
@@ -913,11 +904,11 @@ sudo fsck /dev/sda3  # Check snapshot partition
 # Solution 1: Try restore from Live USB
 # Boot from Live USB and run:
 sudo apt update && sudo apt install timeshift
-sudo mount /dev/sda2 /mnt
-sudo timeshift --restore --target /mnt
+lsblk -f
+sudo timeshift --restore --target /dev/sda2
 
 # Solution 2: Manually copy files from snapshot
-sudo cp -a /run/timeshift/backup/timeshift/snapshots/SNAPSHOT_NAME/localhost/* /
+sudo cp -a /run/timeshift/*/backup/timeshift/snapshots/SNAPSHOT_NAME/localhost/* /
 
 # Solution 3: Check filesystem integrity
 sudo fsck -y /dev/sda2
@@ -998,7 +989,8 @@ echo -e "\n3. Snapshots:"
 sudo timeshift --list 2>/dev/null || echo "Could not list snapshots"
 
 echo -e "\n4. Storage:"
-df -h /run/timeshift/backup 2>/dev/null || echo "Backup device not mounted"
+BACKUP_PATH=$(find /run/timeshift -maxdepth 3 -type d -name backup 2>/dev/null | head -1)
+df -h "${BACKUP_PATH:-/timeshift}" 2>/dev/null || echo "Backup device not mounted"
 
 echo -e "\n5. Filesystem Type:"
 df -T / | tail -1
@@ -1007,7 +999,7 @@ echo -e "\n6. Cron Job:"
 cat /etc/cron.d/timeshift-hourly 2>/dev/null || echo "No cron job found"
 
 echo -e "\n7. Recent Logs:"
-journalctl -u timeshift --since "24 hours ago" --no-pager 2>/dev/null | tail -10 || echo "No journal entries"
+journalctl --since "24 hours ago" --no-pager 2>/dev/null | grep -i timeshift | tail -10 || echo "No journal entries"
 ```
 
 ## Conclusion
