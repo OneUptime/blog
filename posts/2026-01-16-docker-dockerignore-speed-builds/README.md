@@ -8,7 +8,7 @@ Description: Learn how to use .dockerignore to exclude unnecessary files from Do
 
 ---
 
-Every time you run `docker build`, Docker sends the entire build context (your project directory) to the daemon. Without a `.dockerignore` file, this includes node_modules, .git directories, build artifacts, and everything else - even files you never use in your image. A proper `.dockerignore` can reduce build times from minutes to seconds.
+Every time you run `docker build`, Docker makes the build context (your project directory) available to the builder. Without a `.dockerignore` file, this includes node_modules, .git directories, build artifacts, and everything else - even files you never use in your image. A proper `.dockerignore` can reduce build times from minutes to seconds.
 
 ## How Build Context Works
 
@@ -17,7 +17,7 @@ When you run:
 docker build -t myapp .
 ```
 
-Docker packages everything in the current directory (`.`) and sends it to the Docker daemon. Only then does it start processing your Dockerfile.
+Docker uses the current directory (`.`) as the build context and sends the files that aren't excluded by `.dockerignore` to the builder.
 
 ```text
 Sending build context to Docker daemon  2.54GB
@@ -27,12 +27,12 @@ If you see a large number here, you're sending unnecessary files.
 
 ## The .dockerignore File
 
-Create a `.dockerignore` file in your project root (same location as your Dockerfile). It uses the same syntax as `.gitignore`.
+Create a `.dockerignore` file in the root of your build context. Its pattern syntax is similar to `.gitignore`, but not identical.
 
 ### Basic Syntax
 
 ```text
-# Comments start with #
+# Comments start with # in column 1
 
 pattern
 !exception
@@ -40,10 +40,10 @@ pattern
 
 | Pattern | Matches |
 |---------|---------|
-| `*.log` | All .log files |
-| `temp?` | temp1, temp2, tempa, etc. |
+| `*.log` | .log files in the context root |
+| `temp?` | temp1, temp2, tempa, etc. in the context root |
 | `**/node_modules` | node_modules in any subdirectory |
-| `*.md` | All markdown files |
+| `**/*.md` | All markdown files |
 | `!README.md` | Exception: include README.md |
 
 ## Essential .dockerignore Patterns
@@ -71,8 +71,8 @@ build
 # Testing
 coverage
 .nyc_output
-*.test.js
-*.spec.js
+**/*.test.js
+**/*.spec.js
 __tests__
 __mocks__
 
@@ -87,13 +87,13 @@ __mocks__
 .git
 .gitignore
 
-# Docker files not needed in context
+# Docker files not available to COPY
 Dockerfile*
 docker-compose*
 .dockerignore
 
 # Documentation
-*.md
+**/*.md
 docs
 LICENSE
 
@@ -136,7 +136,7 @@ htmlcov
 
 # Jupyter
 .ipynb_checkpoints
-*.ipynb
+**/*.ipynb
 
 # IDE
 .vscode
@@ -147,14 +147,14 @@ htmlcov
 .git
 .gitignore
 
-# Docker
+# Docker files not available to COPY
 Dockerfile*
 docker-compose*
 .dockerignore
 
 # Documentation
 docs
-*.md
+**/*.md
 LICENSE
 ```
 
@@ -170,7 +170,7 @@ LICENSE
 /build
 
 # Test files
-*_test.go
+**/*_test.go
 
 # IDE
 .vscode
@@ -180,7 +180,7 @@ LICENSE
 .git
 .gitignore
 
-# Docker
+# Docker files not available to COPY
 Dockerfile*
 docker-compose*
 .dockerignore
@@ -189,7 +189,7 @@ docker-compose*
 # vendor/
 
 # Documentation
-*.md
+**/*.md
 docs
 
 # Development
@@ -217,7 +217,7 @@ docs
 .DS_Store
 Thumbs.db
 
-# Docker files (not needed in build context)
+# Docker files not available to COPY
 Dockerfile*
 docker-compose*
 .dockerignore
@@ -231,7 +231,7 @@ Jenkinsfile
 azure-pipelines.yml
 
 # Documentation
-*.md
+**/*.md
 !README.md
 docs
 LICENSE
@@ -242,8 +242,8 @@ CONTRIBUTING
 test
 tests
 __tests__
-*.test.*
-*.spec.*
+**/*.test.*
+**/*.spec.*
 coverage
 .nyc_output
 .coverage
@@ -286,7 +286,7 @@ Use `!` to include files that would otherwise be excluded.
 
 ```dockerignore
 # Ignore all markdown
-*.md
+**/*.md
 
 # But include README
 !README.md
@@ -307,7 +307,7 @@ docs/
 **/test
 **/tests
 
-# Ignore node_modules only in root
+# Ignore node_modules only in root (same as node_modules)
 /node_modules
 
 # Ignore node_modules everywhere
@@ -319,19 +319,15 @@ docs/
 ### Check What's Being Sent
 
 ```bash
-# Create a tarball of what would be sent
-tar -cvf context.tar --exclude-from=.dockerignore .
-du -sh context.tar
-
-# Or use a test build
-docker build --no-cache -t test . 2>&1 | head -5
+# Use plain progress to see the transferred context size
+docker build --no-cache --progress=plain -t test .
 ```
 
 ### List Ignored Files
 
 ```bash
-# Using rsync to simulate
-rsync -av --dry-run --exclude-from=.dockerignore . /dev/null
+# Approximate with rsync (does not implement Docker's full pattern rules)
+rsync -avn --exclude-from=.dockerignore ./ /tmp/context-check/
 ```
 
 ### Common Mistakes
@@ -348,23 +344,26 @@ node_modules
 *.log
 ```
 
-#### Mistake 2: Forgetting Leading Slash
+#### Mistake 2: Assuming Leading Slash Changes Matching
 
 ```dockerignore
-# Ignores "build" anywhere in the tree
+# Ignores root-level "build"
 build
 
-# Ignores only root-level "build"
+# Also ignores root-level "build" - leading slashes are ignored
 /build
+
+# Ignores "build" directories anywhere in the tree
+**/build
 ```
 
-#### Mistake 3: Trailing Slash Confusion
+#### Mistake 3: Assuming Trailing Slash Changes Matching
 
 ```dockerignore
-# Matches "logs" directory AND file named "logs"
+# Ignores root-level "logs"
 logs
 
-# Matches only "logs" directory
+# Also ignores root-level "logs" - trailing slashes are ignored
 logs/
 ```
 
@@ -387,7 +386,7 @@ For very selective builds, ignore everything then whitelist what you need.
 
 ### Strategy 2: Separate Dockerfiles
 
-For different build contexts (dev vs prod), use different Dockerfiles with different ignore patterns.
+For different build contexts (dev vs prod), use different Dockerfiles with Dockerfile-specific ignore files such as `Dockerfile.dev.dockerignore` and `Dockerfile.prod.dockerignore`.
 
 ```bash
 # Development build
@@ -501,13 +500,13 @@ jest.setup.js
 .gitignore
 .gitattributes
 
-# Docker (not needed in context)
+# Docker files not available to COPY
 Dockerfile
 docker-compose*.yml
 .dockerignore
 
 # Documentation
-*.md
+**/*.md
 docs
 LICENSE
 
@@ -538,8 +537,8 @@ Build context reduced from 790MB to 7MB, build time from 3 minutes to 25 seconds
 | `node_modules`, `vendor`, `venv` | Dependencies installed during build |
 | `.git` | Version history not needed in image |
 | `dist`, `build`, `.next` | Build artifacts recreated in container |
-| `*.md`, `docs` | Documentation not needed at runtime |
-| `*.test.js`, `coverage` | Test files not needed in production |
+| `**/*.md`, `docs` | Documentation not needed at runtime |
+| `**/*.test.js`, `coverage` | Test files not needed in production |
 | `.env`, secrets | Never include secrets in images |
 | IDE files, `.DS_Store` | Development artifacts |
 
