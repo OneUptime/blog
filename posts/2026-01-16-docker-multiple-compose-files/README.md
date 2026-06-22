@@ -17,20 +17,18 @@ When you specify multiple Compose files, Docker merges them in order. Later file
 ```bash
 # Merge base with overrides
 
-docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+docker compose -f docker-compose.yml -f docker-compose.override.yml up
 ```
 
 ## The Override Pattern
 
-By default, Compose looks for two files:
+By default, Compose looks for `compose.yaml` (preferred) or `compose.yml`, plus an optional `compose.override.yaml` file. It also supports `docker-compose.yml` and `docker-compose.override.yml` for backward compatibility:
 1. `docker-compose.yml` - base configuration
 2. `docker-compose.override.yml` - local overrides (automatically loaded)
 
 ### Base Configuration (docker-compose.yml)
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -56,8 +54,6 @@ volumes:
 ### Development Override (docker-compose.override.yml)
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build: .
@@ -83,13 +79,13 @@ services:
 
 ```bash
 # Development (uses override automatically)
-docker-compose up
+docker compose up
 
 # Production (ignores override)
-docker-compose -f docker-compose.yml up
+docker compose -f docker-compose.yml up
 
 # Explicit files
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up
 ```
 
 ## Environment-Specific Files
@@ -109,8 +105,6 @@ project/
 ### Production Configuration (docker-compose.prod.yml)
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:${VERSION:-latest}
@@ -147,8 +141,6 @@ services:
 ### Test Configuration (docker-compose.test.yml)
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -170,13 +162,16 @@ services:
     # Use tmpfs for faster tests (data not persisted)
     tmpfs:
       - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 ```
 
 ### CI Configuration (docker-compose.ci.yml)
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -198,13 +193,13 @@ services:
 
 ```bash
 # Combine base with production
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Run tests
-docker-compose -f docker-compose.yml -f docker-compose.test.yml run --rm api
+docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm api
 
 # CI build
-docker-compose -f docker-compose.yml -f docker-compose.ci.yml build
+docker compose -f docker-compose.yml -f docker-compose.ci.yml build
 ```
 
 ### Environment Variable
@@ -229,19 +224,19 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
 BASE = docker-compose.yml
 
 dev:
-	docker-compose -f $(BASE) -f docker-compose.override.yml up
+	docker compose -f $(BASE) -f docker-compose.override.yml up
 
 prod:
-	docker-compose -f $(BASE) -f docker-compose.prod.yml up -d
+	docker compose -f $(BASE) -f docker-compose.prod.yml up -d
 
 test:
-	docker-compose -f $(BASE) -f docker-compose.test.yml run --rm api npm test
+	docker compose -f $(BASE) -f docker-compose.test.yml run --rm api npm test
 
 ci:
-	docker-compose -f $(BASE) -f docker-compose.ci.yml build
+	docker compose -f $(BASE) -f docker-compose.ci.yml build
 
 down:
-	docker-compose down -v --remove-orphans
+	docker compose down -v --remove-orphans
 ```
 
 ## Merging Behavior
@@ -265,9 +260,9 @@ services:
     command: npm run dev  # Replaces "npm start"
 ```
 
-### Lists: Replace (Not Append)
+### Lists: Append
 
-Lists are replaced entirely, not merged.
+Most lists are appended, not replaced. Some list-like resources, including `ports` and `volumes`, have special uniqueness rules.
 
 ```yaml
 # docker-compose.yml
@@ -280,7 +275,7 @@ services:
 services:
   api:
     ports:
-      - "8080:3000"  # Replaces, doesn't add to
+      - "8080:3000"  # Adds to the existing port mapping
       - "9229:9229"
 ```
 
@@ -330,8 +325,6 @@ Use the `extends` keyword to inherit from another service or file.
 ### Extending Within Same File
 
 ```yaml
-version: '3.8'
-
 services:
   base-api:
     build: .
@@ -357,8 +350,6 @@ services:
 
 ```yaml
 # common.yml
-version: '3.8'
-
 services:
   node-base:
     image: node:18
@@ -369,8 +360,6 @@ services:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     extends:
@@ -392,8 +381,6 @@ services:
 Use YAML features to reduce repetition within a single file.
 
 ```yaml
-version: '3.8'
-
 # Define anchor
 x-common-env: &common-env
   LOG_LEVEL: info
@@ -431,10 +418,10 @@ Check what the final merged configuration looks like.
 
 ```bash
 # Show merged config
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
 
 # Save to file
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml config > merged.yml
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config > merged.yml
 ```
 
 ## Best Practices
@@ -443,8 +430,6 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml config > merged.
 
 ```yaml
 # docker-compose.yml - just the essentials
-version: '3.8'
-
 services:
   api:
     image: myapp/api
