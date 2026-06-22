@@ -78,8 +78,6 @@ docker inspect --format='{{json .Config.Env}}' production-app
 Use a proxy that filters Docker API requests.
 
 ```yaml
-version: '3.8'
-
 services:
   # Socket proxy with restricted permissions
   docker-proxy:
@@ -88,16 +86,15 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      # Read-only operations
+      # API sections needed by your CI; remove anything unused
       - CONTAINERS=1
       - IMAGES=1
       - INFO=1
       - NETWORKS=1
       - VOLUMES=1
-      # Write operations (be careful!)
+      # Write operations (be careful: POST=1 enables writes for allowed sections)
       - POST=1
       - BUILD=1
-      - PULL=1
       # Dangerous operations - DENY
       - EXEC=0
       - COMMIT=0
@@ -122,7 +119,7 @@ services:
 
 Run CI builds on isolated, ephemeral hosts.
 
-```yaml
+```hcl
 # Infrastructure as Code example
 resource "aws_instance" "ci_builder" {
   ami           = "ami-xxxxx"  # Docker-ready AMI
@@ -148,16 +145,16 @@ Run Docker daemon without root privileges.
 services:
   rootless-docker:
     image: docker:dind-rootless
-    privileged: true  # Still needed but with reduced capabilities
+    privileged: true  # Required for docker:dind-rootless inside Docker; the daemon still runs rootless
     environment:
       - DOCKER_HOST=unix:///run/user/1000/docker.sock
     security_opt:
       - seccomp:unconfined
 ```
 
-### Strategy 4: Restrict with AppArmor/SELinux
+### Strategy 4: Restrict the CI Container with AppArmor/SELinux
 
-Create profiles that limit socket access.
+Create profiles that limit the CI container itself. These profiles do not filter Docker API operations sent through the socket; use a socket proxy for API-level restrictions.
 
 ```bash
 # AppArmor profile for CI container
@@ -170,7 +167,7 @@ profile docker-ci flags=(attach_disconnected,mediate_deleted) {
   # Deny host filesystem
   deny /host/** rwklx,
 
-  # Allow only specific Docker operations
+  # Constrain the CI process itself; Docker API filtering belongs in a proxy
   network,
   capability,
 }
@@ -302,7 +299,8 @@ jobs:
 services:
   ci:
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only when possible
+      # :ro protects the socket path metadata, but does not make the Docker API read-only
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
 ### 2. Clean Up After Builds
@@ -325,8 +323,10 @@ docker image prune -f
 
 ```dockerfile
 # Dockerfile
-LABEL ci-build="${BUILD_ID}"
-LABEL ci-pipeline="${PIPELINE_NAME}"
+ARG BUILD_ID
+ARG PIPELINE_NAME
+LABEL ci-build=$BUILD_ID
+LABEL ci-pipeline=$PIPELINE_NAME
 ```
 
 ```bash
@@ -368,8 +368,6 @@ export -f docker
 ## Complete Secure Pipeline Example
 
 ```yaml
-version: '3.8'
-
 services:
   # Proxy to filter dangerous operations
   docker-proxy:
@@ -378,8 +376,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - LOG=1
-      - CONTAINERS=1
+      - LOG_LEVEL=info
       - IMAGES=1
       - NETWORKS=1
       - BUILD=1
@@ -397,7 +394,6 @@ services:
       - DOCKER_BUILDKIT=1
     volumes:
       - ./:/workspace:ro
-      - build-output:/output
     working_dir: /workspace
     depends_on:
       - docker-proxy
@@ -406,23 +402,15 @@ services:
     command: |
       sh -c "
         docker build -t myapp:build .
-        docker create --name extract myapp:build
-        docker cp extract:/app/dist /output/
-        docker rm extract
       "
 
   # Test container (no Docker access)
   tester:
-    image: node:20
-    volumes:
-      - build-output:/app:ro
-    working_dir: /app
+    image: myapp:build
     depends_on:
-      - builder
+      builder:
+        condition: service_completed_successfully
     command: npm test
-
-volumes:
-  build-output:
 
 networks:
   ci-internal:
@@ -435,7 +423,7 @@ networks:
 | Socket binding | Low | High | Low | Shared |
 | Socket + proxy | Medium | High | Medium | Shared |
 | DinD | Medium-High | Medium | High | Isolated |
-| Kaniko | High | Medium | Medium | BuildKit cache |
+| Kaniko | High | Medium | Medium | Layer cache |
 | Buildah | High | High | Medium | Layer cache |
 
 ## Summary
@@ -443,10 +431,9 @@ networks:
 | Scenario | Recommendation |
 |----------|---------------|
 | Trusted internal code | Socket binding + proxy |
-| Untrusted/external code | DinD or Kaniko |
+| Untrusted/external code | Kaniko or isolated ephemeral builders |
 | High security requirements | Ephemeral VMs + Kaniko |
 | Performance critical | Socket binding with audit |
-| Multi-tenant CI | DinD with strict isolation |
+| Multi-tenant CI | Ephemeral VMs or Kubernetes-native builders with strict isolation |
 
 Docker socket binding is convenient but dangerous. Always use a socket proxy to restrict API access, implement cleanup procedures, and consider alternatives like Kaniko for untrusted code. The convenience of shared layer caching must be weighed against the security risks of host access.
-
