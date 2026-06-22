@@ -390,10 +390,10 @@ volumes:
 services:
   api:
     build:
-      context: ..
+      context: .
       target: development
     volumes:
-      - ../src:/app/src
+      - ./src:/app/src
       - /app/node_modules
     environment:
       NODE_ENV: development
@@ -480,4 +480,3 @@ docker compose -f docker-compose.yml -f compose/production.yml up -d
 | Override files | Development customization |
 
 Using extends and includes creates maintainable, DRY Docker Compose configurations. For YAML-level reuse, see our post on [Docker Compose Anchors and YAML Aliases](https://oneuptime.com/blog/post/2026-01-16-docker-compose-anchors/view).
-
