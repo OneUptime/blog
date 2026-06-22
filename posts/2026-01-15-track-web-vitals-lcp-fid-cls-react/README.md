@@ -1,10 +1,10 @@
-# How to Track Web Vitals (LCP, FID, CLS) in React Applications
+# How to Track Web Vitals (LCP, INP, CLS) in React Applications
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Web Vitals, Performance, LCP, FID, CLS, Core Web Vitals
+Tags: React, Web Vitals, Performance, LCP, INP, CLS, Core Web Vitals
 
-Description: A comprehensive guide to measuring, tracking, and optimizing Core Web Vitals (LCP, FID, CLS) in React applications using the web-vitals library and real-user monitoring strategies.
+Description: A comprehensive guide to measuring, tracking, and optimizing Core Web Vitals (LCP, INP, CLS) in React applications using the web-vitals library and real-user monitoring strategies.
 
 ---
 
@@ -21,7 +21,7 @@ This guide walks you through everything: what these metrics actually measure, ho
 Core Web Vitals are a set of user-centric metrics that Google uses to measure real-world user experience. They focus on three critical aspects of page experience:
 
 1. **LCP (Largest Contentful Paint)** - Loading performance
-2. **FID (First Input Delay)** - Interactivity (being replaced by INP)
+2. **INP (Interaction to Next Paint)** - Interactivity
 3. **CLS (Cumulative Layout Shift)** - Visual stability
 
 These aren't synthetic benchmarks from a lab. They're field data collected from actual users visiting your site. That distinction matters because your local development machine with fiber internet and 64GB of RAM doesn't represent the median user on a 4G connection with a mid-range Android device.
@@ -41,21 +41,21 @@ LCP measures how long it takes for the largest content element in the viewport t
 
 Why it matters: LCP correlates strongly with perceived load speed. Users don't care about DOMContentLoaded or window.onload events - they care about when they can see the content they came for.
 
-### FID: First Input Delay
+### INP: Interaction to Next Paint
 
-FID measures the time from when a user first interacts with your page (clicks a link, taps a button, uses a custom JavaScript control) to when the browser can respond to that interaction.
+INP measures the responsiveness of interactions throughout the page lifecycle, from input delay through event handling and the next paint. It replaced FID as a Core Web Vital on March 12, 2024.
 
-**Good:** Less than 100 milliseconds
-**Needs Improvement:** Between 100 and 300 milliseconds
-**Poor:** Greater than 300 milliseconds
+**Good:** Less than or equal to 200 milliseconds
+**Needs Improvement:** Greater than 200 and less than or equal to 500 milliseconds
+**Poor:** Greater than 500 milliseconds
 
-Why it matters: Long JavaScript tasks block the main thread. If a user clicks a button while your bundle is parsing or a heavy computation is running, their interaction feels sluggish or unresponsive.
+Why it matters: Long JavaScript tasks block the main thread. If a user clicks a button while your bundle is parsing, event handlers are running, or rendering work is queued, their interaction feels sluggish or unresponsive.
 
-**Note:** FID is being replaced by INP (Interaction to Next Paint) as of March 2024. INP measures all interactions throughout the page lifecycle, not just the first one. The `web-vitals` library supports both.
+**Note:** FID (First Input Delay) was the previous responsiveness Core Web Vital. It is no longer a Core Web Vital, and current versions of the `web-vitals` library focus on INP instead.
 
 ### CLS: Cumulative Layout Shift
 
-CLS measures the sum of all unexpected layout shifts that occur during the page's entire lifespan. A layout shift happens when a visible element changes its position from one rendered frame to the next.
+CLS measures the largest burst of unexpected layout shifts during the page's lifespan. A layout shift happens when a visible element changes its position from one rendered frame to the next.
 
 **Good:** Less than 0.1
 **Needs Improvement:** Between 0.1 and 0.25
@@ -87,12 +87,11 @@ The simplest implementation logs metrics to the console:
 
 ```javascript
 // src/reportWebVitals.js
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
 
 const reportWebVitals = (onPerfEntry) => {
   if (onPerfEntry && onPerfEntry instanceof Function) {
     onCLS(onPerfEntry);
-    onFID(onPerfEntry);
     onLCP(onPerfEntry);
     onFCP(onPerfEntry);
     onTTFB(onPerfEntry);
@@ -143,7 +142,7 @@ Console logging is fine for development, but production requires sending data to
 
 ```javascript
 // src/reportWebVitals.js
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
 
 const ANALYTICS_ENDPOINT = '/api/analytics/web-vitals';
 
@@ -181,7 +180,6 @@ function sendToAnalytics(metric) {
 
 export function reportWebVitals() {
   onCLS(sendToAnalytics);
-  onFID(sendToAnalytics);
   onLCP(sendToAnalytics);
   onFCP(sendToAnalytics);
   onTTFB(sendToAnalytics);
@@ -195,7 +193,7 @@ export default reportWebVitals;
 
 The `sendBeacon` API is designed specifically for analytics data. It:
 
-- Guarantees data is sent even if the user navigates away
+- Queues analytics data to be sent even if the user navigates away
 - Doesn't block page unload
 - Has a simpler API than fetch for this use case
 
@@ -220,11 +218,11 @@ function sendToAnalytics(metric) {
   };
 
   // For LCP, attribution includes:
-  // - element: The LCP element selector
+  // - target: The LCP element selector
   // - url: Resource URL if applicable
   // - timeToFirstByte: TTFB contribution
   // - resourceLoadDelay: Time waiting for resource
-  // - resourceLoadTime: Time to load resource
+  // - resourceLoadDuration: Time to load resource
   // - elementRenderDelay: Time from load to render
 
   // For CLS, attribution includes:
@@ -261,17 +259,16 @@ This reports each time a new largest element is painted, not just the final one.
 
 ### Using a Custom Hook
 
-Create a reusable hook for components that need access to Web Vitals:
+Create a reusable hook for app-level components that need access to Web Vitals. Register Web Vitals observers once per page load; for broader access, prefer the context provider pattern below.
 
 ```javascript
 // src/hooks/useWebVitals.js
 import { useState, useEffect, useCallback } from 'react';
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
 
 export function useWebVitals() {
   const [metrics, setMetrics] = useState({
     LCP: null,
-    FID: null,
     CLS: null,
     FCP: null,
     TTFB: null,
@@ -291,7 +288,6 @@ export function useWebVitals() {
 
   useEffect(() => {
     onLCP(handleMetric);
-    onFID(handleMetric);
     onCLS(handleMetric);
     onFCP(handleMetric);
     onTTFB(handleMetric);
@@ -360,7 +356,7 @@ For larger applications, use a context provider:
 ```javascript
 // src/context/WebVitalsContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals';
 
 const WebVitalsContext = createContext(null);
 
@@ -384,7 +380,6 @@ export function WebVitalsProvider({ children, onReport }) {
 
   useEffect(() => {
     onLCP(handleMetric);
-    onFID(handleMetric);
     onCLS(handleMetric);
     onFCP(handleMetric);
     onTTFB(handleMetric);
@@ -450,53 +445,78 @@ import { onCLS, onINP } from 'web-vitals';
 
 export function useRouteWebVitals(onReport) {
   const location = useLocation();
-  const clsValueRef = useRef(0);
+  const locationRef = useRef(location.pathname);
+  const onReportRef = useRef(onReport);
 
   useEffect(() => {
-    // Track CLS for each route
-    const handleCLS = (metric) => {
-      onReport({
+    locationRef.current = location.pathname;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    onReportRef.current = onReport;
+  }, [onReport]);
+
+  useEffect(() => {
+    // Register Web Vitals observers once per page load.
+    onCLS((metric) => {
+      onReportRef.current({
         ...metric,
-        pathname: location.pathname,
+        pathname: locationRef.current,
       });
-    };
+    }, { reportAllChanges: true });
 
-    onCLS(handleCLS, { reportAllChanges: true });
-  }, [location.pathname, onReport]);
+    onINP((metric) => {
+      onReportRef.current({
+        ...metric,
+        pathname: locationRef.current,
+      });
+    });
+  }, []);
 
   useEffect(() => {
-    // Reset tracking on route change
-    clsValueRef.current = 0;
-
     // Report route change as a custom metric
     const navigationStart = performance.now();
+    const requestIdle =
+      window.requestIdleCallback ||
+      ((callback) => window.setTimeout(callback, 0));
+    const cancelIdle =
+      window.cancelIdleCallback ||
+      ((id) => window.clearTimeout(id));
 
     // Use requestIdleCallback to measure after rendering settles
-    const idleCallback = requestIdleCallback(() => {
+    const idleCallback = requestIdle(() => {
       const loadTime = performance.now() - navigationStart;
-      onReport({
+      onReportRef.current({
         name: 'Route-Change',
         value: loadTime,
         pathname: location.pathname,
       });
     });
 
-    return () => cancelIdleCallback(idleCallback);
+    return () => cancelIdle(idleCallback);
   }, [location.pathname, onReport]);
 }
 ```
 
 ### Soft Navigation API (Experimental)
 
-For SPAs, the experimental Soft Navigation API provides more accurate measurements:
+For SPAs, the experimental Soft Navigation API is intended to provide more accurate measurements. As of 2026, Chrome is still testing the API through an origin trial and a browser flag, and the stable `web-vitals` package does not expose a `reportSoftNavs` option. Treat soft-navigation Web Vitals as experimental until browser and library support stabilize.
 
 ```javascript
-import { onLCP, onCLS, onINP } from 'web-vitals';
+// Experimental browser API example; not a stable web-vitals option.
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    sendToAnalytics({
+      name: 'soft-navigation',
+      value: entry.startTime,
+      url: entry.name,
+    });
+  }
+});
 
-// Enable soft navigation tracking (Chrome 117+)
-onLCP(sendToAnalytics, { reportSoftNavs: true });
-onCLS(sendToAnalytics, { reportSoftNavs: true });
-onINP(sendToAnalytics, { reportSoftNavs: true });
+if (PerformanceObserver.supportedEntryTypes.includes('soft-navigation')) {
+  observer.observe({ type: 'soft-navigation', buffered: true });
+}
 ```
 
 ---
@@ -516,7 +536,7 @@ onINP(sendToAnalytics, { reportSoftNavs: true });
 **2. Use priority hints:**
 
 ```javascript
-// React 18.3+ supports fetchPriority
+// React 19+ supports fetchPriority
 <img
   src="/hero-image.webp"
   alt="Hero"
@@ -555,7 +575,7 @@ function HeroSection() {
       alt="Hero"
       width={1200}
       height={600}
-      priority // Preloads the image
+      preload // Preloads the image
       placeholder="blur"
       blurDataURL={blurDataURL}
     />
@@ -726,7 +746,7 @@ function App() {
 
   return (
     <div>
-      <div style={{ minHeight: showBanner ? 'auto' : '60px' }}>
+      <div style={{ minHeight: '60px' }}>
         {showBanner && <Banner />}
       </div>
       <Header />
@@ -784,19 +804,21 @@ function App() {
 
 ```javascript
 // src/analytics/webVitals.js
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } from 'web-vitals/attribution';
+import { onCLS, onLCP, onFCP, onTTFB, onINP } from 'web-vitals/attribution';
 
 const ONEUPTIME_ENDPOINT = process.env.REACT_APP_ONEUPTIME_TELEMETRY_URL;
 const SERVICE_NAME = process.env.REACT_APP_SERVICE_NAME || 'react-app';
 
 function createSpan(metric) {
+  const timeUnixNano = (BigInt(Date.now()) * 1000000n).toString();
+
   return {
     traceId: generateTraceId(),
     spanId: generateSpanId(),
     name: `web-vital.${metric.name.toLowerCase()}`,
-    kind: 'INTERNAL',
-    startTimeUnixNano: Date.now() * 1000000,
-    endTimeUnixNano: Date.now() * 1000000,
+    kind: 'SPAN_KIND_INTERNAL',
+    startTimeUnixNano: timeUnixNano,
+    endTimeUnixNano: timeUnixNano,
     attributes: [
       { key: 'service.name', value: { stringValue: SERVICE_NAME } },
       { key: 'web_vital.name', value: { stringValue: metric.name } },
@@ -828,18 +850,20 @@ function sendToOneUptime(metric) {
       },
     ],
   };
+  const body = new Blob([JSON.stringify(payload)], {
+    type: 'application/json',
+  });
 
   if (navigator.sendBeacon) {
     navigator.sendBeacon(
       `${ONEUPTIME_ENDPOINT}/v1/traces`,
-      JSON.stringify(payload)
+      body
     );
   }
 }
 
 export function initWebVitalsTracking() {
   onLCP(sendToOneUptime);
-  onFID(sendToOneUptime);
   onCLS(sendToOneUptime);
   onFCP(sendToOneUptime);
   onTTFB(sendToOneUptime);
@@ -879,16 +903,22 @@ function trackCustomMetric(name, value, attributes = {}) {
   sendToAnalytics(metric);
 }
 
-// Example: Track React component render time
-function useRenderTracking(componentName) {
-  const renderStart = useRef(performance.now());
+// Example: Track React component render time with Profiler
+import { Profiler } from 'react';
 
-  useEffect(() => {
-    const renderTime = performance.now() - renderStart.current;
-    trackCustomMetric('component.render.time', renderTime, {
-      'component.name': componentName,
-    });
+function onRenderCallback(id, phase, actualDuration) {
+  trackCustomMetric('component.render.time', actualDuration, {
+    'component.name': id,
+    'component.phase': phase,
   });
+}
+
+function SearchResultsWithTracking({ children }) {
+  return (
+    <Profiler id="SearchResults" onRender={onRenderCallback}>
+      {children}
+    </Profiler>
+  );
 }
 ```
 
@@ -932,11 +962,11 @@ function debugWebVitals() {
     console.group('LCP Debug');
     console.log('Value:', metric.value);
     console.log('Rating:', metric.rating);
-    console.log('Element:', metric.attribution.element);
+    console.log('Element:', metric.attribution.target);
     console.log('URL:', metric.attribution.url);
     console.log('Time to First Byte:', metric.attribution.timeToFirstByte);
     console.log('Resource Load Delay:', metric.attribution.resourceLoadDelay);
-    console.log('Resource Load Time:', metric.attribution.resourceLoadTime);
+    console.log('Resource Load Duration:', metric.attribution.resourceLoadDuration);
     console.log('Element Render Delay:', metric.attribution.elementRenderDelay);
     console.groupEnd();
   });
@@ -959,9 +989,9 @@ function debugWebVitals() {
     console.group('INP Debug');
     console.log('Value:', metric.value);
     console.log('Rating:', metric.rating);
-    console.log('Event Type:', metric.attribution.eventType);
-    console.log('Event Target:', metric.attribution.eventTarget);
-    console.log('Event Time:', metric.attribution.eventTime);
+    console.log('Interaction Type:', metric.attribution.interactionType);
+    console.log('Interaction Target:', metric.attribution.interactionTarget);
+    console.log('Interaction Time:', metric.attribution.interactionTime);
     console.log('Load State:', metric.attribution.loadState);
     console.groupEnd();
   });
