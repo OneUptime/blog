@@ -431,8 +431,8 @@ Catchpoints pause execution when specific events occur:
 (gdb) catch load
 (gdb) catch load libc.so
 
-# List catchpoints
-(gdb) info catchpoints
+# List catchpoints (shown together with breakpoints and watchpoints)
+(gdb) info breakpoints
 ```
 
 ---
@@ -653,10 +653,10 @@ Understanding the call stack is crucial for debugging complex programs.
 (gdb) backtrace full
 (gdb) bt full
 
-# Show only N frames
+# Show innermost N frames
 (gdb) bt 5
 
-# Show inner N frames
+# Show outermost N frames
 (gdb) bt -5
 
 # Show frame information
