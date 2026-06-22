@@ -132,11 +132,12 @@ const API_BASE_URL = 'https://api.yourservice.com';
 // Certificate hashes for your domains
 const SSL_PINNING_CONFIG = {
   certs: ['your_certificate'], // Name of cert file without extension
-  // OR for public key pinning:
-  // sslPinning: {
-  //   certs: ['sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=']
-  // }
 };
+
+// OR for public key pinning, set pkPinning: true at the top level of the
+// fetch options and pass the SHA-256 hashes in sslPinning.certs, e.g.:
+// pkPinning: true,
+// sslPinning: { certs: ['sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='] }
 
 export async function secureRequest<T>(
   endpoint: string,
@@ -177,6 +178,9 @@ For public key pinning, specify the SHA-256 hashes of your server's public keys:
 // src/config/sslPinning.ts
 export const SSL_PINNING_CERTS = {
   'api.yourservice.com': {
+    // pkPinning must be true so the library treats the certs entries as
+    // public key (SPKI) SHA-256 hashes rather than bundled .cer file names
+    pkPinning: true,
     sslPinning: {
       certs: [
         'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', // Primary cert
@@ -185,6 +189,7 @@ export const SSL_PINNING_CERTS = {
     },
   },
   'auth.yourservice.com': {
+    pkPinning: true,
     sslPinning: {
       certs: [
         'sha256/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
@@ -696,6 +701,7 @@ Always pin at least two certificates: your current certificate and a backup:
 ```typescript
 const SSL_PINS = {
   'api.yourservice.com': {
+    pkPinning: true,
     sslPinning: {
       certs: [
         'sha256/CurrentCertHash...',  // Currently active
