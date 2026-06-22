@@ -42,7 +42,7 @@ docker run myimage script.py
 Override ENTRYPOINT at runtime:
 ```bash
 docker run --entrypoint bash myimage
-# Runs: bash (ignores CMD)
+# Runs: bash (the --entrypoint flag clears the image's default CMD)
 ```
 
 ## Exec Form vs Shell Form
@@ -98,7 +98,7 @@ docker run myapp
 docker run myapp migrate.py
 
 # Interactive Python shell
-docker run -it myapp
+docker run -it myapp -i
 ```
 
 ### Pattern 2: Tool Image
@@ -106,7 +106,7 @@ docker run -it myapp
 The container wraps a command-line tool.
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.24
 RUN apk add --no-cache curl
 
 ENTRYPOINT ["curl"]
@@ -127,10 +127,13 @@ docker run mycurl -s https://api.example.com/health
 Use an entrypoint script to initialize the environment before running the main command.
 
 ```dockerfile
-FROM node:18-slim
+FROM node:22-slim
 WORKDIR /app
 COPY . .
 COPY docker-entrypoint.sh /
+RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd \
+    && chmod +x /docker-entrypoint.sh \
+    && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
@@ -194,7 +197,7 @@ docker run myimage ls -la
 When the container should always run one thing.
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.24
 COPY backup.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/backup.sh
 
@@ -262,11 +265,11 @@ CMD ["app.py"]
 
 ```dockerfile
 # BAD: Port is hardcoded
-ENTRYPOINT ["nginx", "-g", "daemon off;", "-p", "80"]
+ENTRYPOINT ["python", "app.py", "--port", "8000"]
 
 # GOOD: Port can be overridden
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
-CMD ["-p", "80"]
+ENTRYPOINT ["python", "app.py"]
+CMD ["--port", "8000"]
 ```
 
 ## Real-World Entrypoint Scripts
