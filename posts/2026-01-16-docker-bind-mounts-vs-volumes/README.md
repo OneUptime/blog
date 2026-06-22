@@ -15,7 +15,7 @@ Docker provides two primary ways to persist data: bind mounts and named volumes.
 | Feature | Bind Mount | Named Volume |
 |---------|------------|--------------|
 | Location | You specify host path | Docker manages location |
-| Created by | Must exist on host | Docker creates automatically |
+| Created by | Host path, or created as a directory by `-v` if missing | Docker creates automatically |
 | Host access | Easy, it's a regular directory | Requires docker commands |
 | Portability | Depends on host structure | Works on any Docker host |
 | Performance | Native on Linux, slower on Mac/Windows | Optimized, especially on Mac/Windows |
@@ -41,8 +41,6 @@ docker run --mount type=bind,source=/host/path,target=/container/path my-image
 Bind mounts are ideal for development because code changes on the host are immediately visible in the container.
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: node:18
@@ -98,8 +96,6 @@ docker run --mount type=volume,source=my-data,target=/app/data my-image
 Named volumes are ideal for production data that needs to persist across container restarts and updates.
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -143,8 +139,6 @@ On Linux, performance is nearly identical. On macOS and Windows (Docker Desktop)
 Docker Desktop provides volume optimization options for bind mounts.
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     volumes:
@@ -214,8 +208,6 @@ Use different compose files for different environments.
 ### docker-compose.yml (Base)
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app
@@ -235,8 +227,6 @@ volumes:
 ### docker-compose.override.yml (Development)
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -249,8 +239,6 @@ services:
 ### docker-compose.prod.yml (Production)
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app:${VERSION}
@@ -260,10 +248,10 @@ services:
 Run with:
 ```bash
 # Development (uses override automatically)
-docker-compose up
+docker compose up
 
 # Production
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up
 ```
 
 ## Managing Named Volumes
@@ -274,7 +262,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
 # Backup to tar file
 docker run --rm \
   -v my-data:/source:ro \
-  -v $(pwd):/backup \
+  -v "$PWD":/backup \
   alpine tar czf /backup/my-data-backup.tar.gz -C /source .
 ```
 
@@ -285,7 +273,7 @@ docker run --rm \
 docker volume create my-data-restored
 docker run --rm \
   -v my-data-restored:/target \
-  -v $(pwd):/backup:ro \
+  -v "$PWD":/backup:ro \
   alpine tar xzf /backup/my-data-backup.tar.gz -C /target
 ```
 
@@ -352,14 +340,14 @@ volumes:
 # Handle permission issues with user mapping
 services:
   app:
-    user: "${UID}:${GID}"  # Match host user
+    user: "${HOST_UID}:${HOST_GID}"  # Match host user
     volumes:
       - ./src:/app/src
 ```
 
 Run with:
 ```bash
-UID=$(id -u) GID=$(id -g) docker-compose up
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up
 ```
 
 ## Summary
