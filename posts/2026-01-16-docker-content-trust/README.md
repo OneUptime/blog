@@ -8,7 +8,9 @@ Description: Learn how to use Docker Content Trust (DCT) to sign and verify Dock
 
 ---
 
-Docker Content Trust (DCT) provides cryptographic verification of image publishers and integrity. When enabled, Docker only pulls images that are signed by trusted publishers, protecting against tampered or malicious images.
+Docker Content Trust (DCT) provides cryptographic verification of image publishers and integrity. When enabled in the Docker client, Docker only pulls images that are signed by trusted publishers, protecting against tampered or malicious images.
+
+Note: Docker is retiring Docker Content Trust. Docker's Notary v1 service at `notary.docker.io` is scheduled to shut down on December 8, 2026.
 
 ## How Content Trust Works
 
@@ -48,16 +50,17 @@ echo 'export DOCKER_CONTENT_TRUST=1' >> ~/.bashrc
 DOCKER_CONTENT_TRUST=0 docker pull untrusted-image
 ```
 
-### Docker Daemon Configuration
+### Mirantis Container Runtime Configuration
 
 ```json
-// /etc/docker/daemon.json
 {
   "content-trust": {
-    "mode": "enforce"
+    "mode": "enforced"
   }
 }
 ```
+
+The `content-trust` daemon configuration is for Mirantis Container Runtime runtime enforcement. It is not available in Docker CE or Moby.
 
 ## Signing Images
 
@@ -70,7 +73,7 @@ export DOCKER_CONTENT_TRUST=1
 # Build and tag image
 docker build -t myregistry/myapp:1.0 .
 
-# Push (will prompt for passphrase to create keys)
+# Push (will prompt for passphrases to create keys)
 docker push myregistry/myapp:1.0
 # You will be asked to create:
 # - Root key (offline key, keep very secure)
@@ -80,8 +83,8 @@ docker push myregistry/myapp:1.0
 ### Key Management
 
 ```bash
-# List signing keys
-docker trust key list
+# List local Notary signing keys
+notary key list
 
 # Generate new delegation key
 docker trust key generate mykey
@@ -97,7 +100,7 @@ docker trust inspect --pretty myregistry/myapp
 
 ```bash
 # Load an existing key
-docker trust key load private-key.pem --name mykey
+docker trust key load --name mykey private-key.pem
 
 # Sign and push
 docker trust sign myregistry/myapp:1.0
@@ -167,9 +170,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Import Signing Key
+        env:
+          DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE: ${{ secrets.DCT_PASSPHRASE }}
         run: |
           echo "${{ secrets.DCT_KEY }}" | base64 -d > key.pem
-          docker trust key load key.pem --name ci-signer
+          docker trust key load --name ci-signer key.pem
 
       - name: Build and Push
         env:
@@ -202,7 +207,7 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'dct-key', variable: 'KEY_FILE')]) {
                     sh '''
-                        docker trust key load ${KEY_FILE} --name jenkins
+                        docker trust key load --name jenkins ${KEY_FILE}
                         docker push myregistry/myapp:${BUILD_NUMBER}
                     '''
                 }
@@ -217,11 +222,11 @@ pipeline {
 ### Root Key Protection
 
 ```bash
-# Root key location
-~/.docker/trust/private/root_keys/
+# Trust key location
+~/.docker/trust/private/
 
-# Backup root key securely
-tar -czf root-keys-backup.tar.gz ~/.docker/trust/private/root_keys/
+# Backup trust keys securely
+umask 077; tar -czf docker-trust-keys-backup.tar.gz ~/.docker/trust/private; umask 022
 
 # Store offline (USB drive, HSM, secure vault)
 # Never store root key in CI/CD systems
@@ -230,33 +235,24 @@ tar -czf root-keys-backup.tar.gz ~/.docker/trust/private/root_keys/
 ### Key Rotation
 
 ```bash
-# Rotate repository key
+# Rotate delegation key
 docker trust key generate new-repo-key
 docker trust signer add --key new-repo-key.pub newkey myregistry/myapp
 
-# Remove old key
+# Remove old delegation
 docker trust signer remove oldkey myregistry/myapp
 
 # Rotate root key (requires offline root key)
 # This is an advanced operation - consult documentation
 ```
 
-### Using Hardware Security Modules
+### Hardware Storage and Signing
 
 ```bash
-# Configure Notary to use PKCS#11 HSM
-# notary-config.json
-{
-  "trust_dir": "~/.docker/trust",
-  "remote_server": {
-    "url": "https://notary.example.com"
-  },
-  "storage": {
-    "backend": "pkcs11",
-    "module": "/usr/lib/softhsm/libsofthsm2.so",
-    "slot_id": 0
-  }
-}
+# Docker Content Trust supports hardware storage for root keys with YubiKey 4.
+# Initialize trust while the YubiKey is available; Docker will prefer it for the root key.
+export DOCKER_CONTENT_TRUST=1
+docker trust signer add --key developer1.pub dev1 myregistry/myapp
 ```
 
 ## Enforcement Policies
@@ -264,14 +260,15 @@ docker trust signer remove oldkey myregistry/myapp
 ### Docker Daemon Enforcement
 
 ```json
-// /etc/docker/daemon.json
 {
   "content-trust": {
-    "mode": "enforce",
+    "mode": "enforced",
     "allow-expired-cached-trust-data": false
   }
 }
 ```
+
+This runtime enforcement configuration applies to Mirantis Container Runtime, not Docker CE or Moby.
 
 ### Kubernetes Admission Control
 
@@ -323,40 +320,11 @@ deny[msg] {
 
 ### Self-Hosted Notary
 
-```yaml
-# docker-compose.yml for Notary
-version: '3.8'
-
-services:
-  notary-server:
-    image: notary:server
-    volumes:
-      - ./fixtures:/etc/notary
-    environment:
-      - NOTARY_SERVER_STORAGE_BACKEND=mysql
-      - NOTARY_SERVER_STORAGE_DB_URL=server:password@tcp(mysql:3306)/notary_server
-    depends_on:
-      - mysql
-    ports:
-      - "4443:4443"
-
-  notary-signer:
-    image: notary:signer
-    volumes:
-      - ./fixtures:/etc/notary
-    environment:
-      - NOTARY_SIGNER_STORAGE_BACKEND=mysql
-      - NOTARY_SIGNER_STORAGE_DB_URL=signer:password@tcp(mysql:3306)/notary_signer
-
-  mysql:
-    image: mysql:8
-    environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword
-    volumes:
-      - notary-db:/var/lib/mysql
-
-volumes:
-  notary-db:
+```bash
+# Clone the official Notary repository and start its included Compose setup.
+git clone https://github.com/notaryproject/notary.git
+cd notary
+docker compose up -d
 ```
 
 ### Configure Client for Custom Notary
@@ -364,14 +332,6 @@ volumes:
 ```bash
 # Point to custom Notary server
 export DOCKER_CONTENT_TRUST_SERVER=https://notary.example.com
-
-# Or in Docker config
-# ~/.docker/config.json
-{
-  "content-trust": {
-    "trust-server": "https://notary.example.com"
-  }
-}
 ```
 
 ## Troubleshooting
@@ -384,7 +344,7 @@ export DOCKER_CONTENT_TRUST_SERVER=https://notary.example.com
 DOCKER_CONTENT_TRUST=0 docker pull unsigned-image
 
 # "could not rotate trust to a new trusted root"
-# Root key issue - check ~/.docker/trust/private/root_keys/
+# Root key issue - check ~/.docker/trust/private/
 
 # "passphrase is incorrect"
 # Wrong passphrase for repository key
@@ -394,9 +354,8 @@ DOCKER_CONTENT_TRUST=0 docker pull unsigned-image
 ### Debug Mode
 
 ```bash
-# Enable debug output
-export DOCKER_CONTENT_TRUST_DEBUG=1
-docker push myregistry/myapp:1.0
+# Enable Docker CLI debug output
+docker --debug push myregistry/myapp:1.0
 ```
 
 ### Reset Trust Data
@@ -436,10 +395,11 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Setup DCT
+        env:
+          DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE: ${{ secrets.DCT_PASSPHRASE }}
         run: |
-          mkdir -p ~/.docker/trust/private
-          echo "${{ secrets.DCT_ROOT_KEY }}" | base64 -d > ~/.docker/trust/private/root_keys/key.pem
-          echo "${{ secrets.DCT_REPO_KEY }}" | base64 -d > ~/.docker/trust/private/tuf_keys/key.pem
+          echo "${{ secrets.DCT_DELEGATION_KEY }}" | base64 -d > delegation.key
+          docker trust key load --name ci-signer delegation.key
 
       - name: Build Image
         run: |
@@ -468,4 +428,3 @@ jobs:
 | Enforcement | Prevents pulling unsigned images |
 
 Docker Content Trust ensures image integrity and authenticity through cryptographic signing. Protect your root keys offline, use delegation for team workflows, and enforce signing in production environments. For comprehensive container security, combine DCT with vulnerability scanning as described in our post on [Scanning Docker Images with Trivy](https://oneuptime.com/blog/post/2026-01-16-docker-scan-images-trivy/view).
-
