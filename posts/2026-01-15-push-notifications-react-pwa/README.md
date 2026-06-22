@@ -202,7 +202,7 @@ self.addEventListener('notificationclick', (event) => {
     event.waitUntil(
       clients.matchAll({ type: 'window' }).then((clientList) => {
         for (const client of clientList) {
-          if (client.url === '/' && 'focus' in client) {
+          if (new URL(client.url).pathname === '/' && 'focus' in client) {
             return client.focus();
           }
         }
