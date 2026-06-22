@@ -19,7 +19,7 @@ flowchart TB
   subgraph "Helm Dashboard"
     ui[Dashboard UI]
     api[REST API]
-    helm_cli[Helm CLI]
+    backend[Dashboard Backend]
   end
   
   subgraph "Kubernetes"
@@ -30,15 +30,33 @@ flowchart TB
   
   browser --> ui
   ui --> api
-  api --> helm_cli
-  helm_cli --> cluster
+  api --> backend
+  backend --> cluster
   cluster --> releases
-  cluster --> repos
+  backend --> repos
 ```
 
 ## Installation Options
 
-### Helm Plugin (Recommended)
+### Standalone Binary (Recommended)
+
+Download the appropriate release package from the [Helm Dashboard releases page](https://github.com/komodorio/helm-dashboard/releases), unpack it, and run the `dashboard` binary:
+
+```bash
+# Run the standalone dashboard binary
+./dashboard
+
+# Run with custom port
+./dashboard --port 9090
+
+# Run with specific kubeconfig
+KUBECONFIG=~/.kube/my-cluster ./dashboard
+
+# Run for specific namespace
+./dashboard --namespace production
+```
+
+### Helm Plugin
 
 ```bash
 # Install as Helm plugin
@@ -54,7 +72,7 @@ helm dashboard
 helm dashboard --port 9090
 
 # Run with specific kubeconfig
-helm dashboard --kubeconfig ~/.kube/my-cluster
+KUBECONFIG=~/.kube/my-cluster helm dashboard
 
 # Run for specific namespace
 helm dashboard --namespace production
@@ -68,15 +86,13 @@ docker run -d \
   --name helm-dashboard \
   -p 8080:8080 \
   -v ~/.kube:/root/.kube \
-  -v ~/.helm:/root/.helm \
   komodorio/helm-dashboard
 
-# With read-only access
+# With read-only kubeconfig mount
 docker run -d \
   --name helm-dashboard \
   -p 8080:8080 \
   -v ~/.kube:/root/.kube:ro \
-  -e HELM_DASHBOARD_READONLY=true \
   komodorio/helm-dashboard
 ```
 
@@ -106,8 +122,11 @@ spec:
           ports:
             - containerPort: 8080
           env:
-            - name: HELM_DASHBOARD_DEBUG
-              value: "false"
+            - name: DEBUG
+              value: ""
+          args:
+            - --no-browser
+            - --bind=0.0.0.0
           resources:
             limits:
               cpu: 500m
@@ -160,6 +179,12 @@ helm install helm-dashboard komodorio/helm-dashboard \
   --namespace helm-system \
   --create-namespace \
   --set dashboard.persistence.enabled=true
+
+# Install in read-only mode
+helm install helm-dashboard komodorio/helm-dashboard \
+  --namespace helm-system \
+  --create-namespace \
+  --set dashboard.allowWriteActions=false
 
 # With Ingress
 helm install helm-dashboard komodorio/helm-dashboard \
@@ -219,18 +244,15 @@ flowchart LR
 
 ```bash
 # Dashboard configuration
-export HELM_DASHBOARD_PORT=8080
-export HELM_DASHBOARD_BIND=0.0.0.0
-export HELM_DASHBOARD_READONLY=false
-export HELM_DASHBOARD_DEBUG=false
-export HELM_DASHBOARD_NO_BROWSER=true
+export HD_BIND=0.0.0.0
+export DEBUG=false
 
 # Helm configuration
 export HELM_NAMESPACE=default
 export KUBECONFIG=/path/to/kubeconfig
 
 # Run with configuration
-helm dashboard
+helm dashboard --port 8080 --no-browser
 ```
 
 ### RBAC Configuration
@@ -277,6 +299,8 @@ rules:
 
 ```yaml
 # helm-dashboard-readonly.yaml
+# Combine with the read-only RBAC role above, or install the chart with:
+# --set dashboard.allowWriteActions=false
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -288,9 +312,9 @@ spec:
       containers:
         - name: helm-dashboard
           image: komodorio/helm-dashboard:latest
-          env:
-            - name: HELM_DASHBOARD_READONLY
-              value: "true"
+          args:
+            - --no-browser
+            - --bind=0.0.0.0
           # Read-only filesystem
           securityContext:
             readOnlyRootFilesystem: true
@@ -505,8 +529,8 @@ spec:
 
 ## Comparison with Alternatives
 
-| Feature | Helm Dashboard | Kubeapps | Rancher |
-|---------|---------------|----------|---------|
+| Feature | Helm Dashboard | Kubeapps (SAP fork) | Rancher |
+|---------|---------------|---------------------|---------|
 | Standalone | Yes | Yes | No |
 | Helm-only Focus | Yes | Yes | No |
 | Multi-cluster | Yes | Yes | Yes |
@@ -518,7 +542,7 @@ spec:
 
 ```bash
 # Dashboard not starting
-helm dashboard --debug
+helm dashboard --verbose
 
 # Check connectivity
 helm list  # Verify Helm works
