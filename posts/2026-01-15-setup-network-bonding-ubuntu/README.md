@@ -76,6 +76,9 @@ Ubuntu uses Netplan for network configuration.
 ### Backup Existing Configuration
 
 ```bash
+# Create a backup directory
+sudo mkdir -p /etc/netplan/backup/
+
 # Backup current netplan config
 sudo cp /etc/netplan/*.yaml /etc/netplan/backup/
 ```
