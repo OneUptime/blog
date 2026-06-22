@@ -178,7 +178,6 @@ server:
 ```bash
 options {
     dnssec-validation yes;
-    dnssec-log-level 3;
 };
 
 logging {
@@ -269,7 +268,7 @@ groups:
 - name: dnssec
   rules:
   - alert: DNSSECValidationFailure
-    expr: rate(unbound_dnssec_bogus[5m]) > 0
+    expr: rate(unbound_answers_bogus[5m]) > 0
     for: 2m
     labels:
       severity: critical
