@@ -99,7 +99,7 @@ Let's prepare the system:
 sudo apt update && sudo apt upgrade -y
 
 # Install required dependencies
-sudo apt install -y curl apt-transport-https unzip wget libcap2-bin
+sudo apt install -y curl apt-transport-https unzip wget libcap2-bin jq
 
 # Configure system limits for Wazuh indexer
 # These settings optimize memory mapping for the indexer
@@ -127,8 +127,8 @@ The Wazuh indexer must be installed first as it provides the data storage backen
 
 ```bash
 # Import the Wazuh GPG key
-curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring \
-  --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring \
+  --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
 
 # Add the Wazuh repository
 echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
@@ -144,10 +144,10 @@ Wazuh uses SSL certificates for secure communication between components. Downloa
 
 ```bash
 # Download the Wazuh certificate tool
-curl -sO https://packages.wazuh.com/4.9/wazuh-certs-tool.sh
+curl -sO https://packages.wazuh.com/4.14/wazuh-certs-tool.sh
 
 # Download the configuration template
-curl -sO https://packages.wazuh.com/4.9/config.yml
+curl -sO https://packages.wazuh.com/4.14/config.yml
 ```
 
 Edit the configuration file to match your environment:
@@ -384,8 +384,8 @@ The main configuration file is `/var/ossec/etc/ossec.conf`. Here's a comprehensi
     <logall>no</logall>
     <logall_json>yes</logall_json>
 
-    <!-- GeoIP database for location enrichment -->
-    <geoip_db_path>/var/ossec/etc/GeoLite2-City.mmdb</geoip_db_path>
+  <!-- GeoIP database for location enrichment, if installed separately -->
+  <geoip_db_path>/var/ossec/etc/GeoLite2-City.mmdb</geoip_db_path>
   </global>
 
   <!-- ======================== Alert Settings ======================== -->
@@ -422,44 +422,18 @@ The main configuration file is `/var/ossec/etc/ossec.conf`. Here's a comprehensi
     </ssl>
   </indexer>
 
-  <!-- ======================== Vulnerability Detector ======================== -->
+  <!-- Store the indexer credentials in the Wazuh manager keystore:
+       echo 'admin' | /var/ossec/bin/wazuh-keystore -f indexer -k username
+       echo 'admin' | /var/ossec/bin/wazuh-keystore -f indexer -k password
+  -->
+
+  <!-- ======================== Vulnerability Detection ======================== -->
   <!-- Enable vulnerability scanning for monitored hosts -->
-  <vulnerability-detector>
+  <vulnerability-detection>
     <enabled>yes</enabled>
-    <interval>5m</interval>
-    <min_full_scan_interval>6h</min_full_scan_interval>
-    <run_on_start>yes</run_on_start>
-
-    <!-- Ubuntu vulnerability feed -->
-    <provider name="canonical">
-      <enabled>yes</enabled>
-      <os>jammy</os>
-      <os>noble</os>
-      <update_interval>1h</update_interval>
-    </provider>
-
-    <!-- Debian vulnerability feed -->
-    <provider name="debian">
-      <enabled>yes</enabled>
-      <os>bullseye</os>
-      <os>bookworm</os>
-      <update_interval>1h</update_interval>
-    </provider>
-
-    <!-- Red Hat vulnerability feed -->
-    <provider name="redhat">
-      <enabled>yes</enabled>
-      <os>8</os>
-      <os>9</os>
-      <update_interval>1h</update_interval>
-    </provider>
-
-    <!-- National Vulnerability Database -->
-    <provider name="nvd">
-      <enabled>yes</enabled>
-      <update_interval>1h</update_interval>
-    </provider>
-  </vulnerability-detector>
+    <index-status>yes</index-status>
+    <feed-update-interval>60m</feed-update-interval>
+  </vulnerability-detection>
 
   <!-- ======================== Log Analysis ======================== -->
   <!-- Configure log sources to monitor -->
@@ -554,6 +528,7 @@ The main configuration file is `/var/ossec/etc/ossec.conf`. Here's a comprehensi
 
   <!-- Block IP after multiple failed SSH attempts -->
   <active-response>
+    <disabled>no</disabled>
     <command>firewall-drop</command>
     <location>local</location>
     <rules_id>5763</rules_id>
@@ -588,16 +563,16 @@ Filebeat forwards alerts from the Wazuh server to the indexer:
 sudo apt install -y filebeat
 
 # Download Wazuh Filebeat module
-curl -s https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.4.tar.gz | \
+curl -s https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.5.tar.gz | \
   sudo tar -xvz -C /usr/share/filebeat/module
 
 # Download Filebeat configuration template
 sudo curl -so /etc/filebeat/filebeat.yml \
-  https://packages.wazuh.com/4.9/tpl/wazuh/filebeat/filebeat.yml
+  https://packages.wazuh.com/4.14/tpl/wazuh/filebeat/filebeat.yml
 
 # Download alerts template
 sudo curl -so /etc/filebeat/wazuh-template.json \
-  https://packages.wazuh.com/4.9/tpl/wazuh/filebeat/wazuh-template.json
+  https://raw.githubusercontent.com/wazuh/wazuh/v4.14.5/extensions/elasticsearch/7.x/wazuh-template.json
 
 # Set proper permissions
 sudo chmod go+r /etc/filebeat/wazuh-template.json
@@ -790,8 +765,8 @@ Wazuh agents collect security data from monitored endpoints.
 
 ```bash
 # On the monitored host, add Wazuh repository
-curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring \
-  --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring \
+  --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
 
 echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
   sudo tee /etc/apt/sources.list.d/wazuh.list
@@ -821,11 +796,11 @@ gpgkey=https://packages.wazuh.com/key/GPG-KEY-WAZUH
 enabled=1
 name=EL-$releasever - Wazuh
 baseurl=https://packages.wazuh.com/4.x/yum/
-protect=1
+priority=1
 EOF
 
 # Install agent
-WAZUH_MANAGER="192.168.1.100" sudo yum install -y wazuh-agent
+WAZUH_MANAGER="192.168.1.100" sudo dnf install -y wazuh-agent
 
 # Start agent
 sudo systemctl daemon-reload
@@ -837,7 +812,7 @@ sudo systemctl start wazuh-agent
 
 ```powershell
 # Download agent installer (run as Administrator)
-Invoke-WebRequest -Uri https://packages.wazuh.com/4.x/windows/wazuh-agent-4.9.0-1.msi `
+Invoke-WebRequest -Uri https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.5-1.msi `
   -OutFile $env:TEMP\wazuh-agent.msi
 
 # Install with manager address
@@ -1061,60 +1036,17 @@ sudo systemctl restart wazuh-agent
 
 Wazuh can detect vulnerabilities in installed packages by comparing them against vulnerability databases.
 
-### Enable Vulnerability Detector on Manager
+### Enable Vulnerability Detection on Manager
 
-The vulnerability detector runs on the Wazuh server and requires the syscollector data from agents:
+The vulnerability detection module runs on the Wazuh server and requires the syscollector data from agents:
 
 ```xml
 <!-- /var/ossec/etc/ossec.conf on manager -->
-<vulnerability-detector>
+<vulnerability-detection>
   <enabled>yes</enabled>
-  <interval>5m</interval>
-  <min_full_scan_interval>6h</min_full_scan_interval>
-  <run_on_start>yes</run_on_start>
-
-  <!-- Operating system vulnerability feeds -->
-  <provider name="canonical">
-    <enabled>yes</enabled>
-    <os>focal</os>
-    <os>jammy</os>
-    <os>noble</os>
-    <update_interval>1h</update_interval>
-  </provider>
-
-  <provider name="debian">
-    <enabled>yes</enabled>
-    <os>buster</os>
-    <os>bullseye</os>
-    <os>bookworm</os>
-    <update_interval>1h</update_interval>
-  </provider>
-
-  <provider name="redhat">
-    <enabled>yes</enabled>
-    <os>7</os>
-    <os>8</os>
-    <os>9</os>
-    <update_interval>1h</update_interval>
-  </provider>
-
-  <provider name="amazon">
-    <enabled>yes</enabled>
-    <update_interval>1h</update_interval>
-  </provider>
-
-  <!-- National Vulnerability Database for CVE enrichment -->
-  <provider name="nvd">
-    <enabled>yes</enabled>
-    <update_interval>1h</update_interval>
-  </provider>
-
-  <!-- Microsoft vulnerability feed for Windows agents -->
-  <provider name="msu">
-    <enabled>yes</enabled>
-    <update_interval>1h</update_interval>
-  </provider>
-</vulnerability-detector>
+  <index-status>yes</index-status>
+  <feed-update-interval>60m</feed-update-interval>
+</vulnerability-detection>
 ```
 
 ### Configure Agents for Vulnerability Scanning
@@ -1141,20 +1073,23 @@ Ensure syscollector is enabled on agents:
 
 ### Viewing Vulnerability Data
 
-Access vulnerability data through the dashboard or API:
+Access vulnerability data through the dashboard or the Wazuh indexer API:
 
 ```bash
-# Query vulnerabilities via API
-curl -k -X GET "https://localhost:55000/vulnerability?pretty=true" \
-  -H "Authorization: Bearer $TOKEN"
+# Query vulnerabilities in the indexer
+curl -k -u admin:admin "https://localhost:9200/wazuh-states-vulnerabilities-*/_search?pretty" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":{"match_all":{}},"size":10}'
 
 # Get vulnerabilities for specific agent
-curl -k -X GET "https://localhost:55000/vulnerability/001?pretty=true" \
-  -H "Authorization: Bearer $TOKEN"
+curl -k -u admin:admin "https://localhost:9200/wazuh-states-vulnerabilities-*/_search?pretty" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":{"term":{"agent.id":"001"}}}'
 
 # Filter critical vulnerabilities
-curl -k -X GET "https://localhost:55000/vulnerability?severity=Critical&pretty=true" \
-  -H "Authorization: Bearer $TOKEN"
+curl -k -u admin:admin "https://localhost:9200/wazuh-states-vulnerabilities-*/_search?pretty" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":{"term":{"vulnerability.severity":"Critical"}}}'
 ```
 
 ## Compliance Monitoring
@@ -1528,7 +1463,7 @@ Custom rules trigger alerts based on decoded log data:
   <!-- Multiple authentication failures (brute force) -->
   <rule id="100003" level="10" frequency="5" timeframe="120">
     <if_matched_sid>100002</if_matched_sid>
-    <same_source_ip />
+    <same_srcip />
     <description>MyApp: Multiple authentication failures from same source</description>
     <mitre>
       <id>T1110</id>
@@ -1606,7 +1541,7 @@ Custom rules trigger alerts based on decoded log data:
   <!-- Multiple WAF blocks from same IP -->
   <rule id="100101" level="10" frequency="10" timeframe="60">
     <if_matched_sid>100100</if_matched_sid>
-    <same_source_ip />
+    <same_srcip />
     <description>WAF: Multiple blocked requests from same source (potential attack)</description>
     <group>web,attack,</group>
   </rule>
@@ -1668,7 +1603,7 @@ sudo /var/ossec/bin/wazuh-logtest
   <!-- Correlation options -->
   <frequency>COUNT</frequency>
   <timeframe>SECONDS</timeframe>
-  <same_source_ip />
+  <same_srcip />
   <same_user />
   <different_srcip />
 
@@ -1791,20 +1726,18 @@ Custom active response script example:
 # /var/ossec/active-response/bin/custom-block.sh
 # Custom active response script for advanced blocking
 
-LOCAL=`dirname $0`;
-cd $LOCAL
-cd ../
-
-PWD=`pwd`
-ACTION=$1
-USER=$2
-IP=$3
-ALERTID=$4
-RULEID=$5
-AGENT=$6
+INPUT=$(cat)
+ACTION=$(echo "$INPUT" | jq -r '.command')
+IP=$(echo "$INPUT" | jq -r '.parameters.alert.data.srcip // empty')
+RULEID=$(echo "$INPUT" | jq -r '.parameters.alert.rule.id // empty')
 
 # Log the action
 echo "`date` - $ACTION $IP - Rule $RULEID" >> /var/ossec/logs/active-responses.log
+
+if [ -z "$IP" ]; then
+    echo "`date` - No source IP found in active response input" >> /var/ossec/logs/active-responses.log
+    exit 0
+fi
 
 # Add to blocklist
 if [ "$ACTION" = "add" ]; then
@@ -1840,7 +1773,7 @@ Enhance alerts with additional context:
 
 <rule id="100300" level="10">
   <if_sid>5763</if_sid>
-  <geoip_src>!US,CA,GB</geoip_src>
+  <srcgeoip negate="yes">US|CA|GB</srcgeoip>
   <description>SSH brute force from foreign country</description>
   <group>authentication_failures,brute_force,foreign_access,</group>
 </rule>
