@@ -309,7 +309,7 @@ consul kv delete -recurse config/
 ### Using HTTP API
 
 ```bash
-# Put value (base64 encoded)
+# Put value (the body is the raw value; GET responses return it base64 encoded)
 curl -X PUT -d 'db.example.com' http://localhost:8500/v1/kv/config/database/host
 
 # Get value
