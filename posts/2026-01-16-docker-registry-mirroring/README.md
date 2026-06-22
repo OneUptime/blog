@@ -15,8 +15,6 @@ Registry mirroring provides local image caching, reduces external bandwidth, and
 ### Basic Mirror Setup
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     image: registry:2
@@ -24,6 +22,7 @@ services:
       - "5000:5000"
     environment:
       REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
       - registry_data:/var/lib/registry
 
@@ -33,8 +32,9 @@ volumes:
 
 ### Configure Docker Daemon
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "registry-mirrors": ["http://localhost:5000"]
 }
@@ -47,8 +47,6 @@ sudo systemctl restart docker
 ## Registry with Authentication
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     image: registry:2
@@ -82,15 +80,15 @@ http:
   addr: :5000
 proxy:
   remoteurl: https://registry-1.docker.io
-  username: ${DOCKER_HUB_USER}
-  password: ${DOCKER_HUB_PASSWORD}
+  username: your-docker-hub-username
+  password: your-docker-hub-password
 ```
 
 ## Multi-Registry Mirror
 
-```yaml
-version: '3.8'
+Each pull-through cache can mirror one upstream registry. Docker daemon `registry-mirrors` are used for Docker Hub pulls, so non-Docker Hub caches must be addressed directly.
 
+```yaml
 services:
   dockerhub-mirror:
     image: registry:2
@@ -98,6 +96,7 @@ services:
       - "5001:5000"
     environment:
       REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
       - dockerhub_cache:/var/lib/registry
 
@@ -107,6 +106,7 @@ services:
       - "5002:5000"
     environment:
       REGISTRY_PROXY_REMOTEURL: https://gcr.io
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
       - gcr_cache:/var/lib/registry
 
@@ -116,6 +116,7 @@ services:
       - "5003:5000"
     environment:
       REGISTRY_PROXY_REMOTEURL: https://quay.io
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
       - quay_cache:/var/lib/registry
 
@@ -128,8 +129,6 @@ volumes:
 ## High Availability Setup
 
 ```yaml
-version: '3.8'
-
 services:
   registry1:
     image: registry:2
@@ -165,8 +164,6 @@ volumes:
 ## S3 Storage Backend
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     image: registry:2
@@ -178,24 +175,21 @@ services:
       REGISTRY_STORAGE_S3_SECRETKEY: ${AWS_SECRET_KEY}
       REGISTRY_STORAGE_S3_BUCKET: my-registry
       REGISTRY_STORAGE_S3_REGION: us-east-1
-      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
 ```
 
 ## Garbage Collection
 
 ```bash
 # Run garbage collection
-docker exec registry bin/registry garbage-collect /etc/docker/registry/config.yml
+docker exec registry /bin/registry garbage-collect /etc/docker/registry/config.yml
 
 # With dry-run
-docker exec registry bin/registry garbage-collect --dry-run /etc/docker/registry/config.yml
+docker exec registry /bin/registry garbage-collect --dry-run /etc/docker/registry/config.yml
 ```
 
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     image: registry:2
@@ -214,16 +208,16 @@ services:
       timeout: 5s
       retries: 3
 
-  # Scheduled garbage collection
+  # Garbage collection helper; run only after stopping the registry or setting it read-only
   gc:
     image: registry:2
+    profiles:
+      - maintenance
     volumes:
       - ./config.yml:/etc/docker/registry/config.yml:ro
       - registry_data:/var/lib/registry
-    entrypoint: /bin/sh
-    command: -c "while true; do sleep 86400; /bin/registry garbage-collect /etc/docker/registry/config.yml; done"
-    depends_on:
-      - registry
+    entrypoint: /bin/registry
+    command: ["garbage-collect", "/etc/docker/registry/config.yml"]
 
 volumes:
   registry_data:
@@ -236,7 +230,6 @@ volumes:
 | Pull-through cache | Faster pulls, reduced bandwidth |
 | Mirror registry | Local availability |
 | S3 backend | Scalable storage |
-| HA setup | No single point of failure |
+| HA setup | Registry instance failover |
 
 Registry mirroring improves Docker performance and reliability. Use pull-through caches for development, and HA setups with shared storage for production. For volume backups, see our post on [Docker Volume Backups](https://oneuptime.com/blog/post/2026-01-16-docker-volume-backups/view).
-
