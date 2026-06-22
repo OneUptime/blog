@@ -50,9 +50,9 @@ Redis offers two persistence options:
 docker run -d \
   -v redis-data:/data \
   redis:7-alpine redis-server \
-    --save 900 1 \      # Save after 900 seconds if 1 key changed
-    --save 300 10 \     # Save after 300 seconds if 10 keys changed
-    --save 60 10000     # Save after 60 seconds if 10000 keys changed
+    --save 900 1 \
+    --save 300 10 \
+    --save 60 10000
 ```
 
 ### AOF Persistence
@@ -76,8 +76,6 @@ AOF sync options:
 ### Development Setup
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -90,8 +88,6 @@ services:
 ### Production Setup with Persistence
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -99,7 +95,7 @@ services:
     restart: unless-stopped
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD}
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       --appendonly yes
       --appendfsync everysec
       --maxmemory 512mb
@@ -107,7 +103,7 @@ services:
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -129,8 +125,6 @@ volumes:
 ### With Custom Configuration File
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -242,7 +236,7 @@ docker run -d \
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 ```
 
 Connect with password:
@@ -299,6 +293,11 @@ services:
     command: redis-server --requirepass secret
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "secret", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     image: my-app
@@ -346,9 +345,9 @@ services:
   # With password
   redis-auth:
     image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -365,8 +364,8 @@ docker exec redis redis-cli BGSAVE
 # Copy RDB file
 docker cp redis:/data/dump.rdb ./backup-dump.rdb
 
-# Copy AOF file
-docker cp redis:/data/appendonly.aof ./backup-appendonly.aof
+# Copy Redis 7 AOF files
+docker cp redis:/data/appendonlydir ./backup-appendonlydir
 ```
 
 ### Restore from Backup
@@ -388,8 +387,6 @@ docker start redis
 ### Automated Backups
 
 ```yaml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -405,9 +402,9 @@ services:
     entrypoint: |
       sh -c 'while true; do
         cp /data/dump.rdb /backups/dump-$$(date +%Y%m%d-%H%M%S).rdb 2>/dev/null || true
-        cp /data/appendonly.aof /backups/aof-$$(date +%Y%m%d-%H%M%S).aof 2>/dev/null || true
+        cp -a /data/appendonlydir /backups/appendonlydir-$$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
         find /backups -name "*.rdb" -mtime +7 -delete
-        find /backups -name "*.aof" -mtime +7 -delete
+        find /backups -name "appendonlydir-*" -mtime +7 -exec rm -rf {} +
         sleep 3600
       done'
 
@@ -417,14 +414,13 @@ volumes:
 
 ## Redis Cluster in Docker
 
-For high availability, run Redis in cluster mode.
+For sharding, run Redis in cluster mode. Add replicas for high availability.
 
 ```yaml
-version: '3.8'
-
 services:
   redis-1:
     image: redis:7-alpine
+    container_name: redis-1
     command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-1-data:/data
@@ -433,6 +429,7 @@ services:
 
   redis-2:
     image: redis:7-alpine
+    container_name: redis-2
     command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-2-data:/data
@@ -441,6 +438,7 @@ services:
 
   redis-3:
     image: redis:7-alpine
+    container_name: redis-3
     command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-3-data:/data
@@ -460,7 +458,8 @@ Initialize cluster:
 ```bash
 docker exec -it redis-1 redis-cli --cluster create \
   redis-1:6379 redis-2:6379 redis-3:6379 \
-  --cluster-replicas 0
+  --cluster-replicas 0 \
+  --cluster-yes
 ```
 
 ## Monitoring
