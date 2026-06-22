@@ -73,16 +73,19 @@ kubectl get deployment,service,configmap,secret,ingress \
 ```bash
 # Add Helm release name annotation
 kubectl annotate deployment myapp \
+  -n production \
   meta.helm.sh/release-name=myapp \
   --overwrite
 
 # Add Helm release namespace annotation
 kubectl annotate deployment myapp \
+  -n production \
   meta.helm.sh/release-namespace=production \
   --overwrite
 
 # Add managed-by label
 kubectl label deployment myapp \
+  -n production \
   app.kubernetes.io/managed-by=Helm \
   --overwrite
 ```
@@ -119,7 +122,7 @@ echo "Resources adopted successfully"
 
 ```bash
 # Check annotations
-kubectl get deployment myapp -o yaml | grep -A5 "annotations:"
+kubectl get deployment myapp -n production -o yaml | grep -A5 "annotations:"
 
 # Expected output:
 # annotations:
@@ -142,14 +145,24 @@ helm adopt --help
 ### Adopt Resources
 
 ```bash
-# Adopt single resource
-helm adopt deployment myapp --release myapp --namespace production
+# Adopt single resource into a generated chart
+helm adopt resources deployments:myapp \
+  --release myapp \
+  --namespace production \
+  --output myapp
 
-# Adopt multiple resources
-helm adopt deployment,service,configmap myapp --release myapp --namespace production
+# Adopt multiple resources into a generated chart
+helm adopt resources deployments:myapp services:myapp configmaps:myapp-config \
+  --release myapp \
+  --namespace production \
+  --output myapp
 
 # Adopt with dry-run
-helm adopt deployment myapp --release myapp --namespace production --dry-run
+helm adopt resources deployments:myapp \
+  --release myapp \
+  --namespace production \
+  --output myapp \
+  --dry-run
 ```
 
 ## Creating Chart for Existing Resources
@@ -158,7 +171,7 @@ helm adopt deployment myapp --release myapp --namespace production --dry-run
 
 ```bash
 # Export existing resource
-kubectl get deployment myapp -o yaml > deployment.yaml
+kubectl get deployment myapp -n production -o yaml > deployment.yaml
 
 # Remove cluster-specific fields
 yq eval 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.generation, .status)' deployment.yaml > clean-deployment.yaml
@@ -235,22 +248,29 @@ spec:
 ### Method 1: Helm Upgrade with Existing Release
 
 ```bash
-# If release already exists but resources were created manually
+# If release already exists but resources were created manually,
+# ensure the resources have correct Helm ownership metadata first
 helm upgrade myapp ./myapp \
   --namespace production \
   --set image.tag=v1.0.0 \
   --force
 ```
 
-### Method 2: Create Release Without Installing
+### Method 2: Create Release for Existing Resources
 
 ```bash
 # First, ensure resources have correct annotations
 kubectl annotate deployment myapp \
+  -n production \
   meta.helm.sh/release-name=myapp \
-  meta.helm.sh/release-namespace=production
+  meta.helm.sh/release-namespace=production \
+  --overwrite
+kubectl label deployment myapp \
+  -n production \
+  app.kubernetes.io/managed-by=Helm \
+  --overwrite
 
-# Create Helm release secret manually
+# Validate the chart before installing the release
 helm template myapp ./myapp \
   --namespace production \
   --set image.tag=v1.0.0 > /dev/null  # Validate template
@@ -270,8 +290,10 @@ helm template myapp ./myapp --namespace production > rendered.yaml
 # Compare with existing resources
 kubectl diff -f rendered.yaml
 
-# If minimal differences, proceed with upgrade
-helm upgrade --install myapp ./myapp --namespace production
+# If minimal differences, proceed with upgrade and ownership transfer
+helm upgrade --install myapp ./myapp \
+  --namespace production \
+  --take-ownership
 ```
 
 ## Handling Resource Conflicts
@@ -283,16 +305,24 @@ Resource Already Exists Error
 
 # Solution 1: Add annotations first
 kubectl annotate deployment myapp \
+  -n production \
   meta.helm.sh/release-name=myapp \
-  meta.helm.sh/release-namespace=production
+  meta.helm.sh/release-namespace=production \
+  --overwrite
 kubectl label deployment myapp \
-  app.kubernetes.io/managed-by=Helm
+  -n production \
+  app.kubernetes.io/managed-by=Helm \
+  --overwrite
 
-# Solution 2: Use --force flag
-helm upgrade --install myapp ./myapp --force
+# Solution 2: Use --take-ownership with Helm 3.17+
+helm upgrade --install myapp ./myapp \
+  --namespace production \
+  --take-ownership
 
-# Solution 3: Use --adopt flag (if available)
-helm upgrade --install myapp ./myapp --adopt
+# Solution 3: Use --force when you need replacement after ownership is fixed
+helm upgrade --install myapp ./myapp \
+  --namespace production \
+  --force
 ```
 
 ### Label Selector Conflicts
@@ -301,8 +331,8 @@ helm upgrade --install myapp ./myapp --adopt
 # Error: Selector cannot be updated
 
 # Solution: Recreate resource through Helm
-kubectl delete deployment myapp
-helm upgrade --install myapp ./myapp
+kubectl delete deployment myapp -n production
+helm upgrade --install myapp ./myapp --namespace production
 ```
 
 ## Batch Adoption Script
@@ -315,8 +345,8 @@ helm upgrade --install myapp ./myapp
 
 set -e
 
-RELEASE_NAME="myapp"
-NAMESPACE="production"
+RELEASE_NAME="${1:-myapp}"
+NAMESPACE="${2:-production}"
 CHART_PATH="./myapp"
 
 echo "Starting batch adoption for release: $RELEASE_NAME"
@@ -432,15 +462,17 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
         
       - name: Configure Kubernetes
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5.0.0
         with:
           kubeconfig: ${{ secrets.KUBECONFIG }}
           
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
+        with:
+          version: v3.21.2
         
       - name: Adopt Resources
         run: |
@@ -469,15 +501,20 @@ jobs:
 
 ```bash
 # Resource not being tracked
-kubectl get deployment myapp -o yaml | grep -E "(meta.helm.sh|app.kubernetes.io/managed-by)"
+kubectl get deployment myapp -n production -o yaml | grep -E "(meta.helm.sh|app.kubernetes.io/managed-by)"
 
 # Release secret missing
 kubectl get secret -n production -l owner=helm,name=myapp
 
 # Force re-adoption
 kubectl annotate deployment myapp \
+  -n production \
   meta.helm.sh/release-name=myapp \
   meta.helm.sh/release-namespace=production \
+  --overwrite
+kubectl label deployment myapp \
+  -n production \
+  app.kubernetes.io/managed-by=Helm \
   --overwrite
 
 # Check Helm release status
