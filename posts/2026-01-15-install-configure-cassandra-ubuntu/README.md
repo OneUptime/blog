@@ -23,7 +23,7 @@ Apache Cassandra is a highly scalable, distributed NoSQL database designed for h
 
 - Ubuntu 20.04 or 22.04
 - At least 4GB RAM (8GB recommended)
-- Java 11 or 17
+- Java 8 or 11 (Cassandra 4.1 does not support Java 17; that requires Cassandra 5.0)
 - Python 3 (for cqlsh)
 
 ## System Requirements
@@ -95,8 +95,8 @@ Key settings:
 # Cluster name - must be same across all nodes
 cluster_name: 'MyCluster'
 
-# Number of replicas
-num_tokens: 256
+# Number of virtual nodes (vnodes) per node - default is 16 in Cassandra 4.x
+num_tokens: 16
 
 # Data directories
 data_file_directories:
@@ -124,8 +124,9 @@ ssl_storage_port: 7001
 # Endpoint snitch
 endpoint_snitch: SimpleSnitch  # Or GossipingPropertyFileSnitch for production
 
-# Compaction settings
-compaction_throughput_mb_per_sec: 64
+# Compaction settings (Cassandra 4.1 uses unit-based values; the old
+# compaction_throughput_mb_per_sec name is deprecated but still accepted)
+compaction_throughput: 64MiB/s
 
 # Memory settings
 memtable_allocation_type: heap_buffers
@@ -134,7 +135,7 @@ memtable_allocation_type: heap_buffers
 ### JVM Settings
 
 ```bash
-sudo nano /etc/cassandra/jvm.options
+sudo nano /etc/cassandra/jvm-server.options
 ```
 
 ```bash
@@ -578,7 +579,7 @@ ALTER TABLE events WITH compaction = {
 ### Memory Settings
 
 ```bash
-# Adjust in /etc/cassandra/jvm.options
+# Adjust in /etc/cassandra/jvm-server.options
 # Heap size = 1/4 to 1/2 of RAM (max 8GB recommended)
 -Xms8G
 -Xmx8G
@@ -620,7 +621,7 @@ nodetool netstats
 # Check thread pools
 nodetool tpstats
 
-# Check dropped messages
+# Check keyspace and table statistics (cfstats is a deprecated alias of tablestats)
 nodetool cfstats
 
 # Check table stats
