@@ -16,7 +16,7 @@ flowchart TB
     install[helm install]
     upgrade[helm upgrade]
     rollback[helm rollback]
-    delete[helm delete]
+    delete[helm uninstall]
   end
   
   subgraph "Tracking Methods"
@@ -74,8 +74,8 @@ helm history myapp -n production --max 20 -o yaml
 
 ```bash
 # Get values from specific revision
-helm get values myapp -n production --revision 2 > values-r2.yaml
-helm get values myapp -n production --revision 3 > values-r3.yaml
+helm get values myapp -n production --revision 2 --all > values-r2.yaml
+helm get values myapp -n production --revision 3 --all > values-r3.yaml
 
 # Diff values between revisions
 diff values-r2.yaml values-r3.yaml
@@ -93,6 +93,10 @@ diff manifest-r2.yaml manifest-r3.yaml
 ```bash
 # Install helm-diff plugin
 helm plugin install https://github.com/databus23/helm-diff
+
+# Helm 4 users can verify a signed release tarball (Linux amd64 example)
+curl -sL https://github.com/databus23.gpg | gpg --import
+helm plugin install https://github.com/databus23/helm-diff/releases/latest/download/helm-diff-linux-amd64.tgz
 
 # Diff current vs previous revision
 helm diff revision myapp 2 3 -n production
@@ -122,7 +126,7 @@ metadata:
   annotations:
     "helm.sh/hook": pre-upgrade,pre-install
     "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   ttlSecondsAfterFinished: 600
   template:
@@ -161,7 +165,7 @@ spec:
                 chartVersion: "{{ .Chart.Version }}"
                 appVersion: "{{ .Chart.AppVersion }}"
                 action: "pre-upgrade"
-                user: "${HELM_USER:-unknown}"
+                user: {{ .Values.audit.user | default "unknown" | quote }}
               EOF
               
               # Get current deployment state
@@ -183,7 +187,7 @@ metadata:
   annotations:
     "helm.sh/hook": post-upgrade,post-install
     "helm.sh/hook-weight": "10"
-    "helm.sh/hook-delete-policy": hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   ttlSecondsAfterFinished: 600
   template:
@@ -232,8 +236,9 @@ metadata:
   name: {{ include "myapp.fullname" . }}-audit-rollback
   annotations:
     "helm.sh/hook": post-rollback
-    "helm.sh/hook-delete-policy": hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
+  ttlSecondsAfterFinished: 600
   template:
     spec:
       restartPolicy: Never
@@ -433,6 +438,8 @@ jobs:
 
 ```yaml
 # argocd-notifications-configmap.yaml
+# Add this annotation to each Application that should send audit events:
+# notifications.argoproj.io/subscribe.on-deployed.audit-webhook: ""
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -575,7 +582,7 @@ data:
 
 | Storage | Retention | Query | Cost |
 |---------|-----------|-------|------|
-| Kubernetes Secrets | Limited (10 revisions) | kubectl | Free |
+| Kubernetes Secrets | Configurable (default 10 saved revisions) | kubectl | Free |
 | Elasticsearch | Configurable | Full-text | Medium |
 | S3 + Athena | Unlimited | SQL | Low |
 | Splunk | Configurable | SPL | High |
