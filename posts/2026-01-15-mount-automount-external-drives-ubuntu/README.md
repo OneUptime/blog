@@ -384,12 +384,15 @@ sudo fsck.ext4 -n /dev/sdb1
 ### Check XFS Filesystem
 
 ```bash
-# XFS can be checked while mounted (read-only check)
+# Check without repairing (must be unmounted, even for a dry run)
+sudo umount /dev/sdb1
 sudo xfs_repair -n /dev/sdb1
 
 # Repair (must be unmounted)
-sudo umount /dev/sdb1
 sudo xfs_repair /dev/sdb1
+
+# To check a mounted XFS filesystem online, use xfs_scrub instead
+sudo xfs_scrub /mnt/data
 ```
 
 ### Check NTFS
