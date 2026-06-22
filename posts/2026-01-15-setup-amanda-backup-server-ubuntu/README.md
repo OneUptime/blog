@@ -42,7 +42,7 @@ Before beginning the installation, ensure you have:
 - Root or sudo access on both server and client machines
 - Network connectivity between server and clients
 - Sufficient disk space for backup storage (at least 2x your backup data size recommended)
-- Firewall rules allowing Amanda traffic (ports 10080-10083 TCP/UDP)
+- Firewall rules allowing Amanda traffic (port 10080/TCP for the default `bsdtcp` service, plus ports 10082-10083/TCP when using `amrecover`)
 
 ## Installing Amanda Server
 
@@ -62,9 +62,9 @@ sudo apt update && sudo apt upgrade -y
 # Install the Amanda server package and dependencies
 sudo apt install amanda-server amanda-client -y
 
-# The installation creates an 'amandabackup' user automatically
-# Verify the user was created
-id amandabackup
+# Ubuntu's Amanda packages use the existing 'backup' user
+# Verify the user exists
+id backup
 ```
 
 ### Step 3: Verify Installation
@@ -88,7 +88,7 @@ Amanda configurations are stored in `/etc/amanda/`. Each backup configuration ge
 sudo mkdir -p /etc/amanda/DailyBackup
 
 # Set proper ownership
-sudo chown -R amandabackup:amandabackup /etc/amanda/DailyBackup
+sudo chown -R backup:backup /etc/amanda/DailyBackup
 ```
 
 ### Step 2: Create the Main Configuration File (amanda.conf)
@@ -96,7 +96,7 @@ sudo chown -R amandabackup:amandabackup /etc/amanda/DailyBackup
 Create the primary configuration file at `/etc/amanda/DailyBackup/amanda.conf`:
 
 ```bash
-sudo -u amandabackup nano /etc/amanda/DailyBackup/amanda.conf
+sudo -u backup nano /etc/amanda/DailyBackup/amanda.conf
 ```
 
 Add the following configuration:
@@ -117,7 +117,7 @@ org "MyCompany"
 mailto "admin@example.com"
 
 # Administrator email for critical alerts
-dumpuser "amandabackup"
+dumpuser "backup"
 
 #============================================================================
 # NETWORK AND COMMUNICATION SETTINGS
@@ -165,8 +165,8 @@ holdingdisk hd1 {
 #============================================================================
 
 # Using virtual tapes (disk-based storage)
-# Tapedev specifies the virtual tape device
-tapedev "file:/var/lib/amanda/vtapes/DailyBackup/slot{1,2,3,4,5,6,7,8,9,10}"
+# Tapedev specifies the virtual tape changer
+tapedev "chg-disk:/var/lib/amanda/vtapes/DailyBackup"
 
 # Define tape type for virtual tapes
 define tapetype DISK {
@@ -182,10 +182,8 @@ tapetype DISK
 labelstr "DailyBackup-[0-9][0-9]*"
 
 # Number of tapes in rotation
+tapecycle 10 tapes
 runtapes 1
-
-# Tape changer configuration for virtual tapes
-tpchanger "chg-disk:/var/lib/amanda/vtapes/DailyBackup"
 
 #============================================================================
 # SCHEDULING AND PRIORITY SETTINGS
@@ -248,11 +246,19 @@ define dumptype daily-backup {
     strategy standard
 }
 
-define dumptype mysql-backup {
-    comment "MySQL database backup"
+define application app-pgsql {
+    plugin "ampgsql"
+    property "HOST" "localhost"
+    property "USER" "backup"
+    property "PASSFILE" "/etc/amanda/DailyBackup/pgsql.passwd"
+    property "ARCHIVEDIR" "/var/lib/postgresql/wal_archive"
+}
+
+define dumptype postgresql-backup {
+    comment "PostgreSQL database backup"
     global
     program "APPLICATION"
-    application "ampgsql"        # For PostgreSQL, use ampsql for MySQL
+    application "app-pgsql"
     compress client best
     priority high
 }
@@ -283,7 +289,7 @@ define interface wan {
 Create an exclude list for files and directories to skip:
 
 ```bash
-sudo -u amandabackup nano /etc/amanda/DailyBackup/exclude.list
+sudo -u backup nano /etc/amanda/DailyBackup/exclude.list
 ```
 
 Add common exclusions:
@@ -349,51 +355,47 @@ sudo mkdir -p /var/lib/amanda/DailyBackup
 sudo mkdir -p /var/log/amanda/DailyBackup
 
 # Set ownership for all Amanda directories
-sudo chown -R amandabackup:amandabackup /var/lib/amanda
-sudo chown -R amandabackup:amandabackup /var/log/amanda
+sudo chown -R backup:backup /var/lib/amanda
+sudo chown -R backup:backup /var/log/amanda
 ```
 
-### Step 2: Initialize Virtual Tape Changer
+### Step 2: Verify Virtual Tape Changer Configuration
 
 ```bash
-# Create the tape changer configuration
-sudo -u amandabackup nano /var/lib/amanda/vtapes/DailyBackup/changer.conf
+# Verify that amanda.conf points at the chg-disk vtape root
+sudo -u backup amgetconf DailyBackup tapedev
 ```
 
-Add the changer configuration:
+The command should show the virtual tape changer:
 
 ```conf
-# Changer configuration for virtual tapes
-tpchanger "chg-disk"
-changerfile "/var/lib/amanda/vtapes/DailyBackup/changer-state"
-property "num-slot" "10"
-property "auto-create-slot" "yes"
+chg-disk:/var/lib/amanda/vtapes/DailyBackup
 ```
 
 ### Step 3: Initialize Tape Labels
 
 ```bash
 # Initialize labels for each virtual tape
-sudo -u amandabackup amlabel DailyBackup DailyBackup-01 slot 1
-sudo -u amandabackup amlabel DailyBackup DailyBackup-02 slot 2
-sudo -u amandabackup amlabel DailyBackup DailyBackup-03 slot 3
-sudo -u amandabackup amlabel DailyBackup DailyBackup-04 slot 4
-sudo -u amandabackup amlabel DailyBackup DailyBackup-05 slot 5
-sudo -u amandabackup amlabel DailyBackup DailyBackup-06 slot 6
-sudo -u amandabackup amlabel DailyBackup DailyBackup-07 slot 7
-sudo -u amandabackup amlabel DailyBackup DailyBackup-08 slot 8
-sudo -u amandabackup amlabel DailyBackup DailyBackup-09 slot 9
-sudo -u amandabackup amlabel DailyBackup DailyBackup-10 slot 10
+sudo -u backup amlabel DailyBackup DailyBackup-01 slot 1
+sudo -u backup amlabel DailyBackup DailyBackup-02 slot 2
+sudo -u backup amlabel DailyBackup DailyBackup-03 slot 3
+sudo -u backup amlabel DailyBackup DailyBackup-04 slot 4
+sudo -u backup amlabel DailyBackup DailyBackup-05 slot 5
+sudo -u backup amlabel DailyBackup DailyBackup-06 slot 6
+sudo -u backup amlabel DailyBackup DailyBackup-07 slot 7
+sudo -u backup amlabel DailyBackup DailyBackup-08 slot 8
+sudo -u backup amlabel DailyBackup DailyBackup-09 slot 9
+sudo -u backup amlabel DailyBackup DailyBackup-10 slot 10
 ```
 
 ### Step 4: Verify Tape Setup
 
 ```bash
 # Check tape changer status
-sudo -u amandabackup amtape DailyBackup show
+sudo -u backup amtape DailyBackup show
 
 # List all labeled tapes
-sudo -u amandabackup amtape DailyBackup inventory
+sudo -u backup amtape DailyBackup inventory
 ```
 
 ## Configuring Backup Sets (disklist)
@@ -403,7 +405,7 @@ The `disklist` file defines which directories on which hosts to back up. This is
 ### Create the Disklist File
 
 ```bash
-sudo -u amandabackup nano /etc/amanda/DailyBackup/disklist
+sudo -u backup nano /etc/amanda/DailyBackup/disklist
 ```
 
 Add your backup targets:
@@ -473,7 +475,7 @@ appserver.example.com /var/log exclude-system
 For more complex setups, you can create a separate file for each type of backup:
 
 ```bash
-# Include additional disklist files in amanda.conf by adding:
+# Include additional disklist files in disklist by adding:
 # includefile "/etc/amanda/DailyBackup/disklist.webservers"
 # includefile "/etc/amanda/DailyBackup/disklist.databases"
 ```
@@ -516,11 +518,11 @@ tape_server "backup-server.example.com"
 # Authentication method (must match server)
 auth "bsdtcp"
 
-# SSH key for amandabackup user (if using SSH authentication)
+# SSH key for backup user (if using SSH authentication)
 # ssh_keys "/var/lib/amanda/.ssh/id_rsa"
 
 # Compression settings
-compress fast
+# Compression is normally configured in the server-side dumptype
 ```
 
 ### Step 3: Configure Access Control
@@ -535,19 +537,19 @@ Add authorized servers:
 
 ```text
 # /var/lib/amanda/.amandahosts
-# Format: hostname amandabackup-user
+# Format: hostname backup-user
 # Allow backup server to initiate backups
 
-backup-server.example.com amandabackup amdump
-backup-server.example.com amandabackup amindexd
-backup-server.example.com amandabackup amidxtaped
-localhost amandabackup amdump
+backup-server.example.com backup amdump
+backup-server.example.com backup amindexd
+backup-server.example.com backup amidxtaped
+localhost backup amdump
 ```
 
 Set proper permissions:
 
 ```bash
-sudo chown amandabackup:amandabackup /var/lib/amanda/.amandahosts
+sudo chown backup:backup /var/lib/amanda/.amandahosts
 sudo chmod 600 /var/lib/amanda/.amandahosts
 ```
 
@@ -555,8 +557,7 @@ sudo chmod 600 /var/lib/amanda/.amandahosts
 
 ```bash
 # Allow Amanda traffic from backup server
-sudo ufw allow from backup-server-ip to any port 10080:10083 proto tcp
-sudo ufw allow from backup-server-ip to any port 10080:10083 proto udp
+sudo ufw allow from backup-server-ip to any port 10080 proto tcp
 ```
 
 ### Step 5: Test Client Connectivity
@@ -565,10 +566,10 @@ From the server, test connectivity to each client:
 
 ```bash
 # Check if Amanda can connect to client
-sudo -u amandabackup amcheck -c DailyBackup webserver.example.com
+sudo -u backup amcheck -c DailyBackup webserver.example.com
 
 # Run a test estimate
-sudo -u amandabackup amadmin DailyBackup estimate webserver.example.com /etc
+sudo -u backup amadmin DailyBackup estimate webserver.example.com /etc
 ```
 
 ## Server Access Configuration
@@ -582,15 +583,15 @@ sudo nano /var/lib/amanda/.amandahosts
 ```text
 # /var/lib/amanda/.amandahosts on backup server
 # Allow localhost operations
-localhost amandabackup amdump
-localhost amandabackup amindexd
-localhost amandabackup amidxtaped
+localhost backup amdump
+localhost backup amindexd
+localhost backup amidxtaped
 
 # Allow clients to request restores
-webserver.example.com amandabackup amrecover
-dbserver.example.com amandabackup amrecover
-fileserver.example.com amandabackup amrecover
-appserver.example.com amandabackup amrecover
+webserver.example.com root amrecover
+dbserver.example.com root amrecover
+fileserver.example.com root amrecover
+appserver.example.com root amrecover
 
 # For recovery server operations
 localhost root amrecover
@@ -604,13 +605,13 @@ The `amdump` command is the primary tool for executing backups.
 
 ```bash
 # Run a full backup for the DailyBackup configuration
-sudo -u amandabackup amdump DailyBackup
+sudo -u backup amdump DailyBackup
 
 # Run backup with verbose output
-sudo -u amandabackup amdump DailyBackup --no-taper
+sudo -u backup amdump --no-taper DailyBackup
 
 # Run backup for specific hosts only (useful for testing)
-sudo -u amandabackup amdump DailyBackup webserver.example.com
+sudo -u backup amdump DailyBackup webserver.example.com
 ```
 
 ### Scheduling Automated Backups
@@ -618,7 +619,7 @@ sudo -u amandabackup amdump DailyBackup webserver.example.com
 Create a cron job for automated backups:
 
 ```bash
-sudo -u amandabackup crontab -e
+sudo -u backup crontab -e
 ```
 
 Add the scheduled backup:
@@ -648,64 +649,64 @@ Amanda provides several tools to monitor and verify backup status.
 
 ```bash
 # Run all checks (server, clients, tapes)
-sudo -u amandabackup amcheck DailyBackup
+sudo -u backup amcheck DailyBackup
 
 # Check clients only
-sudo -u amandabackup amcheck -c DailyBackup
+sudo -u backup amcheck -c DailyBackup
 
 # Check tapes only
-sudo -u amandabackup amcheck -t DailyBackup
+sudo -u backup amcheck -t DailyBackup
 
 # Check server configuration only
-sudo -u amandabackup amcheck -s DailyBackup
+sudo -u backup amcheck -s DailyBackup
 
 # Send email report
-sudo -u amandabackup amcheck -m DailyBackup
+sudo -u backup amcheck -m DailyBackup
 ```
 
 ### amreport - Backup Reports
 
 ```bash
 # Generate text report for last backup
-sudo -u amandabackup amreport DailyBackup
+sudo -u backup amreport DailyBackup
 
 # Generate report for specific date
-sudo -u amandabackup amreport DailyBackup --date 20260115
+sudo -u backup amreport DailyBackup --log /var/log/amanda/DailyBackup/log.20260115.0
 
 # Email the report
-sudo -u amandabackup amreport DailyBackup | mail -s "Backup Report" admin@example.com
+sudo -u backup amreport DailyBackup | mail -s "Backup Report" admin@example.com
 ```
 
 ### amstatus - Real-time Status
 
 ```bash
 # Monitor running backup
-sudo -u amandabackup amstatus DailyBackup
+sudo -u backup amstatus DailyBackup
 
 # Detailed status with client information
-sudo -u amandabackup amstatus DailyBackup --detail
+sudo -u backup amstatus DailyBackup --detail
 ```
 
 ### amadmin - Administrative Commands
 
 ```bash
 # Show backup database information
-sudo -u amandabackup amadmin DailyBackup info
+sudo -u backup amadmin DailyBackup info
 
 # List all hosts and their backup states
-sudo -u amandabackup amadmin DailyBackup disklist
+sudo -u backup amadmin DailyBackup disklist
 
 # Show tape usage
-sudo -u amandabackup amadmin DailyBackup tape
+sudo -u backup amadmin DailyBackup tape
 
 # Show balance of scheduled backups
-sudo -u amandabackup amadmin DailyBackup balance
+sudo -u backup amadmin DailyBackup balance
 
 # Force a full backup for specific host/disk
-sudo -u amandabackup amadmin DailyBackup force webserver.example.com /etc
+sudo -u backup amadmin DailyBackup force webserver.example.com /etc
 
 # List all versions of a specific backup
-sudo -u amandabackup amadmin DailyBackup find webserver.example.com /etc
+sudo -u backup amadmin DailyBackup find webserver.example.com /etc
 ```
 
 ## Restoring Files
@@ -718,7 +719,7 @@ The `amrecover` command provides an interactive FTP-like interface:
 
 ```bash
 # Start interactive recovery session
-sudo -u amandabackup amrecover DailyBackup
+sudo amrecover -C DailyBackup
 
 # Once in the amrecover shell:
 amrecover> sethost webserver.example.com
@@ -737,15 +738,15 @@ For scripted or direct restores:
 
 ```bash
 # Extract specific backup to current directory
-sudo -u amandabackup amfetchdump -p DailyBackup webserver.example.com /etc \
+sudo -u backup amfetchdump -p DailyBackup webserver.example.com /etc \
     | tar xvf -
 
 # Extract with specific date
-sudo -u amandabackup amfetchdump -p DailyBackup webserver.example.com /etc \
+sudo -u backup amfetchdump -p DailyBackup webserver.example.com /etc \
     20260115 | tar xvf -
 
 # Extract to specific directory
-sudo -u amandabackup amfetchdump -p DailyBackup webserver.example.com /etc \
+sudo -u backup amfetchdump -p DailyBackup webserver.example.com /etc \
     | tar xvf - -C /tmp/restore/
 ```
 
@@ -754,11 +755,11 @@ sudo -u amandabackup amfetchdump -p DailyBackup webserver.example.com /etc \
 For restoring directly from tape or vtape:
 
 ```bash
-# List contents of a virtual tape
-sudo -u amandabackup amrestore --list /var/lib/amanda/vtapes/DailyBackup/slot1
+# List available cataloged backups before using low-level restore
+sudo -u backup amadmin DailyBackup find webserver.example.com /etc
 
 # Restore specific file from tape
-sudo -u amandabackup amrestore /var/lib/amanda/vtapes/DailyBackup/slot1 \
+sudo -u backup amrestore file:/var/lib/amanda/vtapes/DailyBackup \
     webserver.example.com /etc
 ```
 
@@ -785,9 +786,9 @@ mkdir -p "$DEST"
 cd "$DEST"
 
 if [ -n "$DATE" ]; then
-    sudo -u amandabackup amfetchdump -p "$CONFIG" "$HOST" "$DISK" "$DATE" | tar xvf -
+    sudo -u backup amfetchdump -p "$CONFIG" "$HOST" "$DISK" "$DATE" | tar xvf -
 else
-    sudo -u amandabackup amfetchdump -p "$CONFIG" "$HOST" "$DISK" | tar xvf -
+    sudo -u backup amfetchdump -p "$CONFIG" "$HOST" "$DISK" | tar xvf -
 fi
 
 echo "Restore completed to: $DEST"
@@ -875,16 +876,16 @@ tapecycle 8 tapes      # 2 months of backups
 
 ```bash
 # View tape status and usage
-sudo -u amandabackup amtape DailyBackup inventory
+sudo -u backup amtape DailyBackup inventory
 
 # View when tapes can be recycled
-sudo -u amandabackup amadmin DailyBackup tape
+sudo -u backup amadmin DailyBackup tape
 
 # Manually mark tape as reusable (use with caution)
-sudo -u amandabackup amadmin DailyBackup reuse DailyBackup-05
+sudo -u backup amadmin DailyBackup reuse DailyBackup-05
 
 # Remove tape from rotation (e.g., for offsite storage)
-sudo -u amandabackup amadmin DailyBackup no-reuse DailyBackup-05
+sudo -u backup amadmin DailyBackup no-reuse DailyBackup-05
 ```
 
 ### Implementing Long-term Retention
@@ -906,7 +907,7 @@ runspercycle 1
 tapecycle 12            # One year retention
 
 # Use separate storage location
-tpchanger "chg-disk:/var/lib/amanda/vtapes/MonthlyArchive"
+tapedev "chg-disk:/var/lib/amanda/vtapes/MonthlyArchive"
 ```
 
 ## Advanced Configuration
@@ -929,8 +930,8 @@ Create encryption key:
 
 ```bash
 # Generate encryption key
-sudo -u amandabackup mkdir -p /var/lib/amanda/.gnupg
-sudo -u amandabackup gpg --gen-key
+sudo -u backup mkdir -p /var/lib/amanda/.gnupg
+sudo -u backup gpg --gen-key
 ```
 
 ### Application-specific Backups
@@ -938,18 +939,19 @@ sudo -u amandabackup gpg --gen-key
 For database backups using application APIs:
 
 ```conf
-# MySQL backup application
-define application app-mysql {
+# PostgreSQL backup application
+define application app-pgsql {
     plugin "ampgsql"
-    property "host" "localhost"
-    property "user" "amandabackup"
-    property "password-file" "/etc/amanda/DailyBackup/mysql.passwd"
+    property "HOST" "localhost"
+    property "USER" "backup"
+    property "PASSFILE" "/etc/amanda/DailyBackup/pgsql.passwd"
+    property "ARCHIVEDIR" "/var/lib/postgresql/wal_archive"
 }
 
-define dumptype mysql-app {
+define dumptype postgresql-app {
     global
     program "APPLICATION"
-    application "app-mysql"
+    application "app-pgsql"
 }
 ```
 
@@ -998,13 +1000,12 @@ sudo cat /var/lib/amanda/.amandahosts
 # Solution: Fix ownership and permissions
 
 # Reset permissions on server
-sudo chown -R amandabackup:amandabackup /var/lib/amanda
-sudo chown -R amandabackup:amandabackup /etc/amanda
-sudo chmod 700 /var/lib/amanda/.amandahosts
+sudo chown -R backup:backup /var/lib/amanda
+sudo chown -R backup:backup /etc/amanda
 sudo chmod 600 /var/lib/amanda/.amandahosts
 
 # Reset permissions on client
-sudo chown amandabackup:amandabackup /var/lib/amanda/.amandahosts
+sudo chown backup:backup /var/lib/amanda/.amandahosts
 sudo chmod 600 /var/lib/amanda/.amandahosts
 ```
 
@@ -1015,12 +1016,12 @@ sudo chmod 600 /var/lib/amanda/.amandahosts
 # Solution: Check tape status and add more tapes
 
 # Check tape inventory
-sudo -u amandabackup amtape DailyBackup inventory
+sudo -u backup amtape DailyBackup inventory
 
 # Add new tape
 sudo mkdir -p /var/lib/amanda/vtapes/DailyBackup/slot11
-sudo chown amandabackup:amandabackup /var/lib/amanda/vtapes/DailyBackup/slot11
-sudo -u amandabackup amlabel DailyBackup DailyBackup-11 slot 11
+sudo chown backup:backup /var/lib/amanda/vtapes/DailyBackup/slot11
+sudo -u backup amlabel DailyBackup DailyBackup-11 slot 11
 ```
 
 #### Issue 4: Backup Interrupted
@@ -1030,13 +1031,13 @@ sudo -u amandabackup amlabel DailyBackup DailyBackup-11 slot 11
 # Solution: Clean up and retry
 
 # Run cleanup
-sudo -u amandabackup amcleanup -k DailyBackup
+sudo -u backup amcleanup -k DailyBackup
 
 # Flush pending data
-sudo -u amandabackup amflush DailyBackup
+sudo -u backup amflush DailyBackup
 
 # Check for problems
-sudo -u amandabackup amcheck DailyBackup
+sudo -u backup amcheck DailyBackup
 ```
 
 #### Issue 5: Holding Disk Full
@@ -1046,13 +1047,13 @@ sudo -u amandabackup amcheck DailyBackup
 # Solution: Flush to tape or increase holding disk
 
 # Flush holding disk to tape
-sudo -u amandabackup amflush DailyBackup
+sudo -u backup amflush DailyBackup
 
 # Check holding disk usage
 df -h /var/lib/amanda/holding
 
 # Clear old holding data (if stuck)
-sudo -u amandabackup ls /var/lib/amanda/holding/
+sudo -u backup ls /var/lib/amanda/holding/
 ```
 
 ### Debug Mode
@@ -1061,10 +1062,10 @@ Enable debug logging for troubleshooting:
 
 ```bash
 # Run amcheck with debug output
-sudo -u amandabackup amcheck DailyBackup 2>&1 | tee /tmp/amcheck-debug.log
+sudo -u backup amcheck DailyBackup 2>&1 | tee /tmp/amcheck-debug.log
 
-# Run backup with debug
-sudo -u amandabackup amdump DailyBackup --debug 9
+# Run client checks with verbose client messages
+sudo -u backup amcheck --client-verbose DailyBackup
 
 # Check debug logs
 ls /tmp/amanda/
@@ -1090,8 +1091,7 @@ cat /tmp/amanda/server/amdump.*
 
 ```bash
 # Configure firewall to allow only backup server
-sudo ufw allow from backup-server-ip to any port 10080:10083 proto tcp
-sudo ufw allow from backup-server-ip to any port 10080:10083 proto udp
+sudo ufw allow from backup-server-ip to any port 10080 proto tcp
 
 # Consider using SSH tunneling for WAN backups
 # Or configure Amanda to use SSH authentication
@@ -1143,9 +1143,9 @@ mount -o noatime /dev/sdb1 /var/lib/amanda/holding
 ### Client-side Optimization
 
 ```conf
-# In client amanda.conf
+# In server dumptype settings
 # Use faster compression
-compress fast
+compress client fast
 
 # Or disable compression for fast networks
 compress none
