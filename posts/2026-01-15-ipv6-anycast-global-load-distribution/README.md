@@ -338,9 +338,10 @@ FRR is the successor to Quagga, offering comprehensive routing protocol support.
 **Install FRR**
 
 ```bash
-# Add FRR repository
-curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
-echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
+# Add FRR repository (signed-by keyring; apt-key is deprecated)
+curl -s https://deb.frrouting.org/frr/keys.gpg | \
+    sudo tee /usr/share/keyrings/frrouting.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/frrouting.gpg] https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
     sudo tee /etc/apt/sources.list.d/frr.list
 
 sudo apt update
@@ -615,7 +616,8 @@ Your application should expose a comprehensive health endpoint:
 # FastAPI health check endpoint example
 from fastapi import FastAPI, Response
 import asyncpg
-import aioredis
+# The standalone aioredis package is deprecated; use redis.asyncio (redis-py 4.2+)
+from redis import asyncio as aioredis
 
 app = FastAPI()
 
@@ -948,7 +950,7 @@ curl -s "https://stat.ripe.net/data/looking-glass/data.json?resource=2001:db8:ab
 # Visit: https://bgp.he.net/net/2001:db8:abcd::/48
 
 # BGPStream for historical data
-bgpstream -w 1609459200,1609545600 -p 2001:db8:abcd::/48
+bgpreader -w 1609459200,1609545600 -k 2001:db8:abcd::/48
 ```
 
 ---
@@ -975,7 +977,7 @@ Create ROA (Route Origin Authorization) records:
 apt install routinator
 
 # Check ROA validity
-routinator vrps --filter-prefix 2001:db8:abcd::/48
+routinator vrps --select-prefix 2001:db8:abcd::/48
 ```
 
 **BIRD RPKI Configuration:**
@@ -1227,7 +1229,7 @@ birdc show route export upstream1
 # Minimum /48 for IPv6 global announcements
 
 # Verify RPKI ROA exists and is valid
-rpki-client -v 2001:db8:abcd::/48
+routinator vrps --select-prefix 2001:db8:abcd::/48
 ```
 
 ### BGP Session Not Establishing
