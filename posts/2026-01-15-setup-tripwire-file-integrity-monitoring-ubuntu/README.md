@@ -200,11 +200,13 @@ The policy file defines which files and directories Tripwire monitors and what c
 # g = group ID
 # t = file type
 # s = file size
-# d = device ID of disk containing file
+# d = ID of device on which inode resides
 # b = number of blocks allocated
 # m = modification timestamp
 # a = access timestamp
-# c = inode creation/change timestamp
+# c = inode status change timestamp
+# l = growing file
+# r = ID of device pointed to by inode (device objects only)
 # C = CRC-32 hash
 # H = Haval hash
 # M = MD5 hash
@@ -219,8 +221,8 @@ The policy file defines which files and directories Tripwire monitors and what c
 # SEC_LOG       = $(Growing)            # Log files (size grows)
 # SEC_INVARIANT = +tpug                 # Static attributes only
 
-# IgnoreNone = +pinugtsdrbamcCMSH       # Track all properties
-# IgnoreAll  = -pinugtsdrbamcCMSH       # Ignore all properties
+# IgnoreNone = +pinugtsdrbamcCMSH-l     # Track all properties except "growing"
+# IgnoreAll  = -pinugtsdrlbamcCMSH      # Ignore all properties
 # ReadOnly   = +pinugtsdbmCM-rlacSH     # Read-only files
 # Dynamic    = +pinugtd-srlbamcCMSH     # Files that change often
 # Growing    = +pinugtdl-srbamcCMSH     # Files that only grow
@@ -516,10 +518,10 @@ SIG_HI        = 100 ;                 # High severity
 )
 {
   # Apache configuration
-  !/etc/apache2            -> $(SEC_CONFIG) (recurse = true) ;
+  # /etc/apache2           -> $(SEC_CONFIG) (recurse = true) ;
 
   # Nginx configuration
-  !/etc/nginx              -> $(SEC_CONFIG) (recurse = true) ;
+  # /etc/nginx             -> $(SEC_CONFIG) (recurse = true) ;
 }
 
 # ============================================
@@ -791,7 +793,8 @@ After legitimate system changes (updates, configuration modifications), update t
 
 ```bash
 # Method 1: Interactive update using the latest report
-sudo tripwire --update --twrfile /var/lib/tripwire/report/$(hostname)-$(date +%Y%m%d).twr
+LATEST_REPORT=$(ls -t /var/lib/tripwire/report/*.twr | head -n 1)
+sudo tripwire --update --twrfile "$LATEST_REPORT"
 
 # Method 2: Run check and update in one command
 sudo tripwire --check --interactive
@@ -810,7 +813,7 @@ When running an interactive update:
 
 1. Tripwire opens the report in your configured editor
 2. Review each changed file in the report
-3. Add an 'x' before each entry you want to accept:
+3. Leave an 'x' before each entry you want to accept, and remove it from entries you do not want to accept:
    ```text
    [x] "/etc/passwd"
    [ ] "/etc/ssh/sshd_config"  # Don't accept this unexpected change
@@ -854,8 +857,8 @@ Configure Tripwire to send email alerts when violations are detected.
 First, ensure your system can send emails:
 
 ```bash
-# Install mailutils for email capability
-sudo apt install mailutils -y
+# Install mailutils and a sendmail-compatible MTA for email capability
+sudo apt install mailutils postfix -y
 
 # Test email functionality
 echo "Test email from Tripwire server" | mail -s "Tripwire Test" admin@example.com
@@ -879,7 +882,7 @@ SMTPHOST      =smtp.example.com
 # Alternative: Use SMTP directly (uncomment and set MAILMETHOD=SMTP)
 
 SMTPPORT      =25
-# SMTP port (25, 587, or 465 for SSL)
+# SMTP port used by your SMTP server
 
 EMAILREPORTLEVEL =3
 # How much detail in email reports:
@@ -930,8 +933,8 @@ In your policy file, specify different recipients per rule:
 # Run a check with email notification
 sudo tripwire --check --email-report
 
-# Force an email report even with no violations
-sudo tripwire --check --email-report --no-tty-output
+# Test Tripwire email delivery directly
+sudo tripwire --test --email admin@example.com
 ```
 
 ## Automated Scanning with Cron
@@ -1428,10 +1431,12 @@ sudo twadmin --print-cfgfile
 sudo twadmin --print-polfile
 
 # View database information
-sudo twadmin --print-dbfile --local-keyfile /etc/tripwire/$(hostname)-local.key
+sudo twprint --print-dbfile --local-keyfile /etc/tripwire/$(hostname)-local.key
 
-# Test policy syntax without compiling
-sudo twadmin --check-polfile /etc/tripwire/twpol.txt
+# Validate policy syntax by compiling to a temporary encoded file without signing
+sudo twadmin --create-polfile --no-encryption \
+    --polfile /tmp/tw.pol /etc/tripwire/twpol.txt
+sudo rm /tmp/tw.pol
 
 # Verify Tripwire installation
 tripwire --version
