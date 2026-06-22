@@ -83,8 +83,8 @@ dig +short "$DOMAIN" DS @$(dig +short "$PARENT" NS | head -1)
 # Validate the chain
 echo ""
 echo "4. Full DNSSEC validation..."
-dig +sigchase +trusted-key=/etc/trusted-key.key "$DOMAIN" A 2>/dev/null || \
-dig +dnssec +cd "$DOMAIN" A
+delv "$DOMAIN" A 2>/dev/null || \
+dig +dnssec "$DOMAIN" A
 
 echo ""
 echo "=== Check Complete ==="
@@ -457,9 +457,11 @@ class DNSSECMonitor:
                 return False
 
         except FileNotFoundError:
-            # delv not available, try alternative validation
+            # delv not available, try alternative validation.
+            # Query a validating resolver WITHOUT +cd so the AD
+            # (Authenticated Data) flag is actually set on success.
             result = subprocess.run(
-                ["dig", "+dnssec", "+cd", self.domain, "A"],
+                ["dig", "+dnssec", self.domain, "A"],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -764,9 +766,10 @@ class DNSSECMonitor {
 
   async validateChain(domain) {
     try {
-      const output = await this.runDig(domain, 'A', ['+sigchase']);
-      return output.toLowerCase().includes('validated') ||
-             output.includes('flags:') && output.includes(' ad');
+      // Query a validating resolver (runDig already adds +dnssec) and
+      // check for the AD (Authenticated Data) flag in the header.
+      const output = await this.runDig(domain, 'A');
+      return output.includes('flags:') && output.includes(' ad');
     } catch {
       return false;
     }
