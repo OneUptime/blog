@@ -803,7 +803,7 @@ echo -e "\n=== Check Complete ==="
 Understanding s3fs limitations helps you make informed decisions:
 
 1. **Performance**: Slower than local filesystems due to network latency
-2. **Consistency**: S3's eventual consistency can cause issues
+2. **Consistency**: While S3 itself now provides strong read-after-write consistency, s3fs's local stat cache can still serve stale metadata across multiple clients
 3. **No atomic operations**: Some filesystem operations aren't truly atomic
 4. **Random writes**: Poor performance for random write workloads
 5. **File locking**: No support for POSIX file locking
