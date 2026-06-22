@@ -1058,7 +1058,7 @@ export const useTodoStore = create<TodoState & TodoActions>()(
 
 While React Native does not have browser devtools, you can still debug Zustand stores effectively:
 
-### Using Flipper Plugin
+### Using Devtools Middleware
 
 ```typescript
 // stores/debuggableStore.ts
@@ -1070,7 +1070,8 @@ interface DebugState {
   increment: () => void;
 }
 
-// Enable devtools in development
+// Enable devtools in development when your debugging setup provides
+// a Redux DevTools-compatible extension
 const createStore = <T>(
   storeCreator: StateCreator<T, [], []>,
   name: string
@@ -1257,14 +1258,17 @@ stores/
 
 ```typescript
 // stores/index.ts
+import { useAuthStore } from './authStore';
+import { useUserStore } from './userStore';
+import { useCartStore } from './cartStore';
+import { useProductStore } from './productStore';
+import { useUIStore } from './uiStore';
+
 export { useAuthStore } from './authStore';
 export { useUserStore } from './userStore';
 export { useCartStore } from './cartStore';
 export { useProductStore } from './productStore';
 export { useUIStore } from './uiStore';
-
-// Combined hook for common selections
-import { useShallow } from 'zustand/react/shallow';
 
 export function useAppState() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -1384,16 +1388,13 @@ import { useCartStore } from './cartStore';
 
 export function initializeStoreSync() {
   // When auth state changes, update related stores
-  const unsubAuth = useAuthStore.subscribe(
-    (state) => state.isAuthenticated,
-    (isAuthenticated, wasAuthenticated) => {
-      if (wasAuthenticated && !isAuthenticated) {
-        // User logged out - clear user data
-        useUserStore.getState().reset();
-        useCartStore.getState().clearCart();
-      }
+  const unsubAuth = useAuthStore.subscribe((state, previousState) => {
+    if (previousState.isAuthenticated && !state.isAuthenticated) {
+      // User logged out - clear user data
+      useUserStore.getState().reset();
+      useCartStore.getState().clearCart();
     }
-  );
+  });
 
   return () => {
     unsubAuth();
