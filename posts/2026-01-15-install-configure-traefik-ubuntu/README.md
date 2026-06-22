@@ -567,8 +567,9 @@ sudo usermod -aG docker traefik
 ls -la /etc/traefik/acme.json
 
 # Service not discovered
-# Check dynamic config syntax
-traefik validate --configFile=/etc/traefik/traefik.yml
+# Traefik has no config-validate command; restart and check logs for syntax errors
+sudo systemctl restart traefik
+sudo journalctl -u traefik -n 50 --no-pager
 ```
 
 ---
