@@ -16,7 +16,7 @@ Caddy is a powerful, enterprise-ready web server with automatic HTTPS. It obtain
 flowchart LR
     subgraph Caddy["Caddy Features"]
         direction TB
-        F1["✓ Automatic HTTPS - Let's Encrypt"]
+        F1["✓ Automatic HTTPS - Let's Encrypt/ZeroSSL"]
         F2["✓ Automatic certificate renewal"]
         F3["✓ HTTP/2 and HTTP/3 support"]
         F4["✓ Simple configuration - Caddyfile"]
@@ -32,8 +32,6 @@ flowchart LR
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   caddy:
@@ -66,7 +64,7 @@ app.example.com {
 ```
 
 That's it! Caddy automatically:
-- Obtains SSL certificate from Let's Encrypt
+- Obtains TLS certificate from a public ACME CA such as Let's Encrypt or ZeroSSL
 - Redirects HTTP to HTTPS
 - Renews certificates before expiry
 
@@ -92,8 +90,6 @@ admin.example.com {
 ### Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   caddy:
     image: caddy:2
@@ -162,7 +158,7 @@ api.example.com {
     reverse_proxy {
         to api-v1:3000 api-v2:3000
 
-        lb_policy weighted_round_robin
+        lb_policy weighted_round_robin 3 1
         lb_try_duration 5s
     }
 }
@@ -190,7 +186,7 @@ services:
 ```
 
 ```text
-# Caddyfile - Caddy discovers all replicas via DNS
+# Caddyfile - Docker DNS resolves the service name for replicas
 api.example.com {
     reverse_proxy api:3000
 }
@@ -272,7 +268,7 @@ api.example.com {
 
 ```text
 admin.example.com {
-    basicauth {
+    basic_auth {
         # Generate: caddy hash-password
         admin $2a$14$...
     }
@@ -338,8 +334,6 @@ app.localhost {
 ### Development Compose
 
 ```yaml
-version: '3.8'
-
 services:
   caddy:
     image: caddy:2
@@ -367,8 +361,6 @@ volumes:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   caddy:
     image: caddy:2-alpine
@@ -383,9 +375,6 @@ services:
       - caddy_config:/config
     networks:
       - frontend
-    environment:
-      - ACME_AGREE=true
-
   api:
     image: myapi:latest
     restart: unless-stopped
@@ -541,9 +530,8 @@ example.com {
 | Load Balancing | List multiple upstreams |
 | Health Checks | health_uri directive |
 | Headers | header directive |
-| Auth | basicauth or forward_auth |
+| Auth | basic_auth or forward_auth |
 | Compression | encode gzip zstd |
 | Logs | log directive |
 
 Caddy provides the simplest path to automatic HTTPS with minimal configuration. Use it for quick setups, automatic certificate management, and production deployments. For more complex routing needs, see our post on [Docker with Traefik](https://oneuptime.com/blog/post/2026-01-16-docker-traefik-reverse-proxy/view).
-
