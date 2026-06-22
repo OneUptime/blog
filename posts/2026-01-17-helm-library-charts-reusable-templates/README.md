@@ -42,7 +42,7 @@ flowchart TB
 Library charts:
 - Have `type: library` in Chart.yaml
 - Cannot be installed directly
-- Only contain template files (prefixed with `_`)
+- Provide reusable named templates, usually in files prefixed with `_`
 - Are included as dependencies in application charts
 
 ## Create a Library Chart
@@ -58,7 +58,6 @@ my-library/
 │   ├── _service.tpl
 │   ├── _ingress.tpl
 │   ├── _configmap.tpl
-│   ├── _secret.tpl
 │   ├── _hpa.tpl
 │   └── _pdb.tpl
 └── values.yaml
@@ -523,6 +522,10 @@ containerPort: 8080
 service:
   type: ClusterIP
   port: 80
+
+serviceAccount:
+  create: true
+  name: ""
 
 ingress:
   enabled: true
