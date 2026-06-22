@@ -84,7 +84,6 @@ auditInterval: 60
 
 # Audit configuration
 audit:
-  replicas: 1
   resources:
     limits:
       cpu: 1000m
@@ -95,6 +94,18 @@ audit:
 
 # Controller manager
 controllerManager:
+  priorityClassName: system-cluster-critical
+  podSecurityContext:
+    fsGroup: 999
+    supplementalGroups:
+      - 999
+  exemptNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - gatekeeper-system
+  exemptNamespacePrefixes:
+    - "kube-"
   resources:
     limits:
       cpu: 1000m
@@ -116,28 +127,11 @@ controllerManager:
                     - controller-manager
             topologyKey: kubernetes.io/hostname
 
-# Webhook configuration
-webhookConfigurationPriorityClassName: system-cluster-critical
-podSecurityContext:
-  fsGroup: 1000
-
-# Exemptions
-exemptNamespaces:
-  - kube-system
-  - kube-public
-  - kube-node-lease
-  - gatekeeper-system
-
-exemptNamespacePrefixes:
-  - "kube-"
-
 # Mutation support
-mutatingWebhook:
-  enabled: true
+disableMutation: false
   
 # External data provider
-externalData:
-  enabled: false
+enableExternalData: false
 
 # Logging
 logLevel: INFO
@@ -150,11 +144,12 @@ emitAuditEvents: true
 
 # Validation webhook
 validatingWebhookFailurePolicy: Fail
-validatingWebhookTimeout: 5
+validatingWebhookTimeoutSeconds: 5
 validatingWebhookAnnotations: {}
 
 # Metrics
-metricsBackend: prometheus
+metricsBackends:
+  - prometheus
 ```
 
 ```bash
@@ -265,33 +260,33 @@ spec:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8scontainerlimits
-        
-        missing(obj, field) = true {
-          not obj[field]
-        }
-        
-        missing(obj, field) = true {
-          obj[field] == ""
-        }
-        
+
         is_exempt(container) {
           exempt_images := object.get(input.parameters, "exemptImages", [])
           img := container.image
           exemption := exempt_images[_]
           glob.match(exemption, [], img)
         }
+
+        containers[container] {
+          container := input.review.object.spec.containers[_]
+        }
+
+        containers[container] {
+          container := input.review.object.spec.template.spec.containers[_]
+        }
         
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := containers[_]
           not is_exempt(container)
-          missing(container.resources.limits, "cpu")
+          not container.resources.limits.cpu
           msg := sprintf("Container <%v> does not have CPU limit", [container.name])
         }
         
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := containers[_]
           not is_exempt(container)
-          missing(container.resources.limits, "memory")
+          not container.resources.limits.memory
           msg := sprintf("Container <%v> does not have memory limit", [container.name])
         }
 ```
@@ -665,12 +660,12 @@ spec:
 
 ## Monitoring
 
-### ServiceMonitor
+### PodMonitor
 
 ```yaml
-# gatekeeper-servicemonitor.yaml
+# gatekeeper-podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: gatekeeper
   namespace: monitoring
@@ -681,7 +676,7 @@ spec:
   namespaceSelector:
     matchNames:
       - gatekeeper-system
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -699,14 +694,14 @@ spec:
   groups:
     - name: gatekeeper
       rules:
-        - alert: GatekeeperWebhookErrors
+        - alert: GatekeeperAdmissionDenies
           expr: |
-            sum(rate(gatekeeper_controller_webhook_request_errors_total[5m])) > 0
+            sum(rate(gatekeeper_validation_request_count{admission_status="deny"}[5m])) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: Gatekeeper webhook errors detected
+            summary: Gatekeeper admission denials detected
             
         - alert: GatekeeperConstraintViolations
           expr: |
@@ -718,14 +713,14 @@ spec:
             summary: Policy violations detected
             description: "{{ $value }} policy violations exist"
             
-        - alert: GatekeeperControllerDown
+        - alert: GatekeeperMetricsMissing
           expr: |
-            absent(up{job="gatekeeper"})
+            absent(gatekeeper_constraints)
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: Gatekeeper controller is down
+            summary: Gatekeeper metrics are unavailable
 ```
 
 ## Troubleshooting
