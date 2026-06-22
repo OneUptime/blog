@@ -21,8 +21,8 @@ flowchart TB
   
   subgraph "Helm Operations"
     diff[helm diff]
-    apply[helm upgrade]
-    sync[helm sync]
+    apply[diff then sync]
+    sync[helm upgrade --install]
   end
   
   subgraph "Kubernetes Clusters"
@@ -54,8 +54,9 @@ flowchart TB
 brew install helmfile
 
 # Linux
-wget https://github.com/helmfile/helmfile/releases/download/v0.159.0/helmfile_0.159.0_linux_amd64.tar.gz
-tar xzf helmfile_0.159.0_linux_amd64.tar.gz
+HELMFILE_VERSION=1.5.5
+curl -L https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz -o helmfile.tar.gz
+tar xzf helmfile.tar.gz helmfile
 sudo mv helmfile /usr/local/bin/
 
 # Install helm-diff plugin (required)
@@ -233,6 +234,7 @@ releases:
   - name: myapp
     namespace: {{ .Values.namespace }}
     chart: ./charts/myapp
+    missingFileHandler: Warn
     values:
       # Base values (always applied)
       - values/myapp/base.yaml
@@ -242,9 +244,8 @@ releases:
       
       # Optional overrides (ignored if missing)
       - values/myapp/{{ .Environment.Name }}-overrides.yaml
-    
-    # Inline values
-    values:
+
+      # Inline values
       - replicaCount: {{ .Values.replicaCount }}
         image:
           repository: myregistry.io/myapp
@@ -335,8 +336,8 @@ EOF
 # Encrypt with SOPS
 sops -e -i secrets/production/myapp-secrets.yaml
 
-# Or use age encryption
-sops --age $(cat ~/.sops/age.txt) -e -i secrets/production/myapp-secrets.yaml
+# Or specify an age recipient directly
+sops --age age1production... -e -i secrets/production/myapp-secrets.yaml
 ```
 
 ### SOPS Configuration
@@ -487,7 +488,7 @@ environments:
 ---
 
 helmDefaults:
-  kubeContext: {{ .Environment.Values.kubeContext | default "default" }}
+  kubeContext: {{ .Environment.KubeContext | default "default" }}
 
 releases:
   - name: myapp
@@ -533,18 +534,20 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
       
       - name: Setup Helmfile
         run: |
-          wget -q https://github.com/helmfile/helmfile/releases/download/v0.159.0/helmfile_0.159.0_linux_amd64.tar.gz
-          tar xzf helmfile_0.159.0_linux_amd64.tar.gz
+          HELMFILE_VERSION=1.5.5
+          curl -L https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz -o helmfile.tar.gz
+          tar xzf helmfile.tar.gz helmfile
           sudo mv helmfile /usr/local/bin/
           helm plugin install https://github.com/databus23/helm-diff
       
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets[format('KUBECONFIG_{0}', matrix.environment)] }}
       
       - name: Helmfile Diff
@@ -576,8 +579,8 @@ helmfile lint
 # Check environment values
 helmfile -e production build
 
-# Force re-download charts
-helmfile deps --force
+# Rebuild chart dependencies
+helmfile deps
 ```
 
 ## Best Practices
