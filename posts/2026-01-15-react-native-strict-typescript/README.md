@@ -64,6 +64,7 @@ This single flag enables:
 - `strictNullChecks`
 - `strictFunctionTypes`
 - `strictBindCallApply`
+- `strictBuiltinIteratorReturn`
 - `strictPropertyInitialization`
 - `noImplicitAny`
 - `noImplicitThis`
@@ -208,7 +209,7 @@ const email = getUserEmail(user); // Works correctly
 
 ```typescript
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Image } from 'react-native';
 
 interface Profile {
   id: string;
@@ -312,8 +313,8 @@ processData('not an array'); // Error: Argument of type 'string' is not assignab
 ### Handling Event Handlers in React Native
 
 ```typescript
-import React from 'react';
-import { TextInput, TouchableOpacity, GestureResponderEvent } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, GestureResponderEvent } from 'react-native';
 
 interface FormProps {
   onSubmit: (data: FormData) => void;
@@ -404,7 +405,7 @@ const unsafeHandler: AnimalHandler = handleDog; // Error with strictFunctionType
 
 ```typescript
 import React from 'react';
-import { FlatList, ListRenderItem } from 'react-native';
+import { FlatList, ListRenderItem, View, Text } from 'react-native';
 
 interface BaseItem {
   id: string;
@@ -495,7 +496,7 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
-    'plugin:@typescript-eslint/recommended-requiring-type-checking',
+    'plugin:@typescript-eslint/recommended-type-checked',
     'plugin:@typescript-eslint/strict',
     'plugin:react/recommended',
     'plugin:react-hooks/recommended',
@@ -572,9 +573,15 @@ Path aliases improve code readability and maintainability by replacing relative 
 
 ### Babel Configuration (babel.config.js)
 
+First, install the Babel plugin that resolves these aliases at build time:
+
+```bash
+npm install --save-dev babel-plugin-module-resolver
+```
+
 ```javascript
 module.exports = {
-  presets: ['module:metro-react-native-babel-preset'],
+  presets: ['module:@react-native/babel-preset'],
   plugins: [
     [
       'module-resolver',
@@ -625,8 +632,10 @@ Many JavaScript libraries don't include TypeScript type definitions. Here's how 
 ```bash
 # Many popular libraries have community-maintained types
 
-npm install --save-dev @types/react @types/react-native @types/lodash
+npm install --save-dev @types/react @types/lodash
 ```
+
+React Native 0.71 and newer ships its own TypeScript declarations, and `@types/react-native` is deprecated for React Native 0.73 and newer.
 
 ### Creating Custom Declaration Files
 
@@ -635,6 +644,7 @@ For libraries without available type definitions, create your own:
 ```typescript
 // src/types/declarations/react-native-custom-library.d.ts
 declare module 'react-native-custom-library' {
+  import type { FC } from 'react';
   import type { ViewProps } from 'react-native';
 
   export interface CustomComponentProps extends ViewProps {
@@ -643,7 +653,7 @@ declare module 'react-native-custom-library' {
     disabled?: boolean;
   }
 
-  export const CustomComponent: React.FC<CustomComponentProps>;
+  export const CustomComponent: FC<CustomComponentProps>;
 
   export function initializeLibrary(config: {
     apiKey: string;
@@ -678,10 +688,8 @@ declare module 'react-native' {
 ```typescript
 // src/types/declarations/global.d.ts
 declare global {
-  // Extend the global namespace
-  interface Window {
-    __DEV__: boolean;
-  }
+  // React Native exposes __DEV__ as a global variable
+  const __DEV__: boolean;
 
   // Add type definitions for environment variables
   namespace NodeJS {
@@ -969,6 +977,8 @@ if (state.status === 'success') {
 
 ```typescript
 // src/types/utils.ts
+
+import type { NavigationProp } from '@react-navigation/native';
 
 // Make all properties required
 type RequiredProps<T> = {
