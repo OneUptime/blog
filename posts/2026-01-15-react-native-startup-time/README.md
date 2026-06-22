@@ -62,10 +62,13 @@ You can't optimize what you can't measure. Here are several approaches to measur
 
 ```javascript
 // In your index.js or App.js
-import { AppRegistry, PerformanceObserver } from 'react-native';
+// React Native does not export PerformanceObserver from 'react-native'.
+// Install the react-native-performance package for the User Timing API:
+//   npm install react-native-performance
+import performance, { PerformanceObserver } from 'react-native-performance';
 
 // Mark the start time as early as possible
-const appStartTime = global.performance.now();
+const appStartTime = performance.now();
 
 // Create a performance observer
 const observer = new PerformanceObserver((list) => {
@@ -80,7 +83,7 @@ observer.observe({ entryTypes: ['measure'] });
 // In your main App component
 function App() {
   useEffect(() => {
-    const mountTime = global.performance.now();
+    const mountTime = performance.now();
     const startupDuration = mountTime - appStartTime;
 
     performance.measure('App Startup', {
@@ -146,18 +149,18 @@ static void recordStartTime() {
 
 ### Using Flipper Performance Plugin
 
-Flipper provides excellent tools for measuring React Native performance:
+Flipper used to provide tools for measuring React Native performance. Note that
+React Native removed Flipper from new app templates in 0.74, so on current
+versions you should prefer the built-in debugger or consume the
+`react-native-performance` metrics directly. If you are still on an older
+version with Flipper, the reporter is wired up like this:
 
 ```javascript
-// Install the flipper-plugin-react-native-performance package
-// Then add to your app initialization:
-
-import { PerformanceProfiler } from 'react-native-performance-flipper-reporter';
+// Install react-native-performance, react-native-flipper, and
+// react-native-performance-flipper-reporter, then add to your app entry file:
 
 if (__DEV__) {
-  PerformanceProfiler.configure({
-    destabilized: true,
-  });
+  require('react-native-performance-flipper-reporter').setupDefaultFlipperReporter();
 }
 ```
 
@@ -165,24 +168,17 @@ if (__DEV__) {
 
 Hermes is a JavaScript engine optimized specifically for React Native. It significantly improves startup time through bytecode precompilation.
 
+Since React Native 0.70, Hermes is the default engine and ships bundled with
+each React Native release, so new apps need no extra setup. The settings below
+control whether Hermes is on and are useful if you are upgrading an older app or
+explicitly toggling between Hermes and JavaScriptCore.
+
 ### Enabling Hermes on Android
 
-```groovy
-// android/app/build.gradle
-project.ext.react = [
-    enableHermes: true,  // Enable Hermes
-    hermesCommand: "../../node_modules/hermes-engine/%OS-BIN%/hermes",
-]
-
-dependencies {
-    // Use Hermes instead of JSC
-    if (project.ext.react.get("enableHermes", false)) {
-        def hermesPath = "../../node_modules/hermes-engine/android/";
-        implementation files(hermesPath + "hermes-release.aar")
-    } else {
-        implementation jscFlavor
-    }
-}
+```properties
+# android/gradle.properties
+# Set to true to use Hermes (default), or false to fall back to JavaScriptCore.
+hermesEnabled=true
 ```
 
 ### Enabling Hermes on iOS
@@ -733,6 +729,12 @@ function App() {
 ## RAM Bundles for Android
 
 RAM (Random Access Memory) bundles allow loading JavaScript modules on demand, significantly improving startup time on Android.
+
+> **Note:** RAM bundles only apply to the JavaScriptCore engine and are *not*
+> compatible with Hermes — Hermes already memory-maps its bytecode and loads it
+> lazily, so it provides the same benefit without RAM bundles. RAM bundles are
+> deprecated as of React Native 0.75. If you have enabled Hermes (recommended),
+> skip this section.
 
 ### Enabling RAM Bundles
 
