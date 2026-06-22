@@ -80,6 +80,8 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     # Deploy to all registered clusters
     - clusters:
@@ -88,7 +90,7 @@ spec:
             env: production
   template:
     metadata:
-      name: 'my-app-{{name}}'
+      name: 'my-app-{{.nameNormalized}}'
     spec:
       project: default
       source:
@@ -98,9 +100,9 @@ spec:
         helm:
           valueFiles:
             - values.yaml
-            - values-{{metadata.labels.region}}.yaml
+            - values-{{.metadata.labels.region}}.yaml
       destination:
-        server: '{{server}}'
+        server: '{{.server}}'
         namespace: my-app
       syncPolicy:
         automated:
@@ -120,6 +122,8 @@ metadata:
   name: my-app-matrix
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -136,20 +140,20 @@ spec:
                 - path: apps/*
   template:
     metadata:
-      name: '{{path.basename}}-{{name}}'
+      name: '{{.path.basename}}-{{.nameNormalized}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/helm-charts
         targetRevision: HEAD
-        path: 'charts/{{path.basename}}'
+        path: 'charts/{{.path.basename}}'
         helm:
           valueFiles:
             - values.yaml
-            - 'environments/{{metadata.labels.env}}/values.yaml'
+            - 'environments/{{.metadata.labels.env}}/values.yaml'
       destination:
-        server: '{{server}}'
-        namespace: '{{path.basename}}'
+        server: '{{.server}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Strategy 2: Rancher Fleet
@@ -494,7 +498,7 @@ resources:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -518,11 +522,14 @@ spec:
 ```bash
 # Generate sealed secret for each cluster
 for cluster in us-east us-west eu-west; do
-  kubectl --context=$cluster-context get secret -n kube-system sealed-secrets-key -o yaml > ${cluster}-sealed-secrets-key.yaml
-  
-  kubeseal --controller-name=sealed-secrets \
+  kubeseal --context=${cluster}-context \
+    --controller-name=sealed-secrets-controller \
     --controller-namespace=kube-system \
-    --cert=${cluster}-sealed-secrets-key.yaml \
+    --fetch-cert > ${cluster}-sealed-secrets-cert.pem
+  
+  kubeseal --controller-name=sealed-secrets-controller \
+    --controller-namespace=kube-system \
+    --cert=${cluster}-sealed-secrets-cert.pem \
     --format=yaml \
     < secret.yaml > sealed-secret-${cluster}.yaml
 done
