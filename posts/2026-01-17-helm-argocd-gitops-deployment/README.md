@@ -139,7 +139,7 @@ spec:
     
     # Helm-specific configuration
     helm:
-      # Values file path relative to the repo root
+      # Values file path relative to the Helm chart root
       valueFiles:
         - ../../environments/dev/my-app-values.yaml
       # Inline parameter overrides
@@ -155,7 +155,7 @@ spec:
   
   syncPolicy:
     automated:
-      # Auto-create namespace if it doesn't exist
+      # Delete resources that are no longer defined in Git
       prune: true
       # Automatically sync when out of sync
       selfHeal: true
@@ -205,7 +205,10 @@ spec:
         
         grafana:
           enabled: true
-          adminPassword: ${GRAFANA_PASSWORD}
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: admin-password
   
   destination:
     server: https://kubernetes.default.svc
@@ -423,10 +426,9 @@ spec:
   source:
     repoURL: https://charts.jetstack.io
     chart: cert-manager
-    targetRevision: v1.13.2
+    targetRevision: v1.20.2
     helm:
       parameters:
-        # Note: installCRDs is deprecated since cert-manager v1.15. Use crds.enabled=true instead.
         - name: crds.enabled
           value: "true"
   destination:
@@ -456,6 +458,8 @@ metadata:
   name: my-app-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     # Generate an Application for each directory in environments/
     - git:
@@ -466,8 +470,8 @@ spec:
   
   template:
     metadata:
-      # {{path.basename}} becomes dev, staging, production
-      name: 'my-app-{{path.basename}}'
+      # {{.path.basename}} becomes dev, staging, production
+      name: 'my-app-{{.path.basename}}'
     spec:
       project: default
       source:
@@ -476,10 +480,10 @@ spec:
         path: charts/my-app
         helm:
           valueFiles:
-            - '../../{{path}}/my-app-values.yaml'
+            - '../../{{.path.path}}/my-app-values.yaml'
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'my-app-{{path.basename}}'
+        namespace: 'my-app-{{.path.basename}}'
       syncPolicy:
         automated:
           prune: true
@@ -499,6 +503,8 @@ metadata:
   name: my-app-clusters
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -517,7 +523,7 @@ spec:
   
   template:
     metadata:
-      name: 'my-app-{{cluster}}'
+      name: 'my-app-{{.cluster}}'
     spec:
       project: default
       source:
@@ -527,9 +533,9 @@ spec:
         helm:
           parameters:
             - name: replicaCount
-              value: '{{values.replicas}}'
+              value: '{{.values.replicas}}'
       destination:
-        server: '{{url}}'
+        server: '{{.url}}'
         namespace: my-app
       syncPolicy:
         automated:
@@ -590,7 +596,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.9
+    targetRevision: 2.6.0
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets
@@ -606,7 +612,7 @@ Reference external secrets in your Application values:
 
 ```yaml
 # environments/production/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
