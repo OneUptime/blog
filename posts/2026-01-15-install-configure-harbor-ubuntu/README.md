@@ -14,7 +14,7 @@ Harbor is an open-source container registry that stores, signs, and scans contai
 
 - Container image storage
 - Vulnerability scanning
-- Image signing (Notary)
+- Image signing (Cosign)
 - Role-based access control
 - Replication between registries
 - Garbage collection
@@ -211,10 +211,9 @@ sudo ./prepare
 
 # Install with Trivy scanner
 sudo ./install.sh --with-trivy
-
-# Or install with Notary (image signing)
-sudo ./install.sh --with-trivy --with-notary
 ```
+
+> Note: Notary (the `--with-notary` flag) was deprecated in Harbor 2.6 and removed in Harbor 2.9, so it is not available in this release. Image signing is now handled with [Cosign](https://goharbor.io/docs/latest/working-with-projects/working-with-images/sign-images/), and Harbor can display and manage Cosign signatures without any extra install flag.
 
 ## Access Harbor
 
