@@ -454,7 +454,7 @@ scrape_configs:
 mc admin info myminio
 
 # Disk health
-mc admin scanner myminio
+mc admin scanner status myminio
 
 # Healing status
 mc admin heal myminio
@@ -476,8 +476,8 @@ mc mirror --watch myminio/mybucket backup/mybucket
 ### Resync
 
 ```bash
-# Resync bucket
-mc admin replicate resync start myminio mybucket
+# Resync bucket replication from the source deployment
+mc replicate resync start myminio/mybucket --remote-bucket "arn:minio:replication::<replication-id>:mybucket"
 ```
 
 ## S3 SDK Integration
@@ -542,7 +542,7 @@ mc admin config get myminio
 sudo chown -R minio-user:minio-user /mnt/data*
 
 # Disk errors
-mc admin scanner myminio
+mc admin scanner status myminio
 
 # Heal corrupted data
 mc admin heal -r myminio/mybucket
