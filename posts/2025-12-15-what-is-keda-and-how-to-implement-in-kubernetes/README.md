@@ -14,11 +14,11 @@ KEDA lets you scale any container in Kubernetes based on the number of events ne
 
 ## What is KEDA?
 
-KEDA is an open-source project that acts as a Kubernetes Metrics Server and a custom controller. It enables event-driven autoscaling by monitoring external event sources and scaling your deployments accordingly.
+KEDA is an open-source project that runs a custom controller and metrics adapter in Kubernetes. It enables event-driven autoscaling by monitoring external event sources and scaling your deployments accordingly.
 
 - **Event-driven:** Scale up when there are messages to process, scale down to zero when idle.
-- **Pluggable:** Supports 50+ scalers (Kafka, SQS, Prometheus, Redis, HTTP, etc.)
-- **Lightweight:** Deploys as a single pod and CRDs, no heavy dependencies.
+- **Pluggable:** Supports 50+ scalers and add-ons (Kafka, SQS, Prometheus, Redis, HTTP, etc.)
+- **Lightweight:** Deploys as Kubernetes controllers, a metrics adapter, and CRDs, no heavy dependencies.
 - **Works with HPA:** KEDA creates and manages HPAs for you, using custom metrics.
 
 ## When Should You Use KEDA?
@@ -133,9 +133,10 @@ spec:
         host: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
         # Queue to monitor - must exist in RabbitMQ
         queueName: jobs
-        # Scale threshold - add one replica for every 5 messages in queue
+        # Scale threshold - target 5 messages in queue per replica
         # Lower values = more aggressive scaling, higher values = more conservative
-        queueLength: "5"
+        mode: QueueLength
+        value: "5"
 ```
 
 Apply both manifests to create the worker and enable autoscaling:
@@ -173,9 +174,7 @@ spec:
       metadata:
         # Prometheus server URL - use Kubernetes DNS for in-cluster Prometheus
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
-        # Name for the metric (used in logging and HPA)
-        metricName: http_requests_total
-        # Scale threshold - add replica for every 100 requests per second
+        # Scale threshold - target 100 requests per second per replica
         # Tune this based on how many req/s each pod can handle
         threshold: '100'
         # PromQL query to calculate current request rate
@@ -191,7 +190,7 @@ KEDA supports 50+ scalers, including:
 - HTTP, Cron, Azure Monitor, GCP Stackdriver
 - Custom external metrics
 
-See the full list: https://keda.sh/docs/2.14/scalers/
+See the full list: https://keda.sh/docs/2.20/scalers/
 
 ## Best Practices
 
@@ -203,7 +202,7 @@ See the full list: https://keda.sh/docs/2.14/scalers/
 
 ## Troubleshooting
 
-- **Pods not scaling?** Check KEDA and HPA events: `kubectl get events -n keda`
+- **Pods not scaling?** Check ScaledObject and HPA events in your workload namespace: `kubectl get events`
 - **Metrics not found?** Ensure your scaler is configured correctly and event source is reachable
 - **Scale-to-zero not working?** Set `minReplicaCount: 0` and check for pending events
 
