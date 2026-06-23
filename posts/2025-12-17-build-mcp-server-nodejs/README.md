@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MCP, Model Context Protocol, NodeJS, TypeScript, AI, Open Source, Tutorial
 
-Description: Build a production-ready Model Context Protocol (MCP) server in Node.js. Covers tool registration, resource handling, streaming, authentication, and deployment.
+Description: Build a production-ready Model Context Protocol (MCP) server in Node.js. Covers tool registration, resource handling, prompts, security considerations, and deployment.
 
 The Model Context Protocol (MCP) is revolutionizing how AI assistants interact with external systems. Instead of relying solely on their training data, AI models can now securely connect to databases, APIs, and services through MCP servers. In this guide, we'll build a complete MCP server in Node.js from scratch, covering everything you need to know to create production-ready integrations.
 
@@ -32,7 +32,7 @@ Before we start, ensure you have:
 - Node.js 18+ installed
 - npm or yarn package manager
 - Basic TypeScript knowledge
-- An AI assistant that supports MCP (Claude Desktop, VS Code with Claude, etc.)
+- An AI assistant that supports MCP (Claude Desktop, VS Code, etc.)
 
 ## Project Setup
 
@@ -55,7 +55,7 @@ npm init -y
 npm install @modelcontextprotocol/sdk zod
 
 # Install dev dependencies
-npm install -D typescript @types/node tsx
+npm install -D typescript @types/node tsx vitest
 ```
 
 ### Configure TypeScript
@@ -74,6 +74,7 @@ Create a `tsconfig.json` file. The Node16 module settings ensure compatibility w
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
@@ -100,7 +101,8 @@ Configure the package.json with the correct module type and entry points. The `b
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "test": "vitest"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -109,6 +111,7 @@ Configure the package.json with the correct module type and entry points. The `b
   "devDependencies": {
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",
+    "vitest": "^4.1.0",
     "typescript": "^5.3.0"
   }
 }
@@ -450,7 +453,8 @@ export async function handleFileOperation(args: unknown): Promise<string> {
 
   // Security: Prevent directory traversal
   const allowedBasePath = process.cwd();
-  if (!filePath.startsWith(allowedBasePath)) {
+  const relativePath = path.relative(allowedBasePath, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error("Access denied: Path is outside allowed directory");
   }
 
@@ -460,14 +464,14 @@ export async function handleFileOperation(args: unknown): Promise<string> {
       return content;
     }
     case "write": {
-      if (!validated.content) {
+      if (validated.content === undefined) {
         throw new Error("Content is required for write operation");
       }
       await fs.writeFile(filePath, validated.content, "utf-8");
       return `Successfully wrote ${validated.content.length} characters to ${validated.path}`;
     }
     case "append": {
-      if (!validated.content) {
+      if (validated.content === undefined) {
         throw new Error("Content is required for append operation");
       }
       await fs.appendFile(filePath, validated.content, "utf-8");
@@ -677,8 +681,19 @@ export async function getResourceContent(uri: string): Promise<string> {
       }
     }
 
-    default:
+    default: {
+      if (uri.startsWith("file://data/")) {
+        const fileName = uri.slice("file://data/".length);
+        if (fileName !== path.basename(fileName) || !fileName.endsWith(".json")) {
+          throw new Error(`Resource not found: ${uri}`);
+        }
+
+        const filePath = path.join(process.cwd(), "data", fileName);
+        return await fs.readFile(filePath, "utf-8");
+      }
+
       throw new Error(`Resource not found: ${uri}`);
+    }
   }
 }
 
@@ -782,7 +797,10 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
   try {
     const content = await getResourceContent(uri);
-    const resource = resourceDefinitions.find((r) => r.uri === uri);
+    const dynamicResources = await listDynamicResources();
+    const resource = [...resourceDefinitions, ...dynamicResources].find(
+      (r) => r.uri === uri
+    );
 
     return {
       contents: [
@@ -821,7 +839,7 @@ Prompts provide reusable templates that AI assistants can use. Let's add prompt 
 
 Create `src/prompts.ts`. Prompts are reusable templates that AI assistants can invoke with arguments. They're useful for standardizing complex tasks like code reviews, bug reports, or incident response workflows.
 
-```typescript
+````typescript
 // Prompts provide reusable templates for common tasks
 // The AI fills in the arguments and receives a formatted prompt
 
@@ -931,9 +949,9 @@ export function generatePrompt(
 6. **Testing**: Is the code testable? What tests would you recommend?
 
 Code to review:
-```${args.language}
+\`\`\`${args.language}
 ${args.code}
-```
+\`\`\`
 
 Please provide specific, actionable feedback with code examples where appropriate.`,
           },
@@ -1012,21 +1030,21 @@ Please fill in the bracketed sections with appropriate information.`,
 | [param] | [type] | [yes/no] | [description] |
 
 #### Request Body
-```json
+\`\`\`json
 {
   "example": "value"
 }
-```
+\`\`\`
 
 ### Response
 
 #### Success Response (200)
-```json
+\`\`\`json
 {
   "success": true,
   "data": {}
 }
-```
+\`\`\`
 
 #### Error Responses
 | Status | Description |
@@ -1039,10 +1057,10 @@ Please fill in the bracketed sections with appropriate information.`,
 ### Examples
 
 #### cURL
-````bash
+\`\`\`bash
 curl -X ${args.method} "${args.endpoint}" \\
   -H "Authorization: Bearer <token>"
-```
+\`\`\`
 
 Please fill in the template with specific details for this endpoint.`,
           },
@@ -1114,7 +1132,7 @@ Please use this checklist to guide the incident response for the ${args.service}
       throw new Error(`Unknown prompt: ${name}`);
   }
 }
-```
+````
 
 ### Register Prompts with the Server
 
@@ -1196,7 +1214,10 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const { uri } = request.params;
   try {
     const content = await getResourceContent(uri);
-    const resource = resourceDefinitions.find((r) => r.uri === uri);
+    const dynamicResources = await listDynamicResources();
+    const resource = [...resourceDefinitions, ...dynamicResources].find(
+      (r) => r.uri === uri
+    );
     return {
       contents: [
         {
@@ -1246,7 +1267,7 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
-````
+```
 
 ## Best Practices
 
@@ -1278,6 +1299,7 @@ export async function handleCreateUser(args: unknown): Promise<string> {
 Implement comprehensive error handling with meaningful messages. Custom error classes help categorize failures, and the wrapper function ensures errors are logged for debugging while returning user-friendly messages to the AI.
 
 ```typescript
+import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 // Custom error classes for different scenarios
@@ -1348,8 +1370,11 @@ import * as crypto from "crypto";
 
 // Prevent path traversal attacks
 function sanitizePath(userPath: string, basePath: string): string {
-  const resolved = path.resolve(basePath, userPath);
-  if (!resolved.startsWith(basePath)) {
+  const resolvedBase = path.resolve(basePath);
+  const resolved = path.resolve(resolvedBase, userPath);
+  const relativePath = path.relative(resolvedBase, resolved);
+
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error("Access denied: Path traversal detected");
   }
   return resolved;
@@ -1526,12 +1551,15 @@ type Config = z.infer<typeof ConfigSchema>;
 
 // Load configuration from environment
 function loadConfig(): Config {
+  const parseBoolean = (value: string | undefined): boolean | undefined =>
+    value === undefined ? undefined : value === "true";
+
   const rawConfig = {
     serverName: process.env.MCP_SERVER_NAME,
     serverVersion: process.env.MCP_SERVER_VERSION,
-    enableTools: process.env.MCP_ENABLE_TOOLS === "true",
-    enableResources: process.env.MCP_ENABLE_RESOURCES === "true",
-    enablePrompts: process.env.MCP_ENABLE_PROMPTS === "true",
+    enableTools: parseBoolean(process.env.MCP_ENABLE_TOOLS),
+    enableResources: parseBoolean(process.env.MCP_ENABLE_RESOURCES),
+    enablePrompts: parseBoolean(process.env.MCP_ENABLE_PROMPTS),
     rateLimitMaxRequests: process.env.MCP_RATE_LIMIT_MAX
       ? parseInt(process.env.MCP_RATE_LIMIT_MAX)
       : undefined,
@@ -1673,6 +1701,12 @@ interface MCPRequest {
   params?: Record<string, unknown>;
 }
 
+interface MCPNotification {
+  jsonrpc: "2.0";
+  method: string;
+  params?: Record<string, unknown>;
+}
+
 interface MCPResponse {
   jsonrpc: "2.0";
   id: number;
@@ -1688,6 +1722,8 @@ async function testMCPServer(): Promise<void> {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  let stdoutBuffer = "";
+
   const sendRequest = (request: MCPRequest): Promise<MCPResponse> => {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -1695,10 +1731,19 @@ async function testMCPServer(): Promise<void> {
       }, 5000);
 
       const handler = (data: Buffer): void => {
+        stdoutBuffer += data.toString();
+        const newlineIndex = stdoutBuffer.indexOf("\n");
+
+        if (newlineIndex === -1) {
+          return;
+        }
+
+        const line = stdoutBuffer.slice(0, newlineIndex);
+        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+
         clearTimeout(timeout);
         server.stdout.off("data", handler);
-        const response = JSON.parse(data.toString());
-        resolve(response);
+        resolve(JSON.parse(line));
       };
 
       server.stdout.on("data", handler);
@@ -1706,12 +1751,36 @@ async function testMCPServer(): Promise<void> {
     });
   };
 
+  const sendNotification = (notification: MCPNotification): void => {
+    server.stdin.write(JSON.stringify(notification) + "\n");
+  };
+
   try {
+    // Initialize the MCP session before sending other requests
+    console.log("Testing initialize...");
+    await sendRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: {
+          name: "integration-test",
+          version: "1.0.0",
+        },
+      },
+    });
+    sendNotification({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    });
+
     // Test listing tools
     console.log("Testing tools/list...");
     const toolsResponse = await sendRequest({
       jsonrpc: "2.0",
-      id: 1,
+      id: 2,
       method: "tools/list",
     });
     console.log("Tools:", JSON.stringify(toolsResponse.result, null, 2));
@@ -1720,7 +1789,7 @@ async function testMCPServer(): Promise<void> {
     console.log("\nTesting tools/call (greet)...");
     const greetResponse = await sendRequest({
       jsonrpc: "2.0",
-      id: 2,
+      id: 3,
       method: "tools/call",
       params: {
         name: "greet",
@@ -1736,7 +1805,7 @@ async function testMCPServer(): Promise<void> {
     console.log("\nTesting resources/list...");
     const resourcesResponse = await sendRequest({
       jsonrpc: "2.0",
-      id: 3,
+      id: 4,
       method: "resources/list",
     });
     console.log("Resources:", JSON.stringify(resourcesResponse.result, null, 2));
@@ -1773,13 +1842,13 @@ Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 }
 ```
 
-### VS Code with Claude Extension
+### VS Code MCP Configuration
 
-Add to your VS Code settings. Using `npx -y` downloads and runs the server if it's published to npm, making it easy for other developers to use your server without manual installation.
+Add this to `.vscode/mcp.json` in your workspace or to your user MCP configuration. Using `npx -y` downloads and runs the server if it's published to npm, making it easy for other developers to use your server without manual installation.
 
 ```json
 {
-  "claude.mcpServers": {
+  "servers": {
     "my-mcp-server": {
       "command": "npx",
       "args": ["-y", "my-mcp-server"],
