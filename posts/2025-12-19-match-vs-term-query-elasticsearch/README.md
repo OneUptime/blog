@@ -119,7 +119,7 @@ GET /users/_search
 
 ## Match Query Explained
 
-The `match` query analyzes the search text using the same analyzer as the field, then searches for the resulting tokens:
+The `match` query analyzes the search text using the field's search analyzer (usually the same analyzer used at index time), then searches for the resulting tokens:
 
 ```json
 // This WILL find the document
@@ -292,7 +292,7 @@ GET /articles/_search
 ### Pitfall 2: Match Query on Keyword Fields
 
 ```json
-// This works but is inefficient
+// This can work for a single exact value, but term is clearer for keyword fields
 GET /products/_search
 {
   "query": {
@@ -416,14 +416,14 @@ GET /products/_search
 
 | Query Type | Analysis | Cache Friendly | Best For |
 |------------|----------|----------------|----------|
-| term | No | Yes | Exact matches, filters |
+| term | No | Yes, in filter context | Exact matches, filters |
 | match | Yes | Varies | Full-text search |
-| terms | No | Yes | Multiple exact values |
+| terms | No | Yes, in filter context | Multiple exact values |
 | match_phrase | Yes | Less | Phrase matching |
 
 ### Filter Context for Better Performance
 
-Use term queries in filter context for caching:
+Use term queries in filter context so Elasticsearch can skip scoring and make eligible filters cacheable:
 
 ```json
 GET /products/_search
@@ -459,11 +459,9 @@ es = Elasticsearch("http://localhost:9200")
 def find_by_status(status):
     return es.search(
         index="products",
-        body={
-            "query": {
-                "term": {
-                    "status": status
-                }
+        query={
+            "term": {
+                "status": status
             }
         }
     )
@@ -472,13 +470,11 @@ def find_by_status(status):
 def search_products(query_text):
     return es.search(
         index="products",
-        body={
-            "query": {
-                "match": {
-                    "description": {
-                        "query": query_text,
-                        "operator": "and"
-                    }
+        query={
+            "match": {
+                "description": {
+                    "query": query_text,
+                    "operator": "and"
                 }
             }
         }
@@ -499,12 +495,10 @@ def search_active_products(query_text, category=None):
 
     return es.search(
         index="products",
-        body={
-            "query": {
-                "bool": {
-                    "must": must_clauses,
-                    "filter": filter_clauses
-                }
+        query={
+            "bool": {
+                "must": must_clauses,
+                "filter": filter_clauses
             }
         }
     )
@@ -520,10 +514,8 @@ const client = new Client({ node: 'http://localhost:9200' });
 async function findByStatus(status) {
   return client.search({
     index: 'products',
-    body: {
-      query: {
-        term: { status }
-      }
+    query: {
+      term: { status }
     }
   });
 }
@@ -534,14 +526,12 @@ async function searchProducts(queryText, options = {}) {
 
   return client.search({
     index: 'products',
-    body: {
-      query: {
-        match: {
-          description: {
-            query: queryText,
-            operator,
-            fuzziness
-          }
+    query: {
+      match: {
+        description: {
+          query: queryText,
+          operator,
+          fuzziness
         }
       }
     }
@@ -577,9 +567,7 @@ async function smartSearch(text, filters = {}) {
 
   return client.search({
     index: 'products',
-    body: {
-      query: { bool: boolQuery }
-    }
+    query: { bool: boolQuery }
   });
 }
 ```
