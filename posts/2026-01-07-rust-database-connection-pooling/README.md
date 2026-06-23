@@ -42,7 +42,7 @@ SQLx is Rust's most popular async database library with compile-time query verif
 
 ```toml
 [dependencies]
-sqlx = { version = "0.7", features = [
+sqlx = { version = "0.9", features = [
     "runtime-tokio",     # Async runtime
     "tls-rustls",        # TLS support
     "postgres",          # PostgreSQL driver
@@ -53,6 +53,13 @@ sqlx = { version = "0.7", features = [
     "json",              # JSON support
 ] }
 tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+prometheus = "0.13"
+num_cpus = "1"
 ```
 
 ### Basic Pool Configuration
@@ -164,7 +171,7 @@ pub async fn create_pool_from_env() -> Result<PgPool, sqlx::Error> {
 // src/repository.rs
 // Database operations using connection pool
 
-use sqlx::{FromRow, PgPool, Row};
+use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, FromRow)]
@@ -362,16 +369,19 @@ pub enum TransferError {
 
 ## Advanced Pooling with Deadpool
 
-Deadpool provides more control over pool behavior and works with any database driver.
+Deadpool provides more control over pool behavior and can pool database connections through driver-specific managers.
 
 ### Setup
 
 ```toml
 [dependencies]
-deadpool = "0.10"
-deadpool-postgres = "0.12"
-tokio-postgres = "0.7"
+deadpool = "0.13"
+deadpool-postgres = "0.14"
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4"] }
 tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
 ```
 
 ### Deadpool Configuration
@@ -381,9 +391,12 @@ tokio = { version = "1", features = ["full"] }
 // Advanced connection pooling with Deadpool
 
 use deadpool_postgres::{
-    Config, CreatePoolError, Manager, ManagerConfig, Pool, PoolError, RecyclingMethod, Runtime,
+    Config, CreatePoolError, Manager, ManagerConfig, Pool, RecyclingMethod, Runtime,
 };
+use std::time::Duration;
 use tokio_postgres::NoTls;
+
+use crate::db::DatabaseConfig;
 
 /// Create a Deadpool connection pool
 pub fn create_deadpool(config: &DatabaseConfig) -> Result<Pool, CreatePoolError> {
@@ -476,13 +489,14 @@ impl UserRepositoryDeadpool {
 
     pub async fn create(&self, email: &str, name: &str) -> Result<User, RepositoryError> {
         let client = self.pool.get().await?;
+        let id = Uuid::new_v4();
 
         let row = client
             .query_one(
                 "INSERT INTO users (id, email, name, created_at)
                  VALUES ($1, $2, $3, NOW())
                  RETURNING id, email, name, created_at",
-                &[&Uuid::new_v4(), &email, &name],
+                &[&id, &email, &name],
             )
             .await?;
 
@@ -522,7 +536,7 @@ pub struct DatabaseHealth {
     pub status: HealthStatus,
     pub latency_ms: u64,
     pub pool_size: u32,
-    pub pool_idle: u32,
+    pub pool_idle: usize,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -614,7 +628,7 @@ pub struct DetailedHealth {
     pub status: &'static str,
     pub checks: Vec<(&'static str, bool)>,
     pub pool_size: u32,
-    pub pool_idle: u32,
+    pub pool_idle: usize,
 }
 ```
 
@@ -626,7 +640,7 @@ pub struct DetailedHealth {
 // src/metrics.rs
 // Pool metrics for monitoring
 
-use prometheus::{Gauge, GaugeVec, Opts, Registry};
+use prometheus::{Gauge, Registry};
 use sqlx::PgPool;
 
 pub struct PoolMetrics {
