@@ -122,9 +122,9 @@ Additional options explained:
 # Restart the Docker daemon
 sudo systemctl restart docker
 
-# Verify IPv6 is enabled
-docker info | grep -i ipv6
-# Should show: IPv6 Enabled: true
+# Verify IPv6 is enabled on the default bridge network
+docker network inspect bridge --format '{{.EnableIPv6}}'
+# Should output: true
 ```
 
 ## Step 2: Understanding IPv6 Address Types
@@ -320,7 +320,7 @@ services:
         ipv4_address: 172.22.0.20
         ipv6_address: fd00:3::20
     environment:
-      DATABASE_URL: "postgresql://app:secret@fd00:3::30:5432/myapp"
+      DATABASE_URL: "postgresql://app:secret@[fd00:3::40]:5432/myapp"
 
   worker:
     image: python:3.12-slim
@@ -406,9 +406,9 @@ docker network create \
   --driver bridge \
   --ipv6 \
   --subnet 172.30.0.0/16 \
-  --subnet fd00:shared::/64 \
+  --subnet fd00:5ed::/64 \
   --gateway 172.30.0.1 \
-  --gateway fd00:shared::1 \
+  --gateway fd00:5ed::1 \
   shared_network
 ```
 
@@ -447,7 +447,7 @@ services:
     networks:
       - shared_net
     environment:
-      REDIS_HOST: "fd00:shared::redis"
+      REDIS_HOST: "fd00:5ed::5"
 
 networks:
   shared_net:
@@ -466,7 +466,7 @@ services:
     hostname: redis
     networks:
       shared_net:
-        ipv6_address: fd00:shared::redis
+        ipv6_address: fd00:5ed::5
 
 networks:
   shared_net:
@@ -493,7 +493,7 @@ networks:
     ipam:
       config:
         - subnet: "172.25.0.0/16"
-        - subnet: "fd00:bridge::/64"
+        - subnet: "fd00:b::/64"
 ```
 
 Driver options explained:
@@ -650,7 +650,7 @@ networks:
     ipam:
       config:
         - subnet: "172.28.0.0/16"
-        - subnet: "fd00:dns::/64"
+        - subnet: "fd00:d::/64"
 ```
 
 ### Custom DNS Configuration
@@ -710,7 +710,7 @@ services:
     image: myapi:latest
     networks:
       app_net:
-        ipv6_address: fd00:app::10
+        ipv6_address: fd00:a::10
     healthcheck:
       # Use IPv6 loopback for internal health checks
       test: ["CMD", "curl", "-f", "http://[::1]:8080/health"]
@@ -723,7 +723,7 @@ services:
     image: nginx:alpine
     networks:
       app_net:
-        ipv6_address: fd00:app::20
+        ipv6_address: fd00:a::20
     healthcheck:
       # wget works well for Alpine-based images
       test: ["CMD", "wget", "--spider", "-q", "http://[::1]:80/"]
@@ -735,7 +735,7 @@ services:
     image: postgres:16
     networks:
       app_net:
-        ipv6_address: fd00:app::30
+        ipv6_address: fd00:a::30
     healthcheck:
       # PostgreSQL health check using pg_isready
       test: ["CMD-SHELL", "pg_isready -h ::1 -U postgres"]
@@ -748,7 +748,7 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "fd00:app::/64"
+        - subnet: "fd00:a::/64"
 ```
 
 ## Step 10: Production-Ready IPv6 Configuration
@@ -792,7 +792,7 @@ services:
       - "[::]:80:80"
       - "[::]:443:443"
     volumes:
-      - /var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/certs:/certs:ro
       - traefik_acme:/acme
@@ -825,7 +825,7 @@ services:
         ipv6_address: fd00:db::10
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@[fd00:db::20]:5432/myapp"
+      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@[fd00:db::30]:5432/myapp"
       REDIS_URL: "redis://[fd00:be::30]:6379"
       LOG_LEVEL: info
     healthcheck:
@@ -860,7 +860,7 @@ services:
         ipv6_address: fd00:db::20
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@[fd00:db::20]:5432/myapp"
+      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@[fd00:db::30]:5432/myapp"
       REDIS_URL: "redis://[fd00:be::30]:6379"
       WORKER_CONCURRENCY: 4
     healthcheck:
@@ -922,7 +922,7 @@ services:
     networks:
       monitoring:
         ipv4_address: 172.23.0.10
-        ipv6_address: fd00:mon::10
+        ipv6_address: fd00:6::10
       backend:
         ipv4_address: 172.21.0.40
         ipv6_address: fd00:be::40
@@ -949,7 +949,7 @@ services:
     networks:
       monitoring:
         ipv4_address: 172.23.0.20
-        ipv6_address: fd00:mon::20
+        ipv6_address: fd00:6::20
       frontend:
         ipv4_address: 172.20.0.20
         ipv6_address: fd00:fe::20
@@ -1008,8 +1008,8 @@ networks:
       config:
         - subnet: "172.23.0.0/16"
           gateway: "172.23.0.1"
-        - subnet: "fd00:mon::/64"
-          gateway: "fd00:mon::1"
+        - subnet: "fd00:6::/64"
+          gateway: "fd00:6::1"
 
 volumes:
   postgres_data:
@@ -1048,8 +1048,8 @@ docker inspect -f '{{range .NetworkSettings.Networks}}IPv4: {{.IPAddress}} IPv6:
 docker run --rm -it --network app_net nicolaka/netshoot
 
 # Inside the container, test IPv6
-ping6 fd00:app::10
-curl -6 http://[fd00:app::10]:8080/
+ping6 fd00:a::10
+curl -6 http://[fd00:a::10]:8080/
 
 # Test DNS resolution
 dig AAAA api
@@ -1114,7 +1114,7 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: "fd00:secure::/64"
+        - subnet: "fd00:5ec::/64"
 ```
 
 ### Firewall Configuration
@@ -1198,7 +1198,7 @@ When IPv6 is not working as expected:
 1. **Daemon Configuration**
    - [ ] IPv6 enabled in `/etc/docker/daemon.json`
    - [ ] Docker daemon restarted after configuration changes
-   - [ ] `docker info` shows `IPv6 Enabled: true`
+   - [ ] `docker network inspect bridge` shows `EnableIPv6: true`
 
 2. **Host Configuration**
    - [ ] IPv6 not disabled in kernel (`/proc/sys/net/ipv6/conf/all/disable_ipv6` = 0)
