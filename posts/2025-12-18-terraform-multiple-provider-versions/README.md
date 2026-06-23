@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Provider, Infrastructure as Code, DevOps, Configuration Management
 
-Description: Learn how to configure and manage multiple versions of the same Terraform provider in a single configuration.
+Description: Learn how to configure multiple provider instances and manage provider version separation in Terraform.
 
-Managing infrastructure often requires working with multiple AWS accounts, different Azure subscriptions, or even different versions of the same provider. Terraform's provider aliasing system allows you to configure multiple instances of the same provider with different settings or versions, enabling complex multi-account and multi-region deployments.
+Managing infrastructure often requires working with multiple AWS accounts, different Azure subscriptions, or legacy resources that need a different provider version. Terraform's provider aliasing system allows you to configure multiple instances of the same provider with different settings, enabling complex multi-account and multi-region deployments. When you truly need different versions of the same provider source, split those resources into separate Terraform configurations.
 
 ## Understanding Provider Aliases
 
-Provider aliases let you create multiple configurations of the same provider. Each alias can have different credentials, regions, or even versions:
+Provider aliases let you create multiple configurations of the same provider. Each alias can have different credentials, regions, or provider-specific settings:
 
 ```mermaid
 graph TD
     A[Terraform Configuration] --> B[Default AWS Provider<br/>us-east-1]
     A --> C[AWS Provider Alias: west<br/>us-west-2]
     A --> D[AWS Provider Alias: eu<br/>eu-west-1]
-    A --> E[AWS Provider Alias: legacy<br/>v4.x]
+    A --> E[AWS Provider Alias: shared<br/>shared account]
     B --> F[Resources in us-east-1]
     C --> G[Resources in us-west-2]
     D --> H[Resources in eu-west-1]
-    E --> I[Legacy Resources]
+    E --> I[Shared Account Resources]
 ```
 
 ## Basic Provider Alias Configuration
@@ -251,24 +251,6 @@ resource "aws_s3_bucket" "secondary" {
   bucket   = "${var.app_name}-secondary"
 }
 
-# Cross-region replication
-resource "aws_s3_bucket_replication_configuration" "primary_to_secondary" {
-  provider   = aws.primary
-  depends_on = [aws_s3_bucket_versioning.primary]
-
-  bucket = aws_s3_bucket.primary.id
-  role   = aws_iam_role.replication.arn
-
-  rule {
-    id     = "replicate-all"
-    status = "Enabled"
-
-    destination {
-      bucket        = aws_s3_bucket.secondary.arn
-      storage_class = "STANDARD"
-    }
-  }
-}
 ```
 
 Using the module:
@@ -298,7 +280,7 @@ module "regional_app" {
 
 ## Multi-Region Deployment with Provider Aliases
 
-Create resources across multiple regions using explicit provider aliases. Note that Terraform does not support dynamic provider references in `providers` blocks -- each module instance must be declared separately:
+Create resources across multiple regions using explicit provider aliases. Note that traditional Terraform module configurations do not support dynamic provider references in `providers` blocks -- each module instance must be declared separately:
 
 ```hcl
 provider "aws" {
@@ -386,6 +368,7 @@ terraform init
 # .github/workflows/terraform-test.yml
 jobs:
   test-provider-versions:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         aws_provider: ["4.67.0", "5.0.0", "5.31.0"]
@@ -403,7 +386,7 @@ jobs:
             }
           }
           EOF
-      - run: terraform init
+      - run: terraform init -upgrade
       - run: terraform validate
 ```
 
@@ -478,8 +461,9 @@ terraform state pull > backup.tfstate
 
 # 2. Update provider version in configuration
 
-# 3. Run refresh to update state format
-terraform refresh
+# 3. Review and apply a refresh-only plan to update state
+terraform plan -refresh-only
+terraform apply -refresh-only
 
 # 4. Verify resources
 terraform plan
