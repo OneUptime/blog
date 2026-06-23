@@ -202,28 +202,30 @@ metadata:
   namespace: argocd
 data:
   # Custom health checks for Istio resources
-  # These Lua scripts determine the health status of Istio CRDs
+  # These Lua scripts use Istio's optional status.validationMessages field
   resource.customizations.health.networking.istio.io_VirtualService: |
-    -- Health check for VirtualService resources
-    -- Returns healthy if the resource has been accepted by Istiod
     hs = {}
-    if obj.status ~= nil then
-      if obj.status.validationMessages ~= nil then
+    if obj.status ~= nil and obj.status.validationMessages ~= nil and #obj.status.validationMessages > 0 then
+        messages = {}
+        for i, msg in ipairs(obj.status.validationMessages) do
+          table.insert(messages, msg.message or tostring(msg))
+        end
         hs.status = "Degraded"
-        hs.message = table.concat(obj.status.validationMessages, ", ")
+        hs.message = table.concat(messages, ", ")
         return hs
-      end
     end
     hs.status = "Healthy"
     return hs
 
   resource.customizations.health.networking.istio.io_DestinationRule: |
-    -- Health check for DestinationRule resources
-    -- Validates that the destination rule is properly configured
     hs = {}
-    if obj.status ~= nil and obj.status.validationMessages ~= nil then
+    if obj.status ~= nil and obj.status.validationMessages ~= nil and #obj.status.validationMessages > 0 then
+      messages = {}
+      for i, msg in ipairs(obj.status.validationMessages) do
+        table.insert(messages, msg.message or tostring(msg))
+      end
       hs.status = "Degraded"
-      hs.message = table.concat(obj.status.validationMessages, ", ")
+      hs.message = table.concat(messages, ", ")
       return hs
     end
     hs.status = "Healthy"
@@ -395,7 +397,7 @@ Istio resources often have dependencies that require ordered deployment. Use Arg
 # VirtualService with sync wave annotation
 # Sync wave 2 ensures this is applied after DestinationRules (wave 1)
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend
@@ -424,7 +426,7 @@ spec:
 # DestinationRule with sync wave annotation
 # Sync wave 1 ensures this is applied before VirtualServices
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend
@@ -536,15 +538,15 @@ spec:
     kind: GitRepository
     name: istio-config
 
-  # Health checks to verify successful deployment
+  # Wait for the listed resources after applying them
   healthChecks:
-    # Wait for VirtualServices to be healthy
-    - apiVersion: networking.istio.io/v1beta1
+    # Wait for VirtualServices
+    - apiVersion: networking.istio.io/v1
       kind: VirtualService
       name: frontend
       namespace: default
-    # Wait for DestinationRules to be healthy
-    - apiVersion: networking.istio.io/v1beta1
+    # Wait for DestinationRules
+    - apiVersion: networking.istio.io/v1
       kind: DestinationRule
       name: frontend
       namespace: default
@@ -554,9 +556,6 @@ spec:
 
   # Force apply to handle immutable field changes
   force: false
-
-  # Validation mode for dry-run before apply
-  validation: client
 
   # Post-build variable substitution
   postBuild:
@@ -626,9 +625,9 @@ spec:
       messageTemplate: |
         Automated image update
 
-        Updates:
-        {{range .Updated.Images}}
-        - {{.}}
+        Changed objects:
+        {{range .Changed.Objects}}
+        - {{.Kind}} {{.Name}}
         {{end}}
     push:
       branch: main
@@ -646,7 +645,7 @@ Set up notifications to alert your team when Istio configurations change:
 # Provider configuration for sending notifications to Slack
 # This enables visibility into GitOps operations
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -661,7 +660,7 @@ spec:
 # Alert configuration for Istio-related events
 # Sends notifications on sync failures and successful updates
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: istio-config-alerts
@@ -677,8 +676,9 @@ spec:
     # Monitor the Git repository for changes
     - kind: GitRepository
       name: istio-config
-  # Summary template for notifications
-  summary: "Istio configuration update: {{ .Message }}"
+  # Summary metadata for notifications
+  eventMetadata:
+    summary: "Istio configuration update"
 ```
 
 ## Progressive Delivery Patterns
@@ -721,7 +721,7 @@ Implement a canary deployment using GitOps-managed VirtualService and Destinatio
 # DestinationRule defining stable and canary subsets
 # Subsets enable routing to different versions of the same service
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -759,7 +759,7 @@ spec:
 # VirtualService implementing canary traffic split
 # This configuration routes 90% to stable, 10% to canary
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -878,7 +878,7 @@ Implement blue-green deployments using Istio's traffic shifting capabilities:
 # VirtualService for blue-green deployment pattern
 # Traffic is switched atomically between blue and green versions
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-app
@@ -912,7 +912,7 @@ spec:
 # applications/web-app/blue-green-destination-rule.yaml
 # DestinationRule defining blue and green subsets
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-app
@@ -955,7 +955,7 @@ flowchart TB
         SYNC --> HEALTH[Health Check]
         HEALTH --> ROLLBACK{Healthy?}
         ROLLBACK -->|Yes| COMPLETE[Complete]
-        ROLLBACK -->|No| REVERT[Auto Rollback]
+        ROLLBACK -->|No| REVERT[Alert and Revert PR]
     end
 ```
 
@@ -992,7 +992,9 @@ jobs:
           # Download the latest stable istioctl
           curl -L https://istio.io/downloadIstio | sh -
           # Add to PATH
-          echo "$PWD/istio-*/bin" >> $GITHUB_PATH
+          ISTIO_DIR="$(find "$PWD" -maxdepth 1 -type d -name 'istio-*' -print -quit)"
+          echo "$ISTIO_DIR/bin" >> $GITHUB_PATH
+          echo "ISTIO_DIR=$ISTIO_DIR" >> $GITHUB_ENV
 
       # Install kustomize for building configurations
       - name: Install Kustomize
@@ -1024,19 +1026,23 @@ jobs:
 
       # Run OPA policy checks
       - name: OPA Policy Validation
-        uses: open-policy-agent/opa-github-action@v1
+        uses: open-policy-agent/setup-opa@v2
         with:
-          policy: policies/rego/
-          input: overlays/production/
+          version: latest
+
+      - name: Check OPA Policies
+        run: opa check policies/rego/
 
       # Kubernetes dry-run validation
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: validation
+
       - name: Kubernetes Dry Run
         run: |
-          # Set up kind cluster for validation
-          kind create cluster --name validation
-
           # Install Istio CRDs only (no control plane needed)
-          kubectl apply -f https://raw.githubusercontent.com/istio/istio/master/manifests/charts/base/crds/crd-all.gen.yaml
+          kubectl apply -f "$ISTIO_DIR/manifests/charts/base/crds/crd-all.gen.yaml"
 
           # Dry-run apply all configurations
           for overlay in overlays/*/; do
@@ -1044,8 +1050,6 @@ jobs:
             kustomize build "$overlay" | kubectl apply --dry-run=server -f -
           done
 
-          # Clean up
-          kind delete cluster --name validation
 ```
 
 ### OPA Policies for Istio Validation
@@ -1059,27 +1063,31 @@ Define OPA (Open Policy Agent) policies to enforce security and best practices:
 
 package istio.policies
 
+import rego.v1
+
 # Deny VirtualServices without timeout configuration
 # Timeouts prevent cascading failures in the mesh
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
-    route := input.spec.http[_].route[_]
-    not input.spec.http[_].timeout
+    http_route := input.spec.http[_]
+    http_route.route[_]
+    not http_route.timeout
     msg := sprintf("VirtualService '%s' must have timeout configured", [input.metadata.name])
 }
 
 # Deny VirtualServices without retry configuration
 # Retries improve resilience for transient failures
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
-    route := input.spec.http[_].route[_]
-    not input.spec.http[_].retries
+    http_route := input.spec.http[_]
+    http_route.route[_]
+    not http_route.retries
     msg := sprintf("VirtualService '%s' should have retry policy configured", [input.metadata.name])
 }
 
 # Deny DestinationRules without TLS configuration in production
 # All production traffic must use mTLS
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     input.metadata.labels.environment == "production"
     not input.spec.trafficPolicy.tls
@@ -1088,7 +1096,7 @@ deny[msg] {
 
 # Deny AuthorizationPolicies with allow-all rules
 # Prevent overly permissive authorization
-deny[msg] {
+deny contains msg if {
     input.kind == "AuthorizationPolicy"
     rule := input.spec.rules[_]
     not rule.from
@@ -1099,7 +1107,7 @@ deny[msg] {
 
 # Require circuit breaker configuration for external services
 # External services should have circuit breakers to prevent cascading failures
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     contains(input.spec.host, ".external.")
     not input.spec.trafficPolicy.outlierDetection
@@ -1108,7 +1116,7 @@ deny[msg] {
 
 # Enforce rate limiting on public-facing VirtualServices
 # All ingress traffic should have rate limits
-warn[msg] {
+warn contains msg if {
     input.kind == "VirtualService"
     input.spec.gateways[_] != "mesh"
     route := input.spec.http[_]
@@ -1117,14 +1125,14 @@ warn[msg] {
 }
 ```
 
-### Automated Rollback Configuration
+### Post-Sync Analysis Configuration
 
-Configure ArgoCD to automatically rollback failed Istio configuration changes:
+Configure ArgoCD notifications and Argo Rollouts analysis templates to detect failed Istio configuration changes. ArgoCD stores revision history for manual rollback, but rollback cannot be performed while automated sync is enabled:
 
 ```yaml
-# argocd/applications/istio-config-with-rollback.yaml
-# ArgoCD Application with automated rollback capabilities
-# Automatically reverts to the previous state on sync failures
+# argocd/applications/istio-config-with-analysis.yaml
+# ArgoCD Application with notification and revision history settings
+# Alerts operators when sync or health checks fail
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -1132,7 +1140,7 @@ metadata:
   name: istio-config
   namespace: argocd
   annotations:
-    # Notification annotations for alerting on rollback
+    # Notification annotations for alerting on failures
     notifications.argoproj.io/subscribe.on-sync-failed.slack: istio-alerts
     notifications.argoproj.io/subscribe.on-health-degraded.slack: istio-alerts
 spec:
@@ -1157,7 +1165,7 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 1m
-  # Rollback window configuration
+  # Revision history retained for manual rollback
   revisionHistoryLimit: 10
 ---
 # argocd/rollback/analysis-template.yaml
@@ -1171,25 +1179,21 @@ metadata:
   namespace: argocd
 spec:
   metrics:
-    # Check Envoy proxy sync status
-    - name: envoy-sync-status
+    # Check Envoy proxy convergence latency
+    - name: envoy-convergence-latency
       interval: 30s
       count: 5
-      successCondition: result == "SYNCED"
+      successCondition: result[0] < 10
       provider:
         prometheus:
           address: http://prometheus.istio-system:9090
           query: |
-            sum(
-              pilot_proxy_convergence_time_bucket{le="10"}
-            ) / sum(
-              pilot_proxy_convergence_time_count
-            ) > 0.99
+            histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
     # Check for Istio configuration errors
     - name: config-validation-errors
       interval: 30s
       count: 5
-      successCondition: result < 1
+      successCondition: result[0] < 1
       provider:
         prometheus:
           address: http://prometheus.istio-system:9090
@@ -1231,7 +1235,7 @@ spec:
 # Alternative: ExternalSecret for fetching from vault
 # external-secrets/istio-gateway-tls.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: istio-gateway-tls
@@ -1336,9 +1340,9 @@ jobs:
             This PR promotes Istio configurations from `${{ inputs.source_env }}` to `${{ inputs.target_env }}`.
 
             ### Changes
-            ```diff
+            ~~~diff
             ${{ steps.diff.outputs.diff }}
-            ```bash
+            ~~~
 
             ### Checklist
             - [ ] Reviewed configuration changes
@@ -1349,7 +1353,7 @@ jobs:
             promotion
             istio
             ${{ inputs.target_env }}
-```text
+```
 
 ### Monitoring GitOps Operations
 
@@ -1415,7 +1419,7 @@ data:
               "legendFormat": "XDS Errors"
             },
             {
-              "expr": "sum(rate(galley_validation_failed[5m]))",
+              "expr": "sum(rate(pilot_total_rejected_configs[5m]))",
               "legendFormat": "Validation Failures"
             }
           ]
@@ -1479,7 +1483,7 @@ Managing Istio configurations with GitOps provides a robust, auditable, and scal
 2. **Enable Collaboration**: Pull request workflows facilitate code review for infrastructure changes
 3. **Automate Safely**: Progressive delivery patterns reduce the risk of configuration errors
 4. **Maintain Compliance**: Complete audit trails and policy enforcement meet regulatory requirements
-5. **Recover Quickly**: Version history and automated rollbacks minimize downtime
+5. **Recover Quickly**: Version history and repeatable revert workflows minimize downtime
 
 The key to success is starting with a well-organized repository structure, implementing comprehensive validation workflows, and gradually adopting progressive delivery patterns as your team gains confidence with the GitOps workflow.
 
