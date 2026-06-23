@@ -136,7 +136,7 @@ service: otel-instrumented-lambda
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   region: us-east-1
 
   # Environment variables configure the OpenTelemetry SDK behavior
@@ -156,7 +156,7 @@ functions:
     # Attach the OpenTelemetry Lambda layer
     layers:
       # AWS-managed ADOT (AWS Distro for OpenTelemetry) layer
-      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1
+      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-0:1
     events:
       - http:
           path: /api
@@ -184,6 +184,9 @@ npm install @opentelemetry/exporter-trace-otlp-grpc
 
 # Install resource detectors for AWS environment metadata
 npm install @opentelemetry/resource-detector-aws
+
+# Install AWS SDK v3 clients used by the Lambda invocation and SQS examples
+npm install @aws-sdk/client-lambda @aws-sdk/client-sqs
 ```
 
 Create a tracing configuration file that initializes OpenTelemetry before your handler executes. This file should be loaded at the top of your Lambda function.
@@ -195,8 +198,8 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { awsLambdaDetector } = require('@opentelemetry/resource-detector-aws');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { AwsLambdaInstrumentation } = require('@opentelemetry/instrumentation-aws-lambda');
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
@@ -213,16 +216,16 @@ const traceExporter = new OTLPTraceExporter({
 // Initialize the OpenTelemetry SDK with serverless-optimized configuration
 const sdk = new NodeSDK({
   // Define resource attributes that identify this service
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'lambda-function',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'lambda-function',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
     // Custom attribute to track cold starts at the resource level
     'faas.coldstart': isColdStart,
   }),
 
   // Use SimpleSpanProcessor for immediate export - critical for Lambda
   // BatchSpanProcessor may not flush before the function freezes
-  spanProcessor: new SimpleSpanProcessor(traceExporter),
+  spanProcessors: [new SimpleSpanProcessor(traceExporter)],
 
   // Configure auto-instrumentation for common libraries
   instrumentations: [
@@ -233,7 +236,7 @@ const sdk = new NodeSDK({
         // Record cold start status on each invocation span
         span.setAttribute('faas.coldstart', isColdStart);
         // Add Lambda-specific context attributes
-        span.setAttribute('faas.execution', context.awsRequestId);
+        span.setAttribute('faas.invocation_id', context.awsRequestId);
         span.setAttribute('cloud.account.id', context.invokedFunctionArn.split(':')[4]);
 
         // After first invocation, mark subsequent calls as warm starts
@@ -244,7 +247,7 @@ const sdk = new NodeSDK({
       // Capture response details for debugging
       responseHook: (span, { response }) => {
         if (response && response.statusCode) {
-          span.setAttribute('http.status_code', response.statusCode);
+          span.setAttribute('http.response.status_code', response.statusCode);
         }
       },
     }),
@@ -294,7 +297,7 @@ Now create your Lambda handler with custom span creation for business logic trac
 // IMPORTANT: Import tracing first to ensure SDK initializes before handler
 require('./tracing');
 
-const { trace, SpanStatusCode, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer instance for creating custom spans
 // The tracer name should match your service/module name
@@ -361,9 +364,9 @@ async function processBusinessLogic(event) {
   return tracer.startActiveSpan('database.query', async (dbSpan) => {
     try {
       // Add database-specific attributes following semantic conventions
-      dbSpan.setAttribute('db.system', 'dynamodb');
-      dbSpan.setAttribute('db.operation', 'GetItem');
-      dbSpan.setAttribute('db.name', 'users-table');
+      dbSpan.setAttribute('db.system.name', 'aws.dynamodb');
+      dbSpan.setAttribute('db.operation.name', 'GetItem');
+      dbSpan.setAttribute('db.namespace', 'users-table');
 
       // Simulate database operation
       const startTime = Date.now();
@@ -439,7 +442,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: otel-instrumented-function
-      Runtime: nodejs18.x
+      Runtime: nodejs22.x
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
@@ -448,9 +451,9 @@ Resources:
       # Attach both the OTel SDK layer and Collector extension
       Layers:
         # OpenTelemetry Node.js SDK layer
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1
+        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-0:1
         # OpenTelemetry Collector extension layer
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-88-0:1
+        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-117-0:1
 
       Environment:
         Variables:
@@ -464,6 +467,7 @@ Resources:
           OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
           # Configure collector to forward to your backend
           OPENTELEMETRY_COLLECTOR_CONFIG_FILE: /var/task/collector.yaml
+          OTEL_COLLECTOR_ENDPOINT: !Ref OtelCollectorEndpoint
 
       Code:
         ZipFile: |
@@ -516,16 +520,13 @@ processors:
 exporters:
   # OTLP exporter sends to your observability backend
   otlp:
-    endpoint: ${OTEL_COLLECTOR_ENDPOINT}
-    headers:
-      # Add authentication header if required
-      Authorization: Bearer ${OTEL_AUTH_TOKEN}
+    endpoint: ${env:OTEL_COLLECTOR_ENDPOINT}
     tls:
       insecure: false
 
   # Debug exporter for troubleshooting (disable in production)
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 # Extensions provide additional capabilities
 extensions:
@@ -577,7 +578,7 @@ Configure OpenTelemetry in your Azure Functions startup file. This file runs onc
 // src/startup.js - Azure Functions OpenTelemetry initialization
 
 const { useAzureMonitor } = require('@azure/monitor-opentelemetry');
-const { trace } = require('@opentelemetry/api');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Track cold start status across invocations
 let isColdStart = true;
@@ -611,19 +612,19 @@ useAzureMonitor({
   },
 
   // Add custom resource attributes
-  resource: {
+  resource: resourceFromAttributes({
     'service.name': process.env.WEBSITE_SITE_NAME || 'azure-function',
     'service.version': process.env.SERVICE_VERSION || '1.0.0',
     'deployment.environment': process.env.AZURE_FUNCTIONS_ENVIRONMENT || 'production',
-  },
+  }),
 });
 
 // Export cold start tracker for use in function handlers
 module.exports = {
   getColdStartStatus: () => {
-    const wasColStart = isColdStart;
+    const wasColdStart = isColdStart;
     isColdStart = false;
-    return wasColStart;
+    return wasColdStart;
   },
 };
 ```
@@ -634,7 +635,7 @@ Create an Azure Function with custom tracing using the HTTP trigger pattern.
 // src/functions/httpTrigger.js - Azure Function with OpenTelemetry
 
 const { app } = require('@azure/functions');
-const { trace, SpanStatusCode, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { getColdStartStatus } = require('../startup');
 
 // Get a tracer instance for this function
@@ -657,7 +658,7 @@ app.http('processOrder', {
         // Record cold start status and function metadata
         span.setAttribute('faas.coldstart', coldStart);
         span.setAttribute('faas.name', invocationContext.functionName);
-        span.setAttribute('faas.execution', invocationContext.invocationId);
+        span.setAttribute('faas.invocation_id', invocationContext.invocationId);
 
         // Parse and validate request body
         const orderData = await parseRequestBody(request, span);
@@ -702,8 +703,8 @@ app.http('processOrder', {
 });
 
 // Parse request body with validation span
-async function parseRequestBody(request, parentSpan) {
-  return tracer.startActiveSpan('parseRequest', { parent: parentSpan }, async (span) => {
+async function parseRequestBody(request) {
+  return tracer.startActiveSpan('parseRequest', async (span) => {
     try {
       const body = await request.json();
 
@@ -777,8 +778,15 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_SERVICE_INSTANCE_ID,
+  SEMRESATTRS_CLOUD_PROVIDER,
+  SEMRESATTRS_CLOUD_PLATFORM,
+  SEMRESATTRS_CLOUD_REGION,
+} = require('@opentelemetry/semantic-conventions');
 const { SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
@@ -802,26 +810,26 @@ const metricExporter = new OTLPMetricExporter({
 // Configure the SDK with Azure Functions optimizations
 const sdk = new NodeSDK({
   // Resource attributes identify this service in your observability platform
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: process.env.WEBSITE_INSTANCE_ID,
-    [SemanticResourceAttributes.CLOUD_PROVIDER]: 'azure',
-    [SemanticResourceAttributes.CLOUD_PLATFORM]: 'azure_functions',
-    [SemanticResourceAttributes.CLOUD_REGION]: process.env.REGION_NAME,
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+    [ATTR_SERVICE_INSTANCE_ID]: process.env.WEBSITE_INSTANCE_ID,
+    [SEMRESATTRS_CLOUD_PROVIDER]: 'azure',
+    [SEMRESATTRS_CLOUD_PLATFORM]: 'azure_functions',
+    [SEMRESATTRS_CLOUD_REGION]: process.env.REGION_NAME,
     // Custom attribute for function app name
     'faas.name': process.env.WEBSITE_SITE_NAME,
   }),
 
   // Use SimpleSpanProcessor for consumption plan, BatchSpanProcessor for premium
   // Consumption plan functions may terminate before batch export
-  spanProcessor: isConsumptionPlan
+  spanProcessors: [isConsumptionPlan
     ? new SimpleSpanProcessor(traceExporter)
     : new BatchSpanProcessor(traceExporter, {
         maxQueueSize: 100,
         maxExportBatchSize: 50,
         scheduledDelayMillis: 5000,
-      }),
+      })],
 
   // Configure metric reader with appropriate interval
   metricReader: new PeriodicExportingMetricReader({
@@ -903,13 +911,12 @@ app.serviceBusQueue('processMessage', {
         attributes: {
           // Service Bus semantic conventions
           'messaging.system': 'azure_servicebus',
-          'messaging.destination': 'orders-queue',
-          'messaging.destination_kind': 'queue',
+          'messaging.destination.name': 'orders-queue',
           'messaging.message_id': message.messageId,
           'messaging.operation': 'process',
           // Cold start tracking
           'faas.coldstart': coldStart,
-          'faas.execution': invocationContext.invocationId,
+          'faas.invocation_id': invocationContext.invocationId,
         },
       }, async (span) => {
         // Mark subsequent invocations as warm
@@ -1226,7 +1233,7 @@ exports.handler = async (event, context) => {
 
     try {
       // Add Lambda context information
-      span.setAttribute('faas.execution', context.awsRequestId);
+      span.setAttribute('faas.invocation_id', context.awsRequestId);
       span.setAttribute('faas.memory_limit', context.memoryLimitInMB);
       span.setAttribute('faas.max_duration_ms', context.getRemainingTimeInMillis());
 
@@ -1236,7 +1243,7 @@ exports.handler = async (event, context) => {
       span.setStatus({ code: SpanStatusCode.OK });
 
       // Track successful invocation
-      invocationTracker.complete(true, { 'http.status_code': 200 });
+      invocationTracker.complete(true, { 'http.response.status_code': 200 });
 
       return {
         statusCode: 200,
@@ -1249,7 +1256,7 @@ exports.handler = async (event, context) => {
 
       // Track failed invocation
       invocationTracker.complete(false, {
-        'http.status_code': 500,
+        'http.response.status_code': 500,
         'error.type': error.name,
       });
 
@@ -1292,7 +1299,7 @@ const exporter = new OTLPTraceExporter({
 
 const sdk = new NodeSDK({
   // Use SimpleSpanProcessor for guaranteed export before freeze
-  spanProcessor: new SimpleSpanProcessor(exporter),
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
   // Minimal auto-instrumentation to reduce init time
   instrumentations: [],
 });
@@ -1314,7 +1321,10 @@ Ensure trace context propagates across function invocations for complete distrib
 ```javascript
 // context-propagation.js - Proper context propagation patterns
 
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+
+const lambda = new LambdaClient({});
 
 // Propagate context when invoking another Lambda
 async function invokeLambdaWithContext(functionName, payload) {
@@ -1337,13 +1347,13 @@ async function invokeLambdaWithContext(functionName, payload) {
     };
 
     try {
-      const result = await lambda.invoke({
+      const result = await lambda.send(new InvokeCommand({
         FunctionName: functionName,
-        Payload: JSON.stringify(enrichedPayload),
-      }).promise();
+        Payload: Buffer.from(JSON.stringify(enrichedPayload)),
+      }));
 
       span.setStatus({ code: SpanStatusCode.OK });
-      return JSON.parse(result.Payload);
+      return JSON.parse(Buffer.from(result.Payload).toString());
 
     } catch (error) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -1382,44 +1392,42 @@ Follow OpenTelemetry semantic conventions for consistent and interoperable telem
 ```javascript
 // semantic-conventions.js - Using standard attribute names
 
-const { SemanticAttributes } = require('@opentelemetry/semantic-conventions');
-
 function addHttpAttributes(span, request, response) {
   // HTTP semantic conventions
-  span.setAttribute(SemanticAttributes.HTTP_METHOD, request.method);
-  span.setAttribute(SemanticAttributes.HTTP_URL, request.url);
-  span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, response.statusCode);
-  span.setAttribute(SemanticAttributes.HTTP_TARGET, request.path);
-  span.setAttribute(SemanticAttributes.HTTP_USER_AGENT, request.headers['user-agent']);
+  span.setAttribute('http.request.method', request.method);
+  span.setAttribute('url.full', request.url);
+  span.setAttribute('http.response.status_code', response.statusCode);
+  span.setAttribute('url.path', request.path);
+  span.setAttribute('user_agent.original', request.headers['user-agent']);
 
   // Request/response size
   if (request.headers['content-length']) {
-    span.setAttribute(SemanticAttributes.HTTP_REQUEST_CONTENT_LENGTH,
+    span.setAttribute('http.request.body.size',
       parseInt(request.headers['content-length']));
   }
 }
 
 function addFaasAttributes(span, context) {
   // FaaS (Function as a Service) semantic conventions
-  span.setAttribute(SemanticAttributes.FAAS_EXECUTION, context.awsRequestId);
-  span.setAttribute(SemanticAttributes.FAAS_TRIGGER, 'http');
-  span.setAttribute(SemanticAttributes.FAAS_COLDSTART, isColdStart);
-  span.setAttribute(SemanticAttributes.CLOUD_PROVIDER, 'aws');
-  span.setAttribute(SemanticAttributes.CLOUD_REGION, process.env.AWS_REGION);
+  span.setAttribute('faas.invocation_id', context.awsRequestId);
+  span.setAttribute('faas.trigger', 'http');
+  span.setAttribute('faas.coldstart', isColdStart);
+  span.setAttribute('cloud.provider', 'aws');
+  span.setAttribute('cloud.region', process.env.AWS_REGION);
 }
 
 function addDatabaseAttributes(span, operation) {
   // Database semantic conventions
-  span.setAttribute(SemanticAttributes.DB_SYSTEM, 'dynamodb');
-  span.setAttribute(SemanticAttributes.DB_NAME, operation.tableName);
-  span.setAttribute(SemanticAttributes.DB_OPERATION, operation.type);
-  span.setAttribute(SemanticAttributes.DB_STATEMENT, JSON.stringify(operation.params));
+  span.setAttribute('db.system.name', 'aws.dynamodb');
+  span.setAttribute('db.namespace', operation.tableName);
+  span.setAttribute('db.operation.name', operation.type);
+  span.setAttribute('db.query.text', JSON.stringify(operation.params));
 }
 ```
 
 ### 4. Implement Sampling Strategies
 
-Configure intelligent sampling to balance observability with cost.
+Configure intelligent sampling to balance observability with cost. JavaScript SDK samplers make head-sampling decisions when spans are created, so attributes used for sampling must be available at span start time.
 
 ```javascript
 // sampling-config.js - Production sampling configuration
@@ -1549,10 +1557,11 @@ When deploying functions across multiple regions, ensure traces can be correlate
 // multi-region-tracing.js - Cross-region trace correlation
 
 const { trace, context, propagation } = require('@opentelemetry/api');
-const { Resource } = require('@opentelemetry/resources');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Add region-specific resource attributes
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'cloud.region': process.env.AWS_REGION,
   'cloud.availability_zone': process.env.AWS_AVAILABILITY_ZONE,
   'deployment.region': process.env.DEPLOYMENT_REGION,
@@ -1572,20 +1581,22 @@ async function invokeCrossRegion(region, functionName, payload) {
     const carrier = {};
     propagation.inject(context.active(), carrier);
 
-    const regionalLambda = new AWS.Lambda({ region });
+    try {
+      const regionalLambda = new LambdaClient({ region });
 
-    const result = await regionalLambda.invoke({
-      FunctionName: functionName,
-      Payload: JSON.stringify({
-        ...payload,
-        _traceContext: carrier,
-      }),
-    }).promise();
+      const result = await regionalLambda.send(new InvokeCommand({
+        FunctionName: functionName,
+        Payload: Buffer.from(JSON.stringify({
+          ...payload,
+          _traceContext: carrier,
+        })),
+      }));
 
-    span.setAttribute('faas.response_status', result.StatusCode);
-    span.end();
-
-    return JSON.parse(result.Payload);
+      span.setAttribute('faas.response_status', result.StatusCode);
+      return JSON.parse(Buffer.from(result.Payload).toString());
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -1633,9 +1644,9 @@ flowchart LR
 // event-driven-tracing.js - Event-driven architecture tracing
 
 const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
-const AWS = require('aws-sdk');
+const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
-const sqs = new AWS.SQS();
+const sqs = new SQSClient({});
 const tracer = trace.getTracer('event-processor');
 
 // Producer: Publish message with trace context
@@ -1644,8 +1655,7 @@ async function publishEvent(queueUrl, event) {
     kind: SpanKind.PRODUCER,
     attributes: {
       'messaging.system': 'aws_sqs',
-      'messaging.destination': queueUrl,
-      'messaging.destination_kind': 'queue',
+      'messaging.destination.name': queueUrl,
     },
   }, async (span) => {
     // Inject trace context into message attributes
@@ -1662,11 +1672,11 @@ async function publishEvent(queueUrl, event) {
     }
 
     try {
-      const result = await sqs.sendMessage({
+      const result = await sqs.send(new SendMessageCommand({
         QueueUrl: queueUrl,
         MessageBody: JSON.stringify(event),
         MessageAttributes: messageAttributes,
-      }).promise();
+      }));
 
       span.setAttribute('messaging.message_id', result.MessageId);
       span.setStatus({ code: SpanStatusCode.OK });
@@ -1818,7 +1828,7 @@ def handler(event, context):
     ) as span:
         # Add cold start and Lambda context attributes
         span.set_attribute("faas.coldstart", cold_start)
-        span.set_attribute("faas.execution", context.aws_request_id)
+        span.set_attribute("faas.invocation_id", context.aws_request_id)
         span.set_attribute("faas.name", context.function_name)
         span.set_attribute("faas.memory_limit", context.memory_limit_in_mb)
 
