@@ -438,7 +438,7 @@ After the StatefulSet is running, you need to initialize the Redis Cluster. This
 
 ```bash
 # Get pod IPs for cluster creation
-kubectl get pods -l app=redis-cluster -o jsonpath='{range.items[*]}{.status.podIP}:6379 {end}'
+kubectl get pods -l app=redis-cluster -o jsonpath='{range .items[*]}{.status.podIP}:6379 {end}'
 
 # Create the cluster using redis-cli from any redis pod
 # --cluster-replicas 1 means each master gets 1 replica (6 nodes = 3 masters + 3 replicas)
@@ -476,7 +476,7 @@ spec:
       initContainers:
         - name: config
           image: redis:7
-          command: ["/bin/sh", "-c"]
+          command: ["/bin/bash", "-c"]
           args:
             - |
               # First pod (redis-0) becomes master, others become replicas
