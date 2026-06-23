@@ -131,14 +131,14 @@ Kaminari.configure do |config|
   # Ensures first and last pages are always accessible
   config.outer_window = 0
 
-  # Show first page link
+  # Number of page links always shown at the far left
   config.left = 0
 
-  # Show last page link
+  # Number of page links always shown at the far right
   config.right = 0
 
-  # Default page number when none is specified
-  # Always start at page 1
+  # Name of the method used to paginate (default :page)
+  # Rename this if it conflicts with an existing `page` method
   config.page_method_name = :page
 
   # Name of the parameter used for page number in URLs
@@ -273,13 +273,13 @@ class ArticlesController < ApplicationController
             # Is this the last page?
             last_page: @articles.last_page?,
 
-            # Is there a previous page?
+            # Previous page number (nil on the first page)
             prev_page: @articles.prev_page,
 
-            # Is there a next page?
+            # Next page number (nil on the last page)
             next_page: @articles.next_page,
 
-            # Are there pages remaining after this one?
+            # Is the requested page beyond the last page?
             out_of_range: @articles.out_of_range?
           }
         }
@@ -302,14 +302,20 @@ Kaminari allows full customization of pagination views:
 # This copies Kaminari's default views to your application
 rails generate kaminari:views default
 
-# Generate Bootstrap 5 themed views
-rails generate kaminari:views bootstrap5
+# Generate Bootstrap 4 themed views
+rails generate kaminari:views bootstrap4
 
-# Generate Tailwind CSS themed views
-rails generate kaminari:views tailwindcss
+# Generate Bulma themed views
+rails generate kaminari:views bulma
 
-# Available themes: default, bootstrap4, bootstrap5,
-# bulma, foundation, materialize, semantic_ui, tailwindcss
+# Themes are downloaded from the kaminari_themes repository.
+# Available themes: default, bootstrap2, bootstrap3, bootstrap4,
+# bourbon, bulma, foundation, foundation5, github, google,
+# materialize, purecss, semantic_ui
+#
+# Note: Bootstrap 5 and Tailwind CSS are not bundled themes.
+# Use a dedicated gem (e.g. bootstrap5-kaminari-views or
+# kaminari-tailwind) for those frameworks.
 ```
 
 ### Customizing Generated Views
