@@ -213,9 +213,8 @@ spec:
 
 ```mermaid
 flowchart TD
-    A[Istiod] -->|Signs Certificates| B[Citadel]
-    B -->|Issues Certs| C[Envoy Proxy Pod A]
-    B -->|Issues Certs| D[Envoy Proxy Pod B]
+    A[Istiod CA<br/>formerly Citadel] -->|Issues Certs| C[Envoy Proxy Pod A]
+    A -->|Issues Certs| D[Envoy Proxy Pod B]
 
     C <-->|mTLS with auto-rotated certs| D
 
@@ -293,7 +292,7 @@ spec:
       env:
         # Certificate validity duration (default: 24h)
         PILOT_CERT_PROVIDER: istiod
-        # Auto-rotation happens at 80% of validity
+        # Auto-rotation happens at 50% of validity (SECRET_GRACE_PERIOD_RATIO default: 0.5)
 ```
 
 ## Complete mTLS Setup Example
@@ -429,8 +428,8 @@ kubectl describe peerauthentication strict-mtls -n secure-apps
 ### Verify mTLS is Active
 
 ```bash
-# Check if mTLS is enabled between services
-istioctl x authz check <pod-name> -n <namespace>
+# Check the effective mTLS mode for a workload
+istioctl x describe pod <pod-name> -n <namespace>
 
 # Check proxy configuration
 istioctl proxy-config listener <pod-name> -n <namespace>
