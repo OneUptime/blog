@@ -323,6 +323,11 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Define HAS_API_KEY at the job level. A step's `if` cannot read an
+    # `env` value defined in that same step's `env` block, but it can read
+    # job-level and workflow-level env.
+    env:
+      HAS_API_KEY: ${{ secrets.API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -334,8 +339,6 @@ jobs:
       # Check secrets existence (secrets are masked)
       - name: Use optional integration
         if: env.HAS_API_KEY == 'true'
-        env:
-          HAS_API_KEY: ${{ secrets.API_KEY != '' }}
         run: ./integration-tests.sh
 ```
 
