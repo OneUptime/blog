@@ -266,7 +266,7 @@ metadata:
   namespace: databases
 type: Opaque
 # Note: In production, use proper secret management tools
-# Values here should be base64 encoded
+# stringData accepts plain text; Kubernetes stores it in data as base64-encoded values
 stringData:
   postgres-password: "YourSecurePassword123!"
   replication-password: "ReplicationPass456!"
@@ -290,9 +290,9 @@ metadata:
   annotations:
     # Request a specific IP from the database pool
     # This ensures consistent IP assignment across service recreations
-    metallb.universe.tf/address-pool: database-pool
+    metallb.io/address-pool: database-pool
     # Optionally request a specific IP address
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
     # Add description for documentation
     description: "External PostgreSQL access via MetalLB"
 spec:
@@ -300,8 +300,8 @@ spec:
   # externalTrafficPolicy: Local preserves client source IP
   # This is important for connection logging and IP-based access control
   externalTrafficPolicy: Local
-  # Session affinity ensures a client connects to the same pod
-  # Critical for database connections to maintain transaction state
+  # Session affinity keeps new connections from the same client IP on the same backend
+  # Existing TCP database connections already stay on their selected backend
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
@@ -380,7 +380,7 @@ spec:
         fsGroup: 999
       containers:
       - name: mysql
-        image: mysql:8.0
+        image: mysql:8.4
         ports:
         - containerPort: 3306
           name: mysql
@@ -405,7 +405,6 @@ spec:
               key: user-password
         # MySQL arguments for production configuration
         args:
-        - "--default-authentication-plugin=mysql_native_password"
         - "--character-set-server=utf8mb4"
         - "--collation-server=utf8mb4_unicode_ci"
         - "--max-connections=500"
@@ -423,13 +422,15 @@ spec:
         # Custom MySQL configuration
         - name: mysql-config
           mountPath: /etc/mysql/conf.d
+        - name: mysql-client-secret
+          mountPath: /etc/mysql-client-secret
+          readOnly: true
         livenessProbe:
           exec:
             command:
             - mysqladmin
+            - --defaults-extra-file=/etc/mysql-client-secret/client.cnf
             - ping
-            - -h
-            - localhost
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -437,8 +438,7 @@ spec:
           exec:
             command:
             - mysql
-            - -h
-            - localhost
+            - --defaults-extra-file=/etc/mysql-client-secret/client.cnf
             - -e
             - "SELECT 1"
           initialDelaySeconds: 10
@@ -448,6 +448,12 @@ spec:
       - name: mysql-config
         configMap:
           name: mysql-config
+      - name: mysql-client-secret
+        secret:
+          secretName: mysql-secrets
+          items:
+          - key: client.cnf
+            path: client.cnf
   volumeClaimTemplates:
   - metadata:
       name: mysql-data
@@ -521,6 +527,12 @@ stringData:
   root-password: "MySQLRootPass123!"
   user-password: "AppUserPass456!"
   replication-password: "ReplPass789!"
+  exporter-password: "ExporterPass012!"
+  client.cnf: |
+    [client]
+    user=root
+    password=MySQLRootPass123!
+    protocol=socket
 ```
 
 ### MySQL LoadBalancer Service
@@ -538,14 +550,14 @@ metadata:
     exposure: external
   annotations:
     # Use the dedicated database IP pool
-    metallb.universe.tf/address-pool: database-pool
+    metallb.io/address-pool: database-pool
     # Assign specific IP for MySQL
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.101"
+    metallb.io/loadBalancerIPs: "192.168.1.101"
 spec:
   type: LoadBalancer
   # Preserve source IP for audit logging
   externalTrafficPolicy: Local
-  # Session affinity for connection stability
+  # Session affinity keeps new connections from the same client IP on the same backend
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
@@ -628,15 +640,20 @@ spec:
   - Ingress
   - Egress
   ingress:
-  # Allow traffic from the MetalLB speaker pods
-  # This is necessary for LoadBalancer health checks
+  # Allow external clients that are permitted to reach the MetalLB VIPs
+  # With externalTrafficPolicy: Local, the original client source IP is preserved
   - from:
-    - namespaceSelector:
-        matchLabels:
-          app.kubernetes.io/name: metallb
-      podSelector:
-        matchLabels:
-          component: speaker
+    - ipBlock:
+        cidr: 10.0.0.0/8      # Internal corporate network
+    - ipBlock:
+        cidr: 172.16.0.0/12   # VPN clients
+    - ipBlock:
+        cidr: 203.0.113.0/24  # Office public IP range
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 3306
   # Allow traffic from specific application namespaces
   - from:
     - namespaceSelector:
@@ -681,7 +698,7 @@ spec:
 
 ### TLS Configuration for PostgreSQL
 
-Enable SSL/TLS for PostgreSQL connections:
+Create PostgreSQL SSL/TLS configuration files. Mount this ConfigMap and the TLS Secret into the PostgreSQL container and reference them with `postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf` or equivalent operator settings:
 
 ```yaml
 # postgresql-tls-config.yaml
@@ -703,7 +720,7 @@ data:
     # Require SSL for all connections
     # Options: disable, allow, prefer, require, verify-ca, verify-full
     ssl_min_protocol_version = 'TLSv1.2'
-    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_ciphers = 'HIGH:!aNULL'
 
     # Connection settings
     listen_addresses = '*'
@@ -934,8 +951,8 @@ metadata:
   name: pgbouncer-external
   namespace: databases
   annotations:
-    metallb.universe.tf/address-pool: database-pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.102"
+    metallb.io/address-pool: database-pool
+    metallb.io/loadBalancerIPs: "192.168.1.102"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -1036,7 +1053,7 @@ data:
         interfaces="0.0.0.0:6033"
         default_schema="information_schema"
         stacksize=1048576
-        server_version="8.0.32"
+        server_version="8.4.0"
         connect_timeout_server=3000
         monitor_username="monitor"
         monitor_password="monitorpassword"
@@ -1092,7 +1109,7 @@ data:
             rule_id=2
             active=1
             match_digest="^SELECT"
-            destination_hostgroup=1
+            destination_hostgroup=0
             apply=1
         }
     )
@@ -1104,8 +1121,8 @@ metadata:
   name: proxysql-external
   namespace: databases
   annotations:
-    metallb.universe.tf/address-pool: database-pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.103"
+    metallb.io/address-pool: database-pool
+    metallb.io/loadBalancerIPs: "192.168.1.103"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -1159,6 +1176,16 @@ Deploy monitoring exporters for database metrics:
 
 ```yaml
 # database-monitoring.yaml
+# Secret containing the PostgreSQL exporter connection string
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-exporter-secrets
+  namespace: databases
+type: Opaque
+stringData:
+  connection-string: "postgresql://postgres:YourSecurePassword123!@postgresql-headless:5432/postgres?sslmode=require"
+---
 # PostgreSQL Prometheus exporter
 apiVersion: apps/v1
 kind: Deployment
@@ -1191,10 +1218,6 @@ spec:
             secretKeyRef:
               name: postgres-exporter-secrets
               key: connection-string
-        # Additional flags for extended metrics
-        args:
-        - "--auto-discover-databases"
-        - "--extend.query-path=/etc/postgres_exporter/queries.yaml"
         resources:
           requests:
             memory: "64Mi"
@@ -1266,9 +1289,9 @@ Test MySQL connection:
 ```bash
 # Test MySQL connection
 # Replace with your MetalLB assigned IP
-mysql -h 192.168.1.101 -u appuser -p appdb -e "SELECT VERSION();"
+mysql -h 192.168.1.101 -u appuser -p appdb --ssl-mode=REQUIRED -e "SELECT VERSION();"
 
-# Test with SSL
+# Verify SSL is in use
 mysql -h 192.168.1.101 -u appuser -p appdb --ssl-mode=REQUIRED -e "SHOW STATUS LIKE 'Ssl_cipher';"
 ```
 
@@ -1292,7 +1315,7 @@ kubectl get l2advertisement -n metallb-system
 
 1. **Use Dedicated IP Pools**: Create separate IP address pools for databases to enable targeted security rules.
 
-2. **Enable Session Affinity**: Configure `sessionAffinity: ClientIP` to maintain connection consistency.
+2. **Use Session Affinity When Helpful**: Configure `sessionAffinity: ClientIP` when you want new connections from the same client IP to prefer the same backend.
 
 3. **Preserve Source IP**: Use `externalTrafficPolicy: Local` for accurate audit logging and IP-based access control.
 
