@@ -45,9 +45,11 @@ MetalLB exposes Prometheus metrics that provide deep visibility into its operati
 | `metallb_bgp_session_up` | Gauge | BGP session status (1=up, 0=down) |
 | `metallb_bgp_announced_prefixes_total` | Gauge | Number of prefixes announced via BGP |
 | `metallb_bgp_updates_total` | Counter | Total BGP updates sent |
-| `metallb_layer2_announcements_total` | Counter | Total Layer 2 announcements made |
 | `metallb_k8s_client_updates_total` | Counter | Kubernetes API updates processed |
 | `metallb_k8s_client_update_errors_total` | Counter | Kubernetes API update errors |
+| `metallb_k8s_client_config_stale_bool` | Gauge | Whether MetalLB is running with stale configuration |
+
+If you use the default FRR-K8s BGP backend in recent MetalLB releases, BGP and BFD metrics are emitted by the FRR-K8s pods with the `frrk8s_` prefix, such as `frrk8s_bgp_session_up`, instead of the legacy `metallb_bgp_` prefix.
 
 ## Architecture Overview
 
@@ -57,9 +59,9 @@ The following diagram illustrates how metrics flow from MetalLB to OneUptime:
 flowchart LR
     subgraph Cluster["Kubernetes Cluster"]
         subgraph MetalLB["MetalLB Components"]
-            Controller["Controller Pod<br/>:7472/metrics"]
-            Speaker1["Speaker Pod 1<br/>:7472/metrics"]
-            Speaker2["Speaker Pod 2<br/>:7472/metrics"]
+            Controller["Controller Pod<br/>:9120/metrics"]
+            Speaker1["Speaker Pod 1<br/>:9120/metrics"]
+            Speaker2["Speaker Pod 2<br/>:9120/metrics"]
         end
 
         subgraph OTel["OpenTelemetry"]
@@ -85,61 +87,59 @@ flowchart LR
 
 The integration uses:
 
-1. **MetalLB's native Prometheus endpoints**: Both controller and speaker expose metrics on port 7472
+1. **MetalLB's native Prometheus endpoints**: Both controller and speaker expose HTTPS metrics on port 9120 in recent releases
 2. **OpenTelemetry Collector**: Scrapes Prometheus metrics and converts them to OTLP format
 3. **OneUptime OTLP Endpoint**: Receives and stores metrics for visualization and alerting
 
 ## Enabling MetalLB Metrics
 
-By default, MetalLB exposes metrics on port 7472. You need to ensure the metrics port is accessible and optionally create a ServiceMonitor (if using Prometheus Operator) or configure direct scraping.
+Recent MetalLB releases expose HTTPS metrics on port 9120 by default. Older MetalLB releases used port 7472, so check your installed chart or manifests if you are running an older version. You need to ensure the metrics port is accessible and optionally create a ServiceMonitor (if using Prometheus Operator) or configure direct scraping.
 
 First, verify that MetalLB is exposing metrics. The following command checks if the controller is serving metrics:
 
 ```bash
 # Port-forward to the MetalLB controller to verify metrics are available
 
-kubectl port-forward -n metallb-system deploy/controller 7472:7472 &
+kubectl port-forward -n metallb-system deploy/controller 9120:9120 &
 
 # Fetch metrics from the controller (run in another terminal or wait a moment)
-curl -s http://localhost:7472/metrics | grep metallb
+curl -ks https://localhost:9120/metrics | grep metallb
 
 # Example output:
 # metallb_allocator_addresses_in_use_total{pool="default"} 3
 # metallb_allocator_addresses_total{pool="default"} 10
 ```
 
-If you installed MetalLB via Helm, you can enable dedicated metrics services for easier scraping. Update your MetalLB Helm values:
+If you installed MetalLB via Helm, you can enable Prometheus scrape annotations and, when using Prometheus Operator, ServiceMonitor resources for easier scraping. Update your MetalLB Helm values:
 
 ```yaml
 # metallb-values.yaml
 # Enable Prometheus metrics exposure for MetalLB components
 
-controller:
-  # Enable metrics endpoint on the controller
-  metrics:
-    enabled: true
-    # Service configuration for metrics
-    service:
-      # Annotations for service discovery (optional for Prometheus Operator)
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "7472"
-      # Port for metrics service
-      port: 7472
-
 speaker:
-  # Enable metrics endpoint on speakers
-  metrics:
-    enabled: true
-    service:
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "7472"
-      port: 7472
-  # FRR metrics (if using FRR mode for BGP)
+  # FRR metrics (only if using the deprecated FRR mode for BGP)
   frr:
     enabled: false
-    metricsPort: 7473
+    metricsPort: 9121
+
+prometheus:
+  # Add Prometheus scrape annotations to MetalLB pods
+  scrapeAnnotations: true
+  # Metrics port used by both controller and speaker
+  metricsPort: 9120
+  # Optional: create ServiceMonitor resources if Prometheus Operator is installed
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    controller:
+      tlsConfig:
+        insecureSkipVerify: true
+    speaker:
+      tlsConfig:
+        insecureSkipVerify: true
+  # Set to true and configure serviceAccount/namespace when Prometheus needs
+  # chart-created RBAC for ServiceMonitor scraping.
+  rbacPrometheus: false
 ```
 
 Apply the updated configuration:
@@ -155,7 +155,7 @@ helm upgrade metallb metallb/metallb \
 kubectl get svc -n metallb-system
 ```
 
-You should see services like `controller-metrics` and `speaker-metrics` that expose port 7472.
+If `prometheus.serviceMonitor.enabled` is true, you should see monitor services like `metallb-controller-monitor-service` and `metallb-speaker-monitor-service` that expose port 9120.
 
 ## Deploying OpenTelemetry Collector
 
@@ -180,6 +180,11 @@ metadata:
   namespace: opentelemetry
 data:
   config.yaml: |
+    # Extensions add operational endpoints to the collector
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     # Receivers define how data gets into the collector
     receivers:
       # Prometheus receiver scrapes metrics from MetalLB endpoints
@@ -192,6 +197,11 @@ data:
               scrape_interval: 30s
               # Timeout for each scrape attempt
               scrape_timeout: 10s
+              # MetalLB exposes HTTPS metrics with a self-signed certificate by default
+              scheme: https
+              tls_config:
+                insecure_skip_verify: true
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
               # Use Kubernetes service discovery to find the controller
               kubernetes_sd_configs:
                 - role: pod
@@ -216,12 +226,16 @@ data:
                 # Set the correct port for scraping
                 - source_labels: [__meta_kubernetes_pod_ip]
                   target_label: __address__
-                  replacement: ${1}:7472
+                  replacement: $${1}:9120
 
             # Scrape MetalLB speaker metrics from all speaker pods
             - job_name: 'metallb-speaker'
               scrape_interval: 30s
               scrape_timeout: 10s
+              scheme: https
+              tls_config:
+                insecure_skip_verify: true
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
               kubernetes_sd_configs:
                 - role: pod
                   namespaces:
@@ -247,7 +261,7 @@ data:
                 # Set the correct port for scraping
                 - source_labels: [__meta_kubernetes_pod_ip]
                   target_label: __address__
-                  replacement: ${1}:7472
+                  replacement: $${1}:9120
 
     # Processors modify data as it passes through the collector
     processors:
@@ -263,7 +277,7 @@ data:
         check_interval: 1s
         # Limit memory to 400MB
         limit_mib: 400
-        # Start dropping data at 350MB to prevent OOM
+        # Start applying backpressure at roughly 300MB to prevent OOM
         spike_limit_mib: 100
 
       # Resource processor adds common attributes to all metrics
@@ -283,11 +297,13 @@ data:
       # OTLP HTTP exporter sends metrics to OneUptime
       otlphttp:
         # OneUptime OTLP endpoint
-        endpoint: "https://otlp.oneuptime.com"
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
+          Content-Type: "application/json"
           # Your OneUptime API token for authentication
-          # Get this from OneUptime Dashboard > Settings > API Keys
-          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+          # Get this from OneUptime Dashboard > Project Settings > Telemetry Ingestion Keys
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
         # Retry configuration for reliability
         retry_on_failure:
           enabled: true
@@ -306,9 +322,16 @@ data:
         logs:
           level: info
         metrics:
-          address: :8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 
       # Pipelines connect receivers, processors, and exporters
+      extensions:
+        - health_check
       pipelines:
         # Metrics pipeline for MetalLB metrics
         metrics:
@@ -361,7 +384,7 @@ spec:
       containers:
         - name: otel-collector
           # Use the contrib image which includes the Prometheus receiver
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - "--config=/etc/otel-collector/config.yaml"
           ports:
@@ -487,7 +510,10 @@ receivers:
           static_configs:
             - targets:
               # Service DNS name within the cluster
-              - 'controller-metrics.metallb-system.svc.cluster.local:7472'
+              - 'metallb-controller-monitor-service.metallb-system.svc.cluster.local:9120'
+          scheme: https
+          tls_config:
+            insecure_skip_verify: true
           relabel_configs:
             - target_label: component
               replacement: controller
@@ -505,10 +531,13 @@ receivers:
             # Keep only the speaker metrics endpoints
             - source_labels: [__meta_kubernetes_endpoints_name]
               action: keep
-              regex: speaker-metrics
+              regex: metallb-speaker-monitor-service
             # Add node name from endpoint
             - source_labels: [__meta_kubernetes_endpoint_node_name]
               target_label: node
+          scheme: https
+          tls_config:
+            insecure_skip_verify: true
 ```
 
 For filtering specific metrics to reduce data volume and cost, add metric relabeling:
@@ -532,7 +561,7 @@ receivers:
               regex: controller
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: ${1}:7472
+              replacement: $${1}:9120
           # Metric relabeling happens after scraping
           metric_relabel_configs:
             # Keep only MetalLB-specific metrics
@@ -547,7 +576,7 @@ receivers:
             - source_labels: [__name__]
               target_label: __name__
               regex: 'metallb_(.*)'
-              replacement: 'lb_${1}'
+              replacement: 'lb_$${1}'
 ```
 
 ## Sending Metrics to OneUptime
@@ -569,7 +598,7 @@ sequenceDiagram
     end
 
     loop Every 30 seconds (batched)
-        OTel->>OneUptime: POST /v1/metrics (OTLP)
+        OTel->>OneUptime: POST /otlp/v1/metrics (OTLP)
         OneUptime->>OTel: 200 OK
     end
 ```
@@ -580,9 +609,11 @@ To verify metrics are being received by OneUptime, you can temporarily enable th
 # Enable debug exporter for troubleshooting
 exporters:
   otlphttp:
-    endpoint: "https://otlp.oneuptime.com"
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      Content-Type: "application/json"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
   # Debug exporter logs metrics to stdout
   debug:
@@ -648,11 +679,13 @@ If you are using MetalLB in BGP mode, monitor session health:
 - **Announced Prefixes**: `metallb_bgp_announced_prefixes_total`
 - **BGP Updates**: `metallb_bgp_updates_total` (rate over time)
 
+For the default FRR-K8s backend, use the corresponding `frrk8s_` metrics, such as `frrk8s_bgp_session_up`, `frrk8s_bgp_announced_prefixes_total`, and `frrk8s_bgp_updates_total`.
+
 ### Speaker Pod Health Dashboard
 
 Monitor the health of speaker pods across your cluster:
 
-- **Layer 2 Announcements**: `metallb_layer2_announcements_total` (rate)
+- **Scrape Health**: `up{job="metallb-speaker"}` grouped by node
 - **Kubernetes API Errors**: `metallb_k8s_client_update_errors_total`
 - **Speaker Pod Count**: Number of healthy speaker pods
 
@@ -708,7 +741,7 @@ Alert when IP pool utilization exceeds 95%:
 
 Alert immediately when a BGP session goes down:
 
-- **Metric**: `metallb_bgp_session_up`
+- **Metric**: `metallb_bgp_session_up` (or `frrk8s_bgp_session_up` with the default FRR-K8s backend)
 - **Condition**: Equals 0
 - **Duration**: 1 minute
 - **Severity**: Critical
@@ -717,7 +750,7 @@ Alert immediately when a BGP session goes down:
 
 Alert when speaker pods are not running on all nodes:
 
-- **Metric**: Count of `metallb_layer2_announcements_total` grouped by node
+- **Metric**: Count of `up{job="metallb-speaker"} == 1` grouped by node
 - **Condition**: Less than expected node count
 - **Duration**: 2 minutes
 - **Severity**: Warning
@@ -795,7 +828,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           resources:
             requests:
               cpu: 200m
@@ -840,8 +873,8 @@ kubectl logs -n opentelemetry -l app=otel-collector
 2. **Verify MetalLB metrics endpoint**:
 
 ```bash
-kubectl port-forward -n metallb-system deploy/controller 7472:7472
-curl http://localhost:7472/metrics | grep metallb
+kubectl port-forward -n metallb-system deploy/controller 9120:9120
+curl -k https://localhost:9120/metrics | grep metallb
 ```
 
 3. **Check OneUptime token**:
@@ -853,7 +886,8 @@ kubectl get secret oneuptime-credentials -n opentelemetry -o jsonpath='{.data.to
 4. **Verify network connectivity**:
 
 ```bash
-kubectl exec -n opentelemetry -it deploy/otel-collector -- wget -qO- https://otlp.oneuptime.com/v1/metrics
+kubectl exec -n opentelemetry -it deploy/otel-collector -- wget -qO- https://oneuptime.com/otlp/v1/validate \
+  --header="x-oneuptime-token: $(kubectl get secret oneuptime-credentials -n opentelemetry -o jsonpath='{.data.token}' | base64 -d)"
 ```
 
 ### High Memory Usage in Collector
@@ -874,7 +908,7 @@ Integrating MetalLB metrics with OneUptime provides essential visibility into yo
 
 Key takeaways:
 
-- MetalLB exposes critical metrics about IP allocation, BGP sessions, and Layer 2 announcements
+- MetalLB exposes critical metrics about IP allocation, BGP sessions, and Kubernetes API updates
 - OpenTelemetry Collector bridges Prometheus metrics to OneUptime via OTLP
 - Proactive alerting on pool exhaustion and session health prevents outages
 - Proper filtering and batching optimizes cost and performance
