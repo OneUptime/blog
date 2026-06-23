@@ -8,7 +8,7 @@ Description: Learn how to create cumulative sum visualizations in Grafana that r
 
 ---
 
-Creating cumulative metrics that reset daily is a common requirement for tracking daily quotas, usage limits, or progress toward daily goals. While Prometheus counters are inherently cumulative, getting them to reset at midnight requires specific techniques. This guide shows you multiple approaches to achieve daily-resetting cumulative functions in Grafana.
+Creating cumulative metrics that reset daily is a common requirement for tracking daily quotas, usage limits, or progress toward daily goals. While Prometheus counters are inherently cumulative, making the visualization start again at midnight requires specific techniques. This guide shows you multiple approaches to achieve daily-resetting cumulative functions in Grafana.
 
 ## Use Cases for Daily Cumulative Metrics
 
@@ -36,22 +36,24 @@ flowchart LR
 
 ## Method 1: Using increase() with Time Alignment
 
-The `increase()` function calculates the increase over a time range. By aligning to day boundaries, we can create daily cumulative sums.
+The `increase()` function calculates the increase over a time range. In Grafana, use it with a dashboard range that starts at the day boundary, such as "Today so far", to create daily totals.
 
 ### Basic Daily Increase
 
 ```promql
-# Total increase since start of day
+# Total increase over the selected Grafana time range
 
-increase(http_requests_total[1d])
+increase(http_requests_total[$__range])
 ```
 
-However, `increase()` gives a single value, not a running cumulative. For a running sum, combine with `sum_over_time`:
+With the Grafana time range set to "Today so far", `$__range` covers the current day so far. A fixed selector like `[1d]` means the last 24 hours, not necessarily the current calendar day.
+
+However, `increase()` gives a single value for each evaluation point, not a running cumulative from the start of the panel range. For a rolling 24-hour sum, you can combine it with `sum_over_time`:
 
 ### Running Cumulative with Subqueries
 
 ```promql
-# Running cumulative that effectively resets daily
+# Rolling 24-hour cumulative increase
 # This calculates increase for each 5-minute interval and sums them
 sum_over_time(
   increase(http_requests_total[5m])[1d:5m]
@@ -62,12 +64,12 @@ sum_over_time(
 
 Grafana's transformation engine provides more flexible options.
 
-### Step 1: Query Instantaneous Rate
+### Step 1: Query Interval Increase
 
-Create a base query that returns the rate per interval:
+Create a base query that returns the increase per interval:
 
 ```promql
-# Query A: Rate per minute
+# Query A: Increase per minute
 increase(http_requests_total[1m])
 ```
 
@@ -76,7 +78,7 @@ increase(http_requests_total[1m])
 1. Go to the **Transform** tab
 2. Add **Add field from calculation**
 3. Mode: **Cumulative functions**
-4. Function: **Cumulative sum**
+4. Function: **Total**
 
 This creates a cumulative sum that naturally resets when a new day begins (if you set your time range to "Today so far").
 
@@ -90,40 +92,34 @@ For counters that genuinely reset, use the `resets()` function:
 
 ```promql
 # Number of times the counter reset
-resets(my_counter_total[1d])
+resets(my_counter_total[$__range])
 ```
 
-To handle resets while maintaining a cumulative view:
+To handle resets while maintaining a cumulative view, use `increase()` directly because it already adjusts for counter resets:
 
 ```promql
 # Increase accounting for resets
-increase(my_counter_total[1d]) +
-(resets(my_counter_total[1d]) * (my_counter_total offset 1d))
+increase(my_counter_total[$__range])
 ```
 
-## Method 4: Recording Rules for Pre-computed Daily Sums
+## Method 4: Recording Rules for Pre-computed Rates
 
-Create recording rules that compute daily running totals:
+Create recording rules that pre-compute reset-aware rates or short-window increases, then use the recorded series with Grafana's "Today so far" time range and cumulative sum transformation:
 
 ```yaml
 groups:
   - name: daily_cumulative
     interval: 1m
     rules:
-      # Store the value at start of day
-      - record: job:http_requests:day_start
+      # Pre-compute a reset-aware per-second rate
+      - record: job:http_requests:rate1m
         expr: |
-          http_requests_total
-          and on()
-          hour(vector(time())) == 0
-          and on()
-          minute(vector(time())) < 1
+          sum by (job) (rate(http_requests_total[1m]))
 
-      # Calculate cumulative since start of day
-      - record: job:http_requests:daily_cumulative
+      # Store the approximate increase per rule interval
+      - record: job:http_requests:increase1m
         expr: |
-          http_requests_total -
-          (job:http_requests:day_start or http_requests_total offset 1d)
+          job:http_requests:rate1m * 60
 ```
 
 ## Method 5: Using Floor Function for Day Alignment
@@ -135,17 +131,17 @@ Align metrics to day boundaries using time functions:
 time() - (floor(time() / 86400) * 86400)
 ```
 
-Note: PromQL does not allow dynamic expressions inside range vector brackets, so you cannot directly use the computed seconds-since-midnight as a range duration. Instead, use `increase()` with a fixed range like `[1d]` combined with Grafana's "Today so far" time range setting to achieve daily alignment.
+Note: PromQL does not allow dynamic expressions inside range vector brackets, so you cannot directly use the computed seconds-since-midnight as a range duration. Instead, use `increase()` with Grafana's `$__range` variable and the "Today so far" time range setting to achieve daily alignment.
 
 ## Practical Implementation Example
 
-### Dashboard Variable Setup
+### Dashboard Time Range Setup
 
-Create variables for flexible time handling:
+Configure the panel or dashboard time range so the first data point is midnight in the dashboard time zone:
 
 ```text
-# Variable: $day_start
-# Query: floor(now() / 86400) * 86400
+# From: now/d
+# To: now
 ```
 
 ### Complete Panel Configuration
@@ -160,7 +156,7 @@ sum(
 
 **Transformations:**
 1. Prepare time series > Multi-frame
-2. Add field from calculation > Cumulative sum
+2. Add field from calculation > Cumulative functions > Total
 
 **Panel Settings:**
 ```json
@@ -191,7 +187,7 @@ For quota/limit tracking, a gauge works well:
 ```promql
 # Current daily usage vs limit
 (
-  sum(increase(api_requests_total[1d]))
+  sum(increase(api_requests_total[$__range]))
   /
   10000  # Daily limit
 ) * 100
@@ -238,9 +234,9 @@ Daily resets should align with your business time zone:
 ### Query with Time Zone Offset
 
 ```promql
-# Adjust for timezone (e.g., UTC-5 for EST) using offset
-# Set the Grafana dashboard timezone instead of trying to offset in PromQL
-increase(http_requests_total[1d] offset 5h)
+# Set the Grafana dashboard timezone instead of trying to offset in PromQL.
+# offset shifts the selected samples; it does not make [1d] mean "local calendar day".
+increase(http_requests_total[$__range])
 ```
 
 ## Advanced: Multi-Day Comparison
@@ -249,13 +245,13 @@ Show cumulative progress compared to previous days:
 
 ```promql
 # Today's cumulative (Query A)
-sum(increase(orders_total[1d]))
+sum(increase(orders_total[$__range]))
 
 # Yesterday at same time (Query B)
-sum(increase(orders_total[1d] offset 1d))
+sum(increase(orders_total[$__range] offset 1d))
 
 # Last week same day (Query C)
-sum(increase(orders_total[1d] offset 7d))
+sum(increase(orders_total[$__range] offset 7d))
 ```
 
 With transformations:
@@ -274,7 +270,7 @@ With transformations:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(increase(orders_total[1d]))",
+            "expr": "sum(increase(orders_total[$__range]))",
             "legendFormat": "Orders"
           }
         ],
@@ -298,7 +294,10 @@ With transformations:
           {
             "id": "calculateField",
             "options": {
-              "mode": "cumulativeTotal"
+              "mode": "cumulativeFunctions",
+              "cumulative": {
+                "reducer": "sum"
+              }
             }
           }
         ]
@@ -308,7 +307,7 @@ With transformations:
         "type": "gauge",
         "targets": [
           {
-            "expr": "sum(increase(orders_total[1d])) / 1000 * 100",
+            "expr": "sum(increase(orders_total[$__range])) / 1000 * 100",
             "legendFormat": "Progress"
           }
         ]
@@ -334,7 +333,7 @@ Creating daily-resetting cumulative functions in Grafana requires:
 1. **Use `increase()` function** - Calculate change over time periods
 2. **Apply Grafana transformations** - Cumulative sum transformation builds running totals
 3. **Set appropriate time ranges** - "Today so far" ensures daily reset behavior
-4. **Consider recording rules** - Pre-compute daily metrics for performance
+4. **Consider recording rules** - Pre-compute rates or interval increases for performance
 5. **Handle time zones** - Align reset time with business requirements
 
 These techniques enable powerful daily progress tracking for quotas, usage monitoring, and business KPIs that need to start fresh each day.
