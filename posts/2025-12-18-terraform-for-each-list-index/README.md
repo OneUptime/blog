@@ -87,7 +87,7 @@ variable "availability_zones" {
 locals {
   # Create map: { "0" = "us-east-1a", "1" = "us-east-1b", "2" = "us-east-1c" }
   az_map = zipmap(
-    range(length(var.availability_zones)),
+    [for idx in range(length(var.availability_zones)) : tostring(idx)],
     var.availability_zones
   )
 }
@@ -280,7 +280,13 @@ locals {
         environment   = env
         service       = svc
         index         = idx
-        global_index  = sum([for e, s in var.environments : length(s) if e < env]) + idx
+        global_index  = sum(concat(
+          [0],
+          [
+            for prior_env in slice(keys(var.environments), 0, index(keys(var.environments), env)) :
+            length(var.environments[prior_env])
+          ]
+        )) + idx
       }
     }
   ]...)
@@ -301,9 +307,9 @@ resource "aws_ecs_service" "main" {
 ### Pitfall 1: Changing List Order
 
 ```hcl
-# DANGEROUS: Changing order causes resource recreation
+# DANGEROUS: Changing order reassigns values to the same numeric keys
 variable "servers" {
-  default = ["web", "api"]  # If you change to ["api", "web"], resources recreate
+  default = ["web", "api"]  # If converted to index keys, "0" changes from web to api
 }
 
 # SAFE: Use meaningful keys
