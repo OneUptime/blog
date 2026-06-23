@@ -76,7 +76,7 @@ changes(up[5m])
 # Detect flapping services (many state changes)
 changes(up[10m]) > 5
 
-# Configuration changes detection
+# Process restart detection
 changes(process_start_time_seconds[1h])
 ```
 
@@ -127,8 +127,8 @@ avg_over_time(http_request_duration_seconds[1h])
 Detect fluctuation compared to same time yesterday or last week.
 
 ```promql
-# Compare to 24 hours ago
-http_requests_total - http_requests_total offset 24h
+# Compare request rate to 24 hours ago
+rate(http_requests_total[5m]) - rate(http_requests_total[5m] offset 24h)
 
 # Percent change from yesterday
 (
@@ -358,16 +358,16 @@ Detect fluctuation in different percentiles.
 
 ```promql
 # Compare p99 to p50 - high ratio indicates outliers
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
-/ histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+/ histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 
 # Interquartile range
-histogram_quantile(0.75, rate(http_request_duration_seconds_bucket[5m]))
-- histogram_quantile(0.25, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.75, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+- histogram_quantile(0.25, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 
 # Track percentile stability
 stddev_over_time(
-  histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))[1h:5m]
+  histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))[1h:5m]
 )
 ```
 
@@ -375,16 +375,25 @@ stddev_over_time(
 
 Add annotations when fluctuation thresholds are crossed.
 
-```yaml
-# Grafana provisioning - annotations
-apiVersion: 1
-annotations:
-  - name: High Fluctuation Events
-    datasource: Prometheus
-    enable: true
-    iconColor: red
-    query: |
-      ALERTS{alertname="HighMetricFluctuation", alertstate="firing"}
+```json
+{
+  "annotations": {
+    "list": [
+      {
+        "name": "High Fluctuation Events",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PROMETHEUS_UID"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "target": {
+          "expr": "ALERTS{alertname=\"HighMetricFluctuation\", alertstate=\"firing\"}"
+        }
+      }
+    ]
+  }
+}
 ```
 
 ## 14. Practical Fluctuation Queries
@@ -394,18 +403,22 @@ Common real-world fluctuation detection queries.
 ```promql
 # CPU usage instability
 stddev_over_time(
-  rate(container_cpu_usage_seconds_total[1m])[5m:30s]
-) by (container)
+  (
+    sum by (container) (rate(container_cpu_usage_seconds_total[1m]))
+  )[5m:30s]
+)
 
 # Network throughput variance
 stddev_over_time(
-  rate(node_network_receive_bytes_total[1m])[10m:1m]
-) by (device)
+  (
+    sum by (device) (rate(node_network_receive_bytes_total[1m]))
+  )[10m:1m]
+)
 
 # Error rate stability
 changes(
-  ceil(rate(http_requests_total{status=~"5.."}[1m]))
-[10m])
+  ceil(rate(http_requests_total{status=~"5.."}[1m]))[10m:1m]
+)
 
 # Latency percentile stability
 stddev_over_time(
