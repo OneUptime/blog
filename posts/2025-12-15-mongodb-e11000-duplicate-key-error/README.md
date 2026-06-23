@@ -104,12 +104,12 @@ db.users.insertOne({ email: "jane@example.com" });
 When a field is optional but should be unique when present, use a partial index.
 
 ```javascript
-// Only index documents where username exists and is not null
+// Only index documents where username is a string
 db.users.createIndex(
   { username: 1 },
   {
     unique: true,
-    partialFilterExpression: { username: { $exists: true, $ne: null } }
+    partialFilterExpression: { username: { $type: "string" } }
   }
 );
 
@@ -124,7 +124,7 @@ db.users.insertOne({ username: "john123", email: "jane@example.com" }); // Error
 
 ### Solution 2: Use Upsert Operations
 
-When you want to insert if not exists, or update if exists, use upsert.
+When you want to insert if not exists, or update if exists, use upsert with a filter backed by the same unique key.
 
 ```javascript
 // Using updateOne with upsert
@@ -174,7 +174,7 @@ if (!result.success) {
 
 ### Solution 4: Handle Race Conditions
 
-In high-concurrency scenarios, use findOneAndUpdate with upsert to prevent race conditions.
+In high-concurrency scenarios, use findOneAndUpdate with upsert and a unique index on the lookup field to prevent race conditions.
 
 ```javascript
 // Instead of check-then-insert (race condition prone)
@@ -242,9 +242,9 @@ for (const dup of duplicates) {
 db.collection('users').createIndex({ email: 1 }, { unique: true });
 ```
 
-### Solution 6: Use Sparse Indexes (Legacy Approach)
+### Solution 6: Use Sparse Indexes (Alternative Approach)
 
-For older MongoDB versions, sparse indexes skip documents where the indexed field is missing.
+Sparse indexes skip documents where the indexed field is missing, but they still index documents where the field exists with a `null` value.
 
 ```javascript
 // Sparse unique index - only indexes documents with the field
@@ -262,7 +262,7 @@ Note: Partial indexes are preferred over sparse indexes in modern MongoDB as the
 
 2. **Use meaningful error messages** - Parse the error to tell users which field caused the issue.
 
-3. **Consider upsert operations** - When dealing with idempotent operations, upsert prevents duplicates naturally.
+3. **Consider upsert operations** - When dealing with idempotent operations, upsert with a unique lookup key helps prevent duplicates naturally.
 
 4. **Test your indexes** - Before deploying, ensure your unique indexes work with your data patterns.
 
