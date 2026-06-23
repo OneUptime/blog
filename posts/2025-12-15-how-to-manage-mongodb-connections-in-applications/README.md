@@ -36,7 +36,7 @@ The MongoDB Node.js driver uses connection pooling by default:
 ```javascript
 const { MongoClient } = require('mongodb');
 
-// Default pool size is 100 connections
+// Default maxPoolSize is 100 connections per server
 const client = new MongoClient('mongodb://localhost:27017');
 
 // This creates a pool, not a single connection
@@ -63,7 +63,7 @@ const client = new MongoClient('mongodb://localhost:27017', {
 });
 ```
 
-## The Golden Rule: One Connection Per Application
+## The Golden Rule: One Client Per Application Process
 
 The most important connection management principle:
 
@@ -77,7 +77,7 @@ app.get('/users', async (req, res) => {
   res.json(users);
 });
 
-// GOOD - Reuse single connection
+// GOOD - Reuse a single MongoClient
 const client = new MongoClient(uri);
 let db;
 
@@ -173,6 +173,8 @@ For larger applications:
 
 ```javascript
 // database.js
+const { MongoClient } = require('mongodb');
+
 class Database {
   constructor(uri, dbName, options = {}) {
     this.uri = uri;
@@ -237,12 +239,16 @@ module.exports = UserService;
 const Database = require('./database');
 const UserService = require('./userService');
 
-const db = new Database(process.env.MONGODB_URI, 'myapp');
-const userService = new UserService(db);
+async function main() {
+  const db = new Database(process.env.MONGODB_URI, 'myapp');
+  const userService = new UserService(db);
 
-// Initialize and use
-await db.connect();
-const users = await userService.findAll();
+  // Initialize and use
+  await db.connect();
+  const users = await userService.findAll();
+}
+
+main().catch(console.error);
 ```
 
 ## Handling Connection Events
@@ -252,7 +258,7 @@ Monitor connection health with events:
 ```javascript
 const client = new MongoClient(uri);
 
-// Connection opened
+// Connection pool created
 client.on('connectionPoolCreated', (event) => {
   console.log('Connection pool created');
 });
@@ -295,7 +301,7 @@ The MongoDB driver handles reconnection automatically, but configure it properly
 
 ```javascript
 const client = new MongoClient(uri, {
-  // Reconnection settings
+  // Retry settings for supported operations
   retryWrites: true,
   retryReads: true,
 
@@ -468,22 +474,22 @@ try {
 }
 ```
 
-### Mistake 3: Pool Exhaustion
+### Mistake 3: Not Ending Sessions
 
 ```javascript
-// BAD - Checking out connections without releasing
+// BAD - Starting sessions without ending them
 for (let i = 0; i < 1000; i++) {
   const session = client.startSession();
-  // Forgot to end session - connections leak
+  // Forgot to end session - server-side session resources are not released promptly
 }
 
-// GOOD - Always release connections
+// GOOD - Always end sessions
 for (let i = 0; i < 1000; i++) {
   const session = client.startSession();
   try {
     // Do work
   } finally {
-    session.endSession();  // Always release
+    await session.endSession();  // Always end the session
   }
 }
 ```
@@ -535,31 +541,42 @@ app.get('/health', async (req, res) => {
 
 ```javascript
 // Get pool statistics
-function getPoolStats() {
-  const topology = client.topology;
+function createPoolStats(client) {
+  const stats = {
+    checkedOutConnections: 0,
+    poolsCreated: 0,
+    poolsClosed: 0,
+    checkoutFailures: 0
+  };
 
-  if (!topology) return null;
+  client.on('connectionPoolCreated', () => {
+    stats.poolsCreated++;
+  });
 
-  const servers = topology.s.servers;
-  const stats = [];
+  client.on('connectionPoolClosed', () => {
+    stats.poolsClosed++;
+  });
 
-  for (const [address, server] of servers) {
-    stats.push({
-      address,
-      pool: {
-        totalConnections: server.s.pool.totalConnectionCount,
-        availableConnections: server.s.pool.availableConnectionCount,
-        pendingConnections: server.s.pool.pendingConnectionCount
-      }
-    });
-  }
+  client.on('connectionCheckedOut', () => {
+    stats.checkedOutConnections++;
+  });
+
+  client.on('connectionCheckedIn', () => {
+    stats.checkedOutConnections--;
+  });
+
+  client.on('connectionCheckOutFailed', () => {
+    stats.checkoutFailures++;
+  });
 
   return stats;
 }
 
+const poolStats = createPoolStats(client);
+
 // Expose in monitoring endpoint
 app.get('/metrics/connections', (req, res) => {
-  res.json(getPoolStats());
+  res.json(poolStats);
 });
 ```
 
@@ -568,7 +585,7 @@ app.get('/metrics/connections', (req, res) => {
 Effective MongoDB connection management follows these principles:
 
 1. **Use connection pooling** - Never create new connections per request
-2. **Single connection per application** - Initialize once, reuse everywhere
+2. **Single client per application process** - Initialize once, reuse everywhere
 3. **Configure pool size appropriately** - Match your concurrency needs
 4. **Handle errors and reconnection** - Build resilience into your connection logic
 5. **Graceful shutdown** - Always close connections when application stops
