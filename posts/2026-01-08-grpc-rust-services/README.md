@@ -57,7 +57,13 @@ prost-types = "0.12"
 
 # Async runtime
 tokio = { version = "1.36", features = ["full"] }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+futures = "0.3"
+async-stream = "0.3"
+
+# Tower middleware and HTTP types (must match tonic 0.11)
+tower = "0.4"
+http = "0.2"
 
 # Error handling
 anyhow = "1.0"
@@ -439,7 +445,7 @@ use pb::user_service_server::UserService;
 use pb::*;
 
 /// In-memory user store (replace with database in production)
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct UserStore {
     users: RwLock<HashMap<String, User>>,
     event_sender: broadcast::Sender<UserEvent>,
