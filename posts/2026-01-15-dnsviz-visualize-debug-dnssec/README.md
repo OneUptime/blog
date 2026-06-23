@@ -165,8 +165,8 @@ dnsviz probe -A example.com > example.json
 | `-A` | Query authoritative servers directly |
 | `-d` | Enable debug output |
 | `-t THREADS` | Number of concurrent queries |
-| `-a ALGORITHM` | Specific digest algorithm to use |
-| `-D DLVKEY` | Use DLV (deprecated but sometimes useful) |
+| `-a ANCESTOR` | Ancestor name to issue queries toward (default: root) |
+| `-D DOMAIN:DS` | Supply DS record(s) for testing, used with `-N` |
 
 ### dnsviz grok - Analyzing the Data
 
@@ -176,8 +176,8 @@ The `grok` command analyzes the probed data and identifies issues.
 # Analyze and output to JSON
 dnsviz grok < example.json > analysis.json
 
-# Output as text (human-readable)
-dnsviz grok -o text < example.json
+# Filter the assessment to warnings and errors (output is still JSON)
+dnsviz grok -l warning < example.json
 
 # Show specific trust anchor
 dnsviz grok -t /path/to/trust-anchor.key < example.json
@@ -197,18 +197,18 @@ dnsviz graph -Tsvg < example.json > example.svg
 # Create HTML (interactive)
 dnsviz graph -Thtml < example.json > example.html
 
-# Create PDF
-dnsviz graph -Tpdf < example.json > example.pdf
+# Create PDF (dnsviz emits dot/png/jpg/svg/html, so convert dot with Graphviz)
+dnsviz graph -Tdot < example.json | dot -Tpdf > example.pdf
 
-# Show only errors
-dnsviz graph -O -Tpng < example.json > errors.png
+# Save output to a file with an auto-derived name (e.g. example.com.png)
+dnsviz graph -O -Tpng -r example.json
 ```
 
 ### Complete Pipeline Example
 
 ```bash
-# Full analysis pipeline
-dnsviz probe example.com | dnsviz grok | dnsviz graph -Tpng > result.png
+# Full analysis pipeline (probe output feeds graph directly; grok consumes the same probe output)
+dnsviz probe example.com | dnsviz graph -Tpng > result.png
 
 # With intermediate files for debugging
 dnsviz probe example.com > probe.json
@@ -483,7 +483,7 @@ for domain in $DOMAINS; do
     echo "Analyzing $domain..."
     dnsviz probe "$domain" > "$OUTPUT_DIR/$domain.json"
     dnsviz graph -Tpng < "$OUTPUT_DIR/$domain.json" > "$OUTPUT_DIR/$domain.png"
-    dnsviz grok -o text < "$OUTPUT_DIR/$domain.json" > "$OUTPUT_DIR/$domain-analysis.txt"
+    dnsviz grok -l warning < "$OUTPUT_DIR/$domain.json" > "$OUTPUT_DIR/$domain-analysis.json"
 done
 
 echo "Analysis complete. Results in $OUTPUT_DIR"
@@ -495,7 +495,7 @@ echo "Analysis complete. Results in $OUTPUT_DIR"
 # Test against multiple resolvers
 for resolver in 8.8.8.8 1.1.1.1 9.9.9.9; do
     echo "Testing with $resolver"
-    dnsviz probe -s "$resolver" example.com | dnsviz grok -o text
+    dnsviz probe -s "$resolver" example.com | dnsviz grok -l warning
 done
 ```
 
@@ -527,7 +527,7 @@ DOMAIN="example.com"
 ALERT_EMAIL="admin@example.com"
 
 # Run analysis
-OUTPUT=$(dnsviz probe "$DOMAIN" | dnsviz grok -o text 2>&1)
+OUTPUT=$(dnsviz probe "$DOMAIN" | dnsviz grok -l warning 2>&1)
 
 # Check for errors
 if echo "$OUTPUT" | grep -qi "error\|invalid\|expired"; then
@@ -552,17 +552,17 @@ DOMAIN=$1
 
 echo "=== Pre-change DNSSEC status ==="
 dnsviz probe "$DOMAIN" > pre-change.json
-dnsviz grok -o text < pre-change.json
+dnsviz grok -l warning < pre-change.json
 
 # Make your changes here
 
 echo "=== Post-change DNSSEC status ==="
 dnsviz probe "$DOMAIN" > post-change.json
-dnsviz grok -o text < post-change.json
+dnsviz grok -l warning < post-change.json
 
 # Compare
 echo "=== Comparison ==="
-diff <(dnsviz grok -o text < pre-change.json) <(dnsviz grok -o text < post-change.json)
+diff <(dnsviz grok -l warning < pre-change.json) <(dnsviz grok -l warning < post-change.json)
 ```
 
 ### Key Rollover Monitoring
@@ -684,7 +684,7 @@ dig +dnssec +all example.com
 
 ```bash
 # 1. Assess damage
-dnsviz probe example.com | dnsviz grok -o text
+dnsviz probe example.com | dnsviz grok -l warning
 
 # 2. If signatures expired, re-sign immediately
 # (Commands depend on your DNS software)
