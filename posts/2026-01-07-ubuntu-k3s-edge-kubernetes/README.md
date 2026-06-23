@@ -32,13 +32,13 @@ Before diving into the installation, it is essential to understand what makes K3
 | Aspect | K8s (Standard) | K3s |
 |--------|---------------|-----|
 | Binary Size | ~1GB+ | ~100MB |
-| Memory (Server) | 2GB+ minimum | 512MB minimum |
-| Memory (Agent) | 1GB+ minimum | 256MB minimum |
-| CPU | 2+ cores | 1 core viable |
+| Memory (Server) | 2GB+ minimum | 2GB minimum |
+| Memory (Agent) | 1GB+ minimum | 512MB minimum |
+| CPU | 2+ cores | 2 cores for servers, 1 core for agents |
 
 ### Key Differences
 
-**Simplified Architecture**: K3s packages everything into a single binary, including containerd, Flannel, CoreDNS, and Traefik. Standard K8s requires separate installations of these components.
+**Simplified Architecture**: K3s ships as a single binary and includes or deploys packaged components such as containerd, Flannel, CoreDNS, and Traefik. Standard K8s requires separate installations of these components.
 
 **Removed Components**: K3s removes legacy and alpha features, in-tree cloud provider plugins, and storage drivers that are rarely used in edge scenarios.
 
@@ -79,8 +79,8 @@ Before installing K3s, ensure your Ubuntu system meets these requirements:
 ### System Requirements
 
 - Ubuntu 18.04, 20.04, 22.04, or 24.04 (LTS versions recommended)
-- Minimum 512MB RAM (1GB+ recommended for production)
-- Minimum 1 CPU core
+- Minimum 2GB RAM for server nodes, 512MB RAM for agent nodes
+- Minimum 2 CPU cores for server nodes, 1 CPU core for agent nodes
 - 20GB+ available disk space
 - Root or sudo access
 
@@ -94,7 +94,7 @@ The following ports must be accessible:
 | 8472 | UDP | Flannel VXLAN |
 | 10250 | TCP | Kubelet metrics |
 | 2379-2380 | TCP | etcd (if using embedded etcd) |
-| 51820-51821 | UDP | Flannel Wireguard (if enabled) |
+| 51820-51821 | UDP | Flannel WireGuard (if enabled; 51821 is for IPv6) |
 
 ### Initial System Preparation
 
@@ -152,14 +152,18 @@ If you are using UFW firewall, configure the necessary rules:
 # Allow K3s API server port
 sudo ufw allow 6443/tcp
 
-# Allow Flannel VXLAN traffic
-sudo ufw allow 8472/udp
+# Allow Flannel VXLAN traffic only from trusted cluster nodes
+sudo ufw allow from <node-cidr> to any port 8472 proto udp
 
-# Allow Kubelet metrics
-sudo ufw allow 10250/tcp
+# Allow Kubelet metrics only from trusted cluster nodes
+sudo ufw allow from <node-cidr> to any port 10250 proto tcp
 
-# Allow etcd ports (for multi-server HA setup)
-sudo ufw allow 2379:2380/tcp
+# Allow etcd ports only between server nodes (for multi-server HA setup)
+sudo ufw allow from <server-node-cidr> to any port 2379:2380 proto tcp
+
+# Allow default pod and service CIDRs if UFW is enabled
+sudo ufw allow from 10.42.0.0/16 to any
+sudo ufw allow from 10.43.0.0/16 to any
 
 # Reload firewall rules
 sudo ufw reload
@@ -244,7 +248,7 @@ curl -sfL https://get.k3s.io | sh -s - \
   --disable traefik
 
 # Install with a specific K3s version
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.28.4+k3s2 sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.35.5+k3s1 sh -
 
 # Install with custom cluster CIDR and service CIDR
 curl -sfL https://get.k3s.io | sh -s - \
@@ -282,7 +286,6 @@ Set up the first server node:
 # On the first server node, install K3s with token generation
 # The token is used for other nodes to join the cluster
 curl -sfL https://get.k3s.io | sh -s - server \
-  --cluster-init \
   --write-kubeconfig-mode 644 \
   --node-name k3s-server-1
 
@@ -342,9 +345,9 @@ sudo kubectl get nodes -o wide
 
 # Expected output shows server and agent nodes:
 # NAME           STATUS   ROLES                  AGE   VERSION
-# k3s-server-1   Ready    control-plane,master   5m    v1.28.4+k3s2
-# k3s-agent-1    Ready    <none>                 2m    v1.28.4+k3s2
-# k3s-agent-2    Ready    <none>                 1m    v1.28.4+k3s2
+# k3s-server-1   Ready    control-plane,master   5m    v1.35.5+k3s1
+# k3s-agent-1    Ready    <none>                 2m    v1.35.5+k3s1
+# k3s-agent-2    Ready    <none>                 1m    v1.35.5+k3s1
 
 # Check system pods are distributed across nodes
 sudo kubectl get pods -n kube-system -o wide
@@ -431,7 +434,7 @@ curl -sfL https://get.k3s.io | sh -s - server \
 # Check etcd status
 sudo kubectl get endpoints -n kube-system
 
-# View etcd members
+# List available etcd snapshots
 sudo k3s etcd-snapshot list
 
 # Create manual etcd snapshot for backup
@@ -677,9 +680,12 @@ spec:
       requests:
         cpu: "100m"
         memory: "50Mi"
-    # Enable Traefik dashboard (for debugging)
-    dashboard:
-      enabled: true
+    # Enable Traefik dashboard IngressRoute (for debugging)
+    ingressRoute:
+      dashboard:
+        enabled: true
+        entryPoints:
+          - traefik
 ```
 
 ### Disable Traefik (Use Alternative Ingress)
@@ -781,7 +787,8 @@ Customize the local-path-provisioner:
 
 ```yaml
 # Save as /var/lib/rancher/k3s/server/manifests/local-storage-config.yaml
-# This creates a custom storage class with different settings
+# This creates a custom storage class that uses a path already configured
+# in the local-path-provisioner nodePathMap
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -799,10 +806,23 @@ Configure custom storage paths:
 ```bash
 # Create custom storage directory on each node
 sudo mkdir -p /mnt/data/k3s-storage
-sudo chmod 777 /mnt/data/k3s-storage
+sudo chmod 755 /mnt/data/k3s-storage
 
-# Update local-path-provisioner config
-kubectl get configmap local-path-config -n kube-system -o yaml
+# Edit local-path-provisioner config so nodePathMap includes /mnt/data/k3s-storage
+kubectl edit configmap local-path-config -n kube-system
+```
+
+In the ConfigMap, ensure the `config.json` data includes the custom path:
+
+```json
+{
+  "nodePathMap": [
+    {
+      "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+      "paths": ["/mnt/data/k3s-storage"]
+    }
+  ]
+}
 ```
 
 ### StatefulSet with Local Storage
@@ -861,17 +881,17 @@ On a machine with internet access, download K3s components:
 mkdir k3s-airgap && cd k3s-airgap
 
 # Download K3s binary (adjust version as needed)
-export K3S_VERSION="v1.28.4+k3s2"
+export K3S_VERSION="v1.35.5+k3s1"
 wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s
 
 # Download the installation script
 curl -sfL https://get.k3s.io > install.sh
 
 # Download air-gap images tarball
-wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-amd64.tar.gz
+wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-amd64.tar.zst
 
 # For ARM64 systems, use this instead
-# wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-arm64.tar.gz
+# wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-arm64.tar.zst
 
 # Download checksums for verification
 wget https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/sha256sum-amd64.txt
@@ -908,7 +928,7 @@ cd /tmp/k3s-airgap/
 sudo mkdir -p /var/lib/rancher/k3s/agent/images/
 
 # Copy the images tarball to the correct location
-sudo cp k3s-airgap-images-amd64.tar.gz /var/lib/rancher/k3s/agent/images/
+sudo cp k3s-airgap-images-amd64.tar.zst /var/lib/rancher/k3s/agent/images/
 
 # Make the K3s binary executable and move to proper location
 chmod +x k3s
@@ -996,8 +1016,8 @@ sudo k3s ctr images import myapp-v1.0.tar
 # Verify image is available
 sudo k3s ctr images list | grep myapp
 
-# Alternative: Import directly to containerd
-sudo ctr -n k8s.io images import myapp-v1.0.tar
+# Alternative: Import directly to the K3s containerd socket
+sudo ctr --address /run/k3s/containerd/containerd.sock -n k8s.io images import myapp-v1.0.tar
 ```
 
 ## Verification and Troubleshooting
@@ -1016,15 +1036,15 @@ kubectl describe nodes
 # Verify all system pods are running
 kubectl get pods -n kube-system -o wide
 
-# Check cluster component status
-kubectl get componentstatuses
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 
 # Verify cluster info
 kubectl cluster-info
 
 # Check K3s version
 k3s --version
-kubectl version --short
+kubectl version
 ```
 
 ### Check K3s Logs
@@ -1041,8 +1061,8 @@ sudo journalctl -u k3s-agent -f
 # View logs for specific time range
 sudo journalctl -u k3s --since "1 hour ago"
 
-# Check containerd logs
-sudo journalctl -u containerd -f
+# Check embedded containerd logs
+sudo tail -f /var/lib/rancher/k3s/agent/containerd/containerd.log
 
 # View logs for specific pods
 kubectl logs -n kube-system -l app.kubernetes.io/name=traefik
@@ -1076,8 +1096,9 @@ kubectl logs -n kube-system -l k8s-app=kube-dns
 kubectl run test-dns --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default
 
 # Issue: Cannot pull images
-# Check containerd is running
-sudo systemctl status containerd
+# Check K3s and its embedded containerd runtime
+sudo systemctl status k3s
+sudo k3s ctr version
 
 # Check image pull manually
 sudo k3s ctr images pull docker.io/library/nginx:alpine
@@ -1135,8 +1156,8 @@ kubectl top nodes
 # Check pod resource usage
 kubectl top pods -A
 
-# Enable metrics server if not installed
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# K3s installs metrics-server by default; verify it is running
+kubectl get deployment metrics-server -n kube-system
 
 # For K3s, you might need to add kubelet-insecure-tls
 kubectl patch deployment metrics-server -n kube-system \
@@ -1170,7 +1191,7 @@ For production deployments, consider implementing proper monitoring with tools l
 
 - [K3s Official Documentation](https://docs.k3s.io/)
 - [K3s GitHub Repository](https://github.com/k3s-io/k3s)
-- [Rancher K3s Docs](https://rancher.com/docs/k3s/latest/en/)
+- [SUSE K3s Documentation](https://documentation.suse.com/cloudnative/k3s/latest/en/)
 - [CNCF K3s Landscape](https://landscape.cncf.io/)
 
 Start your edge Kubernetes journey with K3s today and experience the power of lightweight container orchestration.
