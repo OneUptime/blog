@@ -1550,14 +1550,15 @@ end
 
 ### Caching Translations
 
-Rails caches translations automatically, but you can optimize further:
+Rails loads translations once at boot, but you can add an explicit cache layer for repeated lookups:
 
 ```ruby
-# config/environments/production.rb
-Rails.application.configure do
-  # Enable translation caching
-  config.i18n.cache_translations = true
-end
+# config/initializers/i18n.rb
+
+# Mix the Cache module into the Simple backend and point it at a cache store.
+# Only #fetch and #write are used, so any ActiveSupport::Cache store works.
+I18n::Backend::Simple.include(I18n::Backend::Cache)
+I18n.cache_store = ActiveSupport::Cache.lookup_store(:memory_store)
 ```
 
 ### Lazy Loading Translations
@@ -1570,7 +1571,9 @@ For large applications, load translations lazily:
 # Only load translations for the current locale
 # Reduces memory usage in production
 if Rails.env.production?
-  I18n.backend = I18n::Backend::LazyLoadable.new
+  # Pass lazy_load: true to actually defer loading; without it the
+  # backend behaves like the default Simple backend.
+  I18n.backend = I18n::Backend::LazyLoadable.new(lazy_load: true)
 end
 ```
 
