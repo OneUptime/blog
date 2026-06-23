@@ -58,7 +58,7 @@ The most important principle for compound index design is the ESR rule. Order yo
 
 1. **Equality** fields first - exact match conditions
 2. **Sort** fields next - fields used in sort operations
-3. **Range** fields last - operators like $gt, $lt, $in
+3. **Range** fields last - operators like $gt, $lt, $ne, $nin, and $regex. `$in` is equality-like for small lists, but behaves more like a range operator for large lists when combined with `.sort()`.
 
 ```javascript
 // Query pattern:
@@ -136,8 +136,8 @@ db.activities.find({
 db.products.createIndex({
   category: 1,
   brand: 1,
-  price: 1,
-  popularityScore: -1
+  popularityScore: -1,
+  price: 1
 });
 
 // Query with category and brand
@@ -359,10 +359,18 @@ db.orders.createIndex({ customerId: 1, status: 1 });  // Already covered
 function findRedundantIndexes(collectionName) {
   const indexes = db[collectionName].getIndexes();
   const redundant = [];
+  const prefixComparable = (index) =>
+    !index.unique &&
+    !index.sparse &&
+    !index.partialFilterExpression &&
+    !index.expireAfterSeconds &&
+    !index.collation &&
+    !index.hidden;
 
   for (let i = 0; i < indexes.length; i++) {
     for (let j = 0; j < indexes.length; j++) {
       if (i === j) continue;
+      if (!prefixComparable(indexes[i]) || !prefixComparable(indexes[j])) continue;
 
       const keysI = Object.keys(indexes[i].key);
       const keysJ = Object.keys(indexes[j].key);
