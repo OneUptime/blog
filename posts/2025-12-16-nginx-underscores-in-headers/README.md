@@ -33,7 +33,7 @@ curl -H "X_Custom_Header: test" http://example.com/api
 
 ## Why Nginx Drops Underscore Headers
 
-Nginx follows CGI specification recommendations where underscores in header names can cause ambiguity. CGI converts headers to environment variables by:
+Although underscores are valid in HTTP header field names, Nginx's default behavior avoids ambiguity with CGI-style mappings. CGI maps HTTP request headers to environment variables by:
 
 1. Converting to uppercase
 2. Replacing hyphens with underscores
@@ -316,12 +316,11 @@ server {
 
 ### AWS Load Balancer Headers
 
-AWS Classic Load Balancers use some underscore headers.
+AWS Application Load Balancers and Classic Load Balancers use hyphenated `X-Forwarded-*` headers, so they do not require `underscores_in_headers` for the standard forwarding headers.
 
 ```nginx
 server {
     listen 80;
-    underscores_in_headers on;
 
     # Get real client IP from AWS ELB
     set_real_ip_from 10.0.0.0/8;
@@ -398,7 +397,7 @@ sudo nginx -s reload
 
 ## Alternative: Use Hyphenated Header Names
 
-Instead of enabling underscore headers, ask clients to use hyphenated header names (the HTTP standard convention). Nginx passes hyphenated headers by default.
+Instead of enabling underscore headers, ask clients to use hyphenated header names (the most interoperable convention). Nginx passes hyphenated headers by default.
 
 ```nginx
 server {
@@ -426,4 +425,4 @@ server {
 | Security concern | Enable only where needed |
 | Alternative | Convert at proxy level |
 
-The `underscores_in_headers` directive is essential when working with legacy systems, certain cloud providers, or APIs that use underscore-based header names. Enable it judiciously and consider security implications when exposing underscore headers to backends.
+The `underscores_in_headers` directive is essential when working with legacy systems or APIs that use underscore-based header names. Enable it judiciously and consider security implications when exposing underscore headers to backends.
