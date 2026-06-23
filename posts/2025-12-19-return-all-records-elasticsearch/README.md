@@ -18,11 +18,11 @@ flowchart TD
 
     B -->|"< 10,000"| C["size parameter"]
     B -->|"10,000 - 100,000"| D["search_after"]
-    B -->|"> 100,000"| E["Scroll API or PIT"]
+    B -->|"> 100,000"| E["PIT + search_after"]
 
     C --> F["Simple, fast"]
     D --> G["Efficient, stateless"]
-    E --> H["Best for exports"]
+    E --> H["Best for consistency"]
 ```
 
 ## Method 1: Size Parameter (Small Datasets)
@@ -136,9 +136,9 @@ print(f"Retrieved {len(docs)} documents")
 - Deep pagination is slow and memory-intensive
 - Results can shift if index changes during pagination
 
-## Method 3: Scroll API (Large Datasets)
+## Method 3: Scroll API (Large Batch Processing)
 
-The scroll API maintains a consistent snapshot for iterating through large result sets.
+The scroll API maintains a consistent snapshot for iterating through large result sets. Elastic no longer recommends scroll for deep pagination; use PIT + `search_after` when you need consistent pagination beyond 10,000 hits. Scroll is still useful for batch processing tasks such as reindexing or one-off exports.
 
 ```json
 POST /products/_search?scroll=5m
@@ -265,7 +265,7 @@ GET /products/_search
   },
   "sort": [
     {"created_at": "asc"},
-    {"_id": "asc"}
+    {"product_id.keyword": "asc"}
   ]
 }
 ```
@@ -281,11 +281,13 @@ GET /products/_search
   },
   "sort": [
     {"created_at": "asc"},
-    {"_id": "asc"}
+    {"product_id.keyword": "asc"}
   ],
   "search_after": ["2024-01-15T10:30:00Z", "product_1234"]
 }
 ```
+
+Use a unique tiebreaker field with `doc_values` enabled, such as a `keyword` copy of your product ID. The Elasticsearch `_id` metadata field is restricted from sorting, aggregations, and scripting.
 
 ### Python search_after Implementation
 
@@ -304,7 +306,7 @@ def get_all_with_search_after(index, page_size=1000):
             "size": page_size,
             "query": {"match_all": {}},
             "sort": [
-                {"_id": "asc"}
+                {"product_id.keyword": "asc"}
             ]
         }
 
@@ -329,7 +331,7 @@ print(f"Retrieved {len(docs)} documents")
 ### Advantages of search_after
 
 - Stateless - no scroll context to manage
-- Resilient to index changes
+- Works on live data when a consistent snapshot is not required
 - No timeout concerns
 - Works with Point in Time for consistency
 
