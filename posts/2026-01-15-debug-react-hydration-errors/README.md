@@ -1288,7 +1288,7 @@ By following the patterns and practices outlined in this guide, you can build ro
 ## Additional Resources
 
 - [React Documentation on Hydration](https://react.dev/reference/react-dom/client/hydrateRoot)
-- [Next.js SSR Documentation](https://nextjs.org/docs/basic-features/pages#server-side-rendering)
+- [Next.js SSR Documentation](https://nextjs.org/docs/pages/building-your-application/data-fetching/get-server-side-props)
 - [React 18 Hydration Improvements](https://react.dev/blog/2022/03/29/react-v18#new-suspense-features)
 
 ---
