@@ -138,13 +138,12 @@ deploy_production:
 Merge result pipelines test the actual merged result of your source and target branches. This catches issues where both branches work independently but fail when combined.
 
 ```yaml
-# Enable merge result pipelines
+# Run jobs in merge request pipelines. Once "Merged results pipelines"
+# is enabled in the project settings, these pipelines automatically run
+# against the merged result of the source and target branches.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      variables:
-        # Enable merged results pipeline
-        CI_MERGE_REQUEST_EVENT_TYPE: merged_result
 
 stages:
   - build
@@ -153,7 +152,7 @@ stages:
 build:
   stage: build
   script:
-    - echo "Testing merge result of $CI_MERGE_REQUEST_SOURCE_BRANCH into $CI_MERGE_REQUEST_TARGET_BRANCH"
+    - echo "Testing merge result of $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME into $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
     - npm ci
     - npm run build
 
@@ -163,7 +162,7 @@ test:
     - npm test
 ```
 
-To enable merged results pipelines, go to Settings > General > Merge requests and enable "Merged results pipelines".
+To enable merged results pipelines, go to Settings > Merge requests, and under Merge options select "Enable merged results pipelines".
 
 ## Merge Trains
 
@@ -222,7 +221,7 @@ show_mr_info:
     - echo "Source Branch: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
     - echo "Target Branch: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
     - echo "MR Title: $CI_MERGE_REQUEST_TITLE"
-    - echo "Author: $CI_MERGE_REQUEST_AUTHOR"
+    - echo "Assignees: $CI_MERGE_REQUEST_ASSIGNEES"
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
@@ -301,7 +300,7 @@ run_tests:
 
 ## Blocking Merge Without Successful Pipeline
 
-Configure your project to require a successful pipeline before merging. Go to Settings > General > Merge requests and enable "Pipelines must succeed".
+Configure your project to require a successful pipeline before merging. Go to Settings > Merge requests, and under Merge checks enable "Pipelines must succeed".
 
 ```yaml
 # Complete merge request pipeline with quality gates
