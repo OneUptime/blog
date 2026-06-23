@@ -121,7 +121,7 @@ MicroK8s is distributed as a snap package, making installation straightforward a
 Install MicroK8s from the stable channel:
 ```bash
 # Install MicroK8s from the stable channel (recommended for production)
-sudo snap install microk8s --classic --channel=1.28/stable
+sudo snap install microk8s --classic --channel=1.36/stable
 ```
 
 You can also install the latest version:
@@ -140,7 +140,7 @@ snap info microk8s | grep -E "^\s+[0-9]+\.[0-9]+"
 
 Common channels include:
 - `stable` - Latest stable release
-- `1.28/stable` - Specific Kubernetes version
+- `1.36/stable` - Specific Kubernetes version
 - `edge` - Latest development version
 - `candidate` - Release candidates
 
@@ -184,7 +184,6 @@ addons:
   disabled:
     cert-manager         # (core) Cloud native certificate management
     community            # (core) The community addons repository
-    dashboard            # (core) The Kubernetes dashboard
     dns                  # (core) CoreDNS
     ...
 ```
@@ -223,9 +222,9 @@ microk8s kubectl get storageclass
 
 ### Ingress Controller
 
-Enable the NGINX ingress controller for external access:
+Enable the ingress controller for external access. Starting with MicroK8s 1.35, the ingress add-on uses Traefik by default; earlier releases used NGINX:
 ```bash
-# Enable NGINX ingress controller
+# Enable the ingress controller
 microk8s enable ingress
 ```
 
@@ -240,7 +239,7 @@ microk8s kubectl get pods -n ingress
 You can enable multiple add-ons in a single command:
 ```bash
 # Enable commonly used add-ons together
-microk8s enable dns storage ingress dashboard metrics-server
+microk8s enable dns hostpath-storage ingress metrics-server
 ```
 
 ### Available Add-ons
@@ -252,7 +251,6 @@ microk8s status
 ```
 
 Common add-ons include:
-- `dashboard` - Kubernetes Dashboard UI
 - `metrics-server` - Resource metrics for HPA
 - `prometheus` - Monitoring stack
 - `registry` - Private Docker registry
@@ -262,6 +260,8 @@ Common add-ons include:
 - `rbac` - Role-Based Access Control
 - `gpu` - NVIDIA GPU support
 - `istio` - Service mesh
+
+Note: the `dashboard` add-on was removed in MicroK8s 1.36 following the upstream Kubernetes Dashboard deprecation. It is only available on older MicroK8s releases.
 
 ## Configuring kubectl
 
@@ -344,7 +344,7 @@ Ensure all nodes:
 - Have MicroK8s installed with the same version
 - Can communicate over the network
 - Have unique hostnames
-- Have ports 25000 (cluster), 16443 (API), and 10250 (kubelet) open
+- Have ports 25000 (cluster agent), 16443 (API), 10250 (kubelet), 19001 (dqlite), and 4789/udp (Calico VXLAN) open between nodes
 
 ### Generating the Join Token
 
@@ -414,11 +414,10 @@ microk8s leave
 
 ### Cluster Networking
 
-Configure cluster networking for multi-node setups:
+MicroK8s 1.19 and later uses Calico CNI by default for clustered deployments. Verify that Calico pods are running:
 ```bash
-# Enable Calico CNI for advanced networking
-microk8s enable community
-microk8s enable calico
+# Check Calico CNI pods
+microk8s kubectl get pods -n kube-system -l k8s-app=calico-node
 ```
 
 ## GPU Support
@@ -465,7 +464,7 @@ This installs the NVIDIA device plugin and container runtime:
 microk8s status | grep gpu
 
 # Check the NVIDIA device plugin
-microk8s kubectl get pods -n kube-system | grep nvidia
+microk8s kubectl get pods -n gpu-operator-resources | grep nvidia
 ```
 
 ### Testing GPU Access
@@ -479,6 +478,7 @@ kind: Pod
 metadata:
   name: gpu-test
 spec:
+  runtimeClassName: nvidia
   restartPolicy: OnFailure
   containers:
   - name: cuda-container
@@ -515,6 +515,7 @@ spec:
       labels:
         app: ml-inference
     spec:
+      runtimeClassName: nvidia
       containers:
       - name: inference
         image: my-ml-model:latest
@@ -596,9 +597,8 @@ EOF
 
 Implement network policies for pod isolation:
 ```bash
-# Enable Calico for network policies
-microk8s enable community
-microk8s enable calico
+# Verify the default Calico CNI is running
+microk8s kubectl get pods -n kube-system -l k8s-app=calico-node
 ```
 
 Create a network policy:
@@ -674,11 +674,11 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          class: public
 EOF
 ```
 
-Resource Quotas
+### Resource Quotas
 
 Limit resource consumption per namespace:
 ```bash
@@ -742,6 +742,7 @@ Add recommended security flags:
 ```text
 # Add these flags to kube-apiserver configuration
 --anonymous-auth=false
+--audit-policy-file=/var/snap/microk8s/current/args/audit-policy.yaml
 --audit-log-path=/var/log/kubernetes/audit.log
 --audit-log-maxage=30
 --audit-log-maxbackup=10
@@ -783,11 +784,11 @@ EOF
 
 Configure automatic security updates:
 ```bash
-# Configure snap to automatically refresh MicroK8s
-sudo snap set microk8s config.refresh.timer=sat,04:00
+# Configure snap to refresh automatically during a maintenance window
+sudo snap set system refresh.timer=sat,04:00
 
 # Hold updates if you need stability (use with caution)
-# sudo snap refresh --hold microk8s
+# sudo snap refresh --hold=forever microk8s
 ```
 
 ## Monitoring and Observability
@@ -830,16 +831,16 @@ microk8s kubectl top pods -A
 
 ### Enable Dashboard
 
-Install the Kubernetes Dashboard:
+On MicroK8s 1.35 and earlier, install the Kubernetes Dashboard:
 ```bash
-# Enable the Kubernetes dashboard
+# Enable the Kubernetes dashboard on MicroK8s 1.35 and earlier
 microk8s enable dashboard
 ```
 
 Access the dashboard:
 ```bash
 # Create a dashboard access token
-microk8s kubectl create token default
+microk8s kubectl create token default -n kube-system
 
 # Port-forward the dashboard
 microk8s kubectl port-forward -n kube-system svc/kubernetes-dashboard 10443:443
@@ -851,16 +852,10 @@ Implement backup strategies for your MicroK8s cluster.
 
 ### Backing Up Cluster State
 
-Create a backup of the cluster data:
+Create a backup of the dqlite datastore:
 ```bash
-# Stop MicroK8s before backing up
-microk8s stop
-
-# Backup the entire MicroK8s data directory
-sudo tar -czvf microk8s-backup-$(date +%Y%m%d).tar.gz /var/snap/microk8s/current/
-
-# Start MicroK8s again
-microk8s start
+# Back up the MicroK8s dqlite datastore
+microk8s dbctl backup -o microk8s-backup-$(date +%Y%m%d).tar.gz
 ```
 
 ### Backing Up Workloads
@@ -884,13 +879,27 @@ microk8s enable helm3
 # Add Velero Helm repository
 microk8s helm3 repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 
-# Install Velero (example with local storage)
+# Create the provider credentials file for your S3-compatible backend first
+# credentials-velero should contain the [default] AWS access key and secret key values
+
+# Install Velero (example with AWS S3-compatible object storage)
 microk8s helm3 install velero vmware-tanzu/velero \
   --namespace velero \
   --create-namespace \
-  --set configuration.provider=aws \
-  --set configuration.backupStorageLocation.bucket=velero-backups \
-  --set snapshotsEnabled=false
+  --set-file credentials.secretContents.cloud=./credentials-velero \
+  --set 'configuration.backupStorageLocation[0].name=default' \
+  --set 'configuration.backupStorageLocation[0].provider=aws' \
+  --set 'configuration.backupStorageLocation[0].bucket=velero-backups' \
+  --set 'configuration.backupStorageLocation[0].config.region=us-east-1' \
+  --set 'configuration.volumeSnapshotLocation[0].name=default' \
+  --set 'configuration.volumeSnapshotLocation[0].provider=aws' \
+  --set 'configuration.volumeSnapshotLocation[0].config.region=us-east-1' \
+  --set snapshotsEnabled=false \
+  --set deployNodeAgent=true \
+  --set 'initContainers[0].name=velero-plugin-for-aws' \
+  --set 'initContainers[0].image=velero/velero-plugin-for-aws:latest' \
+  --set 'initContainers[0].volumeMounts[0].mountPath=/target' \
+  --set 'initContainers[0].volumeMounts[0].name=plugins'
 ```
 
 ## Troubleshooting
@@ -952,7 +961,7 @@ If all else fails, reset the installation:
 microk8s reset --destroy-storage
 
 # Reinstall add-ons
-microk8s enable dns storage ingress
+microk8s enable dns hostpath-storage ingress
 ```
 
 ## Upgrading MicroK8s
@@ -982,8 +991,8 @@ Switch to a new Kubernetes version channel:
 # List available channels
 snap info microk8s
 
-# Switch to a new version (e.g., 1.29)
-sudo snap refresh microk8s --channel=1.29/stable
+# Switch to a new version (e.g., 1.36)
+sudo snap refresh microk8s --channel=1.36/stable
 ```
 
 ### Rolling Upgrades in Multi-Node Clusters
@@ -994,7 +1003,7 @@ Upgrade multi-node clusters safely:
 microk8s kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
 # Upgrade the node
-sudo snap refresh microk8s --channel=1.29/stable
+sudo snap refresh microk8s --channel=1.36/stable
 
 # Uncordon the node after upgrade
 microk8s kubectl uncordon <node-name>
@@ -1006,7 +1015,7 @@ MicroK8s provides a powerful yet lightweight Kubernetes experience that's perfec
 
 Key takeaways:
 - **Quick Start**: Single command installation gets you running in minutes
-- **Essential Add-ons**: DNS, storage, and ingress are must-haves for most deployments
+- **Essential Add-ons**: DNS, hostpath-storage, and ingress are must-haves for most deployments
 - **Multi-Node Ready**: Easy clustering for high availability
 - **GPU Support**: Native NVIDIA GPU support for ML/AI workloads
 - **Production Ready**: RBAC, network policies, and cert-manager for security
