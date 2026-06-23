@@ -205,8 +205,9 @@ import { NodeSDK } from '@opentelemetry/sdk-node';  // Main SDK for Node.js appl
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';  // Auto-instruments HTTP, Express, etc.
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';  // Sends metrics via OTLP protocol
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';  // Periodically collects and exports metrics
-import { Resource } from '@opentelemetry/resources';  // Defines service metadata
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';  // Standard attribute names
+import { resourceFromAttributes } from '@opentelemetry/resources';  // Builds the service metadata resource
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';  // Stable attribute names
+import { ATTR_SERVICE_INSTANCE_ID } from '@opentelemetry/semantic-conventions/incubating';  // service.instance.id is still incubating
 
 // Create an OTLP HTTP exporter for OneUptime
 // This exporter sends metric data to the OneUptime observability platform
@@ -227,10 +228,10 @@ const metricReader = new PeriodicExportingMetricReader({
 // Initialize the SDK with all configuration options
 const sdk = new NodeSDK({
   // Resource attributes help identify your service in the observability backend
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-app',  // Unique name for your service
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',  // Version helps track deployments
-    [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: process.env.HOSTNAME || 'localhost',  // Distinguish between instances
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-node-app',  // Unique name for your service
+    [ATTR_SERVICE_VERSION]: '1.0.0',  // Version helps track deployments
+    [ATTR_SERVICE_INSTANCE_ID]: process.env.HOSTNAME || 'localhost',  // Distinguish between instances
   }),
   instrumentations: [getNodeAutoInstrumentations()],  // Enable automatic instrumentation for common libraries
   metricReader: metricReader,  // Attach the metric reader to collect and export metrics
