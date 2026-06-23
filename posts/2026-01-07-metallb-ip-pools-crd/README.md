@@ -72,14 +72,14 @@ Before configuring MetalLB IP pools, ensure you have:
 - A running Kubernetes cluster (v1.20 or later recommended)
 - MetalLB installed in your cluster
 - `kubectl` configured to communicate with your cluster
-- Administrative access to create CRDs
+- Administrative access to install MetalLB CRDs and create MetalLB custom resources
 
 If MetalLB is not installed, you can install it using the following commands:
 
 Install MetalLB using the official manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 Wait for MetalLB pods to be ready:
@@ -145,7 +145,7 @@ spec:
 
 ### IPv6 Address Pools
 
-MetalLB fully supports IPv6 addresses. You can create IPv6-only or dual-stack pools:
+MetalLB supports IPv6 addresses in Layer 2 mode, and in BGP mode when using the FRR-based backends. You can create IPv6-only or dual-stack pools:
 
 ```yaml
 apiVersion: metallb.io/v1beta1
@@ -191,7 +191,7 @@ spec:
   autoAssign: false
 ```
 
-### Avoid Bug Share Key
+### Avoid Buggy IPs
 
 The `avoidBuggyIPs` option tells MetalLB to avoid allocating IPs ending in .0 or .255, which can cause issues with some network equipment:
 
@@ -451,7 +451,7 @@ spec:
     - 203.0.113.10-203.0.113.25
   avoidBuggyIPs: true
   serviceAllocation:
-    priority: 100
+    priority: 10
     namespaceSelectors:
       - matchLabels:
           exposure: public
@@ -493,7 +493,7 @@ spec:
   addresses:
     - 192.168.100.10-192.168.100.25
   serviceAllocation:
-    priority: 75
+    priority: 30
     namespaceSelectors:
       - matchLabels:
           zone: dmz
@@ -552,7 +552,7 @@ spec:
   addresses:
     - 192.168.1.10-192.168.1.20
   serviceAllocation:
-    priority: 100
+    priority: 10
     serviceSelectors:
       - matchLabels:
           priority: high
@@ -595,7 +595,7 @@ metadata:
   name: api-service
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.101
+    metallb.io/loadBalancerIPs: 192.168.1.101
 spec:
   type: LoadBalancer
   ports:
@@ -614,7 +614,7 @@ metadata:
   name: dual-stack-service
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.102,2001:db8:1::102
+    metallb.io/loadBalancerIPs: 192.168.1.102,2001:db8:1::102
 spec:
   type: LoadBalancer
   ipFamilyPolicy: RequireDualStack
@@ -639,7 +639,7 @@ metadata:
   name: premium-service
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: premium-pool
+    metallb.io/address-pool: premium-pool
 spec:
   type: LoadBalancer
   ports:
@@ -672,8 +672,8 @@ kind: Service
 metadata:
   name: web-http
   annotations:
-    metallb.universe.tf/allow-shared-ip: "web-services"
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
 spec:
   type: LoadBalancer
   ports:
@@ -691,8 +691,8 @@ kind: Service
 metadata:
   name: web-https
   annotations:
-    metallb.universe.tf/allow-shared-ip: "web-services"
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
 spec:
   type: LoadBalancer
   ports:
@@ -750,7 +750,7 @@ spec:
   addresses:
     - 192.168.1.100-192.168.1.110
   serviceAllocation:
-    priority: 100
+    priority: 10
 ```
 
 Backup pool with lower priority:
@@ -882,8 +882,8 @@ MetalLB exposes metrics for monitoring. Key metrics include:
 
 - `metallb_allocator_addresses_in_use_total`: Number of IPs currently in use
 - `metallb_allocator_addresses_total`: Total number of IPs in pools
-- `metallb_bgp_session_up`: BGP session status (for BGP mode)
-- `metallb_layer2_requests_received`: L2 ARP/NDP requests received
+- `metallb_bgp_session_up`: BGP session status for native BGP mode or the deprecated FRR mode
+- `metallb_k8s_client_config_stale_bool`: Whether a component is running on a stale configuration after a configuration load failure
 
 Create a ServiceMonitor for Prometheus integration:
 
@@ -898,7 +898,10 @@ spec:
     matchLabels:
       app: metallb
   endpoints:
-    - port: monitoring
+    - port: metricshttps
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
       interval: 30s
 ```
 
@@ -1033,7 +1036,7 @@ spec:
     - 203.0.113.10-203.0.113.50
   avoidBuggyIPs: true
   serviceAllocation:
-    priority: 100
+    priority: 10
     namespaces:
       - production
       - production-critical
@@ -1050,7 +1053,7 @@ spec:
   addresses:
     - 10.10.10.100-10.10.10.200
   serviceAllocation:
-    priority: 90
+    priority: 20
     namespaces:
       - production
       - monitoring
@@ -1067,7 +1070,7 @@ spec:
   addresses:
     - 10.20.20.100-10.20.20.200
   serviceAllocation:
-    priority: 10
+    priority: 100
     namespaces:
       - development
       - staging
@@ -1117,7 +1120,7 @@ By following the patterns and best practices outlined in this guide, you can bui
 
 ## Additional Resources
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [MetalLB GitHub Repository](https://github.com/metallb/metallb)
 - [Kubernetes LoadBalancer Service Documentation](https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
-- [MetalLB Configuration Reference](https://metallb.universe.tf/configuration/)
+- [MetalLB Configuration Reference](https://metallb.io/configuration/)
