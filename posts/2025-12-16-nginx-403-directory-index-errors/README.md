@@ -184,7 +184,7 @@ sudo setenforce 1
 
 ### Cause 5: Symbolic Link Issues
 
-If your document root uses symbolic links, Nginx might not follow them by default.
+If your document root uses symbolic links, Nginx follows them by default. Symlink-related 403 errors usually happen when `disable_symlinks` has been enabled, the symlink target has restrictive permissions, or SELinux blocks the target path.
 
 **Check for symbolic links:**
 
@@ -193,7 +193,7 @@ ls -la /var/www/html
 # Look for links: lrwxrwxrwx
 ```
 
-**Enable symbolic link following:**
+**Allow symbolic link following:**
 
 ```nginx
 server {
@@ -210,7 +210,7 @@ server {
 }
 ```
 
-Or use the safer option that only allows symlinks owned by the same user:
+Or use the safer option that denies symlinks when the link and its target have different owners:
 
 ```nginx
 disable_symlinks if_not_owner;
@@ -236,6 +236,8 @@ server {
 ```
 
 **Styled directory listing:**
+
+This example requires Nginx to be built with the optional `ngx_http_addition_module` module:
 
 ```nginx
 location / {
@@ -301,7 +303,7 @@ sudo -u www-data ls /var/www/html/
 pgrep -a nginx
 
 # Then trace file access
-sudo strace -p <worker_pid> -e open,stat,access 2>&1 | grep -E "(EACCES|ENOENT)"
+sudo strace -p <worker_pid> -e trace=%file 2>&1 | grep -E "(EACCES|ENOENT)"
 ```
 
 ## Complete Diagnostic Script
@@ -312,6 +314,7 @@ sudo strace -p <worker_pid> -e open,stat,access 2>&1 | grep -E "(EACCES|ENOENT)"
 
 DOCROOT=${1:-/var/www/html}
 NGINX_USER=$(grep -E "^user" /etc/nginx/nginx.conf | awk '{print $2}' | tr -d ';')
+NGINX_USER=${NGINX_USER:-nobody}
 
 echo "=== Nginx 403 Debugger ==="
 echo "Document root: $DOCROOT"
@@ -342,7 +345,7 @@ namei -l "$DOCROOT"
 
 echo ""
 echo "=== Checking as nginx user ==="
-sudo -u $NGINX_USER ls "$DOCROOT" > /dev/null 2>&1
+sudo -u "$NGINX_USER" ls "$DOCROOT" > /dev/null 2>&1
 if [ $? -eq 0 ]; then
     echo "OK: Nginx user can read directory"
 else
@@ -353,7 +356,7 @@ echo ""
 echo "=== SELinux status ==="
 if command -v getenforce &> /dev/null; then
     echo "SELinux: $(getenforce)"
-    echo "Context: $(ls -dZ $DOCROOT)"
+    echo "Context: $(ls -dZ "$DOCROOT")"
 else
     echo "SELinux not installed"
 fi
