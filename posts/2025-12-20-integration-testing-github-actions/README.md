@@ -494,7 +494,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: set-chunks
         run: |
-          TESTS=$(find tests/integration -name "*.test.ts" | jq -R . | jq -s .)
+          TESTS=$(find tests/integration -name "*.test.ts" | jq -R . | jq -sc .)
           echo "chunks=$TESTS" >> $GITHUB_OUTPUT
 
   test:
