@@ -8,7 +8,7 @@ Description: A comprehensive guide to migrating Kubernetes clusters from iptable
 
 ---
 
-The Linux networking stack is moving from iptables to nftables. Major distributions have already made the switch: RHEL 8+, Debian 10+, Ubuntu 20.04+, and Fedora 18+ all use nftables as the default firewall framework. If you're running Kubernetes, you need to understand this transition and plan your migration carefully.
+The Linux networking stack is moving from iptables to nftables. Major distributions have already made the switch: RHEL 8+, Debian 10+, Ubuntu 20.04+, and Fedora 32+ all use nftables as the default firewall framework. If you're running Kubernetes, you need to understand this transition and plan your migration carefully.
 
 ## Why Migrate to nftables?
 
@@ -84,7 +84,7 @@ sudo iptables-save | grep -v "KUBE-" | grep -v "^#" | grep -v "^:" | grep -v "^*
 ### Verify Node OS and Kernel Support
 
 ```bash
-# Check kernel version (4.10+ required, 5.0+ recommended)
+# Check kernel version (5.13+ required for kube-proxy nftables mode)
 uname -r
 
 # Check nft availability
@@ -111,8 +111,8 @@ kubectl get cm kube-proxy -n kube-system -o yaml | grep mode
 
 | Component | Minimum Version | Recommended Version |
 |-----------|----------------|---------------------|
-| Kernel | 4.10 | 5.10+ |
-| nftables | 0.9.0 | 1.0.0+ |
+| Kernel | 5.13 | 5.15+ |
+| nftables (nft CLI) | 1.0.1 | 1.0.1+ |
 | Kubernetes | 1.29 | 1.31+ |
 | kube-proxy | 1.29 | 1.31+ |
 
@@ -442,7 +442,7 @@ Once nftables is working, disable the iptables-nft bridge:
 # Check current alternatives
 update-alternatives --display iptables
 
-# Switch to nftables-only mode (removes iptables-nft symlinks)
+# Point the iptables/ip6tables commands at the nftables (nft) backend
 # WARNING: Only do this after kube-proxy is in nftables mode
 sudo update-alternatives --set iptables /usr/sbin/iptables-nft
 sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-nft
@@ -457,15 +457,21 @@ Different CNI plugins have varying levels of nftables support.
 Calico supports both iptables and nftables backends:
 
 ```yaml
-# calico-config ConfigMap
-apiVersion: v1
-kind: ConfigMap
+# calico-node DaemonSet env var
+apiVersion: apps/v1
+kind: DaemonSet
 metadata:
-  name: calico-config
+  name: calico-node
   namespace: kube-system
-data:
-  # Use nftables backend
-  calico_backend: "nftables"
+spec:
+  template:
+    spec:
+      containers:
+        - name: calico-node
+          env:
+            # Use the nftables backend
+            - name: FELIX_IPTABLESBACKEND
+              value: "NFT"  # Options: Legacy, NFT, Auto
 ```
 
 Or via Felix configuration:
@@ -742,9 +748,9 @@ Use this checklist for your migration:
 
 - [ ] Audit current iptables rules across all nodes
 - [ ] Document all custom (non-Kubernetes) firewall rules
-- [ ] Verify kernel version 4.10+ on all nodes
+- [ ] Verify kernel version 5.13+ on all nodes
 - [ ] Install nftables package on all nodes
-- [ ] Verify Kubernetes version 1.25+
+- [ ] Verify Kubernetes version 1.29+
 - [ ] Check CNI plugin nftables compatibility
 - [ ] Create backup of all iptables rules
 - [ ] Plan maintenance window
