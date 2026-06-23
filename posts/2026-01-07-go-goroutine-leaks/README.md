@@ -490,7 +490,6 @@ import (
     "fmt"
     "net/http"
     _ "net/http/pprof"
-    "time"
 )
 
 func leakyFunction() {
@@ -859,7 +858,7 @@ func ProcessWithResources(ctx context.Context) error {
     res2 := &Resource{name: "file handle"}
     res3 := &Resource{name: "network socket"}
 
-    // Use defer in reverse order of acquisition
+    // Defer calls execute in reverse order, so resources close in reverse order of acquisition
     defer res1.Close()
     defer res2.Close()
     defer res3.Close()
@@ -917,19 +916,22 @@ import (
 // FetchData demonstrates proper context usage
 func FetchData(ctx context.Context, url string) ([]byte, error) {
     resultCh := make(chan []byte, 1)
-    errCh := make(chan error, 1)
 
     go func() {
         // Simulate network request
-        time.Sleep(2 * time.Second)
-        resultCh <- []byte("data from " + url)
+        select {
+        case <-time.After(2 * time.Second):
+            select {
+            case resultCh <- []byte("data from " + url):
+            case <-ctx.Done():
+            }
+        case <-ctx.Done():
+        }
     }()
 
     select {
     case result := <-resultCh:
         return result, nil
-    case err := <-errCh:
-        return nil, err
     case <-ctx.Done():
         return nil, ctx.Err()
     }
@@ -990,28 +992,39 @@ func main() {
 
 ### 3. Implement Timeout Patterns
 
-Always include timeouts for operations that might hang:
+Always include timeouts for operations that might hang, and make sure the work observes the cancellation signal:
 
 ```go
 package main
 
 import (
+    "context"
     "fmt"
     "time"
 )
 
 // DoWorkWithTimeout wraps work in a timeout
-func DoWorkWithTimeout(work func() (int, error), timeout time.Duration) (int, error) {
+func DoWorkWithTimeout(work func(context.Context) (int, error), timeout time.Duration) (int, error) {
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+
     resultCh := make(chan int, 1)
     errCh := make(chan error, 1)
 
     go func() {
-        result, err := work()
+        result, err := work(ctx)
         if err != nil {
-            errCh <- err
+            select {
+            case errCh <- err:
+            case <-ctx.Done():
+            }
             return
         }
-        resultCh <- result
+
+        select {
+        case resultCh <- result:
+        case <-ctx.Done():
+        }
     }()
 
     select {
@@ -1019,16 +1032,20 @@ func DoWorkWithTimeout(work func() (int, error), timeout time.Duration) (int, er
         return result, nil
     case err := <-errCh:
         return 0, err
-    case <-time.After(timeout):
+    case <-ctx.Done():
         return 0, fmt.Errorf("operation timed out after %v", timeout)
     }
 }
 
 func main() {
     // This work completes in time
-    result, err := DoWorkWithTimeout(func() (int, error) {
-        time.Sleep(100 * time.Millisecond)
-        return 42, nil
+    result, err := DoWorkWithTimeout(func(ctx context.Context) (int, error) {
+        select {
+        case <-time.After(100 * time.Millisecond):
+            return 42, nil
+        case <-ctx.Done():
+            return 0, ctx.Err()
+        }
     }, 500*time.Millisecond)
 
     if err != nil {
@@ -1038,9 +1055,13 @@ func main() {
     }
 
     // This work times out
-    result, err = DoWorkWithTimeout(func() (int, error) {
-        time.Sleep(2 * time.Second)
-        return 42, nil
+    result, err = DoWorkWithTimeout(func(ctx context.Context) (int, error) {
+        select {
+        case <-time.After(2 * time.Second):
+            return 42, nil
+        case <-ctx.Done():
+            return 0, ctx.Err()
+        }
     }, 500*time.Millisecond)
 
     if err != nil {
