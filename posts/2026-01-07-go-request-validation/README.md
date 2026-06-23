@@ -168,8 +168,8 @@ type StringValidations struct {
     // Ends with specific suffix
     Filename string `validate:"endswith=.json"`
 
-    // Regular expression pattern
-    Slug string `validate:"regexp=^[a-z0-9-]+$"`
+    // Printable ASCII characters only
+    Slug string `validate:"printascii"`
 }
 
 func main() {
@@ -335,7 +335,7 @@ type ConditionalValidation struct {
     CVV string `validate:"required_with=CardNumber"`
 
     // Required if any of these fields are present
-    Country string `validate:"required_with_all=City Street"`
+    Country string `validate:"required_with=City Street"`
     City    string
     Street  string
 
@@ -504,7 +504,7 @@ func divisibleBy(fl validator.FieldLevel) bool {
     return value%int64(divisor) == 0
 }
 
-// inList validates that a value is in a comma-separated list
+// inList validates that a value is in a semicolon-separated list
 // Usage: validate:"inlist=active;inactive;pending"
 func inList(fl validator.FieldLevel) bool {
     param := fl.Param()
@@ -529,7 +529,7 @@ type Event struct {
 }
 
 func main() {
-    validate := validator.New()
+    validate := validator.New(validator.WithRequiredStructEnabled())
 
     // Register parameterized validators
     validate.RegisterValidation("dateafter", dateAfter)
@@ -606,7 +606,7 @@ func passwordChangeValidation(sl validator.StructLevel) {
 }
 
 func main() {
-    validate := validator.New()
+    validate := validator.New(validator.WithRequiredStructEnabled())
 
     // Register struct-level validators
     validate.RegisterStructValidation(dateRangeValidation, DateRange{})
@@ -1069,6 +1069,7 @@ package main
 
 import (
     "net/http"
+    "strings"
 
     "github.com/gin-gonic/gin"
     "github.com/gin-gonic/gin/binding"
@@ -1127,18 +1128,9 @@ func RegisterCustomValidators() {
     if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
         // Register custom validators here
         v.RegisterValidation("nowhitespace", func(fl validator.FieldLevel) bool {
-            return !contains(fl.Field().String(), " ")
+            return !strings.Contains(fl.Field().String(), " ")
         })
     }
-}
-
-func contains(s, substr string) bool {
-    for i := 0; i < len(s); i++ {
-        if string(s[i]) == substr {
-            return true
-        }
-    }
-    return false
 }
 
 func main() {
