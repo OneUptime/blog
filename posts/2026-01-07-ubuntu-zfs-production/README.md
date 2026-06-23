@@ -374,8 +374,8 @@ sudo zpool status -D datapool
 # Check DDT size in memory
 sudo zdb -DD datapool
 
-# View deduplication ratio
-sudo zfs get dedupratio datapool/data/backups
+# View deduplication ratio (dedupratio is a pool-level property)
+sudo zpool get dedupratio datapool
 ```
 
 **Note**: For most production environments, compression is preferred over deduplication due to lower RAM requirements and predictable performance.
@@ -426,10 +426,10 @@ sudo zfs rollback -r datapool/data@weekly-backup
 # Delete a single snapshot
 sudo zfs destroy datapool/data@old-snapshot
 
-# Delete multiple snapshots matching a pattern
-sudo zfs destroy datapool/data@daily-2026-01-%
+# Delete multiple specific snapshots in one command (comma-separated list)
+sudo zfs destroy datapool/data@daily-2026-01-06,daily-2026-01-07
 
-# Delete all snapshots older than a specific one
+# Delete a range of snapshots between two snapshots (inclusive)
 sudo zfs destroy datapool/data@first%last
 
 # Dry run to see what would be deleted
