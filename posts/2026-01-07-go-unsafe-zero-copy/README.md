@@ -16,7 +16,7 @@ This guide will teach you when and how to use `unsafe` for zero-copy operations,
 
 ## Understanding the unsafe Package
 
-The `unsafe` package provides three essential types and functions for low-level memory operations:
+The `unsafe` package provides several essential types and functions for low-level memory operations:
 
 - **unsafe.Pointer**: A pointer type that can be converted to and from any pointer type
 - **unsafe.Sizeof**: Returns the size in bytes of a variable's type
@@ -84,6 +84,8 @@ import (
     "unsafe"
 )
 
+var sinkBytes []byte
+
 // Standard safe conversion - creates a copy
 func stringToBytesSafe(s string) []byte {
     return []byte(s)
@@ -100,19 +102,19 @@ func stringToBytesUnsafe(s string) []byte {
 func BenchmarkStringToBytesSafe(b *testing.B) {
     s := "This is a test string for benchmarking purposes"
     for i := 0; i < b.N; i++ {
-        _ = stringToBytesSafe(s)
+        sinkBytes = stringToBytesSafe(s)
     }
 }
 
 func BenchmarkStringToBytesUnsafe(b *testing.B) {
     s := "This is a test string for benchmarking purposes"
     for i := 0; i < b.N; i++ {
-        _ = stringToBytesUnsafe(s)
+        sinkBytes = stringToBytesUnsafe(s)
     }
 }
 ```
 
-Typical results show significant performance differences:
+Typical results vary by Go version and hardware, but often show significant performance differences:
 
 ```text
 BenchmarkStringToBytesSafe-8      20000000    60 ns/op    48 B/op    1 allocs/op
@@ -163,7 +165,7 @@ func BytesToString(b []byte) string {
 
 ### Legacy Approach (Pre-Go 1.20)
 
-For older Go versions, you can use reflect headers, though this approach is more fragile:
+For older Go versions, you can use reflect headers, though this approach is deprecated and more fragile:
 
 ```go
 package main
@@ -173,38 +175,22 @@ import (
     "unsafe"
 )
 
-// stringHeader mirrors the internal structure of a Go string
-type stringHeader struct {
-    Data uintptr
-    Len  int
-}
-
-// sliceHeader mirrors the internal structure of a Go slice
-type sliceHeader struct {
-    Data uintptr
-    Len  int
-    Cap  int
-}
-
 // StringToBytesLegacy converts a string to bytes without copying (pre-Go 1.20)
 // This relies on internal struct layouts that could change between Go versions.
+// reflect.StringHeader and reflect.SliceHeader are deprecated; use the Go 1.20+
+// unsafe.String/unsafe.StringData/unsafe.Slice/unsafe.SliceData APIs when possible.
 func StringToBytesLegacy(s string) []byte {
     if s == "" {
         return nil
     }
 
-    // Get the string header
+    var b []byte
     stringHeader := (*reflect.StringHeader)(unsafe.Pointer(&s))
-
-    // Create a slice header pointing to the same data
-    sliceHeader := &reflect.SliceHeader{
-        Data: stringHeader.Data,
-        Len:  stringHeader.Len,
-        Cap:  stringHeader.Len,
-    }
-
-    // Convert the slice header to a byte slice
-    return *(*[]byte)(unsafe.Pointer(sliceHeader))
+    sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+    sliceHeader.Data = stringHeader.Data
+    sliceHeader.Len = stringHeader.Len
+    sliceHeader.Cap = stringHeader.Len
+    return b
 }
 
 // BytesToStringLegacy converts bytes to string without copying (pre-Go 1.20)
@@ -213,17 +199,12 @@ func BytesToStringLegacy(b []byte) string {
         return ""
     }
 
-    // Get the slice header
+    var s string
     sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-
-    // Create a string header pointing to the same data
-    stringHeader := &reflect.StringHeader{
-        Data: sliceHeader.Data,
-        Len:  sliceHeader.Len,
-    }
-
-    // Convert the string header to a string
-    return *(*string)(unsafe.Pointer(stringHeader))
+    stringHeader := (*reflect.StringHeader)(unsafe.Pointer(&s))
+    stringHeader.Data = sliceHeader.Data
+    stringHeader.Len = sliceHeader.Len
+    return s
 }
 ```
 
@@ -421,7 +402,7 @@ func SafePointerArithmetic() {
 
     // Pattern 1: Single expression conversion
     // The conversion to uintptr and back must happen in a single expression
-    // to prevent the garbage collector from moving the data
+    // so the compiler can keep the referenced data live during the operation
     second := *(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&data[0])) + unsafe.Sizeof(data[0])))
     fmt.Printf("Second element: %d\n", second)
 
@@ -466,13 +447,13 @@ func DangerousPatterns() {
     data := []int{1, 2, 3}
 
     // WRONG: Storing uintptr in a variable
-    // The garbage collector may move the data between these lines,
-    // making the uintptr invalid
+    // The garbage collector does not treat uintptr as a live reference.
+    // If no typed pointer remains live, the object may be collected and reused.
     ptr := uintptr(unsafe.Pointer(&data[0]))  // DANGER!
     _ = ptr + 8                                // The address may no longer be valid
 
     // WRONG: Using uintptr in function calls
-    // Same problem - GC may run between argument evaluation and function call
+    // The callee receives only an integer, not a pointer that keeps data live
     process(uintptr(unsafe.Pointer(&data[0]))) // DANGER!
 
     // WRONG: Arithmetic that creates pointers outside allocated objects
@@ -501,6 +482,8 @@ import (
 )
 
 // FixedPool is a simple fixed-size object pool using unsafe for zero-copy access.
+// It must only be used for pointer-free types; pointers stored in []byte-backed
+// memory are invisible to the garbage collector.
 type FixedPool[T any] struct {
     buffer []byte
     size   int
@@ -517,8 +500,15 @@ func NewFixedPool[T any](count int) *FixedPool[T] {
     alignment := int(unsafe.Alignof(zero))
     objSize = (objSize + alignment - 1) / alignment * alignment
 
+    raw := make([]byte, objSize*count+alignment-1)
+    offset := int(uintptr(unsafe.Pointer(&raw[0])) % uintptr(alignment))
+    if offset != 0 {
+        offset = alignment - offset
+    }
+    buffer := raw[offset : offset+objSize*count]
+
     return &FixedPool[T]{
-        buffer: make([]byte, objSize*count),
+        buffer: buffer,
         size:   objSize,
         next:   0,
     }
@@ -585,6 +575,8 @@ import (
 )
 
 // Benchmark both approaches and compare
+var sinkString string
+
 func BenchmarkComparison(b *testing.B) {
     data := make([]byte, 1024)
     for i := range data {
@@ -593,13 +585,13 @@ func BenchmarkComparison(b *testing.B) {
 
     b.Run("Safe", func(b *testing.B) {
         for i := 0; i < b.N; i++ {
-            _ = string(data) // Creates a copy
+            sinkString = string(data) // Creates a copy
         }
     })
 
     b.Run("Unsafe", func(b *testing.B) {
         for i := 0; i < b.N; i++ {
-            _ = unsafe.String(&data[0], len(data)) // Zero-copy
+            sinkString = unsafe.String(&data[0], len(data)) // Zero-copy
         }
     })
 }
@@ -715,7 +707,7 @@ Use this matrix to decide whether unsafe is appropriate:
 
 ### Pitfall 1: Storing uintptr Values
 
-The garbage collector can move memory, invalidating stored uintptr values:
+The garbage collector does not treat uintptr values as references, so stored addresses can stop referring to live objects:
 
 ```go
 package main
@@ -725,17 +717,17 @@ import (
     "unsafe"
 )
 
-// BAD: This code has a race with the garbage collector
+// BAD: This code hides the only reference from the garbage collector
 func BadExample() {
     data := make([]byte, 100)
 
     // Store the address as uintptr - DANGEROUS
     addr := uintptr(unsafe.Pointer(&data[0]))
 
-    // GC might run here and move the slice's backing array
+    // GC might run here, and uintptr does not keep the backing array alive
     runtime.GC()
 
-    // The address is now potentially invalid
+    // The address is now potentially invalid if the backing array was collected
     ptr := unsafe.Pointer(addr) // May point to garbage or cause crash
     _ = ptr
 }
@@ -744,7 +736,7 @@ func BadExample() {
 func GoodExample() {
     data := make([]byte, 100)
 
-    // The conversion happens atomically from GC's perspective
+    // The conversion follows the valid single-expression unsafe.Pointer pattern
     value := *(*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(&data[0])) + 50))
     _ = value
 }
@@ -758,24 +750,26 @@ Assuming type sizes can cause silent data corruption:
 package main
 
 import (
+    "encoding/binary"
     "fmt"
     "unsafe"
 )
 
 // DANGER: Assuming int is always 8 bytes
-func DangerousIntAssumption(data []byte) int64 {
-    // This only works correctly on 64-bit systems
-    // On 32-bit systems, int is 4 bytes and this reads garbage
-    return *(*int64)(unsafe.Pointer(&data[0]))
+func DangerousIntAssumption(data []byte) int {
+    // This reads 8 bytes on 64-bit systems and 4 bytes on 32-bit systems,
+    // so the result depends on the target architecture.
+    return *(*int)(unsafe.Pointer(&data[0]))
 }
 
-// SAFE: Use explicit fixed-size types
+// SAFE: Use explicit fixed-size types and decode bytes explicitly
 func SafeIntHandling(data []byte) int64 {
     if len(data) < 8 {
         return 0
     }
-    // int64 is always 8 bytes across all platforms
-    return *(*int64)(unsafe.Pointer(&data[0]))
+    // int64 is always 8 bytes across all platforms, and binary.LittleEndian
+    // avoids alignment and native-endian assumptions.
+    return int64(binary.LittleEndian.Uint64(data[:8]))
 }
 
 // Always verify assumptions about type sizes
@@ -831,9 +825,9 @@ func AlignedBuffer(size, alignment int) []byte {
 }
 ```
 
-### Pitfall 4: Escaping References to Stack Variables
+### Pitfall 4: Escaping References as uintptr Values
 
-Local variables may not survive after the function returns:
+Local variables may not survive if you hide the reference from the garbage collector:
 
 ```go
 package main
@@ -842,12 +836,12 @@ import (
     "unsafe"
 )
 
-// DANGER: Returning pointer to local variable
-func DangerousReturn() unsafe.Pointer {
+// DANGER: Returning the address as uintptr
+func DangerousReturn() uintptr {
     x := 42
-    // The compiler might keep x on the stack since we're using unsafe
-    // After this function returns, the memory is invalid
-    return unsafe.Pointer(&x) // DANGEROUS
+    // uintptr is not a pointer as far as the garbage collector is concerned.
+    // After this function returns, x is no longer kept alive by the result.
+    return uintptr(unsafe.Pointer(&x)) // DANGEROUS
 }
 
 // SAFE: Ensure the variable escapes to the heap
@@ -989,8 +983,8 @@ func TestEdgeCases(t *testing.T) {
         {"empty", ""},
         {"single char", "a"},
         {"single byte null", "\x00"},
-        {"unicode", ""},
-        {"long unicode", ""},
+        {"unicode", "hello \u4e16\u754c"},
+        {"long unicode", "\U0001f680\U0001f680\U0001f680"},
         {"mixed", "hello\x00world\n"},
         {"large", string(make([]byte, 1<<20))}, // 1MB
     }
@@ -1084,16 +1078,28 @@ func NewZeroCopyJSON(data []byte) *ZeroCopyJSON {
     return &ZeroCopyJSON{data: data}
 }
 
+func skipWhitespace(data []byte, i int) int {
+    for i < len(data) {
+        switch data[i] {
+        case ' ', '\n', '\r', '\t':
+            i++
+        default:
+            return i
+        }
+    }
+    return i
+}
+
 // GetString extracts a string value for a key without allocating.
 // Returns empty string if key not found.
 // WARNING: The returned string shares memory with the input data.
 // Modifying the original data will affect the returned string.
 func (z *ZeroCopyJSON) GetString(key string) string {
-    // Build the search pattern: "key":"
-    pattern := make([]byte, 0, len(key)+4)
+    // Build the search pattern: "key"
+    pattern := make([]byte, 0, len(key)+2)
     pattern = append(pattern, '"')
     pattern = append(pattern, key...)
-    pattern = append(pattern, '"', ':', '"')
+    pattern = append(pattern, '"')
 
     // Find the key in the data
     idx := bytes.Index(z.data, pattern)
@@ -1101,8 +1107,16 @@ func (z *ZeroCopyJSON) GetString(key string) string {
         return ""
     }
 
-    // Find the start of the value (after the pattern)
-    valueStart := idx + len(pattern)
+    // Find the start of the value, allowing whitespace around the colon.
+    valueStart := skipWhitespace(z.data, idx+len(pattern))
+    if valueStart >= len(z.data) || z.data[valueStart] != ':' {
+        return ""
+    }
+    valueStart = skipWhitespace(z.data, valueStart+1)
+    if valueStart >= len(z.data) || z.data[valueStart] != '"' {
+        return ""
+    }
+    valueStart++
 
     // Find the end of the value (closing quote)
     valueEnd := valueStart
