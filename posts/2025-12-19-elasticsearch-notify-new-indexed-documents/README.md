@@ -19,7 +19,7 @@ graph TD
     B --> C[Elasticsearch Watcher]
     B --> D[Polling with Cursors]
     B --> E[Change Data Capture]
-    B --> F[Index Pipeline + Webhook]
+    B --> F[Index Pipeline + Alert]
 
     C --> G[Scheduled Checks]
     D --> H[Application Polling]
@@ -62,13 +62,6 @@ curl -X PUT "https://localhost:9200/_watcher/watch/new_document_alert" \
                   "gte": "now-1m"
                 }
               }
-            },
-            "aggs": {
-              "new_docs": {
-                "value_count": {
-                  "field": "_id"
-                }
-              }
             }
           }
         }
@@ -76,7 +69,7 @@ curl -X PUT "https://localhost:9200/_watcher/watch/new_document_alert" \
     },
     "condition": {
       "compare": {
-        "ctx.payload.aggregations.new_docs.value": {
+        "ctx.payload.hits.total.value": {
           "gt": 0
         }
       }
@@ -84,7 +77,7 @@ curl -X PUT "https://localhost:9200/_watcher/watch/new_document_alert" \
     "actions": {
       "log_action": {
         "logging": {
-          "text": "{{ctx.payload.aggregations.new_docs.value}} new documents indexed in the last minute"
+          "text": "{{ctx.payload.hits.total.value}} new documents indexed in the last minute"
         }
       },
       "webhook_action": {
@@ -94,7 +87,7 @@ curl -X PUT "https://localhost:9200/_watcher/watch/new_document_alert" \
           "port": 443,
           "scheme": "https",
           "path": "/webhook/elasticsearch",
-          "body": "{\"count\": {{ctx.payload.aggregations.new_docs.value}}, \"timestamp\": \"{{ctx.execution_time}}\"}"
+          "body": "{\"count\": {{ctx.payload.hits.total.value}}, \"timestamp\": \"{{ctx.execution_time}}\"}"
         }
       }
     }
@@ -185,9 +178,8 @@ For environments without Watcher, implement polling in your application.
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import time
-import json
 import requests
 
 es = Elasticsearch(
@@ -202,7 +194,7 @@ class DocumentNotifier:
     def __init__(self, index: str, timestamp_field: str = "@timestamp"):
         self.index = index
         self.timestamp_field = timestamp_field
-        self.last_check = datetime.utcnow()
+        self.last_check = datetime.now(timezone.utc)
         self.webhook_url = None
         self.callbacks = []
 
@@ -222,7 +214,7 @@ class DocumentNotifier:
                     {
                         "range": {
                             self.timestamp_field: {
-                                "gt": self.last_check.isoformat() + "Z"
+                                "gt": self.last_check.isoformat()
                             }
                         }
                     }
@@ -232,11 +224,9 @@ class DocumentNotifier:
 
         response = es.search(
             index=self.index,
-            body={
-                "query": query,
-                "sort": [{self.timestamp_field: "asc"}],
-                "size": 100
-            }
+            query=query,
+            sort=[{self.timestamp_field: "asc"}],
+            size=100
         )
 
         new_docs = response["hits"]["hits"]
@@ -246,7 +236,7 @@ class DocumentNotifier:
             latest_timestamp = new_docs[-1]["_source"][self.timestamp_field]
             self.last_check = datetime.fromisoformat(
                 latest_timestamp.replace("Z", "+00:00")
-            ).replace(tzinfo=None)
+            )
 
             self._notify(new_docs)
 
@@ -256,7 +246,7 @@ class DocumentNotifier:
         """Send notifications for new documents."""
         notification = {
             "count": len(documents),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "documents": [doc["_source"] for doc in documents]
         }
 
@@ -311,14 +301,13 @@ notifier.set_webhook("https://your-server.com/webhook")
 notifier.run(interval_seconds=10)
 ```
 
-## Method 3: Ingest Pipeline with Webhook
+## Method 3: Ingest Pipeline Timestamp Marking
 
-Trigger a webhook during document indexing using an ingest pipeline.
+Mark documents during indexing using an ingest pipeline, then use Watcher, Kibana alerting, or application polling to notify on that marker.
 
 ### Create Ingest Pipeline
 
 ```bash
-# Note: This requires the enrich processor plugin or custom script
 curl -X PUT "https://localhost:9200/_ingest/pipeline/notify_on_index" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -332,12 +321,9 @@ curl -X PUT "https://localhost:9200/_ingest/pipeline/notify_on_index" \
         }
       },
       {
-        "script": {
-          "source": """
-            // Add notification metadata
-            ctx._notify = true;
-            ctx._notification_id = ctx._id;
-          """
+        "set": {
+          "field": "_notify",
+          "value": true
         }
       }
     ]
@@ -352,9 +338,9 @@ curl -X PUT "https://localhost:9200/orders/_settings" \
   }'
 ```
 
-## Method 4: Using Point-in-Time for Reliable Polling
+## Method 4: Using search_after for Reliable Polling
 
-Use a timestamp-based cursor with Point-in-Time API for consistent, reliable polling:
+Use a timestamp-based cursor with `search_after` and a stable keyword tie-breaker field for reliable polling:
 
 ```python
 from elasticsearch import Elasticsearch
@@ -367,11 +353,17 @@ es = Elasticsearch(
 )
 
 class ReliableDocumentPoller:
-    """Poll for new documents using Point-in-Time and search_after for reliability."""
+    """Poll for new documents using search_after for reliable pagination."""
 
-    def __init__(self, index: str, timestamp_field: str = "@timestamp"):
+    def __init__(
+        self,
+        index: str,
+        timestamp_field: str = "@timestamp",
+        tiebreaker_field: str = "event_id"
+    ):
         self.index = index
         self.timestamp_field = timestamp_field
+        self.tiebreaker_field = tiebreaker_field
         self.last_sort_values = None
 
     def poll(self):
@@ -383,7 +375,7 @@ class ReliableDocumentPoller:
             },
             "sort": [
                 {self.timestamp_field: "asc"},
-                {"_id": "asc"}
+                {self.tiebreaker_field: "asc"}
             ],
             "seq_no_primary_term": True
         }
@@ -393,7 +385,7 @@ class ReliableDocumentPoller:
 
         response = es.search(
             index=self.index,
-            body=body
+            **body
         )
 
         new_docs = response["hits"]["hits"]
@@ -435,7 +427,10 @@ curl -X POST "https://localhost:5601/api/alerting/rule" \
     "params": {
       "index": ["orders"],
       "timeField": "@timestamp",
-      "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-1m\"}}},{\"range\":{\"amount\":{\"gte\":1000}}}]}}}",
+      "timeWindowSize": 1,
+      "timeWindowUnit": "m",
+      "esQuery": "{\"query\":{\"range\":{\"amount\":{\"gte\":1000}}}}",
+      "searchType": "esQuery",
       "threshold": [0],
       "thresholdComparator": ">",
       "size": 10
@@ -506,7 +501,7 @@ curl -X PUT "https://localhost:9200/_watcher/watch/high_value_order_alert" \
 |--------|---------|------------|--------------|
 | Watcher | 1m+ | Low | X-Pack/Elastic subscription |
 | Polling | Configurable | Medium | Application code |
-| Ingest Pipeline | Near real-time | High | Custom development |
+| Ingest Pipeline | Near real-time marker | Medium | Pipeline + separate alert/poller |
 | Kibana Alerts | 1m+ | Low | Kibana + X-Pack |
 
 ## Best Practices
@@ -523,7 +518,7 @@ Elasticsearch provides several ways to get notified of new documents:
 
 1. **Watcher** - Built-in, scheduled alerting
 2. **Application polling** - Flexible, custom logic
-3. **Ingest pipelines** - Near real-time, during indexing
+3. **Ingest pipelines** - Mark documents during indexing for downstream alerts
 4. **Kibana alerts** - UI-based, easy setup
 
 Choose based on your latency requirements, infrastructure, and licensing.
