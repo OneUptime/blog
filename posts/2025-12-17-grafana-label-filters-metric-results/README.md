@@ -137,14 +137,21 @@ label_values(kube_pod_info{namespace="$namespace"}, pod)
 
 # When status = "Warning" - pods with high CPU
 query_result(
-  sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod)
-  /
-  sum(kube_pod_container_resource_limits{resource="cpu", namespace="$namespace"}) by (pod)
-  > 0.7 and < 0.9
+  (
+    sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod)
+    /
+    sum(kube_pod_container_resource_limits{resource="cpu", namespace="$namespace"}) by (pod)
+  ) > 0.7
+  and
+  (
+    sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod)
+    /
+    sum(kube_pod_container_resource_limits{resource="cpu", namespace="$namespace"}) by (pod)
+  ) < 0.9
 )
 ```
 
-Use Grafana's variable query options to switch based on another variable.
+Grafana variables can be chained by interpolating one variable into the next query. For mutually exclusive filters, create separate query variables or use panel queries to choose which variable to apply.
 
 ## Method 4: Recording Rules for Filter Data
 
@@ -164,12 +171,12 @@ groups:
             sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace, pod)
             /
             sum(kube_pod_container_resource_limits{resource="cpu"}) by (namespace, pod)
-          ) > 0.8
+          ) > bool 0.8
 
       # Services with errors
       - record: service:has_errors:bool
         expr: |
-          sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) > 0
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) > bool 0
 
       # Pods with memory pressure
       - record: pod:memory_pressure:bool
@@ -178,17 +185,19 @@ groups:
             sum(container_memory_working_set_bytes) by (namespace, pod)
             /
             sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod)
-          ) > 0.85
+          ) > bool 0.85
 ```
 
 ### Use in Variables
 
 ```promql
 # Variable: high_cpu_pods
-label_values(pod:cpu_high:bool{namespace="$namespace"} == 1, pod)
+query_result(pod:cpu_high:bool{namespace="$namespace"} == 1)
+# Regex: /pod="([^"]+)"/
 
 # Variable: error_services
-label_values(service:has_errors:bool == 1, service)
+query_result(service:has_errors:bool == 1)
+# Regex: /service="([^"]+)"/
 ```
 
 ## Method 5: Grafana Transformations
@@ -227,10 +236,10 @@ query_result(
   (
     sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)
     -
-    avg_over_time(sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)[1d:5m])
+    avg_over_time((sum(rate(container_cpu_usage_seconds_total[5m])) by (pod))[1d:5m])
   )
   /
-  stddev_over_time(sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)[1d:5m])
+  stddev_over_time((sum(rate(container_cpu_usage_seconds_total[5m])) by (pod))[1d:5m])
   > 2
 )
 ```
@@ -314,14 +323,17 @@ query_result(
 In the panel, use different queries based on filter_type:
 
 ```promql
-# Panel query with conditional logic
-# Use Grafana's query variables feature
+# Example panel queries for different filter_type values
 
 # Query A (when filter_type = "All")
 sum(rate(container_cpu_usage_seconds_total{namespace="$namespace", pod=~"$pod"}[5m])) by (pod)
 
 # Query B (when filter_type = "High CPU")
-sum(rate(container_cpu_usage_seconds_total{namespace="$namespace", pod=~"$pod"}[5m])) by (pod) > 0.8
+(
+  sum(rate(container_cpu_usage_seconds_total{namespace="$namespace", pod=~"$pod"}[5m])) by (pod)
+  /
+  sum(kube_pod_container_resource_limits{resource="cpu", namespace="$namespace", pod=~"$pod"}) by (pod)
+) > 0.8
 ```
 
 ## Performance Considerations
@@ -332,8 +344,7 @@ Set appropriate refresh intervals:
 
 ```yaml
 # Variable settings
-"refresh": 2,  # On time range change
-"cacheTimeout": "1m"
+"refresh": 2  # On time range change
 ```
 
 ### Limit Result Sets
@@ -364,7 +375,8 @@ Pre-compute expensive filter conditions:
 
 Then filter simply:
 ```promql
-label_values(pod:needs_attention:bool == 1, pod)
+query_result(pod:needs_attention:bool == 1)
+# Regex: /pod="([^"]+)"/
 ```
 
 ## Troubleshooting
