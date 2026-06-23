@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, API, Authentication, Security, Automation, Service Account, Token
 
-Description: Learn how to configure automatic authentication with the Grafana API using API keys, service accounts, and OAuth tokens.
+Description: Learn how to configure automatic authentication with the Grafana API using service accounts, legacy API keys, and basic authentication.
 
 Automating Grafana operations requires secure, programmatic access to its API. Whether you are provisioning dashboards, managing alerts, or integrating with CI/CD pipelines, proper authentication configuration is essential. This guide covers all authentication methods and best practices for automated Grafana API access.
 
@@ -18,22 +18,20 @@ graph TD
     B --> C[Service Account Token]
     B --> D[API Key - Legacy]
     B --> E[Basic Auth]
-    B --> F[OAuth Token]
     C --> G[Grafana API]
     D --> G
     E --> G
-    F --> G
 ```
 
 ## Service Account Tokens (Recommended)
 
-Service accounts are the recommended method for programmatic access in Grafana 9+. They provide fine-grained permissions and better auditability than legacy API keys.
+Service accounts are the recommended method for programmatic access in Grafana 9.1+. They provide fine-grained permissions and better auditability than legacy API keys.
 
 ### Creating a Service Account
 
 **Via Grafana UI:**
 
-1. Go to Administration > Service Accounts
+1. Go to Administration > Users and access > Service Accounts
 2. Click "Add service account"
 3. Configure the account:
    - Name: `automation-bot`
@@ -95,22 +93,24 @@ curl -H "Authorization: Bearer glsa_xxxxxxxxxxxxxxxxxxxx" \
   "http://grafana:3000/api/search?type=dash-db"
 
 # Create a dashboard
-curl -X POST \
+jq -n --slurpfile dashboard dashboard.json \
+  '{dashboard: $dashboard[0], overwrite: true}' | \
+  curl -X POST \
   -H "Authorization: Bearer glsa_xxxxxxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  -d @dashboard.json \
+  -d @- \
   "http://grafana:3000/api/dashboards/db"
 ```
 
 ## API Keys (Legacy)
 
-API keys have been deprecated and automatically migrated to service accounts as of Grafana 12.3 (early 2025). They are shown here for reference with legacy systems:
+API keys are deprecated and service accounts now replace API keys for authenticating with Grafana HTTP APIs. They are shown here for reference with legacy systems:
 
 ### Creating API Keys
 
 **Via Grafana UI:**
 
-1. Go to Configuration > API Keys
+1. Go to Administration > Users and access > API Keys
 2. Click "Add API key"
 3. Set name, role, and optional expiration
 4. Copy the generated key
@@ -152,9 +152,9 @@ curl -H "Authorization: Basic $(echo -n 'admin:admin' | base64)" \
 
 **Note:** Basic auth is not recommended for production automation due to credential exposure risks.
 
-## OAuth/OIDC Token Authentication
+## OAuth/OIDC Login with API Automation
 
-For environments using OAuth providers:
+For environments using OAuth providers, configure OAuth/OIDC for user login to Grafana. For API automation, use a service account token; Grafana's HTTP API authentication options are service account tokens and, for on-prem Grafana, basic authentication.
 
 ### Configure Grafana for OAuth
 
@@ -172,16 +172,12 @@ token_url = https://auth.example.com/token
 api_url = https://auth.example.com/userinfo
 ```
 
-### Using OAuth Tokens
+### Using Tokens with the API
+
+Use a Grafana service account token with the API, even when users log in through OAuth/OIDC:
 
 ```bash
-# Obtain token from OAuth provider
-TOKEN=$(curl -X POST \
-  -d "grant_type=client_credentials&client_id=grafana-client&client_secret=$SECRET" \
-  "https://auth.example.com/token" | jq -r '.access_token')
-
-# Use with Grafana API
-curl -H "Authorization: Bearer $TOKEN" \
+curl -H "Authorization: Bearer $GRAFANA_SERVICE_ACCOUNT_TOKEN" \
   "http://grafana:3000/api/dashboards/home"
 ```
 
@@ -213,10 +209,12 @@ jobs:
           GRAFANA_URL: ${{ vars.GRAFANA_URL }}
         run: |
           for dashboard in dashboards/*.json; do
-            curl -X POST \
+            jq -n --slurpfile dashboard "$dashboard" \
+              '{dashboard: $dashboard[0], overwrite: true}' | \
+              curl -X POST \
               -H "Authorization: Bearer $GRAFANA_TOKEN" \
               -H "Content-Type: application/json" \
-              -d @"$dashboard" \
+              -d @- \
               "$GRAFANA_URL/api/dashboards/db"
           done
 ```
@@ -229,10 +227,12 @@ deploy_dashboards:
   script:
     - |
       for dashboard in dashboards/*.json; do
-        curl -X POST \
+        jq -n --slurpfile dashboard "$dashboard" \
+          '{dashboard: $dashboard[0], overwrite: true}' | \
+          curl -X POST \
           -H "Authorization: Bearer $GRAFANA_TOKEN" \
           -H "Content-Type: application/json" \
-          -d @"$dashboard" \
+          -d @- \
           "$GRAFANA_URL/api/dashboards/db"
       done
   variables:
@@ -248,7 +248,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -267,18 +267,18 @@ resource "grafana_dashboard" "metrics" {
 ### Python SDK
 
 ```python
-from grafana_client import GrafanaApi
+from grafana_client import GrafanaApi, TokenAuth
 
 # Initialize with service account token
 grafana = GrafanaApi.from_url(
     url="https://grafana.example.com",
-    credential=("Authorization", "Bearer glsa_xxxxxxxxxxxx")
+    credential=TokenAuth(token="glsa_xxxxxxxxxxxx")
 )
 
 # Or with API key
 grafana = GrafanaApi.from_url(
     url="https://grafana.example.com",
-    credential=("Authorization", "Bearer eyJrIjoiT0tT...")
+    credential=TokenAuth(token="eyJrIjoiT0tT...")
 )
 
 # List dashboards
@@ -387,21 +387,13 @@ curl -X POST \
 
 ### Audit Logging
 
-Enable and monitor API access:
+Enable audit logs for API access in self-managed Grafana Enterprise:
 
 ```ini
 # grafana.ini
-[log]
-level = info
-
-[security]
-disable_gravatar = true
-cookie_secure = true
-
-[auth]
-login_maximum_inactive_lifetime_duration = 7d
-login_maximum_lifetime_duration = 30d
-token_rotation_interval_minutes = 10
+[auditing]
+enabled = true
+loggers = file
 ```
 
 ## Troubleshooting
