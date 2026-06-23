@@ -22,8 +22,8 @@ In this comprehensive guide, you'll learn how to:
 ## Prerequisites
 
 Before you begin, ensure you have:
-- A Kubernetes cluster (1.22+)
-- Istio installed (1.18+)
+- A Kubernetes cluster supported by your Istio release
+- Istio installed (1.28+ or another currently supported release)
 - kubectl configured
 - Basic understanding of Kubernetes services
 
@@ -60,7 +60,7 @@ The following example shows a basic VirtualService configuration that routes all
 # This configuration routes ALL traffic to the v1 subset of the reviews service
 # The 'hosts' field specifies which service this VirtualService applies to
 # The 'http' section contains the routing rules for HTTP traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   # Name of the VirtualService - typically matches the service name
@@ -100,7 +100,7 @@ The following DestinationRule creates three subsets (v1, v2, v3) based on the ve
 # This configuration defines three subsets (versions) of the reviews service
 # Each subset corresponds to pods with a specific 'version' label
 # Different load balancing strategies can be applied to each subset
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination-rule
@@ -202,7 +202,7 @@ The following configuration routes traffic based on the x-user-type header, enab
 # VirtualService with header-based routing
 # This configuration demonstrates routing based on HTTP headers
 # Use cases: A/B testing, beta features, premium user routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-header-routing
@@ -301,7 +301,7 @@ The following example shows more complex header matching patterns including mult
 ```yaml
 # Advanced VirtualService with complex header matching
 # Demonstrates various matching operators and combinations
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-advanced-headers
@@ -402,7 +402,7 @@ The following configuration splits traffic across three versions: 80% to stable 
 # VirtualService for canary deployment with weight-based routing
 # This configuration gradually rolls out a new version by splitting traffic
 # Weights must add up to 100
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary-deployment
@@ -481,7 +481,7 @@ The following example shows how to configure different phases of a gradual rollo
 ```yaml
 # VirtualService for phased rollout
 # Phase 1: Initial canary with 5% traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-phased-rollout
@@ -522,7 +522,7 @@ spec:
 ---
 # Phase 2: Increase to 25% after successful monitoring
 # Apply this after validating Phase 1 metrics
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-phased-rollout
@@ -549,7 +549,7 @@ spec:
 
 ---
 # Phase 3: 50/50 split for final validation
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-phased-rollout
@@ -576,7 +576,7 @@ spec:
 
 ---
 # Phase 4: Complete rollout - 100% to new version
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-phased-rollout
@@ -665,7 +665,7 @@ The following is a production-ready configuration that combines all the concepts
 
 ---
 # DestinationRule: Define service subsets and traffic policies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-complete-dr
@@ -761,7 +761,7 @@ spec:
 
 ---
 # VirtualService: Define comprehensive routing rules
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-complete-vs
@@ -935,7 +935,7 @@ spec:
 ---
 # ServiceEntry: Define external services if needed
 # Use when the reviews service needs to call external APIs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: reviews-external-api
@@ -985,7 +985,7 @@ spec:
     spec:
       containers:
       - name: reviews
-        image: docker.io/istio/examples-bookinfo-reviews-v1:1.18.0
+        image: registry.istio.io/release/examples-bookinfo-reviews-v1:1.20.3
         ports:
         - containerPort: 9080
         resources:
@@ -1023,7 +1023,7 @@ spec:
     spec:
       containers:
       - name: reviews
-        image: docker.io/istio/examples-bookinfo-reviews-v2:1.18.0
+        image: registry.istio.io/release/examples-bookinfo-reviews-v2:1.20.3
         ports:
         - containerPort: 9080
 
@@ -1054,7 +1054,7 @@ spec:
     spec:
       containers:
       - name: reviews
-        image: docker.io/istio/examples-bookinfo-reviews-v3:1.18.0
+        image: registry.istio.io/release/examples-bookinfo-reviews-v3:1.20.3
         ports:
         - containerPort: 9080
 
@@ -1093,20 +1093,19 @@ kubectl get destinationrule reviews-complete-dr -o yaml
 
 # Check Istio proxy configuration
 # This shows the actual Envoy configuration generated by Istio
-istioctl proxy-config routes deploy/reviews-v1
+istioctl proxy-config routes deployment/reviews-v1
 
 # Test header-based routing
-# This request should be routed to v3 (beta users)
-curl -H "x-user-type: beta" http://reviews:9080/reviews
+# Run from an Istio-injected workload; this request should be routed to v3 (beta users)
+curl -s -D - -o /dev/null -H "x-user-type: beta" http://reviews:9080/reviews | grep -i '^x-version:'
 
 # Test weight-based routing
-# Run multiple requests and observe the distribution
+# Run multiple requests from an Istio-injected workload and observe the response header distribution
 for i in {1..100}; do
-  curl -s http://reviews:9080/reviews | grep -o 'version: v[0-9]'
+  curl -s -D - -o /dev/null http://reviews:9080/reviews | grep -i '^x-version:'
 done | sort | uniq -c
 
-# Analyze traffic with istioctl
-# Shows real-time traffic metrics
+# Analyze the Istio configuration affecting a pod
 istioctl experimental describe pod <reviews-pod-name>
 ```
 
@@ -1142,7 +1141,7 @@ kubectl get pods -l app=reviews --show-labels
 kubectl get destinationrule -n default
 
 # Verify Envoy knows about the subsets
-istioctl proxy-config cluster deploy/reviews-v1 | grep reviews
+istioctl proxy-config clusters deployment/reviews-v1 | grep reviews
 ```
 
 ### Issue 3: Traffic Not Splitting Correctly
@@ -1155,11 +1154,11 @@ If traffic splitting percentages seem off:
 kubectl get virtualservice reviews-complete-vs -o jsonpath='{.spec.http[*].route[*].weight}'
 
 # Check if there are multiple VirtualServices for the same host
-# Only one VirtualService should exist per host
+# Avoid conflicting VirtualServices for the same host
 kubectl get virtualservice -n default
 
-# Monitor traffic distribution in real-time
-istioctl experimental metrics reviews
+# Check workload-level request metrics
+istioctl experimental metrics reviews-v1 reviews-v2 reviews-v3
 ```
 
 ## Best Practices
