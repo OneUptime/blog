@@ -196,6 +196,9 @@ dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Sinks.Console
 dotnet add package Serilog.Sinks.File
 dotnet add package Serilog.Sinks.Seq
+dotnet add package Serilog.Enrichers.Environment
+dotnet add package Serilog.Enrichers.Thread
+dotnet add package Serilog.Sinks.Async
 ```
 
 ### Configuration
@@ -221,7 +224,7 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Seq("http://localhost:5341")
     .CreateLogger();
 
-builder.Host.UseSerilog();
+builder.Services.AddSerilog();
 
 var app = builder.Build();
 
@@ -259,7 +262,12 @@ finally
 ```json
 {
   "Serilog": {
-    "Using": ["Serilog.Sinks.Console", "Serilog.Sinks.File"],
+    "Using": [
+      "Serilog.Sinks.Console",
+      "Serilog.Sinks.File",
+      "Serilog.Enrichers.Environment",
+      "Serilog.Enrichers.Thread"
+    ],
     "MinimumLevel": {
       "Default": "Information",
       "Override": {
@@ -318,12 +326,17 @@ app.UseMiddleware<RequestEnrichmentMiddleware>();
 
 ## High-Performance Logging
 
-Use source generators for zero-allocation logging (NET 6+):
+Use source generators for low-allocation, high-performance logging (.NET 6+):
 
 ```csharp
 public partial class OrderService
 {
     private readonly ILogger<OrderService> _logger;
+
+    public OrderService(ILogger<OrderService> logger)
+    {
+        _logger = logger;
+    }
 
     [LoggerMessage(
         EventId = 1001,
