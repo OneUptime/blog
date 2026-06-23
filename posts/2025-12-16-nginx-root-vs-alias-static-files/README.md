@@ -122,7 +122,7 @@ server {
 
 ## Critical: Trailing Slash Rules
 
-### With alias - Always Match Trailing Slashes
+### With alias - Match Trailing Slashes for Directories
 
 ```nginx
 # CORRECT - both have trailing slashes
@@ -135,9 +135,9 @@ location /images/ {
     alias /var/www/media;  # Results in /var/www/mediaphoto.jpg
 }
 
-# WRONG - missing trailing slash in location
+# WRONG - missing trailing slash in location for a directory prefix
 location /images {
-    alias /var/www/media/;  # Inconsistent behavior
+    alias /var/www/media/;  # Can also match /imagesfoo
 }
 ```
 
@@ -417,7 +417,7 @@ server {
 location ~ /uploads/(.*)$ {
     alias /var/www/uploads/$1;
 }
-# Could allow path traversal: /uploads/../../../etc/passwd
+# Can expose unintended matches if the regex is too broad
 
 # SAFER
 location ^~ /uploads/ {
@@ -449,7 +449,7 @@ ls -la /var/www/example.com/images/test.jpg
 | Path construction | Appends URI | Replaces location match |
 | Server context | Yes | No |
 | Location context | Yes | Yes |
-| Trailing slash | Optional | Required (match location) |
+| Trailing slash | Optional | Match location style for directory mappings |
 | With try_files | Straightforward | Needs location prefix |
 | Use case | Matching directory structure | Different path mapping |
 
