@@ -92,11 +92,11 @@ Create a tracing initialization file that must be loaded before your application
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
 } from '@opentelemetry/semantic-conventions';
 import { GraphQLInstrumentation } from '@opentelemetry/instrumentation-graphql';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -114,10 +114,10 @@ const traceExporter = new OTLPTraceExporter({
 
 // Define resource attributes that identify this service in traces
 // These attributes appear on every span and help filter/group traces
-const resource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'graphql-api-service',
-  [SEMRESATTRS_SERVICE_VERSION]: '1.0.0',
-  [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'graphql-api-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 // Initialize the OpenTelemetry SDK with GraphQL-specific instrumentation
@@ -229,7 +229,7 @@ import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHt
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
-import { trace, SpanStatusCode, context, SpanKind } from '@opentelemetry/api';
+import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 
 // Get the tracer instance for creating custom spans
 // The tracer name helps identify spans created by this component
@@ -466,7 +466,7 @@ const openTelemetryPlugin = {
     if (span && requestContext.request.query) {
       // Only store the first 1000 characters to avoid huge spans
       const truncatedQuery = requestContext.request.query.substring(0, 1000);
-      span.setAttribute('graphql.query', truncatedQuery);
+      span.setAttribute('graphql.document', truncatedQuery);
     }
 
     return {
@@ -575,8 +575,8 @@ Install Yoga-specific dependencies:
 # GraphQL Yoga and related packages
 npm install graphql-yoga graphql
 
-# Yoga's built-in OpenTelemetry plugin
-npm install @graphql-yoga/plugin-opentelemetry
+# Envelop's OpenTelemetry plugin, which works with GraphQL Yoga
+npm install @envelop/opentelemetry
 ```
 
 Here's a complete GraphQL Yoga implementation with OpenTelemetry:
@@ -588,8 +588,8 @@ import './tracing';
 
 import { createServer } from 'node:http';
 import { createYoga, createSchema, Plugin } from 'graphql-yoga';
-import { useOpenTelemetry } from '@graphql-yoga/plugin-opentelemetry';
-import { trace, SpanStatusCode, context as otelContext, SpanKind } from '@opentelemetry/api';
+import { useOpenTelemetry } from '@envelop/opentelemetry';
+import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 
 // Get tracer for custom spans
 const tracer = trace.getTracer('graphql-yoga-server', '1.0.0');
@@ -749,7 +749,7 @@ const customTracingPlugin: Plugin = {
 const yoga = createYoga({
   schema,
   plugins: [
-    // Yoga's built-in OpenTelemetry plugin provides automatic instrumentation
+    // Envelop's OpenTelemetry plugin provides automatic instrumentation for Yoga
     useOpenTelemetry({
       // Use the existing tracer provider instead of creating a new one
       // This ensures traces go to the same backend as our custom spans
@@ -1316,7 +1316,6 @@ export function withErrorTracking<TArgs, TResult>(
             originalError: error instanceof Error ? error : undefined,
           }, span);
 
-          span.end();
           throw error;
         } finally {
           span.end();
