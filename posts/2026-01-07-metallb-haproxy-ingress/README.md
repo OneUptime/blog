@@ -12,7 +12,7 @@ Description: Learn how to use MetalLB with HAProxy Ingress Controller for advanc
 
 When running Kubernetes in bare-metal environments, you lack the luxury of cloud provider load balancers. This is where MetalLB comes in, providing a network load balancer implementation that integrates with standard network equipment. Paired with HAProxy Ingress Controller, you get a powerful, production-ready solution for routing external traffic to your services.
 
-HAProxy Ingress Controller offers advanced features like TCP/UDP load balancing, connection draining, rate limiting, and sophisticated health checking that make it an excellent choice for demanding workloads.
+HAProxy Ingress Controller offers advanced features like TCP load balancing, connection draining, rate limiting, and sophisticated health checking that make it an excellent choice for demanding workloads.
 
 ## Architecture Overview
 
@@ -42,7 +42,6 @@ graph TB
         WebApp[Web Application<br/>Port 80/443]
         API[API Service<br/>Port 8080]
         TCP[TCP Service<br/>Port 5432]
-        UDP[UDP Service<br/>Port 53]
     end
 
     Client --> Router
@@ -58,11 +57,9 @@ graph TB
     HAPod1 --> WebApp
     HAPod1 --> API
     HAPod1 --> TCP
-    HAPod1 --> UDP
     HAPod2 --> WebApp
     HAPod2 --> API
     HAPod2 --> TCP
-    HAPod2 --> UDP
 ```
 
 ## Prerequisites
@@ -146,9 +143,9 @@ controller:
 
     # Annotations for MetalLB to select the correct IP pool
     annotations:
-      metallb.universe.tf/address-pool: haproxy-pool
+      metallb.io/address-pool: haproxy-pool
       # Optional: request a specific IP from the pool
-      # metallb.universe.tf/loadBalancerIPs: 192.168.1.240
+      # metallb.io/loadBalancerIPs: 192.168.1.240
 
     # Enable externalTrafficPolicy: Local to preserve client source IP
     # This prevents additional network hops and maintains client IP visibility
@@ -187,23 +184,21 @@ controller:
               app.kubernetes.io/name: haproxy-ingress
           topologyKey: kubernetes.io/hostname
 
-  # Enable the default backend for handling unmatched requests
-  defaultBackendService: default/default-backend
-
   # Logging configuration for troubleshooting and monitoring
   logging:
     level: info
     # Enable access logs for debugging traffic issues
-    traffic: true
+    traffic:
+      address: stdout
+      format: raw
+      facility: daemon
 
   # Ingress class configuration
   # This allows multiple ingress controllers in the same cluster
   ingressClass: haproxy
   ingressClassResource:
     name: haproxy
-    enabled: true
     default: false
-    controllerValue: haproxy.org/ingress-controller
 ```
 
 Install HAProxy Ingress Controller using Helm:
@@ -339,11 +334,8 @@ metadata:
 
     # Configure health check path for backend servers
     haproxy.org/check: "true"
-    haproxy.org/check-http: "/health"
+    haproxy.org/check-http: "/"
     haproxy.org/check-interval: "5s"
-
-    # Enable access logging for this ingress
-    haproxy.org/access-log: "true"
 spec:
   ingressClassName: haproxy
   # TLS configuration for HTTPS
@@ -379,9 +371,9 @@ kubectl apply -f web-ingress.yaml
 kubectl get ingress web-app-ingress
 ```
 
-## Step 4: Configure TCP/UDP Services
+## Step 4: Configure TCP Services
 
-HAProxy Ingress supports TCP and UDP load balancing through ConfigMaps. This is essential for services like databases, message queues, or DNS servers.
+HAProxy Ingress supports TCP load balancing through ConfigMaps. This is essential for services like databases or message queues.
 
 ### TCP Services Configuration
 
@@ -428,6 +420,15 @@ First, deploy the TCP services (PostgreSQL and Redis as examples):
 # tcp-services.yaml
 # Deploy PostgreSQL and Redis for TCP load balancing demonstration.
 # These services will be exposed through HAProxy TCP frontends.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: default
+type: Opaque
+stringData:
+  password: change-me
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -538,118 +539,16 @@ data:
   "6379": "default/redis:6379"
 ```
 
-### UDP Services Configuration
-
-For UDP services (like DNS), create a separate ConfigMap:
+Update the HAProxy Ingress Helm values to include the TCP ConfigMap:
 
 ```yaml
-# udp-service.yaml
-# Deploy CoreDNS as a UDP service demonstration.
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: coredns-custom
-  namespace: default
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: coredns-custom
-  template:
-    metadata:
-      labels:
-        app: coredns-custom
-    spec:
-      containers:
-      - name: coredns
-        image: coredns/coredns:1.11.1
-        args: ["-conf", "/etc/coredns/Corefile"]
-        ports:
-        - containerPort: 53
-          protocol: UDP
-          name: dns-udp
-        - containerPort: 53
-          protocol: TCP
-          name: dns-tcp
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/coredns
-        resources:
-          requests:
-            cpu: 100m
-            memory: 70Mi
-          limits:
-            cpu: 200m
-            memory: 170Mi
-      volumes:
-      - name: config-volume
-        configMap:
-          name: coredns-custom-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom-config
-  namespace: default
-data:
-  Corefile: |
-    .:53 {
-        # Forward DNS queries to upstream servers
-        forward . 8.8.8.8 8.8.4.4
-        # Enable logging
-        log
-        # Handle errors
-        errors
-        # Enable caching
-        cache 30
-    }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: coredns-custom
-  namespace: default
-spec:
-  type: ClusterIP
-  selector:
-    app: coredns-custom
-  ports:
-  - port: 53
-    targetPort: 53
-    protocol: UDP
-    name: dns-udp
-  - port: 53
-    targetPort: 53
-    protocol: TCP
-    name: dns-tcp
-```
-
-Create the UDP services ConfigMap:
-
-```yaml
-# haproxy-udp-configmap.yaml
-# This ConfigMap configures HAProxy to load balance UDP services.
-# Note: UDP support requires HAProxy 2.3+ and specific configuration.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: haproxy-ingress-udp
-  namespace: haproxy-ingress
-data:
-  # DNS: External port 53 maps to coredns-custom service
-  "53": "default/coredns-custom:53"
-```
-
-Update the HAProxy Ingress Helm values to include TCP/UDP ConfigMaps:
-
-```yaml
-# haproxy-values-tcp-udp.yaml
-# Extended values file with TCP and UDP service support.
+# haproxy-values-tcp.yaml
+# Extended values file with TCP service support.
 controller:
   service:
     type: LoadBalancer
     annotations:
-      metallb.universe.tf/address-pool: haproxy-pool
+      metallb.io/address-pool: haproxy-pool
     externalTrafficPolicy: Local
 
     # Additional ports for TCP services
@@ -657,21 +556,15 @@ controller:
       - name: postgresql
         port: 5432
         targetPort: 5432
+        protocol: TCP
       - name: redis
         port: 6379
         targetPort: 6379
+        protocol: TCP
 
-    # Additional ports for UDP services
-    udpPorts:
-      - name: dns
-        port: 53
-        targetPort: 53
-
-  # Reference the TCP/UDP ConfigMaps
-  tcpServices:
-    configMapName: haproxy-ingress-tcp
-  udpServices:
-    configMapName: haproxy-ingress-udp
+  # Reference the TCP ConfigMap
+  extraArgs:
+    - --configmap-tcp-services=haproxy-ingress/haproxy-ingress-tcp
 
   replicaCount: 2
   resources:
@@ -683,25 +576,19 @@ controller:
       memory: 2Gi
 ```
 
-Apply all TCP/UDP configurations:
+Apply all TCP configurations:
 
 ```bash
 # Deploy TCP services
 kubectl apply -f tcp-services.yaml
 
-# Deploy UDP service
-kubectl apply -f udp-service.yaml
-
 # Create TCP ConfigMap
 kubectl apply -f haproxy-tcp-configmap.yaml
 
-# Create UDP ConfigMap
-kubectl apply -f haproxy-udp-configmap.yaml
-
-# Upgrade HAProxy Ingress with TCP/UDP support
+# Upgrade HAProxy Ingress with TCP support
 helm upgrade haproxy-ingress haproxytech/kubernetes-ingress \
   --namespace haproxy-ingress \
-  --values haproxy-values-tcp-udp.yaml \
+  --values haproxy-values-tcp.yaml \
   --wait
 ```
 
@@ -716,7 +603,7 @@ controller:
   service:
     type: LoadBalancer
     annotations:
-      metallb.universe.tf/address-pool: haproxy-pool
+      metallb.io/address-pool: haproxy-pool
     externalTrafficPolicy: Local
 
   replicaCount: 3
@@ -739,22 +626,22 @@ controller:
     # Number of threads (match to CPU cores)
     nbthread: "4"
 
-    # Timeout configurations (in milliseconds)
+    # Timeout configurations
     # Client connection timeout
-    timeout-connect: "5000"
+    timeout-connect: "5s"
     # Client inactivity timeout
-    timeout-client: "50000"
+    timeout-client: "50s"
     # Server response timeout
-    timeout-server: "50000"
+    timeout-server: "50s"
     # Keep-alive timeout for persistent connections
-    timeout-http-keep-alive: "60000"
+    timeout-http-keep-alive: "60s"
     # HTTP request timeout
-    timeout-http-request: "10000"
+    timeout-http-request: "10s"
     # Queue timeout for requests waiting for a server
-    timeout-queue: "30000"
+    timeout-queue: "30s"
 
     # Connection settings
-    # Enable TCP keep-alive for long-lived connections
+    # Enable syslog output for HAProxy logs
     syslog-server: "address:stdout, format:raw, facility:daemon"
 
     # Load balancing algorithm
@@ -763,31 +650,12 @@ controller:
     # source: Hash based on client IP (sticky sessions)
     load-balance: "leastconn"
 
-    # Enable connection reuse for backend efficiency
-    http-reuse: "safe"
-
-    # Enable HTTP/2 for improved performance
-    ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
+    # Enable HTTP/2 advertisement for TLS frontends
+    tls-alpn: "h2,http/1.1"
     ssl-redirect: "true"
 
-    # Enable HSTS for security
-    hsts: "true"
-    hsts-max-age: "31536000"
-    hsts-include-subdomains: "true"
-
-    # Compression settings to reduce bandwidth
-    compression-algo: "gzip"
-    compression-type: "text/html text/plain text/css application/javascript application/json"
-
     # Backend health check settings
-    backend-check-interval: "5000"
-    health-check-rise: "2"
-    health-check-fall: "3"
-
-  # Pod disruption budget for high availability
-  podDisruptionBudget:
-    enabled: true
-    minAvailable: 2
+    check-interval: "5s"
 
   # Horizontal Pod Autoscaler for dynamic scaling
   autoscaling:
@@ -848,8 +716,6 @@ metadata:
     # Sticky sessions using cookies
     # Useful for stateful applications
     haproxy.org/cookie-persistence: "mycookie"
-    haproxy.org/cookie-indirect: "true"
-    haproxy.org/cookie-nocache: "true"
 
     # Rate limiting for DDoS protection
     # Limit to 100 requests per 10 seconds per IP
@@ -862,23 +728,16 @@ metadata:
     # Backend server health checks
     haproxy.org/check: "true"
     haproxy.org/check-interval: "3s"
-    haproxy.org/check-fall: "3"
-    haproxy.org/check-rise: "2"
-
-    # Enable gzip compression
-    haproxy.org/response-compress: "true"
-
-    # Request buffering for large uploads
-    haproxy.org/request-buffer-size: "16384"
+    haproxy.org/check-http: "/"
 
     # Whitelist trusted IPs (optional)
-    # haproxy.org/whitelist: "10.0.0.0/8, 192.168.0.0/16"
+    # haproxy.org/allow-list: "10.0.0.0/8, 192.168.0.0/16"
 
     # Custom headers for security
-    haproxy.org/headers: |
-      X-Frame-Options: DENY
-      X-Content-Type-Options: nosniff
-      X-XSS-Protection: 1; mode=block
+    haproxy.org/response-set-header: |
+      X-Frame-Options DENY
+      X-Content-Type-Options nosniff
+      X-XSS-Protection "1; mode=block"
 spec:
   ingressClassName: haproxy
   tls:
@@ -922,36 +781,25 @@ controller:
   service:
     type: LoadBalancer
     annotations:
-      metallb.universe.tf/address-pool: haproxy-pool
-
-  # Enable the HAProxy stats page
-  stats:
-    enabled: true
-    port: 1024
-    # Optional: Enable authentication for stats page
-    # auth:
-    #   username: admin
-    #   password: admin123
-
-  # Enable Prometheus metrics endpoint
-  metrics:
-    enabled: true
-    service:
-      # Create a separate service for metrics scraping
-      enabled: true
-      port: 9101
+      metallb.io/address-pool: haproxy-pool
+    metrics:
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9101"
+        prometheus.io/port: "1024"
+
+  # Enable Prometheus metrics endpoint on the stats port
+  prometheus:
+    enabled: true
 
   # ServiceMonitor for Prometheus Operator
   serviceMonitor:
     enabled: true
-    namespace: monitoring
-    labels:
+    extraLabels:
       release: prometheus
-    interval: 30s
-    scrapeTimeout: 10s
+    endpoints:
+    - port: stat
+      path: /metrics
+      interval: 30s
 ```
 
 Create a Grafana dashboard ConfigMap for HAProxy metrics visualization:
@@ -1087,7 +935,7 @@ kubectl describe ingress <ingress-name>
 kubectl exec -n haproxy-ingress <pod-name> -- cat /etc/haproxy/haproxy.cfg
 ```
 
-**Issue 3: TCP/UDP services not accessible**
+**Issue 3: TCP services not accessible**
 
 ```bash
 # Verify the ConfigMaps are created
@@ -1120,12 +968,12 @@ nc -zv <external-ip> <port>
 
 ## Conclusion
 
-Combining MetalLB with HAProxy Ingress provides a robust, production-ready solution for exposing Kubernetes services in bare-metal environments. MetalLB handles the Layer 4 load balancing and IP advertisement, while HAProxy Ingress provides advanced Layer 7 routing, TCP/UDP load balancing, and extensive performance tuning options.
+Combining MetalLB with HAProxy Ingress provides a robust, production-ready solution for exposing Kubernetes services in bare-metal environments. MetalLB handles the Layer 4 load balancing and IP advertisement, while HAProxy Ingress provides advanced Layer 7 routing, TCP load balancing, and extensive performance tuning options.
 
 This setup gives you:
 - External IP management without cloud provider dependency
 - Advanced HTTP routing with host and path-based rules
-- TCP and UDP service exposure for databases and DNS
+- TCP service exposure for databases and message queues
 - Fine-grained performance tuning
 - High availability through multiple replicas
 - Comprehensive monitoring capabilities
