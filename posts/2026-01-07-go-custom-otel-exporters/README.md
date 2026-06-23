@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Go, OpenTelemetry, Exporter, Observability, Tracing, Metric
 
-Description: Build custom OpenTelemetry exporters in Go to send traces, metrics, and logs to any backend or storage system.
+Description: Build custom OpenTelemetry exporters in Go to send traces and metrics to any backend or storage system.
 
 ---
 
-OpenTelemetry provides a vendor-neutral standard for collecting telemetry data, but sometimes you need to send that data to a custom backend, proprietary system, or specialized storage. This guide walks you through implementing custom exporters in Go for traces, metrics, and logs, giving you complete control over how your telemetry data is processed and transmitted.
+OpenTelemetry provides a vendor-neutral standard for collecting telemetry data, but sometimes you need to send that data to a custom backend, proprietary system, or specialized storage. This guide walks you through implementing custom exporters in Go for traces and metrics, giving you complete control over how your telemetry data is processed and transmitted.
 
 ## Prerequisites
 
 Before diving in, ensure you have:
 
-- Go 1.21 or later installed
+- Go 1.23 or later installed
 - Basic understanding of OpenTelemetry concepts
 - Familiarity with Go interfaces and concurrency patterns
 
@@ -28,7 +28,7 @@ The `SpanExporter` interface defines how trace spans are exported to backends.
 
 ```go
 // The SpanExporter interface from the OpenTelemetry SDK
-// Any custom trace exporter must implement these three methods
+// Any custom trace exporter must implement these two methods
 type SpanExporter interface {
     // ExportSpans exports a batch of spans
     ExportSpans(ctx context.Context, spans []ReadOnlySpan) error
@@ -44,16 +44,18 @@ The metric exporter interface handles the export of aggregated metric data.
 
 ```go
 // The metric exporter interface for push-based metric export
-// Implements both Export and Shutdown methods
 type Exporter interface {
-    // Export exports a batch of metrics
-    Export(ctx context.Context, rm *metricdata.ResourceMetrics) error
-
     // Temporality returns the temporality preference for the given instrument kind
     Temporality(kind metric.InstrumentKind) metricdata.Temporality
 
     // Aggregation returns the aggregation preference for the given instrument kind
     Aggregation(kind metric.InstrumentKind) metric.Aggregation
+
+    // Export exports a batch of metrics
+    Export(ctx context.Context, rm *metricdata.ResourceMetrics) error
+
+    // ForceFlush flushes any metric data held by the exporter
+    ForceFlush(ctx context.Context) error
 
     // Shutdown shuts down the exporter
     Shutdown(ctx context.Context) error
@@ -62,14 +64,15 @@ type Exporter interface {
 
 ### Common Interface Patterns
 
-All OpenTelemetry exporters share certain characteristics that you should understand.
+OpenTelemetry exporters share certain characteristics that you should understand.
 
 ```go
-// Key patterns across all exporter interfaces:
+// Key patterns across exporter interfaces:
 // 1. Context-aware operations for cancellation and timeouts
 // 2. Batch-based export methods for efficiency
 // 3. Explicit Shutdown method for graceful termination
-// 4. Error returns for handling export failures
+// 4. ForceFlush where the signal's exporter contract requires it
+// 5. Error returns for handling export failures
 ```
 
 ## Implementing a Custom SpanExporter
@@ -622,6 +625,12 @@ func (e *CustomMetricExporter) Temporality(kind metric.InstrumentKind) metricdat
 func (e *CustomMetricExporter) Aggregation(kind metric.InstrumentKind) metric.Aggregation {
     // Use default aggregations for each instrument type
     return metric.DefaultAggregationSelector(kind)
+}
+
+// ForceFlush flushes any metric data held by the exporter
+func (e *CustomMetricExporter) ForceFlush(ctx context.Context) error {
+    // This exporter does not buffer metric data internally, so there is nothing to flush.
+    return ctx.Err()
 }
 
 // sendMetrics transmits metric data to the backend
@@ -1303,6 +1312,6 @@ When building custom exporters, keep these guidelines in mind:
 
 Building custom OpenTelemetry exporters in Go gives you complete control over how telemetry data is processed and transmitted. By implementing the standard interfaces, handling errors gracefully, and following best practices for shutdown and resource management, you can create reliable exporters that integrate seamlessly with any backend system.
 
-The patterns demonstrated here, including retry logic, buffering, and graceful shutdown, apply to exporters for any data type: traces, metrics, or logs. As you build your exporter, remember to test thoroughly, especially edge cases like network failures and concurrent operations.
+The patterns demonstrated here, including retry logic, buffering, and graceful shutdown, apply broadly to exporters for different telemetry signals. For logs, use the current `go.opentelemetry.io/otel/sdk/log` exporter contract, because the logs signal is still experimental and may change. As you build your exporter, remember to test thoroughly, especially edge cases like network failures and concurrent operations.
 
 With custom exporters, you can send OpenTelemetry data to proprietary systems, specialized databases, or any custom infrastructure, all while maintaining compatibility with the broader OpenTelemetry ecosystem.
