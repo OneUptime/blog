@@ -65,7 +65,7 @@ Create a Logstash configuration file:
 
 input {
   jdbc {
-    jdbc_driver_library => "/path/to/postgresql-42.2.5.jar"
+    jdbc_driver_library => "/path/to/postgresql.jar"
     jdbc_driver_class => "org.postgresql.Driver"
     jdbc_connection_string => "jdbc:postgresql://localhost:5432/mydb"
     jdbc_user => "postgres"
@@ -125,7 +125,7 @@ For real-time replication, use Change Data Capture (CDC). Debezium captures row-
     "database.user": "postgres",
     "database.password": "secret",
     "database.dbname": "mydb",
-    "database.server.name": "dbserver1",
+    "topic.prefix": "dbserver1",
     "table.include.list": "public.articles,public.users",
     "plugin.name": "pgoutput",
     "slot.name": "debezium_slot",
@@ -143,13 +143,12 @@ For real-time replication, use Change Data Capture (CDC). Debezium captures row-
     "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
     "topics": "dbserver1.public.articles",
     "connection.url": "http://localhost:9200",
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "true",
-    "behavior.on.null.values": "delete",
+    "behavior.on.null.values": "DELETE",
     "transforms": "unwrap",
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false"
+    "transforms.unwrap.delete.tombstone.handling.mode": "tombstone"
   }
 }
 ```
@@ -163,8 +162,7 @@ For fine-grained control, implement sync logic in your application.
 ```python
 from elasticsearch import Elasticsearch, helpers
 import psycopg2
-from datetime import datetime
-import json
+from psycopg2 import sql
 
 class ElasticsearchSync:
     def __init__(self, pg_config, es_config):
@@ -177,11 +175,9 @@ class ElasticsearchSync:
         try:
             result = self.es.search(
                 index=index_name,
-                body={
-                    "size": 1,
-                    "sort": [{"updated_at": "desc"}],
-                    "_source": ["updated_at"]
-                }
+                size=1,
+                sort=["updated_at:desc"],
+                source_includes=["updated_at"]
             )
             if result['hits']['hits']:
                 return result['hits']['hits'][0]['_source']['updated_at']
@@ -192,24 +188,24 @@ class ElasticsearchSync:
     def fetch_changed_records(self, table, last_sync):
         """Fetch records changed since last sync."""
         cursor = self.pg_conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(sql.SQL("""
             SELECT id, title, content, category,
                    created_at, updated_at
-            FROM {table}
+            FROM {}
             WHERE updated_at > %s
             ORDER BY updated_at ASC
             LIMIT %s
-        """, (last_sync, self.batch_size))
+        """).format(sql.Identifier(table)), (last_sync, self.batch_size))
 
         columns = [desc[0] for desc in cursor.description]
         for row in cursor:
             yield dict(zip(columns, row))
         cursor.close()
 
-    def transform_record(self, record):
+    def transform_record(self, record, index_name):
         """Transform record for Elasticsearch."""
         return {
-            "_index": "articles",
+            "_index": index_name,
             "_id": record['id'],
             "_source": {
                 "id": record['id'],
@@ -227,7 +223,7 @@ class ElasticsearchSync:
         print(f"Syncing records updated after {last_sync}")
 
         records = self.fetch_changed_records(table, last_sync)
-        actions = (self.transform_record(r) for r in records)
+        actions = (self.transform_record(r, index_name) for r in records)
 
         success, errors = helpers.bulk(
             self.es,
@@ -282,13 +278,12 @@ for message in consumer:
         es.index(
             index='articles',
             id=event['data']['id'],
-            body=event['data']
+            document=event['data']
         )
     elif event['type'] == 'delete':
-        es.delete(
+        es.options(ignore_status=404).delete(
             index='articles',
-            id=event['data']['id'],
-            ignore=[404]
+            id=event['data']['id']
         )
 
     consumer.commit()
@@ -309,19 +304,21 @@ ALTER TABLE articles ADD COLUMN deleted_at TIMESTAMP;
 Update your sync to mark documents as deleted:
 
 ```python
-def sync_with_soft_deletes(self):
+def sync_with_soft_deletes(self, last_sync):
     # Fetch deleted records
+    cursor = self.pg_conn.cursor()
     cursor.execute("""
         SELECT id FROM articles
         WHERE deleted_at > %s AND deleted_at IS NOT NULL
     """, (last_sync,))
 
     for row in cursor:
-        es.update(
+        self.es.update(
             index='articles',
             id=row[0],
-            body={"doc": {"deleted": True}}
+            doc={"deleted": True}
         )
+    cursor.close()
 ```
 
 ### Tombstone Events in CDC
@@ -330,7 +327,7 @@ Debezium sends tombstone events (null value) for deleted records. Configure your
 
 ```json
 {
-  "behavior.on.null.values": "delete"
+  "behavior.on.null.values": "DELETE"
 }
 ```
 
