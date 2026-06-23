@@ -153,8 +153,8 @@ processors:
   memory_limiter:
     # Start refusing data when memory reaches 80% of limit
     limit_percentage: 80
-    # Start accepting data again when memory drops to 70%
-    spike_limit_percentage: 70
+    # Reserve 10% for spikes; soft limit is 70%
+    spike_limit_percentage: 10
     check_interval: 1s
 
   # Batch processor groups data to reduce export overhead
@@ -168,11 +168,10 @@ processors:
     send_batch_max_size: 2000
 
 exporters:
-  # Load balancing exporter distributes load across processing collectors
+  # Load balancing exporters distribute load across processing collectors
   # This is the key component for horizontal scaling
-  loadbalancing:
-    # Use round_robin for even distribution
-    # Use trace_id_aware for trace-aware load balancing
+  load_balancing/traces:
+    # traceID routing ensures all spans for a trace reach the same processor
     routing_key: traceID
     protocol:
       otlp:
@@ -184,7 +183,36 @@ exporters:
       # DNS resolver automatically discovers processing collector endpoints
       dns:
         hostname: otel-processing-collector-headless.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
+        # How often to re-resolve DNS for new pods
+        interval: 30s
+
+  load_balancing/metrics:
+    # Metrics cannot use traceID routing; service keeps each service's metrics together
+    routing_key: service
+    protocol:
+      otlp:
+        tls:
+          insecure: true
+        timeout: 30s
+    resolver:
+      dns:
+        hostname: otel-processing-collector-headless.observability.svc.cluster.local
+        port: "4317"
+        interval: 30s
+
+  load_balancing/logs:
+    # Logs with a trace ID are routed with the same trace-aware behavior
+    routing_key: traceID
+    protocol:
+      otlp:
+        tls:
+          insecure: true
+        timeout: 30s
+    resolver:
+      dns:
+        hostname: otel-processing-collector-headless.observability.svc.cluster.local
+        port: "4317"
         # How often to re-resolve DNS for new pods
         interval: 30s
 
@@ -204,19 +232,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing/traces]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing/metrics]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing/logs]
 
   # Telemetry configuration for the collector itself
   telemetry:
@@ -224,7 +252,12 @@ service:
       level: info
     metrics:
       # Expose collector's own metrics for monitoring
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ### Processing Collector Configuration
@@ -252,7 +285,7 @@ processors:
   # Memory limiter with higher limits for processing workloads
   memory_limiter:
     limit_percentage: 75
-    spike_limit_percentage: 65
+    spike_limit_percentage: 10
     check_interval: 1s
 
   # Larger batches for efficient backend writes
@@ -312,7 +345,7 @@ processors:
         statements:
           # Truncate long attribute values to save storage
           - truncate_all(attributes, 4096)
-          # Hash sensitive data
+          # Redact sensitive data
           - replace_pattern(attributes["http.url"], "password=[^&]*", "password=REDACTED")
 
   # Attributes processor for simple attribute modifications
@@ -333,7 +366,7 @@ exporters:
     # Sending queue for buffering during backend issues
     sending_queue:
       enabled: true
-      # Number of items in the queue
+      # Number of batches in the queue
       queue_size: 10000
       # Number of concurrent export workers
       num_consumers: 20
@@ -345,25 +378,24 @@ exporters:
       max_elapsed_time: 300s
 
   # Prometheus remote write for metrics
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://mimir.observability.svc.cluster.local:9009/api/v1/push
     # Resource to metric label conversion
     resource_to_telemetry_conversion:
       enabled: true
-    sending_queue:
+    remote_write_queue:
       enabled: true
       queue_size: 10000
+      # Use multiple consumers only when the backend accepts out-of-order samples
       num_consumers: 10
     retry_on_failure:
       enabled: true
       initial_interval: 1s
       max_interval: 30s
 
-  # OTLP exporter to Loki for logs
-  otlp/loki:
-    endpoint: loki.observability.svc.cluster.local:4317
-    tls:
-      insecure: true
+  # OTLP HTTP exporter to Loki for logs
+  otlphttp/loki:
+    endpoint: http://loki.observability.svc.cluster.local:3100/otlp
     sending_queue:
       enabled: true
       queue_size: 20000
@@ -385,6 +417,7 @@ extensions:
   # Persistent storage for queues (prevents data loss during restarts)
   file_storage:
     directory: /var/lib/otelcol/storage
+    create_directory: true
     timeout: 10s
     compaction:
       on_start: true
@@ -409,18 +442,23 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/loki]
+      exporters: [otlphttp/loki]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Memory and Queue Tuning
@@ -465,10 +503,9 @@ processors:
     # For a pod with 4GB memory limit, this would be 3.2GB
     limit_percentage: 80
 
-    # Soft limit for spike detection
-    # When memory usage rapidly approaches the hard limit,
-    # the collector starts applying backpressure earlier
-    spike_limit_percentage: 65
+    # Amount reserved for spikes; soft limit is hard limit minus this value
+    # For a pod with 4GB memory limit, this gives a 2.6GB soft limit
+    spike_limit_percentage: 15
 
     # How frequently to check memory usage
     # Lower values = faster reaction but higher CPU overhead
@@ -477,7 +514,7 @@ processors:
     # Alternative: Use fixed memory values instead of percentages
     # Useful when running outside containers or for fine-grained control
     # limit_mib: 3200
-    # spike_limit_mib: 2600
+    # spike_limit_mib: 600
 ```
 
 ### Queue Configuration for High Throughput
@@ -608,12 +645,12 @@ spec:
 
 ```yaml
 # Load Balancing Exporter with DNS Resolver
-# The loadbalancing exporter distributes traffic across discovered endpoints
+# The load balancing exporter distributes traffic across discovered endpoints
 
 exporters:
-  loadbalancing:
+  load_balancing:
     # Routing key determines how to distribute traffic
-    # Options: traceID, service, resource, metric, streamID
+    # Options include traceID for traces/logs, and service, resource, metric, or streamID depending on signal type
     routing_key: traceID
 
     protocol:
@@ -628,7 +665,7 @@ exporters:
       dns:
         # Headless service hostname
         hostname: otel-processing-collector-headless.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
         # Re-resolve interval for scaling events
         # Lower values = faster detection of new pods
         interval: 10s
@@ -697,7 +734,7 @@ flowchart LR
 # All spans with the same TraceID are routed to the same processing collector
 
 exporters:
-  loadbalancing:
+  load_balancing:
     # traceID routing ensures consistent routing for tail sampling
     routing_key: traceID
 
@@ -718,7 +755,7 @@ exporters:
     resolver:
       dns:
         hostname: otel-processing-collector-headless.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
         interval: 10s
 ```
 
@@ -768,7 +805,7 @@ spec:
 
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - --config=/etc/otelcol/config.yaml
 
@@ -799,7 +836,7 @@ spec:
           # Environment variable for memory limiter percentage calculation
           env:
             - name: GOMEMLIMIT
-              value: "1800MiB"
+              value: "1600MiB"
 
           # Liveness probe restarts unhealthy collectors
           livenessProbe:
@@ -908,7 +945,7 @@ spec:
 
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - --config=/etc/otelcol/config.yaml
 
@@ -937,7 +974,7 @@ spec:
 
           env:
             - name: GOMEMLIMIT
-              value: "7200MiB"
+              value: "6400MiB"
             # Pod name for debugging
             - name: POD_NAME
               valueFrom:
@@ -1290,11 +1327,11 @@ container_memory_usage_bytes{pod=~"otel-.*-collector-.*"} / container_spec_memor
 # Dropped data due to memory limits
 sum(rate(otelcol_processor_refused_spans_total[5m])) by (pod)
 
-# Export latency percentiles
-histogram_quantile(0.95, sum(rate(otelcol_exporter_send_latency_bucket[5m])) by (le, exporter))
+# Batch send size percentiles
+histogram_quantile(0.95, sum(rate(otelcol_processor_batch_batch_send_size_bucket[5m])) by (le, processor))
 
-# Processing latency across the pipeline
-histogram_quantile(0.95, sum(rate(otelcol_processor_latency_bucket[5m])) by (le, processor))
+# Exporter in-flight requests by exporter
+sum(otelcol_exporter_in_flight_requests) by (exporter)
 ```
 
 ## Performance Tuning Checklist
@@ -1352,7 +1389,7 @@ flowchart TB
 
 2. **Enable trace-aware routing**: When using tail sampling, ensure all spans of a trace go to the same processing collector.
 
-3. **Size memory appropriately**: Set GOMEMLIMIT to 90% of container memory limit, and configure memory_limiter at 80%.
+3. **Size memory appropriately**: Set GOMEMLIMIT to 80% of container memory limit, and configure memory_limiter at 80%.
 
 4. **Use persistent queues**: Enable file_storage extension for queue durability during restarts.
 
