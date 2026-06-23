@@ -155,10 +155,10 @@ shards disk.indices disk.used disk.avail disk.total disk.percent host          i
 **Solution**: Free disk space or adjust thresholds.
 
 ```json
-// Temporarily adjust watermarks
+// Temporarily raise watermarks, then reset them after resolving disk pressure
 PUT /_cluster/settings
 {
-  "transient": {
+  "persistent": {
     "cluster.routing.allocation.disk.watermark.low": "90%",
     "cluster.routing.allocation.disk.watermark.high": "95%",
     "cluster.routing.allocation.disk.watermark.flood_stage": "97%"
@@ -172,7 +172,7 @@ Or clean up old data:
 // Delete old indices
 DELETE /logs-2023-*
 
-// Force merge to reclaim space
+// After deleting documents from old read-only indices, force merge can reclaim deleted-document space
 POST /products/_forcemerge?max_num_segments=1
 ```
 
@@ -181,7 +181,7 @@ POST /products/_forcemerge?max_num_segments=1
 **Cause**: A node crashed or was removed.
 
 ```json
-GET /_cat/shards?v&h=index,shard,prirep,state,unassigned.reason | grep NODE_LEFT
+GET /_cat/shards?v&h=index,shard,prirep,state,unassigned.reason&s=state
 ```
 
 **Solution**: Wait for node to return or reallocate.
@@ -347,7 +347,10 @@ def check_cluster_health():
         # Get details on unassigned shards
         unassigned = []
 
-        cat_shards = es.cat.shards(format="json")
+        cat_shards = es.cat.shards(
+            format="json",
+            h="index,shard,prirep,state,unassigned.reason"
+        )
         for shard in cat_shards:
             if shard["state"] == "UNASSIGNED":
                 unassigned.append({
@@ -384,16 +387,14 @@ def auto_fix_common_issues():
     fixes_applied = []
 
     # Check if allocation is disabled
-    settings = es.cluster.get_settings()
+    settings = es.cluster.get_settings(flat_settings=True)
     allocation_enabled = settings.get("persistent", {}).get(
         "cluster.routing.allocation.enable", "all"
     )
 
     if allocation_enabled != "all":
-        es.cluster.put_settings(body={
-            "persistent": {
-                "cluster.routing.allocation.enable": "all"
-            }
+        es.cluster.put_settings(persistent={
+            "cluster.routing.allocation.enable": "all"
         })
         fixes_applied.append("Re-enabled cluster allocation")
 
@@ -450,10 +451,13 @@ async function getUnassignedShardInfo() {
   const health = await client.cluster.health();
 
   if (health.unassigned_shards === 0) {
-    return { status: 'healthy', unassigned: [] };
+    return { status: health.status, totalUnassigned: 0, details: [] };
   }
 
-  const shards = await client.cat.shards({ format: 'json' });
+  const shards = await client.cat.shards({
+    format: 'json',
+    h: 'index,shard,prirep,state,unassigned.reason'
+  });
   const unassigned = shards.filter(s => s.state === 'UNASSIGNED');
 
   const details = await Promise.all(
@@ -494,15 +498,13 @@ async function attemptFix() {
   const fixes = [];
 
   // Enable allocation if disabled
-  const settings = await client.cluster.getSettings();
+  const settings = await client.cluster.getSettings({ flat_settings: true });
   const allocationEnabled = settings.persistent?.['cluster.routing.allocation.enable'];
 
   if (allocationEnabled && allocationEnabled !== 'all') {
     await client.cluster.putSettings({
-      body: {
-        persistent: {
-          'cluster.routing.allocation.enable': 'all'
-        }
+      persistent: {
+        'cluster.routing.allocation.enable': 'all'
       }
     });
     fixes.push('Enabled cluster allocation');
@@ -579,12 +581,16 @@ Spread shards across availability zones:
 ```yaml
 # elasticsearch.yml
 node.attr.zone: us-east-1a
+cluster.routing.allocation.awareness.attributes: zone
+```
 
-# Index setting
-PUT /products
+Or update it dynamically:
+
+```json
+PUT /_cluster/settings
 {
-  "settings": {
-    "index.routing.allocation.awareness.attributes": "zone"
+  "persistent": {
+    "cluster.routing.allocation.awareness.attributes": "zone"
   }
 }
 ```
