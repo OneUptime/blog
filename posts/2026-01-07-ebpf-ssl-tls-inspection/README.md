@@ -19,7 +19,7 @@ In this comprehensive guide, we will explore how to use eBPF to inspect SSL/TLS 
 Before we dive in, ensure you have:
 
 - Linux kernel 4.14 or later (5.x recommended for best eBPF support)
-- Root privileges or CAP_BPF capability (note: CAP_BPF was introduced in kernel 5.8; on older kernels, CAP_SYS_ADMIN or root is required)
+- Root privileges, or the required BPF tracing capabilities on newer kernels (typically CAP_BPF and CAP_PERFMON; CAP_BPF was introduced in kernel 5.8, and older kernels generally require CAP_SYS_ADMIN or root)
 - BCC (BPF Compiler Collection) or libbpf installed
 - Python 3.6+ (for BCC-based examples)
 - OpenSSL development headers
@@ -30,7 +30,7 @@ Install the required packages on Ubuntu/Debian:
 # Install BCC tools and dependencies
 
 sudo apt-get update
-sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
+sudo apt-get install -y bpfcc-tools bpftool linux-headers-$(uname -r) python3-bpfcc
 
 # Install OpenSSL development headers for symbol resolution
 sudo apt-get install -y libssl-dev
@@ -41,7 +41,7 @@ sudo bpftool feature
 
 ## How SSL/TLS Interception with eBPF Works
 
-The key insight is that all SSL/TLS libraries must eventually call functions to encrypt plaintext and decrypt ciphertext. By attaching eBPF uprobes to these functions, we can capture data before encryption or after decryption.
+The key insight is that common dynamically linked SSL/TLS libraries expose send and receive functions where plaintext is available before encryption or after decryption. By attaching eBPF uprobes to these functions, we can capture that plaintext for applications using those libraries.
 
 ### SSL Interception Flow
 
@@ -126,9 +126,11 @@ struct ssl_data_t {
     u32 len;           // Length of captured data
     u32 buf_filled;    // Actual bytes copied (may be less than len)
     char comm[16];     // Process name (command)
-    char data[4096];   // Buffer for captured plaintext (4KB max)
+    char data[256];    // Buffer for captured plaintext (256-byte stack-safe example)
 };
 ```
+
+These BCC examples keep captured data buffers small enough to fit within the BPF verifier's 512-byte stack limit. For larger captures, store the event in a per-CPU array map or reserve space from a BPF ring buffer instead of allocating the full event on the BPF stack.
 
 ### Complete BCC Python Implementation
 
@@ -152,8 +154,8 @@ bpf_program = """
 #include <linux/sched.h>
 
 // Maximum data size to capture per SSL operation
-// Larger values capture more data but use more perf buffer space
-#define MAX_DATA_SIZE 4096
+// Larger values require a per-CPU scratch map or ring-buffer reservation
+#define MAX_DATA_SIZE 256
 
 // Structure to pass captured data to user space
 // Aligned to 8 bytes for efficient memory access
@@ -177,10 +179,6 @@ BPF_PERF_OUTPUT(ssl_events);
 // This is needed because SSL_read's data is only valid after the call returns
 BPF_HASH(ssl_read_args, u64, u64);
 
-// Hash map to store the SSL pointer for connection tracking
-// Useful for correlating reads and writes on the same connection
-BPF_HASH(ssl_ctx_map, u64, u64);
-
 /**
  * Probe for SSL_write() entry
  *
@@ -199,7 +197,6 @@ int probe_ssl_write_entry(struct pt_regs *ctx) {
     // PT_REGS_PARM1 = ssl (SSL context pointer)
     // PT_REGS_PARM2 = buf (plaintext data buffer)
     // PT_REGS_PARM3 = num (number of bytes to write)
-    void *ssl = (void *)PT_REGS_PARM1(ctx);
     void *buf = (void *)PT_REGS_PARM2(ctx);
     int num = (int)PT_REGS_PARM3(ctx);
 
@@ -331,7 +328,7 @@ class SSLData(ctypes.Structure):
         ("len", ctypes.c_uint32),
         ("buf_filled", ctypes.c_uint32),
         ("comm", ctypes.c_char * 16),
-        ("data", ctypes.c_char * 4096),
+        ("data", ctypes.c_char * 256),
     ]
 
 
@@ -465,7 +462,7 @@ if __name__ == "__main__":
 
 ## Capturing Certificate Information
 
-Beyond plaintext data, we can also extract SSL certificate information by probing certificate-related functions. This is useful for security monitoring and compliance.
+Beyond plaintext data, we can also observe SSL certificate-related operations by probing certificate functions. This is useful for security monitoring and compliance.
 
 ### Certificate Data Flow
 
@@ -482,30 +479,27 @@ sequenceDiagram
 
     Note over eBPF: Probe X509 functions
 
-    SSL->>eBPF: SSL_get_peer_certificate()
+    SSL->>eBPF: SSL_get1_peer_certificate()
     eBPF->>eBPF: Extract cert pointer
 
-    SSL->>eBPF: X509_get_subject_name()
-    eBPF->>UC: Subject DN
+    SSL->>eBPF: SSL_get_verify_result()
+    eBPF->>UC: Verification result
 
-    SSL->>eBPF: X509_get_issuer_name()
-    eBPF->>UC: Issuer DN
+    SSL->>eBPF: SSL_CTX_set_verify()
+    eBPF->>UC: Verification mode
 
-    SSL->>eBPF: X509_get_serialNumber()
-    eBPF->>UC: Serial Number
-
-    UC->>UC: Aggregate Certificate Info
+    UC->>UC: Aggregate Certificate Events
 ```
 
 ### Certificate Extraction eBPF Program
 
-This program intercepts SSL certificate verification functions to extract certificate details:
+This program intercepts SSL certificate functions to capture certificate pointers, SSL connection pointers, verification results, and verification-mode changes:
 
 ```python
 #!/usr/bin/env python3
 """
 SSL Certificate Extractor using eBPF
-Captures certificate information during TLS handshakes
+Captures certificate-related OpenSSL API calls
 """
 
 from bcc import BPF
@@ -516,8 +510,8 @@ import ctypes
 cert_program = """
 #include <uapi/linux/ptrace.h>
 
-// Maximum length for certificate fields like subject and issuer
-#define MAX_FIELD_LEN 256
+// Maximum length reserved for optional certificate fields
+#define MAX_FIELD_LEN 64
 
 // Structure to hold certificate metadata
 struct cert_info_t {
@@ -535,22 +529,25 @@ struct cert_info_t {
 // Output buffer for certificate events
 BPF_PERF_OUTPUT(cert_events);
 
-// Track active SSL connections and their certificates
-// Key: SSL pointer, Value: X509 cert pointer
+// Track SSL_get1_peer_certificate() arguments until the return probe runs
+// Key: thread ID, Value: SSL pointer
 BPF_HASH(ssl_to_cert, u64, u64);
 
-// Track certificate subject names being extracted
-// Key: X509_NAME pointer, Value: destination buffer pointer
-BPF_HASH(name_extraction, u64, u64);
-
 /**
- * Probe for SSL_get_peer_certificate()
+ * Probe for SSL_get1_peer_certificate()
  *
  * This function is called to retrieve the peer's certificate
  * after a TLS handshake completes
  *
- * Signature: X509 *SSL_get_peer_certificate(const SSL *ssl)
+ * Signature: X509 *SSL_get1_peer_certificate(const SSL *ssl)
  */
+int probe_get_peer_cert_entry(struct pt_regs *ctx) {
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    u64 ssl_ptr = PT_REGS_PARM1(ctx);
+    ssl_to_cert.update(&pid_tgid, &ssl_ptr);
+    return 0;
+}
+
 int probe_get_peer_cert_return(struct pt_regs *ctx) {
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
@@ -559,11 +556,12 @@ int probe_get_peer_cert_return(struct pt_regs *ctx) {
     u64 cert_ptr = PT_REGS_RC(ctx);
 
     if (cert_ptr == 0) {
+        ssl_to_cert.delete(&pid_tgid);
         return 0;  // No certificate (e.g., anonymous connection)
     }
 
-    // Store the certificate pointer for later correlation
-    ssl_to_cert.update(&pid_tgid, &cert_ptr);
+    // Retrieve the SSL pointer saved by the entry probe
+    u64 *ssl_ptr = ssl_to_cert.lookup(&pid_tgid);
 
     // Create event with basic info
     struct cert_info_t event = {};
@@ -571,8 +569,12 @@ int probe_get_peer_cert_return(struct pt_regs *ctx) {
     event.tid = pid_tgid & 0xFFFFFFFF;
     event.timestamp_ns = bpf_ktime_get_ns();
     event.cert_ptr = cert_ptr;
+    if (ssl_ptr != NULL) {
+        event.ssl_ptr = *ssl_ptr;
+    }
     bpf_get_current_comm(&event.comm, sizeof(event.comm));
 
+    ssl_to_cert.delete(&pid_tgid);
     cert_events.perf_submit(ctx, &event, sizeof(event));
 
     return 0;
@@ -648,8 +650,8 @@ class CertInfo(ctypes.Structure):
         ("cert_ptr", ctypes.c_uint64),
         ("ssl_ptr", ctypes.c_uint64),
         ("verify_result", ctypes.c_int32),
-        ("subject", ctypes.c_char * 256),
-        ("issuer", ctypes.c_char * 256),
+        ("subject", ctypes.c_char * 64),
+        ("issuer", ctypes.c_char * 64),
     ]
 
 
@@ -706,9 +708,14 @@ def main():
     b = BPF(text=cert_program)
 
     # Attach probes to certificate functions
+    b.attach_uprobe(
+        name=ssl_lib,
+        sym="SSL_get1_peer_certificate",
+        fn_name="probe_get_peer_cert_entry"
+    )
     b.attach_uretprobe(
         name=ssl_lib,
-        sym="SSL_get_peer_certificate",
+        sym="SSL_get1_peer_certificate",
         fn_name="probe_get_peer_cert_return"
     )
 
@@ -764,7 +771,7 @@ import ctypes
 multi_ssl_program = """
 #include <uapi/linux/ptrace.h>
 
-#define MAX_DATA_SIZE 4096
+#define MAX_DATA_SIZE 256
 
 // Event types to distinguish between libraries and operations
 #define EVENT_OPENSSL_WRITE  1
@@ -820,7 +827,7 @@ int probe_openssl_write(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, buf);
+    if (bpf_probe_read_user(&event.data, copy_len, buf) != 0) return 0;
 
     ssl_events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -851,7 +858,10 @@ int probe_openssl_read_return(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr);
+    if (bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr) != 0) {
+        openssl_read_args.delete(&pid_tgid);
+        return 0;
+    }
 
     openssl_read_args.delete(&pid_tgid);
     ssl_events.perf_submit(ctx, &event, sizeof(event));
@@ -864,7 +874,7 @@ int probe_openssl_read_return(struct pt_regs *ctx) {
 
 int probe_gnutls_send(struct pt_regs *ctx) {
     void *buf = (void *)PT_REGS_PARM2(ctx);
-    size_t len = (size_t)PT_REGS_PARM3(ctx);
+    unsigned long len = PT_REGS_PARM3(ctx);
 
     if (buf == NULL || len == 0) return 0;
 
@@ -874,7 +884,7 @@ int probe_gnutls_send(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, buf);
+    if (bpf_probe_read_user(&event.data, copy_len, buf) != 0) return 0;
 
     ssl_events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -889,7 +899,7 @@ int probe_gnutls_recv_entry(struct pt_regs *ctx) {
 
 int probe_gnutls_recv_return(struct pt_regs *ctx) {
     u64 pid_tgid = bpf_get_current_pid_tgid();
-    ssize_t len = PT_REGS_RC(ctx);
+    long len = PT_REGS_RC(ctx);
 
     if (len <= 0) {
         gnutls_recv_args.delete(&pid_tgid);
@@ -905,7 +915,10 @@ int probe_gnutls_recv_return(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr);
+    if (bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr) != 0) {
+        gnutls_recv_args.delete(&pid_tgid);
+        return 0;
+    }
 
     gnutls_recv_args.delete(&pid_tgid);
     ssl_events.perf_submit(ctx, &event, sizeof(event));
@@ -928,7 +941,7 @@ int probe_nss_write(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, buf);
+    if (bpf_probe_read_user(&event.data, copy_len, buf) != 0) return 0;
 
     ssl_events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -959,7 +972,10 @@ int probe_nss_read_return(struct pt_regs *ctx) {
 
     u32 copy_len = len < MAX_DATA_SIZE ? len : MAX_DATA_SIZE;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr);
+    if (bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr) != 0) {
+        nss_read_args.delete(&pid_tgid);
+        return 0;
+    }
 
     nss_read_args.delete(&pid_tgid);
     ssl_events.perf_submit(ctx, &event, sizeof(event));
@@ -1026,7 +1042,7 @@ class SSLEvent(ctypes.Structure):
         ("event_type", ctypes.c_uint8),
         ("reserved", ctypes.c_uint8 * 3),
         ("comm", ctypes.c_char * 16),
-        ("data", ctypes.c_char * 4096),
+        ("data", ctypes.c_char * 256),
     ]
 
 
@@ -1157,7 +1173,7 @@ This version includes process filtering and statistical sampling to reduce overh
 
 #include <uapi/linux/ptrace.h>
 
-#define MAX_DATA_SIZE 4096
+#define MAX_DATA_SIZE 256
 
 // Configuration structure for runtime filtering
 // Can be updated from user space without reloading the program
@@ -1375,14 +1391,14 @@ class SSLInspectorConfig:
         Smaller values reduce memory and CPU overhead
 
         Recommended values:
-        - Full inspection: 4096
+        - Full stack-based example capture: 256
         - Header-only inspection: 256
         - Minimal inspection: 64
         """
         if size < 1:
             size = 1
-        if size > 4096:
-            size = 4096
+        if size > 256:
+            size = 256
         self._update_config('max_data_size', size)
         print(f"Max data size set to: {size} bytes")
 
@@ -1448,7 +1464,7 @@ class SSLInspectorConfig:
             current.target_pid = 0
             current.target_uid = 0
             current.sample_rate = 1
-            current.max_data_size = 4096
+            current.max_data_size = 256
             current.capture_writes = 1
             current.capture_reads = 1
 
@@ -1472,9 +1488,9 @@ def example_configurations():
     print("\n1. Development Configuration:")
     print("   - Capture all processes and users")
     print("   - No sampling (capture every event)")
-    print("   - Full data capture (4096 bytes)")
+    print("   - Full stack-based example capture (256 bytes)")
     print("   config.set_sample_rate(1)")
-    print("   config.set_max_data_size(4096)")
+    print("   config.set_max_data_size(256)")
 
     # Scenario 2: Production monitoring - balanced
     print("\n2. Production Monitoring Configuration:")
@@ -1488,7 +1504,7 @@ def example_configurations():
     print("\n3. Targeted Debugging Configuration:")
     print("   - Capture specific PID only")
     print("   - No sampling")
-    print("   - Full data capture")
+    print("   - Full stack-based example capture")
     print("   config.set_target_pid(12345)")
     print("   config.set_sample_rate(1)")
 
@@ -1507,18 +1523,18 @@ if __name__ == "__main__":
 
 ### Performance Benchmarks
 
-The following table shows typical performance overhead for different configurations:
+The following table shows illustrative performance overhead ranges for different configurations. Actual overhead depends heavily on kernel version, CPU, workload, library version, event rate, and user-space collector behavior:
 
 | Configuration | Latency Overhead | CPU Overhead | Memory Usage |
 |--------------|-----------------|--------------|--------------|
-| Full capture (no filtering) | 10-20 us | 5-15% | 50-100 MB |
+| 256-byte capture (no filtering) | 10-20 us | 5-15% | 50-100 MB |
 | With PID filtering | 2-5 us | 1-3% | 10-20 MB |
 | 10% sampling | 1-2 us | 0.5-1.5% | 5-10 MB |
 | 1% sampling + small buffer | <1 us | <0.5% | 2-5 MB |
 
 ## Advanced: HTTP/2 and QUIC Inspection
 
-Modern protocols like HTTP/2 and QUIC add complexity to traffic analysis. This section covers techniques for handling these protocols.
+Modern protocols like HTTP/2 add complexity to traffic analysis because decrypted TLS data is framed and compressed at the application layer. QUIC uses TLS 1.3 inside the QUIC transport rather than the OpenSSL `SSL_read`/`SSL_write` stream APIs shown here, so it requires different probe points in the QUIC/TLS implementation. This section covers HTTP/2 frame parsing after TLS plaintext has been captured.
 
 ### HTTP/2 Frame Parsing
 
@@ -1535,7 +1551,7 @@ import struct
 from enum import IntEnum
 
 class HTTP2FrameType(IntEnum):
-    """HTTP/2 frame types as defined in RFC 7540"""
+    """HTTP/2 frame types as defined in RFC 9113"""
     DATA = 0x0
     HEADERS = 0x1
     PRIORITY = 0x2
@@ -1735,19 +1751,21 @@ logger = logging.getLogger('ssl_inspector')
 def check_privileges():
     """
     Verify the program has appropriate privileges
-    eBPF requires CAP_BPF or root access
+    BPF tracing requires root or multiple capabilities on modern kernels
     """
     if os.geteuid() != 0:
-        # Check for CAP_BPF capability
+        # Check for CAP_PERFMON and CAP_BPF capabilities
         try:
             with open(f'/proc/{os.getpid()}/status', 'r') as f:
                 for line in f:
                     if line.startswith('CapEff:'):
                         caps = int(line.split()[1], 16)
-                        # CAP_BPF is bit 39 (may vary by kernel version)
-                        if not (caps & (1 << 39)):
+                        # CAP_PERFMON is bit 38 and CAP_BPF is bit 39
+                        has_perfmon = caps & (1 << 38)
+                        has_bpf = caps & (1 << 39)
+                        if not (has_perfmon and has_bpf):
                             raise PermissionError(
-                                "Requires root or CAP_BPF capability"
+                                "Requires root or CAP_PERFMON and CAP_BPF capabilities"
                             )
         except Exception as e:
             raise PermissionError(f"Cannot verify capabilities: {e}")
@@ -1816,7 +1834,8 @@ class SecureSSLInspector:
     def _verify_authorization(self):
         """Verify current user is authorized to run the inspector"""
         current_user = pwd.getpwuid(os.getuid()).pw_name
-        current_groups = [g.gr_name for g in grp.getgrall() if current_user in g.gr_mem]
+        current_groups = [grp.getgrgid(os.getgid()).gr_name]
+        current_groups.extend(g.gr_name for g in grp.getgrall() if current_user in g.gr_mem)
 
         # Check user authorization
         if current_user not in self.allowed_users:
@@ -1920,7 +1939,7 @@ class CaptureConfig:
     target_pid: int = 0
     target_uid: int = 0
     sample_rate: int = 1
-    max_data_size: int = 4096
+    max_data_size: int = 256
     capture_writes: bool = True
     capture_reads: bool = True
     output_format: str = 'json'  # 'json', 'text', 'hex'
@@ -1939,7 +1958,7 @@ class SSLEvent(ctypes.Structure):
         ("direction", ctypes.c_uint8),  # 0=write, 1=read
         ("reserved", ctypes.c_uint8 * 3),
         ("comm", ctypes.c_char * 16),
-        ("data", ctypes.c_char * 4096),
+        ("data", ctypes.c_char * 256),
     ]
 
 
@@ -1948,7 +1967,7 @@ EBPF_PROGRAM = """
 #include <uapi/linux/ptrace.h>
 #include <linux/sched.h>
 
-#define MAX_DATA_SIZE 4096
+#define MAX_DATA_SIZE 256
 #define DIRECTION_WRITE 0
 #define DIRECTION_READ 1
 
@@ -2041,7 +2060,7 @@ int probe_write(struct pt_regs *ctx) {
 
     u32 copy_len = len < max_size ? len : max_size;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, buf);
+    if (bpf_probe_read_user(&event.data, copy_len, buf) != 0) return 0;
 
     events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -2091,7 +2110,10 @@ int probe_read_return(struct pt_regs *ctx) {
 
     u32 copy_len = len < max_size ? len : max_size;
     event.buf_filled = copy_len;
-    bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr);
+    if (bpf_probe_read_user(&event.data, copy_len, (void *)*buf_ptr) != 0) {
+        read_args.delete(&pid_tgid);
+        return 0;
+    }
 
     read_args.delete(&pid_tgid);
     events.perf_submit(ctx, &event, sizeof(event));
@@ -2208,7 +2230,7 @@ class SSLInspector:
         """Format event for output"""
         direction = "WRITE" if event.direction == 0 else "READ"
         comm = event.comm.decode('utf-8', errors='replace')
-        timestamp = datetime.fromtimestamp(event.timestamp_ns / 1e9)
+        timestamp = f"{event.timestamp_ns} ns since boot"
 
         if self.config.output_format == 'json':
             try:
@@ -2217,7 +2239,7 @@ class SSLInspector:
                 data = event.data[:event.buf_filled].hex()
 
             return json.dumps({
-                'timestamp': timestamp.isoformat(),
+                'timestamp': timestamp,
                 'pid': event.pid,
                 'tid': event.tid,
                 'uid': event.uid,
@@ -2280,7 +2302,7 @@ def main():
                        help='Target user ID (0 for all)')
     parser.add_argument('-s', '--sample', type=int, default=1,
                        help='Sample rate (1 = all, N = 1 in N)')
-    parser.add_argument('-m', '--max-size', type=int, default=4096,
+    parser.add_argument('-m', '--max-size', type=int, default=256,
                        help='Maximum bytes to capture per event')
     parser.add_argument('-f', '--format', choices=['json', 'text', 'hex'],
                        default='text', help='Output format')
