@@ -31,36 +31,38 @@ graph TD
     B -->|keyword| C[32KB Limit Check]
     C -->|Exceeds 32766 bytes| D[Error!]
     C -->|Under limit| E[Index OK]
-    B -->|text| F[No Limit Check]
+    B -->|text| F[Analyzed into terms]
     F --> E
 ```
 
 ## Why This Limit Exists
 
-Keyword fields in Elasticsearch use Lucene's doc values for sorting and aggregations. Lucene has a hard limit of 32,766 bytes for keyword terms due to internal data structure constraints.
+Keyword fields in Elasticsearch index the whole value as a single Lucene term and use doc values by default for sorting and aggregations. Lucene has a hard limit of 32,766 bytes for a single term due to internal data structure constraints.
 
 | Field Type | Max Value Length | Use Case |
 |------------|-----------------|----------|
 | keyword | 32,766 bytes | Exact matching, sorting, aggregations |
-| text | Unlimited | Full-text search |
+| text | No fixed field-value limit; individual indexed tokens must stay under Lucene's term limit | Full-text search |
 
 ## Solution 1: Use ignore_above Setting
 
 The simplest solution is to configure `ignore_above` in your mapping:
 
-```json
+```console
 PUT /my_index
 {
   "mappings": {
     "properties": {
       "description": {
         "type": "keyword",
-        "ignore_above": 10000
+        "ignore_above": 8191
       }
     }
   }
 }
 ```
+
+The `ignore_above` value is a character count, while Lucene's term limit is measured in bytes. Setting it to 8,191 or lower avoids rejection even when UTF-8 characters use four bytes each.
 
 When a value exceeds `ignore_above`:
 - The document is still indexed
@@ -71,7 +73,7 @@ When a value exceeds `ignore_above`:
 
 Apply to all keyword fields:
 
-```json
+```console
 PUT /my_index
 {
   "mappings": {
@@ -94,7 +96,7 @@ PUT /my_index
 
 If you need full-text search rather than exact matching:
 
-```json
+```console
 PUT /articles
 {
   "mappings": {
@@ -111,7 +113,7 @@ PUT /articles
 
 Keep both keyword and text capabilities:
 
-```json
+```console
 PUT /articles
 {
   "mappings": {
@@ -132,7 +134,7 @@ PUT /articles
 
 This allows:
 - Full-text search on `description`
-- Exact matching on `description.keyword` (up to 256 chars)
+- Exact matching on `description.keyword` (up to 256 characters)
 
 ## Solution 3: Truncate Data Before Indexing
 
@@ -142,7 +144,6 @@ Preprocess your data to fit within limits:
 
 ```python
 from elasticsearch import Elasticsearch
-import json
 
 es = Elasticsearch("http://localhost:9200")
 
@@ -192,7 +193,7 @@ doc = {
 keyword_fields = ["title"]  # Fields mapped as keyword
 processed_doc = preprocess_document(doc, keyword_fields)
 
-es.index(index="articles", body=processed_doc)
+es.index(index="articles", document=processed_doc)
 ```
 
 ### Node.js Implementation
@@ -246,7 +247,7 @@ async function indexDocument(doc, keywordFields) {
 
   await client.index({
     index: 'articles',
-    body: processed
+    document: processed
   });
 }
 ```
@@ -255,7 +256,7 @@ async function indexDocument(doc, keywordFields) {
 
 For very long values you need to keep intact:
 
-```json
+```console
 PUT /documents
 {
   "mappings": {
@@ -295,7 +296,7 @@ def index_long_content(es, content):
         "content_hash": content_hash
     }
 
-    es.index(index="documents", body=doc)
+    es.index(index="documents", document=doc)
 ```
 
 ## Solution 5: Update Existing Index
@@ -304,7 +305,7 @@ If you're hitting this error on an existing index:
 
 ### Option A: Reindex with Updated Mapping
 
-```json
+```console
 // Step 1: Create new index with proper mapping
 PUT /my_index_v2
 {
@@ -312,7 +313,7 @@ PUT /my_index_v2
     "properties": {
       "long_field": {
         "type": "keyword",
-        "ignore_above": 10000
+        "ignore_above": 8191
       }
     }
   }
@@ -341,7 +342,7 @@ POST /_aliases
 
 ### Option B: Update Template for New Indexes
 
-```json
+```console
 PUT /_index_template/my_template
 {
   "index_patterns": ["logs-*"],
@@ -353,7 +354,7 @@ PUT /_index_template/my_template
           "fields": {
             "keyword": {
               "type": "keyword",
-              "ignore_above": 256
+              "ignore_above": 8191
             }
           }
         }
@@ -389,7 +390,6 @@ def safe_bulk_index(documents, index_name):
         else:
             action = result.get('index', {})
             error = action.get('error', {})
-            error_type = error.get('type', '')
 
             if 'UTF8 encoding is longer than the max length' in str(error):
                 # Handle specifically
@@ -419,14 +419,14 @@ def bulk_index_with_retry(documents, index_name, keyword_fields):
 
     for doc in documents:
         try:
-            es.index(index=index_name, body=doc)
+            es.index(index=index_name, document=doc)
             success += 1
         except Exception as e:
             if 'UTF8 encoding is longer than the max length' in str(e):
                 # Truncate and retry
                 truncated_doc = preprocess_document(doc, keyword_fields)
                 try:
-                    es.index(index=index_name, body=truncated_doc)
+                    es.index(index=index_name, document=truncated_doc)
                     success += 1
                 except Exception as retry_error:
                     failed.append({'doc': doc, 'error': str(retry_error)})
@@ -463,9 +463,9 @@ graph TD
 
 ## Monitoring for This Issue
 
-Create an alert for indexing failures:
+Create an alert for indexing failures. For current Elastic deployments, prefer Elastic Agent or Metricbeat monitoring data; if you use legacy Stack Monitoring indices, you can search them like this:
 
-```json
+```console
 // Search for indexing errors in monitoring
 GET /.monitoring-es-*/_search
 {
