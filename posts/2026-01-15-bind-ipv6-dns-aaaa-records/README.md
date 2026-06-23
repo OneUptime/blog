@@ -140,7 +140,7 @@ options {
         1.1.1.1;
         1.0.0.1;
         2606:4700:4700::1111;
-        2606:4700:4700::64;
+        2606:4700:4700::1001;
     };
 
     // Query source for IPv6
@@ -613,8 +613,8 @@ options {
     // Allow queries from both protocols
     allow-query { any; };
 
-    // Prefer IPv6 for outgoing queries (optional)
-    prefer-ipv6 { any; };
+    // Use an IPv6 source address for outgoing queries (optional)
+    query-source-v6 address *;
 };
 ```
 
@@ -679,7 +679,7 @@ Enable secure dynamic updates:
 
 ```bind
 // Generate TSIG key
-// dnssec-keygen -a HMAC-SHA256 -b 256 -n HOST dhcp-update-key
+// tsig-keygen -a hmac-sha256 dhcp-update-key
 
 key "dhcp-update-key" {
     algorithm hmac-sha256;
@@ -689,7 +689,8 @@ key "dhcp-update-key" {
 zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com";
-    allow-update { key "dhcp-update-key"; };
+    // Note: allow-update and update-policy are mutually exclusive;
+    // use update-policy for fine-grained control.
     update-policy {
         grant dhcp-update-key wildcard *.example.com A AAAA;
     };
