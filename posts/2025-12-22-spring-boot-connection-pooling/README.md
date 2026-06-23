@@ -102,7 +102,8 @@ spring.datasource.hikari.idle-timeout=600000
 # Should be several minutes shorter than database timeout
 spring.datasource.hikari.max-lifetime=1800000
 
-# How often to validate idle connections (ms)
+# How often to keep idle connections alive (ms)
+# Must be less than max-lifetime
 spring.datasource.hikari.keepalive-time=300000
 ```
 
@@ -158,8 +159,8 @@ spring.datasource.hikari.keepalive-time=300000
 # Leak detection - set to expected max query time
 spring.datasource.hikari.leak-detection-threshold=60000
 
-# Connection validation
-spring.datasource.hikari.connection-test-query=SELECT 1
+# Connection validation for legacy drivers without JDBC4 isValid() support
+# spring.datasource.hikari.connection-test-query=SELECT 1
 
 # Auto-commit behavior
 spring.datasource.hikari.auto-commit=true
@@ -172,7 +173,7 @@ spring.datasource.hikari.transaction-isolation=TRANSACTION_READ_COMMITTED
 
 ```java
 @Configuration
-public class HikariConfig {
+public class HikariDataSourceConfig {
 
     @Value("${app.db.pool.size:10}")
     private int poolSize;
@@ -247,18 +248,10 @@ public class PoolMetricsCollector {
 
 ### Micrometer Integration
 
-```java
-@Configuration
-public class MetricsConfig {
-
-    @Bean
-    public MeterBinder hikariMetrics(DataSource dataSource) {
-        if (dataSource instanceof HikariDataSource) {
-            return new HikariDataSourceMetrics((HikariDataSource) dataSource);
-        }
-        return registry -> {};
-    }
-}
+```properties
+# With Spring Boot Actuator and Micrometer on the classpath,
+# DataSource and HikariCP metrics are auto-configured.
+management.endpoints.web.exposure.include=health,metrics,prometheus
 ```
 
 Available metrics:
@@ -327,7 +320,8 @@ public class ResilientDataSourceConfig {
         // ... connection settings
 
         // Initialization failure handling
-        config.setInitializationFailTimeout(60000);  // Retry for 60 seconds
+        // Try to acquire and validate an initial connection for up to 60 seconds
+        config.setInitializationFailTimeout(60000);
 
         // Connection validation
         config.setConnectionTestQuery("SELECT 1");
