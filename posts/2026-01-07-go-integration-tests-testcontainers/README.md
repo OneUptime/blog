@@ -376,11 +376,7 @@ func SetupContainers(ctx context.Context) (*TestContainers, error) {
         postgres.WithUsername("testuser"),
         postgres.WithPassword("testpass"),
         // Wait for PostgreSQL to be ready before proceeding
-        testcontainers.WithWaitStrategy(
-            wait.ForLog("database system is ready to accept connections").
-                WithOccurrence(2).
-                WithStartupTimeout(60*time.Second),
-        ),
+        postgres.BasicWaitStrategies(),
     )
     if err != nil {
         return nil, fmt.Errorf("failed to start postgres container: %w", err)
@@ -419,16 +415,18 @@ func SetupContainers(ctx context.Context) (*TestContainers, error) {
     }
     tc.RedisContainer = redisContainer
 
-    // Get the Redis connection endpoint
-    redisEndpoint, err := redisContainer.Endpoint(ctx, "")
+    // Get the Redis connection string
+    redisConnStr, err := redisContainer.ConnectionString(ctx)
     if err != nil {
-        return nil, fmt.Errorf("failed to get redis endpoint: %w", err)
+        return nil, fmt.Errorf("failed to get redis connection string: %w", err)
     }
 
     // Connect to Redis
-    redisClient := redis.NewClient(&redis.Options{
-        Addr: redisEndpoint,
-    })
+    redisOptions, err := redis.ParseURL(redisConnStr)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse redis connection string: %w", err)
+    }
+    redisClient := redis.NewClient(redisOptions)
 
     // Verify the Redis connection is working
     if err := redisClient.Ping(ctx).Err(); err != nil {
@@ -527,6 +525,7 @@ package integration
 
 import (
     "context"
+    "fmt"
     "testing"
     "time"
 )
@@ -741,8 +740,8 @@ func TestListUsersWithPagination(t *testing.T) {
     for i := 1; i <= 10; i++ {
         _, err := testContainers.PostgresDB.ExecContext(
             ctx, insertQuery,
-            "user"+string(rune('0'+i))+"@example.com",
-            "User "+string(rune('0'+i)),
+            fmt.Sprintf("user%d@example.com", i),
+            fmt.Sprintf("User %d", i),
         )
         if err != nil {
             t.Fatalf("Failed to insert user %d: %v", i, err)
@@ -1076,6 +1075,7 @@ package integration
 import (
     "context"
     "encoding/json"
+    "fmt"
     "testing"
     "time"
 )
@@ -1111,7 +1111,7 @@ func TestCacheAsidePattern(t *testing.T) {
         t.Fatalf("Failed to insert user: %v", err)
     }
 
-    cacheKey := "user:" + string(rune('0'+userID))
+    cacheKey := fmt.Sprintf("user:%d", userID)
 
     // Step 1: Verify cache miss
     exists, _ := testContainers.RedisClient.Exists(ctx, cacheKey).Result()
@@ -1176,7 +1176,7 @@ func TestCacheInvalidationOnUpdate(t *testing.T) {
         t.Fatalf("Failed to insert user: %v", err)
     }
 
-    cacheKey := "user:invalidation:" + string(rune('0'+userID))
+    cacheKey := fmt.Sprintf("user:invalidation:%d", userID)
 
     // Cache the user
     cachedUser := CachedUser{ID: userID, Email: "invalidate@example.com", Name: "Original Name"}
@@ -1229,8 +1229,8 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 
     for i := 0; i < 10; i++ {
         go func(index int) {
-            email := "concurrent" + string(rune('0'+index)) + "@example.com"
-            name := "Concurrent User " + string(rune('0'+index))
+            email := fmt.Sprintf("concurrent%d@example.com", index)
+            name := fmt.Sprintf("Concurrent User %d", index)
 
             insertQuery := `INSERT INTO users (email, name) VALUES ($1, $2)`
             _, err := testContainers.PostgresDB.ExecContext(ctx, insertQuery, email, name)
