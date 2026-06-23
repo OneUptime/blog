@@ -10,15 +10,15 @@ One of the most important decisions in Elasticsearch is how to structure your in
 
 ## Historical Context: The Deprecation of Types
 
-Elasticsearch originally supported multiple types within a single index, allowing you to store different document structures together. However, types were deprecated in Elasticsearch 6.x and removed in 7.x due to fundamental issues with how Lucene handles fields.
+Elasticsearch originally supported multiple types within a single index, allowing you to store different document structures together. However, types were deprecated in Elasticsearch 6.x, type names in APIs were deprecated in 7.x, and type support was removed in 8.x due to fundamental issues with how Lucene handles fields.
 
 ```mermaid
 timeline
     title Elasticsearch Type Evolution
     ES 5.x : Multiple types per index supported
     ES 6.x : Types deprecated - only one type allowed
-    ES 7.x : Types removed - _doc is the only type
-    ES 8.x : Pure index-based architecture
+    ES 7.x : Type names deprecated in APIs - _doc is an endpoint name
+    ES 8.x : Types no longer supported
 ```
 
 The key problem was that fields with the same name across different types shared the same underlying Lucene field, causing conflicts when field mappings differed.
@@ -31,7 +31,7 @@ Now the question is: should you use separate indexes for different data entities
 
 Create separate indexes for each distinct data type:
 
-```json
+```console
 // Users index
 PUT /users
 {
@@ -83,7 +83,7 @@ PUT /products
 
 **Query across indexes when needed:**
 
-```json
+```console
 GET /users,orders/_search
 {
   "query": {
@@ -101,7 +101,7 @@ GET /users,orders/_search
 
 Consolidate related data into one index with a type field:
 
-```json
+```console
 PUT /ecommerce
 {
   "mappings": {
@@ -133,7 +133,7 @@ PUT /ecommerce
 
 **Query with discriminator:**
 
-```json
+```console
 GET /ecommerce/_search
 {
   "query": {
@@ -169,7 +169,7 @@ graph TD
 
 1. **Different Field Types**: When the same field name needs different mappings
 
-```json
+```jsonc
 // In a users index, 'status' might be a keyword
 "status": { "type": "keyword" }  // active, inactive, suspended
 
@@ -179,13 +179,18 @@ graph TD
 
 2. **Different Retention Policies**: When data has different lifecycle requirements
 
-```json
+```console
 // Logs need short retention with ILM
-PUT /logs-2024.01
+PUT /logs-000001
 {
   "settings": {
     "index.lifecycle.name": "logs-policy",
     "index.lifecycle.rollover_alias": "logs"
+  },
+  "aliases": {
+    "logs": {
+      "is_write_index": true
+    }
   }
 }
 
@@ -200,7 +205,7 @@ PUT /audit-records
 
 3. **Different Scaling Needs**: When data volumes vary significantly
 
-```json
+```console
 // High-volume events index
 PUT /events
 {
@@ -222,7 +227,7 @@ PUT /configurations
 
 4. **Security Isolation**: When different users need access to different data
 
-```json
+```jsonc
 // Role for users data
 {
   "indices": [
@@ -252,7 +257,7 @@ PUT /configurations
 
 1. **Highly Related Data**: When data is always queried together
 
-```json
+```console
 // Content management where articles, pages, and posts are similar
 PUT /content
 {
@@ -271,7 +276,7 @@ PUT /content
 
 2. **Similar Schemas**: When documents share most fields
 
-```json
+```console
 // Different log sources with similar structure
 PUT /application-logs
 {
@@ -289,7 +294,7 @@ PUT /application-logs
 
 3. **Unified Search Experience**: When users search across all data types
 
-```json
+```console
 GET /content/_search
 {
   "query": {
@@ -312,7 +317,7 @@ Use index patterns and aliases for flexible multi-index access:
 
 ### Index Aliases
 
-```json
+```console
 // Create aliases for logical groupings
 POST /_aliases
 {
@@ -353,7 +358,7 @@ GET /ecommerce-read/_search
 
 ### Filtered Aliases
 
-```json
+```console
 // Create filtered alias for specific doc types
 POST /_aliases
 {
@@ -384,10 +389,14 @@ POST /_aliases
 
 For time-series data, use time-based indexes with rollover:
 
-```json
+```console
 // Create initial index
 PUT /logs-000001
 {
+  "settings": {
+    "index.lifecycle.name": "logs-policy",
+    "index.lifecycle.rollover_alias": "logs"
+  },
   "aliases": {
     "logs": {
       "is_write_index": true
@@ -404,7 +413,7 @@ PUT /_ilm/policy/logs-policy
       "hot": {
         "actions": {
           "rollover": {
-            "max_size": "50gb",
+            "max_primary_shard_size": "50gb",
             "max_age": "1d"
           }
         }
@@ -442,18 +451,16 @@ es = Elasticsearch("http://localhost:9200")
 def search_all_entities(query_text):
     response = es.search(
         index="users,orders,products",
-        body={
-            "query": {
-                "multi_match": {
-                    "query": query_text,
-                    "fields": [
-                        "username",
-                        "full_name",
-                        "order_id",
-                        "name",
-                        "description"
-                    ]
-                }
+        query={
+            "multi_match": {
+                "query": query_text,
+                "fields": [
+                    "username",
+                    "full_name",
+                    "order_id",
+                    "name",
+                    "description"
+                ]
             }
         }
     )
@@ -500,9 +507,7 @@ async function setupIndexes() {
     if (!exists) {
       await client.indices.create({
         index: indexName,
-        body: {
-          mappings: { properties: mappings.properties }
-        }
+        mappings: { properties: mappings.properties }
       });
       console.log(`Created index: ${indexName}`);
     }
@@ -513,14 +518,12 @@ async function setupIndexes() {
 async function search(query) {
   const response = await client.search({
     index: ['users', 'orders'],
-    body: {
-      query: {
-        bool: {
-          should: [
-            { match: { full_name: query } },
-            { match: { order_id: query } }
-          ]
-        }
+    query: {
+      bool: {
+        should: [
+          { match: { full_name: query } },
+          { match: { order_id: query } }
+        ]
       }
     }
   });
@@ -539,14 +542,14 @@ async function search(query) {
 
 Each index has overhead. Too many small indexes can hurt performance:
 
-```json
+```console
 // Bad: Many tiny indexes
 PUT /logs-2024-01-01
 PUT /logs-2024-01-02
 PUT /logs-2024-01-03
 // ... creates thousands of shards
 
-// Better: Daily rollover with controlled shards
+// Better: Rollover with controlled shards
 PUT /logs-000001
 {
   "settings": {
@@ -562,7 +565,7 @@ PUT /logs-000001
 
 When using multiple indexes, query routing can improve performance:
 
-```json
+```console
 // Index with routing
 PUT /orders/_doc/order_123?routing=user_456
 {
@@ -582,9 +585,9 @@ GET /orders/_search?routing=user_456
 
 ## Migration Strategy
 
-If migrating from types to multiple indexes:
+If migrating from a 6.x typed index to multiple indexes before upgrading:
 
-```json
+```console
 // Step 1: Create new indexes
 PUT /users_v2
 {
@@ -601,9 +604,7 @@ POST /_reindex
 {
   "source": {
     "index": "old_combined_index",
-    "query": {
-      "term": { "_type": "user" }
-    }
+    "type": "user"
   },
   "dest": {
     "index": "users_v2"
@@ -628,7 +629,7 @@ POST /_aliases
 | Different retention | Easy to manage | Complex |
 | Cross-type queries | Use aliases | Natural |
 | Shard management | More complex | Simpler |
-| Security isolation | Native support | Field-level only |
+| Security isolation | Native support | Document/field-level security |
 | Schema evolution | Independent | Coordinated |
 
 ## Conclusion
