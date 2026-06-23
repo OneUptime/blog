@@ -1352,7 +1352,7 @@ class SendProjectReportJob < ApplicationJob
   queue_as :reports
   
   # Retry with exponential backoff
-  retry_on StandardError, wait: :exponentially_longer, attempts: 3
+  retry_on StandardError, wait: :polynomially_longer, attempts: 3
   
   def perform(project_id:, tenant_id:, recipient_email:)
     # Tenant context is automatically set by TenantJob concern
@@ -1472,9 +1472,9 @@ end
 Rails.application.configure do
   config.cache_store = :redis_cache_store, {
     url: ENV['REDIS_URL'],
-    namespace: 'myapp_cache',
     
-    # Use a proc to dynamically set namespace per request
+    # Use a proc to dynamically set the namespace per request,
+    # isolating each tenant's cache entries
     namespace: -> { 
       tenant = ActsAsTenant.current_tenant
       tenant ? "tenant_#{tenant.id}" : "shared"
