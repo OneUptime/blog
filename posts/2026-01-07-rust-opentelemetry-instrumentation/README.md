@@ -18,9 +18,9 @@ OpenTelemetry provides a vendor-neutral way to collect traces, metrics, and logs
 
 Rust's ecosystem has converged on OpenTelemetry as the standard for observability:
 
-- **Zero-cost abstractions** - Disabled spans compile to no-ops
+- **Low overhead instrumentation** - Disabled spans are skipped quickly, and compile-time filters can remove them entirely
 - **Async-native** - First-class support for tokio and async-std
-- **Unified SDK** - Single dependency for traces, metrics, and logs
+- **Unified telemetry model** - Consistent APIs for traces, metrics, and logs
 - **Vendor-neutral** - Export to any backend (Jaeger, Zipkin, OTLP)
 
 ---
@@ -33,22 +33,28 @@ Add the required crates to your `Cargo.toml`. The OpenTelemetry ecosystem in Rus
 [dependencies]
 # Core OpenTelemetry APIs and SDK
 
-opentelemetry = "0.24"
-opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
 
 # OTLP exporter for sending data to collectors
-opentelemetry-otlp = { version = "0.17", features = ["tonic"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 
 # Semantic conventions for consistent attribute naming
-opentelemetry-semantic-conventions = "0.16"
+opentelemetry-semantic-conventions = "0.32"
 
 # The tracing ecosystem for instrumentation
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.25"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.33"
+opentelemetry-appender-tracing = "0.32"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+
+# Used by the complete HTTP example
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
 ```
 
 ---
@@ -61,64 +67,71 @@ This configuration initializes the OpenTelemetry tracer with OTLP export. It set
 // src/telemetry.rs
 // Initialize OpenTelemetry tracing with OTLP export
 
-use opentelemetry::trace::TracerProvider;
+use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    runtime,
-    trace::{BatchConfig, RandomIdGenerator, Sampler, Tracer},
+    trace::{BatchConfigBuilder, BatchSpanProcessor, RandomIdGenerator, Sampler, SdkTracer, SdkTracerProvider},
     Resource,
 };
-use opentelemetry_semantic_conventions::resource::{
-    DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION,
-};
+use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+const DEPLOYMENT_ENVIRONMENT_NAME: &str = "deployment.environment.name";
+
+pub struct TelemetryGuard {
+    pub tracer: SdkTracer,
+    tracer_provider: SdkTracerProvider,
+}
+
 /// Initialize OpenTelemetry tracing infrastructure
-/// Returns the tracer for creating spans
-pub fn init_tracing(service_name: &str) -> Result<Tracer, Box<dyn std::error::Error>> {
+/// Returns a guard that keeps the tracer provider alive for shutdown
+pub fn init_tracing(service_name: &str) -> Result<TelemetryGuard, Box<dyn std::error::Error>> {
     // Define resource attributes that identify this service
     // These appear on every span and help filter in your observability backend
-    let resource = Resource::new(vec![
-        opentelemetry::KeyValue::new(SERVICE_NAME, service_name.to_string()),
-        opentelemetry::KeyValue::new(
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new(SERVICE_NAME, service_name.to_string()))
+        .with_attribute(KeyValue::new(
             SERVICE_VERSION,
             std::env::var("SERVICE_VERSION").unwrap_or_else(|_| "1.0.0".to_string()),
-        ),
-        opentelemetry::KeyValue::new(
-            DEPLOYMENT_ENVIRONMENT,
+        ))
+        .with_attribute(KeyValue::new(
+            DEPLOYMENT_ENVIRONMENT_NAME,
             std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
-        ),
-    ]);
+        ))
+        .build();
 
     // Configure the OTLP exporter
     // This sends spans to an OpenTelemetry Collector or compatible backend
-    let otlp_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
         .with_endpoint(
             std::env::var("OTLP_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:4317".to_string()),
         )
-        .with_timeout(Duration::from_secs(3));
+        .with_timeout(Duration::from_secs(3))
+        .build()?;
+
+    let batch_config = BatchConfigBuilder::default()
+        .with_max_queue_size(4096)
+        .with_max_export_batch_size(512)
+        .with_scheduled_delay(Duration::from_millis(5000))
+        .build();
 
     // Build the tracer provider with batch processing
     // Batch processing reduces network overhead by sending spans in groups
-    let tracer_provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(otlp_exporter)
-        .with_trace_config(
-            opentelemetry_sdk::trace::Config::default()
-                .with_sampler(Sampler::AlwaysOn) // Sample all traces in dev
-                .with_id_generator(RandomIdGenerator::default())
-                .with_resource(resource),
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_sampler(Sampler::AlwaysOn) // Sample all traces in dev
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(resource)
+        .with_span_processor(
+            BatchSpanProcessor::builder(otlp_exporter)
+                .with_batch_config(batch_config)
+                .build(),
         )
-        .with_batch_config(
-            BatchConfig::default()
-                .with_max_queue_size(4096)
-                .with_max_export_batch_size(512)
-                .with_scheduled_delay(Duration::from_millis(5000)),
-        )
-        .install_batch(runtime::Tokio)?;
+        .build();
+
+    global::set_tracer_provider(tracer_provider.clone());
 
     // Get the tracer from the provider
     let tracer = tracer_provider.tracer("app");
@@ -138,12 +151,15 @@ pub fn init_tracing(service_name: &str) -> Result<Tracer, Box<dyn std::error::Er
         .with(tracing_subscriber::fmt::layer()) // Console output
         .init();
 
-    Ok(tracer)
+    Ok(TelemetryGuard {
+        tracer,
+        tracer_provider,
+    })
 }
 
 /// Gracefully shutdown telemetry, flushing pending spans
-pub fn shutdown_tracing() {
-    opentelemetry::global::shutdown_tracer_provider();
+pub fn shutdown_tracing(guard: TelemetryGuard) -> Result<(), opentelemetry_sdk::error::OTelSdkError> {
+    guard.tracer_provider.shutdown()
 }
 ```
 
@@ -164,7 +180,7 @@ use tracing::{info, instrument, warn, Span};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize telemetry before any other operations
-    let _tracer = telemetry::init_tracing("order-service")?;
+    let telemetry = telemetry::init_tracing("order-service")?;
 
     info!("Starting order service");
 
@@ -176,14 +192,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Ensure all spans are exported before shutdown
-    telemetry::shutdown_tracing();
+    telemetry::shutdown_tracing(telemetry)?;
 
     Ok(())
 }
 
 /// Process an order - automatically creates a span
 /// The #[instrument] macro captures function arguments as span attributes
-#[instrument(skip(order_id), fields(order.id = %order_id))]
+#[instrument(skip(order_id), fields(order.id = %order_id, order.step = tracing::field::Empty))]
 async fn process_order(order_id: &str) -> Result<OrderResult, OrderError> {
     // Add custom attributes to the current span
     Span::current().record("order.step", "validation");
@@ -263,25 +279,28 @@ impl std::error::Error for OrderError {}
 
 ## Adding Metrics
 
-OpenTelemetry metrics in Rust use the same SDK with a separate meter provider. Here's how to add counters, gauges, and histograms.
+OpenTelemetry metrics in Rust use the same SDK with a separate meter provider. Here's how to add counters, up/down counters, and histograms.
 
 ```rust
 // src/metrics.rs
 // OpenTelemetry metrics configuration
 
 use opentelemetry::{
+    global,
     metrics::{Counter, Histogram, MeterProvider, UpDownCounter},
     KeyValue,
 };
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     metrics::{PeriodicReader, SdkMeterProvider},
-    runtime, Resource,
+    Resource,
 };
 use std::time::Duration;
 
 /// Application metrics container
 pub struct AppMetrics {
+    /// Keeps the meter provider alive until the metrics container is dropped
+    _meter_provider: SdkMeterProvider,
     /// Count of requests by endpoint and status
     pub request_counter: Counter<u64>,
     /// Currently active connections
@@ -293,34 +312,30 @@ pub struct AppMetrics {
 /// Initialize the meter provider and create application metrics
 pub fn init_metrics(service_name: &str) -> Result<AppMetrics, Box<dyn std::error::Error>> {
     // Create resource with service identification
-    let resource = Resource::new(vec![
-        opentelemetry::KeyValue::new("service.name", service_name.to_string()),
-    ]);
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new("service.name", service_name.to_string()))
+        .build();
 
     // Configure OTLP exporter for metrics
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
         .with_endpoint(
             std::env::var("OTLP_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:4317".to_string()),
-        );
+        )
+        .build()?;
+
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(Duration::from_secs(10))
+        .build();
 
     // Build meter provider with periodic export
     let meter_provider = SdkMeterProvider::builder()
         .with_resource(resource)
-        .with_reader(
-            PeriodicReader::builder(
-                opentelemetry_otlp::new_exporter()
-                    .tonic()
-                    .build_metrics_exporter(
-                        Box::new(opentelemetry_sdk::metrics::data::Temporality::Cumulative),
-                    )?,
-                runtime::Tokio,
-            )
-            .with_interval(Duration::from_secs(10))
-            .build(),
-        )
+        .with_reader(reader)
         .build();
+
+    global::set_meter_provider(meter_provider.clone());
 
     // Get a meter for creating instruments
     let meter = meter_provider.meter("app");
@@ -330,21 +345,22 @@ pub fn init_metrics(service_name: &str) -> Result<AppMetrics, Box<dyn std::error
         .u64_counter("http.server.requests")
         .with_description("Total HTTP requests processed")
         .with_unit("requests")
-        .init();
+        .build();
 
     let active_connections = meter
         .i64_up_down_counter("http.server.active_connections")
         .with_description("Currently active HTTP connections")
         .with_unit("connections")
-        .init();
+        .build();
 
     let request_latency = meter
         .f64_histogram("http.server.request.duration")
         .with_description("HTTP request latency distribution")
         .with_unit("ms")
-        .init();
+        .build();
 
     Ok(AppMetrics {
+        _meter_provider: meter_provider,
         request_counter,
         active_connections,
         request_latency,
@@ -360,7 +376,7 @@ impl AppMetrics {
             1,
             &[
                 KeyValue::new("http.route", endpoint.to_string()),
-                KeyValue::new("http.status_code", status_code.to_string()),
+                KeyValue::new("http.status_code", status_code as i64),
             ],
         );
 
@@ -393,7 +409,8 @@ Connect Rust's `tracing` logs to OpenTelemetry for correlated logging. This ensu
 // Structured logging with OpenTelemetry correlation
 
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{logs::LoggerProvider, runtime, Resource};
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_sdk::{logs::SdkLoggerProvider, Resource};
 use std::time::Duration;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
@@ -405,27 +422,38 @@ use tracing_subscriber::{
 /// Initialize logging with trace correlation
 pub fn init_logging_with_traces(
     service_name: &str,
-) -> Result<LoggerProvider, Box<dyn std::error::Error>> {
+) -> Result<SdkLoggerProvider, Box<dyn std::error::Error>> {
     // Create resource for log attribution
-    let resource = Resource::new(vec![
-        opentelemetry::KeyValue::new("service.name", service_name.to_string()),
-    ]);
+    let resource = Resource::builder()
+        .with_attribute(opentelemetry::KeyValue::new("service.name", service_name.to_string()))
+        .build();
 
     // Configure OTLP log exporter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
         .with_endpoint(
             std::env::var("OTLP_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:4317".to_string()),
         )
-        .with_timeout(Duration::from_secs(3));
+        .with_timeout(Duration::from_secs(3))
+        .build()?;
 
     // Build logger provider
-    let logger_provider = opentelemetry_otlp::new_pipeline()
-        .logging()
+    let logger_provider = SdkLoggerProvider::builder()
         .with_resource(resource)
-        .with_exporter(exporter)
-        .install_batch(runtime::Tokio)?;
+        .with_batch_exporter(exporter)
+        .build();
+
+    let otel_log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
+
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(otel_log_layer)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     Ok(logger_provider)
 }
@@ -456,7 +484,7 @@ pub fn init_json_logging() {
 
 ## Complete Application Example
 
-This example brings together tracing, metrics, and logging in a simple HTTP service.
+This example brings together tracing and metrics in a simple HTTP service.
 
 ```rust
 // src/main.rs
@@ -485,7 +513,7 @@ struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize telemetry first
-    let _tracer = telemetry::init_tracing("api-service")?;
+    let telemetry = telemetry::init_tracing("api-service")?;
     let metrics = metrics::init_metrics("api-service")?;
 
     info!("Starting API service");
@@ -497,7 +525,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/api/orders", post(create_order))
-        .route("/api/orders/:id", get(get_order))
+        .route("/api/orders/{id}", get(get_order))
         .with_state(state);
 
     // Start server
@@ -507,7 +535,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     // Cleanup
-    telemetry::shutdown_tracing();
+    telemetry::shutdown_tracing(telemetry)?;
 
     Ok(())
 }
@@ -518,7 +546,7 @@ async fn health_check() -> StatusCode {
 }
 
 /// Create order endpoint with full instrumentation
-#[instrument(skip(state, payload), fields(order.customer_id))]
+#[instrument(skip(state, payload), fields(order.customer_id = tracing::field::Empty))]
 async fn create_order(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateOrderRequest>,
@@ -568,7 +596,7 @@ async fn get_order(
     };
 
     let latency = start.elapsed().as_secs_f64() * 1000.0;
-    state.metrics.record_request("/api/orders/:id", 200, latency);
+    state.metrics.record_request("/api/orders/{id}", 200, latency);
 
     Ok(Json(response))
 }
@@ -602,13 +630,13 @@ For production deployments, configure sampling to reduce telemetry volume while 
 
 ```rust
 // Production tracer configuration with sampling
-use opentelemetry_sdk::trace::{Sampler, TraceIdRatioBased};
+use opentelemetry_sdk::trace::Sampler;
 
 // Sample 10% of traces in production
 let sampler = Sampler::TraceIdRatioBased(0.1);
 
 // Or use parent-based sampling to respect upstream decisions
-let sampler = Sampler::ParentBased(Box::new(TraceIdRatioBased::new(0.1)));
+let sampler = Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(0.1)));
 ```
 
 Environment variables for configuration:
