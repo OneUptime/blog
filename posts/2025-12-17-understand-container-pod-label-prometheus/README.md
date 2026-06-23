@@ -27,7 +27,7 @@ When querying Kubernetes container metrics in Prometheus, you will encounter the
 Every Kubernetes pod runs a hidden "pause" container that:
 
 1. **Holds the network namespace** - Other containers share its network
-2. **Serves as PID 1** - Reaps zombie processes
+2. **Can serve as PID 1** - Reaps zombie processes when the pod shares a process namespace
 3. **Keeps the pod alive** - If app containers crash, pod still exists
 4. **Uses minimal resources** - Typically ~1MB memory
 
@@ -253,7 +253,8 @@ sum(rate(container_cpu_usage_seconds_total{
 
 # CPU throttling (only affects app containers)
 sum(rate(container_cpu_cfs_throttled_seconds_total{
-  container!="POD"
+  container!="POD",
+  container!=""
 }[5m])) by (namespace, pod, container)
 ```
 
@@ -327,7 +328,7 @@ groups:
       # CPU throttling
       - alert: ContainerCPUThrottling
         expr: |
-          sum(rate(container_cpu_cfs_throttled_seconds_total{container!="POD"}[5m]))
+          sum(rate(container_cpu_cfs_throttled_seconds_total{container!="POD", container!=""}[5m]))
           by (namespace, pod, container) > 0.1
         for: 10m
         labels:
@@ -372,10 +373,10 @@ sequenceDiagram
 
 ### Process Reaping
 
-The pause container runs as PID 1 in the pod's PID namespace:
+When process namespace sharing is enabled, the pause container runs as PID 1 in the pod's shared PID namespace:
 
 ```bash
-# Inside a pod
+# Inside a pod with shareProcessNamespace: true
 $ ps aux
 PID   USER     COMMAND
 1     root     /pause
@@ -383,7 +384,7 @@ PID   USER     COMMAND
 15    app      /usr/bin/myapp worker
 ```
 
-If child processes become orphaned, the pause container reaps them.
+In that configuration, if child processes become orphaned, the pause container reaps them.
 
 ---
 
