@@ -93,6 +93,7 @@ server {
 Some applications (like Socket.IO) use the same path for HTTP polling and WebSocket:
 
 ```nginx
+# Place map in the http context, outside server blocks
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -154,12 +155,12 @@ location /ws {
 
 **Problem:**
 ```nginx
-# WRONG - HTTP/1.0 doesn't support upgrade
+# WRONG on older Nginx versions - HTTP/1.0 doesn't support upgrade
 location /ws {
     proxy_pass http://backend:3000;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    # proxy_http_version defaults to 1.0
+    # Before Nginx 1.29.7, proxy_http_version defaults to 1.0
 }
 ```
 
@@ -173,7 +174,7 @@ location /ws {
 }
 ```
 
-### Cause 3: Upstream Keepalive Breaking Connection Header
+### Cause 3: Clearing the Connection Header
 
 **Problem:**
 ```nginx
@@ -193,7 +194,7 @@ location /ws {
 ```nginx
 upstream websocket_backend {
     server 127.0.0.1:3000;
-    # Note: keepalive is not recommended for WebSocket upstreams
+    keepalive 32;
 }
 
 location /ws {
@@ -206,7 +207,7 @@ location /ws {
 
 ### Cause 4: Buffering Interference
 
-**Problem:** Large WebSocket messages get stuck in proxy buffers.
+**Problem:** HTTP fallback or streaming responses get delayed in proxy buffers.
 
 **Fix:**
 ```nginx
@@ -314,6 +315,7 @@ wscat -c ws://localhost:3000/ws
 ## Production Configuration with SSL
 
 ```nginx
+# Place map in the http context, outside server blocks
 upstream websocket_backend {
     server 127.0.0.1:3000;
 }
@@ -330,7 +332,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/ssl/certs/example.com.crt;
