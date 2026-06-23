@@ -10,13 +10,13 @@ Description: A guide to using BGP local preference for traffic engineering with 
 
 ## Introduction
 
-BGP Local Preference is one of the most powerful attributes for controlling outbound traffic paths in your network. When running MetalLB in BGP mode on Kubernetes, understanding and properly configuring local preference can help you implement sophisticated traffic engineering patterns such as active-standby setups, geographic routing, and graceful failover mechanisms.
+BGP Local Preference is one of the most powerful attributes for controlling route selection inside an autonomous system. When running MetalLB in BGP mode on Kubernetes, understanding and properly configuring local preference can help you implement traffic engineering patterns for service prefixes, such as active-standby ingress paths, geographic routing, and graceful failover mechanisms.
 
 In this comprehensive guide, we will explore how to configure BGP local preference in MetalLB, covering everything from basic concepts to advanced multi-datacenter deployment patterns.
 
 ## Understanding BGP Local Preference
 
-Local preference is a BGP attribute that influences the path selection for outbound traffic. Unlike other BGP attributes, local preference is only exchanged between iBGP peers within the same Autonomous System (AS). The higher the local preference value, the more preferred the route.
+Local preference is a BGP attribute that influences best-path selection within an autonomous system. Unlike other BGP attributes, local preference is only exchanged between iBGP peers within the same Autonomous System (AS). The higher the local preference value, the more preferred the route.
 
 The following diagram illustrates how local preference affects route selection:
 
@@ -53,17 +53,17 @@ Before configuring BGP local preference in MetalLB, ensure you have:
 
 ## Basic Local Preference Configuration
 
-MetalLB supports setting local preference through the BGPPeer and BGPAdvertisement custom resources. Let's start with a basic configuration.
+MetalLB supports setting local preference through the BGPAdvertisement custom resource. BGPPeer defines the BGP sessions; BGPAdvertisement defines the attributes attached to the advertised service routes. Because BGP LOCAL_PREF is an iBGP attribute, these examples use peers in the same AS. For eBGP peers, set local preference with import policy on the receiving router, or use communities from MetalLB and have the router translate those communities into local preference.
 
-### Step 1: Define BGP Peers with Local Preference
+### Step 1: Define BGP Peers
 
-The following configuration creates two BGP peers with different local preference values. The primary peer has a higher local preference (200) making it the preferred path, while the secondary peer has a lower value (100) serving as a backup.
+The following configuration creates two iBGP peers. The local preference values are applied later in the BGPAdvertisement resources, not in the BGPPeer resources.
 
 ```yaml
 # bgp-peers.yaml
 
 # This configuration establishes BGP peering with two routers
-# Local preference determines which path is preferred for outbound traffic
+# Local preference determines which path is preferred for the advertised service route
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
@@ -72,15 +72,12 @@ metadata:
 spec:
   # The IP address of the primary router
   peerAddress: 10.0.0.1
-  # The AS number of the peer (external AS for eBGP)
-  peerASN: 65001
+  # The AS number of the peer. Use the same AS for iBGP local preference.
+  peerASN: 65000
   # Our local AS number
   myASN: 65000
-  # Higher local preference means this path is preferred
-  # Default is 100, we set 200 to make this the primary path
+  # BGP router ID to advertise to the peer
   routerID: 10.0.0.10
-  # Optional: specify source address for BGP sessions
-  sourceAddress: 10.0.0.10
   # BGP session parameters
   holdTime: 90s
   keepaliveTime: 30s
@@ -92,10 +89,9 @@ metadata:
   namespace: metallb-system
 spec:
   peerAddress: 10.0.0.2
-  peerASN: 65002
+  peerASN: 65000
   myASN: 65000
   routerID: 10.0.0.10
-  sourceAddress: 10.0.0.10
   holdTime: 90s
   keepaliveTime: 30s
 ```
@@ -146,11 +142,11 @@ spec:
   # Set high local preference for the primary path
   # Routes with higher local preference are preferred
   localPref: 200
-  # Optional: aggregate routes to reduce routing table size
+  # Advertise individual service IPs as /32 routes
   aggregationLength: 32
   # Optional: add BGP communities for additional routing policies
   communities:
-    - primary-path
+    - "65000:100"
 ---
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
@@ -166,7 +162,7 @@ spec:
   localPref: 100
   aggregationLength: 32
   communities:
-    - backup-path
+    - "65000:200"
 ```
 
 ## Active-Standby Pattern Implementation
@@ -191,8 +187,8 @@ flowchart LR
         U["User Traffic"]
     end
 
-    ML -->|"BGP: LP=200"| R1
-    ML -->|"BGP: LP=100"| R2
+    ML -->|"iBGP: LP=200"| R1
+    ML -->|"iBGP: LP=100"| R2
     U -->|"Active Path"| R1
     R1 -->|"Forward to Service"| SVC
     U -.->|"Failover Path"| R2
@@ -204,7 +200,7 @@ flowchart LR
 
 ### Complete Active-Standby Configuration
 
-The following comprehensive configuration implements a full active-standby setup with health checking and graceful failover.
+The following comprehensive configuration implements a full active-standby setup with faster failure detection and graceful failover.
 
 ```yaml
 # active-standby-complete.yaml
@@ -222,17 +218,18 @@ metadata:
     role: active
 spec:
   peerAddress: 10.0.0.1
-  peerASN: 65001
+  peerASN: 65000
   myASN: 65000
   # Enable BFD for faster failure detection
-  # BFD can detect failures in milliseconds vs seconds for BGP
+  # In FRR-based MetalLB modes, BFD can detect failures faster than BGP timers alone
   bfdProfile: fast-failover
   # Node selector to control which nodes peer with this router
   nodeSelectors:
     - matchLabels:
         node-role.kubernetes.io/worker: "true"
   # Optional: password for BGP session authentication
-  # password: <secret-reference>
+  # passwordSecret:
+  #   name: bgp-auth
   holdTime: 90s
   keepaliveTime: 30s
 ---
@@ -246,7 +243,7 @@ metadata:
     role: standby
 spec:
   peerAddress: 10.0.0.2
-  peerASN: 65002
+  peerASN: 65000
   myASN: 65000
   bfdProfile: fast-failover
   nodeSelectors:
@@ -403,7 +400,7 @@ metadata:
     type: local
 spec:
   peerAddress: 10.1.0.1
-  peerASN: 65001
+  peerASN: 65000
   myASN: 65000
   # Use router ID unique to this datacenter
   routerID: 10.1.0.10
@@ -422,7 +419,7 @@ metadata:
     type: remote
 spec:
   peerAddress: 10.1.0.2
-  peerASN: 65002
+  peerASN: 65000
   myASN: 65000
   routerID: 10.1.0.10
   bfdProfile: datacenter-bfd
@@ -523,7 +520,9 @@ spec:
 ```yaml
 # geo-routing-west.yaml
 # Geographic routing configuration for US West datacenter
-# Mirror of East configuration with appropriate adjustments
+# Mirror of East configuration with appropriate adjustments.
+# If US West is a separate Kubernetes cluster, also define the datacenter-bfd
+# BFDProfile and geo-communities Community resource in that cluster.
 
 ---
 apiVersion: metallb.io/v1beta2
@@ -536,7 +535,7 @@ metadata:
     type: local
 spec:
   peerAddress: 10.2.0.1
-  peerASN: 65003
+  peerASN: 65000
   myASN: 65000
   routerID: 10.2.0.10
   bfdProfile: datacenter-bfd
@@ -553,7 +552,7 @@ metadata:
     type: remote
 spec:
   peerAddress: 10.2.0.2
-  peerASN: 65004
+  peerASN: 65000
   myASN: 65000
   routerID: 10.2.0.10
   bfdProfile: datacenter-bfd
@@ -634,7 +633,7 @@ sequenceDiagram
     MetalLB->>MetalLB: Detect failure (BFD/BGP timeout)
 
     Note over User,Service: Failover in Progress
-    MetalLB->>Secondary: Routes now active
+    MetalLB->>Secondary: Secondary path selected after primary route withdrawal
     User->>Secondary: Traffic (failover path)
     Secondary->>Service: Forward request
     Service->>Secondary: Response
@@ -732,35 +731,35 @@ esac
 You can verify that your local preference settings are being applied correctly by checking the BGP table on your routers.
 
 ```bash
-# On Cisco IOS router, check BGP table for the advertised prefix
-show ip bgp 192.168.100.0/24
+# On Cisco IOS router, check BGP table for the advertised service prefix
+show ip bgp 192.168.100.10/32
 
 # Expected output should show local preference values:
 # Network          Next Hop            Metric LocPrf Weight Path
-# *> 192.168.100.0/24  10.0.0.10              0    200      0 65000 i
-# *  192.168.100.0/24  10.0.0.10              0    100      0 65000 i
+# *> 192.168.100.10/32 10.0.0.10              0    200      0 i
+# *  192.168.100.10/32 10.0.0.10              0    100      0 i
 
 # On FRRouting/Quagga, use:
-show bgp ipv4 unicast 192.168.100.0/24
+show bgp ipv4 unicast 192.168.100.10/32
 
 # On Juniper, use:
-show route 192.168.100.0/24 detail
+show route 192.168.100.10/32 detail
 ```
 
 ## Advanced Configurations
 
-### Weighted Load Balancing with Local Preference
+### ECMP with Local Preference Tiers
 
-While local preference typically creates an active-standby pattern, you can combine it with ECMP (Equal-Cost Multi-Path) for weighted load balancing.
+Local preference does not create weighted load balancing by itself. You can combine it with ECMP (Equal-Cost Multi-Path) to load-balance across equal-preference routers in a preferred tier, while keeping lower-preference routers as standby paths.
 
 ```yaml
-# weighted-load-balancing.yaml
-# Configuration for weighted traffic distribution
+# ecmp-with-local-preference.yaml
+# Configuration for ECMP within a preferred tier
 # Using multiple advertisements with same local preference for ECMP
 # and different preferences for tiered routing
 
 ---
-# Tier 1 Routers - Primary traffic handlers (80% of traffic)
+# Tier 1 Routers - Primary traffic handlers while available
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
@@ -768,7 +767,7 @@ metadata:
   namespace: metallb-system
 spec:
   peerAddress: 10.0.1.1
-  peerASN: 65001
+  peerASN: 65000
   myASN: 65000
   routerID: 10.0.0.10
 ---
@@ -779,11 +778,11 @@ metadata:
   namespace: metallb-system
 spec:
   peerAddress: 10.0.1.2
-  peerASN: 65001
+  peerASN: 65000
   myASN: 65000
   routerID: 10.0.0.10
 ---
-# Tier 2 Routers - Overflow and backup (20% of traffic normally)
+# Tier 2 Routers - Backup paths
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
@@ -791,7 +790,7 @@ metadata:
   namespace: metallb-system
 spec:
   peerAddress: 10.0.2.1
-  peerASN: 65002
+  peerASN: 65000
   myASN: 65000
   routerID: 10.0.0.10
 ---
@@ -823,7 +822,7 @@ spec:
   aggregationLength: 32
 ---
 # Tier 2 Advertisement - Lower local preference
-# Only receives traffic when tier1 is saturated or down
+# Selected only when the higher-preference tier is unavailable or withdrawn
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
 metadata:
@@ -999,7 +998,7 @@ kubectl logs -n metallb-system -l component=speaker | grep -i "advertis"
 # Verify the backup peer is receiving routes
 # On the backup router, check BGP table
 # show ip bgp summary
-# show ip bgp 192.168.100.0/24
+# show ip bgp 192.168.100.10/32
 ```
 
 #### Issue 3: Traffic Not Following Expected Path
@@ -1050,7 +1049,7 @@ kubectl get bgpadvertisements -n metallb-system -o yaml | grep -A5 localPref
 
 ## Best Practices
 
-1. **Always Configure BFD**: Use BFD (Bidirectional Forwarding Detection) alongside BGP for faster failure detection. BGP alone can take 90+ seconds to detect failures.
+1. **Configure BFD Where Supported**: In FRR-based MetalLB modes, use BFD (Bidirectional Forwarding Detection) alongside BGP for faster failure detection. BGP alone can take 90+ seconds to detect failures with the timer values used in these examples.
 
 2. **Use Meaningful Local Preference Values**: Establish a standard for local preference values across your organization:
    - 500+: Critical services, primary path
@@ -1066,7 +1065,7 @@ kubectl get bgpadvertisements -n metallb-system -o yaml | grep -A5 localPref
 
 6. **Use Communities**: Combine local preference with BGP communities for more flexible routing policies.
 
-7. **Consider Aggregation**: Use route aggregation to reduce the number of routes in your network.
+7. **Consider Aggregation**: Use route aggregation to reduce the number of routes in your network when per-service routing is not required.
 
 ## Conclusion
 
