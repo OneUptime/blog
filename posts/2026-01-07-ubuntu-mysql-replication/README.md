@@ -217,7 +217,7 @@ Execute the following SQL commands to create the replication user:
 -- Create a dedicated user for replication
 -- Use a strong password in production environments
 -- The '%' allows connections from any host (restrict in production)
-CREATE USER 'replication_user'@'%' IDENTIFIED WITH mysql_native_password BY 'SecureRepl!cationP@ss123';
+CREATE USER 'replication_user'@'%' IDENTIFIED BY 'SecureRepl!cationP@ss123';
 
 -- Grant replication privileges to the user
 -- REPLICATION SLAVE: allows reading binary log events
@@ -263,9 +263,9 @@ If you have existing data, create a backup to initialize replicas:
 
 ```bash
 # Create a consistent backup of all databases
-# --master-data includes binary log position in the dump
+# --source-data includes binary log position in the dump
 # --single-transaction ensures consistency without locking InnoDB tables
-sudo mysqldump -u root -p --all-databases --master-data=2 --single-transaction > /tmp/master_backup.sql
+sudo mysqldump -u root -p --all-databases --source-data=2 --single-transaction > /tmp/master_backup.sql
 
 # Copy the backup to replica servers
 scp /tmp/master_backup.sql user@192.168.1.11:/tmp/
@@ -322,6 +322,8 @@ bind-address = 0.0.0.0
 log_replica_updates = ON
 
 # Preserve commit order for parallel replication consistency
+# Requires replica_parallel_type=LOGICAL_CLOCK; this is the default in MySQL 8.0.27+
+replica_parallel_type = LOGICAL_CLOCK
 replica_preserve_commit_order = ON
 ```
 
@@ -456,7 +458,7 @@ enforce_gtid_consistency = ON
 # Enable binary logging (required for GTID)
 log_bin = /var/log/mysql/mysql-bin.log
 
-# Binary log format must be ROW for GTID
+# Binary log format - ROW is recommended for most use cases
 binlog_format = ROW
 
 # Server identification
@@ -805,11 +807,11 @@ STOP REPLICA;
 
 ```sql
 -- Check each replica's GTID position
--- The replica with the highest GTID should be promoted
+-- The replica whose executed GTID set contains the most transactions should be promoted
 SHOW REPLICA STATUS\G
 
 -- Look for:
--- - Executed_Gtid_Set: Shows all GTIDs executed
+-- - Executed_Gtid_Set: Shows all GTIDs executed; prefer a superset of the others
 -- - Retrieved_Gtid_Set: Shows GTIDs received but not yet executed
 -- - Seconds_Behind_Source: Should be 0 or very low
 
@@ -871,7 +873,7 @@ enforce_gtid_consistency = ON
 ```sql
 -- Create replication user if it doesn't exist
 CREATE USER IF NOT EXISTS 'replication_user'@'%'
-    IDENTIFIED WITH mysql_native_password BY 'SecureRepl!cationP@ss123';
+    IDENTIFIED BY 'SecureRepl!cationP@ss123';
 
 -- Grant replication privileges
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replication_user'@'%';
@@ -925,8 +927,8 @@ Once the old master is repaired, you can add it back as a replica:
 -- On the recovered server (old master)
 -- First, ensure the server is stopped and data is synchronized
 
--- Reset to clean state
-RESET MASTER;
+-- Verify the recovered server has no transactions that are absent from the new master.
+-- If it does, rebuild it from a fresh backup of the new master before continuing.
 
 -- Configure as replica of the new master
 CHANGE REPLICATION SOURCE TO
@@ -1044,12 +1046,11 @@ SELECT @@global.gtid_executed;
 -- If GTID sets don't match, check for errant transactions
 -- Compare the sets to find missing transactions
 
--- Reset replica if needed (data loss warning!)
+-- Reset replica metadata if needed (data loss warning!)
 STOP REPLICA;
-RESET MASTER;  -- Clears GTID executed set
 RESET REPLICA ALL;
 
--- Re-initialize from backup with GTID position
+-- Re-initialize the server from a fresh backup with GTID position
 ```
 
 ### Useful Diagnostic Commands
@@ -1200,7 +1201,7 @@ ssl-key = /etc/mysql/ssl/server-key.pem
 ```sql
 -- Create or modify replication user to require SSL
 CREATE USER 'replication_user'@'%'
-    IDENTIFIED WITH mysql_native_password BY 'SecureRepl!cationP@ss123'
+    IDENTIFIED BY 'SecureRepl!cationP@ss123'
     REQUIRE SSL;
 
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replication_user'@'%';
@@ -1212,10 +1213,12 @@ FLUSH PRIVILEGES;
 Copy certificates to replicas and configure:
 
 ```bash
-# Copy certificates to replica
-scp /etc/mysql/ssl/ca-cert.pem user@192.168.1.11:/etc/mysql/ssl/
-scp /etc/mysql/ssl/client-cert.pem user@192.168.1.11:/etc/mysql/ssl/
-scp /etc/mysql/ssl/client-key.pem user@192.168.1.11:/etc/mysql/ssl/
+# Prepare certificate directory on replica
+ssh user@192.168.1.11 "sudo mkdir -p /etc/mysql/ssl"
+
+# Copy certificates to a writable location, then install them with correct ownership
+scp /etc/mysql/ssl/ca-cert.pem /etc/mysql/ssl/client-cert.pem /etc/mysql/ssl/client-key.pem user@192.168.1.11:/tmp/
+ssh user@192.168.1.11 "sudo mv /tmp/ca-cert.pem /tmp/client-cert.pem /tmp/client-key.pem /etc/mysql/ssl/ && sudo chown mysql:mysql /etc/mysql/ssl/*.pem && sudo chmod 600 /etc/mysql/ssl/*-key.pem && sudo chmod 644 /etc/mysql/ssl/*-cert.pem /etc/mysql/ssl/ca-cert.pem"
 ```
 
 Configure SSL in replica's MySQL:
@@ -1247,12 +1250,19 @@ SHOW REPLICA STATUS\G
 ```sql
 -- Limit replication user to specific IP addresses
 CREATE USER 'replication_user'@'192.168.1.11'
-    IDENTIFIED WITH mysql_native_password BY 'SecureRepl!cationP@ss123'
+    IDENTIFIED BY 'SecureRepl!cationP@ss123'
     REQUIRE SSL;
 
 CREATE USER 'replication_user'@'192.168.1.12'
-    IDENTIFIED WITH mysql_native_password BY 'SecureRepl!cationP@ss123'
+    IDENTIFIED BY 'SecureRepl!cationP@ss123'
     REQUIRE SSL;
+
+-- Check whether the password validation component is installed
+SELECT * FROM mysql.component
+WHERE component_urn = 'file://component_validate_password';
+
+-- If no row is returned, install the component
+INSTALL COMPONENT 'file://component_validate_password';
 
 -- Configure password policy
 SET GLOBAL validate_password.policy = STRONG;
