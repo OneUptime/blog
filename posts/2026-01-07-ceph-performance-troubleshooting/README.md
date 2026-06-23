@@ -60,9 +60,10 @@ graph TB
         RBD --> MON2
         CephFS --> MON3
 
-        MON1 --> OSD1
-        MON2 --> OSD2
-        MON3 --> OSD3
+        RGW --> OSD1
+        RBD --> OSD2
+        CephFS --> OSD3
+        MGR --> MON1
         MGR --> OSD4
     end
 ```
@@ -199,15 +200,17 @@ ceph pg stat
 
 # List PGs that are not in the optimal 'active+clean' state
 # These PGs may be affecting cluster performance
-ceph pg ls | grep -v 'active+clean'
+ceph pg dump pgs_brief | grep -v 'active+clean'
 
 # Get detailed information about a specific PG
 # Replace '1.a' with the actual PG ID from the previous command
 ceph pg 1.a query
 
-# Find PGs with the most operations (potential hotspots)
+# Find PGs with the most objects (potential data-distribution hotspots)
 # Helps identify workload imbalances
-ceph pg dump pgs_brief | sort -k3 -n -r | head -10
+ceph pg dump pgs --format json | \
+  jq -r '.pg_stats[] | [.pgid, .stat_sum.num_objects] | @tsv' | \
+  sort -k2 -n -r | head -10
 ```
 
 ### Capacity Bottlenecks
@@ -266,8 +269,8 @@ sequenceDiagram
 ### Detecting Slow Operations
 
 ```bash
-# List all OSDs with slow operations (requests taking > 30s)
-# These are logged as warnings and indicate performance problems
+# List operations currently tracked by a specific OSD
+# Slow operations are logged as warnings when they exceed the configured threshold
 ceph daemon osd.0 ops
 
 # Get histogram of operation queue age for a specific OSD
@@ -279,7 +282,7 @@ ceph daemon osd.0 perf dump | jq '.osd.op_queue_age_hist'
 grep -i "slow\|blocked" /var/log/ceph/ceph.log | tail -50
 
 # Get a summary of slow operations across all OSDs
-# The cluster warns when ops exceed the slow threshold (default 30s)
+# The cluster warns when ops exceed the configured slow-operation threshold
 ceph health detail | grep -i slow
 ```
 
@@ -383,11 +386,11 @@ sysctl net.ipv4.tcp_wmem
 cat /proc/net/snmp | grep -A1 Tcp
 ```
 
-### Recommended Network Tuning
+### Example Network Tuning to Validate
 
 ```bash
-# Apply recommended network tuning for Ceph clusters
-# These settings improve throughput and reduce latency
+# Apply only after validating against your workload and operating system defaults
+# These settings can improve throughput on some high-bandwidth networks
 # Add to /etc/sysctl.conf for persistence
 
 # Increase socket buffer sizes for better throughput
@@ -500,8 +503,8 @@ ceph daemon osd.0 perf dump | jq '
   (.bluestore.bluestore_cache_hit + .bluestore.bluestore_cache_miss) * 100
 '
 
-# Tune BlueStore for better performance (requires restart)
-# Increase cache size for SSDs
+# Tune BlueStore manually only when cache autotuning is disabled or unsuitable
+# Increase cache size for SSDs after validating memory headroom
 ceph config set osd bluestore_cache_size_ssd 4294967296
 
 # Enable and tune deferred writes for HDDs
@@ -517,17 +520,19 @@ ceph config set osd bluestore_prefer_deferred_size_hdd 32768
 # More threads can help with concurrent I/O
 ceph config get osd osd_op_num_threads_per_shard
 ceph config get osd osd_op_num_shards
+ceph config get osd osd_op_num_threads_per_shard_ssd
+ceph config get osd osd_op_num_shards_ssd
 
 # View current thread utilization
 ceph daemon osd.0 perf dump | jq '.osd.op_queue_max_ops'
 
 # Increase thread pool size for high-performance storage
-# Adjust based on CPU core count (typically 2-4 threads per core)
+# Adjust carefully based on CPU core count, device class, and mClock behavior
 ceph config set osd osd_op_num_threads_per_shard 2
 ceph config set osd osd_op_num_shards 8
 
 # Configure recovery and backfill thread limits
-# Prevents recovery from overwhelming normal I/O
+# With the mClock scheduler, prefer mClock profiles; these legacy limits may be ignored
 ceph config set osd osd_recovery_max_active 3
 ceph config set osd osd_recovery_max_single_start 1
 ceph config set osd osd_max_backfills 1
@@ -550,7 +555,7 @@ ceph config set osd osd_memory_target 4294967296
 ceph config set osd bluestore_cache_autotune true
 
 # Set memory cache minimum to prevent over-aggressive trimming
-ceph config set osd bluestore_cache_autotune_chunk_size 33554432
+ceph config set osd osd_memory_cache_min 134217728
 ```
 
 ### PG Configuration
@@ -563,15 +568,13 @@ ceph osd df tree | awk 'NR>1 {print $10, $1}' | sort -n | tail -10
 # View PG count per pool
 ceph osd pool ls detail | grep -E "pool.*pg_num"
 
-# Calculate optimal PG count for a pool
-# Formula: (OSDs * 100) / pool_size / replication_factor
-# Round up to nearest power of 2
+# Estimate PG count for a replicated pool
+# Formula: (OSDs * target PGs per OSD) / pool size, rounded to a power of 2
 echo "Recommended PGs: $(($(ceph osd ls | wc -l) * 100 / 3))"
 
 # Increase PG count for better distribution (if needed)
-# Only increase, and do so gradually to avoid disruption
+# On modern Ceph, pgp_num is adjusted automatically when pg_num changes
 ceph osd pool set <pool-name> pg_num 256
-ceph osd pool set <pool-name> pgp_num 256
 
 # Enable PG auto-scaling for automatic management
 ceph osd pool set <pool-name> pg_autoscale_mode on
@@ -614,7 +617,7 @@ ceph daemon mon.$(hostname -s) perf dump | jq '{
   paxos: .paxos
 }'
 
-# Monitor store compact (reduce fragmentation)
+# Compact the monitor store (reduce fragmentation)
 # Run during maintenance window as it can impact performance
 ceph daemon mon.$(hostname -s) compact
 ```
@@ -632,9 +635,8 @@ du -sh /var/lib/ceph/mon/ceph-$(hostname -s)/store.db/
 # This is blocking and should be done during maintenance
 ceph tell mon.* compact
 
-# Configure RocksDB for better performance
-# Adjust based on available memory
-ceph config set mon mon_rocksdb_options "compression=kNoCompression"
+# Avoid changing monitor RocksDB options unless directed by Ceph documentation or support
+# Prefer compaction and store-size monitoring for routine troubleshooting
 ```
 
 ## Advanced Debugging Techniques
@@ -698,7 +700,7 @@ rados bench -p <pool-name> 60 seq
 rados bench -p <pool-name> 60 rand
 
 # Clean up benchmark objects after testing
-rados -p <pool-name> cleanup
+rados -p <pool-name> cleanup --prefix benchmark_data
 
 # Run benchmark with specific object size
 # Smaller objects test IOPS, larger test throughput
@@ -792,7 +794,7 @@ ping -c 100 <other-node> | tail -1
 # Solution: If disk latency is high, consider:
 # - Replacing slow/failing disks
 # - Moving to faster storage (SSD/NVMe)
-# - Reducing recovery/backfill impact
+# - Reducing recovery/backfill impact; with mClock, tune mClock profiles instead
 ceph config set osd osd_recovery_sleep_hdd 0.1
 ```
 
@@ -812,7 +814,7 @@ ceph config get osd osd_recovery_max_active
 ceph config set osd osd_recovery_max_active 5
 ceph config set osd osd_recovery_priority 10
 
-# Force recovery of stuck PGs
+# Repair inconsistent PGs only after checking health details and scrub output
 ceph pg repair <pg-id>
 ```
 
@@ -830,7 +832,7 @@ ceph osd df tree | awk '{print $10, $1}' | sort -n
 ceph osd reweight <osd-id> 0.9
 
 # Use the reweight-by-utilization command for automatic balancing
-# This adjusts weights to target even distribution
+# Syntax: threshold, max weight change, and optional max OSD count
 ceph osd reweight-by-utilization 105 0.1
 
 # Enable the balancer module for automatic rebalancing
@@ -858,7 +860,7 @@ curl http://localhost:9283/metrics | head -50
 # - ceph_osd_op_r_latency_sum / ceph_osd_op_r_latency_count (read latency)
 # - ceph_osd_op_w_latency_sum / ceph_osd_op_w_latency_count (write latency)
 # - ceph_pg_degraded (degraded PGs)
-# - ceph_osd_apply_latency_ms (OSD apply latency)
+# - ceph_osd_apply_latency_ms / ceph_osd_commit_latency_ms (OSD latency)
 ```
 
 ### Key Performance Metrics to Monitor
