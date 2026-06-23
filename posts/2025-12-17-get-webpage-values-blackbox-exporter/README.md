@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Blackbox Exporter, Monitoring, Web Scraping, HTTP
 
-Description: Learn how to extract specific values from webpages using Prometheus Blackbox Exporter, including HTTP response body matching, header extraction, and JSON response parsing.
+Description: Learn how to validate specific values from webpages using Prometheus Blackbox Exporter, including HTTP response body matching, header validation, and JSON response checks.
 
 ---
 
-Blackbox Exporter probes endpoints over HTTP, HTTPS, DNS, TCP, and ICMP. Beyond simple up/down checks, it can extract and expose specific values from webpage responses. This guide shows how to configure Blackbox Exporter to capture webpage content as Prometheus metrics.
+Blackbox Exporter probes endpoints over HTTP, HTTPS, DNS, TCP, and ICMP. Beyond simple up/down checks, it can validate specific values in webpage responses and expose the probe result as Prometheus metrics. This guide shows how to configure Blackbox Exporter to validate webpage content.
 
 ## Understanding Blackbox Exporter Capabilities
 
@@ -186,7 +186,7 @@ This exposes metrics like:
 ```promql
 # Days until certificate expires
 
-probe_ssl_earliest_cert_expiry - time()
+(probe_ssl_earliest_cert_expiry - time()) / 86400
 
 # Certificate issuer and subject info
 probe_ssl_last_chain_info
@@ -240,7 +240,7 @@ probe_duration_seconds{job="blackbox-http"}
 probe_dns_lookup_time_seconds{job="blackbox-http"}
 
 # TLS handshake time
-probe_http_ssl_handshake_seconds{job="blackbox-http"}
+probe_http_duration_seconds{job="blackbox-http", phase="tls"}
 
 # Time to first byte
 probe_http_duration_seconds{phase="processing"}
@@ -254,8 +254,6 @@ probe_http_duration_seconds{phase="transfer"}
 `docker-compose.yml`
 
 ```yaml
-version: '3.8'
-
 services:
   blackbox-exporter:
     image: prom/blackbox-exporter:latest
@@ -332,7 +330,7 @@ spec:
     spec:
       containers:
         - name: blackbox-exporter
-          image: prom/blackbox-exporter:v0.24.0
+          image: prom/blackbox-exporter:v0.28.0
           args:
             - --config.file=/etc/blackbox_exporter/blackbox.yml
           ports:
@@ -346,7 +344,7 @@ spec:
             name: blackbox-exporter-config
 ```
 
-## 12. Create Grafana Alerts
+## 12. Create Prometheus Alerts
 
 Set up alerts based on content checks.
 
