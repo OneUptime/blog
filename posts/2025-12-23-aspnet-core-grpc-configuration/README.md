@@ -37,7 +37,7 @@ Create a new gRPC project or add gRPC to an existing ASP.NET Core application:
 dotnet new grpc -n GrpcService
 # Or add to existing project
 
-dotnet add package Grpc.AspNetCore
+dotnet add package Grpc.AspNetCore --version 2.80.0
 ```
 
 ## Defining the Service Contract
@@ -151,9 +151,9 @@ Add the client package and proto reference:
 ```xml
 <!-- Client.csproj -->
 <ItemGroup>
-  <PackageReference Include="Google.Protobuf" Version="3.25.1" />
-  <PackageReference Include="Grpc.Net.Client" Version="2.59.0" />
-  <PackageReference Include="Grpc.Tools" Version="2.59.0" PrivateAssets="All" />
+  <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+  <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+  <PackageReference Include="Grpc.Tools" Version="2.81.1" PrivateAssets="All" />
 </ItemGroup>
 
 <ItemGroup>
@@ -182,6 +182,10 @@ await foreach (var response in streamingCall.ResponseStream.ReadAllAsync())
 ## Client Factory Integration
 
 Use `IHttpClientFactory` for managed clients:
+
+```bash
+dotnet add package Grpc.Net.ClientFactory --version 2.80.0
+```
 
 ```csharp
 // Program.cs
@@ -385,6 +389,10 @@ builder.Services.AddGrpc(options =>
 
 Add authentication to gRPC services:
 
+```bash
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer --version 10.0.9
+```
+
 ```csharp
 // Server configuration
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -437,7 +445,12 @@ var channel = GrpcChannel.ForAddress("https://localhost:5001", new GrpcChannelOp
 
 Add gRPC health checks:
 
+```bash
+dotnet add package Grpc.AspNetCore.HealthChecks --version 2.80.0
+```
+
 ```csharp
+builder.Services.AddGrpc();
 builder.Services.AddGrpcHealthChecks()
     .AddCheck("database", () => HealthCheckResult.Healthy());
 
@@ -451,6 +464,10 @@ app.MapGrpcHealthChecksService();
 
 Enable gRPC-Web for browser support:
 
+```bash
+dotnet add package Grpc.AspNetCore.Web --version 2.80.0
+```
+
 ```csharp
 builder.Services.AddGrpc();
 builder.Services.AddGrpcWeb();
@@ -463,6 +480,10 @@ app.MapGrpcService<GreeterService>().EnableGrpcWeb();
 ```
 
 ## Complete Server Configuration
+
+```bash
+dotnet add package Grpc.AspNetCore.Server.Reflection --version 2.80.0
+```
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
