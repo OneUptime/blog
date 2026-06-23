@@ -21,7 +21,7 @@ flowchart TD
 
 Terraform provides several mechanisms for conditional configuration:
 - Ternary expressions
-- Null coalescing
+- Coalesce functions
 - Dynamic blocks
 - Count and for_each conditionals
 
@@ -74,7 +74,7 @@ Setting a property to `null` tells Terraform to use the provider's default or om
 ```hcl
 variable "custom_kms_key" {
   type    = string
-  default = null  # Use AWS default encryption if not specified
+  default = null  # Use the default AWS managed KMS key if not specified
 }
 
 variable "enable_enhanced_monitoring" {
@@ -83,9 +83,14 @@ variable "enable_enhanced_monitoring" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "mydb"
-  engine         = "postgres"
-  instance_class = "db.t3.micro"
+  identifier        = "mydb"
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  username          = "postgres"
+
+  manage_master_user_password = true
+  storage_encrypted           = true
 
   # Only set KMS key if provided, otherwise use default
   kms_key_id = var.custom_kms_key
@@ -114,6 +119,13 @@ resource "aws_iam_role" "monitoring" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "monitoring" {
+  count = var.enable_enhanced_monitoring ? 1 : 0
+
+  role       = aws_iam_role.monitoring[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 ```
 
@@ -421,6 +433,11 @@ Use `coalesce` and `try` for fallback values:
 
 ```hcl
 variable "instance_type" {
+  type    = string
+  default = ""
+}
+
+variable "custom_ami_id" {
   type    = string
   default = ""
 }
