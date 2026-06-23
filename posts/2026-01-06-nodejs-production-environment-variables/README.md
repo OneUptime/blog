@@ -46,7 +46,7 @@ NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgresql://localhost/myapp
 REDIS_URL=redis://localhost:6379
-JWT_SECRET=dev-secret-change-in-production
+JWT_SECRET=dev-secret-change-in-production-now
 ```
 
 **.env.example:**
@@ -57,7 +57,7 @@ NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgresql://user:password@host:5432/database
 REDIS_URL=redis://host:6379
-JWT_SECRET=your-secret-here
+JWT_SECRET=replace-with-at-least-32-characters
 ```
 
 ## Configuration Validation
@@ -148,9 +148,9 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'staging', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).default('3000'),
-  DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
+  PORT: z.coerce.number().int().positive().default(3000),
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  REDIS_URL: z.url({ protocol: /^redis$/ }),
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('15m'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
@@ -163,7 +163,7 @@ function validateEnv(): Env {
 
   if (!result.success) {
     console.error('Invalid environment variables:');
-    console.error(result.error.format());
+    console.error(z.prettifyError(result.error));
     process.exit(1);
   }
 
@@ -283,8 +283,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
+  labels:
+    app: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -471,7 +479,6 @@ console.log('Environment configuration is valid');
 ```
 
 ```json
-// package.json
 {
   "scripts": {
     "prestart": "node scripts/validate-env.js",
