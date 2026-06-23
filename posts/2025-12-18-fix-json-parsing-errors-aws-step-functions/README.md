@@ -140,13 +140,13 @@ resource "aws_sfn_state_machine" "with_jsonpath" {
       ProcessData = {
         Type = "Pass"
         Parameters = {
-          # Use $$ for literal $ in JSONPath
+          # Dynamic values use the .$ key suffix
           "orderId.$"    = "$.order.id"
           "customerId.$" = "$.customer.id"
           "items.$"      = "$.order.items[*]"
 
           # Static values don't use .$
-          "processedAt" = timestamp()
+          "processedAt" = "2025-01-01T00:00:00Z"
           "version"     = "1.0"
         }
         ResultPath = "$.processedData"
@@ -260,7 +260,10 @@ resource "aws_sfn_state_machine" "with_map" {
           "context.$"  = "$.context"
         }
 
-        Iterator = {
+        ItemProcessor = {
+          ProcessorConfig = {
+            Mode = "INLINE"
+          }
           StartAt = "ProcessSingleItem"
           States = {
             ProcessSingleItem = {
@@ -366,7 +369,7 @@ resource "aws_sfn_state_machine" "with_wait" {
 
       WaitForScheduledTime = {
         Type = "Wait"
-        # Wait until timestamp from input
+        # Wait until a timestamp from input, formatted like 2026-06-23T10:30:00Z
         TimestampPath = "$.scheduledTime"
         Next = "ExecuteTask"
       }
@@ -463,20 +466,23 @@ resource "aws_sfn_state_machine" "complex" {
 # Extract and validate JSON from Terraform
 terraform console <<< 'jsonencode(local.state_machine_definition)' | jq .
 
-# Use AWS CLI to validate (create and then delete, or use Step Functions console)
-# Note: AWS CLI does not have a --dry-run flag for create-state-machine
-# Instead, validate your JSON definition locally with jq or a JSON schema validator
+# Use AWS CLI to validate the ASL definition without creating a state machine
+aws stepfunctions validate-state-machine-definition \
+  --definition file://definition.asl.json
+
+# Validate JSON syntax locally
 cat definition.json | python3 -m json.tool
 ```
 
 ### Common Validation Errors
 
 ```hcl
-# Error: Missing "End" or "Next"
-# Every state must have either End=true or Next="StateName"
+# Error: Missing terminal transition
+# Most state types must have either End=true or Next="StateName"
+# Choice, Succeed, and Fail states are exceptions
 
 # Error: Invalid state name
-# State names cannot contain special characters
+# State names must be unique and no more than 80 Unicode characters
 
 # Error: Invalid JSONPath
 # Ensure paths start with $ and use proper syntax
