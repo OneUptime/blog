@@ -12,23 +12,23 @@ The "BSONObj size is invalid" error in MongoDB is one of those cryptic messages 
 
 ## Understanding the Error
 
-MongoDB stores data in BSON (Binary JSON) format, which has a maximum document size of 16 megabytes. When you see the "BSONObj size is invalid" error, it usually means one of the following:
+MongoDB stores data in BSON (Binary JSON) format, which has a maximum document size of 16 mebibytes (16,777,216 bytes). When you see the "BSONObj size is invalid" error, it usually means one of the following:
 
-1. A document exceeds the 16MB limit
+1. A document, command, or result exceeds the 16 MiB BSON limit
 2. Data corruption in the document or collection
-3. Network issues during data transfer
-4. Driver compatibility issues
+3. Malformed or non-conformant BSON data
+4. Driver or tool compatibility issues
 
 ```mermaid
 flowchart TD
     A[BSONObj size is invalid Error] --> B{Identify Cause}
     B --> C[Document Too Large]
     B --> D[Data Corruption]
-    B --> E[Network Issues]
+    B --> E[Malformed BSON]
     B --> F[Driver Issues]
     C --> G[Restructure Document]
     D --> H[Repair Database]
-    E --> I[Check Connection]
+    E --> I[Validate Collection]
     F --> J[Update Driver]
 ```
 
@@ -78,41 +78,44 @@ db.yourCollection.aggregate([
 
 ## Solution 1: Restructure Large Documents
 
-If your documents are approaching the 16MB limit, restructure them using references instead of embedding:
+If your documents are approaching the 16 MiB limit, restructure them using references instead of embedding:
 
 ```javascript
 // Before: Embedded approach (can grow too large)
-{
-    _id: ObjectId("..."),
+const embeddedUser = {
+    _id: ObjectId("64f000000000000000000001"),
     userId: "user123",
     activityLog: [
-        { timestamp: new Date(), action: "login", details: {...} },
+        { timestamp: new Date(), action: "login", details: { ip: "203.0.113.10" } },
         // Thousands more entries...
     ]
 }
 
 // After: Reference approach
 // Main user document
-{
-    _id: ObjectId("..."),
+const user = {
+    _id: ObjectId("64f000000000000000000001"),
     userId: "user123",
-    activityLogIds: [ObjectId("..."), ObjectId("...")]
+    activityLogIds: [
+        ObjectId("64f000000000000000000101"),
+        ObjectId("64f000000000000000000102")
+    ]
 }
 
 // Separate activity collection
-{
-    _id: ObjectId("..."),
+const activity = {
+    _id: ObjectId("64f000000000000000000101"),
     userId: "user123",
     timestamp: new Date(),
     action: "login",
-    details: {...}
+    details: { ip: "203.0.113.10" }
 }
 ```
 
 Here's a Node.js script to migrate large embedded arrays to separate collections:
 
 ```javascript
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 async function migrateActivityLogs() {
     const client = new MongoClient('mongodb://localhost:27017');
@@ -138,12 +141,16 @@ async function migrateActivityLogs() {
                     createdAt: activity.timestamp || new Date()
                 }));
 
-                await activitiesCollection.insertMany(activities);
+                const result = await activitiesCollection.insertMany(activities);
+                const activityLogIds = Object.values(result.insertedIds);
 
                 // Remove embedded array from user document
                 await usersCollection.updateOne(
                     { _id: user._id },
-                    { $unset: { activityLog: "" } }
+                    {
+                        $set: { activityLogIds },
+                        $unset: { activityLog: "" }
+                    }
                 );
 
                 console.log(`Migrated ${activities.length} activities for user ${user._id}`);
@@ -236,11 +243,9 @@ sudo systemctl stop mongod
 # Run repair (standalone mode)
 mongod --dbpath /var/lib/mongodb --repair
 
-# For replica sets, resync from a healthy member instead
-# On the corrupted member:
-mongo --eval "rs.syncFrom('healthyMember:27017')"
-
-# Or perform initial sync
+# For replica sets, prefer replacing or resyncing from a healthy member instead.
+# On the corrupted member, back up anything you need from dbPath, then remove
+# the dbPath contents and start mongod so it performs initial sync.
 sudo rm -rf /var/lib/mongodb/*
 sudo systemctl start mongod
 ```
@@ -268,7 +273,7 @@ db.getCollectionNames().forEach(function(collName) {
 Implement proper error handling in your application:
 
 ```javascript
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId, BSON } = require('mongodb');
 
 class MongoDBService {
     constructor(uri) {
@@ -281,12 +286,18 @@ class MongoDBService {
 
     async insertDocument(collection, document) {
         try {
-            // Check document size before insert
-            const docSize = JSON.stringify(document).length;
-            const estimatedBsonSize = docSize * 1.5; // BSON is typically larger
+            await this.client.connect();
 
-            if (estimatedBsonSize > 15000000) { // 15MB threshold
-                throw new Error(`Document too large: ${estimatedBsonSize} bytes (estimated)`);
+            if (!document._id) {
+                document._id = new ObjectId();
+            }
+
+            // Check document size before insert
+            const bsonSize = BSON.calculateObjectSize(document);
+
+            if (bsonSize > 15000000) { // 15MB threshold
+                console.error(`Document too large: ${bsonSize} bytes`);
+                return this.handleLargeDocument(collection, document);
             }
 
             const db = this.client.db('yourDatabase');
@@ -294,7 +305,7 @@ class MongoDBService {
             return result;
 
         } catch (error) {
-            if (error.message.includes('BSONObj size is invalid') ||
+            if ((error.message && error.message.includes('BSONObj size is invalid')) ||
                 error.code === 10334) {
                 console.error('Document size error:', error.message);
                 // Handle large document - maybe split it
@@ -349,11 +360,14 @@ class MongoDBService {
 Implement these strategies to prevent BSON size errors:
 
 ```javascript
+const mongoose = require('mongoose');
+const { BSON } = require('mongodb');
+
 // Document size monitoring middleware
 function documentSizeCheck(schema) {
     schema.pre('save', function(next) {
         const doc = this.toObject();
-        const size = Buffer.byteLength(JSON.stringify(doc));
+        const size = BSON.calculateObjectSize(doc);
 
         if (size > 14000000) { // 14MB warning threshold
             console.warn(`Large document warning: ${size} bytes for ${this.constructor.modelName}`);
