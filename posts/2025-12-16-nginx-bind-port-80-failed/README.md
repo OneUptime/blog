@@ -220,11 +220,11 @@ getenforce
 # Check for SELinux denials
 ausearch -m avc -ts recent | grep nginx
 
-# Allow Nginx to bind to any port
-sudo setsebool -P httpd_can_network_connect 1
+# Check ports SELinux allows HTTP services to bind to
+sudo semanage port -l | grep -w http_port_t
 
-# Or allow specific port
-sudo semanage port -a -t http_port_t -p tcp 80
+# Allow a specific non-standard port
+sudo semanage port -a -t http_port_t -p tcp 8081
 ```
 
 ### Error: "Cannot assign requested address" (Error 99)
@@ -314,7 +314,6 @@ sudo sysctl -p
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   web:
     image: nginx
@@ -325,7 +324,7 @@ services:
 
 Solutions:
 
-```bash
+```text
 # Option 1: Stop host Nginx
 sudo systemctl stop nginx
 
@@ -333,7 +332,7 @@ sudo systemctl stop nginx
 ports:
   - "8080:80"
 
-# Option 3: Use host network mode (shares host's network)
+# Option 3: Use host network mode without ports mappings
 network_mode: host
 ```
 
