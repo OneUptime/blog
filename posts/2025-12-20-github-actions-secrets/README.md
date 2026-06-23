@@ -178,7 +178,7 @@ jobs:
 
 ## GITHUB_TOKEN - The Built-in Secret
 
-Every workflow automatically receives a `GITHUB_TOKEN` with repository permissions:
+Every workflow job automatically receives a `GITHUB_TOKEN` with repository permissions:
 
 ```yaml
 jobs:
@@ -238,13 +238,13 @@ jobs:
 
 ## Secrets for Self-Hosted Runners
 
-Self-hosted runners can access secrets passed to them. Use environment-level secrets to restrict which runners can access sensitive data:
+Self-hosted runners can access secrets passed to them. Combine runner labels with environment-level secrets so only jobs targeting that environment can access sensitive data:
 
 ```yaml
 jobs:
   secure-deploy:
     runs-on: [self-hosted, production]
-    environment: production  # Only runners in this env get these secrets
+    environment: production  # Only jobs targeting this environment get these secrets
     steps:
       - name: Deploy
         env:
@@ -331,7 +331,7 @@ Review which workflows and jobs access secrets:
 # List all secrets
 gh secret list
 
-# View workflow runs that used secrets
+# View deploy workflow runs for audit follow-up
 gh run list --workflow=deploy.yml
 ```
 
@@ -340,18 +340,18 @@ gh run list --workflow=deploy.yml
 Secrets have constraints:
 
 - Maximum 48 KB per secret
-- Maximum 100 secrets per repository
+- Maximum 100 repository secrets and 100 environment secrets
 - Can't be used in `if` conditions directly
 
 For large files, encode them:
 
 ```bash
 # Encode
-base64 -i certificate.pem | gh secret set CERTIFICATE
+base64 < certificate.pem | gh secret set CERTIFICATE
 
 # Decode in workflow
 - name: Restore certificate
-  run: echo "$CERTIFICATE" | base64 --decode > certificate.pem
+  run: printf '%s' "$CERTIFICATE" | base64 --decode > certificate.pem
   env:
     CERTIFICATE: ${{ secrets.CERTIFICATE }}
 ```
