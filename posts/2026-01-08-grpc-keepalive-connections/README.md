@@ -49,7 +49,7 @@ sequenceDiagram
 |-----------|--------|--------|-------------|
 | `Time` | Yes | Yes | Interval between PING frames |
 | `Timeout` | Yes | Yes | Time to wait for PING ACK |
-| `PermitWithoutStream` | Yes | No | Allow pings with no active RPCs |
+| `PermitWithoutStream` | Yes | Yes | Allow pings with no active RPCs (client: send them; server: permit them via EnforcementPolicy) |
 | `MaxConnectionIdle` | No | Yes | Max time connection can be idle |
 | `MaxConnectionAge` | No | Yes | Max lifetime of a connection |
 | `MaxConnectionAgeGrace` | No | Yes | Grace period for pending RPCs |
@@ -68,6 +68,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/backoff"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
 
@@ -638,6 +639,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/connectivity"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
 )
 
@@ -653,7 +655,7 @@ type ResilientConnection struct {
 // NewResilientConnection creates a new resilient connection
 func NewResilientConnection(target string) (*ResilientConnection, error) {
     opts := []grpc.DialOption{
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(keepalive.ClientParameters{
             Time:                10 * time.Second,
             Timeout:             3 * time.Second,
@@ -1061,7 +1063,7 @@ var (
     connectionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
         Name:    "grpc_connection_duration_seconds",
         Help:    "Duration of gRPC connections",
-        Buckets: prometheus.ExponentialBuckets(60, 2, 10), // 1min to ~17hours
+        Buckets: prometheus.ExponentialBuckets(60, 2, 10), // 1min to ~8.5hours
     }, []string{"target"})
 )
 ```
