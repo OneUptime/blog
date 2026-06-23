@@ -548,11 +548,12 @@ sudo nano /etc/tlp.conf
 # /etc/tlp.conf
 # TLP Power Management Configuration
 
-# Operation mode when on AC power
-# Choices: performance, balanced (default)
+# Default operation mode used when the power source cannot be detected
+# (e.g. in a virtual machine). Choices: AC, BAT
 TLP_DEFAULT_MODE=AC
 
-# Operation mode when on battery
+# Lock TLP to TLP_DEFAULT_MODE regardless of the actual power source
+# (0=disabled, follow power source; 1=enabled, always use default mode)
 TLP_PERSISTENT_DEFAULT=0
 
 # CPU scaling governor on AC
