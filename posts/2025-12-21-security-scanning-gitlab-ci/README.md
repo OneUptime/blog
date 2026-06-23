@@ -80,7 +80,7 @@ sast:
 ```yaml
 sast:
   stage: test
-  image: returntocorp/semgrep:latest
+  image: semgrep/semgrep:latest
   script:
     - semgrep scan --config auto --json --output semgrep-results.json . || true
     - |
@@ -283,7 +283,7 @@ include:
 ```yaml
 secret_detection:
   stage: test
-  image: zricethezav/gitleaks:latest
+  image: ghcr.io/gitleaks/gitleaks:latest
   script:
     - gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
     - |
@@ -346,7 +346,7 @@ dast:
 dast:
   stage: dast
   image:
-    name: owasp/zap2docker-stable:latest
+    name: ghcr.io/zaproxy/zaproxy:stable
     entrypoint: [""]
   variables:
     DAST_TARGET_URL: https://${CI_COMMIT_REF_SLUG}.review.example.com
@@ -442,7 +442,7 @@ test:
 # SAST
 sast:
   stage: security
-  image: returntocorp/semgrep:latest
+  image: semgrep/semgrep:latest
   script:
     - semgrep scan --config auto --json --output semgrep.json . || true
   artifacts:
@@ -473,7 +473,7 @@ dependency_scan:
 # Secret detection
 secret_detection:
   stage: security
-  image: zricethezav/gitleaks:latest
+  image: ghcr.io/gitleaks/gitleaks:latest
   script:
     - gitleaks detect --source . --report-format json --report-path gitleaks.json --exit-code 0
   artifacts:
