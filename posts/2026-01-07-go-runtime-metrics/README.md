@@ -678,6 +678,7 @@ import (
     "net/http"
 
     "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/collectors"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -691,14 +692,14 @@ func main() {
     // - go_goroutines
     // - go_gc_duration_seconds
     // - go_memstats_* (all memory statistics)
-    registry.MustRegister(prometheus.NewGoCollector())
+    registry.MustRegister(collectors.NewGoCollector())
 
     // Register the process collector for OS-level metrics
     // This exposes metrics like:
     // - process_cpu_seconds_total
     // - process_resident_memory_bytes
     // - process_open_fds
-    registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+    registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
     // Create a handler with our custom registry
     handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{
@@ -723,7 +724,7 @@ When you register the Go collector, Prometheus exposes these key metrics:
 
 go_goroutines
 
-# GC duration histogram (in seconds)
+# GC duration summary (in seconds)
 go_gc_duration_seconds{quantile="0"}
 go_gc_duration_seconds{quantile="0.25"}
 go_gc_duration_seconds{quantile="0.5"}
@@ -773,6 +774,7 @@ import (
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/collectors"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -863,8 +865,8 @@ func main() {
     registry := prometheus.NewRegistry()
 
     // Register default collectors
-    registry.MustRegister(prometheus.NewGoCollector())
-    registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+    registry.MustRegister(collectors.NewGoCollector())
+    registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
     // Register our custom collector
     registry.MustRegister(NewRuntimeCollector())
@@ -950,7 +952,7 @@ groups:
 
       # Alert on rapid goroutine growth
       - alert: RapidGoroutineGrowth
-        expr: rate(go_goroutines[5m]) > 100
+        expr: deriv(go_goroutines[5m]) > 100
         for: 2m
         labels:
           severity: warning
@@ -986,6 +988,7 @@ import (
     "net/http"
     "time"
 
+    "github.com/prometheus/client_golang/prometheus/promhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/prometheus"
     "go.opentelemetry.io/otel/sdk/metric"
@@ -1017,7 +1020,8 @@ func main() {
     }
 
     // Expose the metrics endpoint
-    http.Handle("/metrics", exporter)
+    // The exporter registers itself with the default Prometheus registry.
+    http.Handle("/metrics", promhttp.Handler())
 
     log.Println("OpenTelemetry metrics available at http://localhost:8080/metrics")
     log.Fatal(http.ListenAndServe(":8080", nil))
@@ -1032,24 +1036,23 @@ The OpenTelemetry runtime instrumentation exposes these metrics:
 
 ```text
 # Memory metrics
-runtime.go.mem.heap_alloc         # Heap bytes allocated
-runtime.go.mem.heap_idle          # Heap bytes idle
-runtime.go.mem.heap_inuse         # Heap bytes in use
-runtime.go.mem.heap_objects       # Number of heap objects
-runtime.go.mem.heap_released      # Heap bytes released to OS
-runtime.go.mem.heap_sys           # Heap bytes obtained from OS
-runtime.go.mem.live_objects       # Number of live objects
+go.memory.used                    # Memory used by the Go runtime
+go.memory.limit                   # Configured Go runtime memory limit, if one exists
+go.memory.allocated               # Memory allocated to the heap by the application
+go.memory.allocations             # Count of heap allocations, partitioned by allocation kind
+go.memory.gc.goal                 # Heap size target for the end of the GC cycle
 
-# GC metrics
-runtime.go.gc.count               # Number of completed GC cycles
-runtime.go.gc.pause_ns            # GC pause time histogram
-runtime.go.gc.pause_total_ns      # Cumulative GC pause time
+# Runtime configuration metrics
+go.config.gogc                    # Heap growth percentage target configured by GOGC
 
 # Goroutine metrics
-runtime.go.goroutines             # Number of goroutines
+go.goroutine.count                # Number of live goroutines, partitioned by goroutine state
 
-# CGO metrics
-runtime.go.cgo.calls              # Number of CGO calls
+# Processor metrics
+go.processor.limit                # Number of OS threads that can execute Go code simultaneously
+
+# Deprecated runtime.go.* metrics are emitted only when
+# OTEL_GO_X_DEPRECATED_RUNTIME_METRICS=true.
 ```
 
 ### Custom OpenTelemetry Metrics
@@ -1068,6 +1071,7 @@ import (
     "runtime"
     "time"
 
+    "github.com/prometheus/client_golang/prometheus/promhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/prometheus"
@@ -1163,7 +1167,8 @@ func main() {
     }
 
     // Expose metrics
-    http.Handle("/metrics", exporter)
+    // The exporter registers itself with the default Prometheus registry.
+    http.Handle("/metrics", promhttp.Handler())
 
     log.Println("Custom OpenTelemetry metrics at http://localhost:8080/metrics")
     log.Fatal(http.ListenAndServe(":8080", nil))
@@ -1268,9 +1273,9 @@ Based on production experience, here are the most critical Go runtime metrics to
 |--------|------------------|-------------------|-------------------|
 | `go_goroutines` | > 10,000 | > 50,000 | Potential goroutine leak |
 | `go_memstats_alloc_bytes` | > 1GB | > 4GB | High memory usage |
-| `go_gc_duration_seconds{quantile="0.99"}` | > 10ms | > 100ms | GC performance issues |
+| `go_gc_duration_seconds{quantile="1"}` | > 10ms | > 100ms | GC performance issues |
 | `go_memstats_gc_cpu_fraction` | > 5% | > 25% | Excessive GC overhead |
-| `rate(go_goroutines[5m])` | > 100/s | > 1000/s | Goroutine creation spike |
+| `deriv(go_goroutines[5m])` | > 100/s | > 1000/s | Goroutine creation spike |
 
 ### Building a Monitoring Dashboard
 
@@ -1325,8 +1330,8 @@ Here is a Grafana dashboard JSON snippet for Go runtime metrics.
           "legendFormat": "P90"
         },
         {
-          "expr": "go_gc_duration_seconds{job=\"$job\", quantile=\"0.99\"}",
-          "legendFormat": "P99"
+          "expr": "go_gc_duration_seconds{job=\"$job\", quantile=\"1\"}",
+          "legendFormat": "Max"
         }
       ],
       "fieldConfig": {
@@ -1412,6 +1417,7 @@ import (
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/collectors"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -1546,8 +1552,8 @@ func (m *RuntimeMonitor) collect(lastNumGC *uint32) {
 func main() {
     // Create Prometheus registry
     registry := prometheus.NewRegistry()
-    registry.MustRegister(prometheus.NewGoCollector())
-    registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+    registry.MustRegister(collectors.NewGoCollector())
+    registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
     // Create and start runtime monitor
     monitor := NewRuntimeMonitor(registry)
