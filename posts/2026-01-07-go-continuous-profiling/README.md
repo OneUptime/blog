@@ -226,8 +226,7 @@ You can run Pyroscope using Docker for local development and testing:
 docker run -d \
   --name pyroscope \
   -p 4040:4040 \
-  pyroscope/pyroscope:latest \
-  server
+  grafana/pyroscope:latest
 
 # Access the Pyroscope UI at http://localhost:4040
 ```
@@ -236,12 +235,12 @@ For production deployments, consider using Helm for Kubernetes:
 
 ```bash
 # Add the Pyroscope Helm repository
-helm repo add pyroscope-io https://pyroscope-io.github.io/helm-chart
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
 
 # Install Pyroscope
-helm install pyroscope pyroscope-io/pyroscope \
-  --set persistence.enabled=true \
-  --set persistence.size=10Gi
+kubectl create namespace pyroscope
+helm -n pyroscope install pyroscope grafana/pyroscope
 ```
 
 ### Push-Based Integration with Pyroscope
@@ -256,8 +255,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"runtime"
-	"time"
 
 	"github.com/grafana/pyroscope-go"
 )
@@ -319,16 +316,15 @@ package main
 
 import (
 	"os"
-	"runtime"
+	"time"
 
 	"github.com/grafana/pyroscope-go"
 )
 
 func initPyroscope() error {
-	// Set sampling rates for block and mutex profiling
-	// Lower values = more samples but higher overhead
-	runtime.SetBlockProfileRate(100000000) // Sample 1 per 100ms of blocking
-	runtime.SetMutexProfileFraction(100)   // Sample 1% of mutex events
+	// If you later enable block or mutex profiles, configure their sampling
+	// rates explicitly with runtime.SetBlockProfileRate and
+	// runtime.SetMutexProfileFraction.
 
 	cfg := pyroscope.Config{
 		ApplicationName: "my-go-service",
@@ -522,7 +518,6 @@ package main
 
 import (
 	"runtime"
-	"runtime/pprof"
 )
 
 func configureCPUProfiling() {
@@ -606,7 +601,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"runtime"
 	"time"
 )
@@ -758,6 +752,10 @@ func (t *GoroutineTracker) IsLeaking() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	return t.isLeakingLocked()
+}
+
+func (t *GoroutineTracker) isLeakingLocked() bool {
 	if len(t.samples) < 10 {
 		return false
 	}
@@ -783,7 +781,7 @@ func (t *GoroutineTracker) Report() string {
 
 	return fmt.Sprintf(
 		"Goroutines: current=%d, baseline=%d, delta=%d, leak_detected=%v",
-		current, t.baselineCount, delta, t.IsLeaking(),
+		current, t.baselineCount, delta, t.isLeakingLocked(),
 	)
 }
 
@@ -913,7 +911,7 @@ Combining continuous profiling with distributed tracing provides complete visibi
 
 ### Integrating with OpenTelemetry
 
-You can correlate Pyroscope profiles with OpenTelemetry traces using span links:
+You can correlate Pyroscope profiles with OpenTelemetry traces by using Grafana's `otel-profiling-go` bridge, which annotates CPU profiling data with span IDs:
 
 ```go
 package main
@@ -922,10 +920,11 @@ import (
 	"context"
 	"net/http"
 
+	otelpyroscope "github.com/grafana/otel-profiling-go"
 	"github.com/grafana/pyroscope-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 var tracer = otel.Tracer("my-service")
@@ -935,18 +934,10 @@ func tracedHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, span := tracer.Start(r.Context(), "handleRequest")
 	defer span.End()
 
-	// Add span context to Pyroscope labels
-	// This allows correlating profiles with traces
-	spanCtx := trace.SpanContextFromContext(ctx)
-	pyroscope.TagWrapper(ctx, pyroscope.Labels(
-		"trace_id", spanCtx.TraceID().String(),
-		"span_id", spanCtx.SpanID().String(),
-	), func(ctx context.Context) {
-		// Your business logic here
-		result := processData(ctx)
-		span.SetAttributes(attribute.Int("result_size", len(result)))
-		w.Write(result)
-	})
+	// Your business logic here
+	result := processData(ctx)
+	span.SetAttributes(attribute.Int("result_size", len(result)))
+	w.Write(result)
 }
 
 func processData(ctx context.Context) []byte {
@@ -966,10 +957,15 @@ func main() {
 	pyroscope.Start(pyroscope.Config{
 		ApplicationName: "traced-service",
 		ServerAddress:   "http://pyroscope:4040",
+		ProfileTypes: []pyroscope.ProfileType{
+			pyroscope.ProfileCPU,
+		},
 	})
 
 	// Initialize OpenTelemetry (simplified - add your exporter config)
 	// See OpenTelemetry Go documentation for full setup
+	tp := trace.NewTracerProvider()
+	otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
 
 	http.HandleFunc("/api/data", tracedHandler)
 	http.ListenAndServe(":8080", nil)
@@ -985,9 +981,8 @@ Pyroscope integrates natively with Grafana, allowing you to view profiles alongs
 apiVersion: 1
 datasources:
   - name: Pyroscope
-    type: pyroscope
+    type: grafana-pyroscope-datasource
     url: http://pyroscope:4040
-    access: proxy
     jsonData:
       minStep: '15s'
 ```
@@ -1015,7 +1010,7 @@ You can create Grafana dashboards that show metrics, traces, and profiles togeth
       "datasource": "Pyroscope",
       "targets": [
         {
-          "query": "process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=\"my-service\"}",
+          "labelSelector": "{service_name=\"my-service\"}",
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
         }
       ]
@@ -1141,18 +1136,16 @@ func main() {
 
 ### Alerting on Profile Data
 
-Set up alerts based on profiling data to catch performance regressions:
+Set up alerts based on application metrics and use profiling data to investigate performance regressions:
 
 ```yaml
-# Prometheus alerting rules for profile-based metrics
+# Prometheus alerting rules for application runtime metrics
 groups:
   - name: profiling_alerts
     rules:
       - alert: HighCPUUsage
         expr: |
-          avg_over_time(
-            pyroscope_cpu_usage_percent{service="my-service"}[5m]
-          ) > 80
+          rate(process_cpu_seconds_total{service="my-service"}[5m]) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -1162,7 +1155,7 @@ groups:
 
       - alert: HighMemoryUsage
         expr: |
-          pyroscope_inuse_space_bytes{service="my-service"} > 1073741824
+          go_memstats_heap_inuse_bytes{service="my-service"} > 1073741824
         for: 5m
         labels:
           severity: warning
@@ -1172,7 +1165,7 @@ groups:
 
       - alert: GoroutineLeak
         expr: |
-          rate(go_goroutines{service="my-service"}[1h]) > 10
+          deriv(go_goroutines{service="my-service"}[30m]) > 0
         for: 30m
         labels:
           severity: critical
@@ -1200,5 +1193,5 @@ Remember that profiling is most valuable when it is continuous. Having historica
 - [Go pprof documentation](https://pkg.go.dev/runtime/pprof)
 - [Pyroscope documentation](https://pyroscope.io/docs/)
 - [Grafana Pyroscope integration](https://grafana.com/docs/grafana/latest/datasources/pyroscope/)
-- [OpenTelemetry Go SDK](https://opentelemetry.io/docs/instrumentation/go/)
+- [OpenTelemetry Go SDK](https://opentelemetry.io/docs/languages/go/)
 - [Flame graph interpretation guide](https://www.brendangregg.com/flamegraphs.html)
