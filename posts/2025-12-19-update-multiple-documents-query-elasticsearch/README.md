@@ -311,7 +311,7 @@ POST /products/_update_by_query
       if (ctx._source.status == 'archived') {
         ctx.op = 'delete';
       } else {
-        ctx.op = 'noop';
+        ctx.op = 'none';
       }
     """
   }
@@ -362,22 +362,21 @@ POST /orders/_update_by_query
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime
+from datetime import datetime, timezone
 
 es = Elasticsearch("http://localhost:9200")
 
-def update_by_query_with_progress(index, query, script, batch_size=1000):
+def update_by_query_with_progress(index, query, script, scroll_size=1000, requests_per_second=500):
     """Execute update by query with progress tracking."""
 
     # Start async update
     task = es.update_by_query(
         index=index,
-        body={
-            "query": query,
-            "script": script
-        },
+        query=query,
+        script=script,
         wait_for_completion=False,
-        requests_per_second=batch_size
+        scroll_size=scroll_size,
+        requests_per_second=requests_per_second
     )
 
     task_id = task["task"]
@@ -417,7 +416,7 @@ result = update_by_query_with_progress(
     query={"term": {"category": "electronics"}},
     script={
         "source": "ctx._source.updated_at = params.now",
-        "params": {"now": datetime.utcnow().isoformat()}
+        "params": {"now": datetime.now(timezone.utc).isoformat()}
     }
 )
 ```
@@ -425,7 +424,7 @@ result = update_by_query_with_progress(
 ### Batch Update Helper
 
 ```python
-def batch_update_documents(es, index, updates, id_field="_id"):
+def batch_update_documents(es, index, updates, id_field="id"):
     """
     Update multiple documents with different values.
 
@@ -435,7 +434,7 @@ def batch_update_documents(es, index, updates, id_field="_id"):
     results = {"success": 0, "failed": 0, "errors": []}
 
     for update in updates:
-        doc_id = update["id"]
+        doc_id = update[id_field]
         changes = update["changes"]
 
         try:
@@ -448,11 +447,9 @@ def batch_update_documents(es, index, updates, id_field="_id"):
             es.update(
                 index=index,
                 id=doc_id,
-                body={
-                    "script": {
-                        "source": assignments,
-                        "params": changes
-                    }
+                script={
+                    "source": assignments,
+                    "params": changes
                 }
             )
             results["success"] += 1
@@ -479,7 +476,8 @@ async function updateByQueryWithRetry(index, query, script, maxRetries = 3) {
         index,
         conflicts: 'proceed',
         refresh: true,
-        body: { query, script }
+        query,
+        script
       });
 
       console.log(`Updated ${response.updated} documents`);
@@ -516,7 +514,8 @@ async function updateWithProgress(index, query, script) {
   const task = await client.updateByQuery({
     index,
     wait_for_completion: false,
-    body: { query, script }
+    query,
+    script
   });
 
   const taskId = task.task;
@@ -661,7 +660,7 @@ POST /products/_update_by_query?conflicts=proceed&timeout=30m&requests_per_secon
       try {
         ctx._source.processed = true;
       } catch (Exception e) {
-        ctx.op = 'noop';
+        ctx.op = 'none';
       }
     """
   }
