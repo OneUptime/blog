@@ -64,7 +64,7 @@ public class User {
     private String email;
 }
 
-// Solution 3: Use Java Record (Java 17+)
+// Solution 3: Use Java Record (Java 16+)
 public record User(Long id, String name, String email) {}
 
 // Solution 4: Make fields public (not recommended for production)
@@ -87,7 +87,7 @@ public class UserController {
         return new Response("success", new UserData(1L, "John"));
     }
 
-    // Private inner class - Jackson can't access it
+    // Private non-static inner class with no getters - Jackson can't access properties
     private class Response {
         private String status;
         private UserData data;
@@ -109,7 +109,7 @@ public class UserController {
     }
 }
 
-// Solution: Make classes public or static
+// Solution: Make classes static and expose properties
 @RestController
 public class UserController {
 
@@ -167,6 +167,8 @@ public OrderDTO getOrder(@PathVariable Long id) {
 ```
 
 **Solution 2: Configure Jackson for Hibernate**
+
+Use the Jackson Hibernate module that matches your Hibernate version. For Hibernate 6:
 
 ```xml
 <dependency>
