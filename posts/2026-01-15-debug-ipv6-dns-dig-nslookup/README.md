@@ -201,13 +201,13 @@ example.com.            86400   IN      AAAA    2606:2800:220:1:248:1893:25c8:19
 
 ### Checking All Record Types
 
-To query both A and AAAA records simultaneously:
+You can request all record types a server is willing to return with an `ANY` query:
 
 ```bash
 dig example.com ANY
 ```
 
-Or query them separately for comparison:
+Note that `ANY` is no longer a reliable way to fetch both A and AAAA records. Following [RFC 8482](https://www.rfc-editor.org/rfc/rfc8482), many resolvers and authoritative servers (including Cloudflare) now answer `ANY` with a minimal response such as an `HINFO` record rather than the full record set. For dependable results, query each type separately for comparison:
 
 ```bash
 dig A example.com +short
@@ -244,11 +244,13 @@ To check DNSSEC signatures on IPv6 records:
 dig AAAA example.com +dnssec
 ```
 
-To perform full DNSSEC validation:
+Add `+multiline` to display the returned DNSSEC records (such as `RRSIG`) in a more readable, multi-line format:
 
 ```bash
 dig AAAA example.com +dnssec +multiline
 ```
+
+Note that `dig` itself does not validate the DNSSEC chain of trust; it only requests the records and reports the `ad` (Authenticated Data) flag set by a validating resolver. To perform full chain-of-trust validation, use `delv` (covered in the DNSSEC troubleshooting section below).
 
 ### Batch Queries
 
