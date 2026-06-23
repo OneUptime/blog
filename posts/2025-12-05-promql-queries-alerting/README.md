@@ -64,7 +64,7 @@ groups:
 ```
 
 Key elements:
-- `expr`: The PromQL query that returns a value
+- `expr`: The PromQL query that returns one or more vector elements when the alert condition is active
 - `for`: How long the condition must be true before firing
 - `labels`: Additional labels for routing
 - `annotations`: Human-readable information
@@ -314,13 +314,22 @@ sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) > 0
 
 ```yaml
 - alert: HighMemoryUsage
-  expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+  expr: |
+    (
+      container_memory_usage_bytes
+      /
+      on(namespace, pod, container)
+      container_spec_memory_limit_bytes
+    ) > 0.9
+    and
+    on(namespace, pod, container)
+    container_spec_memory_limit_bytes > 0
   for: 10m
   labels:
     severity: warning
-    runbook: "https://wiki.example.com/runbooks/high-memory"
   annotations:
     summary: "Container {{ $labels.container }} memory usage above 90%"
+    runbook: "https://wiki.example.com/runbooks/high-memory"
 ```
 
 ## Conclusion
