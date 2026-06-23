@@ -183,7 +183,7 @@ server:
 
 This will show the container's default error page (e.g., Tomcat's error page).
 
-### Show Nothing for 404
+### Raise Exceptions for 404
 
 ```yaml
 spring:
@@ -207,7 +207,7 @@ static/
     error/
         404.html
         500.html
-        error.html  # Fallback for all errors
+        5xx.html  # Fallback for server errors
 ```
 
 ### Thymeleaf Error Templates
@@ -245,7 +245,7 @@ Create `src/main/resources/templates/error/500.html`:
     <div class="error-container">
         <h1>500 - Internal Server Error</h1>
         <p>Something went wrong on our end.</p>
-        <p th:if="${#environment.acceptsProfiles('dev')}">
+        <p th:if="${#arrays.contains(@environment.getActiveProfiles(), 'dev')}">
             Error: <span th:text="${exception}">Unknown</span>
         </p>
         <a th:href="@{/}">Go Home</a>
@@ -363,6 +363,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.Map;
@@ -382,6 +383,21 @@ public class GlobalExceptionHandler {
             "status", 404,
             "error", "Not Found",
             "message", String.format("No endpoint %s %s", ex.getHttpMethod(), ex.getRequestURL()),
+            "path", request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+
+        log.warn("No static resource found for {} {}", ex.getHttpMethod(), ex.getResourcePath());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+            "timestamp", Instant.now(),
+            "status", 404,
+            "error", "Not Found",
+            "message", String.format("No static resource %s", ex.getResourcePath()),
             "path", request.getRequestURI()
         ));
     }
@@ -431,7 +447,7 @@ spring:
       add-mappings: false  # Disable default resource handling
 ```
 
-Or keep resource mapping but handle NoHandlerFoundException:
+Or keep resource mappings enabled and handle `NoResourceFoundException` for missing static resources:
 
 ```yaml
 spring:
