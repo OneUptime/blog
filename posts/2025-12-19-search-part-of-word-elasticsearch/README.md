@@ -35,7 +35,7 @@ This matches "smartphone", "telephone", "iphone", and "phone".
 ### Wildcard Limitations
 
 - **Performance**: Leading wildcards (`*phone`) scan all terms - very slow on large indices
-- **No scoring**: Results are not ranked by relevance
+- **Constant scoring by default**: Results are not ranked by text relevance unless you change the rewrite method
 - **Memory intensive**: Can cause high memory usage
 
 Use wildcards only for small datasets or when other options are not feasible.
@@ -59,7 +59,7 @@ GET /products/_search
 
 This matches "smartphone", "smartwatch", "smarttv".
 
-Prefix queries are faster than wildcards because they only scan terms starting with the prefix, but they still do not support scoring by default.
+Prefix queries are faster than wildcards because they only scan terms starting with the prefix, but they use constant scoring by default.
 
 ## Method 3: NGram Tokenizer
 
@@ -139,13 +139,13 @@ GET /products/_search
 {
   "query": {
     "match": {
-      "name": "artph"
+      "name": "artp"
     }
   }
 }
 ```
 
-This matches "smartphone" because "artph" appears within it.
+This matches "smartphone" because "artp" appears within it.
 
 ### NGram Considerations
 
@@ -323,11 +323,11 @@ Exact matches score highest, then prefix matches, then partial matches.
 
 | Method | Index Size | Search Speed | Scoring | Use Case |
 |--------|-----------|--------------|---------|----------|
-| Wildcard | Normal | Slow | No | Small datasets, ad-hoc |
-| Prefix | Normal | Medium | No | Start-of-word matching |
+| Wildcard | Normal | Slow | Constant by default | Small datasets, ad-hoc |
+| Prefix | Normal | Medium | Constant by default | Start-of-word matching |
 | NGram | Large | Fast | Yes | Full partial matching |
 | Edge NGram | Medium | Fast | Yes | Autocomplete |
-| Regex | Normal | Very Slow | No | Complex patterns |
+| Regex | Normal | Very Slow | Constant by default | Complex patterns |
 
 ## Best Practices
 
