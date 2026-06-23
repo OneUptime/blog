@@ -12,7 +12,7 @@ Description: Learn how to deploy MetalLB in a highly available configuration for
 
 MetalLB is a load-balancer implementation for bare metal Kubernetes clusters. Unlike cloud providers that offer native load balancing, on-premises clusters need a solution like MetalLB to expose services externally. However, for production workloads, a basic MetalLB installation is not enough. You need to configure it for high availability (HA) to ensure your services remain accessible even when nodes fail.
 
-This comprehensive guide covers everything you need to know about configuring MetalLB for high availability, including speaker redundancy, controller HA, node affinity, failure scenarios, and recovery procedures.
+This comprehensive guide covers everything you need to know about configuring MetalLB for high availability, including speaker redundancy, controller availability, node affinity, failure scenarios, and recovery procedures.
 
 ## Understanding MetalLB Architecture
 
@@ -87,13 +87,13 @@ Apply the namespace configuration:
 kubectl apply -f metallb-namespace.yaml
 ```
 
-### Step 2: Deploy MetalLB with HA Controller Configuration
+### Step 2: Deploy MetalLB with Production Controller Configuration
 
-The following manifest deploys MetalLB with high availability settings for the controller. We use multiple replicas and pod anti-affinity to ensure the controller survives node failures.
+MetalLB's controller is designed to run as a single active instance. Do not scale the controller Deployment to multiple replicas unless the MetalLB project explicitly adds leader election for that release. For production, start from the official MetalLB manifest or Helm chart so the CRDs, RBAC, webhook service, webhook certificate Secret, and controller Deployment are installed together, then add placement and resource settings as needed.
 
 ```yaml
 # metallb-ha-controller.yaml
-# This configuration deploys the MetalLB controller with high availability settings
+# This configuration deploys the MetalLB controller with production placement settings
 # The controller is responsible for IP address allocation and service watching
 apiVersion: apps/v1
 kind: Deployment
@@ -104,21 +104,19 @@ metadata:
     app: metallb
     component: controller
 spec:
-  # Running 3 replicas ensures HA - cluster can survive up to 2 controller failures
-  replicas: 3
+  # MetalLB's controller is a singleton. Kubernetes restarts or reschedules it after failures.
+  replicas: 1
   # RevisionHistoryLimit keeps last 3 deployments for rollback capability
   revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: metallb
       component: controller
-  # Strategy ensures zero-downtime during updates
+  # RollingUpdate is retained for normal Deployment updates
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # maxUnavailable: 1 means at least 2 controllers remain during updates
       maxUnavailable: 1
-      # maxSurge: 1 allows one extra pod during rolling updates
       maxSurge: 1
   template:
     metadata:
@@ -128,7 +126,7 @@ spec:
       annotations:
         # Prometheus annotations for metrics scraping
         prometheus.io/scrape: "true"
-        prometheus.io/port: "7472"
+        prometheus.io/port: "9120"
     spec:
       # Service account for controller RBAC permissions
       serviceAccountName: controller
@@ -142,26 +140,8 @@ spec:
       # Node selector ensures controllers run on dedicated infra nodes if available
       nodeSelector:
         kubernetes.io/os: linux
-      # Pod anti-affinity ensures controllers spread across different nodes
-      # This is CRITICAL for high availability
+      # Node affinity prefers nodes labeled for infrastructure workloads
       affinity:
-        podAntiAffinity:
-          # requiredDuringSchedulingIgnoredDuringExecution is a hard requirement
-          # Controllers MUST be on different nodes
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - metallb
-                  - key: component
-                    operator: In
-                    values:
-                      - controller
-              # topologyKey: hostname ensures one controller per node
-              topologyKey: kubernetes.io/hostname
-        # Node affinity prefers nodes labeled for infrastructure workloads
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
@@ -179,36 +159,44 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: controller
-          image: quay.io/metallb/controller:v0.14.8
+          image: quay.io/metallb/controller:v0.16.1
           args:
             # Log level 'info' provides useful operational information
+            - --port=9120
             - --log-level=info
-            # Port for metrics and health endpoints
-            - --port=7472
-            # Webhook server port for validating configurations
-            - --webhook-mode=enabled
+          env:
+            - name: METALLB_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Lets the controller create/manage the memberlist secret used by speakers
+            - name: METALLB_ML_SECRET_NAME
+              value: memberlist
+            - name: METALLB_DEPLOYMENT
+              value: controller
           ports:
-            - name: monitoring
-              containerPort: 7472
-            - name: webhook
+            - name: metricshttps
+              containerPort: 9120
+            - name: webhook-server
               containerPort: 9443
+              protocol: TCP
           # Liveness probe ensures unhealthy controllers are restarted
           livenessProbe:
             httpGet:
-              path: /metrics
-              port: monitoring
+              path: /healthz
+              port: 17472
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 1
             failureThreshold: 3
           # Readiness probe ensures traffic only goes to ready controllers
           readinessProbe:
             httpGet:
-              path: /metrics
-              port: monitoring
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
+              path: /readyz
+              port: 17472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 1
             failureThreshold: 3
           # Resource limits prevent runaway resource consumption
           resources:
@@ -224,6 +212,15 @@ spec:
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+      volumes:
+        - name: cert
+          secret:
+            secretName: metallb-webhook-cert
+            defaultMode: 0420
 ```
 
 ### Step 3: Configure Speaker DaemonSet for Redundancy
@@ -261,7 +258,7 @@ spec:
         component: speaker
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "7472"
+        prometheus.io/port: "9120"
     spec:
       serviceAccountName: speaker
       terminationGracePeriodSeconds: 30
@@ -290,16 +287,20 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: speaker
-          image: quay.io/metallb/speaker:v0.14.8
+          image: quay.io/metallb/speaker:v0.16.1
           args:
             - --log-level=info
-            - --port=7472
+            - --port=9120
           env:
-            # METALLB_NODE_NAME is used for memberlist and leader election
+            # METALLB_NODE_NAME is used for memberlist and L2 announcer selection
             - name: METALLB_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: METALLB_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             # METALLB_HOST is used for binding the speaker
             - name: METALLB_HOST
               valueFrom:
@@ -317,9 +318,8 @@ spec:
             - name: METALLB_ML_SECRET_KEY_PATH
               value: "/etc/ml_secret_key"
           ports:
-            - name: monitoring
-              containerPort: 7472
-              hostPort: 7472
+            - name: metricshttps
+              containerPort: 9120
             # Memberlist port for speaker communication
             - name: memberlist-tcp
               containerPort: 7946
@@ -332,20 +332,22 @@ spec:
           # Liveness probe restarts unhealthy speakers
           livenessProbe:
             httpGet:
-              path: /metrics
-              port: monitoring
+              host: 127.0.0.1
+              path: /healthz
+              port: 17472
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 1
             failureThreshold: 3
           # Readiness probe for traffic routing
           readinessProbe:
             httpGet:
-              path: /metrics
-              port: monitoring
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
+              host: 127.0.0.1
+              path: /readyz
+              port: 17472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 1
             failureThreshold: 3
           resources:
             limits:
@@ -372,12 +374,12 @@ spec:
         - name: memberlist
           secret:
             secretName: memberlist
-            defaultMode: 0400
+            defaultMode: 0420
 ```
 
 ### Step 4: Create the Memberlist Secret
 
-The memberlist secret is used by speakers to authenticate with each other. This is essential for the speaker election process.
+The memberlist secret is used by speakers to authenticate with each other. Recent official MetalLB manifests let the controller create this Secret automatically, but you can also create it explicitly before starting the speakers.
 
 ```bash
 # Generate a random 256-bit key for memberlist authentication
@@ -719,8 +721,8 @@ flowchart TD
     F1 --> |"L2 Mode"| L2R1 --> L2R2 --> L2R3
     F1 --> |"BGP Mode"| BGPR1 --> BGPR2 --> BGPR3
 
-    F2 --> |"Quorum Lost"| QL[Service Unavailable]
-    F2 --> |"Quorum Maintained"| QM[Automatic Recovery]
+    F2 --> |"No Eligible Speakers"| QL[Service Unavailable]
+    F2 --> |"Eligible Speakers Remain"| QM[Automatic Recovery]
 
     F3 --> |"IP Allocation"| IA[Existing IPs Preserved]
     F3 --> |"New Services"| NS[Pending Until Recovery]
@@ -732,7 +734,7 @@ flowchart TD
 
 ### Scenario 1: Single Speaker Node Failure (Layer 2)
 
-When a speaker node fails in Layer 2 mode, the remaining speakers elect a new leader:
+When a speaker node fails in Layer 2 mode, the remaining speakers independently select the new announcer using MetalLB's stateless L2 election algorithm:
 
 ```yaml
 # Test single speaker failure with this configuration
@@ -744,7 +746,7 @@ metadata:
   namespace: default
   annotations:
     # Specify which pool to use
-    metallb.universe.tf/address-pool: primary-pool
+    metallb.io/address-pool: primary-pool
 spec:
   type: LoadBalancer
   selector:
@@ -755,25 +757,23 @@ spec:
 ```
 
 ```bash
-# Simulate speaker failure by cordoning and draining a node
-# First, identify which speaker is the leader for your service IP
-kubectl logs -n metallb-system -l component=speaker | grep "leader"
+# Simulate speaker failure by removing the node from the L2Advertisement selector
+# or by powering off/stopping kubelet on the current announcer node.
+# First, identify the speaker announcing your service IP from the logs.
+kubectl logs -n metallb-system -l component=speaker | grep -E "announc|service"
 
-# Cordon the leader node to prevent new pods
-kubectl cordon worker-1
+# Remove the node from the set of eligible L2 announcers
+kubectl label node worker-1 metallb.universe.tf/speaker-
 
-# Drain the node (this will stop the speaker pod)
-kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
-
-# Monitor failover (should complete in 2-10 seconds for L2)
+# Monitor failover. L2 failover depends on memberlist detection and client ARP/NDP cache refresh.
 # Watch for gratuitous ARP from new leader
-kubectl logs -n metallb-system -l component=speaker -f | grep -E "leader|announce"
+kubectl logs -n metallb-system -l component=speaker -f | grep -E "announc|service"
 
 # Verify service is still accessible
 curl -v http://<EXTERNAL-IP>
 
 # Restore the node
-kubectl uncordon worker-1
+kubectl label node worker-1 metallb.universe.tf/speaker=true
 ```
 
 ### Scenario 2: Controller Failure
@@ -794,7 +794,7 @@ kubectl get svc test-new-service
 # STATUS: Pending (External IP)
 
 # Restore controller
-kubectl scale deployment controller -n metallb-system --replicas=3
+kubectl scale deployment controller -n metallb-system --replicas=1
 
 # New service should get an IP
 kubectl get svc test-new-service
@@ -803,15 +803,28 @@ kubectl get svc test-new-service
 
 ### Scenario 3: Network Partition (Split Brain)
 
-Network partitions can cause split-brain scenarios where multiple speakers think they're the leader:
+Network partitions can cause split-brain scenarios where speakers compute different active-speaker sets and multiple speakers announce the same VIP. Because MetalLB speakers run with `hostNetwork: true`, Kubernetes NetworkPolicy may not apply to their node-network traffic on many CNIs; simulate this with lab firewall rules or switch ACLs instead.
+
+```bash
+# Example lab-only firewall test on one node: block memberlist traffic to another node
+sudo iptables -A INPUT -p tcp --dport 7946 -s <PEER-NODE-IP> -j DROP
+sudo iptables -A INPUT -p udp --dport 7946 -s <PEER-NODE-IP> -j DROP
+
+# Remove the rules after testing
+sudo iptables -D INPUT -p tcp --dport 7946 -s <PEER-NODE-IP> -j DROP
+sudo iptables -D INPUT -p udp --dport 7946 -s <PEER-NODE-IP> -j DROP
+```
+
+**Prevention and mitigation:**
 
 ```yaml
-# Network policy to simulate partition (for testing only)
-# This blocks memberlist communication between speakers
+# If your CNI enforces NetworkPolicy for hostNetwork pods, ensure memberlist
+# traffic is allowed between all speaker nodes. Otherwise, enforce this with
+# host firewall rules or network ACLs.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: simulate-partition
+  name: allow-speaker-memberlist
   namespace: metallb-system
 spec:
   podSelector:
@@ -830,37 +843,16 @@ spec:
           protocol: TCP
         - port: 7946
           protocol: UDP
-```
-
-**Prevention and mitigation:**
-
-```yaml
-# Configure memberlist with appropriate timeouts
-# These environment variables tune the speaker's cluster membership behavior
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: speaker
-  namespace: metallb-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: speaker
-          env:
-            # METALLB_ML_BIND_PORT for memberlist communication
-            - name: METALLB_ML_BIND_PORT
-              value: "7946"
-            # Timeout settings for memberlist
-            - name: MEMBERLIST_TCP_TIMEOUT
-              value: "10s"
-            - name: MEMBERLIST_PUSH_PULL_INTERVAL
-              value: "30s"
-            - name: MEMBERLIST_GOSSIP_INTERVAL
-              value: "200ms"
-            # Suspicion multiplier affects how quickly dead nodes are detected
-            - name: MEMBERLIST_SUSPICION_MULT
-              value: "4"
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              component: speaker
+      ports:
+        - port: 7946
+          protocol: TCP
+        - port: 7946
+          protocol: UDP
 ```
 
 ### Scenario 4: BGP Peer Failure
@@ -871,29 +863,32 @@ When a BGP peer fails, routes are withdrawn and traffic shifts to remaining peer
 # Monitor BGP session status
 kubectl logs -n metallb-system -l component=speaker | grep -E "BGP|peer|session"
 
-# Check BGP peer status via metrics
-kubectl port-forward -n metallb-system svc/speaker 7472:7472 &
-curl http://localhost:7472/metrics | grep metallb_bgp
+# Check BGP peer status via metrics from one speaker pod.
+# Native BGP mode exposes metallb_bgp_* metrics; the default FRR-K8s mode exposes frrk8s_bgp_*.
+kubectl port-forward -n metallb-system ds/speaker 9120:9120 &
+curl http://localhost:9120/metrics | grep -E "metallb_bgp|frrk8s_bgp"
 
 # Expected metrics:
 # metallb_bgp_session_up{peer="192.168.1.1"} 1
 # metallb_bgp_session_up{peer="192.168.1.2"} 1
+# or, in FRR-K8s mode:
+# frrk8s_bgp_session_up{peer="192.168.1.1"} 1
 
-# If using BFD, check BFD status
-curl http://localhost:7472/metrics | grep metallb_bfd
+# If using FRR-K8s with BFD, check FRR-K8s BFD metrics
+curl http://localhost:9120/metrics | grep frrk8s_bfd
 ```
 
 ## Monitoring and Alerting
 
 Proper monitoring is essential for maintaining HA. Here's a comprehensive monitoring setup:
 
-### Prometheus ServiceMonitor
+### Prometheus PodMonitor
 
 ```yaml
-# metallb-servicemonitor.yaml
-# ServiceMonitor for Prometheus Operator to scrape MetalLB metrics
+# metallb-podmonitor.yaml
+# PodMonitor for Prometheus Operator to scrape MetalLB metrics
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: metallb
   namespace: monitoring
@@ -902,17 +897,17 @@ metadata:
 spec:
   # jobLabel is added to metrics for identification
   jobLabel: app
-  # namespaceSelector specifies which namespace to find the service
+  # namespaceSelector specifies which namespace to find the pods
   namespaceSelector:
     matchNames:
       - metallb-system
-  # selector identifies the service to monitor
+  # selector identifies the pods to monitor
   selector:
     matchLabels:
       app: metallb
   # endpoints defines how to scrape metrics
-  endpoints:
-    - port: monitoring
+  podMetricsEndpoints:
+    - port: metricshttps
       interval: 30s
       path: /metrics
       # honorLabels preserves labels from the source
@@ -987,7 +982,7 @@ spec:
         # Alert when BFD sessions are down (if using BFD)
         - alert: MetalLBBFDSessionDown
           expr: |
-            metallb_bfd_session_up == 0
+            frrk8s_bfd_session_up == 0
           for: 1m
           labels:
             severity: critical
@@ -1117,8 +1112,8 @@ metadata:
   name: controller-pdb
   namespace: metallb-system
 spec:
-  # minAvailable ensures at least 2 controllers are always running
-  minAvailable: 2
+  # minAvailable protects the singleton controller during voluntary disruptions
+  minAvailable: 1
   selector:
     matchLabels:
       app: metallb
@@ -1171,6 +1166,7 @@ resources:
 # Check controller replicas
 CONTROLLER_READY=$(kubectl get deployment controller -n metallb-system -o jsonpath='{.status.readyReplicas}')
 CONTROLLER_DESIRED=$(kubectl get deployment controller -n metallb-system -o jsonpath='{.spec.replicas}')
+CONTROLLER_READY=${CONTROLLER_READY:-0}
 
 if [ "$CONTROLLER_READY" -lt "$CONTROLLER_DESIRED" ]; then
     echo "WARNING: Controller has $CONTROLLER_READY/$CONTROLLER_DESIRED replicas ready"
@@ -1185,8 +1181,7 @@ if [ "$SPEAKER_READY" -lt "$SPEAKER_DESIRED" ]; then
 fi
 
 # Check for services without IPs
-PENDING_SERVICES=$(kubectl get svc -A -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].metadata.name}' | wc -w)
-PENDING_IPS=$(kubectl get svc -A -o jsonpath='{.items[?(@.status.loadBalancer.ingress==null)].metadata.name}' | wc -w)
+PENDING_IPS=$(kubectl get svc -A --no-headers | awk '$3 == "LoadBalancer" && $5 == "<pending>" { count++ } END { print count + 0 }')
 
 if [ "$PENDING_IPS" -gt 0 ]; then
     echo "WARNING: $PENDING_IPS LoadBalancer services are pending external IPs"
@@ -1216,8 +1211,8 @@ echo "Health check completed at $(date)"
 # View MetalLB controller logs
 kubectl logs -n metallb-system -l component=controller --tail=100
 
-# View speaker logs with leader election info
-kubectl logs -n metallb-system -l component=speaker --tail=100 | grep -E "leader|announce|arp"
+# View speaker logs with L2 announcement info
+kubectl logs -n metallb-system -l component=speaker --tail=100 | grep -E "announc|arp|ndp"
 
 # Check IP allocations
 kubectl get ipaddresspools.metallb.io -n metallb-system -o yaml
