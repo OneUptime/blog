@@ -19,7 +19,7 @@ flowchart LR
     E --> F[EC2/VM/GCE]
 ```
 
-Terraform can generate SSH keys using the `tls` provider, then deploy them to cloud resources and store sensitive materials securely.
+Terraform can generate SSH keys using the `tls` provider, then deploy them to cloud resources and store sensitive materials securely. The generated private key is still stored in Terraform state, so protect state with a secure remote backend and strict access controls.
 
 ## Basic SSH Key Generation
 
@@ -56,7 +56,7 @@ output "public_key_openssh" {
   value       = tls_private_key.main.public_key_openssh
 }
 
-# Output private key (sensitive)
+# Output private key (sensitive; also stored in Terraform state)
 output "private_key_pem" {
   description = "Private key in PEM format"
   value       = tls_private_key.main.private_key_pem
@@ -391,7 +391,7 @@ resource "local_file" "public_key" {
 }
 ```
 
-**Note**: Avoid storing keys in local files for production. Use secret managers instead.
+**Note**: Avoid storing keys in local files for production. Use secret managers and a protected Terraform state backend instead.
 
 ## Using Existing Keys
 
@@ -423,7 +423,7 @@ resource "aws_key_pair" "from_variable" {
 
 ## Multi-Cloud Module
 
-Create a reusable module for multi-cloud SSH key management:
+Create a reusable module skeleton for multi-cloud SSH key management:
 
 ```hcl
 # modules/ssh-key/variables.tf
@@ -433,7 +433,7 @@ variable "name" {
 
 variable "cloud_provider" {
   type    = string
-  # aws, azure, gcp
+  # aws shown here; extend with azure and gcp resources
 }
 
 variable "algorithm" {
@@ -516,7 +516,7 @@ resource "aws_secretsmanager_secret" "ssh_key" {
 ### 3. Implement Access Logging
 
 ```hcl
-# CloudTrail for secret access
+# CloudTrail for Secrets Manager API access
 resource "aws_cloudtrail" "secrets_access" {
   name                          = "secrets-access-trail"
   s3_bucket_name                = aws_s3_bucket.cloudtrail.id
@@ -525,11 +525,6 @@ resource "aws_cloudtrail" "secrets_access" {
   event_selector {
     read_write_type           = "All"
     include_management_events = true
-
-    data_resource {
-      type   = "AWS::SecretsManager::Secret"
-      values = ["arn:aws:secretsmanager:*:*:secret:ssh-keys/*"]
-    }
   }
 }
 ```
@@ -551,4 +546,4 @@ output "restricted_authorized_key" {
 
 ## Conclusion
 
-Terraform's TLS provider makes SSH key generation straightforward, but proper key management requires secure storage in secret managers and careful access control. Always store private keys in encrypted secret managers rather than local files or state, implement key rotation policies, and use the minimum necessary key size (4096-bit RSA or ED25519). For multi-cloud deployments, create reusable modules that handle key generation and storage consistently across providers.
+Terraform's TLS provider makes SSH key generation straightforward, but proper key management requires secure storage in secret managers, protected Terraform state, and careful access control. Store private keys in encrypted secret managers rather than local files, protect any state that contains generated keys, implement key rotation policies, and use an appropriate key type such as 4096-bit RSA or ED25519 where supported. For multi-cloud deployments, create reusable modules that handle key generation and storage consistently across providers.
