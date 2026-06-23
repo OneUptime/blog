@@ -19,8 +19,8 @@ flowchart TD
     A[Incoming Request] --> B{Check server_name matches}
     B -->|Match Found| C[Use Matching Server Block]
     B -->|No Match| D{Is there a default_server?}
-    D -->|Yes| E[Use default_server Block]
-    D -->|No| F[Use First Server Block in Config]
+    D -->|Explicit| E[Use default_server Block]
+    D -->|Not Explicit| F[Use First Server Block for That Listen Address/Port]
     F --> G[Potentially Wrong Site Served]
 ```
 
@@ -52,7 +52,7 @@ The best practice is to create an explicit default server that rejects or redire
 
 ```nginx
 # /etc/nginx/sites-enabled/00-default.conf
-# This file is named with 00- to ensure it loads first
+# The default_server parameter, not the filename, makes this the default
 
 server {
     listen 80 default_server;
@@ -78,7 +78,7 @@ server {
 }
 ```
 
-The `server_name _;` is a catch-all that matches any hostname. The underscore is not special - it's just a value that will never match a real hostname.
+The `default_server` parameter is what catches unmatched hostnames for that listen address and port. The `server_name _;` line is just a conventional placeholder name. The underscore is not special - it's just a value that will never match a real hostname.
 
 ## Solution 2: Return a Proper Error Response
 
@@ -212,7 +212,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name mysite.com www.mysite.com;
 
     ssl_certificate /etc/letsencrypt/live/mysite.com/fullchain.pem;
@@ -274,7 +275,7 @@ Then monitor with:
 tail -f /var/log/nginx/unknown-hosts.log
 
 # Count attempts by host
-awk '{print $4}' /var/log/nginx/unknown-hosts.log | sort | uniq -c | sort -rn
+awk -F'"' '{print $2}' /var/log/nginx/unknown-hosts.log | sort | uniq -c | sort -rn
 ```
 
 ## Security Considerations
@@ -291,7 +292,7 @@ awk '{print $4}' /var/log/nginx/unknown-hosts.log | sort | uniq -c | sort -rn
 
 1. **Not defining a default server for both HTTP and HTTPS**
 2. **Using the same certificate for default and real sites**
-3. **Forgetting to place the default config file first alphabetically**
+3. **Relying only on filename order instead of using `default_server` explicitly**
 4. **Using `return 404` instead of `return 444`** - 404 still sends headers and body
 5. **Not testing with raw IP address access**
 
