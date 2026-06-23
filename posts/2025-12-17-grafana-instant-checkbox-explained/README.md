@@ -6,7 +6,7 @@ Tags: Grafana, Prometheus, PromQL, Queries, Instant, Range, Monitoring
 
 Description: Learn what the 'Instant' checkbox does in Grafana panel queries.
 
-The "Instant" checkbox in Grafana's query editor is a small but powerful option that fundamentally changes how your query executes against Prometheus. Understanding when to use instant versus range queries is essential for building accurate and performant dashboards.
+The "Instant" option in Grafana's query editor is a small but powerful option that fundamentally changes how your query executes against Prometheus. In current Grafana versions, the Prometheus query editor exposes this as a Type setting with Range, Instant, and Both modes. Understanding when to use instant versus range queries is essential for building accurate and performant dashboards.
 
 ## What is an Instant Query?
 
@@ -28,7 +28,7 @@ graph TD
 
 ### Instant Query
 
-When "Instant" is checked, Grafana sends a request to the `/api/v1/query` endpoint:
+When the query type is Instant, Grafana sends a request to the `/api/v1/query` endpoint:
 
 ```bash
 # Instant query - single point in time
@@ -52,7 +52,7 @@ curl "http://prometheus:9090/api/v1/query?query=up&time=1704067200"
 
 ### Range Query
 
-When "Instant" is unchecked (default), Grafana sends a request to the `/api/v1/query_range` endpoint:
+When the query type is Range, Grafana sends a request to the `/api/v1/query_range` endpoint. The Prometheus query editor's default Type is Both, which runs both Range and Instant queries and returns combined results:
 
 ```bash
 # Range query - multiple points over time
@@ -86,7 +86,7 @@ Stat panels display a single value. Instant queries are ideal:
 
 ```promql
 # Current number of running pods
-count(kube_pod_info{phase="Running"})
+count(kube_pod_status_phase{phase="Running"} == 1)
 
 # Current memory usage
 sum(container_memory_working_set_bytes{namespace="production"})
@@ -183,15 +183,15 @@ count(kube_pod_info)  # Instant
 count(kube_pod_info)  # Range over 24h with 15s step
 ```
 
-### When Range Queries are Necessary
+### When Range Selectors are Necessary
 
-Some queries require range data even for current values:
+Some queries require range vector selectors even for current values:
 
 ```promql
-# rate() needs range data
+# rate() needs a range vector selector
 rate(http_requests_total[5m])  # Won't work as instant without [5m]
 
-# increase() needs range data
+# increase() needs a range vector selector
 increase(http_requests_total[1h])
 
 # Aggregation over time
@@ -205,7 +205,7 @@ avg_over_time(node_load1[1h])
 ```promql
 # Panel: Time Series Graph
 # Query: rate(http_requests_total[5m])
-# Instant: Checked  <-- WRONG
+# Type: Instant  <-- WRONG
 
 # Result: Only shows a single point, not a line
 ```
@@ -217,18 +217,18 @@ avg_over_time(node_load1[1h])
 ```promql
 # Panel: Stat
 # Query: count(up)
-# Instant: Unchecked  <-- Suboptimal
+# Type: Range or Both  <-- Suboptimal
 
 # Result: Works but fetches unnecessary data
 ```
 
-**Fix:** Check "Instant" for stat panels to improve performance.
+**Fix:** Use the Instant query type for stat panels to improve performance.
 
 ### Mistake 3: Instant with Functions Requiring Ranges
 
 ```promql
 # Query: rate(http_requests_total)
-# Instant: Checked
+# Type: Instant
 
 # Error: "bad_data" - rate requires a range selector
 ```
@@ -257,8 +257,8 @@ In the query editor:
 
 1. Open the panel editor
 2. Scroll to the query section
-3. Find the "Instant" toggle
-4. Enable for single-point queries
+3. Find the query Type setting
+4. Select Instant for single-point queries
 
 ### Query Options
 
@@ -270,7 +270,7 @@ Min interval: 15s    # Minimum step between points
 Max data points: 1000  # Maximum points to request
 
 # Instant query settings
-# These are ignored when Instant is checked
+# These are ignored when Type is Instant
 ```
 
 ### Mixed Mode
@@ -280,11 +280,11 @@ Some panels support both query types:
 ```yaml
 # Query A: Range (for graph)
 rate(http_requests_total[5m])
-Instant: false
+Type: Range
 
 # Query B: Instant (for current value annotation)
 sum(rate(http_requests_total[5m]))
-Instant: true
+Type: Instant
 ```
 
 ## Advanced Usage
@@ -329,7 +329,7 @@ Grafana transformations work with instant query results:
 ```yaml
 # Instant query returns current values
 Query: kube_pod_container_resource_limits{resource="memory"}
-Instant: true
+Type: Instant
 
 # Transformation: Group by namespace, sum values
 Transform: Group by (namespace) -> Calculate (sum)
@@ -377,7 +377,7 @@ Use Grafana's Query Inspector:
 
 ## Conclusion
 
-The "Instant" checkbox is a fundamental control that determines whether Grafana fetches a single current value or a time series of values. Understanding this distinction helps you:
+The "Instant" option is a fundamental control that determines whether Grafana fetches a single current value or a time series of values. Understanding this distinction helps you:
 
 - Build accurate visualizations that match your data requirements
 - Optimize dashboard performance by using instant queries where appropriate
