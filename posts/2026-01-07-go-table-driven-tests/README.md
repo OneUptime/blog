@@ -429,7 +429,7 @@ func TestHTTPClient(t *testing.T) {
     }
 
     for _, tt := range tests {
-        // Capture the loop variable to avoid closure issues
+        // Capture the loop variable for compatibility with Go versions before 1.22
         tt := tt
 
         t.Run(tt.name, func(t *testing.T) {
@@ -469,10 +469,10 @@ func TestHTTPClient(t *testing.T) {
 
 ### Important Note About Loop Variables
 
-When using parallel tests, always capture the loop variable to avoid race conditions:
+In Go 1.22 and later, loop variables are scoped per iteration, so closures in table-driven tests no longer share the same loop variable. If your module targets an older Go version, capture the loop variable when using parallel tests to avoid closure issues:
 
 ```go
-// Correct way - capture the variable
+// Correct for Go versions before 1.22 - capture the variable
 for _, tt := range tests {
     tt := tt // This creates a new variable scoped to each iteration
     t.Run(tt.name, func(t *testing.T) {
@@ -481,7 +481,7 @@ for _, tt := range tests {
     })
 }
 
-// Incorrect way - can cause race conditions
+// Incorrect for Go versions before 1.22 - the closure may observe a later value of tt
 for _, tt := range tests {
     t.Run(tt.name, func(t *testing.T) {
         t.Parallel()
@@ -793,6 +793,8 @@ package integration
 import (
     "database/sql"
     "testing"
+
+    _ "github.com/mattn/go-sqlite3" // registers the sqlite3 driver
 )
 
 // testDB is a helper that creates a test database connection
@@ -1209,7 +1211,7 @@ Here is a summary of best practices for table-driven tests in Go:
 
 3. **Use t.Run for subtests** to get better test output and the ability to run specific cases.
 
-4. **Capture loop variables** when using parallel tests to avoid race conditions.
+4. **Capture loop variables** when using parallel tests in modules targeting Go versions before 1.22.
 
 5. **Create helper functions** for common assertions and setup/teardown operations.
 
