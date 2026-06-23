@@ -10,7 +10,7 @@ Description: Learn how to implement health checks and readiness probes in Rust a
 
 > Kubernetes uses health probes to determine when to restart containers, route traffic, and manage deployments. Implementing proper health checks is crucial for running reliable Rust services in Kubernetes.
 
-Health checks tell Kubernetes the difference between "starting up", "ready to serve", and "unhealthy and needs restart". Getting these right means zero-downtime deployments and automatic recovery from failures.
+Health checks tell Kubernetes the difference between "starting up", "ready to serve", and "unhealthy and needs restart". Getting these right helps enable zero-downtime deployments and automatic recovery from failures.
 
 ---
 
@@ -18,7 +18,7 @@ Health checks tell Kubernetes the difference between "starting up", "ready to se
 
 | Probe | Purpose | Failure Action |
 |-------|---------|----------------|
-| **Startup** | Is the app finished initializing? | Keep waiting |
+| **Startup** | Is the app finished initializing? | Keep waiting until the failure threshold, then restart |
 | **Liveness** | Is the app still working? | Restart container |
 | **Readiness** | Can the app handle traffic? | Remove from service |
 
@@ -153,7 +153,8 @@ async fn readiness(State(state): State<Arc<AppState>>) -> Response {
 
 /// Startup probe - has the application finished initializing?
 /// Returns 503 until startup is complete
-/// Kubernetes will keep waiting (not restart) if this fails
+/// Kubernetes will keep waiting until the startup probe's failure threshold
+/// is exceeded, then restart the container according to its restart policy
 async fn startup(State(state): State<Arc<AppState>>) -> StatusCode {
     if state.health.is_started() {
         StatusCode::OK
@@ -266,6 +267,19 @@ async fn main() {
     tracing::info!("Application shutdown complete");
 }
 
+fn build_router(state: Arc<AppState>) -> axum::Router {
+    health_router().with_state(state)
+}
+
+async fn create_db_pool() -> sqlx::PgPool {
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+
+    sqlx::PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database")
+}
+
 /// Perform startup initialization
 async fn perform_startup_tasks(state: &AppState) {
     tracing::info!("Running startup tasks...");
@@ -322,7 +336,10 @@ async fn shutdown_signal() {
 // Advanced health checks with timeouts
 
 use std::time::Duration;
+use std::sync::Arc;
 use tokio::time::timeout;
+
+use super::{check_database, AppState, CheckResult};
 
 /// Health check with timeout
 pub async fn check_with_timeout<F, T>(
@@ -359,7 +376,7 @@ pub async fn detailed_db_check(pool: &sqlx::PgPool) -> DetailedCheckResult {
     let query_result = sqlx::query("SELECT 1").execute(pool).await;
     let latency = start.elapsed();
 
-    let pool_size = pool.size();
+    let pool_size = pool.size() as usize;
     let idle_connections = pool.num_idle();
 
     match query_result {
@@ -429,9 +446,10 @@ pub async fn background_health_checker(state: Arc<AppState>) {
 // Health checks with circuit breaker awareness
 
 use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+
+use super::CheckResult;
 
 /// Simple circuit breaker for dependency health
 pub struct CircuitBreaker {
@@ -489,7 +507,7 @@ impl CircuitBreaker {
         // Check if reset timeout has passed
         if let Some(last) = *self.last_failure.read().await {
             if last.elapsed() > self.reset_timeout {
-                // Allow a single request through (half-open state)
+                // Allow a trial request through (half-open state)
                 return true;
             }
         }
@@ -572,7 +590,7 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
-          failureThreshold: 30  # Allow up to 150s for startup
+          failureThreshold: 30  # Allow up to 150s for startup before restart
 
         # Liveness probe - restart if unhealthy
         livenessProbe:
