@@ -111,7 +111,7 @@ terraform {
     key            = "production/infrastructure.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -163,16 +163,6 @@ resource "aws_kms_key" "terraform_state" {
   enable_key_rotation     = true
 }
 
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
 ### Azure Backend
@@ -237,7 +227,7 @@ Always configure `.gitignore` to exclude state files:
 # Terraform state backup files
 *.tfstate.backup
 
-# Terraform lock file (sometimes you want this)
+# Terraform dependency lock file (commit this for root modules)
 # .terraform.lock.hcl
 
 # Local .terraform directories
@@ -278,12 +268,13 @@ terraform state list
 # 4. Remove local state files
 rm -f terraform.tfstate terraform.tfstate.backup
 
-# 5. Remove from Git history (optional but recommended)
-git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch terraform.tfstate terraform.tfstate.backup' \
-  --prune-empty --tag-name-filter cat -- --all
+# 5. Remove from Git history (optional but recommended; use a fresh clone)
+git filter-repo --path terraform.tfstate \
+  --path terraform.tfstate.backup \
+  --invert-paths
 
-# 6. Force push (coordinate with team!)
+# 6. Re-add the remote removed by git filter-repo, then force push (coordinate with team!)
+git remote add origin <repository-url>
 git push --force --all
 git push --force --tags
 
@@ -306,7 +297,7 @@ terraform {
     key            = "infrastructure.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
     # State path: s3://my-terraform-state/env:/dev/infrastructure.tfstate
     workspace_key_prefix = "env:"
@@ -320,18 +311,20 @@ Or use separate state files per environment:
 # environments/production/main.tf
 terraform {
   backend "s3" {
-    bucket = "my-terraform-state"
-    key    = "production/infrastructure.tfstate"
-    region = "us-east-1"
+    bucket       = "my-terraform-state"
+    key          = "production/infrastructure.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 
 # environments/staging/main.tf
 terraform {
   backend "s3" {
-    bucket = "my-terraform-state"
-    key    = "staging/infrastructure.tfstate"
-    region = "us-east-1"
+    bucket       = "my-terraform-state"
+    key          = "staging/infrastructure.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
