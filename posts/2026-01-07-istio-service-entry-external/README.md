@@ -20,13 +20,13 @@ Before diving into configurations, let's understand why ServiceEntry is crucial:
 
 1. **Visibility**: Gain observability into traffic to external services
 2. **Traffic Management**: Apply retries, timeouts, and circuit breaking to external calls
-3. **Security**: Control which external services your mesh can access
+3. **Controlled Egress**: Explicitly declare which external services are known to the mesh
 4. **TLS Origination**: Upgrade HTTP connections to HTTPS at the sidecar level
 5. **Policy Enforcement**: Apply consistent policies across all outbound traffic
 
 ## Understanding External Service Traffic Flow
 
-The following diagram illustrates how traffic flows from a pod in the mesh to an external service through Istio's ServiceEntry configuration:
+The following diagram illustrates how traffic flows from a pod in the mesh to an external service with Istio's ServiceEntry configuration. By default, traffic goes through the sidecar directly to the external service; routing through an egress gateway requires additional configuration.
 
 ```mermaid
 flowchart LR
@@ -34,10 +34,8 @@ flowchart LR
         subgraph Pod
             A[Application Container] --> B[Envoy Sidecar]
         end
-        B --> C[Istio Egress Gateway]
+        B --> C[External Service]
     end
-
-    C --> D[External Service]
 
     subgraph Istio Configuration
         E[ServiceEntry] -.-> B
@@ -47,8 +45,7 @@ flowchart LR
 
     style A fill:#e1f5fe
     style B fill:#fff3e0
-    style C fill:#fff3e0
-    style D fill:#c8e6c9
+    style C fill:#c8e6c9
     style E fill:#f3e5f5
     style F fill:#f3e5f5
     style G fill:#f3e5f5
@@ -73,7 +70,7 @@ The following configuration shows how to set the outbound traffic policy in Isti
 # Istio MeshConfig - Configure how Istio handles outbound traffic
 
 # REGISTRY_ONLY: Only allow traffic to services registered in the mesh
-# ALLOW_ANY: Allow traffic to any external service (less secure)
+# ALLOW_ANY: Allow traffic to unknown external services (less controlled)
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
@@ -101,7 +98,7 @@ This example demonstrates the simplest form of ServiceEntry - allowing access to
 ```yaml
 # ServiceEntry for accessing an external HTTP API
 # This allows pods in the mesh to reach httpbin.org on port 80
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin-external
@@ -135,7 +132,7 @@ For secure HTTPS endpoints, configure the protocol and port accordingly. This Se
 ```yaml
 # ServiceEntry for accessing an external HTTPS API
 # The application initiates TLS connection directly to the external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: github-api
@@ -190,7 +187,7 @@ The DNS resolution mode is the most common choice for external services. Istio's
 ```yaml
 # ServiceEntry with DNS resolution
 # Envoy proxy resolves the hostname using the cluster's DNS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -219,7 +216,7 @@ When you need to specify exact IP addresses for external services, use STATIC re
 ```yaml
 # ServiceEntry with STATIC resolution
 # Explicitly define the IP addresses of the external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: legacy-payment-service
@@ -258,7 +255,7 @@ Use NONE when the application should handle DNS resolution itself. This is a pas
 ```yaml
 # ServiceEntry with NONE resolution
 # Application handles all aspects of connection including DNS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: wildcard-external
@@ -307,7 +304,7 @@ This configuration demonstrates TLS origination where the sidecar handles TLS, a
 ```yaml
 # ServiceEntry for external API with TLS origination support
 # Applications send HTTP, Envoy upgrades to HTTPS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api-tls
@@ -335,7 +332,7 @@ spec:
 ---
 # DestinationRule to configure TLS settings for the external service
 # This is required to enable TLS origination at the sidecar
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-tls-dr
@@ -345,12 +342,15 @@ spec:
   host: api.external-service.com
 
   trafficPolicy:
-    # Configure the sidecar to originate TLS connections
-    tls:
-      # SIMPLE: Standard TLS without client certificates
-      mode: SIMPLE
-      # SNI (Server Name Indication) for TLS handshake
-      sni: api.external-service.com
+    # Configure the sidecar to originate TLS connections for HTTP requests
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          # SIMPLE: Standard TLS without client certificates
+          mode: SIMPLE
+          # SNI (Server Name Indication) for TLS handshake
+          sni: api.external-service.com
 ```
 
 ### Mutual TLS (mTLS) to External Services
@@ -359,7 +359,7 @@ When external services require client certificate authentication, configure mutu
 
 ```yaml
 # ServiceEntry for external service requiring mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: secure-partner-api
@@ -379,7 +379,7 @@ spec:
 ---
 # DestinationRule with mutual TLS configuration
 # Both server and client certificates are used
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: secure-partner-mtls
@@ -417,7 +417,7 @@ Configure connection limits and timeout settings for external services:
 ```yaml
 # DestinationRule with connection pool settings
 # Controls how connections to external service are managed
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-connection-pool
@@ -441,11 +441,11 @@ spec:
 
       # HTTP connection pool settings
       http:
-        # Maximum pending HTTP requests
+        # HTTP/2 upgrade behavior for outbound HTTP traffic
         h2UpgradePolicy: UPGRADE
         # Maximum requests per connection before creating new one
         maxRequestsPerConnection: 100
-        # Maximum number of concurrent HTTP/1.1 connections
+        # Maximum pending HTTP/1.1 requests
         http1MaxPendingRequests: 100
         # Maximum concurrent HTTP/2 requests
         http2MaxRequests: 1000
@@ -458,7 +458,7 @@ Implement circuit breaking to protect your services from cascading failures when
 ```yaml
 # DestinationRule with circuit breaker settings
 # Prevents overwhelming a failing external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-circuit-breaker
@@ -481,7 +481,7 @@ spec:
       # Maximum percentage of hosts that can be ejected
       maxEjectionPercent: 50
 
-      # Minimum number of requests before ejection logic applies
+      # Ejection is disabled if healthy hosts fall below this percentage
       minHealthPercent: 30
 ```
 
@@ -492,7 +492,7 @@ Configure retry behavior for failed requests to external services:
 ```yaml
 # VirtualService with retry configuration for external service
 # Automatically retries failed requests based on specified conditions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-retry
@@ -536,23 +536,22 @@ This comprehensive example shows how to configure access to an external payment 
 flowchart LR
     subgraph Kubernetes Cluster
         A[Order Service] --> B[Envoy Sidecar]
-        B --> C[Egress Gateway]
     end
 
     subgraph External
-        C -->|mTLS| D[Payment Gateway API]
+        D[Payment Gateway API]
     end
+
+    B -->|mTLS| D
 
     subgraph Istio Config
         E[ServiceEntry] -.-> B
         F[DestinationRule] -.-> B
         G[VirtualService] -.-> B
-        H[PeerAuthentication] -.-> C
     end
 
     style A fill:#e1f5fe
     style B fill:#fff3e0
-    style C fill:#fff3e0
     style D fill:#c8e6c9
 ```
 
@@ -563,7 +562,7 @@ The following YAML provides a complete configuration for accessing an external p
 # Includes ServiceEntry, DestinationRule, and VirtualService
 ---
 # ServiceEntry: Register the external payment gateway in the mesh
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-gateway
@@ -586,14 +585,14 @@ spec:
 
   resolution: DNS
 
-  # Export to specific namespaces for security
-  # Only pods in these namespaces can access this service
+  # Export visibility to specific namespaces
+  # Only these namespaces receive this service in their Istio configuration
   exportTo:
     - "payments"
     - "orders"
 ---
 # DestinationRule: Configure TLS and traffic policies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-gateway-dr
@@ -628,7 +627,7 @@ spec:
       maxEjectionPercent: 100
 ---
 # VirtualService: Route configuration with retries and timeouts
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-gateway-vs
@@ -709,7 +708,7 @@ This configuration routes traffic to an external service through the Egress Gate
 
 ```yaml
 # ServiceEntry for external service accessed via Egress Gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api-egress
@@ -725,7 +724,7 @@ spec:
   resolution: DNS
 ---
 # Gateway configuration for egress traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: external-api-egress-gateway
@@ -747,7 +746,7 @@ spec:
         mode: PASSTHROUGH
 ---
 # VirtualService to route traffic through egress gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-routing
@@ -822,8 +821,10 @@ External service traffic appears in Istio's observability tools. Query Prometheu
 ```bash
 # Query for requests to external services
 # This PromQL query shows request rates to external destinations
-# Rate of requests over 5 minutes grouped by destination service
-istio_requests_total{destination_service_namespace="external"}
+# Rate of requests over 5 minutes for a specific external destination
+sum(rate(istio_requests_total{
+  destination_service="api.external-service.com"
+}[5m])) by (source_workload, response_code)
 
 # Check latency to external services
 # P99 latency histogram for external service requests
@@ -892,7 +893,7 @@ Always define ServiceEntry resources for external services rather than relying o
 
 ```yaml
 # Good Practice: Explicit ServiceEntry with clear documentation
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: third-party-api
@@ -913,13 +914,13 @@ spec:
   resolution: DNS
 ```
 
-### 2. Limit Namespace Access with exportTo
+### 2. Limit Namespace Visibility with exportTo
 
-Restrict which namespaces can access external services:
+Restrict which namespaces can see the ServiceEntry configuration:
 
 ```yaml
 # Restrict external service access to specific namespaces
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: restricted-external-api
@@ -933,7 +934,7 @@ spec:
       name: https
       protocol: HTTPS
   resolution: DNS
-  # Only allow access from these namespaces
+  # Only export this service entry to these namespaces
   exportTo:
     - "backend"
     - "processing"
@@ -945,7 +946,7 @@ Protect your services from slow external dependencies:
 
 ```yaml
 # Always set appropriate timeouts for external services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-timeouts
@@ -971,7 +972,7 @@ Organize ServiceEntry resources with consistent labeling:
 
 ```yaml
 # Use consistent labels for organization and filtering
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: vendor-api
