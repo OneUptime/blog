@@ -44,7 +44,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // CustomClaims extends the standard JWT claims with application-specific fields.
@@ -144,9 +143,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // JWTService handles all JWT operations including creation, validation, and refresh.
@@ -419,7 +415,7 @@ func (s *JWTService) RefreshTokens(ctx context.Context, refreshTokenString strin
 		// Potential token theft detected - revoke all user tokens
 		// This is a security measure: if someone tries to use an already-used refresh token,
 		// it might indicate the token was stolen
-		_ = s.tokenStore.RevokeAllUserTokens(ctx, claims.UserID)
+		_ = s.RevokeAllUserTokens(ctx, claims.UserID)
 		return nil, ErrTokenRevoked
 	}
 
@@ -533,7 +529,12 @@ func (s *RedisTokenStore) StoreRefreshToken(ctx context.Context, tokenID, userID
 	}
 
 	// Also add to user's token set for bulk revocation
-	return s.client.SAdd(ctx, userTokensPrefix+userID, tokenID).Err()
+	if err := s.client.SAdd(ctx, userTokensPrefix+userID, tokenID).Err(); err != nil {
+		return err
+	}
+
+	// Keep the user's token set from outliving all of its refresh tokens
+	return s.client.Expire(ctx, userTokensPrefix+userID, ttl).Err()
 }
 
 // GetRefreshToken retrieves a refresh token's metadata.
@@ -569,6 +570,9 @@ func (s *RedisTokenStore) RevokeRefreshToken(ctx context.Context, tokenID string
 
 	// Keep the same TTL
 	ttl := time.Until(data.ExpiresAt)
+	if ttl <= 0 {
+		return nil
+	}
 	return s.client.Set(ctx, refreshTokenPrefix+tokenID, jsonData, ttl).Err()
 }
 
@@ -841,8 +845,16 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse the refresh token to get user ID
-	token, _, _ := jwt.NewParser().ParseUnverified(refreshToken, &CustomClaims{})
-	claims := token.Claims.(*CustomClaims)
+	token, _, err := jwt.NewParser().ParseUnverified(refreshToken, &CustomClaims{})
+	if err != nil {
+		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+	claims, ok := token.Claims.(*CustomClaims)
+	if !ok {
+		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+		return
+	}
 
 	// Get user to retrieve current roles
 	user, err := h.userService.GetUserByID(r.Context(), claims.UserID)
