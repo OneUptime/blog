@@ -114,8 +114,11 @@ Configure Poetry settings for your workflow:
 # This makes IDE integration easier and keeps everything contained
 poetry config virtualenvs.in-project true
 
-# Set the preferred Python version for new projects
-poetry config virtualenvs.prefer-active-python true
+# Prefer the active Python interpreter for new environments
+# Note: In Poetry 2.x, virtualenvs.prefer-active-python is deprecated.
+# Poetry now prefers the active Python by default; set
+# virtualenvs.use-poetry-python = true to fall back to Poetry's own Python.
+poetry config virtualenvs.use-poetry-python false
 
 # View all current configuration
 poetry config --list
@@ -302,8 +305,13 @@ poetry add --group dev black ruff mypy
 # Add to a custom group
 poetry add --group docs mkdocs mkdocs-material
 
-# Add optional dependency group
-poetry add --group test --optional pytest-benchmark
+# Add to a custom group; mark the group itself optional in pyproject.toml
+# with [tool.poetry.group.test] optional = true
+poetry add --group test pytest-benchmark
+
+# To add a dependency tied to an extra, use --optional with the extra name
+# (in Poetry 2.0+, --optional requires the extra to add the dependency to):
+poetry add psycopg2-binary --optional postgres
 ```
 
 ### Removing Dependencies
@@ -421,7 +429,11 @@ poetry install --all-extras
 
 ```bash
 # Activate the virtual environment
-poetry shell
+# Note: poetry shell was removed in Poetry 2.0. Use poetry env activate, which
+# prints the activation command; run it via eval, e.g.:
+eval $(poetry env activate)
+# To restore the old `poetry shell` command, install the plugin:
+#   poetry self add poetry-plugin-shell
 
 # Run a command in the virtual environment without activating
 poetry run python script.py
@@ -451,7 +463,9 @@ poetry env remove python3.10
 poetry config virtualenvs.in-project true
 
 # Prefer the active Python version
-poetry config virtualenvs.prefer-active-python true
+# Note: In Poetry 2.x, prefer-active-python is deprecated. Poetry prefers the
+# active Python by default; use virtualenvs.use-poetry-python to override.
+poetry config virtualenvs.use-poetry-python false
 
 # Specify where to store virtual environments globally
 poetry config virtualenvs.path ~/.cache/pypoetry/virtualenvs
@@ -487,11 +501,13 @@ flowchart TD
 ### Managing the Lock File
 
 ```bash
-# Generate or update the lock file
+# Generate or refresh the lock file
+# In Poetry 2.0+, poetry lock defaults to NOT updating already-locked versions
+# (the old --no-update behavior). It does not install into the environment.
 poetry lock
 
-# Update lock file without installing
-poetry lock --no-update
+# Regenerate the lock file from scratch, updating all dependencies
+poetry lock --regenerate
 
 # Check if lock file is consistent with pyproject.toml
 poetry check
@@ -1123,14 +1139,15 @@ poetry show --why package-name
 # See the dependency tree
 poetry show --tree
 
-# Try updating the lock file
-poetry lock --no-update
+# Refresh the lock file (Poetry 2.0+ keeps locked versions by default)
+poetry lock
 
 # Clear Poetry cache if issues persist
 poetry cache clear . --all
 
-# Force reinstall all packages (sync environment with lock file)
-poetry install --sync
+# Sync the environment with the lock file (removes anything not in the lock)
+# Note: poetry install --sync is deprecated in Poetry 2.0; use poetry sync.
+poetry sync
 ```
 
 ### Python Version Issues
@@ -1139,7 +1156,7 @@ poetry install --sync
 # Check which Python Poetry is using
 poetry env info
 
-# List available Python versions
+# List the virtual environments associated with this project
 poetry env list
 
 # Switch to a different Python version
@@ -1155,12 +1172,11 @@ poetry env remove python3.10
 # Check if lock file matches pyproject.toml
 poetry check
 
-# Update lock file to match pyproject.toml
-poetry lock --no-update
-
-# Full lock file regeneration
-rm poetry.lock
+# Refresh lock file to match pyproject.toml (keeps existing locked versions)
 poetry lock
+
+# Full lock file regeneration (update all dependencies)
+poetry lock --regenerate
 ```
 
 ---
@@ -1316,7 +1332,7 @@ poetry show                     # Show installed packages
 poetry show --tree              # Show dependency tree
 
 # Virtual environment
-poetry shell                    # Activate environment
+poetry env activate             # Print activation command (poetry shell removed in 2.0)
 poetry run command              # Run command in environment
 poetry env info                 # Show environment info
 poetry env list                 # List environments
