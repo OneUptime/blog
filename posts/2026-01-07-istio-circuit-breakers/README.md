@@ -55,8 +55,8 @@ stateDiagram-v2
 
 Before configuring circuit breakers, ensure you have:
 
-- A Kubernetes cluster (1.21+)
-- Istio installed (1.15+)
+- A Kubernetes cluster supported by your Istio version
+- A currently supported Istio release installed
 - `kubectl` configured to access your cluster
 - `istioctl` CLI installed
 
@@ -167,7 +167,7 @@ Now, let's create a DestinationRule with circuit breaker settings:
 ```yaml
 # circuit-breaker-basic.yaml
 # This DestinationRule configures basic circuit breaker settings for the httpbin service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-circuit-breaker
@@ -180,16 +180,16 @@ spec:
     # They limit the number of connections and pending requests
     connectionPool:
       tcp:
-        # Maximum number of TCP connections to the service
-        # When exceeded, new connections are queued or rejected
+        # Maximum number of HTTP/1.1 or TCP connections to a destination host
+        # When exceeded, new connections are rejected
         maxConnections: 100
       http:
-        # Maximum number of HTTP/1.1 connections per host
+        # Policy for upgrading HTTP/1.1 connections to HTTP/2
         h2UpgradePolicy: UPGRADE
         # Maximum pending HTTP requests waiting for a connection
         # Requests beyond this limit receive 503 errors
         http1MaxPendingRequests: 100
-        # Maximum concurrent HTTP/2 requests per connection
+        # Maximum active HTTP requests to the destination
         http2MaxRequests: 1000
         # Maximum number of requests per connection before it's closed
         # Helps distribute load and prevent connection staleness
@@ -200,7 +200,7 @@ spec:
     outlierDetection:
       # Number of consecutive 5xx errors before a host is ejected
       consecutive5xxErrors: 5
-      # Time interval for counting errors
+      # Time interval between ejection analysis sweeps
       interval: 10s
       # Duration a host stays ejected before being reconsidered
       baseEjectionTime: 30s
@@ -249,12 +249,12 @@ flowchart LR
     style J fill:#4ecdc4,stroke:#333,stroke-width:2px
 ```
 
-Here's a comprehensive connection pool configuration with all available options:
+Here's a comprehensive connection pool configuration with commonly used options:
 
 ```yaml
 # connection-pool-advanced.yaml
 # Advanced connection pool configuration with all settings explained
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-connection-pool
@@ -265,7 +265,7 @@ spec:
     connectionPool:
       # TCP-level connection settings
       tcp:
-        # Maximum number of TCP connections to all destination hosts
+        # Maximum number of HTTP/1.1 or TCP connections to each destination host
         # This is your primary connection limit
         # Default: 2^32-1 (effectively unlimited)
         maxConnections: 100
@@ -295,8 +295,8 @@ spec:
         # Default: 2^32-1
         http1MaxPendingRequests: 100
 
-        # Maximum number of concurrent requests to all hosts
-        # For HTTP/2, this limits requests per connection
+        # Maximum number of active requests to the destination
+        # Applies to both HTTP/1.1 and HTTP/2
         # Default: 2^32-1
         http2MaxRequests: 1000
 
@@ -373,7 +373,7 @@ Here's a comprehensive outlier detection configuration:
 ```yaml
 # outlier-detection-advanced.yaml
 # Comprehensive outlier detection (circuit breaker) configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-outlier-detection
@@ -390,7 +390,7 @@ spec:
 
       # Number of consecutive gateway errors (502, 503, 504) before ejection
       # Gateway errors often indicate infrastructure issues
-      consecutiveGatewayErrors: 5
+      consecutiveGatewayErrors: 3
 
       # Number of consecutive locally originated errors before ejection
       # These are errors from the Envoy proxy itself (timeouts, connection errors)
@@ -398,7 +398,6 @@ spec:
 
       # TIMING SETTINGS
       # Time interval between ejection analysis sweeps
-      # Errors are counted within this window
       # Shorter intervals = faster detection but more resource usage
       interval: 10s
 
@@ -407,23 +406,15 @@ spec:
       # This implements exponential backoff for repeatedly failing hosts
       baseEjectionTime: 30s
 
-      # Minimum ejection time (overrides calculated time if lower)
-      # Ensures hosts are ejected for at least this duration
-      minEjectionTime: 30s
-
-      # Maximum ejection time (caps the exponential backoff)
-      # Prevents hosts from being ejected indefinitely
-      maxEjectionTime: 300s
-
       # EJECTION LIMITS
       # Maximum percentage of hosts that can be ejected simultaneously
       # Prevents complete service unavailability
       # Set to 100 to allow ejecting all hosts if all are unhealthy
       maxEjectionPercent: 50
 
-      # Minimum number of healthy hosts required
-      # If healthy hosts drop below this, panic mode activates
-      # In panic mode, all hosts are used regardless of health
+      # Minimum percentage of healthy hosts required for outlier detection
+      # If healthy hosts drop below this, outlier detection is disabled
+      # and all hosts are used regardless of ejection status
       minHealthPercent: 30
 
       # DETECTION MODES
@@ -439,7 +430,7 @@ Understanding how consecutive errors work is crucial for effective circuit break
 ```yaml
 # error-thresholds.yaml
 # Different circuit breaker configurations for various use cases
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-strict
@@ -466,7 +457,7 @@ spec:
       # Better to have degraded service than incorrect results
       maxEjectionPercent: 80
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service-tolerant
@@ -491,7 +482,7 @@ spec:
       # Conservative ejection percentage
       maxEjectionPercent: 30
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: recommendation-service-balanced
@@ -504,11 +495,10 @@ spec:
       # Good starting point for most services
 
       consecutive5xxErrors: 5
-      consecutiveGatewayErrors: 5
+      consecutiveGatewayErrors: 3
       consecutiveLocalOriginFailures: 5
       interval: 10s
       baseEjectionTime: 30s
-      maxEjectionTime: 180s
       maxEjectionPercent: 50
       minHealthPercent: 30
       splitExternalLocalOriginErrors: true
@@ -522,7 +512,7 @@ Here's a complete production-ready configuration that combines all the concepts:
 # production-circuit-breaker.yaml
 # Complete production circuit breaker configuration
 # This example protects a critical API service with comprehensive settings
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway-circuit-breaker
@@ -555,7 +545,7 @@ spec:
       http:
         # Limit pending requests to prevent request pile-up
         http1MaxPendingRequests: 200
-        # Allow enough concurrent requests for HTTP/2
+        # Allow enough active requests for HTTP/1.1 and HTTP/2
         http2MaxRequests: 2000
         # Recycle connections periodically for load distribution
         maxRequestsPerConnection: 50
@@ -576,8 +566,6 @@ spec:
 
       # Ejection timing with exponential backoff
       baseEjectionTime: 30s
-      minEjectionTime: 30s
-      maxEjectionTime: 300s
 
       # Ejection limits
       maxEjectionPercent: 50
@@ -669,7 +657,7 @@ kubectl exec "$FORTIO_POD" -c fortio -- \
   fortio load -c 2 -qps 0 -n 20 http://httpbin:8000/get
 
 # Test with connections exceeding the pool limit
-# -c 150: Use 150 concurrent connections (exceeds maxConnections: 100)
+# -c 150: Use 150 concurrent connections (may exceed the effective per-host limits under load)
 # -qps 0: No rate limiting
 # -n 500: Send 500 requests
 # You should see some 503 (UO - Upstream Overflow) responses
@@ -683,12 +671,12 @@ The output will show response code distribution. Look for:
 
 ### Test 2: Outlier Detection (Circuit Breaking)
 
-Create a flaky service that fails intermittently:
+Create a service that can return 5xx responses for outlier detection testing:
 
 ```yaml
 # flaky-service.yaml
-# This service returns errors for some percentage of requests
-# Perfect for testing circuit breaker behavior
+# This service exposes httpbin endpoints that can return 5xx responses
+# Perfect for testing outlier detection behavior
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -710,7 +698,6 @@ spec:
         image: kennethreitz/httpbin
         ports:
         - containerPort: 80
-        # This service will be configured to fail via Istio fault injection
 ---
 apiVersion: v1
 kind: Service
@@ -725,29 +712,8 @@ spec:
   selector:
     app: flaky-service
 ---
-# Inject faults into the flaky service
-# This VirtualService makes 30% of requests return 500 errors
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: flaky-service-faults
-  namespace: default
-spec:
-  hosts:
-  - flaky-service
-  http:
-  - fault:
-      abort:
-        # 30% of requests will receive a 500 error
-        percentage:
-          value: 30
-        httpStatus: 500
-    route:
-    - destination:
-        host: flaky-service
----
 # Apply circuit breaker to the flaky service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: flaky-service-cb
@@ -772,10 +738,10 @@ kubectl apply -f flaky-service.yaml
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod -l app=flaky-service --timeout=60s
 
-# Run a load test against the flaky service
-# This will trigger circuit breaking as errors accumulate
+# Run a load test against an endpoint that returns HTTP 500
+# This will trigger outlier detection as errors accumulate
 kubectl exec "$FORTIO_POD" -c fortio -- \
-  fortio load -c 5 -qps 10 -t 60s http://flaky-service:8000/get
+  fortio load -c 5 -qps 10 -t 60s http://flaky-service:8000/status/500
 
 # Monitor the Envoy stats to see circuit breaker in action
 # Look for 'ejections_active' which shows ejected hosts
@@ -785,7 +751,7 @@ kubectl exec "$FORTIO_POD" -c istio-proxy -- \
 
 ### Test 3: Monitoring Circuit Breaker Metrics
 
-Istio exposes detailed metrics about circuit breaker behavior:
+Envoy can expose detailed metrics about circuit breaker behavior. In Istio, make sure your proxy stats configuration includes the cluster and outlier detection stats you want to scrape:
 
 ```bash
 # Get circuit breaker statistics from the Envoy sidecar
@@ -802,8 +768,8 @@ kubectl exec "$FORTIO_POD" -c istio-proxy -- \
 # - upstream_rq_pending_overflow: Requests rejected due to pending request limit
 # - upstream_cx_overflow: Requests rejected due to connection limit
 # - outlier_detection.ejections_active: Currently ejected hosts
-# - outlier_detection.ejections_total: Total ejections since start
-# - outlier_detection.ejections_consecutive_5xx: Ejections due to 5xx errors
+# - outlier_detection.ejections_enforced_total: Total enforced ejections since start
+# - outlier_detection.ejections_enforced_consecutive_5xx: Ejections due to consecutive 5xx errors
 ```
 
 You can also use Prometheus queries if you have it installed:
@@ -816,7 +782,7 @@ sum(rate(istio_requests_total{response_flags="UO"}[5m])) by (destination_service
 sum(envoy_cluster_outlier_detection_ejections_active) by (cluster_name)
 
 # Query: Total ejections over time
-sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name)
+sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])) by (cluster_name)
 ```
 
 ## Circuit Breaker Visualization
@@ -959,7 +925,7 @@ Circuit breakers work best with other resilience patterns:
 
 ```yaml
 # Complete resilience configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-resilience
@@ -978,7 +944,7 @@ spec:
     # Request timeout
     timeout: 10s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-circuit-breaker
