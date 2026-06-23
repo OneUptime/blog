@@ -109,13 +109,16 @@ on:
       - '**.ts'
       - '**.tsx'
 
-      # Multiple extensions
-      - 'src/**/*.{ts,tsx}'
+      # Multiple extensions (native filters do not support brace
+      # expansion like {ts,tsx}, so list each pattern separately)
+      - 'src/**/*.ts'
+      - 'src/**/*.tsx'
 
       # Negation (exclude)
       - '!src/**/*.test.ts'
 
-      # Any single character
+      # Zero or one of the preceding character
+      # (matches config.json or confi.json)
       - 'config?.json'
 
       # Character ranges
@@ -335,9 +338,17 @@ jobs:
 
           AFFECTED=()
 
-          # Direct changes
+          # Direct changes - read each filter output explicitly.
+          # GitHub expressions are interpolated before bash runs, so a
+          # bash variable cannot index steps.changes.outputs[...].
+          declare -A CHANGED_PKG
+          CHANGED_PKG[core]="${{ steps.changes.outputs.core }}"
+          CHANGED_PKG[utils]="${{ steps.changes.outputs.utils }}"
+          CHANGED_PKG[api]="${{ steps.changes.outputs.api }}"
+          CHANGED_PKG[web]="${{ steps.changes.outputs.web }}"
+
           for pkg in core utils api web; do
-            if [ "${{ steps.changes.outputs[pkg] }}" == "true" ]; then
+            if [ "${CHANGED_PKG[$pkg]}" == "true" ]; then
               AFFECTED+=("$pkg")
             fi
           done
