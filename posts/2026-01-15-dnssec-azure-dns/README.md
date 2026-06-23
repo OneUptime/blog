@@ -149,9 +149,9 @@ For **Cloudflare Registrar:**
 - Go to Domain Registration > Manage
 - Scroll to DNSSEC and enter the DS record
 
-For **Google Domains:**
-- Go to DNS > DNSSEC
-- Click "Add DS record" and fill in the details
+For **Squarespace Domains** (formerly Google Domains):
+- Open your domains dashboard, select the domain, then click "DNS" and "DNSSEC"
+- Click "Add record" and fill in the DS record details
 
 ### Step 6: Verify DNSSEC Configuration
 
@@ -408,7 +408,7 @@ $resourceGroup = "myResourceGroup"
 $zoneName = "example.com"
 
 # Enable DNSSEC
-$dnssec = New-AzDnsSecConfig -ResourceGroupName $resourceGroup -ZoneName $zoneName
+$dnssec = New-AzDnsDnssecConfig -ResourceGroupName $resourceGroup -ZoneName $zoneName
 
 # Display status
 $dnssec | Format-List
@@ -418,7 +418,7 @@ $dnssec | Format-List
 
 ```powershell
 # Retrieve DNSSEC configuration
-$config = Get-AzDnsSecConfig -ResourceGroupName $resourceGroup -ZoneName $zoneName
+$config = Get-AzDnsDnssecConfig -ResourceGroupName $resourceGroup -ZoneName $zoneName
 
 # Display DS records
 foreach ($key in $config.SigningKeys) {
@@ -432,7 +432,7 @@ foreach ($key in $config.SigningKeys) {
 
 ## Method 4: Enable DNSSEC via Terraform
 
-For infrastructure-as-code deployments, here's a Terraform configuration:
+For infrastructure-as-code deployments, here's a Terraform configuration. Note that the `azurerm` provider does not yet have a native DNSSEC resource (see [issue #28732](https://github.com/hashicorp/terraform-provider-azurerm/issues/28732)), so we use the `azapi` provider to call the Azure Resource Manager API directly:
 
 ```hcl
 # providers.tf
@@ -440,7 +440,11 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
+    }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
     }
   }
 }
@@ -448,6 +452,8 @@ terraform {
 provider "azurerm" {
   features {}
 }
+
+provider "azapi" {}
 
 # variables.tf
 variable "resource_group_name" {
@@ -473,19 +479,19 @@ resource "azurerm_dns_zone" "main" {
   resource_group_name = azurerm_resource_group.dns.name
 }
 
-resource "azurerm_dns_zone_dnssec_config" "main" {
-  dns_zone_id = azurerm_dns_zone.main.id
+# The DNSSEC config resource name must be "default".
+resource "azapi_resource" "dnssec" {
+  type      = "Microsoft.Network/dnsZones/dnssecConfigs@2023-07-01-preview"
+  name      = "default"
+  parent_id = azurerm_dns_zone.main.id
+
+  response_export_values = ["properties.signingKeys"]
 }
 
 # outputs.tf
-output "ds_records" {
-  description = "DS records to add at registrar"
-  value       = azurerm_dns_zone_dnssec_config.main.signing_keys[*].delegation_signer_info[*].record
-}
-
-output "dnssec_status" {
-  description = "DNSSEC provisioning status"
-  value       = azurerm_dns_zone_dnssec_config.main.provisioning_state
+output "signing_keys" {
+  description = "Signing keys including DS record delegation info to add at registrar"
+  value       = azapi_resource.dnssec.output.properties.signingKeys
 }
 ```
 
@@ -815,10 +821,10 @@ For Traffic Manager profiles:
 
 | Task | Azure Portal | Azure CLI | PowerShell |
 |------|--------------|-----------|------------|
-| Enable DNSSEC | DNS Zone > DNSSEC > Enable | `az network dns dnssec-config create` | `New-AzDnsSecConfig` |
-| View Status | DNS Zone > DNSSEC | `az network dns dnssec-config show` | `Get-AzDnsSecConfig` |
+| Enable DNSSEC | DNS Zone > DNSSEC > Enable | `az network dns dnssec-config create` | `New-AzDnsDnssecConfig` |
+| View Status | DNS Zone > DNSSEC | `az network dns dnssec-config show` | `Get-AzDnsDnssecConfig` |
 | Get DS Records | DNS Zone > DNSSEC > DS Records | `--query "signingKeys[].delegationSignerInfo[]"` | `$config.SigningKeys.DelegationSignerInfo` |
-| Disable DNSSEC | DNS Zone > DNSSEC > Disable | `az network dns dnssec-config delete` | `Remove-AzDnsSecConfig` |
+| Disable DNSSEC | DNS Zone > DNSSEC > Disable | `az network dns dnssec-config delete` | `Remove-AzDnsDnssecConfig` |
 | View Keys | DNS Zone > DNSSEC > Keys | `--query "signingKeys[]"` | `$config.SigningKeys` |
 
 ---
