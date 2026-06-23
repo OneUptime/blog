@@ -133,7 +133,9 @@ Run the following commands on all three nodes:
 sudo apt update
 
 # Install etcd
-sudo apt install -y etcd
+# On Ubuntu 24.04 the old transitional "etcd" metapackage was removed,
+# so install the separate server and client packages (also works on 22.04)
+sudo apt install -y etcd-server etcd-client
 
 # Stop the default etcd service (we will configure it properly)
 sudo systemctl stop etcd
@@ -347,7 +349,7 @@ sudo apt install -y python3-pip python3-dev libpq-dev python3-venv
 sudo python3 -m venv /opt/patroni-venv
 
 # Install Patroni with etcd support inside the virtual environment
-sudo /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
+sudo /opt/patroni-venv/bin/pip install patroni[etcd3] psycopg2-binary
 
 # Create a symlink so patroni is available system-wide
 sudo ln -s /opt/patroni-venv/bin/patroni /usr/local/bin/patroni
