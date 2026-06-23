@@ -128,7 +128,7 @@ kubectl describe pvc <pvc-name>
 
 **Fix**: Check StorageClass name or use default
 
-This PVC definition shows how to use the default StorageClass by omitting or emptying the storageClassName field. The cluster's default StorageClass will automatically be assigned.
+This PVC definition shows how to use the default StorageClass by omitting the storageClassName field entirely. The cluster's default StorageClass will automatically be assigned.
 
 ```yaml
 # PVC using the cluster's default StorageClass
@@ -142,7 +142,9 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  # storageClassName: ""  # Empty string uses default StorageClass
+  # storageClassName omitted entirely uses the default StorageClass.
+  # Setting storageClassName: "" instead disables dynamic provisioning
+  # and binds only to PVs that have no storage class.
 ```
 
 ### Cause 3: Capacity Mismatch
