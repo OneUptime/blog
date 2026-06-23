@@ -92,7 +92,7 @@ Before working with baggage, you need to set up OpenTelemetry with proper propag
 First, install the required OpenTelemetry packages for Node.js:
 
 ```bash
-npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-http
 ```
 
 Now configure the OpenTelemetry SDK with baggage propagation enabled. The key is to include the W3CBaggagePropagator in your composite propagator:
@@ -291,8 +291,7 @@ Here is how to create baggage entries and attach them to the current context in 
 import {
   context,
   propagation,
-  Context,
-  BaggageEntry
+  Context
 } from '@opentelemetry/api';
 
 /**
@@ -381,7 +380,7 @@ Here is a practical example of setting baggage in an Express.js application. The
 ```typescript
 // middleware/baggage.ts - Express middleware for baggage management
 import { Request, Response, NextFunction } from 'express';
-import { context, propagation, trace } from '@opentelemetry/api';
+import { context, trace } from '@opentelemetry/api';
 import { createBaggageContext, getBaggageValue } from './baggage-utils';
 
 /**
@@ -490,9 +489,9 @@ Here is the equivalent Python code for working with baggage:
 
 ```python
 # baggage_utils.py - Utility functions for working with baggage in Python
-from opentelemetry import baggage, context, trace
+from opentelemetry import context, trace
 from opentelemetry.baggage import set_baggage, get_baggage, get_all
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 from functools import wraps
 
 def set_baggage_entries(entries: Dict[str, str]) -> context.Context:
@@ -637,42 +636,45 @@ package baggage
 
 import (
     "context"
+    "fmt"
+    "log"
     "net/http"
+    "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/baggage"
+    otelbaggage "go.opentelemetry.io/otel/baggage"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
 // SetBaggageEntries creates a new context with multiple baggage entries.
 // This is useful when setting multiple values at the entry point of a request.
 func SetBaggageEntries(ctx context.Context, entries map[string]string) (context.Context, error) {
-    // Create baggage members from the entries map
-    var members []baggage.Member
+    // Start with any baggage already present in the context
+    bag := otelbaggage.FromContext(ctx)
+
     for key, value := range entries {
         // Create a member for each entry
         // Members can also have properties, but we're using simple key-value pairs
-        member, err := baggage.NewMember(key, value)
+        member, err := otelbaggage.NewMemberRaw(key, value)
         if err != nil {
             return ctx, err
         }
-        members = append(members, member)
-    }
-
-    // Create the baggage from the members
-    bag, err := baggage.New(members...)
-    if err != nil {
-        return ctx, err
+        bag, err = bag.SetMember(member)
+        if err != nil {
+            return ctx, err
+        }
     }
 
     // Return a new context with the baggage attached
-    return baggage.ContextWithBaggage(ctx, bag), nil
+    return otelbaggage.ContextWithBaggage(ctx, bag), nil
 }
 
 // GetBaggageValue retrieves a specific baggage value from the context.
 // Returns an empty string if the key doesn't exist.
 func GetBaggageValue(ctx context.Context, key string) string {
-    bag := baggage.FromContext(ctx)
+    bag := otelbaggage.FromContext(ctx)
     member := bag.Member(key)
     return member.Value()
 }
@@ -680,7 +682,7 @@ func GetBaggageValue(ctx context.Context, key string) string {
 // GetAllBaggage returns all baggage entries from the context as a map.
 func GetAllBaggage(ctx context.Context) map[string]string {
     result := make(map[string]string)
-    bag := baggage.FromContext(ctx)
+    bag := otelbaggage.FromContext(ctx)
 
     // Iterate over all members in the baggage
     for _, member := range bag.Members() {
@@ -741,6 +743,10 @@ func BaggageMiddleware(next http.Handler) http.Handler {
         next.ServeHTTP(w, r.WithContext(ctx))
     })
 }
+
+func generateRequestID() string {
+    return fmt.Sprintf("req_%d", time.Now().UnixNano())
+}
 ```
 
 ## Practical Use Cases
@@ -780,7 +786,7 @@ Here is a complete implementation for tenant context propagation:
 
 ```typescript
 // services/tenant-context.ts - Multi-tenant context management
-import { context, propagation } from '@opentelemetry/api';
+import { context, propagation, Context } from '@opentelemetry/api';
 import axios, { AxiosInstance } from 'axios';
 
 /**
@@ -795,14 +801,14 @@ export class TenantContext {
    * Creates a context with tenant information.
    * Call this at the entry point of your application (e.g., API gateway).
    */
-  static setTenantContext(tenantId: string, tenantTier: string = 'standard'): void {
+  static createTenantContext(tenantId: string, tenantTier: string = 'standard'): Context {
     const baggage = propagation.createBaggage({
       [this.TENANT_ID_KEY]: { value: tenantId },
       [this.TENANT_TIER_KEY]: { value: tenantTier },
     });
 
-    const newContext = propagation.setBaggage(context.active(), baggage);
-    // Note: You need to use context.with() to run code within this context
+    // Use context.with() to run code within this returned context.
+    return propagation.setBaggage(context.active(), baggage);
   }
 
   /**
@@ -908,7 +914,7 @@ Propagate feature flag states across services to ensure consistent behavior thro
 
 ```typescript
 // services/feature-flags.ts - Feature flag management with baggage
-import { context, propagation } from '@opentelemetry/api';
+import { context, propagation, Context } from '@opentelemetry/api';
 
 /**
  * FeatureFlags manages feature flag state and propagates it via baggage.
@@ -953,7 +959,7 @@ export class FeatureFlags {
   static async evaluateAndSetFlags(
     userId?: string,
     tenantId?: string
-  ): Promise<Record<string, string>> {
+  ): Promise<{ flags: Record<string, string | boolean>; baggageContext: Context }> {
     // Evaluate flags based on user/tenant context
     // In production, this would call your feature flag service (LaunchDarkly, etc.)
     const flags = await this.evaluateFlags(userId, tenantId);
@@ -965,9 +971,9 @@ export class FeatureFlags {
     const newBaggage = (currentBaggage ?? propagation.createBaggage())
       .setEntry(this.FLAGS_KEY, { value: encoded });
 
-    propagation.setBaggage(context.active(), newBaggage);
+    const baggageContext = propagation.setBaggage(context.active(), newBaggage);
 
-    return flags;
+    return { flags, baggageContext };
   }
 
   /**
@@ -1019,9 +1025,11 @@ async function handleRequest(req: Request) {
   const tenantId = extractTenantId(req);
 
   // Evaluate flags once at entry and propagate via baggage
-  await FeatureFlags.evaluateAndSetFlags(userId, tenantId);
+  const { baggageContext } = await FeatureFlags.evaluateAndSetFlags(userId, tenantId);
 
-  // Continue processing...
+  return context.with(baggageContext, async () => {
+    // Continue processing...
+  });
 }
 
 // In the Checkout Service (downstream)
@@ -1056,7 +1064,8 @@ Enable request-level debugging across all services:
 
 ```typescript
 // services/debug-context.ts - Debug context management
-import { context, propagation, trace } from '@opentelemetry/api';
+import { Request, Response, NextFunction } from 'express';
+import { context, propagation, trace, Context } from '@opentelemetry/api';
 
 interface DebugOptions {
   // Enable verbose logging across all services
@@ -1116,17 +1125,17 @@ export class DebugContext {
   }
 
   /**
-   * Enables debug mode for the current request.
+   * Creates a context that enables debug mode for the current request.
    * Call this based on a debug header or query parameter.
    */
-  static enableDebug(options: Partial<DebugOptions>): void {
+  static createDebugContext(options: Partial<DebugOptions>): Context {
     const encoded = this.encodeOptions(options);
 
     const currentBaggage = propagation.getBaggage(context.active());
     const newBaggage = (currentBaggage ?? propagation.createBaggage())
       .setEntry(this.DEBUG_KEY, { value: encoded });
 
-    propagation.setBaggage(context.active(), newBaggage);
+    const baggageContext = propagation.setBaggage(context.active(), newBaggage);
 
     // Also add to span for visibility in traces
     const span = trace.getActiveSpan();
@@ -1134,6 +1143,8 @@ export class DebugContext {
       span.setAttribute('debug.enabled', true);
       span.setAttribute('debug.options', encoded);
     }
+
+    return baggageContext;
   }
 
   /**
@@ -1216,7 +1227,8 @@ export function debugMiddleware(req: Request, res: Response, next: NextFunction)
       }
     }
 
-    DebugContext.enableDebug(options);
+    const debugContext = DebugContext.createDebugContext(options);
+    return context.with(debugContext, () => next());
   }
 
   next();
