@@ -49,10 +49,16 @@ caps = "0.5"
 
 # User namespace and privilege separation
 nix = { version = "0.27", features = ["user", "process", "mount"] }
+libc = "0.2"
 
 # Error handling
 anyhow = "1"
 thiserror = "1"
+
+# Async runtime and serialization used in the examples
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
 
 # Logging
 tracing = "0.1"
@@ -107,8 +113,6 @@ pub fn drop_capabilities(keep: &[Capability]) -> Result<()> {
 fn lock_capabilities() -> Result<()> {
     // Set SECBIT_NOROOT to prevent root from regaining caps
     // Set SECBIT_NO_SETUID_FIXUP to prevent setuid changes
-    use nix::sys::prctl;
-
     // These prevent the process from ever gaining new capabilities
     unsafe {
         let current = libc::prctl(libc::PR_GET_SECUREBITS);
@@ -181,7 +185,7 @@ Restrict which system calls the process can make.
 // Seccomp system call filtering
 
 use seccompiler::{
-    BpfMap, SeccompAction, SeccompCmpArgLen, SeccompCmpOp,
+    BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp,
     SeccompCondition, SeccompFilter, SeccompRule, TargetArch,
 };
 use std::collections::BTreeMap;
@@ -201,7 +205,7 @@ pub fn apply_seccomp_filter(profile: SeccompProfile) -> Result<()> {
 }
 
 /// Build seccomp filter based on profile
-fn build_filter(profile: SeccompProfile) -> Result<BpfMap> {
+fn build_filter(profile: SeccompProfile) -> Result<BpfProgram> {
     let rules = match profile {
         SeccompProfile::Strict => strict_rules(),
         SeccompProfile::NetworkServer => network_server_rules(),
@@ -381,9 +385,9 @@ impl FilesystemSandbox {
     /// Create a new filesystem sandbox
     pub fn new() -> Result<Self> {
         // Check if Landlock is supported
-        let abi = ABI::V3; // Use latest stable ABI
+        let abi = ABI::V3; // Latest ABI supported by landlock 0.3
 
-        let ruleset = Ruleset::new()
+        let ruleset = Ruleset::default()
             .handle_access(AccessFs::from_all(abi))
             .context("Failed to create Landlock ruleset")?
             .create()
@@ -442,6 +446,7 @@ impl FilesystemSandbox {
     /// Apply the sandbox restrictions
     pub fn apply(self) -> Result<()> {
         let status = self.ruleset
+            .set_no_new_privs(true)
             .restrict_self()
             .context("Failed to apply Landlock restrictions")?;
 
@@ -570,23 +575,23 @@ impl Default for SandboxConfig {
 }
 
 /// Apply sandbox configuration
-/// Order matters: filesystem -> capabilities -> seccomp -> privileges
+/// Order matters: filesystem -> privileges -> capabilities -> seccomp
 pub fn apply_sandbox(config: SandboxConfig) -> Result<()> {
     info!("Applying sandbox configuration");
 
     // 1. Set up filesystem restrictions (before dropping privileges)
     apply_filesystem_restrictions(&config.filesystem)?;
 
-    // 2. Drop capabilities (except those needed)
-    drop_capabilities(&config.capabilities)?;
-
-    // 3. Apply seccomp filter (before dropping privileges for TSYNC)
-    apply_seccomp_filter(config.seccomp)?;
-
-    // 4. Drop privileges last (can't undo)
+    // 2. Drop privileges before seccomp blocks setgroups/setgid/setuid
     if let (Some(uid), Some(gid)) = (config.uid, config.gid) {
         drop_privileges(uid, gid)?;
     }
+
+    // 3. Drop capabilities (except those needed)
+    drop_capabilities(&config.capabilities)?;
+
+    // 4. Apply seccomp filter last so setup syscalls are complete
+    apply_seccomp_filter(config.seccomp)?;
 
     info!("Sandbox fully applied");
     Ok(())
@@ -876,9 +881,14 @@ mod tests {
         // Drop all capabilities
         drop_capabilities(&[]).unwrap();
 
-        // Verify we can't do privileged operations
-        let result = std::net::TcpListener::bind("127.0.0.1:80");
-        assert!(result.is_err()); // Can't bind to privileged port
+        // Verify CAP_NET_BIND_SERVICE is no longer effective
+        let has_bind_cap = caps::has_cap(
+            None,
+            caps::CapSet::Effective,
+            caps::Capability::CAP_NET_BIND_SERVICE,
+        )
+        .unwrap();
+        assert!(!has_bind_cap);
     }
 }
 ```
