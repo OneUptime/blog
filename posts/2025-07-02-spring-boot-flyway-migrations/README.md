@@ -729,9 +729,7 @@ public class MigrationCallback implements Callback {
         if (event == Event.AFTER_MIGRATE) {
             // Perform post-migration tasks using Spring services
             userService.refreshUserCache();
-            notificationService.sendMigrationCompleteNotification(
-                context.getMigrationInfo().length
-            );
+            notificationService.sendMigrationCompleteNotification();
         }
     }
     
@@ -819,7 +817,7 @@ public class FlywayConfiguration {
     public FlywayMigrationStrategy flywayMigrationStrategy() {
         return flyway -> {
             // Check if database has existing tables but no Flyway history
-            if (!flyway.info().applied().length > 0 && hasExistingTables(flyway)) {
+            if (flyway.info().applied().length == 0 && hasExistingTables(flyway)) {
                 // Baseline at version 1
                 flyway.baseline();
             }
