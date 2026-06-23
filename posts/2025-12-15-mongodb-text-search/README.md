@@ -79,7 +79,7 @@ db.articles.find({
   $text: { $search: "mongodb -deprecated" }
 });
 
-// Combine phrase and word search
+// Combine phrase and word search (the phrase must match)
 db.articles.find({
   $text: { $search: "\"getting started\" mongodb -outdated" }
 });
@@ -185,8 +185,8 @@ db.articles.find({
 MongoDB supports: danish, dutch, english, finnish, french, german, hungarian, italian, norwegian, portuguese, romanian, russian, spanish, swedish, turkish, and more.
 
 ```javascript
-// Check available languages
-db.adminCommand({ listSearchIndexes: "articles" });
+// List text index details for a collection
+db.articles.getIndexes();
 ```
 
 ## Combining Text Search with Other Queries
@@ -223,7 +223,7 @@ Use text search in aggregation for complex operations.
 ```javascript
 // Text search with aggregation
 db.articles.aggregate([
-  // Text search stage (must be first or early)
+  // Text search stage (must be first)
   {
     $match: {
       $text: { $search: "mongodb performance" }
@@ -385,12 +385,16 @@ const results = await searchArticles("mongodb performance", {
 
 ```javascript
 // For autocomplete, combine text index with regex for prefix matching
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function getSearchSuggestions(prefix, limit = 5) {
   // First, try text search for relevance
   const textResults = await db.collection('articles')
     .find(
       { $text: { $search: prefix } },
-      { title: 1, score: { $meta: "textScore" } }
+      { projection: { title: 1, score: { $meta: "textScore" } } }
     )
     .sort({ score: { $meta: "textScore" } })
     .limit(limit)
@@ -400,7 +404,7 @@ async function getSearchSuggestions(prefix, limit = 5) {
   const prefixResults = await db.collection('articles')
     .find(
       { title: { $regex: `^${escapeRegex(prefix)}`, $options: 'i' } },
-      { title: 1 }
+      { projection: { title: 1 } }
     )
     .limit(limit)
     .toArray();
@@ -427,17 +431,17 @@ async function globalSearch(query, limit = 10) {
   const [articles, products, users] = await Promise.all([
     db.collection('articles').find(
       { $text: { $search: query } },
-      { title: 1, score: { $meta: "textScore" }, type: { $literal: "article" } }
+      { projection: { title: 1, score: { $meta: "textScore" }, type: { $literal: "article" } } }
     ).sort({ score: { $meta: "textScore" } }).limit(limit).toArray(),
 
     db.collection('products').find(
       { $text: { $search: query } },
-      { name: 1, score: { $meta: "textScore" }, type: { $literal: "product" } }
+      { projection: { name: 1, score: { $meta: "textScore" }, type: { $literal: "product" } } }
     ).sort({ score: { $meta: "textScore" } }).limit(limit).toArray(),
 
     db.collection('users').find(
       { $text: { $search: query } },
-      { name: 1, score: { $meta: "textScore" }, type: { $literal: "user" } }
+      { projection: { name: 1, score: { $meta: "textScore" }, type: { $literal: "user" } } }
     ).sort({ score: { $meta: "textScore" } }).limit(limit).toArray()
   ]);
 
@@ -492,7 +496,7 @@ db.articles.find({
   category: "database"           // Another filter
 });
 
-// Even better: Create compound index with text
+// Even better: Create compound index with text for queries that include equality matches on the prefix fields
 db.articles.createIndex({
   status: 1,
   category: 1,
