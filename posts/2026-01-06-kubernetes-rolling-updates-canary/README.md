@@ -54,8 +54,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 25%        # Max extra pods during update (2 for 10 replicas)
-      maxUnavailable: 25%  # Max unavailable pods during update (2 for 10 replicas)
+      maxSurge: 25%        # Max extra pods during update (3 for 10 replicas, rounds up)
+      maxUnavailable: 25%  # Max unavailable pods during update (2 for 10 replicas, rounds down)
   selector:
     matchLabels:
       app: web-api
@@ -88,11 +88,11 @@ spec:
 ### Rolling Update Parameters
 
 **maxSurge**: Extra pods allowed during update
-- `25%` = 2 extra pods (for 10 replicas)
+- `25%` = 3 extra pods (for 10 replicas; percentages round up)
 - `1` = exactly 1 extra pod
 
 **maxUnavailable**: Pods that can be unavailable
-- `25%` = 2 pods can be down (for 10 replicas)
+- `25%` = 2 pods can be down (for 10 replicas; percentages round down)
 - `0` = all pods must stay running (requires maxSurge > 0)
 
 ### Safe Rolling Update Settings
