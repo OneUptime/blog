@@ -12,7 +12,7 @@ Description: A guide to using CO-RE (Compile Once - Run Everywhere) for portable
 
 eBPF (extended Berkeley Packet Filter) has revolutionized Linux observability, networking, and security. However, one of the biggest challenges developers face is making eBPF programs work across different kernel versions. Traditional eBPF programs often break when the kernel's internal data structures change between versions.
 
-**CO-RE (Compile Once - Run Everywhere)** solves this problem by enabling eBPF programs to be compiled once and run on any kernel that supports BTF (BPF Type Format). This guide will walk you through everything you need to know to build truly portable eBPF programs.
+**CO-RE (Compile Once - Run Everywhere)** solves this problem by enabling eBPF programs to be compiled once and adapted at load time on kernels that provide compatible BTF (BPF Type Format) information. Your program still needs the BPF helpers, map types, program types, and attach points used by the target kernel. This guide will walk you through everything you need to know to build truly portable eBPF programs.
 
 ## Understanding the Portability Problem
 
@@ -120,36 +120,39 @@ ls -la /sys/kernel/btf/vmlinux
 
 ### 3. CO-RE Helper Macros
 
-libbpf provides essential macros for CO-RE. The following header shows the key macros you'll use:
+libbpf provides essential macros for CO-RE. The following simplified excerpt shows the key macros you'll use:
 
 ```c
-/* Essential CO-RE helper macros from libbpf */
+/* Essential CO-RE helper macros from libbpf, simplified */
 
 /* BPF_CORE_READ - Safe field access with automatic relocation
  * This macro generates CO-RE relocations that libbpf resolves at load time
  * It handles pointer dereferencing safely in BPF context
  */
-#define BPF_CORE_READ(src, field) \
-    bpf_core_read(&dst, sizeof(dst), &(src)->field)
+#define BPF_CORE_READ(src, a, ...) ({ \
+    ___type((src), a, ##__VA_ARGS__) __r; \
+    BPF_CORE_READ_INTO(&__r, (src), a, ##__VA_ARGS__); \
+    __r; \
+})
 
 /* bpf_core_field_exists - Check if a field exists in the target kernel
  * Returns 1 if the field exists, 0 otherwise
  * Useful for conditional logic based on kernel version
  */
-#define bpf_core_field_exists(field) \
-    __builtin_preserve_field_info(field, BPF_FIELD_EXISTS)
+#define bpf_core_field_exists(field...) \
+    __builtin_preserve_field_info(___bpf_field_ref(field), BPF_FIELD_EXISTS)
 
 /* bpf_core_field_size - Get the size of a field in the target kernel
  * Returns the actual size of the field on the running kernel
  */
-#define bpf_core_field_size(field) \
-    __builtin_preserve_field_info(field, BPF_FIELD_SIZE)
+#define bpf_core_field_size(field...) \
+    __builtin_preserve_field_info(___bpf_field_ref(field), BPF_FIELD_BYTE_SIZE)
 
 /* bpf_core_field_offset - Get the offset of a field
  * Returns the byte offset of the field within its structure
  */
-#define bpf_core_field_offset(field) \
-    __builtin_preserve_field_info(field, BPF_FIELD_OFFSET)
+#define bpf_core_field_offset(field...) \
+    __builtin_preserve_field_info(___bpf_field_ref(field), BPF_FIELD_BYTE_OFFSET)
 ```
 
 ## Building Your First CO-RE Program
@@ -259,11 +262,11 @@ int handle_exec(struct trace_event_raw_sched_process_exec *ctx)
 
     /* Read the filename from the tracepoint context
      * ctx->__data_loc_filename contains the offset to the filename string
-     * We use bpf_probe_read_str for safe string reading
+     * We use bpf_probe_read_kernel_str for safe string reading
      */
     unsigned int fname_off = ctx->__data_loc_filename & 0xFFFF;
-    bpf_probe_read_str(&e->filename, sizeof(e->filename),
-                       (void *)ctx + fname_off);
+    bpf_probe_read_kernel_str(e->filename, sizeof(e->filename),
+                              (void *)ctx + fname_off);
 
     /* Submit the event to user-space
      * This makes the reserved buffer space available for reading
@@ -295,6 +298,8 @@ The loader program opens the compiled eBPF object, loads it into the kernel, and
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/resource.h>
 
@@ -656,14 +661,14 @@ char LICENSE[] SEC("license") = "GPL";
 
 ### Handling Renamed Fields
 
-Sometimes kernel developers rename fields between versions. CO-RE provides a mechanism to handle this using field aliases:
+Sometimes kernel developers rename fields between versions. CO-RE can handle this by checking which field exists and using local structure definitions for each layout:
 
 ```c
 /* Handling renamed fields with CO-RE
  *
  * Sometimes kernel structures change field names between versions.
- * CO-RE's __builtin_preserve_access_index() and field matching
- * can handle these cases.
+ * CO-RE's __attribute__((preserve_access_index)) and field
+ * existence checks can handle these cases.
  */
 
 #include "vmlinux.h"
@@ -826,11 +831,6 @@ This pattern uses CO-RE to detect kernel features and adapt behavior:
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 
-/* Global variables that get set based on kernel capabilities */
-const volatile bool has_ringbuf_support = false;
-const volatile bool has_cgroup_v2 = false;
-const volatile __u32 kernel_version = 0;
-
 /*
  * Feature flags map - stores detected capabilities
  * User-space can read this to understand what features
@@ -844,8 +844,9 @@ struct {
 } feature_flags SEC(".maps");
 
 /*
- * Initialization program that runs once at startup
- * to detect kernel features using CO-RE.
+ * Detection program that records kernel type and field availability.
+ * For one-time detection, user-space can detach this program after
+ * it has populated the feature_flags map.
  */
 SEC("tracepoint/raw_syscalls/sys_enter")
 int detect_features(void *ctx)
@@ -853,25 +854,23 @@ int detect_features(void *ctx)
     __u32 key, value;
 
     /*
-     * Check for cgroup v2 support by testing if
-     * the cgroup_bpf type exists.
+     * Check whether cgroup BPF internals are described in BTF.
      */
-    key = 0;  /* Feature index for cgroup v2 */
+    key = 0;  /* Feature index for cgroup_bpf type */
     value = bpf_core_type_exists(struct cgroup_bpf) ? 1 : 0;
     bpf_map_update_elem(&feature_flags, &key, &value, BPF_ANY);
 
     /*
-     * Check for specific map types by checking
-     * if related types exist.
+     * Check for task local storage internals.
      */
     key = 1;  /* Feature index for task storage */
     value = bpf_core_type_exists(struct bpf_local_storage_map) ? 1 : 0;
     bpf_map_update_elem(&feature_flags, &key, &value, BPF_ANY);
 
     /*
-     * Check for BTF-enabled raw tracepoints
+     * Check for the btf_type structure.
      */
-    key = 2;  /* Feature index for BTF tracepoints */
+    key = 2;  /* Feature index for btf_type */
     value = bpf_core_type_exists(struct btf_type) ? 1 : 0;
     bpf_map_update_elem(&feature_flags, &key, &value, BPF_ANY);
 
@@ -880,7 +879,7 @@ int detect_features(void *ctx)
      * Example: Check if task_struct has io_context member
      */
     key = 3;  /* Feature index for IO context */
-    value = bpf_core_field_exists(struct task_struct, io_context) ? 1 : 0;
+    value = bpf_core_field_exists(((struct task_struct *)0)->io_context) ? 1 : 0;
     bpf_map_update_elem(&feature_flags, &key, &value, BPF_ANY);
 
     return 0;
@@ -900,7 +899,7 @@ Testing your CO-RE programs across multiple kernel versions is essential. Use th
 # test_compatibility.sh
 #
 # Test CO-RE eBPF program across multiple kernel versions
-# using Docker containers with different kernel versions.
+# using VMs, CI runners, or hosts booted into those kernels.
 
 set -e
 
@@ -912,7 +911,7 @@ KERNELS=(
     "5.15"  # Ubuntu 22.04 LTS
     "6.1"   # Debian 12
     "6.5"   # Ubuntu 23.10
-    "6.8"   # Latest stable
+    "6.8"   # Ubuntu 24.04 LTS
 )
 
 # Build the eBPF program once (that's the point of CO-RE!)
@@ -927,15 +926,16 @@ bpftool btf dump file src/program.bpf.o
 echo "Checking CO-RE relocations..."
 llvm-readelf -r src/program.bpf.o | grep -i "reloc"
 
-# For each kernel version, we use a container to test loading
-# Note: This requires appropriate Docker images with BTF support
+# For each kernel version, run the load test on a system actually
+# booted into that kernel. A normal Docker container shares the host
+# kernel, so use a VM-backed runner or a host with the matching kernel.
 for kernel in "${KERNELS[@]}"; do
     echo "======================================"
     echo "Testing on kernel $kernel"
     echo "======================================"
 
-    # Use a container with the specific kernel's BTF
-    # In practice, you'd have pre-built images for this
+    # Use a runner connected to a host or VM with the specific kernel.
+    # In practice, this command represents your CI/VM orchestration.
     docker run --rm \
         --privileged \
         -v $(pwd):/work \
@@ -1197,9 +1197,9 @@ int main(int argc, char **argv)
 
 ## Best Practices
 
-### 1. Always Use BPF_CORE_READ
+### 1. Use BPF_CORE_READ for Kernel Structure Access
 
-Never access kernel structure fields directly. Always use CO-RE helpers:
+Do not access relocatable kernel structure fields directly. Use CO-RE helpers for kernel data structure reads:
 
 ```c
 /* WRONG: Direct field access - NOT portable! */
@@ -1209,9 +1209,9 @@ __u32 pid = task->pid;
 __u32 pid = BPF_CORE_READ(task, pid);
 ```
 
-### 2. Check Field Existence Before Access
+### 2. Check Optional Field Existence Before Access
 
-Always verify fields exist before accessing them:
+Verify optional or version-specific fields exist before accessing them:
 
 ```c
 /* Check before accessing optional or version-specific fields */
@@ -1238,11 +1238,11 @@ struct my_task_subset {
 
 ### 4. Generate vmlinux.h from Target Kernel Range
 
-For maximum compatibility, generate vmlinux.h from the oldest supported kernel:
+For maximum compatibility, use a `vmlinux.h` that represents the minimum kernel fields your program requires. Many projects check in a known-good `vmlinux.h` generated from a broadly supported kernel and use local `preserve_access_index` structures for optional newer fields:
 
 ```bash
 # Generate from the oldest kernel you want to support
-# This ensures all field names match older kernels
+# This keeps your baseline type definitions compatible with that kernel
 bpftool btf dump file /path/to/old-kernel-btf format c > vmlinux.h
 ```
 
@@ -1252,14 +1252,14 @@ Kernel enum values can change between versions. Use CO-RE enum relocations:
 
 ```c
 /* Use enum value relocation for portable enum handling */
-__u32 state = bpf_core_enum_value(enum task_state, TASK_RUNNING);
+__u32 cmd = bpf_core_enum_value(enum bpf_cmd, BPF_LINK_CREATE);
 ```
 
 ## Troubleshooting Common Issues
 
-### Issue: "Unknown relocation" Error
+### Issue: CO-RE Relocation Error
 
-If you see this error when loading your program, it usually means the target kernel's BTF doesn't contain the required type. Verify your kernel has BTF support:
+If you see a relocation error when loading your program, it usually means the target kernel's BTF doesn't contain the required type, field, or enum value. Verify your kernel has BTF support:
 
 ```bash
 # Verify BTF support on the target system
@@ -1346,7 +1346,7 @@ echo "Build complete! Your CO-RE eBPF program is ready."
 
 CO-RE transforms eBPF development by eliminating the portability problem that has long plagued eBPF programs. By leveraging BTF and libbpf's relocation capabilities, you can:
 
-- Write eBPF programs once and run them on any BTF-enabled kernel
+- Write eBPF programs once and adapt them at load time on compatible BTF-enabled kernels
 - Eliminate the need for runtime compilation
 - Reduce deployment complexity significantly
 - Focus on program logic instead of version-specific workarounds
