@@ -175,7 +175,7 @@ rules:
 
 For monitoring, auditing, or junior team members.
 
-This ClusterRole provides read-only access across the cluster, useful for monitoring systems or users who need visibility without modification rights. Note that secrets are explicitly excluded to protect sensitive data.
+This ClusterRole provides read-only access across the cluster, useful for monitoring systems or users who need visibility without modification rights. Note that secrets are excluded by listing core resources explicitly rather than with a wildcard. RBAC is purely additive and has no deny rules, so a wildcard over the core group would grant read access to secrets - and there is no way to subtract it afterwards.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -183,18 +183,19 @@ kind: ClusterRole
 metadata:
   name: readonly
 rules:
-  # Broad read access to common resources across all namespaces
-  - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
+  # Broad read access across non-core API groups
+  - apiGroups: ["apps", "batch", "networking.k8s.io"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]   # Read-only verbs
+  # Core resources listed explicitly so secrets are never included
+  - apiGroups: [""]
+    resources:
+      ["pods", "services", "configmaps", "persistentvolumeclaims", "namespaces", "events", "nodes"]
+    verbs: ["get", "list", "watch"]
   # Allow viewing pod logs for troubleshooting
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
-  # Explicitly deny sensitive resources - empty verbs means no access
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: []                          # No access to secrets
 ```
 
 ### 3. Operator Role
