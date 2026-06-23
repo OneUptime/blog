@@ -17,11 +17,10 @@ PyMongo is the official MongoDB driver for Python, providing a powerful and intu
 
 pip install pymongo
 
-# For async support
-pip install motor
+# PyMongo includes support for mongodb+srv:// connection strings
 
-# For connection string parsing with SRV records (MongoDB Atlas)
-pip install "pymongo[srv]"
+# For Pydantic EmailStr validation
+pip install "pydantic[email]"
 ```
 
 ## Basic Connection
@@ -355,18 +354,22 @@ def transfer_funds(from_account, to_account, amount):
             accounts = client.bank.accounts
 
             # Debit from source account
-            accounts.update_one(
+            result = accounts.update_one(
                 {"_id": from_account, "balance": {"$gte": amount}},
                 {"$inc": {"balance": -amount}},
                 session=session
             )
+            if result.matched_count != 1:
+                raise ValueError("Insufficient funds or source account not found")
 
             # Credit to destination account
-            accounts.update_one(
+            result = accounts.update_one(
                 {"_id": to_account},
                 {"$inc": {"balance": amount}},
                 session=session
             )
+            if result.matched_count != 1:
+                raise ValueError("Destination account not found")
 
             # Transaction commits automatically when context manager exits
             # Rolls back on exception
@@ -394,31 +397,31 @@ with get_mongo_client() as client:
     result = db.users.find_one({"email": "john@example.com"})
 ```
 
-## Async Operations with Motor
+## Async Operations with PyMongo Async
 
 ```python
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 async def main():
-    client = AsyncIOMotorClient('mongodb://localhost:27017')
-    db = client.mydb
-    collection = db.users
+    async with AsyncMongoClient('mongodb://localhost:27017') as client:
+        db = client.mydb
+        collection = db.users
 
-    # Insert
-    result = await collection.insert_one({"name": "Async User"})
-    print(f"Inserted: {result.inserted_id}")
+        # Insert
+        result = await collection.insert_one({"name": "Async User"})
+        print(f"Inserted: {result.inserted_id}")
 
-    # Find
-    async for doc in collection.find({"age": {"$gte": 25}}):
-        print(doc)
+        # Find
+        async for doc in collection.find({"age": {"$gte": 25}}):
+            print(doc)
 
-    # Aggregation
-    pipeline = [
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-    ]
-    async for doc in collection.aggregate(pipeline):
-        print(doc)
+        # Aggregation
+        pipeline = [
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        async for doc in collection.aggregate(pipeline):
+            print(doc)
 
 asyncio.run(main())
 ```
