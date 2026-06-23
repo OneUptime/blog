@@ -79,11 +79,12 @@ graph TB
 
 ### 1.2 Update Nameservers
 
-After adding your site, Cloudflare provides nameservers:
+After adding your site, Cloudflare assigns you two nameservers from its pool.
+They use personalized names (yours will differ), for example:
 
 ```text
-ns1.cloudflare.com
-ns2.cloudflare.com
+dana.ns.cloudflare.com
+rob.ns.cloudflare.com
 ```
 
 Update these at your domain registrar. Propagation typically takes 24-48 hours.
@@ -630,26 +631,9 @@ resource "cloudflare_ruleset" "waf_custom_rules" {
     enabled = false  # Enable as needed
   }
 
-  # Rate limit API endpoints
-  rules {
-    action = "block"
-    action_parameters {
-      response {
-        status_code = 429
-        content     = "{\"error\":\"Rate limit exceeded\"}"
-        content_type = "application/json"
-      }
-    }
-    ratelimit {
-      characteristics = ["cf.colo.id", "ip.src"]
-      period          = 60
-      requests_per_period = 100
-      mitigation_timeout = 600
-    }
-    expression = "(http.request.uri.path contains \"/api/\")"
-    description = "Rate limit API"
-    enabled = true
-  }
+  # Note: rate limiting rules belong in the dedicated "http_ratelimit"
+  # phase, not "http_request_firewall_custom". See the ddos_protection
+  # ruleset in Step 6.3 for API rate limiting.
 }
 
 # IP Access Rules
@@ -765,22 +749,18 @@ resource "cloudflare_zone_settings_override" "security_settings" {
     email_obfuscation   = "on"
     server_side_exclude = "on"
     hotlink_protection  = "on"
-
-    # Performance with security
-    minify {
-      css  = "on"
-      js   = "on"
-      html = "on"
-    }
   }
 }
 
-# Rate limiting rules for DDoS protection
+# Rate limiting rules for DDoS protection.
+# Rate limiting rules must be deployed to the dedicated "http_ratelimit"
+# phase, and a zone supports only one entry-point ruleset per phase, so
+# keep all of your rate limiting rules in this single resource.
 resource "cloudflare_ruleset" "ddos_protection" {
   zone_id = var.zone_id
   name    = "DDoS Protection Rules"
   kind    = "zone"
-  phase   = "http_request_firewall_custom"
+  phase   = "http_ratelimit"
 
   # Global rate limit
   rules {
@@ -821,6 +801,27 @@ resource "cloudflare_ruleset" "ddos_protection" {
     }
     expression  = "(http.request.method eq \"GET\")"
     description = "Challenge high-volume GET requests"
+    enabled     = true
+  }
+
+  # Rate limit API endpoints with a custom JSON response
+  rules {
+    action = "block"
+    action_parameters {
+      response {
+        status_code  = 429
+        content      = "{\"error\":\"Rate limit exceeded\"}"
+        content_type = "application/json"
+      }
+    }
+    ratelimit {
+      characteristics     = ["cf.colo.id", "ip.src"]
+      period              = 60
+      requests_per_period = 100
+      mitigation_timeout  = 600
+    }
+    expression  = "(http.request.uri.path contains \"/api/\")"
+    description = "Rate limit API"
     enabled     = true
   }
 }
