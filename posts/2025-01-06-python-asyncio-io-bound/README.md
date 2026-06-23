@@ -197,19 +197,12 @@ async def producer(queue: asyncio.Queue, items: list):
         # put() awaits if queue is full (backpressure)
         await queue.put(item)
         print(f"Produced: {item}")
-    # Send sentinel value to signal end of items
-    await queue.put(None)
 
 async def consumer(queue: asyncio.Queue, name: str):
     """Consume and process items from the queue"""
     while True:
         # get() awaits until an item is available
         item = await queue.get()
-
-        if item is None:
-            # Sentinel received - put it back for other consumers
-            await queue.put(None)
-            break
 
         print(f"{name} processing: {item}")
         await asyncio.sleep(0.1)  # Simulate async work
