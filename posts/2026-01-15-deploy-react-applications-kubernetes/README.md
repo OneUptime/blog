@@ -170,12 +170,15 @@ RUN addgroup -g 1001 -S appgroup && \
     touch /var/run/nginx.pid && \
     chown -R appuser:appgroup /var/run/nginx.pid
 
-# Expose port 80
-EXPOSE 80
+# Expose port 8080 (a non-privileged port so nginx can bind as a non-root user)
+EXPOSE 8080
+
+# Run as the non-root user created above
+USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
@@ -187,7 +190,7 @@ Create an `nginx.conf` file for serving your React application:
 
 ```nginx
 server {
-    listen 80;
+    listen 8080;
     server_name localhost;
     root /usr/share/nginx/html;
     index index.html;
@@ -266,7 +269,7 @@ Now let us build and test our Docker image:
 docker build -t my-react-app:latest .
 
 # Run the container locally to test
-docker run -d -p 8080:80 --name react-test my-react-app:latest
+docker run -d -p 8080:8080 --name react-test my-react-app:latest
 
 # Verify it is running
 curl http://localhost:8080
@@ -396,7 +399,7 @@ spec:
           imagePullPolicy: Always
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
           env:
             - name: NODE_ENV
@@ -573,7 +576,6 @@ metadata:
   labels:
     app: react-app
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
@@ -731,7 +733,7 @@ For runtime configuration injection, create a configuration script:
 ```nginx
 # nginx.conf with runtime env substitution
 server {
-    listen 80;
+    listen 8080;
 
     location /config.js {
         default_type application/javascript;
@@ -757,7 +759,7 @@ Determines if a container is running. If it fails, Kubernetes restarts the conta
 livenessProbe:
   httpGet:
     path: /health
-    port: 80
+    port: 8080
   initialDelaySeconds: 10
   periodSeconds: 10
   timeoutSeconds: 5
@@ -773,7 +775,7 @@ Determines if a container is ready to accept traffic. Pods are removed from serv
 readinessProbe:
   httpGet:
     path: /health
-    port: 80
+    port: 8080
   initialDelaySeconds: 5
   periodSeconds: 5
   timeoutSeconds: 3
@@ -789,7 +791,7 @@ Used for slow-starting containers. Other probes are disabled until this succeeds
 startupProbe:
   httpGet:
     path: /health
-    port: 80
+    port: 8080
   initialDelaySeconds: 0
   periodSeconds: 10
   timeoutSeconds: 3
@@ -1094,7 +1096,7 @@ spec:
               name: ingress-nginx
       ports:
         - protocol: TCP
-          port: 80
+          port: 8080
   egress:
     - to:
         - namespaceSelector: {}
