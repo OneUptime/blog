@@ -28,12 +28,12 @@ flowchart TD
 
 ## Prerequisites
 
-Nginx must be compiled with the stream module:
+Nginx must be compiled with the stream and SSL preread modules:
 
 ```bash
-# Check if stream module is available
+# Check if stream and SSL preread modules are available
 
-nginx -V 2>&1 | grep -o with-stream
+nginx -V 2>&1 | grep -E 'with-stream|with-stream_ssl_preread_module'
 
 # On Ubuntu/Debian, install nginx-full or nginx-extras
 sudo apt-get install nginx-full
@@ -165,14 +165,14 @@ stream {
 }
 ```
 
-## Load Balancing with Health Checks
+## Load Balancing with Passive Failure Handling
 
 ```nginx
 stream {
     upstream api_backend {
         zone api_backend 64k;
 
-        # Weighted load balancing with health check settings
+        # Weighted load balancing with passive failure handling
         # (max_fails and fail_timeout are available in open source Nginx)
         server 192.168.1.10:443 weight=5 max_fails=3 fail_timeout=30s;
         server 192.168.1.11:443 weight=3 max_fails=3 fail_timeout=30s;
