@@ -22,7 +22,7 @@ Unit tests verify individual components work correctly in isolation. By mocking 
 | **Behavior Verification** | Verify method calls and interactions |
 | **Argument Capture** | Inspect arguments passed to mock methods |
 | **Flexible Stubbing** | Return different values based on input |
-| **Spring Integration** | Works seamlessly with @MockBean |
+| **Spring Integration** | Works seamlessly with @MockitoBean |
 
 ---
 
@@ -264,18 +264,19 @@ void testVerification() {
 
 ---
 
-## Testing Spring Components with @MockBean
+## Testing Spring Components with @MockitoBean
 
 For integration-style tests that need Spring context:
 
 ```java
 @SpringBootTest
+@AutoConfigureMockMvc
 class UserControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private UserService userService;
 
     @Test
@@ -415,7 +416,7 @@ class UserServiceTest {
 
 ### 1. Mocking Final Classes
 
-By default, Mockito cannot mock final classes. Add the configuration:
+With Mockito 5, final classes can be mocked by default. If you are using an older Mockito version that needs the inline mock maker, add the configuration:
 
 ```text
 // src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
@@ -456,7 +457,7 @@ Mockito provides a powerful toolkit for unit testing Spring Boot applications. K
 
 - Use `@Mock` for creating mocks and `@InjectMocks` for the class under test
 - Use `when().thenReturn()` for stubbing and `verify()` for interaction verification
-- Use `@MockBean` for integration tests with Spring context
+- Use `@MockitoBean` for integration tests with Spring context
 - Follow the Arrange-Act-Assert pattern for clear, readable tests
 - Test one thing per test method
 
