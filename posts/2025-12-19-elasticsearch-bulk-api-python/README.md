@@ -29,7 +29,7 @@ graph LR
     end
 ```
 
-Performance comparison:
+Illustrative performance comparison:
 
 | Method | 10,000 Documents | Network Requests |
 |--------|-----------------|------------------|
@@ -245,7 +245,7 @@ def generate_docs(count: int):
             }
         }
 
-# Use CPU count for thread_count
+# Use a bounded thread count
 thread_count = min(multiprocessing.cpu_count(), 8)
 parallel_bulk_index(generate_docs(500000), "metrics", thread_count=thread_count)
 ```
@@ -302,9 +302,6 @@ mixed_bulk_operations(operations)
 ## Error Handling and Retry Logic
 
 ```python
-from elasticsearch.helpers import BulkIndexError
-import time
-
 def bulk_with_retry(
     actions: Generator,
     max_retries: int = 3,
@@ -312,55 +309,17 @@ def bulk_with_retry(
 ):
     """Bulk index with retry logic for failures."""
 
-    failed_actions = []
+    success, errors = bulk(
+        es,
+        actions,
+        raise_on_error=False,
+        raise_on_exception=False,
+        max_retries=max_retries,
+        initial_backoff=initial_backoff,
+        retry_on_status=(429, 500, 502, 503, 504)
+    )
 
-    def index_with_error_handling(actions_batch):
-        try:
-            success, errors = bulk(
-                es,
-                actions_batch,
-                raise_on_error=False,
-                raise_on_exception=False
-            )
-            return success, errors
-        except BulkIndexError as e:
-            return 0, e.errors
-
-    # First attempt
-    actions_list = list(actions)
-    success, errors = index_with_error_handling(actions_list)
-
-    if not errors:
-        return success, []
-
-    # Retry failed actions
-    retry_actions = []
-    for error in errors:
-        # Extract the failed action
-        for action_type, error_detail in error.items():
-            if error_detail.get("status", 0) >= 500:  # Retry server errors
-                # Reconstruct action (you may need to adjust based on your action format)
-                retry_actions.append(error_detail.get("data", {}))
-
-    for retry in range(max_retries):
-        if not retry_actions:
-            break
-
-        backoff = initial_backoff * (2 ** retry)
-        print(f"Retry {retry + 1}/{max_retries} after {backoff}s for {len(retry_actions)} actions")
-        time.sleep(backoff)
-
-        retry_success, retry_errors = index_with_error_handling(retry_actions)
-        success += retry_success
-
-        # Update retry_actions with still-failing actions
-        retry_actions = []
-        for error in retry_errors:
-            for action_type, error_detail in error.items():
-                if error_detail.get("status", 0) >= 500:
-                    retry_actions.append(error_detail.get("data", {}))
-
-    return success, retry_actions
+    return success, errors
 
 
 # Usage
@@ -424,22 +383,32 @@ class OptimizedBulkIndexer:
             if mapping:
                 body["mappings"] = mapping
 
-            self.es.indices.create(index=self.index_name, body=body)
+            self.es.indices.create(
+                index=self.index_name,
+                settings=body["settings"],
+                mappings=body.get("mappings")
+            )
             logger.info(f"Created index {self.index_name}")
         else:
             # Optimize for bulk loading
             self.es.indices.put_settings(
                 index=self.index_name,
-                body={"refresh_interval": "-1"}
+                settings={
+                    "index": {
+                        "refresh_interval": "-1"
+                    }
+                }
             )
 
     def finalize_index(self, replicas: int = 1):
         """Restore index settings after bulk operation."""
         self.es.indices.put_settings(
             index=self.index_name,
-            body={
-                "refresh_interval": "1s",
-                "number_of_replicas": replicas
+            settings={
+                "index": {
+                    "refresh_interval": "1s",
+                    "number_of_replicas": replicas
+                }
             }
         )
         self.es.indices.refresh(index=self.index_name)
@@ -573,7 +542,7 @@ def benchmark_bulk_sizes(documents: list, index_name: str):
 
     for chunk_size in chunk_sizes:
         # Clean index
-        es.indices.delete(index=index_name, ignore=[404])
+        es.indices.delete(index=index_name, ignore_unavailable=True)
         es.indices.create(index=index_name)
 
         start = time.time()
