@@ -56,7 +56,7 @@ Document responsibilities in the runbook so hand-offs are crisp.
 2. **Coverage math:**
    - Hours per week: 168.
    - With primary + secondary, you need 336 on-call hours.
-   - With 7 engineers, each covers 48 primary hours/week (~1 shift) + 48 secondary (overlap). Adjust as teams grow.
+   - With 7 engineers, that 336 hours averages to ~48 on-call hours/engineer/week (≈24 primary + 24 secondary)—roughly one full primary week every 7 weeks. Adjust as teams grow.
 3. **Time off:** Guarantee a cooldown day after a week-long rotation; comp time within the same month.
 
 ---
