@@ -43,6 +43,8 @@ Create a file in bulk format:
 {"name":"Keyboard","price":79.99,"category":"accessories"}
 ```
 
+Make sure the file ends with a newline character.
+
 Import with curl:
 
 ```bash
@@ -127,7 +129,7 @@ def import_json_file(filepath: str, index_name: str, id_field: str = None):
 import_json_file("products.json", "products", id_field="product_id")
 ```
 
-### Streaming Large Files
+### Chunked Import for JSON Arrays
 
 ```python
 import json
@@ -141,7 +143,7 @@ es = Elasticsearch(
 )
 
 def import_large_json(filepath: str, index_name: str, chunk_size: int = 1000):
-    """Import large JSON files using streaming."""
+    """Import a JSON array using bulk request chunks."""
 
     def generate_docs():
         with open(filepath, 'r') as f:
@@ -218,7 +220,7 @@ import_ndjson("data.ndjson", "events")
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 es = Elasticsearch(
     ["https://localhost:9200"],
@@ -229,7 +231,7 @@ es = Elasticsearch(
 def transform_document(doc):
     """Transform document before indexing."""
     # Add timestamp
-    doc["imported_at"] = datetime.utcnow().isoformat()
+    doc["imported_at"] = datetime.now(timezone.utc).isoformat()
 
     # Normalize fields
     if "price" in doc:
@@ -299,8 +301,8 @@ output {
     hosts => ["https://localhost:9200"]
     user => "elastic"
     password => "password"
-    ssl => true
-    ssl_certificate_verification => false
+    ssl_enabled => true
+    ssl_verification_mode => "none"
     index => "products"
   }
 }
@@ -314,7 +316,7 @@ input {
     path => "/data/import/*.ndjson"
     start_position => "beginning"
     sincedb_path => "/dev/null"
-    codec => "json_lines"
+    codec => json
   }
 }
 
