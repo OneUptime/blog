@@ -545,7 +545,7 @@ whitelist_auth *@microsoft.com
 blacklist_from spammer@example.com
 blacklist_from *@known-spam-domain.com
 
-# Blacklist specific sending hosts
+# Blacklist mail sent to a specific local recipient address
 blacklist_to badactor@suspiciousdomain.com
 
 # =============================================================================
@@ -967,10 +967,7 @@ CRON=1
 
 # Skip DCC (requires separate daemon)
 score DCC_CHECK 0
-skip_dcc_check 1
-
-# Reduce DNS timeout
-dns_timeout 5
+use_dcc 0
 
 # Limit body size analysis (bytes)
 # Large messages are rarely spam
@@ -980,9 +977,6 @@ rawbody_part_scan_size 50000
 # =============================================================================
 # OPTIMIZE NETWORK TESTS
 # =============================================================================
-
-# Enable parallel DNS queries
-dns_query_restriction allow
 
 # Use specific DNS servers (faster than system default)
 dns_server 8.8.8.8
@@ -1082,9 +1076,6 @@ add_header all Status _YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_
 add_header all Score _SCORE_
 add_header all Tests _TESTS_
 add_header all Checker-Version SpamAssassin _VERSION_ on _HOSTNAME_
-
-# Add processing time header (useful for performance monitoring)
-add_header all Processing-Time _PROCESSING_TIME_ seconds
 ```
 
 ### Monitoring Script
