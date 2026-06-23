@@ -25,12 +25,12 @@ This object has no argument, nested block, or exported attribute named
 Or:
 
 ```text
-Error: Invalid reference
+Error: Reference to undeclared module
 
   on main.tf line 20:
   20:   value = module.database.connection_string
 
-A managed resource "module" "database" has not been declared in module.
+No module call named "database" is declared in the root module.
 ```
 
 ```mermaid
@@ -157,23 +157,24 @@ output "db_endpoint" {
 }
 ```
 
-### Cause 5: Module Not Yet Applied
+### Cause 5: Module Not Initialized or Reinitialized
 
-Outputs aren't available until the module is applied:
+For remote or registry modules, Terraform must download the module source before it can inspect its output definitions:
 
 ```hcl
 module "vpc" {
-  source = "./modules/vpc"
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.1.2"
 }
 
-# If you've just added this module and haven't run apply,
-# the outputs won't exist yet
+# If you've just added this module or changed its source/version
+# and haven't run init, Terraform cannot load the module correctly
 resource "aws_instance" "example" {
-  subnet_id = module.vpc.subnet_id  # May error if module not applied
+  subnet_id = module.vpc.private_subnets[0]
 }
 ```
 
-**Solution**: Run `terraform init` and `terraform apply` to create the module resources first.
+**Solution**: Run `terraform init` after adding a module, or `terraform init -upgrade` after changing module version constraints and wanting Terraform to select newer matching module packages. Then run `terraform validate` or `terraform plan`.
 
 ## Debugging Techniques
 
@@ -213,7 +214,7 @@ cat modules/network/outputs.tf
 
 ### 3. Use terraform state list
 
-Check what resources and outputs exist in state:
+Check what module resources exist in state:
 
 ```bash
 $ terraform state list
