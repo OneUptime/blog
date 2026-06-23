@@ -393,10 +393,10 @@ public class CertificateInfo
 Ensure proper TLS version is used:
 
 ```csharp
-// Set minimum TLS version globally
+// Opt in to the SocketsHttpHandler implementation (default on .NET Core 2.1+)
 AppContext.SetSwitch("System.Net.Http.UseSocketsHttpHandler", true);
 
-// Or per handler
+// Set the allowed TLS versions per handler
 var handler = new HttpClientHandler
 {
     SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
