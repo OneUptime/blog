@@ -51,7 +51,6 @@ package main
 
 import (
     "fmt"
-    "log"
 
     "github.com/spf13/viper"
 )
@@ -150,7 +149,7 @@ database:
   port: 5432
   name: myapp
   user: admin
-  password: ${DB_PASSWORD}  # Can reference env vars
+  password: ""  # Bind DB_PASSWORD separately instead of expanding it here
   max_connections: 50
 
 redis:
@@ -234,7 +233,7 @@ package main
 
 import (
     "fmt"
-    "os"
+    "strings"
 
     "github.com/spf13/viper"
 )
@@ -248,7 +247,7 @@ func main() {
     // server.port becomes APP_SERVER_PORT
     viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
-    // Automatically bind all existing env vars
+    // Automatically look up environment variables when keys are accessed
     viper.AutomaticEnv()
 
     // Set defaults
@@ -304,7 +303,6 @@ package main
 
 import (
     "fmt"
-    "time"
 
     "github.com/spf13/viper"
 )
@@ -441,6 +439,7 @@ package main
 import (
     "fmt"
     "log"
+    "strings"
 
     "github.com/spf13/viper"
 )
@@ -479,6 +478,7 @@ func LoadConfig() (*Config, error) {
 
     // Enable environment variables
     viper.SetEnvPrefix("APP")
+    viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
     viper.AutomaticEnv()
 
     // Read config file
@@ -894,12 +894,14 @@ import (
 
 func main() {
     // Add secure remote provider with encryption
-    viper.AddSecureRemoteProvider(
+    if err := viper.AddSecureRemoteProvider(
         "etcd3",
         "https://localhost:2379",
         "/config/myapp.yaml",
         "/path/to/gpg/keyring.gpg",
-    )
+    ); err != nil {
+        log.Fatalf("Failed to add secure remote provider: %v", err)
+    }
 
     viper.SetConfigType("yaml")
 
@@ -991,22 +993,30 @@ type Manager struct {
 }
 
 var (
-    manager *Manager
-    once    sync.Once
+    manager   *Manager
+    managerMu sync.Mutex
 )
 
 // Initialize sets up the configuration manager
 func Initialize(configPath string) error {
-    var initErr error
+    managerMu.Lock()
+    defer managerMu.Unlock()
 
-    once.Do(func() {
-        manager = &Manager{
-            callbacks: make([]func(*Config), 0),
-        }
-        initErr = manager.load(configPath)
-    })
+    if manager != nil {
+        return nil
+    }
 
-    return initErr
+    m := &Manager{
+        callbacks: make([]func(*Config), 0),
+    }
+
+    if err := m.load(configPath); err != nil {
+        return err
+    }
+
+    manager = m
+
+    return nil
 }
 
 func (m *Manager) load(configPath string) error {
