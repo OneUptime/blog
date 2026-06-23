@@ -42,11 +42,11 @@ Install a runner on a Linux VM:
 mkdir actions-runner && cd actions-runner
 
 # Download the runner package
-curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+curl -o actions-runner-linux-x64-2.335.1.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
 
 # Extract the package
-tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
+tar xzf ./actions-runner-linux-x64-2.335.1.tar.gz
 
 # Configure the runner
 ./config.sh --url https://github.com/YOUR-ORG/YOUR-REPO \
@@ -120,7 +120,7 @@ RUN apt-get update && apt-get install -y \
     libicu70 \
     && rm -rf /var/lib/apt/lists/*
 
-ARG RUNNER_VERSION=2.311.0
+ARG RUNNER_VERSION=2.335.1
 
 RUN mkdir /actions-runner && cd /actions-runner \
     && curl -o actions-runner.tar.gz -L \
@@ -131,7 +131,11 @@ RUN mkdir /actions-runner && cd /actions-runner \
 WORKDIR /actions-runner
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && useradd -m runner \
+    && chown -R runner:runner /actions-runner /entrypoint.sh
+
+USER runner
 
 ENTRYPOINT ["/entrypoint.sh"]
 ```
@@ -168,41 +172,49 @@ helm install arc \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 ```
 
-Create a runner scale set:
-
-```yaml
-apiVersion: actions.github.com/v1alpha1
-kind: AutoscalingRunnerSet
-metadata:
-  name: arc-runner-set
-  namespace: arc-runners
-spec:
-  githubConfigUrl: "https://github.com/YOUR-ORG"
-  githubConfigSecret: github-config
-  minRunners: 1
-  maxRunners: 10
-  template:
-    spec:
-      containers:
-        - name: runner
-          image: ghcr.io/actions/actions-runner:latest
-          resources:
-            limits:
-              cpu: "2"
-              memory: "4Gi"
-            requests:
-              cpu: "500m"
-              memory: "1Gi"
-```
-
 Create the GitHub config secret:
 
 ```bash
+kubectl create namespace arc-runners
+
 kubectl create secret generic github-config \
   --namespace arc-runners \
   --from-literal=github_app_id=YOUR_APP_ID \
   --from-literal=github_app_installation_id=YOUR_INSTALLATION_ID \
   --from-file=github_app_private_key=private-key.pem
+```
+
+Create a runner scale set values file:
+
+```yaml
+# values.yaml
+githubConfigUrl: "https://github.com/YOUR-ORG"
+githubConfigSecret: github-config
+minRunners: 1
+maxRunners: 10
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+```
+
+Install the runner scale set:
+
+```bash
+helm install arc-runner-set \
+  --namespace arc-runners \
+  --create-namespace \
+  -f values.yaml \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
 Use ARC runners:
@@ -228,17 +240,11 @@ Configure runners to be replaced after each job:
   --ephemeral
 ```
 
-In ARC:
+ARC runner scale sets create ephemeral runner pods. Tune the scale set capacity:
 
 ```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: runner
-          env:
-            - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
-              value: "true"
+minRunners: 0
+maxRunners: 10
 ```
 
 ### Network Isolation
@@ -251,7 +257,6 @@ jobs:
     runs-on: self-hosted
     container:
       image: node:20
-      options: --network=isolated
     steps:
       - uses: actions/checkout@v4
       - run: npm ci && npm test
@@ -310,82 +315,58 @@ jobs:
 
 ## Monitoring Runners
 
-Add health checks and metrics:
+Enable ARC metrics in the controller Helm values:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: runner-monitor
-spec:
-  template:
-    spec:
-      containers:
-        - name: monitor
-          image: prom/prometheus
-          ports:
-            - containerPort: 9090
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-data:
-  prometheus.yml: |
-    scrape_configs:
-      - job_name: 'github-runners'
-        static_configs:
-          - targets: ['arc-controller:8080']
+metrics:
+  controllerManagerAddr: ":8080"
+  listenerAddr: ":8080"
+  listenerEndpoint: "/metrics"
 ```
 
 ## Complete ARC Setup
 
 ```yaml
-# runner-scale-set.yaml
-apiVersion: actions.github.com/v1alpha1
-kind: AutoscalingRunnerSet
-metadata:
-  name: production-runners
-  namespace: arc-runners
-spec:
-  githubConfigUrl: "https://github.com/YOUR-ORG"
-  githubConfigSecret: github-config
-  minRunners: 2
-  maxRunners: 20
+# values.yaml
+githubConfigUrl: "https://github.com/YOUR-ORG"
+githubConfigSecret: github-config
+minRunners: 2
+maxRunners: 20
 
-  template:
-    spec:
-      serviceAccountName: runner-sa
-      containers:
-        - name: runner
-          image: ghcr.io/actions/actions-runner:latest
-          resources:
-            limits:
-              cpu: "4"
-              memory: "8Gi"
-            requests:
-              cpu: "1"
-              memory: "2Gi"
-          volumeMounts:
-            - name: work
-              mountPath: /home/runner/_work
-            - name: cache
-              mountPath: /opt/cache
-      volumes:
-        - name: work
-          emptyDir: {}
-        - name: cache
-          persistentVolumeClaim:
-            claimName: runner-cache
+template:
+  spec:
+    serviceAccountName: runner-sa
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: cache
+            mountPath: /opt/cache
+    volumes:
+      - name: work
+        emptyDir: {}
+      - name: cache
+        persistentVolumeClaim:
+          claimName: runner-cache
 
-      nodeSelector:
-        node-type: ci
+    nodeSelector:
+      node-type: ci
 
-      tolerations:
-        - key: "ci-workload"
-          operator: "Equal"
-          value: "true"
-          effect: "NoSchedule"
+    tolerations:
+      - key: "ci-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
 ```
 
 ## Troubleshooting
@@ -399,8 +380,14 @@ sudo journalctl -u actions.runner.YOUR-ORG-YOUR-REPO.runner-name
 # Docker logs
 docker logs runner-container
 
-# Kubernetes logs
-kubectl logs -n arc-runners deployment/arc-runner-set
+# ARC controller logs
+kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-controller
+
+# ARC listener logs
+kubectl logs -n arc-runners -l app.kubernetes.io/component=runner-scale-set-listener
+
+# ARC runner pod logs
+kubectl logs -n arc-runners -l app.kubernetes.io/component=runner
 ```
 
 Common issues:
