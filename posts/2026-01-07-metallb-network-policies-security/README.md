@@ -12,7 +12,7 @@ MetalLB provides load balancing for bare-metal Kubernetes clusters, but exposing
 
 ## Understanding the Security Challenge
 
-When MetalLB assigns an external IP to a LoadBalancer service, traffic flows directly to your pods. Unlike cloud providers who offer security groups and firewall rules at the infrastructure level, bare-metal clusters require explicit network policy configuration.
+When MetalLB assigns an external IP to a LoadBalancer service, traffic reaches a cluster node and is then forwarded by the Kubernetes service proxy to your pods. Unlike cloud providers who offer security groups and firewall rules at the infrastructure level, bare-metal clusters require explicit network policy configuration.
 
 The following diagram illustrates how traffic flows through MetalLB to your services:
 
@@ -164,6 +164,8 @@ spec:
 
 This policy allows ingress traffic to pods labeled `app: web-api` from two IP ranges on port 8080 only.
 
+For external clients, IP-based Network Policies depend on which source IP the pod network plugin sees after service forwarding. If you need policies to match the original client IP, configure the LoadBalancer service with `externalTrafficPolicy: Local` and test the behavior with your CNI and MetalLB mode.
+
 ## Restricting Access by Source Namespace
 
 For services that should only be accessible to specific internal workloads, use namespace selectors.
@@ -272,9 +274,9 @@ flowchart TB
 
 ## Securing MetalLB Speaker Communication
 
-MetalLB speakers need to communicate with each other and with the Kubernetes API. Secure this communication while allowing necessary traffic.
+MetalLB speakers need to communicate with each other and with the Kubernetes API. In the standard MetalLB manifests, speaker pods run with `hostNetwork: true`, so Kubernetes NetworkPolicy behavior is CNI-dependent and often treats the traffic as node traffic instead of pod traffic.
 
-Create a policy for the MetalLB namespace:
+If your CNI enforces NetworkPolicy for `hostNetwork` pods, this policy allows speaker-to-speaker memberlist traffic. Otherwise, enforce these controls with node firewalls or CNI-specific host policies:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -285,6 +287,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      app: metallb
       component: speaker
   policyTypes:
     - Ingress
@@ -293,6 +296,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
+              app: metallb
               component: speaker
       ports:
         - protocol: TCP
@@ -303,34 +307,19 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              app: metallb
               component: speaker
       ports:
         - protocol: TCP
           port: 7946
         - protocol: UDP
           port: 7946
-    - to:
-        - namespaceSelector: {}
-          podSelector:
-            matchLabels:
-              component: kube-apiserver
-      ports:
-        - protocol: TCP
-          port: 6443
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
 ```
 
 This policy:
 - Allows speaker-to-speaker communication on port 7946
-- Permits egress to the Kubernetes API server
-- Allows DNS resolution
+
+Keep Kubernetes API access open through your cluster's normal control-plane path. A standard NetworkPolicy cannot reliably select the API server as a service by name, and host-networked speaker traffic may need node-level rules instead.
 
 ## Implementing Egress Controls for Backend Pods
 
@@ -442,6 +431,8 @@ spec:
           reason: "Denied by default policy"
 ```
 
+Calico `Log` rules record matching packets and then continue policy evaluation. Place log rules before the allow or deny rules you want to observe, or use staged policies when testing new restrictions.
+
 ## Complete Example: Securing a Web Application
 
 Here is a complete example securing a web application exposed via MetalLB with multiple tiers of access control.
@@ -482,9 +473,10 @@ metadata:
   name: secure-web-app
   namespace: metallb-services
   annotations:
-    metallb.universe.tf/address-pool: production
+    metallb.io/address-pool: production
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
   selector:
     app: secure-web-app
   ports:
