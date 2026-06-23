@@ -71,8 +71,9 @@ The architecture consists of three main components:
 
 pip install celery[redis] redis
 
-# For RabbitMQ support
-pip install celery[librabbitmq]
+# For RabbitMQ support (py-amqp is bundled with Celery, so plain
+# `pip install celery` already works with a RabbitMQ broker)
+pip install celery
 
 # For monitoring
 pip install flower
@@ -115,12 +116,15 @@ app = Celery('myproject')
 app.config_from_object('celery_app.config')
 
 # Autodiscover tasks from all registered task modules
-# This scans the tasks package for @app.task decorated functions
+# related_name=None imports each listed module directly so its
+# @app.task decorated functions get registered. (The default
+# related_name='tasks' would instead look for a `.tasks` submodule
+# inside each package, e.g. celery_app.tasks.email.tasks.)
 app.autodiscover_tasks([
     'celery_app.tasks.email',
     'celery_app.tasks.reports',
     'celery_app.tasks.analytics',
-])
+], related_name=None)
 
 # Optional: Set up default task options
 app.conf.task_default_queue = 'default'
@@ -856,15 +860,18 @@ Flower provides a real-time web UI for monitoring Celery workers.
 pip install flower
 
 # Start Flower with authentication
+# Flower picks up the broker from the Celery app (-A celery_app).
+# (--broker_api is only for RabbitMQ's HTTP management API, e.g.
+# --broker_api=http://user:pass@rabbitmq:15672/api/, and is not used
+# with a Redis broker.)
 celery -A celery_app flower \
     --port=5555 \
-    --basic_auth=admin:password \
-    --broker_api=redis://localhost:6379/0
+    --basic_auth=admin:password
 
-# Start Flower with Prometheus metrics
+# Flower exposes Prometheus metrics out of the box (no flag required).
+# Scrape them at http://localhost:5555/metrics
 celery -A celery_app flower \
-    --port=5555 \
-    --prometheus_integration=true
+    --port=5555
 ```
 
 ### Custom Metrics with Prometheus
