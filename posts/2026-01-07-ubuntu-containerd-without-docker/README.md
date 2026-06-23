@@ -105,14 +105,14 @@ sudo systemctl start containerd
 
 ## Method 2: Installing containerd from Official Binaries
 
-For the latest features and updates, you can install containerd directly from official binaries.
+For newer patch releases than your distribution packages provide, you can install containerd directly from official binaries.
 
 ### Step 1: Download containerd Binaries
 
 ```bash
 # Define the containerd version to install
-# Check https://github.com/containerd/containerd/releases for latest version
-CONTAINERD_VERSION="1.7.13"
+# Check https://github.com/containerd/containerd/releases for the latest 1.7 LTS patch release
+CONTAINERD_VERSION="1.7.33"
 
 # Download the containerd binary archive for your architecture
 wget https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
@@ -128,7 +128,7 @@ runc is the low-level container runtime that containerd uses to actually run con
 
 ```bash
 # Define the runc version to install
-RUNC_VERSION="1.1.12"
+RUNC_VERSION="1.5.0"
 
 # Download the runc binary
 wget https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64
@@ -143,8 +143,8 @@ runc --version
 ### Step 3: Create systemd Service File
 
 ```bash
-# Download the official containerd systemd service file
-sudo wget https://raw.githubusercontent.com/containerd/containerd/main/containerd.service \
+# Download the official containerd systemd service file for the same release
+sudo wget https://raw.githubusercontent.com/containerd/containerd/v${CONTAINERD_VERSION}/containerd.service \
     -O /etc/systemd/system/containerd.service
 
 # Reload systemd to recognize the new service
@@ -262,7 +262,7 @@ Add or modify the following sections:
 ```toml
 # CRI plugin configuration for Kubernetes integration
 [plugins."io.containerd.grpc.v1.cri"]
-  # Disable deprecated CRI v1alpha2 API
+  # Disable the CRI streaming TCP service
   disable_tcp_service = true
 
   # Stream server configuration for kubectl exec/attach
@@ -304,7 +304,7 @@ Add or modify the following sections:
 
       # runc options including systemd cgroup driver
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-        # Use systemd cgroup driver - required for Kubernetes
+        # Use the systemd cgroup driver to match kubelet on systemd-based hosts
         SystemdCgroup = true
         BinaryName = ""
         Root = ""
@@ -345,7 +345,7 @@ Container Network Interface (CNI) plugins are essential for container networking
 
 ```bash
 # Define the CNI plugins version
-CNI_VERSION="1.4.0"
+CNI_VERSION="1.9.1"
 
 # Create the CNI binary directory
 sudo mkdir -p /opt/cni/bin
@@ -522,7 +522,7 @@ nerdctl is a Docker-compatible CLI for containerd that provides a familiar inter
 
 ```bash
 # Define the nerdctl version
-NERDCTL_VERSION="1.7.3"
+NERDCTL_VERSION="2.3.3"
 
 # Download nerdctl binary
 wget https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-amd64.tar.gz
@@ -539,7 +539,7 @@ nerdctl --version
 ```bash
 # Install BuildKit for building container images
 # BuildKit is required for 'nerdctl build' command
-BUILDKIT_VERSION="0.12.5"
+BUILDKIT_VERSION="0.31.0"
 
 wget https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.linux-amd64.tar.gz
 
@@ -704,7 +704,7 @@ sudo sysctl --system
 
 ```bash
 # Define crictl version
-CRICTL_VERSION="1.29.0"
+CRICTL_VERSION="1.36.0"
 
 # Download crictl
 wget https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
@@ -827,26 +827,24 @@ sudo nerdctl image prune -a
 sudo nerdctl image prune
 ```
 
-### Image Content Trust and Verification
+### Registry TLS Verification
 
 ```bash
-# containerd supports image verification through config
-# Add image verification settings to config.toml
+# containerd verifies registry TLS certificates by default.
+# Use hosts.toml to configure trusted registry hosts and certificates.
 
-# Edit containerd configuration
-sudo nano /etc/containerd/config.toml
+# Edit the registry host configuration
+sudo nano /etc/containerd/certs.d/docker.io/hosts.toml
 ```
 
-Add the following for image verification:
+Add the following to make TLS verification explicit:
 
 ```toml
-# Image decryption configuration
-[plugins."io.containerd.grpc.v1.cri".image_decryption]
-  key_model = "node"
+server = "https://registry-1.docker.io"
 
-# Registry configuration with verification
-[plugins."io.containerd.grpc.v1.cri".registry.configs."docker.io".tls]
-  insecure_skip_verify = false
+[host."https://registry-1.docker.io"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = false
 ```
 
 ## Troubleshooting Common Issues
@@ -863,8 +861,8 @@ sudo journalctl -u containerd -f
 # Check for configuration errors
 sudo containerd config dump
 
-# Validate configuration file syntax
-sudo containerd config validate
+# Parse the configuration file and print the effective configuration
+sudo containerd --config /etc/containerd/config.toml config dump >/dev/null
 ```
 
 ### Network Connectivity Issues
@@ -896,7 +894,7 @@ curl -v https://registry-1.docker.io/v2/
 nslookup registry-1.docker.io
 
 # Verify containerd can reach the registry
-sudo ctr images pull --debug docker.io/library/alpine:latest
+sudo ctr --debug images pull docker.io/library/alpine:latest
 
 # Check for proxy settings if behind corporate firewall
 env | grep -i proxy
@@ -932,7 +930,7 @@ sudo crictl info
 sudo grep -A 50 'plugins."io.containerd.grpc.v1.cri"' /etc/containerd/config.toml
 
 # Test image pull through CRI
-sudo crictl pull k8s.gcr.io/pause:3.9
+sudo crictl pull registry.k8s.io/pause:3.9
 
 # Verify sandbox image is accessible
 sudo crictl images | grep pause
@@ -1008,12 +1006,20 @@ curl http://127.0.0.1:9249/v1/metrics
 
 ### Configure Seccomp Profiles
 
-```bash
-# Download the default seccomp profile
-sudo mkdir -p /etc/containerd/seccomp
+For Kubernetes workloads, use the runtime default seccomp profile in the Pod securityContext instead of downloading a containerd JSON profile.
 
-sudo wget https://raw.githubusercontent.com/containerd/containerd/main/contrib/seccomp/seccomp_default.json \
-    -O /etc/containerd/seccomp/default.json
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: seccomp-runtime-default
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: nginx
+    image: nginx:latest
 ```
 
 ### Configure AppArmor
@@ -1025,26 +1031,19 @@ sudo apt install -y apparmor-utils
 # Check AppArmor status
 sudo aa-status
 
-# containerd uses the default Docker AppArmor profile
+# containerd CRI uses its own default AppArmor profile
 # Verify it is loaded
-sudo cat /sys/kernel/security/apparmor/profiles | grep containerd
+sudo cat /sys/kernel/security/apparmor/profiles | grep cri-containerd.apparmor.d
 ```
 
 ### User Namespace Configuration
 
 ```bash
-# Enable user namespaces for rootless containers
-# Edit containerd config to enable user namespaces
+# Verify that unprivileged user namespaces are enabled on Ubuntu
+sysctl kernel.unprivileged_userns_clone
 
-sudo nano /etc/containerd/config.toml
-```
-
-```toml
-# Enable user namespace remapping for additional isolation
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-  SystemdCgroup = true
-  # Enable user namespaces
-  UsernsMode = "auto"
+# Enable them if your host has disabled them
+sudo sysctl -w kernel.unprivileged_userns_clone=1
 ```
 
 ## Conclusion
