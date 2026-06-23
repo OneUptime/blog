@@ -53,7 +53,7 @@ def increment_counter():
     """Increment counter many times - CPU bound work"""
     global counter
     for _ in range(1_000_000):
-        counter += 1  # Not atomic! GIL saves us from race conditions
+        counter += 1  # Not atomic! The GIL does NOT prevent this race
 
 def run_threads(num_threads: int):
     """Run multiple threads incrementing the counter"""
