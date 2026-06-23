@@ -456,7 +456,7 @@ spec:
 ### Option 2: External Secrets Operator
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-creds
