@@ -123,11 +123,11 @@ terraform apply  # Performs imports and any necessary updates
 Terraform 1.5+ can generate configuration stubs:
 
 ```bash
-# Generate config for import blocks
+# Generate config for import blocks that do not already have resource blocks
 terraform plan -generate-config-out=generated.tf
 ```
 
-This creates a `generated.tf` file with resource configurations that match the imported resources.
+This creates a `generated.tf` file with resource configurations based on the imported resources. Review the generated configuration and adjust it as needed before applying.
 
 ## Finding Azure Resource IDs
 
@@ -167,7 +167,7 @@ import {
 
 import {
   to = azurerm_storage_container.data
-  id = "https://existingstorage.blob.core.windows.net/data"
+  id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/existing-rg/providers/Microsoft.Storage/storageAccounts/existingstorage/blobServices/default/containers/data"
 }
 
 # resources.tf
@@ -182,7 +182,7 @@ resource "azurerm_storage_account" "main" {
 
 resource "azurerm_storage_container" "data" {
   name                  = "data"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 ```
@@ -375,14 +375,27 @@ data "azurerm_client_config" "current" {}
 
 ```hcl
 # Stage 1: Core infrastructure
-import { to = azurerm_resource_group.main ... }
-import { to = azurerm_virtual_network.main ... }
+import {
+  to = azurerm_resource_group.main
+  id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/existing-rg"
+}
+
+import {
+  to = azurerm_virtual_network.main
+  id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/existing-rg/providers/Microsoft.Network/virtualNetworks/existing-vnet"
+}
 
 # Stage 2: Compute resources
-import { to = azurerm_kubernetes_cluster.main ... }
+import {
+  to = azurerm_kubernetes_cluster.main
+  id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/existing-rg/providers/Microsoft.ContainerService/managedClusters/existing-aks"
+}
 
 # Stage 3: Data resources
-import { to = azurerm_storage_account.main ... }
+import {
+  to = azurerm_storage_account.main
+  id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/existing-rg/providers/Microsoft.Storage/storageAccounts/existingstorage"
+}
 ```
 
 ### 2. Version Control Import Blocks
