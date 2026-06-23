@@ -287,7 +287,7 @@ groups:
           /
           sum(rate(grpc_server_handled_total[5m])) by (grpc_service)
 
-      # Latency SLI: Percentage of requests under 100ms
+      # Latency SLI: P99 response latency
       - record: grpc:service:latency_p99:rate5m
         expr: |
           histogram_quantile(0.99,
@@ -408,7 +408,7 @@ groups:
           severity: critical
         annotations:
           summary: "High error budget burn rate for {{ $labels.grpc_service }}"
-          description: "At current rate, error budget will be exhausted in less than 2 hours"
+          description: "At current rate, the 30-day error budget will be exhausted in about 2 days"
 
       # Streaming connection issues
       - alert: GRPCStreamingHighMessageRate
