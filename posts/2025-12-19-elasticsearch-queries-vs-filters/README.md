@@ -30,7 +30,7 @@ flowchart LR
 |--------|---------------|----------------|
 | Question | How well does it match? | Does it match? |
 | Scoring | Yes, calculates _score | No, binary yes/no |
-| Caching | Not cached | Results cached |
+| Caching | Not cached | Considered for caching |
 | Performance | Slower | Faster |
 | Use case | Full-text search | Exact matches, ranges |
 
@@ -87,7 +87,7 @@ curl -X GET "localhost:9200/products/_search" -H 'Content-Type: application/json
 }'
 ```
 
-All matching documents have a score of 0 (or constant if combined with query clauses). The filter results are cached for faster subsequent queries.
+All matching documents have a score of 0 (or constant if combined with query clauses). Filter clauses are considered for caching, which can make repeated eligible filters faster.
 
 ## Combining Query and Filter Context
 
@@ -112,7 +112,7 @@ curl -X GET "localhost:9200/products/_search" -H 'Content-Type: application/json
 ```
 
 This query:
-1. Filters to only Sony products under $200 that are in stock (fast, cached)
+1. Filters to only Sony products under $200 that are in stock (fast, and eligible for caching where applicable)
 2. Ranks remaining products by how well they match "wireless bluetooth headphones"
 
 ## Performance Comparison
@@ -122,7 +122,7 @@ sequenceDiagram
     participant C as Client
     participant E as Elasticsearch
     participant I as Index
-    participant Cache as Filter Cache
+    participant Cache as Node Query Cache
 
     Note over C,Cache: Query Context (No Caching)
     C->>E: Search with query
@@ -130,7 +130,7 @@ sequenceDiagram
     I->>E: Calculate scores
     E->>C: Return ranked results
 
-    Note over C,Cache: Filter Context (With Caching)
+    Note over C,Cache: Filter Context (May Use Cache)
     C->>E: Search with filter
     E->>Cache: Check cache
     alt Cache hit
@@ -160,14 +160,12 @@ def benchmark_query_vs_filter(index_name, iterations=100):
         start = time.time()
         es.search(
             index=index_name,
-            body={
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"term": {"status": "active"}},
-                            {"range": {"price": {"gte": 100, "lte": 500}}}
-                        ]
-                    }
+            query={
+                "bool": {
+                    "must": [
+                        {"term": {"status": "active"}},
+                        {"range": {"price": {"gte": 100, "lte": 500}}}
+                    ]
                 }
             }
         )
@@ -179,14 +177,12 @@ def benchmark_query_vs_filter(index_name, iterations=100):
         start = time.time()
         es.search(
             index=index_name,
-            body={
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"status": "active"}},
-                            {"range": {"price": {"gte": 100, "lte": 500}}}
-                        ]
-                    }
+            query={
+                "bool": {
+                    "filter": [
+                        {"term": {"status": "active"}},
+                        {"range": {"price": {"gte": 100, "lte": 500}}}
+                    ]
                 }
             }
         )
@@ -198,7 +194,7 @@ def benchmark_query_vs_filter(index_name, iterations=100):
 benchmark_query_vs_filter("products")
 ```
 
-Typical results show filters being 2-10x faster, especially for repeated queries.
+Typical results often show filters being faster, especially when the filter avoids scoring work and is eligible for query caching.
 
 ## Decision Guide
 
@@ -293,7 +289,7 @@ curl -X GET "localhost:9200/logs/_search" -H 'Content-Type: application/json' -d
 
 ### Pattern 3: Aggregations with Filters
 
-Filters are essential for efficient aggregations:
+Filters are useful for efficient aggregations:
 
 ```bash
 curl -X GET "localhost:9200/sales/_search" -H 'Content-Type: application/json' -d'
@@ -358,14 +354,14 @@ The aggregations show counts for ALL laptops, while results show only Dell lapto
 
 ## Filter Caching Behavior
 
-Elasticsearch automatically caches filter results in the filter cache:
+Elasticsearch can cache eligible filters in the node query cache:
 
 ```bash
-# Check filter cache stats
+# Check query cache stats
 curl -X GET "localhost:9200/_nodes/stats/indices/query_cache?pretty"
 ```
 
-Response shows cache utilization:
+Response shows query cache utilization:
 
 ```json
 {
@@ -424,7 +420,7 @@ Response shows cache utilization:
 }
 ```
 
-The optimized query only calculates relevance scores for the full-text search, while the exact matches use cached filters.
+The optimized query only calculates relevance scores for the full-text search, while the exact matches run in filter context and are considered for caching where applicable.
 
 ## Summary
 
@@ -432,7 +428,7 @@ Understanding queries vs filters is fundamental to Elasticsearch performance:
 
 1. **Query context** answers "how well" - use for full-text search requiring relevance ranking
 2. **Filter context** answers "yes/no" - use for exact matches, ranges, and structured data
-3. **Filters are cached** - repeated filter queries are significantly faster
+3. **Filters can be cached** - repeated eligible filter queries can be significantly faster
 4. **Combine both** - use filters to narrow the dataset, queries to rank within it
 5. **Move exact matches to filter** - only text relevance needs query context
 6. **Use post_filter** for faceted search to preserve aggregation counts
