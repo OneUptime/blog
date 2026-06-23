@@ -34,7 +34,7 @@ Start by installing the necessary packages:
 pip install grpcio grpcio-tools
 
 # For async support (included in grpcio since 1.32.0)
-pip install grpcio>=1.32.0
+pip install "grpcio>=1.32.0"
 
 # Optional: For better performance
 pip install grpcio-status grpcio-health-checking
@@ -72,8 +72,6 @@ Create your service definition in `protos/user_service.proto`:
 syntax = "proto3";
 
 package userservice;
-
-option python_generic_services = true;
 
 // User message definition
 message User {
@@ -1368,7 +1366,7 @@ async def create_async_client(
 """Error handling utilities for gRPC clients."""
 
 import grpc
-from typing import Optional, Type
+from typing import Dict, Optional, Type
 from dataclasses import dataclass
 
 
@@ -1415,7 +1413,7 @@ class DeadlineExceededError(GrpcClientError):
 
 
 # Mapping of status codes to exceptions
-STATUS_CODE_TO_EXCEPTION: dict[grpc.StatusCode, Type[GrpcClientError]] = {
+STATUS_CODE_TO_EXCEPTION: Dict[grpc.StatusCode, Type[GrpcClientError]] = {
     grpc.StatusCode.NOT_FOUND: NotFoundError,
     grpc.StatusCode.PERMISSION_DENIED: PermissionDeniedError,
     grpc.StatusCode.INVALID_ARGUMENT: InvalidArgumentError,
@@ -1649,7 +1647,7 @@ class ConnectionPool:
 
             # Find an available channel
             for info in channels:
-                state = info.channel._channel.check_connectivity_state(False)
+                state = info.channel.get_state(try_to_connect=False)
                 if state == grpc.ChannelConnectivity.READY:
                     info.last_used = time.time()
                     return info.channel
