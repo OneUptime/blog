@@ -28,9 +28,9 @@ graph TB
 
 | Memory Region | Purpose | Size |
 |--------------|---------|------|
-| **New Space** | Short-lived objects, frequently collected | 1-8 MB |
+| **New Space** | Short-lived objects, frequently collected | Depends on V8 and the configured semi-space size |
 | **Old Space** | Long-lived objects, less frequently collected | Up to heap limit |
-| **Large Object Space** | Objects > 512KB | As needed |
+| **Large Object Space** | Objects too large for regular heap pages | As needed |
 | **External Memory** | Buffers, native bindings | Outside V8 heap |
 
 ## Monitoring Memory Usage
@@ -92,11 +92,11 @@ setInterval(updateMemoryMetrics, 5000);
 
 ```javascript
 // LEAK: Unbounded global cache
-const cache = {};
+const unboundedCache = {};
 
 function processRequest(userId, data) {
-  cache[userId] = data; // Never cleaned up
-  return cache[userId];
+  unboundedCache[userId] = data; // Never cleaned up
+  return unboundedCache[userId];
 }
 
 // FIX: Use bounded cache with TTL
@@ -153,21 +153,27 @@ function handleRequest(req, res) {
 ```javascript
 // LEAK: Closure captures entire scope
 function createHandler(largeData) {
-  const processedData = transform(largeData);
-  // largeData is captured by closure even though unused
+  const context = {
+    largeData,
+    processedData: transform(largeData),
+  };
+  // context keeps largeData alive even though the handler only needs processedData
 
   return function handler() {
-    return processedData;
+    return context.processedData;
   };
 }
 
 // FIX: Null out unnecessary references
 function createHandler(largeData) {
-  const processedData = transform(largeData);
-  largeData = null; // Release reference
+  const context = {
+    largeData,
+    processedData: transform(largeData),
+  };
+  context.largeData = null; // Release reference
 
   return function handler() {
-    return processedData;
+    return context.processedData;
   };
 }
 
@@ -185,7 +191,7 @@ function createHandler(largeData) {
 
 ```javascript
 // LEAK: Intervals never cleared
-class DataFetcher {
+class LeakyDataFetcher {
   constructor() {
     this.data = [];
     // This interval runs forever
@@ -226,7 +232,7 @@ class DataFetcher {
 ### 5. Streams Not Properly Closed
 
 ```javascript
-// LEAK: Stream error handler missing, stream never closed
+// LEAK: Stream error handler missing, errors are not handled
 function processFile(path) {
   const stream = fs.createReadStream(path);
 
@@ -234,7 +240,7 @@ function processFile(path) {
     // Process chunk
   });
 
-  // If error occurs, stream stays open
+  // If an error occurs, it is emitted and can crash the process
 }
 
 // FIX: Handle all stream events
@@ -270,20 +276,20 @@ WeakMap and WeakSet hold "weak" references that don't prevent garbage collection
 
 ```javascript
 // LEAK: Regular Map keeps objects alive
-const cache = new Map();
+const strongCache = new Map();
 
 function cacheObject(key, value) {
-  cache.set(key, value);
+  strongCache.set(key, value);
   // value can never be GC'd while in cache
 }
 
 // FIX: WeakMap allows GC when key is no longer referenced
-const cache = new WeakMap();
+const weakCache = new WeakMap();
 
 function cacheObject(obj, metadata) {
-  cache.set(obj, metadata);
+  weakCache.set(obj, metadata);
   // When obj is no longer referenced elsewhere,
-  // both obj and metadata can be GC'd
+  // the entry can be collected
 }
 
 // Use case: Attaching metadata to DOM nodes or external objects
@@ -331,6 +337,8 @@ const registry = new FinalizationRegistry((heldValue) => {
   console.log(`Object with id ${heldValue} was garbage collected`);
 });
 
+// Do not rely on finalizers for time-critical cleanup; callbacks are not guaranteed to run promptly.
+
 function trackObject(obj, id) {
   registry.register(obj, id);
 }
@@ -359,11 +367,11 @@ node --trace-gc app.js
 ### Tuning Heap Size
 
 ```bash
-# Increase max heap size (default ~1.5GB on 64-bit)
+# Increase max old-space size
 node --max-old-space-size=4096 app.js  # 4GB
 
 # Increase new space size for high-allocation apps
-node --max-semi-space-size=64 app.js  # 64MB (default 16MB)
+node --max-semi-space-size=64 app.js  # 64 MiB semi-space
 
 # Expose GC for manual triggering (use carefully)
 node --expose-gc app.js
@@ -376,9 +384,6 @@ node --expose-gc app.js
 if (global.gc) {
   // Force garbage collection
   global.gc();
-
-  // Or force full GC
-  global.gc(true);
 }
 
 // Use case: Before taking heap snapshots
@@ -495,8 +500,10 @@ async function* getAllUsers(batchSize = 1000) {
 }
 
 // Usage
-for await (const user of getAllUsers()) {
-  await processUser(user);
+async function processUsers() {
+  for await (const user of getAllUsers()) {
+    await processUser(user);
+  }
 }
 ```
 
@@ -586,7 +593,7 @@ new MemoryLeakDetector({
 
 ### Integration with Observability
 
-For production monitoring, send memory metrics to your observability platform:
+For production monitoring, configure an OpenTelemetry SDK and exporter, then send memory metrics to your observability platform:
 
 ```javascript
 const { metrics } = require('@opentelemetry/api');
