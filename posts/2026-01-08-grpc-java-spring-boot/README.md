@@ -305,7 +305,7 @@ grpc-spring-boot-service/
 │   │   │       ├── model/
 │   │   │       │   └── User.java
 │   │   │       └── exception/
-│   │   │           └── GrpcExceptionHandler.java
+│   │   │           └── GrpcExceptionAdvice.java
 │   │   ├── proto/
 │   │   │   └── user.proto
 │   │   └── resources/
@@ -514,7 +514,7 @@ spring:
   application:
     name: grpc-user-service
 
-# gRPC Server Configuration
+# gRPC Server and Client Configuration
 
 grpc:
   server:
@@ -532,9 +532,7 @@ grpc:
     permitKeepAliveWithoutCalls: true
     maxInboundMessageSize: 4194304  # 4MB
     maxInboundMetadataSize: 8192
-
-# gRPC Client Configuration (for inter-service communication)
-grpc:
+  # gRPC Client Configuration (for inter-service communication)
   client:
     GLOBAL:
       negotiationType: plaintext
@@ -1618,7 +1616,7 @@ public class MetricsInterceptor implements ServerInterceptor {
 
 ### Global Exception Handler
 
-Create `src/main/java/com/example/grpc/exception/GrpcExceptionHandler.java`:
+Create `src/main/java/com/example/grpc/exception/GrpcExceptionAdvice.java`:
 
 ```java
 package com.example.grpc.exception;
