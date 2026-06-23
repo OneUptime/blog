@@ -141,7 +141,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -219,7 +220,7 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
-    # React app - must come after API location
+    # React app fallback
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -246,7 +247,7 @@ flowchart TB
 ```dockerfile
 # Build stage
 
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -306,7 +307,7 @@ When deploying React to a sub-directory:
 
 ```javascript
 // In your React app
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 function App() {
   return (
@@ -325,8 +326,12 @@ server {
     server_name example.com;
 
     # React app in subdirectory
-    location /myapp {
-        alias /var/www/react-app/build;
+    location = /myapp {
+        return 301 /myapp/;
+    }
+
+    location /myapp/ {
+        alias /var/www/react-app/build/;
         index index.html;
         try_files $uri $uri/ /myapp/index.html;
     }
@@ -344,7 +349,7 @@ server {
 If you use HashRouter, no Nginx configuration is needed because the route is after the # symbol:
 
 ```javascript
-import { HashRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router';
 
 function App() {
   return (
@@ -365,8 +370,12 @@ server {
     server_name example.com;
 
     # Admin app
-    location /admin {
-        alias /var/www/admin-app/build;
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    location /admin/ {
+        alias /var/www/admin-app/build/;
         try_files $uri $uri/ /admin/index.html;
     }
 
@@ -388,12 +397,12 @@ location / {
     try_files $uri /index.html;
 }
 
-# Correct - only fallback for non-file requests
+# Standard SPA fallback - still returns index.html for any missing file
 location / {
     try_files $uri $uri/ /index.html;
 }
 
-# Even better - explicit static file handling
+# Correct - handle static files explicitly
 location /static/ {
     try_files $uri =404;  # Return 404 for missing static files
 }
@@ -406,16 +415,12 @@ location / {
 ### Issue 2: API Routes Getting index.html
 
 ```nginx
-# Wrong order - React catches everything
+# Wrong - no API location, so React catches API requests
 location / {
     try_files $uri $uri/ /index.html;
 }
 
-location /api/ {
-    proxy_pass http://backend;
-}
-
-# Correct order - API checked first
+# Correct - API has its own more specific location
 location /api/ {
     proxy_pass http://backend;
 }
@@ -484,7 +489,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -534,7 +540,7 @@ server {
 React Router 404 errors in Nginx occur because the server does not understand client-side routing. The solution is:
 
 1. **Use `try_files`** to fallback to `index.html` for routes that do not match files
-2. **Order locations correctly** - API routes before the catch-all
+2. **Define API locations explicitly** - keep API routes separate from the React fallback
 3. **Handle static files explicitly** to avoid caching issues
 4. **Test thoroughly** with curl and browser refresh
 
