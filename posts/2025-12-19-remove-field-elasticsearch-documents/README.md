@@ -34,7 +34,10 @@ For removing a field from a single document, use the Update API with a Painless 
 POST /products/_update/product_123
 {
   "script": {
-    "source": "ctx._source.remove('deprecated_field')"
+    "source": "ctx._source.remove(params.field)",
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 ```
@@ -46,10 +49,13 @@ POST /products/_update/product_123
 {
   "script": {
     "source": """
-      ctx._source.remove('field_one');
-      ctx._source.remove('field_two');
-      ctx._source.remove('field_three');
-    """
+      for (field in params.fields) {
+        ctx._source.remove(field);
+      }
+    """,
+    "params": {
+      "fields": ["field_one", "field_two", "field_three"]
+    }
   }
 }
 ```
@@ -72,10 +78,13 @@ POST /products/_update/product_123
 {
   "script": {
     "source": """
-      if (ctx._source.containsKey('deprecated_field')) {
-        ctx._source.remove('deprecated_field');
+      if (ctx._source.containsKey(params.field)) {
+        ctx._source.remove(params.field);
       }
-    """
+    """,
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 ```
@@ -93,7 +102,10 @@ POST /products/_update_by_query
     }
   },
   "script": {
-    "source": "ctx._source.remove('deprecated_field')"
+    "source": "ctx._source.remove(params.field)",
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 ```
@@ -107,7 +119,10 @@ POST /products/_update_by_query?conflicts=proceed
     "match_all": {}
   },
   "script": {
-    "source": "ctx._source.remove('deprecated_field')"
+    "source": "ctx._source.remove(params.field)",
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 ```
@@ -123,7 +138,10 @@ POST /products/_update_by_query?scroll_size=1000&requests_per_second=500
     "match_all": {}
   },
   "script": {
-    "source": "ctx._source.remove('deprecated_field')"
+    "source": "ctx._source.remove(params.field)",
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 ```
@@ -137,7 +155,10 @@ POST /products/_update_by_query?wait_for_completion=false
     "match_all": {}
   },
   "script": {
-    "source": "ctx._source.remove('deprecated_field')"
+    "source": "ctx._source.remove(params.field)",
+    "params": {
+      "field": "deprecated_field"
+    }
   }
 }
 
@@ -233,7 +254,7 @@ POST /_aliases
 DELETE /products_v1
 ```
 
-## Method 4: Partial Document Update
+## Method 4: Full Document Replacement
 
 Replace the entire document without the field:
 
@@ -306,7 +327,10 @@ def remove_field_from_index(index, field_name, batch_size=1000):
                 "_index": index,
                 "_id": doc["_id"],
                 "script": {
-                    "source": f"ctx._source.remove('{field_name}')"
+                    "source": "ctx._source.remove(params.field)",
+                    "params": {
+                        "field": field_name
+                    }
                 }
             }
 
@@ -389,10 +413,11 @@ async function removeFieldFromDocuments(index, fieldName, query = { match_all: {
     index,
     conflicts: 'proceed',
     refresh: true,
-    body: {
-      query,
-      script: {
-        source: `ctx._source.remove('${fieldName}')`
+    query,
+    script: {
+      source: 'ctx._source.remove(params.field)',
+      params: {
+        field: fieldName
       }
     }
   });
@@ -406,17 +431,18 @@ async function removeFieldFromDocuments(index, fieldName, query = { match_all: {
 async function removeNestedField(index, parentField, nestedField) {
   const response = await client.updateByQuery({
     index,
-    body: {
-      query: {
-        nested: {
-          path: parentField,
-          query: {
-            exists: { field: `${parentField}.${nestedField}` }
-          }
+    query: {
+      exists: { field: `${parentField}.${nestedField}` }
+    },
+    script: {
+      source: `
+        if (ctx._source.containsKey(params.parent) && ctx._source[params.parent] instanceof Map) {
+          ctx._source[params.parent].remove(params.field);
         }
-      },
-      script: {
-        source: `ctx._source.${parentField}.remove('${nestedField}')`
+      `,
+      params: {
+        parent: parentField,
+        field: nestedField
       }
     }
   });
@@ -447,7 +473,7 @@ Note that removing documents' fields doesn't remove them from the mapping. To cl
 
 As shown above, create a new index without the field in the mapping.
 
-### Option 2: Close and Reopen (Limited)
+### Option 2: Add Fields with the Mapping API
 
 You cannot remove fields from a mapping directly. However, you can add new fields:
 
@@ -516,10 +542,10 @@ POST /products/_update_by_query?scroll_size=5000&requests_per_second=1000
 
 ## Common Pitfalls
 
-### 1. Field Doesn't Exist Error
+### 1. Missing Field Checks
 
 ```json
-// This fails if field doesn't exist
+// Removing a missing top-level field is a no-op
 POST /products/_update/product_123
 {
   "script": {
@@ -527,7 +553,7 @@ POST /products/_update/product_123
   }
 }
 
-// Safe version - check first
+// Check first when you want to skip a no-op update
 POST /products/_update/product_123
 {
   "script": {
@@ -603,7 +629,7 @@ Removing fields from Elasticsearch documents can be accomplished through several
 1. **Update API with script** - Best for single documents
 2. **Update by query** - Best for batch updates with specific criteria
 3. **Reindex** - Best for large-scale changes or mapping cleanup
-4. **Partial document update** - Best when you have the full document available
+4. **Full document replacement** - Best when you have the full document available
 
 Choose the method based on your scale and requirements. For large indexes, reindexing is often the most efficient approach despite requiring more planning. Always test on a subset of data first and have a rollback plan ready.
 
