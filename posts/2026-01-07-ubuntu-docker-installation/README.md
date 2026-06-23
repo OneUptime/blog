@@ -16,7 +16,7 @@ Before we dive into the installation process, it is crucial to understand why we
 
 ### The Snap Problem
 
-Ubuntu ships Docker as a Snap package, and while Snaps offer certain advantages like automatic updates and sandboxing, they come with significant drawbacks for Docker:
+Ubuntu offers Docker as a Snap package, and while Snaps offer certain advantages like automatic updates and sandboxing, they come with significant drawbacks for Docker:
 
 1. **Performance Overhead**: Snap packages run in a confined environment with additional abstraction layers, which can impact container performance.
 
@@ -40,7 +40,7 @@ The `docker.io` package available in Ubuntu's default repositories is often outd
 
 Before installing Docker, ensure your system meets the following requirements:
 
-- Ubuntu 20.04 (Focal Fossa), 22.04 (Jammy Jellyfish), 24.04 (Noble Numbat), or later
+- Ubuntu 22.04 (Jammy Jellyfish), 24.04 (Noble Numbat), 25.10 (Questing Quokka), 26.04 (Resolute Raccoon), or another version supported by Docker's official Ubuntu repository
 - 64-bit version of Ubuntu
 - Sudo privileges
 - Internet connection for downloading packages
@@ -69,8 +69,8 @@ sudo systemctl stop docker.socket docker.service 2>/dev/null || true
 sudo snap remove docker 2>/dev/null || true
 
 # Remove old Docker packages from APT
-# This removes docker.io, docker-compose, docker-doc, and related packages
-sudo apt-get remove -y docker docker-engine docker.io containerd runc docker-compose docker-doc podman-docker 2>/dev/null || true
+# This removes docker.io, docker-compose, docker-compose-v2, docker-doc, and related packages
+sudo apt-get remove -y docker docker-engine docker.io containerd runc docker-compose docker-compose-v2 docker-doc podman-docker 2>/dev/null || true
 
 # Remove any leftover Docker data (optional - skip if you want to preserve volumes)
 # WARNING: This will delete all your existing containers, images, and volumes
@@ -92,11 +92,9 @@ sudo apt-get update
 # Install packages required for repository setup
 # ca-certificates: For SSL/TLS certificate verification
 # curl: For downloading files from the internet
-# gnupg: For handling GPG keys used to verify package authenticity
 sudo apt-get install -y \
     ca-certificates \
-    curl \
-    gnupg
+    curl
 ```
 
 ## Step 3: Add Docker's Official GPG Key
@@ -109,12 +107,11 @@ Docker packages are cryptographically signed to ensure authenticity. We need to 
 sudo install -m 0755 -d /etc/apt/keyrings
 
 # Download and install Docker's official GPG key
-# The key is stored in a dearmored binary format for security
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 
 # Ensure the key file has appropriate read permissions
 # This allows APT to read the key during package verification
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 ```
 
 ## Step 4: Set Up the Docker Repository
@@ -124,20 +121,24 @@ Now we add the official Docker repository to our APT sources:
 ```bash
 # Add the Docker repository to APT sources
 # This command automatically detects your Ubuntu version and architecture
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Verify the repository was added correctly
-cat /etc/apt/sources.list.d/docker.list
+cat /etc/apt/sources.list.d/docker.sources
 ```
 
 The repository configuration includes:
 
-- **arch**: Automatically detected system architecture (amd64, arm64, etc.)
-- **signed-by**: Path to the GPG key for package verification
-- **VERSION_CODENAME**: Your Ubuntu release codename (focal, jammy, noble, etc.)
+- **Architectures**: Automatically detected system architecture (amd64, arm64, etc.)
+- **Signed-By**: Path to the GPG key for package verification
+- **Suites**: Your Ubuntu release codename (jammy, noble, questing, resolute, etc.)
 - **stable**: The stable release channel (you can also use "test" or "nightly" for experimental features)
 
 ## Step 5: Install Docker Engine
@@ -262,17 +263,13 @@ sudo tee /etc/docker/daemon.json > /dev/null <<EOF
     "max-size": "10m",
     "max-file": "3"
   },
-  "storage-driver": "overlay2",
   "live-restore": true,
   "default-address-pools": [
     {
-      "base": "172.17.0.0/16",
+      "base": "172.30.0.0/16",
       "size": 24
     }
-  ],
-  "features": {
-    "buildkit": true
-  }
+  ]
 }
 EOF
 ```
@@ -293,13 +290,7 @@ Let us break down each configuration option:
 
 **Logging Configuration**: By default, Docker keeps all container logs indefinitely, which can fill up your disk. This configuration limits log files to 10MB each and keeps only 3 rotated files per container.
 
-```json
-{
-  "storage-driver": "overlay2"
-}
-```
-
-**Storage Driver**: The overlay2 driver is the recommended storage driver for modern Linux kernels. It provides good performance and efficient use of disk space.
+**Storage Driver**: For current Docker Engine releases, leave the storage driver unset unless you have a specific reason to change it. Docker selects the appropriate default for your installation, such as the containerd image store on fresh Docker Engine 29.0 and later installations or overlay2 on many upgraded classic-storage installations.
 
 ```json
 {
@@ -313,7 +304,7 @@ Let us break down each configuration option:
 {
   "default-address-pools": [
     {
-      "base": "172.17.0.0/16",
+      "base": "172.30.0.0/16",
       "size": 24
     }
   ]
@@ -322,15 +313,7 @@ Let us break down each configuration option:
 
 **Network Address Pools**: Customize the IP address ranges Docker uses for container networks. This is useful to avoid conflicts with your existing network infrastructure.
 
-```json
-{
-  "features": {
-    "buildkit": true
-  }
-}
-```
-
-**BuildKit**: Enables BuildKit by default for all builds. BuildKit provides improved build performance, better caching, and advanced features like secret mounting.
+**BuildKit**: BuildKit is the default builder for Docker Engine users, and the installed Buildx plugin provides access to advanced build features like multi-platform builds, better caching, and secret mounting.
 
 ### Applying the Configuration
 
@@ -365,17 +348,13 @@ sudo tee /etc/docker/daemon.json > /dev/null <<EOF
     "max-size": "10m",
     "max-file": "3"
   },
-  "storage-driver": "overlay2",
   "live-restore": true,
   "default-address-pools": [
     {
-      "base": "172.17.0.0/16",
+      "base": "172.30.0.0/16",
       "size": 24
     }
   ],
-  "features": {
-    "buildkit": true
-  },
   "dns": ["8.8.8.8", "8.8.4.4"],
   "default-ulimits": {
     "nofile": {
@@ -422,8 +401,8 @@ sudo apt-get install -y uidmap
 
 # Verify subuid and subgid are configured for your user
 # These files define the range of subordinate UIDs/GIDs available to your user
-grep $USER /etc/subuid
-grep $USER /etc/subgid
+grep ^$(whoami): /etc/subuid
+grep ^$(whoami): /etc/subgid
 
 # If the above commands return empty, add entries manually
 # This allocates 65536 subordinate UIDs/GIDs starting from 100000
@@ -453,11 +432,15 @@ If you already have Docker installed in rootful mode, you can install rootless m
 ```bash
 # Stop the system Docker daemon (if running in rootful mode)
 # This prevents conflicts during rootless setup
-sudo systemctl stop docker docker.socket
+sudo systemctl disable --now docker.service docker.socket
+sudo rm -f /var/run/docker.sock
 
 # Run the rootless setup script
 # This will install the rootless Docker daemon for your user
 dockerd-rootless-setuptool.sh install
+
+# If the setup tool is not installed, install the rootless extras package
+# sudo apt-get install -y docker-ce-rootless-extras
 
 # The script will output instructions for setting environment variables
 # Add these to your shell profile (e.g., ~/.bashrc or ~/.zshrc)
@@ -513,27 +496,28 @@ mount | grep cgroup
 # Ubuntu 22.04+ uses cgroup v2 by default
 ```
 
-3. **Network Performance**: Rootless networking uses slirp4netns by default, which may be slower. For better performance, consider using rootlesskit with VPNKit:
-
-```bash
-# Install vpnkit for better network performance (optional)
-sudo apt-get install -y vpnkit
-```
+3. **Network Performance**: Rootless networking uses a user-mode TCP/IP stack, such as slirp4netns when it is installed, which may be slower than rootful Docker's kernel networking. If networking performance is a problem, review the RootlessKit network driver options in Docker's rootless troubleshooting documentation.
 
 4. **Storage Limitations**: Some advanced storage features may not be available in rootless mode
 
 ### Switching Between Rootful and Rootless Mode
 
-You can switch between rootful and rootless Docker by changing the DOCKER_HOST environment variable:
+You can switch between rootful and rootless Docker by changing the Docker context or the DOCKER_HOST environment variable:
 
 ```bash
+# Use the rootless Docker context created by the setup tool
+docker context use rootless
+
+# Use the default context for rootful Docker
+docker context use default
+
 # Use rootless Docker (user's Docker daemon)
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock
 
 # Use rootful Docker (system Docker daemon)
 export DOCKER_HOST=unix:///var/run/docker.sock
 
-# Or unset to use the default (usually rootful if docker group is configured)
+# Or unset to use the active Docker context
 unset DOCKER_HOST
 ```
 
@@ -617,15 +601,8 @@ sudo ufw allow ssh
 sudo ufw allow 80/tcp    # HTTP
 sudo ufw allow 443/tcp   # HTTPS
 
-# If Docker bypasses UFW (which it does by default), you may need
-# to modify the Docker daemon settings to respect UFW rules
-sudo tee /etc/docker/daemon.json > /dev/null <<EOF
-{
-  "iptables": true
-}
-EOF
-
-# For more control over Docker and UFW, consider using the DOCKER-USER chain
+# Docker and UFW are not fully integrated. Published container ports can bypass UFW rules.
+# For more control over Docker-published ports, use the DOCKER-USER chain
 # This chain is processed before Docker's rules
 # Example: Block all external access to Docker containers except from specific IP
 # sudo iptables -I DOCKER-USER -i eth0 ! -s 10.0.0.0/8 -j DROP
@@ -693,10 +670,11 @@ sudo journalctl -u docker.service -n 50
 sudo cat /etc/docker/daemon.json | python3 -m json.tool
 
 # 2. Port conflict - check if another service uses the port
-sudo netstat -tulpn | grep 2375
+sudo ss -tulpn | grep 2375
 
-# 3. Storage driver issues - check disk space and permissions
+# 3. Storage issues - check disk space and permissions
 df -h /var/lib/docker
+df -h /var/lib/containerd
 ```
 
 ### Issue 3: Network Connectivity Issues in Containers
@@ -731,8 +709,8 @@ sudo sysctl --system
 # Check iptables rules
 sudo iptables -L -n -v
 
-# Verify Docker's iptables integration
-docker info | grep "iptables"
+# Verify Docker's iptables chains exist
+sudo iptables -t nat -L -n -v | grep DOCKER
 ```
 
 ### Issue 5: Disk Space Issues
@@ -794,13 +772,13 @@ docker run --cap-drop ALL --cap-add NET_BIND_SERVICE nginx
 docker run --read-only alpine cat /etc/os-release
 
 # Limit resources
-docker run --memory 256m --cpus 0.5 alpine stress --cpu 1
+docker run --memory 256m --cpus 0.5 alpine echo "resource limits applied"
 ```
 
 ### 4. Scan Images for Vulnerabilities
 
 ```bash
-# Use Docker Scout for vulnerability scanning
+# Use Docker Scout for vulnerability scanning if the Scout CLI plugin is installed
 docker scout cves <image_name>
 
 # Or use other tools like Trivy
