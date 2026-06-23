@@ -96,7 +96,7 @@ Install Docker and Docker Compose on your system:
 ```bash
 # macOS (using Homebrew)
 
-brew install --cask docker
+brew install --cask docker-desktop
 
 # Ubuntu/Debian
 sudo apt-get update
