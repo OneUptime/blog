@@ -109,7 +109,7 @@ UPSTREAM_FILE="/etc/nginx/conf.d/api-upstream.conf"
 
 echo "upstream api {" > "$UPSTREAM_FILE"
 
-echo "$INPUT" | jq -r '.[] | select(.Checks | all(.Status == "passing")) | "\(.Service.Address):\(.Service.Port)"' | while read addr; do
+echo "$INPUT" | jq -r '.[] | select(.Checks | all(.Status == "passing")) | "\((if .Service.Address == "" then .Node.Address else .Service.Address end)):\(.Service.Port)"' | while read addr; do
     echo "    server $addr;" >> "$UPSTREAM_FILE"
 done
 
@@ -167,7 +167,7 @@ watches = [
     http_handler_config {
       path = "http://localhost:8080/webhook/service-change"
       method = "POST"
-      header {
+      header = {
         Authorization = ["Bearer webhook-token"]
       }
       timeout = "10s"
@@ -208,7 +208,7 @@ def handle_service_change():
 
 def update_load_balancer(instances):
     """Update load balancer with healthy instances."""
-    addresses = [f"{i['Service']['Address']}:{i['Service']['Port']}"
+    addresses = [f"{i['Service']['Address'] or i['Node']['Address']}:{i['Service']['Port']}"
                  for i in instances]
 
     # Example: Update HAProxy via socket
@@ -269,13 +269,15 @@ class ConsulWatcher:
             index = None
             while not self._stop:
                 try:
-                    index, services = self.consul.health.service(
+                    new_index, services = self.consul.health.service(
                         service_name,
                         passing=passing_only,
                         index=index,
                         wait='30s'
                     )
-                    callback(service_name, services)
+                    if new_index != index:
+                        index = new_index
+                        callback(service_name, services)
                 except Exception as e:
                     print(f"Watch error: {e}")
                     time.sleep(5)
@@ -290,10 +292,12 @@ class ConsulWatcher:
             index = None
             while not self._stop:
                 try:
-                    index, data = self.consul.kv.get(key, index=index, wait='30s')
-                    if data:
-                        value = data['Value'].decode('utf-8') if data['Value'] else None
-                        callback(key, value, data)
+                    new_index, data = self.consul.kv.get(key, index=index, wait='30s')
+                    if new_index != index:
+                        index = new_index
+                        if data:
+                            value = data['Value'].decode('utf-8') if data['Value'] else None
+                            callback(key, value, data)
                 except Exception as e:
                     print(f"Watch error: {e}")
                     time.sleep(5)
@@ -308,14 +312,16 @@ class ConsulWatcher:
             index = None
             while not self._stop:
                 try:
-                    index, data = self.consul.kv.get(
+                    new_index, data = self.consul.kv.get(
                         prefix,
                         recurse=True,
                         index=index,
                         wait='30s'
                     )
-                    if data:
-                        callback(prefix, data)
+                    if new_index != index:
+                        index = new_index
+                        if data:
+                            callback(prefix, data)
                 except Exception as e:
                     print(f"Watch error: {e}")
                     time.sleep(5)
@@ -330,12 +336,14 @@ class ConsulWatcher:
             index = None
             while not self._stop:
                 try:
-                    index, checks = self.consul.health.state(
+                    new_index, checks = self.consul.health.state(
                         state,
                         index=index,
                         wait='30s'
                     )
-                    callback(state, checks)
+                    if new_index != index:
+                        index = new_index
+                        callback(state, checks)
                 except Exception as e:
                     print(f"Watch error: {e}")
                     time.sleep(5)
@@ -355,7 +363,7 @@ def on_service_change(service_name, instances):
     healthy = [i for i in instances]
     print(f"Service {service_name}: {len(healthy)} healthy instances")
     for inst in healthy:
-        addr = inst['Service']['Address']
+        addr = inst['Service']['Address'] or inst['Node']['Address']
         port = inst['Service']['Port']
         print(f"  - {addr}:{port}")
 
@@ -387,7 +395,6 @@ except KeyboardInterrupt:
 package main
 
 import (
-    "encoding/json"
     "fmt"
     "log"
     "time"
@@ -485,7 +492,11 @@ func main() {
     watcher.WatchService("api", func(services []*api.ServiceEntry) {
         fmt.Printf("API service updated: %d instances\n", len(services))
         for _, svc := range services {
-            fmt.Printf("  - %s:%d\n", svc.Service.Address, svc.Service.Port)
+            addr := svc.Service.Address
+            if addr == "" {
+                addr = svc.Node.Address
+            }
+            fmt.Printf("  - %s:%d\n", addr, svc.Service.Port)
         }
     })
 
@@ -503,7 +514,7 @@ Fire custom events and watch for them.
 
 ```bash
 # Fire a custom event
-consul event -name=deploy -payload='{"version": "1.2.0", "env": "production"}'
+consul event -name=deploy '{"version": "1.2.0", "env": "production"}'
 
 # Watch for deploy events
 consul watch -type=event -name=deploy /opt/scripts/on-deploy.sh
