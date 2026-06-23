@@ -10,7 +10,7 @@ Description: Learn how to optimize memory usage in Rust applications.
 
 > Rust gives you control over memory without a garbage collector, but with great power comes great responsibility. Understanding where and why your application allocates memory is key to building efficient systems. This guide shows you how to analyze and optimize memory usage in Rust.
 
-Memory allocation isn't free. Each allocation involves system calls, potential lock contention in the allocator, and cache pollution. By understanding Rust's memory model and applying targeted optimizations, you can dramatically reduce allocation overhead.
+Memory allocation isn't free. Allocations can involve allocator bookkeeping, lock contention, cache effects, and occasionally system calls when the allocator needs more memory from the operating system. By understanding Rust's memory model and applying targeted optimizations, you can dramatically reduce allocation overhead.
 
 ---
 
@@ -68,12 +68,12 @@ unsafe impl GlobalAlloc for CountingAllocator {
         ALLOC_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
 
         // Delegate to system allocator
-        System.alloc(layout)
+        unsafe { System.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         DEALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
-        System.dealloc(ptr, layout)
+        unsafe { System.dealloc(ptr, layout) }
     }
 }
 
@@ -140,7 +140,7 @@ Run with:
 
 ```bash
 cargo run --release --features dhat-heap
-# Open dhat-heap.json with dhat-viewer
+# Open dhat-heap.json with DHAT's viewer
 ```
 
 ---
@@ -208,7 +208,7 @@ smallvec = "1.11"
 ```rust
 use smallvec::SmallVec;
 
-// SmallVec stores up to N elements inline (stack), spills to heap if larger
+// SmallVec stores up to N elements inline, spills to heap if larger
 type Tags = SmallVec<[String; 4]>;  // Inline up to 4 tags
 
 struct Article {
@@ -266,7 +266,7 @@ fn get_name_good(config: &Config) -> &str {
 use std::borrow::Cow;
 
 /// Process text, only allocating if transformation needed
-fn normalize_text(input: &str) -> Cow<str> {
+fn normalize_text(input: &str) -> Cow<'_, str> {
     // Check if normalization is needed
     if input.chars().all(|c| c.is_lowercase() && c.is_ascii()) {
         // No transformation needed - return borrowed reference
@@ -295,7 +295,10 @@ bytes = "1.5"
 ```
 
 ```rust
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use bytes::{Bytes, BytesMut};
+use std::io;
+use std::io::Read;
+use std::net::TcpStream;
 
 /// Zero-copy message parsing
 /// Bytes provides reference-counted, sliceable byte buffers
@@ -317,15 +320,17 @@ fn parse_message(data: Bytes) -> Option<Message> {
     Some(Message { header, payload })
 }
 
-/// Buffer pool for zero-copy I/O
-fn receive_data(socket: &TcpStream) -> Bytes {
+/// Buffer for zero-copy handoff after I/O
+fn receive_data(socket: &mut TcpStream) -> io::Result<Bytes> {
     let mut buffer = BytesMut::with_capacity(8192);
 
     // Read directly into buffer
-    // socket.read_buf(&mut buffer);
+    buffer.resize(8192, 0);
+    let bytes_read = socket.read(&mut buffer)?;
+    buffer.truncate(bytes_read);
 
     // Freeze converts BytesMut to Bytes (immutable, shareable)
-    buffer.freeze()
+    Ok(buffer.freeze())
 }
 ```
 
@@ -367,7 +372,7 @@ fn process_request_with_arena(request: &Request) -> Response {
 }
 
 /// Using arena for tree structures
-fn build_ast_with_arena<'a>(arena: &'a Bump, source: &str) -> &'a AstNode<'a> {
+fn build_ast_with_arena<'a>(arena: &'a Bump, source: &'a str) -> &'a AstNode<'a> {
     // All AST nodes allocated in arena
     let root = arena.alloc(AstNode::new("root"));
 
@@ -459,6 +464,11 @@ fn build_graph() {
 
 ### Fixed-Size Buffers
 
+```toml
+[dependencies]
+arrayvec = "0.7"
+```
+
 ```rust
 /// Use arrays instead of Vec for fixed-size data
 fn hash_password(password: &[u8]) -> [u8; 32] {
@@ -475,7 +485,7 @@ fn hash_password(password: &[u8]) -> [u8; 32] {
 use arrayvec::ArrayVec;
 
 fn collect_small_results(inputs: &[u32]) -> ArrayVec<u32, 16> {
-    let mut results = ArrayVec::new();  // Stack allocated, capacity 16
+    let mut results = ArrayVec::new();  // Inline storage, capacity 16
 
     for &input in inputs.iter().take(16) {
         results.push(input * 2);
@@ -491,12 +501,12 @@ fn collect_small_results(inputs: &[u32]) -> ArrayVec<u32, 16> {
 /// Sometimes you need to move large data to heap
 /// to avoid stack overflow
 struct LargeStruct {
-    data: [u8; 1_000_000],  // 1MB - too large for stack in deep recursion
+    data: Box<[u8]>,  // 1MB buffer stored on the heap
 }
 
 // Bad: May overflow stack in recursive calls
 fn process_recursive_bad(depth: usize) {
-    let data = LargeStruct { data: [0; 1_000_000] };  // Stack allocated
+    let data = [0u8; 1_000_000];  // Stack allocated
     if depth > 0 {
         process_recursive_bad(depth - 1);
     }
@@ -504,7 +514,9 @@ fn process_recursive_bad(depth: usize) {
 
 // Good: Heap allocate large structures
 fn process_recursive_good(depth: usize) {
-    let data = Box::new(LargeStruct { data: [0; 1_000_000] });  // Heap
+    let data = LargeStruct {
+        data: vec![0u8; 1_000_000].into_boxed_slice(),
+    };
     if depth > 0 {
         process_recursive_good(depth - 1);
     }
@@ -519,7 +531,7 @@ fn process_recursive_good(depth: usize) {
 
 ```rust
 use std::collections::HashSet;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 
 /// String interner to deduplicate strings
 pub struct StringInterner {
@@ -543,19 +555,20 @@ impl StringInterner {
             }
         }
 
+        let mut strings = self.strings.write().unwrap();
+        if let Some(&existing) = strings.get(s) {
+            return existing;
+        }
+
         // Allocate and intern new string
         let leaked: &'static str = Box::leak(s.to_string().into_boxed_str());
-
-        let mut strings = self.strings.write().unwrap();
         strings.insert(leaked);
         leaked
     }
 }
 
 // Usage
-lazy_static::lazy_static! {
-    static ref INTERNER: StringInterner = StringInterner::new();
-}
+static INTERNER: LazyLock<StringInterner> = LazyLock::new(StringInterner::new);
 
 fn process_tags(tags: &[String]) -> Vec<&'static str> {
     tags.iter()
@@ -597,12 +610,21 @@ fn create_user(username: &str, email: &str) -> User {
 
 For large datasets, memory-map files instead of loading into memory.
 
+```toml
+[dependencies]
+memmap2 = "0.9"
+```
+
 ```rust
 use memmap2::MmapOptions;
 use std::fs::File;
 
 /// Process large file without loading into memory
 fn search_large_file(path: &str, pattern: &[u8]) -> Vec<usize> {
+    if pattern.is_empty() {
+        return Vec::new();
+    }
+
     let file = File::open(path).unwrap();
 
     // Memory-map the file
