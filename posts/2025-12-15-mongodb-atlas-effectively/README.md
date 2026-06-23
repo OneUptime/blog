@@ -36,10 +36,10 @@ graph LR
 
 ```javascript
 // Basic connection string from Atlas
-const uri = "mongodb+srv://username:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority";
+const basicUri = "mongodb+srv://username:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority";
 
 // Production connection with all options
-const uri = "mongodb+srv://username:password@cluster.mongodb.net/mydb" +
+const productionUri = "mongodb+srv://username:password@cluster.mongodb.net/mydb" +
   "?retryWrites=true" +
   "&w=majority" +
   "&maxPoolSize=50" +
@@ -51,7 +51,7 @@ const uri = "mongodb+srv://username:password@cluster.mongodb.net/mydb" +
 // Connection in Node.js
 const { MongoClient } = require('mongodb');
 
-const client = new MongoClient(uri, {
+const client = new MongoClient(productionUri, {
   maxPoolSize: 50,
   minPoolSize: 10,
   retryWrites: true,
@@ -75,7 +75,7 @@ async function connect() {
 ```bash
 # Add IP to allowlist via Atlas CLI
 
-atlas accessLists create --projectId <projectId> --entry 192.168.1.0/24
+atlas accessLists create 192.168.1.0/24 --type cidrBlock --projectId <projectId>
 
 # For development - allow from anywhere (not recommended for production)
 # Use specific IPs or VPC peering in production
@@ -83,24 +83,24 @@ atlas accessLists create --projectId <projectId> --entry 192.168.1.0/24
 
 ### Database Users
 
-```javascript
-// Create user with specific privileges
-atlas dbusers create --username appUser --password secure123 \
-  --role readWriteAnyDatabase --projectId <projectId>
+```bash
+# Create user with specific privileges
+atlas dbusers create readWriteAnyDatabase --username appUser --password secure123 \
+  --projectId <projectId>
 
-// Create read-only user
+# Create read-only user
 atlas dbusers create --username reportUser --password secure456 \
-  --role read --db reporting --projectId <projectId>
+  --role read@reporting --projectId <projectId>
 ```
 
 ### Encryption Configuration
 
-```yaml
-# Enable encryption at rest (available on M10+)
-# Configure in Atlas UI under Security > Encryption at Rest
+```javascript
+// Enable encryption at rest (available on M10+)
+// Configure in Atlas UI under Security > Encryption at Rest
 
-# Application-level field encryption
-const { ClientEncryption } = require('mongodb-client-encryption');
+// Application-level field encryption
+const { ClientEncryption } = require('mongodb');
 
 const encryption = new ClientEncryption(client, {
   keyVaultNamespace: 'encryption.__keyVault',
@@ -146,14 +146,14 @@ db.system.profile.find({
 
 ```javascript
 // Configure read preference for analytics queries
-const analyticsClient = new MongoClient(uri, {
+const analyticsClient = new MongoClient(productionUri, {
   readPreference: 'secondaryPreferred'
 });
 
 // Use read concern for consistency requirements
-const result = await collection.find({})
-  .readConcern('majority')
-  .toArray();
+const result = await collection.find({}, {
+  readConcern: { level: 'majority' }
+}).toArray();
 
 // Configure write concern
 await collection.insertOne(doc, {
@@ -169,11 +169,12 @@ await collection.insertOne(doc, {
 # Scale up cluster tier via Atlas CLI
 atlas clusters update myCluster --tier M30 --projectId <projectId>
 
-# Enable auto-scaling (M10+)
-atlas clusters update myCluster \
-  --autoScaling-compute-enabled true \
-  --autoScaling-minInstanceSize M10 \
-  --autoScaling-maxInstanceSize M40
+# Enable auto-scaling (M10+) with an Atlas Admin API payload file
+atlas api clusters updateCluster \
+  --version 2024-10-23 \
+  --clusterName myCluster \
+  --groupId <projectId> \
+  --file autoscaling-payload.json
 ```
 
 ### Horizontal Scaling with Sharding
@@ -198,29 +199,31 @@ sh.shardCollection("mydb.logs", { "timestamp": 1 });
 atlas backups schedule update --clusterName myCluster \
   --referenceHourOfDay 2 \
   --referenceMinuteOfHour 0 \
-  --snapshotIntervalHours 6 \
-  --snapshotRetentionDays 7
+  --updateSnapshots \
+  --policy <policyId>,<policyItemId>,hourly,6,days,7
 ```
 
 ### Point-in-Time Recovery
 
 ```bash
 # Restore to specific point in time
-atlas backups restores start \
+atlas backups restores start pointInTime \
   --clusterName myCluster \
   --targetClusterName myCluster-restored \
-  --pointInTimeUTCMillis 1640000000000
+  --targetProjectId <projectId> \
+  --pointInTimeUTCSeconds 1640000000
 ```
 
 ### Cloud Backup with Custom Snapshot
 
 ```bash
 # Take on-demand snapshot
-atlas backups snapshots create --clusterName myCluster \
-  --description "Pre-deployment snapshot"
+atlas backups snapshots create myCluster \
+  --desc "Pre-deployment snapshot" \
+  --retention 7
 
 # List available snapshots
-atlas backups snapshots list --clusterName myCluster
+atlas backups snapshots list myCluster
 ```
 
 ## Monitoring and Alerts
@@ -273,55 +276,25 @@ graph TD
 ### Real-Time Performance Panel
 
 ```javascript
-// Access real-time performance data via Data API
-const response = await fetch(
-  `https://data.mongodb-api.com/app/${appId}/endpoint/data/v1/action/aggregate`,
-  {
-    method: 'POST',
-    headers: {
-      'api-key': process.env.ATLAS_API_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      dataSource: 'Cluster0',
-      database: 'admin',
-      collection: 'system.profile',
-      pipeline: [
-        { $match: { millis: { $gt: 100 } } },
-        { $sort: { ts: -1 } },
-        { $limit: 10 }
-      ]
-    })
-  }
-);
+// View real-time metrics in Atlas: Clusters > Metrics > Real-Time.
+// For slow query details, query system.profile with the MongoDB driver.
+const profile = client.db('admin').collection('system.profile');
+
+const slowOperations = await profile.find({ millis: { $gt: 100 } })
+  .sort({ ts: -1 })
+  .limit(10)
+  .toArray();
 ```
 
 ## Atlas Data API
 
 ```javascript
-// Enable Data API in Atlas UI
-// Clusters > Data API
-
-// REST API call to query data
-const response = await fetch(
-  'https://data.mongodb-api.com/app/data-xxxxx/endpoint/data/v1/action/find',
-  {
-    method: 'POST',
-    headers: {
-      'api-key': 'your-api-key',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      dataSource: 'Cluster0',
-      database: 'mydb',
-      collection: 'users',
-      filter: { status: 'active' },
-      limit: 10
-    })
-  }
-);
-
-const data = await response.json();
+// Atlas Data API and Atlas App Services reached end-of-life on September 30, 2025.
+// Use an official MongoDB driver or a backend API that connects with a driver.
+const users = await client.db('mydb').collection('users')
+  .find({ status: 'active' })
+  .limit(10)
+  .toArray();
 ```
 
 ## Atlas Search
@@ -369,10 +342,8 @@ const results = await collection.aggregate([
 # Monitor cluster metrics to identify over-provisioning
 # If CPU consistently < 50%, consider downsizing
 
-# Use auto-scaling to optimize costs
-atlas clusters update myCluster \
-  --autoScaling-diskGB-enabled true \
-  --diskSizeGB 10
+# Manually reduce disk size after reviewing storage requirements
+atlas clusters update myCluster --diskSizeGB 10
 ```
 
 ### Cost-Saving Strategies
@@ -381,7 +352,7 @@ atlas clusters update myCluster \
 |----------|---------|-----------|
 | Use M10 instead of M30 | ~60% | Less RAM, no sharding |
 | Pause dev clusters | 100% when paused | Manual management |
-| Use spot instances | ~50% | May be interrupted |
+| Use Flex clusters for low-traffic workloads | Predictable low monthly cost | Shared resources and feature limits |
 | Archive old data | Storage costs | Query complexity |
 | Regional clusters | ~20-40% | Latency for some users |
 
