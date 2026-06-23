@@ -8,7 +8,7 @@ Description: Learn how to configure MetalLB for multi-cluster load balancing wit
 
 ---
 
-Multi-cluster Kubernetes deployments are becoming increasingly common for achieving high availability, disaster recovery, and geographic distribution. MetalLB, the popular bare-metal load balancer for Kubernetes, can be configured to work across multiple clusters to provide seamless service discovery and automatic failover. This comprehensive guide walks you through setting up MetalLB for multi-cluster load balancing.
+Multi-cluster Kubernetes deployments are becoming increasingly common for achieving high availability, disaster recovery, and geographic distribution. MetalLB, the popular bare-metal load balancer for Kubernetes, can be combined with DNS, BGP routing, and a global load balancer to provide service discovery and failover across clusters. This comprehensive guide walks you through setting up MetalLB for multi-cluster load balancing.
 
 ## Understanding Multi-Cluster Load Balancing Architecture
 
@@ -84,7 +84,6 @@ kubectl config use-context cluster-a
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
-  --set speaker.frr.enabled=true \
   --wait
 ```
 
@@ -96,7 +95,6 @@ kubectl config use-context cluster-b
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
-  --set speaker.frr.enabled=true \
   --wait
 ```
 
@@ -108,7 +106,6 @@ kubectl config use-context cluster-c
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
-  --set speaker.frr.enabled=true \
   --wait
 ```
 
@@ -130,17 +127,6 @@ spec:
   addresses:
     - 192.168.100.1-192.168.100.50
   autoAssign: true
----
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: cluster-a-l2
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - cluster-a-pool
-  interfaces:
-    - eth0
 ```
 
 Create the IP address pool configuration for Cluster B.
@@ -156,17 +142,6 @@ spec:
   addresses:
     - 192.168.100.51-192.168.100.100
   autoAssign: true
----
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: cluster-b-l2
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - cluster-b-pool
-  interfaces:
-    - eth0
 ```
 
 Create the IP address pool configuration for Cluster C.
@@ -182,17 +157,6 @@ spec:
   addresses:
     - 192.168.100.101-192.168.100.150
   autoAssign: true
----
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: cluster-c-l2
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - cluster-c-pool
-  interfaces:
-    - eth0
 ```
 
 Apply the configurations to each cluster.
@@ -439,7 +403,7 @@ For cross-cluster service discovery, we'll use a combination of external DNS and
 flowchart TB
     subgraph "Service Discovery Layer"
         EDNS[External DNS]
-        COREDNS[CoreDNS Federation]
+        COREDNS[Service Mesh DNS]
     end
 
     subgraph "Cluster A"
@@ -465,7 +429,7 @@ flowchart TB
     COREDNS --> EPC
 ```
 
-Deploy External DNS on each cluster. External DNS automatically creates DNS records for LoadBalancer services.
+Deploy External DNS on each cluster. External DNS automatically creates DNS records for LoadBalancer services. Use a unique `--txt-owner-id` value for each cluster that manages the same DNS zone.
 
 ```yaml
 # external-dns.yaml
@@ -521,15 +485,15 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=service
             - --source=ingress
             - --provider=aws
-            - --policy=sync
+            - --policy=upsert-only
             - --aws-zone-type=public
             - --registry=txt
-            - --txt-owner-id=my-identifier
+            - --txt-owner-id=cluster-a
             - --domain-filter=example.com
           env:
             - name: AWS_DEFAULT_REGION
@@ -538,10 +502,15 @@ spec:
 
 ## Step 5: Configure Global Load Balancing with Failover
 
-Create a global load balancer configuration that routes traffic across clusters with automatic failover. This example uses NGINX as a global load balancer.
+Create a global load balancer configuration that routes traffic across clusters with passive upstream failover. This example uses open-source NGINX as a global load balancer.
 
 ```yaml
 # global-lb-configmap.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: global-lb
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -559,11 +528,12 @@ data:
         multi_accept on;
     }
 
-    stream {
-        # Define upstream clusters with health checks
-        upstream multi_cluster_backend {
-            zone backend 64k;
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
 
+        # Define upstream clusters with passive failure detection
+        upstream multi_cluster_backend {
             # Cluster A - Primary (highest priority)
             server 192.168.100.10:80 weight=100 max_fails=3 fail_timeout=30s;
 
@@ -576,18 +546,13 @@ data:
 
         server {
             listen 80;
-            proxy_pass multi_cluster_backend;
-            proxy_timeout 10s;
-            proxy_connect_timeout 5s;
 
-            # Enable health checks
-            health_check interval=5s passes=2 fails=3;
+            location / {
+                proxy_pass http://multi_cluster_backend;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 10s;
+            }
         }
-    }
-
-    http {
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
 
         # Health check endpoint
         server {
@@ -676,7 +641,8 @@ metadata:
   name: global-lb
   namespace: global-lb
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.100.200
+    external-dns.kubernetes.io/hostname: demo.example.com
+    metallb.io/loadBalancerIPs: 192.168.100.50
 spec:
   type: LoadBalancer
   selector:
@@ -746,8 +712,8 @@ metadata:
   name: demo-app
   namespace: default
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: demo.example.com
-    metallb.universe.tf/address-pool: cluster-a-pool
+    metallb.io/address-pool: cluster-a-pool
+    metallb.io/loadBalancerIPs: 192.168.100.10
 spec:
   type: LoadBalancer
   selector:
@@ -765,15 +731,15 @@ kubectl config use-context cluster-a
 kubectl apply -f sample-app.yaml
 
 kubectl config use-context cluster-b
-sed 's/cluster-a-pool/cluster-b-pool/g' sample-app.yaml | kubectl apply -f -
+sed -e 's/cluster-a-pool/cluster-b-pool/g' -e 's/192.168.100.10/192.168.100.60/g' sample-app.yaml | kubectl apply -f -
 
 kubectl config use-context cluster-c
-sed 's/cluster-a-pool/cluster-c-pool/g' sample-app.yaml | kubectl apply -f -
+sed -e 's/cluster-a-pool/cluster-c-pool/g' -e 's/192.168.100.10/192.168.100.110/g' sample-app.yaml | kubectl apply -f -
 ```
 
 ## Step 7: Implement Health-Based Failover
 
-Configure health checks that trigger automatic failover when a cluster becomes unhealthy.
+Configure health checks that report when a cluster becomes unhealthy. You can connect this output to your DNS provider's API or automation system to adjust weighted records.
 
 ```yaml
 # health-check-controller.yaml
@@ -784,16 +750,14 @@ metadata:
   namespace: global-lb
 data:
   health-check.sh: |
-    #!/bin/bash
+    #!/bin/sh
 
-    CLUSTERS=("192.168.100.10" "192.168.100.60" "192.168.100.110")
-    CLUSTER_NAMES=("cluster-a" "cluster-b" "cluster-c")
-    HEALTH_ENDPOINT="/health"
+    HEALTH_ENDPOINT="/"
     TIMEOUT=5
 
     check_cluster_health() {
-        local ip=$1
-        local name=$2
+        ip=$1
+        name=$2
 
         response=$(curl -s -o /dev/null -w "%{http_code}" \
             --connect-timeout $TIMEOUT \
@@ -809,14 +773,14 @@ data:
     }
 
     update_dns_weight() {
-        local name=$1
-        local healthy=$2
+        name=$1
+        healthy=$2
 
         if [ "$healthy" = "true" ]; then
-            # Restore normal weight
+            # Call your DNS provider API here to restore normal weight.
             echo "Restoring DNS weight for $name"
         else
-            # Set weight to 0 for unhealthy cluster
+            # Call your DNS provider API here to set the weight to 0.
             echo "Setting DNS weight to 0 for $name"
         fi
     }
@@ -824,11 +788,14 @@ data:
     while true; do
         echo "=== Health Check $(date) ==="
 
-        for i in "${!CLUSTERS[@]}"; do
-            if check_cluster_health "${CLUSTERS[$i]}" "${CLUSTER_NAMES[$i]}"; then
-                update_dns_weight "${CLUSTER_NAMES[$i]}" "true"
+        for cluster in "cluster-a:192.168.100.10" "cluster-b:192.168.100.60" "cluster-c:192.168.100.110"; do
+            name="${cluster%%:*}"
+            ip="${cluster#*:}"
+
+            if check_cluster_health "$ip" "$name"; then
+                update_dns_weight "$name" "true"
             else
-                update_dns_weight "${CLUSTER_NAMES[$i]}" "false"
+                update_dns_weight "$name" "false"
             fi
         done
 
@@ -994,6 +961,16 @@ spec:
       baseEjectionTime: 30s
       maxEjectionPercent: 50
       minHealthPercent: 30
+  subsets:
+    - name: cluster-a
+      labels:
+        topology.kubernetes.io/zone: us-east-1
+    - name: cluster-b
+      labels:
+        topology.kubernetes.io/zone: us-west-2
+    - name: cluster-c
+      labels:
+        topology.kubernetes.io/zone: eu-west-1
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -1026,24 +1003,6 @@ spec:
             host: demo-app.default.svc.cluster.local
             subset: cluster-c
           weight: 10
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: demo-app-subsets
-  namespace: default
-spec:
-  host: demo-app.default.svc.cluster.local
-  subsets:
-    - name: cluster-a
-      labels:
-        topology.kubernetes.io/zone: us-east-1
-    - name: cluster-b
-      labels:
-        topology.kubernetes.io/zone: us-west-2
-    - name: cluster-c
-      labels:
-        topology.kubernetes.io/zone: eu-west-1
 ```
 
 ## Step 10: Monitoring and Observability
@@ -1072,10 +1031,10 @@ data:
               names:
                 - metallb-system
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
             action: keep
-            regex: true
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            regex: metallb
+          - source_labels: [__meta_kubernetes_pod_ip]
             action: replace
             target_label: __address__
             regex: (.+)
@@ -1089,6 +1048,7 @@ data:
           'match[]':
             - '{job="metallb"}'
             - '{__name__=~"metallb.*"}'
+            - '{__name__=~"frrk8s.*"}'
         static_configs:
           - targets:
               - 'prometheus-cluster-b.monitoring.svc:9090'
@@ -1103,6 +1063,7 @@ data:
           'match[]':
             - '{job="metallb"}'
             - '{__name__=~"metallb.*"}'
+            - '{__name__=~"frrk8s.*"}'
         static_configs:
           - targets:
               - 'prometheus-cluster-c.monitoring.svc:9090'
@@ -1139,7 +1100,7 @@ data:
               description: "MetalLB speaker has been down for more than 2 minutes."
 
           - alert: MetalLBNoActiveEndpoints
-            expr: metallb_bgp_session_up == 0
+            expr: min by (cluster, peer) (metallb_bgp_session_up or frrk8s_bgp_session_up) == 0
             for: 5m
             labels:
               severity: warning
@@ -1203,7 +1164,7 @@ data:
             "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
             "targets": [
               {
-                "expr": "metallb_bgp_session_up",
+                "expr": "metallb_bgp_session_up or frrk8s_bgp_session_up",
                 "legendFormat": "{{ cluster }} - {{ peer }}"
               }
             ]
@@ -1235,7 +1196,7 @@ This script tests automatic failover when a cluster becomes unavailable. It moni
 
 echo "=== Multi-Cluster Failover Test ==="
 
-GLOBAL_LB_IP="192.168.100.200"
+GLOBAL_LB_IP="192.168.100.50"
 TEST_DURATION=60
 INTERVAL=2
 
@@ -1283,9 +1244,9 @@ echo "=== Failover Test Complete ==="
 Check BGP peer status and logs to diagnose connectivity issues.
 
 ```bash
-kubectl logs -n metallb-system -l component=speaker -c frr --tail=100
+kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker --tail=100
 
-kubectl exec -n metallb-system -it $(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}') -c frr -- vtysh -c "show bgp summary"
+kubectl get -n frr-k8s-system frrnodestates -o yaml
 ```
 
 ### IP Address Not Announced
@@ -1318,7 +1279,7 @@ nc -zv 192.168.100.60 80
 
 3. **Monitor BGP Sessions**: Set up alerts for BGP session flaps or failures.
 
-4. **Use BFD for Fast Failover**: Bidirectional Forwarding Detection (BFD) reduces failover time from seconds to milliseconds.
+4. **Use BFD for Fast Failover**: Bidirectional Forwarding Detection (BFD) can reduce failure detection time from standard BGP hold timers to sub-second intervals when your routers support it.
 
 5. **Test Failover Regularly**: Conduct regular failover tests to ensure the system works as expected.
 
