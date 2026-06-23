@@ -133,7 +133,7 @@ func run() {
 }
 
 func child() {
-	// Now running inside the new namespaces - PID will appear as 1
+	// Now running inside the new namespaces - this wrapper appears as PID 1
 	fmt.Printf("Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
 	// Set a different hostname for our container
@@ -172,11 +172,11 @@ Inside the container, try:
 
 ```bash
 hostname        # Should show "container"
-echo $$         # Should show "1" - we're PID 1 in our namespace!
+echo $$         # Usually shows "2" - the Go wrapper is PID 1, and the shell is its child
 ps aux          # Still shows host processes (we'll fix this)
 ```
 
-You've just created your first isolated namespace! The process sees itself as PID 1 and has its own hostname.
+You've just created your first isolated namespace! The wrapper process sees itself as PID 1, the shell runs as its child, and the container has its own hostname.
 
 ## Step 2: Filesystem Isolation with chroot
 
@@ -451,8 +451,8 @@ ps aux                # Only container processes - proves PID namespace works
 cat /etc/os-release   # Alpine Linux - proves filesystem isolation works
 ip addr               # Only loopback (isolated network) - proves network namespace
 
-# Test memory limit - this should fail or be killed due to 100MB limit
-dd if=/dev/zero of=/dev/null bs=1M count=200
+# Test memory limit - this should eventually fail or be killed due to the 100MB limit
+sh -c 'x=x; while true; do x=$x$x; done'
 ```
 
 ## What Real Container Runtimes Add
