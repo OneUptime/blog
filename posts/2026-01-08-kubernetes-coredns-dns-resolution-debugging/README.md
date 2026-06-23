@@ -403,7 +403,7 @@ Key metrics:
 ```text
 coredns_cache_hits_total{server="dns://:53",type="success"} 12345
 coredns_cache_misses_total{server="dns://:53"} 678
-coredns_cache_size{server="dns://:53",type="success"} 1000
+coredns_cache_entries{server="dns://:53",type="success"} 1000
 ```
 
 Adjust cache TTL in Corefile if needed:
