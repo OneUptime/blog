@@ -12,7 +12,7 @@ MongoDB's flexible schema is powerful, but it can lead to inconsistent data with
 
 ## Understanding Schema Validation
 
-Schema validation in MongoDB uses JSON Schema to define rules for documents. Validation occurs during insert and update operations, ensuring data consistency.
+Schema validation in MongoDB can use JSON Schema and supported query expressions to define rules for documents. Validation occurs during insert and update operations, ensuring data consistency.
 
 ```mermaid
 flowchart TD
@@ -227,59 +227,57 @@ db.createCollection("orders", {
 
 ### Conditional Validation
 
+MongoDB supports draft 4 JSON Schema keywords, so use query operators for conditional rules rather than newer JSON Schema keywords such as `if`, `then`, or `const`.
+
 ```javascript
 db.createCollection("payments", {
     validator: {
-        $jsonSchema: {
-            bsonType: "object",
-            required: ["method", "amount"],
-            properties: {
-                method: {
-                    enum: ["credit_card", "bank_transfer", "paypal"]
-                },
-                amount: {
-                    bsonType: "double",
-                    minimum: 0.01
+        $and: [
+            {
+                $jsonSchema: {
+                    bsonType: "object",
+                    required: ["method", "amount"],
+                    properties: {
+                        method: {
+                            enum: ["credit_card", "bank_transfer", "paypal"]
+                        },
+                        amount: {
+                            bsonType: "double",
+                            minimum: 0.01
+                        }
+                    }
                 }
             },
             // Conditional validation based on payment method
-            allOf: [
-                {
-                    if: {
-                        properties: { method: { const: "credit_card" } }
-                    },
-                    then: {
-                        required: ["cardNumber", "expiryDate", "cvv"],
-                        properties: {
-                            cardNumber: {
-                                bsonType: "string",
-                                pattern: "^[0-9]{16}$"
-                            },
-                            expiryDate: {
-                                bsonType: "string",
-                                pattern: "^(0[1-9]|1[0-2])/[0-9]{2}$"
-                            },
-                            cvv: {
-                                bsonType: "string",
-                                pattern: "^[0-9]{3,4}$"
-                            }
+            {
+                $or: [
+                    { method: { $ne: "credit_card" } },
+                    {
+                        cardNumber: {
+                            $type: "string",
+                            $regex: "^[0-9]{16}$"
+                        },
+                        expiryDate: {
+                            $type: "string",
+                            $regex: "^(0[1-9]|1[0-2])/[0-9]{2}$"
+                        },
+                        cvv: {
+                            $type: "string",
+                            $regex: "^[0-9]{3,4}$"
                         }
                     }
-                },
-                {
-                    if: {
-                        properties: { method: { const: "bank_transfer" } }
-                    },
-                    then: {
-                        required: ["accountNumber", "routingNumber"],
-                        properties: {
-                            accountNumber: { bsonType: "string" },
-                            routingNumber: { bsonType: "string" }
-                        }
+                ]
+            },
+            {
+                $or: [
+                    { method: { $ne: "bank_transfer" } },
+                    {
+                        accountNumber: { $type: "string" },
+                        routingNumber: { $type: "string" }
                     }
-                }
-            ]
-        }
+                ]
+            }
+        ]
     }
 })
 ```
@@ -327,8 +325,8 @@ db.runCommand({
     validationAction: "error"
 })
 
-// Moderate: Only validate documents that already match the schema
-// Allows existing invalid documents to be updated
+// Moderate: Validate inserts and updates to existing valid documents
+// Allows existing invalid documents to be updated without validation
 db.runCommand({
     collMod: "users",
     validationLevel: "moderate",
