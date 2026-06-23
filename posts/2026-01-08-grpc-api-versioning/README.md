@@ -144,6 +144,7 @@ option go_package = "github.com/example/api/v1";
 option java_package = "com.example.api.v1";
 
 import "api/common/address.proto";
+import "google/protobuf/timestamp.proto";
 
 service UserService {
     rpc GetUser(GetUserRequest) returns (User);
