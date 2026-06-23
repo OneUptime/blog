@@ -1587,8 +1587,9 @@ class CacheDebugger
       }
       
       RedisHelper.with_redis do |redis|
-        exists = redis.exists?(full_key)
-        diagnosis[:exists] = exists == 1
+        # `exists?` returns a Boolean in redis-rb 5.x
+        # (use `exists` if you need the integer count)
+        diagnosis[:exists] = redis.exists?(full_key)
         
         if diagnosis[:exists]
           diagnosis[:ttl] = redis.ttl(full_key)
