@@ -420,7 +420,7 @@ Best for: Non-critical batch jobs only
 
 ## Tools for Right-Sizing
 
-### Goldilocks (by Fairwind)
+### Goldilocks (by Fairwinds)
 
 Goldilocks automatically creates VPAs for all deployments in labeled namespaces and provides a dashboard showing current settings alongside recommendations.
 
@@ -449,7 +449,7 @@ helm install kubecost kubecost/cost-analyzer --namespace kubecost --create-names
 kubectl port-forward -n kubecost svc/kubecost-cost-analyzer 9090:9090
 ```
 
-### kubectl-resource-recommender Plugin
+### kube-capacity (resource-capacity) Plugin
 
 This krew plugin provides a quick command-line view of resource capacity and utilization across your cluster or namespace.
 
