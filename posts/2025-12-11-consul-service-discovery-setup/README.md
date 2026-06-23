@@ -49,12 +49,12 @@ Download and install Consul on your servers. The installation is straightforward
 ```bash
 # Download Consul (Linux)
 
-curl -fsSL https://releases.hashicorp.com/consul/1.17.0/consul_1.17.0_linux_amd64.zip -o consul.zip
+curl -fsSL https://releases.hashicorp.com/consul/2.0.1/consul_2.0.1_linux_amd64.zip -o consul.zip
 
 # Extract and install
 unzip consul.zip
 sudo mv consul /usr/local/bin/
-chmod +x /usr/local/bin/consul
+sudo chmod +x /usr/local/bin/consul
 
 # Verify installation
 consul version
@@ -98,7 +98,7 @@ bind_addr = "10.0.1.10"
 client_addr = "0.0.0.0"
 
 # Encrypt gossip traffic with a shared key
-encrypt = "your-gossip-encryption-key"
+encrypt = "pUqJrVyVRj5jsiYEkM/tFQYfWyJIv4s3XkvDwy7Cu5s="
 
 # Enable the UI
 ui_config {
@@ -149,7 +149,7 @@ bind_addr = "10.0.2.10"
 client_addr = "127.0.0.1"
 
 # Match the server encryption key
-encrypt = "your-gossip-encryption-key"
+encrypt = "pUqJrVyVRj5jsiYEkM/tFQYfWyJIv4s3XkvDwy7Cu5s="
 
 # Join the Consul servers
 retry_join = ["10.0.1.10", "10.0.1.11", "10.0.1.12"]
@@ -167,7 +167,7 @@ Create a systemd unit file to manage the Consul service lifecycle.
 ```ini
 [Unit]
 Description=HashiCorp Consul
-Documentation=https://www.consul.io/docs
+Documentation=https://developer.hashicorp.com/consul/docs
 Requires=network-online.target
 After=network-online.target
 
@@ -194,6 +194,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable consul
 sudo systemctl start consul
 
+# Bootstrap ACLs once on the initial server cluster, then store the SecretID securely
+consul acl bootstrap
+export CONSUL_HTTP_TOKEN="<management-token-secret-id>"
+
 # Check status
 consul members
 ```
@@ -209,6 +213,7 @@ service {
   name = "api"
   id   = "api-1"
   port = 8080
+  token = "your-service-write-token"
 
   tags = ["v1", "primary"]
 
@@ -233,6 +238,7 @@ Register via HTTP API for dynamic registration:
 ```bash
 # Register a service via API
 curl --request PUT \
+  --header "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
   --data '{
     "ID": "web-1",
     "Name": "web",
@@ -255,13 +261,16 @@ Consul provides multiple ways to discover services - DNS interface, HTTP API, an
 dig @127.0.0.1 -p 8600 api.service.consul
 
 # Query via HTTP API - get all healthy instances
-curl http://localhost:8500/v1/health/service/api?passing
+curl --header "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
+  http://localhost:8500/v1/health/service/api?passing
 
 # Query catalog for all services
-curl http://localhost:8500/v1/catalog/services
+curl --header "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
+  http://localhost:8500/v1/catalog/services
 
 # Get specific service details
-curl http://localhost:8500/v1/catalog/service/api
+curl --header "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
+  http://localhost:8500/v1/catalog/service/api
 ```
 
 ## 7. Service Discovery in Applications
@@ -288,7 +297,7 @@ class ServiceDiscovery:
         if not services:
             raise Exception(f"No healthy instances of {service_name}")
 
-        # Simple round-robin load balancing
+        # Simple random load balancing
         service = random.choice(services)
         address = service['Service']['Address'] or service['Node']['Address']
         port = service['Service']['Port']
@@ -367,12 +376,13 @@ func main() {
 
 To use Consul's DNS interface seamlessly, configure your system's DNS to forward `.consul` domain queries to Consul.
 
-For systemd-resolved:
+For systemd-resolved on systemd 246 and newer:
 
 ```bash
 # /etc/systemd/resolved.conf.d/consul.conf
 [Resolve]
 DNS=127.0.0.1:8600
+DNSSEC=false
 Domains=~consul
 ```
 
@@ -395,7 +405,7 @@ consul members
 consul operator raft list-peers
 
 # Check service health
-consul catalog services
+consul health checks api
 
 # View detailed node info
 consul info
