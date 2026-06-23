@@ -264,15 +264,15 @@ CustomResponseBodies:
   Statement:
     NotStatement:
       Statement:
-        ByteMatchStatement:
-          SearchString: ""
+        SizeConstraintStatement:
           FieldToMatch:
             SingleHeader:
               Name: x-api-key
+          ComparisonOperator: GT
+          Size: 0
           TextTransformations:
             - Priority: 0
               Type: NONE
-          PositionalConstraint: CONTAINS
   VisibilityConfig:
     SampledRequestsEnabled: true
     CloudWatchMetricsEnabled: true
