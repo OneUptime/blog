@@ -1445,6 +1445,7 @@ sequenceDiagram
 import pika
 import uuid
 import json
+import time
 from typing import Any, Optional
 import threading
 
@@ -1686,8 +1687,8 @@ class RabbitMQHealthCheck:
             connection = pika.BlockingConnection(self.parameters)
             channel = connection.channel()
             
-            # Get server properties
-            server_properties = connection._impl.transport.params.host
+            # Get the host we connected to
+            server_properties = self.parameters.host
             
             connection.close()
             
