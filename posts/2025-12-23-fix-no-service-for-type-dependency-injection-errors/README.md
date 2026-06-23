@@ -49,9 +49,9 @@ public interface IUserService
 // The implementation
 public class UserService : IUserService
 {
-    public async Task<User> GetUserAsync(int id)
+    public Task<User> GetUserAsync(int id)
     {
-        // Implementation
+        throw new NotImplementedException();
     }
 }
 ```
@@ -129,7 +129,10 @@ public interface IRepository<T> where T : class
 
 public class Repository<T> : IRepository<T> where T : class
 {
-    // Implementation
+    public Task<T> GetByIdAsync(int id)
+    {
+        throw new NotImplementedException();
+    }
 }
 ```
 
@@ -216,9 +219,11 @@ builder.Services.Scan(scan => scan
 Create a diagnostic endpoint to see what's registered:
 
 ```csharp
-app.MapGet("/debug/services", (IServiceCollection services) =>
+var serviceDescriptors = builder.Services;
+
+app.MapGet("/debug/services", () =>
 {
-    var registeredServices = services
+    var registeredServices = serviceDescriptors
         .Where(s => s.ServiceType.Namespace?.StartsWith("MyApplication") == true)
         .Select(s => new
         {
@@ -399,7 +404,11 @@ public static class StartupChecklist
 
 // Call during startup
 var app = builder.Build();
-StartupChecklist.ValidateServices(app.Services);
+
+using (var scope = app.Services.CreateScope())
+{
+    StartupChecklist.ValidateServices(scope.ServiceProvider);
+}
 ```
 
 ## Common Framework Services
