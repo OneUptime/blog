@@ -8,30 +8,28 @@ Description: Learn how to configure Elasticsearch fields to skip text analysis f
 
 ---
 
-By default, Elasticsearch analyzes text fields - breaking them into tokens, lowercasing, and applying stemming. While this enables full-text search, many fields need exact matching instead. This guide shows how to disable analysis when you need precise value matching.
+By default, Elasticsearch analyzes text fields - breaking them into tokens and lowercasing them. While this enables full-text search, many fields need exact matching instead. This guide shows how to disable analysis when you need precise value matching.
 
 ## Understanding Text Analysis
 
 ```mermaid
 flowchart LR
     subgraph "Analyzed Text Field"
-        A["John's Quick-Brown Fox"] --> B[Analyzer]
-        B --> C[john]
-        B --> D[quick]
-        B --> E[brown]
-        B --> F[fox]
+        A["Quick-Brown Fox"] --> B[Analyzer]
+        B --> C[quick]
+        B --> D[brown]
+        B --> E[fox]
     end
 
     subgraph "Not Analyzed Keyword"
-        G["John's Quick-Brown Fox"] --> H[Stored As-Is]
+        G["Quick-Brown Fox"] --> H[Stored As-Is]
     end
 ```
 
-When Elasticsearch analyzes "John's Quick-Brown Fox":
+When Elasticsearch analyzes "Quick-Brown Fox" with the standard analyzer:
 - Tokenizes: splits into words
-- Lowercases: JOHN becomes john
-- Removes possessives: John's becomes john
-- Result: ["john", "quick", "brown", "fox"]
+- Lowercases: QUICK becomes quick
+- Result: ["quick", "brown", "fox"]
 
 For exact matching, you want the original value preserved.
 
@@ -61,9 +59,9 @@ curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
 |--------|------|---------|
 | Analysis | Yes | No |
 | Full-text search | Yes | No |
-| Exact matching | No | Yes |
+| Exact value matching | No | Yes |
 | Sorting | Inefficient | Efficient |
-| Aggregations | No | Yes |
+| Aggregations | Not by default | Yes |
 | Wildcards | Limited | Yes |
 
 ## Multi-Field Mapping
@@ -80,10 +78,6 @@ curl -X PUT "localhost:9200/articles" -H 'Content-Type: application/json' -d'
         "fields": {
           "keyword": {
             "type": "keyword"
-          },
-          "autocomplete": {
-            "type": "text",
-            "analyzer": "autocomplete_analyzer"
           }
         }
       },
@@ -101,7 +95,6 @@ curl -X PUT "localhost:9200/articles" -H 'Content-Type: application/json' -d'
 Now you can:
 - Full-text search: `title`
 - Exact match: `title.keyword`
-- Autocomplete: `title.autocomplete`
 
 ### Using Multi-Fields
 
@@ -170,7 +163,7 @@ curl -X PUT "localhost:9200/logs" -H 'Content-Type: application/json' -d'
 }'
 ```
 
-- `index: false` - Field is stored but not searchable
+- `index: false` - Field remains in `_source` but is not searchable for `text` fields
 - `enabled: false` - Object is stored but completely ignored
 
 ## Normalizers for Keyword Fields
@@ -276,6 +269,7 @@ curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
     "analysis": {
       "normalizer": {
         "case_insensitive": {
+          "type": "custom",
           "filter": ["lowercase"]
         }
       }
@@ -382,7 +376,7 @@ Use `title.keyword` or switch to a `match` query.
 
 ## Ignore Above for Long Values
 
-Keyword fields have a default limit. Configure it:
+Dynamically created `.keyword` subfields commonly use `ignore_above: 256`. For explicit keyword fields, configure `ignore_above` when you want long values to stay in `_source` but be excluded from indexing:
 
 ```bash
 {
@@ -399,8 +393,8 @@ Keyword fields have a default limit. Configure it:
 
 Values longer than `ignore_above` are:
 - Stored in `_source`
-- Not indexed (cannot search)
-- Cannot be aggregated
+- Not indexed
+- Not available for sorting or aggregations
 
 ## Performance Benefits
 
