@@ -19,7 +19,7 @@ flowchart TD
     A[MongoDB Locking Hierarchy] --> B[Global Lock]
     B --> C[Database Lock]
     C --> D[Collection Lock]
-    D --> E[Document Lock]
+    D --> E[Storage engine concurrency]
 
     F[Lock Modes] --> G[Shared - S]
     F --> H[Exclusive - X]
@@ -27,7 +27,7 @@ flowchart TD
     F --> J[Intent Exclusive - IX]
 
     G --> K[Read Operations]
-    H --> L[Write Operations]
+    H --> L[Writes and DDL when required]
     I --> M[Signal intent to read at finer granularity]
     J --> N[Signal intent to write at finer granularity]
 ```
@@ -38,23 +38,29 @@ First, identify what's causing the lock contention:
 
 ```javascript
 // Check current operations and locks
-db.currentOp({
-    $or: [
-        { "locks": { $exists: true } },
-        { "waitingForLock": true }
-    ]
-})
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { allUsers: true, idleSessions: true } },
+    {
+        $match: {
+            $or: [
+                { "locks": { $exists: true } },
+                { "waitingForLock": true }
+            ]
+        }
+    }
+])
 
 // Find operations waiting for locks
-db.currentOp({
-    "waitingForLock": true
-})
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { allUsers: true } },
+    { $match: { "waitingForLock": true } }
+])
 
 // Find long-running operations
-db.currentOp({
-    "active": true,
-    "secs_running": { $gt: 5 }
-})
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { allUsers: true } },
+    { $match: { "active": true, "secs_running": { $gt: 5 } } }
+])
 
 // Check lock statistics
 db.serverStatus().locks
@@ -80,7 +86,10 @@ function diagnoseLockIssues() {
 
     // Operations waiting for locks
     print("\nOperations Waiting for Locks:");
-    db.currentOp({ "waitingForLock": true }).inprog.forEach(function(op) {
+    db.getSiblingDB("admin").aggregate([
+        { $currentOp: { allUsers: true } },
+        { $match: { "waitingForLock": true } }
+    ]).forEach(function(op) {
         print("  OpId: " + op.opid);
         print("  Type: " + op.op);
         print("  Namespace: " + op.ns);
@@ -90,10 +99,10 @@ function diagnoseLockIssues() {
 
     // Long-running operations holding locks
     print("\nLong-Running Operations (>5s):");
-    db.currentOp({
-        "active": true,
-        "secs_running": { $gt: 5 }
-    }).inprog.forEach(function(op) {
+    db.getSiblingDB("admin").aggregate([
+        { $currentOp: { allUsers: true } },
+        { $match: { "active": true, "secs_running": { $gt: 5 } } }
+    ]).forEach(function(op) {
         print("  OpId: " + op.opid);
         print("  Type: " + op.op);
         print("  Namespace: " + op.ns);
@@ -110,11 +119,11 @@ diagnoseLockIssues();
 
 ### Scenario 1: Index Creation Blocking
 
-Background index builds can still cause lock issues:
+Modern index builds can still cause brief lock waits:
 
 ```javascript
-// Problem: Index creation blocking other operations
-db.largeCollection.createIndex({ field: 1 })  // Blocks collection
+// Problem: Index creation can briefly block other operations
+db.largeCollection.createIndex({ field: 1 })  // Takes an exclusive collection lock at the start and end
 
 // Note: The { background: true } option is deprecated since MongoDB 4.2
 // and is ignored in MongoDB 4.2+. All index builds now use an optimized
@@ -127,13 +136,13 @@ db.largeCollection.createIndex({ field: 1 })  // Blocks collection
 const { MongoClient } = require('mongodb');
 
 async function monitorIndexBuild(client, dbName, collectionName) {
-    const db = client.db(dbName);
+    const adminDb = client.db('admin');
 
     const checkProgress = async () => {
-        const ops = await db.admin().command({ currentOp: 1 });
-        const indexBuilds = ops.inprog.filter(op =>
-            op.command && op.command.createIndexes === collectionName
-        );
+        const indexBuilds = await adminDb.aggregate([
+            { $currentOp: { allUsers: true } },
+            { $match: { "command.createIndexes": collectionName, "command.$db": dbName } }
+        ]).toArray();
 
         if (indexBuilds.length > 0) {
             indexBuilds.forEach(build => {
@@ -171,14 +180,16 @@ class CollectionManager {
 
         while (Date.now() - startTime < maxWaitTime) {
             // Check for active operations
-            const ops = await db.admin().command({
-                currentOp: 1,
-                ns: `${dbName}.${collectionName}`
-            });
-
-            const activeOps = ops.inprog.filter(op =>
-                op.active && op.op !== 'none'
-            );
+            const activeOps = await this.client.db('admin').aggregate([
+                { $currentOp: { allUsers: true } },
+                {
+                    $match: {
+                        ns: `${dbName}.${collectionName}`,
+                        active: true,
+                        op: { $ne: 'none' }
+                    }
+                }
+            ]).toArray();
 
             if (activeOps.length === 0) {
                 // No active operations, safe to drop
@@ -231,8 +242,9 @@ class CollectionManager {
 ### Scenario 3: Compact or Repair Operations
 
 ```javascript
-// Problem: Compact requires exclusive lock
-db.runCommand({ compact: "largeCollection" })  // May fail
+// Problem: Compact can add operational load, and concurrent compact commands
+// on the same collection are not allowed
+db.runCommand({ compact: "largeCollection" })  // Schedule carefully; use force on an active replica set primary
 
 // Solution: Schedule during maintenance window
 const { MongoClient } = require('mongodb');
@@ -241,7 +253,7 @@ async function scheduleCompact(client, dbName, collectionName) {
     const db = client.db(dbName);
 
     // Check if it's a good time to compact
-    const serverStatus = await db.admin().serverStatus();
+    const serverStatus = await db.admin().command({ serverStatus: 1 });
     const globalLock = serverStatus.globalLock;
 
     // Only proceed if queue is empty
@@ -252,10 +264,10 @@ async function scheduleCompact(client, dbName, collectionName) {
     }
 
     // Check active operations
-    const ops = await db.admin().command({ currentOp: 1 });
-    const activeOps = ops.inprog.filter(op =>
-        op.active && op.secs_running > 0
-    );
+    const activeOps = await client.db('admin').aggregate([
+        { $currentOp: { allUsers: true } },
+        { $match: { active: true, secs_running: { $gt: 0 } } }
+    ]).toArray();
 
     if (activeOps.length > 5) {  // Too many active operations
         console.log('Too many active operations, skipping compact');
@@ -278,10 +290,18 @@ async function scheduleCompact(client, dbName, collectionName) {
 ### Scenario 4: Schema Validation Changes
 
 ```javascript
-// Problem: Modifying collection validation requires exclusive lock
+// Problem: Modifying collection validation requires a collection lock
 db.runCommand({
     collMod: "users",
-    validator: { $jsonSchema: { ... } }
+    validator: {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["email"],
+            properties: {
+                email: { bsonType: "string" }
+            }
+        }
+    }
 })
 
 // Solution: Apply during low-traffic period with retry
@@ -325,7 +345,10 @@ When necessary, kill operations that are blocking others:
 ```javascript
 // Find and kill blocking operations
 function killBlockingOperations(maxRunTime = 300) {
-    const ops = db.currentOp({ "active": true }).inprog;
+    const ops = db.getSiblingDB("admin").aggregate([
+        { $currentOp: { allUsers: true } },
+        { $match: { "active": true } }
+    ]);
 
     ops.forEach(function(op) {
         if (op.secs_running > maxRunTime) {
@@ -342,11 +365,16 @@ function killBlockingOperations(maxRunTime = 300) {
 // In Node.js
 async function killLongRunningOperations(client, maxSeconds = 300) {
     const admin = client.db('admin');
-    const ops = await admin.command({ currentOp: 1, active: true });
-
-    const longRunning = ops.inprog.filter(op =>
-        op.secs_running > maxSeconds && op.opid
-    );
+    const longRunning = await admin.aggregate([
+        { $currentOp: { allUsers: true } },
+        {
+            $match: {
+                active: true,
+                secs_running: { $gt: maxSeconds },
+                opid: { $exists: true }
+            }
+        }
+    ]).toArray();
 
     for (const op of longRunning) {
         console.log(`Killing operation ${op.opid} (running ${op.secs_running}s)`);
@@ -393,7 +421,7 @@ async function queryWithTimeout(collection, query, options = {}) {
 ### Write Concern and Read Preference
 
 ```javascript
-// Use appropriate write concern to reduce lock contention
+// Use appropriate write concern to avoid unnecessary acknowledgment waits
 const collection = client.db('mydb').collection('orders');
 
 // For non-critical writes
@@ -422,7 +450,7 @@ class LockMonitor {
 
     async checkLockHealth() {
         const admin = this.client.db('admin');
-        const status = await admin.serverStatus();
+        const status = await admin.command({ serverStatus: 1 });
 
         const alerts = [];
 
@@ -437,8 +465,10 @@ class LockMonitor {
         }
 
         // Check for waiting operations
-        const ops = await admin.command({ currentOp: 1 });
-        const waitingOps = ops.inprog.filter(op => op.waitingForLock);
+        const ops = await admin.aggregate([
+            { $currentOp: { allUsers: true } }
+        ]).toArray();
+        const waitingOps = ops.filter(op => op.waitingForLock);
 
         if (waitingOps.length > 0) {
             alerts.push({
@@ -454,7 +484,7 @@ class LockMonitor {
         }
 
         // Check for long-running operations
-        const longRunning = ops.inprog.filter(op =>
+        const longRunning = ops.filter(op =>
             op.active && op.secs_running > this.thresholds.longRunningOp
         );
 
