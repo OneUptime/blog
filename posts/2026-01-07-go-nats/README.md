@@ -20,7 +20,7 @@ Before diving into code, let's understand why NATS is particularly well-suited f
 - **High Performance**: Capable of handling millions of messages per second
 - **Simple Protocol**: Text-based protocol that's easy to debug and understand
 - **Built-in Patterns**: Native support for pub/sub, request/reply, and queue groups
-- **JetStream**: Persistent messaging with exactly-once delivery semantics
+- **JetStream**: Persistent messaging with at-least-once delivery and exactly-once semantics when using message deduplication and double acknowledgments
 - **Go-Native**: Written in Go with an excellent Go client library
 
 ## Prerequisites
@@ -79,7 +79,6 @@ package main
 
 import (
     "log"
-    "time"
 
     "github.com/nats-io/nats.go"
 )
@@ -518,7 +517,7 @@ func main() {
 
 ## JetStream for Persistence
 
-JetStream adds persistence, exactly-once delivery, and stream processing capabilities to NATS. It's essential for scenarios where you cannot afford to lose messages.
+JetStream adds persistence, at-least-once delivery, and stream processing capabilities to NATS. It can also provide exactly-once semantics when you combine message deduplication with double acknowledgments. It's essential for scenarios where you cannot afford to lose messages.
 
 ### Creating Streams and Consumers
 
@@ -530,6 +529,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
     "log"
     "time"
 
@@ -657,10 +657,6 @@ func main() {
 
     log.Println("Starting order processor...")
 
-    // Consume messages with automatic fetch
-    consumeCtx, consumeCancel := context.WithCancel(ctx)
-    defer consumeCancel()
-
     // Start consuming messages
     cc, err := cons.Consume(func(msg jetstream.Msg) {
         var order Order
@@ -693,7 +689,6 @@ func main() {
     signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
     <-sigChan
 
-    consumeCancel()
     log.Println("Shutting down...")
 }
 ```
@@ -1180,7 +1175,7 @@ You can also integrate NATS metrics with Prometheus using the nats-exporter.
 
 ## Conclusion
 
-NATS provides a powerful yet simple foundation for microservice communication in Go. With its core pub/sub and request/reply patterns, you can build loosely coupled services that communicate efficiently. JetStream adds the persistence and exactly-once delivery guarantees needed for critical business operations.
+NATS provides a powerful yet simple foundation for microservice communication in Go. With its core pub/sub and request/reply patterns, you can build loosely coupled services that communicate efficiently. JetStream adds the persistence and delivery guarantees needed for critical business operations.
 
 Key takeaways:
 
