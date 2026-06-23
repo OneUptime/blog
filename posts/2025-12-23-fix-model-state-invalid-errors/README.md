@@ -113,7 +113,7 @@ public class ProductsController : ControllerBase
     {
         // With [ApiController], this code never runs if model is invalid
         // ASP.NET Core automatically returns 400 with validation errors
-        return Created($"/api/products/{request.Id}", request);
+        return Created($"/api/products/{request.Name}", request);
     }
 }
 ```
