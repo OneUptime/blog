@@ -174,7 +174,7 @@ ls /etc/apparmor.d/ | grep -v "^abstractions\|^tunables\|^local\|^cache\|^disabl
 # View the contents of a profile (e.g., for cups-browsed)
 cat /etc/apparmor.d/usr.sbin.cups-browsed
 
-# View with syntax highlighting using less
+# Page through the profile
 less /etc/apparmor.d/usr.sbin.cups-browsed
 ```
 
@@ -213,7 +213,7 @@ AppArmor profiles use a specific syntax. Let's break down the components:
   network inet dgram,
 
   # File rules - define file access permissions
-  # r = read, w = write, x = execute, m = memory map
+  # r = read, w = write, m = memory map executable
   # k = lock, l = link, a = append
 
   /usr/bin/myapp mr,
@@ -236,8 +236,8 @@ Understanding file permission flags is crucial:
 #
 # r  - read
 # w  - write
-# a  - append (implies w)
-# x  - execute (discrete execution)
+# a  - append-only write (conflicts with w)
+# x  - execute permission, used through execute modes such as ix, px, ux, and cx
 # m  - memory map executable
 # k  - file locking
 # l  - link (create hard links)
@@ -368,7 +368,7 @@ Add the following content:
 
   # Log files - append only for security
   /var/log/myapp/ rw,
-  /var/log/myapp/** w,
+  /var/log/myapp/** a,
 
   # Temporary files
   /tmp/myapp-* rw,
@@ -389,7 +389,7 @@ Add the following content:
   deny /root/** rwx,
 
   # Include local customizations
-  #include <local/usr.local.bin.myapp>
+  include if exists <local/usr.local.bin.myapp>
 }
 ```
 
@@ -418,11 +418,11 @@ Let's create a practical example for a Node.js web application:
 
 ```bash
 # AppArmor profile for a Node.js application
-# Path: /etc/apparmor.d/opt.mywebapp.server.js
+# Path: /etc/apparmor.d/usr.bin.node
 
 #include <tunables/global>
 
-profile mywebapp /usr/bin/node /opt/mywebapp/server.js {
+profile mywebapp /usr/bin/node {
   # Base abstractions
   #include <abstractions/base>
   #include <abstractions/nameservice>
@@ -450,7 +450,7 @@ profile mywebapp /usr/bin/node /opt/mywebapp/server.js {
 
   # Log files
   /var/log/mywebapp/ rw,
-  /var/log/mywebapp/** w,
+  /var/log/mywebapp/** a,
 
   # Temporary files for uploads and processing
   /tmp/mywebapp-* rw,
@@ -483,7 +483,7 @@ profile mywebapp /usr/bin/node /opt/mywebapp/server.js {
   deny /root/** rwx,
 
   # Local customizations
-  #include <local/opt.mywebapp.server.js>
+  include if exists <local/usr.bin.node>
 }
 ```
 
@@ -597,12 +597,11 @@ AppArmor is an essential security layer for containerized applications.
 
 ### Default Docker AppArmor Profile
 
-Docker applies a default AppArmor profile called `docker-default` to all containers:
+Docker applies a default AppArmor profile called `docker-default` to containers when AppArmor is enabled and no other profile is specified:
 
 ```bash
-# View the default Docker AppArmor profile
-cat /etc/apparmor.d/docker-default 2>/dev/null || \
-  docker run --rm alpine cat /etc/apparmor.d/docker-default
+# Check whether the generated docker-default profile is loaded
+sudo aa-status | grep docker-default
 
 # Check if Docker is using AppArmor
 docker info | grep -i apparmor
@@ -696,7 +695,7 @@ docker run -d \
 
 ### Kubernetes and AppArmor
 
-For Kubernetes deployments, specify AppArmor profiles in pod annotations:
+For Kubernetes 1.30 and later, specify AppArmor profiles with the `appArmorProfile` field in the pod or container security context:
 
 ```yaml
 # Kubernetes pod with custom AppArmor profile
@@ -705,10 +704,11 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: secure-nginx
-  annotations:
-    # Format: container.apparmor.security.beta.kubernetes.io/<container-name>: <profile>
-    container.apparmor.security.beta.kubernetes.io/nginx: localhost/docker-nginx-custom
 spec:
+  securityContext:
+    appArmorProfile:
+      type: Localhost
+      localhostProfile: docker-nginx-custom
   containers:
   - name: nginx
     image: nginx:latest
@@ -751,6 +751,8 @@ spec:
         - /bin/bash
         - -c
         - |
+          apt-get update
+          apt-get install -y --no-install-recommends apparmor
           cp /profiles/* /etc/apparmor.d/
           apparmor_parser -r /etc/apparmor.d/docker-*
           sleep infinity
@@ -781,7 +783,7 @@ spec:
 @{MYAPP_LOGS}=/var/log/myapp
 
 # Use variables in your profile
-/etc/apparmor.d/usr.local.bin.myapp
+# /etc/apparmor.d/usr.local.bin.myapp
 
 #include <tunables/global>
 #include <tunables/myapp>
@@ -794,7 +796,7 @@ spec:
   @{MYAPP_HOME}/** r,
   @{MYAPP_DATA}/ rw,
   @{MYAPP_DATA}/** rwk,
-  @{MYAPP_LOGS}/** w,
+  @{MYAPP_LOGS}/** a,
 }
 ```
 
@@ -804,6 +806,8 @@ Hats allow different rule sets within the same profile:
 
 ```bash
 # Profile with hats for different operation modes
+#include <tunables/global>
+
 /usr/bin/myapp {
   #include <abstractions/base>
 
@@ -832,6 +836,8 @@ Control which signals applications can send and receive:
 
 ```bash
 # Signal rules in AppArmor profiles
+#include <tunables/global>
+
 /usr/bin/myapp {
   #include <abstractions/base>
 
@@ -852,6 +858,8 @@ Control D-Bus communication:
 
 ```bash
 # D-Bus rules for desktop applications
+#include <tunables/global>
+
 /usr/bin/mydesktopapp {
   #include <abstractions/base>
   #include <abstractions/dbus-session>
@@ -876,6 +884,7 @@ Control D-Bus communication:
 ```bash
 # Create a git repository for your custom profiles
 sudo mkdir -p /opt/apparmor-profiles
+sudo mkdir -p /opt/apparmor-profiles/local
 cd /opt/apparmor-profiles
 sudo git init
 
