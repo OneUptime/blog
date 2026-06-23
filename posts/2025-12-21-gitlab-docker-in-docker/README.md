@@ -100,6 +100,8 @@ deploy:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - docker pull $IMAGE_TAG
     - docker tag $IMAGE_TAG $CI_REGISTRY_IMAGE:latest
@@ -136,6 +138,7 @@ build:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
     DOCKER_BUILDKIT: 1
   script:
     - docker build --target production -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
@@ -153,6 +156,7 @@ build:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
     DOCKER_BUILDKIT: 1
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
@@ -323,6 +327,7 @@ build:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
@@ -334,6 +339,7 @@ scan:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - |
