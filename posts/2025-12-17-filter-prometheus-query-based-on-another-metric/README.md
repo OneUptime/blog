@@ -72,9 +72,9 @@ Filter based on metric values:
 histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
 and on(instance, job)
 (
-  rate(http_requests_total{status=~"5.."}[5m])
+  sum by (instance, job) (rate(http_requests_total{status=~"5.."}[5m]))
   /
-  rate(http_requests_total[5m])
+  sum by (instance, job) (rate(http_requests_total[5m]))
 ) > 0.05
 ```
 
@@ -138,7 +138,7 @@ For many-to-one or one-to-many matching:
 ### Adding Labels from Filter Metric
 
 ```promql
-# Add environment label from metadata metric
+# Add environment label from a 1-valued metadata metric
 rate(http_requests_total[5m])
 * on(instance) group_left(environment)
 instance_metadata
@@ -149,8 +149,8 @@ instance_metadata
 ```promql
 # Filter and bring labels from the filter metric
 rate(http_requests_total[5m])
-and on(instance) group_left(team, owner)
-(service_metadata > 0)
+* on(instance) group_left(team, owner)
+(service_metadata == 1)
 ```
 
 ## Practical Examples
@@ -167,9 +167,9 @@ kube_namespace_labels{label_environment="production"}
 ### Example 2: Filter by Deployment Status
 
 ```promql
-# Show pod metrics only for fully available deployments
-sum by (deployment) (rate(container_cpu_usage_seconds_total[5m]))
-and on(deployment)
+# Show deployment metrics only for fully available deployments
+kube_deployment_status_replicas_available
+and on(namespace, deployment)
 (
   kube_deployment_status_replicas_available
   ==
@@ -318,10 +318,12 @@ Use Grafana variables for dynamic filtering:
 
 ### Variable Query
 
-```promql
+```text
 # Get list of active instances
-label_values(up{job="$job"} == 1, instance)
+query_result(up{job="$job"} == 1)
 ```
+
+Use a regex such as `/.*instance="([^"]+)".*/` to extract the instance label values.
 
 ### Panel Query with Variable Filter
 
