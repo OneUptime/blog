@@ -12,18 +12,18 @@ Timeout exceptions are inevitable when making HTTP requests. Network latency, sl
 
 ## Understanding HttpClient Timeouts
 
-HttpClient throws `TaskCanceledException` when a request times out. This can be confusing because the same exception is thrown when a `CancellationToken` is cancelled.
+HttpClient throws `OperationCanceledException` when a request times out. This can be confusing because the same exception is thrown when a `CancellationToken` is cancelled.
 
 ```mermaid
 flowchart TD
     Request[HTTP Request] --> Wait{Waiting...}
     Wait -->|Response| Success[Success]
-    Wait -->|Timeout| TCE[TaskCanceledException]
+    Wait -->|Timeout| TCE[OperationCanceledException]
     Wait -->|Cancelled| TCE
 
-    TCE --> Check{Check Inner Exception}
+    TCE --> Check{Check Inner Exception / Token}
     Check -->|TimeoutException| Timeout[Handle Timeout]
-    Check -->|OperationCanceledException| Cancel[Handle Cancellation]
+    Check -->|Token Cancelled| Cancel[Handle Cancellation]
 ```
 
 ## Basic Timeout Configuration
@@ -57,22 +57,22 @@ public async Task<string?> GetDataAsync(CancellationToken cancellationToken = de
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
-    catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+    catch (OperationCanceledException ex) when (ex.InnerException is TimeoutException)
     {
         // Timeout occurred
         _logger.LogWarning("Request timed out");
         return null;
     }
-    catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
         // User cancelled the request
         _logger.LogInformation("Request was cancelled by user");
         throw;
     }
-    catch (TaskCanceledException ex)
+    catch (OperationCanceledException ex)
     {
-        // .NET 5+ wraps timeout in TaskCanceledException without TimeoutException
-        // Check if our cancellation token was not the cause
+        // Older .NET Core versions may throw without a TimeoutException.
+        // Check if our cancellation token was not the cause.
         if (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("Request timed out");
@@ -105,7 +105,7 @@ public async Task<Result<T>> GetWithTimeoutHandlingAsync<T>(
         _logger.LogError(ex, "HTTP request failed");
         return Result<T>.Failure($"Request failed: {ex.Message}");
     }
-    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
     {
         _logger.LogWarning("Request timed out after {Timeout}", _httpClient.Timeout);
         return Result<T>.Failure("Request timed out");
@@ -130,9 +130,9 @@ public async Task<string?> GetDataWithCustomTimeoutAsync(TimeSpan timeout)
     try
     {
         var response = await _httpClient.GetAsync("/api/slow-endpoint", cts.Token);
-        return await response.Content.ReadAsStringAsync();
+        return await response.Content.ReadAsStringAsync(cts.Token);
     }
-    catch (TaskCanceledException) when (cts.IsCancellationRequested)
+    catch (OperationCanceledException) when (cts.IsCancellationRequested)
     {
         _logger.LogWarning("Request timed out after {Timeout}", timeout);
         return null;
@@ -151,13 +151,14 @@ public async Task<string?> GetDataAsync(
     try
     {
         var response = await _httpClient.GetAsync("/api/data", linkedCts.Token);
-        return await response.Content.ReadAsStringAsync();
+        return await response.Content.ReadAsStringAsync(linkedCts.Token);
     }
-    catch (TaskCanceledException) when (timeoutCts.IsCancellationRequested)
+    catch (OperationCanceledException) when (
+        timeoutCts.IsCancellationRequested && !userCancellation.IsCancellationRequested)
     {
         throw new TimeoutException($"Request timed out after {timeout}");
     }
-    catch (TaskCanceledException) when (userCancellation.IsCancellationRequested)
+    catch (OperationCanceledException) when (userCancellation.IsCancellationRequested)
     {
         throw; // Let caller handle user cancellation
     }
@@ -178,10 +179,8 @@ builder.Services.AddHttpClient("resilient-api")
             sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
             onRetry: (outcome, timespan, attempt, context) =>
             {
-                var logger = context.GetLogger();
-                logger?.LogWarning(
-                    "Request failed. Waiting {Delay} before retry {Attempt}",
-                    timespan, attempt);
+                Console.WriteLine(
+                    $"Request failed. Waiting {timespan} before retry {attempt}");
             }))
     .AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(10)));
 ```
@@ -252,9 +251,9 @@ public static class HttpClientExtensions
         {
             var response = await client.GetAsync(requestUri, cts.Token);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<T>(cts.Token);
         }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException(
                 $"Request to {requestUri} timed out after {timeout.TotalSeconds} seconds");
@@ -285,7 +284,7 @@ public static class HttpClientExtensions
                 lastException = new HttpRequestException(
                     $"Request failed with status {response.StatusCode}");
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 lastException = new TimeoutException("Request timed out");
             }
@@ -362,7 +361,7 @@ public class ApiClient
     {
         // Health checks should be quick
         return await ExecuteWithTimeoutAsync<HealthStatus>(
-            () => _httpClient.GetAsync("/health"),
+            cancellationToken => _httpClient.GetAsync("/health", cancellationToken),
             QuickOperationTimeout);
     }
 
@@ -370,7 +369,7 @@ public class ApiClient
     {
         // Standard API call
         return await ExecuteWithTimeoutAsync<List<Product>>(
-            () => _httpClient.GetAsync("/api/products"),
+            cancellationToken => _httpClient.GetAsync("/api/products", cancellationToken),
             StandardTimeout);
     }
 
@@ -378,23 +377,24 @@ public class ApiClient
     {
         // Long-running operation
         return await ExecuteWithTimeoutAsync<Report>(
-            () => _httpClient.PostAsJsonAsync("/api/reports/generate", request),
+            cancellationToken => _httpClient.PostAsJsonAsync(
+                "/api/reports/generate", request, cancellationToken),
             LongOperationTimeout);
     }
 
     private async Task<T> ExecuteWithTimeoutAsync<T>(
-        Func<Task<HttpResponseMessage>> operation,
+        Func<CancellationToken, Task<HttpResponseMessage>> operation,
         TimeSpan timeout)
     {
         using var cts = new CancellationTokenSource(timeout);
 
         try
         {
-            var response = await operation();
+            var response = await operation(cts.Token);
             response.EnsureSuccessStatusCode();
-            return (await response.Content.ReadFromJsonAsync<T>())!;
+            return (await response.Content.ReadFromJsonAsync<T>(cts.Token))!;
         }
-        catch (TaskCanceledException) when (cts.IsCancellationRequested)
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             _logger.LogWarning("Request timed out after {Timeout}", timeout);
             throw new TimeoutException($"Request timed out after {timeout}");
