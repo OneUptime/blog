@@ -55,7 +55,7 @@ graph TB
 
     FW <-->|IPsec VPN| VGW
     FW <-->|IPsec VPN| GCVPN
-    VGW <-->|VPC Peering| GCVPN
+    VGW <-->|Cross-Cloud VPN| GCVPN
 ```
 
 ## Connectivity Options Comparison
