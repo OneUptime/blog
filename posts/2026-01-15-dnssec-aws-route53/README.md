@@ -361,14 +361,15 @@ aws route53domains associate-delegation-signer-to-domain \
 6. Click **ADD NEW DS RECORD**
 7. Enter the values and save
 
-### Google Domains
+### Squarespace Domains (formerly Google Domains)
 
-1. Log in to Google Domains
-2. Select your domain
-3. Navigate to **DNS**
-4. Scroll to **DNSSEC**
-5. Click **Manage DS records**
-6. Add a custom DS record with your values
+Google Domains was sold to Squarespace in 2023, and all domains finished migrating to Squarespace by mid-2024. If you previously managed a domain through Google Domains, manage it in Squarespace instead:
+
+1. Log in to your Squarespace account
+2. Open **Domains** and select your domain
+3. Go to the **DNS settings** for the domain
+4. Find the **DNSSEC** section
+5. Add a custom DS record with your values
 
 ---
 
@@ -430,7 +431,7 @@ Several online tools can verify your DNSSEC configuration:
    - Shows each step in the chain of trust
    - Highlights any broken links
 
-3. **ICANN DNSSEC Analyzer**: https://dnssec-analyzer.verisignlabs.com/
+3. **Verisign DNSSEC Analyzer**: https://dnssec-analyzer.verisignlabs.com/
    - Comprehensive analysis of your DNSSEC setup
 
 4. **Google Public DNS**: https://dns.google/
@@ -548,7 +549,7 @@ aws cloudwatch put-metric-alarm \
 
 ### Automatic ZSK Rotation
 
-Route 53 automatically rotates the Zone Signing Key (ZSK) approximately every 7 days. This is transparent and requires no action from you. The process uses a pre-publish key rollover method:
+Route 53 automatically rotates the Zone Signing Key (ZSK) on a regular schedule, every 7 to 30 days. This is transparent and requires no action from you. The process uses a pre-publish key rollover method:
 
 1. A new ZSK is generated and published
 2. Both old and new ZSKs are active during the transition
@@ -718,13 +719,13 @@ DNSSEC with Route 53 incurs the following costs:
 
 | Component | Cost |
 |-----------|------|
-| Route 53 DNSSEC Signing | $1.00/month per hosted zone |
+| Route 53 DNSSEC Signing | No additional charge to enable signing |
 | KMS Key | $1.00/month per key |
 | KMS Sign Operations | $0.03 per 10,000 requests |
 | Route 53 Queries | Existing query pricing applies |
 | CloudWatch Logs | Standard CloudWatch Logs pricing |
 
-For a typical domain with moderate traffic, expect approximately $2-5/month additional cost for DNSSEC.
+Route 53 does not charge extra to enable DNSSEC signing itself; the costs come almost entirely from the AWS KMS customer managed key and its signing operations. For a typical domain with moderate traffic, expect approximately $1-3/month additional cost for DNSSEC.
 
 ---
 
