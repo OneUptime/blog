@@ -48,7 +48,7 @@ stages:
   - deploy
 
 variables:
-  # Use Kaniko for building without Docker daemon
+  # Full image reference used throughout the job
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 
 build_image:
@@ -85,6 +85,7 @@ build_image:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
@@ -129,6 +130,7 @@ stages:
     - docker:24-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
