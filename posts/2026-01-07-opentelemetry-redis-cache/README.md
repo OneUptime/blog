@@ -171,7 +171,7 @@ redis_client = create_redis_client()
 
 ### What Auto-Instrumentation Captures
 
-Auto-instrumentation automatically records the following span attributes:
+Auto-instrumentation records Redis command spans with sanitized command text, connection details, and timing. The exact attribute names depend on the semantic convention mode used by your OpenTelemetry Python version and configuration:
 
 ```python
 # Example of what a span looks like from auto-instrumentation
@@ -181,11 +181,19 @@ Auto-instrumentation automatically records the following span attributes:
 Span Name: redis.GET
 Attributes:
     db.system: redis
-    db.statement: GET user:123:profile
+    db.statement: GET ?
     db.redis.database_index: 0
     net.peer.name: localhost
     net.peer.port: 6379
-    db.redis.response_length: 256
+    db.redis.args_length: 2
+
+Current stable semantic convention equivalents:
+    db.system.name: redis
+    db.operation.name: GET
+    db.query.text: GET ?
+    db.namespace: 0
+    server.address: localhost
+    server.port: 6379
 """
 
 # Usage example showing automatic span creation
@@ -196,8 +204,8 @@ def get_user_profile(user_id: str) -> dict:
     """
     # This GET command automatically creates a span with:
     # - Command name (GET)
-    # - Key being accessed
-    # - Response size
+    # - Sanitized command text
+    # - Connection attributes
     # - Latency timing
     cached = redis_client.get(f"user:{user_id}:profile")
 
@@ -318,8 +326,7 @@ class InstrumentedCache:
             unit="ms"
         )
 
-        # Track cache hit rate with an observable gauge
-        # This calculates the ratio periodically
+        # Track local counts for calculating the hit rate
         self._hits = 0
         self._misses = 0
 
@@ -594,10 +601,10 @@ class RedisCommandTracer:
                 span_name = f"redis.{command_name}"
 
                 with self.tracer.start_as_current_span(span_name) as span:
-                    # Record the full command for debugging
+                    # Record command metadata for debugging
                     # Be careful with sensitive data - consider masking
-                    span.set_attribute("db.system", "redis")
-                    span.set_attribute("db.operation", command_name)
+                    span.set_attribute("db.system.name", "redis")
+                    span.set_attribute("db.operation.name", command_name)
 
                     # Record arguments (first arg is usually the key)
                     if args:
@@ -660,8 +667,8 @@ class TracedRedisClient:
         Retrieves the value of a key.
         """
         with self.tracer.start_as_current_span("redis.GET") as span:
-            span.set_attribute("db.system", "redis")
-            span.set_attribute("db.operation", "GET")
+            span.set_attribute("db.system.name", "redis")
+            span.set_attribute("db.operation.name", "GET")
             span.set_attribute("db.redis.key", key)
 
             start = time.perf_counter()
@@ -682,8 +689,8 @@ class TracedRedisClient:
         Sets the value of a key with optional expiration.
         """
         with self.tracer.start_as_current_span("redis.SET") as span:
-            span.set_attribute("db.system", "redis")
-            span.set_attribute("db.operation", "SET")
+            span.set_attribute("db.system.name", "redis")
+            span.set_attribute("db.operation.name", "SET")
             span.set_attribute("db.redis.key", key)
             span.set_attribute("db.redis.value_size", len(value))
 
@@ -704,8 +711,8 @@ class TracedRedisClient:
         Gets multiple keys in a single operation.
         """
         with self.tracer.start_as_current_span("redis.MGET") as span:
-            span.set_attribute("db.system", "redis")
-            span.set_attribute("db.operation", "MGET")
+            span.set_attribute("db.system.name", "redis")
+            span.set_attribute("db.operation.name", "MGET")
             span.set_attribute("db.redis.key_count", len(keys))
 
             start = time.perf_counter()
@@ -730,8 +737,8 @@ class TracedRedisClient:
         Gets all fields and values in a hash.
         """
         with self.tracer.start_as_current_span("redis.HGETALL") as span:
-            span.set_attribute("db.system", "redis")
-            span.set_attribute("db.operation", "HGETALL")
+            span.set_attribute("db.system.name", "redis")
+            span.set_attribute("db.operation.name", "HGETALL")
             span.set_attribute("db.redis.key", key)
 
             start = time.perf_counter()
@@ -793,8 +800,8 @@ class TracedPipeline:
         Creates a span that captures the entire pipeline execution.
         """
         with self.tracer.start_as_current_span("redis.PIPELINE") as span:
-            span.set_attribute("db.system", "redis")
-            span.set_attribute("db.operation", "PIPELINE")
+            span.set_attribute("db.system.name", "redis")
+            span.set_attribute("db.operation.name", "PIPELINE")
             span.set_attribute("db.redis.command_count", len(self.commands))
 
             # Record the types of commands in the pipeline
@@ -826,6 +833,7 @@ Create comprehensive latency monitoring with percentile tracking:
 ```python
 # latency_monitor.py
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 import time
@@ -896,7 +904,7 @@ class LatencyMonitor:
         meter.create_observable_gauge(
             name="redis.active_operations",
             description="Number of active Redis operations",
-            callbacks=[lambda options: [(self._active_operations, {})]],
+            callbacks=[lambda options: [Observation(self._active_operations, {})]],
             unit="1"
         )
 
@@ -1179,8 +1187,8 @@ def get_user_cached(user_id: str) -> dict:
 
         # Simulate database fetch with its own span
         with tracer.start_as_current_span("fetch_user_from_db") as db_span:
-            db_span.set_attribute("db.operation", "SELECT")
-            db_span.set_attribute("db.table", "users")
+            db_span.set_attribute("db.operation.name", "SELECT")
+            db_span.set_attribute("db.collection.name", "users")
 
             # Simulated database query
             import time
@@ -1225,7 +1233,7 @@ def get_users_batch():
     with tracer.start_as_current_span("get_users_batch") as span:
         span.set_attribute("batch.size", len(user_ids))
 
-        # MGET is auto-traced and shows all keys accessed
+        # MGET is auto-traced with sanitized command details
         results = redis_client.mget(cache_keys)
 
         # Count hits and misses
@@ -1376,6 +1384,7 @@ Monitor the health of your Redis connection pool:
 ```python
 # connection_pool_monitor.py
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 import redis
 
 class ConnectionPoolMonitor:
@@ -1430,26 +1439,26 @@ class ConnectionPoolMonitor:
         try:
             # Get max connections from pool configuration
             max_connections = self.pool.max_connections
-            return [(max_connections, {})]
+            return [Observation(max_connections, {})]
         except Exception:
-            return [(0, {})]
+            return [Observation(0, {})]
 
     def _get_available_connections(self, options):
         """Callback to get available connections."""
         try:
-            # Available = pool queue size
+            # Available connections currently held by the pool
             available = len(self.pool._available_connections)
-            return [(available, {})]
+            return [Observation(available, {})]
         except Exception:
-            return [(0, {})]
+            return [Observation(0, {})]
 
     def _get_in_use_connections(self, options):
         """Callback to get in-use connections."""
         try:
             in_use = len(self.pool._in_use_connections)
-            return [(in_use, {})]
+            return [Observation(in_use, {})]
         except Exception:
-            return [(0, {})]
+            return [Observation(0, {})]
 
     def record_connection_error(self, error_type: str):
         """
@@ -1592,12 +1601,12 @@ class CacheWarmer:
 Follow OpenTelemetry semantic conventions for Redis:
 
 ```python
-# Always use standard attribute names for consistency
-span.set_attribute("db.system", "redis")
-span.set_attribute("db.operation", "GET")
-span.set_attribute("db.redis.database_index", 0)
-span.set_attribute("net.peer.name", "redis.example.com")
-span.set_attribute("net.peer.port", 6379)
+# Always use current standard attribute names for consistency
+span.set_attribute("db.system.name", "redis")
+span.set_attribute("db.operation.name", "GET")
+span.set_attribute("db.namespace", "0")
+span.set_attribute("server.address", "redis.example.com")
+span.set_attribute("server.port", 6379)
 ```
 
 ### 2. Sample Appropriately
