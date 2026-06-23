@@ -60,16 +60,16 @@ Before starting, ensure you have:
 - kubectl configured to access your cluster
 - Helm v3 installed
 - A domain name with DNS records pointing to your cluster's external IP range
-- Network access from your cluster to Let's Encrypt servers (port 443 outbound)
+- Network access from your cluster to Let's Encrypt servers (port 443 outbound) and inbound HTTP access on port 80 for HTTP-01 validation
 
 ## Step 1: Install MetalLB
 
-MetalLB provides load balancer implementation for bare-metal clusters. We'll use Layer 2 mode, which works without any special network configuration.
+MetalLB provides load balancer implementation for bare-metal clusters. We'll use Layer 2 mode, which works without any BGP configuration on a single Layer 2 network.
 
 First, install MetalLB using the official manifests. The native installation method deploys MetalLB into the metallb-system namespace:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 Wait for the MetalLB pods to be ready before proceeding:
@@ -151,16 +151,14 @@ Note the external IP address - you'll need to configure your DNS records to poin
 
 cert-manager automates TLS certificate management in Kubernetes. It handles certificate issuance, renewal, and storage.
 
-Install cert-manager using Helm. The installCRDs flag ensures the Custom Resource Definitions are created:
+Install cert-manager using Helm. The `crds.enabled` value ensures the Custom Resource Definitions are created:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 Verify all cert-manager pods are running before proceeding:
@@ -362,7 +360,7 @@ kubectl get certificaterequest
 If the certificate isn't being issued, check the cert-manager logs for errors:
 
 ```bash
-kubectl logs -n cert-manager -l app=cert-manager --tail=100
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager,app.kubernetes.io/instance=cert-manager --tail=100
 ```
 
 Check the challenge status if the certificate is stuck in Pending:
@@ -498,7 +496,7 @@ spec:
 
 ## Certificate Renewal
 
-cert-manager automatically renews certificates before they expire. By default, renewal begins 30 days before expiration for Let's Encrypt certificates (which are valid for 90 days).
+cert-manager automatically renews certificates before they expire. By default, renewal begins two-thirds of the way through the issued certificate's actual duration, which is about 30 days before expiration for a 90-day Let's Encrypt certificate.
 
 Monitor upcoming renewals:
 
