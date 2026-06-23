@@ -709,7 +709,7 @@ docker run --rm alpine ping6 -c 2 ipv6.google.com 2>/dev/null || echo "IPv6 conn
 
 ```bash
 # Create a test network
-docker network create --ipv6 --subnet 2001:db8:test::/64 test-ipv6
+docker network create --ipv6 --subnet 2001:db8:7e57::/64 test-ipv6
 
 # Start two containers
 docker run -d --name server --network test-ipv6 nginx:latest
@@ -752,7 +752,7 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
-        - subnet: 2001:db8:prod::/64
+        - subnet: 2001:db8:abcd::/64
 ```
 
 Dual-stack ensures compatibility with IPv4-only and IPv6-only services.
@@ -789,7 +789,7 @@ jobs:
       - name: Enable IPv6 in Docker
         run: |
           sudo cat /etc/docker/daemon.json || echo "{}" | sudo tee /etc/docker/daemon.json
-          sudo jq '. + {"ipv6": true, "fixed-cidr-v6": "2001:db8:ci::/64", "ip6tables": true}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.new
+          sudo jq '. + {"ipv6": true, "fixed-cidr-v6": "2001:db8:c1::/64", "ip6tables": true}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.new
           sudo mv /etc/docker/daemon.json.new /etc/docker/daemon.json
           sudo systemctl restart docker
 
@@ -832,11 +832,9 @@ ECS tasks in `awsvpc` mode can receive IPv6 addresses when the VPC and subnet ar
 ### GKE with IPv6
 
 ```bash
-# Create a dual-stack GKE cluster
+# Create a dual-stack GKE cluster (the cluster subnet must already be dual-stack)
 gcloud container clusters create my-cluster \
   --enable-ip-alias \
-  --enable-ipv6 \
-  --ipv6-access-type=INTERNAL \
   --stack-type=IPV4_IPV6
 ```
 
