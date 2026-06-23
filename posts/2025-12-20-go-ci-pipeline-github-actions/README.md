@@ -102,39 +102,40 @@ jobs:
 Configure `.golangci.yml`:
 
 ```yaml
+version: "2"
+
 linters:
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
-    - gofmt
-    - goimports
     - misspell
     - unconvert
     - gocritic
     - revive
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-  govet:
-    enable:
-      - shadow
-  revive:
-    severity: warning
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable:
+        - shadow
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          severity: warning
+  exclusions:
     rules:
-      - name: exported
-        severity: warning
+      - path: _test\.go
+        linters:
+          - errcheck
 
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
+formatters:
+  enable:
+    - gofmt
+    - goimports
 ```
 
 ## Testing with Coverage
@@ -323,7 +324,7 @@ jobs:
 Configure `.goreleaser.yaml`:
 
 ```yaml
-version: 1
+version: 2
 
 builds:
   - main: ./cmd/myapp
@@ -343,11 +344,11 @@ builds:
       - -X main.commit={{.Commit}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: 'checksums.txt'
