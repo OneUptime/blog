@@ -131,17 +131,15 @@ use-ipv6=yes
 # Disable D-Bus interface if not needed (more secure)
 # enable-dbus=no
 
-# Allow other applications to register services
+# Restrict Avahi to specific network interfaces
 allow-interfaces=eth0,wlan0
 # Or deny specific interfaces
 # deny-interfaces=docker0,veth*
 
-# Check for mDNS responses from other hosts with the same name
-# and automatically rename if collision detected
+# Whether to also use point-to-point interfaces (e.g. PPP/VPN links)
 allow-point-to-point=no
 
-# Publish our host name and address records
-# Required for basic mDNS functionality
+# Rate limit outgoing responses to mitigate multicast flooding
 ratelimit-interval-usec=1000000
 ratelimit-burst=1000
 
@@ -158,7 +156,7 @@ publish-workstation=yes
 # Disable if you don't want to publish hostname records
 # publish-domain=no
 
-# Add machine info to the published data
+# Publish IPv6 AAAA records over IPv4 mDNS (and vice versa)
 publish-aaaa-on-ipv4=yes
 publish-a-on-ipv6=no
 
@@ -423,7 +421,7 @@ def item_new(interface, protocol, name, service_type, domain, flags):
     # Resolve the service to get full details
     server.ResolveService(
         interface, protocol, name, service_type, domain,
-        dbus.UInt32(-1), dbus.UInt32(0),
+        -1, dbus.UInt32(0),  # aprotocol: -1 is AVAHI_PROTO_UNSPEC (a signed int)
         reply_handler=service_resolved,
         error_handler=print_error
     )
@@ -710,8 +708,9 @@ ExecStart=/opt/myapp/bin/server --port 8080
 # Publish service to Avahi when starting
 ExecStartPost=/usr/bin/avahi-publish -s "MyApp Server" _http._tcp 8080 "version=1.0"
 
-# Note: ExecStartPost runs in background, service will still publish
-# For proper lifecycle management, use a wrapper script
+# Note: avahi-publish stays in the foreground, so this ExecStartPost
+# blocks unit activation and the publication dies when reloaded.
+# For proper lifecycle management, use a wrapper script (below)
 
 Restart=always
 RestartSec=10
@@ -1055,7 +1054,7 @@ sudo nano /etc/nsswitch.conf
 **Issue: Avahi daemon not starting**
 
 ```bash
-# Check for configuration errors
+# Check whether a daemon is already running (returns 0 if so)
 avahi-daemon --check
 
 # Check daemon status and logs
@@ -1074,7 +1073,7 @@ sudo journalctl -u avahi-daemon --no-pager -n 50
 # Verify Avahi is running
 sudo systemctl status avahi-daemon
 
-# Check if the service file is valid
+# Confirm the Avahi daemon is running (returns 0 if so)
 avahi-daemon --check
 
 # Verify the service is published
@@ -1095,10 +1094,10 @@ ip link show eth0 | grep MULTICAST
 avahi-resolve -n $(hostname).local
 
 # If there's a conflict, Avahi automatically renames to hostname-2.local
-# Check the actual name being used
+# Confirm the daemon is running (returns 0 if so)
 avahi-daemon --check
 
-# Or look in the logs
+# The actual name in use is reported in the logs
 sudo journalctl -u avahi-daemon | grep -i conflict
 ```
 
@@ -1111,7 +1110,7 @@ echo "=== Avahi Diagnostic Report ==="
 echo -e "\n--- Avahi Daemon Status ---"
 sudo systemctl status avahi-daemon --no-pager
 
-echo -e "\n--- Avahi Configuration Check ---"
+echo -e "\n--- Avahi Daemon Running Check ---"
 avahi-daemon --check
 
 echo -e "\n--- Published Services ---"
