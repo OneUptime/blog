@@ -117,6 +117,10 @@ service {
           {
             destination_name = "cache"
             local_bind_port  = 6379
+          },
+          {
+            destination_name = "auth"
+            local_bind_port  = 8001
           }
         ]
 
@@ -231,8 +235,8 @@ Name = "api"
 Protocol = "http"
 
 # Configure timeouts
-Connect {
-  UpstreamDefaults {
+UpstreamConfig {
+  Defaults {
     ConnectTimeoutMs = 5000
     MeshGateway {
       Mode = "local"
@@ -247,7 +251,7 @@ Expose {
     {
       Path = "/health"
       LocalPathPort = 8080
-      ListenerPort = 8081
+      ListenPort = 8081
       Protocol = "http"
     }
   ]
@@ -370,8 +374,6 @@ class ServiceClient:
         """
         # The sidecar proxy binds upstream services to localhost
         port_map = {
-            'database': 5432,
-            'cache': 6379,
             'auth': 8001,
         }
 
@@ -405,12 +407,14 @@ type Config struct {
     // Upstream services bound to localhost by the sidecar
     DatabasePort int
     CachePort    int
+    AuthPort     int
 }
 
 func NewConfig() *Config {
     return &Config{
         DatabasePort: 5432, // Local proxy port for database
         CachePort:    6379, // Local proxy port for cache
+        AuthPort:     8001, // Local proxy port for auth
     }
 }
 
@@ -436,7 +440,7 @@ func main() {
     defer db.Close()
 
     // HTTP calls to other services also go through proxy
-    resp, _ := http.Get(fmt.Sprintf("http://localhost:%d/health", config.CachePort))
+    resp, _ := http.Get(fmt.Sprintf("http://localhost:%d/health", config.AuthPort))
     defer resp.Body.Close()
 }
 ```
@@ -454,30 +458,11 @@ Config {
 
   # Prometheus metrics
   envoy_prometheus_bind_addr = "0.0.0.0:9102"
-
-  # Access logging
-  envoy_extra_static_clusters_json = <<EOF
-{
-  "name": "access_log",
-  "type": "STATIC",
-  "connect_timeout": "1s",
-  "load_assignment": {
-    "cluster_name": "access_log",
-    "endpoints": [{
-      "lb_endpoints": [{
-        "endpoint": {
-          "address": {
-            "socket_address": {
-              "address": "127.0.0.1",
-              "port_value": 9001
-            }
-          }
-        }
-      }]
-    }]
-  }
 }
-EOF
+
+AccessLogs {
+  Enabled = true
+  Type    = "stdout"
 }
 
 # Enable transparent proxy mode
