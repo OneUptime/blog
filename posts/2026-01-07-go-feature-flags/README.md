@@ -121,7 +121,8 @@ func (fm *FlagManager) GetAll() []*Flag {
 
     flags := make([]*Flag, 0, len(fm.flags))
     for _, flag := range fm.flags {
-        flags = append(flags, flag)
+        flagCopy := *flag
+        flags = append(flags, &flagCopy)
     }
     return flags
 }
@@ -799,7 +800,7 @@ LaunchDarkly is a popular enterprise feature flag service. Here is how to integr
 First, install the LaunchDarkly Go SDK using go get.
 
 ```bash
-go get github.com/launchdarkly/go-server-sdk/v6
+go get github.com/launchdarkly/go-server-sdk/v7
 ```
 
 ### LaunchDarkly Integration
@@ -810,13 +811,13 @@ This wrapper provides a clean interface for LaunchDarkly with proper initializat
 package featureflags
 
 import (
-    "context"
     "log"
     "time"
 
-    "github.com/launchdarkly/go-server-sdk/v6"
-    "github.com/launchdarkly/go-server-sdk/v6/ldcomponents"
+    "github.com/launchdarkly/go-server-sdk/v7"
+    "github.com/launchdarkly/go-server-sdk/v7/ldcomponents"
     ldcontext "github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+    "github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 )
 
 // LaunchDarklyClient wraps the LaunchDarkly SDK
@@ -894,9 +895,9 @@ func (ldc *LaunchDarklyClient) StringVariation(flagKey string, userKey string, d
 }
 
 // JSONVariation evaluates a JSON feature flag
-func (ldc *LaunchDarklyClient) JSONVariation(flagKey string, userKey string, defaultValue interface{}) interface{} {
+func (ldc *LaunchDarklyClient) JSONVariation(flagKey string, userKey string, defaultValue ldvalue.Value) ldvalue.Value {
     ctx := ldcontext.New(userKey)
-    value, err := ldc.client.JSONVariation(flagKey, ctx, ldvalue.Parse([]byte("{}")))
+    value, err := ldc.client.JSONVariation(flagKey, ctx, defaultValue)
     if err != nil {
         log.Printf("Error evaluating flag %s: %v", flagKey, err)
         return defaultValue
@@ -976,7 +977,7 @@ Unleash is an open-source feature flag service that you can self-host. Here is h
 Install the Unleash Go client using go get.
 
 ```bash
-go get github.com/Unleash/unleash-client-go/v4
+go get github.com/Unleash/unleash-go-sdk/v6@latest
 ```
 
 ### Unleash Integration
@@ -987,10 +988,12 @@ This implementation provides a wrapper for Unleash with support for custom strat
 package featureflags
 
 import (
+    "net/http"
     "time"
 
-    "github.com/Unleash/unleash-client-go/v4"
-    "github.com/Unleash/unleash-client-go/v4/context"
+    unleash "github.com/Unleash/unleash-go-sdk/v6"
+    "github.com/Unleash/unleash-go-sdk/v6/api"
+    unleashcontext "github.com/Unleash/unleash-go-sdk/v6/context"
 )
 
 // UnleashClient wraps the Unleash SDK
@@ -1003,8 +1006,8 @@ func NewUnleashClient(appName, url, apiToken string) (*UnleashClient, error) {
     err := unleash.Initialize(
         unleash.WithAppName(appName),
         unleash.WithUrl(url),
-        unleash.WithCustomHeaders(map[string]string{
-            "Authorization": apiToken,
+        unleash.WithCustomHeaders(http.Header{
+            "Authorization": {apiToken},
         }),
         unleash.WithRefreshInterval(15*time.Second),
         unleash.WithMetricsInterval(60*time.Second),
@@ -1021,33 +1024,33 @@ func NewUnleashClient(appName, url, apiToken string) (*UnleashClient, error) {
 
 // IsEnabled checks if a feature is enabled
 func (uc *UnleashClient) IsEnabled(featureName string) bool {
-    return unleash.IsEnabled(featureName)
+    return unleash.IsEnabled(featureName, unleash.FeatureOptions{})
 }
 
 // IsEnabledForUser checks if a feature is enabled for a specific user
 func (uc *UnleashClient) IsEnabledForUser(featureName, userID string) bool {
-    ctx := context.Context{
+    ctx := unleashcontext.Context{
         UserId: userID,
     }
-    return unleash.IsEnabled(featureName, unleash.WithContext(ctx))
+    return unleash.IsEnabled(featureName, unleash.FeatureOptions{Ctx: ctx})
 }
 
 // IsEnabledWithContext checks with full context
 func (uc *UnleashClient) IsEnabledWithContext(featureName string, userID, sessionID string, properties map[string]string) bool {
-    ctx := context.Context{
+    ctx := unleashcontext.Context{
         UserId:     userID,
         SessionId:  sessionID,
         Properties: properties,
     }
-    return unleash.IsEnabled(featureName, unleash.WithContext(ctx))
+    return unleash.IsEnabled(featureName, unleash.FeatureOptions{Ctx: ctx})
 }
 
 // GetVariant returns the variant for a feature
-func (uc *UnleashClient) GetVariant(featureName, userID string) *unleash.Variant {
-    ctx := context.Context{
+func (uc *UnleashClient) GetVariant(featureName, userID string) *api.Variant {
+    ctx := unleashcontext.Context{
         UserId: userID,
     }
-    return unleash.GetVariant(featureName, unleash.WithVariantContext(ctx))
+    return unleash.GetVariant(featureName, unleash.VariantOptions{Ctx: ctx})
 }
 
 // Close shuts down the client
@@ -1216,7 +1219,8 @@ func (flm *FlagLifecycleManager) GetStaleFlags() []*ManagedFlag {
         if flag.Status == StatusActive {
             // Flag is stale if never evaluated or not evaluated recently
             if flag.LastEvaluated.IsZero() || flag.LastEvaluated.Before(cutoff) {
-                stale = append(stale, flag)
+                flagCopy := *flag
+                stale = append(stale, &flagCopy)
             }
         }
     }
@@ -1234,7 +1238,8 @@ func (flm *FlagLifecycleManager) GetExpiredFlags() []*ManagedFlag {
 
     for _, flag := range flm.flags {
         if flag.Status == StatusActive && !flag.ExpiresAt.IsZero() && flag.ExpiresAt.Before(now) {
-            expired = append(expired, flag)
+            flagCopy := *flag
+            expired = append(expired, &flagCopy)
         }
     }
 
@@ -1398,9 +1403,9 @@ func handleFlags(w http.ResponseWriter, r *http.Request) {
     switch r.Method {
     case http.MethodGet:
         store.mu.RLock()
-        flags := make([]*Flag, 0, len(store.flags))
+        flags := make([]Flag, 0, len(store.flags))
         for _, f := range store.flags {
-            flags = append(flags, f)
+            flags = append(flags, *f)
         }
         store.mu.RUnlock()
 
@@ -1441,6 +1446,10 @@ func handleFlag(w http.ResponseWriter, r *http.Request) {
     case http.MethodGet:
         store.mu.RLock()
         flag, exists := store.flags[name]
+        var flagCopy Flag
+        if exists {
+            flagCopy = *flag
+        }
         store.mu.RUnlock()
 
         if !exists {
@@ -1449,7 +1458,7 @@ func handleFlag(w http.ResponseWriter, r *http.Request) {
         }
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(flag)
+        json.NewEncoder(w).Encode(flagCopy)
 
     case http.MethodPut:
         var update struct {
@@ -1476,10 +1485,11 @@ func handleFlag(w http.ResponseWriter, r *http.Request) {
             flag.Description = *update.Description
         }
         flag.UpdatedAt = time.Now()
+        flagCopy := *flag
         store.mu.Unlock()
 
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(flag)
+        json.NewEncoder(w).Encode(flagCopy)
 
     case http.MethodDelete:
         store.mu.Lock()
@@ -1504,6 +1514,7 @@ func handleEvaluate(w http.ResponseWriter, r *http.Request) {
 
     store.mu.RLock()
     flag, exists := store.flags[name]
+    enabled := exists && flag.Enabled
     store.mu.RUnlock()
 
     result := struct {
@@ -1511,7 +1522,7 @@ func handleEvaluate(w http.ResponseWriter, r *http.Request) {
         Enabled bool   `json:"enabled"`
     }{
         Flag:    name,
-        Enabled: exists && flag.Enabled,
+        Enabled: enabled,
     }
 
     w.Header().Set("Content-Type", "application/json")
