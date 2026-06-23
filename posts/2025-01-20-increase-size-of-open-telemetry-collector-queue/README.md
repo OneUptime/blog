@@ -10,7 +10,7 @@ Description: Sometimes your OpenTelemetry Collector might not be able to send al
 
 In the OpenTelemetry Collector, the sending queue is used to buffer the data before sending it to the backend. If the sending queue is full, the Collector will start dropping the data. This can happen if the backend is slow or if the network is slow. 
 
-By default, the sending queue size is set to 1000 and the number of consumers is set to 1. You can increase the sending queue size and the number of consumers to handle more data.
+By default, the sending queue size is set to 1000 and the number of consumers is set to 10. You can increase the sending queue size and the number of consumers to handle more data.
 
 Here's how to increase it:
 
