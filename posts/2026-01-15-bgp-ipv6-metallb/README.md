@@ -56,11 +56,12 @@ For dual-stack clusters, you should see both IPv4 and IPv6 addresses assigned to
 
 ## Installing MetalLB
 
-Install MetalLB using the official manifests:
+Install MetalLB using the official manifests. IPv6 BGP and BFD are **not** supported by the native BGP backend (`metallb-native.yaml`) — you must deploy an FRR-based backend. Use `metallb-frr-k8s.yaml`, which ships the FRR-K8s backend and provides BGP with BFD support and IPv6:
 
 ```bash
 # Install MetalLB v0.14.9 (latest stable as of writing)
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+# FRR-K8s backend is required for IPv6 BGP and BFD; the native backend supports neither
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-frr-k8s.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -400,7 +401,7 @@ frr version 8.4
 frr defaults traditional
 hostname border-router
 log syslog informational
-no ipv6 forwarding
+ipv6 forwarding
 service integrated-vtysh-config
 
 ! BGP Configuration
@@ -739,10 +740,10 @@ show bfd neighbors
 
 3. **Use private ASNs** (64512-65534) for internal networks
 
-4. **Enable BGP TTL Security Hack (GTSM)** where supported:
+4. **Enable multi-hop eBGP** only when your peer is not directly connected (`ebgpMultiHop` is a boolean, not a hop count). Leave it unset for directly attached routers:
    ```yaml
    spec:
-     ebgpMultiHop: true  # Set to actual hop count
+     ebgpMultiHop: true  # only when the BGP peer is more than one hop away
    ```
 
 ### High Availability
