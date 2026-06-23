@@ -70,13 +70,13 @@ http {
 
 ### 3. Multiple Configuration Files
 
-Nginx includes files in order, and later includes can override earlier settings:
+Nginx includes files at the point where the `include` directive appears. Included server or location blocks can override inherited settings for matching requests:
 
 ```nginx
 # /etc/nginx/nginx.conf
 http {
     client_max_body_size 100M;
-    include /etc/nginx/conf.d/*.conf;  # Later files might override!
+    include /etc/nginx/conf.d/*.conf;  # Included servers/locations might override inherited values!
 }
 ```
 
@@ -93,8 +93,8 @@ Even if Nginx allows large uploads, your backend might reject them:
 
 - **PHP**: `upload_max_filesize` and `post_max_size` in php.ini
 - **Node.js**: Body parser limits
-- **Django**: `DATA_UPLOAD_MAX_MEMORY_SIZE`
-- **Spring**: `spring.servlet.multipart.max-file-size`
+- **Django**: `DATA_UPLOAD_MAX_MEMORY_SIZE` for request data, plus application-level file-size checks
+- **Spring**: `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`
 
 ## Complete Solution
 
@@ -196,7 +196,7 @@ location ~ \.php$ {
 ```ini
 ; /etc/php/8.2/fpm/php.ini
 upload_max_filesize = 100M
-post_max_size = 100M
+post_max_size = 110M
 max_execution_time = 300
 max_input_time = 300
 memory_limit = 256M
@@ -255,7 +255,7 @@ dd if=/dev/zero of=test-50mb.bin bs=1M count=50
 curl -X POST -F "file=@test-50mb.bin" -v http://example.com/api/upload
 
 # Check response headers for errors
-curl -I -X POST http://example.com/api/upload
+curl -X POST -F "file=@test-50mb.bin" -D - -o /dev/null http://example.com/api/upload
 ```
 
 ### 4. Check Error Logs
@@ -310,7 +310,7 @@ flowchart LR
     D -->|Has own limits| G[Check backend config]
 ```
 
-AWS ALB/ELB, CloudFlare, and other services have their own body size limits that must also be configured.
+Cloudflare, AWS ALB with Lambda targets, and other services may have their own body size limits that must also be accounted for.
 
 ## Docker Configuration
 
@@ -318,14 +318,12 @@ For Nginx in Docker, ensure the configuration is properly mounted:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:latest
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./templates:/etc/nginx/templates:ro
     ports:
       - "80:80"
     environment:
@@ -335,15 +333,17 @@ services:
 With environment variable substitution:
 
 ```nginx
-# nginx.conf.template
-http {
+# templates/upload.conf.template
+server {
+    listen 80;
+
     client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
 }
 ```
 
 ```bash
-# Use envsubst in entrypoint
-envsubst '${NGINX_CLIENT_MAX_BODY_SIZE}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+# The official nginx image processes /etc/nginx/templates/*.template into /etc/nginx/conf.d/
+docker compose up -d nginx
 ```
 
 ## Complete Working Example
