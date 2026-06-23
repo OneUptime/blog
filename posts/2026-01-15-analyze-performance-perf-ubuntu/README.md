@@ -86,11 +86,11 @@ echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 echo 'kernel.perf_event_paranoid = 0' | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# Paranoid levels:
-# -1: Allow all users to access all events
-#  0: Allow all users to access non-kernel events
-#  1: Allow all users to access CPU events (default)
-#  2: Disallow all profiling (only kernel profiling allowed)
+# Paranoid levels (the kernel default is 2):
+# -1: Allow all users to access (almost) all events
+#  0: Disallow raw and ftrace tracepoint access; kernel and user profiling still allowed
+#  1: Also disallow CPU event access for unprivileged users
+#  2: Also disallow kernel profiling; only user-space profiling is allowed (default)
 ```
 
 ## perf stat: Analyzing Hardware Counters
