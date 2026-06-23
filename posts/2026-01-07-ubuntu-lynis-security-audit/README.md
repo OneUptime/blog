@@ -319,12 +319,10 @@ REPORT_FILE="/var/log/lynis-report.dat"
 
 echo "=== Hardening Index Analysis ==="
 
-# Count different result types
-PASSED=$(grep -c "^test_result\[\]=OK" $REPORT_FILE 2>/dev/null || echo "0")
-WARNING=$(grep -c "^test_result\[\]=WARNING" $REPORT_FILE 2>/dev/null || echo "0")
+# Count reported findings
+WARNING=$(grep -c "^warning\[\]" $REPORT_FILE 2>/dev/null || echo "0")
 SUGGESTION=$(grep -c "^suggestion\[\]" $REPORT_FILE 2>/dev/null || echo "0")
 
-echo "Tests Passed: $PASSED"
 echo "Warnings: $WARNING"
 echo "Suggestions: $SUGGESTION"
 
@@ -333,10 +331,10 @@ echo ""
 echo "Current Hardening Index:"
 grep "hardening_index" $REPORT_FILE | cut -d'=' -f2
 
-# Show security frameworks in use
+# Show installed package count when available
 echo ""
-echo "Security Frameworks Detected:"
-grep "framework\[\]" $REPORT_FILE | cut -d'=' -f2
+echo "Installed Packages Count:"
+grep "installed_packages" $REPORT_FILE | cut -d'=' -f2
 EOF
 
 chmod +x /tmp/analyze_hardening.sh
@@ -394,9 +392,6 @@ sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
 sudo tee /etc/ssh/sshd_config.d/hardening.conf << 'EOF'
 # Disable root login over SSH for security
 PermitRootLogin no
-
-# Use only SSH Protocol 2 (more secure)
-Protocol 2
 
 # Set maximum authentication attempts
 MaxAuthTries 3
@@ -605,8 +600,7 @@ usercheck = 1
 enforcing = 1
 EOF
 
-# Configure password aging policies
-sudo tee /etc/login.defs.d/password-policy.conf << 'EOF' 2>/dev/null || \
+# Configure password aging policies for newly created accounts
 sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   90/' /etc/login.defs && \
 sudo sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   7/' /etc/login.defs && \
 sudo sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE   14/' /etc/login.defs
@@ -710,34 +704,22 @@ sudo tee /etc/lynis/custom/production-server.prf << 'EOF'
 #################################################################################
 
 # Profile name
-config:profile_name:Production Server Audit
+profile-name=Production Server Audit
 
 # Skip certain tests that are not applicable
 skip-test=FILE-6310
 skip-test=PKGS-7392
 
-# Enable specific test groups
-test-group=authentication
-test-group=boot_services
-test-group=firewalls
-test-group=networking
-test-group=ssh
-test-group=storage
-test-group=webservers
-
 # Compliance frameworks to check against
 compliance-standards=cis,hipaa,pci-dss
 
 # Custom settings
-config:show_tool_tips:no
-config:pause_between_tests:0
-config:show_report_solution:yes
+show-tool-tips=no
+pause-between-tests=0
+show-report-solution=yes
 
 # Logging settings
-config:log_tests_incorrect_os:no
-
-# Plugin settings
-plugin=default
+log-tests-incorrect-os=no
 
 # Skip development tools checks (not relevant for production)
 skip-test=TOOL-5002
@@ -754,6 +736,9 @@ sudo lynis audit system --profile /etc/lynis/custom/production-server.prf
 
 # Combine with other options
 sudo lynis audit system --profile /etc/lynis/custom/production-server.prf --quick
+
+# Filter to one test group when needed
+sudo lynis audit system --profile /etc/lynis/custom/production-server.prf --tests-from-group ssh
 ```
 
 ### Creating Compliance-Focused Profiles
@@ -768,26 +753,14 @@ sudo tee /etc/lynis/custom/cis-benchmark.prf << 'EOF'
 #
 #################################################################################
 
-config:profile_name:CIS Benchmark Audit
+profile-name=CIS Benchmark Audit
 
 # Focus on CIS-related compliance
 compliance-standards=cis
 
 # Enable verbose output for compliance checks
-config:show_report_solution:yes
-config:compressed_uploads:no
-
-# Test categories relevant to CIS benchmarks
-test-group=authentication
-test-group=boot_services
-test-group=firewalls
-test-group=kernel
-test-group=logging
-test-group=networking
-test-group=storage
-
-# Additional hardening checks
-config:test_skip_always:no
+show-report-solution=yes
+compressed-uploads=no
 
 #################################################################################
 EOF
@@ -808,18 +781,7 @@ sudo tee /etc/lynis/custom/webserver.prf << 'EOF'
 #
 #################################################################################
 
-config:profile_name:Web Server Audit
-
-# Focus on web server relevant test groups
-test-group=authentication
-test-group=firewalls
-test-group=networking
-test-group=webservers
-test-group=ssh
-test-group=logging
-
-# Include PHP checks if applicable
-test-group=php
+profile-name=Web Server Audit
 
 # Skip tests not relevant to web servers
 skip-test=MAIL-8820
@@ -827,7 +789,7 @@ skip-test=PRNT-2307
 skip-test=PRNT-2308
 
 # Enable detailed web server analysis
-config:show_report_solution:yes
+show-report-solution=yes
 
 #################################################################################
 EOF
