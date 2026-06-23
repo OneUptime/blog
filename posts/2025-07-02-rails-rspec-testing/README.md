@@ -111,10 +111,10 @@ rails generate rspec:install
 This creates the following structure:
 
 ```text
+.rspec                # Command-line options (project root)
 spec/
   spec_helper.rb      # RSpec configuration
   rails_helper.rb     # Rails-specific configuration
-  .rspec              # Command-line options
 ```
 
 ### Basic Configuration
@@ -167,9 +167,6 @@ RSpec.configure do |config|
   
   # Shared context metadata behavior
   config.shared_context_metadata_behavior = :apply_to_host_groups
-  
-  # Filter lines from backtrace
-  config.filter_rails_from_backtrace!
 end
 ```
 
