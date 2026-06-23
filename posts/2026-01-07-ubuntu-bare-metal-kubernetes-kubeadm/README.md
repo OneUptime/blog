@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, Kubernetes, Kubeadm, Bare Metal, DevOps
 
-Description: Set up a production-ready bare-metal Kubernetes cluster on Ubuntu using kubeadm with CNI networking, storage, and high availability.
+Description: Set up a bare-metal Kubernetes cluster on Ubuntu using kubeadm with CNI networking and essential add-ons.
 
 ---
 
-Running Kubernetes on bare metal gives you complete control over your infrastructure, better performance, and lower costs compared to cloud-managed solutions. This guide walks you through setting up a production-ready Kubernetes cluster on Ubuntu servers using kubeadm, the official Kubernetes bootstrapping tool.
+Running Kubernetes on bare metal gives you complete control over your infrastructure, better performance, and lower costs compared to cloud-managed solutions. This guide walks you through setting up a Kubernetes cluster on Ubuntu servers using kubeadm, the official Kubernetes bootstrapping tool.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ Ensure the following ports are open:
 |------|----------|---------|
 | 10250 | TCP | Kubelet API |
 | 10256 | TCP | kube-proxy |
-| 30000-32767 | TCP | NodePort Services |
+| 30000-32767 | TCP/UDP | NodePort Services |
 
 ### Example Cluster Setup
 
@@ -173,6 +173,7 @@ sudo ufw allow 10257/tcp     # kube-controller-manager
 sudo ufw allow 10250/tcp        # Kubelet API
 sudo ufw allow 10256/tcp        # kube-proxy
 sudo ufw allow 30000:32767/tcp  # NodePort Services
+sudo ufw allow 30000:32767/udp  # NodePort Services
 
 # Reload firewall
 sudo ufw reload
@@ -252,10 +253,10 @@ Add the official Kubernetes apt repository.
 sudo mkdir -p /etc/apt/keyrings
 
 # Download the Kubernetes signing key
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
 # Add the Kubernetes repository
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
 ```
 
 ### Install kubeadm, kubelet, and kubectl
@@ -309,7 +310,7 @@ Initialize the Kubernetes control plane with the appropriate configuration.
 
 ```bash
 # Initialize the control plane
-# --pod-network-cidr: CIDR range for pod IPs (required for CNI plugins)
+# --pod-network-cidr: CIDR range for pod IPs (required by some CNI plugins)
 # --apiserver-advertise-address: IP address the API server will advertise
 # --control-plane-endpoint: Endpoint for the control plane (use for HA setups)
 sudo kubeadm init \
@@ -375,14 +376,19 @@ A CNI (Container Network Interface) plugin is required for pod networking. We'll
 Calico is a widely-used CNI plugin that provides networking and network policy.
 
 ```bash
-# Download the Calico manifest
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -O
+# Install the Calico CRDs and Tigera Operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
-# Apply the Calico manifest
-kubectl apply -f calico.yaml
+# Download and customize the Calico custom resources to match the kubeadm pod CIDR
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml -O
+sed -i 's/cidr: 192.168.0.0\/16/cidr: 10.244.0.0\/16/' custom-resources.yaml
 
-# Watch the Calico pods come up
-kubectl get pods -n kube-system -l k8s-app=calico-node -w
+# Apply the custom resources
+kubectl create -f custom-resources.yaml
+
+# Watch Calico become available
+watch kubectl get tigerastatus
 ```
 
 ### Option B: Install Cilium
@@ -418,7 +424,7 @@ kubectl get nodes
 
 # Expected output:
 # NAME         STATUS   ROLES           AGE   VERSION
-# k8s-master   Ready    control-plane   10m   v1.31.x
+# k8s-master   Ready    control-plane   10m   v1.36.x
 ```
 
 ## Step 6: Join Worker Nodes
@@ -456,9 +462,9 @@ kubectl get nodes
 
 # Expected output:
 # NAME          STATUS   ROLES           AGE   VERSION
-# k8s-master    Ready    control-plane   15m   v1.31.x
-# k8s-worker1   Ready    <none>          5m    v1.31.x
-# k8s-worker2   Ready    <none>          3m    v1.31.x
+# k8s-master    Ready    control-plane   15m   v1.36.x
+# k8s-worker1   Ready    <none>          5m    v1.36.x
+# k8s-worker2   Ready    <none>          3m    v1.36.x
 ```
 
 ### Label Worker Nodes (Optional)
@@ -475,9 +481,9 @@ kubectl get nodes
 
 # Expected output:
 # NAME          STATUS   ROLES           AGE   VERSION
-# k8s-master    Ready    control-plane   15m   v1.31.x
-# k8s-worker1   Ready    worker          5m    v1.31.x
-# k8s-worker2   Ready    worker          3m    v1.31.x
+# k8s-master    Ready    control-plane   15m   v1.36.x
+# k8s-worker1   Ready    worker          5m    v1.36.x
+# k8s-worker2   Ready    worker          3m    v1.36.x
 ```
 
 ## Step 7: Basic Cluster Validation
@@ -495,10 +501,10 @@ kubectl create deployment nginx-test --image=nginx --replicas=3
 # Check deployment status
 kubectl get deployment nginx-test
 
-# Check pods are distributed across nodes
+# Check which nodes the pods are scheduled on
 kubectl get pods -o wide
 
-# Expected output showing pods on different nodes:
+# Example output may show pods on different nodes:
 # NAME                          READY   STATUS    NODE
 # nginx-test-xxx-xxx            1/1     Running   k8s-worker1
 # nginx-test-xxx-yyy            1/1     Running   k8s-worker2
@@ -565,8 +571,8 @@ Check overall cluster health.
 # View all pods in all namespaces
 kubectl get pods -A
 
-# Check component status
-kubectl get componentstatuses
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 
 # Check node resource usage
 kubectl top nodes
@@ -616,11 +622,16 @@ kubectl top pods -A
 
 ### Install Kubernetes Dashboard (Optional)
 
-Deploy the Kubernetes Dashboard for a web-based UI.
+Deploy the Kubernetes Dashboard for a web-based UI. Kubernetes Dashboard is deprecated and unmaintained, so consider Headlamp for new installations.
 
 ```bash
+# Add the Kubernetes Dashboard Helm repository
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+
 # Install the dashboard
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+  --create-namespace \
+  --namespace kubernetes-dashboard
 
 # Create an admin user for the dashboard
 cat <<EOF | kubectl apply -f -
@@ -647,10 +658,10 @@ EOF
 # Get the access token
 kubectl -n kubernetes-dashboard create token admin-user
 
-# Access the dashboard using kubectl proxy
-kubectl proxy
+# Access the dashboard using port forwarding
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
 
-# Open: http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+# Open: https://localhost:8443
 ```
 
 ## Troubleshooting Common Issues
@@ -766,7 +777,7 @@ sudo systemctl restart kubelet
 
 ## Conclusion
 
-You now have a production-ready bare-metal Kubernetes cluster running on Ubuntu. Your cluster includes:
+You now have a working bare-metal Kubernetes cluster running on Ubuntu. Your cluster includes:
 
 - A control plane node managing the cluster
 - Multiple worker nodes for running workloads
