@@ -41,7 +41,6 @@ package interceptors
 
 import (
     "context"
-    "encoding/json"
     "time"
 
     "go.uber.org/zap"
