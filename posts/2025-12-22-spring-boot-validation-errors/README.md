@@ -8,7 +8,7 @@ Description: Learn how to properly handle validation errors in Spring Boot appli
 
 ---
 
-> Input validation is crucial for building secure and reliable APIs. Spring Boot integrates seamlessly with Bean Validation (JSR-380) to validate request data. This guide shows you how to implement comprehensive validation with proper error handling.
+> Input validation is crucial for building secure and reliable APIs. Spring Boot integrates seamlessly with Jakarta Validation to validate request data. This guide shows you how to implement comprehensive validation with proper error handling.
 
 Proper validation prevents malformed data from entering your system and provides clear feedback to API consumers about what went wrong.
 
@@ -98,6 +98,7 @@ import com.example.dto.CreateUserRequest;
 import com.example.dto.UserResponse;
 import com.example.service.UserService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -136,18 +137,16 @@ Create a comprehensive exception handler to return user-friendly error responses
 package com.example.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
-import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -177,6 +176,31 @@ public class GlobalExceptionHandler {
             .build();
 
         log.warn("Validation failed: {}", fieldErrors);
+
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ValidationErrorResponse> handleHandlerMethodValidation(
+            HandlerMethodValidationException ex) {
+
+        List<FieldValidationError> fieldErrors = ex.getParameterValidationResults()
+            .stream()
+            .flatMap(result -> result.getResolvableErrors().stream()
+                .map(error -> new FieldValidationError(
+                    result.getMethodParameter().getParameterName(),
+                    error.getDefaultMessage(),
+                    result.getArgument()
+                )))
+            .collect(Collectors.toList());
+
+        ValidationErrorResponse response = ValidationErrorResponse.builder()
+            .timestamp(Instant.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error("Method Validation Failed")
+            .message("One or more method parameters have validation errors")
+            .fieldErrors(fieldErrors)
+            .build();
 
         return ResponseEntity.badRequest().body(response);
     }
@@ -235,7 +259,7 @@ public class ValidationErrorResponse {
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class FieldValidationError {
+class FieldValidationError {
     private String field;
     private String message;
     private Object rejectedValue;
@@ -337,6 +361,10 @@ public class PasswordMatchValidator implements ConstraintValidator<PasswordMatch
 
     @Override
     public boolean isValid(Object value, ConstraintValidatorContext context) {
+        if (value == null) {
+            return true;
+        }
+
         Object password = new BeanWrapperImpl(value).getPropertyValue(passwordField);
         Object confirmPassword = new BeanWrapperImpl(value).getPropertyValue(confirmPasswordField);
 
@@ -421,6 +449,7 @@ public class UserRequest {
 public ResponseEntity<UserResponse> createUser(
         @Validated(ValidationGroups.Create.class) @RequestBody UserRequest request) {
     // Create logic
+    return ResponseEntity.status(201).build();
 }
 
 @PutMapping("/{id}")
@@ -428,6 +457,7 @@ public ResponseEntity<UserResponse> updateUser(
         @PathVariable Long id,
         @Validated(ValidationGroups.Update.class) @RequestBody UserRequest request) {
     // Update logic
+    return ResponseEntity.ok().build();
 }
 ```
 
@@ -459,7 +489,7 @@ public class CreateOrderRequest {
 }
 
 @Data
-public class OrderItemRequest {
+class OrderItemRequest {
 
     @NotNull(message = "Product ID is required")
     private Long productId;
@@ -471,7 +501,7 @@ public class OrderItemRequest {
 }
 
 @Data
-public class AddressRequest {
+class AddressRequest {
 
     @NotBlank(message = "Street is required")
     private String street;
@@ -493,7 +523,10 @@ public class AddressRequest {
 package com.example.service;
 
 import com.example.dto.CreateUserRequest;
+import com.example.dto.UserResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -504,6 +537,7 @@ public class UserService {
     public UserResponse createUser(@Valid CreateUserRequest request) {
         // Business logic
         // Validation is automatically applied
+        return null;
     }
 
     public void updateEmail(@NotNull Long userId, @Email String newEmail) {
