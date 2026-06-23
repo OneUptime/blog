@@ -87,11 +87,11 @@ Confirm that GitLab Runner is installed correctly:
 gitlab-runner --version
 
 # Expected output similar to:
-# Version:      16.x.x
+# Version:      x.y.z
 # Git revision: xxxxxxxx
 # Git branch:   main
-# GO version:   go1.21.x
-# Built:        2024-xx-xx
+# GO version:   go1.xx.x
+# Built:        2026-xx-xx
 # OS/Arch:      linux/amd64
 ```
 
@@ -106,25 +106,25 @@ sudo systemctl status gitlab-runner
 
 ## Registering the Runner with GitLab
 
-Before a runner can execute jobs, it must be registered with your GitLab instance. You will need a registration token from GitLab.
+Before a runner can execute jobs, it must be registered with your GitLab instance. You will need a runner authentication token from GitLab. Runner registration tokens are deprecated and scheduled for removal in GitLab 20.0.
 
-### Obtaining the Registration Token
+### Obtaining the Runner Authentication Token
 
 For a **project-specific runner**:
 1. Navigate to your project in GitLab
 2. Go to **Settings** > **CI/CD**
 3. Expand the **Runners** section
-4. Copy the registration token
+4. Create a project runner and copy the runner authentication token
 
 For a **group runner**:
 1. Navigate to your group in GitLab
 2. Go to **Settings** > **CI/CD**
 3. Expand the **Runners** section
-4. Copy the registration token
+4. Create a group runner and copy the runner authentication token
 
 For an **instance-wide runner** (admin only):
 1. Go to **Admin Area** > **CI/CD** > **Runners**
-2. Copy the registration token
+2. Create an instance runner and copy the runner authentication token
 
 ### Interactive Registration
 
@@ -137,7 +137,7 @@ sudo gitlab-runner register
 
 You will be prompted for:
 - **GitLab instance URL**: e.g., `https://gitlab.com/` or your self-hosted URL
-- **Registration token**: The token copied from GitLab
+- **Runner authentication token**: The token copied from GitLab
 - **Description**: A name for your runner
 - **Tags**: Comma-separated tags for job targeting
 - **Executor**: The type of executor (shell, docker, kubernetes, etc.)
@@ -151,18 +151,15 @@ For automation purposes, you can register runners non-interactively:
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_REGISTRATION_TOKEN" \
+  --token "glrt-xxxxxxxxxxxxxxxxxxxx" \
   --executor "docker" \
   --docker-image "alpine:latest" \
-  --description "docker-runner" \
-  --tag-list "docker,linux,ubuntu" \
-  --run-untagged="true" \
-  --locked="false"
+  --description "docker-runner"
 ```
 
 ### Using Authentication Tokens (GitLab 15.10+)
 
-GitLab 15.10 introduced runner authentication tokens as a more secure alternative:
+GitLab 15.10 introduced runner authentication tokens as a more secure alternative. With authentication tokens, settings such as tags, protected status, locked status, and whether the runner accepts untagged jobs are configured when you create the runner in the GitLab UI or API:
 
 ```bash
 # Register using a runner authentication token
@@ -183,7 +180,9 @@ GitLab Runner supports multiple executors, each suited for different use cases:
 |----------|-------------|----------|
 | Shell | Runs jobs directly on the host | Simple setups, legacy systems |
 | Docker | Runs jobs in Docker containers | Isolated, reproducible builds |
-| Docker+Machine | Auto-scales Docker hosts | Large-scale CI with variable load |
+| Docker Autoscaler | Auto-scales Docker hosts | Large-scale CI with variable load |
+| Docker+Machine | Auto-scales Docker hosts, but is deprecated | Legacy autoscaling setups |
+| Instance | Runs jobs directly on autoscaled instances | VM-based autoscaling |
 | Kubernetes | Runs jobs in Kubernetes pods | Cloud-native, container orchestration |
 | VirtualBox | Runs jobs in VirtualBox VMs | Windows/macOS builds on Linux |
 | Parallels | Runs jobs in Parallels VMs | macOS-specific builds |
@@ -201,10 +200,9 @@ The shell executor runs jobs directly on the host machine where the runner is in
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "glrt-xxxxxxxxxxxxxxxxxxxx" \
   --executor "shell" \
-  --description "shell-runner" \
-  --tag-list "shell,ubuntu"
+  --description "shell-runner"
 ```
 
 ### Shell Executor Configuration in config.toml
@@ -241,7 +239,6 @@ When using the shell executor, jobs run with the permissions of the gitlab-runne
 ```bash
 # Add gitlab-runner to necessary groups for build tools
 sudo usermod -aG docker gitlab-runner
-sudo usermod -aG sudo gitlab-runner
 
 # Set up proper directory permissions
 sudo chown -R gitlab-runner:gitlab-runner /home/gitlab-runner
@@ -277,13 +274,12 @@ sudo -u gitlab-runner docker ps
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "glrt-xxxxxxxxxxxxxxxxxxxx" \
   --executor "docker" \
   --docker-image "ubuntu:22.04" \
   --docker-privileged="false" \
   --docker-volumes "/cache" \
-  --description "docker-runner" \
-  --tag-list "docker,linux"
+  --description "docker-runner"
 ```
 
 ### Comprehensive Docker Executor Configuration
@@ -439,12 +435,11 @@ kubectl create clusterrolebinding gitlab-runner-admin \
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "glrt-xxxxxxxxxxxxxxxxxxxx" \
   --executor "kubernetes" \
   --kubernetes-namespace "gitlab-runner" \
   --kubernetes-image "ubuntu:22.04" \
-  --description "k8s-runner" \
-  --tag-list "kubernetes,k8s"
+  --description "k8s-runner"
 ```
 
 ### Kubernetes Executor Configuration
@@ -465,9 +460,6 @@ concurrent = 10
     # Kubernetes host (optional, uses in-cluster config if empty)
     host = ""
 
-    # Bearer token for authentication (optional)
-    bearer_token = ""
-
     # CA certificate for Kubernetes API
     ca_file = "/etc/ssl/certs/ca-certificates.crt"
 
@@ -478,7 +470,7 @@ concurrent = 10
     image = "ubuntu:22.04"
 
     # Image pull policy
-    image_pull_policy = "IfNotPresent"
+    pull_policy = "if-not-present"
 
     # Pod annotations
     [runners.kubernetes.pod_annotations]
@@ -757,9 +749,10 @@ Configure artifact handling in the runner:
   token = "RUNNER_TOKEN"
   executor = "docker"
 
-  # Maximum artifact size in bytes (1GB)
-  [runners.custom_build_dir]
-    enabled = true
+  [runners.artifact]
+    # Maximum time for artifact upload operations
+    upload_timeout = "2h"
+    response_header_timeout = "15m"
 
   [runners.docker]
     image = "ubuntu:22.04"
@@ -781,13 +774,10 @@ Tags are set during registration or can be modified in GitLab UI:
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "glrt-xxxxxxxxxxxxxxxxxxxx" \
   --executor "docker" \
   --docker-image "ubuntu:22.04" \
-  --description "specialized-runner" \
-  --tag-list "docker,linux,gpu,high-memory" \
-  --run-untagged="false" \
-  --locked="false"
+  --description "specialized-runner"
 ```
 
 ### Updating Runner Tags via API
@@ -1036,11 +1026,11 @@ Set global and per-runner environment variables:
   token = "RUNNER_TOKEN"
   executor = "docker"
 
-  # Pre-clone script (runs before git clone)
-  pre_clone_script = "echo 'Pre-clone setup'"
+  # Pre-get-sources script (runs before Git fetch or clone)
+  pre_get_sources_script = "echo 'Pre-get-sources setup'"
 
-  # Pre-build script (runs before build script)
-  pre_build_script = "echo 'Pre-build setup'"
+  # Post-get-sources script (runs after Git fetch or clone)
+  post_get_sources_script = "echo 'Post-get-sources setup'"
 
   # Post-build script (runs after build script)
   post_build_script = "echo 'Post-build cleanup'"
@@ -1155,23 +1145,29 @@ sudo gitlab-runner register \
 
 Adjust timeout settings:
 
+```yaml
+# .gitlab-ci.yml
+# Job timeout configuration
+
+build:
+  script: build.sh
+  timeout: 3h 30m
+```
+
+For Docker service startup timeouts, configure the runner:
+
 ```toml
 # /etc/gitlab-runner/config.toml
-# Timeout configuration
+# Wait time for Docker services to start
 
 [[runners]]
-  name = "runner-with-timeout"
+  name = "runner-with-service-timeout"
   url = "https://gitlab.com/"
   token = "RUNNER_TOKEN"
   executor = "docker"
 
-  # Clone timeout (default: 1h)
-  clone_url = ""
-
   [runners.docker]
     image = "ubuntu:22.04"
-
-    # Wait time for Docker operations
     wait_for_services_timeout = 60
 ```
 
