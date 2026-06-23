@@ -6,7 +6,7 @@ Tags: .NET, ASP.NET Core, C#, Caching, Redis, Performance, Memory Cache
 
 Description: Learn how to implement effective caching strategies in ASP.NET Core applications.
 
-Caching is one of the most effective ways to improve application performance. This guide covers all the caching options available in ASP.NET Core and shows you how to implement them effectively.
+Caching is one of the most effective ways to improve application performance. This guide covers the main caching options available in ASP.NET Core and shows you how to implement them effectively.
 
 ## Caching Overview
 
@@ -117,7 +117,7 @@ public class CatalogService
 // Configure cache size limits
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = 1024; // Maximum number of cache entries
+    options.SizeLimit = 1024; // Unitless limit; with SetSize(1), this allows up to 1024 entries
     options.CompactionPercentage = 0.25; // Remove 25% when limit reached
     options.ExpirationScanFrequency = TimeSpan.FromMinutes(5);
 });
@@ -394,7 +394,7 @@ public async Task<IActionResult> CreateProduct(
     // Invalidate cache by tag
     await cacheStore.EvictByTagAsync("products", default);
 
-    return Created();
+    return CreatedAtAction(nameof(GetProducts), product);
 }
 ```
 
@@ -412,24 +412,21 @@ public interface ICacheInvalidator
 public class RedisCacheInvalidator : ICacheInvalidator
 {
     private readonly IConnectionMultiplexer _redis;
-    private readonly IDistributedCache _cache;
 
-    public RedisCacheInvalidator(
-        IConnectionMultiplexer redis,
-        IDistributedCache cache)
+    public RedisCacheInvalidator(IConnectionMultiplexer redis)
     {
         _redis = redis;
-        _cache = cache;
     }
 
     public async Task InvalidateAsync(string pattern)
     {
         var server = _redis.GetServer(_redis.GetEndPoints().First());
+        var database = _redis.GetDatabase();
         var keys = server.Keys(pattern: pattern).ToArray();
 
         foreach (var key in keys)
         {
-            await _cache.RemoveAsync(key.ToString());
+            await database.KeyDeleteAsync(key);
         }
     }
 
@@ -464,6 +461,14 @@ public class CacheWarmingService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDistributedCache _cache;
+
+    public CacheWarmingService(
+        IServiceScopeFactory scopeFactory,
+        IDistributedCache cache)
+    {
+        _scopeFactory = scopeFactory;
+        _cache = cache;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
