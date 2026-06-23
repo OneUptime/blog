@@ -142,9 +142,9 @@ location ~ \.php$ {
 }
 ```
 
-## Solution 3: Upstream Configuration with Health Checks
+## Solution 3: Upstream Configuration with Passive Health Checks
 
-Configure upstream servers with proper timeouts and failover:
+Configure upstream servers with proper timeouts and passive failover:
 
 ```nginx
 upstream backend {
@@ -241,7 +241,7 @@ http {
 
 ```bash
 # Watch for slow requests
-tail -f /var/log/nginx/access.log | awk '$NF > 5 {print}'
+tail -f /var/log/nginx/access.log | awk -F'urt="' '{split($2, a, "\""); if (a[1] + 0 > 5) print}'
 
 # Find 504 errors
 grep " 504 " /var/log/nginx/access.log | tail -20
@@ -275,6 +275,7 @@ curl -w "@curl-format.txt" -o /dev/null -s http://localhost:3000/api/endpoint
 -- Enable slow query log (MySQL)
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL long_query_time = 2;
+SET GLOBAL log_output = 'TABLE,FILE';
 SET GLOBAL slow_query_log_file = '/var/log/mysql/slow-query.log';
 
 -- Find slow queries
@@ -284,7 +285,7 @@ SELECT * FROM mysql.slow_log ORDER BY query_time DESC LIMIT 10;
 ### Application-Level Fixes
 
 ```python
-# Python/Flask - Add request timeout
+# Python/Flask - Add request timeout for Unix single-threaded workers
 from flask import Flask
 import signal
 
@@ -301,10 +302,9 @@ def limit_request_time():
     signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(30)  # 30 second timeout
 
-@app.after_request
-def cancel_timeout(response):
+@app.teardown_request
+def cancel_timeout(exception=None):
     signal.alarm(0)
-    return response
 ```
 
 ## Solution 7: Implement Request Queuing
@@ -316,8 +316,8 @@ For high-traffic scenarios, implement proper queuing:
 upstream backend {
     server localhost:3000 max_conns=100;
     # Note: the 'queue' directive below is only available in Nginx Plus (commercial version).
-    # In open-source Nginx, excess connections will receive a 502 error when max_conns is reached.
-    queue 100 timeout=30s;
+    # In open-source Nginx, excess connections will receive an error when max_conns is reached.
+    # queue 100 timeout=30s;
 }
 
 # Rate limiting
