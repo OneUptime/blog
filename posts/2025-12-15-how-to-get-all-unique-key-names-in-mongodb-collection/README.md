@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Schema Analysis, Key, Aggregation, Database
 
-Description: Learn multiple methods to extract all unique field names from a MongoDB collection including aggregation pipelines, MapReduce, and JavaScript approaches for schema discovery.
+Description: Learn multiple methods to extract all unique field names from a MongoDB collection including aggregation pipelines and JavaScript approaches for schema discovery.
 
 ---
 
@@ -154,6 +154,12 @@ db.products.aggregate([
         }
       }
     }
+  },
+  {
+    $project: {
+      topLevelKeys: 1,
+      nestedKeys: { $setDifference: ["$nestedKeys", [null]] }
+    }
   }
 ])
 ```
@@ -178,7 +184,7 @@ async function getAllKeys(collectionName, sampleSize = 1000) {
     }
   }
 
-  const cursor = db.collection(collectionName).find().limit(sampleSize);
+  const cursor = db.getCollection(collectionName).find().limit(sampleSize);
 
   await cursor.forEach(doc => {
     extractKeys(doc);
@@ -231,7 +237,7 @@ db.products.aggregate([
 
 // Output:
 // { _id: "name", types: ["string"], count: 4, sample: "Laptop" }
-// { _id: "price", types: ["int", "double"], count: 4, sample: 999 }
+// { _id: "price", types: ["int"], count: 4, sample: 999 }
 // { _id: "specs", types: ["object"], count: 2, sample: {...} }
 // { _id: "wireless", types: ["bool"], count: 1, sample: true }
 ```
@@ -260,14 +266,16 @@ Combine techniques for a comprehensive schema analysis:
 async function generateSchemaReport(collectionName) {
   const report = {
     collection: collectionName,
-    documentCount: await db.collection(collectionName).countDocuments(),
+    documentCount: await db.getCollection(collectionName).countDocuments(),
     fields: []
   };
 
-  const fieldStats = await db.collection(collectionName).aggregate([
+  const fieldStats = await db.getCollection(collectionName).aggregate([
     { $sample: { size: 10000 } },
     { $project: { keys: { $objectToArray: "$$ROOT" } } },
     { $unwind: "$keys" },
+    { $addFields: { sampleOrder: { $rand: {} } } },
+    { $sort: { sampleOrder: 1 } },
     {
       $group: {
         _id: "$keys.k",
@@ -276,11 +284,7 @@ async function generateSchemaReport(collectionName) {
         nullCount: {
           $sum: { $cond: [{ $eq: [{ $type: "$keys.v" }, "null"] }, 1, 0] }
         },
-        samples: { $push: { $cond: [
-          { $lte: [{ $rand: {} }, 0.01] },
-          "$keys.v",
-          "$$REMOVE"
-        ]}}
+        samples: { $push: "$keys.v" }
       }
     },
     { $sort: { count: -1 } }
@@ -376,7 +380,7 @@ db.orders.aggregate([
 ```javascript
 // Generate TypeScript interface from schema
 async function generateInterface(collectionName) {
-  const fields = await db.collection(collectionName).aggregate([
+  const fields = await db.getCollection(collectionName).aggregate([
     { $sample: { size: 1000 } },
     { $project: { keys: { $objectToArray: "$$ROOT" } } },
     { $unwind: "$keys" },
@@ -391,8 +395,11 @@ async function generateInterface(collectionName) {
   const typeMap = {
     string: 'string',
     int: 'number',
+    long: 'number',
     double: 'number',
+    decimal: 'number',
     bool: 'boolean',
+    null: 'null',
     date: 'Date',
     objectId: 'ObjectId',
     array: 'any[]',
@@ -420,8 +427,7 @@ console.log(tsInterface);
 ```javascript
 // Generate JSON Schema from collection
 async function generateJsonSchema(collectionName) {
-  const fields = await db.collection(collectionName).aggregate([
-    { $sample: { size: 1000 } },
+  const fields = await db.getCollection(collectionName).aggregate([
     { $project: { keys: { $objectToArray: "$$ROOT" } } },
     { $unwind: "$keys" },
     {
@@ -433,13 +439,16 @@ async function generateJsonSchema(collectionName) {
     }
   ]).toArray();
 
-  const totalDocs = await db.collection(collectionName).countDocuments();
+  const totalDocs = await db.getCollection(collectionName).countDocuments();
 
   const typeMap = {
     string: 'string',
     int: 'integer',
+    long: 'integer',
     double: 'number',
+    decimal: 'number',
     bool: 'boolean',
+    null: 'null',
     date: 'string',
     objectId: 'string',
     array: 'array',
@@ -454,7 +463,7 @@ async function generateJsonSchema(collectionName) {
   };
 
   for (const field of fields) {
-    const jsonTypes = [...new Set(field.types.map(t => typeMap[t]))];
+    const jsonTypes = [...new Set(field.types.map(t => typeMap[t] || 'string'))];
 
     schema.properties[field._id] = {
       type: jsonTypes.length === 1 ? jsonTypes[0] : jsonTypes
@@ -484,7 +493,7 @@ async function efficientSchemaDiscovery(collectionName) {
   let prevSize = 0;
 
   for (const size of sampleSizes) {
-    const result = await db.collection(collectionName).aggregate([
+    const result = await db.getCollection(collectionName).aggregate([
       { $sample: { size } },
       { $project: { keys: { $objectToArray: "$$ROOT" } } },
       { $unwind: "$keys" },
