@@ -21,7 +21,7 @@ Minimal images mean faster deployments, reduced storage costs, and improved secu
 | Standard Debian | ~1GB | Large |
 | Alpine-based | ~50MB | Medium |
 | Distroless | ~20MB | Minimal |
-| Scratch + static | ~5-10MB | None |
+| Scratch + static | ~5-10MB | Very low |
 
 ---
 
@@ -35,7 +35,7 @@ Start with a standard multi-stage build that separates the build environment fro
 # Basic multi-stage build for Rust
 
 # Build stage
-FROM rust:1.75 AS builder
+FROM rust:1.96 AS builder
 
 WORKDIR /app
 
@@ -94,7 +94,7 @@ Alpine Linux uses musl libc, resulting in smaller images.
 # Alpine-based build with musl
 
 # Build stage with Alpine
-FROM rust:1.75-alpine AS builder
+FROM rust:1.96-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache musl-dev
@@ -115,7 +115,7 @@ COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Install CA certificates
 RUN apk add --no-cache ca-certificates
@@ -163,10 +163,10 @@ brew install filosottile/musl-cross/musl-cross
 # Minimal scratch image with static binary
 
 # Build stage using official musl builder
-FROM rust:1.75-alpine AS builder
+FROM rust:1.96-alpine AS builder
 
 # Install musl build tools
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static file
 
 WORKDIR /app
 
@@ -189,7 +189,7 @@ RUN touch src/main.rs && \
     cargo build --release --target x86_64-unknown-linux-musl
 
 # Verify it's statically linked
-RUN ldd target/x86_64-unknown-linux-musl/release/myapp 2>&1 | grep -q "statically linked"
+RUN file target/x86_64-unknown-linux-musl/release/myapp | grep -q "statically linked"
 
 # Runtime stage - completely empty base
 FROM scratch
@@ -224,7 +224,7 @@ Google's distroless images provide a minimal runtime with some conveniences over
 # Dockerfile.distroless
 # Distroless image for production
 
-FROM rust:1.75-slim AS builder
+FROM rust:1.96-slim AS builder
 
 WORKDIR /app
 
@@ -267,27 +267,27 @@ docker images myapp:distroless
 
 ## Handling OpenSSL vs rustls
 
-OpenSSL requires shared libraries. For true static builds, use rustls instead.
+OpenSSL often requires native libraries and extra static-linking setup. For simpler static builds, use rustls instead.
 
 ### Cargo.toml Configuration
 
 ```toml
 [dependencies]
 # Use rustls for TLS instead of OpenSSL
-reqwest = { version = "0.11", default-features = false, features = [
-    "rustls-tls",  # Use rustls instead of native-tls
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",  # Use rustls instead of native-tls
     "json",
 ] }
 
 # For sqlx
-sqlx = { version = "0.7", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",  # Use rustls
     "postgres",
 ] }
 
 # For tonic (gRPC)
-tonic = { version = "0.11", features = ["tls-rustls"] }
+tonic = { version = "0.14", features = ["tls-ring", "tls-webpki-roots"] }
 ```
 
 ### Verifying Static Linking
@@ -299,7 +299,7 @@ file target/x86_64-unknown-linux-musl/release/myapp
 
 # Verify no dynamic dependencies
 ldd target/x86_64-unknown-linux-musl/release/myapp
-# statically linked
+# statically linked or not a dynamic executable
 ```
 
 ---
@@ -325,10 +325,10 @@ opt-level = "z"      # Also optimize dependencies for size
 
 ```dockerfile
 # Additional compression with UPX
-FROM rust:1.75-alpine AS builder
+FROM rust:1.96-alpine AS builder
 # ... build steps ...
 
-FROM alpine:3.19 AS compressor
+FROM alpine:3.24 AS compressor
 RUN apk add --no-cache upx
 COPY --from=builder /app/target/release/myapp /myapp
 RUN upx --best --lzma /myapp
@@ -354,13 +354,13 @@ cargo install cross
 cross build --release --target x86_64-unknown-linux-musl
 ```
 
-Or use Docker for building:
+Or use Docker Buildx for platform-specific image builds:
 
 ```dockerfile
 # Dockerfile.cross
-# Cross-compile from any platform
+# Build for the platform selected by Docker Buildx
 
-FROM --platform=linux/amd64 rust:1.75-alpine AS builder
+FROM --platform=$TARGETPLATFORM rust:1.96-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 
@@ -369,7 +369,7 @@ COPY . .
 
 RUN cargo build --release
 
-FROM --platform=linux/amd64 scratch
+FROM scratch
 COPY --from=builder /app/target/release/myapp /myapp
 ENTRYPOINT ["/myapp"]
 ```
@@ -388,32 +388,19 @@ Support both AMD64 and ARM64 architectures.
 
 ```dockerfile
 # Dockerfile.multiarch
-# Multi-architecture build
+# Multi-architecture build using Buildx platform emulation
 
-FROM --platform=$BUILDPLATFORM rust:1.75-alpine AS builder
+FROM --platform=$TARGETPLATFORM rust:1.96-alpine AS builder
 
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-
-# Install cross-compilation tools
+# Install build tools
 RUN apk add --no-cache musl-dev
-
-# Map Docker platform to Rust target
-RUN case "$TARGETPLATFORM" in \
-        "linux/amd64") echo "x86_64-unknown-linux-musl" > /target ;; \
-        "linux/arm64") echo "aarch64-unknown-linux-musl" > /target ;; \
-        *) echo "Unsupported platform: $TARGETPLATFORM" && exit 1 ;; \
-    esac
-
-# Add target
-RUN rustup target add $(cat /target)
 
 WORKDIR /app
 COPY . .
 
-# Build for target platform
-RUN cargo build --release --target $(cat /target)
-RUN cp target/$(cat /target)/release/myapp /myapp
+# Build for the target platform selected by Buildx
+RUN cargo build --release
+RUN cp target/release/myapp /myapp
 
 FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -444,7 +431,7 @@ Complete example with all best practices:
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM rust:1.96-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache musl-dev
@@ -528,9 +515,9 @@ securityContext:
 # Scan image for vulnerabilities
 trivy image myapp:latest
 
-# Zero vulnerabilities with scratch/distroless
+# Fewer OS package vulnerabilities with scratch/distroless
 trivy image myapp:scratch
-# Total: 0 (UNKNOWN: 0, LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0)
+# OS package findings may be zero, but scan application dependencies separately
 ```
 
 ---
