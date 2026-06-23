@@ -1256,7 +1256,7 @@ logging:
     
     # Hibernate SQL logging (if using JPA)
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql: TRACE
+    org.hibernate.orm.jdbc.bind: TRACE
 
 # Custom logging properties
 app:
