@@ -43,7 +43,7 @@ graph TB
     end
 ```
 
-Resource detectors are components that query the environment for specific attributes. When multiple detectors run, their results are merged into a single Resource object. If there are conflicts (same attribute key from multiple detectors), the later detector in the chain typically wins, though this behavior can be configured.
+Resource detectors are components that query the environment for specific attributes. When multiple detectors run, their results are merged into a single Resource object. In the OpenTelemetry JavaScript SDK, if there are conflicts (same attribute key from multiple detectors), the later detector in the chain wins.
 
 Resource Hierarchy and Semantic Conventions
 
@@ -125,12 +125,12 @@ pip install opentelemetry-api \
             opentelemetry-semantic-conventions
 
 # Install cloud-specific resource detectors
-pip install opentelemetry-resource-detector-aws \
-            opentelemetry-resource-detector-gcp \
+pip install opentelemetry-sdk-extension-aws \
+            opentelemetry-resourcedetector-gcp \
             opentelemetry-resource-detector-azure
 
 # Install container and Kubernetes detectors
-pip install opentelemetry-resource-detector-container
+pip install opentelemetry-resource-detector-containerid
 ```
 
 ## AWS Resource Detection
@@ -144,7 +144,7 @@ This configuration sets up AWS resource detection to automatically capture EC2 i
 ```typescript
 // aws-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   // Detects EC2 instance metadata including instance ID, type, AMI, and placement
   awsEc2Detector,
@@ -158,18 +158,18 @@ import {
   awsBeanstalkDetector,
 } from '@opentelemetry/resource-detector-aws';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Create a base resource with service-specific attributes that won't be
 // auto-detected. These attributes identify your application regardless
 // of where it runs.
-const baseResource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'my-payment-service',
-  [SEMRESATTRS_SERVICE_VERSION]: '2.1.0',
-  [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const baseResource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-payment-service',
+  [ATTR_SERVICE_VERSION]: '2.1.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
 });
 
 // Configure the SDK with AWS resource detectors. The order matters because
@@ -197,15 +197,9 @@ const sdk = new NodeSDK({
   ],
 });
 
-// Start the SDK - resource detection happens asynchronously during startup.
-// The SDK will wait for all detectors to complete before the promise resolves.
-sdk.start()
-  .then(() => {
-    console.log('OpenTelemetry SDK initialized with AWS resource detection');
-  })
-  .catch((error) => {
-    console.error('Failed to initialize OpenTelemetry SDK:', error);
-  });
+// Start the SDK - resource detection happens during startup.
+sdk.start();
+console.log('OpenTelemetry SDK initialized with AWS resource detection');
 
 // Ensure graceful shutdown to flush any pending telemetry data
 process.on('SIGTERM', () => {
@@ -223,14 +217,15 @@ Lambda functions require special handling because they run in a unique execution
 ```typescript
 // lambda-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { awsLambdaDetector } from '@opentelemetry/resource-detector-aws';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_FAAS_NAME,
-  SEMRESATTRS_FAAS_VERSION,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_FAAS_NAME,
+  ATTR_FAAS_VERSION,
+  ATTR_FAAS_COLDSTART,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Lambda-specific configuration that handles the cold start scenario
 // and ensures telemetry is flushed before the function freezes
@@ -242,12 +237,12 @@ const configureLambdaTracing = () => {
 
   // Create base resource with FaaS-specific attributes. These follow the
   // OpenTelemetry FaaS (Function as a Service) semantic conventions.
-  const lambdaResource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: functionName,
-    [SEMRESATTRS_FAAS_NAME]: functionName,
-    [SEMRESATTRS_FAAS_VERSION]: functionVersion,
+  const lambdaResource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: functionName,
+    [ATTR_FAAS_NAME]: functionName,
+    [ATTR_FAAS_VERSION]: functionVersion,
     // Custom attribute to track cold starts for performance analysis
-    'faas.cold_start': process.env._COLD_START !== 'false',
+    [ATTR_FAAS_COLDSTART]: process.env._COLD_START !== 'false',
   });
 
   // Configure OTLP exporter with Lambda-optimized settings.
@@ -281,7 +276,7 @@ ECS and Fargate environments provide rich metadata through the container metadat
 ```typescript
 // ecs-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { awsEcsDetector } from '@opentelemetry/resource-detector-aws';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 
@@ -299,7 +294,7 @@ import { containerDetector } from '@opentelemetry/resource-detector-container';
 // - aws.ecs.launchtype: "EC2" or "FARGATE"
 
 // Create custom resource with ECS-specific service identification
-const ecsServiceResource = new Resource({
+const ecsServiceResource = resourceFromAttributes({
   // Use ECS service name from environment or fall back to task family
   'service.name': process.env.ECS_SERVICE_NAME || 'ecs-service',
   // Track the deployment version using task definition revision
@@ -332,15 +327,15 @@ This configuration enables automatic detection of GCP environment attributes:
 ```typescript
 // gcp-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   // Detects GCP environment by querying the metadata server
   gcpDetector,
 } from '@opentelemetry/resource-detector-gcp';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_NAMESPACE,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_NAMESPACE,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // The GCP detector automatically identifies the runtime environment and
 // populates appropriate attributes. It queries the metadata server at
@@ -371,9 +366,9 @@ import {
 // - faas.version: Revision name
 // - cloud.region: Region
 
-const gcpServiceResource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'order-processing-service',
-  [SEMRESATTRS_SERVICE_NAMESPACE]: 'ecommerce',
+const gcpServiceResource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'order-processing-service',
+  [ATTR_SERVICE_NAMESPACE]: 'ecommerce',
   // Custom business attributes for filtering in observability tools
   'business.domain': 'orders',
   'business.tier': 'critical',
@@ -388,14 +383,13 @@ const sdk = new NodeSDK({
   ],
 });
 
-sdk.start()
-  .then(() => {
-    console.log('OpenTelemetry initialized with GCP resource detection');
-  })
-  .catch((error) => {
-    console.error('GCP resource detection failed:', error);
-    // Continue without GCP attributes - useful for local development
-  });
+try {
+  sdk.start();
+  console.log('OpenTelemetry initialized with GCP resource detection');
+} catch (error) {
+  console.error('GCP resource detection failed:', error);
+  // Continue without GCP attributes - useful for local development
+}
 ```
 
 ### GKE-Specific Resource Detection
@@ -405,14 +399,14 @@ When running in Google Kubernetes Engine, you can combine GCP detection with Kub
 ```typescript
 // gke-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { gcpDetector } from '@opentelemetry/resource-detector-gcp';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_K8S_NAMESPACE_NAME,
-  SEMRESATTRS_K8S_POD_NAME,
-  SEMRESATTRS_K8S_DEPLOYMENT_NAME,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_K8S_NAMESPACE_NAME,
+  ATTR_K8S_POD_NAME,
+  ATTR_K8S_DEPLOYMENT_NAME,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // For GKE workloads, we can access Kubernetes downward API to get
 // pod-specific metadata. These are typically mounted as environment
@@ -433,12 +427,12 @@ import {
 //       fieldRef:
 //         fieldPath: spec.nodeName
 
-const gkeResource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || 'gke-service',
+const gkeResource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'gke-service',
   // Read Kubernetes metadata from downward API environment variables
-  [SEMRESATTRS_K8S_NAMESPACE_NAME]: process.env.POD_NAMESPACE,
-  [SEMRESATTRS_K8S_POD_NAME]: process.env.POD_NAME,
-  [SEMRESATTRS_K8S_DEPLOYMENT_NAME]: process.env.DEPLOYMENT_NAME,
+  [ATTR_K8S_NAMESPACE_NAME]: process.env.POD_NAMESPACE,
+  [ATTR_K8S_POD_NAME]: process.env.POD_NAME,
+  [ATTR_K8S_DEPLOYMENT_NAME]: process.env.DEPLOYMENT_NAME,
   // GKE-specific custom attributes
   'gcp.gke.nodepool': process.env.NODE_POOL || 'default-pool',
   'gcp.gke.preemptible': process.env.PREEMPTIBLE === 'true',
@@ -452,13 +446,13 @@ const initializeWithGkeDetection = async () => {
   });
 
   // Merge with our explicit GKE resource - explicit values take precedence
-  const mergedResource = gkeResource.merge(detectedResource);
+  const mergedResource = detectedResource.merge(gkeResource);
 
   const sdk = new NodeSDK({
     resource: mergedResource,
   });
 
-  await sdk.start();
+  sdk.start();
   return sdk;
 };
 
@@ -478,7 +472,7 @@ This configuration enables detection of Azure-specific resource attributes:
 ```typescript
 // azure-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   // Detects Azure VM metadata from the Instance Metadata Service
   azureVmDetector,
@@ -488,16 +482,16 @@ import {
   azureAppServiceDetector,
 } from '@opentelemetry/resource-detector-azure';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Azure VM detector queries the Azure Instance Metadata Service (IMDS) at:
 // http://169.254.169.254/metadata/instance?api-version=2021-02-01
 //
 // Detected attributes include:
 // - cloud.provider: "azure"
-// - cloud.platform: "azure_vm"
+// - cloud.platform: "azure.vm"
 // - cloud.region: Azure region (e.g., "eastus")
 // - cloud.account.id: Subscription ID
 // - host.id: VM ID
@@ -505,9 +499,9 @@ import {
 // - host.type: VM size (e.g., "Standard_D2s_v3")
 // - azure.vm.scaleset.name: Scale set name (if applicable)
 
-const azureServiceResource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'inventory-service',
-  [SEMRESATTRS_SERVICE_VERSION]: '1.5.2',
+const azureServiceResource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'inventory-service',
+  [ATTR_SERVICE_VERSION]: '1.5.2',
   // Azure-specific organizational attributes
   'azure.resource_group': process.env.AZURE_RESOURCE_GROUP,
   'azure.subscription': process.env.AZURE_SUBSCRIPTION_ID,
@@ -524,14 +518,13 @@ const sdk = new NodeSDK({
   ],
 });
 
-sdk.start()
-  .then(() => {
-    console.log('OpenTelemetry SDK with Azure resource detection started');
-  })
-  .catch((error) => {
-    // Log but don't fail - allows local development without Azure
-    console.warn('Azure resource detection encountered an error:', error.message);
-  });
+try {
+  sdk.start();
+  console.log('OpenTelemetry SDK with Azure resource detection started');
+} catch (error) {
+  // Log but don't fail - allows local development without Azure
+  console.warn('Azure resource detection encountered an error:', error instanceof Error ? error.message : error);
+}
 ```
 
 ### Azure Functions Resource Detection
@@ -541,14 +534,14 @@ Azure Functions have a unique execution model similar to AWS Lambda. Here's how 
 ```typescript
 // azure-functions-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { azureFunctionsDetector } from '@opentelemetry/resource-detector-azure';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_FAAS_NAME,
-  SEMRESATTRS_FAAS_VERSION,
-  SEMRESATTRS_FAAS_INSTANCE,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_FAAS_NAME,
+  ATTR_FAAS_VERSION,
+  ATTR_FAAS_INSTANCE,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Azure Functions detector reads from these environment variables:
 // - WEBSITE_SITE_NAME: Function app name
@@ -558,11 +551,11 @@ import {
 // - WEBSITE_RESOURCE_GROUP: Resource group name
 
 // Create a comprehensive FaaS resource for Azure Functions
-const azureFunctionsResource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
-  [SEMRESATTRS_FAAS_NAME]: process.env.WEBSITE_SITE_NAME,
-  [SEMRESATTRS_FAAS_VERSION]: process.env.FUNCTIONS_EXTENSION_VERSION,
-  [SEMRESATTRS_FAAS_INSTANCE]: process.env.WEBSITE_INSTANCE_ID,
+const azureFunctionsResource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
+  [ATTR_FAAS_NAME]: process.env.WEBSITE_SITE_NAME,
+  [ATTR_FAAS_VERSION]: process.env.FUNCTIONS_EXTENSION_VERSION,
+  [ATTR_FAAS_INSTANCE]: process.env.WEBSITE_INSTANCE_ID,
   // Custom attributes for Azure Functions monitoring
   'azure.functions.runtime': process.env.FUNCTIONS_WORKER_RUNTIME || 'node',
   'azure.functions.trigger_type': 'http', // Set based on actual trigger
@@ -576,7 +569,7 @@ const sdk = new NodeSDK({
 
 // Export for use in function entry points
 export const initializeAzureFunctionsTracing = async () => {
-  await sdk.start();
+  sdk.start();
   return sdk;
 };
 
@@ -593,16 +586,16 @@ Azure Kubernetes Service combines Azure cloud detection with Kubernetes-specific
 ```typescript
 // aks-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { azureVmDetector } from '@opentelemetry/resource-detector-azure';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_K8S_CLUSTER_NAME,
-  SEMRESATTRS_K8S_NAMESPACE_NAME,
-  SEMRESATTRS_K8S_POD_NAME,
-  SEMRESATTRS_K8S_NODE_NAME,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_K8S_CLUSTER_NAME,
+  ATTR_K8S_NAMESPACE_NAME,
+  ATTR_K8S_POD_NAME,
+  ATTR_K8S_NODE_NAME,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // AKS provides Kubernetes metadata through the downward API.
 // Configure your deployment to expose these values as environment variables.
@@ -629,13 +622,13 @@ import {
 
 const createAksResource = (): Resource => {
   // Combine Azure and Kubernetes attributes
-  return new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || 'aks-service',
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'aks-service',
     // AKS cluster information
-    [SEMRESATTRS_K8S_CLUSTER_NAME]: process.env.AKS_CLUSTER_NAME,
-    [SEMRESATTRS_K8S_NAMESPACE_NAME]: process.env.POD_NAMESPACE,
-    [SEMRESATTRS_K8S_POD_NAME]: process.env.POD_NAME,
-    [SEMRESATTRS_K8S_NODE_NAME]: process.env.NODE_NAME,
+    [ATTR_K8S_CLUSTER_NAME]: process.env.AKS_CLUSTER_NAME,
+    [ATTR_K8S_NAMESPACE_NAME]: process.env.POD_NAMESPACE,
+    [ATTR_K8S_POD_NAME]: process.env.POD_NAME,
+    [ATTR_K8S_NODE_NAME]: process.env.NODE_NAME,
     // AKS-specific attributes for Azure integration
     'azure.aks.nodepool': process.env.AKS_NODEPOOL || 'default',
     'azure.aks.managed_identity': process.env.AZURE_CLIENT_ID ? 'true' : 'false',
@@ -651,13 +644,13 @@ const initializeAksTracing = async () => {
   });
 
   // Merge detected resources with explicit AKS configuration
-  const finalResource = aksResource.merge(detectedResource);
+  const finalResource = detectedResource.merge(aksResource);
 
   const sdk = new NodeSDK({
     resource: finalResource,
   });
 
-  await sdk.start();
+  sdk.start();
   console.log('AKS resource detection initialized');
 
   return sdk;
@@ -677,23 +670,23 @@ This configuration provides complete Kubernetes environment detection:
 ```typescript
 // kubernetes-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_K8S_CLUSTER_NAME,
-  SEMRESATTRS_K8S_NAMESPACE_NAME,
-  SEMRESATTRS_K8S_POD_NAME,
-  SEMRESATTRS_K8S_POD_UID,
-  SEMRESATTRS_K8S_DEPLOYMENT_NAME,
-  SEMRESATTRS_K8S_REPLICASET_NAME,
-  SEMRESATTRS_K8S_NODE_NAME,
-  SEMRESATTRS_K8S_CONTAINER_NAME,
-  SEMRESATTRS_CONTAINER_ID,
-  SEMRESATTRS_CONTAINER_IMAGE_NAME,
-  SEMRESATTRS_CONTAINER_IMAGE_TAG,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_K8S_CLUSTER_NAME,
+  ATTR_K8S_NAMESPACE_NAME,
+  ATTR_K8S_POD_NAME,
+  ATTR_K8S_POD_UID,
+  ATTR_K8S_DEPLOYMENT_NAME,
+  ATTR_K8S_REPLICASET_NAME,
+  ATTR_K8S_NODE_NAME,
+  ATTR_K8S_CONTAINER_NAME,
+  ATTR_CONTAINER_ID,
+  ATTR_CONTAINER_IMAGE_NAME,
+  ATTR_CONTAINER_IMAGE_TAGS,
+} from '@opentelemetry/semantic-conventions/incubating';
 import * as fs from 'fs';
 
 // Kubernetes provides several ways to access pod metadata:
@@ -742,35 +735,37 @@ const createK8sResource = (): Resource => {
   const containerId = getContainerIdFromCgroup();
 
   // Build resource with all available Kubernetes attributes
-  const attributes: Record<string, string | undefined> = {
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || deploymentName || podName,
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
+  const attributes: Record<string, string | string[] | undefined> = {
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || deploymentName || podName,
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
     // Cluster-level attributes
-    [SEMRESATTRS_K8S_CLUSTER_NAME]: process.env.CLUSTER_NAME,
+    [ATTR_K8S_CLUSTER_NAME]: process.env.CLUSTER_NAME,
     // Namespace-level attributes
-    [SEMRESATTRS_K8S_NAMESPACE_NAME]: podNamespace,
+    [ATTR_K8S_NAMESPACE_NAME]: podNamespace,
     // Pod-level attributes
-    [SEMRESATTRS_K8S_POD_NAME]: podName,
-    [SEMRESATTRS_K8S_POD_UID]: podUid,
+    [ATTR_K8S_POD_NAME]: podName,
+    [ATTR_K8S_POD_UID]: podUid,
     // Workload-level attributes
-    [SEMRESATTRS_K8S_DEPLOYMENT_NAME]: deploymentName,
-    [SEMRESATTRS_K8S_REPLICASET_NAME]: replicaSetName,
+    [ATTR_K8S_DEPLOYMENT_NAME]: deploymentName,
+    [ATTR_K8S_REPLICASET_NAME]: replicaSetName,
     // Node-level attributes
-    [SEMRESATTRS_K8S_NODE_NAME]: nodeName,
+    [ATTR_K8S_NODE_NAME]: nodeName,
     // Container-level attributes
-    [SEMRESATTRS_K8S_CONTAINER_NAME]: containerName,
-    [SEMRESATTRS_CONTAINER_ID]: containerId,
+    [ATTR_K8S_CONTAINER_NAME]: containerName,
+    [ATTR_CONTAINER_ID]: containerId,
     // Image information (typically set via environment variables in deployment)
-    [SEMRESATTRS_CONTAINER_IMAGE_NAME]: process.env.CONTAINER_IMAGE_NAME,
-    [SEMRESATTRS_CONTAINER_IMAGE_TAG]: process.env.CONTAINER_IMAGE_TAG,
+    [ATTR_CONTAINER_IMAGE_NAME]: process.env.CONTAINER_IMAGE_NAME,
+    [ATTR_CONTAINER_IMAGE_TAGS]: process.env.CONTAINER_IMAGE_TAG
+      ? [process.env.CONTAINER_IMAGE_TAG]
+      : undefined,
   };
 
   // Filter out undefined values before creating resource
   const definedAttributes = Object.fromEntries(
     Object.entries(attributes).filter(([_, v]) => v !== undefined)
-  ) as Record<string, string>;
+  ) as Record<string, string | string[]>;
 
-  return new Resource(definedAttributes);
+  return resourceFromAttributes(definedAttributes);
 };
 
 // Initialize SDK with Kubernetes resource detection
@@ -917,15 +912,15 @@ Container detection works for Docker, containerd, and other OCI-compliant runtim
 ```typescript
 // container-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_CONTAINER_ID,
-  SEMRESATTRS_CONTAINER_NAME,
-  SEMRESATTRS_CONTAINER_RUNTIME,
-  SEMRESATTRS_CONTAINER_IMAGE_NAME,
-  SEMRESATTRS_CONTAINER_IMAGE_TAG,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_CONTAINER_ID,
+  ATTR_CONTAINER_NAME,
+  ATTR_CONTAINER_RUNTIME,
+  ATTR_CONTAINER_IMAGE_NAME,
+  ATTR_CONTAINER_IMAGE_TAGS,
+} from '@opentelemetry/semantic-conventions/incubating';
 import * as fs from 'fs';
 import * as os from 'os';
 
@@ -936,7 +931,7 @@ import * as os from 'os';
 
 // Custom container detection for enhanced metadata
 const detectContainerMetadata = (): Resource => {
-  const attributes: Record<string, string> = {};
+  const attributes: Record<string, string | string[]> = {};
 
   // Detect container ID from cgroup
   try {
@@ -956,7 +951,7 @@ const detectContainerMetadata = (): Resource => {
     for (const pattern of patterns) {
       const match = cgroupContent.match(pattern);
       if (match) {
-        attributes[SEMRESATTRS_CONTAINER_ID] = match[1];
+        attributes[ATTR_CONTAINER_ID] = match[1];
         break;
       }
     }
@@ -968,18 +963,18 @@ const detectContainerMetadata = (): Resource => {
   try {
     const cgroupContent = fs.readFileSync('/proc/self/cgroup', 'utf8');
     if (cgroupContent.includes('docker')) {
-      attributes[SEMRESATTRS_CONTAINER_RUNTIME] = 'docker';
+      attributes[ATTR_CONTAINER_RUNTIME] = 'docker';
     } else if (cgroupContent.includes('containerd')) {
-      attributes[SEMRESATTRS_CONTAINER_RUNTIME] = 'containerd';
+      attributes[ATTR_CONTAINER_RUNTIME] = 'containerd';
     } else if (cgroupContent.includes('crio')) {
-      attributes[SEMRESATTRS_CONTAINER_RUNTIME] = 'cri-o';
+      attributes[ATTR_CONTAINER_RUNTIME] = 'cri-o';
     }
   } catch {
     // Unable to detect runtime
   }
 
   // Container name from environment or hostname
-  attributes[SEMRESATTRS_CONTAINER_NAME] =
+  attributes[ATTR_CONTAINER_NAME] =
     process.env.CONTAINER_NAME ||
     process.env.HOSTNAME ||
     os.hostname();
@@ -987,11 +982,11 @@ const detectContainerMetadata = (): Resource => {
   // Image information from environment (must be set explicitly)
   if (process.env.CONTAINER_IMAGE) {
     const [imageName, imageTag] = process.env.CONTAINER_IMAGE.split(':');
-    attributes[SEMRESATTRS_CONTAINER_IMAGE_NAME] = imageName;
-    attributes[SEMRESATTRS_CONTAINER_IMAGE_TAG] = imageTag || 'latest';
+    attributes[ATTR_CONTAINER_IMAGE_NAME] = imageName;
+    attributes[ATTR_CONTAINER_IMAGE_TAGS] = [imageTag || 'latest'];
   }
 
-  return new Resource(attributes);
+  return resourceFromAttributes(attributes);
 };
 
 // Combine built-in detector with custom detection
@@ -1003,13 +998,13 @@ const initializeContainerTracing = async () => {
 
   // Merge with custom container metadata
   const customResource = detectContainerMetadata();
-  const finalResource = customResource.merge(detectedResource);
+  const finalResource = detectedResource.merge(customResource);
 
   const sdk = new NodeSDK({
     resource: finalResource,
   });
 
-  await sdk.start();
+  sdk.start();
   return sdk;
 };
 
@@ -1023,19 +1018,19 @@ Process detection captures information about the running process, useful for deb
 ```typescript
 // process-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
-  SEMRESATTRS_PROCESS_PID,
-  SEMRESATTRS_PROCESS_EXECUTABLE_NAME,
-  SEMRESATTRS_PROCESS_EXECUTABLE_PATH,
-  SEMRESATTRS_PROCESS_COMMAND,
-  SEMRESATTRS_PROCESS_COMMAND_LINE,
-  SEMRESATTRS_PROCESS_COMMAND_ARGS,
-  SEMRESATTRS_PROCESS_OWNER,
-  SEMRESATTRS_PROCESS_RUNTIME_NAME,
-  SEMRESATTRS_PROCESS_RUNTIME_VERSION,
-  SEMRESATTRS_PROCESS_RUNTIME_DESCRIPTION,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_PROCESS_PID,
+  ATTR_PROCESS_EXECUTABLE_NAME,
+  ATTR_PROCESS_EXECUTABLE_PATH,
+  ATTR_PROCESS_COMMAND,
+  ATTR_PROCESS_COMMAND_LINE,
+  ATTR_PROCESS_COMMAND_ARGS,
+  ATTR_PROCESS_OWNER,
+  ATTR_PROCESS_RUNTIME_NAME,
+  ATTR_PROCESS_RUNTIME_VERSION,
+  ATTR_PROCESS_RUNTIME_DESCRIPTION,
+} from '@opentelemetry/semantic-conventions/incubating';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -1044,19 +1039,19 @@ const createProcessResource = (): Resource => {
   // Get process and runtime information from Node.js APIs
   const processInfo = {
     // Process identification
-    [SEMRESATTRS_PROCESS_PID]: process.pid,
+    [ATTR_PROCESS_PID]: process.pid,
     // Executable information
-    [SEMRESATTRS_PROCESS_EXECUTABLE_NAME]: path.basename(process.execPath),
-    [SEMRESATTRS_PROCESS_EXECUTABLE_PATH]: process.execPath,
+    [ATTR_PROCESS_EXECUTABLE_NAME]: path.basename(process.execPath),
+    [ATTR_PROCESS_EXECUTABLE_PATH]: process.execPath,
     // Command information
-    [SEMRESATTRS_PROCESS_COMMAND]: process.argv[1] || '',
-    [SEMRESATTRS_PROCESS_COMMAND_LINE]: process.argv.join(' '),
+    [ATTR_PROCESS_COMMAND]: process.argv[1] || '',
+    [ATTR_PROCESS_COMMAND_LINE]: process.argv.join(' '),
     // Owner information (useful for debugging permission issues)
-    [SEMRESATTRS_PROCESS_OWNER]: os.userInfo().username,
+    [ATTR_PROCESS_OWNER]: os.userInfo().username,
     // Runtime information
-    [SEMRESATTRS_PROCESS_RUNTIME_NAME]: 'nodejs',
-    [SEMRESATTRS_PROCESS_RUNTIME_VERSION]: process.versions.node,
-    [SEMRESATTRS_PROCESS_RUNTIME_DESCRIPTION]: `Node.js ${process.versions.node}`,
+    [ATTR_PROCESS_RUNTIME_NAME]: 'nodejs',
+    [ATTR_PROCESS_RUNTIME_VERSION]: process.versions.node,
+    [ATTR_PROCESS_RUNTIME_DESCRIPTION]: `Node.js ${process.versions.node}`,
   };
 
   // Add Node.js specific attributes for debugging
@@ -1071,7 +1066,7 @@ const createProcessResource = (): Resource => {
     'process.node.flags': process.execArgv.join(' '),
   };
 
-  return new Resource({
+  return resourceFromAttributes({
     ...processInfo,
     ...nodeSpecificInfo,
   });
@@ -1123,17 +1118,17 @@ Beyond automatic detection, you can define custom resource attributes to capture
 ```typescript
 // custom-resource-attributes.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources, ResourceDetectionConfig } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource, type ResourceDetectionConfig } from '@opentelemetry/resources';
 import { awsEc2Detector, awsEcsDetector } from '@opentelemetry/resource-detector-aws';
 import { gcpDetector } from '@opentelemetry/resource-detector-gcp';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_SERVICE_NAMESPACE,
-  SEMRESATTRS_SERVICE_INSTANCE_ID,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_SERVICE_NAMESPACE,
+  ATTR_SERVICE_INSTANCE_ID,
+  ATTR_DEPLOYMENT_ENVIRONMENT,
+} from '@opentelemetry/semantic-conventions/incubating';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define custom semantic attributes for your organization.
@@ -1176,11 +1171,11 @@ const createComprehensiveResource = (): Resource => {
 
   // Standard OpenTelemetry service attributes
   const serviceAttributes = {
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || 'unknown-service',
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
-    [SEMRESATTRS_SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
-    [SEMRESATTRS_SERVICE_INSTANCE_ID]: instanceId,
-    [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.DEPLOYMENT_ENVIRONMENT ||
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'unknown-service',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
+    [ATTR_SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
+    [ATTR_SERVICE_INSTANCE_ID]: instanceId,
+    [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.DEPLOYMENT_ENVIRONMENT ||
                                            process.env.NODE_ENV ||
                                            'development',
   };
@@ -1216,7 +1211,7 @@ const createComprehensiveResource = (): Resource => {
     [CUSTOM_ATTRIBUTES.SERVICE_SLA]: process.env.SERVICE_SLA || '99.9',
   };
 
-  return new Resource({
+  return resourceFromAttributes({
     ...serviceAttributes,
     ...businessAttributes,
     ...teamAttributes,
@@ -1263,7 +1258,7 @@ const initializeTracing = async () => {
   });
 
   // Merge resources - custom attributes take precedence
-  const finalResource = customResource.merge(detectedResource);
+  const finalResource = detectedResource.merge(customResource);
 
   // Log detected resources for debugging (remove in production)
   console.log('Detected resource attributes:', finalResource.attributes);
@@ -1272,7 +1267,7 @@ const initializeTracing = async () => {
     resource: finalResource,
   });
 
-  await sdk.start();
+  sdk.start();
   return sdk;
 };
 
@@ -1294,9 +1289,9 @@ export OTEL_SERVICE_NAME="payment-service"
 # This is the primary way to set custom resource attributes without code changes
 export OTEL_RESOURCE_ATTRIBUTES="service.version=1.2.3,deployment.environment=production,team.name=payments,service.namespace=ecommerce"
 
-# Disable specific resource detectors if needed
-# Comma-separated list of detector names to skip
-export OTEL_NODE_RESOURCE_DETECTORS="aws,container,process"
+# Select Node.js SDK built-in resource detectors
+# Use "none" to disable automatic built-in detection
+export OTEL_NODE_RESOURCE_DETECTORS="env,process,host"
 
 # Enable debug logging for resource detection troubleshooting
 export OTEL_LOG_LEVEL="debug"
@@ -1312,12 +1307,12 @@ Here's how to properly handle environment variable configuration alongside progr
 ```typescript
 // env-based-resource-config.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, envDetector, processDetector } from '@opentelemetry/resources';
+import { resourceFromAttributes, envDetector, processDetector, type Resource } from '@opentelemetry/resources';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // The envDetector reads from OTEL_RESOURCE_ATTRIBUTES environment variable
 // and parses the comma-separated key=value pairs into resource attributes.
@@ -1351,21 +1346,21 @@ const createFallbackResource = (): Resource => {
   // Only set fallbacks for attributes not already in environment
   const fallbacks: Record<string, string> = {};
 
-  if (!envAttrs[SEMRESATTRS_SERVICE_NAME] && !process.env.OTEL_SERVICE_NAME) {
-    fallbacks[SEMRESATTRS_SERVICE_NAME] = 'default-service';
+  if (!envAttrs[ATTR_SERVICE_NAME] && !process.env.OTEL_SERVICE_NAME) {
+    fallbacks[ATTR_SERVICE_NAME] = 'default-service';
   }
 
-  if (!envAttrs[SEMRESATTRS_SERVICE_VERSION]) {
+  if (!envAttrs[ATTR_SERVICE_VERSION]) {
     // Try to read from package.json
     try {
       const pkg = require('./package.json');
-      fallbacks[SEMRESATTRS_SERVICE_VERSION] = pkg.version;
+      fallbacks[ATTR_SERVICE_VERSION] = pkg.version;
     } catch {
-      fallbacks[SEMRESATTRS_SERVICE_VERSION] = 'unknown';
+      fallbacks[ATTR_SERVICE_VERSION] = 'unknown';
     }
   }
 
-  return new Resource(fallbacks);
+  return resourceFromAttributes(fallbacks);
 };
 
 // Initialize SDK with environment-based configuration
@@ -1391,15 +1386,15 @@ When your services span multiple cloud providers, you need a unified approach to
 ```typescript
 // multi-cloud-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources, ResourceDetectionConfig } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource, type ResourceDetectionConfig } from '@opentelemetry/resources';
 import { awsEc2Detector, awsEcsDetector, awsEksDetector, awsLambdaDetector } from '@opentelemetry/resource-detector-aws';
 import { gcpDetector } from '@opentelemetry/resource-detector-gcp';
 import { azureVmDetector, azureFunctionsDetector, azureAppServiceDetector } from '@opentelemetry/resource-detector-azure';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_CLOUD_PROVIDER,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_CLOUD_PROVIDER,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Cloud provider detection order and timeout configuration
 // We run all detectors but only the appropriate one will succeed
@@ -1481,20 +1476,20 @@ const initializeMultiCloudTracing = async () => {
   });
 
   // Create base resource with provider identification
-  const baseResource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || 'multi-cloud-service',
-    [SEMRESATTRS_CLOUD_PROVIDER]: cloudProvider,
+  const baseResource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'multi-cloud-service',
+    [ATTR_CLOUD_PROVIDER]: cloudProvider,
     'cloud.detection.method': 'environment_variables',
   });
 
   // Merge base with detected resources
-  const finalResource = baseResource.merge(detectedResource);
+  const finalResource = detectedResource.merge(baseResource);
 
   const sdk = new NodeSDK({
     resource: finalResource,
   });
 
-  await sdk.start();
+  sdk.start();
   return sdk;
 };
 
@@ -1510,11 +1505,11 @@ Resource detection happens during SDK initialization. Here's how to optimize it:
 ```typescript
 // optimized-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResourcesSync, ResourceDetectionConfig } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource, type ResourceDetectionConfig } from '@opentelemetry/resources';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // For performance-critical applications, consider these optimizations:
 
@@ -1525,10 +1520,9 @@ const productionDetectors = [
   // Add only the detectors you actually need
 ];
 
-// 2. Set appropriate timeouts to prevent slow startup
+// 2. Keep detector sets small to prevent slow startup
 const detectorConfig: ResourceDetectionConfig = {
   detectors: productionDetectors,
-  // Individual detector timeout (default is 5000ms)
 };
 
 // 3. Cache detected resources if restarting frequently
@@ -1540,14 +1534,14 @@ const getCachedOrDetectResource = async (): Promise<Resource> => {
   const cached = process.env[RESOURCE_CACHE_KEY];
   if (cached) {
     try {
-      return new Resource(JSON.parse(cached));
+      return resourceFromAttributes(JSON.parse(cached));
     } catch {
       // Cache invalid, proceed with detection
     }
   }
 
   // Detect resources
-  const detected = await detectResourcesSync(detectorConfig);
+  const detected = await detectResources(detectorConfig);
 
   // Cache for next invocation (in serverless warm starts)
   process.env[RESOURCE_CACHE_KEY] = JSON.stringify(detected.attributes);
@@ -1558,8 +1552,8 @@ const getCachedOrDetectResource = async (): Promise<Resource> => {
 // 4. Use static resource for known attributes
 // This avoids detection overhead for attributes you already know
 const createStaticResource = (): Resource => {
-  return new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: 'my-service',
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
     // Add all known static attributes here
     'service.version': process.env.npm_package_version || 'unknown',
     'deployment.environment': process.env.NODE_ENV || 'development',
@@ -1574,12 +1568,13 @@ Robust error handling ensures your application starts even when detection fails:
 ```typescript
 // robust-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, detectResources, diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/resources';
+import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { awsEc2Detector, awsEcsDetector } from '@opentelemetry/resource-detector-aws';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Enable diagnostic logging to troubleshoot detection issues
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
@@ -1587,8 +1582,8 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 // Wrap resource detection with comprehensive error handling
 const safeResourceDetection = async (): Promise<Resource> => {
   // Minimum required resource - ensures telemetry always has context
-  const fallbackResource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME || 'fallback-service',
+  const fallbackResource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'fallback-service',
     'resource.detection.status': 'fallback',
   });
 
@@ -1602,7 +1597,7 @@ const safeResourceDetection = async (): Promise<Resource> => {
     });
 
     // Mark successful detection
-    const successResource = new Resource({
+    const successResource = resourceFromAttributes({
       'resource.detection.status': 'success',
     });
 
@@ -1612,7 +1607,7 @@ const safeResourceDetection = async (): Promise<Resource> => {
     // Log the error but don't fail - use fallback resource
     console.warn('Resource detection failed, using fallback:', error);
 
-    const errorResource = new Resource({
+    const errorResource = resourceFromAttributes({
       'resource.detection.status': 'error',
       'resource.detection.error': error instanceof Error ? error.message : 'unknown',
     });
@@ -1629,7 +1624,7 @@ const initializeSafeTracing = async () => {
     resource,
   });
 
-  await sdk.start();
+  sdk.start();
   console.log('SDK started with resource:', resource.attributes);
 };
 
@@ -1692,15 +1687,15 @@ Verify your resource detection configuration with these testing approaches:
 
 ```typescript
 // test-resource-detection.ts
-import { Resource, detectResources } from '@opentelemetry/resources';
+import { resourceFromAttributes, detectResources, type Resource } from '@opentelemetry/resources';
 import { containerDetector } from '@opentelemetry/resource-detector-container';
 import { awsEc2Detector } from '@opentelemetry/resource-detector-aws';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_CLOUD_PROVIDER,
-  SEMRESATTRS_K8S_POD_NAME,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_CLOUD_PROVIDER,
+  ATTR_K8S_POD_NAME,
+} from '@opentelemetry/semantic-conventions/incubating';
 
 // Test utility to verify resource attributes
 const testResourceDetection = async () => {
@@ -1743,13 +1738,13 @@ const testResourceDetection = async () => {
   // Test 3: Verify critical attributes are present
   console.log('3. Critical Attributes Check:');
   const criticalAttributes = [
-    SEMRESATTRS_SERVICE_NAME,
-    SEMRESATTRS_SERVICE_VERSION,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
   ];
 
-  const customResource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: process.env.SERVICE_NAME,
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.SERVICE_VERSION,
+  const customResource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME,
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION,
   });
 
   criticalAttributes.forEach(attr => {
@@ -1761,9 +1756,8 @@ const testResourceDetection = async () => {
 
   // Test 4: Simulate full resource creation
   console.log('4. Full Resource Simulation:');
-  const fullResource = customResource.merge(
-    await detectResources({ detectors: [containerDetector] })
-  );
+  const fullResource = (await detectResources({ detectors: [containerDetector] }))
+    .merge(customResource);
   console.log(`   Total attributes: ${Object.keys(fullResource.attributes).length}`);
   console.log('   Attributes:', JSON.stringify(fullResource.attributes, null, 2));
 };
@@ -1837,8 +1831,8 @@ The investment in proper resource configuration pays dividends when debugging pr
 ## Additional Resources
 
 - [OpenTelemetry Resource Semantic Conventions](https://opentelemetry.io/docs/concepts/resources/)
-- [OpenTelemetry JavaScript SDK Documentation](https://opentelemetry.io/docs/instrumentation/js/)
-- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/instrumentation/python/)
+- [OpenTelemetry JavaScript SDK Documentation](https://opentelemetry.io/docs/languages/js/)
+- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/languages/python/)
 - [AWS OpenTelemetry Documentation](https://aws-otel.github.io/)
-- [GCP Cloud Operations Suite](https://cloud.google.com/products/operations)
-- [Azure Monitor OpenTelemetry](https://docs.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-overview)
+- [Google Cloud Observability](https://cloud.google.com/products/observability)
+- [Azure Monitor OpenTelemetry](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview#getting-started)
