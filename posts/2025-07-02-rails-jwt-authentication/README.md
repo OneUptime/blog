@@ -937,13 +937,13 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       # Authentication routes
-      namespace :auth do
-        post 'login', to: 'auth#login'
-        post 'refresh', to: 'auth#refresh'
-        post 'logout', to: 'auth#logout'
-        post 'logout_all', to: 'auth#logout_all'
-        get 'sessions', to: 'auth#sessions'
-      end
+      # Use path scoping (not a module namespace) so these map to
+      # Api::V1::AuthController rather than Api::V1::Auth::AuthController
+      post 'auth/login', to: 'auth#login'
+      post 'auth/refresh', to: 'auth#refresh'
+      post 'auth/logout', to: 'auth#logout'
+      post 'auth/logout_all', to: 'auth#logout_all'
+      get 'auth/sessions', to: 'auth#sessions'
 
       # Protected resources
       resources :users, only: [:show, :update]
