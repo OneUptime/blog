@@ -21,7 +21,7 @@ The MetalLB speaker runs as a DaemonSet, meaning one pod runs on each node in yo
 - Announcement protocol (Layer 2 vs BGP)
 - Number of BGP peers (for BGP mode)
 - Frequency of service updates
-- Network traffic volume
+- ARP/NDP request volume or BGP control-plane activity
 - Cluster size
 
 The following diagram illustrates the MetalLB speaker architecture:
@@ -133,6 +133,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -162,6 +166,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -191,6 +199,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -224,8 +236,10 @@ speaker:
 
   tolerations:
   - key: node-role.kubernetes.io/control-plane
+    operator: Exists
     effect: NoSchedule
   - key: node-role.kubernetes.io/master
+    operator: Exists
     effect: NoSchedule
 
   nodeSelector: {}
@@ -292,6 +306,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -326,6 +344,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -346,7 +368,7 @@ spec:
 
 Memory consumption in MetalLB speaker is influenced by several factors:
 
-The following diagram illustrates memory allocation patterns:
+The following diagram illustrates typical memory allocation patterns:
 
 ```mermaid
 pie title MetalLB Speaker Memory Distribution
@@ -359,7 +381,7 @@ pie title MetalLB Speaker Memory Distribution
 
 ### Calculating Memory Requirements
 
-Use this formula to estimate memory requirements:
+Use this formula as a rough starting point for estimating memory requirements, then validate it with observed usage from your cluster:
 
 ```text
 Base Memory (Go runtime): ~20Mi
@@ -391,6 +413,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       containers:
       - name: speaker
@@ -422,8 +448,9 @@ resources:
 - namespace.yaml
 - metallb-native.yaml
 
-commonLabels:
-  app.kubernetes.io/managed-by: kustomize
+labels:
+- pairs:
+    app.kubernetes.io/managed-by: kustomize
 ```
 
 Create environment-specific overlays for development:
@@ -522,9 +549,27 @@ Setting up proper monitoring is essential for tuning resource limits effectively
 
 ### Prometheus ServiceMonitor
 
-Create a ServiceMonitor to scrape MetalLB speaker metrics:
+Create a Service and ServiceMonitor to scrape MetalLB speaker metrics:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-speaker-monitor-service
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: speaker
+spec:
+  clusterIP: None
+  selector:
+    app: metallb
+    component: speaker
+  ports:
+  - name: monitoring
+    port: 7472
+    targetPort: monitoring
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -533,6 +578,9 @@ metadata:
   labels:
     app: metallb
 spec:
+  namespaceSelector:
+    matchNames:
+    - metallb-system
   selector:
     matchLabels:
       app: metallb
@@ -550,7 +598,7 @@ Query to check current CPU usage for speaker pods:
 ```promql
 sum(rate(container_cpu_usage_seconds_total{
   namespace="metallb-system",
-  pod=~"speaker-.*"
+  pod=~".*speaker.*"
 }[5m])) by (pod)
 ```
 
@@ -559,7 +607,7 @@ Query to monitor memory usage for speaker pods:
 ```promql
 sum(container_memory_working_set_bytes{
   namespace="metallb-system",
-  pod=~"speaker-.*"
+  pod=~".*speaker.*"
 }) by (pod)
 ```
 
@@ -568,7 +616,7 @@ Query to check CPU throttling (indicates limits are too low):
 ```promql
 sum(rate(container_cpu_cfs_throttled_seconds_total{
   namespace="metallb-system",
-  pod=~"speaker-.*"
+  pod=~".*speaker.*"
 }[5m])) by (pod)
 ```
 
@@ -577,12 +625,12 @@ Query to monitor memory against limits (OOMKill risk assessment):
 ```promql
 sum(container_memory_working_set_bytes{
   namespace="metallb-system",
-  pod=~"speaker-.*"
+  pod=~".*speaker.*"
 }) by (pod)
 /
 sum(kube_pod_container_resource_limits{
   namespace="metallb-system",
-  pod=~"speaker-.*",
+  pod=~".*speaker.*",
   resource="memory"
 }) by (pod)
 ```
@@ -601,11 +649,11 @@ Create a Grafana dashboard JSON for MetalLB speaker monitoring:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"metallb-system\",pod=~\"speaker-.*\"}[5m])) by (pod)",
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"metallb-system\",pod=~\".*speaker.*\"}[5m])) by (pod)",
             "legendFormat": "{{pod}} usage"
           },
           {
-            "expr": "sum(kube_pod_container_resource_limits{namespace=\"metallb-system\",pod=~\"speaker-.*\",resource=\"cpu\"}) by (pod)",
+            "expr": "sum(kube_pod_container_resource_limits{namespace=\"metallb-system\",pod=~\".*speaker.*\",resource=\"cpu\"}) by (pod)",
             "legendFormat": "{{pod}} limit"
           }
         ]
@@ -615,11 +663,11 @@ Create a Grafana dashboard JSON for MetalLB speaker monitoring:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(container_memory_working_set_bytes{namespace=\"metallb-system\",pod=~\"speaker-.*\"}) by (pod)",
+            "expr": "sum(container_memory_working_set_bytes{namespace=\"metallb-system\",pod=~\".*speaker.*\"}) by (pod)",
             "legendFormat": "{{pod}} usage"
           },
           {
-            "expr": "sum(kube_pod_container_resource_limits{namespace=\"metallb-system\",pod=~\"speaker-.*\",resource=\"memory\"}) by (pod)",
+            "expr": "sum(kube_pod_container_resource_limits{namespace=\"metallb-system\",pod=~\".*speaker.*\",resource=\"memory\"}) by (pod)",
             "legendFormat": "{{pod}} limit"
           }
         ]
@@ -647,12 +695,12 @@ spec:
       expr: |
         sum(rate(container_cpu_usage_seconds_total{
           namespace="metallb-system",
-          pod=~"speaker-.*"
+          pod=~".*speaker.*"
         }[5m])) by (pod)
         /
         sum(kube_pod_container_resource_limits{
           namespace="metallb-system",
-          pod=~"speaker-.*",
+          pod=~".*speaker.*",
           resource="cpu"
         }) by (pod) > 0.8
       for: 5m
@@ -666,12 +714,12 @@ spec:
       expr: |
         sum(container_memory_working_set_bytes{
           namespace="metallb-system",
-          pod=~"speaker-.*"
+          pod=~".*speaker.*"
         }) by (pod)
         /
         sum(kube_pod_container_resource_limits{
           namespace="metallb-system",
-          pod=~"speaker-.*",
+          pod=~".*speaker.*",
           resource="memory"
         }) by (pod) > 0.8
       for: 5m
@@ -685,7 +733,7 @@ spec:
       expr: |
         sum(rate(container_cpu_cfs_throttled_seconds_total{
           namespace="metallb-system",
-          pod=~"speaker-.*"
+          pod=~".*speaker.*"
         }[5m])) by (pod) > 0.1
       for: 10m
       labels:
@@ -698,12 +746,12 @@ spec:
       expr: |
         sum(container_memory_working_set_bytes{
           namespace="metallb-system",
-          pod=~"speaker-.*"
+          pod=~".*speaker.*"
         }) by (pod)
         /
         sum(kube_pod_container_resource_limits{
           namespace="metallb-system",
-          pod=~"speaker-.*",
+          pod=~".*speaker.*",
           resource="memory"
         }) by (pod) > 0.9
       for: 2m
@@ -781,6 +829,10 @@ spec:
       app: metallb
       component: speaker
   template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
     spec:
       priorityClassName: metallb-speaker-priority
       containers:
@@ -814,9 +866,9 @@ spec:
     pods: "50"
 ```
 
-## Complete Production Configuration
+## Production Speaker Configuration
 
-Here's a comprehensive production-ready configuration combining all best practices:
+Here's a comprehensive speaker DaemonSet configuration combining the resource-related best practices. This assumes the standard MetalLB RBAC, service accounts, memberlist secret, webhook resources, and `metallb-excludel2` ConfigMap have already been installed by the official manifest or Helm chart.
 
 ```yaml
 apiVersion: v1
@@ -868,11 +920,14 @@ spec:
       priorityClassName: metallb-critical
       tolerations:
       - key: node-role.kubernetes.io/control-plane
+        operator: Exists
         effect: NoSchedule
       - key: node-role.kubernetes.io/master
+        operator: Exists
         effect: NoSchedule
       - key: node.kubernetes.io/not-ready
-        effect: NoSchedule
+        operator: Exists
+        effect: NoExecute
       containers:
       - name: speaker
         image: quay.io/metallb/speaker:v0.14.5
@@ -899,14 +954,11 @@ spec:
         ports:
         - name: monitoring
           containerPort: 7472
-          hostPort: 7472
         - name: memberlist-tcp
           containerPort: 7946
-          hostPort: 7946
           protocol: TCP
         - name: memberlist-udp
           containerPort: 7946
-          hostPort: 7946
           protocol: UDP
         resources:
           requests:
@@ -944,10 +996,17 @@ spec:
         - name: ml-secret-key
           mountPath: /etc/ml_secret_key
           readOnly: true
+        - name: metallb-excludel2
+          mountPath: /etc/metallb
+          readOnly: true
       volumes:
       - name: ml-secret-key
         secret:
           secretName: memberlist
+      - name: metallb-excludel2
+        configMap:
+          name: metallb-excludel2
+          defaultMode: 0400
       nodeSelector:
         kubernetes.io/os: linux
 ```
@@ -1022,7 +1081,7 @@ flowchart TD
 2. **Monitor Continuously**: Use Prometheus and Grafana to track resource usage patterns
 3. **Set Appropriate Requests**: Requests should match typical usage; limits should accommodate peaks
 4. **Use Priority Classes**: Ensure speaker pods aren't evicted during resource pressure
-5. **Consider Protocol Differences**: BGP mode typically requires more resources than Layer 2
+5. **Consider Protocol Differences**: BGP mode may require more resources than Layer 2, especially with multiple peers or FRR sidecars
 6. **Scale with Cluster Size**: Increase resources as you add more services
 7. **Test Before Production**: Validate resource configurations in staging environments
 8. **Enable Probes**: Liveness and readiness probes help detect resource starvation
