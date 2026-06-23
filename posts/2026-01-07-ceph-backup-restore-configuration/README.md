@@ -121,17 +121,17 @@ After the backup completes, restart the monitor service to resume normal cluster
 sudo systemctl start ceph-mon@mon1
 ```
 
-### Method 2: Online Backup Using ceph-volume
+### Method 2: Online Directory Copy
 
-For production environments where stopping monitors is not feasible, you can perform an online backup. This method creates a snapshot of the MON data while the service continues running:
+For production environments where stopping monitors is not feasible, you can copy the MON data directory while the service continues running. Treat this as a supplementary copy, not as a fully consistent MON database backup. For a consistent point-in-time backup without stopping the monitor, use a filesystem or LVM snapshot as shown in the next method:
 
 ```bash
 # Create a backup directory with timestamp for organization
 BACKUP_DIR="/backup/ceph/mon/$(date +%Y%m%d-%H%M%S)"
 sudo mkdir -p "$BACKUP_DIR"
 
-# Use rsync to copy the MON data directory
-# The --delete flag ensures the backup matches the source exactly
+# Use rsync to copy the MON data directory for a best-effort online copy
+# The --delete flag ensures the copy matches the source exactly
 # The -a flag preserves permissions, timestamps, and other attributes
 sudo rsync -av --delete /var/lib/ceph/mon/ceph-$(hostname)/ "$BACKUP_DIR/"
 ```
@@ -332,12 +332,8 @@ ceph config dump > "$BACKUP_DIR/config-dump.txt"
 # Export configuration in JSON format for programmatic restoration
 ceph config dump --format=json > "$BACKUP_DIR/config-dump.json"
 
-# Export configuration for each daemon type
-# This captures any daemon-specific overrides
-for daemon_type in mon osd mds mgr rgw; do
-    echo "Exporting $daemon_type configuration..."
-    ceph config show-with-defaults "$daemon_type" > "$BACKUP_DIR/config-$daemon_type-defaults.txt" 2>/dev/null || true
-done
+# Export available configuration option names
+ceph config ls > "$BACKUP_DIR/config-options.txt"
 
 # Export the configuration assimilated from ceph.conf
 ceph config assimilate-conf -i /etc/ceph/ceph.conf -o "$BACKUP_DIR/assimilated-config.conf"
@@ -387,6 +383,9 @@ ceph auth ls > "$BACKUP_DIR/auth-entities.txt"
 # Export in JSON format for easier restoration
 ceph auth ls --format=json > "$BACKUP_DIR/auth-entities.json"
 
+# Export a restorable keyring containing all authentication entities
+ceph auth export > "$BACKUP_DIR/auth-export.keyring"
+
 # Encrypt the backup directory for security
 # Replace 'backup-key' with your actual GPG key ID
 tar -czf - -C "$(dirname $BACKUP_DIR)" "$(basename $BACKUP_DIR)" | \
@@ -406,7 +405,7 @@ ceph auth get client.admin > /backup/keys/client.admin.keyring
 
 # List all auth entities and backup each one
 # This ensures no keys are missed
-for entity in $(ceph auth ls --format=json | jq -r '.[].entity'); do
+for entity in $(ceph auth ls --format=json | jq -r '.auth_dump[].entity'); do
     echo "Backing up key for: $entity"
     ceph auth get "$entity" > "/backup/keys/${entity//\//_}.keyring"
 done
@@ -495,6 +494,7 @@ ceph config dump --format=json > "$BACKUP_DIR/config/config-dump.json"
 log "Backing up authentication keys..."
 ceph auth ls > "$BACKUP_DIR/keys/auth-list.txt"
 ceph auth ls --format=json > "$BACKUP_DIR/keys/auth-list.json"
+ceph auth export > "$BACKUP_DIR/keys/auth-export.keyring"
 cp /etc/ceph/*.keyring "$BACKUP_DIR/keys/" 2>/dev/null || true
 
 # Backup MDS map if CephFS is in use
@@ -705,14 +705,8 @@ cp "$BACKUP_DIR/bootstrap-rgw.keyring" /var/lib/ceph/bootstrap-rgw/ceph.keyring
 chmod 600 /etc/ceph/*.keyring
 chown ceph:ceph /etc/ceph/*.keyring
 
-# If you need to restore individual entity keys from the JSON backup
-# Parse the backup and recreate keys
-cat "$BACKUP_DIR/auth-entities.json" | jq -r '.[] | "\(.entity) \(.key) \(.caps | to_entries | map("\(.key) \(.value|tojson)") | join(" "))"' | \
-while read entity key caps; do
-    echo "Restoring key for: $entity"
-    ceph auth add "$entity" --cap $caps 2>/dev/null || \
-    ceph auth caps "$entity" $caps
-done
+# Import the exported keyring back into the monitor auth database
+ceph auth import -i "$BACKUP_DIR/auth-export.keyring"
 
 echo "Key restoration complete"
 ```
@@ -765,37 +759,51 @@ If all monitors are lost, follow this procedure to rebuild from OSD data:
 echo "Stopping all Ceph services..."
 systemctl stop ceph.target
 
-# Step 2: Collect OSD maps from all OSDs
-# Each OSD stores a copy of the cluster maps
-echo "Collecting maps from OSDs..."
+# Step 2: Rebuild a monitor store from OSD maps
+# Each OSD stores copies of the cluster maps
+echo "Rebuilding monitor store from OSDs..."
 RECOVERY_DIR="/tmp/ceph-recovery"
+MON_STORE="$RECOVERY_DIR/mon-store"
 mkdir -p "$RECOVERY_DIR"
+rm -rf "$MON_STORE"
+mkdir -p "$MON_STORE"
 
-# Find the most recent maps from OSD data directories
+# Collect maps from OSD data directories into the monitor store
 for osd_dir in /var/lib/ceph/osd/ceph-*; do
     osd_id=$(basename "$osd_dir" | cut -d'-' -f2)
     echo "Checking OSD.$osd_id..."
 
-    # Look for map files in the OSD directory
     if [ -d "$osd_dir/current" ]; then
-        # Use ceph-objectstore-tool to extract maps
         ceph-objectstore-tool --data-path "$osd_dir" \
-            --op list-omap --pgid all 2>/dev/null | \
-            grep -E "(osdmap|crush)" > "$RECOVERY_DIR/osd-$osd_id-maps.txt"
+            --no-mon-config \
+            --op update-mon-db \
+            --mon-store-path "$MON_STORE" 2>/dev/null || true
     fi
 done
 
-# Step 3: Initialize a new MON with the recovered maps
-# This requires the FSID from your backup or from OSD superblocks
-FSID=$(cat /var/lib/ceph/osd/ceph-0/fsid 2>/dev/null || echo "your-cluster-fsid")
+# Step 3: Rebuild the monitor database from the collected maps
+ceph-authtool /etc/ceph/ceph.client.admin.keyring -n mon. \
+    --cap mon 'allow *'
+ceph-authtool /etc/ceph/ceph.client.admin.keyring -n client.admin \
+    --cap mon 'allow *' --cap osd 'allow *' --cap mds 'allow *'
+ceph-monstore-tool "$MON_STORE" rebuild \
+    -- --keyring /etc/ceph/ceph.client.admin.keyring
 
+# Step 4: Replace the local monitor store with the rebuilt store
 echo "Creating new MON..."
-ceph-mon --mkfs -i $(hostname) --fsid "$FSID" --keyring /etc/ceph/ceph.client.admin.keyring
+MON_ID=$(hostname)
+MON_DATA="/var/lib/ceph/mon/ceph-$MON_ID"
+mkdir -p "$MON_DATA"
+if [ -d "$MON_DATA/store.db" ]; then
+    mv "$MON_DATA/store.db" "$MON_DATA/store.db.corrupted.$(date +%Y%m%d-%H%M%S)"
+fi
+cp -a "$MON_STORE/store.db" "$MON_DATA/store.db"
+chown -R ceph:ceph "$MON_DATA/store.db"
 
-# Step 4: Start the monitor
-systemctl start ceph-mon@$(hostname)
+# Step 5: Start the monitor
+systemctl start ceph-mon@$MON_ID
 
-# Step 5: Wait for the monitor to be healthy
+# Step 6: Wait for the monitor to be healthy
 echo "Waiting for MON to become healthy..."
 for i in {1..30}; do
     ceph health && break
@@ -821,7 +829,7 @@ MON_IP=$(hostname -I | awk '{print $1}')
 # Step 1: Remove the old monitor from the cluster
 # Run this from a working monitor
 echo "Removing old monitor entry..."
-ceph mon remove "$MON_ID"
+ceph mon rm "$MON_ID"
 
 # Step 2: Create the monitor directory on the new host
 echo "Creating monitor directory..."
@@ -834,22 +842,26 @@ ceph mon getmap -o /tmp/monmap
 
 # Step 4: Add the new monitor to the monmap
 echo "Adding new monitor to monmap..."
-monmaptool --add "$MON_ID" "$MON_IP:6789" /tmp/monmap
+monmaptool --add "$MON_ID" "$MON_IP" /tmp/monmap
 
-# Step 5: Create the monitor from the existing cluster
+# Step 5: Fetch the monitor keyring
+echo "Fetching monitor keyring..."
+ceph auth get mon. -o /tmp/mon.keyring
+
+# Step 6: Create the monitor from the existing cluster
 echo "Creating monitor..."
 ceph-mon --mkfs -i "$MON_ID" --monmap /tmp/monmap \
-    --keyring /etc/ceph/ceph.client.admin.keyring
+    --keyring /tmp/mon.keyring
 
-# Step 6: Set correct ownership
+# Step 7: Set correct ownership
 chown -R ceph:ceph /var/lib/ceph/mon/ceph-$MON_ID
 
-# Step 7: Start the monitor service
+# Step 8: Start the monitor service
 echo "Starting monitor..."
 systemctl start ceph-mon@$MON_ID
 systemctl enable ceph-mon@$MON_ID
 
-# Step 8: Verify monitor status
+# Step 9: Verify monitor status
 echo "Verifying monitor status..."
 ceph mon stat
 ceph -s
