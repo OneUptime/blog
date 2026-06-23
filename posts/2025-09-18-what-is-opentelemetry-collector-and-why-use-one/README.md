@@ -174,9 +174,11 @@ exporters:
 service:
   pipelines:
     # Traces pipeline with full processing
+    # Note: batch runs AFTER tail_sampling — batching before tail sampling can
+    # split spans of the same trace across batches and skew sampling decisions.
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, tail_sampling, attributes/redact]
+      processors: [memory_limiter, attributes/redact, tail_sampling, batch]
       exporters: [otlphttp/oneuptime]
 
     # Metrics pipeline (no sampling needed for aggregated data)
