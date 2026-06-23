@@ -62,24 +62,21 @@ dns_config {
   # TTL for node lookups
   node_ttl = "10s"
 
-  # Enable DNS compression
+  # Truncate large UDP responses so clients retry over TCP
   enable_truncate = true
 
   # Only return healthy services
   only_passing = true
 
-  # Enable recursion for external lookups
-  enable_recursion = true
+  # Limit A, AAAA, and ANY answers
+  a_record_limit = 3
 
-  # Upstream DNS servers for non-consul queries
-  recursors = ["8.8.8.8", "8.8.4.4"]
-
-  # UDP response size limit
-  udp_answer_limit = 3
-
-  # Enable EDNS for larger UDP responses
+  # Include node metadata TXT records in the additional section
   enable_additional_node_meta_txt = true
 }
+
+# Upstream DNS servers for non-consul queries
+recursors = ["8.8.8.8", "8.8.4.4"]
 ```
 
 ## 2. Query Services via DNS
@@ -130,6 +127,7 @@ Forward `.consul` domain queries to Consul while keeping other queries going to 
 ```ini
 [Resolve]
 DNS=127.0.0.1:8600
+DNSSEC=false
 Domains=~consul
 ```
 
@@ -208,8 +206,6 @@ Use DNS discovery in your applications with proper caching and retry logic.
 ```python
 import dns.resolver
 import random
-import socket
-from functools import lru_cache
 from datetime import datetime, timedelta
 
 class ConsulDNSClient:
@@ -227,6 +223,10 @@ class ConsulDNSClient:
         else:
             fqdn = f"{service_name}.service.consul"
 
+        return self.get_service_addresses_from_fqdn(fqdn)
+
+    def get_service_addresses_from_fqdn(self, fqdn):
+        """Get service instance addresses for a Consul DNS name."""
         # Check cache
         cache_key = fqdn
         if cache_key in self._cache:
@@ -243,6 +243,14 @@ class ConsulDNSClient:
             return []
         except dns.resolver.NoAnswer:
             return []
+
+    def resolve_host(self, host):
+        """Resolve a Consul DNS hostname using the configured Consul resolver."""
+        try:
+            answers = self.resolver.resolve(host, 'A')
+            return str(answers[0])
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+            return host
 
     def get_service_with_port(self, service_name):
         """Get service instances with port information using SRV records."""
@@ -277,11 +285,8 @@ class ConsulDNSClient:
         # Simple random load balancing
         instance = random.choice(instances)
 
-        # Resolve hostname to IP
-        try:
-            ip = socket.gethostbyname(instance['host'])
-        except socket.gaierror:
-            ip = instance['host']
+        # Resolve hostname to IP using the configured Consul DNS resolver
+        ip = self.resolve_host(instance['host'])
 
         return f"{scheme}://{ip}:{instance['port']}{path}"
 
@@ -475,8 +480,8 @@ Query with health awareness:
 # Default query - only passing
 dig @127.0.0.1 -p 8600 api.service.consul
 
-# Include services with any health status
-dig @127.0.0.1 -p 8600 api.service.consul +all
+# To include warning services in DNS responses, set only_passing = false
+# in dns_config and reload the Consul agent.
 
 # Query specific health status
 curl http://localhost:8500/v1/health/service/api?passing
