@@ -49,12 +49,12 @@ db.sessions.insertOne({
 });
 ```
 
-### TTL Index with Immediate Expiration
+### TTL Index with Scheduled Expiration
 
-Set `expireAfterSeconds` to 0 to delete documents at the exact time specified in the date field:
+Set `expireAfterSeconds` to 0 to make documents eligible for deletion at the time specified in the date field:
 
 ```javascript
-// Documents expire at the exact time in 'expiresAt' field
+// Documents become eligible to expire at the time in 'expiresAt' field
 db.tokens.createIndex(
   { "expiresAt": 1 },
   { expireAfterSeconds: 0 }
@@ -328,28 +328,28 @@ db.events.insertOne({
 Documents may exist briefly past their expiration time:
 
 ```javascript
-// Document might exist up to 60 seconds past expiration
+// Document might exist past expiration, and sometimes beyond 60 seconds under load
 // Don't rely on exact timing for critical operations
 ```
 
-### 4. Cannot Create TTL on Capped Collections
+### 4. Capped Collection Support Depends on MongoDB Version
 
 ```javascript
-// This will fail
+// In MongoDB 7.1 and later, TTL indexes can be created on capped collections.
+// In earlier versions, use TTL indexes on normal collections instead.
 db.createCollection("logs", { capped: true, size: 100000 });
 db.logs.createIndex({ timestamp: 1 }, { expireAfterSeconds: 3600 });
-// Error: TTL indexes are not supported for capped collections
 ```
 
 ### 5. Compound Indexes Cannot Be TTL
 
 ```javascript
-// This will fail
+// This creates a compound index, but expireAfterSeconds is ignored
 db.data.createIndex(
   { userId: 1, createdAt: 1 },
   { expireAfterSeconds: 3600 }
 );
-// Error: TTL index cannot be compound
+// Compound indexes do not expire documents
 
 // Solution: Create separate indexes
 db.data.createIndex({ userId: 1 });
@@ -377,7 +377,7 @@ db.system.profile.find({
 
 ## Best Practices
 
-1. **Choose the right date field** - Use `createdAt` for fixed expiration, `lastAccess` for sliding expiration, or `expiresAt` for precise control.
+1. **Choose the right date field** - Use `createdAt` for fixed expiration, `lastAccess` for sliding expiration, or `expiresAt` for per-document expiration times.
 
 2. **Account for deletion delay** - TTL runs every 60 seconds, so design your application to handle briefly expired documents.
 
