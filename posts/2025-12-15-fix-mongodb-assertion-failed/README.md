@@ -79,11 +79,14 @@ assertion 17006 BTree key size too large
 // and can only be run on standalone instances in MongoDB 5.0+.
 // Instead, drop and recreate indexes:
 
-// Rebuild all indexes for a collection
+// Rebuild all non-_id indexes for a collection
 db.collection.getIndexes().forEach(function(idx) {
     if (idx.name !== "_id_") {
+        const options = Object.assign({}, idx);
+        delete options.key;
+        delete options.v;
         db.collection.dropIndex(idx.name);
-        db.collection.createIndex(idx.key, idx);
+        db.collection.createIndex(idx.key, options);
     }
 });
 
@@ -140,12 +143,12 @@ sudo grep -E "(assertion|error|fatal)" /var/log/mongodb/mongod.log | tail -100
 # Check data directory permissions
 ls -la /var/lib/mongodb/
 
-# Verify file integrity
-mongod --dbpath /var/lib/mongodb --directoryperdb --storageEngine wiredTiger --validate
+# Verify collection data and indexes from mongosh instead; mongod has no --validate option
+mongosh --eval 'db.getSiblingDB("mydb").collection.validate({full: true})'
 
 # Check for lock files
 ls -la /var/lib/mongodb/*.lock
-rm /var/lib/mongodb/mongod.lock  # Only if MongoDB is not running
+# Do not manually remove mongod.lock during normal recovery; use --repair if recovery fails
 ```
 
 ### Step 3: Run Validation
@@ -191,12 +194,9 @@ sudo systemctl stop mongod
 # Backup existing data
 sudo cp -r /var/lib/mongodb /var/lib/mongodb.backup
 
-# Remove journal files (causes loss of uncommitted data)
-sudo rm -rf /var/lib/mongodb/journal/*
-
-# Remove WiredTiger lock files
-sudo rm /var/lib/mongodb/WiredTiger.lock
-sudo rm /var/lib/mongodb/mongod.lock
+# Let MongoDB recover from the WiredTiger journal on startup.
+# If automatic recovery fails because of disk-level corruption, use mongod --repair.
+sudo -u mongodb mongod --dbpath /var/lib/mongodb --repair
 
 # Start MongoDB
 sudo systemctl start mongod
@@ -253,10 +253,10 @@ rs.add("affected-host:27017")
 ### 1. Enable Journaling
 
 ```yaml
-# mongod.conf
+# MongoDB 6.1+ always enables journaling and no longer supports storage.journal.enabled.
+# You can tune the journal commit interval if needed:
 storage:
   journal:
-    enabled: true
     commitIntervalMs: 100
 ```
 
@@ -279,8 +279,9 @@ db.stats()
 // Check collection sizes
 db.collection.stats()
 
-// Monitor free disk space
-const freeSpace = db.adminCommand({dbStats: 1}).fsFreeSize;
+// Monitor filesystem free disk space
+const stats = db.adminCommand({dbStats: 1});
+const freeSpace = stats.fsTotalSize - stats.fsUsedSize;
 ```
 
 ### 4. Regular Backups
