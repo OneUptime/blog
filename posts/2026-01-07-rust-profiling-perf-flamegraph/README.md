@@ -20,8 +20,8 @@ Rust's zero-cost abstractions mean the compiler does heavy lifting, but your alg
 |------|----------|----------|
 | `perf` | Linux | Low-overhead sampling profiler |
 | `flamegraph` | Linux/macOS | Flame graph visualization |
-| `samply` | macOS/Linux | Modern profiler with Firefox UI |
-| `cargo-flamegraph` | All | Easy flame graphs from Cargo |
+| `samply` | macOS/Linux/Windows | Modern profiler with Firefox UI |
+| `cargo-flamegraph` | Linux/macOS/Windows | Easy flame graphs from Cargo |
 | `Instruments` | macOS | Apple's profiling suite |
 
 ---
@@ -52,6 +52,7 @@ Build with profiling profile:
 ```bash
 # Build with profiling profile
 cargo build --profile profiling
+# Output: ./target/profiling/myapp
 
 # Or build release with debug symbols
 cargo build --release
@@ -72,7 +73,7 @@ sudo apt-get install linux-tools-common linux-tools-$(uname -r)
 # Record CPU samples for your application
 # -g: Enable call graph recording
 # -F 99: Sample at 99 Hz (avoids lockstep with other timers)
-sudo perf record -g -F 99 ./target/release/myapp
+sudo perf record -g -F 99 ./target/profiling/myapp
 
 # Generate a text report
 sudo perf report
@@ -146,7 +147,7 @@ For more control over the profiling process:
 git clone https://github.com/brendangregg/FlameGraph.git
 
 # Record with perf
-sudo perf record -g -F 99 ./target/release/myapp
+sudo perf record -g -F 99 ./target/profiling/myapp
 
 # Convert perf data to folded stacks
 sudo perf script | ./FlameGraph/stackcollapse-perf.pl > out.folded
@@ -189,16 +190,16 @@ Look for:
 
 ```bash
 # Install samply
-cargo install samply
+cargo install --locked samply
 
 # Profile your application
-samply record ./target/release/myapp
+samply record ./target/profiling/myapp
 
 # Profile with arguments
-samply record ./target/release/myapp -- --input data.json
+samply record ./target/profiling/myapp --input data.json
 
 # Profile for a specific duration
-samply record --duration 30 ./target/release/myapp
+samply record --duration 30 ./target/profiling/myapp
 ```
 
 This opens Firefox Profiler with an interactive view showing:
@@ -213,7 +214,7 @@ For long-running servers, attach to the process:
 
 ```bash
 # Start your server
-./target/release/myapp &
+./target/profiling/myapp &
 
 # Attach samply to the running process
 samply record --pid $(pgrep myapp) --duration 60
@@ -249,7 +250,7 @@ async fn process_request(id: u64) -> Result<Response, Error> {
 }
 
 // Use tokio-console for async runtime introspection
-// Add to Cargo.toml: console-subscriber = "0.2"
+// Add to Cargo.toml: console-subscriber = "0.5"
 
 fn main() {
     // Initialize console subscriber for tokio-console
@@ -272,7 +273,7 @@ fn main() {
 # Install tokio-console
 cargo install tokio-console
 
-# Run your app with TOKIO_CONSOLE=1
+# Run your app with Tokio's unstable instrumentation enabled
 RUSTFLAGS="--cfg tokio_unstable" cargo run --release
 
 # In another terminal, run console
@@ -292,7 +293,7 @@ For memory allocation profiling, use heaptrack (Linux) or Instruments (macOS).
 sudo apt-get install heaptrack heaptrack-gui
 
 # Profile memory allocations
-heaptrack ./target/release/myapp
+heaptrack ./target/profiling/myapp
 
 # Analyze results
 heaptrack_gui heaptrack.myapp.*.gz
@@ -302,7 +303,7 @@ heaptrack_gui heaptrack.myapp.*.gz
 
 ```bash
 # Profile with DHAT
-valgrind --tool=dhat ./target/release/myapp
+valgrind --tool=dhat ./target/profiling/myapp
 
 # View results in browser
 dh_view.html dhat.out.*
@@ -317,7 +318,7 @@ For targeted benchmarks of specific functions:
 ```toml
 # Cargo.toml
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "my_benchmark"
@@ -392,25 +393,31 @@ sudo bpftrace -e 'tracepoint:syscalls:sys_enter_* /comm == "myapp"/ { @[probe] =
 ```rust
 // Cargo.toml
 // [dependencies]
-// pyroscope = "0.5"
-// pyroscope_pprofrs = "0.2"
+// pyroscope = { version = "2.0", features = ["backend-pprof-rs"] }
 
-use pyroscope::PyroscopeAgent;
-use pyroscope_pprofrs::{pprof_backend, PprofConfig};
+use pyroscope::backend::{pprof_backend, BackendConfig, PprofConfig};
+use pyroscope::pyroscope::PyroscopeAgentBuilder;
 
 fn main() {
     // Start continuous profiling
-    let agent = PyroscopeAgent::builder("http://pyroscope:4040", "myapp")
-        .backend(pprof_backend(PprofConfig::new().sample_rate(100)))
-        .build()
-        .unwrap();
+    let agent = PyroscopeAgentBuilder::new(
+        "http://pyroscope:4040",
+        "myapp",
+        100,
+        "pyroscope-rs",
+        env!("CARGO_PKG_VERSION"),
+        pprof_backend(PprofConfig::default(), BackendConfig::default()),
+    )
+    .build()
+    .unwrap();
 
-    agent.start().unwrap();
+    let agent_running = agent.start().unwrap();
 
     // Your application code
     run_server();
 
-    agent.stop().unwrap();
+    let agent_ready = agent_running.stop().unwrap();
+    agent_ready.shutdown();
 }
 ```
 
@@ -465,7 +472,7 @@ fn greet(name: &str) -> String {
 // For conditional ownership, use Cow
 use std::borrow::Cow;
 
-fn process(input: &str) -> Cow<str> {
+fn process(input: &str) -> Cow<'_, str> {
     if input.contains("bad") {
         Cow::Owned(input.replace("bad", "good"))
     } else {
@@ -480,9 +487,12 @@ fn process(input: &str) -> Cow<str> {
 
 ```rust
 // Before: Global lock for all operations
+use std::sync::LazyLock;
 use std::sync::Mutex;
+use std::collections::HashMap;
 
-static CACHE: Mutex<HashMap<String, Data>> = Mutex::new(HashMap::new());
+static CACHE: LazyLock<Mutex<HashMap<String, Data>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn get(key: &str) -> Option<Data> {
     CACHE.lock().unwrap().get(key).cloned()
@@ -490,8 +500,9 @@ fn get(key: &str) -> Option<Data> {
 
 // After: Sharded locks reduce contention
 use dashmap::DashMap;
+use std::sync::LazyLock;
 
-static CACHE: DashMap<String, Data> = DashMap::new();
+static CACHE: LazyLock<DashMap<String, Data>> = LazyLock::new(DashMap::new);
 
 fn get(key: &str) -> Option<Data> {
     CACHE.get(key).map(|v| v.clone())
