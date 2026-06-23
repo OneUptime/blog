@@ -140,9 +140,9 @@ resource "aws_instance" "example" {
 }
 ```
 
-## Ignoring List and Set Elements
+## Ignoring Repeated Blocks
 
-For list-type attributes, use index notation:
+For repeated nested blocks, you can ignore the entire block name. Use index notation only for ordered list attributes:
 
 ```hcl
 resource "aws_security_group" "example" {
@@ -167,12 +167,12 @@ resource "aws_security_group" "example" {
   lifecycle {
     ignore_changes = [
       ingress  # Ignore ALL ingress rules
-      # OR
-      # ingress[0]  # Ignore only the first ingress rule
     ]
   }
 }
 ```
+
+For individual security group rules, prefer separate `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` resources instead of relying on inline rule indexes.
 
 ## ECS Task Definition Container Example
 
@@ -412,10 +412,10 @@ terraform show -json plan.out | jq '.resource_changes'
 
 ### Issue 3: Computed Attributes
 
-Some attributes are computed and cannot be ignored:
+Computed-only attributes usually do not need to be ignored because they are not set in your configuration. `ignore_changes` only suppresses diffs for the attribute path you list; it will not suppress updates caused by other arguments:
 
 ```hcl
-# This may not work for computed attributes
+# This does not suppress changes caused by AMI, tags, or other arguments
 lifecycle {
   ignore_changes = [arn]  # ARN is computed, not settable
 }
