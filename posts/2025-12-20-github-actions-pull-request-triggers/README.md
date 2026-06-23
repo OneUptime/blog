@@ -77,14 +77,14 @@ on:
     branches:
       - main
       - 'release/**'
-    branches-ignore:
-      - 'dependabot/**'
+      - '!release/**-alpha'
 ```
 
 Use patterns:
 
 - `main`: Exact match
 - `'release/**'`: Any branch starting with `release/`
+- `'!release/**-alpha'`: Exclude matching release branches after a positive match
 - `'feature/*'`: Single-level wildcard
 
 ## Path Filtering
@@ -98,9 +98,7 @@ on:
       - 'src/**'
       - 'package.json'
       - 'package-lock.json'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+      - '!docs/**'
 ```
 
 This is powerful for monorepos:
@@ -222,15 +220,18 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  label:
+  metadata:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      # Careful: runs in context of base repo
+      # Safe: checks out the trusted base branch, not the PR head
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - run: ./scripts/handle-pr-metadata.sh
 ```
 
 **Warning**: `pull_request_target` runs with base repo permissions. Never run untrusted PR code with this trigger.
@@ -291,6 +292,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -304,11 +306,11 @@ jobs:
             const fs = require('fs');
             const coverage = fs.readFileSync('coverage/summary.txt', 'utf8');
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `## Coverage Report\n```\n${coverage}\n````
+              body: ['## Coverage Report', '```', coverage, '```'].join('\n')
             });
 ```
 
@@ -344,7 +346,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -372,16 +374,14 @@ jobs:
 
 ## Skip Workflow with Commit Message
 
-Allow developers to skip CI for trivial changes:
+Allow developers to skip CI for trivial changes by adding a supported skip instruction to the HEAD commit message of the pull request:
 
-```yaml
-jobs:
-  test:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm test
+```text
+[skip ci]
+[ci skip]
+[no ci]
+[skip actions]
+[actions skip]
 ```
 
 ---
