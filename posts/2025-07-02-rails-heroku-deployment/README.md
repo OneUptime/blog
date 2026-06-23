@@ -540,7 +540,7 @@ production:
 ### Add Redis Add-on
 
 ```bash
-# Add Redis (mini plan is free-tier alternative)
+# Add Redis (mini is the entry-level plan, ~$3/month)
 heroku addons:create heroku-redis:mini
 
 # View Redis info
