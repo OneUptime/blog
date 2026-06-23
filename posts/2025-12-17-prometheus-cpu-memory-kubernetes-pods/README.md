@@ -49,11 +49,12 @@ rate(container_cpu_usage_seconds_total{
 # Filter by specific pod
 rate(container_cpu_usage_seconds_total{
   pod="api-server-7d8f9c6b5d-x2k4m",
-  container!=""
+  container!="",
+  container!="POD"
 }[5m])
 ```
 
-The `container!=""` filter excludes the pause container, and `container!="POD"` excludes the pod-level cgroup that aggregates all containers.
+The `container!=""` and `container!="POD"` filters exclude non-application container and cgroup series so the queries focus on workload containers.
 
 ### CPU Usage as Percentage of Requests
 
@@ -98,11 +99,13 @@ When containers hit their CPU limits, they get throttled. Monitor throttling wit
 ```promql
 # CPU throttling percentage
 sum(rate(container_cpu_cfs_throttled_periods_total{
-  container!=""
+  container!="",
+  container!="POD"
 }[5m])) by (pod, container)
 /
 sum(rate(container_cpu_cfs_periods_total{
-  container!=""
+  container!="",
+  container!="POD"
 }[5m])) by (pod, container)
 * 100
 ```
@@ -125,13 +128,15 @@ container_memory_working_set_bytes{
 # Memory usage in MB
 container_memory_working_set_bytes{
   namespace="production",
-  container!=""
+  container!="",
+  container!="POD"
 } / 1024 / 1024
 
 # Memory usage by pod
 sum(container_memory_working_set_bytes{
   namespace="production",
-  container!=""
+  container!="",
+  container!="POD"
 }) by (pod)
 ```
 
@@ -141,7 +146,8 @@ sum(container_memory_working_set_bytes{
 # Memory usage as percentage of requests
 sum(container_memory_working_set_bytes{
   namespace="production",
-  container!=""
+  container!="",
+  container!="POD"
 }) by (pod, container)
 /
 sum(kube_pod_container_resource_requests{
@@ -157,7 +163,8 @@ sum(kube_pod_container_resource_requests{
 # Memory usage as percentage of limits
 sum(container_memory_working_set_bytes{
   namespace="production",
-  container!=""
+  container!="",
+  container!="POD"
 }) by (pod, container)
 /
 sum(kube_pod_container_resource_limits{
@@ -174,7 +181,7 @@ Pods approaching their memory limits risk OOM kills. Alert on high memory usage:
 ```promql
 # Containers using more than 90% of memory limit
 (
-  sum(container_memory_working_set_bytes{container!=""}) by (pod, container, namespace)
+  sum(container_memory_working_set_bytes{container!="", container!="POD"}) by (pod, container, namespace)
   /
   sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, container, namespace)
 ) > 0.9
@@ -193,7 +200,8 @@ sum(rate(container_cpu_usage_seconds_total{
 
 # Total memory usage per namespace (in GB)
 sum(container_memory_working_set_bytes{
-  container!=""
+  container!="",
+  container!="POD"
 }) by (namespace) / 1024 / 1024 / 1024
 ```
 
@@ -208,7 +216,8 @@ sum(rate(container_cpu_usage_seconds_total{
 
 # Memory usage per node
 sum(container_memory_working_set_bytes{
-  container!=""
+  container!="",
+  container!="POD"
 }) by (node)
 ```
 
@@ -219,9 +228,11 @@ Using kube-state-metrics labels to aggregate by deployment:
 ```promql
 # CPU usage by deployment
 sum(
-  rate(container_cpu_usage_seconds_total{container!=""}[5m])
-  * on(namespace, pod) group_left(owner_name)
-  kube_pod_owner{owner_kind="ReplicaSet"}
+  rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])
+  * on(namespace, pod) group_left(replicaset)
+  label_replace(kube_pod_owner{owner_kind="ReplicaSet"}, "replicaset", "$1", "owner_name", "(.*)")
+  * on(namespace, replicaset) group_left(owner_name)
+  kube_replicaset_owner{owner_kind="Deployment"}
 ) by (owner_name)
 ```
 
@@ -246,7 +257,8 @@ groups:
       - record: container:memory_working_set:sum
         expr: |
           sum(container_memory_working_set_bytes{
-            container!=""
+            container!="",
+            container!="POD"
           }) by (namespace, pod, container)
 
       # CPU usage percentage of limit
@@ -299,9 +311,9 @@ groups:
       # CPU throttling alert
       - alert: ContainerCPUThrottling
         expr: |
-          sum(rate(container_cpu_cfs_throttled_periods_total[5m])) by (namespace, pod, container)
+          sum(rate(container_cpu_cfs_throttled_periods_total{container!="", container!="POD"}[5m])) by (namespace, pod, container)
           /
-          sum(rate(container_cpu_cfs_periods_total[5m])) by (namespace, pod, container)
+          sum(rate(container_cpu_cfs_periods_total{container!="", container!="POD"}[5m])) by (namespace, pod, container)
           > 0.25
         for: 15m
         labels:
@@ -318,24 +330,26 @@ Create a comprehensive resource monitoring dashboard with these panel queries:
 ```promql
 # Panel 1: Top pods by CPU usage
 topk(10, sum(rate(container_cpu_usage_seconds_total{
-  container!=""
+  container!="",
+  container!="POD"
 }[5m])) by (namespace, pod))
 
 # Panel 2: Top pods by memory usage
 topk(10, sum(container_memory_working_set_bytes{
-  container!=""
+  container!="",
+  container!="POD"
 }) by (namespace, pod))
 
 # Panel 3: Pods with highest CPU throttling
 topk(10,
-  sum(rate(container_cpu_cfs_throttled_periods_total[5m])) by (namespace, pod)
+  sum(rate(container_cpu_cfs_throttled_periods_total{container!="", container!="POD"}[5m])) by (namespace, pod)
   /
-  sum(rate(container_cpu_cfs_periods_total[5m])) by (namespace, pod)
+  sum(rate(container_cpu_cfs_periods_total{container!="", container!="POD"}[5m])) by (namespace, pod)
 )
 
 # Panel 4: Pods closest to memory limit
 topk(10,
-  sum(container_memory_working_set_bytes{container!=""}) by (namespace, pod)
+  sum(container_memory_working_set_bytes{container!="", container!="POD"}) by (namespace, pod)
   /
   sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod)
 )
@@ -369,7 +383,7 @@ For large clusters, use aggregations to reduce cardinality:
 
 ```promql
 # Aggregate by namespace instead of individual pods
-sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
+sum(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])) by (namespace)
 ```
 
 ## Conclusion
@@ -377,7 +391,7 @@ sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
 Effective CPU and memory monitoring in Kubernetes requires understanding both the metrics available and how to query them efficiently. Key takeaways:
 
 - Use `rate()` for CPU metrics and direct values for memory
-- Filter out pause containers with `container!="POD"`
+- Filter out non-application container and cgroup series with `container!=""` and `container!="POD"`
 - Compare usage against both requests and limits
 - Monitor throttling to detect CPU constraints
 - Create recording rules for frequently used queries
