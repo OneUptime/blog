@@ -301,17 +301,16 @@ Monitor cache usage:
 
 ## Conditional Caching
 
-Save cache only on specific branches:
+By default, the cache action only saves the cache when the job succeeds, so no extra input is required:
 
 ```yaml
       - uses: actions/cache@v4
         with:
           path: node_modules
           key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
-          save-always: false  # Only save on success
 ```
 
-Or use conditional logic:
+To save the cache only on specific branches, use a separate save step with conditional logic:
 
 ```yaml
       - name: Save cache
