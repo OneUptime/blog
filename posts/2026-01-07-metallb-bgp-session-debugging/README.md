@@ -74,7 +74,7 @@ kubectl get bgppeers -A -o wide
 Describe BGPPeer for detailed status:
 
 ```bash
-kubectl describe bgppeer <peer-name>
+kubectl describe bgppeer -n metallb-system <peer-name>
 ```
 
 View current BGP session state from speaker:
@@ -286,9 +286,29 @@ Routes only advertise when services exist:
 kubectl get svc -A | grep LoadBalancer
 ```
 
-Create a test service:
+Create a test deployment and service:
 
 ```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -499,7 +519,7 @@ spec:
 
 ### Issue 6: eBGP Multi-Hop Failures
 
-When your router is not directly connected (multiple hops away).
+When your router is not directly connected (multiple hops away) and you are using an FRR-based MetalLB mode.
 
 Symptoms:
 
@@ -545,6 +565,7 @@ Create a secret for the password:
 ```bash
 kubectl create secret generic bgp-password \
   -n metallb-system \
+  --type=kubernetes.io/basic-auth \
   --from-literal=password='your-secure-password'
 ```
 
@@ -560,7 +581,8 @@ spec:
   myASN: 64500
   peerASN: 64501
   peerAddress: 10.0.0.1
-  password: bgp-password    # Secret name
+  passwordSecret:
+    name: bgp-password      # Secret name
 ```
 
 Verify router has matching password (Cisco):
@@ -595,7 +617,7 @@ echo -e "\n=== BGPAdvertisements ==="
 kubectl get bgpadvertisements -n metallb-system -o yaml
 
 echo -e "\n=== LoadBalancer Services ==="
-kubectl get svc -A --field-selector spec.type=LoadBalancer
+kubectl get svc -A | grep LoadBalancer || true
 
 echo -e "\n=== Speaker Pod Status ==="
 kubectl get pods -n metallb-system -l component=speaker -o wide
@@ -728,7 +750,7 @@ stateDiagram-v2
 
 ## Preventive Best Practices
 
-**1. Always configure BFD for faster failure detection:**
+**1. Configure BFD for faster failure detection when using FRR-based modes:**
 
 ```yaml
 apiVersion: metallb.io/v1beta2
@@ -779,14 +801,14 @@ spec:
 MetalLB exposes Prometheus metrics. Check session state:
 
 ```bash
-kubectl port-forward -n metallb-system svc/metallb-speaker-monitor 7472:7472
-curl localhost:7472/metrics | grep metallb_bgp
+kubectl port-forward -n metallb-system svc/speaker-monitor-service 9120:9120
+curl -k https://localhost:9120/metrics | grep -E 'metallb_bgp|frrk8s_bgp'
 ```
 
 Key metrics to alert on:
-- `metallb_bgp_session_up` - 1 if session established, 0 otherwise
-- `metallb_bgp_updates_total` - BGP update message count
-- `metallb_bgp_announced_prefixes_total` - Number of advertised routes
+- `metallb_bgp_session_up` or `frrk8s_bgp_session_up` - 1 if session established, 0 otherwise
+- `metallb_bgp_updates_total` or `frrk8s_bgp_updates_total` - BGP update message count
+- `metallb_bgp_announced_prefixes_total` or `frrk8s_bgp_announced_prefixes_total` - Number of advertised routes
 
 **4. Document your configuration:**
 
