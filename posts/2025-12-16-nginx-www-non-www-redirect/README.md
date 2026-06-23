@@ -18,7 +18,7 @@ graph TD
     B -->|Yes| C[301 Redirect to www.example.com]
     B -->|No| D[Duplicate content issues]
     C --> E[Single canonical URL]
-    D --> F[SEO penalties]
+    D --> F[SEO signal dilution]
     D --> G[Cookie problems]
     D --> H[SSL certificate issues]
 
@@ -81,8 +81,9 @@ server {
 
 # HTTPS non-www to HTTPS www
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -93,8 +94,9 @@ server {
 
 # Main HTTPS www server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/www.example.com/fullchain.pem;
@@ -161,8 +163,9 @@ server {
 
 # HTTPS www to HTTPS non-www
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/www.example.com/fullchain.pem;
@@ -173,8 +176,9 @@ server {
 
 # Main HTTPS non-www server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -191,7 +195,7 @@ server {
 
 ## Combined SSL Certificate Approach
 
-If you have a certificate that covers both domains (or use a wildcard):
+If you have a certificate that covers both domains (or a wildcard certificate plus apex-domain coverage):
 
 ### non-www to www with Shared Certificate
 
@@ -207,8 +211,9 @@ server {
 
 # Combined HTTPS server with redirect logic
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # Certificate covers both domains
@@ -241,8 +246,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -290,10 +296,12 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com site2.com www.site2.com site3.com www.site3.com;
 
+    # Certificate must cover all names listed in server_name
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
@@ -328,8 +336,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -339,8 +348,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/www.example.com/fullchain.pem;
@@ -376,7 +386,7 @@ sudo certbot certonly --standalone -d example.com -d www.example.com
 sudo certbot renew --dry-run
 
 # Crontab entry (usually auto-configured)
-0 0 * * * /usr/bin/certbot renew --quiet --post-hook "systemctl reload nginx"
+0 0 * * * /usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
 ```
 
 ## DNS Configuration
