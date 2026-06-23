@@ -44,7 +44,7 @@ This dramatically reduces mean time to resolution (MTTR) for performance issues.
 
 Before we begin, ensure you have the following:
 
-- Go 1.21 or later
+- Go 1.23 or later
 - Basic understanding of OpenTelemetry concepts
 - Prometheus and Grafana for visualization (optional but recommended)
 - A running application you want to instrument
@@ -65,6 +65,7 @@ go get go.opentelemetry.io/otel \
     go.opentelemetry.io/otel/exporters/prometheus \
     go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc \
     go.opentelemetry.io/otel/trace \
+    github.com/prometheus/otlptranslator \
     github.com/prometheus/client_golang/prometheus \
     github.com/prometheus/client_golang/prometheus/promhttp
 ```
@@ -86,7 +87,7 @@ import (
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
 // initTracerProvider creates and configures an OpenTelemetry tracer provider
@@ -143,20 +144,22 @@ The meter provider needs to be configured with the Prometheus exporter to expose
 package main
 
 import (
+    "github.com/prometheus/otlptranslator"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/prometheus"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
 // initMeterProvider creates and configures an OpenTelemetry meter provider
 // with Prometheus export and exemplar support enabled
 func initMeterProvider() (*sdkmetric.MeterProvider, error) {
     // Create the Prometheus exporter with exemplar support
-    // The WithoutUnits option removes unit suffixes for cleaner metric names
+    // The translation strategy keeps the metric names used in the PromQL examples
+    // without using the deprecated WithoutUnits option.
     exporter, err := prometheus.New(
-        prometheus.WithoutUnits(),
+        prometheus.WithTranslationStrategy(otlptranslator.UnderscoreEscapingWithoutSuffixes),
     )
     if err != nil {
         return nil, err
@@ -190,7 +193,7 @@ func initMeterProvider() (*sdkmetric.MeterProvider, error) {
 
 ## Creating Metrics with Exemplar Support
 
-OpenTelemetry automatically attaches exemplars when you record metrics within an active span context. Let's create a histogram for tracking HTTP request latency.
+OpenTelemetry can attach exemplars when you record metrics within a sampled span context. Let's create a histogram for tracking HTTP request latency.
 
 ### Defining the Histogram Instrument
 
@@ -208,7 +211,7 @@ import (
 var meter = otel.Meter("my-go-service")
 
 // requestDuration tracks HTTP request latency in seconds
-// Exemplars are automatically attached when recorded within a span context
+// Exemplars can be attached when recorded within a sampled span context
 var requestDuration metric.Float64Histogram
 
 // initMetrics initializes all metric instruments used by the application
@@ -235,13 +238,14 @@ func initMetrics() error {
 
 ### Recording Metrics with Trace Context
 
-The key to exemplar attachment is recording metrics within an active span context. Here's how to instrument an HTTP handler:
+The key to exemplar attachment is recording metrics within a sampled span context. Here's how to instrument an HTTP handler:
 
 ```go
 package main
 
 import (
     "context"
+    "math/rand"
     "net/http"
     "time"
 
@@ -263,8 +267,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
     // Create a span for this request - this provides the trace context
     ctx, span := tracer.Start(r.Context(), "handleRequest",
         trace.WithAttributes(
-            attribute.String("http.method", r.Method),
-            attribute.String("http.url", r.URL.Path),
+            attribute.String("http.request.method", r.Method),
+            attribute.String("url.path", r.URL.Path),
         ),
     )
     defer span.End()
@@ -276,7 +280,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
     duration := time.Since(start).Seconds()
 
     // Record the metric with the span context
-    // The exemplar is automatically attached because ctx contains an active span
+    // An exemplar can be attached because ctx contains a sampled span
     requestDuration.Record(ctx, duration,
         metric.WithAttributes(
             attribute.String("method", r.Method),
@@ -313,6 +317,7 @@ package main
 import (
     "net/http"
 
+    "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -468,6 +473,8 @@ scrape_configs:
       - OpenMetricsText1.0.0
 ```
 
+Start Prometheus with `--enable-feature=exemplar-storage`; the `storage.exemplars` configuration is only used when exemplar storage is enabled.
+
 ### Selective Exemplar Recording
 
 Not every metric observation needs an exemplar. Here's how to be selective:
@@ -478,10 +485,8 @@ package main
 import (
     "context"
     "math/rand"
-    "time"
 
     "go.opentelemetry.io/otel/metric"
-    "go.opentelemetry.io/otel/trace"
 )
 
 // ExemplarSampler controls which observations get exemplars attached
@@ -528,6 +533,7 @@ package main
 
 import (
     "context"
+    "math/rand"
     "time"
 
     "go.opentelemetry.io/otel/metric"
@@ -610,6 +616,7 @@ import (
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/prometheus/otlptranslator"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -618,7 +625,7 @@ import (
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -690,7 +697,9 @@ func initOTel(ctx context.Context) (func(context.Context) error, error) {
     tracer = tp.Tracer("exemplar-demo")
 
     // Set up meter provider with Prometheus exporter
-    metricExporter, err := otelprometheus.New()
+    metricExporter, err := otelprometheus.New(
+        otelprometheus.WithTranslationStrategy(otlptranslator.UnderscoreEscapingWithoutSuffixes),
+    )
     if err != nil {
         return nil, err
     }
@@ -754,9 +763,9 @@ func instrumentedHandler(handler func(context.Context, http.ResponseWriter, *htt
         // Create span for this request
         ctx, span := tracer.Start(r.Context(), fmt.Sprintf("%s %s", r.Method, r.URL.Path),
             trace.WithAttributes(
-                attribute.String("http.method", r.Method),
-                attribute.String("http.url", r.URL.Path),
-                attribute.String("http.user_agent", r.UserAgent()),
+                attribute.String("http.request.method", r.Method),
+                attribute.String("url.path", r.URL.Path),
+                attribute.String("user_agent.original", r.UserAgent()),
             ),
         )
         defer span.End()
@@ -897,7 +906,7 @@ func checkAndAlert(ctx context.Context, duration time.Duration, endpoint string)
 
 ### Custom Exemplar Labels
 
-You can include additional context in exemplars beyond just trace IDs:
+You can include additional context in exemplars beyond just trace IDs by recording attributes that are filtered out of the metric time series. OpenTelemetry exports those filtered attributes as exemplar labels:
 
 ```go
 package main
@@ -906,45 +915,42 @@ import (
     "context"
 
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/baggage"
     "go.opentelemetry.io/otel/metric"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-// recordWithCustomLabels demonstrates adding custom context to exemplars
-// Baggage is propagated through the context and can enhance exemplar data
+// initMeterProviderWithExemplarLabels keeps user_id and region out of the
+// metric series while allowing them to appear as filtered exemplar attributes.
+func initMeterProviderWithExemplarLabels(reader sdkmetric.Reader) *sdkmetric.MeterProvider {
+    return sdkmetric.NewMeterProvider(
+        sdkmetric.WithReader(reader),
+        sdkmetric.WithView(
+            sdkmetric.NewView(
+                sdkmetric.Instrument{Name: "http_request_duration_seconds"},
+                sdkmetric.Stream{
+                    AttributeFilter: attribute.NewDenyKeysFilter("user_id", "region"),
+                },
+            ),
+        ),
+    )
+}
+
+// recordWithCustomLabels demonstrates adding custom context to exemplars.
 func recordWithCustomLabels(
     ctx context.Context,
     histogram metric.Float64Histogram,
     value float64,
     userID string,
     region string,
-) error {
-    // Add custom context via baggage (propagates through trace context)
-    userMember, err := baggage.NewMember("user_id", userID)
-    if err != nil {
-        return err
-    }
-    regionMember, err := baggage.NewMember("region", region)
-    if err != nil {
-        return err
-    }
-
-    bag, err := baggage.New(userMember, regionMember)
-    if err != nil {
-        return err
-    }
-
-    ctx = baggage.ContextWithBaggage(ctx, bag)
-
-    // Record with enhanced context
+) {
+    // These attributes are filtered from the metric series by the view above
+    // and can be emitted as exemplar labels instead.
     histogram.Record(ctx, value,
         metric.WithAttributes(
             attribute.String("user_id", userID),
             attribute.String("region", region),
         ),
     )
-
-    return nil
 }
 ```
 
@@ -1018,6 +1024,7 @@ import (
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/prometheus/otlptranslator"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -1027,7 +1034,7 @@ import (
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -1062,7 +1069,7 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
             semconv.SchemaURL,
             semconv.ServiceName(cfg.ServiceName),
             semconv.ServiceVersion(cfg.ServiceVersion),
-            semconv.DeploymentEnvironment(os.Getenv("ENVIRONMENT")),
+            attribute.String("deployment.environment.name", os.Getenv("ENVIRONMENT")),
         ),
     )
     if err != nil {
@@ -1090,7 +1097,9 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
     ))
 
     // Initialize meter provider with Prometheus
-    metricExporter, err := otelprometheus.New()
+    metricExporter, err := otelprometheus.New(
+        otelprometheus.WithTranslationStrategy(otlptranslator.UnderscoreEscapingWithoutSuffixes),
+    )
     if err != nil {
         return nil, fmt.Errorf("creating metric exporter: %w", err)
     }
@@ -1167,9 +1176,9 @@ func (t *Telemetry) HTTPMiddleware(next http.Handler) http.Handler {
         ctx, span := t.Tracer.Start(r.Context(), fmt.Sprintf("%s %s", r.Method, r.URL.Path),
             trace.WithSpanKind(trace.SpanKindServer),
             trace.WithAttributes(
-                semconv.HTTPMethod(r.Method),
-                semconv.HTTPURL(r.URL.String()),
-                semconv.HTTPUserAgent(r.UserAgent()),
+                attribute.String("http.request.method", r.Method),
+                attribute.String("url.full", r.URL.String()),
+                attribute.String("user_agent.original", r.UserAgent()),
             ),
         )
         defer span.End()
@@ -1195,7 +1204,7 @@ func (t *Telemetry) HTTPMiddleware(next http.Handler) http.Handler {
             t.ErrorsTotal.Add(ctx, 1, attrs)
         }
 
-        span.SetAttributes(semconv.HTTPStatusCode(wrapped.status))
+        span.SetAttributes(attribute.Int("http.response.status_code", wrapped.status))
     })
 }
 
@@ -1296,7 +1305,7 @@ Trace exemplars bridge the gap between aggregate metrics and detailed traces, dr
 5. Implement smart sampling strategies to manage cardinality
 6. Debug latency spikes efficiently using exemplar links
 
-The key takeaway is that exemplars should be treated as a first-class citizen in your observability strategy. When you record a metric observation within an active span context, the exemplar attachment happens automatically, making it easy to adopt this powerful debugging technique.
+The key takeaway is that exemplars should be treated as a first-class citizen in your observability strategy. When you record a metric observation within a sampled span context, the OpenTelemetry SDK can offer the measurement to the exemplar reservoir, making it easy to adopt this powerful debugging technique.
 
 Start by instrumenting your most critical paths with exemplar-enabled metrics, and you'll quickly see the value when investigating your next production incident.
 
