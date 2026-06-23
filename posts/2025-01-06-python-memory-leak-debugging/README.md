@@ -427,25 +427,25 @@ class BetterEventEmitter:
 
 ### Pattern 3: Closure Leaks
 
-Closures capture variables from their enclosing scope. If the closure captures a large object even accidentally, that object stays in memory as long as the closure exists.
+Closures only capture the variables they actually reference from their enclosing scope (Python decides this at compile time, so an unused variable is never captured). But if a closure references a large object - even just to read one value out of it - that whole object stays in memory as long as the closure exists.
 
 ```python
 # leak_closures.py
 # Closure-related memory leaks
 import gc
 
-# BAD: Closure captures large data unintentionally
+# BAD: Closure references large_data, so the whole list is captured
 def bad_create_processor(large_data: list):
-    """Closure keeps large_data alive even though it doesn't use it"""
+    """Closure keeps the whole large_data alive just to read one value"""
     def process(item):
-        # Only uses 'item', but large_data is captured in closure's scope!
-        return item * 2
+        # References large_data, so the entire list is captured in the closure cell
+        return item * len(large_data)
     return process
 
 # Demonstration of the leak:
 large_data = list(range(1000000))  # ~8MB of data
 processor = bad_create_processor(large_data)
-del large_data  # Doesn't free memory! Closure holds reference
+del large_data  # Doesn't free memory! Closure holds a reference via its cell
 
 
 # GOOD: Only capture what you need
@@ -455,8 +455,8 @@ def good_create_processor(large_data: list):
     data_length = len(large_data)
 
     def process(item):
-        # Now closure only references data_length (8 bytes), not large_data
-        return item * 2
+        # Now closure only references data_length (one int), not large_data
+        return item * data_length
     return process
 
 
