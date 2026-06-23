@@ -30,7 +30,7 @@ flowchart TD
 
 ### 1. Unsupported Data Types
 
-Glue supports specific data types. Using unsupported types will cause schema validation failures.
+Glue tables use Hive-compatible data type strings. Using unsupported types will cause schema validation failures.
 
 ```hcl
 # Incorrect - using unsupported type
@@ -42,7 +42,7 @@ resource "aws_glue_catalog_table" "example_bad" {
   storage_descriptor {
     columns {
       name = "id"
-      type = "integer"  # Wrong! Use 'int' instead
+      type = "number"  # Wrong! Use a specific type like 'int' or 'double' instead
     }
     columns {
       name = "timestamp"
@@ -247,7 +247,7 @@ resource "aws_glue_catalog_table" "parquet_table" {
 
 ### Using Terraform Plan Output
 
-Always run `terraform plan` first to catch schema issues before they reach AWS.
+Always run `terraform validate` and `terraform plan` first to catch Terraform syntax and provider configuration issues before they reach AWS. Some Glue schema errors are returned only when AWS validates the table during `terraform apply`.
 
 ```bash
 # Run plan with detailed output
