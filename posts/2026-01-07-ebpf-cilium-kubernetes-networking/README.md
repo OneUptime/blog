@@ -86,6 +86,7 @@ flowchart LR
         Agent[Cilium Agent]
         CLI[Cilium CLI]
         Hubble[Hubble]
+        Envoy[Envoy Proxy]
     end
 
     subgraph "Kernel Space"
@@ -111,15 +112,15 @@ flowchart LR
     TC --> Bridge
     Bridge --> Endpoint
 
-    Hubble --> |Reads| Maps
+    Agent --> |Emits Flow Events| Hubble
 ```
 
 ## Prerequisites
 
 Before deploying Cilium, ensure your environment meets the following requirements:
 
-- Kubernetes cluster version 1.16 or later
-- Linux kernel version 4.19 or later (5.4+ recommended for full feature set)
+- Kubernetes version supported by your selected Cilium release (Cilium 1.19 is tested with Kubernetes 1.32-1.35)
+- Linux kernel version 5.10 or later, or an equivalent distribution kernel
 - Helm 3.x installed for deployment
 - kubectl configured to access your cluster
 - No other CNI plugin installed (or plan to migrate)
@@ -129,8 +130,8 @@ The following command checks your kernel version to ensure compatibility:
 ```bash
 # Check your Linux kernel version
 
-# Cilium requires kernel 4.19+ for basic functionality
-# Kernel 5.4+ enables advanced features like socket-level load balancing
+# Cilium 1.19 recommends kernel 5.10+ or an equivalent distribution kernel
+# Newer kernels enable additional eBPF features; check the Cilium feature requirements
 uname -r
 ```
 
@@ -195,8 +196,8 @@ For a basic Cilium installation with default settings, use the following command
 
 ```bash
 # Install Cilium with default configuration
-# This creates the cilium-system namespace and deploys all required components
-helm install cilium cilium/cilium --version 1.15.0 \
+# This deploys Cilium into the kube-system namespace
+helm install cilium cilium/cilium --version 1.19.5 \
     --namespace kube-system \
     --set operator.replicas=1
 ```
@@ -215,12 +216,12 @@ hubble:
   # Enable Hubble metrics for Prometheus integration
   metrics:
     enabled:
-      - dns
+      - dns:query
       - drop
       - tcp
       - flow
       - icmp
-      - http
+      - httpV2
     serviceMonitor:
       enabled: false
   relay:
@@ -261,8 +262,8 @@ ipam:
 
 # Enable socket-level load balancing
 # This replaces kube-proxy for service handling
-# Use "true" (string) for Cilium 1.14-1.15 or "strict" for 1.16+
-kubeProxyReplacement: "true"
+# Use true to enable full kube-proxy replacement
+kubeProxyReplacement: true
 
 # Configure load balancer settings
 loadBalancer:
@@ -272,10 +273,11 @@ loadBalancer:
   algorithm: maglev
 
 # Enable local redirect policy for node-local traffic optimization
-localRedirectPolicy: true
+localRedirectPolicies:
+  enabled: true
 
 # Configure BGP for external load balancing (optional)
-bgp:
+bgpControlPlane:
   enabled: false
 
 # Enable WireGuard encryption for pod-to-pod traffic
@@ -298,7 +300,7 @@ Deploy Cilium using the values file:
 ```bash
 # Install Cilium with the production configuration
 # This enables Hubble, native routing, and other production features
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.5 \
     --namespace kube-system \
     --values cilium-values.yaml
 ```
@@ -312,14 +314,16 @@ sequenceDiagram
     participant App as Application
     participant Socket as Socket eBPF
     participant TC as TC eBPF
+    participant Envoy as Envoy Proxy
     participant XDP as XDP eBPF
     participant NIC as Network Interface
     participant Remote as Remote Host
 
     Note over App,Remote: Outbound Traffic Flow
     App->>Socket: Send packet
-    Socket->>Socket: Apply L7 policy
-    Socket->>TC: Pass to TC hook
+    Socket->>TC: Socket load balancing when enabled
+    TC->>Envoy: Redirect to Envoy for L7 policy when configured
+    Envoy->>TC: Return allowed traffic
     TC->>TC: Apply L3/L4 policy
     TC->>TC: NAT/Load balancing
     TC->>NIC: Transmit packet
@@ -328,7 +332,7 @@ sequenceDiagram
     Note over App,Remote: Inbound Traffic Flow
     Remote->>NIC: Receive packet
     NIC->>XDP: XDP hook (earliest)
-    XDP->>XDP: DDoS protection
+    XDP->>XDP: Optional early packet processing
     XDP->>TC: Pass to TC ingress
     TC->>TC: Apply L3/L4 policy
     TC->>Socket: Deliver to socket
@@ -672,14 +676,14 @@ spec:
 Example Prometheus queries for Hubble metrics:
 
 ```promql
-# Total number of forwarded packets per source/destination
-sum(rate(hubble_flows_processed_total{verdict="FORWARDED"}[5m])) by (source, destination)
+# Total number of forwarded flows
+sum(rate(hubble_flows_processed_total{verdict="FORWARDED"}[5m]))
 
 # Dropped packets rate by reason
 sum(rate(hubble_drop_total[5m])) by (reason)
 
-# HTTP request latency by path
-histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, path))
+# HTTP request latency by method
+histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, method))
 
 # DNS query rate by query type
 sum(rate(hubble_dns_queries_total[5m])) by (query, qtypes)
@@ -782,7 +786,7 @@ Cilium's eBPF-based connection tracking is more efficient than netfilter's connt
 ```bash
 # View Cilium's eBPF connection tracking entries
 # These are stored in eBPF maps for fast lookup
-cilium bpf ct list global
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list
 
 # Compare with netfilter conntrack
 # Cilium's implementation has lower memory overhead
@@ -791,15 +795,15 @@ conntrack -L | wc -l
 
 ## Performance Comparison
 
-The following metrics compare Cilium with traditional iptables-based solutions:
+The following characteristics compare Cilium with traditional iptables-based service handling:
 
 | Metric | iptables/kube-proxy | Cilium eBPF | Improvement |
 |--------|---------------------|-------------|-------------|
-| Service lookup latency | O(n) | O(1) | Linear to constant |
-| Memory per service | ~200 bytes | ~64 bytes | 3x reduction |
-| CPU usage at 10k services | High | Low | 50-80% reduction |
-| First packet latency | ~100us | ~20us | 5x faster |
-| Throughput (Gbps) | ~40 Gbps | ~100+ Gbps | 2.5x+ improvement |
+| Service lookup behavior | Rule traversal grows with service count | Map-based service lookup | More predictable at scale |
+| Per-service datapath state | iptables rules and chains | eBPF map entries | Lower rule-management overhead |
+| CPU usage at large service counts | Increases with rule traversal and updates | Uses compiled eBPF programs and maps | Workload-dependent reduction |
+| First packet processing | Traverses netfilter service rules | Uses eBPF service maps | Workload-dependent latency reduction |
+| Throughput | Depends on kernel, NIC, and kube-proxy mode | Depends on kernel, NIC, and Cilium features such as XDP | Workload-dependent improvement |
 
 ## Replacing kube-proxy
 
@@ -807,14 +811,17 @@ To fully leverage Cilium's performance benefits, you can replace kube-proxy enti
 
 ```bash
 # When installing Cilium, disable kube-proxy
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.5 \
     --namespace kube-system \
-    --set kubeProxyReplacement="true" \
+    --set kubeProxyReplacement=true \
     --set k8sServiceHost=<API_SERVER_IP> \
     --set k8sServicePort=<API_SERVER_PORT>
 
 # If kube-proxy is already running, delete it
 kubectl -n kube-system delete ds kube-proxy
+
+# Delete the kube-proxy ConfigMap to avoid reinstalling it during kubeadm upgrades
+kubectl -n kube-system delete cm kube-proxy
 
 # Clean up kube-proxy iptables rules
 # Run this on each node
@@ -825,11 +832,11 @@ Verify that Cilium has taken over service handling:
 
 ```bash
 # Check that Cilium is handling services
-cilium status | grep KubeProxyReplacement
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 
 # View the eBPF service map
 # This shows all Kubernetes services handled by Cilium
-cilium service list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg service list
 ```
 
 ## Cluster Mesh for Multi-Cluster Networking
@@ -884,25 +891,25 @@ Common troubleshooting commands:
 
 ```bash
 # Check Cilium agent status on a specific node
-kubectl exec -n kube-system cilium-xxxxx -- cilium status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 
 # View Cilium endpoint list (pods managed by Cilium)
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Debug policy enforcement for a specific endpoint
-kubectl exec -n kube-system cilium-xxxxx -- cilium policy get
+kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get
 
 # Check eBPF maps
-kubectl exec -n kube-system cilium-xxxxx -- cilium bpf lb list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf lb list
 
 # View detailed logs
-kubectl logs -n kube-system cilium-xxxxx --tail=100
+kubectl logs -n kube-system ds/cilium --tail=100
 
 # Run connectivity test to identify issues
 cilium connectivity test
 
 # Monitor Cilium events in real-time
-cilium monitor
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor
 ```
 
 ## Best Practices
