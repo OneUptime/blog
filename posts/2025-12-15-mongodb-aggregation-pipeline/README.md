@@ -93,6 +93,7 @@ db.orders.aggregate([
 
 // Multiple accumulators
 db.orders.aggregate([
+  { $sort: { orderDate: 1 } },
   {
     $group: {
       _id: "$customerId",
@@ -609,12 +610,22 @@ db.orders.aggregate([
 
 // Bad: Expensive operations first
 db.orders.aggregate([
-  { $lookup: { from: "customers", ... } },  // Expensive for all docs
+  {
+    $lookup: {
+      from: "customers",
+      localField: "customerId",
+      foreignField: "_id",
+      as: "customer"
+    }
+  },  // Expensive for all docs
   { $match: { status: "completed" } }  // Should be first!
 ]);
 
 // Use explain to analyze
-db.orders.explain("executionStats").aggregate([...]);
+db.orders.explain("executionStats").aggregate([
+  { $match: { status: "completed" } },
+  { $group: { _id: "$customerId", total: { $sum: "$amount" } } }
+]);
 ```
 
 ---
