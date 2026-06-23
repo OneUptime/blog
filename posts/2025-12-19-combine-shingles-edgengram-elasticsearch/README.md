@@ -25,7 +25,7 @@ flowchart TD
     A --> F["quick brown fox"]
 ```
 
-Shingles help match phrases and word combinations even when the query is slightly different from the indexed text.
+Shingles help match ordered phrases and adjacent word combinations, especially for multi-word queries.
 
 ### What are Edge NGrams?
 
@@ -50,7 +50,7 @@ Each technique solves different problems:
 |---------|----------|-------------|
 | Partial word matching | No | Yes |
 | Phrase matching | Yes | No |
-| Word order flexibility | Yes | No |
+| Word order awareness | Yes | No |
 | Autocomplete | Poor | Excellent |
 | Typo tolerance | No | No |
 
@@ -190,6 +190,7 @@ POST /search_index/_analyze
 ```text
 q, qu, qui, quic, quick,
 q, qu, qui, quic, quick, quick , quick b, quick br, quick bro, quick brow, quick brown,
+b, br, bro, brow, brown,
 ... (many more combinations)
 ```
 
@@ -230,7 +231,7 @@ GET /search_index/_search
 ```
 
 This prioritizes:
-1. Exact matches (title)
+1. Standard full-text matches (title)
 2. Phrase combinations (shingle)
 3. Prefix matches (edge)
 4. Combined partial phrases (combined)
@@ -410,15 +411,24 @@ The combined analyzer significantly increases index size:
 2. **Limit shingle size** - 2-3 word shingles cover most use cases
 3. **Use separate fields** - Index once, query multiple ways
 4. **Consider query-time analysis** - Use search_analyzer to avoid over-matching
-5. **Disable positions for ngrams** - Reduces index size if phrase queries are not needed
+5. **Disable positions for ngram-only subfields** - Reduces index size if phrase queries are not needed on those subfields
 
 ```json
 {
-  "title.edge": {
-    "type": "text",
-    "analyzer": "edge_ngram_analyzer",
-    "search_analyzer": "search_analyzer",
-    "index_options": "freqs"
+  "mappings": {
+    "properties": {
+      "title": {
+        "type": "text",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "edge_ngram_analyzer",
+            "search_analyzer": "search_analyzer",
+            "index_options": "freqs"
+          }
+        }
+      }
+    }
   }
 }
 ```
