@@ -243,6 +243,11 @@ public class UsersControllerTests
 
 For more realistic tests, use Testcontainers to spin up actual database containers:
 
+```bash
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add package Testcontainers.MsSql
+```
+
 ```csharp
 using Testcontainers.MsSql;
 
@@ -487,7 +492,15 @@ public class AuthenticatedEndpointsTests
 
 ### Replace External Services with Mocks
 
+Install Moq before creating mock services:
+
+```bash
+dotnet add package Moq
+```
+
 ```csharp
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 public class ExternalServiceTests
     : IClassFixture<CustomWebApplicationFactory<Program>>
 {
@@ -511,6 +524,7 @@ public class ExternalServiceTests
         {
             builder.ConfigureServices(services =>
             {
+                services.RemoveAll<IPaymentService>();
                 services.AddSingleton(mockPaymentService.Object);
             });
         }).CreateClient();
@@ -530,7 +544,14 @@ public class ExternalServiceTests
 
 ### Using WireMock for HTTP Services
 
+Install WireMock.Net before using the mock HTTP server:
+
+```bash
+dotnet add package WireMock.Net
+```
+
 ```csharp
+using Microsoft.AspNetCore.Mvc.Testing;
 using WireMock.Server;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
@@ -538,7 +559,7 @@ using WireMock.ResponseBuilders;
 public class ExternalApiTests : IAsyncLifetime
 {
     private WireMockServer _mockServer = null!;
-    private CustomWebApplicationFactory<Program> _factory = null!;
+    private WebApplicationFactory<Program> _factory = null!;
     private HttpClient _client = null!;
 
     public Task InitializeAsync()
