@@ -35,14 +35,14 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Define service identity - this appears in all traces/metrics
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'express-api',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'express-api',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development',
 });
 
 // Configure where to send traces (Jaeger, Zipkin, or any OTLP-compatible backend)
@@ -187,7 +187,7 @@ app.post('/orders', async (req, res) => {
 ### Using Context for Span Nesting
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 async function processOrderWithContext(orderData) {
   const tracer = trace.getTracer('order-service');
@@ -324,7 +324,7 @@ app.use((err, req, res, next) => {
 While auto-instrumentation handles basic query tracing, add business context:
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 class TracedRepository {
   constructor(model, tracer) {
