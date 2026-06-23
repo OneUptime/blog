@@ -140,7 +140,7 @@ Create regular backups of etcd data.
 etcdctl snapshot save /backup/etcd-$(date +%Y%m%d-%H%M%S).db
 
 # Verify snapshot
-etcdctl snapshot status /backup/etcd-20240115-100000.db --write-out=table
+etcdutl snapshot status /backup/etcd-20240115-100000.db --write-out=table
 ```
 
 **Automated Backup Script:**
@@ -161,7 +161,7 @@ mkdir -p "$BACKUP_DIR"
 etcdctl snapshot save "$BACKUP_FILE"
 
 # Verify snapshot
-if etcdctl snapshot status "$BACKUP_FILE" > /dev/null 2>&1; then
+if etcdutl snapshot status "$BACKUP_FILE" > /dev/null 2>&1; then
     echo "Backup successful: $BACKUP_FILE"
 
     # Compress backup
@@ -329,9 +329,10 @@ class EtcdMonitor:
         for endpoint in self.endpoints:
             try:
                 url = f"{endpoint}/v3/maintenance/status"
-                resp = requests.post(url, cert=self.cert, verify=self.verify)
+                resp = requests.post(url, json={}, cert=self.cert, verify=self.verify, timeout=5)
                 data = resp.json()
-                if data.get('leader') == data.get('header', {}).get('member_id'):
+                member_id = data.get('header', {}).get('member_id') or data.get('header', {}).get('memberId')
+                if str(data.get('leader')) == str(member_id):
                     return endpoint
             except Exception:
                 continue
@@ -451,7 +452,8 @@ etcdctl snapshot save /backup/emergency-snapshot.db
 systemctl stop etcd
 
 # Edit config to force new cluster
-# Add: --force-new-cluster
+# Add: force-new-cluster: true
+# Or start etcd once with the --force-new-cluster flag
 
 # Start etcd
 systemctl start etcd
@@ -459,8 +461,8 @@ systemctl start etcd
 # Verify
 etcdctl member list
 
-# Remove the flag and restart
-# Remove: --force-new-cluster
+# Remove the setting and restart
+# Remove: force-new-cluster: true
 systemctl restart etcd
 ```
 
