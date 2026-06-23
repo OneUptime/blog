@@ -653,10 +653,11 @@ config:
 Layer values files to build up configuration. Files specified later override earlier ones, allowing base values to be customized per environment.
 
 ```bash
-# Install with base values plus production overrides
+# Install with base values plus production overrides.
+# Order matters: values-production.yaml overrides values.yaml.
 helm install myapp myapp/ \
-  -f values.yaml \                 # Base values
-  -f values-production.yaml \      # Production overrides
+  -f values.yaml \
+  -f values-production.yaml \
   -n production
 ```
 
