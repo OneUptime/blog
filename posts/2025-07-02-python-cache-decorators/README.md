@@ -646,6 +646,7 @@ flowchart TB
 ### Basic Redis Cache Decorator
 
 ```python
+import hashlib
 import json
 import time
 from functools import wraps
@@ -739,8 +740,10 @@ class RedisCacheDecorator:
         """Build a cache key from function name and arguments."""
         # Create deterministic string from args
         args_str = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True)
-        # Use hash to keep key length manageable
-        args_hash = hash(args_str) & 0xFFFFFFFF  # Ensure positive number
+        # Use a stable hash so every process/server generates the same key.
+        # Python's built-in hash() is randomized per process (PYTHONHASHSEED),
+        # which would break a shared cache across servers.
+        args_hash = hashlib.md5(args_str.encode()).hexdigest()
         return f"{self.key_prefix}:{func_name}:{args_hash}"
     
     def _invalidate(
@@ -804,6 +807,7 @@ user = get_user(123)       # Cache miss again
 For async applications using asyncio, here is an async-compatible Redis cache decorator.
 
 ```python
+import hashlib
 import json
 import asyncio
 from functools import wraps
@@ -887,7 +891,9 @@ class AsyncRedisCacheDecorator:
     def _build_key(self, func_name: str, args: tuple, kwargs: dict) -> str:
         """Build cache key from function name and arguments."""
         args_str = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True)
-        args_hash = hash(args_str) & 0xFFFFFFFF
+        # Stable hash so the key is identical across processes/servers
+        # (built-in hash() is randomized per process via PYTHONHASHSEED).
+        args_hash = hashlib.md5(args_str.encode()).hexdigest()
         return f"{self.key_prefix}:{func_name}:{args_hash}"
 
 
