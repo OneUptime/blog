@@ -129,9 +129,11 @@ For richer formatting, use the official action:
       - name: Slack notification
         uses: slackapi/slack-github-action@v2
         with:
-          channel-id: 'C0123456789'
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             {
+              "channel": "C0123456789",
               "text": "Build ${{ job.status }}",
               "blocks": [
                 {
@@ -152,8 +154,6 @@ For richer formatting, use the official action:
                 }
               ]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
 ## Microsoft Teams Notifications
