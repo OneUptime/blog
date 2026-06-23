@@ -340,6 +340,11 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
     touch /var/run/nginx.pid && \
     chown -R nginx:nginx /var/run/nginx.pid
 
+# Allow the non-root nginx binary to bind to privileged port 80
+# Without this, a non-root user cannot listen on ports below 1024
+RUN apk add --no-cache libcap && \
+    setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx
+
 # Security: Run as non-root user
 USER nginx
 
@@ -609,9 +614,11 @@ COPY . .
 RUN npm run build
 
 # Build static file server (using a Go-based server)
+# CGO_ENABLED=0 produces a static binary that runs on the distroless image
 FROM golang:1.21-alpine AS server-build
 WORKDIR /app
-RUN go install github.com/nicholasjackson/static-server@latest
+ENV CGO_ENABLED=0
+RUN go install github.com/eliben/static-server@latest
 
 # Distroless production image
 FROM gcr.io/distroless/static-debian12 AS production
@@ -621,7 +628,9 @@ COPY --from=build /app/build /public
 
 EXPOSE 8080
 
-CMD ["/static-server", "-path=/public", "-port=8080"]
+# Bind to 0.0.0.0 so the server is reachable from outside the container
+# (the directory to serve is passed as the final positional argument)
+CMD ["/static-server", "-host", "0.0.0.0", "-port", "8080", "/public"]
 ```
 
 ## TypeScript React Project
@@ -833,7 +842,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
