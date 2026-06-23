@@ -314,6 +314,8 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(NOTIFICATION_QUEUE)
             .withArgument("x-dead-letter-exchange", DEAD_LETTER_EXCHANGE)
             .withArgument("x-dead-letter-routing-key", "dead-letter")
+            // Enable priority support - required for message priority to take effect
+            .withArgument("x-max-priority", 10)
             .build();
     }
 
@@ -552,7 +554,7 @@ public class MessagePublisher {
             notification,
             message -> {
                 // Set delay header for delayed message plugin
-                message.getMessageProperties().setDelay((int) delayMs);
+                message.getMessageProperties().setDelayLong(delayMs);
                 message.getMessageProperties().setCorrelationId(notification.getCorrelationId());
                 return message;
             }
