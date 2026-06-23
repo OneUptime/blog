@@ -44,7 +44,7 @@ Why teams love it:
 
 - **Simple day-2:** Web UI for snapshots, recurring backups to S3/NFS, and one-click replica rebuilds.
 - **Incremental adoption:** Start with three workers, add more nodes later, no rebalancing rituals.
-- **Edge-friendly:** Works on ARM, handles single-node clusters via RWX support, perfect for retail/branch deployments.
+- **Edge-friendly:** Works on ARM, runs on single-node clusters, and supports RWX volumes (via an internal NFS share-manager), perfect for retail/branch deployments.
 
 Limitations:
 
