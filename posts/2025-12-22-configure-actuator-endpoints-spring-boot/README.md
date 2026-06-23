@@ -33,15 +33,15 @@ implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
 ## Available Actuator Endpoints
 
-| Endpoint | Description | Enabled by Default |
-|----------|-------------|-------------------|
+| Endpoint | Description | Exposed over HTTP by Default |
+|----------|-------------|------------------------------|
 | `/actuator/health` | Application health status | Yes |
-| `/actuator/info` | Application information | Yes |
-| `/actuator/metrics` | Application metrics | Yes |
-| `/actuator/env` | Environment properties | Yes |
-| `/actuator/loggers` | View and modify logger levels | Yes |
-| `/actuator/beans` | All Spring beans | Yes |
-| `/actuator/mappings` | Request mappings | Yes |
+| `/actuator/info` | Application information | No |
+| `/actuator/metrics` | Application metrics | No |
+| `/actuator/env` | Environment properties | No |
+| `/actuator/loggers` | View and modify logger levels | No |
+| `/actuator/beans` | All Spring beans | No |
+| `/actuator/mappings` | Request mappings | No |
 | `/actuator/shutdown` | Graceful shutdown | No |
 
 ---
@@ -276,11 +276,31 @@ management:
 
 ## Configuring Metrics Endpoint
 
+To expose Prometheus-formatted metrics at `/actuator/prometheus`, add the Prometheus registry:
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+```groovy
+// build.gradle
+runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+```
+
 ### Exposing Metrics
 
 ```yaml
 # application.yml
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
   prometheus:
     metrics:
       export:
@@ -384,32 +404,13 @@ public class ActuatorSecurityConfig {
             .securityMatcher("/actuator/**")
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers("/actuator/**").access(
-                    new IpAddressAuthorizationManager("10.0.0.0/8", "192.168.0.0/16")
-                )
+                .requestMatchers("/actuator/**").access(AuthorizationManagers.anyOf(
+                    IpAddressAuthorizationManager.hasIpAddress("10.0.0.0/8"),
+                    IpAddressAuthorizationManager.hasIpAddress("192.168.0.0/16")
+                ))
             );
 
         return http.build();
-    }
-}
-
-class IpAddressAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
-
-    private final List<IpAddressMatcher> allowedNetworks;
-
-    public IpAddressAuthorizationManager(String... networks) {
-        this.allowedNetworks = Arrays.stream(networks)
-            .map(IpAddressMatcher::new)
-            .toList();
-    }
-
-    @Override
-    public AuthorizationDecision check(Supplier<Authentication> authentication,
-            RequestAuthorizationContext context) {
-        String remoteAddress = context.getRequest().getRemoteAddr();
-        boolean allowed = allowedNetworks.stream()
-            .anyMatch(matcher -> matcher.matches(remoteAddress));
-        return new AuthorizationDecision(allowed);
     }
 }
 ```
