@@ -12,7 +12,7 @@ The "Object reference not set to an instance of an object" error, also known as 
 
 ## Understanding NullReferenceException
 
-When you declare a reference type variable in C#, it does not automatically point to an object. Until you assign it a value, it contains `null`. Attempting to access any member of a null reference throws this exception.
+A reference type variable in C# can contain `null` instead of pointing to an object. Fields are initialized to `null` by default, while local variables must be assigned before use. Attempting to access any member of a null reference throws this exception.
 
 ```csharp
 // This will throw NullReferenceException
@@ -88,7 +88,7 @@ public void ProcessOrder(int orderId)
 
 ### 3. Collection Elements
 
-Accessing elements in collections can return null.
+Querying collections with methods such as `FirstOrDefault()` can return null for reference types when there is no matching element.
 
 ```csharp
 // Problem
@@ -141,8 +141,12 @@ Enable nullable reference types to get compiler warnings about potential null re
 
 public class OrderService
 {
-    // Compiler warns if you don't initialize this
     private readonly IOrderRepository _repository;
+
+    public OrderService(IOrderRepository repository)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    }
 
     // The ? indicates this can be null
     public Order? GetOrder(int id)
