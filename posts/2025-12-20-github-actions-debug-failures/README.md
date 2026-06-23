@@ -19,20 +19,15 @@ GitHub Actions provides two levels of debug logging:
 Enable verbose output for all steps:
 
 1. Go to Settings > Secrets and variables > Actions
-2. Add repository variable: `ACTIONS_STEP_DEBUG` = `true`
+2. Add repository variable (or secret): `ACTIONS_STEP_DEBUG` = `true`
 
-Or enable for a single run:
-
-```yaml
-env:
-  ACTIONS_STEP_DEBUG: true
-```
+Note that step debug logging is read from a repository secret or variable, not from a job/workflow `env:` value. To enable it for just one run without changing repository settings, re-run the workflow with debug logging enabled (see the next section).
 
 ### Runner Diagnostic Logging
 
 Get detailed runner-level logs:
 
-1. Add secret: `ACTIONS_RUNNER_DEBUG` = `true`
+1. Add repository secret (or variable): `ACTIONS_RUNNER_DEBUG` = `true`
 
 Re-run the workflow to see enhanced logging.
 
