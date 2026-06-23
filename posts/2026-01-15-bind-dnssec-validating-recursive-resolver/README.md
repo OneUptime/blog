@@ -173,9 +173,6 @@ options {
     // Managed keys directory for RFC 5011 trust anchor updates
     managed-keys-directory "/var/cache/bind/managed-keys";
 
-    // Bind keys file with root trust anchor
-    bindkeys-file "/etc/bind/bind.keys";
-
     // ===========================================
     // Performance and Security Options
     // ===========================================
@@ -232,13 +229,7 @@ options {
     // Disable empty zones for reverse DNS
     empty-zones-enable yes;
 
-    // Use /dev/urandom for randomness
-    random-device "/dev/urandom";
-
-    // Fetch glue records
-    fetch-glue yes;
-
-    // Query source randomization
+    // Disable the alternate source address for zone transfers
     use-alt-transfer-source no;
 
     // Attach cache to views
@@ -691,8 +682,9 @@ sudo rndc dumpdb -cache
 # Show recursing clients
 sudo rndc recursing
 
-# Show DNSSEC validation statistics
-sudo rndc dnssec -status
+# Show DNSSEC signing status for an authoritative zone using dnssec-policy
+# (validation counters for a resolver appear in the statistics dump - see below)
+sudo rndc dnssec -status example.com
 ```
 
 ### Monitoring DNSSEC with Statistics
@@ -822,13 +814,13 @@ dig @8.8.8.8 problematic-domain.com +dnssec
 If the domain's DNSSEC is actually broken, you have options:
 
 ```conf
-// Option 1: Add negative trust anchor (temporarily disable validation)
-// In named.conf
-trust-anchors {
-    "problematic-domain.com" initial-ds 0 0 0 "00";
+// Option 1: Permanently exclude the domain from validation
+// In named.conf.options
+options {
+    validate-except { "problematic-domain.com"; };
 };
 
-// Option 2: Use rndc for temporary NTA
+// Option 2: Use rndc for a temporary NTA (expires after 1 hour by default)
 sudo rndc nta problematic-domain.com
 
 // Check NTA list
@@ -886,9 +878,6 @@ tail -100 /var/log/named/resolver.log
 options {
     // Adjust timeouts
     resolver-query-timeout 10;
-
-    // Reduce retry attempts
-    resolver-retry-interval 2;
 
     // Enable prefetching
     prefetch 2 9;
@@ -1051,7 +1040,6 @@ options {
     // DNSSEC - Core Configuration
     dnssec-validation auto;
     managed-keys-directory "/var/cache/bind/managed-keys";
-    bindkeys-file "/etc/bind/bind.keys";
 
     // Performance
     recursive-clients 10000;
@@ -1098,7 +1086,6 @@ statistics-channels {
 | `dnssec-validation` | `yes` | Enable validation (requires manual trust anchor) |
 | `dnssec-validation` | `no` | Disable DNSSEC validation (not recommended) |
 | `managed-keys-directory` | Path | Directory for RFC 5011 managed trust anchors |
-| `bindkeys-file` | Path | File containing built-in trust anchors |
 | `max-cache-size` | Size | Maximum memory for DNS cache |
 | `max-cache-ttl` | Seconds | Maximum time to cache positive responses |
 | `max-ncache-ttl` | Seconds | Maximum time to cache negative responses |
@@ -1116,7 +1103,7 @@ statistics-channels {
 | `delv @localhost domain` | Detailed DNSSEC validation check |
 | `delv @localhost domain +rtrace` | Trace full DNSSEC chain of trust |
 | `rndc secroots` | Display current trust anchors |
-| `rndc dnssec -status` | Show DNSSEC statistics |
+| `rndc dnssec -status <zone>` | Show DNSSEC signing status for an authoritative zone (dnssec-policy) |
 | `rndc nta domain` | Add negative trust anchor (bypass validation) |
 | `rndc nta -dump` | List all negative trust anchors |
 | `rndc flush` | Clear DNS cache |
