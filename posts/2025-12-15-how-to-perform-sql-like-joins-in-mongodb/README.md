@@ -24,7 +24,7 @@ graph LR
 
 ## Basic $lookup Syntax
 
-The `$lookup` stage joins documents from another collection:
+The `$lookup` stage joins documents from another collection in the same database:
 
 ```javascript
 // Basic $lookup structure
@@ -338,14 +338,14 @@ db.employees.aggregate([
 
 ### Indexing for Joins
 
-Always index the fields used in lookups:
+Index the fields queried on the foreign collection during lookups. For these examples, the joins use `_id` as the foreign field, and MongoDB creates an `_id` index by default:
 
 ```javascript
-// Create indexes on foreign key fields
-db.orders.createIndex({ userId: 1 })
-db.orders.createIndex({ productId: 1 })
-db.users.createIndex({ _id: 1 })  // Usually exists by default
-db.products.createIndex({ _id: 1 })  // Usually exists by default
+// No extra index is needed for these sample joins because
+// users._id and products._id are indexed by default.
+
+// Input collection indexes help when you filter before the lookup
+db.orders.createIndex({ date: 1 })
 ```
 
 ### Limiting Lookup Results
