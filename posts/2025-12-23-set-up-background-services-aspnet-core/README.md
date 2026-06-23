@@ -280,7 +280,7 @@ public abstract class CronBackgroundService : BackgroundService
         TimeZoneInfo timeZone,
         ILogger logger)
     {
-        _cronExpression = CronExpression.Parse(cronExpression);
+        _cronExpression = CronExpression.Parse(cronExpression, CronFormat.IncludeSeconds);
         _timeZone = timeZone;
         _logger = logger;
     }
