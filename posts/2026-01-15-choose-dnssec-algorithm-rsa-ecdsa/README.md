@@ -498,7 +498,7 @@ dnssec-policy "ecdsa256-policy" {
 # Generate ECDSA keys with pdnsutil
 
 pdnsutil secure-zone example.com
-pdnsutil set-nsec3 example.com '1 0 10 auto' narrow
+pdnsutil set-nsec3 example.com '1 0 10 -' narrow
 
 # Or specify algorithm explicitly
 pdnsutil add-zone-key example.com ksk active ecdsap256sha256
