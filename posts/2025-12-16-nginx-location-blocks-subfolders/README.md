@@ -12,34 +12,33 @@ Nginx location blocks are the foundation of request routing. Understanding how t
 
 ## Location Block Basics
 
-Nginx evaluates location blocks in a specific order based on the modifier used:
+Nginx evaluates location blocks by first checking prefix locations, remembering the longest prefix match, and then checking regular expressions unless the best prefix is an exact (`=`) or preferential prefix (`^~`) match:
 
 ```mermaid
 flowchart TD
     A[Incoming Request] --> B{Exact match =}
     B -->|Match| C[Use this location]
-    B -->|No match| D{Preferential prefix ^~}
-    D -->|Match| E[Use longest match]
-    D -->|No match| F{Regex ~ or ~*}
+    B -->|No match| D{Find longest prefix match}
+    D -->|Best prefix uses ^~| E[Use longest prefix match]
+    D -->|Plain prefix remembered| F{Regex ~ or ~*}
+    D -->|No prefix match| J[404 Not Found]
     F -->|Match| G[Use first regex match]
-    F -->|No match| H{Standard prefix}
-    H -->|Match| I[Use longest match]
-    H -->|No match| J[404 Not Found]
+    F -->|No match| H[Use remembered prefix match]
 ```
 
 | Modifier | Type | Evaluation Order |
 |----------|------|------------------|
 | `=` | Exact match | First (highest priority) |
-| `^~` | Preferential prefix | Second |
-| `~` | Case-sensitive regex | Third |
-| `~*` | Case-insensitive regex | Third |
-| (none) | Prefix match | Last |
+| `^~` | Preferential prefix | Used if it is the longest prefix match |
+| `~` | Case-sensitive regex | Checked after prefix matching |
+| `~*` | Case-insensitive regex | Checked after prefix matching |
+| (none) | Prefix match | Longest match is used if no regex matches |
 
 ## Serving Static Files from Subfolders
 
 ### Basic Subfolder Configuration
 
-Serve files from `/var/www/site/docs` at the `/docs` URL path:
+Serve files from `/var/www/documentation` at the `/docs` URL path:
 
 ```nginx
 server {
@@ -86,7 +85,7 @@ location /images/ {
 }
 ```
 
-**Important**: When using `alias`, always include the trailing slash on both the location and alias path to avoid path issues.
+**Important**: For prefix locations that end with a trailing slash, include the trailing slash on both the location and alias path to avoid path issues.
 
 ## Proxying Subfolders to Different Backends
 
@@ -191,9 +190,9 @@ Route different API versions to different backends:
 # Match /api/v1/, /api/v2/, etc.
 location ~ ^/api/v(\d+)/(.*)$ {
     set $api_version $1;
-    set $api_path $2;
 
-    proxy_pass http://api_v$api_version/$api_path$is_args$args;
+    rewrite ^/api/v\d+/(.*)$ /$1 break;
+    proxy_pass http://api_v$api_version;
     proxy_set_header Host $host;
     proxy_set_header X-API-Version $api_version;
 }
@@ -235,7 +234,11 @@ location ~* ^/assets/.*\.(jpg|jpeg|png|gif|ico|css|js)$ {
 Running WordPress at `/blog`:
 
 ```nginx
-location /blog {
+location = /blog {
+    return 301 /blog/;
+}
+
+location /blog/ {
     root /var/www;
     index index.php;
     try_files $uri $uri/ /blog/index.php?$args;
@@ -258,8 +261,12 @@ location /blog {
 Serve static documentation:
 
 ```nginx
-location /docs {
-    alias /var/www/documentation/build;
+location = /docs {
+    return 301 /docs/;
+}
+
+location /docs/ {
+    alias /var/www/documentation/build/;
     index index.html;
 
     # Support clean URLs
@@ -392,6 +399,16 @@ error_log /var/log/nginx/error.log debug;
 ## Complete Production Example
 
 ```nginx
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+upstream api_backend {
+    server 127.0.0.1:4000;
+}
+
+upstream admin_backend {
+    server 127.0.0.1:5000;
+}
+
 server {
     listen 80;
     listen 443 ssl;
@@ -456,7 +473,7 @@ server {
 
 Configuring Nginx location blocks for subfolders requires understanding:
 
-1. **Matching precedence** - Exact > Preferential prefix > Regex > Standard prefix
+1. **Matching precedence** - Exact matches stop immediately, `^~` skips regex when it is the longest prefix, regex can override plain prefixes, and otherwise the longest prefix wins
 2. **root vs alias** - `root` appends path, `alias` replaces it
 3. **Trailing slashes** - Consistency prevents routing issues
 4. **Nested locations** - Enable fine-grained control within paths
