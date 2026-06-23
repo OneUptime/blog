@@ -21,7 +21,7 @@ Before we dive into the installation, let us understand how Istio components wor
 ```mermaid
 graph TB
     subgraph "Control Plane"
-        istiod["istiod<br/>(Pilot + Citadel + Galley)"]
+        istiod["istiod<br/>(Discovery + Configuration + CA)"]
     end
 
     subgraph "Data Plane"
@@ -63,7 +63,7 @@ The architecture consists of two main components:
 
 Before installing Istio, ensure you have the following prerequisites in place:
 
-- A running Kubernetes cluster (version 1.25 or later recommended)
+- A running Kubernetes cluster on a Kubernetes version supported by your Istio release (for Istio 1.30, Kubernetes 1.32 through 1.36 are supported)
 - kubectl configured to communicate with your cluster
 - Cluster admin permissions
 - At least 4 CPU cores and 8GB of memory available in your cluster
@@ -81,9 +81,9 @@ kubectl cluster-info
 Verify you have the required Kubernetes version:
 
 ```bash
-# Istio requires Kubernetes 1.25 or later
+# Verify that your cluster version is supported by your Istio release
 # This command displays the client and server versions
-kubectl version --short
+kubectl version
 ```
 
 ## Installing istioctl
@@ -106,7 +106,7 @@ After downloading, add istioctl to your PATH:
 ```bash
 # Move into the downloaded Istio directory
 # The directory name includes the version number
-cd istio-1.24.0
+cd istio-1.30.1
 
 # Add istioctl to your PATH for the current session
 # This allows you to run istioctl from any directory
@@ -118,7 +118,7 @@ To make this permanent, add the export line to your shell configuration:
 ```bash
 # For bash users, add to ~/.bashrc
 # For zsh users, add to ~/.zshrc
-echo 'export PATH="$HOME/istio-1.24.0/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="$HOME/istio-1.30.1/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -129,7 +129,7 @@ If you need a specific version of Istio:
 ```bash
 # Set the desired Istio version
 # Check https://github.com/istio/istio/releases for available versions
-ISTIO_VERSION=1.24.0
+ISTIO_VERSION=1.30.1
 
 # Download the specific version
 # The ISTIO_VERSION environment variable tells the script
@@ -147,17 +147,16 @@ For macOS users, Homebrew provides a convenient installation method:
 brew install istioctl
 ```
 
-### Method 4: Install via Package Managers (Linux)
+### Method 4: Install the Standalone istioctl Binary
 
-For Linux distributions, you can use the appropriate package manager:
+If you only need the istioctl binary and do not need the full Istio release archive:
 
 ```bash
-# For Debian/Ubuntu systems using apt
-# First, add the Istio repository
+# Download and install the standalone istioctl binary
 curl -sL https://istio.io/downloadIstioctl | sh -
 
-# For systems with snap support
-sudo snap install istioctl --classic
+# Add the standalone istioctl binary to your PATH
+export PATH=$HOME/.istioctl/bin:$PATH
 ```
 
 ### Verify istioctl Installation
@@ -180,7 +179,9 @@ graph LR
         default["default<br/>(Production)"]
         demo["demo<br/>(Learning)"]
         minimal["minimal<br/>(Reduced)"]
+        remote["remote<br/>(External Control Plane)"]
         empty["empty<br/>(Custom)"]
+        preview["preview<br/>(Experimental)"]
         ambient["ambient<br/>(No Sidecar)"]
     end
 
@@ -200,9 +201,15 @@ graph LR
 
     minimal --> istiod_comp
 
+    remote -.->|"External control plane"| istiod_comp
+
     empty -.->|"None by default"| istiod_comp
 
+    preview --> istiod_comp
+    preview --> ingress
+
     ambient --> istiod_comp
+    ambient --> cni["CNI"]
     ambient --> ztunnel
 ```
 
@@ -213,8 +220,10 @@ graph LR
 | **default** | Standard production installation with istiod and ingress gateway | Production environments |
 | **demo** | Full installation with all components for evaluation | Learning, demonstrations, testing |
 | **minimal** | Only istiod, no gateways | When using custom gateways or for control plane only |
+| **remote** | Remote cluster configuration for an external control plane | Multicluster meshes with remote clusters |
 | **empty** | Nothing installed by default | Fully custom installations |
-| **ambient** | Ambient mesh mode without sidecars | New mesh architecture (experimental) |
+| **preview** | Experimental features enabled | Exploring upcoming features only |
+| **ambient** | Ambient mesh mode without sidecars | Getting started with ambient mode |
 
 View available profiles and their differences:
 
@@ -345,7 +354,9 @@ spec:
             - type: Resource
               resource:
                 name: cpu
-                targetAverageUtilization: 80
+                target:
+                  type: Utilization
+                  averageUtilization: 80
 
     # Ingress gateway settings
     ingressGateways:
@@ -480,7 +491,7 @@ sequenceDiagram
     Webhook->>K8s API: Modified Pod spec
     K8s API->>Pod: Create Pod with sidecar
 
-    Note over Pod: Pod now has:<br/>1. Application container<br/>2. Envoy sidecar<br/>3. Init container
+    Note over Pod: Pod now has:<br/>1. Application container<br/>2. Envoy sidecar<br/>3. Optional init container
 ```
 
 ### Enable Automatic Injection for a Namespace
@@ -539,7 +550,7 @@ kubectl label namespace default istio-injection=disabled --overwrite
 
 ### Pod-Level Injection Control
 
-You can control injection at the pod level using annotations:
+You can control injection at the pod level using labels:
 
 ```yaml
 # Example pod manifest with injection enabled
@@ -547,7 +558,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: my-app
-  annotations:
+  labels:
     # Explicitly enable sidecar injection for this pod
     # Overrides namespace-level settings
     sidecar.istio.io/inject: "true"
@@ -565,7 +576,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: my-app-no-sidecar
-  annotations:
+  labels:
     # Disable sidecar injection for this specific pod
     # Useful for pods that should not be in the mesh
     sidecar.istio.io/inject: "false"
@@ -582,7 +593,7 @@ Let us deploy a sample application to verify the mesh is working:
 ```bash
 # Deploy the Bookinfo sample application
 # This is a multi-service application included with Istio
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Wait for the pods to be ready:
@@ -600,7 +611,7 @@ Verify the application is working:
 
 ```bash
 # Test the application from within the cluster
-# This command runs curl inside a temporary pod
+# This command runs curl inside the ratings pod
 kubectl exec "$(kubectl get pod -l app=ratings -o jsonpath='{.items[0].metadata.name}')" \
   -c ratings -- curl -sS productpage:9080/productpage | head -20
 ```
@@ -708,16 +719,16 @@ Istio integrates with several observability tools. Let us install the common add
 
 ```bash
 # Install Prometheus for metrics collection
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 
 # Install Grafana for metrics visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 
 # Install Jaeger for distributed tracing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 
 # Install Kiali for service mesh visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Wait for the add-ons to be ready:
@@ -844,6 +855,12 @@ istioctl manifest generate --set profile=default | grep -A10 resources
 If you need to remove Istio from your cluster:
 
 ```bash
+# Remove sample add-ons if you installed them
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
+
 # Uninstall Istio and all its components
 # This removes the control plane and data plane components
 istioctl uninstall --purge -y
