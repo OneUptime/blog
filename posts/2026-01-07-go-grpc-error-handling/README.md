@@ -51,14 +51,13 @@ Here is a reference table showing all gRPC status codes, their numeric values, a
 
 ### When to Use Each Status Code
 
-The following code demonstrates importing the gRPC status and codes packages that form the foundation of error handling:
+The following code demonstrates importing the gRPC codes package that forms the foundation of status-based error handling:
 
 ```go
 package main
 
 import (
     "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
 )
 
 // StatusCodeGuidelines provides guidance on when to use each code
@@ -108,7 +107,6 @@ package service
 
 import (
     "context"
-    "fmt"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -212,7 +210,6 @@ import (
     "context"
     "database/sql"
     "errors"
-    "fmt"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -279,10 +276,6 @@ Google provides several standard error detail types that you can use to enrich y
 
 ```go
 package errortypes
-
-import (
-    "google.golang.org/genproto/googleapis/rpc/errdetails"
-)
 
 // StandardErrorDetails shows the available error detail types
 // These are the most commonly used detail types from errdetails package:
@@ -501,7 +494,7 @@ func getClientID(ctx context.Context) string {
 }
 ```
 
-Resource Information with ResourceInfo
+### Resource Information with ResourceInfo
 
 When an operation fails due to a specific resource, provide detailed resource information:
 
@@ -606,17 +599,20 @@ package errors
 
 import (
     "fmt"
+    "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/protoadapt"
+    "google.golang.org/protobuf/types/known/durationpb"
 )
 
 // DomainError represents a domain-specific error
 type DomainError struct {
     Code        codes.Code
     Message     string
-    Details     []interface{}
+    Details     []protoadapt.MessageV1
     Cause       error
 }
 
@@ -638,19 +634,9 @@ func (e *DomainError) ToGRPCError() error {
     st := status.New(e.Code, e.Message)
 
     if len(e.Details) > 0 {
-        // Convert details to proto messages
-        protoDetails := make([]interface{}, 0, len(e.Details))
-        for _, d := range e.Details {
-            if pd, ok := d.(interface{ ProtoReflect() }); ok {
-                protoDetails = append(protoDetails, pd)
-            }
-        }
-
-        if len(protoDetails) > 0 {
-            stWithDetails, err := st.WithDetails(protoDetails...)
-            if err == nil {
-                return stWithDetails.Err()
-            }
+        stWithDetails, err := st.WithDetails(e.Details...)
+        if err == nil {
+            return stWithDetails.Err()
         }
     }
 
@@ -664,7 +650,7 @@ func NewNotFoundError(resourceType, resourceName string) *DomainError {
     return &DomainError{
         Code:    codes.NotFound,
         Message: fmt.Sprintf("%s %q not found", resourceType, resourceName),
-        Details: []interface{}{
+        Details: []protoadapt.MessageV1{
             &errdetails.ResourceInfo{
                 ResourceType: resourceType,
                 ResourceName: resourceName,
@@ -686,7 +672,7 @@ func NewValidationError(violations map[string]string) *DomainError {
     return &DomainError{
         Code:    codes.InvalidArgument,
         Message: "validation failed",
-        Details: []interface{}{
+        Details: []protoadapt.MessageV1{
             &errdetails.BadRequest{
                 FieldViolations: fieldViolations,
             },
@@ -707,17 +693,13 @@ func NewRateLimitError(retryAfter time.Duration) *DomainError {
     return &DomainError{
         Code:    codes.ResourceExhausted,
         Message: "rate limit exceeded",
-        Details: []interface{}{
+        Details: []protoadapt.MessageV1{
             &errdetails.RetryInfo{
                 RetryDelay: durationpb.New(retryAfter),
             },
         },
     }
 }
-
-// Missing import for time
-import "time"
-import "google.golang.org/protobuf/types/known/durationpb"
 ```
 
 ### Error Registry Pattern
@@ -832,9 +814,9 @@ package client
 
 import (
     "context"
+    "fmt"
     "log"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -891,8 +873,6 @@ var (
     ErrPermissionDenied   = fmt.Errorf("permission denied")
     ErrServiceUnavailable = fmt.Errorf("service unavailable")
 )
-
-import "fmt"
 ```
 
 ### Extracting Error Details
@@ -905,10 +885,10 @@ package client
 import (
     "context"
     "fmt"
+    "log"
     "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
-    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
     pb "myapp/proto/user"
@@ -1004,8 +984,6 @@ func (c *UserClient) handleError(err error) error {
     // Return a generic error if no specific details
     return fmt.Errorf("gRPC error [%s]: %s", st.Code(), st.Message())
 }
-
-import "log"
 ```
 
 ### Retry Logic Based on Error Details
@@ -1017,12 +995,14 @@ package client
 
 import (
     "context"
+    "fmt"
     "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+
+    pb "myapp/proto/user"
 )
 
 // RetryConfig configures retry behavior
@@ -1130,9 +1110,6 @@ func (c *UserClient) GetUserWithRetry(ctx context.Context, userID string) (*pb.U
         return c.client.GetUser(ctx, &pb.GetUserRequest{UserId: userID})
     })
 }
-
-import "fmt"
-import pb "myapp/proto/user"
 ```
 
 ## Error Mapping to HTTP (grpc-gateway)
@@ -1177,6 +1154,7 @@ package gateway
 import (
     "context"
     "encoding/json"
+    "fmt"
     "net/http"
 
     "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -1278,7 +1256,7 @@ func grpcToHTTPStatus(code codes.Code) int {
     case codes.ResourceExhausted:
         return http.StatusTooManyRequests
     case codes.FailedPrecondition:
-        return http.StatusPreconditionFailed
+        return http.StatusBadRequest
     case codes.Aborted:
         return http.StatusConflict
     case codes.OutOfRange:
@@ -1297,8 +1275,6 @@ func grpcToHTTPStatus(code codes.Code) int {
         return http.StatusInternalServerError
     }
 }
-
-import "fmt"
 ```
 
 ### Setting Up grpc-gateway with Custom Error Handler
@@ -1443,8 +1419,10 @@ Prevent leaking sensitive information in error messages:
 package errors
 
 import (
+    "context"
     "strings"
 
+    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
@@ -1497,11 +1475,6 @@ func SanitizingInterceptor(
     }
     return resp, nil
 }
-
-import (
-    "context"
-    "google.golang.org/grpc"
-)
 ```
 
 ## Testing Error Handling
@@ -1641,7 +1614,7 @@ func bufDialer(context.Context, string) (net.Conn, error) {
 
 func TestIntegration_ErrorHandling(t *testing.T) {
     ctx := context.Background()
-    conn, err := grpc.NewClient("passthrough://bufnet",
+    conn, err := grpc.NewClient("passthrough:///bufnet",
         grpc.WithContextDialer(bufDialer),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
