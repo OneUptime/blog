@@ -49,21 +49,27 @@ export GITHUB_TOKEN=<your-token>
 export GITHUB_USER=<your-username>
 
 # Bootstrap creates the repo (if needed), installs Flux, and configures self-management
+# --owner: GitHub username or organization
+# --repository: repository name for Flux configs
+# --branch: branch to use for GitOps
+# --path: path within repo for this cluster
+# --personal: use a personal account (omit for an organization)
 flux bootstrap github \
-  --owner=$GITHUB_USER \           # GitHub username or organization
-  --repository=fleet-infra \       # Repository name for Flux configs
-  --branch=main \                  # Branch to use for GitOps
-  --path=./clusters/production \   # Path within repo for this cluster
-  --personal                       # Use personal account (not org)
+  --owner=$GITHUB_USER \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=./clusters/production \
+  --personal
 
 # Bootstrap with GitLab (alternative)
 export GITLAB_TOKEN=<your-token>
 
+# --owner here is the GitLab group or username
 flux bootstrap gitlab \
-  --owner=myorg \                  # GitLab group or username
-  --repository=fleet-infra \       # Repository name
-  --branch=main \                  # Target branch
-  --path=./clusters/production     # Cluster-specific path
+  --owner=myorg \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=./clusters/production
 ```
 
 This creates:
@@ -313,12 +319,12 @@ Or for latest tag based on timestamp extraction:
 
 ```yaml
 spec:
+  filterTags:                      # Filter/extract runs before policy ordering
+    pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)'  # Match main branch builds
+    extract: '$ts'                 # Extract timestamp for ordering
   policy:
     alphabetical:
       order: asc                   # Sort alphabetically ascending
-    filterTags:
-      pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)'  # Match main branch builds
-      extract: '$ts'               # Extract timestamp for ordering
 ```
 
 ### Create ImageUpdateAutomation
@@ -509,7 +515,7 @@ subjects:
 Notifications keep your team informed about deployment events. The Alert resource filters events by severity and source, sending them to configured providers like Slack.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -520,7 +526,7 @@ spec:
   secretRef:
     name: slack-webhook            # Secret containing webhook URL
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -541,7 +547,7 @@ spec:
 GitHub commit status integration shows deployment status directly on commits and pull requests. This provides visibility into whether changes have been successfully deployed.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github
@@ -552,7 +558,7 @@ spec:
   secretRef:
     name: github-token             # Secret with GitHub token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status
@@ -587,7 +593,7 @@ spec:
 
 ### Grafana Dashboard
 
-Import dashboard ID: `16714` (Flux Cluster Stats)
+Import dashboard ID: `16714` (Flux2)
 
 ### Key Metrics
 
