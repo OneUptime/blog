@@ -20,7 +20,7 @@ flowchart TD
     A --> E[must_not]
 
     B --> B1["AND - affects score"]
-    C --> C1["AND - no score, cached"]
+    C --> C1["AND - no score, cacheable"]
     D --> D1["OR - affects score"]
     E --> E1["NOT - excludes"]
 ```
@@ -408,7 +408,7 @@ GET /products/_search
 }
 ```
 
-Filter clauses are cached and faster for repeated queries.
+Filter clauses are considered for caching and can be faster for repeated queries.
 
 ## Debugging Bool Queries
 
@@ -438,7 +438,7 @@ GET /products/_explain/1
 ## Best Practices
 
 1. **Use terms for same-field OR** - More efficient than nested should
-2. **Put filters in filter clause** - Enable caching for repeated queries
+2. **Put filters in filter clause** - Make repeated filter queries eligible for caching
 3. **Set minimum_should_match explicitly** - Avoid unexpected behavior
 4. **Nest bool for complex logic** - Keep queries readable and maintainable
 5. **Test with explain API** - Verify query behavior before production
