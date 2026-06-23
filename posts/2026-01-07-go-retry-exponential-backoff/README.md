@@ -95,7 +95,6 @@ package main
 
 import (
     "log"
-    "net/http"
     "time"
 
     "github.com/hashicorp/go-retryablehttp"
@@ -266,7 +265,6 @@ package main
 import (
     "io"
     "log"
-    "net/http"
     "time"
 
     "github.com/hashicorp/go-retryablehttp"
@@ -893,8 +891,6 @@ func RetryWithJitter(
 }
 
 func main() {
-    ctx := context.Background()
-
     // Compare different jitter strategies
     strategies := []JitterStrategy{NoJitter, FullJitter, EqualJitter, DecorrelatedJitter}
     names := []string{"No Jitter", "Full Jitter", "Equal Jitter", "Decorrelated Jitter"}
@@ -924,7 +920,7 @@ A circuit breaker has three states:
 
 ### Implementing a Circuit Breaker
 
-Here is a production-ready circuit breaker implementation:
+Here is a simple circuit breaker implementation:
 
 ```go
 package main
@@ -932,8 +928,6 @@ package main
 import (
     "context"
     "errors"
-    "fmt"
-    "log"
     "sync"
     "time"
 )
@@ -1386,5 +1380,5 @@ By following these patterns and practices, your Go applications will gracefully 
 
 - [HashiCorp go-retryablehttp GitHub Repository](https://github.com/hashicorp/go-retryablehttp)
 - [AWS Architecture Blog: Exponential Backoff and Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
-- [Microsoft Azure: Retry Pattern](https://docs.microsoft.com/en-us/azure/architecture/patterns/retry)
+- [Microsoft Azure: Retry Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/retry)
 - [Circuit Breaker Pattern](https://martinfowler.com/bliki/CircuitBreaker.html)
