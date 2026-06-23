@@ -718,7 +718,7 @@ export const userResolvers = {
 
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET!,
         { expiresIn: '7d' }
       );
@@ -755,7 +755,7 @@ export const userResolvers = {
 
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET!,
         { expiresIn: '7d' }
       );
@@ -1135,7 +1135,7 @@ import jwt from 'jsonwebtoken';
 import { GraphQLError } from 'graphql';
 
 interface JwtPayload {
-  userId: string;
+  id: string;
   email: string;
   role: string;
 }
