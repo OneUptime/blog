@@ -70,12 +70,12 @@ The MCP server provides **complete access** to OneUptime's functionality through
 
 ```text
 AI Tools Available:
-- oneuptime_create_monitor
-- oneuptime_list_monitors
-- oneuptime_get_monitor
-- oneuptime_update_monitor
-- oneuptime_delete_monitor
-- oneuptime_count_monitors
+- oneuptime_createMonitor
+- oneuptime_listMonitors
+- oneuptime_getMonitor
+- oneuptime_updateMonitor
+- oneuptime_deleteMonitor
+- oneuptime_countMonitors
 ```
 
 ### **🚨 Incident Management**
@@ -238,15 +238,16 @@ ONEUPTIME_URL=https://oneuptime.com  # Optional
 ### **Integration with AI Assistants**
 The MCP server works with any MCP-compatible AI assistant:
 
-```bash
-# For Claude Desktop
+Add the following to your `claude_desktop_config.json` (`ONEUPTIME_URL` is optional and defaults to `https://oneuptime.com`):
+
+```json
 {
   "mcpServers": {
     "oneuptime": {
         "command": "oneuptime-mcp",
         "env": {
           "ONEUPTIME_API_KEY": "oneuptime-api-key",
-          "ONEUPTIME_URL": "https://oneuptime.com"  # Optional
+          "ONEUPTIME_URL": "https://oneuptime.com"
         }
     }
   }
