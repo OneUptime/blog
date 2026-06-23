@@ -200,15 +200,8 @@ public class RedisConfig {
         template.setHashKeySerializer(new StringRedisSerializer());
 
         // Value serializer (JSON)
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.activateDefaultTyping(
-            mapper.getPolymorphicTypeValidator(),
-            ObjectMapper.DefaultTyping.NON_FINAL
-        );
-
-        Jackson2JsonRedisSerializer<Object> jsonSerializer =
-            new Jackson2JsonRedisSerializer<>(mapper, Object.class);
+        GenericJacksonJsonRedisSerializer jsonSerializer =
+            GenericJacksonJsonRedisSerializer.builder().build();
 
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
@@ -324,8 +317,8 @@ public class MessageQueueService {
         return (Message) redisTemplate.opsForList().leftPop(QUEUE_KEY);
     }
 
-    public Message blockingPop(long timeout, TimeUnit unit) {
-        return (Message) redisTemplate.opsForList().leftPop(QUEUE_KEY, timeout, unit);
+    public Message blockingPop(Duration timeout) {
+        return (Message) redisTemplate.opsForList().leftPop(QUEUE_KEY, timeout);
     }
 
     public List<Object> getRecentMessages(int count) {
@@ -346,6 +339,10 @@ public class MessageQueueService {
 public class TagService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+
+    public TagService(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     public void addTags(String articleId, String... tags) {
         String key = "article:" + articleId + ":tags";
@@ -373,6 +370,10 @@ public class LeaderboardService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private static final String LEADERBOARD_KEY = "game:leaderboard";
+
+    public LeaderboardService(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     public void addScore(String playerId, double score) {
         redisTemplate.opsForZSet().add(LEADERBOARD_KEY, playerId, score);
@@ -413,6 +414,7 @@ public class UserEntity {
     @Indexed
     private String email;
 
+    @Indexed
     private String name;
     private LocalDateTime createdAt;
 
@@ -428,6 +430,10 @@ public interface UserRedisRepository extends CrudRepository<UserEntity, String> 
 public class UserService {
 
     private final UserRedisRepository repository;
+
+    public UserService(UserRedisRepository repository) {
+        this.repository = repository;
+    }
 
     public UserEntity save(UserEntity user) {
         return repository.save(user);
@@ -450,8 +456,8 @@ public class UserService {
 ```xml
 <!-- pom.xml -->
 <dependency>
-    <groupId>org.springframework.session</groupId>
-    <artifactId>spring-session-data-redis</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-session-data-redis</artifactId>
 </dependency>
 ```
 
@@ -462,7 +468,7 @@ public class SessionConfig {
 
     @Bean
     public RedisSerializer<Object> springSessionDefaultRedisSerializer() {
-        return new GenericJackson2JsonRedisSerializer();
+        return GenericJacksonJsonRedisSerializer.builder().build();
     }
 }
 ```
@@ -517,6 +523,10 @@ public class MessagePublisher {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    public MessagePublisher(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
     public void publish(String channel, Object message) {
         redisTemplate.convertAndSend(channel, message);
     }
@@ -545,12 +555,22 @@ public class RedisHealthCheck {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    public RedisHealthCheck(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
     public boolean isHealthy() {
+        RedisConnection connection = null;
         try {
-            redisTemplate.getConnectionFactory().getConnection().ping();
+            connection = redisTemplate.getConnectionFactory().getConnection();
+            connection.ping();
             return true;
         } catch (Exception e) {
             return false;
+        } finally {
+            if (connection != null) {
+                connection.close();
+            }
         }
     }
 }
