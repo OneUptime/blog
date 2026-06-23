@@ -216,13 +216,25 @@ import (
 
 // UserRepository is the PostgreSQL implementation of repository.UserRepository.
 type UserRepository struct {
-    db *sql.DB
+    db dbExecutor
+}
+
+// dbExecutor is implemented by both *sql.DB and *sql.Tx.
+type dbExecutor interface {
+    ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+    QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+    QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // NewUserRepository creates a new PostgreSQL user repository.
 // It takes a database connection pool as a dependency.
 func NewUserRepository(db *sql.DB) *UserRepository {
     return &UserRepository{db: db}
+}
+
+// NewUserRepositoryTx creates a PostgreSQL user repository bound to a transaction.
+func NewUserRepositoryTx(tx *sql.Tx) *UserRepository {
+    return &UserRepository{db: tx}
 }
 
 // Ensure UserRepository implements the UserRepository interface at compile time.
@@ -984,6 +996,8 @@ import (
     "sync"
     "time"
 
+    "github.com/google/uuid"
+
     "myapp/internal/domain"
     "myapp/internal/repository"
 )
@@ -1006,6 +1020,11 @@ func NewMockUserRepository() *MockUserRepository {
 func (m *MockUserRepository) Create(ctx context.Context, user *domain.User) error {
     m.mu.Lock()
     defer m.mu.Unlock()
+
+    if user.ID == "" {
+        user.ID = uuid.New().String()
+    }
+    user.UpdateTimestamps(true)
 
     // Check for duplicate email
     for _, u := range m.users {
@@ -1056,6 +1075,8 @@ func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) erro
     if _, exists := m.users[user.ID]; !exists {
         return repository.ErrNotFound
     }
+
+    user.UpdateTimestamps(false)
 
     clone := *user
     m.users[user.ID] = &clone
@@ -1361,7 +1382,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 Here are key best practices when implementing the repository pattern in Go:
 
-1. **Define interfaces in the consumer package**: Place repository interfaces where they are used, not where they are implemented.
+1. **Define interfaces at the consumer boundary**: In small applications, place repository interfaces where they are used; in larger applications with multiple consumers, a shared repository package can be acceptable.
 
 2. **Return domain objects, not database models**: Repositories should translate between storage format and domain entities.
 
