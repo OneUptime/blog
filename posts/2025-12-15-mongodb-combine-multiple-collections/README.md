@@ -17,15 +17,15 @@ The `$lookup` stage performs a left outer join between two collections, similar 
 ```javascript
 // Orders collection
 {
-  _id: ObjectId("order1"),
-  customerId: ObjectId("cust1"),
+  _id: ObjectId("64b64c9f4f1a2b3c4d5e6f01"),
+  customerId: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
   items: ["Widget", "Gadget"],
   total: 150.00
 }
 
 // Customers collection
 {
-  _id: ObjectId("cust1"),
+  _id: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
   name: "John Doe",
   email: "john@example.com"
 }
@@ -44,12 +44,12 @@ db.orders.aggregate([
 
 // Result:
 {
-  _id: ObjectId("order1"),
-  customerId: ObjectId("cust1"),
+  _id: ObjectId("64b64c9f4f1a2b3c4d5e6f01"),
+  customerId: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
   items: ["Widget", "Gadget"],
   total: 150.00,
   customer: [{
-    _id: ObjectId("cust1"),
+    _id: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
     name: "John Doe",
     email: "john@example.com"
   }]
@@ -103,11 +103,11 @@ db.orders.aggregate([
 
 // Result - customer is now an object, not array:
 {
-  _id: ObjectId("order1"),
-  customerId: ObjectId("cust1"),
+  _id: ObjectId("64b64c9f4f1a2b3c4d5e6f01"),
+  customerId: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
   total: 150.00,
   customer: {
-    _id: ObjectId("cust1"),
+    _id: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
     name: "John Doe"
   }
 }
@@ -310,7 +310,7 @@ For tree structures, use `$graphLookup` for recursive joins.
 ```javascript
 // Find all reports (direct and indirect) for a manager
 db.employees.aggregate([
-  { $match: { _id: ObjectId("manager1") } },
+  { $match: { _id: ObjectId("64b64c9f4f1a2b3c4d5e6f03") } },
   {
     $graphLookup: {
       from: "employees",
@@ -360,11 +360,10 @@ flowchart TD
 
 ```javascript
 // Index the foreign field for faster lookups
-db.customers.createIndex({ _id: 1 });  // Usually exists
-db.orders.createIndex({ customerId: 1 });  // Add this!
+db.customers.createIndex({ _id: 1 });  // Created automatically
 
-// For pipeline lookups with complex conditions
-db.products.createIndex({ categoryId: 1, stock: 1 });
+// For pipeline lookups, index fields used by the foreign collection pipeline
+db.posts.createIndex({ authorId: 1, createdAt: -1 });
 ```
 
 ### Limit Before Lookup
@@ -426,9 +425,11 @@ db.users.aggregate([
 ### Pattern 1: E-commerce Order Details
 
 ```javascript
+const { ObjectId } = require('mongodb');
+
 async function getOrderDetails(orderId) {
   const result = await db.collection('orders').aggregate([
-    { $match: { _id: ObjectId(orderId) } },
+    { $match: { _id: new ObjectId(orderId) } },
 
     // Get customer info
     {
@@ -551,13 +552,13 @@ Sometimes, embedding data is better than joining at query time.
 // Instead of joining every time...
 // Embed frequently accessed data
 {
-  _id: ObjectId("order1"),
-  customerId: ObjectId("cust1"),
+  _id: ObjectId("64b64c9f4f1a2b3c4d5e6f01"),
+  customerId: ObjectId("64b64c9f4f1a2b3c4d5e6f02"),
   customerName: "John Doe",           // Denormalized
   customerEmail: "john@example.com",  // Denormalized
   items: [
     {
-      productId: ObjectId("prod1"),
+      productId: ObjectId("64b64c9f4f1a2b3c4d5e6f04"),
       productName: "Widget",          // Denormalized
       price: 29.99                    // Denormalized at order time
     }
