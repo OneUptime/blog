@@ -22,6 +22,8 @@ Error: Error building ARM Config: Error creating Azure client:
 Authenticating using the Azure CLI is only supported as a User (not a Service Principal).
 ```
 
+The service principal error applies to older AzureRM provider versions. AzureRM v3.44 and later support Azure CLI authentication when the CLI is logged in as a user, service principal, or managed identity, but CI/CD pipelines should still prefer the provider's native service principal, OIDC, or managed identity authentication methods.
+
 ## Diagnostic Flowchart
 
 ```mermaid
@@ -47,7 +49,7 @@ First, ensure Azure CLI is installed:
 az version
 
 # Install on macOS
-brew install azure-cli
+brew update && brew install azure-cli
 
 # Install on Ubuntu/Debian
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
@@ -178,9 +180,8 @@ Corrupted cache can cause issues:
 # Clear Azure CLI cache
 az account clear
 
-# Remove cached credentials
-rm -rf ~/.azure/accessTokens.json
-rm -rf ~/.azure/azureProfile.json
+# If the CLI profile is still corrupted, move the Azure CLI config directory aside
+mv ~/.azure ~/.azure.backup.$(date +%s)
 
 # Login again
 az login
@@ -203,7 +204,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -218,15 +219,15 @@ provider "azurerm" {
 
 ## Fix 9: Handle Managed Identity
 
-For Azure VMs or App Services using Managed Identity:
+For Azure VMs or other supported Azure hosts using Managed Identity:
 
 ```hcl
 provider "azurerm" {
   features {}
 
-  # For AzureRM v3.x, use_msi is supported but deprecated.
-  # The provider auto-detects managed identity in supported environments.
+  # Enable managed identity authentication.
   # You can also set ARM_USE_MSI=true as an environment variable.
+  use_msi = true
 
   # For user-assigned managed identity, specify the client_id:
   # client_id = "managed-identity-client-id"
@@ -328,8 +329,8 @@ export HTTP_PROXY="http://proxy.example.com:8080"
 export HTTPS_PROXY="http://proxy.example.com:8080"
 export NO_PROXY="localhost,127.0.0.1,169.254.169.254"
 
-# For Azure CLI specifically
-az config set core.use_command_extensions=true
+# If your proxy intercepts TLS, point Azure CLI/Python requests at the trusted CA bundle
+export REQUESTS_CA_BUNDLE="/path/to/corporate-ca-bundle.pem"
 ```
 
 ## Complete Working Configuration
@@ -343,7 +344,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 
