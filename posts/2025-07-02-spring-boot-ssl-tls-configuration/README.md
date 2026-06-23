@@ -28,9 +28,9 @@ sequenceDiagram
     Client->>Server: ClientHello (supported ciphers, TLS version)
     Server->>Client: ServerHello (chosen cipher, TLS version)
     Server->>Client: Server Certificate
-    Client->>CA: Verify Certificate
-    CA->>Client: Certificate Valid
-    Client->>Server: Key Exchange (encrypted with server public key)
+    Note over Client,CA: Client validates the certificate locally against trusted CA certificates (no live call to the CA)
+    Client->>Client: Verify certificate chain & signature
+    Client->>Server: Key Exchange (ECDHE key agreement)
     Server->>Client: Finished
     Client->>Server: Finished
     Note over Client,Server: Encrypted Communication Begins
