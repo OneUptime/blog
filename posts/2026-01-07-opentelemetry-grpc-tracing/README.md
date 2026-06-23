@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTelemetry, gRPC, Tracing, Microservice, Observability, Performance
 
-Description: Learn how to add comprehensive tracing to gRPC services using OpenTelemetry interceptors.
+Description: Learn how to add comprehensive tracing to gRPC services using OpenTelemetry gRPC instrumentation.
 
 ---
 
@@ -40,7 +40,7 @@ sequenceDiagram
     ClientInterceptor-->>Client: Return result
 ```
 
-The diagram above illustrates how trace context flows through gRPC interceptors. The client interceptor creates a span and injects trace context into gRPC metadata, while the server interceptor extracts this context to create a child span.
+The diagram above illustrates how trace context flows through gRPC instrumentation. The client instrumentation creates a span and injects trace context into gRPC metadata, while the server instrumentation extracts this context to create a child span.
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ go get go.opentelemetry.io/otel/exporters/otlp/otlptrace
 go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 
 # Install gRPC and the OpenTelemetry gRPC instrumentation
-# The instrumentation package provides interceptors for automatic tracing
+# The instrumentation package provides stats handlers for automatic tracing
 go get google.golang.org/grpc
 go get go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 ```
@@ -290,7 +290,7 @@ func InitTracer(ctx context.Context, cfg TracerConfig) (func(context.Context) er
 
 Now let us implement the gRPC server with OpenTelemetry instrumentation.
 
-The server uses interceptors to automatically create spans for each incoming RPC. We configure both unary and stream interceptors to handle all RPC patterns.
+The server uses a stats handler to automatically create spans for each incoming RPC. The handler covers unary and streaming RPC patterns.
 
 ```go
 // server/main.go
@@ -301,6 +301,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -339,10 +340,10 @@ func newUserServer() *userServer {
 }
 
 // GetUser handles unary RPC for fetching a single user
-// The interceptor automatically creates a span for this RPC
+// The instrumentation handler automatically creates a span for this RPC
 func (s *userServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.UserResponse, error) {
 	// Get the current span from context
-	// This span was created by the gRPC interceptor
+	// This span was created by the gRPC instrumentation handler
 	span := trace.SpanFromContext(ctx)
 
 	// Add custom attributes to the span for better debugging
@@ -408,7 +409,7 @@ func (s *userServer) lookupUser(ctx context.Context, userID string) (*pb.UserRes
 }
 
 // ListUsers handles server streaming RPC
-// The interceptor creates a span that covers the entire stream
+// The instrumentation handler creates a span that covers the entire stream
 func (s *userServer) ListUsers(req *pb.ListUsersRequest, stream pb.UserService_ListUsersServer) error {
 	ctx := stream.Context()
 	span := trace.SpanFromContext(ctx)
@@ -483,7 +484,7 @@ func (s *userServer) CreateUsers(stream pb.UserService_CreateUsersServer) error 
 		req, err := stream.Recv()
 		if err != nil {
 			// io.EOF means the client finished sending
-			if err.Error() == "EOF" {
+			if err == io.EOF {
 				break
 			}
 			span.RecordError(err)
@@ -532,7 +533,7 @@ func (s *userServer) SyncUsers(stream pb.UserService_SyncUsersServer) error {
 		// Receive sync request from client
 		req, err := stream.Recv()
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err == io.EOF {
 				break
 			}
 			span.RecordError(err)
@@ -604,7 +605,7 @@ func main() {
 		}
 	}()
 
-	// Create the gRPC server with OpenTelemetry interceptors
+	// Create the gRPC server with OpenTelemetry instrumentation
 	// The otelgrpc package provides automatic instrumentation
 	server := grpc.NewServer(
 		// StatsHandler is the recommended way to instrument gRPC
@@ -643,7 +644,7 @@ func main() {
 
 ## Implementing Client-Side Tracing
 
-The client also uses interceptors to create spans for outgoing RPCs and inject trace context into metadata.
+The client also uses a stats handler to create spans for outgoing RPCs and inject trace context into metadata.
 
 ```go
 // client/main.go
@@ -686,7 +687,7 @@ func NewUserClient(conn *grpc.ClientConn) *UserClient {
 // GetUser demonstrates unary RPC with tracing
 func (c *UserClient) GetUser(ctx context.Context, userID string) (*pb.UserResponse, error) {
 	// Create a span for the overall operation
-	// The gRPC interceptor will create a child span for the RPC itself
+	// The gRPC instrumentation handler will create a child span for the RPC itself
 	ctx, span := c.tracer.Start(ctx, "UserClient.GetUser",
 		trace.WithAttributes(
 			attribute.String("user.id", userID),
@@ -701,7 +702,7 @@ func (c *UserClient) GetUser(ctx context.Context, userID string) (*pb.UserRespon
 	}
 
 	// Make the RPC call
-	// The interceptor automatically:
+	// The instrumentation handler automatically:
 	// 1. Creates a client span for the RPC
 	// 2. Injects trace context into gRPC metadata
 	// 3. Records timing and error information
@@ -943,7 +944,7 @@ func main() {
 		}
 	}()
 
-	// Create a gRPC connection with tracing interceptors
+	// Create a gRPC connection with tracing instrumentation
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -1037,7 +1038,7 @@ flowchart LR
     M2 --> B1
 ```
 
-The otelgrpc interceptors handle this automatically, but you may need to manually propagate context in some scenarios.
+The otelgrpc instrumentation handles this automatically, but you may need to manually propagate context in some scenarios.
 
 The following code demonstrates manual context propagation, which is useful when you need custom handling or when working with legacy systems.
 
@@ -1148,7 +1149,6 @@ import (
 	"context"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -1171,8 +1171,6 @@ type TracingConfig struct {
 // UnaryServerInterceptor adds custom tracing to unary server calls
 // This wraps the automatic otelgrpc instrumentation with additional features
 func UnaryServerInterceptor(cfg TracingConfig) grpc.UnaryServerInterceptor {
-	tracer := otel.Tracer(cfg.ServiceName + "-interceptor")
-
 	return func(
 		ctx context.Context,
 		req interface{},
@@ -1305,8 +1303,6 @@ func (s *tracingServerStream) SendMsg(m interface{}) error {
 
 // UnaryClientInterceptor adds custom tracing to unary client calls
 func UnaryClientInterceptor(cfg TracingConfig) grpc.UnaryClientInterceptor {
-	tracer := otel.Tracer(cfg.ServiceName + "-client-interceptor")
-
 	return func(
 		ctx context.Context,
 		method string,
@@ -1647,15 +1643,16 @@ import (
 )
 
 // GRPCServerAttributes returns standard attributes for gRPC servers
-func GRPCServerAttributes(service, method, peerAddress string) []attribute.KeyValue {
+func GRPCServerAttributes(service, method, serverAddress string, serverPort int) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		// RPC system identifier
 		semconv.RPCSystemGRPC,
 		// Service and method being called
 		semconv.RPCService(service),
 		semconv.RPCMethod(method),
-		// Network peer information
-		semconv.NetPeerName(peerAddress),
+		// Server address information
+		semconv.ServerAddress(serverAddress),
+		semconv.ServerPort(serverPort),
 	}
 }
 
@@ -1771,8 +1768,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // TestUnaryRPCTracing verifies traces are created for unary RPCs
@@ -1781,9 +1779,9 @@ func TestUnaryRPCTracing(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 
 	// Create a tracer provider with the test exporter
-	tp := trace.NewTracerProvider(
+	tp := sdktrace.NewTracerProvider(
 		// Use simple span processor for synchronous export in tests
-		trace.WithSyncer(exporter),
+		sdktrace.WithSyncer(exporter),
 	)
 	otel.SetTracerProvider(tp)
 
@@ -1807,12 +1805,13 @@ func TestUnaryRPCTracing(t *testing.T) {
 
 	// Verify span relationships
 	var clientSpan, serverSpan *tracetest.SpanStub
-	for _, span := range spans {
-		if span.SpanKind == trace.SpanKindClient {
-			clientSpan = &span
+	for i := range spans {
+		span := &spans[i]
+		if span.SpanKind == oteltrace.SpanKindClient {
+			clientSpan = span
 		}
-		if span.SpanKind == trace.SpanKindServer {
-			serverSpan = &span
+		if span.SpanKind == oteltrace.SpanKindServer {
+			serverSpan = span
 		}
 	}
 
@@ -1840,8 +1839,8 @@ func TestUnaryRPCTracing(t *testing.T) {
 func TestStreamingRPCTracing(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 
-	tp := trace.NewTracerProvider(
-		trace.WithSyncer(exporter),
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
 	)
 	otel.SetTracerProvider(tp)
 
@@ -1859,9 +1858,10 @@ func TestStreamingRPCTracing(t *testing.T) {
 
 	// Find the streaming span
 	var streamSpan *tracetest.SpanStub
-	for _, span := range spans {
-		if span.Name == "grpc.server/ListUsers" || span.Name == "grpc.client/ListUsers" {
-			streamSpan = &span
+	for i := range spans {
+		span := &spans[i]
+		if span.Name == "user.UserService/ListUsers" {
+			streamSpan = span
 			break
 		}
 	}
@@ -1870,17 +1870,17 @@ func TestStreamingRPCTracing(t *testing.T) {
 		t.Error("No streaming span found")
 	}
 
-	// Verify stream attributes are present
-	hasMessageCount := false
-	for _, attr := range streamSpan.Attributes {
-		if attr.Key == "stream.messages_sent" || attr.Key == "stream.messages_received" {
-			hasMessageCount = true
+	// Verify message events are present when WithMessageEvents is enabled
+	hasMessageEvent := false
+	for _, event := range streamSpan.Events {
+		if event.Name == "message" {
+			hasMessageEvent = true
 			break
 		}
 	}
 
-	if !hasMessageCount {
-		t.Error("Stream span missing message count attributes")
+	if !hasMessageEvent {
+		t.Error("Stream span missing message events")
 	}
 }
 ```
@@ -1920,7 +1920,7 @@ services:
     ports:
       # Jaeger UI
       - "16686:16686"
-      # Jaeger collector (OTLP)
+      # Jaeger collector gRPC (model.proto)
       - "14250:14250"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -2027,7 +2027,7 @@ service:
 Implementing OpenTelemetry tracing for gRPC services provides invaluable visibility into your distributed system. We covered:
 
 1. **Basic setup**: Initializing the tracer provider and configuring exporters
-2. **Server tracing**: Using interceptors to automatically trace incoming RPCs
+2. **Server tracing**: Using stats handlers to automatically trace incoming RPCs
 3. **Client tracing**: Instrumenting outgoing RPCs with context propagation
 4. **Streaming RPCs**: Handling server, client, and bidirectional streaming
 5. **Metadata propagation**: Ensuring trace context flows across service boundaries
