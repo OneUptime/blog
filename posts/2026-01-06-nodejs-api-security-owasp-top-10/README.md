@@ -721,9 +721,12 @@ Use `npm ci` instead of `npm install` in CI/CD environments. This command instal
 
 ```json
 // package.json - Use lockfile for deterministic builds
+// NOTE: Don't name this script "install" - that's a reserved npm lifecycle
+// hook and would recurse on every "npm install". Use a custom name and run
+// "npm run ci-install" (or call "npm ci" directly in your pipeline).
 {
   "scripts": {
-    "install": "npm ci"
+    "ci-install": "npm ci"
   }
 }
 ```
@@ -837,8 +840,11 @@ async function isUrlSafe(urlString) {
       return false;
     }
 
-    // Resolve hostname to IP address(es)
-    // This catches DNS rebinding attacks where hostname resolves to internal IP
+    // Resolve hostname to IP address(es) and check them against blocked ranges
+    // NOTE: This check alone does NOT stop DNS rebinding. Because the fetch below
+    // re-resolves the hostname, an attacker can return a public IP here and an
+    // internal IP at request time (a TOCTOU race). To close that gap you must
+    // pin the validated IP and connect to it directly (see comment near fetch).
     const addresses = await dns.resolve4(url.hostname);
 
     // Check if any resolved IP is in blocked ranges
@@ -868,7 +874,9 @@ app.post('/fetch-url', async (req, res) => {
     return res.status(400).json({ error: 'URL not allowed' });
   }
 
-  // Safe to fetch - URL has been validated
+  // Validated, but note: fetch() re-resolves the hostname here. For full DNS
+  // rebinding protection, pin the IP validated above and request it directly
+  // (e.g. via a custom agent/lookup) while preserving the original Host header.
   const response = await fetch(url);
   res.json(await response.json());
 });
