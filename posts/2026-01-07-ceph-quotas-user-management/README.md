@@ -640,7 +640,7 @@ Bucket quotas limit individual bucket sizes, useful for per-project or per-appli
 
 ```bash
 # Set quota on a specific bucket (50GB, 5000 objects)
-# This overrides user-level quotas for this specific bucket
+# This applies in addition to any user-level quota for the bucket owner
 radosgw-admin quota set \
     --quota-scope=bucket \
     --uid="app-user-1" \
@@ -651,8 +651,7 @@ radosgw-admin quota set \
 # Enable the bucket quota
 radosgw-admin quota enable \
     --quota-scope=bucket \
-    --uid="app-user-1" \
-    --bucket="project-uploads"
+    --uid="app-user-1"
 
 # Set a default bucket quota for all new buckets created by a user
 # This applies to buckets created after this setting
@@ -813,7 +812,7 @@ Multi-tenancy in RGW provides:
 ```mermaid
 graph TB
     subgraph "RGW Multi-tenancy"
-        subgraph "Tenant: acme-corp"
+        subgraph "Tenant: acme_corp"
             UA1[user: admin]
             UA2[user: developer]
             BA1[bucket: data]
@@ -850,15 +849,16 @@ Tenant users are created by specifying the tenant name in the user ID:
 
 ```bash
 # Create a user in a specific tenant
+# Tenant names may contain only alphanumeric characters and underscores.
 # Format: --uid="<tenant>$<username>"
 radosgw-admin user create \
-    --uid="acme-corp\$admin" \
+    --uid="acme_corp\$admin" \
     --display-name="ACME Corp Admin" \
     --email="admin@acme-corp.com"
 
 # Create additional users in the same tenant
 radosgw-admin user create \
-    --uid="acme-corp\$developer" \
+    --uid="acme_corp\$developer" \
     --display-name="ACME Developer" \
     --email="dev@acme-corp.com"
 
@@ -869,7 +869,7 @@ radosgw-admin user create \
     --email="admin@globex.com"
 
 # List all users in a specific tenant
-radosgw-admin user list --tenant="acme-corp"
+radosgw-admin user list --tenant="acme_corp"
 ```
 
 ### Tenant Quota Configuration
@@ -879,7 +879,7 @@ Set quotas at the tenant level for organizational limits:
 ```bash
 # Create a tenant admin user first
 radosgw-admin user create \
-    --uid="enterprise-a\$admin" \
+    --uid="enterprise_a\$admin" \
     --display-name="Enterprise A Admin" \
     --admin
 
@@ -1099,7 +1099,7 @@ if __name__ == '__main__':
     # Register tenants with their quotas
     # 1 TB storage, 10M objects, 50 users, 100 buckets per user
     manager.register_tenant(TenantConfig(
-        name='enterprise-a',
+        name='enterprise_a',
         max_size_bytes=1024 * 1024 * 1024 * 1024,  # 1 TB
         max_objects=10000000,
         max_users=50,
@@ -1108,7 +1108,7 @@ if __name__ == '__main__':
 
     # Smaller tenant: 100 GB, 1M objects, 10 users
     manager.register_tenant(TenantConfig(
-        name='startup-b',
+        name='startup_b',
         max_size_bytes=100 * 1024 * 1024 * 1024,  # 100 GB
         max_objects=1000000,
         max_users=10,
@@ -1118,7 +1118,7 @@ if __name__ == '__main__':
     # Create a user in a tenant
     try:
         user = manager.create_tenant_user(
-            tenant='enterprise-a',
+            tenant='enterprise_a',
             username='john.doe',
             display_name='John Doe',
             email='john@enterprise-a.com'
@@ -1151,20 +1151,14 @@ def create_tenant_s3_client(
     endpoint_url: str,
     access_key: str,
     secret_key: str,
-    tenant: str = None
 ) -> boto3.client:
     """
     Create an S3 client configured for a specific tenant
 
-    For multi-tenant access, the access key format is:
-    <tenant>$<access_key> for tenanted users
-    <access_key> for non-tenanted (default tenant) users
+    Use the access key exactly as returned by radosgw-admin. RGW maps
+    the key to its user, and that user's tenant becomes the implicit
+    tenant context for bucket operations.
     """
-
-    # If tenant is specified, prepend to access key
-    # This is how RGW identifies the tenant context
-    if tenant:
-        access_key = f"{tenant}${access_key}"
 
     # Configure the S3 client with appropriate settings
     s3_client = boto3.client(
@@ -1192,39 +1186,37 @@ def demo_tenant_operations():
     # Create clients for different tenants
     # Note: These credentials would come from radosgw-admin user create output
 
-    # Client for tenant 'acme-corp'
+    # Client for tenant 'acme_corp'
     acme_client = create_tenant_s3_client(
         endpoint_url=endpoint,
         access_key="ACME_ACCESS_KEY",
-        secret_key="ACME_SECRET_KEY",
-        tenant="acme-corp"
+        secret_key="ACME_SECRET_KEY"
     )
 
     # Client for tenant 'globex'
     globex_client = create_tenant_s3_client(
         endpoint_url=endpoint,
         access_key="GLOBEX_ACCESS_KEY",
-        secret_key="GLOBEX_SECRET_KEY",
-        tenant="globex"
+        secret_key="GLOBEX_SECRET_KEY"
     )
 
     # Both tenants can have a bucket named 'data' - they're isolated
     try:
-        # Create bucket in acme-corp tenant
+        # Create bucket in acme_corp tenant
         acme_client.create_bucket(Bucket='data')
-        print("Created bucket 'data' in acme-corp tenant")
+        print("Created bucket 'data' in acme_corp tenant")
 
         # Create bucket with same name in globex tenant
         globex_client.create_bucket(Bucket='data')
         print("Created bucket 'data' in globex tenant")
 
-        # Upload to acme-corp's data bucket
+        # Upload to acme_corp's data bucket
         acme_client.put_object(
             Bucket='data',
             Key='reports/quarterly.pdf',
             Body=b'ACME quarterly report content'
         )
-        print("Uploaded file to acme-corp/data bucket")
+        print("Uploaded file to acme_corp/data bucket")
 
         # Upload to globex's data bucket
         globex_client.put_object(
@@ -1255,7 +1247,7 @@ Effective monitoring is essential for managing quotas and users at scale.
 
 ### Prometheus Metrics for Quota Monitoring
 
-Ceph exposes metrics that can be scraped by Prometheus:
+Ceph's built-in Prometheus module exposes cluster metrics. For quota-specific alerts, use the custom quota metrics exported in the next section:
 
 ```yaml
 # prometheus-ceph-alerts.yaml
@@ -1268,37 +1260,37 @@ groups:
       # Alert when pool usage exceeds 80% of quota
       - alert: CephPoolQuotaWarning
         expr: |
-          (ceph_pool_bytes_used / ceph_pool_quota_bytes) * 100 > 80
-          and ceph_pool_quota_bytes > 0
+          (ceph_pool_used_bytes / ceph_pool_quota_max_bytes) * 100 > 80
+          and ceph_pool_quota_max_bytes > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Pool {{ $labels.pool_id }} approaching quota limit"
+          summary: "Pool {{ $labels.pool_name }} approaching quota limit"
           description: "Pool is at {{ $value | printf \"%.1f\" }}% of quota"
 
       # Alert when pool usage exceeds 95% of quota
       - alert: CephPoolQuotaCritical
         expr: |
-          (ceph_pool_bytes_used / ceph_pool_quota_bytes) * 100 > 95
-          and ceph_pool_quota_bytes > 0
+          (ceph_pool_used_bytes / ceph_pool_quota_max_bytes) * 100 > 95
+          and ceph_pool_quota_max_bytes > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Pool {{ $labels.pool_id }} near quota limit"
+          summary: "Pool {{ $labels.pool_name }} near quota limit"
           description: "Pool is at {{ $value | printf \"%.1f\" }}% of quota - writes may fail soon"
 
       # Alert when any RGW user exceeds 80% of their quota
       - alert: RGWUserQuotaWarning
         expr: |
-          (ceph_rgw_user_bytes_used / ceph_rgw_user_quota_bytes) * 100 > 80
-          and ceph_rgw_user_quota_bytes > 0
+          (ceph_rgw_user_used_bytes / ceph_rgw_user_quota_max_bytes) * 100 > 80
+          and ceph_rgw_user_quota_max_bytes > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "RGW user {{ $labels.user }} approaching quota"
+          summary: "RGW user {{ $labels.tenant }}/{{ $labels.user_id }} approaching quota"
           description: "User is at {{ $value | printf \"%.1f\" }}% of storage quota"
 ```
 
@@ -1677,7 +1669,7 @@ ceph auth get-or-create client.app \
 
 # 2. Rotate keys regularly
 # Generate new key for existing user
-ceph auth get-or-create client.app
+ceph auth rotate client.app
 
 # 3. Use separate users per application
 # Each microservice should have its own credentials
@@ -1696,8 +1688,9 @@ ceph auth ls > /var/log/ceph/auth-audit-$(date +%Y%m%d).log
 # Check if quota is actually enabled
 ceph osd pool get-quota <pool-name>
 
-# Verify OSD quota enforcement setting
-ceph config get osd osd_pool_default_quota_max_bytes
+# Verify quota values and current usage in JSON output
+ceph osd pool get-quota <pool-name> --format=json
+ceph df detail --format=json
 
 # Check for quota-related errors in logs
 grep -i quota /var/log/ceph/ceph-osd.*.log
