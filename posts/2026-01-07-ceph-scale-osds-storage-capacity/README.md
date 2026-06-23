@@ -227,8 +227,10 @@ Install the necessary Ceph packages on the new OSD node:
 ```bash
 # Add the Ceph repository (for Ubuntu/Debian)
 # Using Reef release as an example - adjust for your version
-wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add -
-echo "deb https://download.ceph.com/debian-reef/ $(lsb_release -sc) main" | \
+sudo install -d -m 0755 /etc/apt/keyrings
+wget -q -O- 'https://download.ceph.com/keys/release.asc' | \
+    sudo gpg --dearmor -o /etc/apt/keyrings/ceph.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ceph.gpg] https://download.ceph.com/debian-reef/ $(lsb_release -sc) main" | \
     sudo tee /etc/apt/sources.list.d/ceph.list
 
 # Update package lists and install ceph-osd package
@@ -343,6 +345,9 @@ sudo ceph-volume lvm batch \
 For clusters deployed with cephadm:
 
 ```bash
+# For cephadm-managed OSDs, do not install the ceph-osd package manually
+# on the target host; cephadm manages the OSD containers.
+
 # Add the new host to the cluster
 # This registers the host with the orchestrator
 ceph orch host add new-osd-node.example.com 192.168.1.10
@@ -372,18 +377,16 @@ spec:
   # Data devices configuration
   data_devices:
     # Use all rotational (HDD) devices
-    rotational: true
+    rotational: 1
     # Minimum size filter
     size: '4T:'
   # Optional: DB devices on faster storage
   db_devices:
     # Use non-rotational (SSD/NVMe) devices
-    rotational: false
+    rotational: 0
     size: ':500G'
   # Enable encryption for data at rest
   encrypted: false
-  # OSD memory target (useful for dense nodes)
-  osd_memory_target: 4294967296  # 4GB
 ```
 
 ## Managing OSD Weight and CRUSH Location
@@ -399,8 +402,8 @@ ceph osd tree
 
 # Set OSD weight based on device size
 # Use the 'reweight' command to adjust data distribution
-# Value range: 0.0 (no data) to 1.0+ (proportional to size)
-ceph osd reweight osd.6 1.0
+# Value range: 0.0 (no data) to 1.0 (full override weight)
+ceph osd reweight 6 1.0
 
 # Alternatively, use CRUSH weight for permanent adjustment
 # This is based on device capacity in TB
@@ -481,7 +484,6 @@ ceph config set osd osd_max_backfills 3
 ceph config set osd osd_recovery_sleep 0
 
 # Set recovery priority (higher = faster, but more impact)
-# Range: 1 (lowest) to 63 (highest)
 ceph config set osd osd_recovery_priority 5
 ```
 
@@ -501,19 +503,17 @@ sudo ceph-volume lvm create --data /dev/sdd
 
 # Verify OSDs are up but not receiving data
 ceph osd tree
-# Look for: osd.6  up  0  (weight 0 means no data)
+# Look for new OSDs marked up/out
 
-# Gradually set weights to introduce data
-# Start with low weight and increase over time
-ceph osd crush reweight osd.6 1.0
+# Allow OSDs to be marked in, then introduce them one at a time
+ceph osd unset noin
+
+ceph osd in 6
 # Wait for rebalancing to complete
 ceph -w  # Watch cluster status
 
-ceph osd crush reweight osd.7 1.0
+ceph osd in 7
 # Repeat for remaining OSDs
-
-# Remove the 'noin' flag when done
-ceph osd unset noin
 ```
 
 ### Pausing and Resuming Rebalancing
@@ -592,7 +592,7 @@ ceph daemon osd.6 perf dump | jq '.osd.op_queue_ops'
 ceph osd pool stats
 
 # Get detailed recovery statistics
-ceph pg dump_stuck recovering
+ceph pg dump_stuck unclean
 ceph pg dump_stuck degraded
 ```
 
@@ -606,7 +606,9 @@ ceph mgr module enable dashboard
 
 # Set up dashboard access
 ceph dashboard create-self-signed-cert
-ceph dashboard set-login-credentials admin secure_password
+echo "secure_password" > dashboard-password.txt
+ceph dashboard ac-user-create admin -i dashboard-password.txt administrator
+rm dashboard-password.txt
 
 # Get dashboard URL
 ceph mgr services | jq '.dashboard'
@@ -824,7 +826,7 @@ ceph osd crush tree
 # Rule of thumb: 100-200 PGs per OSD
 ceph osd pool get <pool-name> pg_num
 
-# Adjust PG count if needed (must be power of 2)
+# Adjust PG count if needed (use a nearby power of 2)
 ceph osd pool set <pool-name> pg_num 256
 ceph osd pool set <pool-name> pgp_num 256
 
