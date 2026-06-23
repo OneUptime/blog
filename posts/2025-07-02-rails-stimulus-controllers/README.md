@@ -98,8 +98,11 @@ import { eagerLoadControllersFrom } from "@hotwired/stimulus-loading"
 const application = Application.start()
 
 // Configure Stimulus development experience
-// Enable debug mode in development for better error messages
-application.debug = process.env.NODE_ENV === "development"
+// Enable debug mode for better error messages.
+// Note: with importmaps there is no build step, so `process` is not
+// defined in the browser. Set this to a literal boolean (or toggle it
+// manually) rather than reading process.env.NODE_ENV.
+application.debug = false
 
 // Make the application available globally for debugging
 window.Stimulus = application
