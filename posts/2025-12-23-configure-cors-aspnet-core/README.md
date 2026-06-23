@@ -96,7 +96,7 @@ builder.Services.AddCors(options =>
 ```csharp
 var app = builder.Build();
 
-// Apply default policy globally
+// Apply a named policy globally
 app.UseCors("TrustedOrigins");
 
 // Or apply per-endpoint
