@@ -47,15 +47,18 @@ graph TD
 
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
 
 # Security
 argon2 = "0.5"           # Password hashing
 jsonwebtoken = "9"       # JWT
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 validator = { version = "0.16", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
 
 # Database (parameterized queries)
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
 
 # Rate limiting
 governor = "0.6"
@@ -63,6 +66,9 @@ governor = "0.6"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
 
 # Headers and CORS
 tower-http = { version = "0.5", features = ["cors", "set-header", "limit"] }
@@ -178,10 +184,10 @@ Always use parameterized queries, never string concatenation.
 // src/database.rs
 // SQL injection prevention with parameterized queries
 
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -375,12 +381,12 @@ Secure JWT handling with proper validation.
 // Secure authentication with JWT
 
 use axum::{
-    async_trait,
-    extract::FromRequestParts,
     http::{request::Parts, StatusCode, header},
     response::{IntoResponse, Response},
+    extract::FromRequestParts,
     Json,
 };
+use async_trait::async_trait;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -452,6 +458,9 @@ impl JwtConfig {
         validation.validate_nbf = true;
         validation.set_issuer(&[&self.issuer]);
         validation.set_audience(&self.audience);
+        validation.required_spec_claims.extend(
+            ["exp", "nbf", "iss", "aud"].into_iter().map(String::from)
+        );
         validation.leeway = 0; // No clock skew tolerance
 
         decode::<Claims>(
@@ -694,18 +703,19 @@ Configure proper HTTP security headers.
 // Security headers middleware
 
 use axum::{
-    Router,
+    extract::Request,
     middleware::{self, Next},
-    http::{Request, Response, HeaderValue, header},
-    body::Body,
+    response::Response,
+    http::{HeaderValue, Method, header},
+    Router,
 };
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 
 /// Add security headers to all responses
-pub async fn security_headers<Bd>(
-    request: Request<Bd>,
-    next: Next<Bd>,
-) -> Response<Body> {
+pub async fn security_headers(
+    request: Request,
+    next: Next,
+) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
@@ -721,10 +731,10 @@ pub async fn security_headers<Bd>(
         HeaderValue::from_static("nosniff")
     );
 
-    // Enable XSS filter (legacy browsers)
+    // Disable legacy XSS filter; use CSP for XSS protection
     headers.insert(
         "X-XSS-Protection",
-        HeaderValue::from_static("1; mode=block")
+        HeaderValue::from_static("0")
     );
 
     // Referrer policy
@@ -775,10 +785,10 @@ pub fn cors_layer() -> CorsLayer {
         ])
         // Specify allowed methods
         .allow_methods([
-            http::Method::GET,
-            http::Method::POST,
-            http::Method::PUT,
-            http::Method::DELETE,
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
         ])
         // Specify allowed headers
         .allow_headers([
@@ -811,16 +821,13 @@ Prevent brute force and DoS attacks.
 // Rate limiting for API protection
 
 use axum::{
-    extract::ConnectInfo,
-    http::{Request, StatusCode},
+    extract::{ConnectInfo, Request},
+    http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
-    body::Body,
 };
 use governor::{
-    clock::DefaultClock,
-    state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter,
+    DefaultDirectRateLimiter, Quota, RateLimiter,
 };
 use std::{
     collections::HashMap,
@@ -833,7 +840,7 @@ use tokio::sync::RwLock;
 
 /// Per-IP rate limiter
 pub struct IpRateLimiter {
-    limiters: RwLock<HashMap<String, Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>,
+    limiters: RwLock<HashMap<String, Arc<DefaultDirectRateLimiter>>>,
     quota: Quota,
 }
 
@@ -873,8 +880,8 @@ impl IpRateLimiter {
 /// Rate limiting middleware
 pub async fn rate_limit_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    request: Request<Body>,
-    next: Next<Body>,
+    request: Request,
+    next: Next,
 ) -> Response {
     // Get rate limiter from extensions
     let rate_limiter = request
