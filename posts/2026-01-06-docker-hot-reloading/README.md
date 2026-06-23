@@ -423,8 +423,8 @@ environment:
   - CHOKIDAR_USEPOLLING=true   # For chokidar-based watchers
   - WATCHPACK_POLLING=true     # For Webpack/Next.js
 
-# Python watchdog - add --polling flag
-command: watchmedo auto-restart --directory=./ --pattern=*.py --polling --recursive -- python app.py
+# Python watchdog - force the polling observer
+command: watchmedo auto-restart --directory=./ --pattern=*.py --debug-force-polling --recursive -- python app.py
 
 # Go Air - enable polling in .air.toml
 # In .air.toml build section:
