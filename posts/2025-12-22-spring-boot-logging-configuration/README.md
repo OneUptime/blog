@@ -14,8 +14,8 @@ Proper logging is essential for debugging, monitoring, and understanding your ap
 
 Spring Boot provides sensible defaults out of the box:
 - Logs to console
-- INFO level for application code
-- WARN level for most libraries
+- ERROR, WARN, and INFO messages are logged by default
+- Debug mode enables extra output for selected core loggers, not every DEBUG message
 - Colored output in terminals that support ANSI
 
 ## Basic Configuration via Properties
@@ -33,9 +33,11 @@ logging.level.org.springframework=WARN
 logging.level.org.hibernate.SQL=DEBUG
 logging.level.org.hibernate.orm.jdbc.bind=TRACE
 
-# Log to file
+# Log to a specific file
 logging.file.name=logs/application.log
-logging.file.path=/var/log/myapp
+
+# Or log spring.log to a directory
+# logging.file.path=/var/log/myapp
 
 # File rotation
 logging.logback.rollingpolicy.max-file-size=10MB
@@ -81,7 +83,7 @@ For more control, create `src/main/resources/logback-spring.xml`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration scan="true" scanPeriod="30 seconds">
+<configuration>
 
     <!-- Properties -->
     <property name="LOG_PATH" value="${LOG_PATH:-logs}"/>
@@ -201,7 +203,7 @@ Add the dependency:
 <dependency>
     <groupId>net.logstash.logback</groupId>
     <artifactId>logstash-logback-encoder</artifactId>
-    <version>7.4</version>
+    <version>9.0</version>
 </dependency>
 ```
 
@@ -317,7 +319,7 @@ public class UserService {
 ### Use Parameterized Logging
 
 ```java
-// Good - parameters only evaluated if log level is enabled
+// Good - message formatting only happens if log level is enabled
 log.debug("Processing order {} for user {}", orderId, userId);
 
 // Bad - string concatenation always happens
@@ -419,7 +421,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
 }
 ```
 
-Or use Spring's built-in:
+For request-only details, use Spring's built-in:
 
 ```properties
 # application.properties
