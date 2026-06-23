@@ -94,7 +94,7 @@ sudo chmod 700 /etc/wireguard
 cd /etc/wireguard
 
 # Generate the server's private key
-# The umask ensures the private key is only readable by root
+# The chmod below ensures the private key is only readable by root
 wg genkey | sudo tee server_private.key
 sudo chmod 600 server_private.key
 
@@ -475,7 +475,9 @@ choco install wireguard -y
 wireguard /installtunnelservice "C:\path\to\wg0.conf"
 
 # Start the tunnel
-net start WireGuardTunnel$wg0
+# Single quotes prevent PowerShell from interpreting $wg0 as a variable.
+# The service name is WireGuardTunnel$<tunnel-name>, e.g. WireGuardTunnel$wg0
+net start 'WireGuardTunnel$wg0'
 ```
 
 ## Part 3: NAT and Firewall Configuration
