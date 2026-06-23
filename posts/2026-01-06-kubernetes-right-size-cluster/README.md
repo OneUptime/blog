@@ -285,7 +285,7 @@ Descheduler configuration:
 This policy configures the descheduler to move pods from underutilized nodes (below 20% CPU/memory) to better-utilized nodes (targeting 50% utilization), improving overall cluster efficiency.
 
 ```yaml
-apiVersion: descheduler/v1alpha2
+apiVersion: descheduler/v1alpha1
 kind: DeschedulerPolicy
 strategies:
   # Fix pods violating spread constraints
