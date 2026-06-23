@@ -101,6 +101,7 @@ Before installing MetalLB, ensure you have the following:
 - `kubectl` installed and configured to communicate with your cluster
 - Cluster admin access to create namespaces, deployments, and RBAC resources
 - A range of IP addresses that MetalLB can allocate (must be routable on your network)
+- Traffic on port 7946 (TCP and UDP) allowed between nodes for memberlist
 - If using BGP mode: access to configure your network router for BGP peering
 
 ### Network Requirements
@@ -167,9 +168,9 @@ The simplest way to install MetalLB is using the official Kubernetes manifests. 
 First, apply the official MetalLB manifests from the stable release:
 
 ```bash
-# Apply the MetalLB namespace, CRDs, and controller/speaker deployments
-# This single command installs all required components
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+# Apply the MetalLB namespace, CRDs, and controller/speaker deployments.
+# Native mode is suitable for L2-only or simple BGP deployments.
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 ### Step 2: Verify the Installation
@@ -229,14 +230,19 @@ Create a custom values file to configure MetalLB installation:
 # metallb-values.yaml
 # Custom Helm values for MetalLB installation
 
+# Prometheus metrics configuration
+prometheus:
+  # Add Prometheus scrape annotations to MetalLB pods
+  scrapeAnnotations: true
+  # Port for Prometheus to scrape controller and speaker metrics
+  metricsPort: 9120
+
+  # Prometheus ServiceMonitor configuration (if using Prometheus Operator)
+  serviceMonitor:
+    enabled: false
+
 # Controller configuration
 controller:
-  # Enable Prometheus metrics endpoint
-  metrics:
-    enabled: true
-    # Port for Prometheus to scrape metrics
-    port: 7472
-
   # Resource limits and requests for the controller pod
   resources:
     limits:
@@ -248,7 +254,7 @@ controller:
 
 # Speaker configuration (runs on every node)
 speaker:
-  # Enable FRR (Free Range Routing) mode for advanced BGP features
+  # Keep the deprecated FRR sidecar mode disabled
   frr:
     enabled: false
 
@@ -266,10 +272,10 @@ speaker:
       cpu: 25m
       memory: 50Mi
 
-# Prometheus ServiceMonitor configuration (if using Prometheus Operator)
-prometheus:
-  serviceMonitor:
-    enabled: false
+# Use the lightweight native BGP implementation instead of the default FRR-K8s backend.
+# Remove this block if you need FRR-K8s features such as BFD or IPv6 BGP.
+frrk8s:
+  enabled: false
 ```
 
 ### Step 3: Install MetalLB with Helm
@@ -277,8 +283,12 @@ prometheus:
 Install MetalLB using the Helm chart with your custom values:
 
 ```bash
-# Create the metallb-system namespace
+# Create the metallb-system namespace with Pod Security labels required by MetalLB speaker pods
 kubectl create namespace metallb-system
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 
 # Install MetalLB using Helm
 # The --wait flag ensures the installation completes before returning
@@ -462,6 +472,7 @@ spec:
   # password: "your-bgp-password"
 
   # Optional: BFD (Bidirectional Forwarding Detection) for faster failover
+  # Requires an FRR-based backend such as FRR-K8s.
   # bfdProfile: "fast-failover"
 
   # Optional: Source address for BGP session
@@ -593,10 +604,10 @@ metadata:
   namespace: default
   annotations:
     # Optional: Request IP from specific pool
-    # metallb.universe.tf/address-pool: production-pool
+    # metallb.io/address-pool: production-pool
 
     # Optional: Request specific IP address
-    # metallb.universe.tf/loadBalancerIPs: 192.168.1.100
+    # metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
   selector:
@@ -739,8 +750,8 @@ When upgrading MetalLB installed via manifests:
 # Check current MetalLB version
 kubectl get deployment controller -n metallb-system -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Apply the new version manifests (replace version number)
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+# Apply the new version manifests (replace version number and backend if needed)
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Wait for rollout to complete
 kubectl rollout status deployment/controller -n metallb-system
