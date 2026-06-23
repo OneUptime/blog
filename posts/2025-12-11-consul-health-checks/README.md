@@ -53,7 +53,7 @@ service {
     interval = "10s"
     timeout  = "5s"
 
-    # Optional: Consider 2xx and 429 as passing
+    # Optional: Require consecutive successes/failures before changing status
     success_before_passing   = 2
     failures_before_critical = 3
 
@@ -320,6 +320,7 @@ package main
 import (
     "fmt"
     "net/http"
+    "net/url"
     "time"
 )
 
@@ -340,10 +341,10 @@ func NewTTLHealth(consulAddr, checkID string) *TTLHealth {
 }
 
 func (h *TTLHealth) updateCheck(status, note string) error {
-    url := fmt.Sprintf("%s/v1/agent/check/%s/%s?note=%s",
-        h.consulAddr, status, h.checkID, note)
+    checkURL := fmt.Sprintf("%s/v1/agent/check/%s/%s?note=%s",
+        h.consulAddr, status, h.checkID, url.QueryEscape(note))
 
-    req, _ := http.NewRequest("PUT", url, nil)
+    req, _ := http.NewRequest("PUT", checkURL, nil)
     resp, err := h.client.Do(req)
     if err != nil {
         return err
@@ -424,7 +425,6 @@ service {
 package main
 
 import (
-    "context"
     "net"
 
     "google.golang.org/grpc"
