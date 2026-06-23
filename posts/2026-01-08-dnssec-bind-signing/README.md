@@ -153,7 +153,7 @@ dnssec-signzone \
 | `-N` | SOA serial format | `-N INCREMENT` (or `UNIXTIME`, `DATE`, `KEEP`) |
 | `-S` | Smart signing (use all available keys) | `-S` |
 | `-e` | Signature expiration | `-e +30d` |
-| `-i` | Signature inception (offset) | `-i -1h` |
+| `-s` | Signature inception (offset) | `-s -1h` |
 | `-3` | Use NSEC3 with salt | `-3 abc123` |
 | `-H` | NSEC3 iterations | `-H 10` |
 | `-A` | NSEC3 opt-out | `-A` |
