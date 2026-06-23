@@ -237,9 +237,6 @@ export class StructuredLogger {
       const spanContext = activeSpan.spanContext();
       attributes.trace_id = spanContext.traceId;  // Links to distributed trace
       attributes.span_id = spanContext.spanId;    // Links to specific span
-
-      // Include span name for context without querying traces
-      attributes.span_name = activeSpan.getAttributes()['span.name'] || 'unknown';
     }
 
     // Delegate to Winston logger with enriched attributes
@@ -305,9 +302,9 @@ export class SemanticLogger {
       [SemanticAttributes.HTTP_METHOD]: req.method,       // GET, POST, etc.
       [SemanticAttributes.HTTP_URL]: req.url,             // Full request URL
       [SemanticAttributes.HTTP_STATUS_CODE]: res.statusCode,  // 200, 404, 500, etc.
-      [SemanticAttributes.HTTP_RESPONSE_SIZE]: res.get('content-length') || 0,
-      [SemanticAttributes.HTTP_REQUEST_SIZE]: req.get('content-length') || 0,
-      [SemanticAttributes.USER_AGENT_ORIGINAL]: req.get('user-agent'),
+      [SemanticAttributes.HTTP_RESPONSE_CONTENT_LENGTH]: res.get('content-length') || 0,
+      [SemanticAttributes.HTTP_REQUEST_CONTENT_LENGTH]: req.get('content-length') || 0,
+      [SemanticAttributes.HTTP_USER_AGENT]: req.get('user-agent'),
       // Custom attributes for latency analysis
       'http.duration_ms': duration,                       // Request processing time
       'http.route': req.route?.path,                      // Route pattern for grouping
@@ -939,7 +936,7 @@ StructuredLogger.logInSpan('info', 'Operation completed', attributes);
 {
   [SemanticAttributes.HTTP_METHOD]: 'POST',
   [SemanticAttributes.HTTP_STATUS_CODE]: 200,
-  [SemanticAttributes.USER_ID]: userId,
+  [SemanticAttributes.ENDUSER_ID]: userId,
 }
 ```
 
