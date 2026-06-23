@@ -293,6 +293,9 @@ await realApiCall();
 const recordings = nock.recorder.play();
 console.log(JSON.stringify(recordings, null, 2));
 
+// Stop recording before using mocks again in the same process
+nock.restore();
+
 // Save recordings to a fixture file for future tests
 require('fs').writeFileSync(
   'tests/fixtures/api-recordings.json',
@@ -504,6 +507,7 @@ describe('Stripe Webhook Handler', () => {
     const response = await request(app)
       .post('/webhooks/stripe')
       .set('Stripe-Signature', signature)  // Include signature header
+      .set('Content-Type', 'application/json')
       .send(payload)
       .expect(200);
 
@@ -513,11 +517,13 @@ describe('Stripe Webhook Handler', () => {
   it('should reject invalid signature', async () => {
     // Webhooks without valid signatures should be rejected
     const event = { type: 'fake.event' };
+    const payload = JSON.stringify(event);
 
     await request(app)
       .post('/webhooks/stripe')
       .set('Stripe-Signature', 'invalid')  // Invalid signature
-      .send(event)
+      .set('Content-Type', 'application/json')
+      .send(payload)
       .expect(400);  // Should reject with 400 Bad Request
   });
 });
