@@ -148,7 +148,7 @@ if pg_dump mydb > backup.sql; then
   # Include duration and file size for tracking trends
   curl -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"status\":\"completed\",\"duration\":$DURATION,\"size\":$(stat -f%z backup.sql)}"
+    -d "{\"status\":\"completed\",\"duration\":$DURATION,\"size\":$(stat -c%s backup.sql)}"
 else
   # Backup failed - send failure heartbeat to trigger alert
   curl -X POST "$HEARTBEAT_URL" \
@@ -256,7 +256,7 @@ curl -X POST "$HEARTBEAT_URL" -d '{"status":"started","database":"production"}'
 
 # Backup
 if pg_dump -Fc production > prod_backup.dump; then
-  SIZE=$(stat -f%z prod_backup.dump)
+  SIZE=$(stat -c%s prod_backup.dump)
   curl -X POST "$HEARTBEAT_URL" -d "{\"status\":\"completed\",\"size\":$SIZE}"
 else
   curl -X POST "$HEARTBEAT_URL" -d '{"status":"failed","error":"pg_dump failed"}'
@@ -275,7 +275,7 @@ curl -X POST "$HEARTBEAT_URL" -d '{"status":"started","database":"app_db"}'
 mysqldump app_db | gzip > app_backup.sql.gz
 
 if [ $? -eq 0 ]; then
-  SIZE=$(stat -f%z app_backup.sql.gz)
+  SIZE=$(stat -c%s app_backup.sql.gz)
   curl -X POST "$HEARTBEAT_URL" -d "{\"status\":\"completed\",\"size\":$SIZE,\"compressed\":true}"
 else
   curl -X POST "$HEARTBEAT_URL" -d '{"status":"failed","error":"mysqldump failed"}'
@@ -309,6 +309,7 @@ fi
 
 **AWS S3 Backups:**
 ```python
+import os
 import boto3
 import requests
 
