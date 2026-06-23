@@ -8,7 +8,7 @@ Description: Reduce Go binary size using symbol stripping, ldflags, UPX compress
 
 ---
 
-Go produces statically linked binaries that contain the entire runtime, making deployment simple but often resulting in larger executable sizes. While a typical "Hello World" program in C might be a few kilobytes, the same in Go can easily exceed 1MB. This guide explores comprehensive techniques to profile and reduce Go binary sizes for production deployments.
+Go can produce self-contained binaries that contain the Go runtime, making deployment simple but often resulting in larger executable sizes. While a typical "Hello World" program in C might be a few kilobytes, the same in Go can easily exceed 1MB. This guide explores comprehensive techniques to profile and reduce Go binary sizes for production deployments.
 
 ## Why Binary Size Matters
 
@@ -63,7 +63,7 @@ The `nm` tool lists symbols in a Go binary, helping identify large components.
 go build -o myapp main.go
 
 # List all symbols sorted by size (largest first)
-go tool nm -size myapp | sort -t ' ' -k2 -rn | head -50
+go tool nm -size -sort size myapp | head -50
 ```
 
 ### Understanding Symbol Output
@@ -71,9 +71,9 @@ go tool nm -size myapp | sort -t ' ' -k2 -rn | head -50
 The output shows symbol address, size, type, and name:
 
 ```text
- 1048576 T runtime.(*mheap).alloc
-  524288 T runtime.mallocgc
-  262144 R runtime.typelink
+  45f120      4096 T runtime.mallocgc
+  51c000      2048 R runtime.typelink
+  552300      1024 D runtime.someData
 ```
 
 Symbol types include:
@@ -102,7 +102,7 @@ echo "Total size: $(ls -lh $BINARY | awk '{print $5}')"
 echo ""
 
 echo "=== Top 20 Largest Symbols ==="
-go tool nm -size $BINARY | sort -t ' ' -k2 -rn | head -20
+go tool nm -size -sort size $BINARY | head -20
 echo ""
 
 echo "=== Size by Package (estimated) ==="
@@ -127,7 +127,7 @@ Go provides built-in options to understand what gets included during compilation
 # Show what packages are being compiled
 go build -v -o myapp main.go
 
-# Show detailed build information including package sizes
+# Show detailed build commands used during compilation
 go build -x -o myapp main.go 2>&1 | grep -E "^(#|compile)"
 ```
 
@@ -221,10 +221,10 @@ rm -f myapp-standard myapp-stripped
 
 ### Additional ldflags for Size Reduction
 
-You can combine multiple linker flags for additional optimization.
+You can combine linker flags with other build-time metadata settings.
 
 ```bash
-# Comprehensive ldflags for minimal binary size
+# Embed version metadata alongside size-related linker flags (requires a package-level string variable named version)
 go build -ldflags="-s -w -X main.version=1.0.0" -o myapp main.go
 
 # Using trimpath to remove file system paths from the binary
@@ -382,10 +382,10 @@ Combining UPX with Docker multi-stage builds for optimal container images.
 
 ```dockerfile
 # Dockerfile - Multi-stage build with UPX compression
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-# Install UPX
-RUN apk add --no-cache upx
+# Install UPX and CA certificates
+RUN apk add --no-cache upx ca-certificates
 
 WORKDIR /app
 
@@ -419,7 +419,7 @@ Large dependencies can significantly bloat binary size. Analyzing and trimming d
 ### Analyzing Module Dependencies
 
 ```bash
-# List all direct dependencies
+# List all modules in the build list
 go list -m all
 
 # Show module graph
@@ -428,7 +428,7 @@ go mod graph
 # Find why a specific module is included
 go mod why github.com/some/package
 
-# Calculate the size impact of each dependency
+# List imported package dependencies
 go list -json ./... | jq -r '.Deps[]' | sort -u
 ```
 
@@ -444,13 +444,12 @@ import (
     "fmt"
     "os"
     "os/exec"
-    "sort"
     "strings"
 )
 
 func main() {
-    // Get list of all packages in the binary
-    cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}", "./...")
+    // Get list of all packages reachable from the current package
+    cmd := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", "./...")
     output, err := cmd.Output()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -658,11 +657,11 @@ brew tap tinygo-org/tools
 brew install tinygo
 
 # Ubuntu/Debian
-wget https://github.com/tinygo-org/tinygo/releases/download/v0.30.0/tinygo_0.30.0_amd64.deb
-sudo dpkg -i tinygo_0.30.0_amd64.deb
+wget https://github.com/tinygo-org/tinygo/releases/download/v0.41.1/tinygo_0.41.1_amd64.deb
+sudo dpkg -i tinygo_0.41.1_amd64.deb
 
 # Docker
-docker pull tinygo/tinygo:0.30.0
+docker pull tinygo/tinygo:0.41.1
 ```
 
 ### Building with TinyGo
@@ -807,9 +806,9 @@ Different base images have different size implications.
 
 ```dockerfile
 # Size comparison of different base images
-# ubuntu:22.04 - ~77MB
+# ubuntu:24.04 - ~78MB
 # debian:bookworm-slim - ~74MB
-# alpine:3.18 - ~7MB
+# alpine:3.24 - ~8MB
 # distroless/static - ~2MB
 # scratch - 0MB (just your binary)
 ```
@@ -821,7 +820,7 @@ The recommended pattern for minimal Go containers.
 ```dockerfile
 # Dockerfile.optimized - Fully optimized Go container build
 # Stage 1: Build environment
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git upx ca-certificates tzdata
@@ -885,7 +884,7 @@ echo "Building Docker images with different strategies..."
 
 # Strategy 1: Naive approach (golang base)
 cat > Dockerfile.naive << 'EOF'
-FROM golang:1.21
+FROM golang:1.26
 WORKDIR /app
 COPY . .
 RUN go build -o app .
@@ -895,12 +894,12 @@ docker build -f Dockerfile.naive -t ${APP_NAME}:naive . > /dev/null 2>&1
 
 # Strategy 2: Alpine with stripped binary
 cat > Dockerfile.alpine << 'EOF'
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o app .
 
-FROM alpine:3.18
+FROM alpine:3.24
 COPY --from=builder /app/app /app
 CMD ["/app"]
 EOF
@@ -908,7 +907,7 @@ docker build -f Dockerfile.alpine -t ${APP_NAME}:alpine . > /dev/null 2>&1
 
 # Strategy 3: Scratch with stripped binary
 cat > Dockerfile.scratch << 'EOF'
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o app .
@@ -921,7 +920,7 @@ docker build -f Dockerfile.scratch -t ${APP_NAME}:scratch . > /dev/null 2>&1
 
 # Strategy 4: Scratch with UPX compression
 cat > Dockerfile.upx << 'EOF'
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache upx
 WORKDIR /app
 COPY . .
@@ -951,7 +950,7 @@ Google's distroless images provide a middle ground between scratch and alpine.
 
 ```dockerfile
 # Dockerfile.distroless - Using Google's distroless images
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 COPY . .
@@ -976,7 +975,7 @@ Optimize build times while maintaining small images.
 
 ```dockerfile
 # Dockerfile.cached - Optimized build caching
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -1039,9 +1038,9 @@ build-tiny:
 	@echo "TinyGo build: $$(ls -lh $(BINARY_NAME)-tiny | awk '{print $$5}')"
 
 # Analyze binary size
-analyze: build-prod
+analyze: build
 	@echo "=== Symbol Analysis ==="
-	@go tool nm -size $(BINARY_NAME) | sort -t ' ' -k2 -rn | head -20
+	@go tool nm -size -sort size $(BINARY_NAME) | head -20
 	@echo ""
 	@echo "=== Size Summary ==="
 	@ls -lh $(BINARY_NAME)
@@ -1089,12 +1088,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Install UPX
         run: sudo apt-get install -y upx
@@ -1121,7 +1120,7 @@ jobs:
       - name: Analyze Binary
         run: |
           echo "=== Top 20 Largest Symbols ==="
-          go tool nm -size myapp-opt | sort -t ' ' -k2 -rn | head -20
+          go tool nm -size -sort size myapp-std | head -20
 
       - name: Size Report
         run: |
