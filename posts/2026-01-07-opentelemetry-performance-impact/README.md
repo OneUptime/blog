@@ -85,35 +85,40 @@ trace.set_tracer_provider(provider)
 
 ### Custom Composite Sampler
 
-For production environments, you often need more sophisticated sampling logic. The following example shows a custom sampler that combines multiple strategies - it always samples errors and slow requests while applying rate-based sampling to normal traffic:
+For production environments, you often need more sophisticated sampling logic. The following example shows a custom sampler that combines multiple strategies - it always samples error and latency hints available at span creation while applying ratio-based sampling to normal traffic:
 
 ```python
-from opentelemetry.sdk.trace.sampling import Sampler, SamplingResult, Decision
-from opentelemetry.trace import SpanKind
+from opentelemetry.context import Context
+from opentelemetry.sdk.trace.sampling import (
+    Sampler,
+    SamplingResult,
+    Decision,
+    TraceIdRatioBased,
+)
+from opentelemetry.trace import Link, SpanKind
+from opentelemetry.trace.span import TraceState
+from opentelemetry.util.types import Attributes
 from typing import Optional, Sequence
-import time
 
 class ProductionSampler(Sampler):
     """
     A composite sampler designed for production use cases.
 
     Sampling strategy:
-    - Always sample errors (identified by attributes)
-    - Always sample slow requests (above threshold)
-    - Rate-limit sample normal requests
+    - Always sample spans with error hints available at span creation
+    - Always sample spans with slow-operation hints available at span creation
+    - Ratio sample normal requests
 
-    This ensures you never miss critical issues while controlling overhead.
+    This improves coverage for known critical paths while controlling overhead.
     """
 
     def __init__(
         self,
         base_rate: float = 0.01,           # Sample 1% of normal traffic
         slow_threshold_ms: float = 1000,    # Always sample if > 1 second
-        error_sample_rate: float = 1.0,     # Always sample errors
     ):
         self._base_rate = base_rate
         self._slow_threshold_ms = slow_threshold_ms
-        self._error_sample_rate = error_sample_rate
         # TraceIdRatioBased provides deterministic sampling based on trace ID
         self._base_sampler = TraceIdRatioBased(base_rate)
 
@@ -123,8 +128,9 @@ class ProductionSampler(Sampler):
         trace_id: int,
         name: str,
         kind: SpanKind = None,
-        attributes: Optional[dict] = None,
-        links: Optional[Sequence] = None,
+        attributes: Attributes = None,
+        links: Optional[Sequence[Link]] = None,
+        trace_state: Optional[TraceState] = None,
     ) -> SamplingResult:
         """
         Determine whether to sample this span.
@@ -136,8 +142,8 @@ class ProductionSampler(Sampler):
         """
         attributes = attributes or {}
 
-        # Priority 1: Always sample if this is an error span.
-        # Errors are rare and critical - never drop them.
+        # Priority 1: Always sample if an error hint is known at span creation.
+        # Final span status is usually not available to head-based samplers.
         if attributes.get("error", False) or attributes.get("http.status_code", 200) >= 500:
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
@@ -145,8 +151,8 @@ class ProductionSampler(Sampler):
                 # TraceState can carry vendor-specific sampling info
             )
 
-        # Priority 2: Sample slow operations based on hints.
-        # Some instrumentation libraries set duration hints for known slow operations.
+        # Priority 2: Sample slow operations based on hints known before the span runs.
+        # For actual duration-based decisions after completion, use collector tail sampling.
         expected_duration = attributes.get("expected_duration_ms", 0)
         if expected_duration > self._slow_threshold_ms:
             return SamplingResult(Decision.RECORD_AND_SAMPLE, attributes)
@@ -154,7 +160,7 @@ class ProductionSampler(Sampler):
         # Priority 3: Fall back to base rate sampling.
         # This applies to the majority of "normal" traffic.
         return self._base_sampler.should_sample(
-            parent_context, trace_id, name, kind, attributes, links
+            parent_context, trace_id, name, kind, attributes, links, trace_state
         )
 
     def get_description(self) -> str:
@@ -210,8 +216,9 @@ processors:
         probabilistic:
           sampling_percentage: 5
 
-      # Policy 4: Rate limiting as a safety valve.
-      # Prevents runaway costs during traffic spikes.
+      # Policy 4: Rate-limited baseline sampling.
+      # Use this as an alternative to probabilistic sampling when you need
+      # a bounded stream of additional traces during traffic spikes.
       - name: rate-limiting-policy
         type: rate_limiting
         rate_limiting:
@@ -261,7 +268,8 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 # gzip compression typically reduces payload size by 80-90%,
 # significantly reducing network bandwidth and costs.
 exporter = OTLPSpanExporter(
-    endpoint="otel-collector:4317",
+    endpoint="http://otel-collector:4317",
+    insecure=True,
     # Enable compression to reduce network bandwidth
     compression="gzip",
 )
@@ -326,7 +334,7 @@ public class TracingConfiguration {
             .setEndpoint("http://otel-collector:4317")
             // Compression reduces bandwidth by ~85% for typical trace data
             .setCompression("gzip")
-            // Connection timeout - how long to wait for initial connection
+            // Export timeout - maximum time to wait for each export operation
             .setTimeout(Duration.ofSeconds(10))
             .build();
 
@@ -363,6 +371,7 @@ For containerized deployments, environment variables provide flexible configurat
 
 # Exporter endpoint - use gRPC (4317) for better performance than HTTP (4318)
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
 
 # Enable gzip compression to reduce network bandwidth by ~85%
 export OTEL_EXPORTER_OTLP_COMPRESSION="gzip"
@@ -399,56 +408,39 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 // initTracer sets up an optimized OpenTelemetry tracer for production use.
 // It returns a shutdown function that should be called during graceful shutdown
 // to ensure all pending spans are exported before the application exits.
 func initTracer(ctx context.Context) (func(context.Context) error, error) {
-    // Create a gRPC connection to the collector.
-    // Using a connection pool with keepalive reduces connection overhead.
-    conn, err := grpc.DialContext(ctx, "otel-collector:4317",
-        // Use insecure for internal cluster communication.
-        // For external/cross-network, use TLS credentials instead.
-        grpc.WithTransportCredentials(insecure.NewCredentials()),
-
-        // Connection pooling reduces overhead for high-volume exports.
-        // The block option ensures the connection is established before returning.
-        grpc.WithBlock(),
-    )
-    if err != nil {
-        return nil, err
-    }
-
-    // Create the OTLP trace exporter using the gRPC connection.
+    // Create the OTLP trace exporter using gRPC.
     // gRPC provides better performance than HTTP for high-volume telemetry
     // due to connection reuse, multiplexing, and efficient serialization.
-    exporter, err := otlptrace.New(ctx,
-        otlptracegrpc.NewClient(
-            otlptracegrpc.WithGRPCConn(conn),
-            // Enable gzip compression to reduce bandwidth by ~85%.
-            // The CPU cost is typically negligible compared to network savings.
-            otlptracegrpc.WithCompressor("gzip"),
-            // Retry configuration for transient failures.
-            // Exponential backoff prevents overwhelming a recovering collector.
-            otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
-                Enabled:         true,
-                InitialInterval: 500 * time.Millisecond,
-                MaxInterval:     5 * time.Second,
-                MaxElapsedTime:  30 * time.Second,
-            }),
-        ),
+    exporter, err := otlptracegrpc.New(ctx,
+        otlptracegrpc.WithEndpoint("otel-collector:4317"),
+        // Use insecure for internal cluster communication.
+        // For external/cross-network, use TLS credentials instead.
+        otlptracegrpc.WithInsecure(),
+        // Enable gzip compression to reduce bandwidth by ~85%.
+        // The CPU cost is typically negligible compared to network savings.
+        otlptracegrpc.WithCompressor("gzip"),
+        // Retry configuration for transient failures.
+        // Exponential backoff prevents overwhelming a recovering collector.
+        otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
+            Enabled:         true,
+            InitialInterval: 500 * time.Millisecond,
+            MaxInterval:     5 * time.Second,
+            MaxElapsedTime:  30 * time.Second,
+        }),
     )
     if err != nil {
         return nil, err
@@ -462,7 +454,7 @@ func initTracer(ctx context.Context) (func(context.Context) error, error) {
             semconv.SchemaURL,
             semconv.ServiceName("my-service"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            attribute.String("deployment.environment.name", "production"),
         ),
     )
     if err != nil {
@@ -519,8 +511,11 @@ The following Node.js configuration demonstrates async export setup with proper 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
 
@@ -537,7 +532,7 @@ function createOptimizedSDK() {
     // Configure the OTLP exporter with gRPC transport.
     // gRPC provides better performance than HTTP for high-volume telemetry.
     const traceExporter = new OTLPTraceExporter({
-        url: 'grpc://otel-collector:4317',
+        url: 'http://otel-collector:4317',
         // gzip compression reduces payload size by ~85%
         compression: CompressionAlgorithm.GZIP,
         // Timeout for export operations (milliseconds)
@@ -566,14 +561,14 @@ function createOptimizedSDK() {
     // Create the SDK with all components configured.
     const sdk = new NodeSDK({
         // Resource identifies this service in telemetry data.
-        resource: new Resource({
-            [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-service',
-            [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-            [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+        resource: resourceFromAttributes({
+            [ATTR_SERVICE_NAME]: 'my-node-service',
+            [ATTR_SERVICE_VERSION]: '1.0.0',
+            'deployment.environment.name': 'production',
         }),
 
         // Use the configured span processor.
-        spanProcessor: spanProcessor,
+        spanProcessors: [spanProcessor],
 
         // Configure sampling to reduce volume.
         // ParentBased respects upstream sampling decisions.
@@ -657,7 +652,11 @@ Views allow you to control metric cardinality and reduce storage costs by droppi
 
 ```python
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import (
+    View,
+    DropAggregation,
+    ExplicitBucketHistogramAggregation,
+)
 
 # Views control how metrics are aggregated and what attributes are retained.
 # This is crucial for controlling metric cardinality and storage costs.
@@ -692,8 +691,8 @@ db_metrics_view = View(
 # Some instrumentation libraries emit verbose metrics not needed in prod.
 drop_debug_metrics = View(
     instrument_name="*.debug.*",
-    # Empty aggregation effectively drops the metric
-    aggregation=None,
+    # DropAggregation makes matching measurements be ignored.
+    aggregation=DropAggregation(),
 )
 
 provider = MeterProvider(
@@ -937,13 +936,8 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 
-  # Prometheus metrics for Collector self-monitoring.
-  # Scrape these to monitor Collector performance.
-  prometheus:
-    endpoint: 0.0.0.0:8888
-
 service:
-  extensions: [health_check, prometheus]
+  extensions: [health_check]
 
   # Telemetry configuration for the Collector itself.
   telemetry:
@@ -954,7 +948,12 @@ service:
     # Collector self-metrics
     metrics:
       level: detailed  # basic, normal, or detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
       # Key metrics to monitor:
       # - otelcol_processor_batch_batch_send_size: Batch sizes being exported
@@ -963,6 +962,13 @@ service:
       # - otelcol_exporter_failed_spans: Failed span exports
       # - otelcol_processor_dropped_spans: Spans dropped due to queue overflow
       # - otelcol_receiver_accepted_spans: Spans received from applications
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      # Memory limiter should be first processor
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
 
 receivers:
   otlp:
@@ -978,9 +984,9 @@ processors:
   # Memory limiter prevents OOM by applying backpressure.
   # Configure based on your container memory limits.
   memory_limiter:
-    # Start limiting at 80% of memory limit
+    # Set the memory limit for the Collector process
     limit_mib: 1600
-    # Start refusing data at 90% of limit
+    # Allow a limited spike above the soft limit
     spike_limit_mib: 400
     # How often to check memory usage
     check_interval: 1s
@@ -995,7 +1001,7 @@ exporters:
   otlp:
     endpoint: "backend:4317"
     sending_queue:
-      # Enable persistent queue to survive restarts
+      # Enable the in-memory sending queue
       enabled: true
       # Queue size in batches (not spans)
       num_consumers: 10
@@ -1006,13 +1012,6 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      # Memory limiter should be first processor
-      processors: [memory_limiter, batch]
-      exporters: [otlp]
 ```
 
 ## Production Deployment Architecture
@@ -1035,7 +1034,7 @@ flowchart TB
     subgraph "Gateway Layer"
         G1[Gateway Collector<br/>with tail sampling]
         G2[Gateway Collector<br/>with tail sampling]
-        LB[Load Balancer]
+        LB[Trace-ID Load Balancer]
     end
 
     subgraph "Backend Layer"
@@ -1107,7 +1106,8 @@ processors:
     timeout: 5s
 
 exporters:
-  # Forward to gateway collector via load balancer.
+  # Forward to gateway collector via a trace-aware load balancer.
+  # Tail sampling requires all spans for a trace to reach the same gateway.
   otlp:
     endpoint: "gateway-lb:4317"
     tls:
