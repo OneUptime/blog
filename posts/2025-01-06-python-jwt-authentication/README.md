@@ -481,7 +481,8 @@ async def revoke_access_token(token: str):
     """Immediately revoke an access token"""
     payload = decode_token(token)
     # Keep in blacklist until token would have expired naturally
-    exp = datetime.fromtimestamp(payload["exp"])
+    # Use utcfromtimestamp: 'exp' is a UTC epoch and we compare against utcnow()
+    exp = datetime.utcfromtimestamp(payload["exp"])
     blacklist.add(payload["jti"], exp)
 
 async def get_current_user_strict(token: str = Depends(oauth2_scheme)):
@@ -513,11 +514,11 @@ from fastapi.responses import JSONResponse
 app = FastAPI()
 
 # Security settings for auth cookies
+# Note: 'path' is set per-cookie below so it can differ between tokens
 COOKIE_SETTINGS = {
     "httponly": True,   # Not accessible via JavaScript (XSS protection)
     "secure": True,     # Only sent over HTTPS
     "samesite": "lax",  # CSRF protection (strict for maximum security)
-    "path": "/",        # Available to all routes
 }
 
 @app.post("/auth/login")
@@ -537,6 +538,7 @@ async def login_cookie(
         key="access_token",
         value=access_token,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert to seconds
+        path="/",  # Available to all routes
         **COOKIE_SETTINGS
     )
 
@@ -597,13 +599,13 @@ def validate_token_claims(payload: dict):
     """Comprehensive JWT claim validation"""
     now = datetime.utcnow()
 
-    # Check expiration time
-    exp = datetime.fromtimestamp(payload["exp"])
+    # Check expiration time ('exp' is a UTC epoch; compare in UTC)
+    exp = datetime.utcfromtimestamp(payload["exp"])
     if now > exp:
         raise ValueError("Token expired")
 
     # Check issued-at time (detect tokens from future - possible clock manipulation)
-    iat = datetime.fromtimestamp(payload["iat"])
+    iat = datetime.utcfromtimestamp(payload["iat"])
     if iat > now + timedelta(minutes=5):  # Allow 5 min clock skew
         raise ValueError("Token issued in future")
 
