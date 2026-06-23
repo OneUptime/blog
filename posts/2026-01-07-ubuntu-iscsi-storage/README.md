@@ -10,7 +10,7 @@ Description: A complete guide to setting up iSCSI targets and initiators for net
 
 ## Introduction
 
-iSCSI (Internet Small Computer Systems Interface) is a transport layer protocol that enables SCSI commands to be sent over standard TCP/IP networks. This technology allows you to create network-attached block storage devices, effectively turning any server with available storage into a SAN (Storage Area Network) without the need for expensive Fibre Channel infrastructure.
+iSCSI (Internet Small Computer Systems Interface) is an IP-based storage networking protocol that enables SCSI commands to be sent over standard TCP/IP networks. This technology allows you to create network-attached block storage devices, effectively turning any server with available storage into a SAN (Storage Area Network) without the need for expensive Fibre Channel infrastructure.
 
 In this comprehensive guide, we will walk through the complete process of configuring iSCSI storage on Ubuntu, including:
 
@@ -469,7 +469,7 @@ sudo iscsiadm -m node \
     -p 192.168.1.100:3260 \
     -o update \
     -n node.session.auth.password \
-    -v SecurePassword123!
+    -v 'SecurePassword123!'
 
 # For mutual CHAP, also configure the target credentials:
 # Set the mutual (reverse) username
@@ -486,7 +486,7 @@ sudo iscsiadm -m node \
     -p 192.168.1.100:3260 \
     -o update \
     -n node.session.auth.password_in \
-    -v TargetSecure456!
+    -v 'TargetSecure456!'
 
 # Log back in with CHAP authentication
 sudo iscsiadm -m node \
@@ -719,7 +719,8 @@ echo "/dev/mapper/mpath0 /mnt/iscsi_mpath ext4 _netdev,nofail 0 0" | sudo tee -a
 
 ```bash
 # Increase the network buffer sizes for better iSCSI performance
-# Add these settings to /etc/sysctl.conf
+# Add these settings to a sysctl configuration file
+sudo tee /etc/sysctl.d/99-iscsi-tuning.conf > /dev/null <<'EOF'
 
 # Maximum receive socket buffer size (16MB)
 net.core.rmem_max = 16777216
@@ -732,9 +733,10 @@ net.ipv4.tcp_rmem = 4096 1048576 16777216
 
 # TCP send buffer sizes: min, default, max (4KB, 1MB, 16MB)
 net.ipv4.tcp_wmem = 4096 1048576 16777216
+EOF
 
 # Apply the settings immediately without reboot
-sudo sysctl -p
+sudo sysctl --system
 ```
 
 ### iSCSI Timeout Configuration
@@ -894,10 +896,10 @@ sudo iscsiadm -m node \
 ## Security Best Practices
 
 1. **Always use CHAP authentication** - Never deploy iSCSI in production without authentication
-2. **Use mutual CHAP** - Bidirectional authentication prevents man-in-the-middle attacks
+2. **Use mutual CHAP** - Bidirectional authentication helps initiators verify the target's identity
 3. **Isolate iSCSI traffic** - Use a dedicated VLAN or network segment for iSCSI
 4. **Implement ACLs** - Only allow specific initiators to connect to targets
-5. **Enable IPsec** - For additional encryption (especially over untrusted networks)
+5. **Enable IPsec** - For encryption and stronger protection over untrusted networks
 6. **Monitor and log** - Set up monitoring for failed authentication attempts
 7. **Regular updates** - Keep both target and initiator systems patched
 
