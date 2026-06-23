@@ -43,7 +43,7 @@ terraform {
     key            = "multi-tenant/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -61,6 +61,11 @@ variable "tenant_config" {
     instance_size = string
     features     = map(bool)
   })
+}
+
+variable "all_tenant_ids" {
+  description = "Ordered list of tenant IDs used for CIDR allocation"
+  type        = list(string)
 }
 
 # main.tf
@@ -107,12 +112,12 @@ terraform workspace list
 
 - All tenants share the same backend configuration
 - No built-in access control between workspaces
-- State file grows with tenant count
+- Workspace count grows with tenant count
 - Difficult to manage at scale (100+ tenants)
 
 ## Pattern 2: Separate State Files per Tenant
 
-For stronger isolation, use separate state files:
+For stronger isolation, use separate state files. You might try to parameterize the key directly:
 
 ```hcl
 # backend.tf
@@ -122,12 +127,12 @@ terraform {
     key            = "tenants/${var.tenant_id}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
 
-Since backend configuration doesn't support variables, use partial configuration:
+Since backend configuration doesn't support variables, use partial configuration instead:
 
 ```hcl
 # backend.tf
@@ -136,7 +141,7 @@ terraform {
     bucket         = "company-terraform-state"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     # key is set via -backend-config
   }
 }
@@ -230,7 +235,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -274,16 +279,16 @@ inputs = {
 
 ```bash
 # Plan all tenants
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Apply to all tenants
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Apply to specific tenants matching pattern
 cd tenants
 for tenant in abc* def*; do
-  cd $tenant
-  terragrunt apply -auto-approve
+  cd "$tenant"
+  terragrunt run -- apply -auto-approve
   cd ..
 done
 ```
@@ -308,14 +313,16 @@ provider "aws" {
 
 # backend per tenant account
 # Note: Backend blocks do not support variable interpolation.
-# Use partial configuration with -backend-config to set role_arn dynamically.
+# Use partial configuration with -backend-config to set assume_role dynamically.
 terraform {
   backend "s3" {
     bucket         = "tenant-terraform-state"
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    # role_arn is set via: terraform init -backend-config="role_arn=arn:aws:iam::TENANT_ACCOUNT_ID:role/TerraformStateRole"
+    use_lockfile   = true
+    # assume_role is set via a backend config file:
+    # assume_role = { role_arn = "arn:aws:iam::TENANT_ACCOUNT_ID:role/TerraformStateRole" }
   }
 }
 ```
@@ -340,7 +347,8 @@ resource "aws_iam_policy" "tenant_state_access" {
           "s3:DeleteObject"
         ]
         Resource = [
-          "arn:aws:s3:::company-terraform-state/tenants/${var.tenant_id}/*"
+          "arn:aws:s3:::company-terraform-state/tenants/${var.tenant_id}/*",
+          "arn:aws:s3:::company-terraform-state/tenants/${var.tenant_id}/terraform.tfstate.tflock"
         ]
       },
       {
@@ -352,20 +360,6 @@ resource "aws_iam_policy" "tenant_state_access" {
         Condition = {
           StringLike = {
             "s3:prefix" = "tenants/${var.tenant_id}/*"
-          }
-        }
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
-        Resource = "arn:aws:dynamodb:*:*:table/terraform-locks"
-        Condition = {
-          "ForAllValues:StringLike" = {
-            "dynamodb:LeadingKeys" = "tenants/${var.tenant_id}/*"
           }
         }
       }
@@ -410,6 +404,10 @@ variable "tenant" {
   type = any
 }
 
+variable "state_bucket" {
+  type = string
+}
+
 # Create tenant state bucket prefix
 resource "aws_s3_object" "tenant_state_prefix" {
   bucket  = var.state_bucket
@@ -451,21 +449,38 @@ resource "aws_s3_bucket_logging" "state_logging" {
   target_prefix = "terraform-state-access/"
 }
 
-# CloudWatch alarm for state modifications
-resource "aws_cloudwatch_metric_alarm" "state_changes" {
-  alarm_name          = "terraform-state-modifications"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "NumberOfObjects"
-  namespace           = "AWS/S3"
-  period              = 300
-  statistic           = "Average"
-  threshold           = var.expected_tenant_count * 2
+# Enable EventBridge notifications for state object changes
+variable "state_change_topic_arn" {
+  type = string
+}
 
-  dimensions = {
-    BucketName = aws_s3_bucket.terraform_state.id
-    StorageType = "AllStorageTypes"
-  }
+resource "aws_s3_bucket_notification" "state_events" {
+  bucket      = aws_s3_bucket.terraform_state.id
+  eventbridge = true
+}
+
+resource "aws_cloudwatch_event_rule" "state_changes" {
+  name = "terraform-state-modifications"
+
+  event_pattern = jsonencode({
+    source        = ["aws.s3"]
+    "detail-type" = ["Object Created", "Object Deleted"]
+    detail = {
+      bucket = {
+        name = [aws_s3_bucket.terraform_state.id]
+      }
+      object = {
+        key = [{
+          prefix = "tenants/"
+        }]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "state_changes" {
+  rule = aws_cloudwatch_event_rule.state_changes.name
+  arn  = var.state_change_topic_arn
 }
 ```
 
@@ -505,8 +520,8 @@ terraform {
     key            = "tenants/TENANT_ID/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    kms_key_id     = "alias/tenant-TENANT_ID-state"
-    dynamodb_table = "terraform-locks"
+    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:alias/tenant-TENANT_ID-state"
+    use_lockfile   = true
   }
 }
 ```
