@@ -134,7 +134,8 @@ http {
     proxy_max_temp_file_size 0;  # Don't write to disk
 
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name example.com;
 
         # API endpoints with potentially large headers
@@ -159,7 +160,7 @@ http {
             proxy_pass http://websocket_backend;
             proxy_http_version 1.1;
 
-            # Disable buffering for WebSocket
+            # Disable response body buffering for WebSocket
             proxy_buffering off;
 
             proxy_set_header Upgrade $http_upgrade;
@@ -252,8 +253,8 @@ echo "$HEADERS" | awk '{print length($0), $0}' | sort -rn | head -5
 
 echo ""
 echo "=== Set-Cookie Headers ==="
-echo "$HEADERS" | grep -i "set-cookie" | wc -l
-echo "Set-Cookie headers found"
+COOKIE_COUNT=$(echo "$HEADERS" | grep -i "set-cookie" | wc -l)
+echo "Set-Cookie headers found: $COOKIE_COUNT"
 ```
 
 ## Handling Specific Scenarios
@@ -293,7 +294,7 @@ location / {
 location /events/ {
     proxy_pass http://sse_backend;
 
-    # Disable buffering entirely
+    # Disable response body buffering
     proxy_buffering off;
 
     # Still need buffer for initial headers
@@ -384,7 +385,7 @@ http {
 | proxy_pass | proxy_buffer_size | 16k-64k |
 | fastcgi_pass | fastcgi_buffer_size | 16k-64k |
 | uwsgi_pass | uwsgi_buffer_size | 16k-64k |
-| WebSocket | proxy_buffering off | Disable buffering |
-| SSE/Streaming | proxy_buffering off | Disable buffering |
+| WebSocket | proxy_buffering off | Disable response body buffering |
+| SSE/Streaming | proxy_buffering off | Disable response body buffering |
 
 The "upstream sent too big header" error is resolved by increasing buffer sizes, but always measure your actual header sizes first to avoid wasting memory. Start with moderate increases and adjust based on real-world data from your applications.
