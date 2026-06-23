@@ -37,22 +37,24 @@ The following commands demonstrate how package signing should work in a secure p
 # Package Signing Workflow
 
 # ========================
-# Publishers cryptographically sign packages before uploading to the registry
+# Publishers attach signed provenance before uploading to the registry,
+# and the registry signs every package so consumers can verify it
 
-# Step 1: Publisher signs the package during publish
-# The --sign flag creates a digital signature using the publisher's private key
-npm publish --sign
-# This generates a signature file that proves:
-# - The package contents haven't been tampered with
-# - The package was published by someone with the private key
+# Step 1: Publisher generates a signed provenance attestation during publish
+# The --provenance flag (npm 9.5+) links the package to the CI/CD build that
+# produced it using a keyless Sigstore signature
+npm publish --provenance
+# This generates a provenance statement that proves:
+# - Which source commit and build the package came from
+# - The package contents haven't been tampered with since the build
 
-# Step 2: Consumers verify signatures during install
-# The --verify-signatures flag checks that packages are properly signed
-npm install --verify-signatures
+# Step 2: Consumers verify signatures of installed packages
+# The audit signatures command (npm 8.15+) checks registry signatures and attestations
+npm audit signatures
 # This ensures:
 # - The package signature matches the package contents
-# - The signature was created by a trusted key
-# - No one has modified the package since it was signed
+# - The signature was created by the registry's trusted key
+# - No one has modified the package since it was published
 ```
 
 Linux distributions have required package signing for decades. There's no technical reason why npm, PyPI, or Cargo can't do the same. The argument that "it adds friction" is exactly backwards, friction during publishing prevents friction during incident response.
