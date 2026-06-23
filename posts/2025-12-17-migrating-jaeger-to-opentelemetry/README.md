@@ -140,20 +140,11 @@ data:
           http:
             endpoint: 0.0.0.0:4318   # Standard OTLP HTTP port
 
-    # PROCESSORS: Transform and batch data before export
+    # PROCESSORS: Batch data before export
     processors:
       batch:
         timeout: 1s                  # Send batches every second
         send_batch_size: 1024        # Or when 1024 spans accumulated
-
-      # Normalize Jaeger spans to OTel semantic conventions
-      # This ensures consistent data regardless of source
-      transform:
-        trace_statements:
-          - context: span
-            statements:
-              # Jaeger uses "operation.name" attribute, OTel uses span name
-              - set(name, attributes["operation.name"]) where attributes["operation.name"] != nil
 
     # EXPORTERS: Send to both old and new backends during migration
     exporters:
@@ -178,8 +169,8 @@ data:
         traces:
           # Accept from both Jaeger and OTel clients
           receivers: [jaeger, otlp]
-          # Transform Jaeger format, then batch
-          processors: [transform, batch]
+          # Batch spans before export
+          processors: [batch]
           # Export to BOTH backends for comparison during migration
           exporters: [otlp/jaeger, otlphttp]
 ```
@@ -333,7 +324,8 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
+import io.opentelemetry.semconv.ServiceAttributes;
+import io.opentelemetry.api.common.Attributes;
 
 // Create OTLP exporter - sends spans via gRPC
 OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
@@ -346,9 +338,9 @@ SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
     .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
     // Resource attributes identify the service
     .setResource(Resource.create(Attributes.of(
-        ResourceAttributes.SERVICE_NAME, "my-service"
+        ServiceAttributes.SERVICE_NAME, "my-service"
         // Add more attributes as needed:
-        // ResourceAttributes.SERVICE_VERSION, "1.0.0"
+        // ServiceAttributes.SERVICE_VERSION, "1.0.0"
     )))
     .build();
 
@@ -395,29 +387,32 @@ const tracer = initTracer(config);
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create provider with service identification
 const provider = new NodeTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     // Semantic conventions ensure consistent attribute names
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
+    [ATTR_SERVICE_NAME]: 'my-service',
     // Add more resource attributes for better identification:
-    // [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    // [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+    // [ATTR_SERVICE_VERSION]: '1.0.0',
+    // [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production',
   }),
+  // Add batch processor with OTLP exporter
+  // Batching improves performance by grouping spans before sending
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'http://otel-collector:4317',  // Collector gRPC endpoint
+      })
+    ),
+  ],
 });
-
-// Add batch processor with OTLP exporter
-// Batching improves performance by grouping spans before sending
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'grpc://otel-collector:4317',  // Collector gRPC endpoint
-    })
-  )
-);
 
 // Register provider globally - enables auto-instrumentation libraries
 provider.register();
@@ -463,14 +458,14 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import Resource
 
 # Define resource attributes to identify this service
 resource = Resource(attributes={
-    SERVICE_NAME: "my-service"
+    "service.name": "my-service",
     # Add more attributes as needed:
     # "service.version": "1.0.0",
-    # "deployment.environment": "production",
+    # "deployment.environment.name": "production",
 })
 
 # Create tracer provider with resource
@@ -481,7 +476,7 @@ provider = TracerProvider(resource=resource)
 processor = BatchSpanProcessor(
     OTLPSpanExporter(
         endpoint="otel-collector:4317",  # Collector gRPC endpoint
-        # insecure=True,  # Uncomment for non-TLS connections
+        insecure=True,  # Use TLS credentials in production
     )
 )
 provider.add_span_processor(processor)
@@ -517,12 +512,15 @@ import (
 
 func setupBridge() {
     // First, create your OTel tracer provider (as shown above)
-    tp := initOTelTracer()
+    tp, err := initOTelTracer(context.Background())
+    if err != nil {
+        // Handle initialization error
+    }
 
     // Create the bridge - this connects OpenTracing API to OTel SDK
     // bridge: implements OpenTracing Tracer interface
-    // wrapperProvider: OTel TracerProvider that wraps OpenTracing spans
-    bridge, wrapperProvider := opentracing.NewTracerPair(tp.Tracer(""))
+    // The second return value is an OTel wrapper tracer provider for mixed API use.
+    bridge, _ := opentracing.NewTracerPair(tp.Tracer(""))
 
     // Set bridge as global OpenTracing tracer
     // Now all OpenTracing API calls go through OTel
@@ -603,23 +601,14 @@ service:
 
 ### Trace ID Format Compatibility
 
-Jaeger historically supported both 64-bit and 128-bit trace IDs. OpenTelemetry uses 128-bit exclusively. The collector can automatically pad shorter trace IDs to maintain compatibility and enable trace correlation across old and new systems.
+Jaeger historically supported both 64-bit and 128-bit trace IDs. OpenTelemetry trace IDs are 128-bit, and the Collector converts received Jaeger spans into OpenTelemetry's internal data model. You should verify that legacy services can still be correlated with migrated services, but avoid trying to rewrite trace IDs in the transform processor: trace IDs are identifying fields, not regular string attributes.
 
 ```yaml
-# Collector processor to handle trace ID format differences
-# Older Jaeger clients may emit 64-bit trace IDs
-# OTel requires 128-bit trace IDs
-
-processors:
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          # Pad 64-bit trace IDs to 128-bit by prepending zeros
-          # 64-bit = 16 hex chars, 128-bit = 32 hex chars
-          # This ensures trace correlation works across systems
-          - set(trace_id, Concat(["0000000000000000", trace_id]))
-            where Len(trace_id) == 16
+# No transform processor is required for trace ID compatibility.
+# Keep legacy and migrated services on compatible propagators during rollout.
+# Prefer W3C Trace Context for new OpenTelemetry instrumentation, and enable
+# Jaeger propagation temporarily where legacy OpenTracing services still send
+# or receive the uber-trace-id header.
 ```
 
 ### Historical Data Access
@@ -715,8 +704,8 @@ validation:
       why: Verifies migrated services using OTel SDK work
 
     - name: No dropped spans
-      check: otelcol_processor_dropped_spans == 0
-      why: Ensures all spans are processed, no data loss
+      check: otelcol_receiver_refused_spans == 0 and otelcol_exporter_send_failed_spans == 0
+      why: Ensures spans are accepted and exported without receiver or exporter errors
 
   # LEVEL 2: Application-level checks
   # These verify traces capture business operations correctly
@@ -757,7 +746,10 @@ func TestJaegerToOTelMigration(t *testing.T) {
     // ==========================================
     // STEP 1: Create Jaeger span (simulates legacy service)
     // ==========================================
-    jaegerTracer := initJaegerTracer()
+    jaegerTracer, jaegerCloser, err := initJaegerTracer()
+    require.NoError(t, err)
+    defer jaegerCloser.Close()
+
     jaegerSpan := jaegerTracer.StartSpan("jaeger-operation")
     jaegerSpan.SetTag("test", "jaeger")      // Jaeger-style tag
     jaegerSpan.SetTag("migration", "before") // Mark as pre-migration
@@ -766,7 +758,11 @@ func TestJaegerToOTelMigration(t *testing.T) {
     // ==========================================
     // STEP 2: Create OTel span (simulates migrated service)
     // ==========================================
-    otelTracer := initOTelTracer()
+    tp, err := initOTelTracer(context.Background())
+    require.NoError(t, err)
+    defer tp.Shutdown(context.Background())
+
+    otelTracer := tp.Tracer("my-service")
     ctx, otelSpan := otelTracer.Start(context.Background(), "otel-operation")
     otelSpan.SetAttributes(
         attribute.String("test", "otel"),       // OTel-style attribute
