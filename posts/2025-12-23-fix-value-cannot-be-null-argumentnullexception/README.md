@@ -220,7 +220,7 @@ var value = settings.GetValueOrDefault("Key", "DefaultValue");
 // Option 3: Null-coalescing with indexer
 var value = settings.TryGetValue("Key", out var v) ? v : "Default";
 
-// Option 4: Collection expression (C# 12)
+// Option 4: Dictionary initializer with nullable values (index initializer, C# 6+)
 var settings = new Dictionary<string, string?>
 {
     ["Key1"] = "Value1"
