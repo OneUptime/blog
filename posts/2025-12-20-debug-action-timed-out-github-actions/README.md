@@ -200,7 +200,7 @@ steps:
 
 # Increase timeouts for slow networks
 - name: npm with extended timeout
-  run: npm ci --fetch-timeout=300000
+  run: npm ci --fetch-timeout=600000
 
 # Use caching to reduce network dependency
 - name: Cache node modules
@@ -468,7 +468,8 @@ Track build times to catch regressions before they become timeouts.
   if: always()
   run: |
     END_TIME=$(date +%s)
-    DURATION=$((END_TIME - ${{ github.event.workflow_run.run_started_at }}))
+    START_TIME=$(date -d "${{ github.event.workflow_run.run_started_at }}" +%s)
+    DURATION=$((END_TIME - START_TIME))
 
     # Alert if duration increased significantly
     if [ $DURATION -gt 1800 ]; then
