@@ -20,11 +20,11 @@ Tutorial / Guide
 - MongoDB Manual: `db.collection.createIndex()` - https://www.mongodb.com/docs/manual/reference/method/db.collection.createindex/
 - MongoDB Manual: TTL Indexes - https://www.mongodb.com/docs/manual/core/index-ttl/
 - MongoDB Manual: Sparse Indexes - https://www.mongodb.com/docs/manual/core/index-sparse/
+- MongoDB Manual: `db.collection.findOneAndUpdate()` - https://www.mongodb.com/docs/manual/reference/method/db.collection.findoneandupdate/
 - MongoDB Manual: Query for Null or Missing Fields - https://www.mongodb.com/docs/manual/tutorial/query-for-null-fields/
 
 ## Issues Found
-- The post used `{ deletedAt: { $exists: false } }` in a partial index filter and query. MongoDB's documented supported `partialFilterExpression` operators include `$exists: true`, but not `$exists: false`. Changed the soft-delete example to use the equality filter `{ deletedAt: null }`, which matches null or missing fields and remains valid for active documents when deleted documents receive a date value.
-- The filter-operator list showed `$exists` with `{ deletedAt: { $exists: false } }`. Changed it to `{ email: { $exists: true } }` to match MongoDB's documented partial-index operator support.
+No technical issues found.
 
 ## Review Notes
-The post is otherwise technically accurate. Partial indexes can reduce index size and maintenance cost, can be combined with unique constraints, can function as a more flexible alternative to sparse indexes, and can be used with TTL indexes. Query examples correctly reflect the requirement that MongoDB only uses a partial index when the query predicate includes the filter expression or a predicate that implies it.
+The post is technically accurate. Partial indexes can reduce index size and maintenance cost, can be combined with unique constraints, can function as a more flexible alternative to sparse indexes, and can be used with TTL indexes. The query examples correctly reflect the requirement that MongoDB only uses a partial index when the query predicate includes the filter expression or a predicate that implies it. For time series collections specifically, MongoDB documents an additional partial TTL restriction: the partial filter expression can only reference the collection `metaField`.
