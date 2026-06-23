@@ -63,7 +63,7 @@ The following example demonstrates how to create a basic span link in Python. We
 # Import the required OpenTelemetry modules for tracing
 
 from opentelemetry import trace
-from opentelemetry.trace import Link, SpanContext, TraceFlags
+from opentelemetry.trace import Link
 
 # Get a tracer instance from the global tracer provider
 # The tracer name should identify your application or library
@@ -111,7 +111,7 @@ sequenceDiagram
     R2->>Q: Add to batch
     R3->>Q: Add to batch
     Q->>BP: Process batch
-    Note over BP: Links to R de1, R2, R3
+    Note over BP: Links to R1, R2, R3
 ```
 
 The following code demonstrates a batch processor that collects items from a queue and processes them together, creating span links to each original request:
@@ -120,7 +120,7 @@ The following code demonstrates a batch processor that collects items from a que
 # Import required modules for batch processing with OpenTelemetry
 from opentelemetry import trace
 from opentelemetry.trace import Link
-from typing import List, Tuple
+from typing import List
 from dataclasses import dataclass
 import time
 
@@ -262,7 +262,7 @@ def example_usage():
 
 ## Fan-Out/Fan-In Pattern with Span Links
 
-The fan-out/fan-in pattern occurs when a single request triggers multiple parallel operations, which then need to be collected and aggregated. This pattern requires bidirectional span links.
+The fan-out/fan-in pattern occurs when a single request triggers multiple parallel operations, which then need to be collected and aggregated. This pattern often benefits from links on the aggregation span back to the original request and worker spans.
 
 ```mermaid
 graph TD
@@ -295,8 +295,6 @@ from opentelemetry import trace
 from opentelemetry.trace import Link, SpanContext
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import List, Dict, Any
-import asyncio
-
 tracer = trace.get_tracer("fan-out-service")
 
 
@@ -532,8 +530,6 @@ from opentelemetry import trace
 from opentelemetry.trace import Link, SpanContext
 from opentelemetry.propagate import extract, inject
 from typing import List, Dict, Any, Optional
-import json
-
 tracer = trace.get_tracer("message-queue-service")
 
 
@@ -695,7 +691,7 @@ Here is an implementation of a retry mechanism with span linking:
 from opentelemetry import trace
 from opentelemetry.trace import Link, SpanContext, StatusCode
 from typing import Callable, Any, List, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import time
 
 tracer = trace.get_tracer("retry-service")
@@ -966,11 +962,11 @@ def process_with_correct_relationships(order_id: str, items: List[str]):
 
 ### 2. Limit the Number of Links
 
-While there is no hard limit on span links, too many links can make traces difficult to understand:
+OpenTelemetry SDKs commonly enforce configurable limits on span links, and too many links can make traces difficult to understand:
 
 ```python
 # Configure maximum links based on your use case
-MAX_LINKS_PER_SPAN = 32  # OpenTelemetry SDK default
+MAX_LINKS_PER_SPAN = 128  # OpenTelemetry specification and Python SDK default
 
 def create_bounded_links(
     contexts: List[SpanContext],
@@ -1021,8 +1017,8 @@ def serialize_span_context(context: SpanContext) -> str:
     return json.dumps({
         "trace_id": format(context.trace_id, '032x'),
         "span_id": format(context.span_id, '016x'),
-        "trace_flags": context.trace_flags,
-        "trace_state": str(context.trace_state) if context.trace_state else None
+        "trace_flags": int(context.trace_flags),
+        "trace_state": context.trace_state.to_header() if context.trace_state else ""
     })
 
 
@@ -1036,7 +1032,7 @@ def deserialize_span_context(data: str) -> SpanContext:
         span_id=int(parsed["span_id"], 16),
         is_remote=True,  # Mark as remote since it came from storage
         trace_flags=trace.TraceFlags(parsed["trace_flags"]),
-        trace_state=trace.TraceState.from_header(parsed.get("trace_state") or "")
+        trace_state=trace.TraceState.from_header([parsed.get("trace_state") or ""])
     )
 ```
 
@@ -1489,6 +1485,6 @@ With proper span linking, your distributed traces will provide much deeper insig
 ## Additional Resources
 
 - [OpenTelemetry Specification: Links](https://opentelemetry.io/docs/concepts/signals/traces/#span-links)
-- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/instrumentation/python/)
+- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/languages/python/instrumentation/)
 - [W3C Trace Context Specification](https://www.w3.org/TR/trace-context/)
 - [Distributed Tracing Best Practices](https://opentelemetry.io/docs/concepts/signals/traces/)
