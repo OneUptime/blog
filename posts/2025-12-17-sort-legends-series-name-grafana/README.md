@@ -14,10 +14,10 @@ Grafana legends help identify what each line or bar represents in your visualiza
 
 ## TL;DR
 
-- Use "Sort by: Name" in legend options for alphabetical sorting
-- Enable "Sort descending" to reverse the order
-- Use transforms for complex sorting requirements
-- Configure via panel options or override settings
+- Grafana's time series legend options do not provide a persistent "Sort by: Name" setting
+- Use table legend mode to sort interactively by displayed calculation values
+- Use the Organize fields transform for name-based field ordering
+- Configure display names with legend format or field overrides
 - Legend placement affects readability on different screen sizes
 
 ---
@@ -35,7 +35,7 @@ Access legend settings through:
 | Option | Description |
 |--------|-------------|
 | Visibility | Show or hide the legend |
-| Mode | List, Table, or Hidden |
+| Mode | List or Table |
 | Placement | Bottom or Right |
 | Width | Fixed width for right placement |
 | Values | Show min, max, mean, total, etc. |
@@ -44,41 +44,45 @@ Access legend settings through:
 
 ## Sorting by Series Name
 
-### Method 1: Panel Legend Options
+### Method 1: Organize Fields Transform
 
 For time series panels:
 
 1. Edit your panel
-2. Open Panel options - Legend
-3. Find "Sort by" dropdown
-4. Select "Name"
-5. Toggle "Sort descending" if needed
+2. Go to the Transform tab
+3. Add the "Organize fields by name" transform
+4. Set field order mode to Auto
+5. Choose ASC to sort names A-Z or DESC to sort names Z-A
 
 ```mermaid
 flowchart TD
-    A[Edit Panel] --> B[Panel Options]
-    B --> C[Legend Section]
-    C --> D[Sort by: Name]
-    D --> E{Descending?}
-    E -->|Yes| F[Z-A Order]
-    E -->|No| G[A-Z Order]
+    A[Edit Panel] --> B[Transform Tab]
+    B --> C[Add Transform]
+    C --> D[Organize Fields by Name]
+    D --> E{Order?}
+    E -->|DESC| F[Z-A Order]
+    E -->|ASC| G[A-Z Order]
 ```
 
 ### Method 2: Via JSON Model
 
-Edit the panel JSON directly:
+Edit the panel JSON directly to add an organize transform:
 
 ```json
 {
-  "options": {
-    "legend": {
-      "displayMode": "list",
-      "placement": "bottom",
-      "showLegend": true,
-      "sortBy": "Name",
-      "sortDesc": false
+  "transformations": [
+    {
+      "id": "organize",
+      "options": {
+        "indexByName": {
+          "api-gateway": 0,
+          "database": 1,
+          "web-server-1": 2,
+          "web-server-3": 3
+        }
+      }
     }
-  }
+  ]
 }
 ```
 
@@ -106,18 +110,18 @@ After sorting (ascending):
 
 ### Sort by Value
 
-Sorts by the currently displayed value (if values are shown):
+Grafana can sort legend table rows by displayed calculation values:
 
 ```json
 {
   "legend": {
-    "sortBy": "Last",
-    "sortDesc": true
+    "displayMode": "table",
+    "calcs": ["lastNotNull"]
   }
 }
 ```
 
-Available value sorts:
+Available calculation values include:
 - Last: Most recent value
 - Min: Minimum value
 - Max: Maximum value
@@ -126,15 +130,13 @@ Available value sorts:
 
 ### Sort by Custom Field
 
-With table legend mode, sort by any displayed field:
+With table legend mode, add the calculation you want to sort by:
 
 ```json
 {
   "legend": {
     "displayMode": "table",
-    "sortBy": "Max",
-    "sortDesc": true,
-    "calcs": ["last", "min", "max", "mean"]
+    "calcs": ["lastNotNull", "min", "max", "mean"]
   }
 }
 ```
@@ -154,8 +156,6 @@ Table mode provides more sorting flexibility:
       "displayMode": "table",
       "placement": "right",
       "showLegend": true,
-      "sortBy": "Name",
-      "sortDesc": false,
       "calcs": [
         "lastNotNull",
         "min",
@@ -178,20 +178,20 @@ Table mode provides more sorting flexibility:
 | web-server-3  | 89ms  | 22ms  | 301ms | 78ms  |
 ```
 
-Click column headers to sort by that column interactively.
+Click calculation column headers to sort by that column interactively.
 
 ---
 
 ## Using Transforms for Advanced Sorting
 
-When panel options are insufficient, use transforms:
+When panel options are insufficient, use transforms. The Sort by transform sorts rows within each data frame; the Organize fields by name transform reorders fields, which is what affects series order in a time series legend.
 
 ### Sort Transform
 
 1. Edit panel
 2. Go to Transform tab
 3. Add "Sort by" transform
-4. Configure field and order
+4. Configure the row field and order
 
 ```json
 {
@@ -212,7 +212,7 @@ When panel options are insufficient, use transforms:
 }
 ```
 
-### Organize Fields Transform
+### Organize Fields by Name Transform
 
 Reorder series manually:
 
@@ -243,12 +243,21 @@ Control sort order in your query:
 ### PromQL with sort
 
 ```promql
-# Sort results ascending by value
-
 sort(sum(rate(http_requests_total[5m])) by (service))
 
-# Sort results descending by value
 sort_desc(sum(rate(http_requests_total[5m])) by (service))
+```
+
+Prometheus `sort()` and `sort_desc()` sort instant-vector results by sample value. They do not sort by label name, and Prometheus range query results have a fixed output ordering.
+
+### PromQL with sort_by_label
+
+If your Prometheus server enables experimental PromQL functions, you can sort instant-vector results by a label:
+
+```promql
+sort_by_label(sum(rate(http_requests_total[5m])) by (service), "service")
+
+sort_by_label_desc(sum(rate(http_requests_total[5m])) by (service), "service")
 ```
 
 ### PromQL with topk/bottomk
@@ -271,7 +280,7 @@ Customize how series names appear in legends:
 
 In your query:
 
-```promql
+```text
 # Query
 sum(rate(http_requests_total[5m])) by (service, environment)
 
@@ -288,20 +297,22 @@ sum(rate(http_requests_total[5m])) by (service, environment)
 
 ```json
 {
-  "overrides": [
-    {
-      "matcher": {
-        "id": "byRegexp",
-        "options": "/.*service=\"([^\"]+)\".*/"
-      },
-      "properties": [
-        {
-          "id": "displayName",
-          "value": "$1"
-        }
-      ]
-    }
-  ]
+  "fieldConfig": {
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byRegexp",
+          "options": ".*"
+        },
+        "properties": [
+          {
+            "id": "displayName",
+            "value": "${__field.labels.service}"
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -326,8 +337,6 @@ Here is a complete time series panel with sorted legends:
       "displayMode": "table",
       "placement": "right",
       "showLegend": true,
-      "sortBy": "Name",
-      "sortDesc": false,
       "calcs": [
         "lastNotNull",
         "mean",
@@ -340,6 +349,19 @@ Here is a complete time series panel with sorted legends:
       "sort": "desc"
     }
   },
+  "transformations": [
+    {
+      "id": "organize",
+      "options": {
+        "indexByName": {
+          "api-gateway": 0,
+          "database": 1,
+          "web-server-1": 2,
+          "web-server-3": 3
+        }
+      }
+    }
+  ],
   "fieldConfig": {
     "defaults": {
       "unit": "s"
@@ -378,16 +400,16 @@ Tooltip sort options:
 
 | Use Case | Recommended Sort |
 |----------|-----------------|
-| Comparing named services | Sort by Name |
-| Finding top contributors | Sort by Max (desc) |
-| Identifying problems | Sort by Last (desc) |
-| Capacity planning | Sort by Mean (desc) |
+| Comparing named services | Organize fields by name |
+| Finding top contributors | Sort legend table by Max |
+| Identifying problems | Sort legend table by Last |
+| Capacity planning | Sort legend table by Mean |
 
 ### 2. Use Consistent Naming
 
 Name your series consistently for predictable sorting:
 
-```promql
+```text
 # Good: Consistent prefix
 legendFormat: "svc-{{service}}"
 # Results: svc-api, svc-auth, svc-web
@@ -402,11 +424,17 @@ legendFormat: "{{service}}"
 ```json
 {
   "legend": {
-    // For many series, use right placement
     "placement": "right",
-    "width": 250,
+    "width": 250
+  }
+}
+```
 
-    // For few series, bottom works well
+For few series, bottom placement also works well:
+
+```json
+{
+  "legend": {
     "placement": "bottom"
   }
 }
@@ -432,6 +460,7 @@ Check these settings:
 1. Ensure "Show legend" is enabled
 2. Verify sort field exists
 3. Check for transform conflicts
+4. Use table mode and displayed calculations for interactive value sorting
 
 ### Inconsistent Sort Order
 
@@ -441,7 +470,7 @@ Causes:
 - Time range affecting visible series
 
 Solutions:
-- Add explicit sort in query
+- Add explicit sort in query where the data source supports it
 - Use transforms
 - Set consistent legend format
 
