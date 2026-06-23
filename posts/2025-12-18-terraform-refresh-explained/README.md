@@ -12,7 +12,7 @@ The `terraform refresh` command is one of the most misunderstood commands in Ter
 
 ## What terraform refresh Actually Does
 
-At its core, `terraform refresh` reconciles the Terraform state file with the actual infrastructure. It queries your cloud provider APIs to get the current state of resources and updates the local state file to match reality.
+At its core, `terraform refresh` reconciles Terraform state with the actual infrastructure. It queries your cloud provider APIs to get the current state of resources and updates the state to match reality.
 
 ```mermaid
 flowchart LR
@@ -173,16 +173,16 @@ When using remote backends like S3 or Terraform Cloud, refresh behaves the same 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
 
 The refresh operation:
-1. Acquires state lock (if using DynamoDB)
+1. Acquires state lock (if locking is enabled)
 2. Downloads current state from S3
 3. Queries provider APIs
 4. Updates state
@@ -256,11 +256,11 @@ terraform state show aws_instance.web
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"  # Enable locking
-    encrypt        = true
+    bucket       = "terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true  # Enable S3 state locking
+    encrypt      = true
   }
 }
 ```
@@ -283,14 +283,13 @@ terraform plan -refresh-only -parallelism=5
 Some resources take time to query:
 
 ```hcl
-provider "aws" {
-  region = "us-east-1"
+resource "aws_db_instance" "example" {
+  # ...
 
-  # Increase timeouts for slow APIs
-  default_tags {
-    tags = {
-      ManagedBy = "Terraform"
-    }
+  # Increase operation timeouts for resources that support them
+  timeouts {
+    create = "60m"
+    delete = "2h"
   }
 }
 ```
