@@ -119,6 +119,7 @@ package com.example.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -142,7 +143,7 @@ public class EmailService {
             log.info("Simple email sent to: {}", to);
         } catch (Exception e) {
             log.error("Failed to send email to: {}", to, e);
-            throw new EmailSendException("Failed to send email", e);
+            throw new MailSendException("Failed to send email", e);
         }
     }
 
@@ -419,12 +420,14 @@ package com.example.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
 
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class AsyncConfig {
 
     @Bean(name = "emailExecutor")
@@ -510,7 +513,7 @@ public class AsyncEmailService {
 ```java
 package com.example.service;
 
-import com.example.dto.EmailMessage;
+import com.example.entity.EmailMessage;
 import com.example.repository.EmailQueueRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
