@@ -461,15 +461,16 @@ exporter, err := otlptracegrpc.New(ctx,
 )
 ```
 
-### Jaeger Exporter
+### Jaeger (via OTLP)
+
+The dedicated OpenTelemetry Jaeger exporter (`go.opentelemetry.io/otel/exporters/jaeger`) was deprecated in v1.17.0 and removed in v1.18.0. Jaeger natively accepts OTLP, so send traces to Jaeger's OTLP endpoint using the OTLP exporter instead:
 
 ```go
-import "go.opentelemetry.io/otel/exporters/jaeger"
+import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 
-exporter, err := jaeger.New(
-    jaeger.WithCollectorEndpoint(
-        jaeger.WithEndpoint("http://jaeger:14268/api/traces"),
-    ),
+exporter, err := otlptracegrpc.New(ctx,
+    otlptracegrpc.WithEndpoint("jaeger:4317"),
+    otlptracegrpc.WithInsecure(),
 )
 ```
 
@@ -492,13 +493,13 @@ For Node.js gRPC services:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'user-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'user-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -602,15 +603,15 @@ exporters:
     tls:
       insecure: true
 
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, attributes]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 ## Kubernetes Deployment
