@@ -218,8 +218,9 @@ driftfile /var/lib/chrony/chrony.drift
 logdir /var/log/chrony
 log tracking measurements statistics
 
-# Maximum allowed offset for initial correction
-# If offset is larger, Chrony steps the clock instead of slewing
+# Reject a clock update if the uncertainty (skew) of the estimated
+# frequency is larger than this value in ppm. This avoids setting the
+# clock from an unreliable measurement. (Default is 1000.0.)
 maxupdateskew 100.0
 
 # Enable RTC (Real Time Clock) synchronization
@@ -339,7 +340,8 @@ allow 172.16.0.0/12
 local stratum 10
 
 # Rate limiting to prevent abuse
-# Limit clients to 8 requests per second with a burst of 32
+# interval 1 = allow a response on average no more often than every
+# 2 seconds (2^1) per client, while permitting short bursts of 8 responses
 ratelimit interval 1 burst 8 leak 2
 ```
 
@@ -991,7 +993,7 @@ driftfile /var/lib/chrony/chrony.drift
 # Step clock if offset exceeds 1 second in first 3 updates
 makestep 1 3
 
-# Maximum rate of adjustment (ppm per second)
+# Maximum rate at which chronyd is allowed to slew the time (in ppm)
 maxslewrate 500
 
 # ============================================
