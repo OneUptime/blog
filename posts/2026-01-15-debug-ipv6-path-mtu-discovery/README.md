@@ -167,8 +167,8 @@ echo "Path MTU to $DESTINATION is $MIN_MTU bytes"
 # Basic IPv6 traceroute
 traceroute6 2001:db8::1
 
-# Traceroute with specific packet size
-traceroute6 -M 1400 2001:db8::1
+# Traceroute with specific packet size (packet length is a positional argument)
+traceroute6 2001:db8::1 1400
 
 # Traceroute using UDP
 traceroute6 -U 2001:db8::1
@@ -271,7 +271,7 @@ cat /proc/net/snmp6 | grep -E "Icmp6(InPkt|OutPkt)TooBig"
 #### Viewing Current Settings
 
 ```bash
-# Check if PMTUD is enabled
+# View the configured IPv6 MTU (PMTUD itself is always on in IPv6)
 sysctl net.ipv6.conf.all.mtu
 
 # View all IPv6-related sysctl settings
@@ -493,8 +493,8 @@ for hop in $(traceroute6 -n destination | awk 'NR>1 {print $2}' | grep -v '\*');
 done
 
 # Check if specific hop drops large packets
-traceroute6 -M 1500 destination
-traceroute6 -M 1400 destination
+traceroute6 destination 1500
+traceroute6 destination 1400
 ```
 
 **Solution:**
@@ -601,19 +601,16 @@ kubectl rollout restart deployment my-deployment
 # Install bpftrace
 sudo apt-get install bpftrace
 
-# Trace ICMPv6 Packet Too Big messages
-sudo bpftrace -e 'tracepoint:icmp:icmp_receive {
-    if (args->type == 2) {
-        printf("Packet Too Big from %s, MTU: %d\n",
-               ntop(args->saddr), args->mtu);
-    }
-}'
+# There is no stable ICMP tracepoint, so first discover the probes
+# available on your kernel (names vary by version):
+sudo bpftrace -l 'kprobe:*icmpv6*'
+sudo bpftrace -l 'kprobe:*pmtu*'
 
-# Trace TCP MSS values
-sudo bpftrace -e 'tracepoint:tcp:tcp_rcv_space_adjust {
-    printf("Socket %p: MSS=%d PMTU=%d\n",
-           args->sk, args->mss, args->pmtu);
-}'
+# Trace entries into the IPv6 Path MTU update path
+sudo bpftrace -e 'kprobe:ip6_update_pmtu { printf("ip6_update_pmtu called by %s\n", comm); }'
+
+# Count TCP retransmits, which often spike during a PMTU black hole
+sudo bpftrace -e 'tracepoint:tcp:tcp_retransmit_skb { @[comm] = count(); }'
 ```
 
 ### Creating a PMTUD Test Script
