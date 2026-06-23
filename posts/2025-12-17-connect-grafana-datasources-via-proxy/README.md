@@ -12,7 +12,7 @@ When Grafana runs in a restricted network or behind a corporate firewall, connec
 
 ## Understanding Grafana Proxy Architecture
 
-Grafana can route datasource traffic through proxies at multiple levels: environment variables, datasource-specific settings, or through a dedicated proxy server.
+Grafana can route datasource traffic through proxies at multiple levels: environment variables, Grafana's secure SOCKS5 datasource proxy, or through a dedicated proxy server.
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
         - name: grafana
@@ -68,7 +74,7 @@ spec:
 
 ## 2. Proxy with Authentication
 
-For proxies requiring authentication, include credentials in the URL or use separate variables.
+For proxies requiring authentication, include credentials in the proxy URL.
 
 ```bash
 # Basic auth in URL
@@ -98,7 +104,13 @@ kind: Deployment
 metadata:
   name: grafana
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
         - name: grafana
@@ -107,13 +119,13 @@ spec:
                 name: proxy-credentials
 ```
 
-## 3. Configure Datasource-Specific Proxy
+## 3. Configure Server-Side Datasource Access
 
-Grafana datasources support proxy configuration at the datasource level through custom HTTP settings.
+Grafana datasources support server-side access through the `access: proxy` setting. This means requests are sent by the Grafana server, so HTTP forward proxy behavior still comes from the Grafana process environment or from an intermediary proxy service.
 
-Navigate to Configuration > Data Sources > Add data source.
+Navigate to Connections > Data sources > Add new data source.
 
-For the Prometheus datasource with proxy:
+For the Prometheus datasource with server-side access and custom headers:
 
 ```yaml
 # Datasource provisioning file
@@ -135,38 +147,29 @@ datasources:
 
 ## 4. Using SOCKS5 Proxy
 
-For SOCKS5 proxies, configure via environment variables or use an intermediary.
+For SOCKS5 datasource connections, configure Grafana's secure SOCKS5 datasource proxy in `grafana.ini`.
 
-```bash
-# SOCKS5 proxy (Go supports this via ALL_PROXY)
-ALL_PROXY=socks5://proxy.corp.example.com:1080
+```ini
+[secure_socks_datasource_proxy]
+enabled = true
+root_ca_cert = /etc/grafana/certs/proxy-ca.crt
+client_key = /etc/grafana/certs/grafana-client.key
+client_cert = /etc/grafana/certs/grafana-client.crt
+server_name = proxy.corp.example.com
+proxy_address = proxy.corp.example.com:1080
 ```
 
-For datasources that do not natively support SOCKS, deploy a local HTTP-to-SOCKS proxy.
-
-`docker-compose.yml`
+Then enable the SOCKS5 proxy for each datasource that should use it.
 
 ```yaml
-version: '3.8'
-
-services:
-  # Converts HTTP proxy requests to SOCKS5
-  http-to-socks:
-    image: serjs/go-socks5-proxy
-    container_name: http-proxy
-    environment:
-      - PROXY_ADDR=socks5://corporate-socks:1080
-    ports:
-      - "8888:8888"
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:latest
-    environment:
-      - HTTP_PROXY=http://http-to-socks:8888
-      - HTTPS_PROXY=http://http-to-socks:8888
-    depends_on:
-      - http-to-socks
+apiVersion: 1
+datasources:
+  - name: External-Prometheus
+    type: prometheus
+    access: proxy
+    url: https://prometheus.external-service.com
+    jsonData:
+      enableSecureSocksProxy: true
 ```
 
 ## 5. Configure Proxy in grafana.ini
@@ -185,16 +188,14 @@ dialTimeout = 30
 keep_alive_seconds = 300
 # Max idle connections
 max_idle_connections = 100
-# Max idle connections per host
-max_idle_connections_per_host = 10
 # Max connections per host
 max_conns_per_host = 0
 # Idle connection timeout
 idle_conn_timeout_seconds = 90
-# Expected idle connection timeout
-expected_idle_conn_timeout_seconds = 10
 # TLS handshake timeout
 tls_handshake_timeout_seconds = 10
+# Expect: 100-continue timeout
+expect_continue_timeout_seconds = 1
 # Send user header
 send_user_header = false
 # Response limit in bytes (0 = unlimited)
@@ -234,39 +235,56 @@ env:
 
 Handle TLS certificates when proxying HTTPS requests.
 
-```ini
-# grafana.ini - Skip TLS verification (not recommended for production)
-[dataproxy]
-; skip_tls_verify = true
-
-# Better: Add custom CA certificate
-[security]
-; custom_ca_file = /etc/grafana/certs/corporate-ca.crt
+```yaml
+# Datasource provisioning file
+apiVersion: 1
+datasources:
+  - name: External-Prometheus
+    type: prometheus
+    access: proxy
+    url: https://prometheus.external-service.com
+    jsonData:
+      tlsAuthWithCACert: true
+      # Skip TLS verification only for testing.
+      tlsSkipVerify: false
+    secureJsonData:
+      tlsCACert: $GRAFANA_TLS_CA_CERT
 ```
 
-Mount CA certificates in Kubernetes:
+Store CA certificates in Kubernetes secrets and expose them as environment variables when provisioning datasources:
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-datasource-tls
+  namespace: monitoring
+type: Opaque
+stringData:
+  GRAFANA_TLS_CA_CERT: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
+  namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
         - name: grafana
-          volumeMounts:
-            - name: ca-certs
-              mountPath: /etc/grafana/certs
-              readOnly: true
-          env:
-            - name: GF_SECURITY_CUSTOM_CA_FILE
-              value: /etc/grafana/certs/corporate-ca.crt
-      volumes:
-        - name: ca-certs
-          secret:
-            secretName: corporate-ca-cert
+          envFrom:
+            - secretRef:
+                name: grafana-datasource-tls
 ```
 
 ## 8. Nginx Reverse Proxy for Datasources
@@ -285,19 +303,18 @@ server {
     server_name prometheus-proxy;
 
     location / {
-        # Forward to external Prometheus through corporate proxy
+        # Forward to external Prometheus from the Nginx host
         proxy_pass https://external_prometheus;
         proxy_http_version 1.1;
         proxy_set_header Host prometheus.external-provider.com;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        # Use corporate proxy
         proxy_connect_timeout 60s;
         proxy_read_timeout 120s;
 
         # Add authentication if required
-        proxy_set_header Authorization "Bearer ${PROMETHEUS_TOKEN}";
+        proxy_set_header Authorization "Bearer <prometheus-token>";
     }
 }
 ```
