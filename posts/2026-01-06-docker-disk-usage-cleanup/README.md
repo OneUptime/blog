@@ -45,7 +45,7 @@ Local Volumes   15        8         12.45GB   4.2GB (33%)
 Build Cache     89                  3.456GB   3.456GB
 ```
 
-**ACTIVE** means currently in use. **RECLAIMABLE** is what you can safely remove.
+**ACTIVE** means currently in use. **RECLAIMABLE** is space Docker considers unused and eligible for cleanup, but review volumes and images before deleting them.
 
 ### Detailed Breakdown
 
@@ -70,8 +70,8 @@ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 # Sort by size (largest first) - pipe through sort for custom ordering
 docker images --format "{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -hr
 
-# Find dangling images (no tag, not used by any container)
-# These are safe to delete and often accumulate from builds
+# Find dangling images (no tag)
+# These often accumulate from builds
 docker images -f "dangling=true"
 
 # Show image layer history to understand what's consuming space in an image
@@ -117,7 +117,7 @@ This command removes everything not currently in use. Use with extreme caution, 
 
 ```bash
 # Remove everything not currently in use
-# WARNING: This is destructive - verify you want to remove ALL unused resources
+# WARNING: This is destructive - verify you want to remove these unused resources
 docker system prune -a --volumes
 
 # What this removes:
@@ -126,10 +126,10 @@ docker system prune -a --volumes
 # - All dangling images
 # - All images without containers (with -a flag)
 # - All build cache
-# - All unused volumes (with --volumes flag)
+# - Anonymous volumes not used by containers (with --volumes flag)
 ```
 
-**Warning:** The `-a` flag removes ALL images not attached to running containers. Skip it to preserve tagged images.
+**Warning:** The `-a` flag removes ALL images not attached to any container. Skip it to preserve tagged images.
 
 ### Targeted Cleanup (Recommended)
 
@@ -151,18 +151,18 @@ docker container prune --filter "until=24h"
 
 #### 2. Remove Dangling Images
 
-Dangling images have no tag and aren't used by any container:
+Dangling images have no tag:
 
-Dangling images are leftover artifacts from builds and are safe to remove:
+Dangling images are often leftover artifacts from builds:
 
 ```bash
 # List dangling images to see what will be removed
 docker images -f "dangling=true"
 
-# Remove them - this is safe as they're not referenced by any container or tag
+# Remove dangling images not referenced by any container
 docker image prune
 
-# This is safe - dangling images are build artifacts
+# Review first if you rely on local untagged build outputs
 ```
 
 #### 3. Remove Unused Images
@@ -184,14 +184,14 @@ docker image prune -a --filter "until=168h"
 Build cache can grow very large, especially in CI environments:
 
 ```bash
-# Remove all build cache - frees significant space but slows next build
+# Remove unused build cache - frees space but may slow the next build
 docker builder prune
 
 # Keep cache used in last 24 hours - balance between space and build speed
 docker builder prune --filter "until=24h"
 
-# Remove only orphaned cache (safest) - removes only cache no longer valid
-docker builder prune --filter "unused-for=24h"
+# Include all unused build cache, not just dangling cache
+docker builder prune -a --filter "until=24h"
 ```
 
 #### 5. Remove Unused Volumes
@@ -202,8 +202,11 @@ Volume cleanup requires extra caution as volumes may contain important data:
 # List orphaned volumes - not attached to any container
 docker volume ls -f "dangling=true"
 
-# Remove them - DESTRUCTIVE: verify these volumes are truly not needed
+# Remove unused anonymous volumes - DESTRUCTIVE: verify these volumes are truly not needed
 docker volume prune
+
+# Remove all unused local volumes, including named volumes
+docker volume prune -a
 
 # BE CAREFUL: This deletes data permanently
 # Always verify the volume isn't needed first
@@ -272,7 +275,7 @@ if [ "$AVAILABLE" -lt "$THRESHOLD_GB" ]; then
   docker image prune -a -f --filter "until=48h"
   # Remove build cache older than 24 hours
   docker builder prune -f --filter "until=24h"
-  # Remove unused volumes (be careful in production)
+  # Remove unused anonymous volumes (be careful in production)
   docker volume prune -f
 
   # Report space reclaimed
@@ -367,15 +370,15 @@ docker run --log-opt max-size=10m --log-opt max-file=3 myapp
 Limit how much space the build cache can consume:
 
 ```bash
-# Limit build cache to 10GB - removes oldest entries beyond this limit
-docker builder prune --reserved-space 10GB
+# Prune build cache until at most 10GB remains
+docker builder prune --max-used-space 10GB
 ```
 
 In BuildKit:
 
 ```bash
-# Configure max cache size in buildkitd.toml or use:
-docker builder prune --reserved-space 10gb
+# Configure maxUsedSpace in buildkitd.toml or use:
+docker builder prune --max-used-space 10gb
 ```
 
 ---
@@ -441,10 +444,10 @@ docker system df -v
 # Safe daily cleanup - low risk
 docker container prune -f      # Remove stopped containers
 docker image prune -f          # Remove dangling images
-docker builder prune -f        # Remove build cache
+docker builder prune -f        # Remove unused build cache
 
 # Aggressive cleanup (careful!)
-# Removes ALL unused resources including tagged images
+# Removes unused containers, networks, tagged images, build cache, and anonymous volumes
 docker system prune -a --volumes -f
 
 # Preview what will be removed (list candidates before pruning)
