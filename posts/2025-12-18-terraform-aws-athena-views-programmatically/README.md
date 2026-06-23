@@ -81,7 +81,7 @@ data "aws_caller_identity" "current" {}
 
 ## Creating Views Using Glue Catalog Tables
 
-The most reliable way to create Athena views is through `aws_glue_catalog_table` with the correct table type and view definition:
+A Terraform-native way to manage classic Athena view metadata is through `aws_glue_catalog_table` with the correct table type and view definition:
 
 ```hcl
 # Base table pointing to raw data
@@ -162,7 +162,8 @@ resource "aws_glue_catalog_table" "orders_summary_view" {
     }
 
     ser_de_info {
-      name = "ParquetHiveSerDe"
+      name                  = "-"
+      serialization_library = "-"
     }
   }
 }
@@ -218,11 +219,40 @@ resource "null_resource" "execute_view_creation" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      aws athena start-query-execution \
-        --query-string "${replace(aws_athena_named_query.create_monthly_stats_view.query, "\"", "\\\"")}" \
+      set -e
+
+      query_execution_id=$(aws athena start-query-execution \
+        --query-string "$(cat <<'SQL'
+${aws_athena_named_query.create_monthly_stats_view.query}
+SQL
+)" \
         --work-group ${aws_athena_workgroup.analytics.name} \
         --query-execution-context Database=${aws_glue_catalog_database.analytics.name} \
-        --result-configuration OutputLocation=s3://${aws_s3_bucket.athena_results.bucket}/view-creation/
+        --result-configuration OutputLocation=s3://${aws_s3_bucket.athena_results.bucket}/view-creation/ \
+        --query 'QueryExecutionId' \
+        --output text)
+
+      while true; do
+        state=$(aws athena get-query-execution \
+          --query-execution-id "$query_execution_id" \
+          --query 'QueryExecution.Status.State' \
+          --output text)
+
+        case "$state" in
+          SUCCEEDED)
+            exit 0
+            ;;
+          FAILED|CANCELLED)
+            aws athena get-query-execution \
+              --query-execution-id "$query_execution_id" \
+              --query 'QueryExecution.Status.StateChangeReason' \
+              --output text
+            exit 1
+            ;;
+        esac
+
+        sleep 2
+      done
     EOT
   }
 }
@@ -251,8 +281,9 @@ variable "view_query" {
 
 variable "columns" {
   type = list(object({
-    name = string
-    type = string
+    name        = string
+    hive_type   = string
+    presto_type = string
   }))
   description = "Column definitions for the view"
 }
@@ -265,7 +296,7 @@ locals {
     columns = [
       for col in var.columns : {
         name = col.name
-        type = col.type
+        type = col.presto_type
       }
     ]
   })
@@ -288,12 +319,13 @@ resource "aws_glue_catalog_table" "view" {
       for_each = var.columns
       content {
         name = columns.value.name
-        type = columns.value.type
+        type = columns.value.hive_type
       }
     }
 
     ser_de_info {
-      name = "ParquetHiveSerDe"
+      name                  = "-"
+      serialization_library = "-"
     }
   }
 }
@@ -324,11 +356,11 @@ module "customer_lifetime_value_view" {
   SQL
 
   columns = [
-    { name = "customer_id", type = "varchar" },
-    { name = "first_order", type = "timestamp" },
-    { name = "last_order", type = "timestamp" },
-    { name = "total_orders", type = "bigint" },
-    { name = "lifetime_value", type = "decimal(10,2)" }
+    { name = "customer_id", hive_type = "string", presto_type = "varchar" },
+    { name = "first_order", hive_type = "timestamp", presto_type = "timestamp" },
+    { name = "last_order", hive_type = "timestamp", presto_type = "timestamp" },
+    { name = "total_orders", hive_type = "bigint", presto_type = "bigint" },
+    { name = "lifetime_value", hive_type = "decimal(10,2)", presto_type = "decimal(10,2)" }
   ]
 }
 ```
@@ -340,7 +372,7 @@ module "customer_lifetime_value_view" {
 Keep SQL queries in separate files for better maintainability:
 
 ```hcl
-# views/monthly_stats.sql
+# main.tf
 locals {
   monthly_stats_query = file("${path.module}/views/monthly_stats.sql")
 }
