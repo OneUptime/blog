@@ -81,20 +81,15 @@ package config
 
 import (
 	"crypto/rand"
-	"crypto/rsa"
 	"time"
 
 	"github.com/ory/fosite"
-	"github.com/ory/fosite/compose"
-	"github.com/ory/fosite/token/jwt"
 )
 
 // Config holds the OAuth2 server configuration
 type Config struct {
 	// Secret is used for HMAC signing of tokens
 	Secret []byte
-	// PrivateKey is used for RS256 JWT signing
-	PrivateKey *rsa.PrivateKey
 	// AccessTokenLifespan defines how long access tokens are valid
 	AccessTokenLifespan time.Duration
 	// RefreshTokenLifespan defines how long refresh tokens are valid
@@ -111,15 +106,8 @@ func NewConfig() (*Config, error) {
 		return nil, err
 	}
 
-	// Generate RSA key pair for JWT signing
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Config{
 		Secret:                secret,
-		PrivateKey:            privateKey,
 		AccessTokenLifespan:   time.Hour,
 		RefreshTokenLifespan:  time.Hour * 24 * 7,
 		AuthorizeCodeLifespan: time.Minute * 10,
@@ -184,17 +172,17 @@ func (c *Client) GetRedirectURIs() []string {
 
 // GetGrantTypes returns allowed grant types
 func (c *Client) GetGrantTypes() fosite.Arguments {
-	return c.GrantTypes
+	return fosite.Arguments(c.GrantTypes)
 }
 
 // GetResponseTypes returns allowed response types
 func (c *Client) GetResponseTypes() fosite.Arguments {
-	return c.ResponseTypes
+	return fosite.Arguments(c.ResponseTypes)
 }
 
 // GetScopes returns the allowed scopes for this client
 func (c *Client) GetScopes() fosite.Arguments {
-	return c.Scopes
+	return fosite.Arguments(c.Scopes)
 }
 
 // IsPublic returns true if the client is a public client
@@ -204,7 +192,7 @@ func (c *Client) IsPublic() bool {
 
 // GetAudience returns the allowed audiences for this client
 func (c *Client) GetAudience() fosite.Arguments {
-	return []string{}
+	return fosite.Arguments{}
 }
 ```
 
@@ -234,13 +222,13 @@ type MemoryStore struct {
 	Clients map[string]*models.Client
 
 	// AuthorizeCodes stores pending authorization codes
-	AuthorizeCodes map[string]fosite.Requester
+	AuthorizeCodes map[string]StoredAuthorizeCode
 
 	// AccessTokens stores active access tokens
 	AccessTokens map[string]fosite.Requester
 
 	// RefreshTokens stores active refresh tokens
-	RefreshTokens map[string]fosite.Requester
+	RefreshTokens map[string]StoredRefreshToken
 
 	// PKCE stores PKCE challenges
 	PKCE map[string]fosite.Requester
@@ -249,13 +237,24 @@ type MemoryStore struct {
 	Users map[string]string
 }
 
+type StoredAuthorizeCode struct {
+	Active  bool
+	Request fosite.Requester
+}
+
+type StoredRefreshToken struct {
+	Active               bool
+	AccessTokenSignature string
+	Request              fosite.Requester
+}
+
 // NewMemoryStore creates a new in-memory storage
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		Clients:        make(map[string]*models.Client),
-		AuthorizeCodes: make(map[string]fosite.Requester),
+		AuthorizeCodes: make(map[string]StoredAuthorizeCode),
 		AccessTokens:   make(map[string]fosite.Requester),
-		RefreshTokens:  make(map[string]fosite.Requester),
+		RefreshTokens:  make(map[string]StoredRefreshToken),
 		PKCE:           make(map[string]fosite.Requester),
 		Users:          make(map[string]string),
 	}
@@ -282,7 +281,10 @@ func (s *MemoryStore) CreateAuthorizeCodeSession(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.AuthorizeCodes[code] = request
+	s.AuthorizeCodes[code] = StoredAuthorizeCode{
+		Active:  true,
+		Request: request,
+	}
 	return nil
 }
 
@@ -295,11 +297,14 @@ func (s *MemoryStore) GetAuthorizeCodeSession(
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	request, ok := s.AuthorizeCodes[code]
+	stored, ok := s.AuthorizeCodes[code]
 	if !ok {
 		return nil, fosite.ErrNotFound
 	}
-	return request, nil
+	if !stored.Active {
+		return stored.Request, fosite.ErrInvalidatedAuthorizeCode
+	}
+	return stored.Request, nil
 }
 
 // InvalidateAuthorizeCodeSession marks an authorization code as used
@@ -310,7 +315,12 @@ func (s *MemoryStore) InvalidateAuthorizeCodeSession(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.AuthorizeCodes, code)
+	stored, ok := s.AuthorizeCodes[code]
+	if !ok {
+		return fosite.ErrNotFound
+	}
+	stored.Active = false
+	s.AuthorizeCodes[code] = stored
 	return nil
 }
 
@@ -359,12 +369,17 @@ func (s *MemoryStore) DeleteAccessTokenSession(
 func (s *MemoryStore) CreateRefreshTokenSession(
 	ctx context.Context,
 	signature string,
+	accessSignature string,
 	request fosite.Requester,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.RefreshTokens[signature] = request
+	s.RefreshTokens[signature] = StoredRefreshToken{
+		Active:               true,
+		AccessTokenSignature: accessSignature,
+		Request:              request,
+	}
 	return nil
 }
 
@@ -377,11 +392,14 @@ func (s *MemoryStore) GetRefreshTokenSession(
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	request, ok := s.RefreshTokens[signature]
+	stored, ok := s.RefreshTokens[signature]
 	if !ok {
 		return nil, fosite.ErrNotFound
 	}
-	return request, nil
+	if !stored.Active {
+		return stored.Request, fosite.ErrInactiveToken
+	}
+	return stored.Request, nil
 }
 
 // DeleteRefreshTokenSession removes a refresh token
@@ -404,12 +422,25 @@ func (s *MemoryStore) RevokeRefreshToken(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for sig, req := range s.RefreshTokens {
-		if req.GetID() == requestID {
-			delete(s.RefreshTokens, sig)
+	for sig, stored := range s.RefreshTokens {
+		if stored.Request.GetID() == requestID {
+			stored.Active = false
+			s.RefreshTokens[sig] = stored
 		}
 	}
 	return nil
+}
+
+// RotateRefreshToken revokes tokens associated with a refresh token rotation
+func (s *MemoryStore) RotateRefreshToken(
+	ctx context.Context,
+	requestID string,
+	refreshTokenSignature string,
+) error {
+	if err := s.RevokeRefreshToken(ctx, requestID); err != nil {
+		return err
+	}
+	return s.RevokeAccessToken(ctx, requestID)
 }
 
 // RevokeAccessToken revokes an access token by its request ID
@@ -638,7 +669,6 @@ import (
 	"time"
 
 	"github.com/ory/fosite"
-	"github.com/ory/fosite/token/jwt"
 )
 
 // Session represents the OAuth2 session data
@@ -647,7 +677,6 @@ type Session struct {
 	Subject   string
 	ExpiresAt map[fosite.TokenType]time.Time
 	Extra     map[string]interface{}
-	JWTClaims *jwt.JWTClaims
 }
 
 // NewSession creates a new session for the given user
@@ -660,11 +689,6 @@ func NewSession(username string) *Session {
 			fosite.RefreshToken: time.Now().Add(time.Hour * 24 * 7),
 		},
 		Extra: make(map[string]interface{}),
-		JWTClaims: &jwt.JWTClaims{
-			Subject: username,
-			Issuer:  "https://auth.example.com",
-			Extra:   make(map[string]interface{}),
-		},
 	}
 }
 
@@ -845,8 +869,6 @@ import (
 
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
-	"github.com/ory/fosite/handler/oauth2"
-	"github.com/ory/fosite/handler/pkce"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yourusername/oauth2-server/config"
@@ -903,17 +925,17 @@ func buildOAuth2Provider(cfg *config.Config, store *storage.MemoryStore) fosite.
 			CoreStrategy: compose.NewOAuth2HMACStrategy(fositeConfig),
 		},
 		// Authorization code flow
-		oauth2.AuthorizeExplicitGrantFactory,
+		compose.OAuth2AuthorizeExplicitFactory,
 		// Client credentials flow
-		oauth2.ClientCredentialsGrantFactory,
+		compose.OAuth2ClientCredentialsGrantFactory,
 		// Refresh token flow
-		oauth2.RefreshTokenGrantFactory,
+		compose.OAuth2RefreshTokenGrantFactory,
 		// Token introspection
-		oauth2.TokenIntrospectionFactory,
+		compose.OAuth2TokenIntrospectionFactory,
 		// Token revocation
-		oauth2.TokenRevocationFactory,
+		compose.OAuth2TokenRevocationFactory,
 		// PKCE support
-		pkce.PKCEHandlerFactory,
+		compose.OAuth2PKCEFactory,
 	)
 }
 
@@ -982,8 +1004,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
-	"strings"
+	"net/url"
 )
 
 // PKCEChallenge represents a PKCE code verifier and challenge pair
@@ -1019,17 +1040,16 @@ func GeneratePKCEChallenge() (*PKCEChallenge, error) {
 func (p *PKCEChallenge) BuildAuthorizationURL(
 	baseURL, clientID, redirectURI, scope, state string,
 ) string {
-	params := []string{
-		fmt.Sprintf("client_id=%s", clientID),
-		fmt.Sprintf("redirect_uri=%s", redirectURI),
-		fmt.Sprintf("response_type=code"),
-		fmt.Sprintf("scope=%s", scope),
-		fmt.Sprintf("state=%s", state),
-		fmt.Sprintf("code_challenge=%s", p.Challenge),
-		fmt.Sprintf("code_challenge_method=%s", p.Method),
-	}
+	params := url.Values{}
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", redirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", scope)
+	params.Set("state", state)
+	params.Set("code_challenge", p.Challenge)
+	params.Set("code_challenge_method", p.Method)
 
-	return baseURL + "?" + strings.Join(params, "&")
+	return baseURL + "?" + params.Encode()
 }
 ```
 
@@ -1154,7 +1174,7 @@ func TestTokenIntrospection(t *testing.T) {
 
 ## Database Storage Implementation
 
-For production use, implement a database-backed storage. Here is a PostgreSQL example.
+For production use, implement a database-backed storage. Here is a partial PostgreSQL example showing the schema and one storage method.
 
 ```go
 // storage/postgres.go
@@ -1166,11 +1186,11 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/ory/fosite"
-	_ "github.com/lib/pq"
 )
 
-// PostgresStore implements fosite storage using PostgreSQL
+// PostgresStore starts a fosite storage implementation using PostgreSQL
 type PostgresStore struct {
 	db *sql.DB
 }
@@ -1268,8 +1288,8 @@ func (s *PostgresStore) CreateAccessTokenSession(
 		signature,
 		request.GetID(),
 		request.GetClient().GetID(),
-		request.GetRequestedScopes(),
-		request.GetGrantedScopes(),
+		pq.Array([]string(request.GetRequestedScopes())),
+		pq.Array([]string(request.GetGrantedScopes())),
 		sessionData,
 		request.GetSession().GetExpiresAt(fosite.AccessToken),
 	)
