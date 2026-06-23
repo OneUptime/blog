@@ -255,11 +255,14 @@ class TransferService
   private
   
   def self.validate_transfer!(from_account, to_account, amount)
-    if from_account.frozen?
+    # NOTE: use a domain method like `account_frozen?` (backed by a status
+    # column) rather than Ruby's built-in `Object#frozen?`, which checks
+    # object immutability and has nothing to do with account state.
+    if from_account.account_frozen?
       raise AccountFrozenError, "Source account #{from_account.id} is frozen"
     end
     
-    if to_account.frozen?
+    if to_account.account_frozen?
       raise AccountFrozenError, "Destination account #{to_account.id} is frozen"
     end
     
@@ -733,11 +736,13 @@ class IdempotentPaymentService
       # This is a PostgreSQL-specific feature
       lock_key = Digest::MD5.hexdigest(idempotency_key).to_i(16) % (2**31)
       
-      result = ActiveRecord::Base.connection.execute(
+      # Use select_value so the boolean result is type-cast to true/false.
+      # connection.execute returns raw strings ('t'/'f') that are both truthy.
+      lock_acquired = ActiveRecord::Base.connection.select_value(
         "SELECT pg_try_advisory_xact_lock(#{lock_key})"
       )
       
-      unless result.first['pg_try_advisory_xact_lock']
+      unless lock_acquired
         raise ConcurrentRequestError, "Request already being processed"
       end
       
@@ -1298,10 +1303,10 @@ ActiveSupport::Notifications.subscribe('transaction.active_record') do |*args|
   # Log slow transactions
   if duration_ms > 1000  # 1 second threshold
     Rails.logger.warn(
-      "Slow transaction detected",
-      duration_ms: duration_ms.round(2),
-      outcome: outcome,
-      connection: event.payload[:connection]&.class&.name
+      "Slow transaction detected " \
+      "duration_ms=#{duration_ms.round(2)} " \
+      "outcome=#{outcome} " \
+      "connection=#{event.payload[:connection]&.class&.name}"
     )
   end
   
@@ -1337,12 +1342,12 @@ module ConnectionPoolMonitor
     pool = ActiveRecord::Base.connection_pool
     
     Rails.logger.info(
-      "Connection Pool Stats",
-      size: pool.size,
-      connections: pool.connections.size,
-      active: pool.connections.count(&:in_use?),
-      idle: pool.connections.count { |c| !c.in_use? },
-      waiting: pool.num_waiting_in_queue
+      "Connection Pool Stats " \
+      "size=#{pool.size} " \
+      "connections=#{pool.connections.size} " \
+      "active=#{pool.connections.count(&:in_use?)} " \
+      "idle=#{pool.connections.count { |c| !c.in_use? }} " \
+      "waiting=#{pool.num_waiting_in_queue}"
     )
   end
 end
