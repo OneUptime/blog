@@ -247,13 +247,15 @@ docker cp --archive web-server:/app/data ./data
 
 ### Gotcha: Symlinks
 
-`docker cp` follows symlinks by default. If you need the actual symlink:
+`docker cp` preserves symlinks by default - it copies the symbolic link itself, not the file it points to. If you need the target instead, use the `-L` flag:
 
-To preserve symlinks rather than copying their targets, use tar which handles symlinks correctly.
+To follow symlinks and copy their targets rather than the links, pass `-L` (or pipe through tar with `-h`, which does the same).
 
 ```bash
-# Use tar to preserve symlinks instead of following them
-# The -h flag makes tar follow symlinks; omit it to preserve them
+# Follow symlinks and copy their targets instead of the links
+docker cp -L web-server:/app/link-dir ./
+
+# tar's -h flag also follows symlinks; omit it to preserve the links
 docker exec web-server tar -chf - /app/link-dir | tar -xf - -C ./
 ```
 
