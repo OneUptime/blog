@@ -39,6 +39,9 @@ on:
   issues:
     types: [opened]
 
+permissions:
+  issues: write
+
 jobs:
   respond:
     runs-on: ubuntu-latest
@@ -75,6 +78,11 @@ name: GitHub CLI Examples
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   cli-examples:
@@ -117,6 +125,9 @@ name: Curl API Examples
 on:
   workflow_dispatch:
 
+permissions:
+  issues: write
+
 jobs:
   api-calls:
     runs-on: ubuntu-latest
@@ -125,14 +136,16 @@ jobs:
         run: |
           curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
             "https://api.github.com/repos/${{ github.repository }}"
 
       - name: Create a label
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
             "https://api.github.com/repos/${{ github.repository }}/labels" \
             -d '{"name":"priority:high","color":"FF0000","description":"High priority issue"}'
 
@@ -140,7 +153,8 @@ jobs:
         run: |
           curl -X PATCH \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
             "https://api.github.com/repos/${{ github.repository }}/issues/1" \
             -d '{"state":"closed"}'
 ```
@@ -155,6 +169,10 @@ name: PR Automation
 on:
   pull_request:
     types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   pr-automation:
@@ -242,7 +260,7 @@ jobs:
 
 ## Managing Issues
 
-Automate issue triage and management:
+Automate issue triage and management. Projects V2 mutations require a token with the `project` scope:
 
 ```yaml
 name: Issue Management
@@ -250,6 +268,9 @@ name: Issue Management
 on:
   issues:
     types: [opened, labeled]
+
+permissions:
+  issues: write
 
 jobs:
   triage:
@@ -261,7 +282,7 @@ jobs:
         with:
           script: |
             const issue = context.payload.issue;
-            const body = issue.body.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
             const title = issue.title.toLowerCase();
             const labels = [];
 
@@ -292,6 +313,7 @@ jobs:
         if: contains(github.event.issue.labels.*.name, 'bug')
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
           script: |
             // Add to GitHub Project (Projects V2)
             const mutation = `
@@ -324,6 +346,9 @@ on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -385,6 +410,10 @@ jobs:
               repo: context.repo.repo,
               release_id: release.id,
               name: 'dist.tar.gz',
+              headers: {
+                'content-type': 'application/gzip',
+                'content-length': asset.length
+              },
               data: asset
             });
 ```
@@ -440,6 +469,10 @@ name: GraphQL Examples
 
 on:
   workflow_dispatch:
+
+permissions:
+  issues: read
+  pull-requests: read
 
 jobs:
   graphql:
@@ -503,6 +536,9 @@ name: Paginated API Calls
 on:
   workflow_dispatch:
 
+permissions:
+  issues: read
+
 jobs:
   paginate:
     runs-on: ubuntu-latest
@@ -541,6 +577,9 @@ name: API Error Handling
 
 on:
   workflow_dispatch:
+
+permissions:
+  issues: read
 
 jobs:
   handle-errors:
