@@ -108,6 +108,8 @@ flowchart TB
     SB -->|9. Forward| AppB
 ```
 
+By default, Istiod fetches JWKS from `jwksUri` and distributes the resulting configuration to proxies. If Envoy remote JWKS fetching is enabled with `PILOT_JWT_ENABLE_REMOTE_JWKS`, Envoy can fetch JWKS directly instead.
+
 ## Setting Up RequestAuthentication
 
 The `RequestAuthentication` resource defines how Istio should validate JWTs. It specifies the JWT issuer, audiences, and where to find the public keys for signature verification.
@@ -187,7 +189,7 @@ spec:
         - name: X-Internal-Token
           prefix: ""
       forwardOriginalToken: true
-      # Cache JWKS for performance (default is 5 minutes)
+      # Istiod refreshes JWKS based on PILOT_JWT_PUB_KEY_REFRESH_INTERVAL
       # Adjust based on your key rotation frequency
 
     # Second issuer: External customer IdP (Auth0)
@@ -284,7 +286,7 @@ spec:
 
 ### JWKS with ServiceEntry for External Access
 
-If your JWKS endpoint is external and requires explicit configuration, create a ServiceEntry:
+If your JWKS endpoint is external, Envoy remote JWKS fetching is enabled, and your mesh has restricted egress, create a ServiceEntry:
 
 ```yaml
 # ServiceEntry to allow Istio to reach external JWKS endpoint
@@ -472,7 +474,7 @@ spec:
 
 ## Extracting and Forwarding JWT Claims
 
-Istio can extract claims from JWTs and forward them to your applications as HTTP headers. This allows your services to access user information without parsing the JWT themselves.
+Istio can extract scalar claims from JWTs and forward them to your applications as HTTP headers. This allows your services to access user information without parsing the JWT themselves.
 
 ### Configuring Claim-to-Header Mapping
 
@@ -572,6 +574,7 @@ spec:
       forwardOriginalToken: true
       # Map JWT claims to HTTP headers
       # These headers will be sent to your application
+      # Only string, boolean, and integer claims are supported
       outputClaimToHeaders:
         # Map the 'sub' claim to X-User-Id header
         - header: "x-user-id"
@@ -625,9 +628,9 @@ spec:
           claim: "sub"
         - header: "x-user-email"
           claim: "email"
-        # Auth0 custom namespace claims
-        - header: "x-user-roles"
-          claim: "https://your-app.com/roles"
+        # Auth0 custom namespace claim
+        - header: "x-user-role"
+          claim: "https://your-app.com/role"
 ---
 # AuthorizationPolicy to enforce Auth0 authentication
 apiVersion: security.istio.io/v1
@@ -686,9 +689,6 @@ spec:
           claim: "preferred_username"
         - header: "x-user-email"
           claim: "email"
-        # Keycloak realm roles
-        - header: "x-realm-roles"
-          claim: "realm_access.roles"
 ---
 # AuthorizationPolicy for Keycloak with role-based access
 apiVersion: security.istio.io/v1
@@ -753,9 +753,6 @@ spec:
           claim: "sub"
         - header: "x-user-email"
           claim: "email"
-        # Okta groups claim (configure in authorization server)
-        - header: "x-user-groups"
-          claim: "groups"
 ---
 # AuthorizationPolicy for Okta with group-based access
 apiVersion: security.istio.io/v1
@@ -858,8 +855,6 @@ spec:
           claim: "sub"
         - header: "x-user-email"
           claim: "email"
-        - header: "x-user-roles"
-          claim: "roles"
         - header: "x-tenant-id"
           claim: "tenant_id"
 ---
@@ -874,9 +869,10 @@ spec:
   # Apply to all workloads
   selector:
     matchLabels: {}
-  # Empty rules with no action means deny all
+  # Empty rules with the default ALLOW action means no requests match
   # This creates a default-deny posture
-  {}
+  action: ALLOW
+  rules: []
 ---
 # Allow policy for public endpoints
 apiVersion: security.istio.io/v1
@@ -1010,10 +1006,10 @@ curl -v \
 
 ```bash
 # Test without a token
-# This should return 401 Unauthorized if AuthorizationPolicy requires JWT
+# This should return 403 Forbidden if AuthorizationPolicy requires JWT
 curl -v https://your-service.example.com/api/v1/resource
 
-# Expected output: 401 Unauthorized
+# Expected output: 403 Forbidden
 # Response body: RBAC: access denied
 ```
 
@@ -1064,7 +1060,7 @@ Inspect JWT tokens to verify their structure and claims:
 ```bash
 # Decode a JWT token (without validation)
 # Useful for debugging claim issues
-echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+echo "$TOKEN" | jq -R 'split(".")[1] | @base64d | fromjson'
 
 # Example output:
 # {
@@ -1267,7 +1263,7 @@ Key takeaways:
 
 1. **RequestAuthentication** defines how to validate tokens but doesn't require them
 2. **AuthorizationPolicy** enforces authentication and authorization rules
-3. Use **outputClaimToHeaders** to forward claims to applications
+3. Use **outputClaimToHeaders** to forward scalar claims to applications
 4. Implement **defense in depth** by combining JWT auth with mTLS
 5. Always test your configuration thoroughly before production deployment
 
