@@ -33,15 +33,15 @@ db.carts.updateOne(
 
 ```mermaid
 flowchart LR
-    A[Original Array] --> B[$push Operation]
-    B --> C[Updated Array]
+    Start[Original Array] --> Push[$push Operation]
+    Push --> Result[Updated Array]
 
-    subgraph A[Original Array]
+    subgraph Original[Original Array]
         A1[apple]
         A2[banana]
     end
 
-    subgraph C[Updated Array]
+    subgraph Updated[Updated Array]
         C1[apple]
         C2[banana]
         C3[orange]
@@ -230,7 +230,7 @@ db.projects.updateOne(
 
 ### Pushing to All Matching Nested Arrays
 
-Use `$[]` to push to all arrays in an array of objects.
+Use `$[]` to push to the same array field on every element in an array of objects.
 
 ```javascript
 // Add "notification" to all teams' features
@@ -375,9 +375,9 @@ async function addReply(postId, commentId, reply) {
 ```mermaid
 flowchart TD
     A[Array Operation] --> B{Array Size}
-    B -->|Small < 100| C[Embedded Array OK]
-    B -->|Medium 100-1000| D[Consider $slice]
-    B -->|Large > 1000| E[Separate Collection]
+    B -->|Small and bounded| C[Embedded Array OK]
+    B -->|Growing| D[Consider $slice]
+    B -->|Large or unbounded| E[Separate Collection]
 
     C --> F[Use $push/$addToSet]
     D --> G[Use $push with $slice]
@@ -388,8 +388,8 @@ flowchart TD
 
 1. **Limit array size** - Use `$slice` to prevent unbounded growth
 2. **Index wisely** - Multikey indexes on array fields can be expensive
-3. **Avoid large arrays** - Arrays over 1000 elements should be reconsidered
-4. **Use $addToSet carefully** - It compares entire documents for objects
+3. **Avoid large arrays** - Large or unbounded arrays should be reconsidered
+4. **Use $addToSet carefully** - It compares entire documents for objects, including field order
 
 ```javascript
 // Good: Bounded array with index
@@ -439,7 +439,7 @@ db.users.updateOne(
 ### Pitfall 3: $addToSet with Objects
 
 ```javascript
-// $addToSet compares entire objects
+// $addToSet compares entire objects, including field order
 db.carts.updateOne(
   { _id: cartId },
   { $addToSet: { items: { product: "A", qty: 1 } } }
