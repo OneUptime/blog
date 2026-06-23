@@ -84,7 +84,7 @@ public class Order {
 | `@OneToMany(mappedBy = "user")` | Indicates the inverse side; "user" is the field name in Order |
 | `cascade = CascadeType.ALL` | Operations on User propagate to Orders |
 | `orphanRemoval = true` | Remove Order from DB when removed from collection |
-| `@ManyToOne(fetch = FetchType.LAZY)` | Don't load User when loading Order |
+| `@ManyToOne(fetch = FetchType.LAZY)` | Request lazy loading for User when loading Order |
 | `@JoinColumn(name = "user_id")` | Specifies the foreign key column |
 
 ### Fetching Strategies
@@ -101,7 +101,7 @@ private List<Order> orders;
 
 ## One-to-One
 
-One entity has exactly one related entity.
+One entity has at most one related entity, or exactly one when the association is constrained as mandatory.
 
 ### Unidirectional One-to-One
 
@@ -291,7 +291,16 @@ public class Enrollment {
 
     private String grade;
 
-    // constructors, getters, setters
+    protected Enrollment() {}
+
+    public Enrollment(Student student, Course course, LocalDate enrolledDate) {
+        this.student = student;
+        this.course = course;
+        this.enrolledDate = enrolledDate;
+        this.id = new EnrollmentId(student.getId(), course.getId());
+    }
+
+    // getters, setters
 }
 
 @Embeddable
@@ -299,6 +308,13 @@ public class EnrollmentId implements Serializable {
 
     private Long studentId;
     private Long courseId;
+
+    protected EnrollmentId() {}
+
+    public EnrollmentId(Long studentId, Long courseId) {
+        this.studentId = studentId;
+        this.courseId = courseId;
+    }
 
     // equals, hashCode, getters, setters
 }
