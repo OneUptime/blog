@@ -102,10 +102,12 @@ Set up criteria for when the monitor should be considered healthy:
 
 ```text
 Monitor Criteria:
-- Incoming request received within last 5 minutes
-- Request method: GET or POST
-- Response status: 200 OK
+- Check On: Incoming Request
+- Filter Type: Not Received In Minutes
+- Value: 5  (mark offline if no heartbeat arrives within 5 minutes)
 ```
+
+OneUptime accepts both GET and POST heartbeats, so any device that can make an HTTP request will work. You can also add criteria that check the Request Body or Request Headers for richer health checks.
 
 ### Step 3: Get Your Heartbeat URL
 
