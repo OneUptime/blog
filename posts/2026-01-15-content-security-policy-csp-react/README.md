@@ -404,12 +404,12 @@ export function middleware(request: NextRequest) {
 ```typescript
 import { headers } from 'next/headers';
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const nonce = headers().get('x-nonce') || '';
+  const nonce = (await headers()).get('x-nonce') || '';
 
   return (
     <html lang="en">
@@ -810,12 +810,12 @@ export const config = {
 import { headers } from 'next/headers';
 import Script from 'next/script';
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const headersList = headers();
+  const headersList = await headers();
   const nonce = headersList.get('x-nonce') ?? '';
 
   return (
