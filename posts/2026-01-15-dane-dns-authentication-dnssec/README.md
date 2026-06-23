@@ -107,7 +107,7 @@ Many systems include the `tlsa` utility from the ldns package:
 apt-get install ldnsutils
 
 # Generate TLSA record
-ldns-dane create www.example.com 443 tcp
+ldns-dane create www.example.com 443
 ```
 
 ### Method 3: Using hash-slinger
@@ -120,10 +120,10 @@ dnf install hash-slinger
 
 # Generate TLSA record from certificate file
 tlsa --create --certificate /etc/letsencrypt/live/example.com/cert.pem \
-     --port 443 --protocol tcp --host www.example.com
+     --port 443 --protocol tcp www.example.com
 
 # Generate from live server
-tlsa --create --port 443 --protocol tcp --host www.example.com
+tlsa --create --port 443 --protocol tcp www.example.com
 ```
 
 ### Method 4: Manual Generation Script
@@ -357,7 +357,7 @@ openssl s_client -connect www.example.com:443 \
 
 ```bash
 # Verify DANE for a server
-ldns-dane verify www.example.com 443 tcp
+ldns-dane verify www.example.com 443
 
 # Should output: "TLSA record matches server certificate"
 ```
@@ -613,11 +613,10 @@ To avoid constant TLSA updates, reuse your private key during renewals:
 # Generate a long-lived key pair
 openssl ecparam -genkey -name prime256v1 -out /etc/ssl/private/example.com.key
 
-# Issue certificate with existing key
+# Issue certificate; acme.sh reuses the same private key on renewal by default
 acme.sh --issue -d www.example.com \
         --dns dns_cf \
-        --keylength ec-256 \
-        --reuse-key
+        --keylength ec-256
 
 # TLSA record only needs to be set once (SPKI never changes)
 ```
@@ -708,7 +707,7 @@ if [ -z "$TLSA_RECORD" ]; then
 fi
 
 # Verify DANE matches server certificate
-DANE_CHECK=$(ldns-dane verify "${DOMAIN}" "${PORT}" tcp 2>&1)
+DANE_CHECK=$(ldns-dane verify "${DOMAIN}" "${PORT}" 2>&1)
 if echo "$DANE_CHECK" | grep -q "matches"; then
     echo "OK: DANE verification passed for ${DOMAIN}:${PORT}"
     exit 0
