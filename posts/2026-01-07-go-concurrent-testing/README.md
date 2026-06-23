@@ -12,7 +12,7 @@ Concurrent programming in Go is powerful but comes with unique challenges. Race 
 
 ## Understanding Race Conditions
 
-A race condition occurs when two or more goroutines access shared data concurrently, and at least one of them modifies it. The outcome depends on the timing of the goroutines' execution, making bugs unpredictable and difficult to reproduce.
+A data race occurs when two or more goroutines access shared data concurrently, and at least one of them modifies it. Broader race conditions can also happen when the outcome depends on timing even without a shared-memory data race, making bugs unpredictable and difficult to reproduce.
 
 Here is a simple example demonstrating a classic race condition with a shared counter:
 
@@ -176,7 +176,7 @@ func (c *SafeCounter) Increment() {
     c.count++
 }
 
-// Value returns the current count safely by acquiring a read lock.
+// Value returns the current count safely by acquiring the lock.
 // Using defer ensures the lock is released even if a panic occurs.
 func (c *SafeCounter) Value() int {
     c.mu.Lock()
@@ -242,7 +242,7 @@ type AtomicCounter struct {
 }
 
 // Increment atomically adds 1 to the counter.
-// atomic.AddInt64 is a single CPU instruction on most architectures.
+// atomic.AddInt64 performs the update as one atomic operation.
 func (c *AtomicCounter) Increment() {
     atomic.AddInt64(&c.count, 1)
 }
@@ -384,10 +384,7 @@ Here is a pattern for testing a function that produces values on a channel:
 ```go
 package producer_test
 
-import (
-    "testing"
-    "time"
-)
+import "testing"
 
 // Produce sends numbers 0 to n-1 on the returned channel.
 // The channel is closed when all values have been sent.
@@ -517,7 +514,7 @@ import (
 
 // SlowOperation simulates a potentially slow operation.
 func SlowOperation(delay time.Duration) <-chan string {
-    ch := make(chan string)
+    ch := make(chan string, 1)
     go func() {
         time.Sleep(delay)
         ch <- "completed"
@@ -696,7 +693,7 @@ Understanding common race patterns helps you write better concurrent code and te
 
 ### Closure Variable Capture
 
-One of the most common bugs is capturing loop variables in closures:
+One of the most common bugs in older Go code is capturing loop variables in closures. Go 1.22 changed loop variables declared by a `for` loop to have per-iteration scope, but this bug can still appear in code that supports older Go versions or reuses a variable declared outside the loop:
 
 ```go
 package closure_test
@@ -713,7 +710,8 @@ func TestClosureCapture_Bug(t *testing.T) {
     results := make(chan int, 10)
 
     // BUG: All goroutines share the same variable i
-    for i := 0; i < 10; i++ {
+    var i int
+    for i = 0; i < 10; i++ {
         wg.Add(1)
         go func() {
             defer wg.Done()
@@ -904,7 +902,7 @@ func TestSafeSingleton_ConcurrentInit(t *testing.T) {
 
 ## CI Configuration for Race Testing
 
-Integrating race detection into your CI pipeline is essential for catching race conditions before they reach production.
+Integrating race detection into your CI pipeline is essential for catching data races before they reach production.
 
 ### GitHub Actions Configuration
 
@@ -939,10 +937,11 @@ jobs:
         run: go test -race -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
           fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   race-extended:
     name: Extended Race Testing
@@ -985,11 +984,6 @@ test:race:
   script:
     - go test -race -v -coverprofile=coverage.out ./...
   coverage: '/coverage: \d+\.\d+%/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.out
 
 test:race-stress:
   stage: test
@@ -1219,7 +1213,7 @@ func TestTableDriven_Parallel(t *testing.T) {
     }
 
     for _, tc := range testCases {
-        // Capture range variable
+        // Capture range variable for compatibility with older Go modules.
         tc := tc
 
         t.Run(tc.name, func(t *testing.T) {
@@ -1248,7 +1242,7 @@ When testing concurrent Go code, follow these best practices:
 
 5. **Use WaitGroups correctly**: Always call wg.Add before launching goroutines, and use defer wg.Done to ensure completion.
 
-6. **Capture loop variables**: Pass loop variables as function arguments to avoid closure capture bugs.
+6. **Capture loop variables when needed**: In Go versions before 1.22, or when reusing variables declared outside the loop, pass loop variables as function arguments to avoid closure capture bugs.
 
 7. **Test edge cases**: Include tests for empty channels, closed channels, and zero-length operations.
 
@@ -1256,7 +1250,7 @@ When testing concurrent Go code, follow these best practices:
 
 ## Conclusion
 
-Testing concurrent code in Go requires a methodical approach combining the race detector, proper synchronization, and defensive testing patterns. The `-race` flag is your first line of defense, catching many race conditions at runtime. Combined with well-structured tests using WaitGroups, channels, and timeouts, you can build confidence in your concurrent code's correctness.
+Testing concurrent code in Go requires a methodical approach combining the race detector, proper synchronization, and defensive testing patterns. The `-race` flag is your first line of defense, catching many data races at runtime. Combined with well-structured tests using WaitGroups, channels, and timeouts, you can build confidence in your concurrent code's correctness.
 
 Remember that the absence of race detector warnings doesn't guarantee correctness - it only means no races were detected during that particular execution. Running tests multiple times, stress testing, and careful code review remain important practices for building robust concurrent systems.
 
