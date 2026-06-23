@@ -154,7 +154,7 @@ The following Gateway configuration allows VMs to connect to Istiod through the 
 # expose-istiod.yaml
 # This Gateway exposes the Istio control plane to VMs
 # VMs will connect through this gateway to receive configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istiod-gateway
@@ -187,7 +187,7 @@ spec:
 ---
 # VirtualService to route traffic to Istiod
 # This ensures VM traffic reaches the correct backend
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: istiod-vs
@@ -285,7 +285,7 @@ The following WorkloadGroup defines a template for a payment processing service 
 # workload-group-payment-service.yaml
 # WorkloadGroup acts as a template for VM workloads
 # It defines common settings that apply to all VMs in this group
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: payment-service
@@ -343,7 +343,7 @@ The following WorkloadEntry represents a specific VM instance running the paymen
 # workload-entry-payment-vm1.yaml
 # WorkloadEntry represents a single VM in the mesh
 # This resource makes the VM discoverable by other services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: payment-service-vm1
@@ -453,20 +453,11 @@ Use `istioctl` to generate the files needed to onboard a VM:
 # This creates certificates, tokens, and configuration for the VM
 # The output directory will contain all files needed for VM setup
 istioctl x workload entry configure \
-  # Specify the WorkloadGroup name
   --name payment-service \
-  # Namespace where the WorkloadGroup exists
   --namespace vm-workloads \
-  # ServiceAccount for the VM identity
-  --serviceAccount payment-service-sa \
-  # Cluster name must match Istio configuration
   --clusterID cluster1 \
-  # Network identifier
-  --network network1 \
-  # Address of the east-west gateway
-  # Replace with your gateway's external IP or hostname
-  --ingressIP $(kubectl get svc istio-eastwestgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}') \
-  # Output directory for generated files
+  --ingressIP "$(kubectl get svc istio-eastwestgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" \
+  --autoregister \
   --output vm-files/
 ```
 
@@ -515,6 +506,7 @@ sudo dpkg -i istio-sidecar.deb
 # Create the Istio configuration directory
 sudo mkdir -p /etc/certs
 sudo mkdir -p /var/run/secrets/tokens
+sudo mkdir -p /etc/istio/config
 sudo mkdir -p /etc/istio/proxy
 sudo mkdir -p /var/lib/istio/envoy
 
@@ -567,9 +559,9 @@ After the sidecar starts, verify the VM has registered with the mesh:
 # If using auto-registration, a WorkloadEntry should appear
 kubectl get workloadentries -n vm-workloads
 
-# Check the endpoints for the service
-# The VM IP should appear in the endpoints
-kubectl get endpoints payment-service -n vm-workloads -o yaml
+# Check the endpoints programmed into an Istio proxy
+# Replace <pod-name> and <namespace> with a pod that is part of the mesh
+istioctl proxy-config endpoints <pod-name> -n <namespace> | grep payment-service.vm-workloads.svc.cluster.local
 
 # Verify the VM can communicate with Istiod
 # Check the proxy status from a pod in the mesh
@@ -650,7 +642,7 @@ The following ServiceEntry makes a VM-based database discoverable:
 # service-entry-vm-database.yaml
 # ServiceEntry for a database running on a VM
 # This enables other VMs and pods to discover the database
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: vm-database
@@ -707,7 +699,7 @@ The following DestinationRule configures load balancing and connection pooling f
 # destination-rule-payment.yaml
 # DestinationRule for the payment service running on VMs
 # Configures load balancing, connection pooling, and outlier detection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -775,7 +767,7 @@ The following VirtualService demonstrates traffic splitting between VM versions:
 # virtual-service-payment.yaml
 # VirtualService for traffic routing to VM workloads
 # Enables canary deployments and traffic splitting
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -835,15 +827,13 @@ The following PeerAuthentication policy enforces mTLS for VM workloads:
 # peer-authentication-strict.yaml
 # Enforce strict mTLS for all workloads in the namespace
 # This ensures all communication is encrypted and authenticated
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
   namespace: vm-workloads
 spec:
   # Apply to all workloads in the namespace
-  selector: {}
-
   # Require mTLS for all connections
   mtls:
     # STRICT mode rejects plaintext connections
@@ -866,7 +856,7 @@ The following AuthorizationPolicy controls which services can access VM workload
 # authorization-policy-payment.yaml
 # AuthorizationPolicy to control access to VM workloads
 # Only allow specific services to call the payment service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-authz
@@ -961,8 +951,8 @@ The VM bootstrap process involves sensitive credentials. Implement these securit
 
 # Set secure permissions on credential files
 # Only root and istio-proxy should access these
-sudo chmod 600 /etc/certs/root-cert.pem
-sudo chmod 600 /var/run/secrets/tokens/istio-token
+sudo chmod 640 /etc/certs/root-cert.pem
+sudo chmod 640 /var/run/secrets/tokens/istio-token
 sudo chown root:istio-proxy /etc/certs/root-cert.pem
 sudo chown root:istio-proxy /var/run/secrets/tokens/istio-token
 
@@ -1045,31 +1035,14 @@ data:
         # Scrape interval for VM metrics
         scrape_interval: 15s
 
-        # Use Kubernetes service discovery for WorkloadEntries
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names:
-                - vm-workloads
-
-        # Relabel configuration to target VM sidecars
-        relabel_configs:
-          # Keep only payment service endpoints
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: payment-service
-
-          # Replace the port with the metrics port
-          - source_labels: [__address__]
-            action: replace
-            target_label: __address__
-            regex: ([^:]+)(?::\d+)?
-            replacement: ${1}:15090
-
-          # Add instance label from endpoint address
-          - source_labels: [__meta_kubernetes_endpoint_address_target_name]
-            action: replace
-            target_label: instance
+        # Scrape the Envoy metrics endpoint on each VM sidecar
+        static_configs:
+          - targets:
+              - 192.168.1.100:15090
+              - 192.168.1.101:15090
+            labels:
+              service: payment-service
+              namespace: vm-workloads
 ```
 
 ### Access Logging for VMs
@@ -1080,7 +1053,7 @@ Enable detailed access logging for troubleshooting:
 # telemetry-access-log.yaml
 # Enable access logging for VM workloads
 # Logs all requests to and from VM sidecars
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: vm-access-logging
@@ -1111,7 +1084,7 @@ Configure tracing for VM workloads to see the full request flow:
 ```yaml
 # telemetry-tracing.yaml
 # Enable distributed tracing for VM workloads
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: vm-tracing
@@ -1145,13 +1118,13 @@ For large-scale deployments, automate VM registration using WorkloadGroup auto-r
 
 ### Enable Auto-Registration
 
-The following configuration enables automatic WorkloadEntry creation when VMs join:
+The following configuration defines the WorkloadGroup template used for automatic WorkloadEntry creation when VMs join. Generate each VM's bootstrap files with `istioctl x workload entry configure --autoregister` so istiod creates the corresponding WorkloadEntry on connection:
 
 ```yaml
 # workload-group-auto-register.yaml
-# WorkloadGroup with auto-registration enabled
-# VMs automatically create WorkloadEntry when they connect
-apiVersion: networking.istio.io/v1beta1
+# WorkloadGroup template used by VM auto-registration
+# Generate each VM config with --autoregister so istiod creates the WorkloadEntry
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: auto-scaled-workers
@@ -1163,11 +1136,6 @@ spec:
     labels:
       app: worker
       class: vm
-    annotations:
-      # Enable auto-registration
-      # Istio will create WorkloadEntry when VM connects
-      sidecar.istio.io/autoRegistration: "true"
-
   template:
     serviceAccount: worker-sa
     network: network1
@@ -1430,7 +1398,7 @@ metadata:
 
 ---
 # WorkloadGroup template for payment VMs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: payment-service
@@ -1471,7 +1439,7 @@ spec:
 
 ---
 # DestinationRule for traffic policy
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -1493,7 +1461,7 @@ spec:
 
 ---
 # PeerAuthentication for mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-service-mtls
@@ -1507,7 +1475,7 @@ spec:
 
 ---
 # AuthorizationPolicy for access control
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-authz
