@@ -22,7 +22,7 @@ OneUptime executes your Playwright script in a real browser (Chromium or Firefox
 
 ## Writing your synthetic script
 
-Your script runs with a context that includes Playwright’s `browser` and `page`, plus metadata like `browserType` and `screenSizeType`.
+Your script runs with a context that includes a ready-to-use Playwright `page`, plus metadata like `browserType` and `screenSizeType` and a `screenshots` object you can attach named screenshots to. For security, the underlying `browser` object is not exposed to your script - work through the provided `page`.
 
 Return shape expected by OneUptime:
 - `data`: Any JSON-serializable object you want to return
@@ -42,7 +42,7 @@ Return shape expected by OneUptime:
 The following script demonstrates the core pattern for synthetic monitoring: navigate to a page, validate critical content exists, capture visual evidence, and return structured results. This pattern ensures you catch both functional issues (missing content) and visual regressions.
 
 ```js
-// This code is executed in a sandbox. You can use Playwright APIs via the provided page/browser.
+// This code is executed in a sandbox. You can use Playwright APIs via the provided page object.
 // You may return { data, screenshots } where screenshots are Buffers.
 
 // Step 1: Navigate to the target URL and wait for the DOM to be ready
