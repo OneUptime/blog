@@ -14,6 +14,8 @@ A private DNS server is essential for managing internal network resources, impro
 
 In this comprehensive guide, we will walk through setting up a private DNS server using BIND9 on Ubuntu, covering everything from basic installation to advanced configurations like DNSSEC and split-horizon DNS.
 
+> Note: This guide uses `example.local` as an internal example zone. The `.local` suffix is reserved for Multicast DNS (mDNS), so production networks should use a delegated subdomain you control, or another internal naming plan that will not conflict with mDNS clients.
+
 ## DNS Architecture Overview
 
 Before diving into the configuration, let's understand the architecture of a private DNS setup:
@@ -178,10 +180,6 @@ options {
     // DNSSEC validation for enhanced security
     // Validates signed DNS responses to prevent DNS spoofing
     dnssec-validation auto;
-
-    // Query source port randomization for security
-    // Helps prevent cache poisoning attacks
-    query-source address * port *;
 
     // Limit the rate of responses to prevent DNS amplification attacks
     // Adjust values based on your network's legitimate traffic patterns
@@ -585,7 +583,7 @@ DNSSEC (DNS Security Extensions) adds cryptographic signatures to DNS records, p
 flowchart LR
     subgraph "DNSSEC Chain of Trust"
         Root[Root Zone<br/>Signed with Root KSK]
-        TLD[TLD Zone<br/>e.g., .local]
+        TLD[Parent Zone<br/>if delegated]
         Domain[example.local<br/>Your Domain]
     end
 
@@ -601,70 +599,38 @@ flowchart LR
     ZSK -->|Signs| Records[DNS Records<br/>A, MX, PTR, etc.]
 ```
 
-Generate DNSSEC keys for your zone.
+Configure automatic DNSSEC signing for your zone. Current BIND 9 releases use `dnssec-policy` for signing and key maintenance; the older `auto-dnssec maintain` option is deprecated.
 
 ```bash
-# Create a directory for DNSSEC keys
+# Create a directory for DNSSEC keys and managed signing state
 sudo mkdir -p /etc/bind/keys
-cd /etc/bind/keys
-
-# Generate the Key Signing Key (KSK)
-# - Algorithm 13 = ECDSAP256SHA256 (recommended for new deployments)
-# - KSK is used to sign the DNSKEY record
-sudo dnssec-keygen -a ECDSAP256SHA256 -b 256 -n ZONE -f KSK example.local
-
-# Generate the Zone Signing Key (ZSK)
-# - ZSK signs all other records in the zone
-# - Smaller key for faster signing/verification
-sudo dnssec-keygen -a ECDSAP256SHA256 -b 256 -n ZONE example.local
-
-# Set proper permissions on the key files
 sudo chown -R bind:bind /etc/bind/keys
-sudo chmod 640 /etc/bind/keys/*
+sudo chmod 750 /etc/bind/keys
+
+# Inline signing writes signed zone state next to the zone file
+sudo chown bind:bind /etc/bind/zones
+sudo chmod 750 /etc/bind/zones
 ```
 
-Include the keys in your zone file.
+Update the zone configuration to enable inline signing. BIND will keep the unsigned zone file as the source, create the signing keys, and maintain the signed version automatically.
 
 ```bash
-# Append the public keys to your zone file
-# The $INCLUDE directive adds the DNSKEY records
-sudo bash -c 'cat /etc/bind/keys/*.key >> /etc/bind/zones/db.example.local'
-```
-
-Sign the zone with DNSSEC.
-
-```bash
-# Sign the zone file with both KSK and ZSK
-# This creates a signed zone file with RRSIG, NSEC, and DNSKEY records
-cd /etc/bind/zones
-sudo dnssec-signzone -A -3 $(head -c 16 /dev/random | od -A n -t x | tr -d ' ') \
-    -N INCREMENT -o example.local -t db.example.local
-
-# This creates:
-# - db.example.local.signed (the signed zone file)
-# - dsset-example.local. (DS records for parent zone)
-```
-
-Update the zone configuration to use the signed zone.
-
-```bash
-# Edit named.conf.local to use the signed zone file
+# Edit named.conf.local to enable DNSSEC signing for the zone
 sudo nano /etc/bind/named.conf.local
 ```
 
 ```bind
-// Update the zone definition to use signed zone file
+// Update the zone definition to enable automatic DNSSEC signing
 zone "example.local" {
     type master;
-    file "/etc/bind/zones/db.example.local.signed";  // Changed to signed file
+    file "/etc/bind/zones/db.example.local";
     allow-transfer { 192.168.1.3; };
     also-notify { 192.168.1.3; };
     allow-update { none; };
 
     // Enable inline signing for automatic re-signing
-    // This keeps the zone signed when changes are made
     inline-signing yes;
-    auto-dnssec maintain;
+    dnssec-policy default;
 
     // Key directory for DNSSEC keys
     key-directory "/etc/bind/keys";
@@ -677,13 +643,15 @@ Verify DNSSEC is working.
 # Restart BIND to apply DNSSEC changes
 sudo systemctl restart bind9
 
-# Query with DNSSEC validation
-# The 'ad' flag (Authenticated Data) indicates successful DNSSEC validation
+# Query with DNSSEC records included
+# Look for RRSIG records in the response
 dig @127.0.0.1 web.example.local +dnssec
 
 # Verify DNSKEY records are published
 dig @127.0.0.1 example.local DNSKEY +short
 ```
+
+For a private zone such as `example.local`, clients will only get full DNSSEC validation if they are configured with a trust anchor for the zone, because there is no public parent zone where you can publish a DS record.
 
 ## Step 12: Split-Horizon DNS Configuration
 
@@ -820,6 +788,15 @@ sudo cp /etc/bind/named.conf.local /etc/bind/named.conf.local.backup
 sudo nano /etc/bind/named.conf.local
 ```
 
+When any `view` statements are used, all zone definitions must be inside views. On Ubuntu, `/etc/bind/named.conf` includes `/etc/bind/named.conf.default-zones` at the top level by default, so comment out that global include before adding the view configuration below.
+
+```bind
+// /etc/bind/named.conf
+include "/etc/bind/named.conf.options";
+include "/etc/bind/named.conf.local";
+// include "/etc/bind/named.conf.default-zones";  // Included inside views instead
+```
+
 ```bind
 // /etc/bind/named.conf.local
 // Split-Horizon DNS configuration with views
@@ -891,6 +868,9 @@ view "external" {
 
     // Only allow queries from anyone (we're authoritative)
     allow-query { any; };
+
+    // Include default zones inside this view as well
+    include "/etc/bind/named.conf.default-zones";
 
     // External view of example.com
     zone "example.com" {
@@ -1296,6 +1276,9 @@ sudo chmod 640 /etc/bind/named.conf*
 sudo chmod 640 /etc/bind/zones/*
 sudo chown -R root:bind /etc/bind
 
+# If you enabled DNSSEC inline signing, keep the writable state directories owned by bind
+sudo chown bind:bind /etc/bind/keys /etc/bind/zones
+
 # Ensure BIND runs as non-root user (default on Ubuntu)
 grep "^bind:" /etc/passwd
 
@@ -1406,9 +1389,8 @@ dig @127.0.0.1 example.local +dnssec
 # Verify keys are loaded
 sudo rndc signing -list example.local
 
-# Re-sign zone if needed
-cd /etc/bind/zones
-sudo dnssec-signzone -A -N INCREMENT -o example.local -t db.example.local
+# Ask BIND to reload the zone and refresh managed DNSSEC state
+sudo rndc reload example.local
 sudo systemctl restart bind9
 ```
 
