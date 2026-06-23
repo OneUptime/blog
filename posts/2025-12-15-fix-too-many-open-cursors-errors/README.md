@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix MongoDB 'too many open cursors' error
 
 ---
 
-The "too many open cursors" error in MongoDB occurs when your application opens more cursors than the server allows. This can lead to degraded performance, memory issues, and ultimately application failures. Let's explore how to diagnose, fix, and prevent this error.
+The "too many open cursors" error in MongoDB occurs when your application leaves too many cursors open at the same time. This can lead to degraded performance, memory issues, and ultimately application failures. Let's explore how to diagnose, fix, and prevent this error.
 
 ## Understanding MongoDB Cursors
 
@@ -26,7 +26,7 @@ flowchart TD
     G --> H[Auto-close Cursor]
 
     I[Cursor Leak] --> J[Resource Accumulation]
-    J --> K[too many open cursors Error]
+    J --> K[High Open Cursor Count]
 ```
 
 ## Diagnosing the Problem
@@ -132,10 +132,10 @@ async function betterExample() {
 
 ### Cause 2: Cursor Timeout Disabled
 
-Cursors with `noCursorTimeout` set never expire automatically:
+Cursors with `noCursorTimeout` set are not closed by the idle cursor timeout, but they can still be closed when their session expires or when you close them manually:
 
 ```javascript
-// BAD: No timeout means cursors live forever
+// BAD: No idle timeout means cursors can stay open much longer than expected
 const cursor = collection.find({}).addCursorFlag('noCursorTimeout', true);
 
 // GOOD: If you must use noCursorTimeout, ensure cleanup
@@ -229,9 +229,9 @@ async function betterIteration() {
 }
 ```
 
-### Cause 4: Connection Pool Exhaustion
+### Cause 4: Too Many Concurrent Cursors
 
-Too many concurrent operations can exhaust cursors:
+Too many concurrent operations can leave many cursors open at once:
 
 ```javascript
 // BAD: Opening too many cursors simultaneously
@@ -248,7 +248,7 @@ async function badConcurrency() {
 
 // GOOD: Limit concurrency
 async function goodConcurrency() {
-    const pLimit = require('p-limit');
+    const { default: pLimit } = await import('p-limit');
     const limit = pLimit(10); // Max 10 concurrent cursors
 
     const batches = Array.from({ length: 10000 }, (_, i) => i);
@@ -439,7 +439,7 @@ async function main() {
 
 ## Server-Side Configuration
 
-Adjust server settings to handle more cursors:
+Adjust the idle cursor timeout only when your workload needs a different cleanup threshold. This does not increase a fixed cursor limit; it changes how long idle cursors can remain open before MongoDB removes them:
 
 ```javascript
 // Increase cursor timeout (MongoDB shell)
@@ -570,7 +570,7 @@ async function bestPractice3(collection) {
 
 // 4. Limit concurrent cursors
 async function bestPractice4(collection, queries) {
-    const pLimit = require('p-limit');
+    const { default: pLimit } = await import('p-limit');
     const limit = pLimit(5);
 
     return Promise.all(
