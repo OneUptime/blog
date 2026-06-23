@@ -627,52 +627,68 @@ serviceAccount:
 package v1
 
 import (
+    "context"
+    "fmt"
+
     "k8s.io/apimachinery/pkg/runtime"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/webhook"
     "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-func (r *Application) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func SetupApplicationWebhookWithManager(mgr ctrl.Manager) error {
     return ctrl.NewWebhookManagedBy(mgr).
-        For(r).
+        For(&Application{}).
+        WithDefaulter(&ApplicationCustomDefaulter{}).
+        WithValidator(&ApplicationCustomValidator{}).
         Complete()
 }
 
 // +kubebuilder:webhook:path=/mutate-apps-myorg-com-v1-application,mutating=true,failurePolicy=fail,sideEffects=None,groups=apps.myorg.com,resources=applications,verbs=create;update,versions=v1,name=mapplication.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &Application{}
+// ApplicationCustomDefaulter sets default values on Application resources.
+type ApplicationCustomDefaulter struct{}
 
-// Default implements webhook.Defaulter
-func (r *Application) Default() {
-    if r.Spec.Replicas == 0 {
-        r.Spec.Replicas = 1
+var _ webhook.CustomDefaulter = &ApplicationCustomDefaulter{}
+
+// Default implements webhook.CustomDefaulter
+func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+    app, ok := obj.(*Application)
+    if !ok {
+        return fmt.Errorf("expected an Application object but got %T", obj)
     }
-    if r.Spec.Port == 0 {
-        r.Spec.Port = 8080
+    if app.Spec.Replicas == 0 {
+        app.Spec.Replicas = 1
     }
+    if app.Spec.Port == 0 {
+        app.Spec.Port = 8080
+    }
+    return nil
 }
 
 // +kubebuilder:webhook:path=/validate-apps-myorg-com-v1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=apps.myorg.com,resources=applications,verbs=create;update,versions=v1,name=vapplication.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &Application{}
+// ApplicationCustomValidator validates Application resources.
+type ApplicationCustomValidator struct{}
 
-// ValidateCreate implements webhook.Validator
-func (r *Application) ValidateCreate() (admission.Warnings, error) {
-    return nil, r.validateApplication()
+var _ webhook.CustomValidator = &ApplicationCustomValidator{}
+
+// ValidateCreate implements webhook.CustomValidator
+func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+    return nil, validateApplication(obj)
 }
 
-// ValidateUpdate implements webhook.Validator
-func (r *Application) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-    return nil, r.validateApplication()
+// ValidateUpdate implements webhook.CustomValidator
+func (v *ApplicationCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+    return nil, validateApplication(newObj)
 }
 
-// ValidateDelete implements webhook.Validator
-func (r *Application) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements webhook.CustomValidator
+func (v *ApplicationCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
     return nil, nil
 }
 
-func (r *Application) validateApplication() error {
+func validateApplication(obj runtime.Object) error {
     // Custom validation logic
     return nil
 }
