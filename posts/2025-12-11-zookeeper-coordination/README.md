@@ -43,7 +43,7 @@ Download and configure Zookeeper on your servers:
 ```bash
 # Download Zookeeper
 
-wget https://downloads.apache.org/zookeeper/zookeeper-3.9.1/apache-zookeeper-3.9.1-bin.tar.gz
+wget https://archive.apache.org/dist/zookeeper/zookeeper-3.9.1/apache-zookeeper-3.9.1-bin.tar.gz
 tar -xzf apache-zookeeper-3.9.1-bin.tar.gz
 sudo mv apache-zookeeper-3.9.1-bin /opt/zookeeper
 
@@ -96,7 +96,7 @@ autopurge.snapRetainCount=3
 autopurge.purgeInterval=1
 
 # 4-letter words whitelist
-4lw.commands.whitelist=mntr,conf,ruok,stat,srvr
+4lw.commands.whitelist=mntr,conf,ruok,stat,srvr,cons
 ```
 
 Create the myid file on each server:
@@ -168,6 +168,7 @@ create /myapp/config "configuration data"
 create -e /myapp/leader "leader-1"
 
 # Create a sequential znode
+create /myapp/workers ""
 create -s /myapp/workers/worker- "worker data"
 # Creates /myapp/workers/worker-0000000001
 
@@ -220,6 +221,7 @@ class ZookeeperCoordinator:
             self.zk.set(path, value.encode())
         else:
             self.zk.create(path, value.encode())
+        self.config_cache[key] = value
 
     def get_config(self, key):
         """Get configuration value with caching."""
@@ -317,6 +319,7 @@ except KeyboardInterrupt:
 ```java
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.data.Stat;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
@@ -348,7 +351,10 @@ public class ZookeeperCoordinator implements Watcher {
             String key = path.substring("/config/".length());
 
             try {
-                String value = getConfig(key);
+                Stat stat = new Stat();
+                byte[] data = zk.getData(path, false, stat);
+                String value = new String(data, StandardCharsets.UTF_8);
+                configCache.put(key, value);
                 for (ConfigChangeListener listener : listeners) {
                     listener.onConfigChange(key, value);
                 }
@@ -366,9 +372,9 @@ public class ZookeeperCoordinator implements Watcher {
 
         Stat stat = zk.exists(path, false);
         if (stat != null) {
-            zk.setData(path, value.getBytes(), -1);
+            zk.setData(path, value.getBytes(StandardCharsets.UTF_8), -1);
         } else {
-            zk.create(path, value.getBytes(),
+            zk.create(path, value.getBytes(StandardCharsets.UTF_8),
                      ZooDefs.Ids.OPEN_ACL_UNSAFE,
                      CreateMode.PERSISTENT);
         }
@@ -387,7 +393,7 @@ public class ZookeeperCoordinator implements Watcher {
         }
 
         byte[] data = zk.getData(path, false, stat);
-        String value = new String(data);
+        String value = new String(data, StandardCharsets.UTF_8);
         configCache.put(key, value);
         return value;
     }
@@ -440,6 +446,12 @@ Server {
     user_admin="admin_password"
     user_client="client_password";
 };
+
+Client {
+    org.apache.zookeeper.server.auth.DigestLoginModule required
+    username="client"
+    password="client_password";
+};
 ```
 
 Update zoo.cfg:
@@ -451,10 +463,10 @@ requireClientAuthScheme=sasl
 jaasLoginRenew=3600000
 ```
 
-Set the JAAS configuration in the startup:
+Set the JAAS configuration in the systemd service:
 
-```bash
-export SERVER_JVMFLAGS="-Djava.security.auth.login.config=/opt/zookeeper/conf/jaas.conf"
+```ini
+Environment="SERVER_JVMFLAGS=-Djava.security.auth.login.config=/opt/zookeeper/conf/jaas.conf"
 ```
 
 ## 7. Monitor Zookeeper
