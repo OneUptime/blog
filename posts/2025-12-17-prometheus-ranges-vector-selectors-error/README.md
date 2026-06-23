@@ -114,8 +114,8 @@ rate(http_errors_total[5m]) / rate(http_requests_total[5m])
 # Wrong: Range on join result
 (metric_a * on(label) group_left() metric_b)[5m]
 
-# Fix: Apply range before join
-rate(metric_a[5m]) * on(label) group_left() metric_b
+# Fix: Use subquery syntax for the join result
+(metric_a * on(label) group_left() metric_b)[5m:1m]
 ```
 
 ## Using Subqueries
@@ -134,8 +134,8 @@ expression[range:resolution]
 # Average rate over the last hour, evaluated every minute
 avg_over_time(rate(http_requests_total[5m])[1h:1m])
 
-# Max CPU over last 24 hours, evaluated every 5 minutes
-max_over_time(sum(rate(node_cpu_seconds_total{mode!="idle"}[5m]))[24h:5m])
+# Max CPU utilization over last 24 hours, evaluated every 5 minutes
+max_over_time((1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))[24h:5m])
 
 # Standard deviation of request rate
 stddev_over_time(rate(http_requests_total[5m])[1h:1m])
@@ -186,7 +186,7 @@ max(sum by (instance) (rate(node_cpu_seconds_total[5m])))[24h]
 
 # Right: Use subquery
 max_over_time(
-  sum by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))[24h:5m]
+  (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))[24h:5m]
 )
 ```
 
@@ -213,7 +213,7 @@ quantile_over_time(0.95,
 
 ```promql
 # Wrong
-deriv(rate(http_requests_total[5m]))[1h]
+deriv(rate(http_requests_total[5m])[1h])
 
 # Right: Use subquery
 deriv(rate(http_requests_total[5m])[1h:1m])
@@ -302,12 +302,12 @@ groups:
       # Pre-compute CPU usage
       - record: instance:cpu_utilization:ratio5m
         expr: |
-          sum by (instance) (
-            rate(node_cpu_seconds_total{mode!="idle"}[5m])
+          1 - avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 ```
 
-Now you can use these in subqueries:
+Now you can use these with range selectors:
 
 ```promql
 # Average error rate over 1 hour
@@ -321,10 +321,10 @@ max_over_time(instance:cpu_utilization:ratio5m[24h])
 
 | Pattern | Issue | Solution |
 |---------|-------|----------|
-| `(a + b)[5m]` | Range on expression | Use `rate(a[5m]) + rate(b[5m])` |
-| `sum(m)[5m]` | Range on aggregation | Use `sum(rate(m[5m]))` |
+| `(a + b)[5m]` | Range on expression | Use `(a + b)[5m:1m]` |
+| `sum(m)[5m]` | Range on aggregation | Use `sum(m)[5m:1m]` |
 | `rate(m[5m])[1h]` | Range on function | Use `rate(m[5m])[1h:1m]` |
-| `f(m) / g(m)[5m]` | Range on division | Use `rate(m[5m]) / rate(n[5m])` |
+| `(m / n)[5m]` | Range on division | Use `(m / n)[5m:1m]` |
 
 ## Summary
 
