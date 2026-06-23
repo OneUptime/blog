@@ -775,6 +775,7 @@ Verify webhook signatures to ensure requests haven't been tampered with:
 import hmac
 import hashlib
 import time
+import os
 from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI()
@@ -840,7 +841,7 @@ Log security-relevant events for monitoring and incident response:
 # security_logging.py
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
