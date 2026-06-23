@@ -85,7 +85,7 @@ create_release:
 
       ```bash
       npm install mypackage@$CI_COMMIT_TAG
-      ```plaintext
+      ```
   rules:
     - if: '$CI_COMMIT_TAG'
 ````
@@ -128,7 +128,7 @@ create_release:
     description: './release_notes.md'
   rules:
     - if: '$CI_COMMIT_TAG'
-```
+````
 
 ## Release with Assets
 
@@ -165,7 +165,7 @@ create_release:
           link_type: package
   rules:
     - if: '$CI_COMMIT_TAG'
-````
+```
 
 ## Release with Multiple Asset Types
 
