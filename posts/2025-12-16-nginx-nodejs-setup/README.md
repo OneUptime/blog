@@ -8,7 +8,7 @@ Description: Learn how to configure Nginx as a reverse proxy for Node.js applica
 
 ---
 
-Node.js applications run on a single thread and are not designed to handle multiple domains, SSL termination, or static file serving efficiently. Nginx complements Node.js by handling these concerns, allowing your application to focus on business logic.
+Node.js applications typically run application JavaScript on a single event loop and are usually better kept focused on application logic rather than handling multiple domains, SSL termination, or static file serving. Nginx complements Node.js by handling these concerns, allowing your application to focus on business logic.
 
 ## Architecture Overview
 
@@ -410,8 +410,6 @@ server {
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -435,7 +433,7 @@ services:
       - PORT=3000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -450,7 +448,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application
 COPY . .
@@ -512,8 +510,8 @@ WorkingDirectory=/var/www/myapp
 ExecStart=/usr/bin/node app.js
 Restart=on-failure
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=nodejs-app
 Environment=NODE_ENV=production
 Environment=PORT=3000
