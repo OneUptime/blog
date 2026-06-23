@@ -750,7 +750,7 @@ Spiders define how to crawl a website. They contain the logic for making request
 import scrapy
 from scrapy.loader import ItemLoader
 from myspider.items import ProductItem
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ProductSpider(scrapy.Spider):
     """Spider for scraping product listings and details"""
@@ -827,7 +827,7 @@ class ProductSpider(scrapy.Spider):
         loader.add_css("image_urls", ".product-images img::attr(src)")
 
         # Metadata
-        loader.add_value("scraped_at", datetime.utcnow().isoformat())
+        loader.add_value("scraped_at", datetime.now(timezone.utc).isoformat())
 
         yield loader.load_item()
 
@@ -942,7 +942,7 @@ from itemadapter import ItemAdapter
 from scrapy.exceptions import DropItem
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ValidationPipeline:
     """Validate items before processing
@@ -1090,7 +1090,7 @@ class DatabasePipeline:
                 adapter.get("review_count"),
                 adapter.get("url"),
                 json.dumps(adapter.get("image_urls", [])),
-                adapter.get("scraped_at", datetime.utcnow().isoformat())
+                adapter.get("scraped_at", datetime.now(timezone.utc).isoformat())
             ))
             self.connection.commit()
         except sqlite3.Error as e:
@@ -1274,8 +1274,10 @@ def run_spider():
     settings.update({
         "DOWNLOAD_DELAY": 1,
         "LOG_LEVEL": "INFO",
-        "FEED_URI": "output.json",
-        "FEED_FORMAT": "json",
+        # FEEDS replaces the deprecated FEED_URI/FEED_FORMAT settings
+        "FEEDS": {
+            "output.json": {"format": "json"},
+        },
     })
 
     process = CrawlerProcess(settings)
