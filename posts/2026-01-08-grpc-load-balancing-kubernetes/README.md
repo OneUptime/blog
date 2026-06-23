@@ -132,7 +132,6 @@ package main
 import (
     "context"
     "log"
-    "os"
     "time"
 
     "google.golang.org/grpc"
@@ -848,13 +847,13 @@ Optimize connections without a proxy by managing connection lifecycle.
 package pool
 
 import (
-    "context"
     "sync"
     "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/keepalive"
 )
 
 type ConnectionPool struct {
