@@ -55,7 +55,7 @@ MongoDB automatically kills cursors that have been idle for 10 minutes:
 const cursor = db.largeCollection.find({});
 
 for await (const doc of cursor) {
-  await processDocument(doc);  // Takes > 10 minutes total
+  await processDocument(doc);  // Takes > 10 minutes before the next getMore
   // Error: cursor killed after timeout
 }
 ```
@@ -78,15 +78,15 @@ while (await cursor.hasNext()) {
 
 Cursors can be killed manually by administrators:
 
-```bash
-# Admin kills long-running cursors
-
-db.currentOp().inprog.forEach(function(op) {
-  if (op.secs_running > 300) {
-    db.killOp(op.opid);
-  }
+```javascript
+// Admin kills a known cursor on a collection
+db.runCommand({
+  killCursors: "largeCollection",
+  cursors: [Long("1234567890")]
 });
 ```
+
+MongoDB also exposes active and idle cursor details through `$currentOp` for administrators who need to identify cursor IDs.
 
 ### 4. Resource Constraints
 
@@ -100,7 +100,7 @@ Prevent automatic cursor timeout (use with caution):
 
 ```javascript
 // Disable cursor timeout
-const cursor = db.largeCollection.find({}).noCursorTimeout();
+const cursor = db.largeCollection.find({}, { noCursorTimeout: true });
 
 try {
   for await (const doc of cursor) {
@@ -111,14 +111,9 @@ try {
   await cursor.close();
 }
 
-// With MongoDB driver options
-const cursor = db.largeCollection.find({}, {
-  noCursorTimeout: true
-});
-
 // Clean up pattern
 async function processWithNoCursorTimeout(collection, query, processor) {
-  const cursor = collection.find(query).noCursorTimeout();
+  const cursor = collection.find(query, { noCursorTimeout: true });
 
   try {
     let count = 0;
@@ -138,6 +133,8 @@ async function processWithNoCursorTimeout(collection, query, processor) {
 }
 ```
 
+For operations that may sit idle for more than the server session idle timeout, run the cursor in an explicit session and refresh that session periodically.
+
 ### Solution 2: Implement Resumable Iteration
 
 Use a sortable field to resume from where you left off:
@@ -150,7 +147,7 @@ async function processAllDocuments(collection, query, batchSize = 1000) {
   while (true) {
     // Build query with resume point
     const queryWithResume = lastId
-      ? { ...query, _id: { $gt: lastId } }
+      ? { $and: [query, { _id: { $gt: lastId } }] }
       : query;
 
     const batch = await collection
@@ -284,7 +281,7 @@ async function robustIteration(collection, query, processor) {
   while (retries < maxRetries) {
     try {
       const resumeQuery = lastProcessedId
-        ? { ...query, _id: { $gt: lastProcessedId } }
+        ? { $and: [query, { _id: { $gt: lastProcessedId } }] }
         : query;
 
       const cursor = collection.find(resumeQuery).sort({ _id: 1 });
@@ -328,23 +325,25 @@ function isCursorError(error) {
 
 ### Solution 6: Use maxTimeMS for Bounded Operations
 
-Set a maximum time for cursor operations:
+Set a maximum processing time for cursor operations. This is separate from idle cursor timeout:
 
 ```javascript
 // Fail fast if query takes too long
-const cursor = db.collection
-  .find({ status: "pending" })
-  .maxTimeMS(30000);  // 30 second timeout
+async function findPendingWithTimeout(collection) {
+  const cursor = collection
+    .find({ status: "pending" })
+    .maxTimeMS(30000);  // 30 second timeout
 
-try {
-  const results = await cursor.toArray();
-  return results;
-} catch (error) {
-  if (error.code === 50) {  // ExceededTimeLimit
-    console.log('Query exceeded time limit, using fallback');
-    return await fallbackQuery();
+  try {
+    const results = await cursor.toArray();
+    return results;
+  } catch (error) {
+    if (error.code === 50) {  // ExceededTimeLimit
+      console.log('Query exceeded time limit, using fallback');
+      return await fallbackQuery();
+    }
+    throw error;
   }
-  throw error;
 }
 ```
 
@@ -354,8 +353,8 @@ Track cursor usage to prevent issues:
 
 ```javascript
 // Check current cursor count
-async function getCursorStats() {
-  const status = await db.adminCommand({ serverStatus: 1 });
+async function getCursorStats(client) {
+  const status = await client.db().admin().command({ serverStatus: 1 });
 
   return {
     totalOpen: status.metrics.cursor.open.total,
@@ -366,22 +365,24 @@ async function getCursorStats() {
 }
 
 // List current operations with cursors
-async function listActiveCursors() {
-  const ops = await db.adminCommand({ currentOp: true });
+async function listActiveCursors(client) {
+  const ops = await client.db("admin").aggregate([
+    { $currentOp: { allUsers: true, idleCursors: true } },
+    { $match: { cursor: { $exists: true } } }
+  ]).toArray();
 
-  return ops.inprog.filter(op =>
-    op.cursor && op.cursor.cursorId
-  ).map(op => ({
+  return ops.map(op => ({
     cursorId: op.cursor.cursorId,
     ns: op.ns,
-    runningTimeMs: op.microsecs_running / 1000,
+    type: op.type,
+    lastAccessDate: op.cursor.lastAccessDate,
     client: op.client
   }));
 }
 
 // Periodic monitoring
 setInterval(async () => {
-  const stats = await getCursorStats();
+  const stats = await getCursorStats(client);
   console.log('Cursor stats:', stats);
 
   if (stats.noTimeout > 100) {
