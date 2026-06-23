@@ -68,7 +68,8 @@ The following Kubernetes Deployment creates a gRPC server with three replicas, w
 # grpc-server-deployment.yaml
 
 # This deployment creates a gRPC server with multiple replicas
-# The server responds with its pod name, allowing us to verify load distribution
+# Replace the image with your own gRPC server image that listens on 50051
+# and implements the gRPC health checking protocol
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -95,7 +96,7 @@ spec:
     spec:
       containers:
       - name: grpc-server
-        image: grpc/grpc-test-server:latest
+        image: your-registry/grpc-server:latest
         ports:
         # gRPC typically uses port 50051 by convention
         - containerPort: 50051
@@ -174,7 +175,7 @@ The simplest configuration uses round-robin load balancing, distributing request
 ```yaml
 # grpc-destination-rule-basic.yaml
 # Basic DestinationRule with round-robin load balancing for gRPC
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-lb
@@ -192,11 +193,12 @@ spec:
         # TCP connection timeout
         connectTimeout: 10s
       http:
-        # Maximum number of HTTP/2 streams per connection
-        # This directly impacts gRPC concurrency per connection
+        # Upgrade HTTP/1.1 upstream connections to HTTP/2 when applicable
         h2UpgradePolicy: UPGRADE
-        # Maximum requests that can be pending (waiting for connection)
+        # Maximum active requests to the destination
         http2MaxRequests: 1000
+        # Maximum concurrent HTTP/2 streams allowed on one connection
+        maxConcurrentStreams: 1000
         # Maximum requests per connection before it's closed and replaced
         maxRequestsPerConnection: 0
     # Load balancer configuration
@@ -205,18 +207,18 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-### Least Connection Load Balancing
+### Least Request Load Balancing
 
-For services with varying request processing times, least-connection load balancing can provide better distribution by sending requests to the server with the fewest active connections:
+For services with varying request processing times, least-request load balancing can provide better distribution by sending requests to the server with the fewest outstanding requests:
 
 ```yaml
-# grpc-destination-rule-least-conn.yaml
-# DestinationRule using least-connection load balancing
+# grpc-destination-rule-least-request.yaml
+# DestinationRule using least-request load balancing
 # Best for gRPC services with variable response times
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: grpc-server-least-conn
+  name: grpc-server-least-request
   namespace: default
 spec:
   host: grpc-server.default.svc.cluster.local
@@ -229,10 +231,10 @@ spec:
         h2UpgradePolicy: UPGRADE
         http2MaxRequests: 1000
     loadBalancer:
-      # LEAST_CONN routes to the host with fewest active requests
+      # LEAST_REQUEST routes to the host with fewest outstanding requests
       # Particularly effective for gRPC streaming where some requests
       # may be long-lived while others complete quickly
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
 ```
 
 ### Consistent Hash Load Balancing
@@ -243,7 +245,7 @@ When you need session affinity or want to route related requests to the same bac
 # grpc-destination-rule-consistent-hash.yaml
 # DestinationRule with consistent hash load balancing
 # Useful when you need sticky sessions or cache locality
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-consistent-hash
@@ -282,7 +284,7 @@ The following DestinationRule demonstrates advanced HTTP/2 configuration for opt
 ```yaml
 # grpc-destination-rule-per-request.yaml
 # Advanced DestinationRule optimized for per-request gRPC load balancing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-per-request
@@ -292,7 +294,7 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        # Limit connections to ensure requests are distributed
+        # Limit upstream connections per host according to expected load
         # With HTTP/2, each connection can handle many concurrent streams
         maxConnections: 10
         connectTimeout: 10s
@@ -302,9 +304,9 @@ spec:
           interval: 75s
           probes: 9
       http:
-        # Force HTTP/2 upgrade for better gRPC handling
+        # Upgrade HTTP/1.1 upstream connections to HTTP/2 when applicable
         h2UpgradePolicy: UPGRADE
-        # Maximum concurrent requests across all connections
+        # Maximum active requests to the destination
         http2MaxRequests: 10000
         # Setting this to 1 forces a new connection per request
         # Use with caution - trades connection efficiency for perfect distribution
@@ -359,7 +361,7 @@ sequenceDiagram
 
 ## Configuring gRPC Health Checking
 
-Health checking is critical for gRPC services. Istio supports the gRPC Health Checking Protocol (grpc.health.v1.Health) for accurate service health monitoring.
+Health checking is critical for gRPC services. Kubernetes supports the gRPC Health Checking Protocol (grpc.health.v1.Health) for application probes, and Istio can rewrite those probes so they continue to work with sidecar traffic interception.
 
 ### Enabling gRPC Health Checks in DestinationRule
 
@@ -368,7 +370,7 @@ The outlier detection configuration enables automatic ejection of unhealthy host
 ```yaml
 # grpc-destination-rule-health.yaml
 # DestinationRule with comprehensive health checking and outlier detection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-health
@@ -389,10 +391,11 @@ spec:
     # Unhealthy hosts are temporarily ejected from the load balancing pool
     outlierDetection:
       # Number of consecutive errors before ejection
-      # For gRPC, this counts failed requests (non-OK status codes)
+      # For HTTP and gRPC traffic, this counts HTTP 5xx responses
       consecutive5xxErrors: 5
       # Also consider gateway errors (connection failures)
-      consecutiveGatewayErrors: 5
+      # Keep this lower than consecutive5xxErrors so it has an effect
+      consecutiveGatewayErrors: 2
       # Time window for counting errors
       interval: 10s
       # Duration a host is ejected before being reconsidered
@@ -485,7 +488,7 @@ When running multiple versions of a gRPC service, you can use subsets with weigh
 ```yaml
 # grpc-destination-rule-subsets.yaml
 # DestinationRule with subsets for canary deployments
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-subsets
@@ -519,7 +522,7 @@ spec:
       version: v2
     trafficPolicy:
       loadBalancer:
-        simple: LEAST_CONN
+        simple: LEAST_REQUEST
 ```
 
 Combine this with a VirtualService for weighted traffic distribution:
@@ -527,7 +530,7 @@ Combine this with a VirtualService for weighted traffic distribution:
 ```yaml
 # grpc-virtual-service-weighted.yaml
 # VirtualService for weighted traffic distribution between versions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-server-weighted
@@ -572,8 +575,8 @@ For multi-region or multi-zone deployments, configure locality-aware load balanc
 ```yaml
 # grpc-destination-rule-locality.yaml
 # DestinationRule with locality-aware load balancing
-# Prefers local pods but fails over to remote zones when needed
-apiVersion: networking.istio.io/v1beta1
+# Prefers local pods according to configured locality weights
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-locality
@@ -592,13 +595,8 @@ spec:
       # Enable locality-aware load balancing
       localityLbSetting:
         enabled: true
-        # Failover priority when local pods are unavailable
-        failover:
-        - from: us-west1
-          to: us-central1
-        - from: us-central1
-          to: us-east1
         # Weight distribution across localities
+        # Use either distribute, failover, or failoverPriority in a single rule
         distribute:
         - from: us-west1/us-west1-a/*
           to:
@@ -609,7 +607,7 @@ spec:
       consecutive5xxErrors: 5
       interval: 10s
       baseEjectionTime: 30s
-      # Minimum healthy hosts before failover triggers
+      # Minimum healthy host percentage before outlier detection is enforced
       minHealthPercent: 50
 ```
 
@@ -620,7 +618,7 @@ Implement circuit breaking to prevent cascade failures in your gRPC services:
 ```yaml
 # grpc-destination-rule-circuit-breaker.yaml
 # DestinationRule with circuit breaking configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-circuit-breaker
@@ -643,7 +641,7 @@ spec:
         maxRetries: 3
     loadBalancer:
       simple: ROUND_ROBIN
-    # Outlier detection acts as the circuit breaker
+    # Connection pool limits and outlier detection work together as circuit breaking controls
     outlierDetection:
       # Eject after 5 consecutive 5xx errors
       consecutive5xxErrors: 5
@@ -692,7 +690,7 @@ The following configuration optimizes for streaming gRPC workloads:
 ```yaml
 # grpc-destination-rule-streaming.yaml
 # DestinationRule optimized for gRPC streaming workloads
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-streaming
@@ -712,17 +710,17 @@ spec:
           probes: 9
       http:
         h2UpgradePolicy: UPGRADE
-        # Higher limits for concurrent streams
+        # Higher active request limits for streaming workloads
         http2MaxRequests: 5000
         # Important: Set to 0 for streaming
-        # This allows streams to live for the full duration
+        # This avoids closing a connection after a fixed request count
         maxRequestsPerConnection: 0
         # Extended idle timeout for streaming
         idleTimeout: 7200s
     loadBalancer:
-      # LEAST_CONN works well with streaming
+      # LEAST_REQUEST works well with streaming
       # Routes new streams to less busy servers
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 30s
@@ -737,7 +735,7 @@ Configure appropriate timeouts for streaming operations:
 ```yaml
 # grpc-virtual-service-streaming.yaml
 # VirtualService with streaming-appropriate timeouts
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-server-streaming
@@ -779,10 +777,12 @@ spec:
 Use Istio's metrics to verify that load balancing is working correctly:
 
 ```bash
-# Check the distribution of requests across pods
-# This query shows request count per destination workload
-kubectl exec -it deploy/prometheus -n istio-system -- \
-  promql 'sum(rate(istio_requests_total{destination_service="grpc-server.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_workload)'
+# Check request distribution using the Prometheus HTTP API
+# Run the port-forward in one terminal, then run the curl command in another
+kubectl -n istio-system port-forward deploy/prometheus 9090:9090
+
+curl -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{destination_service="grpc-server.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_workload)'
 
 # Alternative: Use istioctl to analyze proxy configuration
 # This shows the current load balancing configuration
@@ -819,7 +819,7 @@ The following table summarizes common gRPC load balancing issues:
 
 | Issue | Symptom | Solution |
 |-------|---------|----------|
-| All traffic to one pod | Uneven distribution | Verify HTTP/2 is enabled; check h2UpgradePolicy |
+| All traffic to one pod | Uneven distribution | Verify Istio detects the service as gRPC or HTTP/2 |
 | Connection failures | Timeout errors | Check maxConnections limit; verify network policies |
 | Sporadic errors | Intermittent 503s | Configure outlier detection; increase retry attempts |
 | Streaming disconnects | Stream termination | Increase idleTimeout; configure TCP keepalive |
@@ -835,7 +835,7 @@ Based on the configurations covered in this guide, here are the key best practic
 
 3. **Enable outlier detection**: Configure aggressive outlier detection to quickly remove unhealthy hosts from the load balancing pool.
 
-4. **Use LEAST_CONN for variable workloads**: When request processing times vary significantly, LEAST_CONN provides better distribution than ROUND_ROBIN.
+4. **Use LEAST_REQUEST for variable workloads**: When request processing times vary significantly, LEAST_REQUEST provides better distribution than ROUND_ROBIN.
 
 5. **Consider locality-aware routing**: For multi-zone deployments, enable locality-aware load balancing to minimize latency while maintaining resilience.
 
