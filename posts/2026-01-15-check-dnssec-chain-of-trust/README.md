@@ -69,7 +69,7 @@ sudo dnf install bind-utils ldns
 brew install bind ldns
 
 # Verify installation
-dig -v && delv -v && drill -v
+dig -v && delv -v && drill -V
 ```
 
 ## Method 1: Using dig to Trace the Chain
