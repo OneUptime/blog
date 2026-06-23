@@ -155,7 +155,7 @@ echo "Response times for 499 errors (last 100):"
 grep '" 499 ' "$LOG_FILE" | \
   grep -oP 'rt=\K[0-9.]+' | \
   tail -100 | \
-  awk '{sum+=$1; count++} END {print "Average: " sum/count " seconds"}'
+  awk '{sum+=$1; count++} END {if (count) print "Average: " sum/count " seconds"; else print "No rt values found"}'
 ```
 
 ### Step 3: Enable Detailed Error Logging
@@ -164,22 +164,22 @@ Configure Nginx to provide more detailed information:
 
 ```nginx
 http {
-    # Enable debug logging for specific IPs during investigation
+    # Set the error log level during investigation
     error_log /var/log/nginx/error.log warn;
+
+    # Custom log format with upstream timing
+    log_format detailed '$remote_addr - $remote_user [$time_local] '
+                       '"$request" $status $body_bytes_sent '
+                       'rt=$request_time '
+                       'ua="$upstream_addr" '
+                       'us=$upstream_status '
+                       'ut=$upstream_response_time '
+                       'cs=$upstream_cache_status';
 
     # For specific server blocks that have 499 issues
     server {
         listen 80;
         server_name example.com;
-
-        # Custom log format with upstream timing
-        log_format detailed '$remote_addr - $remote_user [$time_local] '
-                           '"$request" $status $body_bytes_sent '
-                           'rt=$request_time '
-                           'ua="$upstream_addr" '
-                           'us=$upstream_status '
-                           'ut=$upstream_response_time '
-                           'cs=$upstream_cache_status';
 
         access_log /var/log/nginx/detailed.log detailed;
 
@@ -194,7 +194,7 @@ http {
 
 ### Solution 1: Adjust Proxy Timeouts
 
-Ensure Nginx does not give up on slow backends before clients do:
+Ensure Nginx waits long enough for slow backends, and align these values with client and load balancer timeouts:
 
 ```nginx
 http {
@@ -250,7 +250,7 @@ sequenceDiagram
     Note over Nginx: proxy_ignore_client_abort on
     Note over Nginx: Continue waiting for backend
     Backend->>Nginx: 200 OK
-    Note over Nginx: Log success (backend completed)
+    Note over Nginx: Backend completion visible in upstream logs
 ```
 
 ### Solution 3: Implement Request Queuing
@@ -347,8 +347,15 @@ LOG_FILE="/var/log/nginx/access.log"
 ALERT_EMAIL="ops@example.com"
 
 # Count 499 errors in the last N minutes
-count=$(awk -v date="$(date -d "$WINDOW_MINUTES minutes ago" '+%d/%b/%Y:%H:%M')" \
-  '$4 >= "["date && /\" 499 /' "$LOG_FILE" | wc -l)
+since_epoch=$(date -d "$WINDOW_MINUTES minutes ago" +%s)
+count=$(perl -MTime::Piece -ne '
+    BEGIN { $since = shift @ARGV }
+    if (/" 499 / && /\[([0-9]{2}\/[A-Za-z]{3}\/[0-9]{4}:[0-9]{2}:[0-9]{2}:[0-9]{2}) /) {
+        $t = Time::Piece->strptime($1, "%d/%b/%Y:%H:%M:%S");
+        $count++ if $t->epoch >= $since;
+    }
+    END { print $count || 0, "\n" }
+' "$since_epoch" "$LOG_FILE")
 
 if [ "$count" -gt "$THRESHOLD" ]; then
     echo "Alert: $count 499 errors in last $WINDOW_MINUTES minutes" | \
