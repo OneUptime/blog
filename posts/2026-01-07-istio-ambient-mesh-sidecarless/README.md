@@ -8,7 +8,7 @@ Description: Learn how to deploy Istio ambient mesh for sidecar-free service mes
 
 ---
 
-Istio Ambient Mesh represents a revolutionary approach to service mesh architecture that eliminates the need for sidecar proxies. Introduced as a major evolution in Istio's design, ambient mesh provides the same security, observability, and traffic management capabilities while significantly reducing resource overhead and operational complexity. This comprehensive guide will walk you through deploying Istio in ambient mode, understanding its architecture, and migrating your workloads.
+Istio Ambient Mesh represents a revolutionary approach to service mesh architecture that eliminates the need for sidecar proxies. Introduced as a major evolution in Istio's design, ambient mesh provides L4 security and observability by default and L7 traffic management capabilities through waypoint proxies while significantly reducing resource overhead and operational complexity. This comprehensive guide will walk you through deploying Istio in ambient mode, understanding its architecture, and migrating your workloads.
 
 ## Table of Contents
 
@@ -118,12 +118,12 @@ Understanding the differences between sidecar and ambient modes helps you make i
 | Feature | Sidecar Mode | Ambient Mode |
 |---------|-------------|--------------|
 | Resource Overhead | High (per-pod proxy) | Low (shared ztunnel) |
-| Memory Usage | ~50-100MB per pod | ~20-40MB per node |
+| Memory Usage | ~60MB per sidecar proxy | ~12MB per ztunnel |
 | CPU Usage | Per-pod overhead | Shared per-node |
 | Deployment Complexity | Pod injection required | Namespace label only |
 | L4 Security (mTLS) | Yes | Yes (ztunnel) |
 | L7 Features | Always available | Opt-in (Waypoint) |
-| Pod Startup Impact | Slower (sidecar init) | No impact |
+| Pod Startup Impact | Slower (sidecar init) | Lower impact (no sidecar container) |
 | Upgrade Process | Rolling pod restarts | ztunnel DaemonSet update |
 | Network Path | Through sidecar | Through node ztunnel |
 
@@ -165,18 +165,18 @@ Before installing Istio Ambient Mesh, ensure your environment meets the followin
 
 ### System Requirements
 
-- Kubernetes cluster version 1.26 or later
+- Kubernetes cluster version supported by your Istio release. For Istio 1.30, this is Kubernetes 1.32 through 1.36
 - kubectl configured with cluster access
-- Helm 3.x (recommended for installation)
+- Helm 3.6 or later (recommended for installation)
 - Linux-based nodes (ambient mesh is not supported on Windows)
-- Container runtime: containerd 1.6+ or CRI-O 1.24+
+- A CRI-compatible container runtime on a supported Kubernetes platform
 
 ### Verify your Kubernetes version
 
 ```bash
 # Check the Kubernetes server version to ensure compatibility
 
-kubectl version --short
+kubectl version
 ```
 
 ### Install istioctl
@@ -184,15 +184,15 @@ kubectl version --short
 The istioctl command-line tool is essential for managing Istio installations and debugging.
 
 ```bash
-# Download the latest Istio release (1.24 or later recommended for ambient)
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
+# Download the latest supported Istio release
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.1 sh -
 
 # Add istioctl to your PATH for easy access
-cd istio-1.24.0
+cd istio-1.30.1
 export PATH=$PWD/bin:$PATH
 
 # Verify the installation by checking the version
-istioctl version --remote=false
+istioctl version
 ```
 
 ## Installing Istio Ambient Mesh
@@ -216,6 +216,12 @@ istioctl install --set profile=ambient --skip-confirmation
 # ✔ Installation complete
 ```
 
+```bash
+# Install the Kubernetes Gateway API CRDs required for waypoint proxies and Gateway API routing
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+```
+
 ### Method 2: Using Helm (Recommended for Production)
 
 Helm provides more control over the installation and is better suited for GitOps workflows.
@@ -225,25 +231,25 @@ Helm provides more control over the installation and is better suited for GitOps
 helm repo add istio https://istio-release.storage.googleapis.com/charts
 helm repo update
 
-# Create the istio-system namespace for core components
-kubectl create namespace istio-system
-```
-
-```bash
 # Install the Istio base chart containing CRDs and cluster-wide resources
 # The base chart must be installed first as other components depend on it
 helm install istio-base istio/base \
   --namespace istio-system \
-  --set defaultRevision=default \
+  --create-namespace \
   --wait
 ```
 
 ```bash
-# Install istiod (the control plane) with ambient mode enabled
-# The pilot.env settings configure istiod to work with ambient mesh
+# Install the Kubernetes Gateway API CRDs required for waypoint proxies and Gateway API routing
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+```
+
+```bash
+# Install istiod (the control plane) with the ambient profile
 helm install istiod istio/istiod \
   --namespace istio-system \
-  --set pilot.env.PILOT_ENABLE_AMBIENT=true \
+  --set profile=ambient \
   --wait
 ```
 
@@ -308,7 +314,7 @@ graph TB
         end
 
         subgraph "Outbound Processing"
-            ob_intercept["Traffic Interception<br/>(iptables/eBPF)"]
+            ob_intercept["Traffic Interception<br/>(iptables/nftables)"]
             dest_lookup["Destination Lookup"]
             hbone_client["HBONE Client"]
             tls_orig["mTLS Origination"]
@@ -326,8 +332,8 @@ graph TB
     xds_client --> dest_lookup
     xds_client --> authz
 
-    cert_mgr -->|"SVID"| tls_term
-    cert_mgr -->|"SVID"| tls_orig
+    cert_mgr -->|"SPIFFE identity"| tls_term
+    cert_mgr -->|"SPIFFE identity"| tls_orig
 
     app["Application Pod"] -->|"Outbound Traffic"| ob_intercept
     ob_intercept --> dest_lookup
@@ -501,7 +507,7 @@ kubectl exec -n ambient-demo deploy/curl-client -- \
 ```bash
 # Check ztunnel logs to verify HBONE tunnel usage
 # You should see log entries showing encrypted connections
-kubectl logs -n istio-system -l app=ztunnel -c istio-proxy --tail=100 | \
+kubectl logs -n istio-system -l app=ztunnel --tail=100 | \
   grep -i "hbone\|connection"
 ```
 
@@ -587,8 +593,8 @@ graph TB
 ### Creating a Waypoint Proxy
 
 ```bash
-# Create a waypoint proxy for a specific service account
-# This waypoint will handle L7 traffic destined for services using this account
+# Create a waypoint proxy for service traffic in the namespace
+# This waypoint will handle L7 traffic destined for services that are enrolled to use it
 istioctl waypoint apply --name httpbin-waypoint \
   --namespace ambient-demo \
   --for service \
@@ -772,7 +778,7 @@ kubectl label namespace your-namespace istio.io/dataplane-mode=ambient
 kubectl rollout restart deployment -n your-namespace
 
 # Monitor the rollout status
-kubectl rollout status deployment -n your-namespace --watch
+kubectl rollout status deployment/your-deployment -n your-namespace --watch
 ```
 
 ### Step 4: Verify Migration
@@ -911,7 +917,7 @@ spec:
         methods: ["GET"]
         paths: ["/health", "/ready", "/live"]
 
-  # Rule 3: Allow admin operations with JWT validation
+  # Rule 3: Allow admin operations from a dedicated service account
   - from:
     - source:
         # Require specific service account for admin access
@@ -924,7 +930,7 @@ spec:
 
 ## Traffic Management
 
-Ambient mesh supports sophisticated traffic management through VirtualService and DestinationRule resources, but requires waypoint proxies for L7 features.
+Ambient mesh supports sophisticated traffic management through Gateway API HTTPRoute resources and Istio VirtualService resources, but requires waypoint proxies for L7 features. VirtualService support in ambient mode is alpha; use HTTPRoute for stable L7 traffic management.
 
 ### Traffic Splitting with Waypoint
 
@@ -1077,16 +1083,16 @@ graph TB
 ```bash
 # Install Prometheus for metrics collection
 # Prometheus scrapes metrics from ztunnel and waypoint proxies
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 
 # Install Grafana for metrics visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 
 # Install Kiali for service mesh visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Install Jaeger for distributed tracing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 ### Key Metrics for Ambient Mesh
@@ -1105,11 +1111,11 @@ spec:
     rules:
     # ztunnel connection metrics
     - record: ztunnel:connections:rate5m
-      expr: sum(rate(ztunnel_tcp_connections_total[5m])) by (source_workload, destination_workload)
+      expr: sum(rate(istio_tcp_connections_opened_total[5m])) by (source_workload, destination_workload)
 
     # ztunnel bytes transferred
     - record: ztunnel:bytes:rate5m
-      expr: sum(rate(ztunnel_tcp_sent_bytes_total[5m])) by (source_workload, destination_workload)
+      expr: sum(rate(istio_tcp_sent_bytes_total[5m])) by (source_workload, destination_workload)
 
     # Waypoint request rate
     - record: waypoint:requests:rate5m
@@ -1202,10 +1208,11 @@ spec:
         type: Utilization
         averageUtilization: 70
   # Scale based on request rate
+  # This requires a Kubernetes custom metrics adapter that exposes this metric per pod
   - type: Pods
     pods:
       metric:
-        name: istio_requests_total
+        name: istio_requests_per_second
       target:
         type: AverageValue
         averageValue: "1000"
