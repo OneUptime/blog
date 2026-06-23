@@ -26,8 +26,8 @@ graph TD
 |--------|--------------|-----------|
 | Primary Purpose | Search and analytics engine | High-availability distributed database |
 | Data Model | Document-oriented (JSON) | Wide-column store |
-| Query Language | Query DSL, SQL (via plugin) | CQL (Cassandra Query Language) |
-| Indexing | Inverted index (all fields) | Primary key and secondary indexes |
+| Query Language | Query DSL, SQL API | CQL (Cassandra Query Language) |
+| Indexing | Inverted indexes for indexed fields | Primary key and secondary indexes |
 | Consistency | Near real-time, eventual | Tunable consistency |
 | Write Pattern | Index then search | Write-optimized (LSM trees) |
 
@@ -95,7 +95,7 @@ Cassandra uses:
 
 ### Elasticsearch Document
 
-```json
+```http
 // Index a product document
 PUT /products/_doc/1
 {
@@ -156,7 +156,7 @@ INSERT INTO ecommerce.products (
 
 Elasticsearch excels at complex searches:
 
-```json
+```http
 // Full-text search with filters and aggregations
 GET /products/_search
 {
@@ -216,7 +216,7 @@ AND created_at > '2024-01-01';
 SELECT * FROM products
 WHERE category = 'electronics'
 AND created_at = '2024-01-15 10:30:00'
-AND product_id = some-uuid;
+AND product_id = 550e8400-e29b-41d4-a716-446655440000;
 
 -- ALLOW FILTERING (slow, not recommended for production)
 SELECT * FROM products
@@ -267,7 +267,7 @@ graph LR
 
 1. **Full-text search requirements**
 
-```json
+```http
 // Search across product catalog
 GET /products/_search
 {
@@ -289,7 +289,7 @@ GET /products/_search
 
 2. **Log analytics and observability**
 
-```json
+```http
 // Analyze error patterns
 GET /logs-*/_search
 {
@@ -317,7 +317,7 @@ GET /logs-*/_search
 
 3. **Real-time dashboards with complex aggregations**
 
-```json
+```http
 // Dashboard metrics
 GET /metrics/_search
 {
@@ -392,9 +392,9 @@ CREATE TABLE ecommerce.shopping_cart (
   PRIMARY KEY ((user_id), product_id)
 );
 
--- Fast cart operations
+-- Fast cart operations after calculating the new quantity in the application
 UPDATE ecommerce.shopping_cart
-SET quantity = quantity + 1
+SET quantity = ?
 WHERE user_id = ? AND product_id = ?;
 ```
 
@@ -433,8 +433,9 @@ class ProductService:
         """Write to both Cassandra and Elasticsearch."""
 
         # Primary storage in Cassandra
+        # Assumes a products_by_id table keyed by product_id for this lookup access pattern.
         cassandra.execute("""
-            INSERT INTO products (product_id, category, name, price, description)
+            INSERT INTO products_by_id (product_id, category, name, price, description)
             VALUES (%s, %s, %s, %s, %s)
         """, (product['id'], product['category'], product['name'],
               product['price'], product['description']))
@@ -443,33 +444,32 @@ class ProductService:
         es.index(
             index='products',
             id=product['id'],
-            body=product
+            document=product
         )
 
     def get_by_id(self, product_id):
         """Fast lookup from Cassandra."""
         result = cassandra.execute(
-            "SELECT * FROM products WHERE product_id = %s",
+            "SELECT * FROM products_by_id WHERE product_id = %s",
             (product_id,)
         )
-        return dict(result.one()) if result else None
+        row = result.one()
+        return row._asdict() if row else None
 
     def search(self, query_text, filters=None):
         """Full-text search via Elasticsearch."""
-        body = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"match": {"description": query_text}}
-                    ]
-                }
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"description": query_text}}
+                ]
             }
         }
 
         if filters:
-            body["query"]["bool"]["filter"] = filters
+            query["bool"]["filter"] = filters
 
-        return es.search(index='products', body=body)
+        return es.search(index='products', query=query)
 ```
 
 ## Operational Comparison
@@ -484,7 +484,7 @@ class ProductService:
 
 ### Elasticsearch Cluster Health
 
-```json
+```http
 GET /_cluster/health
 
 {
