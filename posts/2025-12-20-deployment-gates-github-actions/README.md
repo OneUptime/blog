@@ -81,8 +81,8 @@ The most common gate is requiring human approval before deployment. Configure re
 
 1. Go to Settings > Environments > production
 2. Check "Required reviewers"
-3. Add individuals or teams who can approve deployments
-4. Set how many approvals are needed (1-6)
+3. Add up to 6 individuals or teams who can approve deployments
+4. Note that only one of the listed reviewers needs to approve for the deployment to proceed
 
 When a workflow reaches a job targeting this environment, it pauses and notifies the reviewers. The deployment URL and changes are visible in the review interface.
 
