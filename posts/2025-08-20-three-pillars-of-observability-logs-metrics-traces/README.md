@@ -189,7 +189,7 @@ If you already use OTel → you’re 80% done integrating OneUptime.
 3. Tail sampler keeps this trace (p99 outlier)
 4. Metric alert (checkout latency > threshold) links exemplar trace
 5. Error log line includes `trace_id=... span_id=...` → clicked from trace UI
-6. Developer inspects DB span attributes: `db.system=postgres`, `rows=0`, `lock_wait_ms=1200`
+6. Developer inspects DB span attributes: `db.system=postgresql`, `rows=0`, `lock_wait_ms=1200`
 7. Root cause: connection pool exhaustion after deploy (release marker on timeline)
 
 Time to clarity: minutes, not an afternoon.
