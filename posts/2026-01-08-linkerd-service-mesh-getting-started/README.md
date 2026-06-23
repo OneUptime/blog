@@ -42,7 +42,7 @@ Before installing Linkerd, ensure you have:
 ```bash
 # Kubernetes cluster (1.21+)
 
-kubectl version --short
+kubectl version
 
 # Sufficient cluster resources
 kubectl top nodes
