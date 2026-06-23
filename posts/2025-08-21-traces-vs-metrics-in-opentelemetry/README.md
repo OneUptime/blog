@@ -73,14 +73,14 @@ For example, a trace might show (single trace id with a root span and children):
 Notes:
 - Parent Span ID links tree structure (root span has none).
 - Error span (pspErr01) shows failed external call; succeeding attempt follows.
-- Mixed parallel (auth, cart, inventory, pricing) and nested spans (DB + external calls) illustrate depth.
+- Nested spans (payment-service's retried POST /psp/charge external calls) illustrate depth.
 - Correlate IDs to attach logs (e.g., payment retry reason) without bloating metrics. 
 
 
 
 ## What are Logs?
 
-Logs are **unstructured text records** that answer “WHY did it happen?” They provide detailed context about specific events, like:
+Logs are **timestamped event records** that answer “WHY did it happen?” They provide detailed context about specific events, like:
 - Error messages
 - Debugging information
 - System state at a point in time
