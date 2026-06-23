@@ -218,13 +218,10 @@ resource "azurerm_virtual_machine_extension" "setup" {
   type                 = "CustomScriptExtension"
   type_handler_version = "1.10"
 
-  settings = jsonencode({
+  protected_settings = jsonencode({
     fileUris = [
       "${azurerm_storage_blob.setup_script.url}${data.azurerm_storage_account_sas.scripts.sas}"
     ]
-  })
-
-  protected_settings = jsonencode({
     commandToExecute = "powershell -ExecutionPolicy Unrestricted -File setup-server.ps1 -Environment ${var.environment} -AppName ${var.app_name}"
   })
 
@@ -367,8 +364,8 @@ resource "azurerm_virtual_machine_extension" "templated" {
   type                 = "CustomScriptExtension"
   type_handler_version = "1.10"
 
-  settings = jsonencode({
-    commandToExecute = "powershell -ExecutionPolicy Unrestricted -EncodedCommand ${base64encode(local.script_content)}"
+  protected_settings = jsonencode({
+    commandToExecute = "powershell -ExecutionPolicy Unrestricted -EncodedCommand ${local.encoded_script}"
   })
 }
 
@@ -380,6 +377,7 @@ locals {
     connection_string = var.connection_string
     features         = var.windows_features
   })
+  encoded_script = textencodebase64(local.script_content, "UTF-16LE")
 }
 ```
 
@@ -440,14 +438,11 @@ resource "azurerm_virtual_machine_extension" "multi_file" {
   type                 = "CustomScriptExtension"
   type_handler_version = "1.10"
 
-  settings = jsonencode({
+  protected_settings = jsonencode({
     fileUris = [
       for name, _ in local.script_files :
       "${azurerm_storage_account.scripts.primary_blob_endpoint}${azurerm_storage_container.scripts.name}/${name}${data.azurerm_storage_account_sas.scripts.sas}"
     ]
-  })
-
-  protected_settings = jsonencode({
     commandToExecute = "powershell -ExecutionPolicy Unrestricted -File setup-server.ps1"
   })
 
@@ -460,8 +455,8 @@ resource "azurerm_virtual_machine_extension" "multi_file" {
 ### Check Extension Status
 
 ```hcl
-# Output extension provisioning state
-output "extension_status" {
+# Output extension resource ID
+output "extension_id" {
   value = azurerm_virtual_machine_extension.setup.id
 }
 ```
@@ -522,9 +517,10 @@ resource "azurerm_virtual_machine_extension" "setup" {
   # ... other settings
 
   # Force update when script changes
+  force_update_tag = filemd5("${path.module}/scripts/setup.ps1")
+
   settings = jsonencode({
     commandToExecute = "powershell -ExecutionPolicy Unrestricted -File setup.ps1"
-    timestamp        = filemd5("${path.module}/scripts/setup.ps1")
   })
 }
 ```
