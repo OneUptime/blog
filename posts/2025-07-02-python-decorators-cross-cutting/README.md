@@ -231,8 +231,10 @@ def logged(
                     k: "[REDACTED]" if k in sensitive_args else v
                     for k, v in kwargs.items()
                 }
-                log_context["args"] = _safe_repr(args)
-                log_context["kwargs"] = safe_kwargs
+                # Note: avoid keys that collide with reserved LogRecord
+                # attributes (e.g. "args") or logging raises a KeyError.
+                log_context["call_args"] = _safe_repr(args)
+                log_context["call_kwargs"] = safe_kwargs
             
             # Log function entry
             logger.log(level, f"Calling {func_name}", extra=log_context)
@@ -334,7 +336,7 @@ import time
 import logging
 from functools import wraps
 from typing import Callable, Any, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 
 class StructuredLogFormatter(logging.Formatter):
     """
@@ -346,7 +348,7 @@ class StructuredLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         # Build base log structure
         log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
             "message": record.getMessage(),
