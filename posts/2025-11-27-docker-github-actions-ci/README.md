@@ -65,6 +65,7 @@ This configuration implements a local cache strategy for Docker builds. The cach
           context: .
           file: Dockerfile
           push: false                                      # Don't push PR builds
+          load: true                                       # Load image into local daemon so Trivy can scan it
           tags: ghcr.io/acme/api:pr-${{ github.event.number }}
           cache-from: type=local,src=/tmp/.buildx-cache   # Read cache from this path
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max  # Write to temp path
@@ -134,7 +135,7 @@ jobs:
             ghcr.io/acme/api:${{ github.ref_name }}  # Version or branch tag
 ```
 
-`provenance: true` uploads SLSA build metadata; GitHub can verify signatures automatically.
+`provenance: true` attaches a SLSA provenance attestation to the image index, so consumers can verify how and where the image was built.
 
 ## 6. Secrets Management
 
