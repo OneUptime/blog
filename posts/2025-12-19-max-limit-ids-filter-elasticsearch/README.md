@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, IDs Filter, Query Optimization, Performance, Configuration
 
-Description: Learn how to configure and work with the IDs filter limit in Elasticsearch.
+Description: Learn how to configure and work with ID-based query limits in Elasticsearch.
 
-The IDs filter in Elasticsearch allows you to query documents by their `_id` field. However, there's a default limit on how many IDs you can include in a single query. This guide explains how to configure this limit and provides alternatives for large ID sets.
+The IDs query in Elasticsearch allows you to query documents by their `_id` field. Elasticsearch does not expose a separate setting just for the number of values in an `ids` query, but the same use case is often implemented with a `terms` query on `_id`, where `index.max_terms_count` applies. This guide explains how to configure that limit and provides alternatives for large ID sets.
 
-## Understanding the IDs Filter
+## Understanding the IDs Query
 
-The IDs filter retrieves documents by their document IDs:
+The IDs query retrieves documents by their document IDs:
 
 ```json
 GET /products/_search
@@ -25,27 +25,27 @@ GET /products/_search
 
 ```mermaid
 graph LR
-    A[IDs Filter Query] --> B{ID Count <= Limit?}
+    A[IDs Query or Terms Query on _id] --> B{ID Count <= Limit?}
     B -->|Yes| C[Execute Query]
-    B -->|No| D[Error: too_many_clauses]
+    B -->|No| D[Error: too many terms]
     C --> E[Return Matching Docs]
 ```
 
 ## Default Limits
 
-Elasticsearch has a default limit of 65,536 for the maximum number of terms in a query:
+Elasticsearch has a default limit of 65,536 for the maximum number of terms in a `terms` query:
 
 ```json
-// This error occurs when exceeding the limit
+// This error can occur when a terms query exceeds index.max_terms_count
 {
   "error": {
-    "type": "query_shard_exception",
-    "reason": "failed to create query: maxClauseCount is set to 65536"
+    "type": "illegal_argument_exception",
+    "reason": "The number of terms used in the Terms Query request has exceeded the allowed maximum of [65536]"
   }
 }
 ```
 
-The IDs filter internally creates a terms query, so it's subject to the same limits.
+If you use a `terms` query on `_id`, it is subject to `index.max_terms_count`. The `ids` query itself is documented separately and does not have its own configurable max-values setting.
 
 ## Configuring the Limit
 
@@ -62,14 +62,13 @@ PUT /my_index/_settings
 
 ### Cluster-Level Setting
 
-Apply to all indexes:
+There is no current cluster-level setting that changes `index.max_terms_count` for all existing indexes. The older `indices.query.bool.max_clause_count` setting is deprecated in Elasticsearch 8.x and has no effect, and it controls boolean query clause limits rather than the `terms` query value limit.
 
 ```json
-PUT /_cluster/settings
+// This setting is deprecated in Elasticsearch 8.x and does not change index.max_terms_count
+GET /_cluster/settings?include_defaults=true&filter_path=**.indices.query.bool.max_clause_count
 {
-  "persistent": {
-    "indices.query.bool.max_clause_count": 100000
-  }
+  "defaults": {}
 }
 ```
 
@@ -134,14 +133,12 @@ def batch_ids_query(index, ids, batch_size=1000):
     for batch in batches:
         response = es.search(
             index=index,
-            body={
-                "query": {
-                    "ids": {
-                        "values": batch
-                    }
-                },
-                "size": len(batch)
-            }
+            query={
+                "ids": {
+                    "values": batch
+                }
+            },
+            size=len(batch)
         )
         all_results.extend(response["hits"]["hits"])
 
@@ -149,7 +146,7 @@ def batch_ids_query(index, ids, batch_size=1000):
 
 # Usage
 
-ids = ["id1", "id2", ..., "id50000"]  # Large ID list
+ids = [f"id{i}" for i in range(50000)]  # Large ID list
 results = batch_ids_query("products", ids, batch_size=5000)
 ```
 
@@ -164,10 +161,8 @@ def parallel_batch_ids_query(index, ids, batch_size=1000, max_workers=4):
     def query_batch(batch):
         return es.search(
             index=index,
-            body={
-                "query": {"ids": {"values": batch}},
-                "size": len(batch)
-            }
+            query={"ids": {"values": batch}},
+            size=len(batch)
         )["hits"]["hits"]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -210,7 +205,7 @@ def get_documents_by_ids(es, index, ids, batch_size=1000):
     for batch in batches:
         response = es.mget(
             index=index,
-            body={"ids": batch}
+            ids=batch
         )
 
         for doc in response["docs"]:
@@ -223,7 +218,7 @@ def get_documents_by_ids(es, index, ids, batch_size=1000):
     return all_docs
 
 # Usage
-ids = ["id1", "id2", ..., "id100000"]
+ids = [f"id{i}" for i in range(100000)]
 documents = get_documents_by_ids(es, "products", ids)
 ```
 
@@ -286,46 +281,47 @@ GET /products/_search
 }
 ```
 
-### 5. Use Scroll API for Large Result Sets
+### 5. Use Scroll API with Batched ID Queries
 
-When you need to process all matching documents:
+When you need to process all matching documents, scroll can be combined with batching. Scroll is for processing large result sets and is not a workaround for the number of IDs in a single query:
 
 ```python
 def scroll_by_ids(es, index, ids, batch_size=5000, scroll_time="2m"):
-    """Use scroll to process large ID sets."""
+    """Use scroll to process large ID sets in batches."""
 
     all_documents = []
+    batches = [ids[i:i + batch_size] for i in range(0, len(ids), batch_size)]
 
-    # Initial search
-    response = es.search(
-        index=index,
-        scroll=scroll_time,
-        size=batch_size,
-        body={
-            "query": {
+    for batch in batches:
+        # Initial search
+        response = es.search(
+            index=index,
+            scroll=scroll_time,
+            size=batch_size,
+            query={
                 "ids": {
-                    "values": ids[:65000]  # Respect limit
+                    "values": batch
                 }
             }
-        }
-    )
-
-    scroll_id = response["_scroll_id"]
-    hits = response["hits"]["hits"]
-
-    while hits:
-        all_documents.extend(hits)
-
-        response = es.scroll(
-            scroll_id=scroll_id,
-            scroll=scroll_time
         )
 
         scroll_id = response["_scroll_id"]
         hits = response["hits"]["hits"]
 
-    # Clear scroll
-    es.clear_scroll(scroll_id=scroll_id)
+        try:
+            while hits:
+                all_documents.extend(hits)
+
+                response = es.scroll(
+                    scroll_id=scroll_id,
+                    scroll=scroll_time
+                )
+
+                scroll_id = response["_scroll_id"]
+                hits = response["hits"]["hits"]
+        finally:
+            # Clear scroll
+            es.clear_scroll(scroll_id=scroll_id)
 
     return all_documents
 ```
@@ -344,12 +340,10 @@ async function batchIdsQuery(index, ids, batchSize = 1000) {
 
     const response = await client.search({
       index,
-      body: {
-        query: {
-          ids: { values: batch }
-        },
-        size: batch.length
-      }
+      query: {
+        ids: { values: batch }
+      },
+      size: batch.length
     });
 
     results.push(...response.hits.hits);
@@ -366,7 +360,7 @@ async function mgetWithBatching(index, ids, batchSize = 1000) {
 
     const response = await client.mget({
       index,
-      body: { ids: batch }
+      ids: batch
     });
 
     response.docs.forEach(doc => {
@@ -397,7 +391,7 @@ async function parallelMget(index, ids, batchSize = 1000, concurrency = 4) {
 
     const responses = await Promise.all(
       chunk.map(batch =>
-        client.mget({ index, body: { ids: batch } })
+        client.mget({ index, ids: batch })
       )
     );
 
@@ -440,7 +434,7 @@ main().catch(console.error);
 ```json
 GET /products/_settings/index.max_terms_count
 
-GET /_cluster/settings?include_defaults=true&filter_path=*.*.indices.query.bool.max_clause_count
+GET /products/_settings?include_defaults=true&filter_path=**.index.max_terms_count
 ```
 
 ### Monitor Query Performance
@@ -465,14 +459,14 @@ GET /_cat/indices/*slowlog*?v
 ```mermaid
 graph TD
     A[Need to Query by IDs] --> B{How many IDs?}
-    B -->|< 1000| C[Use IDs filter directly]
+    B -->|< 1000| C[Use IDs query directly]
     B -->|1000-10000| D[Batch IDs queries]
     B -->|> 10000| E{Need search features?}
     E -->|Yes| F[Batched IDs with filters]
     E -->|No| G[Use mget]
 ```
 
-### 2. Pre-filter When Possible
+### 2. Add Filters When Possible
 
 ```json
 // Instead of querying 50,000 IDs
@@ -483,7 +477,8 @@ GET /products/_search
   }
 }
 
-// Add filters to reduce result set first
+// Add filters to reduce the returned result set.
+// This does not increase the maximum number of IDs accepted by a single query.
 GET /products/_search
 {
   "query": {
@@ -526,7 +521,7 @@ def get_documents_cached(es, index, ids, cache_ttl=300):
 
     # Fetch uncached from Elasticsearch
     if uncached_ids:
-        response = es.mget(index=index, body={"ids": uncached_ids})
+        response = es.mget(index=index, ids=uncached_ids)
 
         for doc in response["docs"]:
             if doc.get("found"):
@@ -545,7 +540,7 @@ def get_documents_cached(es, index, ids, cache_ttl=300):
 
 Working with large ID sets in Elasticsearch requires understanding the limitations and choosing the right approach:
 
-1. **For small ID sets** (< 1000): Use the IDs filter directly
+1. **For small ID sets** (< 1000): Use the IDs query directly
 2. **For medium sets** (1000-10000): Batch the queries
 3. **For large sets** (> 10000): Use mget or parallel batching
 4. **For very large sets**: Consider terms lookup or secondary indexes
