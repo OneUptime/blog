@@ -24,9 +24,9 @@ Unit tests with mocks can only take you so far. Real bugs often hide in the inte
 Install the required dependencies for Testcontainers and Jest. The testcontainers package provides Docker container management, while Jest handles test execution.
 
 ```bash
-# Install testcontainers for Docker container management in tests
+# Install testcontainers and the PostgreSQL module for Docker container management in tests
 
-npm install testcontainers --save-dev
+npm install testcontainers @testcontainers/postgresql --save-dev
 # Install Jest as the test runner
 npm install jest @types/jest --save-dev
 ```
@@ -466,15 +466,15 @@ describe('Full Stack Integration', () => {
       'docker-compose.test.yml'             // Compose file name
     )
       // Configure wait strategies for each service
-      .withWaitStrategy('postgres', Wait.forHealthCheck())  // Use Docker healthcheck
-      .withWaitStrategy('redis', Wait.forHealthCheck())
-      .withWaitStrategy('kafka', Wait.forLogMessage(/started/))  // Wait for log message
+      .withWaitStrategy('postgres-1', Wait.forHealthCheck())  // Use Docker healthcheck
+      .withWaitStrategy('redis-1', Wait.forHealthCheck())
+      .withWaitStrategy('kafka-1', Wait.forLogMessage(/started/))  // Wait for log message
       .up();  // Start all services
 
     // Get references to individual containers for connection details
-    pgContainer = environment.getContainer('postgres');
-    redisContainer = environment.getContainer('redis');
-    kafkaContainer = environment.getContainer('kafka');
+    pgContainer = environment.getContainer('postgres-1');
+    redisContainer = environment.getContainer('redis-1');
+    kafkaContainer = environment.getContainer('kafka-1');
   }, 180000);  // 3 minute timeout for full stack startup
 
   afterAll(async () => {
@@ -523,9 +523,14 @@ services:
     environment:
       KAFKA_PROCESS_ROLES: broker,controller  # Combined mode
       KAFKA_NODE_ID: 1
-      CLUSTER_ID: test-cluster
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 ```
 
 ## Test Fixtures and Factories
@@ -628,7 +633,6 @@ module.exports = {
 Configure npm scripts to run different test suites with their respective configurations:
 
 ```json
-// package.json
 {
   "scripts": {
     "test": "jest",
