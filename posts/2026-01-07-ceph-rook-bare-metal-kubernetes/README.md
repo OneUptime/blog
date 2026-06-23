@@ -57,7 +57,7 @@ Before deploying Rook and Ceph, ensure your environment meets these requirements
 
 ### Kubernetes Requirements
 
-- Kubernetes version 1.25 or higher
+- Kubernetes versions v1.23 through v1.29 for Rook v1.13
 - kubectl configured with cluster admin access
 - Helm 3.x installed (optional but recommended)
 
@@ -193,7 +193,7 @@ Now we'll deploy the Rook operator to your Kubernetes cluster.
 Clone the Rook repository to get the deployment manifests:
 ```bash
 # Clone the Rook repository
-git clone --single-branch --branch v1.13.4 https://github.com/rook/rook.git
+git clone --single-branch --branch v1.13.10 https://github.com/rook/rook.git
 cd rook/deploy/examples
 ```
 
@@ -279,7 +279,7 @@ metadata:
 spec:
   # The Ceph image to use
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.1
+    image: quay.io/ceph/ceph:v18.2.2
     allowUnsupported: false
 
   # The path on the host where Ceph data will be stored
@@ -531,19 +531,57 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: rook-ceph-tools
-          image: quay.io/ceph/ceph:v18.2.1
+          image: quay.io/ceph/ceph:v18.2.2
           command:
             - /bin/bash
             - -c
             - |
-              # Keep the container running
-              while true; do sleep 3600; done
+              CEPH_CONFIG="/etc/ceph/ceph.conf"
+              MON_CONFIG="/etc/rook/mon-endpoints"
+              KEYRING_FILE="/etc/ceph/keyring"
+
+              write_endpoints() {
+                endpoints=$(cat ${MON_CONFIG})
+                mon_endpoints=$(echo "${endpoints}" | sed 's/[a-z0-9_-]\+=//g')
+                DATE=$(date)
+                echo "$DATE writing mon endpoints to ${CEPH_CONFIG}: ${endpoints}"
+                cat <<EOF > ${CEPH_CONFIG}
+              [global]
+              mon_host = ${mon_endpoints}
+
+              [client.admin]
+              keyring = ${KEYRING_FILE}
+              EOF
+              }
+
+              watch_endpoints() {
+                real_path=$(realpath ${MON_CONFIG})
+                initial_time=$(stat -c %Z "${real_path}")
+                while true; do
+                  real_path=$(realpath ${MON_CONFIG})
+                  latest_time=$(stat -c %Z "${real_path}")
+                  if [[ "${latest_time}" != "${initial_time}" ]]; then
+                    write_endpoints
+                    initial_time=${latest_time}
+                  fi
+                  sleep 10
+                done
+              }
+
+              ceph_secret=$(cat /var/lib/rook-ceph-mon/secret.keyring)
+              cat <<EOF > ${KEYRING_FILE}
+              [${ROOK_CEPH_USERNAME}]
+              key = ${ceph_secret}
+              EOF
+
+              write_endpoints
+              watch_endpoints
           imagePullPolicy: IfNotPresent
           tty: true
           securityContext:
-            runAsNonRoot: false
-            runAsUser: 0
-            runAsGroup: 0
+            runAsNonRoot: true
+            runAsUser: 2016
+            runAsGroup: 2016
             capabilities:
               drop: ["ALL"]
           env:
@@ -552,19 +590,24 @@ spec:
                 secretKeyRef:
                   name: rook-ceph-mon
                   key: ceph-username
-            - name: ROOK_CEPH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-secret
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
             - name: mon-endpoint-volume
               mountPath: /etc/rook
+            - name: ceph-admin-secret
+              mountPath: /var/lib/rook-ceph-mon
+              readOnly: true
       volumes:
         - name: ceph-config
           emptyDir: {}
+        - name: ceph-admin-secret
+          secret:
+            secretName: rook-ceph-mon
+            optional: false
+            items:
+              - key: ceph-secret
+                path: secret.keyring
         - name: mon-endpoint-volume
           configMap:
             name: rook-ceph-mon-endpoints
@@ -747,8 +790,6 @@ allowVolumeExpansion: true
 # Delete the volume when the PVC is deleted
 reclaimPolicy: Delete
 
-# WaitForFirstConsumer ensures the volume is created on the same node as the pod
-volumeBindingMode: WaitForFirstConsumer
 ```
 
 Apply the RBD storage class:
@@ -786,8 +827,8 @@ spec:
       parameters:
         compression_mode: none
 
-  # Preserve pools when the filesystem is deleted
-  preservePoolsOnDelete: true
+  # Preserve the filesystem when the CephFilesystem resource is deleted
+  preserveFilesystemOnDelete: true
 
   # Metadata server configuration
   metadataServer:
@@ -844,8 +885,6 @@ allowVolumeExpansion: true
 # Delete policy
 reclaimPolicy: Delete
 
-# WaitForFirstConsumer for better scheduling
-volumeBindingMode: WaitForFirstConsumer
 ```
 
 Apply the CephFS storage class:
@@ -862,9 +901,9 @@ kubectl get storageclass
 
 Expected output:
 ```text
-NAME                        PROVISIONER                     RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-rook-ceph-block (default)   rook-ceph.rbd.csi.ceph.com     Delete          WaitForFirstConsumer   true                   1m
-rook-cephfs                 rook-ceph.cephfs.csi.ceph.com   Delete          WaitForFirstConsumer   true                   30s
+NAME                        PROVISIONER                    RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+rook-ceph-block (default)   rook-ceph.rbd.csi.ceph.com     Delete          Immediate           true                   1m
+rook-cephfs                 rook-ceph.cephfs.csi.ceph.com   Delete          Immediate           true                   30s
 ```
 
 ## Testing Storage Provisioning
