@@ -302,7 +302,7 @@ from typing import Dict, Set, Optional
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -359,7 +359,7 @@ class ProductionConnectionManager:
             try:
                 await asyncio.sleep(self.heartbeat_interval)
                 # Send ping with timestamp for latency measurement
-                await self.send_json(client_id, {"type": "ping", "ts": datetime.utcnow().isoformat()})
+                await self.send_json(client_id, {"type": "ping", "ts": datetime.now(timezone.utc).isoformat()})
             except Exception as e:
                 logger.warning(f"Heartbeat failed for {client_id}: {e}")
                 break  # Connection is dead, exit loop
