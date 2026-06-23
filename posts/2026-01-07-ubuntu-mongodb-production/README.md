@@ -43,7 +43,7 @@ graph TB
             PRIMARY[(Primary Node<br/>Read/Write)]
             SECONDARY1[(Secondary Node 1<br/>Read Only)]
             SECONDARY2[(Secondary Node 2<br/>Read Only)]
-            ARBITER[Arbiter Node<br/>Voting Only]
+            ARBITER[Optional Arbiter<br/>Voting Only]
         end
 
         subgraph "Security Layer"
@@ -79,7 +79,7 @@ graph TB
 ```
 
 The diagram above shows a typical production MongoDB setup with:
-- A three-node replica set (one primary, two secondaries) plus an arbiter
+- A three-node replica set (one primary, two secondaries); use an arbiter only when you cannot deploy a third data-bearing member
 - Application servers connecting through security layers
 - Backup, monitoring, and logging infrastructure
 
@@ -87,7 +87,7 @@ The diagram above shows a typical production MongoDB setup with:
 
 Before installing MongoDB, ensure your Ubuntu server meets the following requirements:
 
-- Ubuntu 20.04 LTS, 22.04 LTS, or 24.04 LTS
+- Ubuntu 20.04 LTS or 22.04 LTS for MongoDB 7.0 (use the MongoDB 8.0 repository for Ubuntu 24.04 LTS)
 - Minimum 4 GB RAM (8 GB or more recommended for production)
 - Sufficient disk space with fast storage (SSD recommended)
 - Root or sudo access
@@ -96,7 +96,7 @@ Before installing MongoDB, ensure your Ubuntu server meets the following require
 Let's verify the system requirements and prepare the server:
 
 ```bash
-# Check Ubuntu version - MongoDB 7.0 supports Ubuntu 20.04, 22.04, and 24.04
+# Check Ubuntu version - MongoDB 7.0 supports Ubuntu 20.04 and 22.04
 
 lsb_release -a
 
@@ -123,10 +123,10 @@ sudo tee /etc/security/limits.d/mongodb.conf << 'EOF'
 # MongoDB process limits
 # nofile: Maximum number of open file descriptors
 # nproc: Maximum number of processes
-mongod soft nofile 64000
-mongod hard nofile 64000
-mongod soft nproc 64000
-mongod hard nproc 64000
+mongodb soft nofile 64000
+mongodb hard nofile 64000
+mongodb soft nproc 64000
+mongodb hard nproc 64000
 EOF
 
 # Disable Transparent Huge Pages (THP) which can cause latency issues
@@ -165,7 +165,7 @@ curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
    --dearmor
 
 # Add the MongoDB repository to the sources list
-# Replace 'jammy' with your Ubuntu codename (focal for 20.04, noble for 24.04)
+# Replace 'jammy' with your Ubuntu codename (focal for 20.04)
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
    sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
@@ -176,8 +176,8 @@ sudo apt-get update
 # mongodb-org is a metapackage that includes:
 # - mongodb-org-server: The mongod daemon
 # - mongodb-org-mongos: The mongos routing service for sharded clusters
-# - mongodb-org-shell: The mongosh interactive shell
-# - mongodb-org-tools: Utilities like mongodump, mongorestore, etc.
+# - mongodb-mongosh: The mongosh interactive shell
+# - mongodb-org-tools: A metapackage for utilities like mongodump, mongorestore, etc.
 sudo apt-get install -y mongodb-org
 
 # Prevent MongoDB packages from being automatically upgraded
@@ -554,6 +554,7 @@ First, create a keyfile for internal authentication between replica set members:
 ```bash
 # Generate a random keyfile for replica set authentication
 # This key must be identical on all replica set members
+sudo mkdir -p /etc/mongodb
 openssl rand -base64 756 | sudo tee /etc/mongodb/mongodb-keyfile > /dev/null
 
 # Set restrictive permissions on the keyfile
@@ -792,20 +793,22 @@ sudo cat /etc/mongodb/ssl/mongodb.key /etc/mongodb/ssl/mongodb.crt | \
 sudo chmod 600 /etc/mongodb/ssl/mongodb.pem
 sudo chown mongodb:mongodb /etc/mongodb/ssl/mongodb.pem
 
-# Create a CA certificate file if using a certificate chain
-# Copy your CA certificate to this location
-sudo cp /path/to/ca-certificate.crt /etc/mongodb/ssl/ca.crt
+# Create a CA certificate file for certificate validation.
+# For the self-signed test certificate above, use mongodb.crt as the CA file.
+# In production, copy your CA certificate to this location instead.
+sudo cp /etc/mongodb/ssl/mongodb.crt /etc/mongodb/ssl/ca.crt
 sudo chmod 644 /etc/mongodb/ssl/ca.crt
 ```
 
-Update MongoDB configuration to enable TLS:
+Update the existing `net:` section in MongoDB configuration to enable TLS:
 
-```bash
-# Add TLS configuration to mongod.conf
-sudo tee -a /etc/mongod.conf << 'EOF'
-
-# TLS/SSL Configuration
+```yaml
 net:
+  port: 27017
+  bindIp: 127.0.0.1,192.168.1.10
+  maxIncomingConnections: 65536
+
+  # TLS/SSL Configuration
   tls:
     # Enable TLS for all connections
     mode: requireTLS
@@ -819,8 +822,7 @@ net:
     # Path to the CA certificate for client verification
     CAFile: /etc/mongodb/ssl/ca.crt
 
-    # Allow connections from clients with invalid certificates (development only)
-    # Set to true in production to require valid client certificates
+    # Reject clients that do not present valid certificates
     allowConnectionsWithoutCertificates: false
 
     # Allow invalid hostnames (development only, set to false in production)
@@ -828,12 +830,15 @@ net:
 
     # Disable legacy SSL protocols
     disabledProtocols: TLS1_0,TLS1_1
-EOF
+```
+
+```bash
 
 # Restart MongoDB to apply TLS settings
 sudo systemctl restart mongod
 
 # Test TLS connection
+# Use a client certificate issued by your CA when client certificate validation is enabled.
 mongosh --tls \
   --tlsCertificateKeyFile /etc/mongodb/ssl/client.pem \
   --tlsCAFile /etc/mongodb/ssl/ca.crt \
@@ -938,7 +943,7 @@ perform_backup() {
 
     # Perform mongodump with authentication and compression
     # --oplog captures a point-in-time snapshot for replica sets
-    mongodump \
+    if mongodump \
         --host="${MONGO_HOST}" \
         --port="${MONGO_PORT}" \
         --username="${MONGO_USER}" \
@@ -947,10 +952,7 @@ perform_backup() {
         --out="${BACKUP_PATH}" \
         --oplog \
         --gzip \
-        2>&1 | tee -a "${LOG_FILE}"
-
-    # Check if backup was successful
-    if [ $? -eq 0 ]; then
+        2>&1 | tee -a "${LOG_FILE}"; then
         log_message "Backup completed successfully"
 
         # Create a compressed archive
@@ -975,11 +977,9 @@ upload_to_s3() {
     if [ "${UPLOAD_TO_S3}" = true ]; then
         log_message "Uploading backup to S3..."
 
-        aws s3 cp "${BACKUP_PATH}.tar.gz" \
+        if aws s3 cp "${BACKUP_PATH}.tar.gz" \
             "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}.tar.gz" \
-            --storage-class STANDARD_IA
-
-        if [ $? -eq 0 ]; then
+            --storage-class STANDARD_IA; then
             log_message "Backup uploaded to S3 successfully"
         else
             send_alert "Failed to upload backup to S3"
@@ -1076,7 +1076,7 @@ sudo tee /opt/mongodb/scripts/mongodb-restore.sh << 'EOF'
 
 set -euo pipefail
 
-BACKUP_FILE="$1"
+BACKUP_FILE="${1:-}"
 TARGET_DB="${2:-}"  # Optional: restore only specific database
 TEMP_DIR="/tmp/mongodb-restore-$$"
 MONGO_HOST="localhost"
@@ -1084,6 +1084,8 @@ MONGO_PORT="27017"
 MONGO_USER="backupUser"
 MONGO_PASSWORD="BACKUP_PASSWORD_HERE"
 AUTH_DB="admin"
+
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -1146,17 +1148,7 @@ else
         "${BACKUP_DIR}"
 fi
 
-# Check restore status
-if [ $? -eq 0 ]; then
-    log_message "Restore completed successfully"
-else
-    log_message "Error: Restore failed"
-    rm -rf "${TEMP_DIR}"
-    exit 1
-fi
-
-# Clean up
-rm -rf "${TEMP_DIR}"
+log_message "Restore completed successfully"
 log_message "Cleanup completed"
 EOF
 
@@ -1170,11 +1162,11 @@ Comprehensive monitoring is essential for maintaining a healthy MongoDB deployme
 ```bash
 # Install MongoDB Exporter for Prometheus
 # Download the latest release
-wget https://github.com/percona/mongodb_exporter/releases/download/v0.40.0/mongodb_exporter-0.40.0.linux-amd64.tar.gz
+wget https://github.com/percona/mongodb_exporter/releases/download/v0.51.0/mongodb_exporter-0.51.0.linux-amd64.tar.gz
 
 # Extract and install
-tar -xzf mongodb_exporter-0.40.0.linux-amd64.tar.gz
-sudo mv mongodb_exporter-0.40.0.linux-amd64/mongodb_exporter /usr/local/bin/
+tar -xzf mongodb_exporter-0.51.0.linux-amd64.tar.gz
+sudo mv mongodb_exporter-0.51.0.linux-amd64/mongodb_exporter /usr/local/bin/
 
 # Create a systemd service for the exporter
 sudo tee /etc/systemd/system/mongodb-exporter.service << 'EOF'
@@ -1730,9 +1722,18 @@ dbs.forEach(function(database) {
     });
 });
 
-// Clear old profiling data
+// Clear old profiling data for non-system databases where profiling is disabled
 print("\nClearing old profiling data...");
-db.getSiblingDB('admin').system.profile.drop();
+dbs.forEach(function(database) {
+    if (['admin', 'local', 'config'].includes(database.name)) return;
+
+    var profileDb = db.getSiblingDB(database.name);
+    if (profileDb.getProfilingStatus().was === 0) {
+        profileDb.system.profile.drop();
+    } else {
+        print("Skipping " + database.name + ": profiling is currently enabled");
+    }
+});
 
 // Rotate encryption keys if using encryption at rest
 // db.adminCommand({ rotateMasterKey: 1 });
@@ -1939,6 +1940,7 @@ sudo systemctl start mongod
 # Identify slow queries using the profiler
 mongosh -u mongoAdmin -p 'PASSWORD' --authenticationDatabase admin << 'EOF'
 // Enable profiling for slow operations
+use myapp
 db.setProfilingLevel(1, { slowms: 100 })
 
 // View slow operations
