@@ -72,7 +72,7 @@ flowchart TB
 Understanding these concepts is crucial for effective memory debugging:
 
 - **Virtual Memory**: Each process has its own virtual address space, mapped to physical memory by the kernel
-- **Page Faults**: Occur when a process accesses memory not currently in physical RAM
+- **Page Faults**: Occur when a process accesses a virtual address that is not currently mapped in its page tables; major faults require disk I/O, while minor faults do not
 - **Memory Allocators**: Include user-space (malloc, jemalloc) and kernel-space (slab, buddy) allocators
 - **OOM Killer**: The kernel mechanism that terminates processes when memory is exhausted
 
@@ -85,8 +85,8 @@ flowchart LR
     subgraph Probes["eBPF Attachment Points"]
         UP["uprobes<br/>malloc/free"]
         KP["kprobes<br/>kmalloc/kfree"]
-        TP["tracepoints<br/>mm_page_alloc"]
-        PM["perf events<br/>page faults"]
+        TP["tracepoints<br/>mm_page_alloc, oom"]
+        PM["perf software events<br/>minor/major page faults"]
     end
 
     subgraph BPF["eBPF Programs"]
@@ -109,8 +109,8 @@ flowchart LR
 
     UP --> Prog1
     KP --> Prog2
-    TP --> Prog3
-    PM --> Prog4
+    PM --> Prog3
+    TP --> Prog4
 
     Prog1 --> Hash
     Prog2 --> Hash
@@ -134,9 +134,8 @@ The following script checks and installs the necessary dependencies for eBPF dev
 ```bash
 #!/bin/bash
 
-# Check kernel version - eBPF requires kernel 4.4+ for basic features
-
-# and 5.8+ for advanced memory debugging features
+# Check kernel version - BCC/bpftrace tracing generally needs Linux 4.x+,
+# while newer features such as BPF ring buffers, BPF links, and CAP_BPF need 5.8+
 echo "Checking kernel version..."
 uname -r
 
@@ -155,11 +154,11 @@ sudo apt-get install -y libbpf-dev
 
 # Verify installation by checking if BPF filesystem is mounted
 # The BPF filesystem is required for pinning maps and programs
-mount | grep bpf
+mountpoint -q /sys/fs/bpf && echo "BPF filesystem is mounted"
 
 # If BPF filesystem is not mounted, mount it manually
 # This filesystem allows eBPF maps to persist across program restarts
-sudo mount -t bpf bpf /sys/fs/bpf
+mountpoint -q /sys/fs/bpf || sudo mount -t bpf bpf /sys/fs/bpf
 ```
 
 ### Verify eBPF Capabilities
@@ -221,18 +220,18 @@ uprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc
 uretprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc
 {
     /* Only record if we have a corresponding size (valid allocation) */
-    if (@size[tid]) {
+    if (has_key(@size, tid)) {
         /*
          * Store allocation info: address -> (size, stack trace, timestamp)
          * This allows us to identify which code path made each allocation
          */
         @allocs[retval] = @size[tid];
-        @alloc_stack[retval] = ustack;
+        @alloc_stack[retval] = ustack();
         @total_allocated += @size[tid];
         @allocation_count++;
 
         /* Clean up the temporary size storage */
-        delete(@size[tid]);
+        delete(@size, tid);
     }
 }
 
@@ -246,13 +245,13 @@ uprobe:/lib/x86_64-linux-gnu/libc.so.6:free
     $ptr = arg0;
 
     /* Only process if this pointer was previously tracked */
-    if (@allocs[$ptr]) {
+    if (has_key(@allocs, $ptr)) {
         @total_freed += @allocs[$ptr];
         @free_count++;
 
         /* Remove from tracking maps */
-        delete(@allocs[$ptr]);
-        delete(@alloc_stack[$ptr]);
+        delete(@allocs, $ptr);
+        delete(@alloc_stack, $ptr);
     }
 }
 
@@ -327,8 +326,8 @@ tracepoint:kmem:kmalloc
  */
 tracepoint:kmem:kfree
 {
-    if (@kernel_allocs[args->ptr]) {
-        delete(@kernel_allocs[args->ptr]);
+    if (has_key(@kernel_allocs, args->ptr)) {
+        delete(@kernel_allocs, args->ptr);
     }
 }
 
@@ -347,8 +346,8 @@ tracepoint:kmem:kmem_cache_alloc
  */
 tracepoint:kmem:kmem_cache_free
 {
-    if (@slab_allocs[args->ptr]) {
-        delete(@slab_allocs[args->ptr]);
+    if (has_key(@slab_allocs, args->ptr)) {
+        delete(@slab_allocs, args->ptr);
     }
 }
 
@@ -544,6 +543,7 @@ BPF_STACK_TRACE(stack_traces, 16384);
  * Keyed by thread ID to handle concurrent allocations
  */
 BPF_HASH(sizes, u32, u64);
+BPF_HASH(realloc_ptrs, u32, u64);
 
 /*
  * Statistics counters for monitoring overall behavior
@@ -576,12 +576,6 @@ int malloc_return(struct pt_regs *ctx) {
         return 0;
     }
 
-    /* Get the return value (allocated pointer) */
-    u64 addr = PT_REGS_RC(ctx);
-    if (addr == 0) {
-        return 0;  /* Allocation failed */
-    }
-
     /* Retrieve the stored size */
     u32 tid = bpf_get_current_pid_tgid();
     u64 *size_ptr = sizes.lookup(&tid);
@@ -590,6 +584,12 @@ int malloc_return(struct pt_regs *ctx) {
     }
     u64 size = *size_ptr;
     sizes.delete(&tid);
+
+    /* Get the return value (allocated pointer) */
+    u64 addr = PT_REGS_RC(ctx);
+    if (addr == 0) {
+        return 0;  /* Allocation failed */
+    }
 
     /* Create allocation info structure */
     struct alloc_info_t info = {};
@@ -617,6 +617,61 @@ int malloc_return(struct pt_regs *ctx) {
     }
 
     return 0;
+}
+
+/*
+ * Probe attached to calloc entry
+ * calloc takes element count and element size, so track nmemb * size
+ */
+int calloc_enter(struct pt_regs *ctx, size_t nmemb, size_t size) {
+    return malloc_enter(ctx, nmemb * size);
+}
+
+/*
+ * Probe attached to realloc entry
+ * realloc can free or resize an existing allocation before returning a new one
+ */
+int realloc_enter(struct pt_regs *ctx, void *ptr, size_t size) {
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    if (pid != TARGET_PID) {
+        return 0;
+    }
+
+    u32 tid = bpf_get_current_pid_tgid();
+    u64 old_addr = (u64)ptr;
+    realloc_ptrs.update(&tid, &old_addr);
+    sizes.update(&tid, &size);
+    return 0;
+}
+
+/*
+ * Probe attached to realloc return
+ * If realloc succeeds, remove the old allocation and record the new allocation
+ */
+int realloc_return(struct pt_regs *ctx) {
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    if (pid != TARGET_PID) {
+        return 0;
+    }
+
+    u32 tid = bpf_get_current_pid_tgid();
+    u64 addr = PT_REGS_RC(ctx);
+
+    u64 *old_addr = realloc_ptrs.lookup(&tid);
+    if (addr != 0 && old_addr && *old_addr != addr) {
+        struct alloc_info_t *old_info = allocs.lookup(old_addr);
+        if (old_info) {
+            int zero = 0;
+            u64 *total = combined_allocs.lookup(&zero);
+            if (total && *total >= old_info->size) {
+                __sync_fetch_and_sub(total, old_info->size);
+            }
+            allocs.delete(old_addr);
+        }
+    }
+    realloc_ptrs.delete(&tid);
+
+    return malloc_return(ctx);
 }
 
 /*
@@ -664,11 +719,11 @@ b.attach_uprobe(name="c", sym="malloc", fn_name="malloc_enter", pid=args.pid)
 b.attach_uretprobe(name="c", sym="malloc", fn_name="malloc_return", pid=args.pid)
 b.attach_uprobe(name="c", sym="free", fn_name="free_enter", pid=args.pid)
 
-# Also attach to calloc and realloc for complete coverage
-b.attach_uprobe(name="c", sym="calloc", fn_name="malloc_enter", pid=args.pid)
+# Also attach to calloc and realloc for more complete coverage
+b.attach_uprobe(name="c", sym="calloc", fn_name="calloc_enter", pid=args.pid)
 b.attach_uretprobe(name="c", sym="calloc", fn_name="malloc_return", pid=args.pid)
-b.attach_uprobe(name="c", sym="realloc", fn_name="malloc_enter", pid=args.pid)
-b.attach_uretprobe(name="c", sym="realloc", fn_name="malloc_return", pid=args.pid)
+b.attach_uprobe(name="c", sym="realloc", fn_name="realloc_enter", pid=args.pid)
+b.attach_uretprobe(name="c", sym="realloc", fn_name="realloc_return", pid=args.pid)
 
 print(f"Tracing memory allocations... Hit Ctrl-C to stop.")
 print(f"Reporting allocations older than {args.age} seconds as potential leaks.\n")
@@ -682,7 +737,7 @@ def print_leak_report():
     allocs = b.get_table("allocs")
     stack_traces = b.get_table("stack_traces")
 
-    now_ns = time.time() * 1e9
+    now_ns = BPF.monotonic_time()
     age_threshold_ns = args.age * 1e9
 
     # Collect potential leaks
@@ -761,8 +816,8 @@ sudo /usr/share/bcc/tools/memleak -p $(pgrep myapp) --older 60000
 sudo /usr/share/bcc/tools/memleak -p $(pgrep myapp) -T 10
 
 # Include combined allocations (sum allocations from same stack)
-# -c combines allocations from the same call stack
-sudo /usr/share/bcc/tools/memleak -p $(pgrep myapp) -c
+# --combined-only shows only the per-stack aggregate view
+sudo /usr/share/bcc/tools/memleak -p $(pgrep myapp) --combined-only
 
 # Trace kernel memory allocations instead of user-space
 # Useful for debugging kernel modules or understanding kernel memory usage
@@ -821,27 +876,33 @@ This bpftrace script provides detailed analysis of page faults:
  * Minor faults are relatively fast as they don't require disk I/O
  * High minor fault rates can still impact performance due to TLB misses
  */
-software:page-faults:1
+software:minor-faults:1
 {
     /* Count faults by process */
     @minor_by_process[comm, pid] = count();
-
-    /* Track fault addresses to identify hot memory regions */
-    @minor_by_addr[comm] = lhist(arg0, 0, 0xffffffff, 0x10000000);
 
     /* Track which CPUs are experiencing faults */
     @minor_by_cpu[cpu] = count();
 }
 
 /*
- * Trace major page faults using the exception:page_fault_user tracepoint
+ * Trace major page faults using the perf software event
  * Major faults require reading data from disk, causing significant latency
  * These are critical for performance optimization
  */
-tracepoint:exceptions:page_fault_user
+software:major-faults:1
 {
     @major_by_process[comm, pid] = count();
-    @major_by_addr_range[comm] = lhist(args->address, 0, 0xffffffff, 0x10000000);
+    @major_by_cpu[cpu] = count();
+}
+
+/*
+ * Trace user page-fault exceptions to record fault address ranges.
+ * This tracepoint includes both minor and major user faults.
+ */
+tracepoint:exceptions:page_fault_user
+{
+    @fault_by_addr_range[comm] = lhist(args->address, 0, 0xffffffff, 0x10000000);
 
     /* Record the timestamp to measure fault handling latency */
     @fault_start[tid] = nsecs;
@@ -875,7 +936,7 @@ kretprobe:handle_mm_fault
             @slow_fault_latency_ms[comm] = hist($latency / 1000000);
         }
 
-        delete(@handle_start[tid]);
+        delete(@handle_start, tid);
     }
 }
 
@@ -978,8 +1039,8 @@ BPF_PERF_OUTPUT(faults);
 /*
  * Histograms for fault analysis
  */
-BPF_HISTOGRAM(minor_latency_us, u64);
-BPF_HISTOGRAM(major_latency_us, u64);
+BPF_HISTOGRAM(fast_fault_latency_us, u64);
+BPF_HISTOGRAM(slow_fault_latency_us, u64);
 
 /*
  * Map to track fault start times
@@ -1041,13 +1102,13 @@ int trace_fault_handler(struct pt_regs *ctx) {
         u64 latency_us = latency / 1000;
 
         /*
-         * Classify as major fault if latency > 100us
-         * Major faults involve disk I/O and are much slower
+         * Bucket fault handling by latency. Slow faults often indicate I/O or
+         * reclaim work, but latency alone does not prove a major fault.
          */
         if (latency_us > 100) {
-            major_latency_us.increment(bpf_log2l(latency_us));
+            slow_fault_latency_us.increment(bpf_log2l(latency_us));
         } else {
-            minor_latency_us.increment(bpf_log2l(latency_us));
+            fast_fault_latency_us.increment(bpf_log2l(latency_us));
         }
 
         fault_start.delete(&tid);
@@ -1111,11 +1172,11 @@ try:
         print("="*60)
 
         # Print latency histograms
-        print("\nMinor fault latency (log2 microseconds):")
-        b["minor_latency_us"].print_log2_hist("us")
+        print("\nFast fault latency (log2 microseconds):")
+        b["fast_fault_latency_us"].print_log2_hist("us")
 
-        print("\nMajor fault latency (log2 microseconds):")
-        b["major_latency_us"].print_log2_hist("us")
+        print("\nSlow fault latency (log2 microseconds):")
+        b["slow_fault_latency_us"].print_log2_hist("us")
 
         # Analyze fault locations
         fault_by_page = b.get_table("fault_by_page")
@@ -1138,8 +1199,8 @@ try:
             print(f"  {count:8d} faults: {region}")
 
         # Clear histograms for next interval
-        b["minor_latency_us"].clear()
-        b["major_latency_us"].clear()
+        b["fast_fault_latency_us"].clear()
+        b["slow_fault_latency_us"].clear()
 
 except KeyboardInterrupt:
     print("\nExiting...")
@@ -1222,7 +1283,7 @@ kprobe:out_of_memory
 
     /* Print kernel stack to understand the allocation path */
     printf("  Kernel stack:\n");
-    printf("%s\n", kstack);
+    printf("%s\n", kstack());
 
     @oom_events = count();
     @oom_by_trigger[comm] = count();
@@ -1254,7 +1315,7 @@ kprobe:oom_kill_process
 }
 
 /*
- * Alternative: Trace the oom_kill tracepoint for cleaner access
+ * Also trace OOM score adjustment changes
  */
 tracepoint:oom:oom_score_adj_update
 {
@@ -1300,7 +1361,7 @@ kretprobe:try_to_free_pages
             printf("Slow reclaim: %s spent %d ms in reclaim\n", comm, $latency_ms);
         }
 
-        delete(@reclaim_start[tid]);
+        delete(@reclaim_start, tid);
     }
 }
 
@@ -1515,6 +1576,7 @@ def get_memory_info():
 
 def get_top_memory_processes(n=10):
     """Get top N processes by memory usage"""
+    page_size_kb = os.sysconf('SC_PAGE_SIZE') // 1024
     processes = []
     for pid_dir in os.listdir('/proc'):
         if pid_dir.isdigit():
@@ -1522,7 +1584,7 @@ def get_top_memory_processes(n=10):
                 with open(f'/proc/{pid_dir}/statm', 'r') as f:
                     statm = f.read().split()
                     rss_pages = int(statm[1])
-                    rss_kb = rss_pages * 4  # Assuming 4KB pages
+                    rss_kb = rss_pages * page_size_kb
 
                 with open(f'/proc/{pid_dir}/comm', 'r') as f:
                     comm = f.read().strip()
@@ -1626,6 +1688,7 @@ This script monitors and displays OOM scores for all processes:
 # Usage: ./oom_score_monitor.sh [interval_seconds]
 
 INTERVAL=${1:-5}
+PAGE_SIZE_KB=$(($(getconf PAGESIZE) / 1024))
 
 echo "Monitoring OOM scores (refreshing every ${INTERVAL}s)"
 echo "Press Ctrl-C to stop"
@@ -1653,7 +1716,7 @@ while true; do
 
         # Get RSS from statm (in pages, convert to MB)
         rss_pages=$(awk '{print $2}' "$pid/statm" 2>/dev/null || echo "0")
-        rss_mb=$(echo "scale=1; $rss_pages * 4 / 1024" | bc 2>/dev/null || echo "0")
+        rss_mb=$(echo "scale=1; $rss_pages * $PAGE_SIZE_KB / 1024" | bc 2>/dev/null || echo "0")
 
         echo "$pid_num $comm $oom_score $oom_adj $rss_mb"
     done 2>/dev/null | sort -k3 -rn | head -20 | \
@@ -1702,38 +1765,17 @@ echo "Collecting memory allocation stacks for PID $PID for $DURATION seconds..."
 # This traces malloc calls and captures the user-space stack
 sudo bpftrace -e "
     uprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc /pid == $PID/ {
-        @stacks[ustack] = sum(arg0);
+        @stacks[ustack()] = sum(arg0);
     }
 
     interval:s:$DURATION {
         exit();
     }
-" 2>/dev/null | \
-# Filter and format the output for flamegraph processing
-grep -E '^\t|^@' | \
-# Convert bpftrace output to flamegraph format
-awk '
-    /^@stacks\[/ {
-        # Extract the count from the line
-        match($0, /]: ([0-9]+)/, arr)
-        count = arr[1]
-        next
-    }
-    /^\t/ {
-        # Build the stack string
-        gsub(/^\t/, "")
-        if (stack != "") stack = $0 ";" stack
-        else stack = $0
-    }
-    /^$/ && stack != "" {
-        print stack, count
-        stack = ""
-    }
-' > /tmp/mem_stacks.txt
+" > /tmp/mem_stacks.bt
 
 # Generate the flamegraph
 if [ -f "$FLAMEGRAPH_DIR/flamegraph.pl" ]; then
-    cat /tmp/mem_stacks.txt | \
+    cat /tmp/mem_stacks.bt | \
         "$FLAMEGRAPH_DIR/stackcollapse-bpftrace.pl" | \
         "$FLAMEGRAPH_DIR/flamegraph.pl" \
             --title "Memory Allocation Flamegraph - PID $PID" \
@@ -1746,7 +1788,7 @@ if [ -f "$FLAMEGRAPH_DIR/flamegraph.pl" ]; then
     echo "Open in a browser to explore interactively."
 else
     echo "FlameGraph tools not found at $FLAMEGRAPH_DIR"
-    echo "Raw stack data saved to /tmp/mem_stacks.txt"
+    echo "Raw stack data saved to /tmp/mem_stacks.bt"
 fi
 ```
 
@@ -1977,18 +2019,18 @@ When debugging memory in containerized environments, you need to account for cgr
  */
 
 /*
- * Trace cgroup memory limit events
- * This fires when a cgroup approaches its memory limit
+ * Trace OOM victim selection and correlate it with the current cgroup ID.
+ * For exact cgroup v2 limit counters, also inspect memory.events.
  */
-tracepoint:cgroup:cgroup_memory_limit_reached
+tracepoint:oom:mark_victim
 {
-    printf("Memory limit reached for cgroup!\n");
+    printf("OOM victim selected!\n");
     printf("  Time: ");
     time();
-    printf("  Process: %s (PID: %d)\n", comm, pid);
-    printf("  Cgroup: %s\n", str(args->cgrp_path));
+    printf("  Victim PID: %d\n", args->pid);
+    printf("  Current cgroup ID: %lu\n", cgroup);
 
-    @limit_events[str(args->cgrp_path)] = count();
+    @oom_victims_by_cgroup[cgroup] = count();
 }
 
 /*
@@ -2035,8 +2077,8 @@ interval:s:10
 {
     printf("\n=== Container Memory Summary ===\n");
 
-    printf("\nLimit reached events by cgroup:\n");
-    print(@limit_events);
+    printf("\nOOM victims by cgroup ID:\n");
+    print(@oom_victims_by_cgroup);
 
     printf("\nCgroup reclaim by process:\n");
     print(@cgroup_reclaim, 10);
