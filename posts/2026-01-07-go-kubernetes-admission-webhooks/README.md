@@ -188,6 +188,10 @@ var (
     deserializer  = codecs.UniversalDeserializer()
 )
 
+func init() {
+    _ = admissionv1.AddToScheme(runtimeScheme)
+}
+
 // AdmissionResponse wraps the response with helper methods
 type AdmissionResponse struct {
     Allowed bool
@@ -217,6 +221,9 @@ func parseAdmissionReview(r *http.Request) (*admissionv1.AdmissionReview, error)
     ar := &admissionv1.AdmissionReview{}
     if _, _, err := deserializer.Decode(body, nil, ar); err != nil {
         return nil, fmt.Errorf("failed to decode admission review: %w", err)
+    }
+    if ar.Request == nil {
+        return nil, fmt.Errorf("admission review request is nil")
     }
 
     return ar, nil
@@ -287,7 +294,6 @@ import (
     "net/http"
     "strings"
 
-    admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
 )
 
@@ -382,8 +388,7 @@ func validateContainers(containers []corev1.Container, config *ValidationConfig)
     for _, container := range containers {
         // Check for denied image tags (e.g., :latest)
         for _, denied := range config.DeniedImages {
-            if strings.HasSuffix(container.Image, ":"+denied) ||
-               (!strings.Contains(container.Image, ":") && denied == "latest") {
+            if imageUsesDeniedTag(container.Image, denied) {
                 violations = append(violations,
                     fmt.Sprintf("container %s uses denied image tag: %s", container.Name, denied))
             }
@@ -422,6 +427,18 @@ func validateContainers(containers []corev1.Container, config *ValidationConfig)
     return violations
 }
 
+// imageUsesDeniedTag checks image tags while allowing registry ports such as localhost:5000.
+func imageUsesDeniedTag(image, denied string) bool {
+    lastSlash := strings.LastIndex(image, "/")
+    lastColon := strings.LastIndex(image, ":")
+
+    if lastColon > lastSlash {
+        return image[lastColon+1:] == denied
+    }
+
+    return denied == "latest"
+}
+
 // validateHostSettings checks for dangerous host namespace usage
 func validateHostSettings(pod *corev1.Pod, config *ValidationConfig) []string {
     var violations []string
@@ -454,9 +471,10 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "strings"
 
-    admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
 )
 
 // PatchOperation represents a JSON Patch operation for mutating resources
@@ -710,21 +728,6 @@ func mustParseQuantity(s string) resource.Quantity {
     }
     return q
 }
-```
-
-Add the missing imports at the top of mutate.go:
-
-```go
-import (
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "strings"
-
-    admissionv1 "k8s.io/api/admission/v1"
-    corev1 "k8s.io/api/core/v1"
-    "k8s.io/apimachinery/pkg/api/resource"
-)
 ```
 
 ## Main Entry Point
@@ -1052,7 +1055,7 @@ ENTRYPOINT ["/webhook"]
 
 ## Testing the Webhook
 
-Test the webhook locally before deploying to Kubernetes. Create a test pod manifest that violates security policies:
+Test the webhook after deploying it to Kubernetes. Create a test pod manifest that violates security policies:
 
 ```yaml
 # test/invalid-pod.yaml
@@ -1122,9 +1125,10 @@ kubectl label namespace default admission-webhook=enabled
 cd deploy/tls
 chmod +x generate-certs.sh
 ./generate-certs.sh
+cd ../..
 
 # 3. Create the TLS secret
-kubectl apply -f ../webhook-tls-secret.yaml
+kubectl apply -f deploy/webhook-tls-secret.yaml
 
 # 4. Build and push the webhook image
 docker build -t yourorg/admission-webhook:latest .
