@@ -407,12 +407,12 @@ network:
     eth0:  # Public interface
       addresses:
         - 203.0.113.10/24
-        - 2001:db8:public::10/64
+        - 2001:db8:0::10/64
       routes:
         - to: default
           via: 203.0.113.1
         - to: default
-          via: 2001:db8:public::1
+          via: 2001:db8:0::1
       nameservers:
         addresses:
           - 2001:4860:4860::8888
@@ -420,10 +420,10 @@ network:
     eth1:  # Private interface
       addresses:
         - 10.0.0.10/24
-        - fd00:private::10/64
+        - fd00:abcd::10/64
       routes:
         - to: fd00::/8
-          via: fd00:private::1
+          via: fd00:abcd::1
 ```
 
 ### VLAN Configuration with IPv6
@@ -553,7 +553,7 @@ ip -6 route show default
 
 ```bash
 # Check Netplan configuration syntax
-sudo netplan generate --debug
+sudo netplan --debug generate
 
 # View systemd-networkd logs
 journalctl -u systemd-networkd -f
