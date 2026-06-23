@@ -1555,8 +1555,10 @@ RSpec.describe Product, type: :model do
         expect(result).not_to include(phone, tablet)
       end
       
-      it 'is case insensitive' do
-        result = Product.ransack(name_cont: 'laptop').result
+      it 'is case insensitive with the i_cont predicate' do
+        # `cont` generates a case-sensitive LIKE; use `i_cont` for
+        # case-insensitive matching (ILIKE on PostgreSQL).
+        result = Product.ransack(name_i_cont: 'laptop').result
         
         expect(result).to include(laptop)
       end
