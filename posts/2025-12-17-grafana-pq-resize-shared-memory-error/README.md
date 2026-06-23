@@ -16,7 +16,7 @@ The full error message usually looks like:
 pq: could not resize shared memory segment "/PostgreSQL.xxxxxxxxxx" to xxxxxxxx bytes: No space left on device
 ```
 
-This error originates from PostgreSQL, not Grafana directly. PostgreSQL uses shared memory for caching, sorting, and other operations. When it cannot resize this memory segment, queries fail.
+This error originates from PostgreSQL, not Grafana directly. PostgreSQL uses shared memory for shared buffers and for dynamic shared memory used by features such as parallel queries. When it cannot resize this memory segment, queries fail.
 
 ```mermaid
 graph TD
@@ -47,7 +47,7 @@ shm              64M  4.0K   64M   1% /dev/shm
 
 ### Cause 2: PostgreSQL Configuration
 
-PostgreSQL's `shared_buffers` and `work_mem` settings may exceed available shared memory.
+PostgreSQL's `shared_buffers` setting consumes shared memory at server startup, and parallel queries can use dynamic shared memory while they run. `work_mem` is not a `/dev/shm` reservation, but high values can increase total memory pressure because each sort or hash operation can use it separately.
 
 ### Cause 3: Kubernetes Resource Limits
 
@@ -330,18 +330,18 @@ Use these guidelines for sizing shared memory:
 
 ### Memory Calculation
 
-Calculate required shared memory:
+Estimate required shared memory:
 
 ```bash
-# PostgreSQL needs approximately:
-# shared_buffers + (max_connections * work_mem) + overhead
+# For /dev/shm, start with:
+# shared_buffers + expected dynamic shared memory for parallel queries + overhead
 
 # Example:
-# 128MB (shared_buffers) + (100 * 4MB) + 64MB overhead
-# = 128 + 400 + 64 = 592MB
+# 128MB (shared_buffers) + 128MB dynamic shared memory headroom + 64MB overhead
+# = 320MB
 
-# Set /dev/shm to at least this value plus buffer
-# Recommended: 1GB for safety
+# Set /dev/shm above this value and leave room for workload spikes
+# Recommended: 512MB or 1GB for busy deployments
 ```
 
 ### Monitoring Setup
@@ -353,14 +353,15 @@ Create an alert for shared memory issues:
 groups:
   - name: postgresql_alerts
     rules:
-      - alert: PostgreSQLSharedMemoryHigh
+      - alert: PostgreSQLSharedMemoryLow
         expr: |
-          pg_settings_shared_buffers_bytes / (node_memory_MemTotal_bytes * 0.25) > 1
+          node_filesystem_avail_bytes{mountpoint="/dev/shm",fstype="tmpfs"}
+            / node_filesystem_size_bytes{mountpoint="/dev/shm",fstype="tmpfs"} < 0.10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "PostgreSQL shared_buffers exceeds 25% of total memory"
+          summary: "PostgreSQL shared memory filesystem has less than 10% free space"
 ```
 
 ## Alternative Solutions
