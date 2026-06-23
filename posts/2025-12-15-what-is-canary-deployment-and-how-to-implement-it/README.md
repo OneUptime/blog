@@ -29,7 +29,7 @@ In software terms, your canary release "detects" problems in production by expos
 |----------|-------------|----------------|----------------|
 | **Canary** | Route small % of traffic to new version | Instant | Moderate |
 | **Blue-Green** | Two full environments, switch all traffic at once | Instant | High (2x resources) |
-| **Rolling Update** | Replace pods one by one | Slow (must redeploy old version) | Low |
+| **Rolling Update** | Replace pods one by one | Gradual (old ReplicaSet scales back up) | Low |
 
 **When to use canary deployments:**
 
@@ -54,11 +54,11 @@ There are several ways to implement canary deployments in Kubernetes, ranging fr
 
 ### Method 1: Native Kubernetes with Replica Ratios
 
-The simplest approach uses multiple Deployments with different replica counts. Kubernetes Services load-balance across all matching pods, so the traffic split roughly equals the replica ratio.
+The simplest approach uses multiple Deployments with different replica counts. Kubernetes Services load-balance across all matching ready pods, so the traffic split roughly follows the replica ratio over time.
 
 **Step 1: Deploy the stable version**
 
-This deployment configuration creates 9 replicas of the stable application version. When combined with a single canary replica, this gives approximately 90% of traffic to the stable version through Kubernetes' round-robin load balancing.
+This deployment configuration creates 9 replicas of the stable application version. When combined with a single canary replica, this gives approximately 90% of traffic to the stable version through Kubernetes Service load balancing.
 
 ```yaml
 apiVersion: apps/v1
@@ -158,7 +158,7 @@ spec:
 
 **Step 3: Create a Service that routes to both**
 
-The Service uses only the common `app` label in its selector, which matches both stable and canary pods. Kubernetes automatically load-balances traffic across all matching pods, creating the traffic split based on replica counts.
+The Service uses only the common `app` label in its selector, which matches both stable and canary pods. Kubernetes automatically load-balances traffic across all matching ready pods, creating an approximate traffic split based on replica counts.
 
 ```yaml
 apiVersion: v1
@@ -176,7 +176,7 @@ spec:
 
 **Adjusting traffic split:**
 
-To increase canary traffic from 10% to 50%, scale the deployments. The traffic split always equals the ratio of replicas, so equal replica counts mean equal traffic distribution.
+To increase canary traffic from 10% to 50%, scale the deployments. The traffic split roughly follows the ratio of ready replicas, so equal replica counts usually mean an approximately equal distribution.
 
 ```bash
 # Scale down stable to 5 replicas (from 9)
@@ -288,7 +288,7 @@ spec:
 
 **Step 4: Configure traffic splitting with VirtualService**
 
-The VirtualService is where you define the actual traffic split percentages. Unlike native Kubernetes, Istio allows precise control - you can route exactly 5% to the canary regardless of replica counts.
+The VirtualService is where you define the actual traffic split percentages. Unlike native Kubernetes, Istio allows precise control - you can assign a 5% route weight to the canary regardless of replica counts.
 
 Start with 5% to canary:
 
