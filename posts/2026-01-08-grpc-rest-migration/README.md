@@ -724,9 +724,7 @@ Create an adapter to ensure REST responses match the original format:
 package adapter
 
 import (
-	"encoding/json"
 	"net/http"
-	"strconv"
 
 	userv1 "github.com/example/migration/gen/user/v1"
 )
