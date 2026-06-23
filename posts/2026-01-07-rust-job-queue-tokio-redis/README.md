@@ -47,6 +47,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 tracing = "0.1"
+tracing-subscriber = "0.3"
+async-trait = "0.1"
 ```
 
 ---
@@ -159,7 +161,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::job::{Job, JobMeta};
+use crate::job::Job;
 
 const DEFAULT_QUEUE: &str = "jobs:default";
 const PROCESSING_QUEUE: &str = "jobs:processing";
@@ -192,7 +194,7 @@ impl JobQueue {
             let job_json = serde_json::to_string(&job)?;
 
             // Add to sorted set for scheduled jobs
-            conn.zadd(SCHEDULED_QUEUE, &job_json, score).await?;
+            let _: usize = conn.zadd(SCHEDULED_QUEUE, &job_json, score).await?;
 
             tracing::info!(
                 job_id = %job_id,
@@ -203,7 +205,7 @@ impl JobQueue {
             let job_json = serde_json::to_string(&job)?;
 
             // Push to queue
-            conn.rpush(DEFAULT_QUEUE, &job_json).await?;
+            let _: usize = conn.rpush(DEFAULT_QUEUE, &job_json).await?;
 
             tracing::info!(job_id = %job_id, "Job enqueued");
         }
@@ -222,7 +224,7 @@ impl JobQueue {
         self.process_scheduled_jobs().await?;
 
         // Blocking pop with move to processing queue
-        let result: Option<(String, String)> = conn
+        let result: Option<String> = conn
             .blmove(
                 DEFAULT_QUEUE,
                 PROCESSING_QUEUE,
@@ -233,7 +235,7 @@ impl JobQueue {
             .await?;
 
         match result {
-            Some((_, job_json)) => {
+            Some(job_json) => {
                 let job: Job<T> = serde_json::from_str(&job_json)?;
                 tracing::debug!(job_id = %job.meta.id, "Job dequeued");
                 Ok(Some(job))
@@ -281,7 +283,7 @@ impl JobQueue {
             let score = job.meta.scheduled_at.unwrap().timestamp() as f64;
 
             // Add to scheduled queue for retry
-            conn.zadd(SCHEDULED_QUEUE, &job_json, score).await?;
+            let _: usize = conn.zadd(SCHEDULED_QUEUE, &job_json, score).await?;
 
             tracing::warn!(
                 job_id = %job.meta.id,
@@ -293,7 +295,7 @@ impl JobQueue {
         } else {
             // Move to dead letter queue
             let job_json = serde_json::to_string(&job)?;
-            conn.rpush(DEAD_LETTER_QUEUE, &job_json).await?;
+            let _: usize = conn.rpush(DEAD_LETTER_QUEUE, &job_json).await?;
 
             tracing::error!(
                 job_id = %job.meta.id,
@@ -318,8 +320,10 @@ impl JobQueue {
 
         for job_json in ready_jobs {
             // Remove from scheduled and add to main queue
-            conn.zrem(SCHEDULED_QUEUE, &job_json).await?;
-            conn.rpush(DEFAULT_QUEUE, &job_json).await?;
+            let removed: usize = conn.zrem(SCHEDULED_QUEUE, &job_json).await?;
+            if removed > 0 {
+                let _: usize = conn.rpush(DEFAULT_QUEUE, &job_json).await?;
+            }
         }
 
         Ok(())
@@ -371,11 +375,11 @@ pub enum QueueError {
 
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
+use tokio::sync::{broadcast, Semaphore};
+use tokio::task::JoinSet;
 
 use crate::job::Job;
-use crate::queue::{JobQueue, QueueError};
+use crate::queue::JobQueue;
 
 /// Job handler trait
 #[async_trait::async_trait]
@@ -445,6 +449,9 @@ where
             "Worker starting"
         );
 
+        let semaphore = Arc::new(Semaphore::new(self.config.concurrency));
+        let mut tasks = JoinSet::new();
+
         loop {
             tokio::select! {
                 // Check for shutdown signal
@@ -453,28 +460,49 @@ where
                     break;
                 }
 
-                // Poll for jobs
-                result = self.queue.dequeue::<T>(self.config.poll_interval) => {
-                    match result {
+                // Reap completed job tasks
+                Some(result) = tasks.join_next(), if !tasks.is_empty() => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "Job task failed");
+                    }
+                }
+
+                // Poll for jobs while respecting the concurrency limit
+                permit = semaphore.clone().acquire_owned() => {
+                    let Ok(permit) = permit else {
+                        break;
+                    };
+
+                    match self.queue.dequeue::<T>(self.config.poll_interval).await {
                         Ok(Some(job)) => {
                             let queue = self.queue.clone();
                             let handler = self.handler.clone();
                             let timeout = self.config.job_timeout;
 
                             // Spawn job processing task
-                            tokio::spawn(async move {
+                            tasks.spawn(async move {
+                                let _permit = permit;
                                 process_job(queue, handler, job, timeout).await;
                             });
                         }
                         Ok(None) => {
                             // No jobs available, continue polling
+                            drop(permit);
                         }
                         Err(e) => {
+                            drop(permit);
                             tracing::error!(error = %e, "Error dequeuing job");
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
                     }
                 }
+            }
+        }
+
+        // Wait for in-progress jobs to finish before stopping
+        while let Some(result) = tasks.join_next().await {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "Job task failed");
             }
         }
 
