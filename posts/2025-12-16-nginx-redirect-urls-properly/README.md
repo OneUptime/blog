@@ -15,8 +15,8 @@ URL redirects are essential for maintaining SEO, handling domain changes, and cr
 ```mermaid
 flowchart TB
     subgraph Types["Redirect Status Codes"]
-        R301[301 Moved Permanently<br/>SEO: Passes link juice<br/>Browsers cache this]
-        R302[302 Found<br/>Temporary redirect<br/>No SEO transfer]
+        R301[301 Moved Permanently<br/>Permanent redirect<br/>Heuristically cacheable]
+        R302[302 Found<br/>Temporary redirect<br/>Use for temporary moves]
         R303[303 See Other<br/>POST to GET redirect]
         R307[307 Temporary Redirect<br/>Preserves method]
         R308[308 Permanent Redirect<br/>Preserves method]
@@ -80,8 +80,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -111,7 +112,8 @@ sequenceDiagram
 # Redirect www to non-www
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -122,7 +124,8 @@ server {
 
 # Main server block
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # ... rest of config
@@ -135,7 +138,8 @@ server {
 # Redirect non-www to www
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -145,7 +149,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name www.example.com;
 
     # ... rest of config
@@ -164,8 +169,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -175,8 +181,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -192,7 +199,8 @@ server {
 ```nginx
 # Add trailing slash (except for files)
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Add trailing slash if missing and not a file
@@ -207,7 +215,8 @@ server {
 
 # Remove trailing slash
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Remove trailing slash except for root
@@ -244,7 +253,7 @@ For many redirects, use a map for better performance:
 
 ```nginx
 # Define redirect map
-map $request_uri $redirect_uri {
+map $uri $redirect_uri {
     default "";
     /old-page-1     /new-page-1;
     /old-page-2     /new-page-2;
@@ -253,12 +262,13 @@ map $request_uri $redirect_uri {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Apply redirects from map
     if ($redirect_uri != "") {
-        return 301 $redirect_uri;
+        return 301 $redirect_uri$is_args$args;
     }
 
     # ... rest of config
@@ -292,12 +302,10 @@ location /search {
     return 301 /find;
 }
 
-# Remove specific query parameters
+# Remove tracking query parameters by redirecting to the clean path
 location /page {
-    if ($args ~ (.*)utm_[^&]*(.*)) {
-        set $args $1$2;
-        set $args $args;
-        rewrite ^(.*)$ $1? permanent;
+    if ($args ~ (^|&)utm_) {
+        return 301 $uri;
     }
 }
 
@@ -317,7 +325,8 @@ map $http_user_agent $is_mobile {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     location / {
@@ -342,7 +351,8 @@ location / {
 # Redirect entire old domain to new domain
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name old-domain.com www.old-domain.com;
 
     ssl_certificate /etc/letsencrypt/live/old-domain.com/fullchain.pem;
@@ -353,19 +363,23 @@ server {
 }
 
 # Map old paths to new paths during migration
-map $request_uri $new_uri {
-    default $request_uri;
+map $uri $new_uri {
+    default $uri;
     /about-us /company/about;
     /contact /support/contact;
     /products /shop;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name old-domain.com;
 
+    ssl_certificate /etc/letsencrypt/live/old-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/old-domain.com/privkey.pem;
+
     location / {
-        return 301 https://new-domain.com$new_uri;
+        return 301 https://new-domain.com$new_uri$is_args$args;
     }
 }
 ```
@@ -512,7 +526,7 @@ done
 # /etc/nginx/conf.d/redirects.conf
 
 # Define redirect mappings
-map $request_uri $redirect_uri {
+map $uri $redirect_uri {
     default "";
 
     # Exact matches
@@ -534,8 +548,9 @@ server {
 
 # WWW to non-WWW redirect (HTTPS)
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -546,8 +561,9 @@ server {
 
 # Main server block
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -558,7 +574,7 @@ server {
 
     # Apply map-based redirects
     if ($redirect_uri != "") {
-        return 301 $redirect_uri;
+        return 301 $redirect_uri$is_args$args;
     }
 
     # Add trailing slash for directories
