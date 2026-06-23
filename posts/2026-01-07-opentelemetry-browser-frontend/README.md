@@ -61,7 +61,7 @@ flowchart TD
 
 Before we begin, ensure you have the following:
 
-- Node.js 16+ and npm/yarn installed
+- Node.js 18.19+ (or 20.6+) and npm/yarn installed
 - A modern JavaScript/TypeScript project (React, Vue, Angular, or vanilla JS)
 - An OpenTelemetry Collector or compatible backend (Jaeger, Zipkin, etc.)
 - Basic understanding of observability concepts (traces, spans, context propagation)
@@ -99,13 +99,14 @@ Create a new file called `tracing.ts` (or `tracing.js` for vanilla JavaScript):
 // before any other code runs, to ensure all operations are traced.
 
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { BatchSpanProcessor, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
 } from '@opentelemetry/semantic-conventions';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
@@ -135,10 +136,10 @@ interface TracingConfig {
 export function initializeTracing(config: TracingConfig): WebTracerProvider {
   // Create a Resource that identifies your application.
   // Resources provide metadata that is attached to all telemetry data.
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: config.serviceName,
-    [SEMRESATTRS_SERVICE_VERSION]: config.serviceVersion,
-    [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: config.environment,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: config.serviceName,
+    [ATTR_SERVICE_VERSION]: config.serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: config.environment,
     // Add custom attributes to help identify browser sessions
     'browser.user_agent': navigator.userAgent,
     'browser.language': navigator.language,
@@ -156,6 +157,22 @@ export function initializeTracing(config: TracingConfig): WebTracerProvider {
     },
   });
 
+  // Configure span processors before creating the tracer provider.
+  const spanProcessors: SpanProcessor[] = [
+    new BatchSpanProcessor(exporter, {
+      // Maximum number of spans to batch before sending
+      maxQueueSize: 100,
+      // Maximum time to wait before sending a batch (in milliseconds)
+      scheduledDelayMillis: 500,
+      // Maximum number of spans to export in a single batch
+      maxExportBatchSize: 50,
+    }),
+  ];
+
+  if (config.debug) {
+    spanProcessors.push(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+  }
+
   // Create the tracer provider with the configured resource.
   // The provider is responsible for creating tracers and managing spans.
   const provider = new WebTracerProvider({
@@ -164,42 +181,8 @@ export function initializeTracing(config: TracingConfig): WebTracerProvider {
     sampler: config.sampleRate !== undefined
       ? new TraceIdRatioBasedSampler(config.sampleRate)
       : undefined,
+    spanProcessors,
   });
-
-  // Use BatchSpanProcessor for production to reduce network overhead.
-  // It batches spans and sends them periodically, reducing the number of HTTP requests.
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(exporter, {
-      // Maximum number of spans to batch before sending
-      maxQueueSize: 100,
-      // Maximum time to wait before sending a batch (in milliseconds)
-      scheduledDelayMillis: 500,
-      // Maximum number of spans to export in a single batch
-      maxExportBatchSize: 50,
-    })
-  );
-
-  // Optionally add a SimpleSpanProcessor for debugging.
-  // This logs spans to the console immediately when they end.
-  if (config.debug) {
-    provider.addSpanProcessor(
-      new SimpleSpanProcessor({
-        export: (spans) => {
-          spans.forEach(span => {
-            console.log('Span:', {
-              name: span.name,
-              traceId: span.spanContext().traceId,
-              spanId: span.spanContext().spanId,
-              duration: span.duration,
-              attributes: span.attributes,
-            });
-          });
-          return Promise.resolve({ code: 0 });
-        },
-        shutdown: () => Promise.resolve(),
-      })
-    );
-  }
 
   // Configure context propagation.
   // This enables trace context to be passed between services via HTTP headers.
@@ -245,7 +228,7 @@ export function initializeTracing(config: TracingConfig): WebTracerProvider {
           /https:\/\/.*\.your-domain\.com\/.*/,
         ],
         // Add custom attributes to fetch spans
-        applyCustomAttributesOnSpan: (span, request, response) => {
+        applyCustomAttributesOnSpan: (span, request, result) => {
           // Add the request URL as an attribute
           if (request instanceof Request) {
             span.setAttribute('http.request.url', request.url);
@@ -266,43 +249,6 @@ export function initializeTracing(config: TracingConfig): WebTracerProvider {
   return provider;
 }
 
-// Custom sampler for rate-based sampling.
-// This is useful for high-traffic applications where you want to sample
-// only a percentage of traces to reduce costs and storage requirements.
-import { Sampler, SamplingResult, SamplingDecision } from '@opentelemetry/sdk-trace-base';
-import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
-
-class TraceIdRatioBasedSampler implements Sampler {
-  private readonly ratio: number;
-
-  constructor(ratio: number) {
-    // Ensure ratio is between 0 and 1
-    this.ratio = Math.max(0, Math.min(1, ratio));
-  }
-
-  shouldSample(
-    context: Context,
-    traceId: string,
-    spanName: string,
-    spanKind: SpanKind,
-    attributes: Attributes,
-    links: Link[]
-  ): SamplingResult {
-    // Use the trace ID to make a deterministic sampling decision.
-    // This ensures that all spans in a trace are either sampled or not.
-    const idUpperBound = this.ratio * 0xffffffff;
-    const traceIdNum = parseInt(traceId.substring(0, 8), 16);
-
-    if (traceIdNum < idUpperBound) {
-      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
-    }
-    return { decision: SamplingDecision.NOT_RECORD };
-  }
-
-  toString(): string {
-    return `TraceIdRatioBasedSampler{${this.ratio}}`;
-  }
-}
 ```
 
 ## Initializing the Tracer
@@ -700,22 +646,15 @@ export const createFetchInstrumentation = () => {
 
     // Add custom attributes to fetch spans based on request/response data.
     // This enriches your traces with application-specific information.
-    applyCustomAttributesOnSpan: (
-      span: Span,
-      request: Request | RequestInfo,
-      response: Response | undefined
-    ) => {
+    applyCustomAttributesOnSpan: (span, request, result) => {
       // Extract URL information
-      const url = request instanceof Request ? request.url : request.toString();
-      const parsedUrl = new URL(url, window.location.origin);
-
-      // Add URL components as attributes
-      span.setAttribute('http.url.path', parsedUrl.pathname);
-      span.setAttribute('http.url.query', parsedUrl.search);
-      span.setAttribute('http.url.host', parsedUrl.host);
-
-      // Add request method
       if (request instanceof Request) {
+        const parsedUrl = new URL(request.url, window.location.origin);
+
+        // Add URL components as attributes
+        span.setAttribute('http.url.path', parsedUrl.pathname);
+        span.setAttribute('http.url.query', parsedUrl.search);
+        span.setAttribute('http.url.host', parsedUrl.host);
         span.setAttribute('http.request.method', request.method);
 
         // Add content type if present
@@ -726,21 +665,21 @@ export const createFetchInstrumentation = () => {
       }
 
       // Add response information if available
-      if (response) {
-        span.setAttribute('http.response.status_code', response.status);
-        span.setAttribute('http.response.status_text', response.statusText);
+      if (result instanceof Response) {
+        span.setAttribute('http.response.status_code', result.status);
+        span.setAttribute('http.response.status_text', result.statusText);
 
         // Add response content type
-        const responseContentType = response.headers.get('Content-Type');
+        const responseContentType = result.headers.get('Content-Type');
         if (responseContentType) {
           span.setAttribute('http.response.content_type', responseContentType);
         }
 
         // Set span status based on HTTP status code
-        if (response.status >= 400) {
+        if (result.status >= 400) {
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            message: `HTTP ${response.status}: ${response.statusText}`,
+            message: `HTTP ${result.status}: ${result.statusText}`,
           });
         }
       }
@@ -831,8 +770,8 @@ Here's an example of a Node.js Express backend configured to receive and continu
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -841,18 +780,17 @@ import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 // Initialize backend tracing.
 // This should be called before your Express app is created.
 export function initializeBackendTracing(): void {
-  const provider = new NodeTracerProvider({
-    resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: 'my-backend-api',
-    }),
-  });
-
   // Configure the exporter to send traces to the same collector
   const exporter = new OTLPTraceExporter({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
   });
 
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+  const provider = new NodeTracerProvider({
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'my-backend-api',
+    }),
+    spanProcessors: [new BatchSpanProcessor(exporter)],
+  });
 
   // Use W3C Trace Context propagator to extract context from incoming requests.
   // This matches the propagator used in the browser configuration.
@@ -889,12 +827,13 @@ import { Request, Response, NextFunction } from 'express';
 export function tracingMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Get the current span (created by the HTTP instrumentation)
   const span = trace.getSpan(context.active());
+  const user = (req as Request & { user?: { id?: string; role?: string } }).user;
 
   if (span) {
     // Add user information if authenticated
-    if (req.user) {
-      span.setAttribute('user.id', (req.user as any).id);
-      span.setAttribute('user.role', (req.user as any).role);
+    if (user) {
+      span.setAttribute('user.id', user.id || 'unknown');
+      span.setAttribute('user.role', user.role || 'unknown');
     }
 
     // Add request-specific attributes
@@ -1676,8 +1615,8 @@ exporters:
     tls:
       insecure: true
 
-  # Export to logging for debugging
-  logging:
+  # Export to debug logs for troubleshooting
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
@@ -1700,8 +1639,8 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [otlp/jaeger, logging]
+      processors: [memory_limiter, filter, batch, resource]
+      exporters: [otlp/jaeger, debug]
 ```
 
 ## Complete Tracing Flow Visualization
@@ -1901,7 +1840,7 @@ export function createWorkerExporter(collectorUrl: string): SpanExporter {
 
 // Debounce span creation for rapidly firing events
 export function createDebouncedSpanCreator(tracer: Tracer, debounceMs: number = 100) {
-  const pendingSpans = new Map<string, NodeJS.Timeout>();
+  const pendingSpans = new Map<string, ReturnType<typeof setTimeout>>();
 
   return function debouncedSpan(
     name: string,
@@ -1925,7 +1864,8 @@ export function createDebouncedSpanCreator(tracer: Tracer, debounceMs: number = 
   };
 }
 
-import { Tracer, SpanExporter, Attributes } from '@opentelemetry/api';
+import { Attributes, Tracer } from '@opentelemetry/api';
+import { SpanExporter } from '@opentelemetry/sdk-trace-base';
 ```
 
 ### 3. Security Considerations
@@ -1936,7 +1876,8 @@ Protect sensitive information in your traces:
 // security-sanitization.ts
 // Sanitize sensitive data from spans before export.
 
-import { SpanProcessor, ReadableSpan } from '@opentelemetry/sdk-trace-base';
+import { Context } from '@opentelemetry/api';
+import { SpanProcessor, ReadableSpan, Span } from '@opentelemetry/sdk-trace-base';
 
 // Custom span processor that sanitizes sensitive data
 export class SanitizingSpanProcessor implements SpanProcessor {
@@ -1963,7 +1904,7 @@ export class SanitizingSpanProcessor implements SpanProcessor {
     'ssn',
   ];
 
-  onStart(span: ReadableSpan): void {
+  onStart(span: Span, parentContext: Context): void {
     // Nothing to do on start
   }
 
