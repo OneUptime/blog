@@ -8,7 +8,7 @@ Description: Learn how to configure GitHub Actions path filters for monorepos to
 
 ---
 
-Monorepos contain multiple projects in a single repository. Without path filters, every push triggers all workflows, wasting CI minutes and slowing feedback. GitHub Actions path filters let you run jobs only when relevant code changes.
+Monorepos contain multiple projects in a single repository. Without path filters, every push triggers all workflows, wasting CI minutes and slowing feedback. GitHub Actions path filters let you run workflows or jobs only when relevant code changes.
 
 ## Path Filter Architecture
 
@@ -51,7 +51,7 @@ jobs:
         run: cd frontend && npm ci && npm run build
 ```
 
-This workflow only runs when files in `frontend/` or `shared/` directories change.
+This workflow runs when files in `frontend/`, `shared/`, or the workflow file itself change.
 
 ## Path Ignore Patterns
 
@@ -143,7 +143,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -198,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           list-files: json
@@ -224,7 +224,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -267,7 +267,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -294,7 +294,7 @@ jobs:
             fi
           fi
 
-          echo "services=$(printf '%s\n' "${services[@]}" | jq -R . | jq -s -c .)" >> $GITHUB_OUTPUT
+          echo "services=$(jq -cn '$ARGS.positional' --args "${services[@]}")" >> $GITHUB_OUTPUT
 ```
 
 ## Turborepo Integration
@@ -315,7 +315,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -325,10 +325,10 @@ jobs:
       - run: npm ci
 
       - name: Build affected packages
-        run: npx turbo run build --filter='...[HEAD^]'
+        run: npx turbo run build --affected
 
       - name: Test affected packages
-        run: npx turbo run test --filter='...[HEAD^]'
+        run: npx turbo run test --affected
 ```
 
 ## Nx Integration
@@ -344,7 +344,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v5
 
       - uses: actions/setup-node@v4
         with:
@@ -362,10 +362,10 @@ jobs:
 
 ## Required Status Checks
 
-Configure branch protection with conditional workflows:
+Configure branch protection with job-level conditions. If an entire workflow is skipped by native `paths` filters, required checks can remain pending, so keep a status job in a workflow that still starts:
 
 ```yaml
-# Always run this job, even if skipped due to path filters
+# Always run this job, even when dependent jobs are skipped by job-level conditions
 
 jobs:
   check:
@@ -375,8 +375,8 @@ jobs:
     steps:
       - name: Check all jobs
         run: |
-          if [[ "${{ needs.frontend-ci.result }}" == "failure" ]] || \
-             [[ "${{ needs.backend-ci.result }}" == "failure" ]]; then
+          if [[ "${{ needs.frontend-ci.result }}" =~ ^(failure|cancelled)$ ]] || \
+             [[ "${{ needs.backend-ci.result }}" =~ ^(failure|cancelled)$ ]]; then
             exit 1
           fi
 ```
@@ -400,7 +400,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -465,7 +465,7 @@ jobs:
       - name: All checks passed
         run: |
           results="${{ needs.frontend.result }} ${{ needs.backend.result }} ${{ needs.docs.result }}"
-          if echo "$results" | grep -q "failure"; then
+          if echo "$results" | grep -Eq "failure|cancelled"; then
             exit 1
           fi
 ```
