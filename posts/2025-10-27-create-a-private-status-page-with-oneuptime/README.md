@@ -84,10 +84,9 @@ dave@acme.com,Dave Brown,admin,Leadership
 The following SAML configuration example shows the metadata structure needed to integrate with your identity provider. This enables single sign-on so users authenticate with their corporate credentials.
 
 ```xml
+<?xml version="1.0" encoding="UTF-8"?>
 <!-- SAML 2.0 Service Provider Metadata for OneUptime Private Status Page -->
 <!-- Import this into your Identity Provider (Okta, Azure AD, etc.) -->
-
-<?xml version="1.0" encoding="UTF-8"?>
 <md:EntityDescriptor
     xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
     entityID="https://oneuptime.com/saml/your-status-page-id">
