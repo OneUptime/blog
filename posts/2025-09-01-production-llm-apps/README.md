@@ -113,7 +113,7 @@ async def call_llm_with_retry(
         except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
             if attempt == max_retries:
                 raise
-            # Exponential backoff with full jitter
+            # Exponential backoff with jitter
             delay = base_delay * (2 ** attempt) * random.uniform(0.5, 1.5)
             await asyncio.sleep(delay)
 ```
@@ -208,7 +208,7 @@ def validate_llm_json_output(raw_output: str, required_fields: list[str]) -> Opt
 
 ## Cost Management
 
-LLM API costs can spiral quickly. A single GPT-4 call with a long context might cost $0.10. At 100 requests per second, that is $864,000 per month.
+LLM API costs can spiral quickly. A single GPT-4 call with a long context might cost $0.10. At 100 requests per second, that is $864,000 per day.
 
 Strategies for controlling costs:
 
