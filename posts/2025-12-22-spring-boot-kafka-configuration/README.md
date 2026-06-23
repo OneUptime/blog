@@ -53,8 +53,25 @@ Add the Spring Kafka dependency to your `pom.xml`:
     </dependency>
     <!-- For JSON serialization -->
     <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
+        <groupId>tools.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- For Lombok annotations used in the examples -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <!-- For integration testing with @EmbeddedKafka -->
+    <dependency>
+        <groupId>org.springframework.kafka</groupId>
+        <artifactId>spring-kafka-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
@@ -65,7 +82,11 @@ For Gradle users:
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.kafka:spring-kafka'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'tools.jackson.core:jackson-databind'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 ```
 
@@ -153,7 +174,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -169,7 +190,7 @@ public class KafkaProducerConfig {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
         configProps.put(ProducerConfig.ACKS_CONFIG, "all");
         configProps.put(ProducerConfig.RETRIES_CONFIG, 3);
         configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
@@ -225,11 +246,15 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.CountDownLatch;
+
 @Service
 @Slf4j
 public class KafkaConsumerService {
 
-    @KafkaListener(topics = "my-topic", groupId = "my-application-group")
+    private final CountDownLatch latch = new CountDownLatch(1);
+
+    @KafkaListener(topics = "${app.kafka.topic:my-topic}", groupId = "my-application-group")
     public void listen(@Payload String message,
                        @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
                        @Header(KafkaHeaders.OFFSET) long offset) {
@@ -237,10 +262,15 @@ public class KafkaConsumerService {
             message, partition, offset);
         // Process the message
         processMessage(message);
+        latch.countDown();
     }
 
     private void processMessage(String message) {
         // Business logic here
+    }
+
+    public CountDownLatch getLatch() {
+        return latch;
     }
 }
 ```
@@ -259,7 +289,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -280,10 +310,9 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        JsonDeserializer<OrderEvent> deserializer = new JsonDeserializer<>(OrderEvent.class);
+        JacksonJsonDeserializer<OrderEvent> deserializer = new JacksonJsonDeserializer<>(OrderEvent.class);
         deserializer.setRemoveTypeHeaders(false);
         deserializer.addTrustedPackages("com.example.kafka.model");
-        deserializer.setUseTypeMapperForKey(true);
 
         return new DefaultKafkaConsumerFactory<>(
             props,
@@ -441,7 +470,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.kafka.topic=test-topic")
 @DirtiesContext
 @EmbeddedKafka(partitions = 1, topics = {"test-topic"})
 class KafkaIntegrationTest {
@@ -470,7 +499,7 @@ class KafkaIntegrationTest {
 
 ## Best Practices
 
-1. **Use Idempotent Producers** - Enable `enable.idempotence=true` to prevent duplicate messages
+1. **Use Idempotent Producers** - Enable `enable.idempotence=true` to prevent duplicate messages caused by producer retries
 2. **Configure Proper Acks** - Use `acks=all` for critical data to ensure durability
 3. **Handle Poison Pills** - Configure dead letter topics for messages that can't be processed
 4. **Monitor Consumer Lag** - Track consumer group lag to detect processing issues
