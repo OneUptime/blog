@@ -75,7 +75,7 @@ The following commands will install the necessary tools for eBPF development inc
 # Install BCC tools (Ubuntu/Debian)
 
 sudo apt-get update
-sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r)
+sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) bpftool
 
 # Install bpftrace
 sudo apt-get install -y bpftrace
@@ -125,12 +125,12 @@ stateDiagram-v2
 
 ### Tracing New TCP Connections
 
-This eBPF program uses kprobes to trace new TCP connections by attaching to the `tcp_v4_connect` and `tcp_v6_connect` kernel functions. It captures source/destination addresses, ports, and the process initiating the connection:
+This eBPF program uses kprobes to trace new IPv4 TCP connections by attaching to the `tcp_v4_connect` kernel function. It captures source/destination addresses, ports, and the process initiating the connection:
 
 ```c
 // tcp_connect_trace.bpf.c
 // This program traces TCP connection attempts using kprobes
-// It attaches to tcp_v4_connect and tcp_v6_connect kernel functions
+// It attaches to the tcp_v4_connect kernel function
 
 #include <linux/bpf.h>
 #include <linux/ptrace.h>
@@ -252,9 +252,12 @@ For rapid prototyping and one-liner analysis, bpftrace provides a simpler approa
 // Quick one-liner to trace TCP connection attempts
 // Shows process name, PID, and connection 4-tuple
 
-// Attach to the tcp_connect tracepoint which fires on connection attempts
-// This is more stable than kprobes as tracepoints are part of the kernel ABI
-tracepoint:tcp:tcp_connect
+#include <linux/in.h>
+
+// There is no generic upstream tcp:tcp_connect tracepoint. Use the stable
+// inet_sock_set_state tracepoint and filter for sockets entering SYN_SENT.
+tracepoint:sock:inet_sock_set_state
+/args->protocol == IPPROTO_TCP && args->newstate == 2/
 {
     // Format: process_name (PID) -> destination_ip:port
     // args->saddr and args->daddr contain the IP addresses
@@ -286,6 +289,8 @@ This bpftrace script monitors TCP state transitions using the `sock:inet_sock_se
 // Traces TCP state machine transitions
 // Useful for debugging connection establishment and teardown issues
 
+#include <linux/in.h>
+
 // Map numeric states to human-readable names
 // These correspond to the TCP_* constants in the kernel
 BEGIN
@@ -309,7 +314,7 @@ BEGIN
            "TIME", "COMM", "LADDR:PORT", "RADDR:PORT", "STATE_CHANGE");
 }
 
-// Trace socket state changes for TCP (protocol family AF_INET = 2)
+// Trace socket state changes for TCP (IPPROTO_TCP = 6)
 // This tracepoint fires whenever a TCP socket changes state
 tracepoint:sock:inet_sock_set_state
 /args->protocol == IPPROTO_TCP/
@@ -340,6 +345,8 @@ END
 {
     clear(@states);
     printf("\n\nState Transition Summary:\n");
+    print(@transition_count);
+    clear(@transition_count);
 }
 ```
 
@@ -369,7 +376,7 @@ sequenceDiagram
     Network->>Receiver: SEQ=100, Data
     Receiver->>Sender: ACK=101
 
-    Note over eBPF: Calculates RTT<br/>from retransmit
+    Note over eBPF: Correlates retransmit<br/>events with the flow
 ```
 
 ### Tracing TCP Retransmissions
@@ -396,9 +403,8 @@ struct retransmit_event {
     __u32 daddr;          // Destination IP address
     __u16 sport;          // Source port
     __u16 dport;          // Destination port
-    __u32 seq;            // Sequence number being retransmitted
     __u32 state;          // TCP state at time of retransmit
-    __u8 retrans_count;   // Number of retransmissions for this segment
+    __u32 retrans_count;  // Number of packets currently marked retransmitted
     char comm[16];        // Process name
 };
 
@@ -461,7 +467,7 @@ int handle_retransmit(struct trace_event_raw_tcp_event_sk_skb *ctx)
     BPF_CORE_READ_INTO(&event->state, sk, __sk_common.skc_state);
 
     // Read retransmit count from TCP socket
-    __u8 retrans;
+    __u32 retrans;
     BPF_CORE_READ_INTO(&retrans, tp, retrans_out);
     event->retrans_count = retrans;
 
@@ -503,9 +509,9 @@ RTT is crucial for understanding network latency. This bpftrace script extracts 
 BEGIN
 {
     printf("Tracing TCP RTT... Ctrl-C to exit\n");
-    printf("%-8s %-20s %-20s %10s %10s %10s\n",
+    printf("%-8s %-20s %-20s %10s %10s\n",
            "TIME(s)", "LADDR:LPORT", "RADDR:RPORT",
-           "RTT(us)", "RTTVar", "MinRTT");
+           "RTT(us)", "RTTVar(us)");
 }
 
 // Attach to tcp_rcv_established which processes incoming packets
@@ -527,20 +533,16 @@ kprobe:tcp_rcv_established
         $lport = $sk->__sk_common.skc_num;
         $rport = $sk->__sk_common.skc_dport;
 
-        // mdev_us is RTT variance, also scaled
-        $rttvar = $tp->mdev_us >> 2;
-
-        // min_rtt is the minimum observed RTT
-        $minrtt = $tp->rtt_min.s[0].v;
+        // rttvar_us is the RTT variation used by the RTO calculation
+        $rttvar = $tp->rttvar_us;
 
         // Print RTT statistics for this connection
-        printf("%-8llu %s:%-5d      %s:%-5d      %10llu %10llu %10llu\n",
+        printf("%-8llu %s:%-5d      %s:%-5d      %10llu %10llu\n",
                elapsed / 1000000000,
                $laddr, $lport,
                $raddr, ntohs($rport),
                $srtt,
-               $rttvar,
-               $minrtt);
+               $rttvar);
 
         // Store in histogram for aggregate analysis
         @rtt_hist = hist($srtt);
@@ -725,7 +727,6 @@ SEC("kprobe/tcp_sendmsg")
 int BPF_KPROBE(tcp_sendmsg_entry, struct sock *sk,
                struct msghdr *msg, size_t size)
 {
-    struct tcp_sock *tp = (struct tcp_sock *)sk;
     struct buffer_event *event;
 
     // Read current buffer state
@@ -805,8 +806,8 @@ kprobe:tcp_recvmsg
     $sk = (struct sock *)arg0;
     $tp = (struct tcp_sock *)$sk;
 
-    // Get receive queue length
-    // rmem_alloc contains total memory in receive queue
+    // Get receive queue length. sk_rmem_alloc is implemented as
+    // sk_backlog.rmem_alloc in current kernels.
     $rmem_alloc = $sk->sk_backlog.rmem_alloc.counter;
     $rcvbuf = $sk->sk_rcvbuf;
 
@@ -867,8 +868,7 @@ BEGIN
     printf("Tracing TCP buffer drops... Ctrl-C to exit\n");
 }
 
-// Trace sock_rfree which is called when receive buffer is freed
-// If called with drop flag, indicates receive buffer overflow
+// Trace receive queue full events, which indicate receive-side pressure
 tracepoint:sock:sock_rcvqueue_full
 {
     printf("RECV DROP: pid=%d comm=%s sk=%p\n",
@@ -876,23 +876,9 @@ tracepoint:sock:sock_rcvqueue_full
     @rcv_drops[comm] = count();
 }
 
-// Trace tcp_drop which is a general TCP drop tracepoint
-// Available in newer kernels
-tracepoint:tcp:tcp_drop
-{
-    $sk = (struct sock *)args->skaddr;
-
-    printf("TCP DROP: reason=%d sk=%p family=%d\n",
-           args->reason, args->skaddr, args->family);
-
-    // Categorize drops by reason
-    @drop_reasons[args->reason] = count();
-}
-
-// Monitor skb_drop_reason tracepoint (kernel 5.17+)
+// Monitor skb drop tracepoint for detailed drop reasons
 // Provides detailed drop reason
 tracepoint:skb:kfree_skb
-/args->reason != 1/  // 1 = SKB_CONSUMED (normal)
 {
     printf("SKB DROP: reason=%d protocol=%d\n",
            args->reason, args->protocol);
@@ -904,14 +890,10 @@ END
     printf("\n\n=== Receive Queue Full Events by Process ===\n");
     print(@rcv_drops);
 
-    printf("\n=== TCP Drop Reasons ===\n");
-    print(@drop_reasons);
-
     printf("\n=== SKB Drop Reasons ===\n");
     print(@skb_drop_reasons);
 
     clear(@rcv_drops);
-    clear(@drop_reasons);
     clear(@skb_drop_reasons);
 }
 ```
@@ -1096,26 +1078,20 @@ BEGIN
     @states[4] = "LOSS";
 }
 
-// Trace when cwnd is increased (ACK received in slow start or CA)
-kprobe:tcp_cong_avoid_ai
+// Trace TCP probe events, which expose cwnd and related TCP metrics
+tracepoint:tcp:tcp_probe
 {
-    $sk = (struct sock *)arg0;
-    $tp = (struct tcp_sock *)$sk;
+    $cwnd = args->snd_cwnd;
+    $ssthresh = args->ssthresh;
+    $srtt = args->srtt;
+    $raddr = ntop(args->daddr);
+    $rport = args->dport;
 
-    $cwnd = $tp->snd_cwnd;
-    $ssthresh = $tp->snd_ssthresh;
-    $pkts_out = $tp->packets_out;
-    $srtt = $tp->srtt_us >> 3;
-    $ca_state = $tp->inet_conn.icsk_ca_state;
-
-    $raddr = ntop($sk->__sk_common.skc_daddr);
-    $rport = ntohs($sk->__sk_common.skc_dport);
-
-    printf("%-10llu %s:%-5d        %-8d %-8d %-8d %-8d %s\n",
+    printf("%-10llu %s:%-5d        %-8d %-8d %-8s %-8d %s\n",
            elapsed / 1000000,
            $raddr, $rport,
-           $cwnd, $ssthresh, $pkts_out, $srtt,
-           @states[$ca_state]);
+           $cwnd, $ssthresh, "-", $srtt,
+           "-");
 
     // Track cwnd distribution
     @cwnd_dist = hist($cwnd);
@@ -1200,9 +1176,8 @@ kprobe:tcp_set_congestion_control
     @cc_usage[$name] = count();
 }
 
-// Track cwnd by algorithm
-// We need to read the algorithm name from the socket
-kprobe:tcp_cong_avoid_ai
+// Track cwnd by algorithm on ACK processing
+kprobe:tcp_ack
 {
     $sk = (struct sock *)arg0;
     $tp = (struct tcp_sock *)$sk;
@@ -1498,7 +1473,15 @@ char LICENSE[] SEC("license") = "GPL";
 
 ## Userspace Analysis Tool
 
-The userspace component processes events from the eBPF program. Here's a Python script using the BCC library:
+The userspace component processes events from the eBPF program. The `tcp_analyzer.bpf.c` example above uses libbpf/CO-RE conventions such as `SEC()`, BTF-style map declarations, and `BPF_CORE_READ_INTO()`, so load it with libbpf or a generated BPF skeleton rather than BCC's `BPF(src_file=...)` loader:
+
+```bash
+clang -g -O2 -target bpf -D__TARGET_ARCH_x86 \
+  -c tcp_analyzer.bpf.c -o tcp_analyzer.bpf.o
+bpftool gen skeleton tcp_analyzer.bpf.o > tcp_analyzer.skel.h
+```
+
+The following Python sketch shows the event aggregation logic you would connect to a compatible userspace loader:
 
 ```python
 #!/usr/bin/env python3
@@ -1508,7 +1491,6 @@ Userspace component for the TCP/IP stack analyzer
 Processes eBPF events and generates reports
 """
 
-from bcc import BPF
 import socket
 import struct
 import time
@@ -1562,8 +1544,9 @@ class TCPAnalyzer:
     and processes events from the kernel
     """
 
-    def __init__(self, verbose=False):
+    def __init__(self, event_source, verbose=False):
         self.verbose = verbose
+        self.event_source = event_source
         # Statistics tracking
         self.stats = defaultdict(int)
         self.conn_stats = defaultdict(lambda: {
@@ -1573,20 +1556,11 @@ class TCPAnalyzer:
             'buffer_pressure': 0,
         })
 
-        # Load eBPF program
-        print("Loading eBPF program...")
-        self.bpf = BPF(src_file="tcp_analyzer.bpf.c")
-
-        # Open ring buffer
-        self.bpf["events"].open_ring_buffer(self.handle_event)
-
-    def handle_event(self, ctx, data, size):
+    def handle_event(self, event):
         """
         Callback function for processing events from eBPF
         Called for each event received from the ring buffer
         """
-        event = self.bpf["events"].event(data)
-
         event_type = event.event_type
         self.stats[event_type] += 1
 
@@ -1691,8 +1665,9 @@ class TCPAnalyzer:
         start_time = time.time()
         try:
             while True:
-                # Poll ring buffer with 100ms timeout
-                self.bpf.ring_buffer_poll(100)
+                # Poll the loader-specific ring buffer adapter with 100ms timeout
+                for event in self.event_source.poll(100):
+                    self.handle_event(event)
 
                 if duration > 0 and (time.time() - start_time) >= duration:
                     break
@@ -1714,7 +1689,11 @@ def main():
 
     args = parser.parse_args()
 
-    analyzer = TCPAnalyzer(verbose=args.verbose)
+    raise SystemExit(
+        "Attach tcp_analyzer.bpf.c with libbpf or a generated skeleton, "
+        "then pass its ring-buffer events into TCPAnalyzer."
+    )
+    analyzer = TCPAnalyzer(event_source=None, verbose=args.verbose)
     analyzer.run(duration=args.duration)
 
 
