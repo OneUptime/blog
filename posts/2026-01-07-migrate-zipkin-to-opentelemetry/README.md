@@ -108,6 +108,10 @@ processors:
         value: zipkin-migration
         action: upsert
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 exporters:
   # Export to your existing Zipkin backend
   # No changes required to your Zipkin infrastructure
@@ -123,6 +127,8 @@ exporters:
     sampling_thereafter: 200
 
 service:
+  extensions: [health_check]
+
   pipelines:
     traces:
       receivers: [zipkin, otlp]
@@ -159,7 +165,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - --config=/etc/otel/config.yaml
           ports:
@@ -174,6 +180,10 @@ spec:
             # OTLP HTTP - alternative for environments without gRPC
             - containerPort: 4318
               name: otlp-http
+              protocol: TCP
+            # Health check endpoint used by liveness/readiness probes
+            - containerPort: 13133
+              name: health
               protocol: TCP
           volumeMounts:
             - name: config
@@ -286,21 +296,21 @@ For Java applications using Spring Cloud Sleuth with Zipkin, here is how to migr
     <!-- Spring Boot starter for OpenTelemetry auto-instrumentation -->
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.1.0</version>
+    <version>2.16.0</version>
 </dependency>
 
 <dependency>
     <!-- OTLP exporter sends traces to the OTel Collector -->
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-exporter-otlp</artifactId>
-    <version>1.35.0</version>
+    <version>1.51.0</version>
 </dependency>
 
 <dependency>
     <!-- B3 propagator maintains compatibility with Zipkin-instrumented services -->
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-extension-trace-propagators</artifactId>
-    <version>1.35.0</version>
+    <version>1.51.0</version>
 </dependency>
 ```
 
@@ -317,10 +327,7 @@ spring:
 otel:
   # Service identification in traces
   resource:
-    attributes:
-      service.name: order-service
-      service.version: 2.1.0
-      deployment.environment: production
+    attributes: service.name=order-service,service.version=2.1.0,deployment.environment.name=production
 
   # Exporter configuration - send to OTel Collector via OTLP
   exporter:
@@ -330,12 +337,9 @@ otel:
 
   # CRITICAL: Configure propagators for B3 compatibility
   # This ensures trace context is properly propagated to/from Zipkin services
-  propagators:
-    # Use composite propagator that handles both W3C and B3
-    # Order matters: first match wins for extraction
-    - tracecontext   # W3C Trace Context (new standard)
-    - baggage        # W3C Baggage
-    - b3multi        # B3 multi-header format (X-B3-TraceId, X-B3-SpanId, etc.)
+  # Use composite propagators that handle both W3C and B3.
+  # Order matters: first match wins for extraction.
+  propagators: tracecontext,baggage,b3multi
 ```
 
 ```java
@@ -347,6 +351,7 @@ package com.example.orderservice.config;
 
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.extension.trace.propagation.B3Propagator;
@@ -375,6 +380,8 @@ public class OpenTelemetryConfig {
         return TextMapPropagator.composite(
             // W3C Trace Context - the new standard, preferred for new services
             W3CTraceContextPropagator.getInstance(),
+            // W3C Baggage - propagates custom contextual baggage
+            W3CBaggagePropagator.getInstance(),
             // B3 multi-header - compatible with Zipkin instrumentation
             // Includes: X-B3-TraceId, X-B3-SpanId, X-B3-ParentSpanId, X-B3-Sampled
             B3Propagator.injectingMultiHeaders()
@@ -434,8 +441,12 @@ For Node.js applications, here is the migration path from Zipkin to OpenTelemetr
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
+} = require('@opentelemetry/semantic-conventions');
 const {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -476,10 +487,10 @@ const propagator = new CompositePropagator({
  */
 const sdk = new NodeSDK({
   // Resource attributes appear on every span from this service
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'user-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.5.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'user-service',
+    [ATTR_SERVICE_VERSION]: '1.5.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production',
   }),
 
   // Export traces to OTel Collector via OTLP gRPC
@@ -619,13 +630,13 @@ For Python applications using py-zipkin, here is the migration to OpenTelemetry:
 # pyramid-zipkin  # or flask-zipkin, django-zipkin
 
 # ADD:
-opentelemetry-api==1.23.0
-opentelemetry-sdk==1.23.0
-opentelemetry-exporter-otlp==1.23.0
-opentelemetry-instrumentation-flask==0.44b0
-opentelemetry-instrumentation-requests==0.44b0
-opentelemetry-instrumentation-sqlalchemy==0.44b0
-opentelemetry-propagator-b3==1.23.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp==1.42.1
+opentelemetry-instrumentation-flask==0.63b1
+opentelemetry-instrumentation-requests==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1
+opentelemetry-propagator-b3==1.42.1
 ```
 
 ```python
@@ -665,7 +676,7 @@ def configure_opentelemetry(service_name: str, service_version: str = "1.0.0"):
     resource = Resource(attributes={
         SERVICE_NAME: service_name,
         SERVICE_VERSION: service_version,
-        "deployment.environment": "production",
+        "deployment.environment.name": "production",
         "telemetry.sdk.name": "opentelemetry",
         "telemetry.sdk.language": "python",
     })
@@ -1117,9 +1128,9 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Ensure trace IDs are properly formatted
-          # The collector handles 64-bit to 128-bit padding automatically
-          - set(attributes["trace.id.original"], TraceID())
+          # Record the normalized trace ID for comparison/debugging
+          # The collector represents trace IDs internally as 128-bit values
+          - set(span.attributes["trace.id.original"], span.trace_id.string)
 
   # Attributes processor for adding migration metadata
   attributes:
@@ -1296,11 +1307,13 @@ exporters:
     tls:
       insecure: true
 
-  # OneUptime OTLP endpoint
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  # OneUptime OTLP HTTP endpoint
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      Authorization: "Bearer ${ONEUPTIME_API_KEY}"
+      "Content-Type": "application/json"
+      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
   # Generic OTLP backend
   otlp/generic:
