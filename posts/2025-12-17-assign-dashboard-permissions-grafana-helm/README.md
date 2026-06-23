@@ -45,9 +45,9 @@ grafana.ini:
     admin_user: admin
     admin_password: ${GRAFANA_ADMIN_PASSWORD}
 
-# Enable RBAC
+# Enable Kubernetes RBAC resources for the Helm release
 rbac:
-  enabled: true
+  create: true
 
 # Dashboard provisioning
 dashboardProviders:
@@ -72,14 +72,14 @@ dashboardProviders:
           path: /var/lib/grafana/dashboards/infrastructure
 ```
 
-## 2. Provision Folders with Permissions
+## 2. Provision Folders for Dashboards
 
-Define folders and their permissions in provisioning files.
+Define dashboard providers that create folders. Folder permissions are configured separately through RBAC provisioning or the folder permissions API.
 
 `values.yaml`
 
 ```yaml
-# Folder provisioning with permissions
+# Dashboard provisioning with folders
 dashboards:
   default:
     infrastructure-overview:
@@ -87,7 +87,7 @@ dashboards:
     kubernetes-cluster:
       file: dashboards/infrastructure/k8s-cluster.json
 
-# Additional ConfigMaps for folder provisioning
+# Additional ConfigMaps for dashboard provider provisioning
 extraConfigmapMounts:
   - name: grafana-folders
     mountPath: /etc/grafana/provisioning/dashboards/folders.yaml
@@ -96,7 +96,7 @@ extraConfigmapMounts:
     readOnly: true
 ```
 
-Create the folder provisioning ConfigMap:
+Create the dashboard provider provisioning ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -128,20 +128,19 @@ data:
           path: /var/lib/grafana/dashboards/dev
 ```
 
-## 3. Configure Team-Based Access
+## 3. Configure Team-Based RBAC Access
 
-Provision teams and assign folder permissions.
+Assign custom RBAC roles to existing Grafana teams. RBAC provisioning is available in Grafana Enterprise self-managed instances.
 
 `values.yaml`
 
 ```yaml
 # Grafana provisioning for access control
 grafana.ini:
-  # Enable team sync if using OAuth
+  # Enable OAuth group-to-role mapping if using OAuth
   auth.generic_oauth:
     enabled: true
-    team_ids_attribute_path: groups
-    teams_url: ""
+    role_attribute_path: contains(groups[*], 'sre-team') && 'Editor' || 'Viewer'
 
 # Access control provisioning
 extraConfigmapMounts:
@@ -161,17 +160,21 @@ metadata:
   namespace: monitoring
 data:
   roles.yaml: |
-    apiVersion: 1
+    apiVersion: 2
     roles:
       - name: 'sre:reader'
+        uid: sre_reader
         description: 'Read-only access to SRE dashboards'
+        version: 1
         permissions:
           - action: 'dashboards:read'
             scope: 'folders:uid:sre-folder'
           - action: 'folders:read'
             scope: 'folders:uid:sre-folder'
       - name: 'sre:editor'
+        uid: sre_editor
         description: 'Edit access to SRE dashboards'
+        version: 1
         permissions:
           - action: 'dashboards:read'
             scope: 'folders:uid:sre-folder'
@@ -181,11 +184,17 @@ data:
             scope: 'folders:uid:sre-folder'
           - action: 'folders:read'
             scope: 'folders:uid:sre-folder'
+    teams:
+      - name: 'SRE'
+        orgId: 1
+        roles:
+          - uid: sre_reader
+          - uid: sre_editor
 ```
 
-## 4. Assign Roles to Teams via LDAP/OAuth
+## 4. Map OAuth Groups to Organization Roles
 
-Map external groups to Grafana roles.
+Map external groups to Grafana organization roles. Use Grafana RBAC provisioning or the RBAC API for fine-grained custom role assignment to users or existing teams.
 
 `values.yaml`
 
@@ -202,14 +211,11 @@ grafana.ini:
     api_url: https://auth.example.com/userinfo
     # Map groups to roles
     role_attribute_path: contains(groups[*], 'grafana-admins') && 'Admin' || contains(groups[*], 'grafana-editors') && 'Editor' || 'Viewer'
-    # Sync teams from OAuth groups
-    teams_url: https://auth.example.com/teams
-    team_ids_attribute_path: groups
 ```
 
-## 5. Dashboard JSON with Permissions
+## 5. Dashboard JSON Location
 
-Include permission metadata in dashboard JSON files.
+Keep dashboard JSON focused on the dashboard definition. Folder placement is controlled by the dashboard provider path and folder settings, not by permission metadata in the dashboard JSON.
 
 `dashboards/sre/alerts-dashboard.json`
 
@@ -227,19 +233,13 @@ Include permission metadata in dashboard JSON files.
   "annotations": {
     "list": []
   },
-  "panels": [],
-  "meta": {
-    "folderUid": "sre-folder",
-    "canAdmin": false,
-    "canEdit": false,
-    "canSave": false
-  }
+  "panels": []
 }
 ```
 
 ## 6. Role-Based Access Control Provisioning
 
-Enable and configure Grafana RBAC.
+Enable and configure Grafana RBAC. File-based RBAC provisioning is available for self-managed Grafana Enterprise instances.
 
 `values.yaml`
 
@@ -271,13 +271,14 @@ metadata:
   namespace: monitoring
 data:
   rbac.yaml: |
-    apiVersion: 1
+    apiVersion: 2
     roles:
       # Custom role for infrastructure team
       - name: 'infrastructure:viewer'
+        uid: infrastructure_viewer
         description: 'View infrastructure dashboards'
         version: 1
-        global: false
+        orgId: 1
         permissions:
           - action: 'dashboards:read'
             scope: 'folders:uid:infrastructure'
@@ -288,9 +289,10 @@ data:
 
       # Custom role for development team
       - name: 'development:editor'
+        uid: development_editor
         description: 'Edit development dashboards'
         version: 1
-        global: false
+        orgId: 1
         permissions:
           - action: 'dashboards:read'
             scope: 'folders:uid:development'
@@ -305,30 +307,30 @@ data:
           - action: 'datasources:query'
             scope: 'datasources:*'
           - action: 'datasources:explore'
+          - action: 'datasources:read'
             scope: 'datasources:*'
 
-    roleGrants:
-      - builtinRole: 'Viewer'
+    teams:
+      - name: 'Infrastructure'
+        orgId: 1
         roles:
-          - 'infrastructure:viewer'
-      - builtinRole: 'Editor'
+          - uid: infrastructure_viewer
+      - name: 'Development'
+        orgId: 1
         roles:
-          - 'development:editor'
-          - 'infrastructure:viewer'
+          - uid: development_editor
+          - uid: infrastructure_viewer
 ```
 
 ## 7. Folder Permissions via API Initialization
 
-Use an init container to set permissions via API.
+Use a sidecar container to set permissions via API after Grafana starts. Kubernetes init containers run before the Grafana container, so they cannot wait for Grafana on `localhost:3000`.
 
 `values.yaml`
 
 ```yaml
-initChownData:
-  enabled: true
-
-extraInitContainers:
-  - name: init-permissions
+extraContainers: |
+  - name: set-permissions
     image: curlimages/curl:latest
     command:
       - /bin/sh
@@ -349,6 +351,7 @@ extraInitContainers:
               {"teamId": 1, "permission": 4}
             ]
           }'
+        sleep infinity
     env:
       - name: GRAFANA_ADMIN_PASSWORD
         valueFrom:
@@ -359,7 +362,7 @@ extraInitContainers:
 
 ## 8. Sidecar Dashboard Provisioning
 
-Use sidecar containers for dynamic dashboard loading with permissions.
+Use sidecar containers for dynamic dashboard loading into folders. Permissions still come from RBAC provisioning or the folder permissions API.
 
 `values.yaml`
 
@@ -439,27 +442,18 @@ dashboardProviders:
 
 ## 10. Service Account Permissions
 
-Configure service accounts for API access with specific permissions.
+Create service accounts and tokens for API access with the Grafana HTTP API. Service accounts are not provisioned from files in `/etc/grafana/provisioning`.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-service-accounts
-  namespace: monitoring
-data:
-  service-accounts.yaml: |
-    apiVersion: 1
-    serviceAccounts:
-      - name: 'ci-pipeline'
-        role: 'Viewer'
-        isDisabled: false
-        tokens:
-          - name: 'ci-token'
-            secondsToLive: 86400
-      - name: 'alerting-bot'
-        role: 'Editor'
-        isDisabled: false
+```bash
+# Create a service account
+curl -X POST http://admin:${GRAFANA_ADMIN_PASSWORD}@grafana.example.com/api/serviceaccounts \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ci-pipeline","role":"Viewer"}'
+
+# Create a token for the service account
+curl -X POST http://admin:${GRAFANA_ADMIN_PASSWORD}@grafana.example.com/api/serviceaccounts/1/tokens \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ci-token","secondsToLive":86400}'
 ```
 
 ## 11. Complete Helm Values Example
@@ -554,4 +548,4 @@ curl -H "Authorization: Bearer ${USER_TOKEN}" \
 
 ---
 
-Grafana Helm chart provisioning enables declarative permission management that integrates with GitOps workflows. By defining folders, roles, and team mappings in values files and ConfigMaps, you ensure consistent access control across deployments while maintaining the flexibility to evolve permissions over time.
+Grafana Helm chart provisioning enables declarative dashboard and RBAC role management that integrates with GitOps workflows. By defining folders, roles, and team assignments in values files and ConfigMaps, and using the API where Grafana requires it, you ensure consistent access control across deployments while maintaining the flexibility to evolve permissions over time.
