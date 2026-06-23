@@ -18,11 +18,11 @@ Nginx evaluates location blocks in a specific order, not the order they appear i
 flowchart TD
     A[Incoming Request URI] --> B{Exact Match =}
     B -->|Match| C[Use this location - STOP]
-    B -->|No Match| D{Prefix Match ^~}
-    D -->|Match| E[Use longest ^~ match - STOP]
-    D -->|No Match or Continue| F{Find longest prefix}
-    F --> G[Remember longest prefix]
-    G --> H{Any regex ~ or ~*?}
+    B -->|No Match| D{Find longest prefix}
+    D --> E[Remember longest prefix]
+    E --> F{Longest prefix uses ^~?}
+    F -->|Yes| G[Use this prefix - STOP]
+    F -->|No| H{Any regex ~ or ~*?}
     H -->|Yes| I{First regex match?}
     I -->|Match| J[Use first matching regex - STOP]
     I -->|No Match| K[Use remembered prefix - STOP]
@@ -36,9 +36,9 @@ From highest to lowest priority:
 | Priority | Modifier | Type | Example |
 |----------|----------|------|---------|
 | 1 | `=` | Exact match | `location = /path` |
-| 2 | `^~` | Preferential prefix | `location ^~ /images/` |
-| 3 | `~` | Case-sensitive regex | `location ~ \.php$` |
-| 3 | `~*` | Case-insensitive regex | `location ~* \.(jpg\|png)$` |
+| 2 | `^~` | Longest preferential prefix | `location ^~ /images/` |
+| 3 | `~` | Case-sensitive regex (if the longest prefix is not `^~`) | `location ~ \.php$` |
+| 3 | `~*` | Case-insensitive regex (if the longest prefix is not `^~`) | `location ~* \.(jpg\|png)$` |
 | 4 | (none) | Prefix match | `location /api/` |
 | 4 | (none) | Prefix match | `location /` |
 
@@ -76,7 +76,7 @@ Test:
 
 ### Preferential Prefix (`^~`)
 
-Stops regex search if this prefix matches:
+Stops regex search if this is the longest matching prefix:
 
 ```nginx
 server {
@@ -293,12 +293,12 @@ server {
 ```nginx
 server {
     location /api/ {
-        # Applies to all /api/* requests
+        # Applies to all /api/* requests handled by this location
         proxy_set_header X-API-Version "1";
 
         # Nested location for specific endpoint
         location /api/admin/ {
-            # Inherits parent config plus:
+            # Some directives can be inherited from the parent location
             auth_basic "Admin API";
             auth_basic_user_file /etc/nginx/.htpasswd;
         }
@@ -404,11 +404,13 @@ location ~ \.(php|phtml)$ {
     # Never processes /uploads/*.php - security issue!
 }
 
-# Fix: Add explicit denial in ^~ block
-location ^~ /uploads/ {
-    location ~ \.php$ {
-        deny all;
-    }
+# Fix: Don't use ^~ when a regex must still protect this prefix
+location /uploads/ {
+    # Static upload handling
+}
+
+location ~ ^/uploads/.*\.(php|phtml)$ {
+    deny all;
 }
 ```
 
@@ -427,7 +429,7 @@ location ^~ /uploads/ {
 Understanding Nginx location priority prevents routing bugs:
 
 1. **Exact match (`=`)** wins immediately
-2. **Preferential prefix (`^~`)** stops regex checking
+2. **Preferential prefix (`^~`)** stops regex checking when it is the longest matching prefix
 3. **Regex matches** are evaluated in config order
 4. **Longest prefix** is remembered but regex can override
 5. **Config order** only matters for regex blocks
