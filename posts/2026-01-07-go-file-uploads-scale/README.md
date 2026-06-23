@@ -228,7 +228,7 @@ First, let's define the data structures for managing chunked uploads:
 package main
 
 import (
-    "crypto/sha256"
+    "crypto/rand"
     "encoding/hex"
     "encoding/json"
     "fmt"
@@ -326,12 +326,13 @@ func (m *ChunkedUploadManager) InitiateUpload(w http.ResponseWriter, r *http.Req
     json.NewEncoder(w).Encode(upload)
 }
 
-// generateUploadID creates a unique identifier for an upload session.
+// generateUploadID creates a cryptographically random identifier for an upload session.
 func generateUploadID() string {
     data := make([]byte, 16)
-    // In production, use crypto/rand
-    hash := sha256.Sum256(append(data, []byte(time.Now().String())...))
-    return hex.EncodeToString(hash[:16])
+    if _, err := rand.Read(data); err != nil {
+        panic(fmt.Errorf("failed to generate upload ID: %w", err))
+    }
+    return hex.EncodeToString(data)
 }
 ```
 
@@ -344,7 +345,10 @@ func (m *ChunkedUploadManager) UploadChunk(w http.ResponseWriter, r *http.Reques
     // Extract upload ID and chunk number from the URL or headers
     uploadID := r.URL.Query().Get("upload_id")
     chunkNumber := 0
-    fmt.Sscanf(r.URL.Query().Get("chunk"), "%d", &chunkNumber)
+    if _, err := fmt.Sscanf(r.URL.Query().Get("chunk"), "%d", &chunkNumber); err != nil {
+        http.Error(w, "Invalid chunk number", http.StatusBadRequest)
+        return
+    }
 
     // Retrieve the upload session
     m.mu.RLock()
@@ -363,15 +367,14 @@ func (m *ChunkedUploadManager) UploadChunk(w http.ResponseWriter, r *http.Reques
     }
 
     // Check if chunk was already uploaded
-    m.mu.RLock()
-    alreadyUploaded := upload.UploadedChunks[chunkNumber]
-    m.mu.RUnlock()
-
-    if alreadyUploaded {
+    m.mu.Lock()
+    if upload.UploadedChunks[chunkNumber] {
+        m.mu.Unlock()
         w.WriteHeader(http.StatusOK)
         fmt.Fprint(w, "Chunk already uploaded")
         return
     }
+    m.mu.Unlock()
 
     // Create the chunk file
     chunkPath := filepath.Join(m.uploadDir, "chunks", uploadID,
@@ -408,12 +411,13 @@ func (m *ChunkedUploadManager) UploadChunk(w http.ResponseWriter, r *http.Reques
     // Mark chunk as uploaded
     m.mu.Lock()
     upload.UploadedChunks[chunkNumber] = true
+    uploadedCount := len(upload.UploadedChunks)
     m.mu.Unlock()
 
     w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(map[string]interface{}{
         "chunk":    chunkNumber,
-        "uploaded": len(upload.UploadedChunks),
+        "uploaded": uploadedCount,
         "total":    upload.TotalChunks,
     })
 }
@@ -437,9 +441,12 @@ func (m *ChunkedUploadManager) CompleteUpload(w http.ResponseWriter, r *http.Req
     }
 
     // Verify all chunks are uploaded
-    if len(upload.UploadedChunks) != upload.TotalChunks {
+    m.mu.RLock()
+    uploadedCount := len(upload.UploadedChunks)
+    m.mu.RUnlock()
+    if uploadedCount != upload.TotalChunks {
         http.Error(w, fmt.Sprintf("Missing chunks: %d/%d uploaded",
-            len(upload.UploadedChunks), upload.TotalChunks), http.StatusBadRequest)
+            uploadedCount, upload.TotalChunks), http.StatusBadRequest)
         return
     }
 
@@ -503,17 +510,20 @@ func (m *ChunkedUploadManager) GetUploadStatus(w http.ResponseWriter, r *http.Re
 
     // Calculate missing chunks
     missingChunks := make([]int, 0)
+    m.mu.RLock()
     for i := 0; i < upload.TotalChunks; i++ {
         if !upload.UploadedChunks[i] {
             missingChunks = append(missingChunks, i)
         }
     }
+    uploadedCount := len(upload.UploadedChunks)
+    m.mu.RUnlock()
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]interface{}{
         "upload_id":       upload.ID,
         "filename":        upload.Filename,
-        "uploaded_chunks": len(upload.UploadedChunks),
+        "uploaded_chunks": uploadedCount,
         "total_chunks":    upload.TotalChunks,
         "missing_chunks":  missingChunks,
         "expires_at":      upload.ExpiresAt,
@@ -547,6 +557,8 @@ const (
     S3PartSize = 5 * 1024 * 1024
     // MaxConcurrentParts is the number of parts to upload concurrently
     MaxConcurrentParts = 5
+    // S3MaxParts is the maximum number of parts allowed in one multipart upload
+    S3MaxParts = 10000
 )
 
 // S3MultipartUploader handles streaming uploads to S3.
@@ -614,6 +626,11 @@ func (u *S3MultipartUploader) UploadStream(
         n, readErr := io.ReadFull(reader, buf)
 
         if n > 0 {
+            if partNumber > S3MaxParts {
+                err = fmt.Errorf("multipart upload would exceed S3's %d part limit", S3MaxParts)
+                return nil, err
+            }
+
             // Upload this part
             uploadResp, uploadErr := u.client.UploadPart(ctx, &s3.UploadPartInput{
                 Bucket:     aws.String(u.bucket),
@@ -621,6 +638,7 @@ func (u *S3MultipartUploader) UploadStream(
                 PartNumber: aws.Int32(partNumber),
                 UploadId:   uploadID,
                 Body:       &readSeeker{data: buf[:n]},
+                ContentLength: aws.Int64(int64(n)),
             })
             if uploadErr != nil {
                 err = fmt.Errorf("error uploading part %d: %w", partNumber, uploadErr)
@@ -644,6 +662,11 @@ func (u *S3MultipartUploader) UploadStream(
     }
 
     // Step 3: Complete the multipart upload
+    if len(completedParts) == 0 {
+        err = fmt.Errorf("multipart upload requires at least one part; use PutObject for empty files")
+        return nil, err
+    }
+
     completeResp, err := u.client.CompleteMultipartUpload(ctx,
         &s3.CompleteMultipartUploadInput{
             Bucket:   aws.String(u.bucket),
@@ -684,6 +707,9 @@ func (r *readSeeker) Seek(offset int64, whence int) (int64, error) {
     case io.SeekEnd:
         r.offset = int64(len(r.data)) + offset
     }
+    if r.offset < 0 || r.offset > int64(len(r.data)) {
+        return 0, fmt.Errorf("invalid seek offset")
+    }
     return r.offset, nil
 }
 ```
@@ -719,7 +745,7 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
         err        error
     }
 
-    results := make(chan partResult, MaxConcurrentParts)
+    results := make(chan partResult, S3MaxParts)
     var wg sync.WaitGroup
     semaphore := make(chan struct{}, MaxConcurrentParts)
 
@@ -733,6 +759,11 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
         readErr = err
 
         if n > 0 {
+            if partNumber > S3MaxParts {
+                readErr = fmt.Errorf("multipart upload would exceed S3's %d part limit", S3MaxParts)
+                break
+            }
+
             wg.Add(1)
             semaphore <- struct{}{} // Acquire semaphore
 
@@ -746,6 +777,7 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
                     PartNumber: aws.Int32(pn),
                     UploadId:   uploadID,
                     Body:       &readSeeker{data: data},
+                    ContentLength: aws.Int64(int64(len(data))),
                 })
 
                 if err != nil {
@@ -780,6 +812,24 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
         partsMap[result.partNumber] = result.etag
     }
 
+    if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+        u.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+            Bucket:   aws.String(u.bucket),
+            Key:      aws.String(key),
+            UploadId: uploadID,
+        })
+        return nil, fmt.Errorf("error reading data: %w", readErr)
+    }
+
+    if len(partsMap) == 0 {
+        u.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+            Bucket:   aws.String(u.bucket),
+            Key:      aws.String(key),
+            UploadId: uploadID,
+        })
+        return nil, fmt.Errorf("multipart upload requires at least one part; use PutObject for empty files")
+    }
+
     // Build ordered parts list
     completedParts := make([]types.CompletedPart, 0, len(partsMap))
     for i := int32(1); i < partNumber; i++ {
@@ -790,7 +840,7 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
     }
 
     // Complete the multipart upload
-    return u.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+    completeResp, err := u.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
         Bucket:   aws.String(u.bucket),
         Key:      aws.String(key),
         UploadId: uploadID,
@@ -798,6 +848,15 @@ func (u *S3MultipartUploader) UploadStreamConcurrent(
             Parts: completedParts,
         },
     })
+    if err != nil {
+        u.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+            Bucket:   aws.String(u.bucket),
+            Key:      aws.String(key),
+            UploadId: uploadID,
+        })
+        return nil, fmt.Errorf("error completing multipart upload: %w", err)
+    }
+    return completeResp, nil
 }
 ```
 
@@ -882,10 +941,8 @@ Now let's implement Server-Sent Events (SSE) for real-time progress updates to w
 package main
 
 import (
-    "context"
     "encoding/json"
     "fmt"
-    "io"
     "net/http"
     "sync"
     "time"
@@ -1240,12 +1297,13 @@ We also need rate limiting to prevent abuse:
 package main
 
 import (
+    "strings"
     "net/http"
     "sync"
     "time"
 )
 
-// RateLimiter implements a token bucket rate limiter for uploads.
+// RateLimiter implements a fixed-window rate limiter for uploads.
 type RateLimiter struct {
     // requests tracks request counts per IP
     requests map[string]*clientLimit
@@ -1342,15 +1400,18 @@ Let's create a complete example that combines all these techniques into a produc
 package main
 
 import (
+    "bytes"
     "context"
     "encoding/json"
     "fmt"
     "io"
     "log"
+    "mime/multipart"
     "net/http"
     "os"
     "os/signal"
     "path/filepath"
+    "strings"
     "syscall"
     "time"
 )
@@ -1466,7 +1527,32 @@ func (s *UploadService) processUploadPart(ctx context.Context, part *multipart.P
 
     // Read first 512 bytes for validation
     header := make([]byte, 512)
-    n, _ := io.ReadFull(part, header)
+    n, err := io.ReadFull(part, header)
+    if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+        return "", fmt.Errorf("error reading file header: %w", err)
+    }
+    ext := strings.ToLower(filepath.Ext(filename))
+    for _, blocked := range s.validator.BlockedExtensions {
+        if ext == blocked {
+            return "", fmt.Errorf("%w: %s extension is blocked", ErrInvalidFileType, ext)
+        }
+    }
+    extAllowed := false
+    for _, allowed := range s.validator.AllowedExtensions {
+        if ext == allowed {
+            extAllowed = true
+            break
+        }
+    }
+    if !extAllowed && len(s.validator.AllowedExtensions) > 0 {
+        return "", fmt.Errorf("%w: %s extension not allowed", ErrInvalidFileType, ext)
+    }
+    if err := s.validator.validateContentType(http.DetectContentType(header[:n]), ext); err != nil {
+        return "", err
+    }
+    if err := s.validator.scanForMaliciousContent(header[:n]); err != nil {
+        return "", err
+    }
 
     // Create a reader that replays the header then continues with the rest
     fullReader := io.MultiReader(bytes.NewReader(header[:n]), part)
@@ -1645,7 +1731,11 @@ class ChunkedUploader {
             await Promise.all(batch.map(chunk => this.uploadChunk(chunk)));
         }
 
-        // Complete the upload
+        return this.complete();
+    }
+
+    // Complete the upload
+    async complete() {
         const response = await fetch(
             `${this.baseUrl}/complete?upload_id=${this.uploadId}`,
             { method: 'POST' }
