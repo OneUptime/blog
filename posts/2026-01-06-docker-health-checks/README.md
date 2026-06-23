@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Container, DevOps, Reliability, Monitoring
 
-Description: Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker, Swarm, and Compose can auto-heal your services.
+Description: Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker can report real container health and orchestrators or external monitors can recover unhealthy services.
 
-A container can be running but completely broken. The process might be alive but stuck in a loop, out of memory, or unable to connect to dependencies. Health checks give Docker visibility into actual application health, enabling automatic recovery without human intervention.
+A container can be running but completely broken. The process might be alive but stuck in a loop, out of memory, or unable to connect to dependencies. Health checks give Docker visibility into actual application health, enabling monitoring and, with an orchestrator or external monitor, automatic recovery without human intervention.
 
 ---
 
@@ -66,6 +66,7 @@ This Dockerfile demonstrates an HTTP health check using curl. The `-f` flag make
 FROM node:22-alpine
 WORKDIR /app
 COPY . .
+RUN apk add --no-cache curl
 RUN npm install
 
 # Health check: curl the /health endpoint every 30 seconds
@@ -241,7 +242,10 @@ app.get('/health/ready', async (req, res) => {
     await redis.ping();
 
     // Test external API availability with timeout
-    await fetch('https://api.stripe.com/v1/health', { timeout: 5000 });
+    const response = await fetch(process.env.EXTERNAL_API_HEALTH_URL, {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) throw new Error(`External API returned ${response.status}`);
 
     // All dependencies healthy - return detailed status
     res.json({ status: 'ready', checks: { db: 'ok', redis: 'ok', stripe: 'ok' } });
@@ -347,7 +351,7 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped  # Restart if container stops unexpectedly
-    # Container restarts when unhealthy (in Swarm mode)
+    # Standalone Docker does not restart a container just because it is unhealthy
 
   # For standalone Docker (non-Swarm), use autoheal sidecar
   autoheal:
@@ -360,9 +364,9 @@ services:
 
 ### Docker Swarm Auto-Healing
 
-In Swarm mode, unhealthy containers are automatically replaced:
+In Swarm mode, unhealthy service tasks are automatically replaced:
 
-Docker Swarm has built-in support for health check-based container replacement. When a container fails health checks, Swarm automatically stops it and starts a new one, maintaining the desired replica count.
+Docker Swarm has built-in support for health check-based task replacement. When a service task fails health checks, Swarm stops it and starts a new one, maintaining the desired replica count.
 
 ```yaml
 # Docker Swarm service with auto-healing based on health checks
@@ -407,14 +411,14 @@ HEALTHCHECK --start-period=60s --interval=30s --timeout=10s --retries=3 \
 ### Interval vs Timeout
 
 - **Interval**: How often to check (balance freshness vs overhead)
-- **Timeout**: Max wait for check to complete (should be less than interval)
+- **Timeout**: Max wait for check to complete (usually less than interval)
 
-These settings show standard production values. The interval should be short enough to detect problems quickly but not so frequent that it impacts performance. The timeout must be less than the interval.
+These settings show standard production values. The interval should be short enough to detect problems quickly but not so frequent that it impacts performance. The timeout is usually kept less than the interval so slow checks do not pile up.
 
 ```dockerfile
 # Production health check timing configuration
 # Check every 30s, give up after 10s, 3 failures = unhealthy
-# Total time to detect failure: 30s interval * 3 retries = 90 seconds max
+# Approximate time to detect failure: 30s interval * 3 retries = 90 seconds
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD ...
 ```
 
@@ -427,7 +431,7 @@ Higher retry counts prevent container thrashing due to brief network hiccups or 
 ```dockerfile
 # Tolerant health check for environments with transient failures
 # Transient failures are common, require 5 consecutive failures
-# Total detection time: 10s * 5 = 50 seconds
+# Approximate detection time: 10s * 5 = 50 seconds
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 CMD ...
 ```
 
@@ -458,9 +462,9 @@ This health check uses the mysqladmin tool to verify MySQL is responding to conn
 ```dockerfile
 # MySQL health check using mysqladmin ping
 # -h localhost ensures local socket connection
-# Password from environment variable for security
+# Password from environment variable to avoid hardcoding credentials
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD} || exit 1
+  CMD mysqladmin ping -h localhost -u root -p"$MYSQL_ROOT_PASSWORD" || exit 1
 ```
 
 ### Redis
@@ -529,12 +533,12 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 These commands show how to view the health status of your containers. The docker inspect command provides detailed health check history including timing and output.
 
 ```bash
-# Container list with health column showing current status
+# Container list with STATUS showing current health status
 docker ps
-CONTAINER ID   IMAGE    STATUS                   HEALTH
-abc123         myapp    Up 2 hours               healthy
-def456         myapp    Up 5 minutes (healthy)   healthy
-ghi789         myapp    Up 10 minutes            unhealthy
+CONTAINER ID   IMAGE    STATUS
+abc123         myapp    Up 2 hours (healthy)
+def456         myapp    Up 5 minutes (starting)
+ghi789         myapp    Up 10 minutes (unhealthy)
 
 # Get detailed health information as JSON
 # Shows last 5 health check results with timing and output
@@ -632,7 +636,7 @@ These commands help you monitor and debug container health status from the comma
 
 ```bash
 # View health status with container names
-docker ps --format "table {{.Names}}\t{{.Status}}"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.HealthStatus}}"
 
 # Filter containers by health status
 docker ps --filter "health=healthy"     # Show only healthy
@@ -651,7 +655,7 @@ docker inspect --format='{{json .State.Health}}' container_name | jq
 - Set appropriate start periods for slow-starting applications
 - Use retries to avoid flapping on transient failures
 - Compose's `depends_on: condition: service_healthy` ensures proper startup order
-- Swarm automatically replaces unhealthy containers
+- Swarm automatically replaces unhealthy service tasks
 - Monitor health status and alert when containers stay unhealthy
 
 Good health checks turn "is it running?" into "is it working?" - a crucial distinction for reliable services.
