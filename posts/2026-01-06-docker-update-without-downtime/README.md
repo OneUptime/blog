@@ -242,9 +242,11 @@ http:
     api-weighted:
       weighted:
         services:
-          - name: api-v1
+          # Cross-provider references must use the @docker suffix because
+          # api-v1 and api-v2 are defined via Docker labels, not in this file
+          - name: api-v1@docker
             weight: 90  # 90% of traffic to stable version
-          - name: api-v2
+          - name: api-v2@docker
             weight: 10  # 10% of traffic to canary version
 ```
 
@@ -509,8 +511,10 @@ echo "Waiting for rollout..."
 sleep 30
 
 # Count healthy instances vs total instances
-HEALTHY=$(docker compose ps --format json | jq -r 'select(.Service=="api" and .Health=="healthy")' | wc -l)
-TOTAL=$(docker compose ps --format json | jq -r 'select(.Service=="api")' | wc -l)
+# (ps --format json emits one JSON object per line; extract a single field per
+# match so wc -l counts containers, not the lines of each printed object)
+HEALTHY=$(docker compose ps --format json | jq -r 'select(.Service=="api" and .Health=="healthy") | .Name' | wc -l)
+TOTAL=$(docker compose ps --format json | jq -r 'select(.Service=="api") | .Name' | wc -l)
 
 # Verify all instances are healthy, rollback if not
 if [ "$HEALTHY" -ne "$TOTAL" ]; then
