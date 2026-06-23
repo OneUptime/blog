@@ -52,24 +52,15 @@ flowchart LR
 ### Flux Query (InfluxDB 2.x)
 
 ```flux
-import "date"
-
-// Get the last recorded timestamp
-lastEvent = from(bucket: "mydata")
+// Calculate seconds since last event
+from(bucket: "mydata")
   |> range(start: -30d)
   |> filter(fn: (r) => r._measurement == "deployments")
   |> filter(fn: (r) => r._field == "timestamp")
   |> last()
-  |> findRecord(fn: (key) => true, idx: 0)
-
-// Calculate seconds since last event
-from(bucket: "mydata")
-  |> range(start: -1m)
-  |> filter(fn: (r) => r._measurement == "deployments")
-  |> last()
   |> map(fn: (r) => ({
       r with
-      _value: float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0
+      _value: float(v: int(v: now()) - int(v: r._time)) / 1000000000.0
   }))
 ```
 
@@ -77,13 +68,13 @@ from(bucket: "mydata")
 
 ```sql
 -- Get the most recent timestamp
-SELECT last("value") as "last_value", time as "last_time"
+SELECT last("value") AS "last_value"
 FROM "service_heartbeat"
 WHERE time > now() - 7d
 GROUP BY "service"
 ```
 
-Then calculate the difference in Grafana.
+InfluxQL returns the timestamp of the selected point in the `time` column. Then calculate the difference in Grafana.
 
 ---
 
@@ -99,6 +90,10 @@ from(bucket: "monitoring")
   |> filter(fn: (r) => r._measurement == "backup_status")
   |> filter(fn: (r) => r._field == "last_successful")
   |> last()
+  |> map(fn: (r) => ({
+      r with
+      last_successful_ms: int(v: r._time) / 1000000
+  }))
 ```
 
 ### Step 2: Add "Add field from calculation" Transform
@@ -108,8 +103,8 @@ from(bucket: "monitoring")
 3. Add "Add field from calculation"
 4. Mode: Binary operation
 5. Operation: Subtract
-6. Field A: Your timestamp field
-7. Field B: Use "now()" or current time
+6. Field A: Use `$__to` (the dashboard range end, in epoch milliseconds)
+7. Field B: Your timestamp field in epoch milliseconds
 
 ### Step 3: Configure the Calculation
 
@@ -124,9 +119,9 @@ from(bucket: "monitoring")
           "reducer": "lastNotNull"
         },
         "binary": {
-          "left": "_time",
+          "left": "$__to",
           "operator": "-",
-          "right": "$__now"
+          "right": "last_successful_ms"
         },
         "alias": "time_ago"
       }
@@ -146,8 +141,6 @@ The simplest approach for displaying "time ago":
 Return the difference in seconds:
 
 ```flux
-import "date"
-
 // Calculate seconds since last backup
 lastBackup = from(bucket: "monitoring")
   |> range(start: -30d)
@@ -320,7 +313,7 @@ Add descriptive text with value mappings:
             "from": 300,
             "to": 3600,
             "result": {
-              "text": "${__value.text}",
+              "text": "5-60 minutes ago",
               "color": "yellow"
             }
           }
@@ -407,12 +400,15 @@ data = from(bucket: "monitoring")
   |> range(start: -30d)
   |> filter(fn: (r) => r._measurement == "backup")
   |> last()
+  |> keep(columns: ["_time", "_value"])
 
 // Return "Never" if no data
-if exists data._value then
-  data
-else
-  array.from(rows: [{_value: -1, _time: time(v: 0)}])
+default = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _value: -1.0}])
+
+union(tables: [data, default])
+  |> group()
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: 1)
 ```
 
 ### Value Mapping for "Never"
@@ -439,7 +435,9 @@ else
 
 Create alerts when "time ago" exceeds threshold:
 
-### Grafana Alert Rule
+### Prometheus-Style Alert Rule
+
+If you export the last backup timestamp as a Prometheus metric, you can alert on it from Grafana-managed alerting or Prometheus:
 
 ```yaml
 # Alert when backup is more than 24 hours old
