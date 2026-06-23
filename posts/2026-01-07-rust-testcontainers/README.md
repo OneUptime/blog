@@ -42,14 +42,14 @@ edition = "2021"
 [dependencies]
 # Web framework
 
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 
 # Redis
-redis = { version = "0.24", features = ["tokio-comp"] }
+redis = { version = "1.2", features = ["tokio-comp"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -59,11 +59,10 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 # Testcontainers
-testcontainers = "0.15"
-testcontainers-modules = { version = "0.3", features = ["postgres", "redis", "kafka"] }
+testcontainers-modules = { version = "0.15", features = ["postgres", "redis", "kafka"] }
 
 # Test utilities
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 tokio-test = "0.4"
 ```
 
@@ -75,39 +74,38 @@ tokio-test = "0.4"
 // tests/common/mod.rs
 // Shared test utilities and container setup
 
-use testcontainers::{clients::Cli, Container, RunnableImage};
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::redis::Redis;
+use testcontainers_modules::{
+    postgres::Postgres,
+    redis::{Redis, REDIS_PORT},
+    testcontainers::{runners::AsyncRunner, ContainerAsync},
+};
 use sqlx::PgPool;
-use std::sync::OnceLock;
-
-// Docker client singleton (reuse across tests)
-static DOCKER: OnceLock<Cli> = OnceLock::new();
-
-fn docker() -> &'static Cli {
-    DOCKER.get_or_init(|| Cli::default())
-}
 
 /// PostgreSQL container for testing
-pub struct TestPostgres<'a> {
-    _container: Container<'a, Postgres>,
+pub struct TestPostgres {
+    _container: ContainerAsync<Postgres>,
     pub pool: PgPool,
     pub url: String,
 }
 
-impl<'a> TestPostgres<'a> {
+impl TestPostgres {
     /// Start a PostgreSQL container and return connection pool
     pub async fn new() -> Self {
-        let docker = docker();
-
         // Start PostgreSQL container
-        let container = docker.run(Postgres::default());
+        let container = Postgres::default()
+            .start()
+            .await
+            .expect("Failed to start PostgreSQL container");
 
         // Get connection info
-        let port = container.get_host_port_ipv4(5432);
+        let host = container.get_host().await.expect("Failed to get host");
+        let port = container
+            .get_host_port_ipv4(5432)
+            .await
+            .expect("Failed to get PostgreSQL port");
         let url = format!(
-            "postgres://postgres:postgres@localhost:{}/postgres",
-            port
+            "postgres://postgres:postgres@{}:{}/postgres",
+            host, port
         );
 
         // Create connection pool
@@ -139,19 +137,24 @@ impl<'a> TestPostgres<'a> {
 }
 
 /// Redis container for testing
-pub struct TestRedis<'a> {
-    _container: Container<'a, Redis>,
+pub struct TestRedis {
+    _container: ContainerAsync<Redis>,
     pub client: redis::Client,
     pub url: String,
 }
 
-impl<'a> TestRedis<'a> {
+impl TestRedis {
     pub async fn new() -> Self {
-        let docker = docker();
-
-        let container = docker.run(Redis::default());
-        let port = container.get_host_port_ipv4(6379);
-        let url = format!("redis://localhost:{}", port);
+        let container = Redis::default()
+            .start()
+            .await
+            .expect("Failed to start Redis container");
+        let host = container.get_host().await.expect("Failed to get host");
+        let port = container
+            .get_host_port_ipv4(REDIS_PORT)
+            .await
+            .expect("Failed to get Redis port");
+        let url = format!("redis://{}:{}/", host, port);
 
         let client = redis::Client::open(url.as_str())
             .expect("Failed to create Redis client");
@@ -166,7 +169,7 @@ impl<'a> TestRedis<'a> {
     /// Get async connection
     pub async fn connection(&self) -> redis::aio::MultiplexedConnection {
         self.client
-            .get_multiplexed_tokio_connection()
+            .get_multiplexed_async_connection()
             .await
             .expect("Failed to get Redis connection")
     }
@@ -175,7 +178,7 @@ impl<'a> TestRedis<'a> {
     pub async fn cleanup(&self) {
         let mut conn = self.connection().await;
         redis::cmd("FLUSHALL")
-            .query_async::<_, ()>(&mut conn)
+            .query_async::<()>(&mut conn)
             .await
             .expect("Failed to flush Redis");
     }
@@ -306,13 +309,12 @@ async fn test_transaction_rollback() {
 
 mod common;
 
-use axum::{Router, routing::get, routing::post};
+use axum::Router;
 use myapi::{routes, AppState};
 use reqwest::StatusCode;
-use std::net::SocketAddr;
 
 /// Start the API server with test database
-async fn spawn_app(postgres: &common::TestPostgres<'_>) -> String {
+async fn spawn_app(postgres: &common::TestPostgres) -> String {
     // Build application with test database
     let state = AppState {
         db: postgres.pool.clone(),
@@ -513,17 +515,16 @@ async fn test_cache_invalidation() {
 mod common;
 
 use common::TestPostgres;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use sqlx::postgres::PgPoolOptions;
 
 /// Each test gets its own schema for isolation
-struct IsolatedTestDb<'a> {
-    postgres: &'a TestPostgres<'a>,
+struct IsolatedTestDb {
+    pool: sqlx::PgPool,
     schema: String,
 }
 
-impl<'a> IsolatedTestDb<'a> {
-    async fn new(postgres: &'a TestPostgres<'a>, test_name: &str) -> Self {
+impl IsolatedTestDb {
+    async fn new(postgres: &TestPostgres, test_name: &str) -> Self {
         // Create unique schema for this test
         let schema = format!("test_{}", test_name.replace("::", "_"));
 
@@ -532,39 +533,36 @@ impl<'a> IsolatedTestDb<'a> {
             .await
             .unwrap();
 
-        // Set search path for this connection
-        sqlx::query(&format!("SET search_path TO {}", schema))
-            .execute(&postgres.pool)
+        // Build a pool whose connections always use this schema.
+        let search_path = schema.clone();
+        let pool = PgPoolOptions::new()
+            .after_connect(move |conn, _meta| {
+                let search_path = search_path.clone();
+                Box::pin(async move {
+                    sqlx::query(&format!("SET search_path TO {}, public", search_path))
+                        .execute(conn)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect(&postgres.url)
             .await
             .unwrap();
 
-        Self { postgres, schema }
+        // Run migrations in the isolated schema.
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .unwrap();
+
+        Self { pool, schema }
     }
 }
 
-impl<'a> Drop for IsolatedTestDb<'a> {
+impl Drop for IsolatedTestDb {
     fn drop(&mut self) {
         // Schema will be cleaned up when container stops
     }
-}
-
-/// Alternative: Use transactions for isolation
-async fn with_transaction<F, Fut, R>(pool: &sqlx::PgPool, f: F) -> R
-where
-    F: FnOnce(sqlx::PgPool) -> Fut,
-    Fut: std::future::Future<Output = R>,
-{
-    // Start transaction
-    let mut tx = pool.begin().await.unwrap();
-
-    // Create a pool-like interface over the transaction
-    // (In practice, you'd pass the transaction directly)
-    let result = f(pool.clone()).await;
-
-    // Rollback - changes won't persist
-    tx.rollback().await.unwrap();
-
-    result
 }
 
 #[tokio::test]
@@ -572,40 +570,44 @@ async fn test_parallel_1() {
     let postgres = TestPostgres::new().await;
 
     // Use transaction isolation
-    with_transaction(&postgres.pool, |pool| async move {
-        sqlx::query!(
-            "INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
-            uuid::Uuid::new_v4(),
-            "parallel1@example.com",
-            "parallel1",
-            "hash"
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+    let mut tx = postgres.pool.begin().await.unwrap();
 
-        // Test assertions here
-    }).await;
+    sqlx::query!(
+        "INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
+        uuid::Uuid::new_v4(),
+        "parallel1@example.com",
+        "parallel1",
+        "hash"
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+
+    // Test assertions here
+
+    tx.rollback().await.unwrap();
 }
 
 #[tokio::test]
 async fn test_parallel_2() {
     let postgres = TestPostgres::new().await;
 
-    with_transaction(&postgres.pool, |pool| async move {
-        sqlx::query!(
-            "INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
-            uuid::Uuid::new_v4(),
-            "parallel2@example.com",
-            "parallel2",
-            "hash"
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+    let mut tx = postgres.pool.begin().await.unwrap();
 
-        // Test assertions here
-    }).await;
+    sqlx::query!(
+        "INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
+        uuid::Uuid::new_v4(),
+        "parallel2@example.com",
+        "parallel2",
+        "hash"
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+
+    // Test assertions here
+
+    tx.rollback().await.unwrap();
 }
 ```
 
@@ -617,36 +619,38 @@ async fn test_parallel_2() {
 // tests/common/custom_containers.rs
 // Custom container configurations
 
-use testcontainers::{clients::Cli, Container, Image, RunnableImage};
-use std::collections::HashMap;
+use testcontainers_modules::{
+    postgres::Postgres,
+    testcontainers::ContainerAsync,
+};
 
 /// Custom PostgreSQL with specific configuration
-pub fn postgres_with_config() -> RunnableImage<testcontainers_modules::postgres::Postgres> {
-    let postgres = testcontainers_modules::postgres::Postgres::default();
-
-    RunnableImage::from(postgres)
-        .with_env_var(("POSTGRES_PASSWORD", "testpass"))
-        .with_env_var(("POSTGRES_DB", "testdb"))
-        .with_env_var(("POSTGRES_USER", "testuser"))
-        // Disable fsync for faster tests
-        .with_env_var(("POSTGRES_HOST_AUTH_METHOD", "trust"))
+pub fn postgres_with_config() -> Postgres {
+    Postgres::default()
+        .with_password("testpass")
+        .with_db_name("testdb")
+        .with_user("testuser")
+        .with_host_auth()
+        // fsync is disabled by default in the module for faster tests.
 }
 
 /// PostgreSQL with extensions
-pub fn postgres_with_extensions() -> RunnableImage<testcontainers_modules::postgres::Postgres> {
-    let postgres = testcontainers_modules::postgres::Postgres::default()
+pub fn postgres_with_extensions() -> Postgres {
+    Postgres::default()
         .with_db_name("testdb")
         .with_user("test")
-        .with_password("test");
-
-    // The container will run init scripts from /docker-entrypoint-initdb.d/
-    RunnableImage::from(postgres)
+        .with_password("test")
+        .with_init_sql("CREATE EXTENSION IF NOT EXISTS hstore;".as_bytes().to_vec())
 }
 
 /// Wait for container to be ready with custom health check
-pub async fn wait_for_postgres(container: &Container<'_, testcontainers_modules::postgres::Postgres>) {
-    let port = container.get_host_port_ipv4(5432);
-    let url = format!("postgres://postgres:postgres@localhost:{}/postgres", port);
+pub async fn wait_for_postgres(container: &ContainerAsync<Postgres>) {
+    let host = container.get_host().await.expect("Failed to get host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Failed to get PostgreSQL port");
+    let url = format!("postgres://postgres:postgres@{}:{}/postgres", host, port);
 
     // Retry until connection succeeds
     for _ in 0..30 {
@@ -819,7 +823,7 @@ async fn test_with_fixtures() {
 | Use real containers | Catches real integration issues |
 | Isolate tests | Prevent test interference |
 | Clean up between tests | Consistent starting state |
-| Reuse Docker client | Faster container startup |
+| Reuse test helpers | Less duplicated setup code |
 | Run migrations in tests | Test schema changes |
 | Use fixtures for complex data | Consistent, readable tests |
 
