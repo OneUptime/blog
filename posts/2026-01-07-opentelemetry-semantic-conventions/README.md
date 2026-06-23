@@ -62,9 +62,9 @@ flowchart LR
     end
 
     subgraph "With Semantic Conventions"
-        B1[Service A: enduser.id] --> D2[Unified Telemetry]
-        B2[Service B: enduser.id] --> D2
-        B3[Service C: enduser.id] --> D2
+        B1[Service A: user.email] --> D2[Unified Telemetry]
+        B2[Service B: user.email] --> D2
+        B3[Service C: user.email] --> D2
     end
 
     D1 --> E1[Difficult Analysis]
@@ -85,34 +85,38 @@ The following Python example demonstrates how to configure resource attributes t
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.semconv.attributes import (
+    deployment_attributes,
+    service_attributes,
+    telemetry_attributes,
+)
 
 # Create a resource with semantic convention attributes
 # These attributes identify your service and its environment
 resource = Resource.create({
     # service.name: Logical name of the service (required)
-    ResourceAttributes.SERVICE_NAME: "payment-service",
+    service_attributes.SERVICE_NAME: "payment-service",
 
     # service.version: Version of the service (e.g., semver)
-    ResourceAttributes.SERVICE_VERSION: "1.2.3",
+    service_attributes.SERVICE_VERSION: "1.2.3",
 
     # service.namespace: Namespace for the service (e.g., team or product)
-    ResourceAttributes.SERVICE_NAMESPACE: "ecommerce",
+    service_attributes.SERVICE_NAMESPACE: "ecommerce",
 
     # service.instance.id: Unique identifier for this service instance
-    ResourceAttributes.SERVICE_INSTANCE_ID: "payment-service-pod-abc123",
+    service_attributes.SERVICE_INSTANCE_ID: "payment-service-pod-abc123",
 
-    # deployment.environment: Environment where service is deployed
-    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: "production",
+    # deployment.environment.name: Environment where service is deployed
+    deployment_attributes.DEPLOYMENT_ENVIRONMENT_NAME: "production",
 
     # telemetry.sdk.name: Name of the telemetry SDK
-    ResourceAttributes.TELEMETRY_SDK_NAME: "opentelemetry",
+    telemetry_attributes.TELEMETRY_SDK_NAME: "opentelemetry",
 
     # telemetry.sdk.language: Language of the SDK
-    ResourceAttributes.TELEMETRY_SDK_LANGUAGE: "python",
+    telemetry_attributes.TELEMETRY_SDK_LANGUAGE: "python",
 
     # telemetry.sdk.version: Version of the SDK
-    ResourceAttributes.TELEMETRY_SDK_VERSION: "1.20.0",
+    telemetry_attributes.TELEMETRY_SDK_VERSION: "1.20.0",
 })
 
 # Initialize the tracer provider with the configured resource
@@ -130,7 +134,7 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
@@ -146,8 +150,8 @@ func initTracer() (*trace.TracerProvider, error) {
             semconv.ServiceVersion("1.2.3"),
             // ServiceNamespace groups related services together
             semconv.ServiceNamespace("ecommerce"),
-            // DeploymentEnvironment distinguishes prod from staging/dev
-            semconv.DeploymentEnvironment("production"),
+            // DeploymentEnvironmentName distinguishes prod from staging/dev
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -184,25 +188,23 @@ sequenceDiagram
     Note over Client,Server: Both spans use consistent<br/>HTTP semantic conventions
 ```
 
-The following JavaScript example shows how to properly instrument an HTTP server with all required semantic convention attributes:
+The following JavaScript example shows how to instrument an HTTP server with common semantic convention attributes:
 
 ```javascript
 // JavaScript/Node.js example: HTTP server instrumentation
-const { trace } = require('@opentelemetry/api');
+const { SpanKind, SpanStatusCode, trace } = require('@opentelemetry/api');
 const {
-    SEMATTRS_HTTP_METHOD,
-    SEMATTRS_HTTP_URL,
-    SEMATTRS_HTTP_TARGET,
-    SEMATTRS_HTTP_HOST,
-    SEMATTRS_HTTP_SCHEME,
-    SEMATTRS_HTTP_STATUS_CODE,
-    SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
-    SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-    SEMATTRS_HTTP_USER_AGENT,
-    SEMATTRS_HTTP_ROUTE,
-    SEMATTRS_NET_HOST_NAME,
-    SEMATTRS_NET_HOST_PORT,
-    SEMATTRS_NET_PEER_IP,
+    ATTR_CLIENT_ADDRESS,
+    ATTR_HTTP_REQUEST_METHOD,
+    ATTR_HTTP_RESPONSE_STATUS_CODE,
+    ATTR_HTTP_ROUTE,
+    ATTR_SERVER_ADDRESS,
+    ATTR_SERVER_PORT,
+    ATTR_URL_FULL,
+    ATTR_URL_PATH,
+    ATTR_URL_QUERY,
+    ATTR_URL_SCHEME,
+    ATTR_USER_AGENT_ORIGINAL,
 } = require('@opentelemetry/semantic-conventions');
 
 const tracer = trace.getTracer('http-server');
@@ -212,55 +214,49 @@ function instrumentedHandler(req, res, next) {
     // Create a span for the incoming HTTP request
     // SpanKind.SERVER indicates this is a server-side span
     const span = tracer.startSpan('HTTP Request', {
-        kind: trace.SpanKind.SERVER,
+        kind: SpanKind.SERVER,
         attributes: {
-            // http.method: HTTP request method (GET, POST, etc.)
-            [SEMATTRS_HTTP_METHOD]: req.method,
+            // http.request.method: HTTP request method (GET, POST, etc.)
+            [ATTR_HTTP_REQUEST_METHOD]: req.method,
 
-            // http.url: Full HTTP request URL
-            [SEMATTRS_HTTP_URL]: `${req.protocol}://${req.headers.host}${req.url}`,
+            // url.full: Full HTTP request URL
+            [ATTR_URL_FULL]: `${req.protocol}://${req.headers.host}${req.url}`,
 
-            // http.target: The path and query string of the request
-            [SEMATTRS_HTTP_TARGET]: req.url,
+            // url.path: The path component of the request
+            [ATTR_URL_PATH]: req.path,
 
-            // http.host: Value of the HTTP host header
-            [SEMATTRS_HTTP_HOST]: req.headers.host,
+            // url.query: The query string of the request
+            [ATTR_URL_QUERY]: req.originalUrl?.split('?')[1],
 
-            // http.scheme: URI scheme (http or https)
-            [SEMATTRS_HTTP_SCHEME]: req.protocol,
+            // url.scheme: URI scheme (http or https)
+            [ATTR_URL_SCHEME]: req.protocol,
 
             // http.route: The matched route template (parameterized)
             // Using the template preserves cardinality while showing the pattern
-            [SEMATTRS_HTTP_ROUTE]: req.route?.path || req.path,
+            [ATTR_HTTP_ROUTE]: req.route?.path || req.path,
 
-            // http.user_agent: Value of the User-Agent header
-            [SEMATTRS_HTTP_USER_AGENT]: req.headers['user-agent'],
+            // user_agent.original: Value of the User-Agent header
+            [ATTR_USER_AGENT_ORIGINAL]: req.headers['user-agent'],
 
-            // net.host.name: Local hostname or IP
-            [SEMATTRS_NET_HOST_NAME]: req.hostname,
+            // server.address: Server host name
+            [ATTR_SERVER_ADDRESS]: req.hostname,
 
-            // net.host.port: Local port number
-            [SEMATTRS_NET_HOST_PORT]: req.socket.localPort,
+            // server.port: Local port number
+            [ATTR_SERVER_PORT]: req.socket.localPort,
 
-            // net.peer.ip: Remote client IP address
-            [SEMATTRS_NET_PEER_IP]: req.ip,
+            // client.address: Remote client IP address
+            [ATTR_CLIENT_ADDRESS]: req.ip,
         },
     });
 
     // Capture response details when the response finishes
     res.on('finish', () => {
-        // http.status_code: HTTP response status code
-        span.setAttribute(SEMATTRS_HTTP_STATUS_CODE, res.statusCode);
-
-        // http.response_content_length: Size of response body
-        const contentLength = res.getHeader('content-length');
-        if (contentLength) {
-            span.setAttribute(SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH, parseInt(contentLength));
-        }
+        // http.response.status_code: HTTP response status code
+        span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, res.statusCode);
 
         // Mark span as error if status code indicates failure
         if (res.statusCode >= 400) {
-            span.setStatus({ code: trace.SpanStatusCode.ERROR });
+            span.setStatus({ code: SpanStatusCode.ERROR });
         }
 
         span.end();
@@ -276,7 +272,11 @@ For HTTP client instrumentation in Python, use similar attributes but with SpanK
 # Python example: HTTP client instrumentation with semantic conventions
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import (
+    http_attributes,
+    server_attributes,
+    url_attributes,
+)
 import requests
 
 tracer = trace.get_tracer(__name__)
@@ -295,20 +295,20 @@ def make_http_request(method: str, url: str, **kwargs) -> requests.Response:
         f"HTTP {method}",
         kind=SpanKind.CLIENT,
         attributes={
-            # http.method: The HTTP method being used
-            SpanAttributes.HTTP_METHOD: method.upper(),
+            # http.request.method: The HTTP method being used
+            http_attributes.HTTP_REQUEST_METHOD: method.upper(),
 
-            # http.url: The full URL being requested
-            SpanAttributes.HTTP_URL: url,
+            # url.full: The full URL being requested
+            url_attributes.URL_FULL: url,
 
-            # http.scheme: Protocol scheme (http/https)
-            SpanAttributes.HTTP_SCHEME: parsed.scheme,
+            # url.scheme: Protocol scheme (http/https)
+            url_attributes.URL_SCHEME: parsed.scheme,
 
-            # net.peer.name: Remote hostname
-            SpanAttributes.NET_PEER_NAME: parsed.hostname,
+            # server.address: Remote hostname
+            server_attributes.SERVER_ADDRESS: parsed.hostname,
 
-            # net.peer.port: Remote port (default 443 for https, 80 for http)
-            SpanAttributes.NET_PEER_PORT: parsed.port or (443 if parsed.scheme == 'https' else 80),
+            # server.port: Remote port (default 443 for https, 80 for http)
+            server_attributes.SERVER_PORT: parsed.port or (443 if parsed.scheme == 'https' else 80),
         }
     ) as span:
         try:
@@ -316,15 +316,8 @@ def make_http_request(method: str, url: str, **kwargs) -> requests.Response:
             response = requests.request(method, url, **kwargs)
 
             # Add response attributes after the request completes
-            # http.status_code: The HTTP response status code
-            span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status_code)
-
-            # http.response_content_length: Size of response body if available
-            if 'content-length' in response.headers:
-                span.set_attribute(
-                    SpanAttributes.HTTP_RESPONSE_CONTENT_LENGTH,
-                    int(response.headers['content-length'])
-                )
+            # http.response.status_code: The HTTP response status code
+            span.set_attribute(http_attributes.HTTP_RESPONSE_STATUS_CODE, response.status_code)
 
             # Set span status based on HTTP status code
             if response.status_code >= 400:
@@ -349,7 +342,7 @@ The following example demonstrates comprehensive database span instrumentation i
 # Python example: Database instrumentation with semantic conventions
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import db_attributes, server_attributes
 
 tracer = trace.get_tracer(__name__)
 
@@ -376,7 +369,7 @@ class DatabaseClient:
             operation: The database operation (SELECT, INSERT, UPDATE, DELETE)
             table: The target table name
         """
-        # Span name should follow pattern: {db.operation} {db.name}.{db.sql.table}
+        # Span name should summarize the operation and database namespace
         span_name = f"{operation} {self.database}"
         if table:
             span_name += f".{table}"
@@ -386,45 +379,35 @@ class DatabaseClient:
             span_name,
             kind=SpanKind.CLIENT,
             attributes={
-                # db.system: Database management system identifier
+                # db.system.name: Database management system identifier
                 # Examples: postgresql, mysql, mongodb, redis, elasticsearch
-                SpanAttributes.DB_SYSTEM: "postgresql",
+                db_attributes.DB_SYSTEM_NAME: "postgresql",
 
-                # db.name: Name of the database being accessed
-                SpanAttributes.DB_NAME: self.database,
+                # db.namespace: Name of the database being accessed
+                db_attributes.DB_NAMESPACE: self.database,
 
-                # db.user: Username for database access
-                SpanAttributes.DB_USER: self.user,
+                # db.operation.name: The type of operation (SELECT, INSERT, etc.)
+                db_attributes.DB_OPERATION_NAME: operation,
 
-                # db.operation: The type of operation (SELECT, INSERT, etc.)
-                SpanAttributes.DB_OPERATION: operation,
-
-                # db.statement: The database statement being executed
+                # db.query.text: The database statement being executed
                 # CAUTION: May contain sensitive data - consider sanitization
-                SpanAttributes.DB_STATEMENT: query,
+                db_attributes.DB_QUERY_TEXT: query,
 
-                # net.peer.name: Hostname of the database server
-                SpanAttributes.NET_PEER_NAME: self.host,
+                # server.address: Hostname of the database server
+                server_attributes.SERVER_ADDRESS: self.host,
 
-                # net.peer.port: Port number of the database server
-                SpanAttributes.NET_PEER_PORT: self.port,
-
-                # net.transport: Transport protocol (tcp, udp, unix, etc.)
-                SpanAttributes.NET_TRANSPORT: "ip_tcp",
+                # server.port: Port number of the database server
+                server_attributes.SERVER_PORT: self.port,
             }
         ) as span:
             # Add table-specific attributes if provided
             if table:
-                # db.sql.table: The primary table being operated on
-                span.set_attribute(SpanAttributes.DB_SQL_TABLE, table)
+                # db.collection.name: The primary table being operated on
+                span.set_attribute(db_attributes.DB_COLLECTION_NAME, table)
 
             try:
                 # Execute the actual database query
                 result = self._execute(query)
-
-                # Optionally record row count for applicable operations
-                if hasattr(result, 'rowcount'):
-                    span.set_attribute("db.rows_affected", result.rowcount)
 
                 return result
 
@@ -452,7 +435,8 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
+import io.opentelemetry.api.common.AttributeKey;
+import java.sql.ResultSet;
 
 public class InstrumentedDatabaseClient {
 
@@ -484,30 +468,25 @@ public class InstrumentedDatabaseClient {
         // Start a new CLIENT span for the database operation
         Span span = tracer.spanBuilder(spanName)
             .setSpanKind(SpanKind.CLIENT)
-            // db.system: The database management system product
-            .setAttribute(SemanticAttributes.DB_SYSTEM, "mysql")
-            // db.name: The name of the database being accessed
-            .setAttribute(SemanticAttributes.DB_NAME, database)
-            // db.user: The username for database access
-            .setAttribute(SemanticAttributes.DB_USER, user)
-            // db.operation: The database operation type
-            .setAttribute(SemanticAttributes.DB_OPERATION, operation)
-            // db.statement: The SQL statement (sanitize sensitive data!)
-            .setAttribute(SemanticAttributes.DB_STATEMENT, sql)
-            // db.sql.table: The primary table for the operation
-            .setAttribute(SemanticAttributes.DB_SQL_TABLE, table)
-            // net.peer.name: Database server hostname
-            .setAttribute(SemanticAttributes.NET_PEER_NAME, host)
-            // net.peer.port: Database server port
-            .setAttribute(SemanticAttributes.NET_PEER_PORT, port)
+            // db.system.name: The database management system product
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "mysql")
+            // db.namespace: The name of the database being accessed
+            .setAttribute(AttributeKey.stringKey("db.namespace"), database)
+            // db.operation.name: The database operation type
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), operation)
+            // db.query.text: The SQL statement (sanitize sensitive data!)
+            .setAttribute(AttributeKey.stringKey("db.query.text"), sql)
+            // db.collection.name: The primary table for the operation
+            .setAttribute(AttributeKey.stringKey("db.collection.name"), table)
+            // server.address: Database server hostname
+            .setAttribute(AttributeKey.stringKey("server.address"), host)
+            // server.port: Database server port
+            .setAttribute(AttributeKey.longKey("server.port"), port)
             .startSpan();
 
         try {
             // Execute the actual database operation
             ResultSet result = this.doExecute(sql);
-
-            // Record the number of rows returned/affected
-            span.setAttribute("db.rows_affected", result.getRowCount());
 
             return result;
 
@@ -515,7 +494,7 @@ public class InstrumentedDatabaseClient {
             // Record exception details on the span
             span.recordException(e);
             span.setStatus(StatusCode.ERROR, e.getMessage());
-            throw e;
+            throw new RuntimeException(e);
 
         } finally {
             // Always end the span
@@ -540,11 +519,11 @@ sequenceDiagram
     participant Broker as Message Broker
     participant Consumer
 
-    Note over Producer: PRODUCER span<br/>messaging.operation = "publish"
+    Note over Producer: PRODUCER span<br/>messaging.operation.type = "send"
     Producer->>Broker: Publish Message
     Note over Broker: Message stored<br/>with trace context
     Broker->>Consumer: Deliver Message
-    Note over Consumer: CONSUMER span<br/>messaging.operation = "receive"
+    Note over Consumer: CONSUMER span<br/>messaging.operation.type = "receive"
 
     Note over Producer,Consumer: Trace context propagated<br/>through message headers
 ```
@@ -555,7 +534,6 @@ The following Python example shows how to instrument a message producer:
 # Python example: Message producer instrumentation
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind
-from opentelemetry.semconv.trace import SpanAttributes
 from opentelemetry.propagate import inject
 
 tracer = trace.get_tracer(__name__)
@@ -581,8 +559,8 @@ class MessageProducer:
             message_id: Unique identifier for this message
             correlation_id: ID to correlate with related messages
         """
-        # Span name convention for messaging: {destination} {operation}
-        span_name = f"{destination} publish"
+        # Span name convention for messaging: {operation} {destination}
+        span_name = f"send {destination}"
 
         with tracer.start_as_current_span(
             span_name,
@@ -590,43 +568,35 @@ class MessageProducer:
             attributes={
                 # messaging.system: The messaging system identifier
                 # Examples: kafka, rabbitmq, activemq, aws_sqs, azure_servicebus
-                SpanAttributes.MESSAGING_SYSTEM: "kafka",
+                "messaging.system": "kafka",
 
-                # messaging.destination: Queue or topic name
-                SpanAttributes.MESSAGING_DESTINATION: destination,
+                # messaging.destination.name: Queue or topic name
+                "messaging.destination.name": destination,
 
-                # messaging.destination_kind: Type of destination
-                # Values: "queue" or "topic"
-                SpanAttributes.MESSAGING_DESTINATION_KIND: "topic",
+                # messaging.operation.name: System-specific operation name
+                "messaging.operation.name": "send",
 
-                # messaging.operation: The messaging operation type
-                # Values: "publish", "receive", "process"
-                SpanAttributes.MESSAGING_OPERATION: "publish",
+                # messaging.operation.type: Low-cardinality operation type
+                "messaging.operation.type": "send",
 
-                # messaging.protocol: The messaging protocol
-                SpanAttributes.MESSAGING_PROTOCOL: "kafka",
+                # server.address: Broker hostname
+                "server.address": self.broker_host,
 
-                # messaging.protocol_version: Protocol version if applicable
-                SpanAttributes.MESSAGING_PROTOCOL_VERSION: "3.0",
+                # server.port: Broker port
+                "server.port": self.broker_port,
 
-                # net.peer.name: Broker hostname
-                SpanAttributes.NET_PEER_NAME: self.broker_host,
-
-                # net.peer.port: Broker port
-                SpanAttributes.NET_PEER_PORT: self.broker_port,
-
-                # messaging.message_payload_size_bytes: Size of message body
-                SpanAttributes.MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES: len(message),
+                # messaging.message.body.size: Size of message body
+                "messaging.message.body.size": len(message),
             }
         ) as span:
             # Add message-specific attributes if provided
             if message_id:
-                # messaging.message_id: Unique ID for this message
-                span.set_attribute(SpanAttributes.MESSAGING_MESSAGE_ID, message_id)
+                # messaging.message.id: Unique ID for this message
+                span.set_attribute("messaging.message.id", message_id)
 
             if correlation_id:
-                # messaging.conversation_id: ID to correlate related messages
-                span.set_attribute(SpanAttributes.MESSAGING_CONVERSATION_ID, correlation_id)
+                # messaging.message.conversation_id: ID to correlate related messages
+                span.set_attribute("messaging.message.conversation_id", correlation_id)
 
             # Prepare message headers for context propagation
             # This allows the consumer to continue the same trace
@@ -657,7 +627,6 @@ And the corresponding consumer instrumentation:
 # Python example: Message consumer instrumentation
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind
-from opentelemetry.semconv.trace import SpanAttributes
 from opentelemetry.propagate import extract
 
 tracer = trace.get_tracer(__name__)
@@ -681,8 +650,8 @@ class MessageConsumer:
         # This links the consumer span to the producer span
         ctx = extract(headers)
 
-        # Span name convention: {destination} {operation}
-        span_name = f"{destination} receive"
+        # Span name convention: {operation} {destination}
+        span_name = f"receive {destination}"
 
         with tracer.start_as_current_span(
             span_name,
@@ -690,20 +659,19 @@ class MessageConsumer:
             kind=SpanKind.CONSUMER,  # CONSUMER for message receive operations
             attributes={
                 # messaging.system: The messaging system identifier
-                SpanAttributes.MESSAGING_SYSTEM: "kafka",
+                "messaging.system": "kafka",
 
-                # messaging.destination: Queue or topic name
-                SpanAttributes.MESSAGING_DESTINATION: destination,
+                # messaging.destination.name: Queue or topic name
+                "messaging.destination.name": destination,
 
-                # messaging.destination_kind: Type of destination
-                SpanAttributes.MESSAGING_DESTINATION_KIND: "topic",
+                # messaging.operation.name: System-specific operation name
+                "messaging.operation.name": "receive",
 
-                # messaging.operation: Operation type
-                # "receive" for getting the message
-                SpanAttributes.MESSAGING_OPERATION: "receive",
+                # messaging.operation.type: Low-cardinality operation type
+                "messaging.operation.type": "receive",
 
-                # messaging.message_payload_size_bytes: Size of message body
-                SpanAttributes.MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES: len(message),
+                # messaging.message.body.size: Size of message body
+                "messaging.message.body.size": len(message),
             }
         ) as span:
             try:
@@ -713,7 +681,8 @@ class MessageConsumer:
                     f"{destination} process",
                     kind=SpanKind.INTERNAL,
                     attributes={
-                        SpanAttributes.MESSAGING_OPERATION: "process",
+                        "messaging.operation.name": "process",
+                        "messaging.operation.type": "process",
                     }
                 ):
                     self._process_message(message)
@@ -745,7 +714,6 @@ import (
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
     "google.golang.org/grpc"
     "google.golang.org/grpc/status"
 )
@@ -779,23 +747,17 @@ func (c *InstrumentedGRPCClient) CallService(
     ctx, span := c.tracer.Start(ctx, spanName,
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            // rpc.system: The RPC system being used
-            semconv.RPCSystemGRPC,
+            // rpc.system.name: The RPC system being used
+            attribute.String("rpc.system.name", "grpc"),
 
-            // rpc.service: The full name of the service being called
-            semconv.RPCService(service),
+            // rpc.method: The fully qualified logical method name
+            attribute.String("rpc.method", service+"/"+method),
 
-            // rpc.method: The name of the method being called
-            semconv.RPCMethod(method),
+            // server.address: Remote hostname
+            attribute.String("server.address", "grpc-server.example.com"),
 
-            // net.peer.name: Remote hostname
-            semconv.NetPeerName("grpc-server.example.com"),
-
-            // net.peer.port: Remote port
-            semconv.NetPeerPort(50051),
-
-            // net.transport: Transport protocol
-            semconv.NetTransportTCP,
+            // server.port: Remote port
+            attribute.Int("server.port", 50051),
         ),
     )
     defer span.End()
@@ -807,8 +769,8 @@ func (c *InstrumentedGRPCClient) CallService(
         // Extract gRPC status code from error
         st, ok := status.FromError(err)
         if ok {
-            // rpc.grpc.status_code: The gRPC status code
-            span.SetAttributes(semconv.RPCGRPCStatusCodeKey.Int(int(st.Code())))
+            // rpc.response.status_code: The gRPC status code name
+            span.SetAttributes(attribute.String("rpc.response.status_code", st.Code().String()))
         }
 
         // Record error details
@@ -818,7 +780,7 @@ func (c *InstrumentedGRPCClient) CallService(
     }
 
     // Record successful status
-    span.SetAttributes(semconv.RPCGRPCStatusCodeKey.Int(0)) // OK
+    span.SetAttributes(attribute.String("rpc.response.status_code", "OK"))
 
     return nil
 }
@@ -833,7 +795,7 @@ The following example shows how to record exceptions with all relevant semantic 
 ```python
 # Python example: Recording exceptions with semantic conventions
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import exception_attributes
 import traceback
 
 tracer = trace.get_tracer(__name__)
@@ -859,7 +821,7 @@ def process_with_exception_handling():
                 attributes={
                     # exception.escaped: Whether the exception escaped the span
                     # True means the exception propagated outside the span scope
-                    SpanAttributes.EXCEPTION_ESCAPED: True,
+                    exception_attributes.EXCEPTION_ESCAPED: True,
                 }
             )
 
@@ -884,16 +846,16 @@ def record_exception_manually(span, exception):
         "exception",
         attributes={
             # exception.type: Full qualified class name of exception
-            SpanAttributes.EXCEPTION_TYPE: type(exception).__module__ + "." + type(exception).__name__,
+            exception_attributes.EXCEPTION_TYPE: type(exception).__module__ + "." + type(exception).__name__,
 
             # exception.message: The exception message/description
-            SpanAttributes.EXCEPTION_MESSAGE: str(exception),
+            exception_attributes.EXCEPTION_MESSAGE: str(exception),
 
             # exception.stacktrace: Full stack trace as a string
-            SpanAttributes.EXCEPTION_STACKTRACE: traceback.format_exc(),
+            exception_attributes.EXCEPTION_STACKTRACE: traceback.format_exc(),
 
             # exception.escaped: Did the exception escape the span's scope?
-            SpanAttributes.EXCEPTION_ESCAPED: False,
+            exception_attributes.EXCEPTION_ESCAPED: False,
         }
     )
 ```
@@ -913,26 +875,31 @@ Install and use the semantic conventions package in Python:
 # pip install opentelemetry-semantic-conventions
 
 # Import semantic convention constants
-from opentelemetry.semconv.resource import ResourceAttributes
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import (
+    db_attributes,
+    deployment_attributes,
+    http_attributes,
+    service_attributes,
+    url_attributes,
+)
 
 # Resource attributes for service identification
-print(ResourceAttributes.SERVICE_NAME)        # "service.name"
-print(ResourceAttributes.SERVICE_VERSION)     # "service.version"
-print(ResourceAttributes.DEPLOYMENT_ENVIRONMENT)  # "deployment.environment"
+print(service_attributes.SERVICE_NAME)        # "service.name"
+print(service_attributes.SERVICE_VERSION)     # "service.version"
+print(deployment_attributes.DEPLOYMENT_ENVIRONMENT_NAME)  # "deployment.environment.name"
 
 # HTTP span attributes
-print(SpanAttributes.HTTP_METHOD)             # "http.method"
-print(SpanAttributes.HTTP_STATUS_CODE)        # "http.status_code"
-print(SpanAttributes.HTTP_URL)                # "http.url"
+print(http_attributes.HTTP_REQUEST_METHOD)    # "http.request.method"
+print(http_attributes.HTTP_RESPONSE_STATUS_CODE)  # "http.response.status_code"
+print(url_attributes.URL_FULL)                # "url.full"
 
 # Database span attributes
-print(SpanAttributes.DB_SYSTEM)               # "db.system"
-print(SpanAttributes.DB_STATEMENT)            # "db.statement"
+print(db_attributes.DB_SYSTEM_NAME)           # "db.system.name"
+print(db_attributes.DB_QUERY_TEXT)            # "db.query.text"
 
 # Using in practice - always use constants, never string literals
-span.set_attribute(SpanAttributes.HTTP_METHOD, "GET")  # Correct
-span.set_attribute("http.method", "GET")               # Avoid - error-prone
+span.set_attribute(http_attributes.HTTP_REQUEST_METHOD, "GET")  # Correct
+span.set_attribute("http.request.method", "GET")                # Avoid - error-prone
 ```
 
 ### JavaScript/TypeScript
@@ -947,32 +914,40 @@ Install and use semantic conventions in Node.js:
 
 // Import semantic convention constants
 const {
-    SemanticAttributes,
-    SemanticResourceAttributes,
-    DbSystemValues,
-    HttpFlavorValues,
+    ATTR_HTTP_REQUEST_METHOD,
+    ATTR_HTTP_RESPONSE_STATUS_CODE,
+    ATTR_HTTP_ROUTE,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
 } = require('@opentelemetry/semantic-conventions');
 
+// Database conventions are still unstable in the JavaScript package.
+// Copy the needed constants into your codebase instead of importing
+// from @opentelemetry/semantic-conventions/incubating at runtime.
+const ATTR_DB_SYSTEM_NAME = 'db.system.name';
+const ATTR_DB_NAMESPACE = 'db.namespace';
+const ATTR_DB_OPERATION_NAME = 'db.operation.name';
+const DB_SYSTEM_NAME_VALUE_POSTGRESQL = 'postgresql';
+
 // Using resource attributes
-console.log(SemanticResourceAttributes.SERVICE_NAME);     // "service.name"
-console.log(SemanticResourceAttributes.SERVICE_VERSION);  // "service.version"
+console.log(ATTR_SERVICE_NAME);     // "service.name"
+console.log(ATTR_SERVICE_VERSION);  // "service.version"
 
 // Using span attributes
-console.log(SemanticAttributes.HTTP_METHOD);              // "http.method"
-console.log(SemanticAttributes.DB_SYSTEM);                // "db.system"
+console.log(ATTR_HTTP_REQUEST_METHOD);                    // "http.request.method"
+console.log(ATTR_HTTP_RESPONSE_STATUS_CODE);              // "http.response.status_code"
+console.log(ATTR_HTTP_ROUTE);                             // "http.route"
 
 // Using enumerated values for consistency
-console.log(DbSystemValues.POSTGRESQL);  // "postgresql"
-console.log(DbSystemValues.MYSQL);       // "mysql"
-console.log(DbSystemValues.MONGODB);     // "mongodb"
+console.log(DB_SYSTEM_NAME_VALUE_POSTGRESQL);             // "postgresql"
 
 // Practical usage example
 const span = tracer.startSpan('database-query', {
     attributes: {
         // Use constants for attribute keys
-        [SemanticAttributes.DB_SYSTEM]: DbSystemValues.POSTGRESQL,
-        [SemanticAttributes.DB_NAME]: 'users_db',
-        [SemanticAttributes.DB_OPERATION]: 'SELECT',
+        [ATTR_DB_SYSTEM_NAME]: DB_SYSTEM_NAME_VALUE_POSTGRESQL,
+        [ATTR_DB_NAMESPACE]: 'users_db',
+        [ATTR_DB_OPERATION_NAME]: 'SELECT',
     }
 });
 ```
@@ -986,7 +961,9 @@ Use semantic conventions in Go:
 
 // Import the semconv package (version-specific)
 import (
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    "go.opentelemetry.io/otel/attribute"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // The semconv package provides attribute constructors
@@ -997,23 +974,23 @@ func exampleUsage() {
     serviceAttrs := []attribute.KeyValue{
         semconv.ServiceName("my-service"),
         semconv.ServiceVersion("1.0.0"),
-        semconv.DeploymentEnvironment("production"),
+        semconv.DeploymentEnvironmentName("production"),
     }
 
     // HTTP attributes
     httpAttrs := []attribute.KeyValue{
-        semconv.HTTPMethod("GET"),
-        semconv.HTTPStatusCode(200),
+        semconv.HTTPRequestMethodGet,
+        semconv.HTTPResponseStatusCode(200),
         semconv.HTTPRoute("/api/users/{id}"),
-        semconv.HTTPTarget("/api/users/123"),
+        semconv.URLPath("/api/users/123"),
     }
 
     // Database attributes
     dbAttrs := []attribute.KeyValue{
-        semconv.DBSystemPostgreSQL,  // Pre-defined constant for PostgreSQL
-        semconv.DBName("mydb"),
-        semconv.DBOperation("SELECT"),
-        semconv.DBStatement("SELECT * FROM users WHERE id = $1"),
+        semconv.DBSystemNamePostgreSQL,
+        semconv.DBNamespace("mydb"),
+        semconv.DBOperationName("SELECT"),
+        semconv.DBQueryText("SELECT * FROM users WHERE id = $1"),
     }
 
     // Create a span with attributes
@@ -1034,35 +1011,35 @@ Use semantic conventions in Java:
 // Add dependency in pom.xml:
 // <dependency>
 //     <groupId>io.opentelemetry</groupId>
-//     <artifactId>opentelemetry-semconv</artifactId>
-//     <version>1.24.0-alpha</version>
+//     <artifactId>opentelemetry-api</artifactId>
+//     <version>1.63.0</version>
 // </dependency>
 
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
-import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 
 public class SemanticConventionsExample {
 
-    public void demonstrateUsage() {
+    public void demonstrateUsage(Tracer tracer) {
         // Resource attributes
-        System.out.println(ResourceAttributes.SERVICE_NAME);        // AttributeKey<String>
-        System.out.println(ResourceAttributes.SERVICE_VERSION);     // AttributeKey<String>
+        System.out.println(AttributeKey.stringKey("service.name"));        // AttributeKey<String>
+        System.out.println(AttributeKey.stringKey("service.version"));     // AttributeKey<String>
 
         // Span attributes
-        System.out.println(SemanticAttributes.HTTP_METHOD);         // AttributeKey<String>
-        System.out.println(SemanticAttributes.HTTP_STATUS_CODE);    // AttributeKey<Long>
-        System.out.println(SemanticAttributes.DB_SYSTEM);           // AttributeKey<String>
+        System.out.println(AttributeKey.stringKey("http.request.method"));    // AttributeKey<String>
+        System.out.println(AttributeKey.longKey("http.response.status_code")); // AttributeKey<Long>
+        System.out.println(AttributeKey.stringKey("db.system.name"));         // AttributeKey<String>
 
-        // Enumerated values for db.system
-        System.out.println(SemanticAttributes.DbSystemValues.POSTGRESQL);
-        System.out.println(SemanticAttributes.DbSystemValues.MYSQL);
+        // Well-known values for db.system.name
+        System.out.println("postgresql");
+        System.out.println("mysql");
 
         // Using in span creation
         Span span = tracer.spanBuilder("database-operation")
-            .setAttribute(SemanticAttributes.DB_SYSTEM,
-                         SemanticAttributes.DbSystemValues.POSTGRESQL)
-            .setAttribute(SemanticAttributes.DB_NAME, "users")
-            .setAttribute(SemanticAttributes.DB_OPERATION, "SELECT")
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "postgresql")
+            .setAttribute(AttributeKey.stringKey("db.namespace"), "users")
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), "SELECT")
             .startSpan();
     }
 }
@@ -1078,7 +1055,6 @@ This example shows how to create metrics following semantic conventions:
 # Python example: Metrics with semantic conventions
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.semconv.metrics import MetricInstruments
 
 # Initialize meter provider
 metrics.set_meter_provider(MeterProvider())
@@ -1102,16 +1078,16 @@ http_active_requests = meter.create_up_down_counter(
     unit="{request}",
 )
 
-# http.server.request.size: Size of HTTP server request bodies
+# http.server.request.body.size: Size of HTTP server request bodies
 http_request_size = meter.create_histogram(
-    name="http.server.request.size",
+    name="http.server.request.body.size",
     description="Size of HTTP server request bodies",
     unit="By",  # Bytes
 )
 
-# http.server.response.size: Size of HTTP server response bodies
+# http.server.response.body.size: Size of HTTP server response bodies
 http_response_size = meter.create_histogram(
-    name="http.server.response.size",
+    name="http.server.response.body.size",
     description="Size of HTTP server response bodies",
     unit="By",
 )
@@ -1141,16 +1117,16 @@ def record_http_request_metrics(method: str, route: str, status_code: int,
 
 
 # Database client metrics
-# db.client.connections.usage: Number of connections in the pool
+# db.client.connection.count: Number of connections in the pool
 db_connection_usage = meter.create_up_down_counter(
-    name="db.client.connections.usage",
+    name="db.client.connection.count",
     description="Number of connections that are currently in a specific state",
     unit="{connection}",
 )
 
-# db.client.connections.max: Maximum number of connections in the pool
+# db.client.connection.max: Maximum number of connections configured in the pool
 db_connection_max = meter.create_up_down_counter(
-    name="db.client.connections.max",
+    name="db.client.connection.max",
     description="Maximum number of connections configured in the pool",
     unit="{connection}",
 )
@@ -1166,8 +1142,8 @@ def record_db_pool_metrics(pool_name: str, state: str, count: int):
         count: Number of connections in this state
     """
     attributes = {
-        "db.client.connections.pool.name": pool_name,
-        "db.client.connections.state": state,  # "idle" or "used"
+        "db.client.connection.pool.name": pool_name,
+        "db.client.connection.state": state,  # "idle" or "used"
     }
 
     db_connection_usage.add(count, attributes)
@@ -1182,18 +1158,18 @@ Always use the semantic convention constants provided by the SDK:
 ```python
 # Python: Best practice for using semantic conventions
 
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import db_attributes, http_attributes
 
 # GOOD: Use semantic convention constants
 # Benefits: Type checking, IDE autocomplete, refactoring safety
-span.set_attribute(SpanAttributes.HTTP_METHOD, "GET")
-span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, 200)
-span.set_attribute(SpanAttributes.DB_SYSTEM, "postgresql")
+span.set_attribute(http_attributes.HTTP_REQUEST_METHOD, "GET")
+span.set_attribute(http_attributes.HTTP_RESPONSE_STATUS_CODE, 200)
+span.set_attribute(db_attributes.DB_SYSTEM_NAME, "postgresql")
 
 # BAD: String literals are error-prone
 # Problems: Typos, inconsistency, no IDE support
-span.set_attribute("http.method", "GET")     # Could mistype as "http.methods"
-span.set_attribute("http.status", 200)       # Wrong attribute name!
+span.set_attribute("http.request.method", "GET")  # Could mistype as "http.request.methods"
+span.set_attribute("http.status", 200)            # Wrong attribute name!
 span.set_attribute("database.type", "pg")    # Non-standard naming
 ```
 
@@ -1210,23 +1186,23 @@ Semantic conventions follow specific naming patterns:
 # Examples:
 # http.request.method      - HTTP request method
 # http.response.status_code - HTTP response status code
-# db.system                - Database system type
-# db.statement             - Database query statement
+# db.system.name           - Database system type
+# db.query.text            - Database query statement
 # messaging.system         - Messaging system type
-# messaging.destination    - Message destination (queue/topic)
-# rpc.system               - RPC system type
+# messaging.destination.name - Message destination (queue/topic)
+# rpc.system.name          - RPC system type
 # rpc.method               - RPC method name
 
-# Boolean attributes end with a verb or adjective
-# http.request.has_body    - Does request have a body?
-# net.sock.peer.verified   - Is peer certificate verified?
+# Attribute names are explicit about the entity and field
+# server.address           - Server host name or address
+# network.protocol.version - Application protocol version
 
-# Size/count attributes include unit in name
+# Size/count attributes usually include unit in name or instrument unit
 # http.request.body.size   - Size in bytes
-# messaging.message.payload_size_bytes
+# messaging.message.body.size
 
-# Duration attributes specify unit
-# http.request.duration_ms - Duration in milliseconds
+# Duration metric instruments specify the unit
+# http.server.request.duration with unit "s" - Duration in seconds
 ```
 
 ### 3. Handle Sensitive Data
@@ -1237,7 +1213,7 @@ Be careful with attributes that might contain sensitive information:
 # Python: Handling sensitive data in telemetry
 
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import db_attributes, url_attributes
 import re
 
 tracer = trace.get_tracer(__name__)
@@ -1270,10 +1246,10 @@ def instrumented_db_query(sql: str, params: tuple):
     """
     with tracer.start_as_current_span("db.query") as span:
         # GOOD: Sanitize SQL before recording
-        span.set_attribute(SpanAttributes.DB_STATEMENT, sanitize_sql(sql))
+        span.set_attribute(db_attributes.DB_QUERY_TEXT, sanitize_sql(sql))
 
         # BAD: Never log raw SQL with user data
-        # span.set_attribute(SpanAttributes.DB_STATEMENT, sql)
+        # span.set_attribute(db_attributes.DB_QUERY_TEXT, sql)
 
         # Execute query...
 
@@ -1284,7 +1260,7 @@ def instrumented_http_request(url: str):
     """
     with tracer.start_as_current_span("http.request") as span:
         # GOOD: Sanitize URL before recording
-        span.set_attribute(SpanAttributes.HTTP_URL, sanitize_url(url))
+        span.set_attribute(url_attributes.URL_FULL, sanitize_url(url))
 
         # Don't record Authorization headers
         # span.set_attribute("http.request.header.authorization", auth_header)  # BAD!
@@ -1298,7 +1274,7 @@ Avoid high-cardinality attributes that can cause metrics explosion:
 # Python: Managing attribute cardinality
 
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes import http_attributes, url_attributes
 
 tracer = trace.get_tracer(__name__)
 
@@ -1309,11 +1285,11 @@ def handle_request(user_id: str, request_id: str, path: str):
     with tracer.start_as_current_span("handle_request") as span:
         # GOOD: Low cardinality - use parameterized route
         # This groups all /users/123, /users/456, etc. together
-        span.set_attribute(SpanAttributes.HTTP_ROUTE, "/users/{id}")
+        span.set_attribute(http_attributes.HTTP_ROUTE, "/users/{id}")
 
         # BAD: High cardinality - unique per request
         # This creates a new metric time series for each request!
-        # span.set_attribute(SpanAttributes.HTTP_TARGET, f"/users/{user_id}")
+        # span.set_attribute(url_attributes.URL_PATH, f"/users/{user_id}")
 
         # GOOD: User ID as a separate, optional attribute
         # Can be sampled or excluded from metrics if needed
@@ -1337,8 +1313,10 @@ Always specify the schema URL for forward compatibility:
 package main
 
 import (
+    "context"
+
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 func createResource() *resource.Resource {
@@ -1365,8 +1343,6 @@ Semantic conventions evolve over time. Here's how to handle migrations:
 # Python: Handling semantic convention migrations
 
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
-
 # Some attribute names have changed between versions
 # For example, in HTTP semantic conventions:
 # Old: http.method, http.status_code
@@ -1389,7 +1365,7 @@ class MigrationHelper:
         # New convention (v1.21+)
         span.set_attribute("http.request.method", method)
         # Old convention (deprecated but still widely used)
-        span.set_attribute(SpanAttributes.HTTP_METHOD, method)
+        span.set_attribute("http.method", method)
 
     @staticmethod
     def set_http_status_code(span, status_code: int):
@@ -1397,7 +1373,7 @@ class MigrationHelper:
         # New convention
         span.set_attribute("http.response.status_code", status_code)
         # Old convention
-        span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, status_code)
+        span.set_attribute("http.status_code", status_code)
 
 
 # Strategy 3: Use feature flags for migration
