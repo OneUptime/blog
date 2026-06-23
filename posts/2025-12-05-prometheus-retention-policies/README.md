@@ -47,10 +47,11 @@ Key concepts:
 ### Time-Based Retention
 
 ```yaml
-# prometheus.yml or command line args
-
-# Keep data for 15 days
---storage.tsdb.retention.time=15d
+# prometheus.yml
+storage:
+  tsdb:
+    retention:
+      time: 15d
 ```
 
 Or in a configuration file:
@@ -69,23 +70,42 @@ spec:
 
 ```yaml
 # Keep up to 50GB of data
---storage.tsdb.retention.size=50GB
+storage:
+  tsdb:
+    retention:
+      size: 50GB
 ```
 
 ### Combined Retention
 
 When both are specified, the first limit reached triggers deletion:
 
-```bash
-prometheus \
-  --storage.tsdb.path=/prometheus \
-  --storage.tsdb.retention.time=30d \
-  --storage.tsdb.retention.size=100GB
+```yaml
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 100GB
 ```
 
 ## Kubernetes Deployment Configuration
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    storage:
+      tsdb:
+        retention:
+          time: 15d
+          size: 45GB
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -104,17 +124,17 @@ spec:
     spec:
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.47.0
+          image: prom/prometheus:v3.12.0
           args:
             - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
-            - '--storage.tsdb.retention.time=15d'
-            - '--storage.tsdb.retention.size=45GB'
             - '--storage.tsdb.wal-compression'
             - '--web.enable-lifecycle'
           ports:
             - containerPort: 9090
           volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
             - name: prometheus-storage
               mountPath: /prometheus
           resources:
@@ -124,6 +144,10 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "2000m"
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
   volumeClaimTemplates:
     - metadata:
         name: prometheus-storage
@@ -215,9 +239,10 @@ prometheus \
 
 Allow ingesting samples slightly out of order:
 
-```bash
-prometheus \
-  --storage.tsdb.out-of-order-time-window=30m
+```yaml
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
 ```
 
 ## Monitoring Storage Health
@@ -282,8 +307,8 @@ prometheus_tsdb_head_series
 # Chunk count
 prometheus_tsdb_head_chunks
 
-# Compaction duration
-prometheus_tsdb_compaction_duration_seconds
+# P99 compaction duration
+histogram_quantile(0.99, rate(prometheus_tsdb_compaction_duration_seconds_bucket[5m]))
 
 # Samples ingested rate
 rate(prometheus_tsdb_head_samples_appended_total[5m])
@@ -325,9 +350,6 @@ groups:
 global:
   scrape_interval: 15s
 
-remote_write:
-  - url: http://long-term-prometheus:9090/api/v1/write
-
 # Long-term Prometheus (1 year of aggregated data)
 # Only scrapes recording rules from short-term
 scrape_configs:
@@ -347,7 +369,13 @@ scrape_configs:
 
 ```yaml
 # prometheus with thanos sidecar
---storage.tsdb.retention.time=2h
+storage:
+  tsdb:
+    retention:
+      time: 6h
+```
+
+```bash
 --storage.tsdb.min-block-duration=2h
 --storage.tsdb.max-block-duration=2h
 ```
@@ -371,9 +399,12 @@ remote_write:
 
 ### 1. Start Conservative
 
-```bash
+```yaml
 # Start with shorter retention, increase if needed
---storage.tsdb.retention.time=7d
+storage:
+  tsdb:
+    retention:
+      time: 7d
 ```
 
 ### 2. Monitor Growth
@@ -399,15 +430,18 @@ rules:
 
 Protect against unbounded growth:
 
-```bash
---storage.tsdb.retention.size=100GB
+```yaml
+storage:
+  tsdb:
+    retention:
+      size: 100GB
 ```
 
 ### 5. Regular Compaction Monitoring
 
 ```promql
 # Check compaction health
-prometheus_tsdb_compaction_duration_seconds
+histogram_quantile(0.99, rate(prometheus_tsdb_compaction_duration_seconds_bucket[5m]))
 prometheus_tsdb_compactions_total
 prometheus_tsdb_compactions_failed_total
 ```
@@ -415,6 +449,8 @@ prometheus_tsdb_compactions_failed_total
 ## Backup Strategies
 
 ### Snapshot API
+
+The snapshot API requires Prometheus to start with `--web.enable-admin-api`.
 
 ```bash
 # Create a snapshot
