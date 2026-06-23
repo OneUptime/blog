@@ -787,7 +787,9 @@ pkg-config --libs openssl
 pkg-config --cflags --libs jsoncpp
 
 # Use in compilation command
-gcc $(pkg-config --cflags --libs libpng) -o png_example png_example.c
+# Note: list the source file before the library flags so the linker
+# (which defaults to --as-needed on modern Ubuntu) resolves png symbols
+gcc -o png_example png_example.c $(pkg-config --cflags --libs libpng)
 ```
 
 ### Example: Using an External Library
@@ -795,7 +797,7 @@ gcc $(pkg-config --cflags --libs libpng) -o png_example png_example.c
 ```c
 /* png_example.c - Example using libpng to create an image
  *
- * Compile: gcc $(pkg-config --cflags --libs libpng) -o png_example png_example.c
+ * Compile: gcc -o png_example png_example.c $(pkg-config --cflags --libs libpng)
  */
 
 #include <stdio.h>
