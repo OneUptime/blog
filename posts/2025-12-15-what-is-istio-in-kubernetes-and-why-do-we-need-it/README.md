@@ -16,7 +16,7 @@ Istio is a **service mesh**: a dedicated infrastructure layer that transparently
 
 - **Traffic Management:** Fine-grained control over routing, load balancing, retries, timeouts, and traffic splitting (for canary, blue/green, and A/B deployments).
 - **Security:** Automatic mutual TLS (mTLS) between services, policy enforcement, and strong identity for workloads.
-- **Observability:** Out-of-the-box telemetry, distributed tracing, metrics, and logging for all service-to-service traffic.
+- **Observability:** Out-of-the-box metrics, configurable access logs, and distributed tracing when you configure a tracing backend.
 - **Resilience:** Circuit breaking, fault injection, and retries to make your services more robust.
 
 ## Why Do We Need Istio?
@@ -40,7 +40,7 @@ Istio uses a **sidecar proxy** (Envoy) injected into each pod. All inbound and o
 
 ## Installing Istio in Kubernetes
 
-The easiest way to install Istio is with the Istioctl CLI or Helm. Here is a quick start with Istioctl that downloads and installs Istio with the demo profile, which includes all features for learning and testing.
+The easiest way to install Istio is with the Istioctl CLI or Helm. Here is a quick start with Istioctl that downloads and installs Istio with the demo profile, which is designed to showcase Istio functionality for learning and testing.
 
 ```bash
 # Download the latest Istio release (includes istioctl CLI)
@@ -51,7 +51,7 @@ cd istio-*/
 # Add istioctl to your PATH for this session
 export PATH="$PWD/bin:$PATH"
 
-# Install Istio with the demo profile (includes all components)
+# Install Istio with the demo profile
 # -y flag skips confirmation prompts
 istioctl install --set profile=demo -y
 # Enable automatic sidecar injection for the default namespace
@@ -62,7 +62,7 @@ kubectl label namespace default istio-injection=enabled
 Verify installation by checking that all Istio components are running:
 
 ```bash
-# Should show istiod, istio-ingressgateway, and other pods
+# Should show istiod and the Istio gateways installed by the demo profile
 kubectl get pods -n istio-system
 ```
 
@@ -135,7 +135,7 @@ spec:
       containers:
         - name: backend
           image: mycompany/backend:latest
-          # Istio sidecar handles mTLS, metrics, and tracing automatically
+          # Istio sidecar handles mTLS and metrics automatically
 ```
 
 ### Step 2: Enable mTLS for the Namespace
@@ -158,7 +158,7 @@ Now, all traffic between services in the `default` namespace is encrypted with m
 
 ### Step 3: Observe Traffic and Metrics
 
-Istio automatically collects metrics and traces from all service-to-service traffic through the Envoy sidecars. Access the built-in dashboards for visualization and troubleshooting.
+Istio automatically generates metrics from service-to-service traffic through the Envoy sidecars. After you install telemetry addons such as Kiali, Grafana, and Jaeger and configure tracing for your chosen backend, you can access their dashboards for visualization and troubleshooting.
 
 ```bash
 # Kiali - Service mesh observability dashboard
@@ -176,9 +176,23 @@ istioctl dashboard grafana
 
 ## Advanced Traffic Management Example: Canary Deployment
 
-With Istio, you can split traffic between two versions of a service for safe rollouts. This VirtualService routes 80% of traffic to v1 (stable) and 20% to v2 (canary), regardless of replica counts.
+With Istio, you can split traffic between two versions of a service for safe rollouts. Assuming your backend pods are labeled for `version: v1` and `version: v2`, this DestinationRule defines the subsets and the VirtualService routes 80% of traffic to v1 (stable) and 20% to v2 (canary), regardless of replica counts.
 
 ```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: backend
+spec:
+  host: backend
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -210,7 +224,7 @@ spec:
 - **Start with the demo profile** for learning, then move to minimal/production profiles.
 - **Label only needed namespaces** for injection to avoid overhead.
 - **Monitor resource usage** - Envoy sidecars add CPU/memory overhead.
-- **Use Istio’s built-in dashboards** (Kiali, Jaeger, Grafana) for visibility.
+- **Use observability addons** (Kiali, Jaeger, Grafana) for visibility.
 - **Keep Istio updated** for security and new features.
 
 ## Troubleshooting
@@ -225,7 +239,7 @@ spec:
 2. **Label your namespace** for sidecar injection
 3. **Deploy your services** as usual
 4. **Configure traffic policies** (mTLS, routing, retries, etc.)
-5. **Use Istio dashboards** for observability
+5. **Use observability dashboards** for visibility
 
 ---
 
