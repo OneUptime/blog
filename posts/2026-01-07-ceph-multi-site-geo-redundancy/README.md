@@ -236,11 +236,11 @@ ceph config set client.rgw rgw_zonegroup us-zonegroup
 ceph config set client.rgw rgw_zone us-east
 
 # Enable the sync log for replication tracking
-# This log records all changes that need to be replicated to other zones
-ceph config set client.rgw rgw_data_log_changes true
+# RGW maintains data and metadata logs automatically for multisite zones
 
 # Set the number of data log shards (adjust based on workload)
 # More shards provide better parallelism for high-throughput environments
+# Do not change this after sync has started
 ceph config set client.rgw rgw_data_log_num_shards 128
 ```
 
@@ -320,7 +320,7 @@ On the secondary site, pull the realm configuration from the master:
 
 ```bash
 # Pull the realm from the master zone
-# This downloads the complete realm configuration including zonegroups and zones
+# This downloads the realm configuration and the remote's current period
 # --url: The endpoint of the master zone RGW
 # --access-key and --secret: Credentials of the system user created on master
 radosgw-admin realm pull \
@@ -506,35 +506,32 @@ radosgw-admin sync error list
 Ceph allows fine-grained control over what gets synced:
 
 ```bash
-# Get the current sync policy for a zonegroup
-radosgw-admin sync policy get --rgw-zonegroup=us-zonegroup
+# Get the current zonegroup sync policy
+radosgw-admin sync policy get
 
 # Create a sync group for selective replication
 # Sync groups allow you to define which buckets sync to which zones
 radosgw-admin sync group create \
-    --rgw-zonegroup=us-zonegroup \
     --group-id=critical-data \
     --status=enabled
 
 # Add a sync flow to replicate from master to secondary
 # Flows define the direction of data replication
 radosgw-admin sync group flow create \
-    --rgw-zonegroup=us-zonegroup \
     --group-id=critical-data \
     --flow-id=east-to-west \
     --flow-type=directional \
     --source-zone=us-east \
     --dest-zone=us-west
 
-# Create a pipe to specify which buckets are included
-# Pipes filter which buckets participate in a sync flow
+# Create a pipe to specify which object prefix is included
+# Pipes filter which objects participate in a sync flow
 radosgw-admin sync group pipe create \
-    --rgw-zonegroup=us-zonegroup \
     --group-id=critical-data \
     --pipe-id=critical-buckets \
     --source-zones=us-east \
     --dest-zones=us-west \
-    --bucket="critical-*"
+    --prefix=critical/
 ```
 
 ### Bucket-Level Sync Configuration
@@ -550,12 +547,11 @@ radosgw-admin bucket sync enable --bucket=my-important-bucket
 # Disable sync for a bucket that should remain local-only
 radosgw-admin bucket sync disable --bucket=temporary-bucket
 
-# Check sync status for a specific bucket
-radosgw-admin bucket sync status --bucket=my-important-bucket
+# Check the bucket-level sync policy
+radosgw-admin sync policy get --bucket=my-important-bucket
 
-# Manually trigger a full sync for a bucket
-# Useful after resolving sync issues or data corruption
-radosgw-admin bucket sync run --bucket=my-important-bucket --source-zone=us-east
+# Reinitialize data sync from a source zone after resolving wider sync issues
+radosgw-admin data sync init --source-zone=us-east
 ```
 
 ### Monitoring with Prometheus
@@ -569,48 +565,37 @@ Set up Prometheus metrics for sync monitoring:
 groups:
   - name: ceph-rgw-multisite
     rules:
-      # Alert when sync is falling behind
-      - alert: RGWSyncLagging
-        expr: ceph_rgw_sync_lag_seconds > 3600
+      # Alert when the Ceph cluster reports a warning or error
+      - alert: CephHealthNotOk
+        expr: ceph_health_status > 0
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "RGW sync is lagging behind"
-          description: "Zone {{ $labels.zone }} sync lag is {{ $value }} seconds"
+          summary: "Ceph health is not OK"
+          description: "Ceph health status is {{ $value }}"
 
-      # Alert on sync errors
-      - alert: RGWSyncErrors
-        expr: increase(ceph_rgw_sync_errors_total[1h]) > 10
-        for: 5m
+      # Alert when an RGW daemon is down
+      - alert: RGWDaemonDown
+        expr: up{job=~".*rgw.*"} == 0
+        for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "RGW sync errors detected"
-          description: "{{ $value }} sync errors in the last hour"
-
-      # Alert when metadata sync is stalled
-      - alert: RGWMetadataSyncStalled
-        expr: rate(ceph_rgw_metadata_sync_ops[5m]) == 0 and ceph_rgw_metadata_sync_pending > 0
-        for: 30m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Metadata sync has stalled"
+          summary: "RGW daemon is down"
 ```
 
-Enable the Prometheus exporter in RGW:
+Enable the Ceph Prometheus module and monitoring stack:
 
 ```bash
-# Enable Prometheus metrics endpoint on RGW
-# Metrics will be available at http://rgw-host:9283/metrics
-ceph config set client.rgw rgw_enable_apis "s3, admin, prometheus"
+# Enable the manager module that exports Ceph metrics for Prometheus
+ceph mgr module enable prometheus
 
-# Set the Prometheus exporter port
-ceph config set client.rgw rgw_prometheus_port 9283
+# Deploy Prometheus with cephadm if the monitoring stack is not already present
+ceph orch apply prometheus 1
 
-# Restart RGW daemons to apply changes
-ceph orch restart rgw.us-east
+# Check the Prometheus service endpoint
+ceph orch ps --service_name prometheus
 ```
 
 ## Failover Procedures
@@ -661,23 +646,18 @@ radosgw-admin zone modify \
     --rgw-zone=us-west \
     --master
 
-# Step 5: Demote the original master
-radosgw-admin zone modify \
-    --rgw-zone=us-east \
-    --master=false
-
-# Step 6: Update the zonegroup to reflect new master
+# Step 5: Update the zonegroup to reflect new master
 radosgw-admin zonegroup modify \
     --rgw-zonegroup=us-zonegroup \
-    --master-zone=us-west
+    --master
 
-# Step 7: Commit the period to propagate changes
+# Step 6: Commit the period to propagate changes
 radosgw-admin period update --commit
 
-# Step 8: Remove read-only flag from old master (now secondary)
+# Step 7: Remove read-only flag from old master (now secondary)
 radosgw-admin zone modify --rgw-zone=us-east --read-only=false
 
-# Step 9: Restart all RGW daemons to pick up new configuration
+# Step 8: Restart all RGW daemons to pick up new configuration
 ceph orch restart rgw
 ```
 
@@ -689,17 +669,16 @@ When the master zone is unavailable:
 # Emergency failover when master is unreachable
 # This procedure promotes the secondary zone without coordination
 
-# Step 1: On the secondary zone, promote to master
-# Use --yes-i-really-mean-it for emergency operations
+# Step 1: On the secondary zone, promote to master and default
 radosgw-admin zone modify \
     --rgw-zone=us-west \
     --master \
-    --yes-i-really-mean-it
+    --default
 
 # Step 2: Update the zonegroup
 radosgw-admin zonegroup modify \
     --rgw-zonegroup=us-zonegroup \
-    --master-zone=us-west
+    --master
 
 # Step 3: Commit the period locally
 # In emergency mode, this creates a new period that may conflict
@@ -744,8 +723,8 @@ ceph orch restart rgw.us-east
 # Step 5: Monitor sync progress
 watch -n 10 radosgw-admin sync status
 
-# Step 6: Verify data integrity after sync completes
-radosgw-admin bucket check --all
+# Step 6: Verify bucket indexes after sync completes
+radosgw-admin bucket check --bucket=<bucket-name>
 ```
 
 ## Conflict Resolution Strategies
@@ -802,14 +781,8 @@ Monitor and resolve conflicts using the conflict log:
 # Conflicts appear as sync errors with specific error codes
 radosgw-admin sync error list
 
-# Get detailed information about a specific error
-radosgw-admin sync error get --error-marker=<marker>
-
-# Retry a failed sync operation after resolving the conflict
-radosgw-admin sync error retry --bucket=my-bucket
-
-# Clear resolved errors from the log
-radosgw-admin sync error delete --error-marker=<marker>
+# After resolving the cause, trim old sync errors up to a marker
+radosgw-admin sync error trim --source-zone=us-east --marker=<marker>
 ```
 
 ### Implementing Application-Level Conflict Resolution
@@ -976,21 +949,19 @@ Fine-tune synchronization performance:
 ```bash
 # Increase the number of concurrent sync threads
 # More threads improve sync throughput but increase resource usage
-ceph config set client.rgw rgw_sync_data_inject_threads 16
+ceph config set client.rgw rgw_data_sync_spawn_window 32
 
-# Configure sync trace logging for debugging
-ceph config set client.rgw rgw_sync_trace_history_size 100
+# Increase the metadata sync parallelism
+ceph config set client.rgw rgw_meta_sync_spawn_window 32
 
-# Set the sync checkpoint interval
-# Lower values provide more frequent checkpoints but increase I/O
-ceph config set client.rgw rgw_sync_checkpoint_interval 300
+# Increase the bucket sync parallelism
+ceph config set client.rgw rgw_bucket_sync_spawn_window 32
 
-# Configure the maximum number of objects to sync in a batch
-ceph config set client.rgw rgw_sync_obj_batch_size 64
+# Tune the data sync polling interval after a shard is caught up
+ceph config set client.rgw rgw_data_sync_poll_interval 10
 
-# Set sync lease duration
-# Longer leases reduce coordination overhead but delay failover
-ceph config set client.rgw rgw_sync_lease_period 120
+# Tune the metadata sync polling interval after a shard is caught up
+ceph config set client.rgw rgw_meta_sync_poll_interval 10
 ```
 
 ### Compression and Encryption
@@ -1007,16 +978,13 @@ ceph osd pool set us-east.rgw.buckets.data compression_mode aggressive
 ceph osd pool get us-east.rgw.buckets.data compression_algorithm
 ```
 
-Configure encryption for data in transit:
+Configure TLS for data in transit and server-side encryption for data at rest:
 
 ```bash
-# Enable SSL for inter-zone communication
-ceph config set client.rgw rgw_remote_addr_param HTTP_X_FORWARDED_FOR
+# Configure RGW behind a TLS-terminating proxy to trust forwarded HTTPS
+ceph config set client.rgw rgw_trust_forwarded_https true
 
-# Configure SSL certificate paths
-ceph config set client.rgw rgw_crypt_s3_kms_encryption_keys "testkey-1=YmluCmJvb3N0CmJvb3N0LWJ1aWxkCmNlcGguY29uZgo="
-
-# Enable server-side encryption by default
+# Enable automatic server-side encryption by default (testing only)
 ceph config set client.rgw rgw_crypt_default_encryption_key "4YSmvJtBv0aZ7geVgAsdpRnLBEwWSWlMIGnRS8a9TSA="
 ```
 
@@ -1025,10 +993,6 @@ ceph config set client.rgw rgw_crypt_default_encryption_key "4YSmvJtBv0aZ7geVgAs
 Protect zones from overwhelming each other:
 
 ```bash
-# Set sync bandwidth limit (bytes per second)
-# This prevents sync traffic from saturating your network
-ceph config set client.rgw rgw_sync_max_bandwidth 104857600  # 100 MB/s
-
 # Configure request rate limits per user
 radosgw-admin ratelimit set --ratelimit-scope=user --uid=zone.user \
     --max-read-ops=10000 \
@@ -1122,10 +1086,10 @@ journalctl -u ceph-radosgw@rgw.us-west.* --since "1 hour ago" | grep -i error
 # Check metadata sync status in detail
 radosgw-admin metadata sync status
 
-# List pending metadata entries
+# List bucket metadata entries
 radosgw-admin metadata list bucket
 
-# Force metadata sync for a specific entry
+# Run metadata sync manually
 radosgw-admin metadata sync run
 ```
 
@@ -1168,8 +1132,9 @@ radosgw-admin period update --commit
 # Check RGW performance counters
 ceph daemon /var/run/ceph/ceph-client.rgw.us-east.*.asok perf dump
 
-# Monitor sync latency
-radosgw-admin sync status --detail
+# Monitor sync status and per-source data sync progress
+radosgw-admin sync status
+radosgw-admin data sync status --source-zone=us-east
 
 # Check pool performance
 ceph osd pool stats us-east.rgw.buckets.data
