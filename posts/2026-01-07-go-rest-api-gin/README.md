@@ -36,6 +36,7 @@ Install Gin and other required dependencies:
 go get -u github.com/gin-gonic/gin
 go get -u github.com/go-playground/validator/v10
 go get -u github.com/google/uuid
+go get -u github.com/stretchr/testify
 ```
 
 ## Project Structure
@@ -90,6 +91,7 @@ import (
 
     "github.com/gin-gonic/gin"
     "github.com/yourusername/go-gin-api/internal/routes"
+    "github.com/yourusername/go-gin-api/internal/validators"
 )
 
 func main() {
@@ -99,9 +101,12 @@ func main() {
         gin.SetMode(gin.ReleaseMode)
     }
 
-    // Create a new Gin engine with default middleware
-    // Default() includes Logger and Recovery middleware
-    router := gin.Default()
+    // Create a new Gin engine without default middleware
+    // Custom logging and recovery middleware are registered in routes.SetupRoutes
+    router := gin.New()
+
+    // Register custom validation rules before binding requests
+    validators.RegisterCustomValidators()
 
     // Setup all routes
     routes.SetupRoutes(router)
@@ -222,13 +227,14 @@ Middleware functions in Gin are handlers that execute before or after the main h
 
 ### Authentication Middleware
 
-This middleware validates JWT tokens and extracts user information:
+This middleware extracts a Bearer token, shows where JWT validation should happen, and stores user information:
 
 ```go
 // internal/middleware/auth.go
 package middleware
 
 import (
+    "errors"
     "net/http"
     "strings"
 
@@ -271,9 +277,9 @@ func AuthMiddleware() gin.HandlerFunc {
             return
         }
 
-        token := parts[1]
+        token := strings.TrimSpace(parts[1])
 
-        // Validate the JWT token (simplified example)
+        // Validate the JWT token
         // In production, use a proper JWT library like golang-jwt/jwt
         user, err := validateToken(token)
         if err != nil {
@@ -342,11 +348,15 @@ func RoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
     }
 }
 
-// validateToken validates the JWT token and returns the user
-// This is a simplified example - use a proper JWT library in production
+// validateToken is a placeholder that returns the user from a valid token
+// This simplified example only rejects empty tokens - use a proper JWT library in production
 func validateToken(token string) (*User, error) {
     // In a real application, validate the JWT signature and claims
     // using a library like github.com/golang-jwt/jwt/v5
+    if token == "" {
+        return nil, errors.New("empty token")
+    }
+
     return &User{
         ID:    "user-123",
         Email: "user@example.com",
@@ -513,7 +523,7 @@ import (
 // CreateUserRequest represents the request body for creating a user
 type CreateUserRequest struct {
     Email     string `json:"email" binding:"required,email" example:"user@example.com"`
-    Password  string `json:"password" binding:"required,min=8,max=72" example:"securepassword123"`
+    Password  string `json:"password" binding:"required,min=8,max=72,strongpassword" example:"SecurePass123!"`
     FirstName string `json:"first_name" binding:"required,min=1,max=50" example:"John"`
     LastName  string `json:"last_name" binding:"required,min=1,max=50" example:"Doe"`
     Phone     string `json:"phone" binding:"omitempty,e164" example:"+1234567890"`
@@ -1010,9 +1020,9 @@ func getValidationMessage(e validator.FieldError) string {
     case "email":
         return "Invalid email format"
     case "min":
-        return fmt.Sprintf("%s must be at least %s characters", field, e.Param())
+        return fmt.Sprintf("%s must be at least %s", field, e.Param())
     case "max":
-        return fmt.Sprintf("%s must be at most %s characters", field, e.Param())
+        return fmt.Sprintf("%s must be at most %s", field, e.Param())
     case "oneof":
         return fmt.Sprintf("%s must be one of: %s", field, e.Param())
     case "url":
