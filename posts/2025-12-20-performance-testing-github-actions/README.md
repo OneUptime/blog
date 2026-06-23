@@ -72,7 +72,7 @@ jobs:
           sudo apt-get install k6
 
       - name: Run load tests
-        run: k6 run tests/performance/load-test.js --out json=results.json
+        run: k6 run --out json=results.json tests/performance/load-test.js
 
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -142,15 +142,16 @@ jobs:
       - name: Run performance tests
         id: k6
         run: |
-          k6 run tests/performance/api-benchmark.js \
-            --summary-export=summary.json \
+          set +e
+          k6 run --summary-export=summary.json tests/performance/api-benchmark.js \
             2>&1 | tee k6-output.txt
+          status=${PIPESTATUS[0]}
+          set -e
 
-          # Check if thresholds passed
-          if grep -q "thresholds.*failed" k6-output.txt; then
-            echo "passed=false" >> $GITHUB_OUTPUT
-          else
+          if [ "$status" -eq 0 ]; then
             echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Comment on PR
@@ -168,10 +169,10 @@ jobs:
 
             | Metric | Value | Threshold |
             |--------|-------|-----------|
-            | Avg Response Time | ${metrics.http_req_duration.avg.toFixed(2)}ms | <500ms |
-            | P95 Response Time | ${metrics.http_req_duration['p(95)'].toFixed(2)}ms | <500ms |
-            | Request Rate | ${metrics.http_reqs.rate.toFixed(2)}/s | - |
-            | Error Rate | ${(metrics.http_req_failed.rate * 100).toFixed(2)}% | <1% |
+            | Avg Response Time | ${metrics.http_req_duration.values.avg.toFixed(2)}ms | <500ms |
+            | P95 Response Time | ${metrics.http_req_duration.values['p(95)'].toFixed(2)}ms | <500ms |
+            | Request Rate | ${metrics.http_reqs.values.rate.toFixed(2)}/s | - |
+            | Error Rate | ${(metrics.http_req_failed.values.rate * 100).toFixed(2)}% | <1% |
 
             ${!passed ? ':warning: Performance thresholds not met. Please investigate.' : ''}`;
 
@@ -252,9 +253,12 @@ config:
       arrivalRate: 100
       name: 'Peak load'
 
-  ensure:
-    p95: 500
-    maxErrorRate: 1
+  plugins:
+    ensure:
+      thresholds:
+        - 'http.response_time.p95': 500
+      conditions:
+        - expression: 'vusers.failed / (vusers.completed + vusers.failed) < 0.01'
 
 scenarios:
   - name: 'Browse and search'
@@ -482,7 +486,7 @@ jobs:
           npm ci && npm run build
           npm start &
           sleep 5
-          k6 run tests/perf.js --summary-export=baseline.json
+          k6 run --summary-export=baseline.json tests/perf.js
 
       - uses: actions/upload-artifact@v4
         with:
@@ -499,7 +503,7 @@ jobs:
           npm ci && npm run build
           npm start &
           sleep 5
-          k6 run tests/perf.js --summary-export=current.json
+          k6 run --summary-export=current.json tests/perf.js
 
       - uses: actions/upload-artifact@v4
         with:
@@ -520,8 +524,8 @@ jobs:
             const baseline = JSON.parse(fs.readFileSync('baseline/baseline.json'));
             const current = JSON.parse(fs.readFileSync('current/current.json'));
 
-            const baselineP95 = baseline.metrics.http_req_duration['p(95)'];
-            const currentP95 = current.metrics.http_req_duration['p(95)'];
+            const baselineP95 = baseline.metrics.http_req_duration.values['p(95)'];
+            const currentP95 = current.metrics.http_req_duration.values['p(95)'];
             const diff = ((currentP95 - baselineP95) / baselineP95 * 100).toFixed(2);
 
             const regression = currentP95 > baselineP95 * 1.1; // 10% threshold
