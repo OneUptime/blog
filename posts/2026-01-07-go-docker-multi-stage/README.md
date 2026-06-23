@@ -70,8 +70,7 @@ type HealthResponse struct {
 }
 
 var (
-    version   = "1.0.0"
-    startTime = time.Now()
+    version = "1.0.0"
 )
 
 func main() {
@@ -277,7 +276,7 @@ FROM scratch
 # Copy the binary from the builder stage
 COPY --from=builder /app/main /main
 
-# Expose the port (documentation only in scratch)
+# Document the exposed port
 EXPOSE 8080
 
 # Run the binary
@@ -305,7 +304,7 @@ While scratch images are extremely minimal, they have limitations:
 
 1. **No shell**: Cannot exec into the container for debugging
 2. **No certificates**: HTTPS requests will fail
-3. **No timezone data**: Time-related operations may fail
+3. **No timezone data**: Loading named time zones with `time.LoadLocation()` may fail
 4. **No user management**: Runs as root by default
 
 We will address these limitations in the following sections.
@@ -353,7 +352,7 @@ ENTRYPOINT ["/main"]
 
 ## Adding Timezone Data
 
-Go applications that use the `time` package may need timezone data for proper time handling. The scratch image does not include this.
+Go applications that load named time zones may need timezone data for proper time handling. The scratch image does not include this.
 
 This Dockerfile demonstrates how to include timezone data for time operations:
 
@@ -506,6 +505,7 @@ ENTRYPOINT ["/main"]
 This comprehensive Dockerfile combines all best practices for production deployments:
 
 ```dockerfile
+# syntax=docker/dockerfile:1
 # =============================================================================
 # Production-Ready Multi-Stage Dockerfile for Go Applications
 # =============================================================================
@@ -518,8 +518,12 @@ FROM golang:1.22-alpine AS builder
 # Install build dependencies and security certificates
 RUN apk --no-cache add \
     ca-certificates \
+    file \
     tzdata \
     git
+
+# Build-time metadata
+ARG VERSION=dev
 
 # Create non-root user for the runtime stage
 RUN adduser -D -g '' -u 10001 appuser
@@ -542,7 +546,7 @@ COPY . .
 # Using mount cache for build cache
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s -X main.version=${VERSION:-dev}" \
+    -ldflags="-w -s -X main.version=${VERSION}" \
     -a \
     -installsuffix cgo \
     -o main .
@@ -584,8 +588,8 @@ USER appuser:appuser
 EXPOSE 8080
 
 # Health check instruction
-# Note: This won't work in scratch without a shell
-# Use orchestrator health checks instead (Kubernetes, Docker Swarm)
+# Note: This only works if your binary implements the health check command.
+# Otherwise, use orchestrator health checks instead (Kubernetes, Docker Swarm)
 # HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 #     CMD ["/main", "-health-check"]
 
@@ -633,6 +637,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
 COPY --from=builder /app/main /main
 
 USER appuser:appuser
@@ -658,6 +663,7 @@ Support both amd64 and arm64 architectures for broader compatibility.
 This Dockerfile supports building for multiple CPU architectures:
 
 ```dockerfile
+# syntax=docker/dockerfile:1
 FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 # These arguments are automatically provided by Docker buildx
@@ -688,6 +694,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
 COPY --from=builder /app/main /main
 
 USER appuser:appuser
@@ -801,7 +808,6 @@ This Docker Compose configuration provides a development environment with live r
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 
 services:
   app:
@@ -930,6 +936,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
 COPY --from=builder /app/main /main
 
 USER appuser:appuser
@@ -958,15 +965,12 @@ Use a debug sidecar container:
 
 ```yaml
 # docker-compose.debug.yml
-version: '3.8'
 
 services:
   app:
     image: go-app:scratch
     ports:
       - "8080:8080"
-    # Share process namespace for debugging
-    pid: "shareable"
 
   debug:
     image: alpine:3.19
@@ -1017,11 +1021,11 @@ Here is a comparison of image sizes using different base images:
 |------------|------------------|---------------|-------|----------|
 | `golang:1.22` | ~850 MB | Yes | Yes | No |
 | `golang:1.22-alpine` | ~250 MB | Yes | Yes | No |
-| `alpine:3.19` | ~12 MB | Yes | Yes | No |
+| `alpine:3.19` | ~12 MB | No* | Yes | No |
 | `gcr.io/distroless/static` | ~2 MB | Yes | No | Optional |
 | `scratch` | ~5 MB | No* | No | No |
 
-*Requires copying CA certificates manually
+*Requires installing or copying CA certificates manually
 
 ## Best Practices Summary
 
@@ -1071,8 +1075,8 @@ ENV TZ=UTC
 Ensure proper file permissions and user configuration:
 
 ```dockerfile
-# Make binary executable
-RUN chmod +x /main
+# Ensure the binary is executable when copying it
+COPY --chmod=755 --from=builder /app/main /main
 
 # Use correct user
 USER appuser:appuser
