@@ -118,13 +118,17 @@ Filter options based on metric values, not just labels:
 
 **Variable: active_pods** - Show only pods with recent activity
 ```promql
-label_values(
-  container_cpu_usage_seconds_total{
-    namespace="$namespace"
-  } offset 5m,
-  pod
+query_result(
+  sum by (pod) (
+    rate(container_cpu_usage_seconds_total{
+      namespace="$namespace"
+    }[$__rate_interval])
+  ) > 0
 )
 ```
+
+With regex to extract the pod name:
+- Regex: `/pod="([^"]+)"/`
 
 ### Query-Based Dynamic Options
 
@@ -192,9 +196,9 @@ For time-sensitive data:
 
 This ensures the variable shows only options that have data in the selected time range.
 
-### Chained Refresh Order
+### Chained Variable Order
 
-Grafana refreshes variables in definition order. Place parent variables before dependent ones:
+Grafana detects linked variables and automatically refreshes a variable when one of its linked variables changes. Place parent variables before dependent ones so the dashboard controls are easy to follow:
 
 1. `environment` (no dependencies)
 2. `namespace` (depends on environment)
@@ -226,7 +230,7 @@ query: label_values(kube_pod_info{cluster="$cluster"}, namespace)
 # 4. Workload Type
 name: workload_type
 type: custom
-options: Deployment,StatefulSet,DaemonSet,Job
+options: deployment,statefulset,daemonset
 
 # 5. Workload Name (filtered by namespace and type)
 name: workload
