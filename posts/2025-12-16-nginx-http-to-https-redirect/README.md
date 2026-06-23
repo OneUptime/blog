@@ -8,7 +8,7 @@ Description: Learn how to configure Nginx to redirect all HTTP traffic to HTTPS,
 
 ---
 
-Redirecting HTTP to HTTPS ensures all traffic to your website is encrypted. This is essential for security, SEO, and user trust. Modern browsers mark HTTP sites as "Not Secure," and search engines penalize non-HTTPS websites in rankings.
+Redirecting HTTP to HTTPS ensures all traffic to your website is encrypted. This is essential for security, SEO, and user trust. Modern browsers mark HTTP sites as "Not Secure," and search engines such as Google use HTTPS as a ranking signal.
 
 ## Basic HTTP to HTTPS Redirect
 
@@ -90,7 +90,8 @@ server {
 
 ```nginx
 server {
-    listen 80 443 ssl;
+    listen 80;
+    listen 443 ssl;
     server_name example.com;
 
     ssl_certificate /path/to/cert.pem;
@@ -200,7 +201,7 @@ server {
     # Other security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-XSS-Protection "0" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     root /var/www/example.com;
@@ -439,7 +440,8 @@ Check security headers at: https://securityheaders.com/
 ```nginx
 # WRONG - causes redirect loop
 server {
-    listen 80 443 ssl;
+    listen 80;
+    listen 443 ssl;
     return 301 https://$host$request_uri;
 }
 
