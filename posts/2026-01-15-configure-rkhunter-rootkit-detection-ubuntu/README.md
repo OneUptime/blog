@@ -338,16 +338,13 @@ LOGFILE=/var/log/rkhunter.log
 # Set to 1 to keep historical data
 APPEND_LOG=0
 
-# Copy the logfile on each run
-# Useful for maintaining backup logs
+# Copy the logfile (with a timestamp appended) when warnings/errors occur
+# Useful for retaining the log of a problematic run
 COPY_LOG_ON_ERROR=0
 
-# Enable verbose logging for detailed output
-# Set to 1 for troubleshooting
+# Log scan start/finish times and warnings to syslog
+# Value is the syslog facility.priority to use (or 0 to disable)
 USE_SYSLOG=authpriv.warning
-
-# Syslog facility to use
-SYSLOG_PRIORITY=LOG_WARNING
 
 #
 # EMAIL NOTIFICATION SETTINGS
@@ -365,8 +362,8 @@ MAIL_CMD=mail -s "[rkhunter] Warnings found on ${HOST_NAME}"
 # SCAN BEHAVIOR
 #
 
-# Auto-update file properties database after system updates
-# Requires PKGMGR to be set correctly
+# Auto-detect whether X (the window system) is in use
+# When X is detected, rkhunter uses the second colour set for output
 AUTO_X_DETECT=1
 
 # Enable or disable specific test categories
@@ -427,23 +424,27 @@ PKGMGR=DPKG
 # Options: SHA256, SHA512, SHA1, MD5
 HASH_CMD=SHA256
 
-# Alternative hash command (if primary unavailable)
+# Field index of the hash value in the HASH_CMD output
+# (used to parse the hash from the command's output)
 HASH_FLD_IDX=4
 
 #
 # ROOTKIT DETECTION SETTINGS
 #
 
-# Check for known bad applications
+# Thorough rootkit scan: search the whole filesystem for known
+# rootkit file names rather than only their default locations
 SCANROOTKITMODE=THOROUGH
 
-# Check for suspicious files in /dev directory
+# Warn if the operating system appears to have changed since the
+# last 'rkhunter --propupd' run
 WARN_ON_OS_CHANGE=1
 
-# Upload rootkit samples (for security research)
+# Automatically run 'rkhunter --propupd' when an O/S change is detected
+# Set to 0 to only warn (recommended) instead of auto-updating
 UPDT_ON_OS_CHANGE=0
 
-# Check for strings in suspicious files
+# Directories scanned for suspicious files (suspscan test)
 SUSPSCAN_DIRS=/tmp /var/tmp
 
 # Maximum size (in bytes) for suspicious file scanning
@@ -469,12 +470,13 @@ INSTALLDIR=/usr
 # Add ports that should never be listening on your system
 PORT_WHITELIST=
 
-# Whitelist specific IP addresses
+# Whitelist listening ports by the path of the program using them
+# (optionally as path:protocol:port, e.g. /usr/sbin/squid:TCP:3128)
 PORT_PATH_WHITELIST=/usr/sbin/sshd
 PORT_PATH_WHITELIST=/usr/sbin/apache2
 
-# Network interface whitelist
-IFACE_WHITELIST=lo
+# Network interfaces allowed to be in promiscuous mode
+ALLOWPROMISCIF=eth0
 
 #
 # USER AND GROUP CHECKS
@@ -486,7 +488,8 @@ UID0_ACCOUNTS=root
 # Accounts that can have passwordless entries
 PWDLESS_ACCOUNTS=
 
-# System accounts that should not have login shells
+# Path to the syslog daemon configuration file (used by the
+# filesystem test that checks remote logging is not configured)
 SYSLOG_CONFIG_FILE=/etc/rsyslog.conf
 
 #
@@ -506,21 +509,17 @@ OS_VERSION_FILE=/etc/os-release
 # IMMUTABLE FILES CHECK
 #
 
-# Check for files with immutable attribute
+# Reverse the immutable-bit test: when set to 1, rkhunter expects
+# the immutable attribute to be present and warns when it is not
 IMMUTABLE_SET=0
-
-# Check for files with immutable attribute that should not be immutable
-IMMUTABLES_FILE=/etc/rkhunter.immutable
 
 #
 # APPLICATION VERSION CHECKS
 #
 
-# Check versions of common applications for known vulnerabilities
+# Whitelist applications (or specific versions) from the version checks
+# Example: APP_WHITELIST=openssl gpg:1.4.16
 APP_WHITELIST=
-
-# GnuPG application check
-GPGKEY=
 ```
 
 ### Create Local Configuration File
@@ -655,7 +654,7 @@ sudo crontab -e
 Add the following entries:
 
 ```bash
-# /etc/cron.d/rkhunter
+# root's crontab (sudo crontab -e)
 # Automated rkhunter scanning schedule
 
 # Update rkhunter database daily at 2:00 AM
@@ -721,7 +720,7 @@ log_message "Running security scan"
 /usr/bin/rkhunter --check \
     --skip-keypress \
     --report-warnings-only \
-    --append-log \
+    --appendlog \
     --nocolors >> "$SCAN_LOG" 2>&1
 
 SCAN_EXIT_CODE=$?
@@ -763,7 +762,7 @@ Make the script executable and schedule it:
 sudo chmod +x /usr/local/bin/rkhunter-daily-scan.sh
 
 # Add to crontab
-echo "0 3 * * * /usr/local/bin/rkhunter-daily-scan.sh" | sudo tee -a /etc/crontab
+echo "0 3 * * * root /usr/local/bin/rkhunter-daily-scan.sh" | sudo tee -a /etc/crontab
 ```
 
 ### Using Systemd Timers (Alternative to Cron)
