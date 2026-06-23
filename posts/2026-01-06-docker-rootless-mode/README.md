@@ -237,14 +237,19 @@ The pasta network backend provides better performance than slirp4netns for rootl
 sudo apt install passt
 ```
 
-Then configure Docker to use it by creating or updating `~/.config/docker/daemon.json`:
+Then configure the rootless daemon to use it by setting the `DOCKERD_ROOTLESS_ROOTLESSKIT_NET=pasta` environment variable in a systemd user service override:
 
-```json
-{
-  "features": {
-    "containerd-snapshotter": true
-  }
-}
+```bash
+# Create a drop-in override for the rootless docker service
+mkdir -p ~/.config/systemd/user/docker.service.d
+tee ~/.config/systemd/user/docker.service.d/override.conf << 'EOF'
+[Service]
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_NET=pasta"
+EOF
+
+# Reload and restart to apply
+systemctl --user daemon-reload
+systemctl --user restart docker
 ```
 
 ### Container-to-Container Networking
@@ -358,7 +363,8 @@ mount | grep cgroup
 sudo mkdir -p /etc/systemd/system/user@.service.d
 
 # Create delegation configuration
-sudo cat > /etc/systemd/system/user@.service.d/delegate.conf << EOF
+# Use tee (not "sudo cat >") so the file is written with root privileges
+sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null << EOF
 [Service]
 # Delegate these cgroup controllers to user services
 Delegate=cpu cpuset io memory pids
