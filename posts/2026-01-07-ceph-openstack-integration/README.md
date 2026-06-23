@@ -167,8 +167,8 @@ ceph auth get-or-create client.glance \
 ```
 
 ```bash
-# Create user for Cinder with access to volumes, images, and backups pools
-# Cinder needs to read images (for volume creation from images) and write to volumes/backups
+# Create user for Cinder and Nova with access to volumes, vms, and images pools
+# Cinder reads images for volume creation, writes to volumes, and Nova uses this user for RBD-backed disks
 ceph auth get-or-create client.cinder \
     mon 'profile rbd' \
     osd 'profile rbd pool=volumes, profile rbd pool=vms, profile rbd-read-only pool=images' \
@@ -178,22 +178,12 @@ ceph auth get-or-create client.cinder \
 
 ```bash
 # Create user for Cinder backup service
-# Backup service needs access to both volumes (source) and backups (destination) pools
+# Backup service stores backup objects in the backups pool
 ceph auth get-or-create client.cinder-backup \
     mon 'profile rbd' \
     osd 'profile rbd pool=backups' \
     mgr 'profile rbd pool=backups' \
     -o /etc/ceph/ceph.client.cinder-backup.keyring
-```
-
-```bash
-# Create user for Nova compute with access to vms and volumes pools
-# Nova needs to create ephemeral disks and attach Cinder volumes
-ceph auth get-or-create client.nova \
-    mon 'profile rbd' \
-    osd 'profile rbd pool=vms, profile rbd pool=volumes, profile rbd-read-only pool=images' \
-    mgr 'profile rbd pool=vms' \
-    -o /etc/ceph/ceph.client.nova.keyring
 ```
 
 ### Distribute Keys to OpenStack Nodes
@@ -211,13 +201,16 @@ ssh glance-node "chmod 640 /etc/ceph/ceph.client.glance.keyring"
 scp /etc/ceph/ceph.client.cinder.keyring cinder-node:/etc/ceph/
 ssh cinder-node "chown cinder:cinder /etc/ceph/ceph.client.cinder.keyring"
 ssh cinder-node "chmod 640 /etc/ceph/ceph.client.cinder.keyring"
+scp /etc/ceph/ceph.client.cinder-backup.keyring cinder-backup-node:/etc/ceph/
+ssh cinder-backup-node "chown cinder:cinder /etc/ceph/ceph.client.cinder-backup.keyring"
+ssh cinder-backup-node "chmod 640 /etc/ceph/ceph.client.cinder-backup.keyring"
 
-# Copy Nova keyring to all compute nodes
+# Copy Cinder keyring to all compute nodes
 # This must be done for each compute node in your cluster
 for node in compute-{1..10}; do
-    scp /etc/ceph/ceph.client.nova.keyring ${node}:/etc/ceph/
-    ssh ${node} "chown nova:nova /etc/ceph/ceph.client.nova.keyring"
-    ssh ${node} "chmod 640 /etc/ceph/ceph.client.nova.keyring"
+    scp /etc/ceph/ceph.client.cinder.keyring ${node}:/etc/ceph/
+    ssh ${node} "chown nova:nova /etc/ceph/ceph.client.cinder.keyring"
+    ssh ${node} "chmod 640 /etc/ceph/ceph.client.cinder.keyring"
 done
 ```
 
@@ -228,7 +221,7 @@ All OpenStack nodes need the Ceph configuration file to locate the monitors.
 ```bash
 # Copy ceph.conf to all OpenStack nodes
 # This file contains monitor addresses and cluster configuration
-for node in glance-node cinder-node compute-{1..10}; do
+for node in glance-node cinder-node cinder-backup-node compute-{1..10}; do
     scp /etc/ceph/ceph.conf ${node}:/etc/ceph/
     ssh ${node} "chmod 644 /etc/ceph/ceph.conf"
 done
@@ -282,15 +275,8 @@ To enable efficient volume creation from images, configure Glance to expose imag
 [DEFAULT]
 # Allow Glance to expose the storage location of images
 # This enables Cinder to use COW cloning instead of copying entire images
+# Do not enable this on a public Glance endpoint because it exposes backend storage locations
 show_image_direct_url = True
-
-# Control which location metadata fields are visible
-# Include 'direct_url' to expose the RBD location to Cinder
-show_multiple_locations = True
-
-# List of URL schemes that are allowed for direct access
-# This permits Cinder to access images via the rbd:// protocol
-allowed_direct_url_schemes = rbd
 ```
 
 ### Restart Glance Services
@@ -316,11 +302,14 @@ Upload a test image to verify the Ceph integration is working.
 # Download a test image (CirrOS is small and perfect for testing)
 wget http://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img
 
+# Convert the image to raw format for Ceph-backed VM disks
+qemu-img convert -f qcow2 -O raw cirros-0.6.2-x86_64-disk.img cirros-0.6.2-x86_64-disk.raw
+
 # Upload image to Glance using Ceph backend
 # The image will be stored in the 'images' pool as an RBD image
 openstack image create "cirros-test" \
-    --file cirros-0.6.2-x86_64-disk.img \
-    --disk-format qcow2 \
+    --file cirros-0.6.2-x86_64-disk.raw \
+    --disk-format raw \
     --container-format bare \
     --public
 
@@ -349,10 +338,6 @@ enabled_backends = ceph
 
 # Set Ceph as the default volume type
 default_volume_type = ceph
-
-# Enable image-to-volume optimization (uses Ceph COW cloning)
-# This significantly speeds up volume creation from Glance images
-allowed_direct_url_schemes = cinder,rbd
 
 # Glance API version for image operations
 glance_api_version = 2
@@ -392,7 +377,7 @@ rbd_user = cinder
 # This allows Nova to authenticate when attaching volumes
 rbd_secret_uuid = 457eb676-33da-42ec-9a8c-9293d545c337
 
-# Exclusive lock feature for live migration support
+# Treat the RBD pool as dedicated to this Cinder backend for faster capacity reporting
 rbd_exclusive_cinder_pool = True
 ```
 
@@ -537,9 +522,9 @@ images_type = rbd
 # Ceph pool for ephemeral instance disks
 images_rbd_pool = vms
 
-# Ceph user for Nova operations
+# Ceph user for Nova RBD operations
 images_rbd_ceph_conf = /etc/ceph/ceph.conf
-rbd_user = nova
+rbd_user = cinder
 
 # Secret UUID for volume attachment (must match libvirt secret)
 rbd_secret_uuid = 457eb676-33da-42ec-9a8c-9293d545c337
@@ -548,23 +533,19 @@ rbd_secret_uuid = 457eb676-33da-42ec-9a8c-9293d545c337
 # Use writeback caching for network-backed storage
 disk_cachemodes = network=writeback
 
-# Enable live migration with RBD-backed instances
-# These settings allow seamless VM migration between compute nodes
-live_migration_flag = VIR_MIGRATE_UNDEFINE_SOURCE,VIR_MIGRATE_PEER2PEER,VIR_MIGRATE_LIVE
-
 # Inject password and SSH key into instances
 # Disabled when using Ceph as it conflicts with RBD-backed images
 inject_password = false
 inject_key = false
-inject_partition = -2
+inject_partition = -1
 
-# Hardware machine type for optimal performance
-hw_machine_type = x86_64=pc-i440fx-2.11
+# Optional: set this if Glance has multiple RBD stores and Nova should copy images into this store
+images_rbd_glance_store_name = rbd
 ```
 
-### Configure Nova for Direct Image Access
+### Configure Nova Image Access
 
-Enable Nova to access Glance images directly from Ceph without downloading.
+Configure Nova to use the Glance API and keep raw image handling aligned with the RBD ephemeral backend.
 
 ```ini
 # /etc/nova/nova.conf
@@ -574,9 +555,8 @@ Enable Nova to access Glance images directly from Ceph without downloading.
 api_servers = http://glance-api:9292
 
 [DEFAULT]
-# Allow Nova to access images directly from RBD
-# This enables efficient instance creation using COW cloning
-force_raw_images = False
+# Keep raw conversion enabled when using images_type = rbd
+force_raw_images = True
 ```
 
 ### Restart Nova Services
@@ -643,11 +623,6 @@ ceph osd pool set volumes min_size 2
 
 ceph osd pool set vms size 3
 ceph osd pool set vms min_size 2
-
-# Enable RBD caching at the pool level
-# This improves read performance for frequently accessed data
-ceph osd pool set volumes rbd_cache true
-ceph osd pool set vms rbd_cache true
 ```
 
 ### Ceph Client Configuration
@@ -681,8 +656,8 @@ rbd_cache_writethrough_until_flush = true
 rbd_concurrent_management_ops = 20
 
 # Default features for new RBD images
-# Enable layering for COW cloning, exclusive-lock for live migration
-rbd_default_features = 3
+# Enable layering for COW cloning and exclusive-lock/object-map/fast-diff/deep-flatten for modern RBD workflows
+rbd_default_features = layering,exclusive-lock,object-map,fast-diff,deep-flatten
 ```
 
 ### Cinder Performance Tuning
@@ -714,12 +689,6 @@ Optimize Nova for better VM performance with Ceph storage.
 # /etc/nova/nova.conf
 
 [libvirt]
-# Use native threads for better I/O performance
-io_emulator_threads = native
-
-# Configure virtio-blk for better disk performance
-disk_mode = virtio-blk
-
 # CPU and memory settings for better VM performance
 cpu_mode = host-passthrough
 hw_disk_discard = unmap
@@ -929,6 +898,7 @@ ceph osd perf
 ceph -w &
 
 # Test direct RBD performance
+rbd create volumes/test-bench --size 1G
 rbd bench --io-type write --io-size 4M --io-total 1G volumes/test-bench
 
 # Clean up test image
@@ -942,10 +912,10 @@ Live migration may fail if Ceph connectivity or permissions are inconsistent acr
 ```bash
 # Verify Ceph connectivity on both source and destination nodes
 # Run on each compute node:
-ceph --id nova -s
+ceph --id cinder -s
 
 # Check that RBD images are accessible
-rbd --id nova -p vms ls
+rbd --id cinder -p vms ls
 
 # Verify libvirt can access the secret on both nodes
 virsh secret-get-value 457eb676-33da-42ec-9a8c-9293d545c337
@@ -1009,7 +979,6 @@ ceph osd blocked-by
 # Service connectivity test
 ceph --id glance -s
 ceph --id cinder -s
-ceph --id nova -s
 
 # OpenStack service status
 openstack volume service list
@@ -1133,7 +1102,7 @@ groups:
 
       # Alert on low pool space (affects volume creation)
       - alert: CephPoolNearFull
-        expr: (ceph_pool_bytes_used / ceph_pool_max_avail) > 0.75
+        expr: ceph_pool_percent_used > 0.75
         for: 5m
         labels:
           severity: warning
@@ -1142,7 +1111,7 @@ groups:
 
       # Alert on slow RBD operations
       - alert: CephSlowOps
-        expr: ceph_pg_slow_ops > 0
+        expr: ceph_health_detail{name="SLOW_OPS"} == 1
         for: 10m
         labels:
           severity: warning
