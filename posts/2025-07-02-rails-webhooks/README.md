@@ -316,8 +316,8 @@ class StripeWebhookJob < ApplicationJob
   # Use a dedicated queue for webhooks
   queue_as :webhooks
 
-  # Retry with exponential backoff
-  retry_on StandardError, wait: :exponentially_longer, attempts: 5
+  # Retry with polynomial backoff
+  retry_on StandardError, wait: :polynomially_longer, attempts: 5
 
   # Don't retry on certain errors
   discard_on ActiveJob::DeserializationError
@@ -539,8 +539,8 @@ class WebhookSubscription < ApplicationRecord
   belongs_to :user
   has_many :webhook_deliveries, dependent: :destroy
 
-  # Store events as a JSON array
-  serialize :events, coder: JSON
+  # Events are stored as a JSON array. The column is jsonb (see migration),
+  # so Active Record (de)serializes the array natively - no `serialize` needed.
 
   validates :url, presence: true, format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]) }
   validates :events, presence: true
@@ -733,9 +733,9 @@ class WebhookDeliveryJob < ApplicationJob
   queue_as :webhooks
 
   # Retry with exponential backoff
-  # Attempts at: immediately, 1min, 5min, 25min, 2hrs
+  # Waits between attempts: 1min, 5min, 25min, ~2hrs
   retry_on WebhookSender::DeliveryError,
-           wait: ->(executions) { (executions ** 4) + 2 },
+           wait: ->(executions) { (5 ** (executions - 1)).minutes },
            attempts: 5
 
   def perform(delivery_id)
