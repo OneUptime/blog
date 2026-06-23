@@ -15,7 +15,7 @@ Load balancing is a critical component of any distributed system, ensuring that 
 Istio supports several load balancing algorithms, each suited for different use cases:
 
 - **ROUND_ROBIN**: Distributes requests evenly across all instances
-- **LEAST_CONN**: Routes to instances with the fewest active connections
+- **LEAST_REQUEST**: Routes to instances with the fewest outstanding requests
 - **RANDOM**: Randomly selects an instance for each request
 - **PASSTHROUGH**: Bypasses Envoy's load balancing for direct connection
 - **Consistent Hashing**: Routes requests to the same instance based on a hash key
@@ -58,7 +58,7 @@ In Istio, load balancing decisions are made by the Envoy sidecar proxy. When a r
 
 ## ROUND_ROBIN Load Balancing
 
-Round Robin is the default load balancing algorithm in Istio. It distributes requests sequentially across all healthy instances in a circular pattern, ensuring each instance receives an approximately equal share of traffic.
+Round Robin is a supported load balancing algorithm in Istio. Current Istio releases use least-request load balancing by default, so configure Round Robin explicitly when you want requests distributed sequentially across all healthy instances in a circular pattern.
 
 ```mermaid
 sequenceDiagram
@@ -83,11 +83,11 @@ sequenceDiagram
 - **Homogeneous backends**: When all service instances have similar capacity
 - **Stateless services**: Services that don't require session affinity
 - **Even distribution**: When you want predictable traffic distribution
-- **Default choice**: A safe starting point for most services
+- **Explicit sequential distribution**: When you specifically want round-robin behavior
 
 ### Configuring ROUND_ROBIN
 
-The following DestinationRule configures Round Robin load balancing for a service called "my-service" in the "production" namespace. This is the default behavior, but it's good practice to explicitly define it for clarity.
+The following DestinationRule configures Round Robin load balancing for a service called "my-service" in the "production" namespace.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -134,23 +134,23 @@ spec:
         connectTimeout: 30s
       # HTTP connection pool settings control layer 7 request behavior
       http:
-        # Maximum number of pending HTTP requests waiting for connection
-        # Requests beyond this limit receive 503 Service Unavailable
+        # Upgrade HTTP/1.1 connections to HTTP/2 for this destination
         h2UpgradePolicy: UPGRADE
-        # Maximum requests that can be outstanding to each backend
+        # Maximum number of pending HTTP requests waiting for a ready connection
+        # Requests beyond this limit receive 503 Service Unavailable
         http1MaxPendingRequests: 100
-        # Maximum concurrent HTTP2 requests to a single backend
+        # Maximum active HTTP requests to a destination
         http2MaxRequests: 1000
-        # Maximum retries for failed requests
+        # Maximum retries that can be outstanding to all hosts in the cluster
         maxRetries: 3
         # Maximum requests per connection before it's closed
         # Helps distribute connections more evenly over time
         maxRequestsPerConnection: 100
 ```
 
-## LEAST_CONN Load Balancing
+## LEAST_REQUEST Load Balancing
 
-LEAST_CONN (Least Connections) routes traffic to the instance with the fewest active connections. This algorithm is particularly effective when request processing times vary significantly, as it naturally balances load based on actual server capacity.
+LEAST_REQUEST routes traffic to endpoints with fewer outstanding requests. This algorithm is particularly effective when request processing times vary significantly, as it naturally balances load based on actual request concurrency.
 
 ```mermaid
 flowchart LR
@@ -158,10 +158,10 @@ flowchart LR
         LB[Envoy Proxy]
     end
 
-    subgraph "Backend Pods with Active Connections"
-        P1[Pod 1<br/>5 connections]
-        P2[Pod 2<br/>2 connections]
-        P3[Pod 3<br/>8 connections]
+    subgraph "Backend Pods with Outstanding Requests"
+        P1[Pod 1<br/>5 outstanding requests]
+        P2[Pod 2<br/>2 outstanding requests]
+        P3[Pod 3<br/>8 outstanding requests]
     end
 
     LB -->|New Request| P2
@@ -169,7 +169,7 @@ flowchart LR
     style P2 fill:#90EE90,stroke:#333,stroke-width:2px
 ```
 
-### When to Use LEAST_CONN
+### When to Use LEAST_REQUEST
 
 - **Variable request duration**: When some requests take longer than others
 - **Resource-intensive operations**: Database queries, file processing, ML inference
@@ -177,9 +177,9 @@ flowchart LR
 - **Long-lived connections**: WebSocket or streaming applications
 - **Bursty traffic patterns**: When traffic arrives in unpredictable bursts
 
-### Configuring LEAST_CONN
+### Configuring LEAST_REQUEST
 
-This configuration routes new requests to the backend instance currently handling the fewest active connections, ideal for services with variable response times.
+This configuration routes new requests toward backend instances currently handling fewer outstanding requests, ideal for services with variable response times.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -192,16 +192,16 @@ spec:
   host: api-gateway
   trafficPolicy:
     loadBalancer:
-      # LEAST_CONN selects the instance with minimum active connections
+      # LEAST_REQUEST favors endpoints with fewer outstanding requests
       # This naturally balances load when request durations vary
       # Particularly effective for services that perform database queries
       # or other operations with unpredictable latency
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
 ```
 
-### LEAST_CONN with Outlier Detection
+### LEAST_REQUEST with Outlier Detection
 
-Combining LEAST_CONN with outlier detection creates a robust load balancing strategy that both distributes load efficiently and removes unhealthy instances from the rotation.
+Combining LEAST_REQUEST with outlier detection creates a robust load balancing strategy that both distributes load efficiently and removes unhealthy instances from the rotation.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -213,9 +213,9 @@ spec:
   host: database-proxy
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
     # Outlier detection identifies and ejects unhealthy instances
-    # This ensures LEAST_CONN only considers healthy backends
+    # This ensures LEAST_REQUEST only considers healthy backends
     outlierDetection:
       # Check for consecutive errors every 10 seconds
       # Shorter intervals mean faster detection but more CPU overhead
@@ -314,8 +314,8 @@ spec:
             to:
               "us-east1/*": 80
               "us-west1/*": 20
-    # Outlier detection is required for locality load balancing to work
-    # It determines which endpoints are healthy in each locality
+    # Outlier detection is required for locality failover policies.
+    # With distribute rules, it is still useful for ejecting unhealthy endpoints.
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
@@ -373,7 +373,8 @@ spec:
       simple: PASSTHROUGH
     # TLS settings for connecting to the external service
     tls:
-      # SIMPLE mode enables TLS but does not verify the server certificate
+      # SIMPLE mode enables TLS and verifies the server certificate using
+      # OS CA certificates unless custom CA settings are provided
       # Use MUTUAL for mTLS with client certificates
       mode: SIMPLE
 ```
@@ -467,12 +468,13 @@ spec:
       consistentHash:
         # Route based on the value of the x-session-id header
         # All requests with the same session ID go to the same backend
-        # If the header is missing, falls back to round-robin
+        # If the header is missing, requests are not pinned by this hash key
         httpHeaderName: x-session-id
         # Minimum ring size for the consistent hash ring
         # Larger values provide more even distribution but use more memory
         # Default is 1024, increase for large deployments
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
 ```
 
 ### Configuring Consistent Hash by Cookie
@@ -568,7 +570,8 @@ spec:
         # Larger rings = more even distribution, more memory
         # Smaller rings = less memory, potentially uneven distribution
         # Rule of thumb: ring size should be >> number of backends
-        minimumRingSize: 10240
+        ringHash:
+          minimumRingSize: 10240
     # Connection pool settings for stateful connections
     connectionPool:
       tcp:
@@ -602,7 +605,7 @@ flowchart TD
             V1P2[v1-pod-2]
         end
 
-        subgraph "v2 Subset (LEAST_CONN)"
+        subgraph "v2 Subset (LEAST_REQUEST)"
             V2P1[v2-pod-1]
             V2P2[v2-pod-2]
         end
@@ -616,7 +619,7 @@ flowchart TD
 
 ### Configuring Subset-Specific Load Balancing
 
-This configuration demonstrates how to apply different load balancing algorithms to different versions of a service. Version 1 uses round-robin for stable, predictable distribution, while version 2 (canary) uses least-connection to handle variable load.
+This configuration demonstrates how to apply different load balancing algorithms to different versions of a service. Version 1 uses round-robin for stable, predictable distribution, while version 2 (canary) uses least-request to handle variable load.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -650,16 +653,16 @@ spec:
           # ROUND_ROBIN for stable, production traffic
           # Provides predictable distribution across stable pods
           simple: ROUND_ROBIN
-    # Canary version uses least-connection for optimal handling
+    # Canary version uses least-request for optimal handling
     - name: v2
       labels:
         version: v2
       trafficPolicy:
         loadBalancer:
-          # LEAST_CONN for canary deployment
+          # LEAST_REQUEST for canary deployment
           # Helps if the new version has different performance characteristics
           # Automatically adapts to varying response times
-          simple: LEAST_CONN
+          simple: LEAST_REQUEST
 ```
 
 ### VirtualService for Subset Routing
@@ -695,8 +698,8 @@ Use this decision matrix to choose the right load balancing algorithm for your u
 
 | Algorithm | Best For | Pros | Cons |
 |-----------|----------|------|------|
-| **ROUND_ROBIN** | Homogeneous backends, default choice | Simple, predictable, even distribution | Doesn't consider backend load |
-| **LEAST_CONN** | Variable request times, heterogeneous backends | Adapts to actual load, prevents overload | Slightly more overhead |
+| **ROUND_ROBIN** | Homogeneous backends, explicit sequential distribution | Simple, predictable, even distribution | Doesn't consider backend load |
+| **LEAST_REQUEST** | Variable request times, heterogeneous backends, default choice | Adapts to actual load, prevents overload | Slightly more overhead |
 | **RANDOM** | Large clusters, stateless services | Low overhead, no hot spots | May be slightly uneven short-term |
 | **PASSTHROUGH** | External services, StatefulSets | Direct control, no LB overhead | No load balancing benefits |
 | **Consistent Hash** | Session affinity, caching | Predictable routing, cache-friendly | Uneven if keys are skewed |
@@ -706,7 +709,7 @@ Use this decision matrix to choose the right load balancing algorithm for your u
 Here is a complete example showing a production-ready configuration with multiple services, each using the most appropriate load balancing algorithm.
 
 ```yaml
-# API Gateway - uses LEAST_CONN because request durations vary significantly
+# API Gateway - uses LEAST_REQUEST because request durations vary significantly
 
 # based on the downstream services being called
 apiVersion: networking.istio.io/v1beta1
@@ -718,7 +721,7 @@ spec:
   host: api-gateway
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
     connectionPool:
       tcp:
         maxConnections: 1000
@@ -748,7 +751,8 @@ spec:
       consistentHash:
         # Hash on user ID header set by API gateway
         httpHeaderName: x-user-id
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
     connectionPool:
       tcp:
         maxConnections: 500
@@ -810,15 +814,15 @@ After configuring load balancing, monitor its effectiveness using Istio's built-
 Check these Prometheus queries to verify your load balancing configuration is working correctly.
 
 ```promql
-# Request distribution across pods - should be even for ROUND_ROBIN
-# Group by destination workload to see per-pod request counts
+# Request distribution across destination workloads - should be even for ROUND_ROBIN
+# Group by destination_workload to compare workload-level request counts
 sum(rate(istio_requests_total{destination_service="my-service.production.svc.cluster.local"}[5m])) by (destination_workload)
 
-# Connection distribution for LEAST_CONN
-# Monitor active connections per backend
+# Active upstream connections for LEAST_REQUEST
+# Monitor active connections for the upstream cluster
 envoy_cluster_upstream_cx_active{cluster_name="outbound|80||my-service.production.svc.cluster.local"}
 
-# Response time distribution - useful for validating LEAST_CONN effectiveness
+# Response time distribution - useful for validating LEAST_REQUEST effectiveness
 # Should show more even response times across backends
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-service.production.svc.cluster.local"}[5m])) by (le, destination_workload))
 
@@ -859,8 +863,8 @@ istioctl proxy-config route <pod-name> -n production -o json | jq '.[] | select(
 
 ## Best Practices Summary
 
-1. **Start with ROUND_ROBIN** as your default and only change if you have specific requirements
-2. **Use LEAST_CONN** for services with variable response times or database-heavy workloads
+1. **Start with LEAST_REQUEST** as your default and only change if you have specific requirements
+2. **Use LEAST_REQUEST** for services with variable response times or database-heavy workloads
 3. **Implement consistent hashing** when you need session affinity or want to leverage backend caches
 4. **Always configure outlier detection** to automatically remove unhealthy backends
 5. **Set connection pool limits** to prevent any single backend from being overwhelmed
@@ -874,7 +878,7 @@ Istio provides a comprehensive set of load balancing algorithms that can be conf
 
 The key is to match the load balancing algorithm to your service's characteristics:
 - Stateless and homogeneous? Use **ROUND_ROBIN**
-- Variable latency? Use **LEAST_CONN**
+- Variable latency? Use **LEAST_REQUEST**
 - Need session affinity? Use **Consistent Hashing**
 - External service? Use **PASSTHROUGH**
 
