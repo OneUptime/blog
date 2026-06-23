@@ -1191,6 +1191,7 @@ flowchart TB
 
 namespace App\Services;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Closure;
 
@@ -1219,30 +1220,31 @@ class CacheService
         $lock = Cache::lock("lock:{$key}", $lockTimeout);
 
         try {
-            // Wait up to lockTimeout seconds for lock
-            if ($lock->block($lockTimeout)) {
-                // Double-check cache after acquiring lock
-                // Another process might have populated it
-                $value = Cache::get($key);
-                
-                if ($value !== null) {
-                    return $value;
-                }
+            // Wait up to lockTimeout seconds for the lock. If it cannot be
+            // acquired in time, block() throws a LockTimeoutException.
+            $lock->block($lockTimeout);
 
-                // Generate and cache the value
-                $value = $callback();
-                Cache::put($key, $value, $ttl);
-                
+            // Double-check cache after acquiring lock
+            // Another process might have populated it
+            $value = Cache::get($key);
+
+            if ($value !== null) {
                 return $value;
             }
+
+            // Generate and cache the value
+            $value = $callback();
+            Cache::put($key, $value, $ttl);
+
+            return $value;
+        } catch (LockTimeoutException $e) {
+            // If we couldn't acquire the lock in time, fall back to direct
+            // generation. This prevents deadlocks but might cause duplicate work.
+            return $callback();
         } finally {
-            // Always release the lock
+            // Always release the lock (no-op if we never acquired it)
             $lock->release();
         }
-
-        // If we couldn't acquire lock, fall back to direct generation
-        // This prevents deadlocks but might cause duplicate work
-        return $callback();
     }
 
     /**
@@ -1610,7 +1612,7 @@ class CacheMetricsService
 // config/cache.php
 
 return [
-    'default' => env('CACHE_DRIVER', 'file'),
+    'default' => env('CACHE_STORE', 'file'),
 
     'stores' => [
         'redis' => [
@@ -1627,7 +1629,7 @@ return [
 
 ```bash
 # .env.production
-CACHE_DRIVER=redis
+CACHE_STORE=redis
 REDIS_HOST=redis-cluster.internal.example.com
 REDIS_PASSWORD="${REDIS_SECURE_PASSWORD}"
 REDIS_PORT=6379
