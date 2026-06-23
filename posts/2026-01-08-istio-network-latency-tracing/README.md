@@ -200,7 +200,7 @@ spec:
       url: http://prometheus:9090
     tracing:
       enabled: true
-      in_cluster_url: http://jaeger-query:16685/jaeger
+      in_cluster_url: http://tracing:16685/jaeger
       use_grpc: true
 ```
 
@@ -209,8 +209,8 @@ spec:
 ### Accessing Jaeger UI
 
 ```bash
-# Port-forward Jaeger
-kubectl port-forward svc/jaeger-query -n istio-system 16686:16686 &
+# Port-forward Jaeger (the Istio addon exposes the query UI via the "tracing" service on port 80)
+kubectl port-forward svc/tracing -n istio-system 16686:80 &
 
 # Or use istioctl
 istioctl dashboard jaeger
