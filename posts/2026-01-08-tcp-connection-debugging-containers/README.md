@@ -49,7 +49,7 @@ stateDiagram-v2
 The `ss` command is the modern replacement for `netstat` and provides detailed socket information.
 
 ```bash
-# View all TCP connections with process information
+# View listening TCP sockets with process information
 
 ss -tlnp
 
@@ -98,7 +98,7 @@ nc -zv hostname 80-443
 nc -l -p 8080
 
 # Send data to test application protocol
-echo "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n" | nc hostname 80
+printf 'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n' | nc hostname 80
 
 # Test with verbose output showing connection timing
 nc -v -w 10 hostname 443 2>&1
