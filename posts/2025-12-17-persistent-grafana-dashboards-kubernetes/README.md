@@ -8,7 +8,7 @@ Description: Learn how to persist Grafana dashboards in Kubernetes using ConfigM
 
 ---
 
-Grafana dashboards created through the UI disappear when pods restart in Kubernetes. This guide shows you how to persist dashboards using ConfigMaps, provisioning, and GitOps patterns so your monitoring configurations survive deployments and restarts.
+Grafana dashboards created through the UI can disappear when pods restart in Kubernetes if Grafana's data directory uses ephemeral pod storage. This guide shows you how to persist dashboards using ConfigMaps, provisioning, and GitOps patterns so your monitoring configurations survive deployments and restarts.
 
 ---
 
@@ -27,14 +27,14 @@ Grafana dashboards created through the UI disappear when pods restart in Kuberne
 By default, Grafana stores dashboards in SQLite or its configured database. In Kubernetes:
 
 - Pod restarts lose ephemeral storage
-- Dashboards created via UI disappear
+- Dashboards created via UI disappear if the backing database is on ephemeral storage
 - Manual recreation is error-prone
 - No version control for changes
 
 ```mermaid
 flowchart TD
     subgraph Without Persistence
-        A[Create Dashboard via UI] --> B[Stored in Pod]
+        A[Create Dashboard via UI] --> B[Stored on Ephemeral Pod Disk]
         B --> C[Pod Restarts]
         C --> D[Dashboard Lost]
     end
@@ -180,8 +180,6 @@ data:
     providers:
       - name: 'default'
         orgId: 1
-        folder: ''
-        folderUid: ''
         type: file
         disableDeletion: false
         updateIntervalSeconds: 30
@@ -200,7 +198,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
         - name: grafana
@@ -388,55 +392,42 @@ data:
 ## Complete Helm Values Example
 
 ```yaml
-# Complete values.yaml for Grafana Helm chart
-grafana:
-  replicas: 1
+# Complete values.yaml for the standalone Grafana Helm chart
+replicas: 1
 
-  persistence:
+persistence:
+  enabled: true
+  size: 5Gi
+
+sidecar:
+  dashboards:
     enabled: true
-    size: 5Gi
-
-  sidecar:
-    dashboards:
-      enabled: true
-      label: grafana_dashboard
-      labelValue: "1"
-      searchNamespace: ALL
-      folderAnnotation: grafana_folder
-      provider:
-        foldersFromFilesStructure: true
-
-    datasources:
-      enabled: true
-      label: grafana_datasource
-
-  dashboardProviders:
-    dashboardproviders.yaml:
-      apiVersion: 1
-      providers:
-        - name: 'sidecar'
-          orgId: 1
-          folder: ''
-          type: file
-          disableDeletion: false
-          editable: true
-          options:
-            path: /tmp/dashboards
+    label: grafana_dashboard
+    labelValue: "1"
+    searchNamespace: ALL
+    folderAnnotation: grafana_folder
+    provider:
+      foldersFromFilesStructure: true
+      allowUiUpdates: true
 
   datasources:
-    datasources.yaml:
-      apiVersion: 1
-      datasources:
-        - name: Prometheus
-          type: prometheus
-          url: http://prometheus-server.monitoring.svc.cluster.local
-          access: proxy
-          isDefault: true
+    enabled: true
+    label: grafana_datasource
 
-  adminPassword: "your-secure-password"
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: true
 
-  env:
-    GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /tmp/dashboards/home.json
+adminPassword: "your-secure-password"
+
+env:
+  GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /tmp/dashboards/home.json
 ```
 
 ---
@@ -510,7 +501,7 @@ kubectl get configmap -n monitoring -l grafana_dashboard=1
 
 ### Dashboard Shows but Resets
 
-Ensure `editable: true` in dashboard JSON and provisioning config allows UI updates:
+Remember that `allowUiUpdates: true` saves UI edits to Grafana's database, not back to the JSON file. Later changes to the provisioning source overwrite the database copy. To allow UI saves at all, set:
 
 ```yaml
 providers:
