@@ -284,8 +284,9 @@ public class UserPreferences {
     }
 }
 
-// Or use Lombok
+// Or use Lombok (@Builder.Default requires @Builder on the class)
 @Data
+@Builder
 public class UserPreferences {
 
     @Builder.Default
