@@ -31,9 +31,9 @@ The following diagram illustrates how sidecar injection works in Istio:
 flowchart TD
     A[Pod Creation Request] --> B{Injection Enabled?}
     B -->|Namespace Label| C[Check istio-injection=enabled]
-    B -->|Pod Annotation| D[Check sidecar.istio.io/inject]
+    B -->|Pod Label| D[Check sidecar.istio.io/inject]
     C --> E{Label Present?}
-    D --> F{Annotation Present?}
+    D --> F{Label Present?}
     E -->|Yes| G[Mutating Webhook Triggered]
     E -->|No| H[No Injection]
     F -->|true| G
@@ -131,6 +131,9 @@ For production environments, you might want to use revision-based injection. Thi
 ```bash
 # Instead of istio-injection=enabled, use a revision label
 # This is useful when running multiple Istio versions for canary upgrades
+# Remove istio-injection first if it is already set, because it takes precedence
+kubectl label namespace my-application istio-injection-
+
 # Replace 'stable' with your actual Istio revision name
 kubectl label namespace my-application istio.io/rev=stable
 
@@ -178,22 +181,22 @@ kubectl get namespaces -L istio-injection
 # This command provides detailed information about injection settings
 istioctl analyze -n my-application
 
-# Verify the webhook will inject into the namespace
+# Verify the webhook will inject pods with matching labels in the namespace
 # The 'x check-inject' command simulates what would happen during injection
-istioctl x check-inject -n my-application
+istioctl x check-inject -n my-application -l app=my-app
 ```
 
-## Method 2: Pod-Level Annotations
+## Method 2: Pod-Level Labels and Annotations
 
-Sometimes you need fine-grained control over which pods receive sidecars. Pod-level annotations override namespace settings.
+Sometimes you need fine-grained control over which pods receive sidecars. Pod-level labels can opt workloads in or out, although a disabled injection label on the namespace still prevents injection.
 
 ### Enabling Injection for Specific Pods
 
-Use the `sidecar.istio.io/inject` annotation to control injection per pod:
+Use the `sidecar.istio.io/inject` label to control injection per pod:
 
 ```yaml
 # deployment-with-sidecar.yaml
-# This deployment explicitly enables sidecar injection regardless of namespace settings
+# This deployment explicitly enables sidecar injection when the namespace does not disable it
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -209,9 +212,8 @@ spec:
       labels:
         app: my-app
         version: v1
-      annotations:
         # Explicitly enable sidecar injection for this pod
-        # This annotation takes precedence over namespace-level settings
+        # This label opts the pod in unless namespace injection is disabled
         sidecar.istio.io/inject: "true"
     spec:
       containers:
@@ -243,7 +245,6 @@ spec:
     metadata:
       labels:
         app: legacy-app
-      annotations:
         # Disable sidecar injection for this specific pod
         # Useful for legacy applications or external dependencies
         sidecar.istio.io/inject: "false"
@@ -276,10 +277,9 @@ spec:
     metadata:
       labels:
         app: customized-app
-      annotations:
         # Enable sidecar injection
         sidecar.istio.io/inject: "true"
-
+      annotations:
         # Configure sidecar resource requests and limits
         # Adjust these based on your traffic volume and latency requirements
         sidecar.istio.io/proxyCPU: "100m"
@@ -295,13 +295,13 @@ spec:
         # Format: component1:level,component2:level
         sidecar.istio.io/componentLogLevel: "misc:error,rbac:debug"
 
-        # Enable access logging for this pod
+        # Enable access logging for this pod through ProxyConfig
         # Useful for debugging traffic issues
-        sidecar.istio.io/accessLogFile: "/dev/stdout"
+        proxy.istio.io/config: |
+          accessLogFile: /dev/stdout
 
-        # Configure the stats inclusion list
-        # Reduces memory usage by limiting which stats are collected
-        sidecar.istio.io/statsInclusionPrefixes: "cluster.outbound,listener"
+        # Configure custom histogram buckets for selected metrics
+        sidecar.istio.io/statsHistogramBuckets: '{"cluster.xds-grpc":[1,5,10,25,50,100,250,500,1000]}'
     spec:
       containers:
       - name: customized-app
@@ -362,17 +362,21 @@ You can specify custom injection templates and configurations:
 istioctl kube-inject -f deployment.yaml --revision stable
 
 # Use custom injection configuration from a ConfigMap
-# First, extract the default configuration
-kubectl get configmap istio-sidecar-injector -n istio-system -o yaml > injection-config.yaml
+# First, extract the default injector template, values, and mesh configuration
+kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.config}' > inject-config.yaml
+kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' > inject-values.yaml
+kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' > mesh-config.yaml
 
 # Modify the configuration as needed, then use it
 istioctl kube-inject -f deployment.yaml \
-  --injectConfigFile injection-config.yaml
+  --injectConfigFile inject-config.yaml \
+  --valuesFile inject-values.yaml
 
 # Specify custom mesh configuration
 istioctl kube-inject -f deployment.yaml \
   --meshConfigFile mesh-config.yaml \
-  --injectConfigFile inject-config.yaml
+  --injectConfigFile inject-config.yaml \
+  --valuesFile inject-values.yaml
 ```
 
 ### Manual Injection for Existing Deployments
@@ -421,8 +425,8 @@ spec:
     metadata:
       labels:
         app: app-with-exclusions
-      annotations:
         sidecar.istio.io/inject: "true"
+      annotations:
 
         # Exclude specific inbound ports from interception
         # Traffic to these ports bypasses the sidecar proxy
@@ -473,8 +477,8 @@ spec:
     metadata:
       labels:
         app: app-with-ip-exclusions
-      annotations:
         sidecar.istio.io/inject: "true"
+      annotations:
 
         # Exclude outbound traffic to specific IP ranges
         # Traffic to these IPs bypasses the Envoy proxy completely
@@ -495,41 +499,13 @@ spec:
 
 ### Global Exclusion Configuration
 
-For cluster-wide exclusion patterns, configure the MeshConfig:
+For cluster-wide IP-range bypass, update the sidecar injector settings you use to install Istio. The change affects newly created pods:
 
-```yaml
-# istio-mesh-config.yaml
-# This ConfigMap configures global traffic exclusion patterns
-# Apply to istio-system namespace to affect all sidecars
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: istio
-  namespace: istio-system
-data:
-  mesh: |
-    # Default configuration for sidecar proxies
-    defaultConfig:
-      # Exclude common infrastructure ports from interception
-      # These apply to all sidecars unless overridden
-      proxyMetadata:
-        # Custom metadata passed to the proxy
-        ISTIO_META_DNS_CAPTURE: "true"
-
-      # Configure traffic interception mode
-      # REDIRECT uses iptables REDIRECT, TPROXY uses TPROXY
-      interceptionMode: REDIRECT
-
-    # Global outbound traffic policy
-    # ALLOW_ANY: Allow traffic to unknown destinations
-    # REGISTRY_ONLY: Only allow traffic to services in the mesh
-    outboundTrafficPolicy:
-      mode: ALLOW_ANY
-
-    # Global port exclusions
-    # These ports are never intercepted by any sidecar
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
+```bash
+# Re-run your Istio install command with the same flags you used originally,
+# adding global proxy bypass settings.
+istioctl install <flags-you-used-to-install-Istio> \
+  --set values.global.proxy.excludeIPRanges="169.254.169.254/32,10.0.0.0/8"
 ```
 
 ### Sidecar Resource for Fine-Grained Control
@@ -538,9 +514,9 @@ The Sidecar resource provides namespace or workload-level control:
 
 ```yaml
 # sidecar-config.yaml
-# This Sidecar resource configures egress traffic rules for a namespace
-# It limits which external services the workloads can access
-apiVersion: networking.istio.io/v1beta1
+# This Sidecar resource scopes egress configuration for a namespace
+# It limits which service configurations are sent to matching sidecars
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -554,7 +530,7 @@ spec:
 
   # Configure outbound traffic listeners
   egress:
-    # Allow traffic only to services in specific namespaces
+    # Import service configuration only from specific namespaces
     # This reduces sidecar configuration size and memory usage
     - hosts:
       # Include services from the same namespace
@@ -574,7 +550,7 @@ spec:
       # Capture mode: DEFAULT, IPTABLES, or NONE
       captureMode: IPTABLES
 
-  # Configure outbound traffic policy for this sidecar
+  # Configure outbound traffic policy for unknown destinations
   outboundTrafficPolicy:
     mode: REGISTRY_ONLY
 ```
@@ -622,13 +598,13 @@ data:
     # This is a complex Go template that defines the sidecar containers
 ```
 
-### Init Container Customization
+### Interception Mode Customization
 
-The istio-init container sets up iptables rules. You can customize its behavior:
+The istio-init container, or Istio CNI when installed, sets up traffic redirection rules. You can customize the interception mode:
 
 ```yaml
 # deployment-custom-init.yaml
-# This deployment customizes the init container behavior
+# This deployment customizes the traffic interception mode
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -643,19 +619,11 @@ spec:
     metadata:
       labels:
         app: app-custom-init
-      annotations:
         sidecar.istio.io/inject: "true"
-
-        # Customize init container resources
-        # The init container runs briefly during pod startup
-        sidecar.istio.io/initCPU: "100m"
-        sidecar.istio.io/initMemory: "128Mi"
-        sidecar.istio.io/initCPULimit: "200m"
-        sidecar.istio.io/initMemoryLimit: "256Mi"
-
-        # Use CNI plugin instead of init container
-        # Requires Istio CNI to be installed
-        # This avoids the need for NET_ADMIN capability
+      annotations:
+        # Select TPROXY interception mode
+        # This requires the pod to be able to configure TPROXY rules,
+        # or Istio CNI to configure them without granting NET_ADMIN to the pod
         sidecar.istio.io/interceptionMode: "TPROXY"
     spec:
       containers:
@@ -687,16 +655,12 @@ spec:
     metadata:
       labels:
         app: app-hold-start
-      annotations:
         sidecar.istio.io/inject: "true"
-
+      annotations:
         # Hold application container until proxy is ready
         # This prevents connectivity issues during startup
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-
-        # Alternative: Configure through annotation directly
-        # sidecar.istio.io/holdApplicationUntilProxyStarts: "true"
     spec:
       containers:
       - name: app
@@ -717,7 +681,7 @@ After configuring injection, verify it's working correctly:
 kubectl get pods -n my-application -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
 
 # Get detailed information about a specific pod
-# Look for the istio-proxy container and istio-init init container
+# Look for the istio-proxy container and, when not using Istio CNI, the istio-init init container
 kubectl describe pod my-app-xxxxx -n my-application
 
 # Check if the sidecar is running and ready
@@ -744,8 +708,8 @@ istioctl proxy-config all my-app-xxxxx.my-application
 # Analyze the namespace for issues
 istioctl analyze -n my-application
 
-# Check injection status
-istioctl x check-inject -n my-application
+# Check injection status for a deployment
+istioctl x check-inject deployment/my-app -n my-application
 ```
 
 ### Sidecar Injection Decision Flow
@@ -754,7 +718,7 @@ The following diagram illustrates how Istio decides whether to inject a sidecar:
 
 ```mermaid
 flowchart TD
-    A[New Pod Created] --> B{Has inject annotation?}
+    A[New Pod Created] --> B{Has inject label?}
     B -->|Yes: true| C[Inject Sidecar]
     B -->|Yes: false| D[Skip Injection]
     B -->|No| E{Namespace has injection label?}
@@ -768,10 +732,13 @@ flowchart TD
     G -->|No match| I[Normal Injection]
     H --> J[Mutate Pod Spec]
     I --> J
-    J --> K[Add istio-init container]
-    K --> L[Add istio-proxy container]
-    L --> M[Configure iptables via init]
-    M --> N[Pod Ready with Sidecar]
+    J --> K{Is CNI managing redirection?}
+    K -->|No| L[Add istio-init container]
+    K -->|Yes| M[Skip istio-init]
+    L --> N[Add istio-proxy container]
+    M --> N
+    N --> O[Configure traffic redirection]
+    O --> P[Pod Ready with Sidecar]
 ```
 
 ## Troubleshooting Injection Issues
@@ -831,13 +798,13 @@ istioctl proxy-config route my-app-xxxxx.my-application
 # Get the injection configuration
 kubectl get configmap istio-sidecar-injector -n istio-system -o yaml
 
-# Test what would be injected without applying
-istioctl kube-inject -f deployment.yaml --dry-run
+# Test what would be injected without applying it
+istioctl kube-inject -f deployment.yaml
 
-# Compare expected vs actual injection
-kubectl get deployment my-app -n my-application -o yaml | \
-  istioctl kube-inject -f - | \
-  diff - <(kubectl get pod my-app-xxxxx -n my-application -o yaml)
+# Compare an injected manifest against the live deployment
+istioctl kube-inject -f deployment.yaml > expected-injected.yaml
+kubectl get deployment my-app -n my-application -o yaml > live-deployment.yaml
+diff -u expected-injected.yaml live-deployment.yaml
 ```
 
 ## Best Practices
