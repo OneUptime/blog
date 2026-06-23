@@ -337,7 +337,7 @@ data:
 cache 300 {
     success 9984 300 30    # Cache successful responses: max 9984 entries, 300s TTL, min 30s
     denial 9984 60 5       # Cache NXDOMAIN: max 9984 entries, 60s TTL, min 5s
-    prefetch 10 1m 10%     # Prefetch when TTL < 10s, queried in last 1m, > 10% of TTL remaining
+    prefetch 10 1m 10%     # Prefetch popular items: queried >=10 times within 1m, refresh when <10% of TTL remains
 }
 ```
 
@@ -513,6 +513,7 @@ java -Dsun.net.inetaddr.ttl=60 -Dsun.net.inetaddr.negative.ttl=10 -jar app.jar
 
 ```go
 import (
+    "context"
     "net"
     "time"
 )
