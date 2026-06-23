@@ -23,7 +23,8 @@ sudo apt-get update
 sudo apt-get install bind9-utils bind9-dnsutils
 
 # RHEL/CentOS/Fedora
-sudo dnf install bind-utils
+# dnssec-keygen and related tools are in bind-dnssec-utils
+sudo dnf install bind-utils bind-dnssec-utils
 
 # macOS (Homebrew)
 brew install bind
@@ -299,7 +300,7 @@ gantt
 
 | Option | Flag | Description |
 |--------|------|-------------|
-| Created | `-C` | When the key was created |
+| Created | (automatic) | When the key was created (set automatically at generation) |
 | Publish | `-P` | When to publish the DNSKEY |
 | Activate | `-A` | When to start signing with this key |
 | Revoke | `-R` | When to set the REVOKE flag |
@@ -619,10 +620,15 @@ done
 
 ### Random Number Source
 
+Older versions of BIND accepted a `-r randomdev` option to choose a source of
+randomness. Modern BIND (9.16+) no longer supports this flag: key generation
+relies on the cryptographic provider (OpenSSL) for entropy, which in turn uses
+the operating system's CSPRNG. No special option is needed for high-security
+environments.
+
 ```bash
-# Specify random source (for high-security environments)
+# Modern BIND draws entropy from the crypto provider automatically
 dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE \
-    -r /dev/random \
     example.com
 ```
 
