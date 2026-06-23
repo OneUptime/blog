@@ -211,7 +211,6 @@ For numeric, date, keyword, and other doc-values enabled fields, you can use `do
 GET /metrics/_search
 {
   "docvalue_fields": [
-    "timestamp",
     "cpu_usage",
     "memory_percent",
     {
@@ -302,18 +301,16 @@ es = Elasticsearch("http://localhost:9200")
 
 response = es.search(
     index="products",
-    body={
-        "query": {
-            "match": {"category": "electronics"}
-        },
-        "_source": ["name", "price", "sku"]
-    }
+    query={
+        "match": {"category": "electronics"}
+    },
+    source_includes=["name", "price", "sku"]
 )
 
-# Using source parameter directly
+# Using the source parameter directly
 response = es.search(
     index="products",
-    source=["name", "price"],
+    source={"includes": ["name", "price"]},
     query={
         "match": {"category": "electronics"}
     }
@@ -334,14 +331,12 @@ const client = new Client({ node: 'http://localhost:9200' });
 async function searchProducts() {
   const response = await client.search({
     index: 'products',
-    body: {
-      query: {
-        match: { category: 'electronics' }
-      },
-      _source: {
-        includes: ['name', 'price', 'sku'],
-        excludes: ['internal_*']
-      }
+    query: {
+      match: { category: 'electronics' }
+    },
+    _source: {
+      includes: ['name', 'price', 'sku'],
+      excludes: ['internal_*']
     }
   });
 
@@ -380,14 +375,14 @@ for (Hit<Product> hit : response.hits().hits()) {
 
 ## Performance Comparison
 
-Here's a comparison of different methods for a document with 50 fields and 10KB average size:
+Here's a qualitative comparison of different methods for a document with 50 fields and 10KB average size:
 
-| Method | Response Size | Latency | Best Use Case |
-|--------|--------------|---------|---------------|
-| Full _source | 10KB | Baseline | Need all fields |
-| _source filtering | 500B | 10% faster | Most common, flexible |
-| stored_fields | 300B | 15% faster | Frequently accessed small fields |
-| docvalue_fields | 200B | 20% faster | Numeric/keyword aggregations |
+| Method | Response Size | Fetch Behavior | Best Use Case |
+|--------|--------------|----------------|---------------|
+| Full _source | 10KB | Loads and returns the full source | Need all fields |
+| _source filtering | 500B | Loads the source and returns only matching fields | Most common, flexible |
+| stored_fields | 300B | Reads explicitly stored fields | Frequently accessed small fields |
+| docvalue_fields | 200B | Reads supported fields from doc values | Numeric, date, and keyword fields |
 
 ```mermaid
 graph TD
@@ -410,13 +405,13 @@ Never return full documents in production queries unless absolutely necessary:
 GET /logs/_search
 {
   "_source": ["timestamp", "level", "message"],
-  "query": { ... }
+  "query": { "match_all": {} }
 }
 
 // Bad - returns everything
 GET /logs/_search
 {
-  "query": { ... }
+  "query": { "match_all": {} }
 }
 ```
 
