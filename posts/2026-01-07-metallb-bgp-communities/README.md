@@ -12,7 +12,7 @@ BGP communities are powerful attributes that allow network engineers to tag rout
 
 ## What Are BGP Communities?
 
-BGP communities are 32-bit values attached to route advertisements that act as labels or tags. They enable routers to apply routing policies based on these tags rather than matching specific prefixes. Communities follow the format `ASN:VALUE`, where ASN is the Autonomous System Number and VALUE is a locally defined identifier.
+BGP community attributes are values attached to route advertisements that act as labels or tags. They enable routers to apply routing policies based on these tags rather than matching specific prefixes. Standard communities follow the 32-bit format `ASN:VALUE`, where ASN is the Autonomous System Number and VALUE is a locally defined identifier.
 
 ### Types of BGP Communities
 
@@ -74,16 +74,16 @@ Before configuring BGP communities with MetalLB, ensure you have:
 
 ### Step 1: Define the BGP Community
 
-First, create a BGPCommunity resource that defines the community values you want to use. This resource acts as a reusable reference for your BGP advertisements.
+First, create a Community resource that defines aliases for the community values you want to use. These aliases can be referenced from your BGP advertisements.
 
 ```yaml
-# BGPCommunity resource defines a named set of community values
+# Community resource defines named aliases for community values
 
-# These communities will be attached to route advertisements
+# These aliases can be attached to route advertisements
 apiVersion: metallb.io/v1beta1
 kind: Community
 metadata:
-  # Name used to reference this community in BGPAdvertisement resources
+  # Kubernetes resource name for this collection of aliases
   name: production-communities
   # MetalLB resources should be in the metallb-system namespace
   namespace: metallb-system
@@ -156,9 +156,10 @@ spec:
     - production-pool
 
   # Attach communities to all routes advertised from this pool
-  # References the Community resource created earlier
+  # References aliases from the Community resource created earlier
   communities:
-    - production-communities
+    - production
+    - high-priority
 
   # Optional: Specify which peers should receive this advertisement
   # If omitted, advertises to all configured BGP peers
@@ -227,11 +228,12 @@ spec:
   ipAddressPools:
     - production-pool
 
-  # Reference multiple community resources
-  # All communities from referenced resources are attached to routes
+  # Reference multiple community aliases
   communities:
-    - production-communities    # Standard communities
-    - large-communities         # Large communities
+    - production                # Standard community alias
+    - high-priority             # Standard community alias
+    - region-us-east            # Large community alias
+    - service-tier-premium      # Large community alias
 ```
 
 ## Traffic Engineering Use Cases
@@ -307,9 +309,8 @@ spec:
   ipAddressPools:
     - us-preferred-pool
   communities:
-    - geo-steering-communities
-  # Only advertise the prefer-us-path community
-  # This is achieved by creating separate Community resources per geo
+    - prefer-us-path
+  # Only advertise the prefer-us-path community alias
 ```
 
 ### Use Case 2: Traffic Prioritization with Local Preference
@@ -371,7 +372,7 @@ spec:
   ipAddressPools:
     - critical-services-pool
   communities:
-    - priority-communities
+    - critical-priority
 ```
 
 ### Use Case 3: Multi-Homed Failover Configuration
@@ -420,8 +421,18 @@ spec:
     - name: no-export-backup
       value: "65535:65281"
 ---
-# BGP Peer configuration for primary ISP
+# IP pool for the failover service
 apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: failover-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.100.50/32
+---
+# BGP Peer configuration for primary ISP
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: isp1-primary
@@ -439,7 +450,7 @@ spec:
   bfdProfile: production-bfd
 ---
 # BGP Peer configuration for backup ISP
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: isp2-backup
@@ -449,6 +460,35 @@ spec:
   peerASN: 65002
   myASN: 64512
   sourceAddress: 10.1.0.2
+---
+# Advertise the service to the primary ISP with the primary-path alias
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: primary-failover-ad
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - failover-pool
+  peers:
+    - isp1-primary
+  communities:
+    - primary-path
+---
+# Advertise the same service to the backup ISP with backup-path aliases
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: backup-failover-ad
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - failover-pool
+  peers:
+    - isp2-backup
+  communities:
+    - backup-path
+    - no-export-backup
 ```
 
 ### Use Case 4: Blackhole Routing for DDoS Mitigation
@@ -537,14 +577,14 @@ route-map METALLB-INBOUND permit 40
 route-map METALLB-INBOUND permit 100
  description Allow all other routes with default preference
 
+! Null route for blackhole traffic
+ip route 192.0.2.1 255.255.255.255 Null0
+
 ! Apply route-map to BGP neighbor (MetalLB speaker)
 router bgp 65001
  neighbor 10.0.0.2 remote-as 64512
  neighbor 10.0.0.2 description MetalLB-Speaker
  neighbor 10.0.0.2 route-map METALLB-INBOUND in
- !
- ! Null route for blackhole traffic
- ip route 192.0.2.1 255.255.255.255 Null0
 ```
 
 ### Juniper Junos Configuration
@@ -561,7 +601,7 @@ policy-options {
     community metallb-blackhole members 65535:666;
 
     # Large community example
-    community metallb-region-us members large:4200000001:1:*;
+    community metallb-region-us members large:4200000001:1:100;
 
     # Policy to process MetalLB route advertisements
     policy-statement metallb-import {
@@ -642,7 +682,7 @@ bgp community-list standard metallb-backup permit 64512:999
 bgp community-list standard metallb-blackhole permit 65535:666
 
 ! Define large community list for 32-bit ASN support
-bgp large-community-list standard metallb-us-region permit 4200000001:1:*
+bgp large-community-list standard metallb-us-region permit 4200000001:1:100
 
 ! Route-map for inbound policy from MetalLB
 route-map metallb-in permit 10
@@ -824,7 +864,7 @@ spec:
 # 3. BGP Peer Configuration
 # Define connections to upstream routers
 
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-1
@@ -844,11 +884,12 @@ spec:
         rack: rack-1
   # Enable BFD for fast failure detection
   bfdProfile: fast-failover
-  # Password for BGP session (use Kubernetes secret in production)
-  # password: secretref:metallb-bgp-password
+  # Password for BGP session (use a Kubernetes basic-auth secret in production)
+  # passwordSecret:
+  #   name: metallb-bgp-password
 
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-2
@@ -893,8 +934,8 @@ spec:
     - production-critical-pool
   # Attach traffic class and service tier communities
   communities:
-    - traffic-class-communities
-    - service-tier-communities
+    - production-critical
+    - tier1-web
   # Advertise to all peers
   # Could restrict with: peers: [tor-switch-1, tor-switch-2]
 
@@ -911,7 +952,7 @@ spec:
   ipAddressPools:
     - production-standard-pool
   communities:
-    - traffic-class-communities
+    - production-standard
   # Local preference hint via community
   # Upstream router interprets 64512:101 as standard priority
 
@@ -925,7 +966,7 @@ spec:
   ipAddressPools:
     - staging-pool
   communities:
-    - traffic-class-communities
+    - staging
   # Only advertise to specific peers if needed
   # Useful for keeping staging traffic on specific paths
 ```
@@ -943,9 +984,9 @@ metadata:
   namespace: production
   annotations:
     # Request IP from the critical pool (inherits its communities)
-    metallb.universe.tf/address-pool: production-critical-pool
+    metallb.io/address-pool: production-critical-pool
     # Optionally request a specific IP
-    # metallb.universe.tf/loadBalancerIPs: 192.168.100.1
+    # metallb.io/loadBalancerIPs: 192.168.100.1
 spec:
   type: LoadBalancer
   selector:
@@ -972,7 +1013,7 @@ kubectl logs -n metallb-system -l app=metallb,component=speaker -f
 kubectl get bgppeers -n metallb-system -o wide
 
 # View configured communities
-kubectl get communities -n metallb-system -o yaml
+kubectl get community -n metallb-system -o yaml
 
 # Check IP address allocations
 kubectl get ipaddresspools -n metallb-system
@@ -1018,7 +1059,7 @@ If communities are not appearing on upstream routers:
 # 1. Verify the Community resource is created correctly
 kubectl get community -n metallb-system -o yaml
 
-# 2. Check BGPAdvertisement references the correct community
+# 2. Check BGPAdvertisement references the correct community aliases
 kubectl get bgpadvertisement -n metallb-system -o yaml
 
 # 3. Verify the service is using the correct address pool
