@@ -100,18 +100,18 @@ Before configuring Ceph mirroring, ensure you have:
 
 First, we need to enable the mirroring feature on the RBD pool in both clusters.
 
-The following commands enable mirroring on the pool. The mode can be 'pool' for pool-level mirroring or 'image' for image-level mirroring.
+The following commands enable mirroring on the pool. The mode can be 'pool' for automatically mirroring journaling-enabled images, or 'image' when you want to explicitly choose specific images and their mirroring mode.
 
 ```bash
 # On the PRIMARY cluster
 
-# Enable pool-level mirroring - all images in this pool will be mirrored
+# Create and initialize the RBD pool
 ceph osd pool create rbd-mirror-pool 128 128
 rbd pool init rbd-mirror-pool
 
-# Enable mirroring in 'pool' mode - mirrors all images automatically
-# Use 'image' mode if you want to select specific images to mirror
-rbd mirror pool enable rbd-mirror-pool pool
+# Enable mirroring in 'image' mode - select specific images to mirror
+# Use 'pool' mode only when all mirrored images will use journal-based mirroring
+rbd mirror pool enable rbd-mirror-pool image
 
 # Verify mirroring is enabled
 rbd mirror pool info rbd-mirror-pool
@@ -126,7 +126,7 @@ ceph osd pool create rbd-mirror-pool 128 128
 rbd pool init rbd-mirror-pool
 
 # Enable mirroring in the same mode as the primary cluster
-rbd mirror pool enable rbd-mirror-pool pool
+rbd mirror pool enable rbd-mirror-pool image
 
 # Verify mirroring is enabled
 rbd mirror pool info rbd-mirror-pool
@@ -198,7 +198,7 @@ rbd mirror pool info rbd-mirror-pool
 
 ## Step 3: Configure the rbd-mirror Daemon
 
-The rbd-mirror daemon is responsible for replicating images between clusters. It should run on the secondary cluster.
+The rbd-mirror daemon is responsible for replicating images between clusters. For one-way replication, it should run on the secondary cluster. For bidirectional replication, run rbd-mirror daemons on both clusters.
 
 ### Create the rbd-mirror User
 
@@ -206,10 +206,10 @@ First, create a dedicated user for the rbd-mirror daemon with appropriate permis
 
 ```bash
 # On the SECONDARY cluster
-# Create a user for rbd-mirror with necessary capabilities
-# The user needs read access to monitor, read-write to RBD pools
+# Create a local user for the rbd-mirror daemon with necessary capabilities
+# Bootstrap peering creates the remote peer user; the daemon itself uses profile rbd-mirror
 ceph auth get-or-create client.rbd-mirror.secondary \
-    mon 'profile rbd-mirror-peer' \
+    mon 'profile rbd-mirror' \
     osd 'profile rbd' \
     -o /etc/ceph/ceph.client.rbd-mirror.secondary.keyring
 
@@ -225,7 +225,8 @@ Configure the rbd-mirror daemon using systemd for production deployments.
 # On the SECONDARY cluster
 # Create the rbd-mirror configuration
 # The daemon ID can be any unique identifier (using hostname here)
-cat > /etc/ceph/ceph.conf.d/rbd-mirror.conf << 'EOF'
+cat >> /etc/ceph/ceph.conf << 'EOF'
+
 [client.rbd-mirror.secondary]
     # Log file location for troubleshooting
     log file = /var/log/ceph/rbd-mirror.log
@@ -235,9 +236,6 @@ cat > /etc/ceph/ceph.conf.d/rbd-mirror.conf << 'EOF'
 
     # Number of concurrent image sync operations
     rbd_mirror_concurrent_image_syncs = 5
-
-    # Journal commit delay (milliseconds) - lower = faster failover
-    rbd_mirror_journal_commit_delay = 5
 
     # Sync point interval for progress checkpointing
     rbd_mirror_sync_point_update_age = 30
@@ -264,7 +262,7 @@ ceph orch apply rbd-mirror --placement="1 secondary-node1"
 ceph orch ps --daemon-type rbd-mirror
 
 # Check daemon health
-ceph orch daemon status rbd-mirror.secondary-node1
+ceph orch ps --daemon-type rbd-mirror --refresh
 ```
 
 ## Step 4: Create and Configure Mirrored Images
@@ -281,7 +279,6 @@ rbd create rbd-mirror-pool/database-vol \
     --size 100G \
     --image-feature exclusive-lock,journaling
 
-# If pool-mode mirroring is enabled, the image is automatically mirrored
 # For image-mode pools, explicitly enable mirroring:
 rbd mirror image enable rbd-mirror-pool/database-vol journal
 
@@ -326,11 +323,9 @@ rbd mirror snapshot schedule add --pool rbd-mirror-pool 1h
 
 # Add multiple schedules for different intervals
 # Hourly snapshots during business hours, daily otherwise
-rbd mirror snapshot schedule add --pool rbd-mirror-pool 1h \
-    --start-time 08:00:00
+rbd mirror snapshot schedule add --pool rbd-mirror-pool 1h 08:00:00
 
-rbd mirror snapshot schedule add --pool rbd-mirror-pool 24h \
-    --start-time 00:00:00
+rbd mirror snapshot schedule add --pool rbd-mirror-pool 24h 00:00:00
 
 # View all schedules
 rbd mirror snapshot schedule ls --pool rbd-mirror-pool --recursive
@@ -399,11 +394,11 @@ echo "Maximum acceptable lag: ${MAX_LAG_SECONDS} seconds"
 echo "================================================"
 
 # Get status in JSON format for parsing
-STATUS=$(rbd mirror pool status $POOL --format json)
+STATUS=$(rbd mirror pool status "$POOL" --verbose --format json)
 
 # Parse and check each image
-echo "$STATUS" | jq -r '.images[] | "\(.name) \(.state) \(.description)"' | \
-while read name state desc; do
+echo "$STATUS" | jq -r '.images[] | [.name, .state, .description] | @tsv' | \
+while IFS=$'\t' read -r name state desc; do
     echo "Image: $name"
     echo "  State: $state"
     echo "  Details: $desc"
@@ -443,14 +438,15 @@ chmod +x /usr/local/bin/check-mirror-lag.sh
 Enable Prometheus metrics for integration with monitoring systems.
 
 ```bash
-# The rbd-mirror daemon exposes metrics on port 9283 by default
-# Verify metrics are being exposed
+# The ceph-mgr Prometheus module exposes Ceph metrics on port 9283 by default
+ceph mgr module enable prometheus
+
+# Verify metrics are being exposed from a manager node
 curl -s http://localhost:9283/metrics | grep rbd_mirror
 
-# Key metrics to monitor:
-# - ceph_rbd_mirror_replay_latency: Replication lag
-# - ceph_rbd_mirror_replay_bytes: Bytes replicated
-# - ceph_rbd_mirror_image_state: Current state of images
+# For rbd-mirror daemon performance counters, use ceph-exporter or
+# re-enable daemon perf counters in the mgr Prometheus module if needed:
+ceph config set mgr mgr/prometheus/exclude_perf_counters false
 ```
 
 Create a Prometheus alerting rule for mirroring issues.
@@ -464,23 +460,13 @@ groups:
     rules:
       # Alert when mirroring is not healthy
       - alert: CephRBDMirrorUnhealthy
-        expr: ceph_rbd_mirror_pool_health_status != 0
+        expr: ceph_health_detail{name=~".*MIRROR.*"} == 1
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "RBD mirroring is unhealthy"
           description: "Pool {{ $labels.pool }} mirroring has been unhealthy for 5 minutes"
-
-      # Alert when replication lag exceeds threshold
-      - alert: CephRBDMirrorLagHigh
-        expr: ceph_rbd_mirror_replay_latency > 300
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "RBD mirroring lag is high"
-          description: "Image {{ $labels.image }} has replication lag of {{ $value }} seconds"
 
       # Alert when rbd-mirror daemon is down
       - alert: CephRBDMirrorDaemonDown
@@ -532,7 +518,7 @@ When you need to perform maintenance or planned migration.
 # This ensures all writes are flushed
 
 # Step 2: Demote the primary image to non-primary
-# This triggers a final sync and marks the image as non-primary
+# This marks the image as non-primary; keep applications stopped until the peer catches up
 rbd mirror image demote rbd-mirror-pool/database-vol
 
 # Verify the demotion is complete
@@ -569,11 +555,8 @@ timeout 30 ceph --cluster primary status || echo "Primary unreachable"
 # Use --force flag since we cannot demote the primary
 rbd mirror image promote --force rbd-mirror-pool/database-vol
 
-# For multiple images, promote all at once
-for image in $(rbd ls rbd-mirror-pool); do
-    echo "Promoting image: $image"
-    rbd mirror image promote --force rbd-mirror-pool/$image
-done
+# For multiple images, promote all mirrored images in the pool
+rbd mirror pool promote --force rbd-mirror-pool
 
 # Step 3: Verify all images are promoted
 rbd mirror pool status rbd-mirror-pool --verbose
@@ -628,7 +611,7 @@ promote_images() {
     log "Starting image promotion for pool: $POOL"
 
     # Get list of all mirrored images
-    IMAGES=$(rbd mirror pool status "$POOL" --format json | jq -r '.images[].name')
+    IMAGES=$(rbd mirror pool status "$POOL" --verbose --format json | jq -r '.images[].name')
 
     FAILED=0
     PROMOTED=0
@@ -639,18 +622,18 @@ promote_images() {
         if [ "$FORCE" == "--force" ]; then
             if rbd mirror image promote --force "$POOL/$image" 2>>"$LOG_FILE"; then
                 log "SUCCESS: Promoted $image (forced)"
-                ((PROMOTED++))
+                ((PROMOTED+=1))
             else
                 log "ERROR: Failed to promote $image"
-                ((FAILED++))
+                ((FAILED+=1))
             fi
         else
             if rbd mirror image promote "$POOL/$image" 2>>"$LOG_FILE"; then
                 log "SUCCESS: Promoted $image"
-                ((PROMOTED++))
+                ((PROMOTED+=1))
             else
                 log "ERROR: Failed to promote $image"
-                ((FAILED++))
+                ((FAILED+=1))
             fi
         fi
     done
@@ -664,7 +647,7 @@ verify_promotion() {
     log "Verifying promotion status..."
 
     # Check pool status
-    STATUS=$(rbd mirror pool status "$POOL" --format json)
+    STATUS=$(rbd mirror pool status "$POOL" --verbose --format json)
     HEALTH=$(echo "$STATUS" | jq -r '.summary.health')
 
     log "Pool health: $HEALTH"
@@ -733,12 +716,13 @@ After the primary site is restored, resync the data from the secondary.
 rbd ls rbd-mirror-pool
 rbd mirror image status rbd-mirror-pool/database-vol
 
-# If images are corrupt or need to be resynced from scratch:
-# Delete the local image to allow full resync
-rbd rm rbd-mirror-pool/database-vol
+# If an image diverged after forced failover, demote the stale local image
+# and request a resync from the promoted peer
+rbd mirror image demote rbd-mirror-pool/database-vol
+rbd mirror image resync rbd-mirror-pool/database-vol
 
 # Step 2: Re-enable mirroring on the pool if needed
-rbd mirror pool enable rbd-mirror-pool pool
+rbd mirror pool enable rbd-mirror-pool image
 
 # Step 3: The rbd-mirror daemon will automatically sync from secondary
 # Monitor the sync progress
@@ -853,7 +837,7 @@ main() {
     log "=========================================="
 
     # Get list of images
-    IMAGES=$(rbd mirror pool status "$PRIMARY_POOL" --format json | jq -r '.images[].name')
+    IMAGES=$(rbd mirror pool status "$PRIMARY_POOL" --verbose --format json | jq -r '.images[].name')
 
     # First verify all images are synced
     log "Phase 1: Verifying all images are synced"
@@ -887,28 +871,23 @@ main
 Optimize network settings for better replication performance.
 
 ```bash
-# Configure dedicated network for mirroring traffic
-# Add to ceph.conf on both clusters
+# Tune rbd-mirror client settings
+# Add to ceph.conf on rbd-mirror hosts, or set equivalent values in the central config store
 cat >> /etc/ceph/ceph.conf << 'EOF'
 
-[global]
-    # Use a dedicated cluster network for replication
-    cluster_network = 10.0.1.0/24
-
-    # RBD mirror specific settings
-    [client.rbd-mirror]
+[client.rbd-mirror.secondary]
     # Increase the number of concurrent syncs
     rbd_mirror_concurrent_image_syncs = 10
 
-    # Increase the number of journal splay width
+    # Poll journals more frequently
     rbd_mirror_journal_poll_age = 1
 
-    # Configure memory limits for caching
-    rbd_mirror_memory_cache_size = 1073741824  # 1GB
+    # Increase fetch and payload sizes for high-bandwidth migrations
+    rbd_mirror_journal_max_fetch_bytes = 33554432
+    rbd_journal_max_payload_bytes = 8388608
 
     # Network tuning for WAN replication
     ms_tcp_nodelay = true
-    ms_tcp_rcvbuf = 0
 EOF
 
 # Restart rbd-mirror daemon to apply changes
