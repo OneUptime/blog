@@ -466,10 +466,10 @@ sum by (storageclass) (
 
 ```promql
 # PVCs in pending state
-kube_persistentvolumeclaim_status_phase{phase="Pending"}
+kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
 
 # PVCs bound but not mounted (no kubelet metrics)
-kube_persistentvolumeclaim_status_phase{phase="Bound"}
+kube_persistentvolumeclaim_status_phase{phase="Bound"} == 1
 unless on(namespace, persistentvolumeclaim)
 kubelet_volume_stats_capacity_bytes
 ```
