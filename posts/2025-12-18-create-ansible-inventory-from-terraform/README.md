@@ -392,11 +392,78 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
 provider "aws" {
   region = "us-east-1"
+}
+
+# Networking
+data "aws_vpc" "default" {
+  default = true
+}
+
+resource "aws_security_group" "web" {
+  name        = "web-${var.environment}"
+  description = "Allow SSH and HTTP access to web servers"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "db" {
+  name        = "db-${var.environment}"
+  description = "Allow SSH and PostgreSQL access to database servers"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description     = "SSH from web servers"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web.id]
+  }
+
+  ingress {
+    description     = "PostgreSQL from web servers"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 # SSH Key
@@ -467,7 +534,6 @@ resource "local_file" "ansible_vars" {
     environment          = var.environment
     db_host             = aws_instance.db.private_ip
     web_server_count    = var.web_instance_count
-    load_balancer_dns   = aws_lb.main.dns_name
   })
   filename = "${path.module}/ansible/group_vars/all.yml"
 }
@@ -498,11 +564,11 @@ output "inventory_path" {
 ## Best Practices
 
 1. **Use templatefile** - More readable than heredoc for complex inventories
-2. **Generate SSH keys with Terraform** - Ensures keys exist before inventory
-3. **Use depends_on** - Ensure instances are ready before generating inventory
+2. **Protect SSH keys and state** - `tls_private_key` stores private key material in Terraform state, so secure your backend and restrict state access
+3. **Use depends_on for prerequisites** - Ensure generated files such as keys exist before generating inventory
 4. **Include metadata** - Add instance IDs, IPs, and other useful info
 5. **Separate inventory by environment** - Different files for prod/staging
 6. **Version control templates** - Keep inventory templates in git
-7. **Use sensitive files** - Protect private keys with `local_sensitive_file`
+7. **Use sensitive files** - Avoid displaying private key content in Terraform output with `local_sensitive_file`
 
 By implementing these patterns, you can seamlessly integrate Terraform infrastructure provisioning with Ansible configuration management, creating a complete Infrastructure as Code workflow.
