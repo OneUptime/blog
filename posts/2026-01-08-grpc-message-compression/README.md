@@ -47,16 +47,16 @@ graph TD
 4. **Server compresses** the response (if client accepts)
 5. **Client decompresses** the response
 
-## Built-in Compression Algorithms
+## Compression Algorithms
 
-gRPC supports several compression algorithms out of the box:
+Across the gRPC ecosystem, `gzip` is the only general-purpose compressor that ships with the standard implementations (alongside `identity`, which means no compression). `deflate` is reserved in the gRPC spec's Message-Encoding registry but is not provided as a ready-to-use compressor in most language libraries. `snappy` and `zstd` are popular choices but require registering a third-party or custom compressor (shown later in this guide).
 
-| Algorithm | Compression Ratio | CPU Usage | Best For |
-|-----------|------------------|-----------|----------|
-| gzip | High (70-90%) | High | Text, JSON, repetitive data |
-| deflate | High (70-90%) | High | Similar to gzip |
-| snappy | Medium (50-70%) | Low | Real-time, low latency |
-| zstd | Very High (75-95%) | Medium | Large payloads |
+| Algorithm | Availability | Compression Ratio | CPU Usage | Best For |
+|-----------|--------------|------------------|-----------|----------|
+| gzip | Built-in | High (70-90%) | High | Text, JSON, repetitive data |
+| deflate | Reserved in spec | High (70-90%) | High | Similar to gzip |
+| snappy | Custom compressor | Medium (50-70%) | Low | Real-time, low latency |
+| zstd | Custom compressor | Very High (75-95%) | Medium | Large payloads |
 
 ## Server-Side Compression Configuration
 
@@ -71,7 +71,6 @@ import (
     "net"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/encoding/gzip"
     _ "google.golang.org/grpc/encoding/gzip" // Register gzip compressor
 
     pb "myapp/proto"
