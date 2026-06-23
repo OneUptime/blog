@@ -43,14 +43,16 @@ graph TB
 `rate()` calculates the per-second average rate of increase over the time range:
 
 ```promql
-rate(counter[time_range])
+rate(counter[5m])
 ```
 
 ### Mathematical Definition
 
 ```text
-rate = (last_value - first_value) / time_range_seconds
+rate ~= adjusted_increase / time_range_seconds
 ```
+
+Prometheus also extrapolates to the ends of the range, which helps account for missed scrapes or imperfect alignment between scrape times and the query range.
 
 ### Examples
 
@@ -64,7 +66,7 @@ rate(http_requests_total[5m])
 # Bytes per second
 rate(network_bytes_total[5m])
 
-# CPU usage (returns 0-1 representing core utilization)
+# CPU seconds per second, split by CPU and mode
 rate(node_cpu_seconds_total[5m])
 ```
 
@@ -73,13 +75,13 @@ rate(node_cpu_seconds_total[5m])
 `increase()` calculates the total increase in a counter over the time range:
 
 ```promql
-increase(counter[time_range])
+increase(counter[5m])
 ```
 
 ### Mathematical Definition
 
 ```text
-increase = last_value - first_value
+increase ~= adjusted_increase_over_range
 ```
 
 Note: `increase()` also extrapolates to cover the entire time range, which can produce fractional results.
@@ -92,7 +94,7 @@ increase(http_requests_total[1h])
 # If counter went from 1000 to 4600 over 1 hour:
 # increase = 3600 requests
 
-# Total errors today
+# Total errors in the last 24 hours
 increase(http_errors_total[24h])
 
 # Bytes transferred in last week
@@ -103,7 +105,7 @@ increase(network_bytes_total[7d])
 
 `rate()` and `increase()` are mathematically related:
 
-```promql
+```text
 # These are approximately equivalent
 increase(metric[5m]) ~= rate(metric[5m]) * 300
 
@@ -139,7 +141,7 @@ rate(kafka_messages_processed_total[5m])
 ### CPU and Resource Usage
 
 ```promql
-# CPU utilization (0-1 scale per core)
+# CPU seconds per second, split by CPU and mode
 rate(node_cpu_seconds_total[5m])
 
 # Disk I/O per second
@@ -171,7 +173,7 @@ rate(http_requests_total[5m])
 # Total requests in the last hour
 increase(http_requests_total[1h])
 
-# Total errors today
+# Total errors in the last 24 hours
 increase(http_errors_total[24h])
 
 # Total logins this week
@@ -185,7 +187,8 @@ increase(user_logins_total[7d])
 sum by (customer) (increase(api_calls_total[30d]))
 
 # Data transfer for billing
-increase(network_egress_bytes_total[30d]) / 1024 / 1024 / 1024  # GB
+# Convert bytes to GB
+increase(network_egress_bytes_total[30d]) / 1024 / 1024 / 1024
 ```
 
 ### Capacity Planning
@@ -218,7 +221,7 @@ sequenceDiagram
     Note right of P: Normal increase: 50
     C->>P: Value: 0 (restart)
     C->>P: Value: 30
-    Note right of P: Detects reset, assumes<br/>previous value + 30
+    Note right of P: Detects reset, adds<br/>post-reset increase
 ```
 
 ### How Reset Detection Works
@@ -226,7 +229,7 @@ sequenceDiagram
 ```promql
 # Counter values: 100, 150, 200, 0 (reset), 30
 # rate() and increase() detect the drop from 200 to 0
-# They assume the counter would have been 200 + 30 = 230
+# They add the post-reset increase to the pre-reset increases
 
 # The resets() function shows how many resets occurred
 resets(http_requests_total[1h])
@@ -251,7 +254,7 @@ increase(http_requests_total[1h])
 # The value represents total over the window, not rate
 increase(http_requests_total[5m])
 
-# Better: rate() shows instantaneous rate
+# Better: rate() shows per-second average rate
 rate(http_requests_total[5m])
 ```
 
@@ -262,7 +265,8 @@ rate(http_requests_total[5m])
 rate(http_requests_total[30s])
 
 # Better: At least 4x your scrape interval
-rate(http_requests_total[2m])  # For 30s scrape interval
+# For 30s scrape interval
+rate(http_requests_total[2m])
 ```
 
 ### Mistake 4: Using rate() on Gauges
@@ -352,7 +356,7 @@ irate(http_requests_total[5m])
 
 ## Recording Rules
 
-Pre-compute common rate/increase calculations:
+Pre-compute common rate calculations:
 
 ```yaml
 groups:
@@ -366,17 +370,6 @@ groups:
       # Error rate per service
       - record: service:http_errors:rate5m
         expr: sum by (service) (rate(http_errors_total[5m]))
-
-  - name: increase-rules
-    interval: 5m
-    rules:
-      # Hourly request count
-      - record: service:http_requests:increase1h
-        expr: sum by (service) (increase(http_requests_total[1h]))
-
-      # Daily error count
-      - record: service:http_errors:increase24h
-        expr: sum by (service) (increase(http_errors_total[24h]))
 ```
 
 ## Summary Table
@@ -384,11 +377,11 @@ groups:
 | Scenario | Function | Example |
 |----------|----------|---------|
 | Requests/second | `rate()` | `rate(http_requests_total[5m])` |
-| CPU utilization | `rate()` | `rate(node_cpu_seconds_total[5m])` |
+| CPU seconds/second per mode | `rate()` | `rate(node_cpu_seconds_total[5m])` |
 | Error rate % | `rate()` | `rate(errors[5m]) / rate(requests[5m])` |
 | Alert on rate | `rate()` | `rate(errors[5m]) > 10` |
 | Smooth graph | `rate()` | Dashboard time series |
-| Total today | `increase()` | `increase(http_requests_total[24h])` |
+| Total over last 24h | `increase()` | `increase(http_requests_total[24h])` |
 | Billing count | `increase()` | `increase(api_calls_total[30d])` |
 | Single stat | `increase()` | Dashboard stat panel |
 | Spiky graph | `irate()` | `irate(http_requests_total[5m])` |
