@@ -139,8 +139,13 @@ The cron Dockerfile extends your application image to include Supercronic, ensur
 # Start from the same image as the app to ensure consistent environment
 FROM myapp:latest
 
-# Install supercronic using multi-stage copy for smaller image
-COPY --from=aptible/supercronic:latest /usr/local/bin/supercronic /usr/local/bin/supercronic
+# Install supercronic by downloading the release binary. Supercronic does not
+# publish an official image on Docker Hub, so download the static binary directly
+ARG SUPERCRONIC_VERSION=0.2.29
+ARG TARGETARCH
+RUN wget -q "https://github.com/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}" \
+    -O /usr/local/bin/supercronic && \
+    chmod +x /usr/local/bin/supercronic
 
 # Add the crontab configuration
 COPY crontab /etc/crontab
@@ -178,12 +183,14 @@ services:
     labels:
       # Enable Ofelia for this container
       ofelia.enabled: "true"
+      # Note: Ofelia's cron format starts with a seconds field, so schedules
+      # use 6 fields (sec min hour day month weekday), not the usual 5
       # Define a cleanup job that runs every 5 minutes
-      ofelia.job-exec.cleanup.schedule: "*/5 * * * *"
+      ofelia.job-exec.cleanup.schedule: "0 */5 * * * *"
       ofelia.job-exec.cleanup.command: "node /app/scripts/cleanup.js"
 
       # Define a backup job that runs daily at 2 AM
-      ofelia.job-exec.backup.schedule: "0 2 * * *"
+      ofelia.job-exec.backup.schedule: "0 0 2 * * *"
       ofelia.job-exec.backup.command: "/app/scripts/backup.sh"
 ```
 
@@ -207,21 +214,22 @@ The Ofelia configuration file provides more options and is easier to maintain fo
 
 ```ini
 # ofelia.ini
+# Note: Ofelia's cron format starts with a seconds field (6 fields total)
 # Job that executes a command inside an existing container
 [job-exec "cleanup"]
-schedule = */5 * * * *
+schedule = 0 */5 * * * *
 container = myapp_app_1
 command = node /app/scripts/cleanup.js
 
 # Another exec job for database backups
 [job-exec "backup"]
-schedule = 0 2 * * *
+schedule = 0 0 2 * * *
 container = myapp_app_1
 command = /app/scripts/backup.sh
 
 # Job that spins up a new container to run a one-off task
 [job-run "report"]
-schedule = 0 8 * * 1
+schedule = 0 0 8 * * 1
 image = myapp:latest
 command = node /app/scripts/weekly-report.js
 ```
@@ -396,8 +404,12 @@ This configuration adds a health check to your cron container, allowing Docker t
 ```dockerfile
 FROM alpine:3.19
 
-# Copy supercronic binary from the official image
-COPY --from=aptible/supercronic:latest /usr/local/bin/supercronic /usr/local/bin/supercronic
+# Install supercronic by downloading the release binary (no official Docker Hub image exists)
+ARG SUPERCRONIC_VERSION=0.2.29
+ARG TARGETARCH
+RUN wget -q "https://github.com/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}" \
+    -O /usr/local/bin/supercronic && \
+    chmod +x /usr/local/bin/supercronic
 COPY crontab /etc/crontab
 COPY healthcheck.sh /healthcheck.sh
 
@@ -447,7 +459,7 @@ This pattern uses a monitoring service like Healthchecks.io to detect when sched
 # crontab
 # Run backup and ping monitoring service on success
 # The && operator ensures the ping only happens if the backup succeeds
-0 2 * * * /app/scripts/backup.sh && curl -s https://healthchecks.io/ping/xxx-yyy-zzz
+0 2 * * * /app/scripts/backup.sh && curl -s https://hc-ping.com/xxx-yyy-zzz
 ```
 
 ---
@@ -581,7 +593,7 @@ A comprehensive crontab demonstrating various scheduling patterns:
 # Health ping every minute
 # Dead man's switch - monitoring service alerts if pings stop
 # The || true ensures the cron job itself doesn't fail if curl fails
-* * * * * curl -fsS --retry 3 https://healthchecks.io/ping/xxx || true
+* * * * * curl -fsS --retry 3 https://hc-ping.com/xxx || true
 ```
 
 ---
@@ -592,8 +604,9 @@ Common commands and patterns for working with cron in Docker:
 
 ```bash
 # Supercronic installation (in Dockerfile)
-# Use multi-stage copy for the smallest possible image
-COPY --from=aptible/supercronic:latest /usr/local/bin/supercronic /usr/local/bin/
+# No official image on Docker Hub - download the static binary directly
+RUN wget -q "https://github.com/aptible/supercronic/releases/download/v0.2.29/supercronic-linux-${TARGETARCH}" \
+    -O /usr/local/bin/supercronic && chmod +x /usr/local/bin/supercronic
 
 # Run supercronic with default logging
 supercronic /etc/crontab
@@ -605,8 +618,8 @@ supercronic -json /etc/crontab
 supercronic -test /etc/crontab
 
 # Ofelia (docker-compose labels)
-# Schedule format follows standard cron syntax
-ofelia.job-exec.name.schedule: "*/5 * * * *"
+# Ofelia's cron format starts with a seconds field (6 fields total)
+ofelia.job-exec.name.schedule: "0 */5 * * * *"
 ofelia.job-exec.name.command: "/app/task.sh"
 
 # Host cron with docker exec
