@@ -44,20 +44,33 @@ sequenceDiagram
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
     <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+    <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-api</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
     </dependency>
     <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-impl</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
         <scope>runtime</scope>
     </dependency>
     <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-jackson</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
         <scope>runtime</scope>
     </dependency>
 </dependencies>
@@ -69,7 +82,7 @@ sequenceDiagram
 # application.yml
 
 jwt:
-  secret: your-256-bit-secret-key-must-be-at-least-32-characters-long
+  secret: bXktdmVyeS1zdHJvbmctMzItYnl0ZS1zZWNyZXQta2V5ISE=
   expiration: 86400000  # 24 hours in milliseconds
   refresh-expiration: 604800000  # 7 days
   issuer: your-app-name
@@ -222,6 +235,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 ```java
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -249,8 +263,7 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
@@ -359,12 +372,12 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@RequestBody @Valid LoginRequest request) {
         authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(
-                request.getEmail(),
-                request.getPassword()
+                request.email(),
+                request.password()
             )
         );
 
-        User user = userService.findByEmail(request.getEmail())
+        User user = userService.findByEmail(request.email())
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         String accessToken = jwtService.generateToken(user);
@@ -375,14 +388,14 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(@RequestBody RefreshRequest request) {
-        String refreshToken = request.getRefreshToken();
+        String refreshToken = request.refreshToken();
         String username = jwtService.extractUsername(refreshToken);
 
         User user = userService.findByEmail(username)
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         if (!jwtService.isTokenValid(refreshToken, user)) {
-            throw new InvalidTokenException("Invalid refresh token");
+            throw new JwtException("Invalid refresh token");
         }
 
         String accessToken = jwtService.generateToken(user);
@@ -477,7 +490,7 @@ public class RefreshTokenService {
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.getExpiryDate().isBefore(Instant.now()) || token.isRevoked()) {
             repository.delete(token);
-            throw new TokenExpiredException("Refresh token expired");
+            throw new JwtException("Refresh token expired");
         }
         return token;
     }
@@ -623,9 +636,9 @@ class AuthControllerTest {
     }
 
     @Test
-    void shouldRejectExpiredToken() throws Exception {
+    void shouldRejectInvalidToken() throws Exception {
         mockMvc.perform(get("/api/users/me")
-                .header("Authorization", "Bearer expired.token.here"))
+                .header("Authorization", "Bearer invalid.token.here"))
             .andExpect(status().isUnauthorized());
     }
 }
