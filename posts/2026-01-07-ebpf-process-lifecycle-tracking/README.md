@@ -12,7 +12,7 @@ Description: Learn how to use eBPF to track process creation, execution, and ter
 
 Understanding process lifecycle events is fundamental for system observability, security monitoring, and debugging complex application behaviors. Traditional approaches using tools like `ps`, `top`, or audit frameworks often miss short-lived processes and lack the granularity needed for comprehensive system analysis.
 
-eBPF (Extended Berkeley Packet Filter) revolutionizes this by allowing you to attach programs directly to kernel functions, capturing every process event in real-time with minimal overhead. In this comprehensive guide, you will learn how to track the complete process lifecycle using eBPF, including:
+eBPF (Extended Berkeley Packet Filter) revolutionizes this by allowing you to attach programs to kernel hooks such as tracepoints and kernel functions, capturing process events in real-time with low overhead. In this comprehensive guide, you will learn how to track the complete process lifecycle using eBPF, including:
 
 - Process creation via `fork()` and `clone()`
 - Program execution via `exec()`
@@ -51,7 +51,7 @@ graph TD
 | `fork()` | Creates a copy of the calling process | Process spawning |
 | `clone()` | Creates a child process with shared resources | Thread/process creation |
 | `execve()` | Replaces current process image with new program | Program execution |
-| `exit()` | Terminates the calling process | Process completion |
+| `exit()` / `exit_group()` | Terminates a task or process | Process completion |
 
 ## Prerequisites
 
@@ -81,13 +81,13 @@ sudo dnf install -y \
     llvm
 ```
 
-Verify your kernel supports eBPF (Linux 4.4+ required, 5.x+ recommended):
+Verify your kernel supports the eBPF features used by BCC (Linux 4.4+ is a practical baseline for these tracing examples, 5.x+ recommended):
 
 ```bash
-# Check kernel version - must be 4.4 or higher for eBPF support
+# Check kernel version - 4.4+ is a practical baseline for these examples
 uname -r
 
-# Verify BPF filesystem is mounted - required for eBPF map persistence
+# Verify BPF filesystem is mounted - useful for pinned maps and many BPF tools
 mount | grep bpf
 ```
 
@@ -123,7 +123,7 @@ struct fork_event_t {
     u32 parent_pid;      // Parent process ID
     u32 parent_tgid;     // Parent thread group ID (actual PID in userspace terms)
     u32 child_pid;       // Child process ID
-    u32 child_tgid;      // Child thread group ID
+    u32 child_tgid;      // Child thread group ID when the event is a process fork
     char parent_comm[16]; // Parent process name (limited to 16 chars by kernel)
     char child_comm[16];  // Child process name
     u64 timestamp;        // Event timestamp in nanoseconds
@@ -148,7 +148,9 @@ TRACEPOINT_PROBE(sched, sched_process_fork) {
 
     // Extract child process information
     event.child_pid = args->child_pid;
-    event.child_tgid = args->child_pid;  // For new process, PID == TGID
+    // sched_process_fork exposes the child's task PID. For process forks this
+    // is also the TGID; for CLONE_THREAD thread creation it is a thread ID.
+    event.child_tgid = args->child_pid;
 
     // Copy process names (comm field is the executable name)
     bpf_probe_read_kernel_str(&event.parent_comm, sizeof(event.parent_comm),
@@ -187,7 +189,7 @@ def main():
 
         # Print formatted output showing the fork relationship
         print(f"[{timestamp_s:14.6f}] FORK: {parent_comm}({event.parent_tgid}) "
-              f"-> {child_comm}({event.child_tgid})")
+              f"-> {child_comm}({event.child_pid})")
 
     # Open the perf buffer and register our callback
     b["fork_events"].open_perf_buffer(handle_fork_event)
@@ -222,7 +224,7 @@ After a fork, processes often call `execve()` to load a new program. This is whe
 
 ### The execve Tracepoint Approach
 
-This program captures program execution events including the full command line arguments, which is crucial for security monitoring and debugging:
+This program captures program execution events including bounded command line arguments, which is crucial for security monitoring and debugging:
 
 ```python
 #!/usr/bin/env python3
@@ -230,7 +232,7 @@ This program captures program execution events including the full command line a
 exec_tracer.py - Track all execve events with command line arguments
 
 This program captures every program execution in the system,
-including the full command line arguments passed to the program.
+including the command line arguments passed to the program, up to the buffer and argument limits configured below.
 """
 
 from bcc import BPF
@@ -326,7 +328,8 @@ TRACEPOINT_PROBE(syscalls, sys_enter_execve) {
 }
 
 // Tracepoint for execve return
-// Only fires if execve succeeded (new program now running)
+// Fires after the execve attempt. args->ret is 0 on success or a negative
+// errno value on failure.
 TRACEPOINT_PROBE(syscalls, sys_exit_execve) {
     u64 pid_tgid = bpf_get_current_pid_tgid();
 
@@ -416,7 +419,7 @@ struct exit_event_t {
     u32 pid;          // Process ID that exited
     u32 tgid;         // Thread group ID
     u32 ppid;         // Parent process ID
-    int exit_code;    // Exit code (0 = success, >0 = error, <0 = signal)
+    int exit_code;    // Shell-style status: 0 = success, >0 = error or signal
     u64 start_time;   // Process start time (for duration calculation)
     u64 exit_time;    // Exit timestamp
     char comm[16];    // Process name
@@ -452,9 +455,11 @@ TRACEPOINT_PROBE(sched, sched_process_exit) {
     event.tgid = task->tgid;
     event.ppid = task->real_parent->tgid;
 
-    // Get the exit code from task structure
-    // The exit_code field contains the full exit status
-    event.exit_code = task->exit_code >> 8;  // Extract exit code portion
+    // Get the exit status from task structure. For normal exits, the exit code
+    // is stored in bits 8..15. For signal exits, the signal is in the low bits.
+    int status = task->exit_code;
+    int signal = status & 0x7f;
+    event.exit_code = signal ? 128 + signal : status >> 8;
 
     // Record exit timestamp
     event.exit_time = bpf_ktime_get_ns();
@@ -577,10 +582,7 @@ Usage: sudo python3 process_lifecycle_tracker.py
 """
 
 from bcc import BPF
-from collections import defaultdict
-from datetime import datetime
 import json
-import sys
 
 # Complete eBPF program combining all lifecycle events
 bpf_program = """
@@ -616,7 +618,7 @@ struct process_event_t {
     u32 child_pid;           // New child PID (fork only)
 
     // For exit events
-    int exit_code;           // Exit code (exit only)
+    int exit_code;           // Shell-style status for exit events
     u64 start_time;          // Process start time (for duration)
 
     // Process information
@@ -764,8 +766,10 @@ TRACEPOINT_PROBE(sched, sched_process_exit) {
     event.uid = ugid;
     event.gid = ugid >> 32;
 
-    // Extract exit code
-    event.exit_code = task->exit_code >> 8;
+    // Extract shell-style exit status
+    int status = task->exit_code;
+    int signal = status & 0x7f;
+    event.exit_code = signal ? 128 + signal : status >> 8;
 
     // Get process name
     bpf_get_current_comm(&event.comm, sizeof(event.comm));
@@ -1021,9 +1025,14 @@ static inline u32 get_pid_namespace_id() {
     // nsproxy contains all namespace references for the task
     struct pid_namespace *pidns = NULL;
 
-    // Read nsproxy pointer from task
+    // Read nsproxy pointer from task, then read the PID namespace pointer.
+    struct nsproxy *nsproxy = NULL;
+    bpf_probe_read_kernel(&nsproxy, sizeof(nsproxy), &task->nsproxy);
+    if (!nsproxy)
+        return 0;
+
     bpf_probe_read_kernel(&pidns, sizeof(pidns),
-                          &task->nsproxy->pid_ns_for_children);
+                          &nsproxy->pid_ns_for_children);
 
     if (!pidns)
         return 0;
@@ -1123,6 +1132,8 @@ Process lifecycle tracking with eBPF enables several security applications:
 This function implements heuristics for detecting potentially malicious process behavior:
 
 ```python
+import re
+
 def analyze_suspicious_behavior(event):
     """
     Analyze process events for suspicious patterns.
@@ -1154,8 +1165,9 @@ def analyze_suspicious_behavior(event):
         'ncat -e',
     ]
 
+    args_lower = args.lower()
     for pattern in reverse_shell_patterns:
-        if pattern in args.lower():
+        if re.search(pattern, args_lower):
             suspicious_indicators.append("REVERSE_SHELL_PATTERN")
             break
 
@@ -1176,6 +1188,9 @@ def analyze_suspicious_behavior(event):
 This class implements a process allowlist for high-security environments:
 
 ```python
+import fnmatch
+import json
+
 class ProcessAllowlist:
     """
     Maintain an allowlist of permitted processes.
@@ -1221,7 +1236,7 @@ This example shows how to use the more efficient ring buffer for high-throughput
 // for high-frequency events (Linux 5.8+)
 
 // Define a ring buffer instead of perf output
-BPF_RINGBUF_OUTPUT(events, 1 << 20);  // 1MB buffer
+BPF_RINGBUF_OUTPUT(events, 256);  // 256 pages, usually 1MB on 4KB-page systems
 
 // In your tracepoint, use ringbuf_output instead of perf_submit
 struct process_event_t *event;
@@ -1288,7 +1303,7 @@ This foundation enables advanced use cases including:
 - Compliance auditing
 - Container workload visibility
 
-The techniques covered in this guide work across modern Linux distributions with kernel 4.4+ and provide near-zero overhead monitoring suitable for production environments.
+The techniques covered in this guide work across modern Linux distributions with kernel 4.4+ and provide low-overhead monitoring suitable for production environments.
 
 ## Further Reading
 
