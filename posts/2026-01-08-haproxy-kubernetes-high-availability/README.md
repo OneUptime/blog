@@ -241,7 +241,8 @@ frontend grpc_front
 backend kubernetes_default
     mode http
     balance roundrobin
-    option httpchk GET /healthz HTTP/1.1\r\nHost:\ kubernetes.default.svc
+    option httpchk
+    http-check send meth GET uri /healthz hdr Host kubernetes.default.svc
     http-check expect status 200
 
     # Kubernetes nodes with NodePort
@@ -253,7 +254,8 @@ backend kubernetes_default
 backend app1_backend
     mode http
     balance leastconn
-    option httpchk GET /health HTTP/1.1\r\nHost:\ app1.example.com
+    option httpchk
+    http-check send meth GET uri /health hdr Host app1.example.com
     http-check expect status 200
 
     # Cookie-based session persistence
@@ -268,7 +270,8 @@ backend app2_backend
     mode http
     balance source
     hash-type consistent
-    option httpchk GET /ready HTTP/1.1\r\nHost:\ app2.example.com
+    option httpchk
+    http-check send meth GET uri /ready hdr Host app2.example.com
     http-check expect status 200
 
     server k8s-node1 192.168.1.21:30082 check inter 5s fall 3 rise 2
@@ -279,7 +282,8 @@ backend app2_backend
 backend api_backend
     mode http
     balance roundrobin
-    option httpchk GET /api/health HTTP/1.1\r\nHost:\ api.example.com
+    option httpchk
+    http-check send meth GET uri /api/health hdr Host api.example.com
     http-check expect status 200
 
     # Circuit breaker: if 50% of requests fail, mark server down
