@@ -47,14 +47,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build Docker image
         run: |
           docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'table'
@@ -77,16 +77,17 @@ jobs:
     permissions:
       security-events: write
       contents: read
+      actions: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build image
         run: docker build -t myapp:scan .
 
       - name: Run Trivy and output SARIF
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:scan'
           format: 'sarif'
@@ -94,7 +95,7 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 ```
@@ -109,10 +110,14 @@ Grype from Anchore provides another option for container scanning with different
 jobs:
   grype-scan:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build image
         run: docker build -t myapp:${{ github.sha }} .
@@ -126,7 +131,7 @@ jobs:
           severity-cutoff: high
 
       - name: Upload SARIF report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
@@ -134,41 +139,44 @@ jobs:
 
 The `if: always()` condition ensures the SARIF upload runs even when the scan fails, preserving visibility into what vulnerabilities were found.
 
-## Scanning During Image Build
+## Scanning Before Image Push
 
-For faster feedback, scan the image layers as they build rather than waiting for the complete image.
+For faster feedback, scan the image immediately after the Buildx build and before pushing it to your registry.
 
 ```yaml
 jobs:
   build-scan-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and export to Docker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
-          tags: myapp:test
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Scan built image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: 'myapp:test'
+          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.sha }}'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
       - name: Login to Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -176,11 +184,7 @@ jobs:
 
       - name: Push to registry
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
 ```
 
 This workflow only pushes images that pass the security scan, preventing vulnerable images from reaching your registry.
@@ -204,7 +208,7 @@ Reference the ignore file in your workflow:
 
 ```yaml
 - name: Scan with ignore file
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@v0.36.0
   with:
     image-ref: 'myapp:${{ github.sha }}'
     exit-code: '1'
@@ -222,6 +226,10 @@ Monorepos with multiple services need to scan each image. Use a matrix strategy 
 jobs:
   scan-images:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -238,7 +246,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build ${{ matrix.service.name }}
         run: |
@@ -248,7 +256,7 @@ jobs:
             ${{ matrix.service.context }}
 
       - name: Scan ${{ matrix.service.name }}
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ matrix.service.name }}:scan'
           format: 'sarif'
@@ -256,7 +264,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload results for ${{ matrix.service.name }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: '${{ matrix.service.name }}-results.sarif'
           category: '${{ matrix.service.name }}'
@@ -280,13 +288,18 @@ on:
 jobs:
   scan-production-images:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+      packages: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Login to registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -297,14 +310,17 @@ jobs:
           docker pull ghcr.io/${{ github.repository }}:latest
 
       - name: Scan production image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'ghcr.io/${{ github.repository }}:latest'
           format: 'sarif'
           output: 'production-scan.sarif'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
         with:
           sarif_file: 'production-scan.sarif'
 
@@ -351,7 +367,7 @@ Multi-stage builds separate build dependencies from runtime. Scan the final stag
     docker build --target production -t myapp:prod .
 
 - name: Scan production stage only
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@v0.36.0
   with:
     image-ref: 'myapp:prod'
 ```
