@@ -1076,11 +1076,14 @@ end
 ### Retry Configuration with Active Job
 
 ```ruby
-# app/jobs/action_mailer/mail_delivery_job.rb
-# Override the default mail delivery job for custom retry logic
-class ActionMailer::MailDeliveryJob < ApplicationJob
-  # Retry failed deliveries with exponential backoff
-  retry_on Net::SMTPServerBusy, wait: :exponentially_longer, attempts: 5
+# app/jobs/custom_mail_delivery_job.rb
+# Custom mail delivery job for custom retry logic.
+# Inherit from the built-in job rather than reopening it, then point
+# Action Mailer at this class with:
+#   config.action_mailer.delivery_job = "CustomMailDeliveryJob"
+class CustomMailDeliveryJob < ActionMailer::MailDeliveryJob
+  # Retry failed deliveries with polynomial backoff
+  retry_on Net::SMTPServerBusy, wait: :polynomially_longer, attempts: 5
   retry_on Net::OpenTimeout, wait: 30.seconds, attempts: 3
   retry_on Timeout::Error, wait: 30.seconds, attempts: 3
   
