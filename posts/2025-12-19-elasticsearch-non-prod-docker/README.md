@@ -27,10 +27,9 @@ Production Elasticsearch clusters are designed for high availability with multip
 Here is a minimal Docker Compose configuration for running Elasticsearch in development mode:
 
 ```yaml
-version: '3.8'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
     container_name: elasticsearch-dev
     environment:
       - discovery.type=single-node
@@ -117,10 +116,9 @@ graph TB
 For more control over your development environment, here is an extended configuration:
 
 ```yaml
-version: '3.8'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
     container_name: elasticsearch-dev
     environment:
       # Cluster settings
@@ -136,16 +134,8 @@ services:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - bootstrap.memory_lock=true
 
-      # Index settings for development
+      # Index creation settings
       - action.auto_create_index=true
-      - indices.id_field_data.enabled=true
-
-      # Performance tuning for dev
-      - index.number_of_shards=1
-      - index.number_of_replicas=0
-
-      # Logging
-      - logger.level=INFO
     ulimits:
       memlock:
         soft: -1
@@ -179,7 +169,7 @@ docker run -d \
   -e "xpack.security.enabled=false" \
   -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
   -e "cluster.name=dev-cluster" \
-  docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+  docker.elastic.co/elasticsearch/elasticsearch:9.4.2
 ```
 
 ## Index Template for Development
@@ -239,7 +229,7 @@ curl -X GET "localhost:9200/_cluster/health?pretty"
 
 | Setting | Development | Production |
 |---------|-------------|------------|
-| discovery.type | single-node | zen/seed-hosts |
+| discovery.type | single-node | discovery.seed_hosts / cluster.initial_master_nodes |
 | xpack.security.enabled | false | true |
 | ES_JAVA_OPTS | -Xms512m -Xmx512m | -Xms16g -Xmx16g |
 | number_of_shards | 1 | 3-5 |
@@ -255,7 +245,7 @@ For CI/CD pipelines where you need a clean Elasticsearch instance:
 ```yaml
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -285,15 +275,11 @@ Create a script to reset your development environment:
 #!/bin/bash
 # reset-elasticsearch.sh
 
-# Stop and remove container
-docker stop elasticsearch-dev
-docker rm elasticsearch-dev
-
-# Remove volume (optional - removes all data)
-docker volume rm esdata
+# Stop and remove the container and its Compose-managed volume
+docker compose down -v
 
 # Restart with fresh state
-docker-compose up -d elasticsearch
+docker compose up -d elasticsearch
 ```
 
 ## Summary
