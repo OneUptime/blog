@@ -8,7 +8,7 @@ Description: Learn how to configure HTTP/2 between clients and Nginx, and optimi
 
 ---
 
-HTTP/2 delivers significant performance improvements over HTTP/1.1, including multiplexing, header compression, and server push. When running Node.js applications behind Nginx, you have multiple options for implementing HTTP/2. This guide covers the optimal configuration for production environments.
+HTTP/2 delivers significant performance improvements over HTTP/1.1, including multiplexing and header compression. It also introduced server push, but that feature is now largely obsolete in browsers. When running Node.js applications behind Nginx, you have multiple options for implementing HTTP/2. This guide covers the optimal configuration for production environments.
 
 ## Understanding the Architecture
 
@@ -35,7 +35,7 @@ While you can configure HTTP/2 all the way through, using HTTP/1.1 between Nginx
 | Aspect | HTTP/2 Backend | HTTP/1.1 Backend |
 |--------|---------------|------------------|
 | Configuration complexity | High | Low |
-| TLS requirement | Required | Optional |
+| TLS requirement | Optional for internal traffic | Optional |
 | Performance gain | Minimal | N/A |
 | Debugging | Harder | Easier |
 | Connection reuse | Built-in | Via keepalive |
@@ -52,10 +52,12 @@ HTTP/2 requires TLS in browsers. Set up certificates first:
 certbot certonly --nginx -d example.com -d www.example.com
 
 # For development - create self-signed certificate
+mkdir -p /etc/nginx/ssl
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/dev.key \
     -out /etc/nginx/ssl/dev.crt \
-    -subj "/CN=localhost"
+    -subj "/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 ```
 
 ## Step 2: Nginx HTTP/2 Configuration
@@ -253,15 +255,19 @@ app.listen(PORT, '127.0.0.1', () => {
 
 ## Step 5: HTTP/2 Server Push (Obsolete)
 
-**Note:** The `http2_push`, `http2_push_preload`, and `http2_max_concurrent_pushes` directives are **obsolete since Nginx 1.25.1**. HTTP/2 server push was disabled in Chrome 106 and is no longer supported by most browsers. Use `103 Early Hints` via the `early_hints` directive instead, or use `<link rel="preload">` headers.
+**Note:** The `http2_push`, `http2_push_preload`, and `http2_max_concurrent_pushes` directives are **obsolete since Nginx 1.25.1**. HTTP/2 server push was disabled in Chrome 106 and is no longer supported by most browsers. Use `103 Early Hints` via the `early_hints` directive in Nginx 1.29.0+, or use `<link rel="preload">` headers.
 
 ```nginx
+map $http_sec_fetch_mode $early_hints {
+    navigate $http2;
+}
+
 location / {
     proxy_pass http://nodejs_backend;
 
     # Use 103 Early Hints instead of server push
-    # (requires Nginx 1.25.1+)
-    # early_hints on;
+    # (requires Nginx 1.29.0+)
+    early_hints $early_hints;
 }
 ```
 
