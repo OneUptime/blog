@@ -133,6 +133,7 @@ Create API routes in `routes/api.php`:
 
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\CommentController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Basic route returning JSON response
@@ -1213,70 +1214,92 @@ Route::middleware('auth:sanctum')->group(function () {
 
 ## Error Handling
 
-### Custom Exception Handler
+### Custom Exception Handling
+
+In Laravel 11 and newer there is no longer an `app/Exceptions/Handler.php` file.
+Exception reporting and rendering is configured in `bootstrap/app.php` using the
+`withExceptions` method. Register `render` closures for each exception type to
+return consistent JSON error responses for API requests:
 
 ```php
 <?php
 
-// app/Exceptions/Handler.php
-// Customize API error responses
-
-namespace App\Exceptions;
+// bootstrap/app.php
+// Customize API error responses (Laravel 11+)
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
-class Handler extends ExceptionHandler
-{
-    /**
-     * Register the exception handling callbacks.
-     */
-    public function register(): void
-    {
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware) {
+        //
+    })
+    ->withExceptions(function (Exceptions $exceptions) {
+        // Helper to build a standardized API error response
+        $apiError = function (string $message, int $status, string $code, ?array $debug = null) {
+            $response = [
+                'message' => $message,
+                'code' => $code,
+                'status' => $status,
+            ];
+
+            if ($debug && ! app()->environment('production')) {
+                $response['debug'] = $debug;
+            }
+
+            return response()->json($response, $status);
+        };
+
         // Handle model not found (404)
-        $this->renderable(function (ModelNotFoundException $e, Request $request) {
-            if ($request->wantsJson() || $request->is('api/*')) {
-                return $this->apiErrorResponse(
-                    'Resource not found',
-                    404,
-                    'NOT_FOUND'
-                );
+        $exceptions->render(function (ModelNotFoundException $e, Request $request) use ($apiError) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $apiError('Resource not found', 404, 'NOT_FOUND');
             }
         });
 
         // Handle route not found (404)
-        $this->renderable(function (NotFoundHttpException $e, Request $request) {
-            if ($request->wantsJson() || $request->is('api/*')) {
-                return $this->apiErrorResponse(
-                    'Endpoint not found',
-                    404,
-                    'ENDPOINT_NOT_FOUND'
-                );
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) use ($apiError) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $apiError('Endpoint not found', 404, 'ENDPOINT_NOT_FOUND');
             }
         });
 
-        // Handle authentication errors
-        $this->renderable(function (AuthenticationException $e, Request $request) {
-            if ($request->wantsJson() || $request->is('api/*')) {
-                return $this->apiErrorResponse(
-                    'Unauthenticated',
-                    401,
-                    'UNAUTHENTICATED'
-                );
+        // Handle authentication errors (401)
+        $exceptions->render(function (AuthenticationException $e, Request $request) use ($apiError) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $apiError('Unauthenticated', 401, 'UNAUTHENTICATED');
+            }
+        });
+
+        // Customize validation error responses (422)
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'code' => 'VALIDATION_ERROR',
+                    'errors' => $e->errors(),
+                ], $e->status);
             }
         });
 
         // Handle generic HTTP exceptions
-        $this->renderable(function (HttpException $e, Request $request) {
-            if ($request->wantsJson() || $request->is('api/*')) {
-                return $this->apiErrorResponse(
+        $exceptions->render(function (HttpException $e, Request $request) use ($apiError) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $apiError(
                     $e->getMessage() ?: 'An error occurred',
                     $e->getStatusCode(),
                     'HTTP_ERROR'
@@ -1284,68 +1307,23 @@ class Handler extends ExceptionHandler
             }
         });
 
-        // Handle all other exceptions in production
-        $this->renderable(function (Throwable $e, Request $request) {
-            if ($request->wantsJson() || $request->is('api/*')) {
+        // Handle all other exceptions
+        $exceptions->render(function (Throwable $e, Request $request) use ($apiError) {
+            if ($request->is('api/*') || $request->wantsJson()) {
                 // In production, hide internal details
                 if (app()->environment('production')) {
-                    return $this->apiErrorResponse(
-                        'An unexpected error occurred',
-                        500,
-                        'INTERNAL_ERROR'
-                    );
+                    return $apiError('An unexpected error occurred', 500, 'INTERNAL_ERROR');
                 }
-                
+
                 // In development, show details
-                return $this->apiErrorResponse(
-                    $e->getMessage(),
-                    500,
-                    'INTERNAL_ERROR',
-                    [
-                        'exception' => get_class($e),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                        'trace' => $e->getTrace(),
-                    ]
-                );
+                return $apiError($e->getMessage(), 500, 'INTERNAL_ERROR', [
+                    'exception' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
             }
         });
-    }
-
-    /**
-     * Convert validation exception to JSON response.
-     */
-    protected function invalidJson($request, ValidationException $exception): JsonResponse
-    {
-        return response()->json([
-            'message' => 'Validation failed',
-            'code' => 'VALIDATION_ERROR',
-            'errors' => $exception->errors(),
-        ], $exception->status);
-    }
-
-    /**
-     * Create a standardized API error response.
-     */
-    protected function apiErrorResponse(
-        string $message,
-        int $statusCode,
-        string $code,
-        array $debug = null
-    ): JsonResponse {
-        $response = [
-            'message' => $message,
-            'code' => $code,
-            'status' => $statusCode,
-        ];
-
-        if ($debug && !app()->environment('production')) {
-            $response['debug'] = $debug;
-        }
-
-        return response()->json($response, $statusCode);
-    }
-}
+    })->create();
 ```
 
 ---
