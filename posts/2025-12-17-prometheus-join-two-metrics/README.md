@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Vector Matching, Joins, Metric, Monitoring, Label Matching, Observability
 
-Description: Learn how to join two metrics in Prometheus using vector matching with on(), group_left(), and group_right(). This guide covers one-to-one, many-to-one, and many-to-many joins with practical examples.
+Description: Learn how to join two metrics in Prometheus using vector matching with on(), group_left(), and group_right(). This guide covers one-to-one, many-to-one, and one-to-many joins with practical examples.
 
 ---
 
@@ -12,7 +12,7 @@ Prometheus doesn't have traditional SQL-style JOINs, but it provides powerful ve
 
 ## Understanding Vector Matching
 
-Vector matching combines two instant vectors based on their labels. Prometheus supports three types of matches:
+Vector matching combines two instant vectors based on their labels. For arithmetic and comparison operators, Prometheus supports one-to-one, many-to-one, and one-to-many matches:
 
 ```mermaid
 flowchart TB
@@ -26,7 +26,7 @@ flowchart TB
         A4[Metric A: pod=app-3] --- B2
     end
 
-    subgraph "Many-to-Many"
+    subgraph "Many-to-Many (not allowed for arithmetic joins)"
         A5[Metric A: method=GET] --- B3[Metric B: endpoint=/api]
         A5 --- B4[Metric B: endpoint=/web]
         A6[Metric A: method=POST] --- B3
@@ -36,19 +36,22 @@ flowchart TB
 
 ## Basic Vector Matching
 
-### Default Matching (All Labels)
+### Default Matching (Exact Label Sets)
 
-By default, binary operations match on all common labels:
+By default, binary operations match series that have the exact same label set and label values:
 
 ```promql
 # Divides metrics that have identical label sets
 
 metric_a / metric_b
 
-# Example: CPU usage percentage
-rate(container_cpu_usage_seconds_total[5m])
+# Example: Filesystem usage percentage
+100 *
+(
+  node_filesystem_size_bytes - node_filesystem_avail_bytes
+)
 /
-container_spec_cpu_quota
+node_filesystem_size_bytes
 ```
 
 ### The on() Modifier
@@ -89,6 +92,7 @@ One-to-one matching pairs each element from the left side with exactly one eleme
 )
 /
 node_memory_MemTotal_bytes
+* 100
 ```
 
 ### Example: Error Rate per Service
@@ -113,7 +117,7 @@ container_spec_memory_limit_bytes
 
 ## Many-to-One Matching with group_left()
 
-When the right side has fewer elements (lower cardinality), use `group_left()` to copy labels from the right to the left.
+When the right side has fewer elements (lower cardinality), use `group_left()` to allow the many-to-one match and optionally include labels from the right side in the result.
 
 ```mermaid
 flowchart LR
@@ -149,10 +153,10 @@ metric_a * on(labels) group_left(extra_labels) metric_b
 ```promql
 # Add owner label from namespace to pod metrics
 container_memory_usage_bytes
-* on(namespace) group_left(owner)
+* on(namespace) group_left(label_owner)
 kube_namespace_labels
 
-# Result has both pod labels AND owner label
+# Result has both pod labels AND label_owner
 ```
 
 ### Example: Enrich with Service Info
@@ -160,26 +164,26 @@ kube_namespace_labels
 ```promql
 # Add service info to pod metrics
 sum by (pod, namespace) (rate(container_cpu_usage_seconds_total[5m]))
-* on(pod, namespace) group_left(service)
+* on(pod, namespace) group_left(label_app)
 kube_pod_labels{label_app!=""}
 ```
 
 ### Example: Calculate Percentage with Info Labels
 
 ```promql
-# Memory usage with deployment name
+# Memory usage with app label
 (
   container_memory_usage_bytes
   / on(pod, namespace) group_left()
   container_spec_memory_limit_bytes
 )
-* on(pod, namespace) group_left(deployment)
+* on(pod, namespace) group_left(label_app)
 kube_pod_labels
 ```
 
-## Many-to-One Matching with group_right()
+## One-to-Many Matching with group_right()
 
-When the left side has fewer elements, use `group_right()` to copy labels from the left to the right.
+When the left side has fewer elements, use `group_right()` to allow the one-to-many match and optionally include labels from the left side in the result.
 
 ### Syntax
 
@@ -205,7 +209,7 @@ sum by (region, instance) (rate(http_requests_total[5m]))
 sum by (pod, namespace) (
   rate(container_network_receive_bytes_total[5m])
 )
-* on(pod, namespace) group_left(app, version)
+* on(pod, namespace) group_left(label_app, label_version)
 kube_pod_labels
 ```
 
@@ -226,7 +230,7 @@ sum by (namespace) (
   rate(container_cpu_usage_seconds_total[5m])
 )
 / on(namespace) group_left()
-kube_resourcequota{resource="limits.cpu", type="hard"}
+sum by (namespace) (kube_resourcequota{resource="limits.cpu", type="hard"})
 ```
 
 ### Pattern 4: Compare Current vs Historical
@@ -260,7 +264,7 @@ Add or modify labels before joining:
 # Add missing label for join
 label_replace(
   node_cpu_utilization,
-  "cluster", "production", "", ""
+  "cluster", "production", "job", ".*"
 )
 * on(cluster) group_left(region)
 cluster_info
@@ -299,7 +303,7 @@ label_replace(
 ```promql
 # Node metrics with kubernetes node labels
 node_cpu_utilization
-* on(node) group_left(zone, instance_type)
+* on(node) group_left(label_topology_kubernetes_io_zone, label_node_kubernetes_io_instance_type)
 kube_node_labels
 ```
 
@@ -310,7 +314,7 @@ kube_node_labels
 sum by (pod, namespace, node) (
   rate(http_requests_total[5m])
 )
-* on(node) group_left(zone)
+* on(node) group_left(label_topology_kubernetes_io_zone)
 kube_node_labels
 ```
 
@@ -339,17 +343,17 @@ Error: "many-to-many matching not allowed"
 # Wrong: Both sides have multiple matches
 metric_a * on(job) metric_b
 
-# Fix: Aggregate one side first
-sum by (job) (metric_a) * on(job) metric_b
+# Fix: Aggregate to make the match unique
+sum by (job) (metric_a) * on(job) sum by (job) (metric_b)
 
-# Or use group_left/group_right
-metric_a * on(job) group_left() metric_b
+# Or use group_left/group_right after making one side unique
+metric_a * on(job) group_left() sum by (job) (metric_b)
 ```
 
 ### Issue: Label Not Found After Join
 
 ```promql
-# Labels not in on() clause are dropped
+# Labels from the one side are not copied unless you list them
 metric_a * on(namespace) group_left() metric_b
 
 # To keep labels from right side, list them
@@ -370,7 +374,7 @@ groups:
           sum by (pod, namespace, container) (
             rate(container_cpu_usage_seconds_total[5m])
           )
-          * on(pod, namespace) group_left(app, version)
+          * on(pod, namespace) group_left(label_app, label_version)
           kube_pod_labels
 
       # Resource usage percentage
@@ -380,7 +384,7 @@ groups:
             rate(container_cpu_usage_seconds_total[5m])
           )
           / on(namespace) group_left()
-          kube_resourcequota{resource="limits.cpu", type="hard"}
+          sum by (namespace) (kube_resourcequota{resource="limits.cpu", type="hard"})
 ```
 
 ## Summary
@@ -395,8 +399,8 @@ groups:
 |----------|---------|
 | `on(labels)` | Match only on specified labels |
 | `ignoring(labels)` | Match on all except specified |
-| `group_left(labels)` | Copy specified labels from right |
-| `group_right(labels)` | Copy specified labels from left |
+| `group_left(labels)` | Allow many-to-one matching and include specified labels from right |
+| `group_right(labels)` | Allow one-to-many matching and include specified labels from left |
 
 ---
 
