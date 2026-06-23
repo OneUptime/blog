@@ -28,7 +28,7 @@ services:
     # Your application container
     image: ghcr.io/acme/api:main
     # Grant this service access to the llm_small model
-    # Compose will inject AI_LLM_SMALL_URL environment variable automatically
+    # Compose will inject LLM_SMALL_URL environment variable automatically
     models:
       - llm_small
 
@@ -40,7 +40,7 @@ models:
     model: docker.io/acme/llm-small:1.2.0
 ```
 
-Behind the scenes, Docker Desktop launches a **model runner** container, downloads the OCI artifact, and injects connection info into `api` as environment variables (for example `AI_LLM_SMALL_URL`).
+Behind the scenes, Docker Desktop launches a **model runner** container, downloads the OCI artifact, and injects connection info into `api` as environment variables (for example `LLM_SMALL_URL`).
 
 Need more control? Switch to the long syntax so you can pick your env var, add runtime flags, or adjust token windows:
 
@@ -53,7 +53,7 @@ services:
     # Long syntax for fine-grained model configuration
     models:
       llm_large:
-        # Override the default env var name (AI_LLM_LARGE_URL -> SUMMARIZER_URL)
+        # Override the default env var name (LLM_LARGE_URL -> SUMMARIZER_URL)
         # Your app reads this to find the inference endpoint
         endpoint_var: SUMMARIZER_URL
 
@@ -101,7 +101,7 @@ flowchart LR
     serviceB["Background worker"]
     modelRunner["Model runner (OCI inference)"]
   end
-  serviceA -- AI_LLM_SMALL_URL --> modelRunner
+  serviceA -- LLM_SMALL_URL --> modelRunner
   serviceB -- SUMMARIZER_URL --> modelRunner
   modelRunner -- "HTTP/gRPC tokens" --> serviceA
   modelRunner -- "Batch inferences" --> serviceB
