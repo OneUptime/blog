@@ -447,7 +447,7 @@ gantt
 For more control, configure HikariCP programmatically:
 
 ```java
-// config/HikariConfig.java
+// config/HikariConfiguration.java
 package com.example.config;
 
 import com.zaxxer.hikari.HikariDataSource;
