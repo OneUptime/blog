@@ -32,7 +32,8 @@ The simplest approach - count requests in fixed time windows:
 ```python
 # fixed_window.py
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from collections import defaultdict
 import time
 
@@ -84,9 +85,13 @@ async def rate_limit_middleware(request: Request, call_next):
     client_ip = request.client.host
 
     if not limiter.is_allowed(client_ip):
-        raise HTTPException(
+        # Return a response directly. HTTPException raised inside an
+        # @app.middleware("http") function is not caught by FastAPI's
+        # exception handlers (it runs outside ExceptionMiddleware) and
+        # would surface as a 500 error instead of a 429.
+        return JSONResponse(
             status_code=429,
-            detail="Rate limit exceeded",
+            content={"detail": "Rate limit exceeded"},
             headers={
                 "X-RateLimit-Limit": str(limiter.requests),
                 "X-RateLimit-Remaining": "0",
