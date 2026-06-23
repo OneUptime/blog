@@ -460,7 +460,6 @@ module Products
         )
         .left_joins(order_items: :order)
         .where(orders: { created_at: @since..Time.current })
-        .or(@relation.where(orders: { id: nil }))
         .group('products.id')
         .order('total_sold DESC')
         .limit(@limit)
