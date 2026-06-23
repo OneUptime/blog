@@ -54,6 +54,7 @@ Implement a distributed lock using the Kazoo library.
 ```python
 from kazoo.client import KazooClient
 from kazoo.recipe.lock import Lock
+from kazoo.exceptions import LockTimeout
 import time
 import threading
 
@@ -69,9 +70,11 @@ class DistributedLock:
         lock_path = f"{self.lock_path}/{resource_name}"
         lock = Lock(self.zk, lock_path)
 
-        acquired = lock.acquire(timeout=timeout)
-        if acquired:
+        try:
+            lock.acquire(timeout=timeout)
             return lock
+        except LockTimeout:
+            return None
         return None
 
     def release_lock(self, lock):
@@ -79,7 +82,7 @@ class DistributedLock:
         if lock:
             lock.release()
 
-    def with_lock(self, resource_name, timeout=None):
+    def with_lock(self, resource_name):
         """Context manager for acquiring a lock."""
         lock_path = f"{self.lock_path}/{resource_name}"
         return Lock(self.zk, lock_path)
@@ -130,6 +133,7 @@ Implement a more robust lock with configurable retry behavior.
 from kazoo.client import KazooClient
 from kazoo.exceptions import LockTimeout, ConnectionLoss
 import time
+import threading
 import uuid
 import logging
 
@@ -184,6 +188,13 @@ class RobustDistributedLock:
 
             except ConnectionLoss:
                 logger.warning(f"Connection lost, attempt {attempt + 1}/{retry_count}")
+                existing_node = self._find_existing_node(lock_path, lock_id)
+                if existing_node:
+                    node_name = existing_node.split('/')[-1]
+                    if self._try_acquire(lock_path, node_name, timeout):
+                        self._locks[lock_id] = existing_node
+                        logger.info(f"Lock acquired after reconnect: {resource} ({lock_id})")
+                        return lock_id
                 time.sleep(retry_delay * (attempt + 1))
                 continue
 
@@ -192,6 +203,21 @@ class RobustDistributedLock:
                 break
 
         raise LockTimeout(f"Failed to acquire lock for {resource}")
+
+    def _find_existing_node(self, lock_path: str, lock_id: str):
+        """Find a node created before a recoverable connection loss."""
+        try:
+            for child in self.zk.get_children(lock_path):
+                child_path = f"{lock_path}/{child}"
+                try:
+                    data, _ = self.zk.get(child_path)
+                    if data == lock_id.encode():
+                        return child_path
+                except Exception:
+                    continue
+        except Exception:
+            return None
+        return None
 
     def _try_acquire(self, lock_path: str, my_node: str, timeout: float) -> bool:
         """Attempt to acquire the lock using the Zookeeper recipe."""
@@ -208,6 +234,8 @@ class RobustDistributedLock:
                 return True
 
             # Find the node just before ours to watch
+            if my_node not in children:
+                return False
             my_index = children.index(my_node)
             watch_node = children[my_index - 1]
             watch_path = f"{lock_path}/{watch_node}"
@@ -518,62 +546,51 @@ public class DistributedLockManager {
 }
 ```
 
-## 5. Lock with Automatic Extension
+## 5. Lock with Session State Monitoring
 
-Extend lock timeout automatically while work is in progress.
+Monitor the ZooKeeper session while work is in progress.
 
 ```python
 import threading
-from kazoo.client import KazooClient
+from kazoo.client import KazooClient, KazooState
 from kazoo.recipe.lock import Lock
 
-class AutoExtendingLock:
-    def __init__(self, zk_hosts, resource_name, ttl=30):
+class MonitoredLock:
+    def __init__(self, zk_hosts, resource_name):
         self.zk = KazooClient(hosts=zk_hosts)
+        self.zk.add_listener(self._state_listener)
         self.zk.start()
         self.lock = Lock(self.zk, f"/locks/{resource_name}")
-        self.ttl = ttl
-        self._stop_extension = threading.Event()
-        self._extension_thread = None
+        self.lost = threading.Event()
 
     def __enter__(self):
         self.lock.acquire()
-        self._start_extension()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._stop_extension.set()
-        if self._extension_thread:
-            self._extension_thread.join()
-        self.lock.release()
+        if self.lock.is_acquired:
+            self.lock.release()
+        self.zk.stop()
+        self.zk.close()
         return False
 
-    def _start_extension(self):
-        """Start background thread to extend lock."""
-        def extend():
-            while not self._stop_extension.wait(self.ttl / 3):
-                # Touch the lock node to prevent expiration
-                try:
-                    self.zk.set(self.lock.path, b"heartbeat")
-                except Exception as e:
-                    print(f"Lock extension failed: {e}")
-                    break
-
-        self._extension_thread = threading.Thread(target=extend, daemon=True)
-        self._extension_thread.start()
+    def _state_listener(self, state):
+        if state == KazooState.LOST:
+            # The ephemeral lock node has been removed after session loss.
+            self.lost.set()
 
 # Usage
-with AutoExtendingLock('localhost:2181', 'long-running-job') as lock:
-    # Lock is automatically extended while this runs
+with MonitoredLock('localhost:2181', 'long-running-job') as lock:
+    # Stop or make the work idempotent if lock.lost is set.
     perform_long_running_job()
 ```
 
 ## Best Practices
 
 1. **Use ephemeral nodes** - Automatically release locks when client disconnects
-2. **Implement timeouts** - Prevent deadlocks from failed processes
+2. **Implement acquire timeouts** - Bound how long callers wait under contention
 3. **Use sequential nodes** - Fair ordering prevents starvation
-4. **Handle connection loss** - Re-acquire locks after reconnection
+4. **Handle session loss** - Stop or make work idempotent when the lock session is lost
 5. **Keep lock duration short** - Minimize contention window
 6. **Monitor lock metrics** - Track wait times and contention
 
