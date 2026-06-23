@@ -10,7 +10,7 @@ Description: Learn how to configure MetalLB with external traffic policy local t
 
 ## Introduction
 
-When running applications in Kubernetes that need to know the original client IP address, such as web servers for logging, security applications for IP-based access control, or analytics platforms, the default behavior of Kubernetes services can be problematic. By default, Kubernetes uses `externalTrafficPolicy: Cluster`, which load balances traffic across all nodes in the cluster, but in doing so, it performs Source Network Address Translation (SNAT), replacing the original client IP with an internal cluster IP.
+When running applications in Kubernetes that need to know the original client IP address, such as web servers for logging, security applications for IP-based access control, or analytics platforms, the default behavior of Kubernetes services can be problematic. By default, Kubernetes uses `externalTrafficPolicy: Cluster`, which can proxy external traffic to pods across the cluster, but in doing so, it performs Source Network Address Translation (SNAT), replacing the original client IP with an internal cluster IP.
 
 MetalLB, combined with `externalTrafficPolicy: Local`, provides a solution that preserves the original client IP addresses while also reducing network latency by avoiding unnecessary hops between nodes.
 
@@ -18,7 +18,7 @@ MetalLB, combined with `externalTrafficPolicy: Local`, provides a solution that 
 
 Kubernetes LoadBalancer and NodePort services support two external traffic policies:
 
-**Cluster (default)**: Traffic is distributed to all nodes, and any node can handle any traffic. This provides better load distribution but loses the client's original IP address due to SNAT.
+**Cluster (default)**: Traffic can be proxied to pods on any node. This provides better load distribution but loses the client's original IP address due to SNAT.
 
 **Local**: Traffic is only routed to pods running on the node that received the traffic. This preserves the client IP but may result in uneven load distribution if pods are not evenly distributed across nodes.
 
@@ -27,22 +27,18 @@ The following diagram illustrates the difference between these two policies:
 ```mermaid
 flowchart TB
     subgraph "externalTrafficPolicy: Cluster"
-        C1[Client\n192.168.1.100] --> LB1[MetalLB\n10.0.0.50]
-        LB1 --> N1[Node 1]
-        LB1 --> N2[Node 2]
+        C1[Client\n192.168.1.100] --> LB1[MetalLB VIP\n10.0.0.50]
+        LB1 --> N1[Announcing Node 1]
         N1 -.->|SNAT: 10.244.0.1| P1[Pod A]
         N1 -.->|SNAT: 10.244.0.1| P2[Pod B on Node 2]
-        N2 -.->|SNAT: 10.244.1.1| P1
-        N2 -.->|SNAT: 10.244.1.1| P2
         P1 -->|Sees: 10.244.x.x| App1[App sees\ncluster IP]
     end
 
     subgraph "externalTrafficPolicy: Local"
-        C2[Client\n192.168.1.100] --> LB2[MetalLB\n10.0.0.50]
-        LB2 --> N3[Node 1]
-        LB2 --> N4[Node 2]
+        C2[Client\n192.168.1.100] --> LB2[MetalLB VIP\n10.0.0.50]
+        LB2 --> N3[Announcing Node 1\nwith local pod]
         N3 -->|Direct| P3[Pod A on Node 1]
-        N4 -->|Direct| P4[Pod B on Node 2]
+        N4[Node 2\nreplica for failover] -.-> P4[Pod B on Node 2]
         P3 -->|Sees: 192.168.1.100| App2[App sees\nreal client IP]
     end
 ```
@@ -77,7 +73,7 @@ speaker-n2xpt                 1/1     Running   0          2d
 If MetalLB is not installed, you can install it using:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 ## Step 2: Configure MetalLB IP Address Pool
@@ -174,7 +170,7 @@ kind: Service
 metadata:
   name: nginx-service
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.241"
+    metallb.io/loadBalancerIPs: "192.168.1.241"
 spec:
   selector:
     app: nginx
@@ -217,7 +213,7 @@ sequenceDiagram
     participant Pod as Nginx Pod
 
     Client->>MetalLB: HTTP Request
-    Note over MetalLB: ARP resolves to node<br/>running the pod
+    Note over MetalLB: ARP resolves to one<br/>eligible announcing node
     MetalLB->>Node: Forward to Node
     Note over Node: No SNAT needed<br/>Direct delivery
     Node->>Pod: Deliver to local pod only
@@ -257,12 +253,12 @@ If you were using `externalTrafficPolicy: Cluster`, you would instead see an int
 
 ## Step 8: Handle Pod Distribution Considerations
 
-With `externalTrafficPolicy: Local`, traffic is only sent to nodes that have pods running. This means:
+With `externalTrafficPolicy: Local` in Layer 2 mode, traffic is sent to one eligible announcing node that has a local endpoint. This means:
 
-1. **Nodes without pods receive no traffic**: MetalLB will only advertise the service from nodes running matching pods
-2. **Potential load imbalance**: If pods are not evenly distributed, some nodes may receive more traffic than others
+1. **Nodes without pods cannot announce the service**: MetalLB speakers on nodes without local endpoints will not advertise the service
+2. **Potential load imbalance**: In Layer 2 mode, only pods on the current announcing node receive traffic; pods on other nodes act as failover replicas
 
-To ensure even distribution, use pod anti-affinity rules:
+To improve pod spread and failover capacity, use pod anti-affinity rules:
 
 ```yaml
 apiVersion: apps/v1
@@ -302,7 +298,7 @@ This configuration encourages Kubernetes to spread pods across different nodes.
 
 ## Step 9: Configure Health Checks
 
-With `externalTrafficPolicy: Local`, proper health checks become crucial. The service automatically uses health checks to determine which nodes have healthy pods. Configure readiness probes to ensure accurate health reporting:
+With `externalTrafficPolicy: Local`, endpoint readiness becomes crucial. Kubernetes only includes ready pods as service endpoints, and MetalLB speakers use the local endpoint state when deciding whether they can advertise a Local-policy service. Configure readiness probes to ensure accurate endpoint reporting:
 
 ```yaml
 apiVersion: apps/v1
@@ -345,13 +341,13 @@ spec:
 
 ## Step 10: Monitor Traffic Distribution
 
-To monitor how traffic is distributed across your pods, you can use various tools. Here's a simple way to check connection counts:
+To monitor how traffic can be distributed across your pods, you can use various tools. Here's a simple way to check the registered endpoints:
 
 ```bash
 kubectl get endpoints nginx-service -o yaml
 ```
 
-This shows which pod IPs are registered as endpoints. For more detailed monitoring, consider using metrics from kube-proxy:
+This shows which pod IPs are registered as endpoints. To see which nodes are running your pods:
 
 ```bash
 kubectl get pods -o wide -l app=nginx
@@ -386,7 +382,7 @@ If client IPs are still being masked:
 
 1. Verify the service has `externalTrafficPolicy: Local` set
 2. Check if there are any intermediate proxies or load balancers in front of MetalLB
-3. Ensure you're not accessing the service through NodePort
+3. If you are testing through NodePort, ensure you are connecting to a node with a local endpoint
 
 Check the service configuration:
 
@@ -478,7 +474,7 @@ kind: Service
 metadata:
   name: web-app-service
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.241"
+    metallb.io/loadBalancerIPs: "192.168.1.241"
 spec:
   selector:
     app: web-app
@@ -503,14 +499,14 @@ The following table summarizes the key differences between the two traffic polic
 | Aspect | Cluster Policy | Local Policy |
 |--------|---------------|--------------|
 | Client IP | Lost (SNAT) | Preserved |
-| Network Hops | May cross nodes | Direct to pod |
-| Load Distribution | Even | Depends on pod placement |
+| Network Hops | May cross nodes | Direct to local pod on the receiving node |
+| Load Distribution | Even across endpoints | Limited to local endpoints on the receiving node |
 | Failover | Automatic | Node-specific |
 | Use Case | General workloads | IP-sensitive apps |
 
 ## Best Practices
 
-1. **Use Pod Anti-Affinity**: Always configure pod anti-affinity when using `externalTrafficPolicy: Local` to ensure pods are distributed across nodes
+1. **Use Pod Anti-Affinity**: Always configure pod anti-affinity when using `externalTrafficPolicy: Local` to improve pod spread and failover capacity
 
 2. **Monitor Endpoint Distribution**: Regularly check that endpoints are distributed across nodes to prevent traffic concentration
 
@@ -524,7 +520,7 @@ The following table summarizes the key differences between the two traffic polic
 
 ## Conclusion
 
-Configuring MetalLB with `externalTrafficPolicy: Local` is essential for applications that need to know the original client IP address. While this configuration requires careful attention to pod distribution and health checks, the benefits of preserved client IPs and reduced network latency make it worthwhile for many production workloads.
+Configuring MetalLB with `externalTrafficPolicy: Local` is essential for applications that need to know the original client IP address. While this configuration requires careful attention to pod distribution and endpoint readiness, the benefits of preserved client IPs and reduced network latency make it worthwhile for many production workloads.
 
 By following this guide, you have learned how to:
 
