@@ -1655,7 +1655,7 @@ For production applications, consider using Workbox for more sophisticated cachi
 ### Install Workbox
 
 ```bash
-npm install workbox-webpack-plugin workbox-precaching workbox-routing workbox-strategies
+npm install workbox-webpack-plugin workbox-precaching workbox-routing workbox-strategies workbox-expiration workbox-cacheable-response
 ```
 
 ### Workbox Service Worker
