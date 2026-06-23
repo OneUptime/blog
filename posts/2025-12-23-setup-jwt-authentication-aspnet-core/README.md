@@ -34,16 +34,15 @@ sequenceDiagram
 ## Installation
 
 ```bash
-dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
-dotnet add package System.IdentityModel.Tokens.Jwt
+dotnet package add Microsoft.AspNetCore.Authentication.JwtBearer
+dotnet package add System.IdentityModel.Tokens.Jwt
 ```
 
 ## Configuration
 
 ### JWT Settings
 
-```csharp
-// appsettings.json
+```json
 {
   "JwtSettings": {
     "Secret": "your-256-bit-secret-key-here-make-it-long-enough",
@@ -80,6 +79,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Bind JWT settings
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+
+builder.Services.AddControllers();
 
 // Add authentication
 builder.Services.AddAuthentication(options =>
@@ -239,17 +240,20 @@ public class AuthService : IAuthService
     private readonly ITokenService _tokenService;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IPasswordHasher<User> _passwordHasher;
+    private readonly JwtSettings _jwtSettings;
 
     public AuthService(
         IUserRepository userRepository,
         ITokenService tokenService,
         IRefreshTokenRepository refreshTokenRepository,
-        IPasswordHasher<User> passwordHasher)
+        IPasswordHasher<User> passwordHasher,
+        IOptions<JwtSettings> jwtSettings)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
         _refreshTokenRepository = refreshTokenRepository;
         _passwordHasher = passwordHasher;
+        _jwtSettings = jwtSettings.Value;
     }
 
     public async Task<AuthResult> LoginAsync(LoginRequest request)
@@ -277,7 +281,7 @@ public class AuthService : IAuthService
         {
             Token = refreshToken,
             UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays),
             CreatedAt = DateTime.UtcNow
         });
 
@@ -329,7 +333,7 @@ public class AuthService : IAuthService
         {
             Token = newRefreshToken,
             UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays),
             CreatedAt = DateTime.UtcNow
         });
 
@@ -457,10 +461,9 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy("MinimumAge", policy =>
         policy.Requirements.Add(new MinimumAgeRequirement(18)));
-
-    options.AddPolicy("CanEditResource", policy =>
-        policy.Requirements.Add(new ResourceOwnerRequirement()));
 });
+
+builder.Services.AddSingleton<IAuthorizationHandler, MinimumAgeHandler>();
 
 // Custom requirement
 public class MinimumAgeRequirement : IAuthorizationRequirement
@@ -489,6 +492,10 @@ public class MinimumAgeHandler : AuthorizationHandler<MinimumAgeRequirement>
 
         var dateOfBirth = DateTime.Parse(dateOfBirthClaim.Value);
         var age = DateTime.Today.Year - dateOfBirth.Year;
+        if (dateOfBirth.Date > DateTime.Today.AddYears(-age))
+        {
+            age--;
+        }
 
         if (age >= requirement.MinimumAge)
         {
@@ -504,7 +511,7 @@ public class MinimumAgeHandler : AuthorizationHandler<MinimumAgeRequirement>
 
 ### 1. Secure Secret Storage
 
-```csharp
+```text
 // Never hardcode secrets - use User Secrets or Azure Key Vault
 // Development: User Secrets
 dotnet user-secrets set "JwtSettings:Secret" "your-secret-key"
