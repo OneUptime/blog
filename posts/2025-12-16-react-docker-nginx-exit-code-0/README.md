@@ -8,7 +8,7 @@ Description: Learn how to fix the common issue of React applications exiting imm
 
 ---
 
-A common issue when containerizing React applications with Nginx is the container exiting immediately after starting with exit code 0. This happens because the container has nothing to keep it running. This guide explains why this occurs and provides multiple solutions.
+A common issue when containerizing React applications with Nginx is the container exiting immediately after starting with exit code 0. This happens when the main process finishes instead of staying in the foreground. This guide explains why this occurs and provides multiple solutions.
 
 ## Understanding the Problem
 
@@ -18,7 +18,7 @@ flowchart TB
         D1[Dockerfile builds React]
         D2[Copies to Nginx dir]
         D3[Container starts]
-        D4[No foreground process]
+        D4[Nginx starts in daemon mode]
         D5[Container exits 0]
     end
 
@@ -27,14 +27,14 @@ flowchart TB
     style D5 fill:#8b0000,color:#fff
 ```
 
-The exit code 0 means the container completed successfully - there was no error. The problem is that Docker containers need a foreground process to keep running. If no process stays in the foreground, the container exits.
+The exit code 0 means the container completed successfully - there was no error. The problem is that Docker containers need a foreground process to keep running. If Nginx starts as a daemon and backgrounds itself, the startup command can finish and the container exits.
 
 ### Common Broken Dockerfile
 
 ```dockerfile
 # This Dockerfile will cause the container to exit immediately
 
-FROM node:18 AS build
+FROM node:24 AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -43,7 +43,8 @@ RUN npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
-# Missing CMD - container will exit!
+# Wrong: this overrides the nginx image's default foreground CMD
+CMD ["nginx"]
 ```
 
 ## Solutions
@@ -53,10 +54,10 @@ COPY --from=build /app/build /usr/share/nginx/html
 The most common fix is to run Nginx in the foreground:
 
 ```dockerfile
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
 RUN npm run build
 
@@ -123,7 +124,7 @@ Here is a complete, production-ready Dockerfile:
 
 ```dockerfile
 # Stage 1: Build the React application
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 
 # Set working directory
 WORKDIR /app
@@ -132,7 +133,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci --only=production --silent
+RUN npm ci --silent
 
 # Copy source code
 COPY . .
@@ -172,7 +173,7 @@ CMD ["nginx", "-g", "daemon off;"]
 When you need runtime configuration:
 
 ```dockerfile
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -215,12 +216,10 @@ exec "$@"
 
 ### Solution 5: Docker Compose Setup
 
-For development and production with docker-compose:
+For development and production with Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -272,7 +271,7 @@ docker inspect react-test --format='{{.State.ExitCode}}'
 
 ```bash
 # Run container interactively
-docker run -it --entrypoint /bin/sh react-app
+docker run -it --entrypoint /bin/sh react-app -l
 
 # Inside container, try starting Nginx
 nginx -g 'daemon off;'
@@ -302,14 +301,15 @@ flowchart TB
 
 ## Common Mistakes and Fixes
 
-### Mistake 1: Missing CMD
+### Mistake 1: Overriding the Nginx CMD Incorrectly
 
 ```dockerfile
-# Wrong - no CMD
+# Wrong - nginx starts in daemon mode and the command exits
 FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
+CMD ["nginx"]
 
-# Correct - add CMD
+# Correct - keep Nginx in the foreground
 FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
 CMD ["nginx", "-g", "daemon off;"]
@@ -318,11 +318,10 @@ CMD ["nginx", "-g", "daemon off;"]
 ### Mistake 2: Daemon Mode in nginx.conf
 
 ```nginx
-# Wrong - daemon on will background Nginx
+# Wrong - daemon on will background Nginx if you start it without -g "daemon off;"
 daemon on;
 
-# Correct - remove this line or use
-daemon off;
+# Correct - remove this line and keep daemon off in the Docker CMD
 ```
 
 ### Mistake 3: Incorrect Build Output Path
@@ -441,7 +440,7 @@ http {
 # syntax=docker/dockerfile:1
 
 # Build stage
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Install dependencies
@@ -482,7 +481,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 When a React Docker container with Nginx exits immediately with code 0:
 
-1. **The cause** is that Nginx runs as a daemon by default, which backgrounds the process
+1. **The cause** is that Nginx can run as a daemon by default, which backgrounds the process
 2. **The solution** is to run Nginx in foreground mode with `nginx -g 'daemon off;'`
 3. **Best practice** is to use a proper CMD instruction in your Dockerfile
 4. **Always include** a health check for production deployments
