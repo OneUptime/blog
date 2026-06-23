@@ -104,18 +104,18 @@ removed {
   }
 }
 
-# Remove resources created with count
+# Remove all instances of a resource created with count
 removed {
-  from = aws_instance.web[0]
+  from = aws_instance.web
 
   lifecycle {
     destroy = false
   }
 }
 
-# Remove resources created with for_each
+# Remove all instances of a resource created with for_each
 removed {
-  from = aws_security_group.dynamic["deprecated-sg"]
+  from = aws_security_group.dynamic
 
   lifecycle {
     destroy = false
@@ -300,8 +300,8 @@ terraform state rm aws_instance.web
 # Using Terraform to generate removal commands
 output "removal_commands" {
   value = [
-    for instance in aws_instance.legacy :
-    "terraform state rm 'aws_instance.legacy[\"${instance.tags.Name}\"]'"
+    for key, instance in aws_instance.legacy :
+    "terraform state rm 'aws_instance.legacy[\"${key}\"]'"
   ]
 }
 ```
@@ -314,17 +314,16 @@ terraform output -json removal_commands | jq -r '.[]' | bash
 ### Moving State Between Backends
 
 ```bash
-# Pull from old backend
+# Back up the old backend
 cd old-config
-terraform state pull > ../migrated.tfstate
+terraform state pull > ../old-backend-backup.tfstate
 
-# Push to new backend
-cd ../new-config
-terraform state push ../migrated.tfstate
-
-# Selectively remove from old
-cd ../old-config
+# Remove the resource from the old backend without destroying it
 terraform state rm aws_vpc.main
+
+# Import the existing resource into the new backend
+cd ../new-config
+terraform import aws_vpc.main vpc-12345678
 ```
 
 ## Recovering from Mistakes
