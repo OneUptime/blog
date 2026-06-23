@@ -32,7 +32,7 @@ WebAssembly provides a sandboxed, portable runtime that allows you to extend Env
 - **Language Flexibility**: Write plugins in Rust, Go, C++, or AssemblyScript
 - **Safe Sandboxing**: Plugins run in isolated memory spaces
 - **Dynamic Loading**: Deploy and update plugins without restarting proxies
-- **Portable**: Same plugin binary works across different Envoy versions
+- **Portable**: The same plugin binary can work across compatible Envoy builds that support the same Proxy-Wasm ABI
 - **Performance**: Near-native execution speed
 
 ## WASM Plugin Architecture
@@ -106,7 +106,7 @@ Before you begin developing WASM plugins, ensure you have the following tools in
 - Go 1.21+ (for TinyGo-based plugins)
 - Docker (for building and pushing images)
 - kubectl and a Kubernetes cluster with Istio installed
-- wasme CLI or proxy-wasm SDK
+- proxy-wasm SDK for your chosen language
 
 The following commands install the Rust toolchain with the WebAssembly target:
 
@@ -118,8 +118,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Add the WebAssembly target for compilation
 rustup target add wasm32-unknown-unknown
 
-# Install wasm-pack for building and packaging WASM modules
-cargo install wasm-pack
+# Optional: Install wasm-opt for binary size optimization
+# macOS: brew install binaryen
+# Linux: install Binaryen from your package manager or https://github.com/WebAssembly/binaryen
 ```
 
 For Go-based development, install TinyGo which compiles Go to WASM:
@@ -192,7 +193,6 @@ Now implement the plugin logic in src/lib.rs. This code demonstrates the three m
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde::Deserialize;
-use std::time::Duration;
 
 // Configuration structure that matches the JSON passed via WasmPlugin
 // This allows operators to customize plugin behavior without code changes
@@ -418,7 +418,8 @@ This example shows a minimal WasmPlugin resource that deploys our custom header 
 
 ```yaml
 # wasmplugin-basic.yaml
-# Basic WasmPlugin deployment targeting all sidecars in a namespace
+# Basic WasmPlugin deployment. In Istio's root namespace this applies mesh-wide;
+# in other namespaces it applies to workloads in the same namespace.
 apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
@@ -433,7 +434,7 @@ spec:
   # Phase determines when this plugin executes in the filter chain
   # AUTHN - Authentication phase (runs first)
   # AUTHZ - Authorization phase
-  # STATS - Statistics phase (runs last)
+  # STATS - Statistics phase (after authorization and before Istio stats filters)
   # UNSPECIFIED - Inserted before router filter (default)
   phase: STATS
 
@@ -518,7 +519,7 @@ metadata:
 spec:
   url: oci://docker.io/myorg/jwt-validator:v1.0.0
   phase: AUTHN
-  # Priority within the same phase (lower = earlier)
+  # Priority within the same phase (higher = earlier)
   # Use this to order multiple plugins in the same phase
   priority: 10
   pluginConfig:
@@ -539,7 +540,7 @@ spec:
   pluginConfig:
     policy_endpoint: "http://opa.policy:8181/v1/data/authz"
 ---
-# Observability plugin that runs last
+# Observability plugin that runs in the STATS phase
 apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
@@ -706,7 +707,7 @@ kubectl get wasmplugin -n istio-system
 # Check if Envoy has loaded the plugin
 # This queries a specific pod's config dump
 POD=$(kubectl get pod -n default -l app=my-app -o jsonpath='{.items[0].metadata.name}')
-istioctl proxy-config wasm "$POD" -n default
+istioctl proxy-config ecds "$POD" -n default
 ```
 
 ### Verifying Plugin Deployment
@@ -867,8 +868,9 @@ This pattern shows how to make HTTP calls to external services from within a WAS
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct AuthConfig {
     auth_cluster: String,  // Envoy cluster name for auth service
     auth_path: String,     // Path to call on auth service
@@ -1040,7 +1042,6 @@ WASM plugins can share data across requests and plugin instances using Envoy's s
 
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
-use std::time::Duration;
 
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
@@ -1216,7 +1217,7 @@ spec:
   # Use match rules to limit plugin execution
   # This prevents the plugin from running on every request
   match:
-    # Only process requests to specific paths
+    # Only process traffic on specific destination ports
     - mode: CLIENT
       ports:
         - number: 8080
@@ -1265,7 +1266,7 @@ echo ""
 # Run benchmark without plugin (baseline)
 echo "Running baseline (plugin disabled)..."
 kubectl patch wasmplugin optimized-plugin -n istio-system \
-  --type=merge -p '{"spec":{"match":[{"mode":"NONE"}]}}'
+  --type=merge -p '{"spec":{"match":[{"mode":"CLIENT","ports":[{"number":65535}]}]}}'
 sleep 10  # Wait for config to propagate
 
 BASELINE=$(hey -n $REQUESTS -c $CONCURRENCY -q 1000 "$TARGET_URL" 2>&1)
@@ -1431,13 +1432,11 @@ if [ -n "$POD" ]; then
     echo "Checking pod: $POD"
 
     # Check ECDS (Extension Configuration Discovery Service) status
-    kubectl exec -n default "$POD" -c istio-proxy -- \
-      curl -s localhost:15000/config_dump?resource=dynamic_active_clusters | \
-      jq '.configs[].ecds_filters // empty'
+    istioctl proxy-config ecds "$POD" -n default
 
-    # Check for WASM-related errors
+    # Check for WASM-related stats
     kubectl exec -n default "$POD" -c istio-proxy -- \
-      curl -s localhost:15000/stats | grep -E "wasm\.(created|active|failed)"
+      curl -s localhost:15000/stats | grep -E "wasm\."
 fi
 
 # Common issues and fixes
@@ -1454,11 +1453,11 @@ echo "
    - Check plugin logs for parse errors
 
 3. Performance issues:
-   - Check wasm.active and wasm.created stats
+   - Check wasm.<runtime>.active and wasm.<runtime>.created stats
    - Look for high latency in Envoy stats
 
 4. Plugin crashes:
-   - Check for 'wasm.failed' stats
+   - Check for Wasm reload or fetch-failure stats
    - Review Envoy logs for WASM errors
 "
 ```
@@ -1569,22 +1568,22 @@ spec:
     - name: wasm-plugin-health
       interval: 30s
       rules:
-        # Alert when plugin fails to load
-        - alert: WasmPluginLoadFailure
+        # Alert when remote Wasm fetches fail
+        - alert: WasmPluginRemoteFetchFailure
           expr: |
-            increase(envoy_wasm_failed_total[5m]) > 0
+            increase(envoy_wasm_remote_load_fetch_failures[5m]) > 0
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "WASM plugin failed to load"
-            description: "WASM plugin {{ $labels.plugin_name }} failed to load in {{ $labels.pod }}"
+            summary: "WASM plugin remote fetch failed"
+            description: "Envoy reported failed remote Wasm fetches in {{ $labels.pod }}"
 
-        # Alert on high plugin latency
+        # Alert on custom plugin latency if your plugin emits this metric
         - alert: WasmPluginHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(envoy_wasm_plugin_duration_seconds_bucket[5m])
+              rate(wasmcustom_plugin_duration_seconds_bucket[5m])
             ) > 0.1
           for: 5m
           labels:
@@ -1596,7 +1595,7 @@ spec:
         # Alert on plugin restarts
         - alert: WasmPluginFrequentRestarts
           expr: |
-            increase(envoy_wasm_created_total[10m]) > 5
+            increase(envoy_wasm_my_plugin_vm_reload[10m]) > 5
           for: 5m
           labels:
             severity: warning
