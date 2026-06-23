@@ -52,7 +52,8 @@ groups:
 - **record**: Name of the new metric (must follow naming conventions)
 - **expr**: PromQL expression to evaluate
 - **labels**: Optional additional labels
-- **interval**: Optional evaluation interval (overrides group default)
+
+The evaluation interval is set on the rule **group** (via the group's `interval` field), not on individual rules — all rules in a group share the group's interval.
 
 ## Naming Conventions
 
