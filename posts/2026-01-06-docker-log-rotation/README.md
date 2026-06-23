@@ -392,9 +392,9 @@ done | sort -k2 -h -r  # Sort by size, largest first
 
 ### Prometheus Metrics
 
-Use cAdvisor to export container log sizes:
+Use cAdvisor to export container metrics:
 
-cAdvisor exports container metrics including log file sizes. This enables Prometheus-based monitoring and alerting on log growth.
+cAdvisor exports container resource and filesystem metrics, enabling Prometheus-based monitoring and alerting. It does not expose per-container JSON log file sizes directly (those live outside the container's writable layer), so pair it with the disk-usage checks above for log-specific alerting.
 
 ```yaml
 # docker-compose.yml with cAdvisor for container metrics
