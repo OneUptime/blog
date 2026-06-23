@@ -214,7 +214,7 @@ rollback_production:
     - ./scripts/deploy.sh
   environment:
     name: production
-    action: stop
+    url: https://example.com
   when: manual
   allow_failure: true
 ```
