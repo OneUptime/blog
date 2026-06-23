@@ -353,7 +353,7 @@ spec:
 **Solutions for Traefik:**
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-ingress
@@ -434,10 +434,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
+    # For GRPC/GRPCS backends, these proxy timeouts are inherited as
+    # grpc_read_timeout and grpc_send_timeout (default 60s each)
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/grpc-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/grpc-send-timeout: "3600"
 ```
 
 ### Issue 6: RST_STREAM Errors
