@@ -14,7 +14,7 @@ API key authentication is one of the most common methods for securing APIs. Unli
 
 Before we begin, ensure you have:
 
-- Go 1.21 or later installed
+- Go 1.22 or later installed
 - Basic understanding of Go and HTTP handlers
 - PostgreSQL or another database for persistent storage
 - Redis for rate limiting (optional but recommended)
@@ -387,7 +387,6 @@ import (
     "context"
     "database/sql"
     "fmt"
-    "time"
 
     "github.com/lib/pq"
     "yourproject/models"
@@ -689,6 +688,7 @@ import (
     "context"
     "net"
     "net/http"
+    "strconv"
     "strings"
     "time"
 
@@ -816,12 +816,16 @@ func (m *AuthMiddleware) Authenticate(requiredScopes ...models.Scope) func(http.
             }
 
             // Set rate limit headers
-            w.Header().Set("X-RateLimit-Limit", string(rune(key.RateLimit)))
-            w.Header().Set("X-RateLimit-Remaining", string(rune(result.Remaining)))
+            w.Header().Set("X-RateLimit-Limit", strconv.Itoa(key.RateLimit))
+            w.Header().Set("X-RateLimit-Remaining", strconv.FormatInt(result.Remaining, 10))
             w.Header().Set("X-RateLimit-Reset", result.ResetAt.Format(time.RFC3339))
 
             if !result.Allowed {
-                w.Header().Set("Retry-After", string(rune(int(result.RetryAfter.Seconds()))))
+                retryAfterSeconds := (result.RetryAfter.Milliseconds() + 999) / 1000
+                if retryAfterSeconds < 1 {
+                    retryAfterSeconds = 1
+                }
+                w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
                 m.auditLogger.LogRateLimited(ctx, keyID, r.RemoteAddr)
                 http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
                 return
@@ -1228,6 +1232,7 @@ package main
 import (
     "context"
     "database/sql"
+    "encoding/json"
     "log"
     "log/slog"
     "net/http"
@@ -1262,9 +1267,11 @@ func main() {
     }
 
     // Connect to Redis
-    redisClient := redis.NewClient(&redis.Options{
-        Addr: os.Getenv("REDIS_URL"),
-    })
+    redisOptions, err := redis.ParseURL(os.Getenv("REDIS_URL"))
+    if err != nil {
+        log.Fatal(err)
+    }
+    redisClient := redis.NewClient(redisOptions)
     rateLimiter := ratelimit.NewRedisRateLimiter(redisClient)
 
     // Initialize auth components
@@ -1320,7 +1327,10 @@ func main() {
 
         // Return the full key to the user (only shown once!)
         w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(`{"api_key": "` + fullKey + `", "key_id": "` + keyID + `"}`))
+        json.NewEncoder(w).Encode(map[string]string{
+            "api_key": fullKey,
+            "key_id":  keyID,
+        })
     })
 
     // Protected endpoint requiring read scope
