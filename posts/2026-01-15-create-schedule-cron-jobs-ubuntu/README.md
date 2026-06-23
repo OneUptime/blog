@@ -12,12 +12,12 @@ Cron is the time-based job scheduler in Unix-like systems. It runs commands or s
 
 ## Understanding Cron
 
-Cron runs as a daemon (`crond`) and checks scheduled jobs every minute. Jobs are defined in crontab files, which specify when and what to run.
+Cron runs as a daemon (named `cron` on Ubuntu/Debian; the same daemon is called `crond` on Red Hat-based systems) and checks scheduled jobs every minute. Jobs are defined in crontab files, which specify when and what to run.
 
 ### Cron Components
 
 - **crontab**: The file containing scheduled jobs
-- **crond**: The daemon that executes jobs
+- **cron**: The daemon that executes jobs (the `cron.service` systemd unit on Ubuntu)
 - **cron.d**: Directory for system cron jobs
 
 ## Crontab Syntax
