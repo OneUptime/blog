@@ -100,11 +100,11 @@ func main() {
             "name": [{"service": "mypackage.UserService"}],
             "waitForReady": true,
             "retryPolicy": {
-                "MaxAttempts": 5,
-                "InitialBackoff": "0.1s",
-                "MaxBackoff": "10s",
-                "BackoffMultiplier": 2.0,
-                "RetryableStatusCodes": ["UNAVAILABLE", "RESOURCE_EXHAUSTED"]
+                "maxAttempts": 5,
+                "initialBackoff": "0.1s",
+                "maxBackoff": "10s",
+                "backoffMultiplier": 2.0,
+                "retryableStatusCodes": ["UNAVAILABLE", "RESOURCE_EXHAUSTED"]
             }
         }]
     }`
