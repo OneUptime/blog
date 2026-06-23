@@ -262,8 +262,10 @@ redis-cli INFO persistence
 # Check if RDB file exists
 ls -la /var/lib/redis/dump.rdb
 
-# Check if AOF file exists (if enabled)
-ls -la /var/lib/redis/appendonly.aof
+# Check if AOF files exist (if enabled)
+# Since Redis 7.0, AOF uses a multi-part layout stored in a directory
+# (appenddirname, default "appendonlydir") containing base, incr, and manifest files
+ls -la /var/lib/redis/appendonlydir/
 
 # Force a manual RDB save to test
 redis-cli BGSAVE
@@ -1023,25 +1025,26 @@ DATE=$(date +%Y%m%d_%H%M%S)
 # Create backup directory if it doesn't exist
 mkdir -p $BACKUP_DIR
 
-# Trigger a background save
+# Record the current last save time, then trigger a background save
+LAST_SAVE=$(redis-cli -a your_password LASTSAVE)
 redis-cli -a your_password BGSAVE
 
-# Wait for background save to complete
-while [ $(redis-cli -a your_password LASTSAVE) == $(redis-cli -a your_password LASTSAVE) ]; do
+# Wait for the background save to complete (LASTSAVE changes once it finishes)
+while [ "$(redis-cli -a your_password LASTSAVE)" = "$LAST_SAVE" ]; do
     sleep 1
 done
 
 # Copy RDB file
 cp $REDIS_DIR/dump.rdb $BACKUP_DIR/dump_$DATE.rdb
 
-# Copy AOF file if it exists
-if [ -f "$REDIS_DIR/appendonly.aof" ]; then
-    cp $REDIS_DIR/appendonly.aof $BACKUP_DIR/appendonly_$DATE.aof
+# Copy AOF directory if it exists
+# Since Redis 7.0, AOF is a multi-part layout stored in appendonlydir/
+if [ -d "$REDIS_DIR/appendonlydir" ]; then
+    tar -czf $BACKUP_DIR/appendonlydir_$DATE.tar.gz -C $REDIS_DIR appendonlydir
 fi
 
-# Compress backups
+# Compress the RDB backup
 gzip $BACKUP_DIR/dump_$DATE.rdb
-gzip $BACKUP_DIR/appendonly_$DATE.aof 2>/dev/null || true
 
 # Remove old backups
 find $BACKUP_DIR -name "*.gz" -mtime +$RETENTION_DAYS -delete
