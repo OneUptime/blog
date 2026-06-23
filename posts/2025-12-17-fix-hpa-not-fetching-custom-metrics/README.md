@@ -53,6 +53,7 @@ helm repo update
 # Install Prometheus Adapter
 helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
+  --create-namespace \
   --set prometheus.url=http://prometheus-server.monitoring.svc \
   --set prometheus.port=80
 ```
@@ -312,7 +313,7 @@ kubectl get svc -n monitoring prometheus-adapter
 
 # Test service connectivity
 kubectl run -it --rm debug --image=busybox --restart=Never -- \
-  wget -qO- http://prometheus-adapter.monitoring.svc:443/apis/custom.metrics.k8s.io/v1beta1
+  wget --no-check-certificate -qO- https://prometheus-adapter.monitoring.svc/apis/custom.metrics.k8s.io/v1beta1
 ```
 
 ### Issue: Metric Name Mismatch
@@ -356,13 +357,11 @@ rules:
   external:
     - seriesQuery: 'rabbitmq_queue_messages{queue!=""}'
       resources:
-        overrides:
-          queue:
-            resource: queue
+        namespaced: false
       name:
         matches: "^(.*)$"
         as: "queue_messages"
-      metricsQuery: '<<.Series>>{<<.LabelMatchers>>}'
+      metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (queue)'
 ```
 
 HPA using external metrics:
