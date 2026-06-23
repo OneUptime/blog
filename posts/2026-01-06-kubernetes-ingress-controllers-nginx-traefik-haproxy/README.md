@@ -56,11 +56,13 @@ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
 # Install with high availability settings
+# controller.replicaCount=2 runs 2 replicas for HA
+# controller.service.type=LoadBalancer exposes via a cloud LB
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace \
-  --set controller.replicaCount=2 \         # HA: run 2 replicas
-  --set controller.service.type=LoadBalancer # Expose via cloud LB
+  --set controller.replicaCount=2 \
+  --set controller.service.type=LoadBalancer
 ```
 
 ### Verify Installation
@@ -85,7 +87,7 @@ metadata:
   name: web-ingress
   namespace: production
   annotations:
-    # Rewrite /api/foo to /foo when forwarding to backend
+    # Rewrite the matched path to / when forwarding to backend
     nginx.ingress.kubernetes.io/rewrite-target: /
     # Redirect HTTP to HTTPS
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -158,12 +160,15 @@ helm repo add traefik https://traefik.github.io/charts
 helm repo update
 
 # Install with dashboard and both providers enabled
+# ingressRoute.dashboard.enabled=true exposes the dashboard via IngressRoute
+# providers.kubernetesIngress.enabled=true supports standard Ingress
+# providers.kubernetesCRD.enabled=true supports Traefik CRDs
 helm install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set ingressRoute.dashboard.enabled=true \     # Expose dashboard via IngressRoute
-  --set providers.kubernetesIngress.enabled=true \ # Support standard Ingress
-  --set providers.kubernetesCRD.enabled=true      # Support Traefik CRDs
+  --set ingressRoute.dashboard.enabled=true \
+  --set providers.kubernetesIngress.enabled=true \
+  --set providers.kubernetesCRD.enabled=true
 ```
 
 ### Verify Installation
@@ -286,11 +291,13 @@ helm repo add haproxy-ingress https://haproxy-ingress.github.io/charts
 helm repo update
 
 # Install with HA settings
+# controller.replicaCount=2 runs 2 replicas for HA
+# controller.service.type=LoadBalancer exposes via a cloud LB
 helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
   --namespace haproxy-ingress \
   --create-namespace \
-  --set controller.replicaCount=2 \         # HA: run 2 replicas
-  --set controller.service.type=LoadBalancer # Expose via cloud LB
+  --set controller.replicaCount=2 \
+  --set controller.service.type=LoadBalancer
 ```
 
 ### Verify Installation
