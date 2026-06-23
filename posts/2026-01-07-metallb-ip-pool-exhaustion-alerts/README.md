@@ -8,7 +8,7 @@ Description: Learn how to set up proactive alerts for MetalLB IP pool exhaustion
 
 ---
 
-Running out of IP addresses in your MetalLB pool can cause new LoadBalancer services to fail silently. By the time you notice, critical services may be unreachable. This guide shows you how to set up proactive monitoring and alerts before exhaustion happens.
+Running out of IP addresses in your MetalLB pool can leave new LoadBalancer services without an external IP until you check service events or status. By the time you notice, critical services may be unreachable. This guide shows you how to set up proactive monitoring and alerts before exhaustion happens.
 
 ## Understanding MetalLB IP Pool Architecture
 
@@ -36,7 +36,7 @@ flowchart TB
 ```
 
 **Why Pool Exhaustion Matters:**
-- New LoadBalancer services will remain in `Pending` state
+- New LoadBalancer services will not receive an external IP
 - No automatic notification when pool is exhausted
 - Can block critical deployments unexpectedly
 - Recovery requires either releasing IPs or expanding the pool
@@ -50,19 +50,20 @@ Before setting up alerts, ensure you have:
 
 ## Enabling MetalLB Metrics
 
-MetalLB exposes Prometheus metrics by default on port 7472. First, verify metrics are available.
+MetalLB exposes Prometheus metrics from its controller and speaker pods. In current MetalLB releases, the official Prometheus integration scrapes the HTTPS metrics port named `metricshttps` on port 9120. Older installations may still expose HTTP metrics on port 7472, so verify the port name in your deployed manifests.
 
-Check if metrics are being exposed by the MetalLB speaker pods.
+Check if metrics are being exposed by the MetalLB controller pods. The allocator metrics used for pool exhaustion alerts are controller metrics.
 
 ```bash
-kubectl get pods -n metallb-system -l app=metallb,component=speaker -o wide
+kubectl get pods -n metallb-system -l app=metallb,component=controller -o wide
 ```
 
-Test metrics endpoint from within the cluster.
+Test metrics endpoint from your workstation. The example uses the Prometheus service account token used by the official MetalLB monitoring manifests.
 
 ```bash
-kubectl run curl-test --image=curlimages/curl -it --rm -- \
-  curl -s http://<speaker-pod-ip>:7472/metrics | grep metallb
+TOKEN=$(kubectl -n monitoring create token prometheus-k8s)
+kubectl port-forward -n metallb-system deploy/controller 9120:9120 &
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9120/metrics | grep metallb_allocator
 ```
 
 ### ServiceMonitor for Prometheus Operator
@@ -70,10 +71,27 @@ kubectl run curl-test --image=curlimages/curl -it --rm -- \
 If you are using the Prometheus Operator, create a ServiceMonitor to automatically discover and scrape MetalLB metrics.
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-controller-metrics
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: controller
+spec:
+  selector:
+    app: metallb
+    component: controller
+  ports:
+    - name: metricshttps
+      port: 9120
+      targetPort: 9120
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: metallb
+  name: metallb-controller
   namespace: monitoring
   labels:
     app: metallb
@@ -81,13 +99,18 @@ spec:
   selector:
     matchLabels:
       app: metallb
+      component: controller
   namespaceSelector:
     matchNames:
       - metallb-system
   endpoints:
-    - port: monitoring
+    - port: metricshttps
       interval: 30s
       path: /metrics
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 ### Manual Prometheus Configuration
@@ -96,7 +119,11 @@ If you are not using the Prometheus Operator, add this job to your Prometheus co
 
 ```yaml
 scrape_configs:
-  - job_name: 'metallb'
+  - job_name: 'metallb-controller'
+    scheme: https
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    tls_config:
+      insecure_skip_verify: true
     kubernetes_sd_configs:
       - role: pod
         namespaces:
@@ -106,9 +133,12 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_label_app]
         action: keep
         regex: metallb
+      - source_labels: [__meta_kubernetes_pod_label_component]
+        action: keep
+        regex: controller
       - source_labels: [__meta_kubernetes_pod_container_port_number]
         action: keep
-        regex: "7472"
+        regex: "9120"
       - source_labels: [__meta_kubernetes_namespace]
         target_label: namespace
       - source_labels: [__meta_kubernetes_pod_name]
@@ -123,7 +153,7 @@ MetalLB exposes several metrics. Here are the most important ones for monitoring
 |--------|-------------|------|
 | `metallb_allocator_addresses_total` | Total addresses in each pool | Gauge |
 | `metallb_allocator_addresses_in_use_total` | Addresses currently allocated | Gauge |
-| `metallb_bgp_session_up` | BGP session status (BGP mode) | Gauge |
+| `metallb_bgp_session_up` | BGP session status in native BGP mode and deprecated FRR mode. The default FRR-K8s backend exposes equivalent metrics with the `frrk8s_` prefix, such as `frrk8s_bgp_session_up`. | Gauge |
 | `metallb_k8s_client_updates_total` | Kubernetes API updates processed | Counter |
 
 ## Calculating IP Pool Usage
@@ -131,13 +161,13 @@ MetalLB exposes several metrics. Here are the most important ones for monitoring
 The core calculation for IP pool usage is straightforward. This PromQL query calculates the percentage of IPs in use for each pool.
 
 ```promql
-(metallb_allocator_addresses_in_use_total / metallb_allocator_addresses_total) * 100
+(metallb_allocator_addresses_in_use_total / on(pool) metallb_allocator_addresses_total) * 100
 ```
 
 For available IPs remaining per pool, use this query.
 
 ```promql
-metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total
+metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total
 ```
 
 ## Creating Alert Rules
@@ -163,7 +193,7 @@ spec:
           expr: |
             (
               metallb_allocator_addresses_in_use_total
-              / metallb_allocator_addresses_total
+              / on(pool) metallb_allocator_addresses_total
             ) * 100 > 80
           for: 5m
           labels:
@@ -185,7 +215,7 @@ Fire a critical alert when the pool reaches 95% utilization or is completely exh
           expr: |
             (
               metallb_allocator_addresses_in_use_total
-              / metallb_allocator_addresses_total
+              / on(pool) metallb_allocator_addresses_total
             ) * 100 >= 95
           for: 2m
           labels:
@@ -206,7 +236,7 @@ Sometimes percentage-based alerts are not granular enough. This alert triggers w
 ```yaml
         - alert: MetalLBIPPoolLowAvailability
           expr: |
-            (metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total) < 5
+            (metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total) < 5
           for: 5m
           labels:
             severity: warning
@@ -214,8 +244,8 @@ Sometimes percentage-based alerts are not granular enough. This alert triggers w
             summary: "MetalLB IP pool {{ $labels.pool }} has only {{ $value }} IPs available"
             description: |
               Pool {{ $labels.pool }} has fewer than 5 available IP addresses.
-              Total: {{ with printf "metallb_allocator_addresses_total{pool='%s'}" $labels.pool | query }}{{ . | first | value }}{{ end }}
-              In Use: {{ with printf "metallb_allocator_addresses_in_use_total{pool='%s'}" $labels.pool | query }}{{ . | first | value }}{{ end }}
+              Total: {{ with printf "metallb_allocator_addresses_total{pool=\"%s\"}" $labels.pool | query }}{{ . | first | value }}{{ end }}
+              In Use: {{ with printf "metallb_allocator_addresses_in_use_total{pool=\"%s\"}" $labels.pool | query }}{{ . | first | value }}{{ end }}
 ```
 
 ### Zero Available IPs Alert
@@ -225,7 +255,7 @@ This critical alert fires immediately when the pool is completely exhausted.
 ```yaml
         - alert: MetalLBIPPoolDepleted
           expr: |
-            (metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total) == 0
+            (metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total) == 0
           for: 1m
           labels:
             severity: critical
@@ -234,7 +264,7 @@ This critical alert fires immediately when the pool is completely exhausted.
             summary: "MetalLB IP pool {{ $labels.pool }} has no available IPs"
             description: |
               Pool {{ $labels.pool }} is completely exhausted.
-              All {{ with printf "metallb_allocator_addresses_total{pool='%s'}" $labels.pool | query }}{{ . | first | value }}{{ end }} IPs are in use.
+              All {{ with printf "metallb_allocator_addresses_total{pool=\"%s\"}" $labels.pool | query }}{{ . | first | value }}{{ end }} IPs are in use.
               New LoadBalancer services will fail to get an external IP.
 ```
 
@@ -260,7 +290,7 @@ spec:
           expr: |
             (
               metallb_allocator_addresses_in_use_total
-              / metallb_allocator_addresses_total
+              / on(pool) metallb_allocator_addresses_total
             ) * 100 > 80
           for: 5m
           labels:
@@ -273,7 +303,7 @@ spec:
           expr: |
             (
               metallb_allocator_addresses_in_use_total
-              / metallb_allocator_addresses_total
+              / on(pool) metallb_allocator_addresses_total
             ) * 100 >= 95
           for: 2m
           labels:
@@ -284,7 +314,7 @@ spec:
 
         - alert: MetalLBIPPoolLowAvailability
           expr: |
-            (metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total) < 5
+            (metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total) < 5
           for: 5m
           labels:
             severity: warning
@@ -294,7 +324,7 @@ spec:
 
         - alert: MetalLBIPPoolDepleted
           expr: |
-            (metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total) == 0
+            (metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total) == 0
           for: 1m
           labels:
             severity: critical
@@ -310,7 +340,7 @@ spec:
             severity: warning
           annotations:
             summary: "MetalLB metrics are not available"
-            description: "Cannot monitor IP pool status. Check MetalLB speaker pods."
+            description: "Cannot monitor IP pool status. Check MetalLB controller pods."
 ```
 
 ## Alertmanager Configuration
@@ -337,18 +367,18 @@ stringData:
       group_interval: 5m
       repeat_interval: 4h
       routes:
-        - match:
-            severity: critical
-            alertname: MetalLBIPPoolExhausted
+        - matchers:
+            - severity="critical"
+            - alertname="MetalLBIPPoolExhausted"
           receiver: 'pagerduty-critical'
           continue: true
-        - match:
-            severity: critical
-            alertname: MetalLBIPPoolDepleted
+        - matchers:
+            - severity="critical"
+            - alertname="MetalLBIPPoolDepleted"
           receiver: 'pagerduty-critical'
           continue: true
-        - match_re:
-            alertname: MetalLB.*
+        - matchers:
+            - alertname=~"MetalLB.*"
           receiver: 'slack-platform'
 
     receivers:
@@ -388,7 +418,7 @@ Create a Grafana dashboard to visualize IP pool usage. This JSON can be imported
         "type": "gauge",
         "targets": [
           {
-            "expr": "(metallb_allocator_addresses_in_use_total / metallb_allocator_addresses_total) * 100",
+            "expr": "(metallb_allocator_addresses_in_use_total / on(pool) metallb_allocator_addresses_total) * 100",
             "legendFormat": "{{ pool }}"
           }
         ],
@@ -413,7 +443,7 @@ Create a Grafana dashboard to visualize IP pool usage. This JSON can be imported
         "type": "stat",
         "targets": [
           {
-            "expr": "metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total",
+            "expr": "metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total",
             "legendFormat": "{{ pool }}"
           }
         ],
@@ -468,20 +498,20 @@ metallb_allocator_addresses_in_use_total
 Utilization Percentage over time visualization query.
 
 ```promql
-(metallb_allocator_addresses_in_use_total / metallb_allocator_addresses_total) * 100
+(metallb_allocator_addresses_in_use_total / on(pool) metallb_allocator_addresses_total) * 100
 ```
 
-IP Allocation Rate to track how fast IPs are being consumed.
+Net IP usage change rate to track how fast IPs are being consumed. These allocator metrics are gauges, so use `deriv` instead of `rate`.
 
 ```promql
-rate(metallb_allocator_addresses_in_use_total[1h])
+deriv(metallb_allocator_addresses_in_use_total[1h])
 ```
 
 ## Monitoring Pending LoadBalancer Services
 
 In addition to MetalLB metrics, monitor Kubernetes for services stuck in Pending state due to IP exhaustion.
 
-This recording rule creates a metric for services without external IPs assigned.
+This alert uses kube-state-metrics to find LoadBalancer services without external IPs assigned.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -495,9 +525,9 @@ spec:
       rules:
         - alert: LoadBalancerServicePending
           expr: |
-            kube_service_status_load_balancer_ingress == 0
-            and on(service, namespace)
             kube_service_spec_type{type="LoadBalancer"}
+            unless on(namespace, service)
+            kube_service_status_load_balancer_ingress
           for: 10m
           labels:
             severity: warning
@@ -552,7 +582,7 @@ spec:
           expr: |
             (
               metallb_allocator_addresses_in_use_total{pool="public"}
-              / metallb_allocator_addresses_total{pool="public"}
+              / on(pool) metallb_allocator_addresses_total{pool="public"}
             ) * 100 > 70
           for: 5m
           labels:
@@ -565,7 +595,7 @@ spec:
           expr: |
             (
               metallb_allocator_addresses_in_use_total{pool="internal"}
-              / metallb_allocator_addresses_total{pool="internal"}
+              / on(pool) metallb_allocator_addresses_total{pool="internal"}
             ) * 100 > 85
           for: 5m
           labels:
@@ -585,20 +615,20 @@ Weekly IP usage trend to predict future needs.
 predict_linear(metallb_allocator_addresses_in_use_total[7d], 30*24*60*60)
 ```
 
-Average daily IP allocation rate.
+Average daily net IP allocation change.
 
 ```promql
 avg_over_time(
-  increase(metallb_allocator_addresses_in_use_total[1d])[7d:1d]
+  delta(metallb_allocator_addresses_in_use_total[1d])[7d:1d]
 )
 ```
 
 Days until pool exhaustion at current rate.
 
 ```promql
-(metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total)
+(metallb_allocator_addresses_total - on(pool) metallb_allocator_addresses_in_use_total)
 /
-(rate(metallb_allocator_addresses_in_use_total[7d]) * 86400)
+clamp_min(deriv(metallb_allocator_addresses_in_use_total[7d]) * 86400, 0.001)
 ```
 
 ## Automated Remediation
@@ -706,8 +736,8 @@ Create services to consume the test pool IPs.
 ```bash
 for i in 1 2 3; do
   kubectl create deployment test-$i --image=nginx
-  kubectl expose deployment test-$i --type=LoadBalancer --port=80 \
-    --annotation="metallb.universe.tf/address-pool=test-pool"
+  kubectl expose deployment test-$i --type=LoadBalancer --port=80
+  kubectl annotate service test-$i metallb.io/address-pool=test-pool --overwrite
 done
 ```
 
@@ -750,7 +780,9 @@ kubectl get svc -n metallb-system
 Test metrics endpoint directly.
 
 ```bash
-kubectl exec -n metallb-system $(kubectl get pods -n metallb-system -l app=metallb,component=speaker -o jsonpath='{.items[0].metadata.name}') -- wget -q -O- http://localhost:7472/metrics | head -20
+TOKEN=$(kubectl -n monitoring create token prometheus-k8s)
+kubectl port-forward -n metallb-system deploy/controller 9120:9120 &
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9120/metrics | head -20
 ```
 
 ### Wrong Pool Names in Alerts
@@ -789,4 +821,4 @@ curl -s http://localhost:9090/api/v1/rules | jq '.data.groups[] | select(.name |
 
 ---
 
-Proactive monitoring of MetalLB IP pools prevents service disruptions before they happen. Start with basic percentage alerts, then add more sophisticated monitoring as your infrastructure grows. Remember that IP pool exhaustion is silent by default, and your alerting system is the only way to know about it before it impacts production services.
+Proactive monitoring of MetalLB IP pools prevents service disruptions before they happen. Start with basic percentage alerts, then add more sophisticated monitoring as your infrastructure grows. Remember that IP pool exhaustion does not create proactive notifications by default, and your alerting system is the best way to know about it before it impacts production services.
