@@ -71,7 +71,7 @@ mongodump --db mydb --collection orders \
 # Parallel backup for large databases
 mongodump --db mydb --numParallelCollections 4 --out /backup/parallel_backup
 
-# Backup oplog for point-in-time recovery
+# Include oplog entries for a consistent replica set backup
 mongodump --oplog --out /backup/with_oplog
 
 # Exclude specific collections
@@ -85,7 +85,7 @@ mongodump --db mydb --excludeCollection logs --excludeCollection temp
 mongorestore /backup/20241215_120000
 
 # Restore specific database
-mongorestore --db mydb /backup/mydb_backup/mydb
+mongorestore --nsInclude "mydb.*" /backup/mydb_backup
 
 # Restore specific collection
 mongorestore --db mydb --collection users /backup/users_backup/mydb/users.bson
@@ -108,7 +108,7 @@ mongorestore --archive=/backup/mydb.archive.gz --gzip
 mongorestore --drop /backup/mydb_backup
 
 # Restore to different database
-mongorestore --db newdb /backup/mydb_backup/mydb
+mongorestore --nsFrom "mydb.*" --nsTo "newdb.*" /backup/mydb_backup
 
 # Restore with oplog replay
 mongorestore --oplogReplay /backup/with_oplog
@@ -185,8 +185,8 @@ LAST_TS_FILE="/backup/last_timestamp"
 
 # Get last timestamp
 if [ -f "$LAST_TS_FILE" ]; then
-  LAST_TS=$(cat $LAST_TS_FILE)
-  QUERY="{ \"ts\": { \"\$gt\": { \"\$timestamp\": { \"t\": $LAST_TS } } } }"
+  LAST_TS=$(cat "$LAST_TS_FILE")
+  QUERY="{ \"ts\": { \"\$gt\": $LAST_TS } }"
 else
   QUERY="{}"
 fi
@@ -197,7 +197,7 @@ mongodump --db local --collection oplog.rs \
   --out "$BACKUP_DIR/$(date +%Y%m%d_%H%M%S)"
 
 # Update last timestamp
-mongosh --quiet --eval "db.getSiblingDB('local').oplog.rs.find().sort({ts:-1}).limit(1).forEach(function(doc){ print(doc.ts.getTime()); })" > $LAST_TS_FILE
+mongosh --quiet --eval "db.getSiblingDB('local').oplog.rs.find().sort({ts:-1}).limit(1).forEach(function(doc){ print(EJSON.stringify(doc.ts)); })" > "$LAST_TS_FILE"
 ```
 
 ## Automated Backup Script
@@ -322,25 +322,28 @@ mongorestore --db mydb --collection users_restored \
 
 ```javascript
 // Verify backup integrity
-const verifyBackup = async (backupPath) => {
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+const verifyBackup = async (backupPath, client, dbName, collectionName) => {
   // Restore to temporary database
   const tempDb = 'backup_verify_' + Date.now();
 
-  exec(`mongorestore --db ${tempDb} ${backupPath}`, (error) => {
-    if (error) {
-      console.error('Restore failed:', error);
-      return;
-    }
+  await execFileAsync('mongorestore', [
+    '--nsFrom', `${dbName}.*`,
+    '--nsTo', `${tempDb}.*`,
+    backupPath
+  ]);
 
-    // Compare document counts
-    const sourceCount = db.collection.countDocuments();
-    const backupCount = db.getSiblingDB(tempDb).collection.countDocuments();
+  // Compare document counts
+  const sourceCount = await client.db(dbName).collection(collectionName).countDocuments();
+  const backupCount = await client.db(tempDb).collection(collectionName).countDocuments();
 
-    console.log(`Source: ${sourceCount}, Backup: ${backupCount}`);
+  console.log(`Source: ${sourceCount}, Backup: ${backupCount}`);
 
-    // Cleanup
-    db.getSiblingDB(tempDb).dropDatabase();
-  });
+  // Cleanup
+  await client.db(tempDb).dropDatabase();
 };
 ```
 
