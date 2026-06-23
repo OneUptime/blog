@@ -28,7 +28,7 @@ flowchart TD
 
 ## 1. Install the Worldmap Panel Plugin
 
-For Grafana versions before 8.0, install the legacy Worldmap panel. Grafana 8+ includes the Geomap panel natively.
+For Grafana versions before 8.0, install the legacy Worldmap panel. The Worldmap plugin is no longer supported, and Grafana 8+ includes the Geomap panel natively.
 
 ```bash
 # For Grafana < 8.0
@@ -43,7 +43,7 @@ For Kubernetes deployments:
 
 ```yaml
 env:
-  - name: GF_INSTALL_PLUGINS
+  - name: GF_PLUGINS_PREINSTALL_SYNC
     value: grafana-worldmap-panel
 ```
 
@@ -173,13 +173,14 @@ Configure the Worldmap panel for country codes:
 
 ```json
 {
-  "options": {
-    "locationData": "countries",
-    "tableQueryOptions": {
-      "queryType": "countries",
-      "metricField": "Value",
-      "labelField": "country_code"
+  "targets": [
+    {
+      "expr": "sum by (country_code) (active_users)",
+      "legendFormat": "{{country_code}}"
     }
+  ],
+  "options": {
+    "locationData": "countries"
   }
 }
 ```
@@ -196,12 +197,12 @@ WHERE $timeFilter
 GROUP BY time($__interval), "geohash"
 ```
 
-Worldmap configuration for geohash:
+Worldmap configuration for a table result with a geohash column:
 
 ```json
 {
   "options": {
-    "locationData": "geohash",
+    "locationData": "table",
     "tableQueryOptions": {
       "queryType": "geohash",
       "geohashField": "geohash",
@@ -214,6 +215,8 @@ Worldmap configuration for geohash:
 ## 7. Grafana 8+ Geomap Panel Configuration
 
 Grafana 8 introduced the native Geomap panel with enhanced features.
+
+If the coordinates come from Prometheus labels, apply the Labels to fields transformation and convert the latitude and longitude fields to numeric values before mapping them in Geomap.
 
 ```json
 {
@@ -304,16 +307,19 @@ Create a JSON location mapping file for custom location resolution.
 ]
 ```
 
-Configure the panel to use JSON mapping:
+Configure the panel to use JSON mapping. For time series data, set the series alias or legend to the custom location key so it can be matched against the JSON file:
 
 ```json
 {
+  "targets": [
+    {
+      "expr": "sum by (datacenter) (rate(http_requests_total[5m]))",
+      "legendFormat": "{{datacenter}}"
+    }
+  ],
   "options": {
     "locationData": "json",
-    "jsonUrl": "https://grafana.example.com/api/locations.json",
-    "tableQueryOptions": {
-      "labelField": "datacenter"
-    }
+    "jsonUrl": "https://grafana.example.com/api/locations.json"
   }
 }
 ```
@@ -393,7 +399,8 @@ Add template variables for interactive location filtering.
         "name": "region",
         "type": "query",
         "datasource": "Prometheus",
-        "query": "label_values(http_requests_total, region)",
+        "query": "query_result(count by (region) (http_requests_total))",
+        "regex": "/region=\"([^\"]+)\"/",
         "multi": true,
         "includeAll": true
       },
@@ -401,7 +408,8 @@ Add template variables for interactive location filtering.
         "name": "country",
         "type": "query",
         "datasource": "Prometheus",
-        "query": "label_values(http_requests_total{region=~\"$region\"}, country)",
+        "query": "query_result(count by (country) (http_requests_total{region=~\"$region\"}))",
+        "regex": "/country=\"([^\"]+)\"/",
         "multi": true,
         "includeAll": true
       }
