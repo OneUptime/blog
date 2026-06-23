@@ -226,7 +226,7 @@ appservers
 [production:vars]
 ansible_user=ubuntu
 ansible_ssh_private_key_file=~/.ssh/ansible_key
-environment=production
+deployment_environment=production
 ```
 
 ### YAML-Format Inventory
@@ -276,7 +276,7 @@ all:
         staging-server:
           ansible_host: 192.168.2.10
       vars:
-        environment: staging
+        deployment_environment: staging
 
     # Production environment (combines multiple groups)
     production:
@@ -284,7 +284,7 @@ all:
         webservers:
         dbservers:
       vars:
-        environment: production
+        deployment_environment: production
         monitoring_enabled: true
 ```
 
@@ -352,7 +352,7 @@ ansible webservers -i inventories/hosts.yml -m service \
 
 # Create a user on all hosts
 ansible all -i inventories/hosts.yml -m user \
-  -a "name=deploy state=present groups=sudo" --become
+  -a "name=deploy state=present groups=sudo append=yes" --become
 
 # Remove a package from servers
 ansible all -i inventories/hosts.yml -m apt \
@@ -534,12 +534,12 @@ Create a more sophisticated playbook with handlers and conditional logic.
       notify: Reload Nginx
       when: ansible_distribution_version is version('20.04', '>=')
 
-    # Conditional task based on environment variable
+    # Conditional task based on deployment environment variable
     - name: Enable UFW firewall
       ufw:
         state: enabled
         policy: deny
-      when: environment == 'production'
+      when: deployment_environment == 'production'
 
     # Allow HTTP and HTTPS traffic
     - name: Allow web traffic through firewall
@@ -550,7 +550,7 @@ Create a more sophisticated playbook with handlers and conditional logic.
       loop:
         - "{{ http_port }}"
         - "{{ https_port }}"
-      when: environment == 'production'
+      when: deployment_environment == 'production'
 
     # Block task to group related tasks
     - name: Configure fail2ban for SSH protection
@@ -885,11 +885,17 @@ Create custom facts and use advanced variable techniques.
       loop: "{{ app_config | dict2items }}"
 
     # Filter and transform data
+    - name: Ensure developers group exists
+      group:
+        name: developers
+        state: present
+
     - name: Create users from list
       user:
         name: "{{ item }}"
         state: present
         groups: developers
+        append: yes
         shell: /bin/bash
       loop: "{{ allowed_users }}"
 ```
@@ -1352,8 +1358,9 @@ retry_files_enabled = True
 retry_files_save_path = ~/.ansible/retry
 
 # Output formatting
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 # Fact caching for performance
 gathering = smart
