@@ -498,7 +498,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -616,7 +616,7 @@ func (p *Publisher) PublishBatch(ctx context.Context, exchange, routingKey strin
 			return err
 		}
 		if !confirmed {
-			return errors.New("message " + string(rune(i)) + " was nacked")
+			return errors.New("message " + strconv.Itoa(i) + " was nacked")
 		}
 	}
 
@@ -738,20 +738,9 @@ func (c *Consumer) processDelivery(delivery amqp.Delivery) {
 	if err != nil {
 		log.Printf("Error processing message: %v", err)
 
-		// Check if we should retry
-		retryCount := getRetryCount(delivery.Headers)
-
-		if retryCount < 3 {
-			// Reject and requeue for retry
-			// Message goes back to the queue
-			log.Printf("Requeueing message (retry %d/3)", retryCount+1)
-			delivery.Nack(false, true) // multiple=false, requeue=true
-		} else {
-			// Max retries exceeded, reject without requeue
-			// Message goes to dead letter queue if configured
-			log.Printf("Max retries exceeded, rejecting message")
-			delivery.Reject(false) // requeue=false
-		}
+		// Reject without requeue so the message can be routed to a dead letter queue
+		// if one is configured. Use a separate delay queue pattern for bounded retries.
+		delivery.Nack(false, false) // multiple=false, requeue=false
 		return
 	}
 
@@ -760,20 +749,6 @@ func (c *Consumer) processDelivery(delivery amqp.Delivery) {
 	if err := delivery.Ack(false); err != nil {
 		log.Printf("Failed to ack message: %v", err)
 	}
-}
-
-func getRetryCount(headers amqp.Table) int {
-	if headers == nil {
-		return 0
-	}
-	if deaths, ok := headers["x-death"].([]interface{}); ok && len(deaths) > 0 {
-		if death, ok := deaths[0].(amqp.Table); ok {
-			if count, ok := death["count"].(int64); ok {
-				return int(count)
-			}
-		}
-	}
-	return 0
 }
 
 func (c *Consumer) Close() {
@@ -967,11 +942,11 @@ func RequeueWithDelay(ch *amqp.Channel, delivery amqp.Delivery, retryCount int) 
 	}
 	headers["x-retry-count"] = int32(retryCount)
 
-	// Publish to delay queue
+	// Publish to delay queue, then ack the original message after the publish succeeds
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return ch.PublishWithContext(
+	if err := ch.PublishWithContext(
 		ctx,
 		"retry_exchange",
 		routingKey,
@@ -983,7 +958,11 @@ func RequeueWithDelay(ch *amqp.Channel, delivery amqp.Delivery, retryCount int) 
 			Headers:      headers,
 			DeliveryMode: amqp.Persistent,
 		},
-	)
+	); err != nil {
+		return err
+	}
+
+	return delivery.Ack(false)
 }
 ```
 
@@ -1009,6 +988,7 @@ type ResilientConnection struct {
 	conn            *amqp.Connection
 	channel         *amqp.Channel
 	mu              sync.RWMutex
+	publishMu       sync.Mutex
 	notifyClose     chan *amqp.Error
 	notifyChanClose chan *amqp.Error
 	isReady         bool
@@ -1104,6 +1084,28 @@ func (rc *ResilientConnection) connect() (*amqp.Connection, error) {
 	return conn, nil
 }
 
+// NewChannel opens a dedicated channel for a caller.
+// amqp091-go channels are not safe to share between goroutines.
+func (rc *ResilientConnection) NewChannel() (*amqp.Channel, error) {
+	timeout := time.After(30 * time.Second)
+	for {
+		rc.mu.RLock()
+		if rc.isReady && rc.conn != nil {
+			conn := rc.conn
+			rc.mu.RUnlock()
+			return conn.Channel()
+		}
+		rc.mu.RUnlock()
+
+		select {
+		case <-timeout:
+			return nil, amqp.ErrClosed
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
+	}
+}
+
 // Channel returns the current channel, waiting if not ready
 func (rc *ResilientConnection) Channel() (*amqp.Channel, error) {
 	// Wait for connection with timeout
@@ -1128,6 +1130,9 @@ func (rc *ResilientConnection) Channel() (*amqp.Channel, error) {
 
 // Publish sends a message with automatic retry on failure
 func (rc *ResilientConnection) Publish(ctx context.Context, exchange, key string, body []byte) error {
+	rc.publishMu.Lock()
+	defer rc.publishMu.Unlock()
+
 	var lastErr error
 
 	for attempt := 0; attempt < rc.maxReconnect; attempt++ {
@@ -1189,7 +1194,7 @@ func (rc *ResilientConnection) Close() {
 
 ## Complete Example: Order Processing System
 
-Here is a complete example that ties together all the concepts for a production-ready order processing system.
+Here is an example that uses the `ResilientConnection` from the previous section and ties together the concepts for an order processing system.
 
 ```go
 package main
@@ -1252,10 +1257,11 @@ func NewOrderProcessor(url string) (*OrderProcessor, error) {
 }
 
 func (op *OrderProcessor) setupQueues() error {
-	ch, err := op.conn.Channel()
+	ch, err := op.conn.NewChannel()
 	if err != nil {
 		return err
 	}
+	defer ch.Close()
 
 	// Setup dead letter exchange
 	if err := ch.ExchangeDeclare("orders_dlx", "direct", true, false, false, false, nil); err != nil {
@@ -1323,7 +1329,7 @@ func (op *OrderProcessor) StartConsumer(workerID int) {
 		default:
 		}
 
-		ch, err := op.conn.Channel()
+		ch, err := op.conn.NewChannel()
 		if err != nil {
 			log.Printf("Worker %d: failed to get channel: %v", workerID, err)
 			time.Sleep(time.Second)
@@ -1331,16 +1337,23 @@ func (op *OrderProcessor) StartConsumer(workerID int) {
 		}
 
 		// Set QoS
-		ch.Qos(5, 0, false)
+		if err := ch.Qos(5, 0, false); err != nil {
+			log.Printf("Worker %d: failed to set QoS: %v", workerID, err)
+			ch.Close()
+			time.Sleep(time.Second)
+			continue
+		}
 
 		deliveries, err := ch.Consume("orders", "", false, false, false, false, nil)
 		if err != nil {
 			log.Printf("Worker %d: failed to start consuming: %v", workerID, err)
+			ch.Close()
 			time.Sleep(time.Second)
 			continue
 		}
 
 		op.consumeLoop(workerID, deliveries, ch)
+		ch.Close()
 	}
 }
 
