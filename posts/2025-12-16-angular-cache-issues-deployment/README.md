@@ -35,7 +35,7 @@ flowchart TD
     E -.-> G
 ```
 
-When you run `ng build --configuration production`, Angular generates files with content hashes in their names (like `main.abc123.js`). These hashes change when the file content changes. The `index.html` references these hashed files.
+When you run `ng build --configuration production` with Angular CLI output hashing enabled (as in the default generated production configuration), Angular generates files with content hashes in their names (like `main.abc123.js` or `main-abc123.js`). These hashes change when the file content changes. The `index.html` references these hashed files.
 
 The problem occurs when browsers cache `index.html` - they keep requesting the old hashed files that may no longer exist.
 
@@ -58,10 +58,16 @@ server {
     }
 
     # JavaScript and CSS with hash in filename - cache aggressively
-    location ~* \.(?:css|js)$ {
+    location ~* [.-][A-Za-z0-9_-]{8,40}\.(?:css|js)$ {
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
         access_log off;
+    }
+
+    # Non-hashed JavaScript and CSS - short cache
+    location ~* \.(?:css|js)$ {
+        expires 1h;
+        add_header Cache-Control "public, max-age=3600";
     }
 
     # Static assets - cache with revalidation
@@ -131,7 +137,6 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # Main location block for Angular routing
@@ -146,44 +151,63 @@ server {
         add_header Pragma "no-cache";
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 
     # ngsw-worker.js - Service Worker (never cache)
     location = /ngsw-worker.js {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 
     # ngsw.json - Service Worker manifest (never cache)
     location = /ngsw.json {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 
     # Hashed JavaScript files
-    location ~* \.(?:[a-f0-9]{16,20})\.js$ {
+    location ~* [.-][A-Za-z0-9_-]{8,40}\.js$ {
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         access_log off;
     }
 
     # Hashed CSS files
-    location ~* \.(?:[a-f0-9]{16,20})\.css$ {
+    location ~* [.-][A-Za-z0-9_-]{8,40}\.css$ {
         expires 1y;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         access_log off;
     }
 
     # Non-hashed JS/CSS (runtime config, etc.) - short cache
-    location ~* ^(?!.*\.[a-f0-9]{16,20}\.).*\.(?:css|js)$ {
+    location ~* \.(?:css|js)$ {
         expires 1h;
         add_header Cache-Control "public, max-age=3600";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 
     # Static assets
     location ~* \.(?:ico|gif|jpe?g|png|webp|svg|woff2?|ttf|eot|otf)$ {
         expires 6M;
         add_header Cache-Control "public, max-age=15552000";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         access_log off;
     }
 
@@ -198,6 +222,9 @@ server {
 
         # Never cache API responses at nginx level
         add_header Cache-Control "no-store";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 }
 ```
@@ -229,7 +256,6 @@ Add a version check mechanism to force reload when versions mismatch:
 Create a version endpoint in your API or a static file:
 
 ```json
-// /assets/version.json
 {
   "version": "1.2.3",
   "buildTime": "2025-12-16T10:30:00Z",
@@ -335,16 +361,30 @@ echo "Building Angular application..."
 ng build --configuration production
 
 echo "Creating backup..."
-rm -rf $BACKUP_DIR
-cp -r $APP_DIR $BACKUP_DIR
+rm -rf "$BACKUP_DIR"
+cp -r "$APP_DIR" "$BACKUP_DIR"
 
 echo "Deploying new version..."
-rm -rf $APP_DIR/*
-cp -r dist/my-app/browser/* $APP_DIR/
+rm -rf "$APP_DIR"/*
+cp -r dist/my-app/browser/* "$APP_DIR"/
+
+# Generate version file
+VERSION=$(node -p "require('./package.json').version")
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+mkdir -p "$APP_DIR/assets"
+cat > "$APP_DIR/assets/version.json" << EOF
+{
+  "version": "$VERSION",
+  "buildTime": "$BUILD_TIME",
+  "commit": "$COMMIT"
+}
+EOF
 
 echo "Setting permissions..."
-chown -R www-data:www-data $APP_DIR
-chmod -R 755 $APP_DIR
+chown -R www-data:www-data "$APP_DIR"
+chmod -R 755 "$APP_DIR"
 
 echo "Clearing nginx cache (if using proxy_cache)..."
 rm -rf /var/cache/nginx/*
@@ -353,19 +393,6 @@ echo "Reloading nginx..."
 nginx -t && systemctl reload nginx
 
 echo "Deployment complete!"
-
-# Generate version file
-VERSION=$(node -p "require('./package.json').version")
-BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-cat > $APP_DIR/assets/version.json << EOF
-{
-  "version": "$VERSION",
-  "buildTime": "$BUILD_TIME",
-  "commit": "$COMMIT"
-}
-EOF
 ```
 
 ## Cache Headers Summary
