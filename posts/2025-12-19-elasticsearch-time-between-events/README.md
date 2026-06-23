@@ -25,7 +25,7 @@ graph TD
     A[Event Data] --> B{Data Structure}
     B -->|Same Document| C[Runtime Fields]
     B -->|Different Documents| D[Aggregation Pipeline]
-    B -->|Sequential Events| E[Scripted Aggregation]
+    B -->|Adjacent Time Buckets| E[Date Histogram]
 
     C --> F[Calculate at Query Time]
     D --> G[Bucket Script]
@@ -40,9 +40,9 @@ When start and end times are in the same document:
 
 ```bash
 curl -X POST "https://localhost:9200/sessions/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary '
 {"index":{}}
 {"user_id":"user1","session_start":"2024-03-15T10:00:00Z","session_end":"2024-03-15T10:45:00Z"}
 {"index":{}}
@@ -138,9 +138,9 @@ When events are in separate documents, use aggregations with bucket scripts.
 
 ```bash
 curl -X POST "https://localhost:9200/events/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary '
 {"index":{}}
 {"order_id":"order1","event_type":"created","timestamp":"2024-03-15T10:00:00Z"}
 {"index":{}}
@@ -213,9 +213,9 @@ curl -X GET "https://localhost:9200/events/_search" \
   }'
 ```
 
-## Method 3: Sequential Event Timing with Date Histogram
+## Method 3: Adjacent Time Bucket Timing with Date Histogram
 
-Calculate time between sequential events using serial diff:
+Calculate differences between adjacent populated time buckets using serial diff:
 
 ```bash
 curl -X GET "https://localhost:9200/events/_search" \
@@ -280,6 +280,24 @@ curl -X PUT "https://localhost:9200/_transform/order_durations" \
         "delivered_time": {
           "filter": { "term": { "event_type.keyword": "delivered" } },
           "aggs": { "time": { "min": { "field": "timestamp" } } }
+        },
+        "time_to_ship_hours": {
+          "bucket_script": {
+            "buckets_path": {
+              "shipped": "shipped_time>time",
+              "created": "created_time>time"
+            },
+            "script": "(params.shipped - params.created) / 3600000"
+          }
+        },
+        "time_to_deliver_hours": {
+          "bucket_script": {
+            "buckets_path": {
+              "delivered": "delivered_time>time",
+              "shipped": "shipped_time>time"
+            },
+            "script": "(params.delivered - params.shipped) / 3600000"
+          }
         }
       }
     }
@@ -295,7 +313,7 @@ curl -X POST "https://localhost:9200/_transform/order_durations/_start" \
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime, timedelta
+from datetime import datetime
 
 es = Elasticsearch(
     ["https://localhost:9200"],
@@ -492,7 +510,7 @@ Calculating time between events in Elasticsearch requires different approaches:
 
 1. **Same document** - Runtime fields or script fields
 2. **Different documents** - Aggregations with bucket scripts
-3. **Sequential events** - Serial diff pipeline aggregation
+3. **Adjacent time buckets** - Serial diff pipeline aggregation
 4. **Frequent queries** - Transforms for pre-calculation
 
 Choose the method based on your data structure and query frequency to balance flexibility and performance.
