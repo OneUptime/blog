@@ -1,12 +1,12 @@
-# How to Use Pre-Installed Terraform Plugins Without terraform init
+# How to Use Pre-Installed Terraform Plugins Without Internet Downloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Plugin, Provider, Offline, Air-Gapped, CI/CD
 
-Description: Learn how to configure Terraform to use pre-installed plugins and providers without running terraform init, essential for air-gapped environments, CI/CD optimization, and custom provider management.
+Description: Learn how to configure Terraform to use pre-installed plugins and providers without downloading them from the internet during terraform init, essential for air-gapped environments, CI/CD optimization, and custom provider management.
 
-Running `terraform init` downloads providers from the internet, which can be problematic in air-gapped environments, slow CI/CD pipelines, or situations where you need strict control over provider versions. This guide shows you how to use pre-installed Terraform plugins.
+By default, `terraform init` downloads providers from the internet, which can be problematic in air-gapped environments, slow CI/CD pipelines, or situations where you need strict control over provider versions. This guide shows you how to use pre-installed Terraform plugins while still running `terraform init` to initialize the working directory.
 
 ## Understanding Terraform Plugin Architecture
 
@@ -138,16 +138,16 @@ export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
 
 This doesn't skip `terraform init` but speeds up subsequent runs by reusing cached providers.
 
-## Method 3: Implied Local Mirror (Legacy)
+## Method 3: Implied Local Mirror
 
-For older Terraform versions or simple setups, place providers in a local directory:
+For simple setups without an explicit `provider_installation` block, place providers in one of Terraform's implied mirror directories using the same mirror layout:
 
 ```bash
 # Create local plugins directory
-mkdir -p ~/.terraform.d/plugins/linux_amd64/
+mkdir -p ~/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/5.31.0/linux_amd64/
 
 # Copy provider binaries
-cp terraform-provider-aws_v5.31.0_x5 ~/.terraform.d/plugins/linux_amd64/
+cp terraform-provider-aws_v5.31.0_x5 ~/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/5.31.0/linux_amd64/
 ```
 
 ## Method 4: Using terraform providers mirror
@@ -216,7 +216,7 @@ jobs:
 
       # Cache providers
       - name: Cache Terraform Providers
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.terraform.d/plugin-cache
           key: terraform-providers-${{ hashFiles('**/.terraform.lock.hcl') }}
@@ -291,7 +291,7 @@ You can use tools like `terraform-registry-mirror` to create your own:
 
 ```bash
 # Using HashiCorp's mirror protocol
-# Create mirror server that serves providers via HTTP
+# Create mirror server that serves providers via HTTPS
 
 # Example nginx configuration
 server {
@@ -356,11 +356,20 @@ sha256sum /terraform-plugins/registry.terraform.io/hashicorp/aws/5.31.0/linux_am
 The `.terraform.lock.hcl` file records provider checksums. When using pre-installed providers, ensure the checksums match:
 
 ```bash
-# Regenerate lock file for your platforms
+# Regenerate lock file for public providers and your platforms
 terraform providers lock \
   -platform=linux_amd64 \
   -platform=darwin_amd64 \
   -platform=darwin_arm64
+```
+
+If the provider is available only from your local mirror, derive the checksums from that mirror:
+
+```bash
+terraform providers lock \
+  -fs-mirror=/terraform-plugins \
+  -platform=linux_amd64 \
+  registry.terraform.io/hashicorp/aws
 ```
 
 ## Troubleshooting
