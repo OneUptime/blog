@@ -158,7 +158,7 @@ type CheckResult struct {
 	Name      string        `json:"name"`
 	Status    Status        `json:"status"`
 	Message   string        `json:"message,omitempty"`
-	Duration  time.Duration `json:"duration_ms"`
+	Duration  time.Duration `json:"duration_ns"`
 	Timestamp time.Time     `json:"timestamp"`
 }
 
@@ -258,6 +258,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -297,7 +298,7 @@ func (d *DatabaseChecker) Check(ctx context.Context) CheckResult {
 
 	// Check connection pool stats
 	stats := d.db.Stats()
-	if stats.OpenConnections >= stats.MaxOpenConnections {
+	if stats.MaxOpenConnections > 0 && stats.OpenConnections >= stats.MaxOpenConnections {
 		result.Status = StatusDegraded
 		result.Message = "connection pool exhausted"
 		result.Duration = time.Since(start)
