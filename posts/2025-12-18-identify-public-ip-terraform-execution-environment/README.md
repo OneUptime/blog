@@ -54,14 +54,15 @@ resource "aws_security_group_rule" "allow_terraform" {
 }
 ```
 
-## Method 2: Multiple IP Services for Reliability
+## Method 2: Multiple IP Services for Verification
 
-For production use, query multiple services and handle failures.
+For production use, query multiple services and verify that they agree.
 
 ```hcl
 # Primary IP service
 data "http" "ip_icanhazip" {
-  url = "https://icanhazip.com"
+  url                = "https://icanhazip.com"
+  request_timeout_ms = 5000
 
   request_headers = {
     Accept = "text/plain"
@@ -77,7 +78,8 @@ data "http" "ip_icanhazip" {
 
 # Backup IP service
 data "http" "ip_ipify" {
-  url = "https://api.ipify.org"
+  url                = "https://api.ipify.org"
+  request_timeout_ms = 5000
 
   lifecycle {
     postcondition {
@@ -89,7 +91,8 @@ data "http" "ip_ipify" {
 
 # Alternative using ipinfo.io (returns JSON)
 data "http" "ip_ipinfo" {
-  url = "https://ipinfo.io/json"
+  url                = "https://ipinfo.io/json"
+  request_timeout_ms = 5000
 
   request_headers = {
     Accept = "application/json"
@@ -97,7 +100,7 @@ data "http" "ip_ipinfo" {
 }
 
 locals {
-  # Use primary, fallback to backup
+  # Read results from each service
   my_ip_primary = chomp(data.http.ip_icanhazip.response_body)
   my_ip_backup  = chomp(data.http.ip_ipify.response_body)
 
@@ -107,7 +110,7 @@ locals {
   # Verify both services return same IP
   ips_match = local.my_ip_primary == local.my_ip_backup
 
-  # Use the validated IP
+  # Use the primary IP after checking the comparison output
   my_public_ip = local.my_ip_primary
 }
 
@@ -185,7 +188,8 @@ echo "{\"ip\": \"$IP\"}"
 
 ```hcl
 data "http" "my_public_ip" {
-  url = "https://icanhazip.com"
+  url                = "https://icanhazip.com"
+  request_timeout_ms = 5000
 }
 
 locals {
@@ -228,7 +232,8 @@ resource "aws_security_group" "database" {
 
 ```hcl
 data "http" "my_public_ip" {
-  url = "https://icanhazip.com"
+  url                = "https://icanhazip.com"
+  request_timeout_ms = 5000
 }
 
 locals {
@@ -269,7 +274,7 @@ resource "aws_db_instance" "main" {
   password               = var.db_password
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
-  publicly_accessible    = true  # Required for external access
+  publicly_accessible    = true  # Required for direct internet access
   skip_final_snapshot    = true
 }
 ```
@@ -278,7 +283,8 @@ resource "aws_db_instance" "main" {
 
 ```hcl
 data "http" "my_public_ip" {
-  url = "https://icanhazip.com"
+  url                = "https://icanhazip.com"
+  request_timeout_ms = 5000
 }
 
 locals {
@@ -297,7 +303,6 @@ resource "aws_eks_cluster" "main" {
     # Restrict public access to specific IPs
     public_access_cidrs = [
       "${local.my_public_ip}/32",  # Terraform execution
-      "10.0.0.0/8",                 # Internal networks
     ]
   }
 }
@@ -307,11 +312,13 @@ resource "aws_eks_cluster" "main" {
 
 ```hcl
 data "http" "my_public_ip" {
-  url = "https://icanhazip.com"
+  url                = "https://icanhazip.com"
+  request_timeout_ms = 5000
 }
 
 data "http" "ip_details" {
-  url = "https://ipinfo.io/json"
+  url                = "https://ipinfo.io/json"
+  request_timeout_ms = 5000
 }
 
 locals {
@@ -351,12 +358,10 @@ jobs:
         run: |
           IP=$(curl -s https://icanhazip.com)
           echo "Runner IP: $IP"
-          echo "RUNNER_IP=$IP" >> $GITHUB_ENV
+          echo "TF_VAR_ci_runner_ip=$IP" >> $GITHUB_ENV
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
-        env:
-          TF_VAR_ci_runner_ip: ${{ env.RUNNER_IP }}
 ```
 
 ### GitLab CI
