@@ -32,6 +32,7 @@ This minimal SDK setup configures trace export via gRPC to an OpenTelemetry Coll
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 
 // Configure the SDK to export traces via gRPC to the collector
 // gRPC is more efficient than HTTP for high-volume trace export
@@ -40,7 +41,10 @@ const sdk = new NodeSDK({
     // Environment variable allows flexible configuration per environment
     // In Docker Compose, this points to the sidecar collector service
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT  // e.g., 'http://otel-sidecar:4317'
-  })
+  }),
+  // NodeSDK registers no instrumentations unless you pass them.
+  // getNodeAutoInstrumentations() wires up HTTP, Express, DB clients, etc.
+  instrumentations: [getNodeAutoInstrumentations()]
 });
 
 // Start the SDK - must be called before your app code runs
@@ -123,10 +127,11 @@ processors:
 # Exporters: Where to send the processed data
 exporters:
   otlphttp:
-    endpoint: https://telemetry.oneuptime.com/v1  # OneUptime's OTLP endpoint
+    endpoint: https://oneuptime.com/otlp  # OneUptime's OTLP endpoint
+    encoding: json                        # OneUptime expects JSON-encoded OTLP
     headers:
       # Auth token from environment variable - never hardcode secrets
-      Authorization: "Bearer ${ONEUPTIME_API_KEY}"
+      x-oneuptime-token: "${ONEUPTIME_API_KEY}"
 
 # Service section wires everything together into pipelines
 # Each pipeline connects: receivers -> processors -> exporters
@@ -207,7 +212,7 @@ processors:
         statements:
           # Extract container ID from the file path and add as queryable attribute
           # This enables filtering logs by container in your observability UI
-          - set(attributes.container_id, attributes["container.id"])
+          - set(attributes["container_id"], attributes["container.id"])
 ```
 
 Ship transformed logs to OTLP, Loki, or any supported exporter. For JSON logs, set `docker run --log-driver=json-file --log-opt mode=non-blocking` to reduce backpressure.
