@@ -248,13 +248,14 @@ var nullStatus = EnumExtensions.ParseOrNull<Status>("Invalid"); // null
 ### 6. Custom Format String Errors
 
 ```csharp
-// WRONG - Invalid format specifier
+// WRONG - Invalid standard format specifier
 var number = 12345;
-var formatted = number.ToString("X2Z"); // 'Z' is invalid - throws!
+var formatted = number.ToString("Z"); // 'Z' is not a valid specifier - throws!
 
 // WRONG - Unescaped characters in custom format
 var date = DateTime.Now;
-var formatted2 = date.ToString("Today is dddd"); // 'T', 'o', 'a', 'y' are format chars!
+var formatted2 = date.ToString("Today is dddd"); // 'd', 'y', and 's' are format
+                                                 // specifiers - garbled output, not literals!
 ```
 
 **Solution: Use proper format strings**
