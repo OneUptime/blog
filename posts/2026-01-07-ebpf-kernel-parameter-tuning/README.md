@@ -29,12 +29,12 @@ flowchart TD
     B --> B2[Complexity Limit]
     B --> B3[States Limit]
 
-    C --> C1[Locked Memory]
+    C --> C1[RLIMIT_MEMLOCK on older kernels]
     C --> C2[Map Memory]
     C --> C3[Ring Buffer Memory]
 
     D --> D1[Stack Size: 512 bytes]
-    D --> D2[Tail Calls: 33 max]
+    D --> D2[Tail Calls: 32 jumps max]
 
     E --> E1[Max Entries]
     E --> E2[Key/Value Size]
@@ -67,7 +67,7 @@ cat /boot/config-$(uname -r) | grep -E "CONFIG_BPF|CONFIG_BPF_SYSCALL"
 
 ### Understanding Locked Memory Limits
 
-eBPF maps and programs require locked memory (memory that cannot be swapped to disk). The kernel enforces limits on how much memory a process can lock, which directly affects eBPF capabilities.
+On kernels before Linux 5.11, eBPF maps and programs are accounted against locked memory (memory that cannot be swapped to disk). Linux 5.11 and later normally account BPF object memory to the creating process's memory cgroup instead, so container and cgroup memory limits become the primary resource control.
 
 The following diagram illustrates the memory hierarchy for eBPF:
 
@@ -84,8 +84,9 @@ flowchart LR
         E[Per-CPU Arrays]
     end
 
-    subgraph Memory["Locked Memory Pool"]
-        F[RLIMIT_MEMLOCK]
+    subgraph Memory["Memory Accounting"]
+        F[RLIMIT_MEMLOCK on pre-5.11 kernels]
+        G[Memory cgroup on 5.11+ kernels]
     end
 
     A --> B
@@ -95,6 +96,9 @@ flowchart LR
     C --> F
     D --> F
     E --> F
+    C --> G
+    D --> G
+    E --> G
 ```
 
 ### Checking Current Memory Limits
@@ -111,20 +115,20 @@ ulimit -l
 # This shows limits for the current shell process
 cat /proc/self/limits | grep "locked memory"
 
-# Check system-wide locked memory usage for eBPF specifically
-# This shows how much memory is currently used by BPF programs and maps
+# Check system-wide locked and unevictable memory
+# On Linux 5.11+ BPF map memory is usually charged to memory cgroups instead
 cat /proc/meminfo | grep -E "Mlocked|Unevictable"
 ```
 
 ### Increasing Locked Memory Limits
 
-For production eBPF workloads, you typically need to increase the locked memory limit significantly:
+For production eBPF workloads on kernels before Linux 5.11, you typically need to increase the locked memory limit significantly. On Linux 5.11 and later, also size the relevant cgroup or container memory limits for BPF maps and programs.
 
 This configuration file sets memory limits system-wide via the limits.conf file:
 
 ```bash
 # Edit the system limits configuration file
-# This persists across reboots and affects all users/processes
+# This persists across reboots and affects PAM-managed login sessions
 sudo nano /etc/security/limits.conf
 
 # Add these lines to increase locked memory limits
@@ -137,8 +141,8 @@ sudo nano /etc/security/limits.conf
 Add the following lines to `/etc/security/limits.conf`:
 
 ```text
-# Allow all users to lock unlimited memory for eBPF programs
-# This is necessary for large eBPF maps and ring buffers
+# Allow all users to lock unlimited memory for eBPF programs on pre-5.11 kernels
+# This is necessary for large eBPF maps and ring buffers on those systems
 *               soft    memlock         unlimited
 *               hard    memlock         unlimited
 
@@ -159,8 +163,8 @@ ulimit -l unlimited
 # Verify the change took effect
 ulimit -l
 
-# For systemd services running eBPF programs, you need to set limits
-# in the service unit file using LimitMEMLOCK directive
+# For systemd services running eBPF programs on older kernels, set limits
+# in the service unit file using the LimitMEMLOCK directive
 # Example: LimitMEMLOCK=infinity
 ```
 
@@ -170,7 +174,7 @@ When running eBPF programs in containers, additional configuration is required:
 
 ```yaml
 # Docker Compose example with increased memory lock limits
-# securityContext settings are required for eBPF in containers
+# On Linux 5.11+ also size the container memory limit for BPF object memory
 version: '3.8'
 services:
   ebpf-agent:
@@ -183,10 +187,11 @@ services:
       memlock:
         soft: -1  # -1 means unlimited
         hard: -1
-    # Required capabilities for eBPF operations
+    # Capabilities required for many eBPF operations
     cap_add:
-      - SYS_ADMIN      # Required for loading BPF programs
-      - SYS_RESOURCE   # Required for increasing rlimits
+      - BPF            # Preferred capability for BPF operations on kernel 5.8+
+      - PERFMON        # Required for many tracing/perf-event BPF operations
+      - SYS_RESOURCE   # Required for increasing rlimits on older kernels
       - NET_ADMIN      # Required for network-related BPF programs
 ```
 
@@ -221,7 +226,7 @@ spec:
 
 ### Understanding eBPF Stack Limits
 
-eBPF programs have a strict stack size limit of 512 bytes per function. This is a compile-time limit that cannot be changed at runtime, but understanding how to work within this constraint is crucial.
+eBPF programs have a strict stack size limit of 512 bytes. This is enforced by the verifier when the program is loaded and cannot be changed at runtime, but understanding how to work within this constraint is crucial.
 
 ```mermaid
 flowchart TD
@@ -230,11 +235,11 @@ flowchart TD
     B -->|"> 512 bytes"| D[Verifier Rejects]
 
     C --> E[Program Loads]
-    D --> F[Compilation Error]
+    D --> F[Verifier Error]
 
     E --> G[Tail Calls Available]
-    G --> H["33 Tail Calls Max"]
-    H --> I["33 x 512 = 16,896 bytes total"]
+    G --> H["32 Tail Calls Max"]
+    H --> I["33 programs can execute total"]
 ```
 
 ### Analyzing Stack Usage
@@ -251,13 +256,11 @@ clang -target bpf -g -O2 -c program.bpf.c -o program.bpf.o
 # This helps identify functions with high stack usage
 llvm-objdump -S program.bpf.o
 
-# Use bpftool to analyze a loaded program's stack usage
+# Use bpftool and verifier logs to inspect a loaded program
 # First, find your program's ID
 bpftool prog list
 
-# Then dump the program with detailed information
-# The 'xlated' shows the translated BPF instructions
-# Look for 'stack_depth' in the output
+# Then dump the translated BPF instructions for inspection
 bpftool prog dump xlated id <PROG_ID>
 ```
 
@@ -278,7 +281,7 @@ struct large_event_data {
     char comm[256];      // Task command name
     char filename[256];  // File being accessed
     __u64 metrics[16];   // Additional metrics
-};  // Total: ~550 bytes - exceeds 512 byte stack limit!
+};  // Total: 656 bytes before padding - exceeds 512 byte stack limit!
 
 // Solution: Create a per-CPU array map to store the data
 // BPF_MAP_TYPE_PERCPU_ARRAY gives each CPU its own instance
@@ -308,7 +311,7 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx) {
     data->tid = bpf_get_current_pid_tgid() & 0xFFFFFFFF;
 
     // Read task command name into our map storage
-    bpf_get_current_comm(&data->comm, sizeof(data->comm));
+    bpf_get_current_comm(data->comm, sizeof(data->comm));
 
     // Process the data...
     return 0;
@@ -317,7 +320,7 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx) {
 
 ### Tail Call Configuration
 
-Tail calls allow chaining eBPF programs together, effectively extending the available stack space across multiple programs:
+Tail calls allow chaining eBPF programs together. Each successful tail call transfers control to another program and does not return to the caller:
 
 ```c
 // Tail call map definition for program chaining
@@ -354,7 +357,7 @@ int xdp_main(struct xdp_md *ctx) {
     // Determine protocol and tail call to appropriate handler
     // bpf_tail_call transfers control to another BPF program
     // The current program's stack is replaced, not accumulated
-    if (eth->h_proto == htons(ETH_P_IP)) {
+    if (eth->h_proto == bpf_htons(ETH_P_IP)) {
         // Tail call to HTTP parser - note: this doesn't return!
         // If the tail call succeeds, execution continues in the target
         // If it fails (program not loaded), execution continues here
@@ -366,16 +369,15 @@ int xdp_main(struct xdp_md *ctx) {
 }
 
 // Handler program that can be called via tail call
-// Each tail call target has its own fresh 512-byte stack
+// Each tail call target is verified independently; stack state is not shared
 SEC("xdp")
 int xdp_parse_http(struct xdp_md *ctx) {
-    // This program has its own 512-byte stack
-    // The previous program's stack is not accumulated
+    // The previous program's stack state is not available here
 
     // Process HTTP-specific logic here...
 
     // Can chain to another program if needed
-    // Maximum chain depth is 33 tail calls
+    // Maximum chain depth is 32 successful tail calls
     bpf_tail_call(ctx, &tail_call_map, TAIL_CALL_LOG_EVENT);
 
     return XDP_PASS;
@@ -453,9 +455,9 @@ struct {
 } events SEC(".maps");
 ```
 
-### Runtime Map Size Adjustments
+### Runtime Map Inspection
 
-While most map parameters are set at creation time, some can be adjusted:
+Map size parameters such as `max_entries`, key size, and value size are fixed when the map is created. To change capacity, create a new map with the desired size and reload or restart the program that owns it:
 
 ```bash
 # View current map information including size and usage
@@ -466,10 +468,9 @@ bpftool map list
 # Shows max_entries, key/value sizes, and flags
 bpftool map show id <MAP_ID>
 
-# For maps that support it, you can resize at runtime (kernel 5.10+)
-# Note: Not all map types support resizing
-# BPF_MAP_TYPE_HASH and BPF_MAP_TYPE_ARRAY support this
-bpftool map update id <MAP_ID> max_entries <NEW_SIZE>
+# Update map contents at runtime when needed
+# This changes entries, not map capacity
+bpftool map update id <MAP_ID> key <KEY_BYTES> value <VALUE_BYTES>
 
 # Monitor map memory usage continuously
 # Useful for capacity planning and detecting memory issues
@@ -547,14 +548,14 @@ flowchart TD
     A[BPF Program Submission] --> B[Verifier Analysis]
 
     B --> C{Instruction Count}
-    C -->|"<= 1M instructions"| D{Complexity Check}
-    C -->|"> 1M instructions"| E[Rejected]
+    C -->|"Within program size limit"| D{Complexity Check}
+    C -->|"Too large"| E[Rejected]
 
     D -->|"<= complexity limit"| F{State Limit}
     D -->|"> complexity limit"| E
 
-    F -->|"<= 64 states/instruction"| G{Memory Safety}
-    F -->|"> 64 states"| E
+    F -->|"Within internal limits"| G{Memory Safety}
+    F -->|"Too many states"| E
 
     G -->|Bounds OK| H[Program Loaded]
     G -->|Bounds Fail| E
@@ -562,17 +563,15 @@ flowchart TD
 
 ### Verifier Limit Parameters
 
-The following sysctl parameters control verifier behavior (available in kernel 5.2+):
+The verifier's core limits are kernel implementation limits, not runtime sysctls. The following settings help with BPF runtime behavior, observability, and security:
 
 ```bash
 # View current BPF-related kernel parameters
 # These control various aspects of BPF program loading and execution
 sysctl -a 2>/dev/null | grep bpf
 
-# The instruction limit is hardcoded in the kernel (1 million instructions)
-# but log verbosity can be controlled
-# Set BPF verifier log level (0=off, 1=basic, 2=verbose)
-# Higher levels provide more detail but can overwhelm logs
+# Enable BPF runtime statistics for loaded programs
+# This is useful for observing run counts and runtime, but it is not a verifier log level
 echo 1 | sudo tee /proc/sys/kernel/bpf_stats_enabled
 
 # Enable JIT compilation for better performance
@@ -586,7 +585,9 @@ echo 1 | sudo tee /proc/sys/net/core/bpf_jit_enable
 echo 1 | sudo tee /proc/sys/net/core/bpf_jit_harden
 
 # Limit unprivileged BPF operations (security measure)
-# 0=allow unprivileged bpf, 1=require CAP_BPF, 2=require CAP_SYS_ADMIN
+# 0=allow unprivileged bpf
+# 1=disable unprivileged bpf until reboot; cannot be changed back to 0 at runtime
+# 2=disable unprivileged bpf, but allow an administrator to change it back to 0
 echo 2 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled
 ```
 
@@ -721,7 +722,7 @@ net.core.bpf_jit_harden = 1
 
 # Limit on BPF JIT allocations to prevent memory exhaustion
 # Default is usually sufficient, increase if loading many programs
-# Value in bytes (0 = use default kernel limit)
+# Value in bytes
 net.core.bpf_jit_limit = 536870912
 
 # =============================================================================
@@ -730,8 +731,8 @@ net.core.bpf_jit_limit = 536870912
 
 # Control unprivileged BPF access
 # 0 = allow unprivileged users to load BPF programs
-# 1 = require CAP_BPF capability (kernel 5.8+)
-# 2 = require CAP_SYS_ADMIN capability (most restrictive)
+# 1 = disable unprivileged bpf until reboot; cannot be changed back to 0 at runtime
+# 2 = disable unprivileged bpf, but allow an administrator to change it back to 0
 # Recommended: 2 for production (security-first approach)
 kernel.unprivileged_bpf_disabled = 2
 
@@ -774,15 +775,15 @@ net.core.netdev_max_backlog = 10000
 # Kernel Tracing and Perf Event Settings
 # =============================================================================
 
-# Control access to perf events (used by some BPF programs)
-# -1 = no restrictions
-# 0 = allow with CAP_PERFMON
-# 1 = allow for sysadmin only
-# 2 = disallow all
+# Control perf event access for unprivileged users
+# -1 = allow almost all events
+# >=0 = restrict ftrace and raw tracepoint access without CAP_PERFMON
+# >=1 = restrict CPU event access without CAP_PERFMON
+# >=2 = restrict kernel profiling without CAP_PERFMON
 kernel.perf_event_paranoid = 0
 
-# Maximum number of perf events per CPU
-# Increase for intensive tracing with many kprobes/uprobes
+# Maximum perf event sampling rate
+# Increase only if profiling workloads need a higher sample rate
 kernel.perf_event_max_sample_rate = 100000
 
 EOF
@@ -855,20 +856,17 @@ cat << 'EOF' | sudo tee /etc/sysctl.d/99-ebpf-tracing.conf
 # Tracing and Profiling Tuning
 # =============================================================================
 
-# Allow attaching BPF programs to kprobes with less restrictions
-# 0 = allow CAP_PERFMON processes to use kprobes
-# 1 = require CAP_SYS_ADMIN
+# Control exposure of kernel pointer values in procfs and other interfaces
+# Lowering this can leak more kernel address information; do not change it
+# unless your tracing workflow specifically requires visible kernel pointers.
 kernel.kptr_restrict = 0
 
-# Control perf event access for BPF profiling
-# Lower values = less restrictive
-# -1 = no restrictions (not recommended for production)
-# 0 = allow with CAP_PERFMON
-# 1 = require CAP_SYSLOG for kernel addresses
+# Control perf event access for unprivileged users
+# Lower values are less restrictive; CAP_PERFMON bypasses these restrictions
 kernel.perf_event_paranoid = 0
 
-# Increase the maximum number of kprobes
-# Default is 1000, increase for extensive kernel tracing
+# Increase the maximum number of kprobes if your kernel exposes this control
+# Some kernels do not provide a writable max_probes file
 # Note: This requires kernel with CONFIG_KPROBES enabled
 # Adjust via debugfs if available:
 # echo 5000 > /sys/kernel/debug/kprobes/max_probes
@@ -1026,13 +1024,13 @@ fi
 
 ### Issue 1: "Cannot allocate memory" When Loading Programs
 
-This error indicates locked memory limits are too low:
+On kernels before Linux 5.11, this error often indicates locked memory limits are too low. On Linux 5.11 and later, also check the creating process's memory cgroup limit:
 
 ```bash
-# Quick fix: Increase locked memory limit for current session
+# Quick fix on pre-5.11 kernels: Increase locked memory limit for current session
 sudo prlimit --pid=$$ --memlock=unlimited:unlimited
 
-# Permanent fix: Update limits.conf and PAM configuration
+# Permanent fix on pre-5.11 kernels: Update limits.conf and PAM configuration
 echo "* soft memlock unlimited" | sudo tee -a /etc/security/limits.conf
 echo "* hard memlock unlimited" | sudo tee -a /etc/security/limits.conf
 
@@ -1067,7 +1065,8 @@ Check capabilities and permissions:
 # Check if unprivileged BPF is disabled
 sysctl kernel.unprivileged_bpf_disabled
 
-# If value is 1 or 2, you need CAP_BPF or CAP_SYS_ADMIN
+# If value is 1 or 2, unprivileged BPF is disabled.
+# Use CAP_BPF on kernel 5.8+ or CAP_SYS_ADMIN on older kernels.
 # Grant capabilities to your binary:
 sudo setcap cap_bpf,cap_perfmon+ep /path/to/your/program
 
@@ -1117,7 +1116,7 @@ struct {
 
 ## Conclusion
 
-Tuning kernel parameters for eBPF performance requires understanding the interplay between memory limits, verifier constraints, and system resources. By carefully adjusting locked memory limits, optimizing map sizes, understanding verifier limits, and configuring appropriate sysctl parameters, you can significantly improve the performance and reliability of your eBPF programs.
+Tuning kernel parameters for eBPF performance requires understanding the interplay between memory limits, verifier constraints, and system resources. By carefully adjusting locked memory limits where they still apply, sizing cgroup memory limits, optimizing map sizes, understanding verifier limits, and configuring appropriate sysctl parameters, you can significantly improve the performance and reliability of your eBPF programs.
 
 Remember that kernel tuning is an iterative process. Start with the baseline configurations provided in this guide, monitor your specific workloads, and adjust parameters based on real-world observations. Always prioritize security alongside performance, especially in production environments.
 
