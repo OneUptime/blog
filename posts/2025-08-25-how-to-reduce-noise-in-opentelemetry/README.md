@@ -297,7 +297,7 @@ exporters:
     headers:
       "Content-Type": "application/json"
       "x-oneuptime-token": "ONEUPTIME_TOKEN" # Your OneUptime token
-  logging:
+  debug:
     verbosity: basic
 
 service:
@@ -305,7 +305,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, tail_sampling, attributes, filter]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
