@@ -485,6 +485,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -573,7 +574,7 @@ func (s *EventServer) Subscribe(req *pb.SubscribeRequest, stream pb.EventService
 				Timestamp: timestamppb.Now(),
 				Data:      `{"type": "heartbeat"}`,
 				Metadata: map[string]string{
-					"sequence": string(rune(seq)),
+					"sequence": strconv.FormatInt(seq, 10),
 				},
 			}
 
@@ -1418,6 +1419,7 @@ package main
 
 import (
     "context"
+    "net"
     "testing"
     "time"
 
