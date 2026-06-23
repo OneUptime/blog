@@ -19,7 +19,7 @@ flowchart TD
     C -->|Yes| D{Who is default_server?}
     C -->|No| E[No Conflict]
     D -->|Multiple defaults| F[Error/Warning]
-    D -->|One default| G[OK - Use SNI]
+    D -->|One default| G[OK - Use Host/server_name]
     E --> H[Server Running]
     G --> H
     F --> I[Fix Configuration]
@@ -46,7 +46,7 @@ server {
 
 ### 2. Duplicate Configuration Files
 
-Having both a site in `sites-available` and `sites-enabled` or duplicate includes:
+Including both `sites-available` and `sites-enabled`, or adding duplicate include patterns:
 
 ```nginx
 # /etc/nginx/nginx.conf
@@ -63,7 +63,7 @@ server {
     listen 80;           # IPv4 only
     listen [::]:80;      # IPv6 only
     # vs
-    listen 80 ipv6only=off;  # Both - might conflict
+    listen [::]:80 ipv6only=off;  # Both - might conflict
 }
 ```
 
@@ -261,8 +261,9 @@ server {
 
 # Real HTTPS sites
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/nginx/ssl/example.com.crt;
@@ -368,8 +369,9 @@ server {
 
 # HTTPS default - catch unmatched hosts
 server {
-    listen 443 ssl http2 default_server;
-    listen [::]:443 ssl http2 default_server;
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    http2 on;
     server_name _;
 
     ssl_certificate /etc/nginx/ssl/default.crt;
@@ -383,8 +385,9 @@ server {
 ```nginx
 # /etc/nginx/conf.d/example.com.conf
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     ssl_certificate /etc/nginx/ssl/example.com.crt;
@@ -402,8 +405,9 @@ server {
 ```nginx
 # /etc/nginx/conf.d/other.com.conf
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name other.com;
 
     ssl_certificate /etc/nginx/ssl/other.com.crt;
@@ -423,9 +427,6 @@ server {
 In Docker environments, be careful with port binding:
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:latest
