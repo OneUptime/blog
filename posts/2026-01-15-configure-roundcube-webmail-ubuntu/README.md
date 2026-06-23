@@ -448,9 +448,9 @@ $config['db_prefix'] = '';
 // IMAP server address
 // Use ssl:// prefix for implicit SSL (port 993)
 // Use tls:// prefix for STARTTLS (port 143)
-// %h = user's domain (from email address)
-// %n = hostname from HTTP request
-// %d = domain from email address
+// %h = user's IMAP hostname
+// %n = hostname from the HTTP request ($_SERVER['SERVER_NAME'])
+// %s = domain after the '@' from the email address entered at login
 $config['imap_host'] = 'ssl://mail.example.com:993';
 
 // Authentication type for IMAP
@@ -582,7 +582,8 @@ $config['draft_autosave'] = 300;
 // This should match or be lower than PHP's upload_max_filesize
 $config['max_message_size'] = '25M';
 
-// MIME type detection: 'mime_content_type', 'file', or 'finfo'
+// Path to the local mime.magic database used by PHP's fileinfo extension
+// (leave empty/null to use the system default)
 $config['mime_magic'] = '/usr/share/misc/magic';
 
 // Spell check engine: 'googie' (Google API), 'pspell', 'enchant', or 'atd'
@@ -608,13 +609,10 @@ $config['request_csrf_protection'] = true;
 // 0 = disabled, 1-4 = number of octets to check
 $config['ip_check'] = 4;
 
-// Deny access from these IP addresses
-$config['login_rate_limit'] = 5;
-
 // Password minimum length
 $config['password_minimum_length'] = 8;
 
-// Brute force protection - delay between failed login attempts (seconds)
+// Brute force protection - maximum failed login attempts allowed per minute
 $config['login_rate_limit'] = 5;
 
 // ============================================
@@ -1405,13 +1403,13 @@ $config['enable_installer'] = false;
 // Hide server information
 $config['smtp_helo_host'] = 'webmail.example.com';
 
-// Disable auto-login feature
+// Automatically register users in the database on first successful IMAP login
 $config['auto_create_user'] = true;
 
 // Log all login attempts
 $config['log_logins'] = true;
 
-// Prevent username enumeration
+// Restrict the login field to accept only full email addresses
 $config['login_username_filter'] = 'email';
 ```
 
