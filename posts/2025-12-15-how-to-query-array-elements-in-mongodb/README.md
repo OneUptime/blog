@@ -210,7 +210,10 @@ db.products.find({ ratings: 5 })
 
 // Find products where ALL ratings are 4 or above
 db.products.find({
-  ratings: { $not: { $lt: 4 } }
+  ratings: {
+    $type: "array",
+    $not: { $elemMatch: { $lt: 4 } }
+  }
 })
 ```
 
