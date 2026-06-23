@@ -6,7 +6,7 @@ Tags: Terraform, AWS, Lambda, EventBridge, CloudWatch Events, Serverless
 
 Description: Learn how to create AWS Lambda functions triggered by scheduled events using Terraform. This guide covers cron expressions, rate expressions, EventBridge rules, and complete working examples.
 
-Scheduled Lambda functions are perfect for automated tasks like database cleanup, report generation, health checks, or data synchronization. AWS EventBridge (formerly CloudWatch Events) provides the scheduling capability, and Terraform makes it easy to set up the entire infrastructure as code.
+Scheduled Lambda functions are perfect for automated tasks like database cleanup, report generation, health checks, or data synchronization. AWS EventBridge scheduled rules (formerly CloudWatch Events, now a legacy scheduling feature) provide the scheduling capability, and Terraform makes it easy to set up the entire infrastructure as code.
 
 ## Architecture Overview
 
@@ -32,6 +32,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
     }
   }
 }
@@ -67,7 +71,7 @@ resource "aws_lambda_function" "scheduled" {
   function_name = "scheduled-task"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   timeout       = 60
   memory_size   = 128
 
@@ -357,6 +361,7 @@ data "archive_file" "db_cleanup" {
       import psycopg2
       from datetime import datetime, timedelta
 
+      # Package psycopg2 in the deployment ZIP or provide it with a Lambda layer.
       def handler(event, context):
           print(f"Cleanup event: {json.dumps(event)}")
 
@@ -453,6 +458,9 @@ resource "aws_iam_role_policy" "db_cleanup" {
         Action = [
           "ec2:CreateNetworkInterface",
           "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeSubnets",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses",
           "ec2:DeleteNetworkInterface"
         ]
         Resource = "*"
