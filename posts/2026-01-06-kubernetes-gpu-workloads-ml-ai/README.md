@@ -62,10 +62,11 @@ The NVIDIA Container Toolkit enables containers to access GPU resources. It conf
 
 ```bash
 # Add NVIDIA repository for container toolkit packages
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
-  sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 # Install the container toolkit
 sudo apt-get update
@@ -403,8 +404,8 @@ NVIDIA Multi-Instance GPU (MIG) allows partitioning A100 GPUs into smaller, isol
 # Enable MIG mode (on the node)
 # sudo nvidia-smi -i 0 -mig 1
 
-# Create MIG profiles
-# sudo nvidia-smi mig -cgi 9,9,9 -C
+# Create MIG profiles (three 1g.5gb instances to match the request below)
+# sudo nvidia-smi mig -cgi 1g.5gb,1g.5gb,1g.5gb -C
 
 # Device plugin config for MIG
 apiVersion: v1
@@ -415,11 +416,8 @@ metadata:
 data:
   config.yaml: |
     version: v1
-    sharing:
-      mig:
-        strategy: single           # Expose individual MIG instances
     flags:
-      migStrategy: single          # Each MIG slice is a separate resource
+      migStrategy: single          # Expose each MIG slice as a separate resource
 ```
 
 Request MIG devices in your pod specification. Each MIG slice provides a fraction of the GPU's compute and memory.
@@ -607,15 +605,16 @@ Create a managed GPU node group in EKS. The Ubuntu AMI includes NVIDIA drivers, 
 
 ```bash
 # Create GPU node group with p3.2xlarge instances (NVIDIA V100)
+# p3.2xlarge = V100 GPU instances; scale 0-5 nodes; Ubuntu2004 AMI bundles drivers
 eksctl create nodegroup \
   --cluster my-cluster \
   --name gpu-nodes \
-  --node-type p3.2xlarge \         # V100 GPU instances
-  --nodes 2 \                      # Start with 2 nodes
-  --nodes-min 0 \                  # Scale to zero when idle
-  --nodes-max 5 \                  # Max 5 nodes
-  --node-ami-family Ubuntu2004 \   # Ubuntu includes NVIDIA drivers
-  --managed                        # Use EKS managed nodes
+  --node-type p3.2xlarge \
+  --nodes 2 \
+  --nodes-min 0 \
+  --nodes-max 5 \
+  --node-ami-family Ubuntu2004 \
+  --managed
 ```
 
 ### GKE
@@ -624,10 +623,11 @@ Create a GPU node pool in GKE. Unlike EKS, GKE requires installing NVIDIA driver
 
 ```bash
 # Create node pool with T4 GPUs
+# n1-standard-4 = 4 vCPUs/15GB RAM; one T4 GPU per node
 gcloud container node-pools create gpu-pool \
   --cluster=my-cluster \
-  --machine-type=n1-standard-4 \   # 4 vCPUs, 15GB RAM
-  --accelerator type=nvidia-tesla-t4,count=1 \  # One T4 GPU per node
+  --machine-type=n1-standard-4 \
+  --accelerator type=nvidia-tesla-t4,count=1 \
   --num-nodes=2 \
   --zone=us-central1-a
 
@@ -646,8 +646,8 @@ az aks nodepool add \
   --cluster-name myAKSCluster \
   --name gpunodepool \
   --node-count 2 \
-  --node-vm-size Standard_NC6s_v3 \  # V100 GPU VMs
-  --node-taints nvidia.com/gpu=present:NoSchedule  # Taint to reserve for GPU workloads
+  --node-vm-size Standard_NC6s_v3 \
+  --node-taints nvidia.com/gpu=present:NoSchedule  # Standard_NC6s_v3 = V100; taint reserves the pool for GPU workloads
 ```
 
 ## JupyterHub for ML Teams
