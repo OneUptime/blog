@@ -46,7 +46,7 @@ show_variables:
 
 | Variable | Description |
 |----------|-------------|
-| `CI_COMMIT_BRANCH` | Branch name |
+| `CI_COMMIT_BRANCH` | Branch name in branch pipelines |
 | `CI_COMMIT_SHA` | Full commit hash |
 | `CI_COMMIT_SHORT_SHA` | First 8 characters of commit |
 | `CI_COMMIT_TAG` | Tag name if tagged |
@@ -119,7 +119,7 @@ When creating project variables, you can configure:
 
 - **Protected**: Only available in protected branches/tags
 - **Masked**: Hidden in job logs
-- **Expanded**: Allow variable references within the value
+- **Expanded**: Allow variable references within the value (not available for masked or hidden variables)
 
 ```yaml
 # If API_URL is set to "https://$DOMAIN/api" with expansion enabled
@@ -137,12 +137,16 @@ GitLab CI variables follow a specific precedence order (highest to lowest):
 
 ```mermaid
 flowchart TB
-    A[Trigger Variables] --> B[Job Variables]
-    B --> C[YAML Global Variables]
+    A[Pipeline Execution Policy Variables] --> B[Scan Execution Policy Variables]
+    B --> C[Pipeline Variables]
     C --> D[Project Variables]
     D --> E[Group Variables]
     E --> F[Instance Variables]
-    F --> G[Predefined Variables]
+    F --> G[Dotenv Report Variables]
+    G --> H[Job Variables]
+    H --> I[YAML Global Variables]
+    I --> J[Deployment Variables]
+    J --> K[Predefined Variables]
 ```
 
 ```yaml
@@ -258,16 +262,17 @@ build:
 
 ### Nested Variable Expansion
 
-For complex expansion, use double dollar signs:
+For complex expansion, use shell indirection:
 
 ```yaml
 variables:
   STAGING_URL: "staging.example.com"
   PRODUCTION_URL: "example.com"
+  TARGET_ENV: "STAGING"
 
 deploy:
   script:
-    - ENV_VAR_NAME="${CI_ENVIRONMENT_NAME}_URL"
+    - ENV_VAR_NAME="${TARGET_ENV}_URL"
     - DEPLOY_URL=$(eval echo \$$ENV_VAR_NAME)
     - echo "Deploying to $DEPLOY_URL"
 ```
