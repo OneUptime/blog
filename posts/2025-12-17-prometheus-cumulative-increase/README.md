@@ -120,10 +120,10 @@ sum by (instance, endpoint) (increase(http_requests_total[1h]))
 
 ## Running Totals with Subqueries
 
-For a cumulative running total over time (not a single point), use subqueries:
+For a rolling total over time (not a single point), use subqueries:
 
 ```promql
-# Running total over the last 24 hours, calculated every 5 minutes
+# Rolling total over the last 24 hours, calculated every 5 minutes
 sum_over_time(
   increase(http_requests_total[5m])[24h:5m]
 )
@@ -136,7 +136,7 @@ This calculates:
 ### Visualization of Cumulative Growth
 
 ```promql
-# Shows cumulative increase growing over time in a graph
+# Shows a rolling cumulative increase over time in a graph
 sum_over_time(
   sum(increase(http_requests_total[1m]))[1h:1m]
 )
@@ -178,7 +178,7 @@ resets(http_requests_total[1h]) > 0
 ### Daily Request Count
 
 ```promql
-# Total requests today (assuming 24h range)
+# Total requests in the last 24 hours
 sum(increase(http_requests_total[24h]))
 
 # Requests per day for each service
@@ -201,7 +201,7 @@ sum(increase(http_requests_total[30d]))
 ### Data Transfer Calculation
 
 ```promql
-# Total bytes transferred today
+# Total bytes transferred in the last 24 hours
 sum(increase(network_transmit_bytes_total[24h]))
 
 # GB transferred per interface
@@ -388,7 +388,7 @@ ceil(increase(http_requests_total[5m]))
 | Simple increase | `increase(metric[1h])` |
 | Total across labels | `sum(increase(metric[1h]))` |
 | Grouped increase | `sum by (label) (increase(metric[1h]))` |
-| Running total | `sum_over_time(increase(metric[5m])[1h:5m])` |
+| Rolling total | `sum_over_time(increase(metric[5m])[1h:5m])` |
 | Daily comparison | `increase(metric[24h]) / increase(metric[24h] offset 24h)` |
 
 ---
