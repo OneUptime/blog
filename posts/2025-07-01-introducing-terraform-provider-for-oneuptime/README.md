@@ -151,7 +151,7 @@ The OneUptime Terraform provider is open source and available on the [Terraform 
 Ready to bring Infrastructure as Code to your observability stack? Here's how to get started:
 
 1. **Check out the [provider documentation](https://registry.terraform.io/providers/oneuptime/oneuptime)**
-2. **Explore [example configurations](https://github.com/oneuptime/terraform-provider-oneuptime/tree/main/examples)**
+2. **Explore [example configurations](https://github.com/oneuptime/terraform-provider-oneuptime/tree/master/examples)**
 3. **Join our community** to share feedback and best practices
 
 The OneUptime Terraform provider represents our commitment to making observability infrastructure as reliable and maintainable as the applications it monitors. By treating your monitoring configuration as code, you're building a foundation for scalable, reliable operations.
