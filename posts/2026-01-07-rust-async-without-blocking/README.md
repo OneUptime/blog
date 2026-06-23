@@ -8,7 +8,7 @@ Description: Learn how to properly use async Rust without blocking the runtime. 
 
 ---
 
-> Async Rust gives you the performance of threads with the simplicity of sequential code, but only if you follow the rules. One blocking call can grind your entire async runtime to a halt. This guide shows you how to avoid the pitfalls and write truly non-blocking async code.
+> Async Rust gives you the performance of threads with the simplicity of sequential code, but only if you follow the rules. One blocking call can seriously reduce runtime throughput. This guide shows you how to avoid the pitfalls and write truly non-blocking async code.
 
 The async runtime (like Tokio) uses a small number of threads to handle many concurrent tasks. When you block a thread, you're not just blocking your task-you're stealing a thread from all other tasks. Understanding this is crucial for building performant async applications.
 
@@ -30,7 +30,7 @@ graph TD
     Task3 --> |yields at .await| T2
 ```
 
-When a task calls `.await`:
+When a task calls `.await` and the awaited operation is not ready:
 1. The task yields control back to the runtime
 2. The thread picks up another task
 3. When the awaited operation completes, the task is scheduled again
@@ -56,7 +56,7 @@ async fn process_file_bad(path: &str) -> String {
 // BAD: CPU-intensive work blocks the runtime
 async fn hash_password_bad(password: &str) -> String {
     // Argon2 is CPU-intensive - blocks for hundreds of milliseconds
-    argon2::hash_password(password)
+    hash_password_sync(password).unwrap()
 }
 
 // BAD: Using block_on inside async context
@@ -98,17 +98,26 @@ Move CPU-intensive or blocking operations to a dedicated thread pool.
 
 ```rust
 use tokio::task;
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
+};
 
 /// Properly handle CPU-intensive password hashing
-async fn hash_password(password: String) -> Result<String, HashError> {
+async fn hash_password(password: String) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     // spawn_blocking runs the closure on a dedicated blocking thread pool
     // The async task yields and resumes when the blocking work completes
-    task::spawn_blocking(move || {
+    let hash = task::spawn_blocking(move || -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // This runs on a blocking thread, not a runtime thread
-        argon2::hash_password(&password)
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map(|hash| hash.to_string())?;
+        Ok(hash)
     })
-    .await
-    .map_err(|e| HashError::JoinError(e))?
+    .await??;
+
+    Ok(hash)
 }
 
 /// File operations should also use spawn_blocking
@@ -148,7 +157,7 @@ async fn resize_image(image_data: Vec<u8>, width: u32, height: u32) -> Vec<u8> {
 | HTTP requests (async client) | No |
 | Timer/sleep | No (use tokio::time::sleep) |
 
-Rule of thumb: If it takes >1ms of CPU time or uses std blocking APIs, use `spawn_blocking`.
+Rule of thumb: If it does noticeable CPU work without yielding or uses std blocking APIs, use `spawn_blocking`. For many CPU-bound jobs at once, limit parallelism with a semaphore or use a CPU-bound executor such as Rayon.
 
 ---
 
@@ -191,7 +200,8 @@ async fn fetch_good(url: &str) -> String {
 ```rust
 // BAD: Blocking database driver
 async fn query_bad(pool: &diesel::PgPool) -> Vec<User> {
-    pool.get().unwrap().query(...)  // Blocks!
+    let mut conn = pool.get().unwrap();
+    load_users(&mut conn).unwrap()  // Blocks!
 }
 
 // GOOD: Async database driver (sqlx)
@@ -215,7 +225,7 @@ For computations that can't easily be moved to spawn_blocking, yield periodicall
 use tokio::task;
 
 /// Process items with periodic yielding
-async fn process_many_items(items: Vec<Item>) -> Vec<Result> {
+async fn process_many_items(items: Vec<Item>) -> Vec<ProcessResult> {
     let mut results = Vec::with_capacity(items.len());
 
     for (i, item) in items.into_iter().enumerate() {
@@ -224,7 +234,7 @@ async fn process_many_items(items: Vec<Item>) -> Vec<Result> {
         results.push(result);
 
         // Yield every 100 items to let other tasks run
-        if i % 100 == 0 {
+        if (i + 1) % 100 == 0 {
             task::yield_now().await;
         }
     }
@@ -253,17 +263,17 @@ use std::sync::Mutex;
 // BAD: Holding std::sync::Mutex across await
 async fn update_bad(data: &Mutex<Data>) {
     let mut guard = data.lock().unwrap();
-    // If we await here, we block the runtime thread holding the lock
-    fetch_update().await;  // BAD: Lock held across await!
-    guard.value = new_value;
+    // If we await here, the lock stays held while this task is suspended
+    let update = fetch_update().await;  // BAD: Lock held across await!
+    guard.value = update;
 }
 ```
 
 Problems:
 1. `std::sync::Mutex` is not async-aware
-2. The runtime thread is blocked while waiting for the lock
-3. Other tasks on that thread can't make progress
-4. Potential deadlock if another task needs the lock
+2. The runtime thread is blocked while waiting to acquire a contended lock
+3. Holding the guard across `.await` can keep other tasks from acquiring the lock
+4. Potential deadlock if another task needs the lock to make the awaited work complete
 
 ### Solution: Use Async-Aware Locks
 
@@ -439,7 +449,7 @@ impl Client {
 
 ## Detecting Blocking in Tests
 
-Use tokio-test to detect blocking operations.
+Use timeouts and Tokio's observability tools to catch operations that take longer than expected.
 
 ```rust
 #[cfg(test)]
@@ -497,9 +507,11 @@ async fn monitor_runtime() {
         // Log runtime metrics
         tracing::info!(
             workers = metrics.num_workers(),
-            blocking_threads = metrics.num_blocking_threads(),
             "Runtime metrics"
         );
+
+        // More detailed runtime metrics, such as num_blocking_threads() and
+        // blocking_queue_depth(), require building Tokio with tokio_unstable.
     }
 }
 ```
