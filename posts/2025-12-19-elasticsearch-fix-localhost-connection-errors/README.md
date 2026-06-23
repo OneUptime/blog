@@ -125,8 +125,8 @@ Common log errors and solutions:
 
 | Error | Solution |
 |-------|----------|
-| `max virtual memory areas too low` | `sysctl -w vm.max_map_count=262144` |
-| `max file descriptors too low` | Increase in `/etc/security/limits.conf` |
+| `max virtual memory areas too low` | `sudo sysctl -w vm.max_map_count=1048576` |
+| `max file descriptors too low` | Increase with a systemd override for package installs, or `/etc/security/limits.conf` for archive installs |
 | `Java heap space` | Adjust `-Xms` and `-Xmx` in `jvm.options` |
 | `bootstrap checks failed` | Fix development mode issues or use `discovery.type: single-node` |
 
@@ -244,7 +244,7 @@ sudo ufw status numbered
 sudo iptables -A INPUT -p tcp --dport 9200 -j ACCEPT
 
 # Save rules
-sudo iptables-save > /etc/iptables/rules.v4
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ## Step 6: Verify Java Installation
@@ -390,8 +390,6 @@ except ConnectionError as e:
 A working Docker Compose configuration:
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -419,8 +417,8 @@ volumes:
 Start and verify:
 
 ```bash
-docker-compose up -d
-docker-compose ps
+docker compose up -d
+docker compose ps
 curl http://localhost:9200
 ```
 
