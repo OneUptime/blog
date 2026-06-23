@@ -284,6 +284,7 @@ echo "Client certificate generated for: $CLIENT_NAME"
 package main
 
 import (
+    "context"
     "crypto/tls"
     "crypto/x509"
     "fmt"
@@ -292,8 +293,10 @@ import (
     "net"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/credentials"
     "google.golang.org/grpc/peer"
+    "google.golang.org/grpc/status"
 
     pb "your-module/proto"
 )
@@ -514,10 +517,10 @@ function sayHello(call, callback) {
     // Extract client identity from peer certificate
     try {
         const authContext = call.getAuthContext();
-        if (authContext) {
-            const identities = authContext['x509_common_name'];
-            if (identities && identities.length > 0) {
-                clientId = identities[0].toString();
+        if (authContext && authContext.sslPeerCertificate) {
+            const subject = authContext.sslPeerCertificate.subject;
+            if (subject && subject.CN) {
+                clientId = subject.CN;
             }
         }
     } catch (err) {
@@ -990,6 +993,7 @@ import (
     "encoding/pem"
     "fmt"
     "io/ioutil"
+    "log"
     "net/http"
     "sync"
     "time"
