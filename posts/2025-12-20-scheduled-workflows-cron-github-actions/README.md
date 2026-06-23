@@ -361,6 +361,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Fetch full history so `git log --since` can see past commits.
+          # The default shallow clone only fetches the latest commit.
+          fetch-depth: 0
 
       - name: Generate metrics report
         id: report
