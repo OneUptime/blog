@@ -22,10 +22,11 @@ flowchart TD
     C -->|Yes| E[Manual Approval Job]
     E --> F{Approved?}
     F -->|No| G[Deployment Blocked]
-    F -->|Yes| H[Deploy to Production]
+    F -->|Yes| H[Deployment Requested]
     H --> I{Environment Protected?}
-    I -->|Yes| J[Check Approvers]
-    J --> K[Deploy]
+    I -->|Yes| J[Wait for Required Approvals]
+    I -->|No| K[Deploy to Production]
+    J --> K
 ```
 
 ## Simple Manual Deployment Gates
@@ -107,11 +108,11 @@ deploy_production:
     - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
-In the GitLab UI, protect the production environment and specify who can deploy. You can allow specific users, groups with a certain role, or require multiple approvers.
+In the GitLab UI, protect the production environment and specify who can deploy. You can allow specific users, roles, or groups, and in GitLab Premium or Ultimate you can require deployment approvals before jobs deploy to a protected environment.
 
 ## Multiple Approvers
 
-For high-stakes deployments, require approval from multiple people.
+For high-stakes deployments, use protected environment approval rules to require approval from multiple people. You can also model sequential manual checkpoints in YAML.
 
 ```yaml
 # Configuration for multi-approver workflow
@@ -180,7 +181,7 @@ deploy_production:
 
 ## Approval with Timeout
 
-Add a timeout to approval jobs so stale deployments do not hang indefinitely.
+Add a timeout to approval jobs to limit how long the approval script can run after someone starts the manual job.
 
 ```yaml
 approve_production:
@@ -194,11 +195,11 @@ approve_production:
     - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
-If the job is not triggered within 24 hours, the pipeline will fail.
+If the job is triggered and runs longer than 24 hours, GitLab fails the job. The `timeout` keyword does not expire an unstarted manual job; a blocking manual job can keep the pipeline blocked until someone starts or cancels it.
 
 ## Deployment Windows
 
-Restrict deployments to specific time windows using scheduled pipelines and rules.
+Restrict deployments to specific time windows using a validation job and rules.
 
 ```yaml
 # Deployment window enforcement
@@ -365,39 +366,47 @@ deploy_production:
 
 ## Deployment Freeze Periods
 
-Implement deployment freezes for critical periods like holidays.
+Implement deployment freezes for critical periods like holidays. GitLab deploy freeze windows expose the `$CI_DEPLOY_FREEZE` variable, which you can use to block normal deployment jobs while still allowing a separate manual emergency path.
 
 ```yaml
-variables:
-  FREEZE_START: "2025-12-20"
-  FREEZE_END: "2026-01-02"
+stages:
+  - approve
+  - deploy
 
 check_deployment_freeze:
   stage: approve
   script:
-    - |
-      TODAY=$(date +%Y-%m-%d)
-      if [[ "$TODAY" > "$FREEZE_START" && "$TODAY" < "$FREEZE_END" ]]; then
-        echo "Deployment freeze in effect from $FREEZE_START to $FREEZE_END"
-        echo "Emergency deployments require manual override"
-        exit 1
-      fi
-      echo "No deployment freeze active"
+    - echo "Deployment freeze in effect"
+    - echo "Emergency deployments require manual override"
+    - exit 1
+  allow_failure: true
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main" && $OVERRIDE_FREEZE != "true"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_DEPLOY_FREEZE == "true"'
+    - when: never
+
+deploy_production:
+  stage: deploy
+  script:
+    - ./scripts/deploy.sh production
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_DEPLOY_FREEZE == null'
 
 # Emergency override job
 emergency_override:
-  stage: approve
+  stage: deploy
   script:
     - echo "EMERGENCY DEPLOYMENT OVERRIDE"
     - echo "Approved by: $GITLAB_USER_NAME"
     - echo "Reason: $OVERRIDE_REASON"
+    - ./scripts/deploy.sh production
+  environment:
+    name: production
   when: manual
+  allow_failure: false
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      variables:
-        OVERRIDE_FREEZE: "true"
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_DEPLOY_FREEZE == "true"'
 ```
 
 ## Rollback Approval
@@ -423,7 +432,7 @@ approve_rollback:
     - echo "Rollback approved by $GITLAB_USER_NAME"
     - echo "Rolling back to previous version"
   when: manual
-  allow_failure: true
+  allow_failure: false
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
 
@@ -433,7 +442,6 @@ execute_rollback:
     - ./scripts/rollback.sh production
   environment:
     name: production
-    action: stop
   needs:
     - approve_rollback
   rules:
