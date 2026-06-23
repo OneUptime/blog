@@ -259,9 +259,10 @@ import (
     "context"
     "log"
     "net"
-    "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
     "google.golang.org/protobuf/types/known/emptypb"
     "google.golang.org/protobuf/types/known/timestamppb"
 
@@ -537,7 +538,7 @@ const userService: UserServiceServer = {
     call: grpc.ServerUnaryCall<CreateUserRequest, User>,
     callback: grpc.sendUnaryData<User>
   ): void {
-    const now = Timestamp.fromPartial({ seconds: BigInt(Date.now() / 1000) });
+    const now = Timestamp.fromPartial({ seconds: BigInt(Math.floor(Date.now() / 1000)) });
     const user: User = {
       id: uuidv4(),
       email: call.request.email,
@@ -585,7 +586,7 @@ const userService: UserServiceServer = {
     }
     user.email = call.request.email || user.email;
     user.name = call.request.name || user.name;
-    user.updatedAt = Timestamp.fromPartial({ seconds: BigInt(Date.now() / 1000) });
+    user.updatedAt = Timestamp.fromPartial({ seconds: BigInt(Math.floor(Date.now() / 1000)) });
     callback(null, user);
   },
 
@@ -625,7 +626,7 @@ main();
 ```typescript
 // client.ts
 import * as grpc from '@grpc/grpc-js';
-import { UserServiceClient } from './gen/ts/user/v1/user';
+import { UserServiceClient, User } from './gen/ts/user/v1/user';
 
 async function main(): Promise<void> {
   const client = new UserServiceClient(
@@ -911,6 +912,9 @@ tonic = "0.10"
 prost = "0.12"
 prost-types = "0.12"
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
 
 [build-dependencies]
 tonic-build = "0.10"
@@ -1142,7 +1146,7 @@ plugins:
   - remote: buf.build/grpc/python
     out: gen/python
 
-  # TypeScript (using ts-proto)
+  # TypeScript (using protobuf-ts)
   - remote: buf.build/community/timostamm-protobuf-ts
     out: gen/ts
     opt:
