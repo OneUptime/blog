@@ -183,7 +183,18 @@ visibility: public
 
 ### Step 3: Enable DNSSEC on the Zone
 
-Enable DNSSEC with the default algorithm (ECDSAP256SHA256):
+By default, Cloud DNS signs zones with RSASHA256 (a 2048-bit KSK and a 1024-bit ZSK). To use the recommended ECDSAP256SHA256 algorithm, specify the key algorithms explicitly when enabling DNSSEC:
+
+```bash
+gcloud dns managed-zones update example-zone \
+    --dnssec-state on \
+    --ksk-algorithm ECDSAP256SHA256 \
+    --ksk-key-length 256 \
+    --zsk-algorithm ECDSAP256SHA256 \
+    --zsk-key-length 256
+```
+
+To enable DNSSEC with the default RSASHA256 algorithm instead, simply omit the key flags:
 
 ```bash
 gcloud dns managed-zones update example-zone \
@@ -198,16 +209,7 @@ Updated [https://dns.googleapis.com/dns/v1/projects/my-project/managedZones/exam
 
 ### Step 4: Specify a Custom Algorithm (Optional)
 
-If you need to use a specific algorithm, you can configure it during update:
-
-```bash
-gcloud dns managed-zones update example-zone \
-    --dnssec-state on \
-    --ksk-algorithm ECDSAP256SHA256 \
-    --ksk-key-length 256 \
-    --zsk-algorithm ECDSAP256SHA256 \
-    --zsk-key-length 256
-```
+You set the key algorithms in the same command that enables DNSSEC, as shown above. Cloud DNS does not allow changing the key algorithms on a zone that already has DNSSEC enabled — to switch algorithms later, you must first disable DNSSEC, then re-enable it with the new settings.
 
 For RSA-based algorithms:
 
@@ -542,23 +544,26 @@ gcloud dns operations list --zones example-zone --limit=5
 Google Cloud DNS automatically handles key rotation, but you can monitor the process:
 
 ```bash
-# List all keys including inactive ones
-gcloud dns dns-keys list --zone example-zone --show-deleted
+# List all keys for the zone (active and inactive)
+gcloud dns dns-keys list --zone example-zone
 ```
 
 ### Manual Key Rollover
 
-In rare cases, you may need to perform a manual key rollover:
+In rare cases (for example, to change the signing algorithm or key length), you may need to perform a manual key rollover. Because Cloud DNS does not allow changing key specifications on an enabled zone, this is done by disabling and then re-enabling DNSSEC with the new settings:
 
 ```bash
-# Initiate a KSK rollover
+# Disable DNSSEC (after removing DS records at the registrar)
+gcloud dns managed-zones update example-zone --dnssec-state off
+
+# Re-enable DNSSEC with the desired key specifications
 gcloud dns managed-zones update example-zone \
     --dnssec-state on \
     --ksk-algorithm ECDSAP256SHA256 \
     --ksk-key-length 256
 ```
 
-After rollover, update your registrar with the new DS records.
+After the rollover, retrieve the new DS records and update them at your registrar.
 
 ### Viewing Key Details
 
