@@ -28,9 +28,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
         with:
-          version: 'v1.29.0'
+          version: 'latest'
 
       - name: Configure kubectl
         run: |
@@ -77,16 +77,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-actions@myproject.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
+        uses: google-github-actions/get-gke-credentials@v3
         with:
           cluster_name: my-cluster
           location: us-central1
@@ -119,7 +119,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsEKS
           aws-region: us-east-1
@@ -158,14 +158,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set AKS context
-        uses: azure/aks-set-context@v3
+        uses: azure/aks-set-context@v4
         with:
           resource-group: my-resource-group
           cluster-name: my-aks-cluster
@@ -194,9 +194,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         with:
-          version: 'v3.14.0'
+          version: 'v4.2.2'
 
       - name: Configure kubectl
         run: |
@@ -243,7 +243,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
 
       - name: Configure kubectl
         run: |
@@ -302,6 +302,13 @@ jobs:
     needs: update-manifests
     runs-on: ubuntu-latest
     steps:
+      - name: Install ArgoCD CLI
+        run: |
+          VERSION=$(curl -L -s https://raw.githubusercontent.com/argoproj/argo-cd/stable/VERSION)
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/download/v$VERSION/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
       - name: Trigger ArgoCD sync
         run: |
           argocd app sync myapp --server ${{ secrets.ARGOCD_SERVER }} \
@@ -326,13 +333,13 @@ Implement blue-green deployments:
 
       - name: Test green deployment
         run: |
-          GREEN_IP=$(kubectl get svc myapp-green -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl -f http://$GREEN_IP/health
+          GREEN_ENDPOINT=$(kubectl get svc myapp-green -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+          curl -f http://$GREEN_ENDPOINT/health
 
       - name: Switch traffic to green
         run: |
           kubectl patch svc myapp -n production \
-            -p '{"spec":{"selector":{"version":"green"}}}'
+            -p '{"spec":{"selector":{"app":"myapp","version":"green"}}}'
 
       - name: Scale down blue
         run: |
@@ -353,14 +360,8 @@ Gradual rollout with canary:
 
       - name: Monitor canary
         run: |
-          # Wait and check error rates
-          sleep 300
-          ERROR_RATE=$(kubectl top pods -l version=canary --no-headers | awk '{print $3}')
-          if [ "$ERROR_RATE" -gt "5" ]; then
-            echo "Canary error rate too high, rolling back"
-            kubectl delete -f k8s/canary.yaml
-            exit 1
-          fi
+          # Wait for the canary deployment to become ready
+          kubectl rollout status deployment/myapp-canary --timeout=5m
 
       - name: Promote canary
         run: |
@@ -433,9 +434,9 @@ jobs:
 
 ```yaml
       - name: Scan manifests
-        uses: kubesec/kubesec-action@v1
+        uses: controlplaneio/kubesec-action@master
         with:
-          manifest: k8s/deployment.yaml
+          input: k8s/deployment.yaml
 
       - name: Check policies
         run: |
