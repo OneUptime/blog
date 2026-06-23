@@ -43,9 +43,9 @@ graph TB
     end
 
     subgraph "Cluster C - Asia Pacific"
-        C1[Node 1<br/>10.300.1.1]
-        C2[Node 2<br/>10.300.1.2]
-        CWG[WireGuard Gateway<br/>10.300.0.1<br/>Public: 192.0.2.30]
+        C1[Node 1<br/>10.30.1.1]
+        C2[Node 2<br/>10.30.1.2]
+        CWG[WireGuard Gateway<br/>10.30.0.1<br/>Public: 192.0.2.30]
     end
 
     AWG <-->|WireGuard Tunnel<br/>UDP 51820| BWG
@@ -212,7 +212,7 @@ Before configuration, plan your WireGuard network addresses:
 |---------|--------------|----------|--------------|-----------|
 | Cluster A | 10.10.0.1/24 | 10.100.0.0/16 | 10.101.0.0/16 | 203.0.113.10 |
 | Cluster B | 10.10.0.2/24 | 10.200.0.0/16 | 10.201.0.0/16 | 198.51.100.20 |
-| Cluster C | 10.10.0.3/24 | 10.300.0.0/16 | 10.301.0.0/16 | 192.0.2.30 |
+| Cluster C | 10.10.0.3/24 | 10.30.0.0/16 | 10.31.0.0/16 | 192.0.2.30 |
 
 ### Cluster A Configuration
 
@@ -254,7 +254,7 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = <CLUSTER_C_PUBLIC_KEY>
 Endpoint = 192.0.2.30:51820
-AllowedIPs = 10.10.0.3/32, 10.300.0.0/16, 10.301.0.0/16
+AllowedIPs = 10.10.0.3/32, 10.30.0.0/16, 10.31.0.0/16
 PersistentKeepalive = 25
 ```
 
@@ -289,7 +289,7 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = <CLUSTER_C_PUBLIC_KEY>
 Endpoint = 192.0.2.30:51820
-AllowedIPs = 10.10.0.3/32, 10.300.0.0/16, 10.301.0.0/16
+AllowedIPs = 10.10.0.3/32, 10.30.0.0/16, 10.31.0.0/16
 PersistentKeepalive = 25
 ```
 
@@ -383,7 +383,7 @@ peer: <CLUSTER_B_PUBLIC_KEY>
 
 peer: <CLUSTER_C_PUBLIC_KEY>
   endpoint: 192.0.2.30:51820
-  allowed ips: 10.10.0.3/32, 10.300.0.0/16, 10.301.0.0/16
+  allowed ips: 10.10.0.3/32, 10.30.0.0/16, 10.31.0.0/16
   latest handshake: 8 seconds ago
   transfer: 2.56 MiB received, 1.12 MiB sent
   persistent keepalive: every 25 seconds
@@ -447,8 +447,8 @@ On each cluster node, add routes to remote clusters:
 # On Cluster A nodes - route to Cluster B and C through gateway
 sudo ip route add 10.200.0.0/16 via 10.100.0.1
 sudo ip route add 10.201.0.0/16 via 10.100.0.1
-sudo ip route add 10.300.0.0/16 via 10.100.0.1
-sudo ip route add 10.301.0.0/16 via 10.100.0.1
+sudo ip route add 10.30.0.0/16 via 10.100.0.1
+sudo ip route add 10.31.0.0/16 via 10.100.0.1
 
 # Make routes persistent (Ubuntu/Debian with Netplan)
 # /etc/netplan/99-wireguard-routes.yaml
@@ -461,9 +461,9 @@ network:
           via: 10.100.0.1
         - to: 10.201.0.0/16
           via: 10.100.0.1
-        - to: 10.300.0.0/16
+        - to: 10.30.0.0/16
           via: 10.100.0.1
-        - to: 10.301.0.0/16
+        - to: 10.31.0.0/16
           via: 10.100.0.1
 ```
 
@@ -688,7 +688,7 @@ spec:
         cidr: 10.200.0.0/16
     # Cluster C pod CIDR
     - ipBlock:
-        cidr: 10.300.0.0/16
+        cidr: 10.30.0.0/16
   egress:
   - to:
     - ipBlock:
@@ -696,7 +696,7 @@ spec:
     - ipBlock:
         cidr: 10.200.0.0/16
     - ipBlock:
-        cidr: 10.300.0.0/16
+        cidr: 10.30.0.0/16
 ```
 
 ## Step 8: Monitoring and Troubleshooting
@@ -716,7 +716,7 @@ ip -s link show wg0
 
 echo ""
 echo "=== Routing Table ==="
-ip route | grep -E "10\.(100|200|300)"
+ip route | grep -E "10\.(100|200|30)"
 
 echo ""
 echo "=== Connection Test ==="
@@ -1020,7 +1020,7 @@ PersistentKeepalive = 25
 PublicKey = <CLUSTER_C_PUBLIC_KEY>
 PresharedKey = <PSK_CLUSTER_C>
 Endpoint = 192.0.2.30:51820
-AllowedIPs = 10.10.0.3/32, 10.300.0.0/16, 10.301.0.0/16
+AllowedIPs = 10.10.0.3/32, 10.30.0.0/16, 10.31.0.0/16
 PersistentKeepalive = 25
 ```
 
