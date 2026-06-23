@@ -174,13 +174,12 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
@@ -199,7 +198,7 @@ func InitOpenTelemetry(ctx context.Context, serviceName string) (func(context.Co
             // Add version information for better debugging
             semconv.ServiceVersion("1.0.0"),
             // Add deployment environment for filtering
-            attribute.String("deployment.environment", "production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -317,7 +316,7 @@ func processRequest(ctx context.Context, data string) error {
     result, err := doWork(ctx, data)
     if err != nil {
         // Record the error on the span
-        // This automatically sets the span status to Error
+        // RecordError adds an exception event; SetStatus marks the span as failed
         span.RecordError(err)
         span.SetStatus(codes.Error, err.Error())
         return err
@@ -496,16 +495,16 @@ processors:
   # Useful for adding environment or cluster information
   resource:
     attributes:
-      - key: environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
 # Exporters send telemetry data to backends
 exporters:
-  # Jaeger exporter for backward compatibility
-  # Sends traces to your existing Jaeger installation
-  jaeger:
-    endpoint: jaeger-collector:14250
+  # OTLP exporter for backward compatibility with Jaeger
+  # Current Jaeger versions accept OTLP on port 4317
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true
 
@@ -516,10 +515,10 @@ exporters:
     tls:
       insecure: true
 
-  # Logging exporter for debugging
+  # Debug exporter for troubleshooting
   # Useful during migration to verify data flow
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 # Extensions provide additional capabilities
 extensions:
@@ -546,7 +545,7 @@ service:
       # Apply processing in order
       processors: [memory_limiter, batch, resource]
       # Export to Jaeger backend (add otlp for dual export)
-      exporters: [jaeger, logging]
+      exporters: [otlp/jaeger, debug]
 ```
 
 ## Phase 6: Context Propagation Migration
@@ -619,7 +618,6 @@ import (
 
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
 )
 
 // TracingMiddleware wraps an HTTP handler with tracing
@@ -665,7 +663,7 @@ The following table shows the mapping between Jaeger and OpenTelemetry data mode
 | Operation Name | Span Name | Direct mapping |
 | Tags | Attributes | Similar key-value pairs |
 | Logs | Events | Events are timestamped |
-| References | Links | Parent-child relationship preserved |
+| References | Parent context and links | Parent-child relationships are preserved as parent context; non-parent references map to links |
 | Process | Resource | Service-level metadata |
 | Baggage | Baggage | W3C Baggage specification |
 
@@ -680,7 +678,7 @@ package tracing
 
 import (
     "go.opentelemetry.io/otel/attribute"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // Common Jaeger tag to OpenTelemetry attribute mappings
@@ -688,23 +686,23 @@ import (
 
 // Jaeger: span.SetTag("http.method", "GET")
 // OpenTelemetry equivalent using semantic conventions:
-var httpMethodAttr = semconv.HTTPMethod("GET")
+var httpMethodAttr = semconv.HTTPRequestMethodKey.String("GET")
 
 // Jaeger: span.SetTag("http.status_code", 200)
 // OpenTelemetry equivalent:
-var httpStatusAttr = semconv.HTTPStatusCode(200)
+var httpStatusAttr = semconv.HTTPResponseStatusCode(200)
 
 // Jaeger: span.SetTag("http.url", "https://example.com/api")
 // OpenTelemetry equivalent:
-var httpURLAttr = semconv.HTTPURL("https://example.com/api")
+var httpURLAttr = semconv.URLFull("https://example.com/api")
 
 // Jaeger: span.SetTag("db.type", "postgresql")
 // OpenTelemetry equivalent:
-var dbSystemAttr = semconv.DBSystemPostgreSQL
+var dbSystemAttr = semconv.DBSystemNameKey.String("postgresql")
 
 // Jaeger: span.SetTag("db.statement", "SELECT * FROM users")
 // OpenTelemetry equivalent:
-var dbStatementAttr = semconv.DBStatement("SELECT * FROM users")
+var dbStatementAttr = semconv.DBQueryText("SELECT * FROM users")
 
 // Jaeger: span.SetTag("error", true)
 // OpenTelemetry: Use span.SetStatus(codes.Error, message) instead
@@ -713,13 +711,13 @@ var dbStatementAttr = semconv.DBStatement("SELECT * FROM users")
 // This demonstrates the preferred way to set HTTP-related attributes
 func HTTPServerAttributes(method, url string, statusCode int) []attribute.KeyValue {
     return []attribute.KeyValue{
-        semconv.HTTPMethod(method),
-        semconv.HTTPURL(url),
-        semconv.HTTPStatusCode(statusCode),
+        semconv.HTTPRequestMethodKey.String(method),
+        semconv.URLFull(url),
+        semconv.HTTPResponseStatusCode(statusCode),
         // Additional semantic conventions for HTTP
-        semconv.HTTPScheme("https"),
-        semconv.NetHostName("example.com"),
-        semconv.NetHostPort(443),
+        semconv.URLScheme("https"),
+        semconv.ServerAddress("example.com"),
+        semconv.ServerPort(443),
     }
 }
 ```
@@ -796,9 +794,9 @@ def init_opentelemetry_tracer(service_name: str) -> None:
     """
     # Create a resource that identifies this service
     # Resources are attached to all spans produced by this provider
-    resource = Resource(attributes={
+    resource = Resource.create({
         SERVICE_NAME: service_name,
-        "deployment.environment": "production",
+        "deployment.environment.name": "production",
         "service.version": "1.0.0",
     })
 
@@ -879,9 +877,11 @@ npm uninstall jaeger-client
 npm install @opentelemetry/api
 npm install @opentelemetry/sdk-node
 npm install @opentelemetry/sdk-trace-node
+npm install @opentelemetry/auto-instrumentations-node
 npm install @opentelemetry/exporter-trace-otlp-grpc
 npm install @opentelemetry/resources
 npm install @opentelemetry/semantic-conventions
+npm install @opentelemetry/core
 npm install @opentelemetry/propagator-jaeger
 ```
 
@@ -895,8 +895,12 @@ The following code shows the complete OpenTelemetry setup for Node.js, replacing
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { JaegerPropagator } = require('@opentelemetry/propagator-jaeger');
 const { CompositePropagator, W3CTraceContextPropagator } = require('@opentelemetry/core');
 
@@ -910,10 +914,10 @@ const { CompositePropagator, W3CTraceContextPropagator } = require('@opentelemet
  */
 const sdk = new NodeSDK({
   // Resource identifies this service in traces
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-node-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production',
   }),
 
   // OTLP exporter sends traces to the OTel Collector
@@ -989,6 +993,8 @@ const tracer = trace.getTracer('my-service/order-processor');
  * @param {Object} order - The order to process
  */
 async function processOrder(order) {
+  const startTimeMs = Date.now();
+
   // Start a new span for this operation
   // Use startActiveSpan to automatically set the span as active in context
   return tracer.startActiveSpan('processOrder', {
@@ -1015,7 +1021,7 @@ async function processOrder(order) {
 
       // Add completion event
       span.addEvent('Order processing completed', {
-        'processing.duration_ms': Date.now() - span.startTime,
+        'processing.duration_ms': Date.now() - startTimeMs,
       });
 
       // Set success status
@@ -1144,7 +1150,6 @@ func TestTracePropagation(t *testing.T) {
     // Make a request with trace context
     tracer := otel.Tracer("test-client")
     ctx, parentSpan := tracer.Start(context.Background(), "client-request")
-    defer parentSpan.End()
 
     // Create request with propagated context
     req, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
@@ -1158,6 +1163,9 @@ func TestTracePropagation(t *testing.T) {
     }
     resp.Body.Close()
 
+    // End the parent span before inspecting the in-memory exporter
+    parentSpan.End()
+
     // Verify spans were created with correct parent-child relationship
     spans := exporter.GetSpans()
     if len(spans) < 2 {
@@ -1165,9 +1173,17 @@ func TestTracePropagation(t *testing.T) {
     }
 
     // Verify trace IDs match (context was propagated)
-    clientSpan := spans[0]
-    serverSpan := spans[1]
-    if clientSpan.SpanContext().TraceID() != serverSpan.SpanContext().TraceID() {
+    var clientTraceID, serverTraceID string
+    for _, span := range spans {
+        switch span.Name {
+        case "client-request":
+            clientTraceID = span.SpanContext.TraceID().String()
+        case "handle-request":
+            serverTraceID = span.SpanContext.TraceID().String()
+        }
+    }
+
+    if clientTraceID == "" || clientTraceID != serverTraceID {
         t.Error("Trace context was not propagated correctly")
     }
 
