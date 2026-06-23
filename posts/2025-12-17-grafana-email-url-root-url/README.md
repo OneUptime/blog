@@ -12,7 +12,7 @@ When Grafana sends alert notifications via email, the included dashboard links m
 
 ## Understanding the Problem
 
-By default, Grafana constructs URLs based on how it sees incoming requests. When behind a proxy, this often results in:
+By default, Grafana constructs URLs from its server configuration. When the default values or proxy settings do not match the public address, this often results in:
 
 - Links pointing to `http://localhost:3000` instead of your public URL
 - Incorrect protocol (HTTP instead of HTTPS)
@@ -35,7 +35,7 @@ The `root_url` setting tells Grafana what URL users will use to access it. This 
 - Email notification links
 - OAuth callback URLs
 - Image rendering URLs
-- API documentation links
+- Redirects
 
 ### Basic Configuration
 
@@ -204,8 +204,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: grafana
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
     - host: grafana.example.com
@@ -251,9 +249,6 @@ password = your-smtp-password
 from_address = alerts@example.com
 from_name = Grafana Alerts
 
-[alerting]
-enabled = true
-
 [unified_alerting]
 enabled = true
 ```
@@ -280,7 +275,7 @@ http://localhost:3000/alerting/list
 
 ```ini
 [server]
-# Used for cookie domain and other internal purposes
+# Used as part of root_url when root_url uses %(domain)s
 domain = grafana.example.com
 ```
 
@@ -349,13 +344,9 @@ sudo systemctl restart grafana-server
 
 Ensure proxy headers are forwarded:
 
-```ini
-[server]
-root_url = https://grafana.example.com
-
-[security]
-# Allow embedding from any origin
-allow_embedding = true
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
 ```
 
 ### OAuth Callback Mismatch
@@ -389,7 +380,7 @@ And verify Nginx/proxy rewrite rules are correct.
 | Setting | Purpose | Example |
 |---------|---------|---------|
 | `root_url` | Full public URL | `https://grafana.example.com` |
-| `domain` | Cookie domain | `grafana.example.com` |
+| `domain` | Domain used when `root_url` references `%(domain)s` | `grafana.example.com` |
 | `protocol` | Internal protocol | `http` |
 | `http_port` | Internal port | `3000` |
 | `serve_from_sub_path` | Enable subpath serving | `true` |
@@ -439,7 +430,7 @@ Configuring `root_url` correctly ensures:
 1. **Email links work** - Notification emails contain valid dashboard URLs
 2. **OAuth functions** - Callback URLs match your configuration
 3. **Image rendering** - Rendered images use correct URLs
-4. **API documentation** - Links in API docs are accurate
+4. **Redirects work** - Grafana sends users to the correct public URL
 
 Key steps:
 1. Set `root_url` to your public-facing URL
