@@ -66,7 +66,7 @@ if not app.debug:
 
 @app.route('/')
 def index():
-    # This will be logged
+    # INFO messages require the logger and handler to be set to INFO
     app.logger.info('Index page accessed')
     return 'Hello World'
 
@@ -87,6 +87,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from flask import Flask, request
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -135,6 +136,10 @@ def setup_logging(app):
 # Error handler to log exceptions
 @app.errorhandler(Exception)
 def handle_exception(e):
+    # Preserve normal HTTP errors such as 404 and 405
+    if isinstance(e, HTTPException):
+        return e
+
     # Log the full traceback
     app.logger.exception('Unhandled exception: %s', str(e))
 
@@ -270,6 +275,13 @@ http {
     # Global error log
     error_log /var/log/nginx/error.log warn;
 
+    # Access log with timing
+    log_format detailed '$remote_addr - $remote_user [$time_local] '
+                       '"$request" $status $body_bytes_sent '
+                       '"$http_referer" "$http_user_agent" '
+                       'upstream_response_time=$upstream_response_time '
+                       'request_time=$request_time';
+
     server {
         listen 80;
         server_name example.com;
@@ -277,22 +289,12 @@ http {
         # Server-specific error log with debug level
         error_log /var/log/nginx/flask_error.log debug;
 
-        # Access log with timing
-        log_format detailed '$remote_addr - $remote_user [$time_local] '
-                           '"$request" $status $body_bytes_sent '
-                           '"$http_referer" "$http_user_agent" '
-                           'upstream_response_time=$upstream_response_time '
-                           'request_time=$request_time';
-
         access_log /var/log/nginx/flask_access.log detailed;
 
         location / {
             proxy_pass http://127.0.0.1:5000;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-
-            # Pass error pages to error log
-            proxy_intercept_errors on;
         }
     }
 }
@@ -310,11 +312,12 @@ location / {
 
     # Custom error pages that log details
     error_page 500 502 503 504 /50x.html;
+    proxy_intercept_errors on;
+}
 
-    location = /50x.html {
-        root /usr/share/nginx/html;
-        internal;
-    }
+location = /50x.html {
+    root /usr/share/nginx/html;
+    internal;
 }
 ```
 
@@ -364,6 +367,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, jsonify
 import traceback
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -386,6 +390,10 @@ def configure_logging():
 
 @app.errorhandler(Exception)
 def handle_all_exceptions(e):
+    # Preserve normal HTTP errors such as 404 and 405
+    if isinstance(e, HTTPException):
+        return e
+
     # Get full traceback
     tb = traceback.format_exc()
 
@@ -451,7 +459,7 @@ server {
 
 To see Flask tracebacks when running behind Nginx:
 
-1. **Flask level**: Configure `app.logger` with file handler and `@app.errorhandler(Exception)`
+1. **Flask level**: Configure `app.logger` with file handler and an HTTPException-aware `@app.errorhandler(Exception)`
 2. **Gunicorn level**: Use `--capture-output` and configure error log path
 3. **Systemd level**: Set `StandardOutput=journal` and `StandardError=journal`
 4. **Nginx level**: Check `error_log` directive and increase log level for debugging
