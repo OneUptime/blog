@@ -141,7 +141,7 @@ List<object> objects = strings; // Error!
 // Why? List<T> is not covariant - you could add non-strings:
 // objects.Add(123); // Would corrupt the string list!
 
-// SOLUTION 1: Use covariant interface (IEnumerable<out T>)
+// SOLUTION 1: Use covariant interface for reference types (IEnumerable<out T>)
 IEnumerable<object> objects = strings; // Works!
 
 // SOLUTION 2: Create new collection
@@ -248,7 +248,7 @@ OrderStatus status = (OrderStatus)statusCode;
 // SOLUTION 2: Enum.Parse (from string)
 OrderStatus status = Enum.Parse<OrderStatus>("Completed");
 
-// SOLUTION 3: Enum.TryParse (safe)
+// SOLUTION 3: Enum.TryParse (avoids exceptions)
 if (Enum.TryParse<OrderStatus>("Completed", out var status))
 {
     ProcessStatus(status);
@@ -328,6 +328,7 @@ public static class ConversionHelpers
 
     public static T ConvertTo<T>(object value)
     {
+        // Works for IConvertible-compatible values such as strings and primitive types.
         return (T)Convert.ChangeType(value, typeof(T));
     }
 
@@ -355,7 +356,7 @@ public static class ConversionHelpers
 | **String to number** | TryParse for safety |
 | **Nullable to value** | Null-coalescing ?? |
 | **Object to specific** | Pattern matching |
-| **Generic variance** | Use covariant interfaces |
+| **Generic variance** | Use covariant interfaces for reference types |
 | **Enum conversion** | Enum.TryParse |
 | **Custom types** | Define conversion operators |
 
