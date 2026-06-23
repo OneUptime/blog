@@ -76,7 +76,6 @@ types {
     text/html                             html htm shtml;
     text/css                              css;
     text/javascript                       js;
-    application/javascript                js;
     application/json                      json;
 
     image/gif                             gif;
@@ -87,8 +86,6 @@ types {
 
     font/woff                             woff;
     font/woff2                            woff2;
-    application/font-woff                 woff;
-    application/font-woff2                woff2;
 
     application/pdf                       pdf;
     application/zip                       zip;
@@ -130,7 +127,7 @@ server {
 
     # Wrong: Using alias incorrectly
     location /assets/ {
-        alias /var/www/static;  # Looks for /var/www/static/css/style.css
+        alias /var/www/static/;  # Looks for /var/www/static/css/style.css
     }
 
     # Correct: Match the path structure
@@ -216,13 +213,13 @@ add_header Content-Security-Policy "default-src 'self'; style-src 'self' https:/
 
 ## Issue 7: Gzip Compression Issues
 
-Some browsers have issues with gzip-compressed CSS:
+Misconfigured gzip compression can cause CSS delivery issues:
 
 ```nginx
 # Ensure proper gzip configuration
 gzip on;
 gzip_vary on;
-gzip_types text/css text/javascript application/javascript application/json;
+gzip_types text/css text/javascript application/json;
 gzip_min_length 1024;
 
 # If issues persist, disable gzip for CSS temporarily
@@ -249,7 +246,6 @@ http {
         text/plain
         text/css
         text/javascript
-        application/javascript
         application/json
         image/svg+xml;
 
@@ -270,7 +266,6 @@ http {
             types {
                 text/css css;
                 text/javascript js;
-                application/javascript js;
             }
         }
 
