@@ -193,20 +193,20 @@ fastcgi_param  REDIRECT_STATUS    200;
 
 ### Cause 5: Incorrect default_type
 
-If Nginx does not recognize the file type, it may serve it with a download header.
+If Nginx does not recognize the file type, it may serve it with a fallback MIME type that browsers often download.
 
 ```nginx
 http {
     include /etc/nginx/mime.types;
-    default_type application/octet-stream;  # This causes downloads for unknown types
+    default_type application/octet-stream;  # Browsers often download unknown types
 }
 ```
 
-#### Fix: Add PHP MIME Type Handling
+#### Fix: Add PHP FastCGI Handling
 
 ```nginx
 location ~ \.php$ {
-    # Prevent downloading if PHP-FPM fails
+    # Check the script exists before passing it to PHP-FPM
     try_files $uri =404;
 
     include fastcgi_params;
@@ -235,7 +235,6 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Main location
     location / {
@@ -330,6 +329,16 @@ server {
         try_files $uri $uri/ /index.php?$args;
     }
 
+    # Block PHP in uploads
+    location ~* /uploads/.*\.php$ {
+        deny all;
+    }
+
+    # Block access to sensitive files
+    location ~* /(?:uploads|files)/.*\.php$ {
+        deny all;
+    }
+
     location ~ \.php$ {
         try_files $uri =404;
         fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
@@ -341,16 +350,6 @@ server {
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
         expires max;
         log_not_found off;
-    }
-
-    # Block PHP in uploads
-    location ~* /uploads/.*\.php$ {
-        deny all;
-    }
-
-    # Block access to sensitive files
-    location ~* /(?:uploads|files)/.*\.php$ {
-        deny all;
     }
 }
 ```
@@ -446,7 +445,7 @@ sudo find /var/www/example.com -type d -exec chmod 755 {} \;
 | 502 Bad Gateway | PHP-FPM not running | Start PHP-FPM |
 | Connection refused | Wrong socket path | Fix fastcgi_pass |
 | File not found | Wrong SCRIPT_FILENAME | Check document_root |
-| Permission denied | Socket permissions | Add nginx user to www-data group |
+| Permission denied | Socket permissions | Match the Nginx user to the PHP-FPM socket owner/group |
 
 ## Summary
 
