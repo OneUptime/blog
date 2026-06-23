@@ -109,13 +109,13 @@ TCP connection pooling settings control the behavior of TCP connections at the t
 
 ### Basic TCP Connection Pool Configuration
 
-The following DestinationRule configures basic TCP connection pooling for a service. The maxConnections setting limits the total number of TCP connections to the destination, while connectTimeout specifies how long to wait for a connection to be established.
+The following DestinationRule configures basic TCP connection pooling for a service. The maxConnections setting limits the number of HTTP/1.1 or TCP connections to a destination host, while connectTimeout specifies how long to wait for a connection to be established.
 
 ```yaml
 # Basic TCP connection pool configuration
 
 # This DestinationRule applies connection pooling settings to the payment service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-connection-pool
@@ -177,7 +177,7 @@ sequenceDiagram
 
 | Parameter | Description | Default | Recommended Range |
 |-----------|-------------|---------|-------------------|
-| `maxConnections` | Maximum TCP connections to destination | 2^32-1 | 50-1000 |
+| `maxConnections` | Maximum HTTP/1.1 or TCP connections to a destination host | 2^32-1 | 50-1000 |
 | `connectTimeout` | TCP connection timeout | 10s | 10ms-5s |
 | `tcpKeepalive.time` | Idle time before first probe | OS default | 60s-7200s |
 | `tcpKeepalive.interval` | Interval between probes | OS default | 10s-75s |
@@ -189,12 +189,12 @@ HTTP connection pooling settings provide fine-grained control over HTTP/1.1 and 
 
 ### Comprehensive HTTP Connection Pool Configuration
 
-The following configuration demonstrates all available HTTP connection pooling options. Each setting is carefully chosen to balance performance and resource utilization.
+The following configuration demonstrates common HTTP connection pooling options. Each setting is carefully chosen to balance performance and resource utilization.
 
 ```yaml
 # Comprehensive HTTP connection pool configuration
 # This configuration provides fine-grained control over HTTP connection behavior
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway-http-pool
@@ -213,7 +213,7 @@ spec:
         # Maximum number of requests that can be pending while waiting
         # for a connection from the pool. If exceeded, requests are rejected.
         # This acts as a queue for incoming requests
-        maxPendingRequests: 100
+        http1MaxPendingRequests: 100
 
         # Maximum number of HTTP requests per connection before it's closed
         # Setting this helps distribute load and prevents connection affinity issues
@@ -222,7 +222,10 @@ spec:
         maxRequestsPerConnection: 10
 
         # Maximum number of active requests to the destination
-        # This is the total across all connections (HTTP/2 specific)
+        # Despite the field name, this applies to both HTTP/1.1 and HTTP/2
+        http2MaxRequests: 1000
+
+        # Maximum number of retries that can be outstanding to all hosts
         maxRetries: 3
 
         # Idle timeout for connections in the pool
@@ -233,8 +236,8 @@ spec:
         # Controls when HTTP/1.1 connections should upgrade to HTTP/2
         h2UpgradePolicy: UPGRADE
 
-        # Use HTTP/1.1 for backend connections even if client uses HTTP/2
-        # Useful when backend services don't support HTTP/2
+        # Preserve the client protocol when initiating backend connections
+        # When true, h2UpgradePolicy is ignored
         useClientProtocol: false
 ```
 
@@ -259,10 +262,9 @@ flowchart TD
             C2[Multiplexed streams]
         end
 
-        subgraph "USE_CLIENT_PROTOCOL"
-            B3[Match client protocol]
-            C3[HTTP/1.1 stays HTTP/1.1]
-            C4[HTTP/2 stays HTTP/2]
+        subgraph "DEFAULT"
+            B3[Use global default]
+            C3[Upgrade behavior depends on mesh defaults]
         end
     end
 
@@ -272,7 +274,6 @@ flowchart TD
     B1 --> C1
     B2 --> C2
     B3 --> C3
-    B3 --> C4
 
     style A fill:#FFD700,stroke:#333
     style B2 fill:#90EE90,stroke:#333
@@ -286,7 +287,7 @@ The following configuration shows all three h2UpgradePolicy options with detaile
 # h2UpgradePolicy: DO_NOT_UPGRADE
 # Use this when your backend service does not support HTTP/2
 # or when you need strict HTTP/1.1 compatibility
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-service-no-upgrade
@@ -299,13 +300,13 @@ spec:
         # Prevents HTTP/2 upgrade - all connections remain HTTP/1.1
         # Use for legacy services or when HTTP/2 causes issues
         h2UpgradePolicy: DO_NOT_UPGRADE
-        maxPendingRequests: 50
+        http1MaxPendingRequests: 50
         maxRequestsPerConnection: 1
 ---
 # h2UpgradePolicy: UPGRADE
 # Use this to enable HTTP/2 multiplexing for better performance
 # Recommended for modern services that support HTTP/2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: modern-service-upgrade
@@ -318,14 +319,16 @@ spec:
         # Upgrades HTTP/1.1 connections to HTTP/2 when possible
         # Enables multiplexing: multiple requests over single connection
         h2UpgradePolicy: UPGRADE
-        maxPendingRequests: 200
-        # With HTTP/2, this represents max streams per connection
+        http1MaxPendingRequests: 200
+        # Limit active requests to the destination
+        http2MaxRequests: 1000
+        # Limit total requests sent over each backend connection
         maxRequestsPerConnection: 100
 ---
-# h2UpgradePolicy: USE_CLIENT_PROTOCOL (Default)
-# Preserves the original client protocol
-# Provides flexibility when mixed protocols are used
-apiVersion: networking.istio.io/v1beta1
+# h2UpgradePolicy: DEFAULT
+# Uses the mesh-wide default upgrade behavior
+# Use useClientProtocol: true separately when you need to preserve the original client protocol
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: flexible-service
@@ -335,11 +338,11 @@ spec:
   trafficPolicy:
     connectionPool:
       http:
-        # Uses whatever protocol the client is using
-        # If client sends HTTP/1.1, backend receives HTTP/1.1
-        # If client sends HTTP/2, backend receives HTTP/2
-        h2UpgradePolicy: USE_CLIENT_PROTOCOL
-        maxPendingRequests: 100
+        # Uses the mesh-wide default for HTTP/2 upgrades
+        h2UpgradePolicy: DEFAULT
+        # Preserves the client protocol; when true, h2UpgradePolicy is ignored
+        useClientProtocol: true
+        http1MaxPendingRequests: 100
 ```
 
 ## Combined TCP and HTTP Configuration
@@ -349,7 +352,7 @@ For production deployments, you typically configure both TCP and HTTP settings t
 ```yaml
 # Production-ready connection pool configuration
 # Combines TCP and HTTP settings for optimal performance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: production-service-pool
@@ -365,7 +368,7 @@ spec:
       # TCP Layer Configuration
       # These settings establish the foundation for all connections
       tcp:
-        # Limit total connections to prevent resource exhaustion
+        # Limit connections to each destination host to prevent resource exhaustion
         # Calculate based on: (expected RPS * avg latency) / requests per connection
         maxConnections: 500
 
@@ -384,14 +387,14 @@ spec:
       http:
         # Queue size for pending requests when all connections are busy
         # Larger queue = more tolerance for bursts, but higher latency
-        maxPendingRequests: 200
+        http1MaxPendingRequests: 200
 
         # Limit requests per connection to distribute load
         # Lower values = better load distribution
         # Higher values = fewer connection establishments
         maxRequestsPerConnection: 50
 
-        # Maximum retry attempts for failed requests
+        # Maximum number of retries that can be outstanding to all hosts
         maxRetries: 3
 
         # Close idle connections to free resources
@@ -417,7 +420,7 @@ For services with multiple versions or subsets, you can configure different conn
 ```yaml
 # Per-subset connection pool configuration
 # Different subsets can have different connection characteristics
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: versioned-service-pools
@@ -431,7 +434,7 @@ spec:
       tcp:
         maxConnections: 100
       http:
-        maxPendingRequests: 50
+        http1MaxPendingRequests: 50
         h2UpgradePolicy: UPGRADE
 
   # Define subsets with specific connection pool configurations
@@ -448,7 +451,7 @@ spec:
           http:
             # Legacy version doesn't support HTTP/2
             h2UpgradePolicy: DO_NOT_UPGRADE
-            maxPendingRequests: 25
+            http1MaxPendingRequests: 25
             # HTTP/1.1 typically uses 1 request per connection
             maxRequestsPerConnection: 1
 
@@ -464,7 +467,7 @@ spec:
           http:
             # Modern version fully supports HTTP/2
             h2UpgradePolicy: UPGRADE
-            maxPendingRequests: 100
+            http1MaxPendingRequests: 100
             # HTTP/2 can handle many concurrent streams
             maxRequestsPerConnection: 100
 
@@ -478,7 +481,7 @@ spec:
             # Conservative connection limit for canary
             maxConnections: 20
           http:
-            maxPendingRequests: 10
+            http1MaxPendingRequests: 10
             h2UpgradePolicy: UPGRADE
 ```
 
@@ -493,7 +496,7 @@ flowchart TB
         B -->|Connection Available| C[Reuse Connection]
         B -->|No Connection| D{Under maxConnections?}
         D -->|Yes| E[Create New Connection]
-        D -->|No| F{Under maxPendingRequests?}
+        D -->|No| F{Under http1MaxPendingRequests?}
         F -->|Yes| G[Queue Request]
         F -->|No| H[Reject Request - 503]
         E --> I[Send Request]
@@ -518,7 +521,7 @@ flowchart TB
 
 The following table provides tuning recommendations based on service characteristics:
 
-| Service Type | maxConnections | maxPendingRequests | maxRequestsPerConnection | h2UpgradePolicy |
+| Service Type | maxConnections | http1MaxPendingRequests | maxRequestsPerConnection | h2UpgradePolicy |
 |--------------|----------------|--------------------|--------------------------| ----------------|
 | High-throughput API | 500-1000 | 200-500 | 50-100 | UPGRADE |
 | Database Proxy | 100-200 | 50-100 | 10-20 | DO_NOT_UPGRADE |
@@ -537,16 +540,16 @@ The following example shows how to calculate optimal connection pool settings ba
 # - Expected RPS: 10,000 requests per second
 # - Average latency: 50ms (0.05 seconds)
 # - Number of backend pods: 10
-# - Target connections per pod: 100
+# - Target connections per destination host: 100
 #
 # Calculations:
 # - Concurrent requests = RPS * avg_latency = 10,000 * 0.05 = 500
 # - Connections needed = concurrent_requests / requests_per_connection
 # - If requests_per_connection = 10, then connections = 500 / 10 = 50
-# - Add 2x buffer for burst handling: 50 * 2 = 100 per pod
-# - Total maxConnections = connections_per_pod * num_pods = 100 * 10 = 1000
+# - Add 2x buffer for burst handling: 50 * 2 = 100 per destination host
+# - Set maxConnections to the per-destination-host target: 100
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: calculated-pool-settings
@@ -556,14 +559,13 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        # Total connections across all backend pods
-        # This is distributed across all healthy endpoints
-        maxConnections: 1000
+        # Connections to each destination host
+        maxConnections: 100
         connectTimeout: 30ms
       http:
         # Queue size should handle burst traffic
         # Set to 20% of maxConnections for typical burst handling
-        maxPendingRequests: 200
+        http1MaxPendingRequests: 200
 
         # Balance between connection overhead and load distribution
         # Lower values help prevent hot spots
@@ -583,7 +585,7 @@ The following configurations show how to tune connection pools for different env
 ```yaml
 # Development environment: Conservative settings
 # Focus on debugging and observability over performance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: dev-connection-pool
@@ -597,14 +599,15 @@ spec:
         maxConnections: 10
         connectTimeout: 1s
       http:
-        maxPendingRequests: 5
+        http1MaxPendingRequests: 5
         maxRequestsPerConnection: 5
-        h2UpgradePolicy: USE_CLIENT_PROTOCOL
+        h2UpgradePolicy: DEFAULT
+        useClientProtocol: true
         idleTimeout: 30s
 ---
 # Staging environment: Moderate settings
 # Balance between production-like behavior and resource efficiency
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: staging-connection-pool
@@ -617,14 +620,14 @@ spec:
         maxConnections: 100
         connectTimeout: 100ms
       http:
-        maxPendingRequests: 50
+        http1MaxPendingRequests: 50
         maxRequestsPerConnection: 25
         h2UpgradePolicy: UPGRADE
         idleTimeout: 60s
 ---
 # Production environment: Optimized for performance
 # Maximum throughput with resource protection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: production-connection-pool
@@ -641,7 +644,7 @@ spec:
           interval: 30s
           probes: 5
       http:
-        maxPendingRequests: 200
+        http1MaxPendingRequests: 200
         maxRequestsPerConnection: 50
         h2UpgradePolicy: UPGRADE
         idleTimeout: 120s
@@ -649,23 +652,25 @@ spec:
 
 ## Monitoring Connection Pools
 
-Istio exposes metrics for monitoring connection pool behavior. The following Prometheus queries help monitor your connection pools:
+Istio exposes Envoy metrics for monitoring connection pool behavior. By default, Istio records a minimal set of Envoy statistics, so enable the relevant upstream connection and retry stats before building alerts on them:
 
 ```yaml
-# ServiceMonitor for connection pool metrics
-# Deploy this to enable Prometheus scraping of Envoy metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+# Enable additional Envoy stats for connection pool monitoring
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: istio-connection-pool-metrics
-  namespace: istio-system
+  name: istio-control-plane
 spec:
-  selector:
-    matchLabels:
-      app: istio-proxy
-  endpoints:
-    - port: http-envoy-prom
-      path: /stats/prometheus
+  meshConfig:
+    defaultConfig:
+      proxyStatsMatcher:
+        inclusionRegexps:
+          - ".*upstream_cx_.*"
+          - ".*upstream_rq_retry.*"
+        inclusionSuffixes:
+          - "upstream_rq_pending_overflow"
+          - "upstream_rq_active_overflow"
+          - "upstream_cx_connect_timeout"
 ```
 
 Key metrics to monitor:
@@ -686,7 +691,7 @@ If you see 503 errors with "upstream connect error or disconnect/reset before he
 ```yaml
 # Solution: Increase connection limits
 # Apply when seeing frequent 503 errors during high traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: increased-pool-limits
@@ -700,7 +705,7 @@ spec:
         maxConnections: 1000
       http:
         # Increase queue size to handle burst traffic
-        maxPendingRequests: 500
+        http1MaxPendingRequests: 500
         # Increase to allow more requests per connection
         maxRequestsPerConnection: 100
 ```
@@ -710,9 +715,9 @@ spec:
 If latency spikes are caused by new connection establishment:
 
 ```yaml
-# Solution: Increase connection reuse and add preconnect
-# This keeps more connections alive and ready
-apiVersion: networking.istio.io/v1beta1
+# Solution: Increase connection reuse
+# This keeps more connections alive and available for reuse
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: improved-connection-reuse
@@ -741,7 +746,7 @@ If your pods are experiencing memory pressure from connection overhead:
 ```yaml
 # Solution: Reduce connection limits and increase connection reuse
 # Trade off some burst capacity for lower memory usage
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: memory-optimized-pool
@@ -752,11 +757,11 @@ spec:
     connectionPool:
       tcp:
         # Lower connection limit to reduce memory usage
-        # Each connection uses ~10-50KB of memory
+        # Each connection consumes memory in the proxy and kernel
         maxConnections: 50
       http:
         # Smaller queue to limit memory for pending requests
-        maxPendingRequests: 25
+        http1MaxPendingRequests: 25
         # Higher reuse to maintain throughput with fewer connections
         maxRequestsPerConnection: 100
         # Shorter idle timeout to clean up unused connections
@@ -779,7 +784,7 @@ Connection pooling in Istio is a powerful feature that significantly improves se
 
 Key takeaways:
 - Use `maxConnections` to limit TCP connections and prevent resource exhaustion
-- Configure `maxPendingRequests` to handle traffic bursts gracefully
+- Configure `http1MaxPendingRequests` to handle traffic bursts gracefully
 - Enable `h2UpgradePolicy: UPGRADE` for HTTP/2 multiplexing benefits
 - Combine connection pooling with outlier detection for robust failover
 - Monitor connection pool metrics to identify and resolve bottlenecks
