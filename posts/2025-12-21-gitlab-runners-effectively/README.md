@@ -196,7 +196,7 @@ gitlab-runner register \
   --run-untagged=false
 ```
 
-Resource Management
+## Resource Management
 
 ### Concurrent Jobs
 
@@ -224,24 +224,17 @@ quick_job:
     - npm test
 ```
 
-Resource Requests (Kubernetes)
+### Resource Requests (Kubernetes)
 
 ```toml
 [[runners]]
   executor = "kubernetes"
   [runners.kubernetes]
     namespace = "gitlab-runner"
-    [runners.kubernetes.pod_spec]
-      containers = '''
-      - name: build
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "1Gi"
-          limits:
-            cpu: "2000m"
-            memory: "4Gi"
-      '''
+    cpu_request = "500m"
+    memory_request = "1Gi"
+    cpu_limit = "2000m"
+    memory_limit = "4Gi"
 ```
 
 ## Caching Configuration
