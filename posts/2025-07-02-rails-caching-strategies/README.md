@@ -43,6 +43,8 @@ Each layer serves a specific purpose:
 - **Fragment Caching**: Caches portions of views
 - **Low-Level Caching**: Caches arbitrary data (queries, computations, API calls)
 
+> Note: Page Caching and Action Caching were removed from Rails core in Rails 4.0. To use them you must add the [`actionpack-page_caching`](https://github.com/rails/actionpack-page_caching) and [`actionpack-action_caching`](https://github.com/rails/actionpack-action_caching) gems to your Gemfile. Fragment Caching and Low-Level Caching remain built into Rails, and the rest of this guide focuses on them along with HTTP caching.
+
 ### Cache Decision Flow
 
 ```mermaid
