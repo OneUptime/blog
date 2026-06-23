@@ -29,7 +29,7 @@ In this comprehensive guide, we will walk through how to send Go application log
 
 Before we begin, ensure you have the following:
 
-- Go 1.21 or later installed
+- Go 1.23 or later installed
 - A OneUptime account with an active project
 - Your OneUptime OTLP endpoint URL and API key
 - Basic familiarity with Go programming
@@ -87,7 +87,7 @@ import (
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // InitLogging initializes the OpenTelemetry logging pipeline with OneUptime
@@ -96,12 +96,12 @@ import (
 func InitLogging(ctx context.Context) (func(context.Context) error, error) {
 	// Retrieve OneUptime configuration from environment variables
 	// These should be set in your deployment configuration
-	endpoint := os.Getenv("ONEUPTIME_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	apiKey := os.Getenv("ONEUPTIME_API_KEY")
-	serviceName := os.Getenv("SERVICE_NAME")
+	serviceName := os.Getenv("OTEL_SERVICE_NAME")
 
 	if endpoint == "" {
-		endpoint = "https://otlp.oneuptime.com"
+		endpoint = "https://oneuptime.com/otlp"
 	}
 
 	if serviceName == "" {
@@ -111,13 +111,10 @@ func InitLogging(ctx context.Context) (func(context.Context) error, error) {
 	// Create the OTLP HTTP exporter configured for OneUptime
 	// The exporter handles batching and retry logic automatically
 	exporter, err := otlploghttp.New(ctx,
-		otlploghttp.WithEndpoint(endpoint),
+		otlploghttp.WithEndpointURL(endpoint),
 		otlploghttp.WithHeaders(map[string]string{
 			"x-oneuptime-token": apiKey,
 		}),
-		// Use insecure connection only for local development
-		// In production, always use TLS
-		otlploghttp.WithInsecure(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
@@ -131,7 +128,7 @@ func InitLogging(ctx context.Context) (func(context.Context) error, error) {
 			semconv.SchemaURL,
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion("1.0.0"),
-			semconv.DeploymentEnvironment("production"),
+			semconv.DeploymentEnvironmentName("production"),
 		),
 	)
 	if err != nil {
@@ -199,24 +196,26 @@ func main() {
 	logger := global.GetLoggerProvider().Logger("main")
 
 	// Log application startup
-	logger.Emit(ctx, log.Record{}.
-		SetSeverity(log.SeverityInfo).
-		SetBody(log.StringValue("Application started")).
-		AddAttributes(
-			log.String("component", "main"),
-			log.String("version", "1.0.0"),
-		))
+	startupRecord := log.Record{}
+	startupRecord.SetSeverity(log.SeverityInfo)
+	startupRecord.SetBody(log.StringValue("Application started"))
+	startupRecord.AddAttributes(
+		log.String("component", "main"),
+		log.String("version", "1.0.0"),
+	)
+	logger.Emit(ctx, startupRecord)
 
 	// Simulate application work
 	for i := 0; i < 5; i++ {
-		logger.Emit(ctx, log.Record{}.
-			SetSeverity(log.SeverityInfo).
-			SetBody(log.StringValue("Processing request")).
-			AddAttributes(
-				log.Int("request_id", i),
-				log.String("method", "GET"),
-				log.String("path", "/api/users"),
-			))
+		record := log.Record{}
+		record.SetSeverity(log.SeverityInfo)
+		record.SetBody(log.StringValue("Processing request"))
+		record.AddAttributes(
+			log.Int("request_id", i),
+			log.String("method", "GET"),
+			log.String("path", "/api/users"),
+		)
+		logger.Emit(ctx, record)
 		time.Sleep(1 * time.Second)
 	}
 
@@ -225,9 +224,10 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	logger.Emit(ctx, log.Record{}.
-		SetSeverity(log.SeverityInfo).
-		SetBody(log.StringValue("Application shutting down")))
+	shutdownRecord := log.Record{}
+	shutdownRecord.SetSeverity(log.SeverityInfo)
+	shutdownRecord.SetBody(log.StringValue("Application shutting down"))
+	logger.Emit(ctx, shutdownRecord)
 }
 ```
 
@@ -244,6 +244,7 @@ package logging
 
 import (
 	"context"
+	"math"
 
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
@@ -336,7 +337,7 @@ func convertZapField(f zapcore.Field) log.KeyValue {
 	case zapcore.Int64Type, zapcore.Int32Type, zapcore.Int16Type, zapcore.Int8Type:
 		return log.Int64(f.Key, f.Integer)
 	case zapcore.Float64Type:
-		return log.Float64(f.Key, f.Integer)
+		return log.Float64(f.Key, math.Float64frombits(uint64(f.Integer)))
 	case zapcore.BoolType:
 		return log.Bool(f.Key, f.Integer == 1)
 	default:
@@ -378,6 +379,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -410,10 +412,11 @@ func main() {
 		zap.Duration("window", 1*time.Minute),
 	)
 
+	dbErr := errors.New("connection refused")
 	logger.Error("Database connection failed",
 		zap.String("host", "db.example.com"),
 		zap.Int("port", 5432),
-		zap.Error(err),
+		zap.Error(dbErr),
 		zap.Int("retry_count", 3),
 	)
 }
@@ -428,6 +431,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/log"
@@ -569,6 +573,7 @@ package logging
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
@@ -684,6 +689,51 @@ func slogAttrToOtel(groups []string, a slog.Attr) log.KeyValue {
 	default:
 		return log.String(key, a.Value.String())
 	}
+}
+
+// MultiHandler sends each slog record to multiple handlers.
+type MultiHandler struct {
+	handlers []slog.Handler
+}
+
+func NewMultiHandler(handlers ...slog.Handler) *MultiHandler {
+	return &MultiHandler{handlers: handlers}
+}
+
+func (h *MultiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *MultiHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, r.Level) {
+			if err := handler.Handle(ctx, r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (h *MultiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithAttrs(attrs)
+	}
+	return &MultiHandler{handlers: handlers}
+}
+
+func (h *MultiHandler) WithGroup(name string) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithGroup(name)
+	}
+	return &MultiHandler{handlers: handlers}
 }
 ```
 
@@ -928,7 +978,7 @@ const (
 Always include request context in your logs for traceability:
 
 ```go
-package middleware
+package logging
 
 import (
 	"context"
@@ -1005,7 +1055,7 @@ func (w *responseWriter) WriteHeader(code int) {
 Always provide context when logging errors:
 
 ```go
-package main
+package logging
 
 import (
 	"context"
@@ -1015,6 +1065,12 @@ import (
 
 	"go.opentelemetry.io/otel/log"
 )
+
+type User struct {
+	ID    string
+	Name  string
+	Email string
+}
 
 // LogError logs an error with full context including stack trace
 func LogError(ctx context.Context, logger *Logger, err error, msg string, attrs ...log.KeyValue) {
@@ -1040,7 +1096,7 @@ func GetUser(ctx context.Context, logger *Logger, db *sql.DB, userID string) (*U
 	)
 
 	user := &User{}
-	err := db.QueryRowContext(ctx, "SELECT * FROM users WHERE id = $1", userID).Scan(
+	err := db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = $1", userID).Scan(
 		&user.ID, &user.Name, &user.Email,
 	)
 
@@ -1076,8 +1132,11 @@ When dealing with high-volume logs, implement sampling to reduce costs while mai
 package logging
 
 import (
+	"context"
 	"math/rand"
 	"sync/atomic"
+
+	"go.opentelemetry.io/otel/log"
 )
 
 // SampledLogger wraps a logger with sampling capabilities
@@ -1098,7 +1157,6 @@ func NewSampledLogger(logger *Logger, sampleRate float64) *SampledLogger {
 
 // shouldSample returns true if this log should be sampled
 func (s *SampledLogger) shouldSample() bool {
-	// Always sample error and fatal logs
 	return rand.Float64() < s.sampleRate
 }
 
@@ -1161,9 +1219,9 @@ type LoggingConfig struct {
 // LoadLoggingConfig loads configuration from environment variables
 func LoadLoggingConfig() *LoggingConfig {
 	return &LoggingConfig{
-		Endpoint:         getEnv("ONEUPTIME_OTLP_ENDPOINT", "https://otlp.oneuptime.com"),
+		Endpoint:         getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://oneuptime.com/otlp"),
 		APIKey:           getEnv("ONEUPTIME_API_KEY", ""),
-		ServiceName:      getEnv("SERVICE_NAME", "go-application"),
+		ServiceName:      getEnv("OTEL_SERVICE_NAME", "go-application"),
 		Environment:      getEnv("ENVIRONMENT", "development"),
 		MaxQueueSize:     getEnvInt("LOG_MAX_QUEUE_SIZE", 2048),
 		MaxBatchSize:     getEnvInt("LOG_MAX_BATCH_SIZE", 512),
@@ -1252,7 +1310,7 @@ func DefaultRetryConfig() RetryConfig {
 // CreateExporterWithRetry creates an OTLP exporter with retry configuration
 func CreateExporterWithRetry(ctx context.Context, config *LoggingConfig, retryConfig RetryConfig) (*otlploghttp.Exporter, error) {
 	opts := []otlploghttp.Option{
-		otlploghttp.WithEndpoint(config.Endpoint),
+		otlploghttp.WithEndpointURL(config.Endpoint),
 		otlploghttp.WithHeaders(map[string]string{
 			"x-oneuptime-token": config.APIKey,
 		}),
@@ -1288,11 +1346,11 @@ import (
 )
 
 func validateConfig() error {
-	endpoint := os.Getenv("ONEUPTIME_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	apiKey := os.Getenv("ONEUPTIME_API_KEY")
 
 	if endpoint == "" {
-		return fmt.Errorf("ONEUPTIME_OTLP_ENDPOINT is not set")
+		return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT is not set")
 	}
 
 	if apiKey == "" {
@@ -1369,13 +1427,14 @@ func verifyLogDelivery(ctx context.Context) error {
 
 	testID := fmt.Sprintf("test-%d", time.Now().UnixNano())
 
-	logger.Emit(ctx, log.Record{}.
-		SetSeverity(log.SeverityInfo).
-		SetBody(log.StringValue("Verification test log")).
-		AddAttributes(
-			log.String("test_id", testID),
-			log.String("purpose", "delivery_verification"),
-		))
+	record := log.Record{}
+	record.SetSeverity(log.SeverityInfo)
+	record.SetBody(log.StringValue("Verification test log"))
+	record.AddAttributes(
+		log.String("test_id", testID),
+		log.String("purpose", "delivery_verification"),
+	)
+	logger.Emit(ctx, record)
 
 	fmt.Printf("Sent verification log with test_id: %s\n", testID)
 	fmt.Println("Check OneUptime for this log entry to verify delivery")
