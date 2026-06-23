@@ -49,16 +49,16 @@ flowchart TD
 
 ### 1. Idle Connection Timeout
 
-MongoDB servers close connections that have been idle for too long. By default, this timeout is often set by the operating system or mongod configuration.
+Idle connections can be closed by connection pool settings, operating system TCP keep-alive behavior, or network devices such as firewalls and load balancers.
 
-**Solution: Configure Connection Pool Keep-Alive**
+**Solution: Configure Connection Pool Timeouts**
 
 ```javascript
 // Node.js with MongoDB driver
 const { MongoClient } = require('mongodb');
 
 const client = new MongoClient('mongodb://localhost:27017/mydb', {
-  // Send keep-alive probes to prevent idle disconnections
+  // Timeout settings
   socketTimeoutMS: 45000,
   connectTimeoutMS: 10000,
 
@@ -148,9 +148,9 @@ sudo sysctl -w net.ipv4.tcp_keepalive_intvl=30
 sudo sysctl -w net.ipv4.tcp_keepalive_probes=3
 
 # Make changes permanent
-echo "net.ipv4.tcp_keepalive_time=120" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_keepalive_intvl=30" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_keepalive_probes=3" >> /etc/sysctl.conf
+echo "net.ipv4.tcp_keepalive_time=120" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_keepalive_intvl=30" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_keepalive_probes=3" | sudo tee -a /etc/sysctl.conf
 ```
 
 ### 4. Replica Set Failover
@@ -232,9 +232,9 @@ console.log('  Current:', result.connections.current);
 console.log('  Available:', result.connections.available);
 console.log('  Total created:', result.connections.totalCreated);
 
-// In mongod.conf, increase max connections
+// In mongod.conf, set an appropriate connection limit for your OS limits and workload
 // net:
-//   maxIncomingConnections: 65536
+//   maxIncomingConnections: <connection-limit>
 ```
 
 ## Monitoring Connection Health
@@ -305,18 +305,7 @@ setInterval(() => {
 Use a properly configured connection string:
 
 ```text
-mongodb://user:password@host1:27017,host2:27017,host3:27017/database?
-  replicaSet=rs0&
-  retryWrites=true&
-  retryReads=true&
-  maxPoolSize=50&
-  minPoolSize=5&
-  maxIdleTimeMS=30000&
-  socketTimeoutMS=45000&
-  connectTimeoutMS=10000&
-  serverSelectionTimeoutMS=30000&
-  heartbeatFrequencyMS=10000&
-  readPreference=primaryPreferred
+mongodb://user:password@host1:27017,host2:27017,host3:27017/database?replicaSet=rs0&retryWrites=true&retryReads=true&maxPoolSize=50&minPoolSize=5&maxIdleTimeMS=30000&socketTimeoutMS=45000&connectTimeoutMS=10000&serverSelectionTimeoutMS=30000&heartbeatFrequencyMS=10000&readPreference=primaryPreferred
 ```
 
 ## Debugging Connection Issues
