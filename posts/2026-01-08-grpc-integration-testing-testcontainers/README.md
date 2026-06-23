@@ -81,7 +81,6 @@ package integration
 
 import (
     "context"
-    "fmt"
     "net"
     "testing"
     "time"
@@ -260,7 +259,6 @@ package repository
 import (
     "context"
     "errors"
-    "time"
 
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgconn"
@@ -374,10 +372,9 @@ func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (
 package integration
 
 import (
-    "context"
+    "fmt"
     "io"
     "testing"
-    "time"
 
     "github.com/example/myservice/pb"
     "github.com/stretchr/testify/assert"
@@ -653,14 +650,20 @@ package integration
 
 import (
     "context"
+    "net"
     "testing"
     "time"
 
+    "github.com/example/myservice/pb"
+    "github.com/example/myservice/repository"
+    "github.com/example/myservice/server"
+    "github.com/jackc/pgx/v5/pgxpool"
     "github.com/redis/go-redis/v9"
     "github.com/testcontainers/testcontainers-go"
     "github.com/testcontainers/testcontainers-go/modules/postgres"
     redismodule "github.com/testcontainers/testcontainers-go/modules/redis"
     "github.com/testcontainers/testcontainers-go/wait"
+    "google.golang.org/grpc"
 )
 
 // MultiContainerSuite extends TestSuite with additional services
@@ -847,7 +850,6 @@ package integration
 
 import (
     "context"
-    "fmt"
     "path/filepath"
     "time"
 
@@ -867,9 +869,13 @@ func CreatePostgresWithInit(ctx context.Context, initScriptPath string) (testcon
             "POSTGRES_PASSWORD": "testpass",
             "POSTGRES_DB":       "testdb",
         },
-        Mounts: testcontainers.Mounts(
-            testcontainers.BindMount(absPath, "/docker-entrypoint-initdb.d/init.sql"),
-        ),
+        Files: []testcontainers.ContainerFile{
+            {
+                HostFilePath:      absPath,
+                ContainerFilePath: "/docker-entrypoint-initdb.d/init.sql",
+                FileMode:          0o644,
+            },
+        },
         WaitingFor: wait.ForLog("database system is ready to accept connections").
             WithOccurrence(2).
             WithStartupTimeout(60 * time.Second),
@@ -913,9 +919,13 @@ func CreateMockExternalService(ctx context.Context, mappingsPath string) (testco
     req := testcontainers.ContainerRequest{
         Image:        "wiremock/wiremock:3.0.0",
         ExposedPorts: []string{"8080/tcp"},
-        Mounts: testcontainers.Mounts(
-            testcontainers.BindMount(absPath, "/home/wiremock/mappings"),
-        ),
+        Files: []testcontainers.ContainerFile{
+            {
+                HostFilePath:      absPath,
+                ContainerFilePath: "/home/wiremock/mappings",
+                FileMode:          0o644,
+            },
+        },
         WaitingFor: wait.ForHTTP("/__admin/mappings").
             WithStartupTimeout(30 * time.Second),
     }
@@ -934,7 +944,6 @@ func CreateMockExternalService(ctx context.Context, mappingsPath string) (testco
 package integration
 
 import (
-    "context"
     "fmt"
     "io"
     "sync"
