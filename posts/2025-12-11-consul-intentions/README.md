@@ -8,33 +8,34 @@ Description: Learn how to configure Consul intentions for service-to-service aut
 
 ---
 
-Consul intentions define access control rules that specify which services can establish connections to other services. They form the authorization layer in Consul Connect's service mesh, enabling zero-trust security where connections are denied by default and explicitly allowed based on service identity.
+Consul intentions define access control rules that specify which services can establish connections to other services. They form the authorization layer in Consul's service mesh, enabling zero-trust security when the ACL default policy is set to `deny` and connections are explicitly allowed based on service identity.
 
 ## How Intentions Work
 
-Intentions use service identity (not network identity) to authorize connections. When Service A attempts to connect to Service B, Consul checks if there's an intention allowing this connection before permitting traffic.
+Intentions use service identity (not network identity) to authorize connections. When Service A attempts to connect to Service B through the service mesh, the destination proxy or natively integrated service enforces the matching intention before permitting traffic.
 
 ```mermaid
 graph LR
     subgraph "Connection Request"
-        A[Service A]
-        B[Service B]
+        A[Service A + Proxy]
+        B[Service B + Proxy]
     end
 
     subgraph "Consul"
-        INT[Intention Check]
+        INT[Intentions]
         CA[Certificate Authority]
     end
 
-    A -->|1. Request Connection| INT
-    INT -->|2. Check Intention| INT
-    INT -->|3. Allow/Deny| A
-    A -->|4. mTLS Connection| B
+    INT -->|1. Intention config| B
+    CA -->|2. Service identity certs| A
+    CA -->|2. Service identity certs| B
+    A -->|3. mTLS Connection| B
+    B -->|4. Enforce Allow/Deny| B
 ```
 
 ## 1. Create Basic Intentions
 
-Create intentions using the CLI or API.
+Create L4 intentions using the HTTP API or the legacy CLI. In Consul 1.9 and later, HashiCorp recommends managing intentions with `service-intentions` configuration entries or the HTTP API.
 
 ```bash
 # Allow web to connect to api
@@ -71,7 +72,7 @@ curl --request PUT \
 
 ## 2. L7 Intentions (Application-Aware)
 
-Configure intentions based on HTTP path, headers, or methods.
+Configure intentions based on HTTP path, headers, or methods. L7 intentions require the destination service to use an HTTP-based protocol in `service-defaults` or `proxy-defaults`.
 
 ```hcl
 Kind = "service-intentions"
@@ -154,16 +155,20 @@ Sources = [
 **Python Client:**
 
 ```python
-import consul
+import requests
 from typing import List, Dict, Optional
 
 class IntentionManager:
-    def __init__(self, consul_host='localhost', consul_port=8500, token=None):
-        self.consul = consul.Consul(
-            host=consul_host,
-            port=consul_port,
-            token=token
-        )
+    def __init__(self, consul_url='http://localhost:8500', token=None):
+        self.base_url = consul_url.rstrip('/')
+        self.session = requests.Session()
+        if token:
+            self.session.headers.update({'X-Consul-Token': token})
+
+    def _request(self, method: str, path: str, **kwargs):
+        response = self.session.request(method, f'{self.base_url}{path}', **kwargs)
+        response.raise_for_status()
+        return response.json()
 
     def create_intention(
         self,
@@ -171,50 +176,68 @@ class IntentionManager:
         destination: str,
         action: str = 'allow',
         description: str = None
-    ) -> str:
+    ) -> bool:
         """Create a new intention."""
-        intention = {
-            'SourceName': source,
-            'DestinationName': destination,
-            'Action': action
-        }
+        intention = {'Action': action}
         if description:
             intention['Description'] = description
 
-        # Use the intentions API
-        result = self.consul.connect.intentions.create(**intention)
+        # Use the by-name API available in Consul 1.9 and later.
+        result = self._request(
+            'PUT',
+            '/v1/connect/intentions/exact',
+            params={'source': source, 'destination': destination},
+            json=intention
+        )
         return result
 
     def delete_intention(self, source: str, destination: str) -> bool:
         """Delete an intention."""
-        # Get intention ID first
-        intention = self.get_intention(source, destination)
-        if intention:
-            return self.consul.connect.intentions.delete(intention['ID'])
-        return False
+        return self._request(
+            'DELETE',
+            '/v1/connect/intentions/exact',
+            params={'source': source, 'destination': destination}
+        )
 
     def get_intention(self, source: str, destination: str) -> Optional[Dict]:
         """Get a specific intention."""
         try:
-            result = self.consul.connect.intentions.get_exact(
-                source=source,
-                destination=destination
+            result = self._request(
+                'GET',
+                '/v1/connect/intentions/exact',
+                params={'source': source, 'destination': destination}
             )
             return result
-        except Exception:
-            return None
+        except requests.HTTPError as error:
+            if error.response is not None and error.response.status_code == 404:
+                return None
+            raise
 
-    def list_intentions(self) -> List[Dict]:
+    def list_intentions(self, filter_expression: str = None) -> List[Dict]:
         """List all intentions."""
-        return self.consul.connect.intentions.list()
+        params = {}
+        if filter_expression:
+            params['filter'] = filter_expression
+        return self._request('GET', '/v1/connect/intentions', params=params)
 
     def check_intention(self, source: str, destination: str) -> bool:
         """Check if a connection would be allowed."""
-        result = self.consul.connect.intentions.check(
-            source=source,
-            destination=destination
+        result = self._request(
+            'GET',
+            '/v1/connect/intentions/check',
+            params={'source': source, 'destination': destination}
         )
         return result.get('Allowed', False)
+
+    def match_intentions(self, by: str, name: str) -> Dict[str, List[Dict]]:
+        """List intentions matching a source or destination."""
+        if by not in {'source', 'destination'}:
+            raise ValueError('by must be source or destination')
+        return self._request(
+            'GET',
+            '/v1/connect/intentions/match',
+            params={'by': by, 'name': name}
+        )
 
     def create_default_deny(self, services: List[str]):
         """Create default deny rules for sensitive services."""
@@ -489,7 +512,7 @@ kubectl logs <envoy-sidecar-pod> -c envoy-sidecar | grep "denied"
 
 ## 8. Terraform Integration
 
-Manage intentions with Terraform.
+Manage intentions with Terraform. For Consul 1.9 and later, use `service-intentions` configuration entries instead of the legacy `consul_intention` resource.
 
 ```hcl
 provider "consul" {
@@ -497,37 +520,52 @@ provider "consul" {
   token      = var.consul_token
 }
 
-# Allow web to api
-resource "consul_intention" "web_to_api" {
-  source_name      = "web"
-  destination_name = "api"
-  action           = "allow"
-  description      = "Allow web frontend to call API"
+# L4 intention using config entry
+resource "consul_config_entry" "api_l4_intentions" {
+  kind = "service-intentions"
+  name = "api"
+
+  config_json = jsonencode({
+    Sources = [
+      {
+        Name        = "web"
+        Action      = "allow"
+        Description = "Allow web frontend to call API"
+      },
+      {
+        Name        = "*"
+        Action      = "deny"
+        Description = "Deny all other sources"
+      }
+    ]
+  })
 }
 
-# Deny all to database
-resource "consul_intention" "deny_all_database" {
-  source_name      = "*"
-  destination_name = "database"
-  action           = "deny"
-  description      = "Default deny for database"
-}
+# Database intentions using config entry
+resource "consul_config_entry" "database_intentions" {
+  kind = "service-intentions"
+  name = "database"
 
-# Allow api to database
-resource "consul_intention" "api_to_database" {
-  source_name      = "api"
-  destination_name = "database"
-  action           = "allow"
-  description      = "Allow API to access database"
-
-  # This has higher precedence than the deny all
-  depends_on = [consul_intention.deny_all_database]
+  config_json = jsonencode({
+    Sources = [
+      {
+        Name        = "api"
+        Action      = "allow"
+        Description = "Allow API to access database"
+      },
+      {
+        Name        = "*"
+        Action      = "deny"
+        Description = "Default deny for database"
+      }
+    ]
+  })
 }
 
 # L7 intention using config entry
 resource "consul_config_entry" "api_intentions" {
   kind = "service-intentions"
-  name = "api"
+  name = "public-api"
 
   config_json = jsonencode({
     Sources = [
@@ -550,7 +588,7 @@ resource "consul_config_entry" "api_intentions" {
 
 ## Best Practices
 
-1. **Default deny** - Start with deny-all and explicitly allow needed connections
+1. **Default deny** - Set the ACL default policy to `deny` or add catch-all deny intentions, then explicitly allow needed connections
 2. **Use L7 intentions** - Add path and method restrictions when possible
 3. **Document intentions** - Add descriptions explaining why each rule exists
 4. **Version control** - Store intention configs in Git
