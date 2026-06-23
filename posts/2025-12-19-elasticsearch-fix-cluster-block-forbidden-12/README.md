@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix the dreaded cluster_block_exception F
 
 ---
 
-Few Elasticsearch errors cause more panic than suddenly being unable to write data. The "cluster_block_exception: FORBIDDEN/12" error means your cluster has entered a protective read-only state, typically due to low disk space. This guide explains why it happens and how to fix it quickly.
+Few Elasticsearch errors cause more panic than suddenly being unable to write data. The "cluster_block_exception: FORBIDDEN/12" error means Elasticsearch has added a protective write block to affected indices, typically due to low disk space. This guide explains why it happens and how to fix it quickly.
 
 ## Understanding the Error
 
@@ -30,7 +30,7 @@ When you see this error:
 }
 ```
 
-Elasticsearch has automatically set your indices to read-only to prevent data corruption when disk space is critically low.
+Elasticsearch has automatically added a write block to affected indices to prevent nodes from running out of disk space.
 
 ## Why This Happens
 
@@ -38,7 +38,7 @@ Elasticsearch has automatically set your indices to read-only to prevent data co
 flowchart TB
     A[Disk Usage Increases] --> B{Watermark Check}
     B -->|Below Low 85%| C[Normal Operation]
-    B -->|Above Low 85%| D[No New Shards Allocated]
+    B -->|Above Low 85%| D[Shard Allocation Restricted]
     B -->|Above High 90%| E[Shard Relocation Begins]
     B -->|Above Flood 95%| F[Read-Only Mode Activated]
     F --> G[FORBIDDEN/12 Error]
@@ -55,13 +55,13 @@ Elasticsearch monitors disk usage with three watermarks:
 
 | Watermark | Default | Effect |
 |-----------|---------|--------|
-| Low | 85% | Stops allocating new shards to the node |
+| Low | 85% | Stops allocating shards to the node, except primary shards of newly created indices |
 | High | 90% | Attempts to relocate shards away from the node |
-| Flood Stage | 95% | Sets indices to read-only |
+| Flood Stage | 95% | Blocks writes to affected indices |
 
 ## Quick Fix - Clear the Read-Only Block
 
-Once you have resolved the disk space issue, you must manually clear the read-only block.
+In current Elasticsearch releases, this block is normally removed automatically after disk usage on the affected node falls below the high watermark. If writes remain blocked after you resolve the disk space issue, you can clear the read-only block manually.
 
 ### Step 1: Check Current Disk Usage
 
@@ -84,9 +84,6 @@ curl -X DELETE "localhost:9200/logs-2023-01-*"
 
 # Force merge to reclaim space from deleted documents
 curl -X POST "localhost:9200/my-index/_forcemerge?only_expunge_deletes=true"
-
-# Clear caches
-curl -X POST "localhost:9200/_cache/clear"
 ```
 
 ### Step 3: Clear the Read-Only Block
@@ -165,7 +162,7 @@ curl -X PUT "localhost:9200/_ilm/policy/logs-policy" -H 'Content-Type: applicati
         "min_age": "0ms",
         "actions": {
           "rollover": {
-            "max_size": "50gb",
+            "max_primary_shard_size": "50gb",
             "max_age": "7d"
           }
         }
@@ -315,10 +312,10 @@ curl -X GET "localhost:9200/_cat/shards?v&s=store:desc"
 
 ### Emergency Actions
 
-If you cannot free disk space immediately:
+If you cannot free disk space immediately, you can temporarily disable the disk allocation decider. This also removes existing `index.blocks.read_only_allow_delete` blocks, but it disables all disk-based allocation checks until you re-enable it:
 
 ```bash
-# Temporarily disable flood stage block
+# Temporarily disable disk-based allocation checks
 curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
 {
   "transient": {
@@ -370,7 +367,7 @@ flowchart TB
 The FORBIDDEN/12 error is Elasticsearch protecting itself from disk exhaustion. To resolve it:
 
 1. Free disk space by deleting old indices or adding storage
-2. Clear the read-only block with `index.blocks.read_only_allow_delete: null`
+2. Clear the read-only block with `index.blocks.read_only_allow_delete: null` if Elasticsearch has not already removed it
 3. Verify writes work correctly
 4. Set up ILM policies for automatic data retention
 5. Configure monitoring to alert before reaching watermarks
