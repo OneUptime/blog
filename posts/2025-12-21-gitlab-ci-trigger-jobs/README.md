@@ -57,7 +57,7 @@ trigger_downstream:
     project: mygroup/downstream-project
     branch: main
 
-# This runs after downstream completes
+# This runs after the downstream pipeline is created
 deploy:
   stage: deploy
   script:
@@ -115,7 +115,7 @@ deploy:
 
 ## Waiting for Downstream Pipeline
 
-By default, trigger jobs complete immediately after starting the downstream pipeline. Use `strategy: depend` to wait for the downstream pipeline to finish.
+By default, trigger jobs complete as soon as the downstream pipeline is created. Use `strategy: mirror` to wait for the downstream pipeline to finish and mirror its status.
 
 ```yaml
 # Wait for downstream pipeline to complete
@@ -135,7 +135,7 @@ trigger_integration_tests:
   trigger:
     project: mygroup/integration-tests
     branch: main
-    strategy: depend
+    strategy: mirror
   variables:
     SERVICE_VERSION: $CI_COMMIT_SHA
 
@@ -171,19 +171,19 @@ trigger_frontend:
   stage: trigger-children
   trigger:
     include: frontend/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
 
 trigger_backend:
   stage: trigger-children
   trigger:
     include: backend/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
 
 trigger_api:
   stage: trigger-children
   trigger:
     include: api/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
 
 deploy:
   stage: deploy
@@ -267,7 +267,7 @@ trigger_dynamic:
     include:
       - artifact: generated-pipeline.yml
         job: generate_pipeline
-    strategy: depend
+    strategy: mirror
   needs:
     - generate_pipeline
 ```
@@ -298,7 +298,7 @@ trigger_shared_library:
   trigger:
     project: mygroup/shared-library
     branch: main
-    strategy: depend
+    strategy: mirror
   rules:
     - changes:
         - shared/**
@@ -309,7 +309,7 @@ trigger_api_gateway:
   trigger:
     project: mygroup/api-gateway
     branch: main
-    strategy: depend
+    strategy: mirror
   variables:
     SERVICE_NAME: main-app
     SERVICE_VERSION: $CI_COMMIT_SHA
@@ -337,7 +337,7 @@ deploy:
 
 You can also trigger pipelines programmatically using the GitLab API with trigger tokens.
 
-First, create a trigger token in Settings > CI/CD > Pipeline triggers. Then use it in your pipeline.
+First, create a trigger token in Settings > CI/CD > Pipeline trigger tokens. Then use it in your pipeline.
 
 ```yaml
 # Trigger external pipeline via API
@@ -416,7 +416,7 @@ build_user_service:
   stage: build-services
   trigger:
     project: mygroup/user-service
-    strategy: depend
+    strategy: mirror
   variables:
     BUILD_VERSION: $DEPLOY_VERSION
 
@@ -424,7 +424,7 @@ build_order_service:
   stage: build-services
   trigger:
     project: mygroup/order-service
-    strategy: depend
+    strategy: mirror
   variables:
     BUILD_VERSION: $DEPLOY_VERSION
 
@@ -432,7 +432,7 @@ build_payment_service:
   stage: build-services
   trigger:
     project: mygroup/payment-service
-    strategy: depend
+    strategy: mirror
   variables:
     BUILD_VERSION: $DEPLOY_VERSION
 
@@ -441,7 +441,7 @@ integration_tests:
   stage: integration
   trigger:
     project: mygroup/integration-tests
-    strategy: depend
+    strategy: mirror
   variables:
     USER_SERVICE_VERSION: $DEPLOY_VERSION
     ORDER_SERVICE_VERSION: $DEPLOY_VERSION
@@ -456,7 +456,7 @@ deploy_all:
   stage: deploy
   trigger:
     project: mygroup/deployment-orchestrator
-    strategy: depend
+    strategy: mirror
   variables:
     DEPLOY_VERSION: $DEPLOY_VERSION
   needs:
@@ -466,6 +466,6 @@ deploy_all:
 
 ## Best Practices
 
-Use `strategy: depend` when you need to wait for downstream pipelines to complete before continuing. Pass only necessary variables to downstream pipelines to avoid confusion. Use parent-child pipelines for monorepos to keep configuration manageable. Protect trigger tokens and store them as CI/CD variables. Use rules to conditionally trigger downstream pipelines based on changed files or branches.
+Use `strategy: mirror` when you need to wait for downstream pipelines to complete before continuing. Pass only necessary variables to downstream pipelines to avoid confusion. Use parent-child pipelines for monorepos to keep configuration manageable. Protect trigger tokens and store them as CI/CD variables. Use rules to conditionally trigger downstream pipelines based on changed files or branches.
 
 Trigger jobs transform GitLab CI from a single-project tool into an orchestration platform for complex multi-project workflows. Whether you are managing microservices, monorepos, or cross-team dependencies, trigger jobs provide the flexibility to model your deployment workflow accurately.
