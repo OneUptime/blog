@@ -23,6 +23,8 @@ Consider a sensor readings index:
 
 Goal: Get the latest reading for each sensor.
 
+For grouping fields such as `sensor_id`, use a `keyword` field (or the `.keyword` subfield if `sensor_id` is mapped as `text`). Field collapsing also requires a single-valued keyword or numeric field with `doc_values` enabled.
+
 ## Method 1: Terms Aggregation with Top Hits
 
 The most flexible approach uses nested aggregations:
@@ -149,7 +151,7 @@ curl -X GET "localhost:9200/sensor_readings/_search" -H 'Content-Type: applicati
 }'
 ```
 
-Paginate using `after`:
+Paginate using the `after_key` returned in the previous response:
 
 ```bash
 {
@@ -291,7 +293,7 @@ curl -X GET "localhost:9200/device_status/_search" -H 'Content-Type: application
 ## Python Implementation
 
 ```python
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, helpers
 
 es = Elasticsearch(['http://localhost:9200'])
 
@@ -385,12 +387,14 @@ Top hits stores documents in memory. For large result sets:
       "terms": {
         "field": "group_field",
         "size": 1000,
-        "shard_size": 2000  # More precision, more memory
+        "shard_size": 2000
       }
     }
   }
 }
 ```
+
+Increasing `shard_size` can improve precision, but it uses more memory.
 
 ### Pre-Aggregated Summary Index
 
