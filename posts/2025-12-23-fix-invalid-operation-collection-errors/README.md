@@ -110,10 +110,10 @@ foreach (var number in toRemove)
 
 ### 2. Dictionary Modification During Iteration
 
-Dictionaries have the same constraint:
+Dictionaries generally have the same constraint. In .NET Framework and .NET Core versions before 3.0, removing entries during enumeration invalidates the enumerator. In .NET Core 3.0 and later, `Dictionary<TKey, TValue>.Remove` and `Clear` do not invalidate active enumerators, but other modifications still do, and this does not make the dictionary thread-safe.
 
 ```csharp
-// WRONG - Throws InvalidOperationException
+// WRONG on .NET Framework and .NET Core before 3.0 - Throws InvalidOperationException
 var cache = new Dictionary<string, DateTime>
 {
     { "key1", DateTime.Now.AddHours(-2) },
@@ -130,7 +130,7 @@ foreach (var kvp in cache)
 }
 ```
 
-**Solution: Collect keys first**
+**Solution: Collect keys first for cross-version compatibility**
 
 ```csharp
 var cache = new Dictionary<string, DateTime>
@@ -163,10 +163,10 @@ var query = numbers.Where(n => n > 2); // Deferred execution
 numbers.Add(6); // Modifying the source
 numbers.Remove(3); // More modifications
 
-// Query executes here - might get unexpected results
+// Query executes here - results reflect the modified source collection
 foreach (var n in query)
 {
-    Console.WriteLine(n); // Results depend on timing
+    Console.WriteLine(n);
 }
 ```
 
