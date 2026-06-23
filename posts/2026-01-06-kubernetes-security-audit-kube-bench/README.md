@@ -119,13 +119,14 @@ When remediating issues, you can run specific sections to verify fixes without r
 
 ```bash
 # Only API server checks (section 1.2)
-kube-bench run --targets master --check 1.2
+# Use --group to run every check under a section; --check is for individual check IDs (e.g. 1.2.1)
+kube-bench run --targets master --group 1.2
 
 # Only etcd checks (section 2)
-kube-bench run --targets master --check 2
+kube-bench run --targets master --group 2
 
 # Only RBAC checks (section 5.1)
-kube-bench run --targets master --check 5.1
+kube-bench run --targets master --group 5.1
 ```
 
 ### Output to JSON
@@ -138,7 +139,8 @@ kube-bench run --json > kube-bench-results.json
 
 # Parse with jq to find all failed checks in section 1.2
 # Useful for creating remediation tickets automatically
-cat kube-bench-results.json | jq '.Controls[] | select(.id == "1.2") | .tests[] | select(.status == "FAIL")'
+# In the JSON output, sections live under .tests[].section and individual checks under .results[]
+cat kube-bench-results.json | jq '.Controls[].tests[] | select(.section == "1.2") | .results[] | select(.status == "FAIL")'
 ```
 
 ## Fixing Common Failures
@@ -514,7 +516,7 @@ jobs:
           fi
 
       - name: Upload results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kube-bench-results
           path: kube-bench-results.txt
