@@ -88,47 +88,45 @@ kubectl auth can-i create clusterroles --all-namespaces
 # The output should show istio components in Running state
 kubectl get pods -n istio-system
 
-# Check Istio version - this guide is tested with Istio 1.20+
+# Check Istio version - this guide is tested with Istio 1.30+
 istioctl version
+
+# Required for cert-manager's HTTP-01 Gateway API solver
+kubectl get crd gateways.gateway.networking.k8s.io
 ```
 
 Required components:
-- Kubernetes cluster version 1.25 or later
-- Istio 1.20 or later installed
+- Kubernetes cluster version 1.32 or later
+- Istio 1.30 or later installed
 - Helm 3.x for cert-manager installation
 - kubectl configured with cluster admin access
+- Kubernetes Gateway API CRDs installed if you use the HTTP-01 Gateway API solver
 
 ## Installing cert-manager
 
 cert-manager is the de-facto standard for certificate management in Kubernetes. Let's install it using Helm.
 
-First, add the Jetstack Helm repository and update the cache:
-
-```bash
-# Add the official Jetstack Helm repository
-# Jetstack is the company behind cert-manager
-helm repo add jetstack https://charts.jetstack.io
-
-# Update the local Helm cache to fetch the latest charts
-helm repo update
-```
-
-Create a dedicated namespace for cert-manager and install it:
+First, install cert-manager from the official OCI Helm chart:
 
 ```bash
 # Create namespace for cert-manager components
 # Keeping cert-manager isolated makes management easier
-kubectl create namespace cert-manager
+kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+```
 
+Install cert-manager with CRDs included:
+
+```bash
 # Install cert-manager with CRDs included
-# The installCRDs flag ensures Custom Resource Definitions are created
+# The crds.enabled flag ensures Custom Resource Definitions are created
 # We enable the Prometheus metrics for observability
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --namespace cert-manager \
-  --version v1.14.0 \
-  --set installCRDs=true \
+  --version v1.20.2 \
+  --set crds.enabled=true \
   --set prometheus.enabled=true \
-  --set webhook.timeoutSeconds=30
+  --set webhook.timeoutSeconds=30 \
+  --set config.enableGatewayAPI=true
 ```
 
 Verify the installation by checking that all cert-manager pods are running:
@@ -206,13 +204,14 @@ spec:
 
     # Configure challenge solvers for domain validation
     solvers:
-      # HTTP-01 challenge solver using Istio Gateway
+      # HTTP-01 challenge solver using Kubernetes Gateway API
       - http01:
           gatewayHTTPRoute:
-            # Reference to your Istio Gateway for challenge routing
+            # Reference to your Kubernetes Gateway API Gateway for challenge routing
             parentRefs:
-              - name: istio-gateway
+              - name: acme-http01-gateway
                 namespace: istio-system
+                group: gateway.networking.k8s.io
                 kind: Gateway
 ```
 
@@ -248,12 +247,13 @@ spec:
       name: letsencrypt-production-account-key
 
     solvers:
-      # HTTP-01 solver configuration for Istio Gateway
+      # HTTP-01 solver configuration using Kubernetes Gateway API
       - http01:
           gatewayHTTPRoute:
             parentRefs:
-              - name: istio-gateway
+              - name: acme-http01-gateway
                 namespace: istio-system
+                group: gateway.networking.k8s.io
                 kind: Gateway
 ```
 
@@ -380,13 +380,12 @@ spec:
     # Whether to rotate the private key on renewal
     rotationPolicy: Always
 
-  # Certificate usages - standard for TLS
+  # Certificate usages - standard for server-side TLS
   usages:
     - server auth
-    - client auth
 
   # DNS names to include in the certificate
-  # The first one becomes the Common Name
+  # These become Subject Alternative Names (SANs)
   dnsNames:
     - "app.example.com"
     - "api.example.com"
@@ -473,7 +472,7 @@ Create the Istio Gateway resource:
 # File: istio-gateway.yaml
 # Istio Gateway configuration with TLS termination
 # Uses the certificate secret created by cert-manager
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istio-gateway
@@ -531,7 +530,7 @@ For more advanced TLS configurations with mutual TLS (mTLS):
 ```yaml
 # File: istio-gateway-mtls.yaml
 # Gateway with mutual TLS for client certificate verification
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: mtls-gateway
@@ -551,9 +550,8 @@ spec:
         mode: MUTUAL
         # Server certificate from cert-manager
         credentialName: gateway-tls-secret
-        # CA certificate for validating client certificates
-        # This secret must contain ca.crt key
-        caCertificates: /etc/istio/client-ca/ca.crt
+        # Secret containing CA certificates for client validation
+        caCertCredentialName: client-ca-secret
         minProtocolVersion: TLSV1_2
 
       hosts:
@@ -565,7 +563,7 @@ Create a VirtualService to route traffic:
 ```yaml
 # File: app-virtualservice.yaml
 # VirtualService defines routing rules for the Gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
@@ -608,7 +606,7 @@ kubectl apply -f istio-gateway.yaml
 kubectl apply -f app-virtualservice.yaml
 
 # Verify the Gateway is configured correctly
-kubectl get gateway -n istio-system
+kubectl get gateways.networking.istio.io -n istio-system
 
 # Check the Istio ingress gateway for any configuration issues
 istioctl analyze -n istio-system
@@ -647,18 +645,18 @@ flowchart TB
     end
 ```
 
-Complete HTTP-01 configuration with Istio Gateway:
+Complete HTTP-01 configuration with Kubernetes Gateway API and Istio:
 
 ```yaml
 # File: http01-issuer-complete.yaml
-# Complete HTTP-01 issuer configuration for Istio Gateway integration
+# Complete HTTP-01 issuer configuration for Istio through Kubernetes Gateway API
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
   name: letsencrypt-http01
   annotations:
     # Annotation for documentation purposes
-    description: "HTTP-01 challenge solver using Istio Gateway"
+    description: "HTTP-01 challenge solver using Kubernetes Gateway API"
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
@@ -667,72 +665,45 @@ spec:
       name: letsencrypt-http01-account
 
     solvers:
-      # Primary solver using Istio Gateway API
+      # Primary solver using Kubernetes Gateway API
       - http01:
           gatewayHTTPRoute:
             # Service type for the solver pod
             serviceType: ClusterIP
-            # Labels added to solver pods for identification
+            # Labels copied to the temporary HTTPRoute for Gateway selection
             labels:
               acme-challenge: "true"
             # Parent references for Gateway API
             parentRefs:
-              - name: istio-gateway
+              - name: acme-http01-gateway
                 namespace: istio-system
+                group: gateway.networking.k8s.io
                 kind: Gateway
-        # Apply this solver only to specific domains
-        selector:
-          matchLabels:
-            use-http01: "true"
 ```
 
-For environments where you need to route ACME challenges through Istio, create a dedicated Gateway:
+For environments where you need to route ACME challenges through Istio, create a dedicated Kubernetes Gateway API Gateway. cert-manager creates temporary HTTPRoute resources and solver Services for each challenge:
 
 ```yaml
 # File: acme-challenge-gateway.yaml
-# Dedicated Gateway for ACME HTTP-01 challenges
+# Dedicated Kubernetes Gateway API Gateway for ACME HTTP-01 challenges
 # This ensures challenge traffic is properly routed
-apiVersion: networking.istio.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: acme-gateway
+  name: acme-http01-gateway
   namespace: istio-system
+  labels:
+    acme-challenge: "true"
 spec:
-  selector:
-    istio: ingressgateway
-
-  servers:
+  gatewayClassName: istio
+  listeners:
     # HTTP server specifically for ACME challenges
-    - port:
-        number: 80
-        name: http-acme
-        protocol: HTTP
-      hosts:
-        # Match all hosts for ACME challenges
-        - "*"
----
-# VirtualService to route ACME challenge requests
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: acme-challenge-route
-  namespace: istio-system
-spec:
-  hosts:
-    - "*"
-  gateways:
-    - acme-gateway
-  http:
-    # Route ACME challenge requests to solver pods
-    - match:
-        - uri:
-            prefix: /.well-known/acme-challenge/
-      route:
-        - destination:
-            # cert-manager creates this service for the challenge
-            host: cm-acme-http-solver
-            port:
-              number: 8089
+    - name: http-acme
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
 ```
 
 Complete DNS-01 configuration with multiple providers:
@@ -885,30 +856,7 @@ spec:
       app: istio-gateway
 ```
 
-Enable Istio to automatically detect certificate changes:
-
-```yaml
-# File: istio-config.yaml
-# ConfigMap to configure Istio's SDS (Secret Discovery Service)
-# This ensures Istio picks up certificate changes immediately
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: istio
-  namespace: istio-system
-data:
-  mesh: |
-    # Enable SDS for dynamic certificate updates
-    enableSdsTokenMount: true
-    sdsUdsPath: unix:/var/run/sds/uds_path
-
-    # Certificate refresh interval
-    # How often Istio checks for certificate updates
-    certificates:
-      - secretName: gateway-tls-secret
-        # Refresh every 15 minutes
-        refreshInterval: 15m
-```
+Istio ingress gateways use SDS by default to watch Kubernetes secrets referenced by Gateway `credentialName` values, so no additional MeshConfig is required for normal cert-manager Secret rotation.
 
 Create a monitoring solution for certificate expiration:
 
@@ -1218,8 +1166,10 @@ spec:
       - http01:
           gatewayHTTPRoute:
             parentRefs:
-              - name: staging-gateway
+              - name: staging-http01-gateway
                 namespace: istio-system
+                group: gateway.networking.k8s.io
+                kind: Gateway
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -1237,8 +1187,10 @@ spec:
       - http01:
           gatewayHTTPRoute:
             parentRefs:
-              - name: production-gateway
+              - name: production-http01-gateway
                 namespace: istio-system
+                group: gateway.networking.k8s.io
+                kind: Gateway
 ```
 
 ### 2. Implement Proper Secret Management
@@ -1262,10 +1214,8 @@ spec:
   # Secret template with proper annotations
   secretTemplate:
     annotations:
-      # Prevent secret from being cached in client
-      kubectl.kubernetes.io/last-applied-configuration: ""
-      # Enable secret encryption at rest (if using sealed-secrets)
-      sealedsecrets.bitnami.com/managed: "true"
+      # Add annotations consumed by external secret management tooling
+      external-secrets.io/managed: "true"
     labels:
       # Label for secret management policies
       sensitivity: high
@@ -1350,15 +1300,17 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: cert-manager
+      app.kubernetes.io/instance: cert-manager
   policyTypes:
     - Ingress
     - Egress
 
   ingress:
     # Allow webhook traffic from API server
+    # Replace 0.0.0.0/0 with your control-plane CIDR where your CNI supports it
     - from:
-        - namespaceSelector: {}
+        - ipBlock:
+            cidr: 0.0.0.0/0
       ports:
         - protocol: TCP
           port: 10250
@@ -1380,8 +1332,10 @@ spec:
           port: 443
 
     # Allow communication with Kubernetes API
+    # Replace 0.0.0.0/0 with your API server CIDR or endpoint range where possible
     - to:
-        - namespaceSelector: {}
+        - ipBlock:
+            cidr: 0.0.0.0/0
       ports:
         - protocol: TCP
           port: 443
