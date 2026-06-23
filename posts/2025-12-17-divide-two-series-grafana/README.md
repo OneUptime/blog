@@ -78,8 +78,9 @@ sum(rate(http_requests_total[5m]))
 
 1. Click the **Transform** tab
 2. Select **Add transformation**
-3. Choose **Binary operation**
+3. Choose **Add field from calculation**
 4. Configure the operation:
+   - Mode: **Binary operation**
    - Operation: **Divide**
    - Query A: Select your numerator
    - Query B: Select your denominator
@@ -117,11 +118,11 @@ $A / $B
 ### Advanced Math Expression
 
 ```text
-# Calculate percentage with null handling
+# Calculate percentage
 ($A / $B) * 100
 
-# With conditional logic
-$A / ($B > 0 ? $B : 1)
+# Avoid a zero denominator by replacing non-positive values with 1
+$A / (($B > 0) * $B + ($B <= 0))
 ```
 
 ## Handling Edge Cases
@@ -141,10 +142,10 @@ sum(rate(http_requests_total{status="200"}[5m]))
 /
 clamp_min(sum(rate(http_requests_total[5m])), 1)
 
-# Method 3: Use or operator with default
+# Method 3: Use or operator with a default after filtering zero denominators
 sum(rate(http_requests_total{status="200"}[5m]))
 /
-(sum(rate(http_requests_total[5m])) or vector(1))
+((sum(rate(http_requests_total[5m])) > 0) or vector(1))
 ```
 
 ### Dealing with Missing Data
@@ -226,16 +227,16 @@ flowchart TD
 # Ignore specific labels during matching
 http_requests_total{method="GET"}
 / ignoring(method)
-http_requests_total
+http_requests_total{method="GET"}
 ```
 
 ### Grouping Results
 
 ```promql
 # Keep additional labels from left side
-http_requests_total
-/ on(instance) group_left(job)
-machine_cpu_cores
+http_requests_total{job="api"}
+/ on(instance) group_left
+machine_cpu_cores{job="node"}
 ```
 
 ## Performance Considerations
