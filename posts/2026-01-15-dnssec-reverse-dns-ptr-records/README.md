@@ -302,15 +302,15 @@ The signing process creates `db.192.0.2.signed` with:
 ```dns
 ; Signed zone file
 2.0.192.in-addr.arpa.   86400   IN      SOA     ns1.example.com. admin.example.com. 2026011502 3600 900 604800 86400
-2.0.192.in-addr.arpa.   86400   IN      RRSIG   SOA 13 4 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. ABC123...
+2.0.192.in-addr.arpa.   86400   IN      RRSIG   SOA 13 5 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. ABC123...
 2.0.192.in-addr.arpa.   86400   IN      NS      ns1.example.com.
 2.0.192.in-addr.arpa.   86400   IN      NS      ns2.example.com.
-2.0.192.in-addr.arpa.   86400   IN      RRSIG   NS 13 4 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. DEF456...
+2.0.192.in-addr.arpa.   86400   IN      RRSIG   NS 13 5 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. DEF456...
 2.0.192.in-addr.arpa.   86400   IN      DNSKEY  256 3 13 ZSK_PUBLIC_KEY...
 2.0.192.in-addr.arpa.   86400   IN      DNSKEY  257 3 13 KSK_PUBLIC_KEY...
-2.0.192.in-addr.arpa.   86400   IN      RRSIG   DNSKEY 13 4 86400 20260215000000 20260115000000 12345 2.0.192.in-addr.arpa. GHI789...
+2.0.192.in-addr.arpa.   86400   IN      RRSIG   DNSKEY 13 5 86400 20260215000000 20260115000000 12345 2.0.192.in-addr.arpa. GHI789...
 10.2.0.192.in-addr.arpa. 86400  IN      PTR     mail.example.com.
-10.2.0.192.in-addr.arpa. 86400  IN      RRSIG   PTR 13 5 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. JKL012...
+10.2.0.192.in-addr.arpa. 86400  IN      RRSIG   PTR 13 6 86400 20260215000000 20260115000000 54321 2.0.192.in-addr.arpa. JKL012...
 ; NSEC3 records for authenticated denial
 ```
 
@@ -322,7 +322,6 @@ Update `named.conf.local` to use signed zones:
 // Enable DNSSEC validation
 options {
     dnssec-validation auto;
-    dnssec-lookaside auto;
 };
 
 // IPv4 Reverse Zone - SIGNED
@@ -463,7 +462,7 @@ delv -x 192.0.2.10 @8.8.8.8
 # Expected output for valid DNSSEC:
 ; fully validated
 10.2.0.192.in-addr.arpa. 86400 IN PTR mail.example.com.
-10.2.0.192.in-addr.arpa. 86400 IN RRSIG PTR 13 5 86400 ...
+10.2.0.192.in-addr.arpa. 86400 IN RRSIG PTR 13 6 86400 ...
 ```
 
 ### Online Validation Tools
@@ -561,7 +560,6 @@ dnssec-policy "reverse-zone-policy" {
     // Parent DS submission timing
     parent-ds-ttl P1D;
     parent-propagation-delay PT1H;
-    parent-registration-delay P1D;
 };
 ```
 
