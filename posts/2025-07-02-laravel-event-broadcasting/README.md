@@ -981,14 +981,6 @@ class UserTyping implements ShouldBroadcastNow
             'is_typing' => $this->isTyping,
         ];
     }
-
-    /**
-     * Exclude the sender from receiving this event.
-     */
-    public function broadcastToEveryone(): bool
-    {
-        return false;
-    }
 }
 ```
 
@@ -1622,26 +1614,12 @@ class UserTyping implements ShouldBroadcastNow
 {
     // Broadcast immediately, bypassing queue
 }
-
-// Hybrid approach: conditionally choose
-class FlexibleEvent implements ShouldBroadcast
-{
-    public bool $immediate = false;
-
-    public function __construct(bool $immediate = false)
-    {
-        $this->immediate = $immediate;
-    }
-
-    /**
-     * Determine if this event should broadcast immediately.
-     */
-    public function shouldBroadcastNow(): bool
-    {
-        return $this->immediate;
-    }
-}
 ```
+
+Whether an event is queued or broadcast immediately is determined by which
+interface the class implements (`ShouldBroadcast` vs `ShouldBroadcastNow`).
+There is no per-instance toggle, so if you need both behaviors, define two
+separate events.
 
 ---
 
@@ -1667,21 +1645,10 @@ Echo.private(`chat.${roomId}`)
     });
 ```
 
-Enable client events in Pusher dashboard or configuration:
-
-```php
-<?php
-// config/broadcasting.php
-
-'pusher' => [
-    'driver' => 'pusher',
-    // ...
-    'options' => [
-        // Enable client events
-        'encrypted' => true,
-    ],
-],
-```
+Client events must be enabled before they can be used. For the hosted Pusher
+Channels service, toggle "Enable client events" in your app's settings on the
+Pusher dashboard — there is no `config/broadcasting.php` option that turns them
+on. (Laravel Reverb supports client events through its own app configuration.)
 
 ---
 
@@ -1848,7 +1815,10 @@ class ChannelAuthorizationTest extends TestCase
 }
 ```
 
-### Using Broadcast Fakes
+### Using Event Fakes for Broadcasts
+
+Broadcast events are dispatched through Laravel's event dispatcher, so you test
+them with `Event::fake()` (there is no `Broadcast::fake()` helper):
 
 ```php
 <?php
@@ -1861,7 +1831,7 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class BroadcastFakeTest extends TestCase
@@ -1871,7 +1841,7 @@ class BroadcastFakeTest extends TestCase
     /** @test */
     public function message_is_broadcast_when_sent(): void
     {
-        Broadcast::fake();
+        Event::fake();
 
         $user = User::factory()->create();
         $room = ChatRoom::factory()->create();
@@ -1882,13 +1852,13 @@ class BroadcastFakeTest extends TestCase
                 'content' => 'Hello, world!',
             ]);
 
-        Broadcast::assertDispatched(MessageSent::class);
+        Event::assertDispatched(MessageSent::class);
     }
 
     /** @test */
     public function message_broadcast_contains_correct_data(): void
     {
-        Broadcast::fake();
+        Event::fake();
 
         $user = User::factory()->create();
         $room = ChatRoom::factory()->create();
@@ -1899,7 +1869,7 @@ class BroadcastFakeTest extends TestCase
                 'content' => 'Test message content',
             ]);
 
-        Broadcast::assertDispatched(MessageSent::class, function ($event) {
+        Event::assertDispatched(MessageSent::class, function ($event) {
             return $event->message->content === 'Test message content';
         });
     }
@@ -1907,7 +1877,7 @@ class BroadcastFakeTest extends TestCase
     /** @test */
     public function nothing_broadcasted_when_validation_fails(): void
     {
-        Broadcast::fake();
+        Event::fake();
 
         $user = User::factory()->create();
         $room = ChatRoom::factory()->create();
@@ -1918,7 +1888,7 @@ class BroadcastFakeTest extends TestCase
                 'content' => '', // Empty content - validation fails
             ]);
 
-        Broadcast::assertNotDispatched(MessageSent::class);
+        Event::assertNotDispatched(MessageSent::class);
     }
 }
 ```
@@ -2079,46 +2049,45 @@ Broadcast::channel('chat.{roomId}', function ($user, $roomId) {
 
 ## Monitoring Broadcasting
 
-Track broadcast metrics for observability:
+Track broadcast metrics for observability. Broadcastable events are sent
+through Laravel's event dispatcher, so a wildcard listener registered in a
+service provider can log every event that implements `ShouldBroadcast`:
 
 ```php
 <?php
-// app/Listeners/LogBroadcastEvent.php
+// app/Providers/AppServiceProvider.php
 
-namespace App\Listeners;
+namespace App\Providers;
 
-use Illuminate\Broadcasting\BroadcastEvent;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\ServiceProvider;
 
-class LogBroadcastEvent
+class AppServiceProvider extends ServiceProvider
 {
-    public function handle(BroadcastEvent $event): void
+    public function boot(): void
     {
-        Log::info('Event broadcasted', [
-            'event_class' => get_class($event->event),
-            'channels' => collect($event->event->broadcastOn())
-                ->map(fn ($channel) => $channel->name)
-                ->toArray(),
-            'event_name' => method_exists($event->event, 'broadcastAs')
-                ? $event->event->broadcastAs()
-                : class_basename($event->event),
-        ]);
+        // Wildcard listener: $payload[0] is the dispatched event instance
+        Event::listen('*', function (string $eventName, array $payload) {
+            $event = $payload[0] ?? null;
+
+            if (! $event instanceof ShouldBroadcast) {
+                return;
+            }
+
+            Log::info('Event broadcasted', [
+                'event_class' => get_class($event),
+                'channels' => collect($event->broadcastOn())
+                    ->map(fn ($channel) => $channel->name)
+                    ->toArray(),
+                'event_name' => method_exists($event, 'broadcastAs')
+                    ? $event->broadcastAs()
+                    : class_basename($event),
+            ]);
+        });
     }
 }
-```
-
-```php
-<?php
-// app/Providers/EventServiceProvider.php
-
-use Illuminate\Broadcasting\BroadcastEvent;
-use App\Listeners\LogBroadcastEvent;
-
-protected $listen = [
-    BroadcastEvent::class => [
-        LogBroadcastEvent::class,
-    ],
-];
 ```
 
 ---
@@ -2132,7 +2101,7 @@ Laravel's event broadcasting system provides a powerful foundation for building 
 - **Implement proper authorization**: Always validate user access to private and presence channels
 - **Use queues for high volume**: Queue broadcasts to prevent blocking your application
 - **Handle connection states**: Implement reconnection logic and error handling on the client
-- **Test thoroughly**: Use Event and Broadcast fakes to verify your events work correctly
+- **Test thoroughly**: Use `Event::fake()` to verify your broadcast events are dispatched correctly
 - **Monitor in production**: Track broadcast metrics and errors for reliability
 
 With these patterns, you can build responsive, real-time features that keep your users engaged and informed.
