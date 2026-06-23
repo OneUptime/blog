@@ -12,13 +12,13 @@ GitLab Pages is a static site hosting service built into GitLab. It allows you t
 
 ## Understanding GitLab Pages
 
-GitLab Pages serves static content from a special `public` directory created by a job named `pages` in your CI/CD pipeline.
+GitLab Pages serves static content from a Pages job in your CI/CD pipeline. By default, that job publishes the `public` directory.
 
 ```mermaid
 flowchart LR
     A[Push Code] --> B[CI Pipeline]
     B --> C[Build Site]
-    C --> D[pages job]
+    C --> D[Pages job]
     D --> E[public/ artifact]
     E --> F[GitLab Pages Server]
     F --> G[username.gitlab.io/project]
@@ -26,16 +26,17 @@ flowchart LR
 
 ## Basic Pages Configuration
 
-The simplest Pages deployment requires a `pages` job that creates a `public` artifact.
+The simplest Pages deployment requires a job with the `pages` keyword that creates a `public` artifact.
 
 ```yaml
 # .gitlab-ci.yml
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mkdir -p public
     - cp -r build/* public/
+  pages: true
   artifacts:
     paths:
       - public
@@ -43,7 +44,7 @@ pages:
     - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
-Key requirements: The job must be named exactly `pages`. The job must produce an artifact with a `public` directory. The `public` directory contains all files to be served.
+Key requirements: The job must use the `pages` keyword. By default, the job publishes a `public` directory, and the `public` directory contains all files to be served.
 
 ## HTML Site Deployment
 
@@ -51,11 +52,12 @@ Deploy a simple HTML site.
 
 ```yaml
 # Static HTML site
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mkdir -p public
     - cp -r src/* public/
+  pages: true
   artifacts:
     paths:
       - public
@@ -82,10 +84,11 @@ build:
     paths:
       - dist/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
+  pages: true
   artifacts:
     paths:
       - public
@@ -126,10 +129,11 @@ build:
     paths:
       - dist/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
+  pages: true
   artifacts:
     paths:
       - public
@@ -142,7 +146,7 @@ pages:
 ```javascript
 // vue.config.js
 module.exports = {
-  publicPath: process.env.CI_PAGES_URL ? '/project-name/' : '/'
+  publicPath: '/project-name/'
 }
 ```
 
@@ -165,10 +169,11 @@ build:
     paths:
       - out/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv out public
+  pages: true
   artifacts:
     paths:
       - public
@@ -207,10 +212,11 @@ build:
     paths:
       - public/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - echo "Deploying to GitLab Pages"
+  pages: true
   artifacts:
     paths:
       - public
@@ -240,10 +246,11 @@ build:
     paths:
       - public/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - echo "Deploying Jekyll site"
+  pages: true
   artifacts:
     paths:
       - public
@@ -272,10 +279,11 @@ build:
     paths:
       - public/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - echo "Deploying MkDocs"
+  pages: true
   artifacts:
     paths:
       - public
@@ -305,10 +313,11 @@ build:
     paths:
       - public/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - echo "Deploying Sphinx docs"
+  pages: true
   artifacts:
     paths:
       - public
@@ -322,7 +331,7 @@ pages:
 
 Configure a custom domain for your GitLab Pages site.
 
-First, deploy your site with the pages job. Then go to Settings > Pages in your project and add your custom domain.
+First, deploy your site with the Pages job. Then go to Deploy > Pages in your project and add your custom domain.
 
 Add DNS records for your domain.
 
@@ -332,10 +341,22 @@ Type: A
 Name: @
 Value: 35.185.44.232
 
+Type: AAAA
+Name: @
+Value: 2600:1901:0:7b8a::
+
+Type: TXT
+Name: _gitlab-pages-verification-code
+Value: gitlab-pages-verification-code=<your-verification-code>
+
 # For subdomain (www.example.com)
 Type: CNAME
 Name: www
 Value: username.gitlab.io
+
+Type: TXT
+Name: _gitlab-pages-verification-code.www
+Value: gitlab-pages-verification-code=<your-verification-code>
 ```
 
 ## HTTPS with Let's Encrypt
@@ -344,11 +365,12 @@ GitLab Pages automatically provisions Let's Encrypt certificates for custom doma
 
 ```yaml
 # No special CI configuration needed for HTTPS
-# Enable in Settings > Pages > Force HTTPS
-pages:
+# Enable in Deploy > Pages > Force HTTPS
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
+  pages: true
   artifacts:
     paths:
       - public
@@ -358,7 +380,7 @@ pages:
 
 ## Preview Deployments for Merge Requests
 
-Deploy preview sites for merge requests.
+Deploy preview sites for merge requests with Pages parallel deployments, where supported by your GitLab tier and instance configuration.
 
 ```yaml
 stages:
@@ -375,43 +397,23 @@ build:
     paths:
       - dist/
 
-# Main pages deployment
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
+  pages:
+    path_prefix: "$PAGES_PREFIX"
+    expire_in: 1 week
   artifacts:
     paths:
       - public
+  variables:
+    PAGES_PREFIX: ""
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-
-# MR preview deployment (uses review apps pattern)
-pages_preview:
-  stage: deploy
-  script:
-    - mkdir -p public
-    - mv dist public/$CI_MERGE_REQUEST_IID
-  artifacts:
-    paths:
-      - public
-  environment:
-    name: review/$CI_MERGE_REQUEST_IID
-    url: https://username.gitlab.io/project-name/$CI_MERGE_REQUEST_IID/
-    on_stop: stop_preview
-  rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-
-stop_preview:
-  stage: deploy
-  script:
-    - echo "Preview stopped"
-  environment:
-    name: review/$CI_MERGE_REQUEST_IID
-    action: stop
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: manual
+      variables:
+        PAGES_PREFIX: "mr-$CI_MERGE_REQUEST_IID"
 ```
 
 ## Single Page Application Routing
@@ -420,11 +422,12 @@ Configure SPA routing with a custom 404 page.
 
 ```yaml
 # For SPAs, create a 404.html that redirects to index.html
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
     - cp public/index.html public/404.html
+  pages: true
   artifacts:
     paths:
       - public
@@ -457,12 +460,13 @@ build_app:
     paths:
       - app/dist/
 
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mkdir -p public
     - mv app/dist/* public/
     - mv docs/dist public/docs/
+  pages: true
   artifacts:
     paths:
       - public
@@ -528,18 +532,12 @@ build:
     - install
 
 # Deploy to GitLab Pages
-pages:
+deploy_pages:
   stage: deploy
   script:
     - mv dist public
-    # Add headers for security
-    - |
-      cat > public/_headers << 'EOF'
-      /*
-        X-Frame-Options: DENY
-        X-Content-Type-Options: nosniff
-        Referrer-Policy: strict-origin-when-cross-origin
-      EOF
+    - echo "Configure response headers in your CDN, reverse proxy, or self-managed GitLab Pages server."
+  pages: true
   artifacts:
     paths:
       - public
@@ -559,11 +557,12 @@ pages:
 Use the `CI_PAGES_URL` variable to reference your Pages URL.
 
 ```yaml
-pages:
+deploy_pages:
   stage: deploy
   script:
     - echo "Deploying to $CI_PAGES_URL"
     - mv dist public
+  pages: true
   artifacts:
     paths:
       - public
@@ -571,6 +570,6 @@ pages:
 
 ## Best Practices
 
-Always use the `main` or `master` branch rule to prevent accidental deployments from feature branches. Set appropriate cache headers for static assets. Use a build stage separate from the pages job for cleaner pipeline structure. Configure proper base URLs for frameworks to handle subpath deployment. Enable HTTPS and configure security headers. Consider using a CDN in front of GitLab Pages for high-traffic sites.
+Always use the `main` or `master` branch rule to prevent accidental deployments from feature branches. Set appropriate cache headers for static assets at your CDN, reverse proxy, or self-managed GitLab Pages server. Use a build stage separate from the Pages job for cleaner pipeline structure. Configure proper base URLs for frameworks to handle subpath deployment. Enable HTTPS and configure security headers. Consider using a CDN in front of GitLab Pages for high-traffic sites.
 
 GitLab Pages provides a simple yet powerful way to host static sites directly from your repository. Combined with modern static site generators and CI/CD automation, you can maintain documentation, blogs, and web applications with minimal infrastructure overhead.
