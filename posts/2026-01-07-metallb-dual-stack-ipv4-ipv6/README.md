@@ -35,7 +35,7 @@ Dual-stack networking allows Kubernetes clusters to operate with both IPv4 and I
 - **Future-proofing**: IPv4 address exhaustion makes IPv6 adoption inevitable
 - **Global reach**: IPv6-only networks are becoming more common, especially in mobile carriers
 
-MetalLB supports dual-stack by allowing you to configure separate address pools for IPv4 and IPv6, and services can request addresses from both pools.
+MetalLB supports dual-stack by allowing you to configure address pools with both IPv4 and IPv6 ranges. For a dual-stack Service, MetalLB needs at least one `IPAddressPool` that contains both address families.
 
 ## Prerequisites
 
@@ -70,12 +70,12 @@ ip -6 route show
 
 ### MetalLB Installation
 
-Install MetalLB version 0.13.0 or later (dual-stack support is fully mature in these versions):
+Install MetalLB version 0.13.0 or later. For IPv6 BGP or dual-stack BGP, use an FRR-based backend such as FRR-K8s:
 
 ```bash
 # Install MetalLB using the official manifests
-# Version 0.14.x and above have the best dual-stack support
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+# FRR-K8s mode is recommended and supports BGP with IPv6 and BFD
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-frr-k8s.yaml
 
 # Wait for MetalLB pods to be ready
 # This ensures the controller and speakers are running before configuration
@@ -93,7 +93,7 @@ The following diagram illustrates how MetalLB handles dual-stack networking:
 graph TB
     subgraph "External Network"
         IPv4Client["IPv4 Client<br/>203.0.113.50"]
-        IPv6Client["IPv6 Client<br/>2001:db8:client::1"]
+        IPv6Client["IPv6 Client<br/>2001:db8:cafe::1"]
     end
 
     subgraph "Network Infrastructure"
@@ -148,16 +148,15 @@ This architecture shows:
 
 ## Configuring IPv6 Address Pools
 
-MetalLB uses `IPAddressPool` custom resources to define available addresses. For dual-stack, you need separate pools for IPv4 and IPv6.
+MetalLB uses `IPAddressPool` custom resources to define available addresses. For dual-stack LoadBalancer Services, at least one pool must contain both IPv4 and IPv6 ranges.
 
 ### Basic IPv6 Pool Configuration
 
-Create an IPv6 address pool alongside your IPv4 pool:
+Create a dual-stack address pool containing both IPv4 and IPv6 ranges. You can also keep separate IPv4-only or IPv6-only pools for single-stack Services:
 
 ```yaml
 # ipaddresspools.yaml
-# This configuration defines both IPv4 and IPv6 address pools for MetalLB
-# Each pool contains a range of addresses that can be assigned to LoadBalancer services
+# This configuration defines single-stack and dual-stack address pools for MetalLB
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -184,13 +183,25 @@ spec:
   - 2001:db8:1::/64
   # Enable automatic assignment for IPv6 addresses
   autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: dual-stack-pool
+  namespace: metallb-system
+spec:
+  # Dual-stack Services must be able to allocate both families from one pool
+  addresses:
+  - 192.168.100.100-192.168.100.150
+  - 2001:db8:1::100-2001:db8:1::1ff
+  autoAssign: true
 ```
 
 Apply the configuration:
 
 ```bash
 # Apply the address pool configuration to your cluster
-# This creates both IPv4 and IPv6 pools that MetalLB can use
+# This creates IPv4-only, IPv6-only, and dual-stack pools that MetalLB can use
 kubectl apply -f ipaddresspools.yaml
 
 # Verify the pools were created successfully
@@ -212,10 +223,10 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  # IPv4 range: 50 addresses from 192.168.100.100 to 192.168.100.150
+  # IPv4 range: 51 addresses from 192.168.100.100 to 192.168.100.150
   - 192.168.100.100-192.168.100.150
-  # IPv6 range: Full /112 subnet providing 65,536 addresses
-  # Using a smaller subnet than /64 to conserve IPv6 space if needed
+  # IPv6 range: 256 addresses from 2001:db8:1::100 to 2001:db8:1::1ff
+  # Using an explicit range to conserve IPv6 space if needed
   - 2001:db8:1::100-2001:db8:1::1ff
   autoAssign: true
 ```
@@ -231,53 +242,29 @@ For production environments, consider segmenting pools by purpose:
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: production-ipv4
+  name: production-pool
   namespace: metallb-system
   labels:
     # Labels help identify and select pools
     environment: production
-    ip-version: ipv4
+    stack: dual
 spec:
   addresses:
   - 192.168.100.0/25  # First half of /24 for production
+  - 2001:db8:1::/65   # First half of /64 for production
   autoAssign: false   # Require explicit pool selection
 ---
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: production-ipv6
-  namespace: metallb-system
-  labels:
-    environment: production
-    ip-version: ipv6
-spec:
-  addresses:
-  - 2001:db8:1::/65   # First half of /64 for production
-  autoAssign: false
----
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: staging-ipv4
+  name: staging-pool
   namespace: metallb-system
   labels:
     environment: staging
-    ip-version: ipv4
+    stack: dual
 spec:
   addresses:
   - 192.168.100.128/25  # Second half for staging
-  autoAssign: false
----
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: staging-ipv6
-  namespace: metallb-system
-  labels:
-    environment: staging
-    ip-version: ipv6
-spec:
-  addresses:
   - "2001:db8:1:0:8000::/65"  # Second half of /64 for staging
   autoAssign: false
 ```
@@ -341,7 +328,7 @@ metadata:
   annotations:
     # Optional: Specify which pools to use for address allocation
     # This annotation tells MetalLB to use our dual-stack pool
-    metallb.universe.tf/address-pool: dual-stack-pool
+    metallb.io/address-pool: dual-stack-pool
 spec:
   type: LoadBalancer
   # ipFamilyPolicy determines dual-stack behavior
@@ -379,8 +366,8 @@ metadata:
   name: critical-dual-stack-service
   namespace: default
   annotations:
-    # Use specific pools for each IP family
-    metallb.universe.tf/address-pool: production-ipv4,production-ipv6
+    # Use a specific dual-stack pool that contains both IP families
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   # RequireDualStack ensures the service only succeeds with both IP families
@@ -415,7 +402,7 @@ spec:
   # IPv6 listed first makes it the primary family
   # The ClusterIP will be an IPv6 address
   ipFamilies:
-  - IPv6  # Primary - used for ClusterIP and preferred by clients
+  - IPv6  # Primary - used for ClusterIP
   - IPv4  # Secondary - fallback for IPv4-only clients
   selector:
     app: modern-app
@@ -440,7 +427,7 @@ metadata:
   annotations:
     # Request specific IP addresses from MetalLB
     # Both addresses must be within configured address pools
-    metallb.universe.tf/loadBalancerIPs: 192.168.100.50,2001:db8:1::50
+    metallb.io/loadBalancerIPs: "192.168.100.50,2001:db8:1::50"
 spec:
   type: LoadBalancer
   ipFamilyPolicy: RequireDualStack
@@ -473,10 +460,11 @@ metadata:
   namespace: metallb-system
 spec:
   # Specify which address pools this advertisement applies to
-  # Include both IPv4 and IPv6 pools for dual-stack operation
+  # Include the pools that should be advertised via Layer 2
   ipAddressPools:
   - ipv4-pool
   - ipv6-pool
+  - dual-stack-pool
   # Optional: Limit which nodes can announce addresses
   # Useful for nodes with specific network connectivity
   # nodeSelectors:
@@ -533,6 +521,7 @@ spec:
   ipAddressPools:
   - ipv4-pool
   - ipv6-pool
+  - dual-stack-pool
   # Specify network interfaces for announcements
   # MetalLB will only respond to ARP/NDP on these interfaces
   interfaces:
@@ -542,7 +531,7 @@ spec:
 
 ## BGP Mode for IPv6
 
-BGP mode provides more scalable and flexible address announcement, especially important for large-scale deployments.
+BGP mode provides more scalable and flexible address announcement, especially important for large-scale deployments. IPv6 and dual-stack BGP require MetalLB's FRR-based modes, such as FRR-K8s or FRR.
 
 ### BGP Peer Configuration for Dual-Stack
 
@@ -551,7 +540,7 @@ Configure BGP peers with both IPv4 and IPv6 support:
 ```yaml
 # bgp-peers.yaml
 # BGP peer configuration for dual-stack MetalLB
-# Separate peers are needed for IPv4 and IPv6 address families
+# Separate peers are commonly used for IPv4 and IPv6 sessions
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
@@ -647,8 +636,9 @@ spec:
   - matchLabels:
       bgp-capable: "true"
   # Password for BGP session authentication (MD5)
-  # Reference to a secret containing the password
-  password: bgp-auth-secret
+  # Reference a basic-auth secret containing the password
+  passwordSecret:
+    name: bgp-auth-secret
 ---
 # BFD Profile for fast failover detection
 apiVersion: metallb.io/v1beta1
@@ -666,7 +656,7 @@ spec:
   echoMode: false
   # Passive mode - wait for peer to initiate
   passiveMode: false
-  # Minimum echo interval
+  # For multihop BFD sessions, set the minimum expected incoming TTL
   minimumTtl: 254
 ```
 
@@ -704,7 +694,7 @@ graph TB
 
         subgraph "MetalLB Pools"
             Pool4["IPv4 Pool<br/>192.168.100.0/24"]
-            Pool6["IPv6 Pool<br/>2001:db8:svc::/48"]
+            Pool6["IPv6 Pool<br/>2001:db8:100::/48"]
         end
     end
 
@@ -744,7 +734,7 @@ spec:
   peerASN: 64510
   peerAddress: 10.0.1.1
   # eBGP multihop allows BGP peering across multiple network hops
-  # Set to 2 or higher if the peer is not directly connected
+  # Set to true if the peer is not directly connected
   ebgpMultiHop: true
   # Source address ensures consistent BGP session establishment
   sourceAddress: 10.0.1.10
@@ -757,9 +747,9 @@ metadata:
 spec:
   myASN: 64500
   peerASN: 64510
-  peerAddress: "2001:db8:tor1::1"
+  peerAddress: "2001:db8:10:1::1"
   ebgpMultiHop: true
-  sourceAddress: "2001:db8:tor1::10"
+  sourceAddress: "2001:db8:10:1::10"
 ---
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
@@ -781,9 +771,9 @@ metadata:
 spec:
   myASN: 64500
   peerASN: 64520
-  peerAddress: "2001:db8:tor2::1"
+  peerAddress: "2001:db8:10:2::1"
   ebgpMultiHop: true
-  sourceAddress: "2001:db8:tor2::10"
+  sourceAddress: "2001:db8:10:2::10"
 ```
 
 ### BGP Communities for Traffic Engineering
@@ -822,8 +812,7 @@ metadata:
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - production-ipv4
-  - production-ipv6
+  - production-pool
   peers:
   - tor1-ipv4
   - tor1-ipv6
@@ -843,8 +832,7 @@ metadata:
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - production-ipv4
-  - production-ipv6
+  - production-pool
   peers:
   - tor2-ipv4
   - tor2-ipv6
@@ -1307,7 +1295,7 @@ spec:
   # Use separate, well-documented ranges
   # Document the purpose and allocation in comments or annotations
   - 192.168.100.0/25    # Production IPv4: 126 usable addresses
-  - 2001:db8:prod::/64  # Production IPv6: Large pool for growth
+  - 2001:db8:100::/64   # Production IPv6: Large pool for growth
   # Disable auto-assign for production to require explicit pool selection
   autoAssign: false
   # Avoid automatically assigning these addresses
@@ -1400,6 +1388,7 @@ spec:
       app.kubernetes.io/name: metallb
   endpoints:
   - port: monitoring
+    scheme: https
     interval: 30s
 ---
 # PrometheusRule for alerting on dual-stack issues
@@ -1414,7 +1403,7 @@ spec:
     rules:
     # Alert if BGP session is down
     - alert: MetalLBBGPSessionDown
-      expr: metallb_bgp_session_up == 0
+      expr: metallb_bgp_session_up == 0 or frrk8s_bgp_session_up == 0
       for: 5m
       labels:
         severity: critical
@@ -1453,11 +1442,10 @@ kind: Secret
 metadata:
   name: bgp-auth-secret
   namespace: metallb-system
-type: Opaque
-data:
-  # Base64 encoded BGP MD5 password
-  # Generate with: echo -n 'your-secure-password' | base64
-  password: eW91ci1zZWN1cmUtcGFzc3dvcmQ=
+type: kubernetes.io/basic-auth
+stringData:
+  # BGP MD5 password
+  password: your-secure-password
 ---
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
@@ -1472,7 +1460,6 @@ spec:
   # This prevents BGP session hijacking
   passwordSecret:
     name: bgp-auth-secret
-    key: password
 ---
 # Network policy to restrict MetalLB speaker traffic
 apiVersion: networking.k8s.io/v1
@@ -1522,7 +1509,7 @@ Configuring MetalLB for dual-stack IPv4/IPv6 networks enables your Kubernetes se
 
 2. **Choose the right IP family policy**: Use `PreferDualStack` for flexible deployments and `RequireDualStack` when both protocols are mandatory.
 
-3. **Configure both L2 and BGP appropriately**: L2 mode uses ARP for IPv4 and NDP for IPv6, while BGP requires separate peer configurations for each address family.
+3. **Configure both L2 and BGP appropriately**: L2 mode uses ARP for IPv4 and NDP for IPv6, while IPv6 BGP requires an FRR-based MetalLB mode and appropriate peer configuration.
 
 4. **Implement proper monitoring**: Track both IPv4 and IPv6 pool utilization and BGP session health to prevent outages.
 
