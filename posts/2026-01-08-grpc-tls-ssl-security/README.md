@@ -122,10 +122,9 @@ flowchart TD
 package main
 
 import (
+    "context"
     "crypto/tls"
-    "crypto/x509"
     "fmt"
-    "io/ioutil"
     "log"
     "net"
 
@@ -765,8 +764,6 @@ func createDebugTLSConfig() *tls.Config {
 package main
 
 import (
-    "crypto/tls"
-    "crypto/x509"
     "fmt"
     "strings"
 )
