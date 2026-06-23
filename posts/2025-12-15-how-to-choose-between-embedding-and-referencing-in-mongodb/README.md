@@ -19,7 +19,7 @@ Store related data directly within the document:
 ```javascript
 // Embedded approach - order contains product details
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   orderNumber: "ORD-001",
   customer: {
     name: "Alice Smith",
@@ -46,25 +46,25 @@ Store related data in separate collections with references:
 // Referenced approach - order references customer and products
 // Orders collection
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("64f000000000000000000001"),
   orderNumber: "ORD-001",
-  customerId: ObjectId("customer123"),
+  customerId: ObjectId("64f000000000000000000002"),
   items: [
-    { productId: ObjectId("product1"), quantity: 1 },
-    { productId: ObjectId("product2"), quantity: 2 }
+    { productId: ObjectId("64f000000000000000000003"), quantity: 1 },
+    { productId: ObjectId("64f000000000000000000004"), quantity: 2 }
   ]
 }
 
 // Customers collection
 {
-  _id: ObjectId("customer123"),
+  _id: ObjectId("64f000000000000000000002"),
   name: "Alice Smith",
   email: "alice@example.com"
 }
 
 // Products collection
 {
-  _id: ObjectId("product1"),
+  _id: ObjectId("64f000000000000000000003"),
   name: "Laptop",
   price: 999
 }
@@ -100,7 +100,7 @@ When data has a strict one-to-one relationship and is always accessed together:
 ```javascript
 // User with profile - embed because profile is always needed with user
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   username: "alice",
   email: "alice@example.com",
   profile: {
@@ -123,7 +123,7 @@ When parent document has a small, bounded number of children:
 ```javascript
 // Blog post with comments - embed when comments are few
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   title: "MongoDB Best Practices",
   content: "...",
   author: "Alice",
@@ -141,7 +141,7 @@ Embed data that is relatively static:
 ```javascript
 // Order with shipping address - address won't change after order is placed
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   orderNumber: "ORD-001",
   shippingAddress: {
     street: "123 Main St",
@@ -170,16 +170,16 @@ When the "many" side can grow unboundedly:
 // Author with books - reference because an author can have many books
 // Authors collection
 {
-  _id: ObjectId("author1"),
+  _id: ObjectId("64f000000000000000000005"),
   name: "Stephen King",
   bio: "..."
 }
 
 // Books collection
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   title: "The Shining",
-  authorId: ObjectId("author1"),
+  authorId: ObjectId("64f000000000000000000005"),
   pages: 447,
   publishedYear: 1977
 }
@@ -193,21 +193,21 @@ When entities can relate to multiple other entities:
 // Students and courses - many-to-many relationship
 // Students collection
 {
-  _id: ObjectId("student1"),
+  _id: ObjectId("64f000000000000000000006"),
   name: "Alice",
   enrolledCourseIds: [
-    ObjectId("course1"),
-    ObjectId("course2")
+    ObjectId("64f000000000000000000008"),
+    ObjectId("64f000000000000000000009")
   ]
 }
 
 // Courses collection
 {
-  _id: ObjectId("course1"),
+  _id: ObjectId("64f000000000000000000008"),
   name: "Database Design",
   enrolledStudentIds: [
-    ObjectId("student1"),
-    ObjectId("student2")
+    ObjectId("64f000000000000000000006"),
+    ObjectId("64f000000000000000000007")
   ]
 }
 ```
@@ -220,7 +220,7 @@ When child data changes frequently and independently:
 // Product with inventory - reference because inventory changes often
 // Products collection
 {
-  _id: ObjectId("product1"),
+  _id: ObjectId("64f000000000000000000003"),
   name: "Laptop",
   description: "...",
   price: 999
@@ -228,9 +228,9 @@ When child data changes frequently and independently:
 
 // Inventory collection
 {
-  _id: ObjectId("..."),
-  productId: ObjectId("product1"),
-  warehouseId: ObjectId("warehouse1"),
+  _id: ObjectId(),
+  productId: ObjectId("64f000000000000000000003"),
+  warehouseId: ObjectId("64f00000000000000000000a"),
   quantity: 150,
   lastUpdated: new Date()
 }
@@ -244,15 +244,15 @@ When you need to query the child data without the parent:
 // Users and their activity logs - reference because logs are queried separately
 // Users collection
 {
-  _id: ObjectId("user1"),
+  _id: ObjectId("64f00000000000000000000b"),
   name: "Alice",
   email: "alice@example.com"
 }
 
 // ActivityLogs collection
 {
-  _id: ObjectId("..."),
-  userId: ObjectId("user1"),
+  _id: ObjectId(),
+  userId: ObjectId("64f00000000000000000000b"),
   action: "login",
   timestamp: new Date(),
   ipAddress: "192.168.1.1"
@@ -283,11 +283,11 @@ Embed frequently accessed fields, reference for full data:
 ```javascript
 // Order with partial product embedding
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   orderNumber: "ORD-001",
   items: [
     {
-      productId: ObjectId("product1"),
+      productId: ObjectId("64f000000000000000000003"),
       // Embed commonly needed fields
       productName: "Laptop",
       priceAtPurchase: 999,
@@ -304,7 +304,7 @@ Store computed summaries while referencing details:
 ```javascript
 // Author with computed book count
 {
-  _id: ObjectId("author1"),
+  _id: ObjectId("64f000000000000000000005"),
   name: "Stephen King",
   // Computed field - updated when books change
   bookCount: 64,
@@ -324,10 +324,10 @@ Store a copy of frequently accessed fields:
 ```javascript
 // Movie with extended director reference
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   title: "Inception",
   director: {
-    _id: ObjectId("director1"),
+    _id: ObjectId("64f00000000000000000000c"),
     name: "Christopher Nolan"  // Duplicated for quick access
   },
   year: 2010
@@ -341,7 +341,7 @@ Embed a subset of related data:
 ```javascript
 // Product with top reviews embedded, all reviews in separate collection
 {
-  _id: ObjectId("product1"),
+  _id: ObjectId("64f000000000000000000003"),
   name: "Laptop",
   // Embed only top reviews
   topReviews: [
@@ -354,11 +354,11 @@ Embed a subset of related data:
 
 // All reviews in separate collection
 {
-  _id: ObjectId("..."),
-  productId: ObjectId("product1"),
+  _id: ObjectId(),
+  productId: ObjectId("64f000000000000000000003"),
   rating: 5,
   text: "Excellent product!",
-  userId: ObjectId("user1"),
+  userId: ObjectId("64f00000000000000000000b"),
   date: new Date()
 }
 ```
@@ -370,13 +370,13 @@ Group related documents into buckets:
 ```javascript
 // IoT sensor data bucketed by hour
 {
-  _id: ObjectId("..."),
+  _id: ObjectId(),
   sensorId: "sensor-001",
   startTime: new Date("2024-01-15T10:00:00Z"),
   endTime: new Date("2024-01-15T11:00:00Z"),
   readings: [
-    { timestamp: new Date("..."), value: 23.5 },
-    { timestamp: new Date("..."), value: 23.7 },
+    { timestamp: new Date("2024-01-15T10:00:00Z"), value: 23.5 },
+    { timestamp: new Date("2024-01-15T10:01:00Z"), value: 23.7 },
     // ... up to ~200 readings per bucket
   ],
   readingCount: 120,
@@ -425,7 +425,7 @@ db.orders.createIndex({ customerId: 1 })
 |----------|-----------|-------------|
 | Read Performance | Faster (single query) | Slower (multiple queries/$lookup) |
 | Write Performance | Can be slower for large docs | Faster for small updates |
-| Data Consistency | Atomic within document | Requires application logic |
+| Data Consistency | Atomic within document | Requires application logic or transactions |
 | Data Duplication | Possible | Minimal |
 | Document Size | Larger | Smaller |
 | Schema Flexibility | Less flexible | More flexible |
