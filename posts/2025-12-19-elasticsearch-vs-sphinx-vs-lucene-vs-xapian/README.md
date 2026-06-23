@@ -30,8 +30,8 @@ flowchart TD
 | Architecture | Distributed | Standalone/Cluster | Library | Library |
 | API | REST | SphinxQL/Binary | Java API | C++/Bindings |
 | Scaling | Horizontal | Limited | Manual | Manual |
-| Real-time | Yes | Delta indexes | Yes | Yes |
-| License | SSPL | GPL v2 | Apache 2.0 | GPL v2 |
+| Real-time | Yes | RT/delta indexes | Yes | Yes |
+| License | ELv2/SSPL/AGPLv3 | GPL v2 | Apache 2.0 | GPL v2+ |
 | Learning Curve | Medium | Low | High | Medium |
 
 ## Apache Lucene
@@ -67,6 +67,7 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.FSDirectory;
+import java.nio.file.Paths;
 
 public class LuceneExample {
 
@@ -117,7 +118,7 @@ public class LuceneExample {
 - Java only (native)
 - No clustering built-in
 - Complex to implement correctly
-- Must handle persistence yourself
+- Must handle index lifecycle and backups yourself
 
 ## Elasticsearch
 
@@ -181,7 +182,7 @@ GET /articles/_search
 **Cons:**
 - Resource intensive
 - JVM overhead
-- License concerns (SSPL)
+- License considerations (default distribution under ELv2, source available under ELv2/SSPL/AGPLv3)
 - Operational complexity at scale
 
 ## Sphinx Search
@@ -262,15 +263,19 @@ ORDER BY WEIGHT() DESC;
 
 ### Real-Time Indexes in Sphinx
 
-```sql
--- Create real-time index
-CREATE TABLE rt_articles (
-    id BIGINT,
-    title TEXT,
-    content TEXT,
-    category STRING
-);
+```ini
+# Declare the real-time index in sphinx.conf
+index rt_articles
+{
+    type = rt
+    path = /var/sphinx/rt_articles
+    rt_field = title
+    rt_field = content
+    rt_attr_string = category
+}
+```
 
+```sql
 -- Insert documents
 INSERT INTO rt_articles (id, title, content, category)
 VALUES (1, 'Search Guide', 'How to search effectively', 'tutorial');
@@ -334,6 +339,7 @@ indexer.index_text("Search Guide", 1, "S")  # Title with prefix
 indexer.index_text("How to search effectively")  # Content
 
 doc.add_boolean_term("Ctutorial")  # Category filter
+doc.add_value(0, "2024-06-01")  # Date value for range filters
 
 db.add_document(doc)
 db.commit()
