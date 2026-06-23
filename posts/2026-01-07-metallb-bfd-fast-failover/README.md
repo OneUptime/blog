@@ -34,7 +34,7 @@ Without BFD, BGP relies on its hold timer (typically 90 seconds) to detect peer 
 
 ### How BFD Improves Failover
 
-BFD can detect failures in as little as 50-300 milliseconds, depending on configuration. When integrated with BGP, BFD triggers immediate route withdrawal upon detecting a failure, dramatically reducing failover time.
+BFD can detect failures in hundreds of milliseconds with aggressive timer settings, or in a few seconds with conservative settings. When integrated with BGP, BFD triggers immediate route withdrawal upon detecting a failure, dramatically reducing failover time.
 
 The following diagram illustrates the BFD operation flow between MetalLB and network routers:
 
@@ -67,8 +67,8 @@ sequenceDiagram
 
 Before configuring BFD with MetalLB, ensure you have:
 
-- Kubernetes cluster v1.20 or later
-- MetalLB v0.13.0 or later (BFD support was added in v0.13.0)
+- Kubernetes cluster v1.13.0 or later
+- MetalLB v0.13.0 or later using an FRR-based backend (FRR-K8s in current releases; BFD first appeared in experimental FRR mode in v0.12.0)
 - Network routers that support BFD
 - BGP already configured and working with MetalLB
 
@@ -89,15 +89,15 @@ The following diagram shows how BFD integrates with MetalLB's BGP implementation
 graph TB
     subgraph "Kubernetes Cluster"
         subgraph "Node 1"
-            S1[MetalLB Speaker<br/>+ FRR Container]
+            S1[MetalLB Speaker<br/>+ FRR-K8s/FRR]
             BFD1[BFD Session]
         end
         subgraph "Node 2"
-            S2[MetalLB Speaker<br/>+ FRR Container]
+            S2[MetalLB Speaker<br/>+ FRR-K8s/FRR]
             BFD2[BFD Session]
         end
         subgraph "Node 3"
-            S3[MetalLB Speaker<br/>+ FRR Container]
+            S3[MetalLB Speaker<br/>+ FRR-K8s/FRR]
             BFD3[BFD Session]
         end
     end
@@ -126,7 +126,7 @@ graph TB
     S3 <-->|BGP| R2
 ```
 
-MetalLB uses FRRouting (FRR) mode to provide BFD capabilities. When a BFD session detects a failure, it immediately notifies the BGP process, which then withdraws the routes, allowing traffic to failover to healthy nodes.
+MetalLB uses an FRR-based BGP backend to provide BFD capabilities. In current MetalLB releases this is FRR-K8s by default; the older direct FRR mode is deprecated. When a BFD session detects a failure, it immediately notifies the BGP process, which then withdraws the routes, allowing traffic to failover to healthy nodes.
 
 ## Configuring BFDProfile
 
@@ -138,7 +138,7 @@ This is a simple BFDProfile configuration with default-like settings that provid
 
 ```yaml
 # BFDProfile defines how BFD sessions behave
-# This basic profile provides approximately 300ms failure detection
+# This basic profile provides approximately 900ms failure detection
 # Suitable for most production environments
 apiVersion: metallb.io/v1beta1
 kind: BFDProfile
@@ -217,10 +217,8 @@ spec:
   # Lower values may cause flapping in congested networks
   detectMultiplier: 3
 
-  # Enable echo mode for even faster detection
-  # Echo packets are looped back by the peer's forwarding plane
-  # This tests the actual forwarding path, not just control plane
-  echoMode: true
+  # Echo mode works only with compatible peers; keep disabled unless you have verified support
+  echoMode: false
 
   # Echo interval when echo mode is enabled
   # Can be different from control packet interval
@@ -229,10 +227,7 @@ spec:
   # Passive mode disabled - we actively establish sessions
   passiveMode: false
 
-  # Minimum TTL for incoming BFD packets
-  # Helps prevent BFD spoofing attacks
-  # Set to 254 for single-hop BFD (255 - 1 hop)
-  minimumTtl: 254
+  # minimumTtl applies only to multi-hop BFD sessions; omit it for single-hop peers
 ```
 
 ### Conservative Profile (Stable Networks)
@@ -291,15 +286,13 @@ spec:
   # Standard multiplier of 3
   detectMultiplier: 3
 
-  # Echo mode for hardware-accelerated detection
-  # Only enable if routers support BFD echo
+  # Echo mode works only with compatible peers; keep disabled unless you have verified support
   echoMode: false
 
   # Active mode - MetalLB initiates sessions
   passiveMode: false
 
-  # Security: require high TTL for single-hop BFD
-  minimumTtl: 254
+  # minimumTtl applies only to multi-hop BFD sessions; omit it for single-hop peers
 ```
 
 ## Integrating BFD with BGP Peers
@@ -313,7 +306,7 @@ The BGPPeer configuration must reference the BFDProfile by name:
 ```yaml
 # BGPPeer configuration with BFD enabled
 # This peer will use BFD for fast failure detection
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: router1
@@ -359,7 +352,7 @@ You might want different BFD profiles for different network paths. Here's an exa
 
 ```yaml
 # First router - on the same rack, use aggressive BFD
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: tor-switch-1
@@ -375,7 +368,7 @@ spec:
   keepaliveTime: 30s
 ---
 # Second router - remote data center, use conservative BFD
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: remote-router
@@ -416,7 +409,6 @@ spec:
   detectMultiplier: 3
   echoMode: false
   passiveMode: false
-  minimumTtl: 254
 ---
 # IP address pool for load balancer services
 apiVersion: metallb.io/v1beta1
@@ -429,7 +421,7 @@ spec:
   addresses:
     - 10.100.0.0/24
   # Avoid automatic IP assignment - use explicit annotations
-  autoAssign: true
+  autoAssign: false
 ---
 # BGP advertisement configuration
 # This tells MetalLB how to advertise IPs from the pool
@@ -447,11 +439,11 @@ spec:
   # Optional: Add BGP communities for traffic engineering
   communities:
     - 64512:100
-  # Optional: Prepend AS path to influence routing
+  # Optional: Set local preference to influence route selection in iBGP
   # localPref: 100
 ---
 # First BGP peer (primary router)
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: primary-router
@@ -468,7 +460,7 @@ spec:
   # ebgpMultiHop: false
 ---
 # Second BGP peer (secondary router)
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: secondary-router
@@ -500,16 +492,18 @@ After configuring BFD, it's crucial to test and validate that failover works as 
 
 ### Verify BFD Session Status
 
-Check the BFD session status on your MetalLB speakers:
+Check the BFD session status from the FRR container. In current FRR-K8s mode, FRR runs in the `frr-k8s-daemon` pods:
 
 ```bash
-# Get the list of MetalLB speaker pods
-# These pods run on each node and handle BGP/BFD
-kubectl get pods -n metallb-system -l component=speaker
+# Get the list of FRR-K8s daemon pods
+kubectl get pods -n metallb-system -l control-plane=frr-k8s
 
 # Check BFD session status using FRR's vtysh
-# Replace <speaker-pod> with an actual pod name from the previous command
-kubectl exec -n metallb-system <speaker-pod> -c frr -- vtysh -c "show bfd peers"
+# Replace <frr-k8s-pod> with an actual pod name from the previous command
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- vtysh -c "show bfd peers"
+
+# If you are using deprecated FRR mode instead, run the same vtysh command
+# against a speaker pod with the frr container.
 ```
 
 Expected output showing healthy BFD sessions:
@@ -571,7 +565,7 @@ ping -i 0.1 10.100.0.10
 
 # Terminal 2: Identify which node is currently handling traffic
 # Look for the node with established BGP sessions
-kubectl exec -n metallb-system <speaker-pod> -c frr -- vtysh -c "show bgp summary"
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- vtysh -c "show bgp summary"
 
 # Terminal 3: Simulate failure by cordoning and draining the active node
 # This simulates a node failure scenario
@@ -587,11 +581,9 @@ kubectl drain <active-node> --ignore-daemonsets --delete-emptydir-data
 Use a more precise method to measure actual failover time:
 
 ```bash
-# Create a test script that measures failover time precisely
-# This script sends rapid requests and measures response gaps
-
 #!/bin/bash
 # failover-test.sh - Measures actual failover time
+# This script sends rapid requests and measures response gaps
 
 # Configuration - update these values for your environment
 VIP="10.100.0.10"
@@ -636,22 +628,26 @@ Effective monitoring is essential for maintaining reliable BFD operation.
 MetalLB exposes BFD metrics that can be scraped by Prometheus:
 
 ```yaml
-# ServiceMonitor for MetalLB BFD metrics
+# ServiceMonitor for MetalLB BFD metrics in the default FRR-K8s mode
 # Requires Prometheus Operator to be installed
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: metallb-bfd
+  name: metallb-frr-k8s-bfd
   namespace: metallb-system
   labels:
     app: metallb
 spec:
   selector:
     matchLabels:
-      # Match the MetalLB speaker service
-      app.kubernetes.io/component: speaker
+      # Match the FRR-K8s metrics service
+      control-plane: frr-k8s
   endpoints:
-    - port: monitoring
+    - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      port: frrmetricshttps
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
       interval: 15s
       path: /metrics
 ```
@@ -661,21 +657,25 @@ spec:
 The following metrics are exposed by MetalLB for BFD monitoring:
 
 ```promql
-# BFD session state (1 = up, 0 = down)
+# BFD session state (1 = up, 0 = down) in default FRR-K8s mode
 # Alert if any session is down
-metallb_bfd_session_up{peer="10.0.0.1"}
+frrk8s_bfd_session_up{peer="10.0.0.1"}
 
-# Number of BFD session state changes
+# BFD session up/down event counters
 # High values indicate instability
-metallb_bfd_session_state_changes_total{peer="10.0.0.1"}
+frrk8s_bfd_session_up_events{peer="10.0.0.1"}
+frrk8s_bfd_session_down_events{peer="10.0.0.1"}
 
 # BFD control packet statistics
-metallb_bfd_control_packets_sent_total
-metallb_bfd_control_packets_received_total
+frrk8s_bfd_control_packet_output
+frrk8s_bfd_control_packet_input
+
+# Deprecated FRR mode used the metallb_bfd_ metric prefix; update dashboards
+# to frrk8s_bfd_ unless you have configured Prometheus relabeling.
 
 # Example Prometheus alert rule for BFD session down
 # alert: MetalLBBFDSessionDown
-#   expr: metallb_bfd_session_up == 0
+#   expr: frrk8s_bfd_session_up == 0
 #   for: 30s
 #   labels:
 #     severity: critical
@@ -690,22 +690,20 @@ Create a Grafana dashboard with these queries:
 ```promql
 # Panel 1: BFD Session Status (Stat panel)
 # Shows current state of all BFD sessions
-metallb_bfd_session_up
+frrk8s_bfd_session_up
 
-# Panel 2: BFD State Changes Over Time (Graph panel)
+# Panel 2: BFD Down Events Over Time (Graph panel)
 # Helps identify flapping sessions
-rate(metallb_bfd_session_state_changes_total[5m])
+rate(frrk8s_bfd_session_down_events[5m])
 
 # Panel 3: BFD Packet Rate (Graph panel)
 # Verify BFD is actively sending/receiving packets
-rate(metallb_bfd_control_packets_sent_total[1m])
-rate(metallb_bfd_control_packets_received_total[1m])
+rate(frrk8s_bfd_control_packet_output[1m])
+rate(frrk8s_bfd_control_packet_input[1m])
 
-# Panel 4: Packet Loss Indicator
-# Compare sent vs received to detect issues
-(rate(metallb_bfd_control_packets_sent_total[5m]) -
- rate(metallb_bfd_control_packets_received_total[5m])) /
-rate(metallb_bfd_control_packets_sent_total[5m]) * 100
+# Panel 4: BFD Echo Packet Rate (if echo mode is enabled)
+rate(frrk8s_bfd_echo_packet_output[1m])
+rate(frrk8s_bfd_echo_packet_input[1m])
 ```
 
 ## Troubleshooting Common Issues
@@ -715,21 +713,21 @@ rate(metallb_bfd_control_packets_sent_total[5m]) * 100
 If BFD sessions won't come up, check these common causes:
 
 ```bash
-# 1. Verify FRR container is running in speaker pods
-# The FRR container handles BFD protocol
-kubectl get pods -n metallb-system -l component=speaker -o wide
+# 1. Verify FRR-K8s daemon pods are running
+# These pods run FRR and handle BFD protocol in current MetalLB releases
+kubectl get pods -n metallb-system -l control-plane=frr-k8s -o wide
 
 # 2. Check FRR logs for BFD errors
-kubectl logs -n metallb-system <speaker-pod> -c frr | grep -i bfd
+kubectl logs -n metallb-system <frr-k8s-pod> -c frr | grep -i bfd
 
 # 3. Verify network connectivity to peer
-kubectl exec -n metallb-system <speaker-pod> -- ping -c 3 10.0.0.1
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- ping -c 3 10.0.0.1
 
 # 4. Check if BFD profile is correctly referenced
 kubectl get bgppeer -n metallb-system -o yaml | grep bfdProfile
 
 # 5. Verify BFD configuration in FRR
-kubectl exec -n metallb-system <speaker-pod> -c frr -- vtysh -c "show running-config" | grep -A10 bfd
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- vtysh -c "show running-config" | grep -A10 bfd
 ```
 
 ### BFD Session Flapping
@@ -738,10 +736,10 @@ Session flapping (rapidly going up and down) indicates instability:
 
 ```bash
 # 1. Check for packet loss on the network
-kubectl exec -n metallb-system <speaker-pod> -- ping -c 100 10.0.0.1
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- ping -c 100 10.0.0.1
 
 # 2. Review BFD peer diagnostics
-kubectl exec -n metallb-system <speaker-pod> -c frr -- vtysh -c "show bfd peers"
+kubectl exec -n metallb-system <frr-k8s-pod> -c frr -- vtysh -c "show bfd peers"
 
 # 3. If flapping, increase timers in BFDProfile
 # Update the profile with more conservative values
@@ -754,9 +752,9 @@ kubectl patch bfdprofile production-bfd -n metallb-system --type merge -p '
   }
 }'
 
-# 4. Check speaker pod resource usage
+# 4. Check FRR-K8s pod resource usage
 # High CPU might cause BFD packet delays
-kubectl top pod -n metallb-system -l component=speaker
+kubectl top pod -n metallb-system -l control-plane=frr-k8s
 ```
 
 ### Router-Side Troubleshooting
@@ -794,7 +792,7 @@ spec:
   transmitInterval: 200
 ---
 # WRONG: Mismatched profile name reference
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: router1
@@ -855,7 +853,7 @@ spec:
   detectMultiplier: 3
 ---
 # Apply consistently to all datacenter peers
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: dc-router-1
@@ -866,7 +864,7 @@ spec:
   myASN: 64513
   bfdProfile: datacenter-standard  # Same profile
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: dc-router-2
@@ -935,9 +933,9 @@ spec:
 Always test BFD configuration in a staging environment:
 
 ```bash
-# Create a test checklist script
 #!/bin/bash
 # bfd-validation-checklist.sh
+# Create a test checklist script
 
 echo "=== BFD Configuration Validation Checklist ==="
 
@@ -953,7 +951,8 @@ actual=$(kubectl get pods -n metallb-system -l component=speaker --field-selecto
 [ "$expected" -eq "$actual" ] && echo "PASS ($actual/$expected)" || echo "FAIL ($actual/$expected)"
 
 echo -n "4. BFD sessions established: "
-kubectl exec -n metallb-system $(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}') -c frr -- vtysh -c "show bfd peers" 2>/dev/null | grep -q "Status: up" && echo "PASS" || echo "FAIL"
+frr_pod=$(kubectl get pods -n metallb-system -l control-plane=frr-k8s -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n metallb-system "$frr_pod" -c frr -- vtysh -c "show bfd peers" 2>/dev/null | grep -q "Status: up" && echo "PASS" || echo "FAIL"
 
 echo "=== Validation Complete ==="
 ```
