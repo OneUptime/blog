@@ -109,7 +109,7 @@ Create an Istio configuration that enables OpenTelemetry tracing:
 ```yaml
 # istio-otel-config.yaml
 
-# This ConfigMap configures Istio's mesh-wide settings for OpenTelemetry
+# This IstioOperator configures Istio's mesh-wide settings for OpenTelemetry
 # It tells all Envoy sidecars to export traces using the OpenTelemetry protocol
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
@@ -121,14 +121,11 @@ spec:
     # Enable access logging for debugging
     accessLogFile: /dev/stdout
 
-    # Configure the default tracing provider
-    defaultProviders:
-      tracing:
-        - opentelemetry
-
-    # Enable proxy-level tracing with 100% sampling for development
-    # In production, reduce this to avoid overwhelming your backend
+    # Enable proxy-level tracing support
     enableTracing: true
+    defaultConfig:
+      # Disable legacy MeshConfig tracing options and use extensionProviders/Telemetry API
+      tracing: {}
 
     # Define the OpenTelemetry tracing provider
     extensionProviders:
@@ -150,7 +147,7 @@ Apply the configuration:
 ```bash
 # Apply the Istio configuration to enable OpenTelemetry tracing
 # This will restart Istio components to pick up the new settings
-kubectl apply -f istio-otel-config.yaml
+istioctl install -f istio-otel-config.yaml --skip-confirmation
 
 # Verify the configuration was applied successfully
 # Check that the mesh config shows the opentelemetry provider
@@ -366,48 +363,37 @@ kubectl logs -l app=otel-collector -n observability --tail=50
 
 ### Step 3: Configure Trace Context Propagation in Istio
 
-For traces to flow correctly through the mesh, applications must propagate trace headers. Istio uses W3C Trace Context by default. Configure your Istio mesh to handle multiple propagation formats:
+For traces to flow correctly through the mesh, applications must propagate trace headers. Istio supports W3C Trace Context and B3 propagation; the Telemetry API controls whether Envoy reports spans and lets you add custom tags:
 
 ```yaml
 # istio-tracing-headers.yaml
-# This EnvoyFilter ensures proper trace header propagation
-# It configures Envoy to use W3C Trace Context format
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+# This Telemetry resource enables span reporting with the OpenTelemetry provider
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: tracing-config
+  name: mesh-default
   namespace: istio-system
 spec:
-  configPatches:
-    # Patch the tracing configuration for all sidecars
-    - applyTo: NETWORK_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            tracing:
-              # Set the maximum path tag length for better trace context
-              max_path_tag_length: 256
+  tracing:
+    - providers:
+        - name: opentelemetry
+      # Use 100% sampling for development; reduce this in production
+      randomSamplingPercentage: 100
+      # Custom tags to add to proxy spans
+      customTags:
+        mesh.component:
+          literal:
+            value: istio-proxy
+        request.id:
+          header:
+            name: x-request-id
+            defaultValue: unknown
+```
 
-              # Always create a span for better visibility
-              spawn_upstream_span: true
+Apply the Telemetry resource:
 
-              # Custom tags to add to all proxy spans
-              custom_tags:
-                - tag: mesh.component
-                  literal:
-                    value: istio-proxy
-                - tag: request.id
-                  request_header:
-                    name: x-request-id
-                    default_value: unknown
+```bash
+kubectl apply -f istio-tracing-headers.yaml
 ```
 
 ### Step 4: Instrument Your Application with OpenTelemetry
@@ -720,9 +706,9 @@ graph TB
     style ProxyB fill:#0ff,stroke:#333
 ```
 
-### Step 1: Install Linkerd with Tracing Support
+### Step 1: Install Linkerd
 
-First, install Linkerd with the Jaeger extension enabled. This extension adds tracing capabilities to Linkerd:
+First, install Linkerd and the Viz extension. Recent Linkerd releases no longer use the `linkerd jaeger` CLI extension; proxy tracing is enabled by configuring the control plane to send spans to an OTLP-capable collector:
 
 ```bash
 # Install the Linkerd CLI if not already installed
@@ -732,7 +718,7 @@ export PATH=$PATH:$HOME/.linkerd2/bin
 # Verify the cluster is ready for Linkerd
 linkerd check --pre
 
-# Install Linkerd control plane with tracing enabled
+# Install the Linkerd control plane
 linkerd install --set proxyInit.runAsRoot=true | kubectl apply -f -
 
 # Wait for the control plane to be ready
@@ -741,10 +727,7 @@ linkerd check
 # Install the Linkerd Viz extension for observability
 linkerd viz install | kubectl apply -f -
 
-# Install the Jaeger extension for distributed tracing
-linkerd jaeger install | kubectl apply -f -
-
-# Verify all extensions are installed
+# Verify the control plane and extensions are installed
 linkerd check
 ```
 
@@ -752,58 +735,22 @@ linkerd check
 
 Configure Linkerd to export traces to your OpenTelemetry Collector:
 
+```bash
+# The collector must be in the Linkerd mesh because Linkerd requires mesh identity
+# for proxy trace export. Adjust serviceAccountName/namespace for your collector.
+kubectl annotate namespace observability linkerd.io/inject=enabled --overwrite
+
+linkerd upgrade \
+  --set proxy.tracing.enabled=true \
+  --set proxy.tracing.collector.endpoint=otel-collector.observability:4317 \
+  --set proxy.tracing.collector.meshIdentity.serviceAccountName=default \
+  --set proxy.tracing.collector.meshIdentity.namespace=observability \
+  | kubectl apply -f -
+```
+
+Apply Linkerd injection to namespaces where you want application traffic to participate in traces:
+
 ```yaml
-# linkerd-otel-config.yaml
-# This ConfigMap configures Linkerd's trace collector
-# It points the Jaeger extension to use OpenTelemetry Collector
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: linkerd-jaeger-config
-  namespace: linkerd-jaeger
-data:
-  # Configure the OpenCensus collector to forward to OTel Collector
-  collector: |
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-
-      # Receive traces from Linkerd proxies via OpenCensus
-      opencensus:
-        endpoint: 0.0.0.0:55678
-
-    processors:
-      batch:
-        timeout: 1s
-        send_batch_size: 512
-
-      # Add Linkerd-specific attributes
-      resource:
-        attributes:
-          - key: service.mesh
-            value: linkerd
-            action: upsert
-
-    exporters:
-      # Forward to your main OpenTelemetry Collector
-      otlp:
-        endpoint: otel-collector.observability.svc.cluster.local:4317
-        tls:
-          insecure: true
-
-    service:
-      pipelines:
-        traces:
-          receivers: [otlp, opencensus]
-          processors: [resource, batch]
-          exporters: [otlp]
----
-# Annotation configuration for enabling tracing on namespaces
-# Apply this to namespaces where you want Linkerd tracing
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -811,10 +758,6 @@ metadata:
   annotations:
     # Enable Linkerd injection
     linkerd.io/inject: enabled
-    # Enable tracing for this namespace
-    config.linkerd.io/trace-collector: collector.linkerd-jaeger:55678
-    # Set the sampling rate (0.0 to 1.0)
-    config.linkerd.io/trace-sampling: "1.0"
 ```
 
 ### Step 3: Instrument Applications for Linkerd
@@ -830,17 +773,20 @@ const express = require('express');
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
 
 // Configure the resource that identifies this service
 // These attributes will appear on all spans from this service
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'node-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'node-service',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development',
   // Custom attribute to identify this as a Linkerd-meshed service
   'service.mesh': 'linkerd',
 });
@@ -848,7 +794,7 @@ const resource = new Resource({
 // Create the OTLP exporter to send traces to the collector
 // The endpoint should point to your OpenTelemetry Collector
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'grpc://otel-collector.observability.svc.cluster.local:4317',
+  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'otel-collector.observability.svc.cluster.local:4317',
 });
 
 // Initialize the OpenTelemetry SDK with auto-instrumentation
@@ -898,15 +844,16 @@ app.use(express.json());
 // Get a tracer for creating custom spans
 const tracer = trace.getTracer('node-service');
 
-// Middleware to extract trace context from Linkerd headers
-// Linkerd propagates trace context via standard W3C headers
+// Middleware to add correlation attributes from propagated trace headers
+// Linkerd propagates W3C Trace Context and B3 headers
 app.use((req, res, next) => {
   const currentSpan = trace.getSpan(context.active());
 
   if (currentSpan) {
-    // Add Linkerd-specific headers as span attributes
+    // Add propagated trace headers as span attributes
     // These help correlate application spans with Linkerd proxy spans
-    currentSpan.setAttribute('linkerd.request-id', req.headers['l5d-ctx-trace'] || 'none');
+    currentSpan.setAttribute('trace.traceparent', req.headers['traceparent'] || 'none');
+    currentSpan.setAttribute('trace.b3', req.headers['b3'] || req.headers['x-b3-traceid'] || 'none');
     currentSpan.setAttribute('linkerd.client-id', req.headers['l5d-client-id'] || 'none');
   }
 
@@ -1085,10 +1032,6 @@ spec:
       labels:
         app: node-service
       annotations:
-        # Enable tracing for this pod
-        config.linkerd.io/trace-collector: collector.linkerd-jaeger:55678
-        # Optionally override the sampling rate per-pod
-        config.linkerd.io/trace-sampling: "1.0"
         # Enable access logging for debugging
         config.alpha.linkerd.io/proxy-log-level: info
     spec:
@@ -1109,7 +1052,7 @@ spec:
 
             # OpenTelemetry configuration
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "grpc://otel-collector.observability.svc.cluster.local:4317"
+              value: "otel-collector.observability.svc.cluster.local:4317"
             - name: OTEL_PROPAGATORS
               value: "tracecontext,baggage"
             - name: OTEL_TRACES_SAMPLER
@@ -1219,12 +1162,8 @@ type TracePropagationMiddleware struct {
 }
 
 func (m *TracePropagationMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Extract trace context from incoming headers
-	// The propagator handles W3C Trace Context format used by service meshes
-	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-
-	// Get the current span (created by otelhttp instrumentation)
-	span := trace.SpanFromContext(ctx)
+	// Get the current span created by otelhttp instrumentation.
+	span := trace.SpanFromContext(r.Context())
 
 	// Add mesh-specific attributes to help with correlation
 	// These attributes help identify the request path through the mesh
@@ -1235,7 +1174,7 @@ func (m *TracePropagationMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Re
 	)
 
 	// Continue with the request using the enriched context
-	m.next.ServeHTTP(w, r.WithContext(ctx))
+	m.next.ServeHTTP(w, r)
 }
 
 // initTracer initializes the OpenTelemetry tracer with proper configuration
@@ -1371,16 +1310,12 @@ func main() {
 		w.Write([]byte(result))
 	})
 
-	// Wrap handler with OpenTelemetry HTTP instrumentation
-	// This creates spans for incoming requests and extracts trace context
-	otelHandler := otelhttp.NewHandler(handler, "http-server")
-
-	// Add our custom middleware for additional trace context handling
-	wrappedHandler := &TracePropagationMiddleware{next: otelHandler}
+	// Add our custom middleware inside the OpenTelemetry HTTP instrumentation.
+	wrappedHandler := &TracePropagationMiddleware{next: handler}
 
 	// Start the server
 	fmt.Println("Server starting on :8080")
-	http.ListenAndServe(":8080", wrappedHandler)
+	http.ListenAndServe(":8080", otelhttp.NewHandler(wrappedHandler, "http-server"))
 }
 ```
 
@@ -1424,10 +1359,12 @@ class MeshCorrelationMiddleware:
 
     # Headers that Linkerd propagates for tracing
     LINKERD_TRACE_HEADERS = [
-        'l5d-ctx-trace',
-        'l5d-ctx-span',
-        'l5d-ctx-parent',
-        'l5d-ctx-deadline',
+        'traceparent',
+        'tracestate',
+        'b3',
+        'x-b3-traceid',
+        'x-b3-spanid',
+        'x-b3-sampled',
         'l5d-client-id',
         'l5d-server-id',
     ]
@@ -1548,11 +1485,6 @@ def propagate_headers_to_outbound(headers_dict):
     if 'x-request-id' in request.headers:
         headers_dict['x-request-id'] = request.headers['x-request-id']
 
-    # Propagate Linkerd headers if present
-    for header in ['l5d-ctx-trace', 'l5d-ctx-span']:
-        if header in request.headers:
-            headers_dict[header] = request.headers[header]
-
     return headers_dict
 
 
@@ -1635,11 +1567,6 @@ processors:
   # Span processor for additional transformations
   attributes:
     actions:
-      # Add collector processing timestamp
-      - key: collector.processed_at
-        action: insert
-        value: "${TIMESTAMP}"
-
       # Normalize status codes across different naming conventions
       - key: http.status_code
         action: upsert
@@ -1648,7 +1575,7 @@ processors:
       # Add environment identification
       - key: deployment.environment
         action: insert
-        value: "${ENVIRONMENT}"
+        value: "${env:ENVIRONMENT}"
 
   # Group by trace ID for correlation analysis
   groupbytrace:
@@ -1714,7 +1641,7 @@ service:
     traces:
       receivers: [otlp, zipkin]
       processors: [memory_limiter, transform, attributes, groupbytrace, tail_sampling, batch]
-      exporters: [otlp/jaeger, otlp/tempo]
+      exporters: [otlp/jaeger, otlp/tempo, spanmetrics]
 
     # Metrics derived from traces
     metrics:
@@ -1787,7 +1714,7 @@ processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: upsert
 
   # Transform spans to include cross-cluster correlation
@@ -1807,7 +1734,7 @@ exporters:
   otlp:
     endpoint: central-collector.observability.svc.cluster.local:4317
     headers:
-      x-cluster-name: ${CLUSTER_NAME}
+      x-cluster-name: ${env:CLUSTER_NAME}
 
 service:
   pipelines:
@@ -1985,7 +1912,7 @@ Configure sampling appropriately for production environments:
 # Balances trace coverage with resource usage
 
 # Istio sampling configuration
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-wide-sampling
@@ -2002,7 +1929,7 @@ spec:
             value: production
 ---
 # Override sampling for specific services that need more visibility
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: critical-service-sampling
@@ -2050,12 +1977,10 @@ ENVOY_HEADERS = [
     'x-cloud-trace-context', # GCP Cloud Trace format
 ]
 
-# Linkerd specific headers
+# Linkerd commonly uses W3C/B3 trace headers and may also add identity headers
 LINKERD_HEADERS = [
-    'l5d-ctx-trace',    # Linkerd trace context
-    'l5d-ctx-span',     # Linkerd span context
-    'l5d-ctx-parent',   # Linkerd parent span
-    'l5d-ctx-deadline', # Request deadline
+    'l5d-client-id',    # Linkerd client identity
+    'l5d-server-id',    # Linkerd server identity
 ]
 
 # Application context headers (optional but useful)
@@ -2110,7 +2035,7 @@ linkerd viz stat deploy/my-service
 
 # Check trace collector connectivity
 echo "Checking trace collector..."
-kubectl get pods -n linkerd-jaeger
+kubectl get pods -n observability -l app=otel-collector
 
 echo "=== Common Issues and Solutions ==="
 echo "1. Missing traces: Check that sampling rate > 0"
