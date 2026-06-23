@@ -691,8 +691,10 @@ package main
 import (
     "encoding/json"
     "net/http"
+    "strconv"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     userpb "github.com/example/gen/user/v1"
 )
 
@@ -701,8 +703,12 @@ type Gateway struct {
 }
 
 func (g *Gateway) GetUser(w http.ResponseWriter, r *http.Request) {
-    // Parse REST request
-    userID := r.URL.Query().Get("id")
+    // Parse REST request (the proto field Id is an int64, so convert)
+    userID, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+    if err != nil {
+        http.Error(w, "invalid user id", http.StatusBadRequest)
+        return
+    }
 
     // Call gRPC service
     user, err := g.userClient.GetUser(r.Context(), &userpb.GetUserRequest{
@@ -724,7 +730,7 @@ func (g *Gateway) GetUser(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     // Connect to gRPC services
-    conn, _ := grpc.Dial("user-service:50051", grpc.WithInsecure())
+    conn, _ := grpc.Dial("user-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
     gateway := &Gateway{
         userClient: userpb.NewUserServiceClient(conn),
     }
