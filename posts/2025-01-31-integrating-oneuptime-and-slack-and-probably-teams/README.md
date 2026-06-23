@@ -85,12 +85,14 @@ Your incidents will auto-resolve themselves when the monitor goes back into an o
 {
     "createdAt": true,        // When the state change occurred
     "incident": {
-      "title": true           // Get the incident title for context
+      "title": true,          // Get the incident title for context
+      "_id": true             // Incident ID (used for building the link)
     },
     "incidentState": {
       "name": true            // The new state (Acknowledged, Resolved, etc.)
     },
     "_id": true,              // State timeline entry ID
+    "projectId": true,        // Project ID (used for building URLs)
     "rootCause": true,        // Reason for the state change
     "createdByUser": true     // Who made the change (if applicable)
 }
@@ -120,7 +122,7 @@ Cause of change:
 ---
 
 👀 See more here: 
-https://oneuptime.com/dashboard/{{local.components.incident-state-timeline-on-create-1.returnValues.model.projectId.value}}/incidents/{{local.components.incident-state-timeline-on-create-1.returnValues.model._id}} 
+https://oneuptime.com/dashboard/{{local.components.incident-state-timeline-on-create-1.returnValues.model.projectId.value}}/incidents/{{local.components.incident-state-timeline-on-create-1.returnValues.model.incident._id}} 
 
 ```
 
