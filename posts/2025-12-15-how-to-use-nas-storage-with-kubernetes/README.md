@@ -18,7 +18,7 @@ This guide covers the three main ways to attach NAS storage to Kubernetes: **NFS
 | --- | --- | --- | --- |
 | **NFS** | Linux workloads, ReadWriteMany access, shared configs/logs | Simple setup, wide support, works over standard Ethernet | No built-in encryption (use NFSv4 + Kerberos or VPN), file locking can be tricky |
 | **SMB/CIFS** | Windows containers, hybrid environments, Azure Files compatibility | Native Windows support, AD integration | Higher overhead than NFS, requires credentials management |
-| **iSCSI** | Block storage needs, databases, single-pod ReadWriteOnce | Block-level access, better performance for databases | More complex setup, one pod per volume, requires iSCSI initiator on nodes |
+| **iSCSI** | Block storage needs, databases, ReadWriteOnce workloads | Block-level access, often a better fit for databases | More complex setup, usually mounted by one node at a time, requires iSCSI initiator on nodes |
 
 ## Prerequisites
 
@@ -308,6 +308,9 @@ metadata:
 provisioner: smb.csi.k8s.io                    # CSI driver identifier
 parameters:
   source: //192.168.1.100/kubernetes            # SMB share path (UNC format)
+  # Secret reference for provisioning subdirectories on authenticated shares
+  csi.storage.k8s.io/provisioner-secret-name: smb-creds
+  csi.storage.k8s.io/provisioner-secret-namespace: default
   # Secret reference for authentication during mount
   csi.storage.k8s.io/node-stage-secret-name: smb-creds
   csi.storage.k8s.io/node-stage-secret-namespace: default
@@ -333,7 +336,7 @@ On Synology:
 
 ### Create a PersistentVolume with iSCSI
 
-iSCSI PVs connect to block devices exposed by your NAS. Unlike NFS, iSCSI presents raw block storage that Kubernetes formats with a filesystem. This provides better performance for databases but limits access to a single pod.
+iSCSI PVs connect to block devices exposed by your NAS. Unlike NFS, iSCSI presents raw block storage that Kubernetes formats with a filesystem. This is often a better fit for databases but, with `ReadWriteOnce`, limits read/write access to a single node at a time.
 
 ```yaml
 # iscsi-pv.yaml
@@ -345,7 +348,7 @@ spec:
   capacity:
     storage: 50Gi                              # Must match or exceed the LUN size
   accessModes:
-    - ReadWriteOnce                            # iSCSI = single pod access only
+    - ReadWriteOnce                            # iSCSI filesystem volume = read/write by one node at a time
   persistentVolumeReclaimPolicy: Retain        # Keep the LUN data when PVC deleted
   storageClassName: iscsi                      # Group with other iSCSI volumes
   iscsi:
@@ -382,10 +385,10 @@ Prevent runaway CSI driver pods from affecting your cluster. Setting resource li
 # Upgrade the CSI driver with resource constraints
 helm upgrade csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
   --namespace kube-system \
-  --set controller.resources.limits.memory=256Mi \   # Cap controller memory
-  --set controller.resources.limits.cpu=100m \       # Cap controller CPU
-  --set node.resources.limits.memory=256Mi \         # Cap per-node daemonset memory
-  --set node.resources.limits.cpu=100m               # Cap per-node daemonset CPU
+  --set controller.resources.nfs.limits.memory=256Mi \
+  --set controller.resources.nfs.requests.cpu=100m \
+  --set node.resources.nfs.limits.memory=256Mi \
+  --set node.resources.nfs.requests.cpu=100m
 ```
 
 ### 3. Backup Your StorageClass Configurations
@@ -452,7 +455,6 @@ For databases, always use `hard`. For read-heavy caches, `soft` with retries can
 mountOptions:
   - nfsvers=4.1   # Protocol version
   - hard          # Use 'soft,timeo=30,retrans=3' for less critical workloads
-  - intr          # Allow SIGINT to interrupt hung NFS operations
 ```
 
 ## Vendor-Specific CSI Drivers
@@ -544,7 +546,7 @@ For most home labs and small production clusters:
 4. **Create a StorageClass** pointing to your NAS
 5. **Create PVCs** and let the driver handle provisioning
 
-For databases or single-pod workloads needing better performance, use iSCSI with your NAS vendor's CSI driver.
+For databases or single-node workloads needing block storage, use iSCSI with your NAS vendor's CSI driver.
 
 Monitor your mounts, test failover scenarios, and always have backups-your NAS is now part of your Kubernetes cluster's failure domain.
 
