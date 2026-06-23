@@ -170,7 +170,7 @@ docker run --env-file .env myapp
 
 ### The .env File Format
 
-The .env file format has specific rules. This example shows correct syntax including comments, quoting for special characters, and the limitation that variable interpolation does not work.
+The .env file format has specific rules. This example shows correct syntax including comments, the handling of quotes, and the limitation that variable interpolation does not work.
 
 ```bash
 # .env file format example
@@ -180,8 +180,14 @@ API_KEY=sk-12345
 
 # Comments and empty lines are ignored
 
-# Quotes are optional but recommended for special characters
+# IMPORTANT: with `docker run --env-file`, values are used as-is - quotes are
+# NOT stripped and become part of the value. This line sets GREETING to the
+# literal value: "Hello, World!" (including the quote characters).
 GREETING="Hello, World!"
+# So with docker run, prefer unquoted values even when they contain spaces:
+GREETING=Hello, World!
+# (Docker Compose's env_file does strip quotes, so the same file behaves
+# differently there - another reason to be careful.)
 
 # No interpolation in .env files - this does NOT work:
 # PATH=$HOME/bin  <- Would NOT expand $HOME
