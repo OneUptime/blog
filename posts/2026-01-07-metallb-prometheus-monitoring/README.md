@@ -86,7 +86,7 @@ flowchart LR
 
     subgraph Metrics["Exposed Metrics"]
         M1["metallb_allocator_*"]
-        M2["metallb_bgp_*"]
+        M2["metallb_bgp_* / frrk8s_bgp_*"]
         M3["metallb_layer2_*"]
         M4["metallb_k8s_client_*"]
     end
@@ -116,12 +116,12 @@ flowchart LR
 
 MetalLB exposes metrics on port 7472 by default. However, you need to ensure that the metrics endpoint is accessible and properly configured.
 
-The following ConfigMap ensures MetalLB is configured correctly with metrics enabled. This configuration sets up an IP address pool for LoadBalancer services:
+The following MetalLB custom resources configure an IP address pool for LoadBalancer services:
 
 ```yaml
 # metallb-config.yaml
 
-# This ConfigMap configures MetalLB with an address pool for LoadBalancer services
+# This IPAddressPool configures MetalLB with an address pool for LoadBalancer services
 # Metrics are enabled by default on port 7472 for both controller and speaker
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -328,7 +328,6 @@ flowchart TB
         B1["metallb_bgp_session_up<br/><i>BGP session state</i>"]
         B2["metallb_bgp_announced_prefixes_total<br/><i>Announced route count</i>"]
         B3["metallb_bgp_updates_total<br/><i>BGP updates sent</i>"]
-        B4["metallb_bgp_opens_sent<br/><i>BGP OPEN messages</i>"]
     end
 
     subgraph Alerts["Alert Triggers"]
@@ -360,14 +359,15 @@ flowchart TB
 | `metallb_layer2_responses_sent` | Number of ARP/NDP responses sent | Counter |
 | `metallb_layer2_gratuitous_sent` | Number of gratuitous announcements sent | Counter |
 
-### Speaker Metrics (BGP Mode)
+### Speaker Metrics (Native BGP Mode)
 
 | Metric | Description | Type |
 |--------|-------------|------|
 | `metallb_bgp_session_up` | BGP session state (1 = up, 0 = down) | Gauge |
 | `metallb_bgp_announced_prefixes_total` | Number of prefixes announced | Gauge |
 | `metallb_bgp_updates_total` | Number of BGP updates sent | Counter |
-| `metallb_bgp_opens_sent` | Number of BGP OPEN messages sent | Counter |
+
+In MetalLB's default FRR-K8s mode, the equivalent BGP metrics use the `frrk8s_` prefix instead, such as `frrk8s_bgp_session_up`, `frrk8s_bgp_announced_prefixes_total`, and `frrk8s_bgp_updates_total`. If you use FRR-K8s mode, update the BGP dashboard queries and alerts below to use those metric names or configure Prometheus metric relabeling.
 
 ## Creating Grafana Dashboards
 
@@ -1259,11 +1259,6 @@ Now let's create comprehensive Grafana dashboards to visualize MetalLB metrics. 
           "expr": "rate(metallb_bgp_updates_total[5m])",
           "legendFormat": "{{ peer }} - Updates",
           "refId": "A"
-        },
-        {
-          "expr": "rate(metallb_bgp_opens_sent[5m])",
-          "legendFormat": "{{ peer }} - Opens",
-          "refId": "B"
         }
       ],
       "title": "BGP Message Rate",
@@ -1424,7 +1419,7 @@ Now let's create comprehensive Grafana dashboards to visualize MetalLB metrics. 
       },
       "targets": [
         {
-          "expr": "(rate(metallb_k8s_client_update_errors_total[5m]) / rate(metallb_k8s_client_updates_total[5m])) * 100",
+          "expr": "(rate(metallb_k8s_client_update_errors_total[5m]) / clamp_min(rate(metallb_k8s_client_updates_total[5m]), 1)) * 100",
           "legendFormat": "Error Rate",
           "refId": "A"
         }
@@ -1618,7 +1613,7 @@ spec:
     # This indicates a routing configuration issue
     - alert: MetalLBBGPNoPrefixesAnnounced
       expr: |
-        metallb_bgp_announced_prefixes_total == 0
+        sum(metallb_bgp_announced_prefixes_total) == 0
         and
         sum(metallb_allocator_addresses_in_use_total) > 0
       for: 5m
@@ -1626,7 +1621,7 @@ spec:
         severity: warning
       annotations:
         summary: "MetalLB is not announcing any BGP prefixes"
-        description: "No BGP prefixes are being announced despite having {{ $value }} allocated IPs."
+        description: "No BGP prefixes are being announced despite having allocated IPs."
         runbook_url: "https://docs.example.com/runbooks/metallb-bgp-no-prefixes"
 
   # Group 3: Kubernetes Client Alerts
@@ -1653,7 +1648,7 @@ spec:
         (
           rate(metallb_k8s_client_update_errors_total[5m])
           /
-          rate(metallb_k8s_client_updates_total[5m])
+          clamp_min(rate(metallb_k8s_client_updates_total[5m]), 1)
         ) * 100 > 5
       for: 5m
       labels:
@@ -1671,7 +1666,9 @@ spec:
     # The controller is required for IP allocation
     - alert: MetalLBControllerDown
       expr: |
-        up{job="metallb-controller"} == 0
+        absent(up{namespace="metallb-system", service="controller-metrics"})
+        or
+        up{namespace="metallb-system", service="controller-metrics"} == 0
       for: 2m
       labels:
         severity: critical
@@ -1684,7 +1681,7 @@ spec:
     # Missing speakers means some nodes cannot announce IPs
     - alert: MetalLBSpeakersMissing
       expr: |
-        count(up{job="metallb-speaker"} == 1)
+        count(up{namespace="metallb-system", service="speaker-metrics"} == 1)
         <
         count(kube_node_info)
       for: 5m
@@ -1697,7 +1694,7 @@ spec:
 
     # Alert when a specific speaker is down
     - alert: MetalLBSpeakerDown
-      expr: up{job="metallb-speaker"} == 0
+      expr: up{namespace="metallb-system", service="speaker-metrics"} == 0
       for: 2m
       labels:
         severity: warning
@@ -1714,7 +1711,7 @@ spec:
     # This may indicate network connectivity issues
     - alert: MetalLBL2NoActivity
       expr: |
-        rate(metallb_layer2_requests_received[10m]) == 0
+        sum(rate(metallb_layer2_requests_received[10m])) == 0
         and
         sum(metallb_allocator_addresses_in_use_total) > 0
       for: 10m
@@ -1801,7 +1798,7 @@ spec:
       expr: |
         rate(metallb_k8s_client_update_errors_total[5m])
         /
-        rate(metallb_k8s_client_updates_total[5m])
+        clamp_min(rate(metallb_k8s_client_updates_total[5m]), 1)
 ```
 
 ### 3. Monitoring Architecture Overview
