@@ -140,8 +140,8 @@ subctl deploy-broker --kubeconfig broker-kubeconfig
 subctl join broker-info.subm --clusterid cluster1 --kubeconfig cluster1-kubeconfig
 subctl join broker-info.subm --clusterid cluster2 --kubeconfig cluster2-kubeconfig
 
-# Export services
-kubectl annotate service myapp submariner.io/exportTo=ClusterSetIP
+# Export services (creates a ServiceExport resource)
+subctl export service --namespace default myapp
 ```
 
 ## Active-Passive Setup
@@ -181,9 +181,6 @@ spec:
       database: myapp
   storage:
     size: 100Gi
-  replica:
-    enabled: true
-    source: postgres-dr
 
 # DR PostgreSQL (read replica)
 apiVersion: postgresql.cnpg.io/v1
@@ -232,8 +229,9 @@ spec:
               # Scale up DR deployments
               kubectl scale deployment --all --replicas=3
 
-              # Promote database replica
-              kubectl annotate cluster postgres-dr cnpg.io/hibernation-
+              # Promote database replica (disable replica mode)
+              kubectl patch cluster postgres-dr --type merge \
+                -p '{"spec":{"replica":{"enabled":false}}}'
       restartPolicy: OnFailure
 ```
 
@@ -368,23 +366,14 @@ No special handling needed - just deploy to both clusters.
 
 ### Object Storage
 
-```yaml
-# MinIO bucket replication
-apiVersion: minio.min.io/v2
-kind: BucketReplication
-metadata:
-  name: bucket-replication
-spec:
-  source:
-    bucket: my-bucket
-    endpoint: minio.cluster1.svc
-  destination:
-    bucket: my-bucket
-    endpoint: minio.cluster2.example.com
-  rules:
-    - id: replicate-all
-      status: Enabled
-      priority: 1
+```bash
+# MinIO bucket replication (configured with the mc client)
+# Register the cluster1 alias, then add a replication rule to cluster2
+mc alias set cluster1 https://minio.cluster1.svc ACCESS_KEY SECRET_KEY
+
+mc replicate add cluster1/my-bucket \
+  --remote-bucket https://ACCESS_KEY:SECRET_KEY@minio.cluster2.example.com/my-bucket \
+  --priority 1
 ```
 
 ## Testing Multi-Cluster Setup
