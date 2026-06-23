@@ -45,7 +45,7 @@ graph TB
     end
 ```
 
-Each OSD daemon manages one storage device and handles:
+Each OSD daemon generally manages one primary data device, with optional separate DB/WAL devices, and handles:
 - Object storage and retrieval
 - Data replication across failure domains
 - Recovery and backfilling operations
@@ -140,12 +140,15 @@ Example output interpretation:
 Get comprehensive information about a specific OSD:
 
 ```bash
-# Find detailed metadata about a specific OSD
+# Find the CRUSH location and network endpoints for a specific OSD
 # Replace <osd-id> with the actual OSD number (e.g., 0, 1, 2)
 ceph osd find <osd-id>
 
 # Example: Find information about OSD.1
 ceph osd find 1
+
+# For detailed OSD metadata, use:
+ceph osd metadata <osd-id>
 ```
 
 Check OSD performance statistics:
@@ -185,7 +188,7 @@ ceph pg dump_stuck
 ceph pg dump_stuck unclean
 
 # Query a specific PG for detailed information
-ceph pg <pg-id> query
+ceph tell <pg-id> query
 ```
 
 ## Log Analysis Techniques
@@ -384,7 +387,7 @@ ceph osd metadata <id>
 
 # Check which PGs are on this OSD
 # This helps estimate recovery time
-ceph pg ls-by-osd <id>
+ceph pg ls-by-osd osd.<id>
 
 # Mark the OSD out to start data rebalancing
 # This begins the process of copying data to other OSDs
@@ -513,24 +516,22 @@ Balance recovery speed against client I/O impact:
 
 ```bash
 # Increase recovery threads for faster recovery
-# Default is 1, increase during maintenance windows
-ceph tell osd.* config set osd_recovery_max_active 3
+# The default is device-class dependent in modern Ceph; increase during maintenance windows
+ceph tell 'osd.*' config set osd_recovery_max_active 3
 
 # Adjust recovery operation priority
-# Lower values = higher priority (1-63)
-# Lower priority means faster recovery but more client impact
-ceph tell osd.* config set osd_recovery_op_priority 3
+# Higher values favor recovery over client operations
+ceph tell 'osd.*' config set osd_recovery_op_priority 5
 
-# Limit recovery bandwidth to reduce client I/O impact
-# Set in bytes per second (0 = unlimited)
-ceph tell osd.* config set osd_recovery_max_single_start 1
-ceph tell osd.* config set osd_max_backfills 1
+# Limit recovery concurrency to reduce client I/O impact
+ceph tell 'osd.*' config set osd_recovery_max_single_start 1
+ceph tell 'osd.*' config set osd_max_backfills 1
 
 # For aggressive recovery (maintenance window only):
 # These settings prioritize recovery over client I/O
-ceph tell osd.* config set osd_recovery_sleep 0
-ceph tell osd.* config set osd_recovery_max_active 5
-ceph tell osd.* config set osd_max_backfills 3
+ceph tell 'osd.*' config set osd_recovery_sleep 0
+ceph tell 'osd.*' config set osd_recovery_max_active 5
+ceph tell 'osd.*' config set osd_max_backfills 3
 ```
 
 ### Prioritizing Critical Pool Recovery
@@ -541,7 +542,7 @@ ceph tell osd.* config set osd_max_backfills 3
 # Range: 0 (lowest) to 10 (highest)
 ceph osd pool set <pool-name> recovery_priority 5
 
-# Temporarily pause recovery on less critical pools
+# Lower recovery priority on less critical pools
 ceph osd pool set <pool-name> recovery_priority 0
 ```
 
@@ -585,13 +586,12 @@ done
 ### Recommended Alert Thresholds
 
 ```bash
-# Configure warning thresholds in ceph.conf or via config set
+# Configure OSDMap warning thresholds
 # Alert when disk usage exceeds 75%
-ceph config set global mon_osd_full_ratio 0.85
-ceph config set global mon_osd_nearfull_ratio 0.75
+ceph osd set-full-ratio 0.85
+ceph osd set-nearfull-ratio 0.75
 
-# Set OSD down warning time
-# Alert if OSD is down for more than 5 minutes
+# Set how long an OSD can remain down before monitors mark it out
 ceph config set global mon_osd_down_out_interval 300
 ```
 
@@ -618,7 +618,7 @@ ceph config set global osd_scrub_end_hour 6
 
 # Set scrub intervals
 # Regular scrub: daily, Deep scrub: weekly
-ceph config set global osd_scrub_interval 86400
+ceph config set global osd_scrub_min_interval 86400
 ceph config set global osd_deep_scrub_interval 604800
 ```
 
@@ -646,8 +646,8 @@ Maintain updated documentation including:
 ### Emergency Commands
 
 ```bash
-# Force primary affinity reset (use with caution)
-ceph osd primary-affinity osd.<id> 0
+# Reset primary affinity (use with caution)
+ceph osd primary-affinity osd.<id> 1.0
 
 # Force PG recovery (for stuck PGs)
 ceph pg force-recovery <pg-id>
@@ -655,7 +655,7 @@ ceph pg force-recovery <pg-id>
 # Force PG backfill (for stuck PGs)
 ceph pg force-backfill <pg-id>
 
-# Cancel stuck scrub operations
+# Cancel forced recovery/backfill priority
 ceph pg cancel-force-recovery <pg-id>
 ceph pg cancel-force-backfill <pg-id>
 ```
