@@ -104,7 +104,7 @@ ceph status
 
 ## Enabling the Ceph MGR Prometheus Module
 
-The Ceph MGR Prometheus module is the gateway for all cluster metrics. Let's enable and configure it properly.
+The Ceph MGR Prometheus module is the primary gateway for cluster-level metrics. In newer deployments, daemon performance counters may also be exposed by `ceph_exporter`. Let's enable and configure the MGR module properly.
 
 ### Step 1: Enable the Prometheus Module
 
@@ -231,13 +231,12 @@ scrape_configs:
       - target_label: source
         replacement: 'ceph-mgr'
 
-    # Metric relabeling to drop unnecessary high-cardinality metrics
-    # This helps reduce storage requirements
-    metric_relabel_configs:
-      # Keep only essential OSD metrics by filtering device-level details
-      - source_labels: [__name__]
-        regex: 'ceph_osd_apply_latency_ms|ceph_osd_commit_latency_ms'
-        action: keep
+    # Optional: add metric_relabel_configs only after confirming the
+    # dropped metrics are not used by dashboards or alerts.
+    # metric_relabel_configs:
+    #   - source_labels: [__name__]
+    #     regex: 'ceph_rbd_.*'
+    #     action: drop
 ```
 
 ### Step 2: Advanced Service Discovery Configuration
@@ -259,14 +258,14 @@ scrape_configs:
         # Refresh interval for checking file changes
         refresh_interval: 30s
 
-    # Add authentication if your Ceph MGR requires it
+    # Add authentication if a reverse proxy in front of Ceph MGR requires it
     # Uncomment and configure if using authentication
     # basic_auth:
     #   username: 'prometheus'
     #   password_file: '/etc/prometheus/secrets/ceph_password'
 
     # TLS configuration for secure metrics scraping
-    # Enable this if your Ceph MGR uses HTTPS
+    # Enable this if scraping through an HTTPS reverse proxy or load balancer
     # tls_config:
     #   ca_file: '/etc/prometheus/certs/ca.crt'
     #   cert_file: '/etc/prometheus/certs/client.crt'
@@ -276,11 +275,11 @@ scrape_configs:
 
 Create the corresponding targets file:
 
-```json
-// File: /etc/prometheus/targets/ceph_targets.json
-// This file defines the Ceph MGR endpoints for Prometheus to scrape
-// Update this file when adding or removing MGR nodes
+File: `/etc/prometheus/targets/ceph_targets.json`
 
+This file defines the Ceph MGR endpoints for Prometheus to scrape. Update this file when adding or removing MGR nodes.
+
+```json
 [
   {
     "targets": [
@@ -324,6 +323,7 @@ promtool check config /etc/prometheus/prometheus.yml
 
 # Reload Prometheus configuration without restart
 # This applies changes immediately with zero downtime
+# This requires Prometheus to run with --web.enable-lifecycle
 curl -X POST http://localhost:9090/-/reload
 
 # Alternatively, send SIGHUP to the Prometheus process
@@ -382,7 +382,8 @@ curl -o /tmp/ceph-dashboard.json \
 curl -X POST \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
-  -d @/tmp/ceph-dashboard.json \
+  -d "$(jq -n --argfile dashboard /tmp/ceph-dashboard.json \
+        '{dashboard: $dashboard, overwrite: true}')" \
   http://<grafana-host>:3000/api/dashboards/db
 ```
 
@@ -542,7 +543,7 @@ Here's a custom dashboard JSON that provides a comprehensive cluster overview:
       "targets": [
         {
           "expr": "ceph_osd_apply_latency_ms",
-          "legendFormat": "{{osd}}"
+          "legendFormat": "{{ceph_daemon}}"
         }
       ]
     },
@@ -554,7 +555,7 @@ Here's a custom dashboard JSON that provides a comprehensive cluster overview:
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "targets": [
         {
-          "expr": "ceph_pool_stored_raw",
+          "expr": "ceph_pool_stored_raw * on(pool_id) group_left(name) ceph_pool_metadata",
           "legendFormat": "{{name}}",
           "format": "table",
           "instant": true
@@ -576,7 +577,7 @@ Here's a custom dashboard JSON that provides a comprehensive cluster overview:
         "name": "pool",
         "type": "query",
         "datasource": "Prometheus-Ceph",
-        "query": "label_values(ceph_pool_stored_raw{cluster=~\"$cluster\"}, name)",
+        "query": "label_values(ceph_pool_metadata{cluster=~\"$cluster\"}, name)",
         "refresh": 1,
         "includeAll": true
       }
@@ -630,8 +631,8 @@ Understanding which metrics to monitor is crucial for effective Ceph cluster man
 ceph_health_status
 
 # Number of health checks currently failing
-# Use this to track the number of issues requiring attention
-ceph_health_detail
+# ceph_health_detail is exposed per health-check name and severity
+sum(ceph_health_detail)
 
 # Monitor daemon availability
 # These should always equal your expected daemon count
@@ -656,13 +657,13 @@ ceph_cluster_total_avail_bytes
 
 # Per-pool storage metrics for granular capacity tracking
 # Useful for identifying which pools consume the most storage
-ceph_pool_bytes_used{pool="<pool_name>"}
-ceph_pool_stored_raw{pool="<pool_name>"}
-ceph_pool_max_avail{pool="<pool_name>"}
+ceph_pool_bytes_used{pool_id="<pool_id>"}
+ceph_pool_stored_raw{pool_id="<pool_id>"}
+ceph_pool_max_avail{pool_id="<pool_id>"}
 
 # Object count per pool
 # High object counts can impact metadata operations
-ceph_pool_objects{pool="<pool_name>"}
+ceph_pool_objects{pool_id="<pool_id>"}
 ```
 
 ### Performance Metrics
@@ -706,11 +707,11 @@ ceph_osd_weight
 
 # OSD utilization percentage
 # Uneven utilization can indicate rebalancing is needed
-ceph_osd_utilization
+(ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100
 
 # Slow OSD operations
 # High values indicate performance problems
-ceph_osd_slow_ops
+ceph_daemon_health_metrics{type="SLOW_OPS"}
 ```
 
 ### Placement Group (PG) Metrics
@@ -718,7 +719,7 @@ ceph_osd_slow_ops
 ```promql
 # Total PG count per pool
 # Should remain stable unless pool configuration changes
-ceph_pool_num_pg{pool="<pool_name>"}
+ceph_pool_num_pg{pool_id="<pool_id>"}
 
 # PG states indicating issues
 # Non-zero values for these require investigation
@@ -856,13 +857,13 @@ groups:
           description: |
             Cluster {{ $labels.cluster }} is {{ printf "%.1f" $value }}% full.
             Writes may be blocked soon. Emergency capacity action required.
-            Add OSDs immediately or enable full ratio bypass.
+            Add OSDs immediately or temporarily raise the full ratio only after assessing data-safety risk.
           runbook_url: "https://wiki.example.com/runbooks/ceph-capacity-critical"
 
       # Alert when individual OSD is nearly full
       # Unbalanced OSDs can cause write failures even when cluster has space
       - alert: CephOSDNearFull
-        expr: ceph_osd_utilization > 85
+        expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
         for: 5m
         labels:
           severity: warning
@@ -901,7 +902,7 @@ groups:
       # Alert on slow OSD operations
       # Slow ops indicate clients are waiting too long for responses
       - alert: CephOSDSlowOps
-        expr: ceph_osd_slow_ops > 0
+        expr: ceph_daemon_health_metrics{type="SLOW_OPS"} > 0
         for: 5m
         labels:
           severity: warning
@@ -911,7 +912,7 @@ groups:
           description: |
             OSD {{ $labels.ceph_daemon }} has {{ $value }} slow operations.
             This may indicate disk problems, network issues, or overload.
-            Check OSD perf: ceph daemon osd.{{ $labels.ceph_daemon }} perf dump
+            Check OSD perf: ceph daemon {{ $labels.ceph_daemon }} perf dump
           runbook_url: "https://wiki.example.com/runbooks/ceph-slow-ops"
 
       # Alert on degraded PGs
@@ -1152,12 +1153,12 @@ perform_health_check() {
         1)
             log "WARNING: Cluster health is in WARNING state"
             report+="- Cluster health is WARNING\n"
-            ((issues_found++))
+            ((issues_found+=1))
             ;;
         2)
             log "CRITICAL: Cluster health is in ERROR state"
             report+="- Cluster health is ERROR\n"
-            ((issues_found++))
+            ((issues_found+=1))
             send_slack_alert "Ceph cluster health is ERROR!" "critical"
             ;;
         *)
@@ -1172,12 +1173,12 @@ perform_health_check() {
         if ((capacity_int >= 90)); then
             log "CRITICAL: Cluster capacity at ${capacity}%"
             report+="- Cluster capacity critical: ${capacity}%\n"
-            ((issues_found++))
+            ((issues_found+=1))
             send_slack_alert "Ceph cluster capacity at ${capacity}%!" "critical"
         elif ((capacity_int >= 80)); then
             log "WARNING: Cluster capacity at ${capacity}%"
             report+="- Cluster capacity warning: ${capacity}%\n"
-            ((issues_found++))
+            ((issues_found+=1))
         else
             log "Cluster capacity: ${capacity}%"
         fi
@@ -1188,17 +1189,17 @@ perform_health_check() {
     if [[ "$osds_down" != "N/A" ]] && [[ "$osds_down" != "0" ]]; then
         log "WARNING: ${osds_down} OSD(s) are down"
         report+="- ${osds_down} OSD(s) down\n"
-        ((issues_found++))
+        ((issues_found+=1))
     else
         log "All OSDs are up"
     fi
 
     # Check for degraded PGs
-    pgs_degraded=$(query_prometheus "ceph_pg_degraded")
+    pgs_degraded=$(query_prometheus "sum(ceph_pg_degraded)")
     if [[ "$pgs_degraded" != "N/A" ]] && [[ "$pgs_degraded" != "0" ]]; then
         log "WARNING: ${pgs_degraded} PG(s) are degraded"
         report+="- ${pgs_degraded} PG(s) degraded\n"
-        ((issues_found++))
+        ((issues_found+=1))
     else
         log "No degraded PGs"
     fi
@@ -1210,7 +1211,7 @@ perform_health_check() {
         if ((latency_int > 100)); then
             log "WARNING: Average OSD latency is high: ${avg_latency}ms"
             report+="- High OSD latency: ${avg_latency}ms\n"
-            ((issues_found++))
+            ((issues_found+=1))
         else
             log "Average OSD latency: ${avg_latency}ms"
         fi
@@ -1447,8 +1448,8 @@ rate(ceph_rbd_read_bytes[5m])
 rate(ceph_rbd_write_bytes[5m])
 
 # Latency per RBD image
-ceph_rbd_read_latency_sum / ceph_rbd_read_latency_count
-ceph_rbd_write_latency_sum / ceph_rbd_write_latency_count
+rate(ceph_rbd_read_latency_sum[5m]) / rate(ceph_rbd_read_latency_count[5m])
+rate(ceph_rbd_write_latency_sum[5m]) / rate(ceph_rbd_write_latency_count[5m])
 
 # Top 10 RBD images by write IOPS
 topk(10, rate(ceph_rbd_write_ops[5m]))
@@ -1473,8 +1474,8 @@ ss -tlnp | grep 9283
 # Test connectivity from Prometheus server
 curl -v http://<mgr-ip>:9283/metrics
 
-# Check MGR logs for errors
-ceph log last 100 mgr | grep -i error
+# Check MGR daemon logs for errors on cephadm-managed clusters
+cephadm logs --name mgr.<mgr-id> -- -n 100 | grep -i error
 
 # If module fails to start, check for Python dependency issues
 ceph mgr module enable prometheus 2>&1
@@ -1493,6 +1494,10 @@ curl -s http://<mgr-ip>:9283/metrics | grep -c "^ceph_"
 
 # Verify RBD stats are enabled if RBD metrics are missing
 ceph config get mgr mgr/prometheus/rbd_stats_pools
+
+# On newer Ceph releases, daemon performance counters are normally exposed by ceph_exporter.
+# If you do not deploy ceph_exporter, you can re-enable them in the MGR module:
+ceph config set mgr mgr/prometheus/exclude_perf_counters false
 
 # Check for high cardinality issues that might cause drops
 # Look for "sample limit exceeded" in Prometheus logs
