@@ -16,10 +16,10 @@ When using Nginx as a reverse proxy, you need to ensure query string parameters 
 flowchart LR
     A[Client Request] --> B[Nginx]
     B --> C{proxy_pass config}
-    C -->|Without URI| D[Query string preserved]
-    C -->|With URI| E[Query string may be lost]
-    D --> F[Backend receives full URL]
-    E --> G[Need explicit handling]
+    C -->|Without URI| D[Original URI and query string preserved]
+    C -->|With URI| E[Location path replaced]
+    D --> F[Backend receives request URI]
+    E --> G[Query string preserved unless changed explicitly]
 ```
 
 ## Default Behavior
@@ -58,18 +58,18 @@ Query strings are still preserved in this case because of how Nginx handles the 
 
 ### Problem 1: Query String Lost with Rewrite
 
-When using `rewrite` before `proxy_pass`, query strings can be lost:
+When using `rewrite` before `proxy_pass`, query strings can be lost if the replacement explicitly discards them:
 
 ```nginx
 # WRONG - Query string is lost
 
 location /api/ {
-    rewrite ^/api/(.*)$ /v2/$1 break;
+    rewrite ^/api/(.*)$ /v2/$1? break;
     proxy_pass http://backend;
 }
 ```
 
-**Solution: Use `$is_args$args`**
+**Solution: Do not add the trailing `?` unless you want to drop the original query string**
 
 ```nginx
 # CORRECT - Query string is preserved
@@ -79,36 +79,28 @@ location /api/ {
     # Query string is automatically appended when using rewrite with break
 }
 
-# Or explicitly append query string using a regex location
-location ~ ^/api/(.*)$ {
-    proxy_pass http://backend/v2/$1$is_args$args;
+# Or explicitly append query string when constructing the upstream URI with variables
+location /api/ {
+    rewrite ^/api/(.*)$ /v2/$1 break;
+    proxy_pass http://backend$uri$is_args$args;
 }
 ```
 
-### Problem 2: Double Question Marks
+### Problem 2: Static Query String Replaces Original Args
 
-Sometimes you end up with double question marks in URLs:
+Sometimes a static query string in `proxy_pass` replaces the original query string instead of merging with it:
 
 ```nginx
-# Can cause issues
+# Original query string is not automatically merged with this static query string
 location /search {
     proxy_pass http://backend/query?type=search;
 }
 ```
 
 Request: `GET /search?q=nginx`
-Might forward as: `http://backend/query?type=search?q=nginx` (WRONG)
+Forwarded to: `http://backend/query?type=search`
 
 **Solution: Merge query strings properly**
-
-```nginx
-location /search {
-    set $args "type=search&$args";
-    proxy_pass http://backend/query?$args;
-}
-```
-
-Or use map for cleaner handling:
 
 ```nginx
 map $args $final_args {
@@ -144,11 +136,13 @@ The `$args` variable contains the query string without the leading `?`:
 
 ```nginx
 location /api/ {
-    # Explicitly append query string
-    proxy_pass http://backend/api/$request_uri;
+    # Explicitly append only the query string
+    proxy_pass http://backend/api/$is_args$args;
+}
 
-    # Or use $args
-    proxy_pass http://backend/api/?$args;
+location / {
+    # Or pass the complete original URI
+    proxy_pass http://backend$request_uri;
 }
 ```
 
@@ -216,27 +210,18 @@ server {
 
 ### Removing Specific Query Parameters
 
-Remove sensitive parameters before forwarding:
+Remove sensitive parameters before forwarding. For complex or repeated query parameters, prefer handling this in application code or with a query-aware module such as njs; Nginx string matching is limited.
 
 ```nginx
-location /api/ {
-    # Remove 'token' parameter from query string
-    set $clean_args $args;
-    if ($clean_args ~ "^(.*)token=[^&]*(.*)$") {
-        set $clean_args $1$2;
-    }
-    # Clean up any double ampersands
-    if ($clean_args ~ "^(.*)&&(.*)$") {
-        set $clean_args $1&$2;
-    }
-    # Remove leading/trailing ampersands
-    if ($clean_args ~ "^&(.*)$") {
-        set $clean_args $1;
-    }
-    if ($clean_args ~ "^(.*)&$") {
-        set $clean_args $1;
-    }
+map $args $clean_args {
+    default $args;
+    ~^token=[^&]*&(?<rest>.*)$ $rest;
+    ~^(?<prefix>.*)&token=[^&]*&(?<suffix>.*)$ $prefix&$suffix;
+    ~^(?<prefix>.*)&token=[^&]*$ $prefix;
+    ~^token=[^&]*$ "";
+}
 
+location /api/ {
     proxy_pass http://backend/api/?$clean_args;
 }
 ```
@@ -279,6 +264,11 @@ server {
 ### Basic API Gateway
 
 ```nginx
+map $args $tracked_args {
+    ""      "source=nginx&timestamp=$msec";
+    default "source=nginx&timestamp=$msec&$args";
+}
+
 upstream api_backend {
     server 192.168.1.10:3000;
     server 192.168.1.11:3000;
@@ -305,14 +295,7 @@ server {
 
     # Add tracking parameters
     location /tracked/ {
-        set $tracking "source=nginx&timestamp=$msec";
-        if ($args = "") {
-            set $args $tracking;
-        }
-        if ($args != "") {
-            set $args "$tracking&$args";
-        }
-        proxy_pass http://api_backend/v1/?$args;
+        proxy_pass http://api_backend/v1/?$tracked_args;
     }
 }
 ```
