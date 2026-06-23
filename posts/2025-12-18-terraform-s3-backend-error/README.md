@@ -36,7 +36,7 @@ flowchart TD
     F -->|No| G[Permission Issue]
     F -->|Yes| H{Is region correct?}
     H -->|No| I[Fix region config]
-    H -->|Yes| J[Check DynamoDB/encryption]
+    H -->|Yes| J[Check locking/encryption]
 ```
 
 ## Fix 1: AWS Credentials Not Configured
@@ -128,55 +128,92 @@ Your IAM user or role needs specific permissions for the S3 backend.
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "S3StateAccess",
+      "Sid": "S3StateList",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-terraform-state"
+    },
+    {
+      "Sid": "S3StateObjectAccess",
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-        "s3:GetBucketVersioning"
+        "s3:PutObject"
       ],
-      "Resource": [
-        "arn:aws:s3:::my-terraform-state",
-        "arn:aws:s3:::my-terraform-state/*"
-      ]
+      "Resource": "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate"
     }
   ]
 }
 ```
 
-### With DynamoDB Locking
+### With S3 Native Locking
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "S3StateAccess",
+      "Sid": "S3StateList",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-terraform-state"
+    },
+    {
+      "Sid": "S3StateObjectAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate"
+    },
+    {
+      "Sid": "S3LockFileAccess",
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-        "s3:GetBucketVersioning"
+        "s3:DeleteObject"
       ],
-      "Resource": [
-        "arn:aws:s3:::my-terraform-state",
-        "arn:aws:s3:::my-terraform-state/*"
-      ]
-    },
+      "Resource": "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate.tflock"
+    }
+  ]
+}
+```
+
+### With Legacy DynamoDB Locking
+
+DynamoDB-based locking is deprecated in current Terraform versions. Prefer S3 native locking with `use_lockfile = true`, but older configurations that still use DynamoDB need these permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
     {
       "Sid": "DynamoDBLocking",
       "Effect": "Allow",
       "Action": [
+        "dynamodb:DescribeTable",
         "dynamodb:GetItem",
         "dynamodb:PutItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:DescribeTable"
+        "dynamodb:DeleteItem"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-locks"
+    },
+    {
+      "Sid": "S3StateList",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-terraform-state"
+    },
+    {
+      "Sid": "S3StateObjectAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate"
     }
   ]
 }
@@ -219,9 +256,23 @@ terraform {
 }
 ```
 
-## Fix 5: DynamoDB Table Issues
+## Fix 5: State Locking Issues
 
-If using state locking, the DynamoDB table must exist:
+For current Terraform versions, prefer S3 native locking:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "my-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
+  }
+}
+```
+
+If using legacy DynamoDB state locking, the DynamoDB table must exist:
 
 ```bash
 # Create DynamoDB table for locking
@@ -233,7 +284,7 @@ aws dynamodb create-table \
   --region us-east-1
 ```
 
-Backend configuration with locking:
+Backend configuration with legacy DynamoDB locking:
 
 ```hcl
 terraform {
@@ -241,7 +292,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    dynamodb_table = "terraform-locks" # Deprecated; prefer use_lockfile
     encrypt        = true
   }
 }
@@ -326,12 +377,14 @@ If using cross-account access or assume role:
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    role_arn       = "arn:aws:iam::123456789012:role/TerraformStateRole"
-    session_name   = "terraform"
-    external_id    = "unique-external-id"
+    bucket = "my-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+    assume_role = {
+      role_arn     = "arn:aws:iam::123456789012:role/TerraformStateRole"
+      session_name = "terraform"
+      external_id  = "unique-external-id"
+    }
   }
 }
 ```
@@ -380,7 +433,7 @@ terraform init -reconfigure
 
 ### VPC Endpoints
 
-If running in a VPC without internet access, you need S3 and DynamoDB VPC endpoints:
+If running in a VPC without internet access, you need an S3 VPC endpoint. Add a DynamoDB endpoint too if you still use legacy DynamoDB locking:
 
 ```hcl
 resource "aws_vpc_endpoint" "s3" {
@@ -422,17 +475,19 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "my-terraform-state-123456789012"  # Globally unique name
-    key            = "environments/prod/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-terraform-state-123456789012"  # Globally unique name
+    key          = "environments/prod/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
 
     # Optional: Use specific profile
     # profile = "terraform"
 
     # Optional: Use assume role
-    # role_arn = "arn:aws:iam::123456789012:role/TerraformRole"
+    # assume_role = {
+    #   role_arn = "arn:aws:iam::123456789012:role/TerraformRole"
+    # }
   }
 }
 
@@ -443,4 +498,4 @@ provider "aws" {
 
 ---
 
-Most S3 backend errors come down to three issues: missing credentials, incorrect permissions, or misconfigured bucket settings. Work through the diagnostic flowchart, check each potential cause, and ensure your IAM policy grants all required S3 and DynamoDB actions. Once properly configured, the S3 backend provides reliable, collaborative state management for your Terraform projects.
+Most S3 backend errors come down to three issues: missing credentials, incorrect permissions, or misconfigured bucket settings. Work through the diagnostic flowchart, check each potential cause, and ensure your IAM policy grants all required S3 actions and any locking-related actions. Once properly configured, the S3 backend provides reliable, collaborative state management for your Terraform projects.
