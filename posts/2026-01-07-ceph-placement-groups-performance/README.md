@@ -185,8 +185,12 @@ Configure minimum and maximum PG boundaries:
 # Prevents autoscaler from reducing PGs below this threshold
 ceph osd pool set <pool-name> pg_num_min 32
 
-# Set maximum number of PGs (global setting)
-# Prevents excessive PG creation which can impact performance
+# Set maximum number of PGs for a pool
+# Prevents the autoscaler from increasing PGs above this threshold
+ceph osd pool set <pool-name> pg_num_max 512
+
+# Set the global maximum PG replicas per OSD failsafe
+# Prevents excessive PG creation across the cluster
 ceph config set global mon_max_pg_per_osd 250
 ```
 
@@ -220,7 +224,8 @@ Adjust PG count for an existing pool:
 ceph osd pool set <pool-name> pg_num 256
 
 # Set the placement group count for placement
-# This should match pg_num after the split completes
+# In Nautilus and later, Ceph normally adjusts pgp_num automatically.
+# Set this manually only on older releases or when autoscaling is disabled and required.
 ceph osd pool set <pool-name> pgp_num 256
 ```
 
@@ -279,26 +284,26 @@ ceph osd pool set <pool-name> pg_num 256
 # Look for 'splitting' state in PG status
 ceph pg stat
 
-# Once splitting completes, update pgp_num to redistribute
-# This triggers the actual data movement
+# In Nautilus and later, Ceph normally scales pgp_num automatically.
+# On older releases, update pgp_num after splitting to redistribute placement.
 ceph osd pool set <pool-name> pgp_num 256
 
 # Monitor data movement progress
 ceph -s
 ```
 
-### Controlling Split Rate
+### Controlling Autoscaler Changes
 
-Limit the rate of PG splitting to minimize performance impact:
+Tune autoscaler behavior to minimize performance impact:
 
 ```bash
-# Set the maximum number of PGs that can be splitting simultaneously per OSD
-# Lower values reduce performance impact but slow down the process
-ceph config set osd osd_max_pg_per_osd_hard_ratio 3
+# Set the target number of PG replicas per OSD used by the autoscaler
+# Higher values can improve balance but increase memory, peering, and recovery overhead
+ceph config set global mon_target_pg_per_osd 100
 
-# Set the split threshold to control when splits happen
-# This affects how aggressively the autoscaler splits PGs
-ceph config set mgr mgr/pg_autoscaler/threshold 3.0
+# Set the autoscaler threshold for recommending or applying PG count changes
+# The default factor is 3.0; lower values make autoscaling less conservative
+ceph osd pool set threshold 3.0
 ```
 
 ### PG Merging (Reducing PG Count)
@@ -316,7 +321,8 @@ ceph osd pool set <pool-name> pg_num 64
 # Monitor the merging process
 ceph pg stat
 
-# Update pgp_num after merging completes
+# In Nautilus and later, Ceph normally adjusts pgp_num automatically.
+# On older releases, update pgp_num after merging completes.
 ceph osd pool set <pool-name> pgp_num 64
 ```
 
@@ -470,8 +476,8 @@ ceph pg repair <pg_id>
 # Deep scrub a specific PG to detect inconsistencies
 ceph pg deep-scrub <pg_id>
 
-# Initiate a scrub on all PGs (use during maintenance windows)
-ceph osd pool scrub <pool-name>
+# Initiate a scrub on all PGs in a pool (use during maintenance windows)
+ceph osd pool scrub --who=<pool-name>
 ```
 
 #### Too Many PGs Per OSD
@@ -505,16 +511,16 @@ ceph config set osd osd_max_backfills 2
 # Set maximum recovery operations per OSD
 ceph config set osd osd_recovery_max_active 5
 
-# Limit recovery I/O to reduce impact on client operations
-# Value in bytes per second
+# Limit how many recovery operations are newly started per OSD
 ceph config set osd osd_recovery_max_single_start 1
 
-# Set recovery operation priority (lower = less priority)
-# Range: 1-63, default is 5
+# Set recovery operation priority relative to client operations
+# Lower values favor client operations; higher values favor recovery
 ceph config set osd osd_recovery_op_priority 3
 
 # Set recovery sleep interval to reduce OSD load
 # Time in seconds between recovery operations
+# This setting is ignored when the mClock scheduler is used
 ceph config set osd osd_recovery_sleep 0.1
 ```
 
@@ -582,8 +588,8 @@ ceph osd pool set <pool-name> bulk true
 Set up monitoring for PG-related metrics:
 
 ```bash
-# Enable detailed PG statistics
-ceph config set mgr mgr/prometheus/rbd_stats_pools "*"
+# Enable the Prometheus manager module to expose Ceph metrics
+ceph mgr module enable prometheus
 
 # Check PG-related performance metrics
 ceph daemon osd.0 perf dump | grep -i pg
