@@ -254,7 +254,9 @@ network:
       dhcp4: no       # Disable DHCP for static configuration
       addresses:
         - 192.168.1.100/24  # Static IP address with subnet mask
-      gateway4: 192.168.1.1  # Default gateway
+      routes:
+        - to: default
+          via: 192.168.1.1  # Default gateway (gateway4 is deprecated)
       nameservers:
         addresses:
           - 8.8.8.8          # Primary DNS server
