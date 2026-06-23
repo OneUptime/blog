@@ -50,16 +50,17 @@ The `archive_file` data source creates consistent zips when configured properly:
 ```hcl
 # Create zip from source directory
 data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/src"
-  output_path = "${path.module}/lambda.zip"
+  type             = "zip"
+  source_dir       = "${path.module}/src"
+  output_path      = "${path.module}/lambda.zip"
+  output_file_mode = "0666"
 
   # Exclude files that cause hash instability
   excludes = [
-    "__pycache__",
-    "*.pyc",
-    ".DS_Store",
-    ".git",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "**/.DS_Store",
+    ".git/**",
     "*.swp",
     ".env"
   ]
@@ -85,7 +86,7 @@ resource "aws_lambda_function" "my_function" {
   filename         = "${path.module}/dist/lambda.zip"
   source_code_hash = filebase64sha256("${path.module}/dist/lambda.zip")
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs24.x"
   role             = aws_iam_role.lambda_role.arn
 }
 ```
@@ -117,10 +118,10 @@ For larger functions or more control, deploy via S3:
 
 ```hcl
 resource "aws_s3_object" "lambda_code" {
-  bucket = aws_s3_bucket.lambda_bucket.id
-  key    = "functions/my-function/${var.lambda_version}.zip"
-  source = "${path.module}/dist/lambda.zip"
-  etag   = filemd5("${path.module}/dist/lambda.zip")
+  bucket      = aws_s3_bucket.lambda_bucket.id
+  key         = "functions/my-function/${var.lambda_version}.zip"
+  source      = "${path.module}/dist/lambda.zip"
+  source_hash = filemd5("${path.module}/dist/lambda.zip")
 }
 
 resource "aws_lambda_function" "my_function" {
@@ -128,13 +129,14 @@ resource "aws_lambda_function" "my_function" {
 
   s3_bucket         = aws_s3_bucket.lambda_bucket.id
   s3_key            = aws_s3_object.lambda_code.key
+  # Requires bucket versioning to be enabled
   s3_object_version = aws_s3_object.lambda_code.version_id
 
   # source_code_hash triggers update when S3 object changes
   source_code_hash = filebase64sha256("${path.module}/dist/lambda.zip")
 
   handler = "index.handler"
-  runtime = "nodejs18.x"
+  runtime = "nodejs24.x"
   role    = aws_iam_role.lambda_role.arn
 }
 ```
@@ -174,18 +176,19 @@ Hash the actual source files, not the zip:
 ```hcl
 # Hash all Python files in the source directory
 locals {
-  source_files = fileset("${path.module}/src", "**/*.py")
+  source_files = sort(tolist(fileset("${path.module}/src", "**/*.py")))
 
   # Create a hash of all file contents
   source_hash = base64sha256(join("", [
-    for f in local.source_files : filebase64sha256("${path.module}/src/${f}")
+    for f in local.source_files : format("%s:%s", f, filebase64sha256("${path.module}/src/${f}"))
   ]))
 }
 
 data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/src"
-  output_path = "${path.module}/.terraform/lambda-${local.source_hash}.zip"
+  type             = "zip"
+  source_dir       = "${path.module}/src"
+  output_path      = "${path.module}/.terraform/lambda-${local.source_hash}.zip"
+  output_file_mode = "0666"
 }
 
 resource "aws_lambda_function" "my_function" {
@@ -208,14 +211,17 @@ FROM public.ecr.aws/lambda/python:3.11
 
 WORKDIR /build
 
+RUN yum install -y zip && yum clean all
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt -t .
 
 COPY src/ .
 
 # Create consistent zip
-RUN find . -name "*.pyc" -delete && \
+CMD find . -name "*.pyc" -delete && \
     find . -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    mkdir -p /output && \
     zip -X -r -9 /output/lambda.zip .
 ```
 
@@ -232,27 +238,13 @@ docker run --rm -v $(pwd)/dist:/output lambda-builder
 Terraform configuration:
 
 ```hcl
-resource "null_resource" "lambda_build" {
-  triggers = {
-    # Rebuild when source files change
-    source_hash = sha256(join("", [
-      for f in fileset("${path.module}/src", "**/*.py") :
-        filesha256("${path.module}/src/${f}")
-    ]))
-    requirements_hash = filesha256("${path.module}/requirements.txt")
-  }
-
-  provisioner "local-exec" {
-    command     = "./build-lambda.sh"
-    working_dir = path.module
-  }
-}
-
-data "archive_file" "lambda_zip" {
-  depends_on  = [null_resource.lambda_build]
-  type        = "zip"
-  source_file = "${path.module}/dist/lambda.zip"
-  output_path = "${path.module}/dist/lambda-upload.zip"
+resource "aws_lambda_function" "my_function" {
+  function_name    = "my-function"
+  filename         = "${path.module}/dist/lambda.zip"
+  source_code_hash = filebase64sha256("${path.module}/dist/lambda.zip")
+  handler          = "index.handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_role.arn
 }
 ```
 
@@ -272,7 +264,7 @@ resource "aws_lambda_function" "my_function" {
   filename         = "${path.module}/dist/lambda-${var.lambda_version}.zip"
   source_code_hash = filebase64sha256("${path.module}/dist/lambda-${var.lambda_version}.zip")
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs24.x"
   role             = aws_iam_role.lambda_role.arn
 
   environment {
