@@ -30,11 +30,11 @@ services:
         parallelism: 2                 # Update 2 containers at a time
         order: start-first             # Start new before stopping old (zero downtime)
         failure_action: rollback       # Auto-rollback if health checks fail
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-        interval: 10s                  # Check every 10 seconds
-        timeout: 3s                    # Fail if no response in 3 seconds
-        retries: 3                     # Mark unhealthy after 3 failures
+    healthcheck:                       # Service-level key, not under deploy
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s                    # Check every 10 seconds
+      timeout: 3s                      # Fail if no response in 3 seconds
+      retries: 3                       # Mark unhealthy after 3 failures
 ```
 
 - `start-first` spins up a new task before stopping the old one (blue/green style).
@@ -99,7 +99,7 @@ Secrets mount as tmpfs, automatically scoped per service.
 1. Build multi-arch images with `docker buildx bake`.
 2. Scan with `trivy image`.
 3. Push to registry (GHCR/ECR).
-4. Update stack using `docker stack deploy -c stack.yaml myapp` via GitOps (e.g., Flux's Swarm support) or Jenkins.
+4. Update stack using `docker stack deploy -c stack.yaml myapp` from your CI/CD runner (e.g., GitHub Actions or Jenkins).
 5. Run `docker service ls` + smoke tests post-deploy.
 
 ## 7. Backup and Disaster Recovery
