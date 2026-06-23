@@ -45,7 +45,7 @@ flowchart TB
 
 Before configuring access logging, ensure you have the following:
 
-- A Kubernetes cluster with Istio installed (version 1.18 or later recommended)
+- A Kubernetes cluster with Istio installed (version 1.22 or later recommended)
 - kubectl configured to communicate with your cluster
 - Basic understanding of Istio's architecture and Envoy proxy
 
@@ -78,7 +78,6 @@ Apply the configuration using kubectl:
 
 ```bash
 # Apply the ConfigMap to enable access logging globally
-# This will trigger a rolling update of Envoy sidecars to pick up the new configuration
 kubectl apply -f istio-configmap.yaml
 ```
 
@@ -105,10 +104,6 @@ spec:
     # Options: TEXT (default) or JSON
     # JSON is recommended for easier parsing and integration with log aggregation systems
     accessLogEncoding: JSON
-
-    # Enable access logging for all workloads
-    # When set to true, access logs are generated for every request
-    enableAccessLog: true
 ```
 
 ## Configuring Log Formats
@@ -123,7 +118,7 @@ Text format is human-readable and useful for quick debugging. The following conf
 # text-format-logging.yaml
 # This Telemetry resource configures text-based access logging.
 # Text format is easier to read manually but harder to parse programmatically.
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: text-access-logging
@@ -160,8 +155,8 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    # The default JSON format includes all standard Envoy access log fields
-    # Each field is automatically converted to a JSON key-value pair
+    # With no custom accessLogFormat, Istio renders the default access log
+    # as JSON using the standard Envoy access log fields
 ```
 
 A sample JSON access log entry:
@@ -296,7 +291,7 @@ You can configure access logging at the namespace level to have different loggin
 # namespace-access-logging.yaml
 # This Telemetry resource enables access logging only for the production namespace.
 # Namespace-scoped configurations override mesh-wide settings for workloads in that namespace.
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-access-logging
@@ -316,7 +311,7 @@ For fine-grained control, you can configure access logging for specific workload
 # workload-access-logging.yaml
 # This Telemetry resource enables access logging only for workloads with specific labels.
 # Use this approach when you need different logging configurations for different services.
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-service-logging
@@ -343,47 +338,20 @@ The following configuration logs only error responses (4xx and 5xx status codes)
 
 ```yaml
 # error-only-logging.yaml
-# This EnvoyFilter configures access logging to only capture error responses.
+# This Telemetry resource configures access logging to only capture error responses.
 # Filtering logs reduces storage costs and makes it easier to identify issues.
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: error-only-access-log
   namespace: istio-system
 spec:
-  configPatches:
-    - applyTo: NETWORK_FILTER
-      match:
-        context: ANY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log:
-              - name: envoy.access_loggers.file
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-                  path: /dev/stdout
-                  log_format:
-                    json_format:
-                      timestamp: "%START_TIME%"
-                      method: "%REQ(:METHOD)%"
-                      path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                      response_code: "%RESPONSE_CODE%"
-                      duration_ms: "%DURATION%"
-                # Only log responses with status code >= 400
-                filter:
-                  status_code_filter:
-                    comparison:
-                      op: GE
-                      value:
-                        default_value: 400
-                        runtime_key: access_log_min_status_code
+  accessLogging:
+    - providers:
+        - name: envoy
+      # Only log responses with status code >= 400
+      filter:
+        expression: response.code >= 400
 ```
 
 ### Filter by Request Path
@@ -392,41 +360,20 @@ You can exclude health check endpoints or other noisy paths from access logs:
 
 ```yaml
 # path-filter-logging.yaml
-# This EnvoyFilter excludes health check endpoints from access logs.
+# This Telemetry resource excludes common health check endpoints from access logs.
 # Excluding noisy endpoints reduces log volume significantly.
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: exclude-health-checks
   namespace: istio-system
 spec:
-  configPatches:
-    - applyTo: NETWORK_FILTER
-      match:
-        context: ANY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log:
-              - name: envoy.access_loggers.file
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-                  path: /dev/stdout
-                  log_format:
-                    json_format:
-                      timestamp: "%START_TIME%"
-                      method: "%REQ(:METHOD)%"
-                      path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                      response_code: "%RESPONSE_CODE%"
-                # Exclude requests to health check endpoints
-                filter:
-                  not_health_check_filter: {}
+  accessLogging:
+    - providers:
+        - name: envoy
+      # Exclude requests to common health check endpoints
+      filter:
+        expression: request.url_path != "/healthz" && request.url_path != "/readyz" && request.url_path != "/livez"
 ```
 
 ## Log Shipping Integration
@@ -523,13 +470,17 @@ data:
     # Source: Collect logs from Kubernetes
     [sources.kubernetes_logs]
     type = "kubernetes_logs"
-    # Only collect logs from istio-proxy containers
-    extra_label_selector = "app.kubernetes.io/name=istio-proxy"
+
+    # Transform: Keep only logs from istio-proxy containers
+    [transforms.filter_istio_proxy]
+    type = "filter"
+    inputs = ["kubernetes_logs"]
+    condition = '.kubernetes.container_name == "istio-proxy"'
 
     # Transform: Parse JSON access logs
     [transforms.parse_istio_logs]
     type = "remap"
-    inputs = ["kubernetes_logs"]
+    inputs = ["filter_istio_proxy"]
     # VRL (Vector Remap Language) script to parse and enrich logs
     source = '''
     # Parse the JSON log message
@@ -673,76 +624,33 @@ You can configure Istio to send access logs to an OpenTelemetry Collector for un
 
 ```yaml
 # otel-access-logging.yaml
-# This EnvoyFilter configures Envoy to send access logs to an OpenTelemetry Collector.
+# This IstioOperator configuration tells Istio to send access logs to an OpenTelemetry Collector.
 # Using OTLP enables correlation between logs, traces, and metrics.
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
   name: otel-access-logging
   namespace: istio-system
 spec:
-  configPatches:
-    # Add OpenTelemetry access log provider
-    - applyTo: BOOTSTRAP
-      patch:
-        operation: MERGE
-        value:
-          static_resources:
-            clusters:
-              - name: otel_collector
-                type: STRICT_DNS
-                lb_policy: ROUND_ROBIN
-                load_assignment:
-                  cluster_name: otel_collector
-                  endpoints:
-                    - lb_endpoints:
-                        - endpoint:
-                            address:
-                              socket_address:
-                                address: otel-collector.observability.svc.cluster.local
-                                port_value: 4317
-                http2_protocol_options: {}
-
-    - applyTo: NETWORK_FILTER
-      match:
-        context: ANY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log:
-              - name: envoy.access_loggers.open_telemetry
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
-                  common_config:
-                    log_name: istio_access_log
-                    grpc_service:
-                      envoy_grpc:
-                        cluster_name: otel_collector
-                  body:
-                    string_value: "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL% %RESPONSE_CODE%"
-                  attributes:
-                    values:
-                      - key: method
-                        value:
-                          string_value: "%REQ(:METHOD)%"
-                      - key: path
-                        value:
-                          string_value: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                      - key: response_code
-                        value:
-                          string_value: "%RESPONSE_CODE%"
-                      - key: duration_ms
-                        value:
-                          string_value: "%DURATION%"
-                      - key: trace_id
-                        value:
-                          string_value: "%REQ(X-B3-TRACEID)%"
+  meshConfig:
+    extensionProviders:
+      - name: otel
+        envoyOtelAls:
+          service: opentelemetry-collector.observability.svc.cluster.local
+          port: 4317
+          logName: istio_access_log
+          logFormat:
+            text: "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL% %RESPONSE_CODE%"
+            labels:
+              method: "%REQ(:METHOD)%"
+              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              response_code: "%RESPONSE_CODE%"
+              duration_ms: "%DURATION%"
+              trace_id: "%REQ(X-B3-TRACEID)%"
+    defaultProviders:
+      accessLogging:
+        - envoy
+        - otel
 ```
 
 ### gRPC Access Log Service (ALS)
@@ -751,67 +659,33 @@ For high-performance log streaming, you can use Envoy's gRPC Access Log Service:
 
 ```yaml
 # grpc-als-logging.yaml
-# This configuration sends access logs to an external gRPC service.
+# This IstioOperator configuration sends access logs to an external gRPC service.
 # gRPC ALS provides efficient, streaming delivery of access logs.
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
   name: grpc-access-log-service
   namespace: istio-system
 spec:
-  configPatches:
-    # Add the gRPC ALS cluster
-    - applyTo: BOOTSTRAP
-      patch:
-        operation: MERGE
-        value:
-          static_resources:
-            clusters:
-              - name: access_log_service
-                type: STRICT_DNS
-                lb_policy: ROUND_ROBIN
-                http2_protocol_options: {}
-                load_assignment:
-                  cluster_name: access_log_service
-                  endpoints:
-                    - lb_endpoints:
-                        - endpoint:
-                            address:
-                              socket_address:
-                                address: als.logging.svc.cluster.local
-                                port_value: 9001
-
-    # Configure the access logger to use gRPC ALS
-    - applyTo: NETWORK_FILTER
-      match:
-        context: ANY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log:
-              - name: envoy.access_loggers.http_grpc
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
-                  common_config:
-                    log_name: istio_http_access
-                    transport_api_version: V3
-                    grpc_service:
-                      envoy_grpc:
-                        cluster_name: access_log_service
-                  # Include additional request headers in logs
-                  additional_request_headers_to_log:
-                    - x-request-id
-                    - x-b3-traceid
-                    - x-b3-spanid
-                  # Include additional response headers in logs
-                  additional_response_headers_to_log:
-                    - x-envoy-upstream-service-time
+  meshConfig:
+    extensionProviders:
+      - name: grpc-als
+        envoyHttpAls:
+          service: als.logging.svc.cluster.local
+          port: 9001
+          logName: istio_http_access
+          # Include additional request headers in logs
+          additionalRequestHeadersToLog:
+            - x-request-id
+            - x-b3-traceid
+            - x-b3-spanid
+          # Include additional response headers in logs
+          additionalResponseHeadersToLog:
+            - x-envoy-upstream-service-time
+    defaultProviders:
+      accessLogging:
+        - envoy
+        - grpc-als
 ```
 
 ## Visualizing Access Logs
@@ -851,7 +725,7 @@ Here is an example LogQL query for Grafana to analyze access logs:
 {source="istio", response_category="server_error"} |= "response_code"
 
 # Query to calculate request rate by service
-sum(rate({source="istio"} | json | unwrap duration_ms [5m])) by (service)
+sum by (service) (rate({source="istio"}[5m]))
 
 # Query to find slow requests (> 1 second)
 {source="istio"} | json | duration_ms > 1000
