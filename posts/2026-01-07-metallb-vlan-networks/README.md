@@ -30,7 +30,7 @@ VLANs (Virtual Local Area Networks) are used in enterprise environments to segme
 - Announce IP addresses on the correct VLAN interfaces
 - Scope L2 advertisements to specific nodes and interfaces
 - Manage separate IP pools for different VLANs
-- Handle traffic routing between VLANs appropriately
+- Integrate with existing routing between VLANs
 
 ### Why VLAN Segmentation Matters
 
@@ -46,7 +46,7 @@ VLAN segmentation in Kubernetes environments provides:
 Before configuring MetalLB for VLAN networks, ensure you have:
 
 - Kubernetes cluster v1.25 or later
-- MetalLB v0.13 or later (for L2 advertisement scoping features)
+- MetalLB v0.13 or later (for CRD-based L2Advertisement resources and L2 scoping features)
 - Network infrastructure supporting 802.1Q VLAN tagging
 - Switch ports configured as trunk ports for Kubernetes nodes
 - Root access to configure node network interfaces
@@ -105,7 +105,7 @@ VLAN interfaces in Linux follow the naming convention `<parent-interface>.<vlan-
 
 ### Ubuntu/Debian Configuration with Netplan
 
-The following Netplan configuration creates VLAN interfaces for production (VLAN 100) and staging (VLAN 200) networks on a node.
+The following Netplan configuration creates VLAN interfaces for production (VLAN 100), staging (VLAN 200), and management (VLAN 300) networks on a node.
 
 ```yaml
 # /etc/netplan/01-vlan-config.yaml
@@ -128,38 +128,29 @@ network:
   vlans:
     # VLAN 100 - Production Network
     # This interface will be used by MetalLB to announce production LoadBalancer IPs
-    vlan100:
+    ens192.100:
       id: 100                          # VLAN ID matching switch configuration
       link: ens192                     # Parent interface
       addresses:
         - 10.100.0.10/24              # Node's IP address on this VLAN
-      routes:
-        - to: 10.100.0.0/24           # Route for production network
-          via: 10.100.0.1             # Gateway for this VLAN
       mtu: 1500                        # Standard MTU, adjust if using jumbo frames
 
     # VLAN 200 - Staging Network
     # Separate VLAN for staging environment LoadBalancer services
-    vlan200:
+    ens192.200:
       id: 200
       link: ens192
       addresses:
         - 10.200.0.10/24
-      routes:
-        - to: 10.200.0.0/24
-          via: 10.200.0.1
       mtu: 1500
 
     # VLAN 300 - Management Network
     # Used for internal management traffic and monitoring services
-    vlan300:
+    ens192.300:
       id: 300
       link: ens192
       addresses:
         - 10.30.0.10/24
-      routes:
-        - to: 10.30.0.0/24
-          via: 10.30.0.1
       mtu: 1500
 ```
 
@@ -167,7 +158,7 @@ Apply the Netplan configuration with the following commands:
 
 ```bash
 # Validate the configuration before applying
-# This checks for syntax errors without making changes
+# This applies the changes temporarily and rolls back unless you confirm
 sudo netplan try
 
 # Apply the configuration permanently
@@ -175,7 +166,7 @@ sudo netplan try
 sudo netplan apply
 
 # Verify the interfaces are created correctly
-# You should see vlan100, vlan200, and vlan300 interfaces
+# You should see ens192.100, ens192.200, and ens192.300 interfaces
 ip addr show
 ```
 
@@ -196,30 +187,30 @@ PARENT_IFACE="ens192"
 # The connection name includes the VLAN ID for easy identification
 nmcli connection add type vlan \
     con-name "vlan100-prod" \
+    ifname "${PARENT_IFACE}.100" \
     dev "${PARENT_IFACE}" \
     id 100 \
     ipv4.addresses "10.100.0.10/24" \
-    ipv4.gateway "10.100.0.1" \
     ipv4.method manual \
     connection.autoconnect yes
 
 # Create VLAN 200 connection for Staging network
 nmcli connection add type vlan \
     con-name "vlan200-staging" \
+    ifname "${PARENT_IFACE}.200" \
     dev "${PARENT_IFACE}" \
     id 200 \
     ipv4.addresses "10.200.0.10/24" \
-    ipv4.gateway "10.200.0.1" \
     ipv4.method manual \
     connection.autoconnect yes
 
 # Create VLAN 300 connection for Management network
 nmcli connection add type vlan \
     con-name "vlan300-mgmt" \
+    ifname "${PARENT_IFACE}.300" \
     dev "${PARENT_IFACE}" \
     id 300 \
     ipv4.addresses "10.30.0.10/24" \
-    ipv4.gateway "10.30.0.1" \
     ipv4.method manual \
     connection.autoconnect yes
 
@@ -284,7 +275,7 @@ kubectl label namespace metallb-system \
 helm install metallb metallb/metallb \
     --namespace metallb-system \
     --set speaker.frr.enabled=false \
-    --set speaker.memberlistSecretName=metallb-memberlist \
+    --set frrk8s.enabled=false \
     --wait
 ```
 
@@ -406,11 +397,12 @@ metadata:
   annotations:
     # Specify the IP pool by name
     # This ensures the service gets an IP from the correct VLAN
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
+    # Optionally request a specific IP from the pool
+    # Use MetalLB's annotation instead of the deprecated spec.loadBalancerIP field
+    # metallb.io/loadBalancerIPs: 10.100.0.201
 spec:
   type: LoadBalancer
-  # Optionally request a specific IP from the pool
-  # loadBalancerIP: 10.100.0.201
   ports:
     - port: 80
       targetPort: 8080
@@ -428,7 +420,7 @@ metadata:
   name: web-frontend
   namespace: staging
   annotations:
-    metallb.universe.tf/address-pool: staging-pool
+    metallb.io/address-pool: staging-pool
 spec:
   type: LoadBalancer
   ports:
@@ -513,7 +505,7 @@ spec:
   # Use this to target only nodes that have the VLAN configured
   nodeSelectors:
     - matchLabels:
-        metallb.universe.tf/vlan100: "true"
+        network.example.com/vlan100: "true"
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -532,7 +524,7 @@ spec:
   # Only advertise from nodes labeled for VLAN 200
   nodeSelectors:
     - matchLabels:
-        metallb.universe.tf/vlan200: "true"
+        network.example.com/vlan200: "true"
 
 ---
 apiVersion: metallb.io/v1beta1
@@ -550,7 +542,7 @@ spec:
   # Management VLAN might be limited to specific nodes
   nodeSelectors:
     - matchLabels:
-        metallb.universe.tf/vlan300: "true"
+        network.example.com/vlan300: "true"
         node-role.kubernetes.io/control-plane: ""
 ```
 
@@ -564,21 +556,21 @@ Before the L2 advertisements work, you must label nodes according to their VLAN 
 
 # Node 1 has access to all VLANs (typical for control plane nodes)
 kubectl label node k8s-node-1 \
-    metallb.universe.tf/vlan100=true \
-    metallb.universe.tf/vlan200=true \
-    metallb.universe.tf/vlan300=true
+    network.example.com/vlan100=true \
+    network.example.com/vlan200=true \
+    network.example.com/vlan300=true
 
 # Node 2 has access to production and staging only
 kubectl label node k8s-node-2 \
-    metallb.universe.tf/vlan100=true \
-    metallb.universe.tf/vlan200=true
+    network.example.com/vlan100=true \
+    network.example.com/vlan200=true
 
 # Node 3 has access to production only
 kubectl label node k8s-node-3 \
-    metallb.universe.tf/vlan100=true
+    network.example.com/vlan100=true
 
 # Verify node labels
-kubectl get nodes --show-labels | grep metallb
+kubectl get nodes --show-labels | grep network.example.com/vlan
 ```
 
 Apply the L2 advertisement configuration:
@@ -641,12 +633,12 @@ metadata:
   name: http-service
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
     # The allow-shared-ip annotation with a matching key enables sharing
-    metallb.universe.tf/allow-shared-ip: "web-frontend-shared"
+    metallb.io/allow-shared-ip: "web-frontend-shared"
+    metallb.io/loadBalancerIPs: 10.100.0.205
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.100.0.205
   ports:
     - port: 80
       targetPort: 8080
@@ -661,13 +653,12 @@ metadata:
   name: https-service
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
     # Same sharing key as the HTTP service
-    metallb.universe.tf/allow-shared-ip: "web-frontend-shared"
+    metallb.io/allow-shared-ip: "web-frontend-shared"
+    metallb.io/loadBalancerIPs: 10.100.0.205
 spec:
   type: LoadBalancer
-  # Same IP as HTTP service
-  loadBalancerIP: 10.100.0.205
   ports:
     - port: 443
       targetPort: 8443
@@ -682,8 +673,8 @@ When using VLANs with MetalLB, you should also consider network policies to cont
 
 ```yaml
 # network-policy-vlan-aware.yaml
-# Network policy that restricts traffic based on VLAN source
-# This ensures services on one VLAN cannot access services on another
+# Network policy that restricts ingress based on source CIDR
+# For external client IP matching, use Services with externalTrafficPolicy: Local
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -706,7 +697,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: production
+              kubernetes.io/metadata.name: production
 ```
 
 ## Traffic Flow with VLANs
@@ -718,6 +709,7 @@ sequenceDiagram
     participant Client as Client (VLAN 100)
     participant Switch as Network Switch
     participant Speaker as MetalLB Speaker
+    participant Node as Elected Node / kube-proxy
     participant Service as K8s Service
     participant Pod as Application Pod
 
@@ -725,12 +717,11 @@ sequenceDiagram
     Note over Switch: Forwards on VLAN 100
     Switch->>Speaker: ARP: Who has 10.100.0.201?
     Speaker->>Switch: ARP Reply (via ens192.100)
-    Switch->>Speaker: TCP SYN to 10.100.0.201:80
-    Speaker->>Service: Forward to Service ClusterIP
+    Switch->>Node: TCP SYN to 10.100.0.201:80
+    Node->>Service: kube-proxy routes to Service endpoint
     Service->>Pod: Route to backend pod
-    Pod->>Service: Response
-    Service->>Speaker: Return traffic
-    Speaker->>Switch: Response (via ens192.100)
+    Pod->>Node: Response
+    Node->>Switch: Response (via ens192.100)
     Switch->>Client: Response to client
 ```
 
@@ -744,7 +735,7 @@ If clients cannot reach LoadBalancer IPs, the ARP responses might be going out t
 
 ```bash
 # Check which interface MetalLB is using for announcements
-kubectl logs -n metallb-system -l app=metallb,component=speaker | grep -i "arp\|interface"
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker | grep -i "arp\|interface"
 
 # Verify the L2 advertisement interface configuration
 kubectl get l2advertisements -n metallb-system -o yaml | grep -A 5 interfaces
@@ -765,7 +756,7 @@ kubectl get ipaddresspools -n metallb-system -o yaml
 kubectl describe service <service-name> -n <namespace>
 
 # Check MetalLB controller logs for errors
-kubectl logs -n metallb-system -l app=metallb,component=controller
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=controller
 ```
 
 #### 3. Wrong Node Responding
@@ -774,13 +765,13 @@ If traffic is being handled by a node without the correct VLAN interface:
 
 ```bash
 # Verify node labels match L2 advertisement selectors
-kubectl get nodes -l metallb.universe.tf/vlan100=true
+kubectl get nodes -l network.example.com/vlan100=true
 
 # Check which node is currently announcing an IP
-kubectl logs -n metallb-system -l app=metallb,component=speaker | grep "10.100.0.201"
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker | grep "10.100.0.201"
 
 # Verify the node has the VLAN interface configured
-kubectl debug node/<node-name> -it --image=busybox -- ip addr show
+kubectl debug node/<node-name> -it --image=ubuntu -- ip addr show
 ```
 
 ### Diagnostic Commands
@@ -804,9 +795,9 @@ echo "=== L2 Advertisements ==="
 kubectl get l2advertisements -n metallb-system -o yaml
 
 echo ""
-echo "=== Node Labels (MetalLB) ==="
+echo "=== Node Labels (VLAN Access) ==="
 kubectl get nodes -o custom-columns=\
-'NAME:.metadata.name,VLAN100:.metadata.labels.metallb\.universe\.tf/vlan100,VLAN200:.metadata.labels.metallb\.universe\.tf/vlan200,VLAN300:.metadata.labels.metallb\.universe\.tf/vlan300'
+'NAME:.metadata.name,VLAN100:.metadata.labels.network\.example\.com/vlan100,VLAN200:.metadata.labels.network\.example\.com/vlan200,VLAN300:.metadata.labels.network\.example\.com/vlan300'
 
 echo ""
 echo "=== LoadBalancer Services ==="
@@ -814,11 +805,11 @@ kubectl get services --all-namespaces -o wide | grep LoadBalancer
 
 echo ""
 echo "=== Speaker Logs (Last 50 lines) ==="
-kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=50
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker --tail=50
 
 echo ""
 echo "=== Controller Logs (Last 50 lines) ==="
-kubectl logs -n metallb-system -l app=metallb,component=controller --tail=50
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=controller --tail=50
 ```
 
 ## Best Practices
@@ -827,7 +818,7 @@ kubectl logs -n metallb-system -l app=metallb,component=controller --tail=50
 
 Ensure consistent VLAN interface naming across all nodes:
 
-```bash
+```yaml
 # Create a ConfigMap with expected interface names for validation
 # This can be used by a DaemonSet to verify interface configuration
 
@@ -893,7 +884,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: metallb
+      app.kubernetes.io/name: metallb
   endpoints:
     - port: monitoring
       interval: 30s
