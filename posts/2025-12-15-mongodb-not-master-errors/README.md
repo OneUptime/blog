@@ -61,6 +61,10 @@ const client = new MongoClient(uri, {
   retryReads: true
 });
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Implement retry logic
 async function writeWithRetry(operation, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -79,24 +83,25 @@ async function writeWithRetry(operation, maxRetries = 5) {
 }
 
 function isNotMasterError(error) {
-  return error.code === 10107 ||  // NotMaster
-         error.code === 13435 ||  // NotMasterNoSlaveOk
-         error.code === 10058 ||  // NotMasterOrSecondary
+  return error.code === 10107 ||  // NotWritablePrimary
+         error.code === 13435 ||  // NotPrimaryNoSecondaryOk
+         error.code === 13436 ||  // NotPrimaryOrSecondary
+         error.code === 10058 ||  // LegacyNotPrimary
          error.message?.includes('not master') ||
          error.message?.includes('not primary');
 }
 ```
 
-### 2. Connected to Secondary Without slaveOk
+### 2. Connected Directly to a Secondary
 
 Direct connections to secondaries reject writes:
 
 ```javascript
 // Wrong: Connecting directly to secondary
-const client = new MongoClient('mongodb://secondary1:27017/mydb');
+const directClient = new MongoClient('mongodb://secondary1:27017/mydb');
 
 // Correct: Use replica set connection string
-const client = new MongoClient(
+const replicaSetClient = new MongoClient(
   'mongodb://primary:27017,secondary1:27017,secondary2:27017/mydb?replicaSet=rs0'
 );
 ```
@@ -180,10 +185,7 @@ db.adminCommand({ replSetStepDown: 60 });
 **Solution: Handle step down gracefully**
 
 ```javascript
-const client = new MongoClient(uri, {
-  // Enable monitoring for topology changes
-  monitorCommands: true
-});
+const client = new MongoClient(uri);
 
 // Monitor topology changes
 client.on('serverDescriptionChanged', (event) => {
@@ -221,9 +223,8 @@ const client = new MongoClient(uri, {
 });
 
 // For specific operations
-const cursor = db.collection('data')
-  .find({})
-  .readPreference('secondary');  // Explicitly read from secondary
+const cursor = db.collection('data', { readPreference: 'secondary' })
+  .find({});  // Explicitly read from secondary
 
 // Writes always go to primary automatically
 await db.collection('data').insertOne({ key: 'value' });
@@ -234,9 +235,9 @@ await db.collection('data').insertOne({ key: 'value' });
 ### Check Current Primary
 
 ```javascript
-// From mongo shell
+// From mongosh
 rs.status()
-rs.hello()
+db.hello()
 
 // From application
 async function getCurrentPrimary(client) {
@@ -262,7 +263,7 @@ Ensure you're using a replica set connection string:
 const uri = 'mongodb://host1:27017,host2:27017,host3:27017/dbname?replicaSet=rs0';
 
 // With authentication
-const uri = 'mongodb://user:pass@host1:27017,host2:27017,host3:27017/dbname?replicaSet=rs0&authSource=admin';
+const authUri = 'mongodb://user:pass@host1:27017,host2:27017,host3:27017/dbname?replicaSet=rs0&authSource=admin';
 
 // Parse and verify
 const { MongoClient } = require('mongodb');
@@ -270,9 +271,10 @@ const { MongoClient } = require('mongodb');
 const client = new MongoClient(uri);
 await client.connect();
 
-const topology = client.topology;
-console.log('Topology type:', topology.description.type);
-// Should be 'ReplicaSetWithPrimary' or 'ReplicaSetNoPrimary'
+const info = await client.db('admin').command({ hello: 1 });
+console.log('Replica set:', info.setName);
+console.log('Current primary:', info.primary);
+console.log('Known hosts:', info.hosts);
 ```
 
 ### Monitor Elections
@@ -360,33 +362,29 @@ await resilientWrite(db.collection('orders'), async (col) => {
 ### 5. Use Transactions for Critical Operations
 
 ```javascript
-// Transactions automatically retry on not-master errors
+// The convenient transaction API retries transient transaction errors
 async function transferFunds(client, from, to, amount) {
   const session = client.startSession();
+  const db = client.db('bank');
 
   try {
-    session.startTransaction({
+    await session.withTransaction(async () => {
+      await db.collection('accounts').updateOne(
+        { _id: from },
+        { $inc: { balance: -amount } },
+        { session }
+      );
+
+      await db.collection('accounts').updateOne(
+        { _id: to },
+        { $inc: { balance: amount } },
+        { session }
+      );
+    }, {
+      readPreference: 'primary',
       readConcern: { level: 'snapshot' },
       writeConcern: { w: 'majority' }
     });
-
-    await db.accounts.updateOne(
-      { _id: from },
-      { $inc: { balance: -amount } },
-      { session }
-    );
-
-    await db.accounts.updateOne(
-      { _id: to },
-      { $inc: { balance: amount } },
-      { session }
-    );
-
-    // commitTransaction has built-in retry for transient errors
-    await session.commitTransaction();
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
   } finally {
     await session.endSession();
   }
@@ -456,7 +454,7 @@ class MongoCircuitBreaker {
 
 ## Summary
 
-"Not master" errors indicate your application is trying to write to a secondary node. Fix them by:
+"Not master" errors indicate your application reached a node that is not the writable primary. Fix them by:
 
 1. **Using replica set connection strings** - Include all members
 2. **Enabling retryWrites** - Handle transient failures automatically
