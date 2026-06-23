@@ -69,7 +69,7 @@ kind: IPAddressPool
 metadata:
   # Name used to reference this pool in service annotations
   name: production-pool
-  # MetalLB resources must be in the metallb-system namespace
+  # MetalLB resources must be in the same namespace where MetalLB is deployed
   namespace: metallb-system
 spec:
   # Define one or more IP address ranges
@@ -95,7 +95,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # /28 CIDR block provides 16 addresses (14 usable)
+    # /28 CIDR block provides 16 addresses
     # Range: 10.0.0.0 - 10.0.0.15
     - 10.0.0.0/28
     # You can mix CIDR and range formats in the same pool
@@ -204,7 +204,7 @@ Service selectors allow you to control which services can use which IP pools. Th
 
 ### Namespace-Based Selection
 
-You can restrict a pool to services in specific namespaces using the `namespaceSelectors` field.
+You can restrict a pool to services in specific namespaces using the `serviceAllocation.namespaceSelectors` field.
 
 This configuration restricts the production pool to services in namespaces labeled with "environment: production":
 
@@ -219,12 +219,14 @@ metadata:
 spec:
   addresses:
     - 192.168.1.100-192.168.1.115
-  # Namespace selectors restrict which namespaces can use this pool
-  # Uses standard Kubernetes label selectors
-  namespaceSelectors:
-    # matchLabels requires exact match of all specified labels
-    - matchLabels:
-        environment: production
+  # serviceAllocation controls which services can use this pool
+  serviceAllocation:
+    # Namespace selectors restrict which namespaces can use this pool
+    # Uses standard Kubernetes label selectors
+    namespaceSelectors:
+      # matchLabels requires exact match of all specified labels
+      - matchLabels:
+          environment: production
 ```
 
 To use this pool, ensure your namespace has the required label:
@@ -237,7 +239,7 @@ kind: Namespace
 metadata:
   name: production-apps
   labels:
-    # This label matches the pool's namespaceSelector
+    # This label matches the pool's namespaceSelectors entry
     environment: production
     # Additional labels for organization
     team: platform
@@ -260,22 +262,24 @@ metadata:
 spec:
   addresses:
     - 203.0.113.10-203.0.113.20
-  # Service selectors match services based on their labels
-  serviceSelectors:
-    # matchExpressions provides more flexible matching
-    - matchExpressions:
-        # Service must have exposure: external label
-        - key: exposure
-          operator: In
-          values:
-            - external
-            - public
-        # Service must also have tier: api label
-        - key: tier
-          operator: In
-          values:
-            - api
-            - gateway
+  # serviceAllocation controls which services can use this pool
+  serviceAllocation:
+    # Service selectors match services based on their labels
+    serviceSelectors:
+      # matchExpressions provides more flexible matching
+      - matchExpressions:
+          # Service must have exposure: external label
+          - key: exposure
+            operator: In
+            values:
+              - external
+              - public
+          # Service must also have tier: api label
+          - key: tier
+            operator: In
+            values:
+              - api
+              - gateway
 ```
 
 Create a service that matches this selector:
@@ -320,12 +324,13 @@ spec:
   addresses:
     - 203.0.113.50-203.0.113.60
   # Both selectors must match for a service to use this pool
-  namespaceSelectors:
-    - matchLabels:
-        security-level: high
-  serviceSelectors:
-    - matchLabels:
-        external-access: "true"
+  serviceAllocation:
+    namespaceSelectors:
+      - matchLabels:
+          security-level: high
+    serviceSelectors:
+      - matchLabels:
+          external-access: "true"
   # Disable auto-assign to prevent accidental usage
   autoAssign: false
 ```
@@ -346,7 +351,7 @@ flowchart TD
     D -->|Yes| E[Use specified pool]
     D -->|No| F{Check all pools<br/>with autoAssign=true}
     F --> G{Any pool matches<br/>namespace/service selectors?}
-    G -->|Yes| H[Allocate IP from<br/>first matching pool]
+    G -->|Yes| H[Allocate IP from<br/>highest-priority<br/>matching pool]
     G -->|No| I[Service remains<br/>in Pending state]
     C --> J{IP available?}
     J -->|Yes| K[Assign requested IP]
@@ -387,7 +392,7 @@ spec:
     # Reserved IPs for specific critical services
     - 192.168.20.10-192.168.20.15
   # autoAssign: false means services must explicitly request this pool
-  # Use metallb.universe.tf/address-pool annotation to select
+  # Use metallb.io/address-pool annotation to select
   autoAssign: false
 ```
 
@@ -406,7 +411,7 @@ metadata:
   annotations:
     # This annotation tells MetalLB to use the reserved-pool
     # The pool name must match exactly
-    metallb.universe.tf/address-pool: reserved-pool
+    metallb.io/address-pool: reserved-pool
 spec:
   type: LoadBalancer
   ports:
@@ -431,7 +436,7 @@ metadata:
   annotations:
     # Request a specific IP address
     # The IP must be within a configured pool's range
-    metallb.universe.tf/loadBalancerIPs: 192.168.20.10
+    metallb.io/loadBalancerIPs: 192.168.20.10
 spec:
   type: LoadBalancer
   # Alternative method: use loadBalancerIP field (deprecated but still works)
@@ -491,7 +496,6 @@ spec:
     # Skip 192.168.6.100 (used by legacy system)
     - 192.168.6.50-192.168.6.99
     - 192.168.6.101-192.168.6.150
-    # Skip 192.168.6.120 (used by router)
     # Note: This requires careful planning of address ranges
 ```
 
@@ -499,7 +503,7 @@ spec:
 
 ### IP Sharing Between Services
 
-MetalLB supports IP sharing, allowing multiple services to share the same IP address if they use different ports:
+MetalLB supports IP sharing, allowing multiple services to share the same IP address when they use the same sharing key, request different ports, and either both use the default `Cluster` external traffic policy or select the exact same pods:
 
 ```yaml
 # IPAddressPool that allows IP sharing
@@ -516,7 +520,7 @@ spec:
   # The pool itself just needs to have available IPs
 ```
 
-Services that want to share an IP must have matching sharing keys:
+Services that want to share an IP must have matching sharing keys. If you want to ensure they use a specific shared address, request the same IP on both services:
 
 ```yaml
 # First service sharing an IP
@@ -527,7 +531,9 @@ metadata:
   annotations:
     # allow-shared-ip enables IP sharing
     # Services with the same key value can share an IP
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/allow-shared-ip: "web-services"
+    # Request the same IP on both services when a specific shared IP is required
+    metallb.io/loadBalancerIPs: 192.168.7.100
 spec:
   type: LoadBalancer
   ports:
@@ -543,7 +549,8 @@ metadata:
   name: web-https
   annotations:
     # Same sharing key allows these services to share an IP
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: 192.168.7.100
 spec:
   type: LoadBalancer
   ports:
@@ -556,45 +563,50 @@ spec:
 
 ### Priority-Based Pool Selection
 
-When multiple pools match a service, MetalLB uses the first matching pool. You can influence selection order through naming or selectors:
+When multiple pools match a service, MetalLB checks matching pools by `serviceAllocation.priority`. Lower numbers have higher priority, unset or `0` priority is used last, and equal-priority pools are selected randomly:
 
 ```yaml
-# High-priority pool (processed first due to naming convention)
-# Use naming conventions to establish implicit priority
+# High-priority pool
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  # Naming convention: 01- prefix for highest priority
-  name: 01-premium-pool
+  name: premium-pool
   namespace: metallb-system
 spec:
   addresses:
     - 10.0.1.0/28
-  serviceSelectors:
-    - matchLabels:
-        tier: premium
+  serviceAllocation:
+    # Lower numbers have higher priority
+    priority: 10
+    serviceSelectors:
+      - matchLabels:
+          tier: premium
   autoAssign: false
 ---
 # Standard priority pool
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: 50-standard-pool
+  name: standard-pool
   namespace: metallb-system
 spec:
   addresses:
     - 10.0.2.0/24
+  serviceAllocation:
+    priority: 50
   autoAssign: true
 ---
 # Low-priority fallback pool
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: 99-fallback-pool
+  name: fallback-pool
   namespace: metallb-system
 spec:
   addresses:
     - 10.0.3.0/24
+  serviceAllocation:
+    priority: 100
   autoAssign: true
 ```
 
@@ -636,7 +648,7 @@ spec:
 
 ### BGP Advertisement Configuration
 
-For BGP mode, create a BGPAdvertisement:
+For BGP mode, create a BGPAdvertisement. This assumes you have also configured the required BGPPeer resources for your routers:
 
 ```yaml
 # IPAddressPool for BGP mode
@@ -690,7 +702,7 @@ kubectl get services --all-namespaces -o wide | grep LoadBalancer
 
 # Check MetalLB controller logs for allocation events
 # Useful for debugging IP allocation issues
-kubectl logs -n metallb-system -l app=metallb -c controller | grep -i "allocated\|assigned"
+kubectl logs -n metallb-system -l component=controller -c controller | grep -i "allocated\|assigned"
 ```
 
 ## Complete Example: Multi-Environment Setup
@@ -719,14 +731,15 @@ spec:
   autoAssign: false
   # Avoid edge case IPs
   avoidBuggyIPs: true
-  # Only production namespace can use this pool
-  namespaceSelectors:
-    - matchLabels:
-        environment: production
-  # Only services marked for external access
-  serviceSelectors:
-    - matchLabels:
-        external-access: "true"
+  serviceAllocation:
+    # Only production namespace can use this pool
+    namespaceSelectors:
+      - matchLabels:
+          environment: production
+    # Only services marked for external access
+    serviceSelectors:
+      - matchLabels:
+          external-access: "true"
 
 ---
 # Staging pool - Semi-restricted
@@ -742,9 +755,10 @@ spec:
     # Staging environment IPs
     - 192.168.50.0/28
   autoAssign: false
-  namespaceSelectors:
-    - matchLabels:
-        environment: staging
+  serviceAllocation:
+    namespaceSelectors:
+      - matchLabels:
+          environment: staging
 
 ---
 # Development pool - Open for auto-assignment
@@ -761,15 +775,16 @@ spec:
     - 192.168.100.0/24
   # Allow auto-assignment for developer convenience
   autoAssign: true
-  # Only development namespaces
-  namespaceSelectors:
-    - matchExpressions:
-        - key: environment
-          operator: In
-          values:
-            - development
-            - dev
-            - sandbox
+  serviceAllocation:
+    # Only development namespaces
+    namespaceSelectors:
+      - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+              - development
+              - dev
+              - sandbox
 
 ---
 # Internal services pool - Cluster-internal load balancing
@@ -784,9 +799,10 @@ spec:
   addresses:
     - 10.10.0.0/24
   autoAssign: true
-  serviceSelectors:
-    - matchLabels:
-        exposure: internal
+  serviceAllocation:
+    serviceSelectors:
+      - matchLabels:
+          exposure: internal
 
 ---
 # L2 Advertisement for all pools
@@ -821,7 +837,7 @@ kubectl get service <service-name> -o yaml
 # Check MetalLB controller logs for errors
 kubectl logs -n metallb-system deployment/controller | grep -i error
 
-# Verify namespace labels match pool's namespaceSelectors
+# Verify namespace labels match pool's serviceAllocation.namespaceSelectors
 kubectl get namespace <namespace> --show-labels
 ```
 
