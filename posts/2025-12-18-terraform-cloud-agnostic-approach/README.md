@@ -41,12 +41,29 @@ variable "provider_type" {
 
 variable "instance_config" {
   type = object({
-    name          = string
-    size          = string  # small, medium, large, xlarge
-    image         = string  # os type: ubuntu-22, rhel-9, windows-2022
-    subnet_id     = string
-    ssh_key_name  = optional(string)
+    name                 = string
+    size                 = string  # small, medium, large, xlarge
+    image                = string  # os type: ubuntu-22, rhel-9
+    subnet_id            = string  # AWS subnet ID or GCP subnetwork self-link/name
+    network_interface_id = string  # Azure network interface ID
+    ssh_key_name         = optional(string)
+    ssh_public_key       = string
   })
+}
+
+variable "azure_resource_group" {
+  type    = string
+  default = null
+}
+
+variable "azure_location" {
+  type    = string
+  default = null
+}
+
+variable "gcp_zone" {
+  type    = string
+  default = null
 }
 
 locals {
@@ -77,17 +94,14 @@ locals {
     aws = {
       "ubuntu-22"    = "ami-0123456789abcdef0"  # Replace with actual AMI
       "rhel-9"       = "ami-0fedcba9876543210"
-      "windows-2022" = "ami-0abcdef1234567890"
     }
     azure = {
-      "ubuntu-22"    = "Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest"
-      "rhel-9"       = "RedHat:RHEL:9-lvm:latest"
-      "windows-2022" = "MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest"
+      "ubuntu-22"    = "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest"
+      "rhel-9"       = "RedHat:RHEL:9-lvm-gen2:latest"
     }
     gcp = {
       "ubuntu-22"    = "ubuntu-os-cloud/ubuntu-2204-lts"
       "rhel-9"       = "rhel-cloud/rhel-9"
-      "windows-2022" = "windows-cloud/windows-2022"
     }
   }
 
@@ -118,7 +132,12 @@ resource "azurerm_linux_virtual_machine" "this" {
   location            = var.azure_location
   size                = local.actual_size
   admin_username      = "adminuser"
-  network_interface_ids = [var.instance_config.subnet_id]
+  network_interface_ids = [var.instance_config.network_interface_id]
+
+  admin_ssh_key {
+    username   = "adminuser"
+    public_key = var.instance_config.ssh_public_key
+  }
 
   source_image_reference {
     publisher = split(":", local.actual_image)[0]
@@ -330,7 +349,7 @@ remote_state {
       prefix = "${path_relative_to_include()}"
     } : {
       resource_group_name  = "terraform-state-rg"
-      storage_account_name = "tfstate${get_env("AZURE_SUBSCRIPTION_ID")}"
+      storage_account_name = get_env("AZURE_STORAGE_ACCOUNT_NAME")
       container_name       = "tfstate"
       key                  = "${path_relative_to_include()}/terraform.tfstate"
     }
@@ -346,7 +365,7 @@ Some features don't have equivalents across all providers. Handle these graceful
 variable "enable_spot_instances" {
   type        = bool
   default     = false
-  description = "Enable spot/preemptible instances (AWS/GCP only)"
+  description = "Enable spot instances (AWS, Azure, or GCP)"
 }
 
 resource "aws_spot_instance_request" "this" {
@@ -358,8 +377,10 @@ resource "google_compute_instance" "preemptible" {
   count = var.provider_type == "gcp" && var.enable_spot_instances ? 1 : 0
 
   scheduling {
-    preemptible       = true
-    automatic_restart = false
+    preemptible                 = true
+    automatic_restart           = false
+    provisioning_model          = "SPOT"
+    instance_termination_action = "STOP"
   }
   # ... instance configuration
 }
@@ -394,6 +415,9 @@ func TestMultiCloudCompute(t *testing.T) {
                         "name":  "test-instance",
                         "size":  "small",
                         "image": "ubuntu-22",
+                        "subnet_id": "provider-specific-subnet-or-subnetwork",
+                        "network_interface_id": "provider-specific-azure-nic-id",
+                        "ssh_public_key": "ssh-rsa AAAA... test@example",
                     },
                 },
             }
