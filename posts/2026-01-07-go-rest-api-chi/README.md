@@ -333,9 +333,9 @@ func main() {
     // Useful for tracing requests across services
     r.Use(middleware.RequestID)
 
-    // RealIP extracts the real client IP from X-Forwarded-For headers
-    // Essential when running behind a proxy or load balancer
-    r.Use(middleware.RealIP)
+    // ClientIPFromRemoteAddr stores the client IP from the request's RemoteAddr
+    // Choose the ClientIPFrom* middleware that matches your deployment topology
+    r.Use(middleware.ClientIPFromRemoteAddr)
 
     // Logger logs request details including method, path, and timing
     // Great for debugging and monitoring
@@ -983,14 +983,14 @@ func NewBookHandler(store *BookStore) *BookHandler {
 func (h *BookHandler) Routes() chi.Router {
     r := chi.NewRouter()
 
-    // Apply book-specific middleware
-    r.Use(h.BookCtx)
-
     r.Get("/", h.List)
     r.Post("/", h.Create)
 
     // Routes that require a book ID
     r.Route("/{bookID}", func(r chi.Router) {
+        // Apply book-specific middleware after the bookID route parameter is available
+        r.Use(h.BookCtx)
+
         r.Get("/", h.Get)
         r.Put("/", h.Update)
         r.Delete("/", h.Delete)
@@ -1111,7 +1111,7 @@ func main() {
 
     // Global middleware stack
     r.Use(middleware.RequestID)
-    r.Use(middleware.RealIP)
+    r.Use(middleware.ClientIPFromRemoteAddr)
     r.Use(middleware.Logger)
     r.Use(middleware.Recoverer)
     r.Use(middleware.Timeout(60 * time.Second))
