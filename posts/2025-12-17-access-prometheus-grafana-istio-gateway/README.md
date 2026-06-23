@@ -52,7 +52,7 @@ Define a Gateway to accept traffic on specific hosts and ports.
 `monitoring-gateway.yaml`
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: monitoring-gateway
@@ -100,7 +100,7 @@ Route traffic to Prometheus based on path prefix.
 `prometheus-virtualservice.yaml`
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: prometheus
@@ -132,8 +132,6 @@ Configure Prometheus to serve from subpath:
 ```yaml
 # prometheus values.yaml for Helm
 server:
-  prefixURL: ""
-  baseURL: "/prometheus"
   extraFlags:
     - web.external-url=https://monitoring.example.com/prometheus
     - web.route-prefix=/
@@ -146,7 +144,7 @@ Route Grafana traffic with proper URL handling.
 `grafana-virtualservice.yaml`
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grafana
@@ -176,7 +174,7 @@ Configure Grafana to know its public URL:
 # grafana.ini
 [server]
 root_url = https://monitoring.example.com/grafana/
-serve_from_sub_path = true
+serve_from_sub_path = false
 ```
 
 ## 5. Combined VirtualService
@@ -186,7 +184,7 @@ Combine multiple routes in a single VirtualService.
 `monitoring-virtualservice.yaml`
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: monitoring
@@ -252,36 +250,44 @@ Secure access using Istio AuthorizationPolicy with JWT validation.
 `monitoring-authz.yaml`
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: monitoring-jwt
-  namespace: monitoring
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: prometheus
+      istio: ingressgateway
   jwtRules:
     - issuer: https://auth.example.com
       jwksUri: https://auth.example.com/.well-known/jwks.json
       audiences:
         - monitoring-api
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: monitoring-require-auth
-  namespace: monitoring
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: prometheus
+      istio: ingressgateway
   action: ALLOW
   rules:
     - from:
         - source:
             requestPrincipals:
               - https://auth.example.com/*
+      to:
+        - operation:
+            hosts:
+              - monitoring.example.com
+            paths:
+              - /grafana*
+              - /prometheus*
+              - /alertmanager*
       when:
         - key: request.auth.claims[groups]
           values:
@@ -296,7 +302,7 @@ Enable strict mTLS for monitoring namespace.
 `monitoring-mtls.yaml`
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: monitoring-mtls
@@ -305,7 +311,7 @@ spec:
   mtls:
     mode: STRICT
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: monitoring-mtls
@@ -375,7 +381,7 @@ Use different subdomains instead of path-based routing.
 `monitoring-gateway-subdomains.yaml`
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: monitoring-gateway
@@ -395,7 +401,7 @@ spec:
         mode: SIMPLE
         credentialName: monitoring-wildcard-cert
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: prometheus
@@ -412,7 +418,7 @@ spec:
             port:
               number: 80
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grafana
@@ -435,7 +441,7 @@ spec:
 Ensure WebSocket connections work for Grafana Live.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grafana
@@ -453,6 +459,8 @@ spec:
           headers:
             upgrade:
               exact: websocket
+      rewrite:
+        uri: /api/live/ws
       route:
         - destination:
             host: grafana
@@ -501,7 +509,7 @@ Full monitoring stack exposed via Istio.
 
 ```yaml
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: monitoring-gateway
@@ -520,7 +528,7 @@ spec:
         mode: SIMPLE
         credentialName: monitoring-tls
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: monitoring
@@ -552,7 +560,7 @@ spec:
             port:
               number: 80
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: monitoring-mtls
