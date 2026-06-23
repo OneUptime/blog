@@ -134,10 +134,10 @@ For CLI applications or when you need to profile specific code sections, use the
 package main
 
 import (
+    "log"
     "os"
     "runtime"
     "runtime/pprof"
-    "log"
 )
 
 func main() {
@@ -152,10 +152,10 @@ func main() {
     if err := pprof.StartCPUProfile(cpuFile); err != nil {
         log.Fatal("Could not start CPU profile: ", err)
     }
-    defer pprof.StopCPUProfile()
 
     // Your application code here
-    doWork()
+    data := doWork()
+    pprof.StopCPUProfile()
 
     // Create memory profile file
     memFile, err := os.Create("mem.prof")
@@ -171,14 +171,16 @@ func main() {
     if err := pprof.WriteHeapProfile(memFile); err != nil {
         log.Fatal("Could not write memory profile: ", err)
     }
+    runtime.KeepAlive(data)
 }
 
-func doWork() {
+func doWork() []byte {
     // Simulate work
     data := make([]byte, 100*1024*1024) // 100MB allocation
     for i := range data {
         data[i] = byte(i % 256)
     }
+    return data
 }
 ```
 
@@ -404,8 +406,8 @@ Showing nodes accounting for 156.50MB, 95.12% of 164.52MB total
 # View source code with allocation annotations
 (pprof) list main.handler
 
-# Show allocation sizes
-(pprof) alloc_space
+# Switch the report to cumulative allocated bytes
+(pprof) sample_index=alloc_space
 
 # Visualize memory in browser
 (pprof) web
@@ -518,11 +520,13 @@ func worker(ctx context.Context) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-    // Use request context for automatic cancellation
-    ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-    defer cancel() // Ensures goroutine cleanup
+    // Give background work a bounded lifetime
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-    go worker(ctx)
+    go func() {
+        defer cancel() // Releases timer resources when work exits
+        worker(ctx)
+    }()
     w.Write([]byte("Started worker with proper cleanup"))
 }
 
@@ -779,7 +783,7 @@ The web UI provides several views:
 
 ### Flame Graphs
 
-Flame graphs are particularly useful for understanding CPU profiles. The x-axis represents the stack depth, and the width of each bar represents time spent.
+Flame graphs are particularly useful for understanding CPU profiles. The y-axis represents stack depth, and the width of each bar represents time spent.
 
 ```bash
 # Generate flame graph (requires web UI)
@@ -1041,7 +1045,7 @@ Adjust sampling rates based on your needs:
 
 ```go
 // Lower overhead for production (less detailed)
-runtime.SetBlockProfileRate(100)    // Sample 1% of events
+runtime.SetBlockProfileRate(100)    // Sample roughly one blocking event per 100 ns blocked
 runtime.SetMutexProfileFraction(100)
 
 // Higher detail for debugging (more overhead)
