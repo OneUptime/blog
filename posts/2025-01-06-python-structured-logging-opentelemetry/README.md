@@ -404,6 +404,7 @@ FastAPI integration uses middleware for request logging along with OpenTelemetry
 # fastapi_logging.py
 # FastAPI integration with structured logging and OpenTelemetry tracing
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from context_logger import ContextLogger, get_context_logger
 from opentelemetry import trace
@@ -476,7 +477,9 @@ async def get_order(order_id: str):
         if not order:
             # Log as warning - not an error but worth monitoring
             logger.warning("Order not found", order_id=order_id)
-            return {"error": "Not found"}, 404
+            # FastAPI does not interpret (body, status) tuples, so set the
+            # status code explicitly with a JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Not found"})
 
         # Log successful retrieval with business-relevant data
         logger.info(
@@ -521,7 +524,8 @@ async def create_order(order_data: dict):
                 error=str(e),  # Validation error message
                 customer_id=order_data.get("customer_id")  # For support debugging
             )
-            return {"error": str(e)}, 400
+            # Set the HTTP status explicitly - FastAPI ignores tuple returns
+            return JSONResponse(status_code=400, content={"error": str(e)})
 ```
 
 ---
@@ -559,25 +563,36 @@ def add_timestamp(logger, method_name, event_dict):
     event_dict["timestamp"] = datetime.utcnow().isoformat() + "Z"
     return event_dict
 
-# Configure structlog with a chain of processors
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,  # Respect log levels
-        structlog.stdlib.add_logger_name,  # Add logger name
-        structlog.stdlib.add_log_level,  # Add level (info, error, etc.)
-        structlog.stdlib.PositionalArgumentsFormatter(),  # Handle %s style formatting
-        add_timestamp,  # Custom: Add ISO timestamp
-        add_trace_context,  # Custom: Add OpenTelemetry trace IDs
-        structlog.processors.StackInfoRenderer(),  # Render stack traces
-        structlog.processors.format_exc_info,  # Format exception info
-        structlog.processors.UnicodeDecoder(),  # Handle unicode
-        structlog.processors.JSONRenderer()  # Output as JSON
-    ],
-    context_class=dict,  # Use dict for context storage
-    logger_factory=structlog.stdlib.LoggerFactory(),  # Bridge to stdlib logging
-    wrapper_class=structlog.stdlib.BoundLogger,  # Enable bound loggers
-    cache_logger_on_first_use=True,  # Cache for performance
-)
+def setup_structlog(service_name: str = "app"):
+    """Configure structlog with a chain of processors. Call once at startup."""
+
+    def add_service_name(logger, method_name, event_dict):
+        """Tag every log event with the service name"""
+        event_dict["service"] = service_name
+        return event_dict
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,  # Respect log levels
+            structlog.stdlib.add_logger_name,  # Add logger name
+            structlog.stdlib.add_log_level,  # Add level (info, error, etc.)
+            structlog.stdlib.PositionalArgumentsFormatter(),  # Handle %s style formatting
+            add_timestamp,  # Custom: Add ISO timestamp
+            add_trace_context,  # Custom: Add OpenTelemetry trace IDs
+            add_service_name,  # Custom: Add service identifier
+            structlog.processors.StackInfoRenderer(),  # Render stack traces
+            structlog.processors.format_exc_info,  # Format exception info
+            structlog.processors.UnicodeDecoder(),  # Handle unicode
+            structlog.processors.JSONRenderer()  # Output as JSON
+        ],
+        context_class=dict,  # Use dict for context storage
+        logger_factory=structlog.stdlib.LoggerFactory(),  # Bridge to stdlib logging
+        wrapper_class=structlog.stdlib.BoundLogger,  # Enable bound loggers
+        cache_logger_on_first_use=True,  # Cache for performance
+    )
+
+# Configure structlog once for this module's example usage
+setup_structlog()
 
 # Get a structlog logger instance
 log = structlog.get_logger()
