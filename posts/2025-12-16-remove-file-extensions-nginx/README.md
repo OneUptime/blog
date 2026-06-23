@@ -63,7 +63,7 @@ server {
 
     # Redirect .html URLs to clean URLs
     location ~ ^(.+)\.html$ {
-        return 301 $scheme://$host$1;
+        return 301 $scheme://$host$1$is_args$args;
     }
 
     location / {
@@ -88,12 +88,21 @@ server {
     index index.php index.html;
 
     location / {
-        try_files $uri $uri.php $uri/ =404;
+        try_files $uri $uri/ @php;
     }
 
-    # Handle PHP files
-    location ~ \.php$ {
+    location @php {
         # Security: only process existing files
+        try_files $uri.php =404;
+
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$uri.php;
+        include fastcgi_params;
+    }
+
+    # Handle direct PHP requests safely
+    location ~ \.php$ {
         try_files $uri =404;
 
         fastcgi_pass unix:/run/php/php-fpm.sock;
@@ -113,9 +122,9 @@ server {
     root /var/www/html;
     index index.php index.html;
 
-    # Redirect .php URLs to clean URLs (except for direct PHP processing)
-    if ($request_uri ~ ^(.+)\.php$) {
-        return 301 $scheme://$host$1;
+    # Redirect .php URLs to clean URLs
+    location ~ ^(.+)\.php$ {
+        return 301 $scheme://$host$1$is_args$args;
     }
 
     location / {
@@ -129,14 +138,6 @@ server {
 
         fastcgi_pass unix:/run/php/php-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$uri.php;
-        include fastcgi_params;
-    }
-
-    # Block direct .php access (after redirect)
-    location ~ \.php$ {
-        internal;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
     }
 }
@@ -155,18 +156,19 @@ server {
 
     # Redirect both .html and .php to clean URLs
     location ~ ^(.+)\.(html|php)$ {
-        return 301 $scheme://$host$1;
+        return 301 $scheme://$host$1$is_args$args;
     }
 
     location / {
-        # Try: exact, .html, .php, directory, 404
-        try_files $uri $uri.html $uri.php $uri/ =404;
+        # Try: exact, .html, directory, then PHP, 404
+        try_files $uri $uri.html $uri/ @php;
     }
 
-    location ~ \.php$ {
-        internal;  # Only accessible via try_files
+    location @php {
+        try_files $uri.php =404;
+
         fastcgi_pass unix:/run/php/php-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$uri.php;
         include fastcgi_params;
     }
 }
@@ -183,20 +185,21 @@ server {
     root /var/www/html;
 
     # Remove .html extension
-    rewrite ^(/.*)\.html(\?.*)?$ $1$2 permanent;
+    rewrite ^(/.*)\.html$ $1 permanent;
 
     # Remove .php extension
-    rewrite ^(/.*)\.php(\?.*)?$ $1$2 permanent;
+    rewrite ^(/.*)\.php$ $1 permanent;
 
     location / {
-        # Internal rewrite to add extension back
-        try_files $uri $uri.html $uri.php $uri/ =404;
+        # Try static files first, then pass matching PHP files to FastCGI
+        try_files $uri $uri.html $uri/ @php;
     }
 
-    location ~ \.php$ {
-        internal;
+    location @php {
+        try_files $uri.php =404;
+
         fastcgi_pass unix:/run/php/php-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$uri.php;
         include fastcgi_params;
     }
 }
@@ -226,7 +229,7 @@ server {
 
     location / {
         # Check for index files in directories
-        try_files $uri $uri.html $uri/ $uri/index.html $uri/index.php =404;
+        try_files $uri $uri.html $uri/ $uri/index.html @php_index;
     }
 
     # Redirect /dir/index to /dir/
@@ -234,10 +237,16 @@ server {
         rewrite ^(.*)/index\.(html|php)$ $1/ permanent;
     }
 
+    # Block other direct PHP requests
     location ~ \.php$ {
-        internal;
+        return 404;
+    }
+
+    location @php_index {
+        try_files $uri/index.php =404;
+
         fastcgi_pass unix:/run/php/php-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$uri/index.php;
         include fastcgi_params;
     }
 }
@@ -250,7 +259,8 @@ server {
 ```nginx
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
     root /var/www/html;
 
@@ -295,7 +305,8 @@ server {
 ```nginx
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
     root /var/www/html;
     index index.php index.html;
@@ -318,7 +329,7 @@ server {
     }
 
     location @php {
-        try_files $uri.php $uri/ =404;
+        try_files $uri.php =404;
 
         fastcgi_pass unix:/run/php/php-fpm.sock;
         fastcgi_index index.php;
@@ -335,14 +346,17 @@ server {
     }
 
     location @directory_php {
+        try_files $uri/index.php =404;
+
         fastcgi_pass unix:/run/php/php-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$uri/index.php;
         include fastcgi_params;
     }
 
-    # Block direct PHP access
-    location ~ \.php$ {
-        internal;
+    location @php_404 {
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root/404.php;
+        include fastcgi_params;
     }
 
     # Static assets
@@ -351,7 +365,7 @@ server {
         try_files $uri =404;
     }
 
-    error_page 404 /404.php;
+    error_page 404 @php_404;
 }
 ```
 
@@ -381,7 +395,7 @@ curl -I http://example.com/blog/
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
-| Redirect loop | try_files includes .html in redirect block | Use `internal` directive |
+| Redirect loop | Redirect and internal routing rules match the same URI | Separate public redirects from named internal locations |
 | 404 on clean URLs | try_files order wrong | Check file exists, order matters |
 | PHP not executing | Missing fastcgi block | Add proper PHP handler |
 | Assets not loading | Relative paths broken | Use absolute paths or `<base>` tag |
