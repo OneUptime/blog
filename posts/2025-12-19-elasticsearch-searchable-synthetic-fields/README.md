@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Synthetic Fields, Runtime Fields, Search Optimization, Data Modeling, Ingest Pipelines
 
-Description: Learn how to create searchable synthetic fields in Elasticsearch using runtime fields, ingest pipelines, and scripted fields to derive new data from existing fields without reindexing.
+Description: Learn how to create searchable synthetic fields in Elasticsearch using runtime fields and ingest pipelines to derive new data from existing fields.
 
 ---
 
@@ -16,7 +16,7 @@ Synthetic fields are derived values computed from existing document fields. They
 
 1. At index time using ingest pipelines
 2. At query time using runtime fields
-3. During aggregations using scripted fields
+3. In search responses using script fields
 
 Each approach has trade-offs between storage, query performance, and flexibility.
 
@@ -68,7 +68,10 @@ curl -X PUT "localhost:9200/employees" -H 'Content-Type: application/json' -d'
       "age": {
         "type": "long",
         "script": {
-          "source": "emit(ChronoUnit.YEARS.between(doc[\"birth_date\"].value, ZonedDateTime.now()))"
+          "source": "emit(ChronoUnit.YEARS.between(doc[\"birth_date\"].value, ZonedDateTime.parse(params[\"as_of\"])))",
+          "params": {
+            "as_of": "2026-06-23T00:00:00Z"
+          }
         }
       },
       "email_domain": {
@@ -171,7 +174,7 @@ curl -X PUT "localhost:9200/_ingest/pipeline/employee-enrichment" -H 'Content-Ty
     {
       "set": {
         "field": "full_name",
-        "value": "{{first_name}} {{last_name}}"
+        "value": "{{{first_name}}} {{{last_name}}}"
       }
     },
     {
@@ -183,7 +186,7 @@ curl -X PUT "localhost:9200/_ingest/pipeline/employee-enrichment" -H 'Content-Ty
     {
       "script": {
         "lang": "painless",
-        "source": "def birthDate = ZonedDateTime.parse(ctx.birth_date); def now = ZonedDateTime.now(); ctx.age = ChronoUnit.YEARS.between(birthDate, now);"
+        "source": "def birthDate = ZonedDateTime.parse(ctx.birth_date); def ingestTime = ZonedDateTime.parse(ctx['_ingest']['timestamp']); ctx.age_at_indexing = ChronoUnit.YEARS.between(birthDate, ingestTime);"
       }
     },
     {
@@ -245,13 +248,13 @@ curl -X PUT "localhost:9200/_ingest/pipeline/address-synthetic" -H 'Content-Type
     {
       "set": {
         "field": "full_address",
-        "value": "{{address.street}}, {{address.city}}, {{address.state}} {{address.zip}}"
+        "value": "{{{address.street}}}, {{{address.city}}}, {{{address.state}}} {{{address.zip}}}"
       }
     },
     {
       "set": {
         "field": "location_key",
-        "value": "{{address.city}}-{{address.state}}"
+        "value": "{{{address.city}}}-{{{address.state}}}"
       }
     }
   ]
@@ -276,7 +279,10 @@ curl -X PUT "localhost:9200/orders" -H 'Content-Type: application/json' -d'
       "days_since_order": {
         "type": "long",
         "script": {
-          "source": "emit(ChronoUnit.DAYS.between(doc[\"order_date\"].value, ZonedDateTime.now()))"
+          "source": "emit(ChronoUnit.DAYS.between(doc[\"order_date\"].value, ZonedDateTime.parse(params[\"as_of\"])))",
+          "params": {
+            "as_of": "2026-06-23T00:00:00Z"
+          }
         }
       },
       "order_size_category": {
@@ -307,9 +313,9 @@ curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
   "mappings": {
     "runtime": {
       "search_text": {
-        "type": "text",
+        "type": "keyword",
         "script": {
-          "source": "emit(doc[\"name\"].value.toLowerCase() + \" \" + doc[\"category\"].value.toLowerCase() + \" \" + doc[\"brand\"].value.toLowerCase())"
+          "source": "emit(params._source[\"name\"].toLowerCase() + \" \" + doc[\"category\"].value.toLowerCase() + \" \" + doc[\"brand\"].value.toLowerCase())"
         }
       },
       "sku_normalized": {
