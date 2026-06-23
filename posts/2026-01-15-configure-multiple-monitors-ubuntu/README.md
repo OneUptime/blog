@@ -329,7 +329,8 @@ xrandr --output HDMI-0 --mode "1920x1200_60.00"
 
 ```bash
 # Check if VRR is supported (requires compatible GPU and monitor)
-cat /sys/class/drm/card*/device/vrr_capable
+# The vrr_capable property lives on each connector, e.g. card0-DP-1
+cat /sys/class/drm/card0-*/vrr_capable
 
 # Enable VRR for AMDGPU (add to kernel parameters)
 # Edit /etc/default/grub:
@@ -866,7 +867,7 @@ sudo systemctl restart gdm3
 nvidia-settings
 
 # 2. Save configuration to xorg.conf
-sudo nvidia-settings --save
+sudo nvidia-xconfig
 
 # 3. Check NVIDIA driver version
 nvidia-smi
