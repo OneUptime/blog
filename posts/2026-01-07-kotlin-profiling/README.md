@@ -12,7 +12,7 @@ Kotlin runs on the JVM, which means you get access to the entire ecosystem of JV
 
 ## Starting with JVM Flight Recorder
 
-Java Flight Recorder (JFR) is built into the JDK since Java 11 and has near-zero overhead in production. It collects CPU samples, memory allocation data, garbage collection events, thread activity, and I/O operations. For most Kotlin profiling tasks, JFR should be your first tool.
+Java Flight Recorder (JFR) is built into the JDK since Java 11 and has low overhead in production. It collects CPU samples, memory allocation data, garbage collection events, thread activity, and I/O operations. For most Kotlin profiling tasks, JFR should be your first tool.
 
 To start a recording from the command line:
 
@@ -20,8 +20,8 @@ To start a recording from the command line:
 # Start the application with continuous JFR recording
 
 # maxage limits how much history is retained in the circular buffer
-# filename specifies where the recording is dumped on exit
-java -XX:StartFlightRecording=maxage=5m,filename=recording.jfr \
+# filename specifies where the recording is dumped when the JVM exits
+java -XX:StartFlightRecording=maxage=5m,filename=recording.jfr,dumponexit=true \
      -jar my-kotlin-app.jar
 ```
 
@@ -57,9 +57,9 @@ Kotlin compiles to JVM bytecode, and some Kotlin constructs map to surprising by
 
 **Inline functions** do not appear as separate frames in the stack trace. The code is inlined at the call site. If you see a function spending unexpected time and it calls inline higher-order functions like `map`, `filter`, or `let`, the time includes the work done by the lambda body.
 
-**Companion objects** compile to a nested class with a static `INSTANCE` field. In profiles, you will see method names like `MyClass$Companion.doSomething` rather than `MyClass.doSomething`.
+**Companion objects** compile to a nested companion class referenced from the enclosing class. In profiles, you will see method names like `MyClass$Companion.doSomething` rather than `MyClass.doSomething`.
 
-**Coroutines** generate state machine classes under the hood. A suspended function like `fetchData` might appear in the profiler as `fetchData$suspendImpl` or as an anonymous class in the `kotlin.coroutines` package.
+**Coroutines** generate state machine classes under the hood. A suspended function like `fetchData` might appear in the profiler as `fetchData$suspendImpl`, as a compiler-generated continuation class like `MyFileKt$fetchData$1`, or alongside frames from `kotlin.coroutines.jvm.internal`.
 
 ## Memory Profiling
 
@@ -85,13 +85,21 @@ val boxedList: List<Int> = (1..1_000_000).toList()
 val primitiveArray: IntArray = IntArray(1_000_000) { it }
 ```
 
-**Lambda captures**: Every lambda that captures variables from its enclosing scope creates an object. In hot loops, this generates garbage quickly.
+**Lambda captures**: A lambda that captures variables from its enclosing scope and is passed to a non-inline higher-order function can create an object. In hot loops, this generates garbage quickly.
 
 ```kotlin
-// Creates a new Function1 object on every iteration
+// Creates a Function1 object each time countMatching is called
 // because the lambda captures 'threshold' from the outer scope
-fun filterAboveThreshold(items: List<Int>, threshold: Int): List<Int> {
-    return items.filter { it > threshold }
+fun countAboveThreshold(items: List<Int>, threshold: Int): Int {
+    return countMatching(items) { it > threshold }
+}
+
+fun countMatching(items: List<Int>, predicate: (Int) -> Boolean): Int {
+    var count = 0
+    for (item in items) {
+        if (predicate(item)) count++
+    }
+    return count
 }
 
 // With an inline function, no lambda object is created
@@ -156,7 +164,8 @@ suspend fun readFileBad(): String {
 }
 
 // Correct: move blocking I/O to the IO dispatcher
-// The IO dispatcher has a much larger thread pool (64+ threads)
+// The IO dispatcher is designed for blocking I/O and defaults to
+// a parallelism limit of 64 threads or the number of cores, whichever is larger
 suspend fun readFileGood(): String = withContext(Dispatchers.IO) {
     File("/tmp/data.txt").readText()
 }
@@ -182,10 +191,10 @@ For low-overhead CPU and allocation profiling beyond what JFR offers, async-prof
 ```bash
 # Profile CPU usage for 30 seconds and generate a flame graph
 # The flame graph format makes it easy to spot hot code paths
-./profiler.sh -d 30 -f flamegraph.html <PID>
+asprof -d 30 -f flamegraph.html <PID>
 
 # Profile memory allocations
-./profiler.sh -d 30 -e alloc -f alloc_flamegraph.html <PID>
+asprof -d 30 -e alloc -f alloc_flamegraph.html <PID>
 ```
 
 Flame graphs are the most useful visualization for profiling data. The x-axis represents the proportion of samples, and the y-axis represents the call stack depth. Wide bars mean a function (and its callees) consume a large portion of time.
