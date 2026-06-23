@@ -302,9 +302,7 @@ jobs:
         with:
           name: my-stack
           template: infrastructure/template.yaml
-          parameter-overrides: |
-            Environment=production
-            InstanceType=t3.medium
+          parameter-overrides: "Environment=production,InstanceType=t3.medium"
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           no-fail-on-empty-changeset: true
 ```
@@ -354,7 +352,7 @@ Zero-downtime deployment pattern:
           aws ecs update-service \
             --cluster my-cluster \
             --service my-service-green \
-            --task-definition my-task:${{ steps.task-def.outputs.revision }}
+            --task-definition my-task
 
           aws ecs wait services-stable \
             --cluster my-cluster \
@@ -383,7 +381,7 @@ Implement automatic rollback:
           aws ecs update-service \
             --cluster my-cluster \
             --service my-service \
-            --task-definition my-task:${{ steps.task-def.outputs.revision }}
+            --task-definition my-task
 
           aws ecs wait services-stable \
             --cluster my-cluster \
