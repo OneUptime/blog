@@ -14,7 +14,7 @@ MetalLB provides load balancer services for bare-metal Kubernetes clusters, but 
 
 ## Understanding the Health Check Architecture
 
-MetalLB operates at Layer 2 (ARP) or Layer 4 (BGP) of the network stack, announcing IP addresses for LoadBalancer services. The actual traffic routing to healthy pods happens through kube-proxy, which uses the endpoints maintained by the Kubernetes control plane.
+MetalLB operates by announcing IP addresses for LoadBalancer services using Layer 2 (ARP/NDP) or BGP. It does not proxy application traffic itself. The actual traffic routing to healthy pods happens through kube-proxy, which uses the endpoints maintained by the Kubernetes control plane.
 
 The following diagram illustrates how health checks flow through the system:
 
@@ -41,19 +41,19 @@ flowchart TD
         Pod3[Pod 3 - Unhealthy]
     end
 
+    Speaker -->|Announces| VIP
     Client --> VIP
-    VIP --> Speaker
-    Speaker --> KubeProxy
+    VIP --> KubeProxy
     KubeProxy --> EndpointSlice
     EndpointSlice --> Pod1
     EndpointSlice --> Pod2
-    EndpointSlice -.->|Removed| Pod3
+    EndpointSlice -.->|Not Ready| Pod3
     Kubelet -->|Probe| Pod1
     Kubelet -->|Probe| Pod2
     Kubelet -->|Probe Fails| Pod3
 ```
 
-When a pod fails its readiness probe, the EndpointSlice controller removes it from the service endpoints. kube-proxy then updates its routing rules, and traffic stops flowing to the unhealthy pod. MetalLB continues announcing the service IP, but the unhealthy pod is automatically excluded from the backend pool.
+When a pod fails its readiness probe, Kubernetes marks it as not ready in the service endpoints. kube-proxy then updates its routing rules, and traffic stops flowing to the unhealthy pod. MetalLB continues announcing the service IP, but the unhealthy pod is automatically excluded from the backend pool.
 
 ---
 
@@ -227,8 +227,10 @@ kind: Service
 metadata:
   name: web-application
   namespace: production
+  labels:
+    app: web-application
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.100
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
   selector:
@@ -317,10 +319,13 @@ package main
 
 import (
     "context"
+    "database/sql"
     "encoding/json"
     "net/http"
     "sync"
     "time"
+
+    "github.com/redis/go-redis/v9"
 )
 
 type HealthChecker struct {
@@ -398,9 +403,7 @@ This FastAPI implementation shows async health checking with connection pooling 
 
 ```python
 from fastapi import FastAPI, Response
-from datetime import datetime
-import asyncio
-from typing import Dict, Any
+from datetime import datetime, timezone
 
 app = FastAPI()
 
@@ -429,10 +432,14 @@ health_checker: HealthChecker = None
 
 @app.get("/health/live")
 async def liveness():
-    return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/health/ready")
 async def readiness(response: Response):
+    if health_checker is None:
+        response.status_code = 503
+        return {"status": "not ready", "checks": {"initialized": False}}
+
     checks = {
         "initialized": health_checker.is_ready,
         "database": await health_checker.check_database(),
@@ -444,7 +451,7 @@ async def readiness(response: Response):
     result = {
         "status": "ready" if all_healthy else "not ready",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
     if not all_healthy:
@@ -529,7 +536,9 @@ process.on('SIGTERM', async () => {
 
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  await server.close();
+  await new Promise((resolve, reject) => {
+    server.close((err) => err ? reject(err) : resolve());
+  });
   await dbConnection.end();
 
   process.exit(0);
@@ -715,7 +724,7 @@ spec:
 
     - alert: ServiceEndpointsDown
       expr: |
-        kube_endpoint_address_available == 0
+        kube_endpoint_info unless on(namespace, endpoint) kube_endpoint_address{ready="true"}
       for: 2m
       labels:
         severity: critical
@@ -736,11 +745,11 @@ spec:
 
 ---
 
-## Using External Health Check Solutions
+## Using External Traffic Management Solutions
 
-### ExternalDNS Health Check Integration
+### ExternalDNS DNS Integration
 
-When using ExternalDNS with MetalLB, configure health checks at the DNS level to prevent routing to unhealthy clusters or regions:
+When using ExternalDNS with MetalLB, configure DNS records and short TTLs so clients can resolve the MetalLB service address:
 
 ```yaml
 apiVersion: v1
@@ -749,9 +758,9 @@ metadata:
   name: web-application
   namespace: production
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.100
-    external-dns.alpha.kubernetes.io/hostname: app.example.com
-    external-dns.alpha.kubernetes.io/ttl: "60"
+    metallb.io/loadBalancerIPs: 192.168.1.100
+    external-dns.kubernetes.io/hostname: app.example.com
+    external-dns.kubernetes.io/ttl: "60"
 spec:
   type: LoadBalancer
   selector:
@@ -876,13 +885,20 @@ Implement the gRPC health check service in your application:
 package main
 
 import (
-    "context"
+    "log"
+    "net"
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
+    listener, err := net.Listen("tcp", ":50051")
+    if err != nil {
+        log.Fatal(err)
+    }
+
     server := grpc.NewServer()
 
     healthServer := health.NewServer()
@@ -890,7 +906,9 @@ func main() {
 
     healthServer.SetServingStatus("myservice", grpc_health_v1.HealthCheckResponse_SERVING)
 
-    healthServer.SetServingStatus("myservice", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+    if err := server.Serve(listener); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -1117,7 +1135,7 @@ metadata:
   labels:
     app: api-service
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.100
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
