@@ -113,13 +113,13 @@ Here is an example metric data point following OpenTelemetry conventions. Consis
                                         "startTimeUnixNano": "1698415800000000000",
                                         "timeUnixNano": "1698415860000000000",
                                         "count": 1250,
-                                        "sum": 45678.9,
+                                        "sum": 225.4,
                                         "bucketCounts": [100, 450, 500, 150, 40, 10],
-                                        "explicitBounds": [50, 100, 250, 500, 1000],
+                                        "explicitBounds": [0.05, 0.1, 0.25, 0.5, 1.0],
                                         "attributes": [
                                             { "key": "http.method", "value": { "stringValue": "POST" } },
                                             { "key": "http.route", "value": { "stringValue": "/api/v1/checkout" } },
-                                            { "key": "http.status_code", "value": { "intValue": 200 } }
+                                            { "key": "http.status_code", "value": { "intValue": "200" } }
                                         ]
                                     }
                                 ]
