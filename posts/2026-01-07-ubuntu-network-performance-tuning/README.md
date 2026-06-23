@@ -200,7 +200,8 @@ net.ipv4.tcp_max_syn_backlog = 65536
 net.core.somaxconn = 65536
 
 # Enable SYN cookies for protection against SYN flood attacks
-# When the SYN queue is full, the kernel can still accept connections
+# When the SYN queue overflows, the kernel can fall back to syncookies
+# Do not use this as a substitute for sizing backlogs for legitimate load
 net.ipv4.tcp_syncookies = 1
 
 # Number of times to retry SYN-ACK for passive connections
@@ -215,6 +216,7 @@ net.ipv4.tcp_max_orphans = 262144
 
 # Maximum number of connection tracking entries
 # Increase for servers with many concurrent connections
+# Only applies when nf_conntrack is loaded and used by the firewall/NAT path
 net.netfilter.nf_conntrack_max = 1048576
 EOF
 ```
@@ -272,7 +274,8 @@ sudo tee -a /etc/sysctl.d/99-network-tuning.conf << 'EOF'
 # ============================================
 
 # Enable TCP TIME_WAIT socket reuse for new connections
-# Allows reusing sockets in TIME_WAIT state when safe
+# Allows reusing TIME_WAIT sockets for new outgoing connections when safe
+# Test carefully; this is safer than removed tcp_tw_recycle, not risk-free
 net.ipv4.tcp_tw_reuse = 1
 
 # Maximum number of TIME_WAIT sockets
@@ -287,8 +290,9 @@ net.ipv4.tcp_fin_timeout = 15
 # Expands available ephemeral ports (default: 32768-60999)
 net.ipv4.ip_local_port_range = 1024 65535
 
-# Enable TCP Fast Open for reduced latency on repeated connections
-# Value 3 enables TFO for both client and server
+# Enable TCP Fast Open support for reduced latency on repeated connections
+# Value 3 enables client and server support; server applications/listeners
+# still need to enable TFO unless you use the global listener flag
 net.ipv4.tcp_fastopen = 3
 EOF
 ```
@@ -301,7 +305,7 @@ The `tcp_tw_recycle` option was removed in Linux kernel 4.12 due to issues with 
 # DO NOT USE - removed from modern kernels
 # net.ipv4.tcp_tw_recycle = 1  # DEPRECATED
 
-# The tw_reuse option is the safe alternative
+# The tw_reuse option is the supported alternative, but still requires testing
 sysctl net.ipv4.tcp_tw_reuse
 ```
 
@@ -591,11 +595,14 @@ sudo ip link set eth0 mtu 9000
 ip link show eth0
 
 # Make permanent using netplan (Ubuntu 20.04+)
+# Merge the mtu line into your existing interface definition.
+# This example preserves DHCP for a DHCP-configured eth0.
 sudo tee /etc/netplan/99-jumbo-frames.yaml << 'EOF'
 network:
   version: 2
   ethernets:
     eth0:
+      dhcp4: true
       mtu: 9000
 EOF
 
@@ -670,7 +677,7 @@ net.ipv4.tcp_keepalive_probes = 5
 net.ipv4.tcp_keepalive_intvl = 15
 
 # Enable BBR congestion control (Linux 4.9+)
-# BBR provides better throughput and lower latency
+# BBR can provide better throughput and lower latency on suitable paths
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 EOF
@@ -678,7 +685,7 @@ EOF
 
 ### Enabling BBR Congestion Control
 
-BBR (Bottleneck Bandwidth and Round-trip propagation time) is Google's congestion control algorithm that significantly improves throughput:
+BBR (Bottleneck Bandwidth and Round-trip propagation time) is Google's congestion control algorithm that can improve throughput and latency on suitable network paths:
 
 ```bash
 # Check if BBR is available
@@ -705,18 +712,17 @@ sudo tee -a /etc/sysctl.d/99-network-tuning.conf << 'EOF'
 # ============================================
 
 # Enable busy polling for sockets
-# Set to number of microseconds to busy-poll
+# Set to number of microseconds to busy-poll for poll/select
 net.core.busy_poll = 50
-net.core.busy_read = 50
 
-# Default busy polling for new sockets
+# Default SO_BUSY_POLL value for socket reads
 net.core.busy_read = 50
 EOF
 ```
 
 ## Complete Configuration File
 
-Here is the complete sysctl configuration file with all optimizations:
+Here is the complete sysctl configuration file with the general-purpose optimizations:
 
 ```bash
 # Create complete network tuning configuration
@@ -802,9 +808,9 @@ After applying optimizations, benchmark your network to measure improvements.
 ### Installing Benchmarking Tools
 
 ```bash
-# Install common network benchmarking tools
+# Install common network benchmarking and monitoring tools
 sudo apt update
-sudo apt install -y iperf3 netperf nuttcp hping3
+sudo apt install -y iperf3 netperf nuttcp hping3 apache2-utils wrk jq sysstat bc
 ```
 
 ### Throughput Testing with iperf3
