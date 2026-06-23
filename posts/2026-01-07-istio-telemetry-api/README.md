@@ -78,7 +78,7 @@ The Telemetry API works at three hierarchical levels:
 
 Before configuring the Telemetry API, ensure you have:
 
-- Istio 1.12 or later installed
+- Istio 1.22 or later installed for the `telemetry.istio.io/v1` examples shown here
 - Access to your Kubernetes cluster with kubectl configured
 - Basic understanding of Istio concepts
 - Prometheus, Jaeger, or another telemetry backend deployed
@@ -88,7 +88,7 @@ The following command verifies your Istio installation and version:
 ```bash
 # Check Istio version to ensure Telemetry API support
 
-# Telemetry API is stable from Istio 1.12+
+# Telemetry API was promoted to telemetry.istio.io/v1 in Istio 1.22+
 istioctl version
 
 # Verify that the Istio control plane is running correctly
@@ -143,8 +143,8 @@ spec:
           service: jaeger-collector.istio-system.svc.cluster.local
           port: 9411
 
-      # OpenTelemetry Collector for unified telemetry
-      # Supports metrics, traces, and logs through OTLP protocol
+      # OpenTelemetry Collector for trace export
+      # Access logs use a separate envoyOtelAls provider below
       - name: otel-collector
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
@@ -211,7 +211,7 @@ This configuration applies to all workloads in the mesh when deployed to the ist
 # Mesh-wide Telemetry resource
 # Applies to ALL workloads across the entire service mesh
 # Deploy to istio-system namespace for mesh-wide scope
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -249,7 +249,7 @@ spec:
             # Add a custom dimension for request priority
             request_priority:
               operation: UPSERT
-              value: request.headers['x-priority'] | 'normal'
+              value: "'x-priority' in request.headers ? request.headers['x-priority'] : 'normal'"
 
   # Access logging configuration
   accessLogging:
@@ -268,7 +268,7 @@ Apply more specific telemetry settings to a particular namespace:
 # Namespace-scoped Telemetry resource
 # Applies to all workloads in the 'production' namespace
 # Overrides mesh-wide settings for this namespace
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-telemetry
@@ -304,8 +304,6 @@ spec:
   metrics:
     - providers:
         - name: prometheus
-        # Send metrics to OTel Collector as well
-        - name: otel-collector
       overrides:
         # Add request method as a dimension
         - match:
@@ -340,7 +338,7 @@ Target specific workloads using label selectors:
 # Workload-specific Telemetry resource
 # Uses selector to target specific pods/deployments
 # Most specific configuration takes precedence
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-service-telemetry
@@ -356,8 +354,6 @@ spec:
   tracing:
     - providers:
         - name: jaeger
-        # Also send to OTel collector for analysis
-        - name: otel-collector
       # 100% sampling for payment transactions
       # Critical for debugging payment issues
       randomSamplingPercentage: 100.0
@@ -387,7 +383,7 @@ spec:
     - providers:
         - name: prometheus
       overrides:
-        # Track payment amounts as a histogram
+        # Classify payment requests by amount
         - match:
             metric: REQUEST_DURATION
             mode: SERVER
@@ -396,7 +392,7 @@ spec:
             payment_amount_bucket:
               operation: UPSERT
               value: |
-                request.headers['x-payment-amount'] != '' ?
+                'x-payment-amount' in request.headers ?
                   (int(request.headers['x-payment-amount']) < 100 ? 'small' :
                    int(request.headers['x-payment-amount']) < 1000 ? 'medium' : 'large')
                 : 'unknown'
@@ -460,7 +456,7 @@ Add custom dimensions to enrich your metrics with business context:
 ```yaml
 # Telemetry resource for custom metric dimensions
 # Adds business-relevant tags to standard Istio metrics
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics-dimensions
@@ -491,12 +487,12 @@ spec:
             # Helps identify performance issues by customer segment
             customer_tier:
               operation: UPSERT
-              value: request.headers['x-customer-tier'] | 'standard'
+              value: "'x-customer-tier' in request.headers ? request.headers['x-customer-tier'] : 'standard'"
 
             # Request region for geographic analysis
             region:
               operation: UPSERT
-              value: request.headers['x-region'] | 'unknown'
+              value: "'x-region' in request.headers ? request.headers['x-region'] : 'unknown'"
 
         # Specific customization for request count metric
         - match:
@@ -515,7 +511,7 @@ spec:
             auth_status:
               operation: UPSERT
               value: |
-                request.headers['authorization'] != '' ? 'authenticated' : 'anonymous'
+                'authorization' in request.headers ? 'authenticated' : 'anonymous'
 
         # Customize request duration histogram
         - match:
@@ -538,7 +534,7 @@ Reduce cardinality and storage costs by removing dimensions you don't need:
 ```yaml
 # Telemetry resource to reduce metric cardinality
 # Removes high-cardinality or unused dimensions
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-cardinality
@@ -574,15 +570,14 @@ spec:
               operation: REMOVE
 ```
 
-### Enabling Additional Histograms
+### Adding Latency Classification Tags
 
-Configure histogram buckets for more accurate latency tracking:
+Use metric dimensions to classify latency for SLO tracking. Histogram bucket configuration itself is handled outside the Telemetry API:
 
 ```yaml
-# Telemetry resource with custom histogram configuration
-# Note: Histogram bucket configuration is done via EnvoyFilter
-# This example shows the conceptual approach
-apiVersion: telemetry.istio.io/v1alpha1
+# Telemetry resource with latency classification
+# Note: Histogram bucket configuration is not configured by the Telemetry API
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: histogram-config
@@ -646,7 +641,7 @@ Configure tracing with sampling and custom tags:
 ```yaml
 # Basic tracing configuration
 # Sets up distributed tracing with Jaeger
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-config
@@ -703,47 +698,36 @@ spec:
 
 ### Advanced Tracing with Multiple Providers
 
-Send traces to multiple backends for redundancy or analysis:
+Send traces to an OpenTelemetry Collector, then fan out from the collector to multiple backends for redundancy or analysis:
 
 ```yaml
-# Multi-provider tracing configuration
-# Sends traces to both Jaeger and OpenTelemetry Collector
-apiVersion: telemetry.istio.io/v1alpha1
+# Collector-based tracing configuration
+# Sends traces to OpenTelemetry Collector, which can export to multiple backends
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: multi-backend-tracing
   namespace: production
 spec:
   tracing:
-    # Send traces to Jaeger for real-time visualization
+    # Send traces to the OTel Collector for fan-out to Jaeger and long-term storage
     - providers:
-        - name: jaeger
+        - name: otel-collector
       randomSamplingPercentage: 10.0
       customTags:
         trace_source:
           literal:
             value: istio-mesh
-
-    # Also send traces to OTel Collector for long-term storage
-    - providers:
-        - name: otel-collector
-      # Can use different sampling rate for different backends
-      randomSamplingPercentage: 100.0
-      customTags:
-        # Different tags for OTel destination
-        collector_destination:
-          literal:
-            value: otel
 ```
 
 ### Conditional Tracing Based on Headers
 
-Implement header-based sampling for on-demand tracing:
+Add header context to traces and use workload labels when you need temporarily higher sampling. `randomSamplingPercentage` itself is not conditional on a request header:
 
 ```yaml
 # Conditional tracing configuration
 # Higher sampling for specific request types
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: conditional-tracing
@@ -783,7 +767,7 @@ spec:
 ---
 # Separate Telemetry for debug-enabled workloads
 # Apply 100% sampling when debug mode is needed
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: debug-tracing
@@ -796,7 +780,6 @@ spec:
 
   tracing:
     - providers:
-        - name: jaeger
         - name: otel-collector
       # 100% sampling for debug workloads
       randomSamplingPercentage: 100.0
@@ -816,7 +799,7 @@ Access logging provides detailed records of all requests passing through the mes
 ```yaml
 # Comprehensive access logging configuration
 # Configures structured logging with filtering
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logging-config
@@ -851,7 +834,7 @@ spec:
 
 ### Configuring Custom Access Log Format
 
-While the Telemetry API handles provider selection, custom log formats require additional EnvoyFilter configuration:
+While the Telemetry API handles provider selection, custom log formats are configured on the MeshConfig extension provider:
 
 ```yaml
 # MeshConfig extension provider with custom access log format
@@ -903,7 +886,7 @@ spec:
 
 ---
 # Telemetry resource using the custom logger
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: json-access-logging
@@ -997,7 +980,7 @@ spec:
           service: jaeger-collector.observability.svc.cluster.local
           port: 9411
 
-      # OpenTelemetry Collector for unified telemetry
+      # OpenTelemetry Collector for trace export
       - name: otel-collector
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
@@ -1031,7 +1014,7 @@ Establish baseline telemetry for all workloads:
 ```yaml
 # Mesh-wide telemetry baseline
 # Provides default configuration for all workloads
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-telemetry-baseline
@@ -1078,7 +1061,7 @@ Enhanced telemetry for the production namespace:
 ```yaml
 # Production namespace telemetry
 # Enhanced observability for production workloads
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-telemetry
@@ -1087,7 +1070,6 @@ spec:
   # Enhanced tracing for production
   tracing:
     - providers:
-        - name: jaeger
         - name: otel-collector
       randomSamplingPercentage: 10.0
       customTags:
@@ -1120,7 +1102,7 @@ spec:
                 request.url_path.startsWith('/api/v2') ? 'v2' : 'unknown'
             customer_segment:
               operation: UPSERT
-              value: request.headers['x-customer-segment'] | 'standard'
+              value: "'x-customer-segment' in request.headers ? request.headers['x-customer-segment'] : 'standard'"
 
         # Remove high-cardinality labels
         - match:
@@ -1154,7 +1136,7 @@ Special configuration for payment-critical services:
 ```yaml
 # Payment service telemetry
 # Maximum observability for financial transactions
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-service-telemetry
@@ -1167,7 +1149,6 @@ spec:
   # Full tracing for payment transactions
   tracing:
     - providers:
-        - name: jaeger
         - name: otel-collector
       # 100% sampling - trace every payment
       randomSamplingPercentage: 100.0
@@ -1211,7 +1192,7 @@ spec:
                 response.code >= 500 ? 'server_error' : 'other'
             payment_provider:
               operation: UPSERT
-              value: request.headers['x-payment-provider'] | 'unknown'
+              value: "'x-payment-provider' in request.headers ? request.headers['x-payment-provider'] : 'unknown'"
 
   # Log every payment request
   accessLogging:
@@ -1248,9 +1229,8 @@ kubectl get telemetry production-telemetry -n production -o yaml
 # Check the stats_sinks and tracing configuration
 istioctl proxy-config bootstrap deploy/my-app -n production | grep -A 20 "tracing"
 
-# View the merged effective configuration for a workload
-# Shows the final configuration after merging all Telemetry resources
-istioctl experimental telemetry workload deploy/my-app -n production
+# Retrieve Envoy-emitted metrics for a workload in Prometheus format
+istioctl experimental envoy-stats "$(kubectl get pod -n production -l app=my-app -o jsonpath='{.items[0].metadata.name}').production" --output prom
 ```
 
 ### Checking Metrics Output
@@ -1326,9 +1306,9 @@ tagOverrides:
   region:
     operation: UPSERT
     value: |
-      request.headers['x-region'] == 'us-east' ? 'us-east' :
-      request.headers['x-region'] == 'us-west' ? 'us-west' :
-      request.headers['x-region'] == 'eu-west' ? 'eu-west' : 'other'
+      'x-region' in request.headers && request.headers['x-region'] == 'us-east' ? 'us-east' :
+      'x-region' in request.headers && request.headers['x-region'] == 'us-west' ? 'us-west' :
+      'x-region' in request.headers && request.headers['x-region'] == 'eu-west' ? 'eu-west' : 'other'
 
 # DON'T: Use unbounded values like user IDs or session IDs
 # These create millions of unique time series
