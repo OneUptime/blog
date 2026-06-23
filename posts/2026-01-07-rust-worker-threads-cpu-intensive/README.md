@@ -171,6 +171,7 @@ Use `spawn_blocking` to run CPU work without blocking the async runtime.
 // src/async_cpu.rs
 // Integrating CPU work with async code
 
+use rayon::prelude::*;
 use tokio::task;
 
 /// Offload CPU work to blocking thread pool
@@ -265,6 +266,10 @@ struct Result {
 }
 
 fn process_item(item: &WorkItem) -> Result {
+    if item.data.is_empty() {
+        return Result { checksum: 0 };
+    }
+
     // Variable work based on complexity
     let iterations = item.complexity * 1000;
     let checksum: u64 = (0..iterations)
@@ -397,6 +402,7 @@ Combine tokio channels with CPU workers.
 // src/async_workers.rs
 // Async-aware worker pool
 
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use std::thread;
 
@@ -411,34 +417,34 @@ struct Job {
 
 impl AsyncWorkerPool {
     pub fn new(num_workers: usize) -> Self {
-        let (tx, mut rx) = mpsc::channel::<Job>(100);
+        let (tx, rx) = mpsc::channel::<Job>(100);
+        let rx = Arc::new(Mutex::new(rx));
 
         // Spawn OS threads for CPU work
         for id in 0..num_workers {
-            let mut rx = rx.clone();
+            let rx = rx.clone();
 
             thread::Builder::new()
                 .name(format!("cpu-worker-{}", id))
                 .spawn(move || {
-                    // Create a basic runtime for receiving from async channel
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
+                    loop {
+                        let job = {
+                            let mut lock = rx.lock().unwrap();
+                            lock.blocking_recv()
+                        };
 
-                    rt.block_on(async {
-                        while let Some(job) = rx.recv().await {
-                            // CPU-intensive processing
-                            let result = process_data(&job.data);
-                            let _ = job.response.send(result);
+                        match job {
+                            Some(job) => {
+                                // CPU-intensive processing
+                                let result = process_data(&job.data);
+                                let _ = job.response.send(result);
+                            }
+                            None => break, // Channel closed
                         }
-                    });
+                    }
                 })
                 .unwrap();
         }
-
-        // Prevent the receiver from being dropped
-        std::mem::forget(rx);
 
         Self { sender: tx }
     }
