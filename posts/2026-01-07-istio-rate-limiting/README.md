@@ -213,6 +213,13 @@ spec:
               default_value:
                 numerator: 100
                 denominator: HUNDRED
+            # Generate path descriptors from the request path so the
+            # descriptor-specific token buckets below can match.
+            rate_limits:
+              - actions:
+                  - request_headers:
+                      header_name: ":path"
+                      descriptor_key: path
             # Define descriptors for path-specific limits
             descriptors:
               # Stricter limit for authentication endpoints (10 req/min)
@@ -299,7 +306,7 @@ sequenceDiagram
     Redis-->>RLS: Current Count
 
     alt Under Limit
-        RLS-->>Envoy: OK (200)
+        RLS-->>Envoy: OK decision
         Envoy->>Service: Forward Request
         Service-->>Envoy: Response
         Envoy-->>Client: Response + Rate Limit Headers
@@ -393,9 +400,11 @@ data:
       # Each user gets 100 requests per minute
       - key: header_match
         value: user-id
-        rate_limit:
-          unit: minute
-          requests_per_unit: 100
+        descriptors:
+          - key: user-id
+            rate_limit:
+              unit: minute
+              requests_per_unit: 100
 
       # Per-IP rate limiting for unauthenticated requests
       # Each IP address gets 50 requests per minute
@@ -772,73 +781,67 @@ data:
       # 3. Path-based Descriptor
       # Different limits for different API endpoints
       - key: path
-        descriptors:
-          - key: path_value
-            value: "/api/login"
-            rate_limit:
-              unit: minute
-              requests_per_unit: 10
-          - key: path_value
-            value: "/api/register"
-            rate_limit:
-              unit: hour
-              requests_per_unit: 5
-          - key: path_value
-            value: "/api/data"
-            rate_limit:
-              unit: second
-              requests_per_unit: 100
+        value: "/api/login"
+        rate_limit:
+          unit: minute
+          requests_per_unit: 10
+      - key: path
+        value: "/api/register"
+        rate_limit:
+          unit: hour
+          requests_per_unit: 5
+      - key: path
+        value: "/api/data"
+        rate_limit:
+          unit: second
+          requests_per_unit: 100
 
       # 4. Method-based Descriptor
       # Different limits based on HTTP method
       - key: method
-        descriptors:
-          - key: method_value
-            value: GET
-            rate_limit:
-              unit: minute
-              requests_per_unit: 1000
-          - key: method_value
-            value: POST
-            rate_limit:
-              unit: minute
-              requests_per_unit: 100
-          - key: method_value
-            value: DELETE
-            rate_limit:
-              unit: minute
-              requests_per_unit: 10
+        value: GET
+        rate_limit:
+          unit: minute
+          requests_per_unit: 1000
+      - key: method
+        value: POST
+        rate_limit:
+          unit: minute
+          requests_per_unit: 100
+      - key: method
+        value: DELETE
+        rate_limit:
+          unit: minute
+          requests_per_unit: 10
 
       # 5. Composite Descriptor
       # Combines multiple criteria for fine-grained control
       - key: user_type
+        value: admin
         descriptors:
-          - key: user_value
-            value: admin
-            descriptors:
-              - key: action
-                value: read
-                rate_limit:
-                  unit: minute
-                  requests_per_unit: 1000
-              - key: action
-                value: write
-                rate_limit:
-                  unit: minute
-                  requests_per_unit: 500
-          - key: user_value
-            value: regular
-            descriptors:
-              - key: action
-                value: read
-                rate_limit:
-                  unit: minute
-                  requests_per_unit: 100
-              - key: action
-                value: write
-                rate_limit:
-                  unit: minute
-                  requests_per_unit: 20
+          - key: action
+            value: read
+            rate_limit:
+              unit: minute
+              requests_per_unit: 1000
+          - key: action
+            value: write
+            rate_limit:
+              unit: minute
+              requests_per_unit: 500
+      - key: user_type
+        value: regular
+        descriptors:
+          - key: action
+            value: read
+            rate_limit:
+              unit: minute
+              requests_per_unit: 100
+          - key: action
+            value: write
+            rate_limit:
+              unit: minute
+              requests_per_unit: 20
 
       # 6. Remote Address Descriptor
       # Per-IP rate limiting with shadow mode for monitoring
@@ -985,15 +988,15 @@ data:
               unit: day
               requests_per_unit: 10000
 
-      # Monthly quota for storage operations
-      # Tracks usage across the entire billing month
+      # Daily storage quota
+      # The reference rate limit service supports second, minute, hour, and day units
       - key: tenant_id
         descriptors:
           - key: resource_type
             value: storage
             rate_limit:
-              unit: month
-              requests_per_unit: 1000000
+              unit: day
+              requests_per_unit: 33333
 
       # Hourly compute quota
       # Prevents excessive resource consumption in short periods
@@ -1169,11 +1172,11 @@ spec:
 
 ### Multi-Stage Rate Limiting
 
-Implement layered rate limiting with multiple stages:
+Implement layered rate limiting with multiple stages. Each stage requires a rate limit HTTP filter configured with the matching `stage` value:
 
 ```yaml
 # EnvoyFilter for multi-stage rate limiting
-# Stage 0: Global limits, Stage 1: Per-user limits, Stage 2: Per-endpoint limits
+# Stage 0: Global limits, Stage 1: Per-tenant limits, Stage 2: Per-endpoint limits
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -1191,7 +1194,7 @@ spec:
         operation: MERGE
         value:
           rate_limits:
-            # Stage 0: Global rate limit (evaluated first)
+            # Stage 0: Global rate limit
             # Protects the entire system from overwhelming traffic
             - stage: 0
               actions:
@@ -1199,7 +1202,7 @@ spec:
                     descriptor_key: stage
                     descriptor_value: global
 
-            # Stage 1: Per-tenant rate limit (evaluated second)
+            # Stage 1: Per-tenant rate limit
             # Ensures fair usage across tenants
             - stage: 1
               actions:
@@ -1207,7 +1210,7 @@ spec:
                     header_name: x-tenant-id
                     descriptor_key: tenant
 
-            # Stage 2: Per-endpoint rate limit (evaluated last)
+            # Stage 2: Per-endpoint rate limit
             # Protects specific sensitive endpoints
             - stage: 2
               actions:
@@ -1282,7 +1285,7 @@ spec:
                     headers:
                       - name: x-system-load
                         exact_match: normal
-              limit_override:
+              limit:
                 dynamic_metadata:
                   metadata_key:
                     key: envoy.filters.http.ratelimit
