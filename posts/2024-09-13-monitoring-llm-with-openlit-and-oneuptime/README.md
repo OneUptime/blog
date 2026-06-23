@@ -74,7 +74,7 @@ OpenTelemetry uses environment variables to configure the exporter endpoint and 
 ```shell
 # Set the OpenTelemetry collector endpoint for OneUptime
 # This is where all traces and metrics will be sent
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.oneuptime.com"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 
 # Set the authentication header with your OneUptime service token
 # Replace YOUR_ONEUPTIME_SERVICE_TOKEN with the token from step 2
