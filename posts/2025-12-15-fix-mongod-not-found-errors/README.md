@@ -56,11 +56,14 @@ Get-Service -Name MongoDB -ErrorAction SilentlyContinue
 
 ## Solution 1: Install MongoDB (If Not Installed)
 
-### Ubuntu/Debian
+### Ubuntu 22.04 (Jammy)
 
 ```bash
+# Install prerequisites
+sudo apt-get install -y gnupg curl
+
 # Import MongoDB public GPG key
-curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
    sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg \
    --dearmor
 
@@ -82,18 +85,22 @@ sudo systemctl enable mongod
 mongod --version
 ```
 
-### RHEL/CentOS/Fedora
+For Debian, use MongoDB's Debian-specific repository instead of the Ubuntu repository. On Debian 12, MongoDB 7.0 apt installation can fail because Debian rejects the repository key's SHA-1 signature, so use Debian 11 for apt-based MongoDB 7.0 installs or install from the tarball.
+
+### RHEL/CentOS/Rocky Linux/AlmaLinux
 
 ```bash
 # Create repository file
 cat << 'EOF' | sudo tee /etc/yum.repos.d/mongodb-org-7.0.repo
 [mongodb-org-7.0]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/
 gpgcheck=1
 enabled=1
 gpgkey=https://pgp.mongodb.com/server-7.0.asc
 EOF
+
+# For RHEL/CentOS 8 or 7, replace /redhat/9/ with /redhat/8/ or /redhat/7/.
 
 # Install MongoDB
 sudo yum install -y mongodb-org
@@ -151,7 +158,12 @@ mongod --version
 
 ```bash
 # Find MongoDB installation
-MONGO_PATH=$(dirname $(find /usr -name "mongod" 2>/dev/null | head -1))
+MONGO_BIN=$(find /usr /usr/local /opt -name "mongod" -type f 2>/dev/null | head -1)
+if [ -z "$MONGO_BIN" ]; then
+    echo "mongod not found; install MongoDB before updating PATH"
+    exit 1
+fi
+MONGO_PATH=$(dirname "$MONGO_BIN")
 
 # Add to PATH temporarily
 export PATH=$PATH:$MONGO_PATH
@@ -183,9 +195,11 @@ $env:PATH -split ';'
 $env:PATH += ";C:\Program Files\MongoDB\Server\7.0\bin"
 
 # Add to PATH permanently (requires admin)
+$mongoBin = "C:\Program Files\MongoDB\Server\7.0\bin"
+$machinePath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::Machine)
 [Environment]::SetEnvironmentVariable(
     "PATH",
-    $env:PATH + ";C:\Program Files\MongoDB\Server\7.0\bin",
+    "$machinePath;$mongoBin",
     [EnvironmentVariableTarget]::Machine
 )
 
@@ -200,20 +214,20 @@ $env:PATH += ";C:\Program Files\MongoDB\Server\7.0\bin"
 # Ubuntu/Debian - Complete reinstall
 sudo systemctl stop mongod
 sudo apt-get purge mongodb-org*
-sudo rm -r /var/log/mongodb
-sudo rm -r /var/lib/mongodb
+sudo rm -rf /var/log/mongodb
+sudo rm -rf /var/lib/mongodb
 # Then reinstall following steps above
 
 # RHEL/CentOS
 sudo systemctl stop mongod
 sudo yum remove mongodb-org*
-sudo rm -r /var/log/mongodb
-sudo rm -r /var/lib/mongo
+sudo rm -rf /var/log/mongodb
+sudo rm -rf /var/lib/mongo
 # Then reinstall following steps above
 
 # macOS
-brew services stop mongodb-community
-brew uninstall mongodb-community
+brew services stop mongodb-community@7.0
+brew uninstall mongodb-community@7.0
 brew cleanup
 brew install mongodb-community@7.0
 ```
@@ -235,7 +249,7 @@ ldd $(which mongod) | grep "not found"
 
 # Install missing dependencies
 sudo apt-get install -f  # Debian/Ubuntu
-sudo yum install -y $(ldd $(which mongod) | grep "not found" | awk '{print $1}')  # RHEL
+sudo yum reinstall -y mongodb-org mongodb-org-server  # RHEL/CentOS
 ```
 
 ## Solution 4: Docker Alternative
@@ -256,11 +270,10 @@ docker run -d \
     mongo:7.0
 
 # Connect to MongoDB
-docker exec -it mongodb mongosh
+docker exec -it mongodb mongosh -u admin -p password --authenticationDatabase admin
 
 # Create alias for convenience
-echo 'alias mongod="docker exec -it mongodb mongod"' >> ~/.bashrc
-echo 'alias mongosh="docker exec -it mongodb mongosh"' >> ~/.bashrc
+echo 'alias mongosh="docker exec -it mongodb mongosh -u admin -p password --authenticationDatabase admin"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -291,13 +304,13 @@ volumes:
 
 ```bash
 # Start with Docker Compose
-docker-compose up -d
+docker compose up -d
 
 # Check status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f mongodb
+docker compose logs -f mongodb
 ```
 
 ## Solution 5: Fix Service Issues
@@ -316,8 +329,13 @@ sudo tail -f /var/log/mongodb/mongod.log
 
 # Fix common service issues
 # 1. Permission issues
+# Ubuntu/Debian package defaults
 sudo chown -R mongodb:mongodb /var/lib/mongodb
 sudo chown -R mongodb:mongodb /var/log/mongodb
+
+# RHEL/CentOS package defaults
+sudo chown -R mongod:mongod /var/lib/mongo
+sudo chown -R mongod:mongod /var/log/mongodb
 
 # 2. Data directory issues
 sudo mkdir -p /var/lib/mongodb
@@ -331,8 +349,11 @@ sudo systemctl restart mongod
 ### Create Systemd Service (if missing)
 
 ```bash
+# This example uses Ubuntu/Debian package defaults. On RHEL/CentOS,
+# use User=mongod, Group=mongod, and /var/lib/mongo in /etc/mongod.conf.
+
 # Create service file
-sudo cat << 'EOF' > /etc/systemd/system/mongod.service
+sudo tee /etc/systemd/system/mongod.service > /dev/null << 'EOF'
 [Unit]
 Description=MongoDB Database Server
 Documentation=https://docs.mongodb.org/manual
@@ -415,7 +436,11 @@ echo ""
 
 # Check data directory
 echo "4. Checking data directory..."
-DATA_DIR="/var/lib/mongodb"
+if [ -d "/var/lib/mongodb" ]; then
+    DATA_DIR="/var/lib/mongodb"
+else
+    DATA_DIR="/var/lib/mongo"
+fi
 if [ -d "$DATA_DIR" ]; then
     echo "   Directory exists: $DATA_DIR"
     echo "   Owner: $(ls -ld $DATA_DIR | awk '{print $3":"$4}')"
