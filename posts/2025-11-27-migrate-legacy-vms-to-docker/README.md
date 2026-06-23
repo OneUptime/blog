@@ -8,7 +8,7 @@ Description: A step-by-step plan for lifting applications out of virtual machine
 
 ---
 
-Every company has that VM running critical code from 2014. Containerizing it buys you reproducibility, faster deploys, and easier scaling-but only if you migrate methodically. Here’s the seven-step blueprint we follow.
+Every company has that VM running critical code from 2014. Containerizing it buys you reproducibility, faster deploys, and easier scaling-but only if you migrate methodically. Here’s the nine-step blueprint we follow.
 
 ## 1. Inventory and Baseline
 
@@ -55,7 +55,7 @@ WORKDIR /app
 # First, copy only dependency files for better caching
 COPY pyproject.toml poetry.lock ./
 RUN pip install --upgrade pip \
- && pip install poetry \
+ && pip install poetry poetry-plugin-export \
  && poetry export -f requirements.txt --output requirements.txt
 
 # Install production dependencies without caching (smaller image)
