@@ -14,7 +14,7 @@ Kubernetes has become the standard platform for container orchestration, and whi
 
 Before diving in, ensure you have:
 
-- Go 1.21 or later installed
+- A Go version supported by the client-go release you choose. If you use `@latest`, check the selected module's `go` directive; otherwise, pin a `v0.x.y` client-go release that matches your cluster version.
 - Access to a Kubernetes cluster (local or remote)
 - Basic understanding of Kubernetes resources
 - Familiarity with Go programming
@@ -401,7 +401,7 @@ func UpdateDeploymentReplicas(clientset *kubernetes.Clientset, namespace, name s
     })
 }
 
-// PatchDeploymentImage updates the container image using a JSON patch
+// PatchDeploymentImage updates the container image using a strategic merge patch
 func PatchDeploymentImage(clientset *kubernetes.Clientset, namespace, name, newImage string) error {
     // Create a strategic merge patch
     patch := map[string]interface{}{
@@ -440,14 +440,13 @@ func PatchDeploymentImage(clientset *kubernetes.Clientset, namespace, name, newI
     return nil
 }
 
-// AddDeploymentAnnotation adds an annotation using JSON patch
+// AddDeploymentAnnotation adds or updates an annotation using a merge patch
 func AddDeploymentAnnotation(clientset *kubernetes.Clientset, namespace, name, key, value string) error {
-    // JSON Patch format for adding/updating annotations
-    patch := []map[string]interface{}{
-        {
-            "op":    "add",
-            "path":  fmt.Sprintf("/metadata/annotations/%s", key),
-            "value": value,
+    patch := map[string]interface{}{
+        "metadata": map[string]interface{}{
+            "annotations": map[string]string{
+                key: value,
+            },
         },
     }
 
@@ -459,7 +458,7 @@ func AddDeploymentAnnotation(clientset *kubernetes.Clientset, namespace, name, k
     _, err = clientset.AppsV1().Deployments(namespace).Patch(
         context.TODO(),
         name,
-        types.JSONPatchType,
+        types.MergePatchType,
         patchBytes,
         metav1.PatchOptions{},
     )
@@ -637,7 +636,6 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
-    "k8s.io/apimachinery/pkg/util/wait"
     "k8s.io/client-go/informers"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/cache"
@@ -689,7 +687,19 @@ func (p *PodInformer) AddEventHandlers() {
             }
         },
         DeleteFunc: func(obj interface{}) {
-            pod := obj.(*corev1.Pod)
+            pod, ok := obj.(*corev1.Pod)
+            if !ok {
+                tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+                if !ok {
+                    fmt.Printf("Unexpected delete object: %#v\n", obj)
+                    return
+                }
+                pod, ok = tombstone.Obj.(*corev1.Pod)
+                if !ok {
+                    fmt.Printf("Unexpected tombstone object: %#v\n", tombstone.Obj)
+                    return
+                }
+            }
             fmt.Printf("[DELETE] Pod: %s/%s\n", pod.Namespace, pod.Name)
         },
     })
@@ -758,8 +768,9 @@ import (
 // Controller processes Pod events using a work queue
 type Controller struct {
     clientset     *kubernetes.Clientset
+    factory       informers.SharedInformerFactory
     informer      cache.SharedIndexInformer
-    queue         workqueue.RateLimitingInterface
+    queue         workqueue.TypedRateLimitingInterface[string]
     maxRetries    int
 }
 
@@ -776,8 +787,8 @@ func NewController(clientset *kubernetes.Clientset, namespace string) *Controlle
 
     // Create a rate-limiting work queue
     // Items are rate limited with exponential backoff
-    queue := workqueue.NewRateLimitingQueue(
-        workqueue.NewItemExponentialFailureRateLimiter(
+    queue := workqueue.NewTypedRateLimitingQueue(
+        workqueue.NewTypedItemExponentialFailureRateLimiter[string](
             time.Millisecond*500, // Base delay
             time.Second*30,       // Max delay
         ),
@@ -785,6 +796,7 @@ func NewController(clientset *kubernetes.Clientset, namespace string) *Controlle
 
     controller := &Controller{
         clientset:  clientset,
+        factory:    factory,
         informer:   podInformer,
         queue:      queue,
         maxRetries: 5,
@@ -808,7 +820,7 @@ func NewController(clientset *kubernetes.Clientset, namespace string) *Controlle
 
 // enqueue adds an item to the work queue
 func (c *Controller) enqueue(obj interface{}) {
-    key, err := cache.MetaNamespaceKeyFunc(obj)
+    key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
     if err != nil {
         runtime.HandleError(err)
         return
@@ -822,6 +834,9 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
     defer c.queue.ShutDown()
 
     fmt.Println("Starting controller")
+
+    // Start informer before waiting for the cache to sync
+    c.factory.Start(ctx.Done())
 
     // Wait for cache sync
     if !cache.WaitForCacheSync(ctx.Done(), c.informer.HasSynced) {
@@ -856,7 +871,7 @@ func (c *Controller) processNextItem(ctx context.Context) bool {
     defer c.queue.Done(key)
 
     // Process the item
-    err := c.syncHandler(ctx, key.(string))
+    err := c.syncHandler(ctx, key)
     if err == nil {
         // Success - remove from rate limiter
         c.queue.Forget(key)
@@ -1056,7 +1071,6 @@ package main
 import (
     "context"
     "flag"
-    "fmt"
     "os"
     "os/signal"
     "path/filepath"
