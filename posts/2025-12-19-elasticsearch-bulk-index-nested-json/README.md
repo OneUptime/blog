@@ -66,7 +66,7 @@ curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
 
 ## The Bulk API Format
 
-The bulk API uses a newline-delimited JSON format (NDJSON). Each operation requires two lines: an action metadata line and the document source:
+The bulk API uses a newline-delimited JSON format (NDJSON). Each index operation requires two lines: an action metadata line and the document source:
 
 ```text
 {"index": {"_index": "products", "_id": "1"}}
@@ -74,6 +74,8 @@ The bulk API uses a newline-delimited JSON format (NDJSON). Each operation requi
 {"index": {"_index": "products", "_id": "2"}}
 {"product": "Phone", "reviews": [{"author": "Bob", "rating": 4}]}
 ```
+
+The final line must end with a newline character.
 
 ## Bulk Indexing Workflow
 
@@ -235,7 +237,6 @@ Use parallel helpers for faster ingestion:
 
 ```python
 from elasticsearch import helpers
-import concurrent.futures
 
 def parallel_bulk_index(es, documents, thread_count=4, chunk_size=500):
     """Index documents using parallel threads."""
@@ -293,48 +294,29 @@ curl -X POST "localhost:9200/products/_refresh"
 Implement robust error handling for production systems:
 
 ```python
-from elasticsearch import helpers, ConnectionError, TransportError
-import time
+from elasticsearch import helpers
 
 def bulk_index_with_retry(es, documents, max_retries=3, backoff=2):
-    """Bulk index with retry logic for transient failures."""
+    """Bulk index with retry logic for 429 rejections."""
 
-    attempt = 0
-    while attempt < max_retries:
-        try:
-            success, errors = helpers.bulk(
-                es,
-                documents,
-                raise_on_error=False,
-                raise_on_exception=False
-            )
+    success_count = 0
+    errors = []
 
-            # Check for retryable errors
-            retryable = []
-            permanent_failures = []
+    for success, info in helpers.streaming_bulk(
+        es,
+        documents,
+        raise_on_error=False,
+        raise_on_exception=False,
+        max_retries=max_retries,
+        initial_backoff=backoff,
+        max_backoff=backoff * (2 ** max_retries)
+    ):
+        if success:
+            success_count += 1
+        else:
+            errors.append(info)
 
-            for error in errors:
-                error_type = error.get('index', {}).get('error', {}).get('type', '')
-                if error_type in ['es_rejected_execution_exception', 'timeout']:
-                    retryable.append(error)
-                else:
-                    permanent_failures.append(error)
-
-            if not retryable:
-                return success, permanent_failures
-
-            # Retry failed documents
-            documents = retryable
-            attempt += 1
-            time.sleep(backoff ** attempt)
-
-        except (ConnectionError, TransportError) as e:
-            attempt += 1
-            if attempt >= max_retries:
-                raise
-            time.sleep(backoff ** attempt)
-
-    return 0, documents
+    return success_count, errors
 ```
 
 ## Querying Nested Documents
