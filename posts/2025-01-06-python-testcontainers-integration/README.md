@@ -340,24 +340,20 @@ For async applications using asyncpg, create an async-compatible fixture that pr
 ```python
 # tests/conftest.py
 import pytest
-import asyncio
+import pytest_asyncio
 from testcontainers.postgres import PostgresContainer
 import asyncpg
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests - required by pytest-asyncio"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# pytest-asyncio 1.0 removed the custom event_loop fixture. Instead, declare
+# the loop scope on async fixtures and tests with loop_scope="session".
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def async_postgres():
     """Start PostgreSQL for async tests"""
     with PostgresContainer("postgres:15") as postgres:
         yield postgres
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def async_pool(async_postgres):
     """Create asyncpg connection pool for async database operations"""
     pool = await asyncpg.create_pool(
@@ -395,7 +391,7 @@ Async tests can verify concurrent database operations, which is important for hi
 import pytest
 from app.repositories import AsyncUserRepository
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestAsyncUserRepository:
     async def test_create_user(self, async_pool):
         """Test async user creation with real database"""
@@ -596,6 +592,7 @@ Module-scoped fixtures balance isolation with performance. TRUNCATE is faster th
 ```python
 # tests/conftest.py
 import pytest
+from sqlalchemy import text
 from testcontainers.postgres import PostgresContainer
 
 # Module-scoped for better performance - container reused within module
@@ -611,9 +608,10 @@ def clean_db(postgres, db_engine):
     from app.models import Base
 
     # Fast cleanup with TRUNCATE (faster than DROP/CREATE)
+    # SQLAlchemy 2.0 requires raw SQL to be wrapped in text()
     with db_engine.connect() as conn:
         for table in reversed(Base.metadata.sorted_tables):
-            conn.execute(f'TRUNCATE TABLE {table.name} CASCADE')
+            conn.execute(text(f'TRUNCATE TABLE {table.name} CASCADE'))
         conn.commit()
 
     yield
@@ -626,7 +624,8 @@ For parallel tests with pytest-xdist, each worker needs its own container to pre
 ```python
 # pytest.ini
 [pytest]
-addopts = -n auto  # pytest-xdist for parallel tests
+# pytest-xdist runs tests in parallel ("-n auto" uses all CPU cores)
+addopts = -n auto
 
 # tests/conftest.py
 @pytest.fixture(scope="session")
