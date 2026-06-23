@@ -217,9 +217,10 @@ mkdir -p pb/user
 # Generate Go code from the proto file
 # --go_out generates message types
 # --go-grpc_out generates gRPC service interfaces
-protoc --go_out=. --go_opt=paths=source_relative \
-       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-       proto/user/user.proto
+protoc --go_out=pb --go_opt=paths=source_relative \
+       --go-grpc_out=pb --go-grpc_opt=paths=source_relative \
+       --proto_path=proto \
+       user/user.proto
 ```
 
 You can also create a Makefile to simplify the generation process.
@@ -230,9 +231,10 @@ You can also create a Makefile to simplify the generation process.
 
 # Generate all protobuf files
 proto:
-	protoc --go_out=. --go_opt=paths=source_relative \
-	       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-	       proto/user/user.proto
+	protoc --go_out=pb --go_opt=paths=source_relative \
+	       --go-grpc_out=pb --go-grpc_opt=paths=source_relative \
+	       --proto_path=proto \
+	       user/user.proto
 
 # Clean generated files
 clean:
@@ -354,6 +356,12 @@ func (s *UserService) WatchUsers(req *pb.WatchUsersRequest, stream pb.UserServic
 	s.mu.Lock()
 	for _, userID := range req.GetUserIds() {
 		s.watchers[userID] = append(s.watchers[userID], eventChan)
+		if user, exists := s.users[userID]; exists {
+			eventChan <- &pb.UserEvent{
+				User:      user,
+				EventType: pb.EventType_EVENT_TYPE_CREATED,
+			}
+		}
 	}
 	s.mu.Unlock()
 
@@ -615,13 +623,13 @@ import (
 )
 
 func main() {
-	// Establish a connection to the gRPC server
+	// Create a gRPC client channel. RPCs will connect lazily when invoked.
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("Failed to create client: %v", err)
 	}
 	defer conn.Close()
 
