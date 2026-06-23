@@ -76,6 +76,8 @@ Wire is a code generation tool developed by Google that solves dependency inject
 - **Has zero runtime overhead**: All wiring is done before your application runs
 - **Produces traceable code**: You can inspect the generated code to understand the wiring
 
+As of August 25, 2025, Google's Wire repository is archived and marked as no longer maintained. The latest release remains usable, but new projects should take that maintenance status into account.
+
 ## Installing Wire
 
 To get started with Wire, you need to install the Wire command-line tool:
@@ -541,6 +543,8 @@ package wire
 import (
     "github.com/google/wire"
 
+    "myapp/domain"
+    "myapp/handler"
     "myapp/repository"
     "myapp/service"
 )
@@ -549,6 +553,8 @@ import (
 // This makes it easy to include all repositories in an injector
 var RepositorySet = wire.NewSet(
     repository.NewPostgresUserRepository,
+    wire.Bind(new(domain.UserRepository), new(*repository.PostgresUserRepository)),
+
     repository.NewPostgresOrderRepository,
     repository.NewPostgresProductRepository,
 )
@@ -559,7 +565,9 @@ var ServiceSet = wire.NewSet(
     service.NewUserService,
     service.NewOrderService,
     service.NewProductService,
+
     service.NewSMTPEmailSender,
+    wire.Bind(new(domain.EmailSender), new(*service.SMTPEmailSender)),
 )
 
 // HandlerSet groups all HTTP handler providers
@@ -683,10 +691,12 @@ Many resources like database connections need cleanup when the application shuts
 package infrastructure
 
 import (
+    "context"
     "database/sql"
     "fmt"
 
     _ "github.com/lib/pq"
+    "github.com/redis/go-redis/v9"
 )
 
 // NewDatabase creates a database connection with a cleanup function
@@ -1291,7 +1301,7 @@ Wire files should only contain `wire.Build` calls. Put actual provider logic in 
 
 ### 6. Run Wire in CI/CD
 
-Add `wire generate` to your CI/CD pipeline to ensure generated code stays in sync:
+Add `wire ./...` to your CI/CD pipeline to ensure generated code stays in sync:
 
 ```yaml
 # .github/workflows/ci.yml
