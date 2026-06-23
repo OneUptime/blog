@@ -803,7 +803,7 @@ pin "@rails/activestorage", to: "activestorage.esm.js"
                         multiple: true,
                         direct_upload: true,
                         data: { 
-                          action: 'direct-upload:initialize->upload#initialize direct-upload:start->upload#start direct-upload:progress->upload#progress direct-upload:end->upload#end'
+                          action: 'direct-upload:initialize->upload#prepare direct-upload:start->upload#start direct-upload:progress->upload#progress direct-upload:end->upload#end'
                         },
                         class: 'form-control' %>
     
@@ -826,7 +826,10 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static targets = ["submit"]
 
-  initialize(event) {
+  // Note: avoid naming this `initialize` — that is a reserved Stimulus
+  // lifecycle callback invoked once (with no event) when the controller is
+  // constructed, which would crash when destructuring the event.
+  prepare(event) {
     const { target, detail } = event
     const { id, file } = detail
 
