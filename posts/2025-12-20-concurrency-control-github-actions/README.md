@@ -124,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm ci && npm build
+      - run: npm ci && npm run build
 ```
 
 ## Job-Level Concurrency
