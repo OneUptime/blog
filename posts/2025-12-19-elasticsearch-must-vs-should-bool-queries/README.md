@@ -64,7 +64,7 @@ If any condition fails, the document is not returned.
 
 ## SHOULD - Optional Conditions
 
-`should` clauses work like OR. At least one should clause must match (by default) for documents to be returned.
+`should` clauses work like OR. When a bool query contains only `should` clauses, at least one should clause must match by default for documents to be returned.
 
 ```bash
 curl -X GET "localhost:9200/products/_search" -H 'Content-Type: application/json' -d'
@@ -122,7 +122,7 @@ Result: Returns documents matching "red" OR "blue" - at least one is required.
 }
 ```
 
-Result: Returns ALL shoes, but ranks red or blue shoes higher. The `should` clause becomes a scoring boost, not a filter.
+Result: Returns ALL shoes, but ranks red or blue shoes higher. Because `minimum_should_match` is not set, the `should` clause becomes a scoring boost, not a filter.
 
 ## Controlling SHOULD Behavior
 
@@ -290,7 +290,7 @@ flowchart TB
 
     E --> F{With other clauses?}
     F -->|Alone| G[At least 1 must match]
-    F -->|With MUST/FILTER| H[Purely optional boost]
+    F -->|With MUST/FILTER| H[Optional by default]
     F -->|Need minimum| I[Set minimum_should_match]
 ```
 
@@ -361,7 +361,7 @@ Understanding `must` vs `should` is essential for effective Elasticsearch querie
 1. **MUST** = Required (AND logic), affects scoring
 2. **SHOULD** = Optional (OR logic), boosts matching documents
 3. **SHOULD alone** requires at least one match by default
-4. **SHOULD with MUST** becomes purely optional scoring boost
+4. **SHOULD with MUST** becomes an optional scoring boost unless `minimum_should_match` is set
 5. **minimum_should_match** controls required SHOULD matches
 6. **FILTER** = Required but does not affect scoring (faster)
 7. **MUST_NOT** = Exclusion filter
