@@ -84,7 +84,7 @@ max_over_time(rate(http_requests_total[5m])[24h:5m])
 ### Sum Over Time
 
 ```promql
-# Total samples of a gauge over time (not common, but useful for specific cases)
+# Sum of gauge sample values over time (not common, but useful for specific cases)
 sum_over_time(temperature_readings[1h])
 
 # Use increase() for counters instead
@@ -183,7 +183,7 @@ avg_over_time(rate(http_requests_total[5m])[1h:5m])
 # Compare current hour to same hour yesterday
 rate(http_requests_total[5m])
 /
-avg_over_time(rate(http_requests_total[5m]) offset 24h)[1h:5m]
+avg_over_time(rate(http_requests_total[5m] offset 24h)[1h:5m])
 ```
 
 ### Weekly Patterns
@@ -264,10 +264,8 @@ groups:
       # Standard deviation of request rate (for anomaly detection)
       - record: service:http_requests:rate5m_stddev24h
         expr: |
-          stddev by (service) (
-            stddev_over_time(
-              sum by (service) (rate(http_requests_total[5m]))[24h:5m]
-            )
+          stddev_over_time(
+            sum by (service) (rate(http_requests_total[5m]))[24h:5m]
           )
 ```
 
@@ -389,7 +387,7 @@ groups:
 (
   avg_over_time(sum(rate(http_requests_total[5m]))[1d:1h])
   -
-  avg_over_time(sum(rate(http_requests_total[5m]) offset 30d)[1d:1h])
+  avg_over_time(sum(rate(http_requests_total[5m] offset 30d))[1d:1h])
 )
 / 30
 
