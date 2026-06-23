@@ -67,9 +67,9 @@ flowchart TB
 | External IP Management | IP address pool allocation | N/A |
 | IP Announcement | ARP/NDP/BGP protocols | N/A |
 | Load Balancing | N/A | eBPF-based packet processing |
-| Performance | N/A | Kernel-level, zero-copy operations |
+| Performance | N/A | Kernel-level packet processing |
 | Observability | N/A | eBPF-based metrics and tracing |
-| Session Affinity | N/A | Maglev consistent hashing |
+| Backend Selection | N/A | Maglev consistent hashing |
 | DSR Support | N/A | Direct Server Return |
 
 ## Prerequisites
@@ -96,7 +96,7 @@ zcat /proc/config.gz | grep -E "CONFIG_BPF|CONFIG_CGROUP_BPF|CONFIG_XDP"
 
 ## Step 1: Install Cilium with eBPF Load Balancing
 
-First, install Cilium with the necessary configuration to enable eBPF-based load balancing. We'll disable kube-proxy replacement since we want Cilium to handle service load balancing.
+First, install Cilium with the necessary configuration to enable eBPF-based load balancing. We'll enable kube-proxy replacement so Cilium handles Kubernetes service load balancing in the eBPF datapath.
 
 Add the Cilium Helm repository:
 
@@ -111,7 +111,6 @@ Create a values file for Cilium installation. This configuration enables eBPF-ba
 # cilium-values.yaml
 
 # Enable kube-proxy replacement for full eBPF load balancing
-
 kubeProxyReplacement: true
 
 # Kubernetes API server endpoint (replace with your cluster's API server)
@@ -120,29 +119,30 @@ k8sServicePort: "6443"
 
 # Enable eBPF-based load balancing features
 loadBalancer:
-  # Use eBPF for service load balancing
+  # Use DSR for north-south service load balancing
   mode: "dsr"  # Options: snat, dsr, hybrid
+  # DSR with IPv4 option / IPv6 extension header requires native routing
+  dsrDispatch: "opt"  # Options: opt, geneve
   # Algorithm for backend selection
   algorithm: "maglev"  # Options: random, maglev
   # Enable acceleration using XDP
   acceleration: "native"  # Options: disabled, native, best-effort
 
-# Enable external traffic policy support
-externalTrafficPolicy:
-  enabled: true
+# Native routing is required for DSR with opt dispatch
+routingMode: "native"
 
 # Configure BPF settings
 bpf:
-  # Enable native routing mode
+  # Enable eBPF masquerading
   masquerade: true
   # Enable host routing via eBPF
   hostLegacyRouting: false
-  # Enable socket-level load balancing
+  # Allow external access to ClusterIP services if required
   lbExternalClusterIP: true
 
-# Enable BGP control plane if using BGP with MetalLB
+# Leave Cilium BGP disabled; MetalLB handles BGP announcements in this guide
 bgpControlPlane:
-  enabled: false  # Set to true if using BGP mode
+  enabled: false
 
 # IP Address Management
 ipam:
@@ -161,7 +161,7 @@ Install Cilium using Helm:
 
 ```bash
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.5 \
   --namespace kube-system \
   --values cilium-values.yaml
 ```
@@ -181,7 +181,7 @@ cilium status --wait
 Check that kube-proxy replacement is active:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium status | grep KubeProxyReplacement
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 ```
 
 ## Step 2: Install MetalLB
@@ -197,7 +197,7 @@ kubectl create namespace metallb-system
 Install MetalLB using Helm:
 
 ```bash
-helm repo add metallb https://metallb.universe.tf
+helm repo add metallb https://metallb.github.io/metallb
 helm repo update
 
 helm install metallb metallb/metallb \
@@ -333,8 +333,7 @@ spec:
     - production-pool
   # Advertise specific communities
   communities:
-    - name: no-export
-      value: "65535:65281"
+    - "65535:65281"
   # Optional: aggregate prefixes
   aggregationLength: 32
   aggregationLengthV6: 128
@@ -352,51 +351,22 @@ kubectl apply -f metallb-bgp-config.yaml
 
 Now configure Cilium to work seamlessly with MetalLB. This involves ensuring Cilium handles the load balancing for services with external IPs assigned by MetalLB.
 
-Create a Cilium configuration to enable external IP load balancing:
+Do not create a `CiliumLoadBalancerIPPool` for this setup. That resource is used by Cilium's own LB IPAM controller to allocate LoadBalancer IPs. In this integration, MetalLB owns IP allocation and announcement, and Cilium's kube-proxy replacement handles the service datapath after Kubernetes observes the MetalLB-assigned LoadBalancer IP.
 
-```yaml
-# cilium-lb-config.yaml
-apiVersion: cilium.io/v2
-kind: CiliumLoadBalancerIPPool
-metadata:
-  name: metallb-integration
-spec:
-  # This is informational - MetalLB manages the actual allocation
-  blocks:
-    - start: 192.168.1.100
-      stop: 192.168.1.200
-  # Disable Cilium's IP allocation since MetalLB handles it
-  disabled: true
-```
-
-Apply the Cilium configuration:
+If you need to change the load-balancing mode after installation, update the Cilium Helm values instead of patching the generated ConfigMap directly:
 
 ```bash
-kubectl apply -f cilium-lb-config.yaml
+helm upgrade cilium cilium/cilium \
+  --version 1.19.5 \
+  --namespace kube-system \
+  --reuse-values \
+  --set routingMode=native \
+  --set loadBalancer.mode=dsr \
+  --set loadBalancer.dsrDispatch=opt \
+  --set loadBalancer.algorithm=maglev
 ```
 
-Update Cilium to recognize MetalLB-assigned IPs. Create a ConfigMap patch:
-
-```yaml
-# cilium-configmap-patch.yaml
-data:
-  # Enable external IPs in the eBPF datapath
-  enable-external-ips: "true"
-  # Enable load balancing for external traffic
-  enable-node-port: "true"
-  # Configure DSR mode for better performance
-  loadbalancer-mode: "dsr"
-  # Use Maglev for consistent hashing
-  loadbalancer-algorithm: "maglev"
-```
-
-Patch the Cilium ConfigMap:
-
-```bash
-kubectl -n kube-system patch configmap cilium-config --patch-file cilium-configmap-patch.yaml
-```
-
-Restart Cilium to apply changes:
+Wait for Cilium to roll out the updated configuration:
 
 ```bash
 kubectl -n kube-system rollout restart daemonset/cilium
@@ -447,10 +417,10 @@ metadata:
   name: nginx-demo-lb
   annotations:
     # Optional: request specific IP from MetalLB
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
 spec:
   type: LoadBalancer
-  # Use Cluster external traffic policy for eBPF DSR
+  # Use Cluster to allow Cilium to select backends across nodes
   externalTrafficPolicy: Cluster
   selector:
     app: nginx-demo
@@ -486,7 +456,7 @@ Confirm that Cilium is handling the load balancing via eBPF.
 Check Cilium's service mapping:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
 ```
 
 You should see the LoadBalancer service with its backends:
@@ -501,13 +471,13 @@ ID   Frontend               Service Type   Backend
 View the eBPF maps that store service information:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
 ```
 
 Check the Maglev lookup table (if using Maglev algorithm):
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf maglev list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb maglev list
 ```
 
 ## Step 8: Configure Advanced Load Balancing Options
@@ -535,9 +505,9 @@ spec:
       targetPort: 80
 ```
 
-### Configure Health Checks
+### Allow Health Check Traffic
 
-Cilium performs automatic health checks on backends. You can configure custom health check parameters:
+Cilium uses Kubernetes service and endpoint state for backend selection. If your application exposes a health endpoint and policies would otherwise block health traffic, allow that traffic explicitly:
 
 ```yaml
 # health-check-config.yaml
@@ -567,7 +537,11 @@ For maximum performance, enable XDP (eXpress Data Path) acceleration. This requi
 ethtool -i eth0 | grep driver
 
 # For supported drivers (e.g., i40e, mlx5, virtio_net)
-kubectl -n kube-system exec ds/cilium -- cilium config set loadbalancer-acceleration native
+helm upgrade cilium cilium/cilium \
+  --version 1.19.5 \
+  --namespace kube-system \
+  --reuse-values \
+  --set loadBalancer.acceleration=native
 ```
 
 ## Step 9: Monitoring and Observability
@@ -654,7 +628,7 @@ kubectl get services -A -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].sta
 Verify Cilium service configuration:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium service list | grep -A5 "192.168.1.100"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list | grep -A5 "192.168.1.100"
 ```
 
 Check if endpoints are healthy:
@@ -666,7 +640,7 @@ kubectl get endpoints nginx-demo-lb
 Verify eBPF programs are loaded:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf prog list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 ```
 
 ### Issue: BGP Peering Not Established
@@ -694,13 +668,13 @@ kubectl -n metallb-system exec -it $(kubectl -n metallb-system get pods -l compo
 Check XDP mode status:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium status | grep XDP
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep XDP
 ```
 
 Verify Maglev tables are populated:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf maglev list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb maglev list | wc -l
 ```
 
 Monitor CPU usage on Cilium agents:
@@ -749,14 +723,14 @@ sequenceDiagram
 
 ### 1. Use Appropriate Traffic Policy
 
-For applications that need client IP preservation, use externalTrafficPolicy: Local with MetalLB's L2 mode:
+For applications that need Kubernetes `Local` traffic semantics, use `externalTrafficPolicy: Local` with MetalLB's L2 mode:
 
 ```yaml
 spec:
   externalTrafficPolicy: Local
 ```
 
-This ensures traffic only goes to nodes with running pods, preserving the client IP.
+This ensures MetalLB only announces from nodes with local ready endpoints, and traffic only goes to pods on the node that received it.
 
 ### 2. Configure Pod Anti-Affinity
 
@@ -807,20 +781,20 @@ spec:
 Regularly check eBPF map utilization to prevent exhaustion:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf map list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg map list
 ```
 
 ## Performance Comparison
 
-The eBPF-based load balancing with Cilium provides significant performance improvements over traditional iptables-based solutions:
+The eBPF-based load balancing with Cilium can provide significant performance improvements over traditional iptables-based solutions, especially at scale. Exact results depend on kernel version, NIC driver, service count, traffic pattern, and Cilium configuration:
 
-| Metric | iptables (kube-proxy) | eBPF (Cilium) | Improvement |
-|--------|----------------------|---------------|-------------|
-| Latency (p99) | ~500μs | ~50μs | 10x |
-| Throughput | ~1M pps | ~10M pps | 10x |
-| CPU Usage | High (per-packet) | Low (in-kernel) | 5-10x |
-| Connection Setup | Linear O(n) | Constant O(1) | Variable |
-| Memory Usage | ~100KB/service | ~10KB/service | 10x |
+| Metric | iptables (kube-proxy) | eBPF (Cilium) | Expected Impact |
+|--------|----------------------|---------------|-----------------|
+| Latency | Rule traversal and conntrack overhead | Service lookup in BPF maps | Lower overhead at scale |
+| Throughput | Depends on iptables rules and host networking | Can use TC/XDP acceleration | Higher packet rate when acceleration applies |
+| CPU Usage | Can increase with large rule sets | In-kernel map lookups | Lower CPU per packet in many deployments |
+| Connection Setup | Rule-set dependent | Map lookup based | More predictable as service count grows |
+| Observability | Limited to node and kube-proxy metrics | Cilium and Hubble metrics/events | Richer datapath visibility |
 
 ## Conclusion
 
@@ -829,7 +803,7 @@ Integrating MetalLB with Cilium provides a powerful, high-performance load balan
 Key takeaways:
 
 1. **Separation of concerns**: MetalLB manages IP addresses and announcements; Cilium handles actual load balancing
-2. **Performance**: eBPF-based load balancing provides 10x better latency and throughput compared to iptables
+2. **Performance**: eBPF-based load balancing can reduce service datapath overhead compared to iptables
 3. **Flexibility**: Choose between L2 and BGP modes based on your network infrastructure
 4. **Observability**: Hubble provides deep visibility into traffic patterns and service health
 5. **Scalability**: Maglev consistent hashing ensures stable backend selection even during scaling events
