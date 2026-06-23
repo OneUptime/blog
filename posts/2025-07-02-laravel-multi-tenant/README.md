@@ -1446,7 +1446,7 @@ class ProjectController extends Controller
      * Automatically filtered to current tenant via BelongsToTenant trait.
      *
      * @param Request $request
-     * @return AnonymousResourceCollection
+     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
