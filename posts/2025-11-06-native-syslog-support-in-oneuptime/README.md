@@ -35,14 +35,16 @@ Test the integration with a quick `curl` command. This sends a sample RFC5424 sy
 # Send a test syslog message to OneUptime
 
 # The message format follows RFC5424: <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID [STRUCTURED-DATA] MSG
+# Replace <YOUR_TELEMETRY_KEY> with your ingestion key.
+# x-oneuptime-service-name sets the service name used for filtering in the UI.
 curl \
   -X POST https://oneuptime.com/syslog/v1/logs \
   -H "Content-Type: application/json" \
-  -H "x-oneuptime-token: <YOUR_TELEMETRY_KEY>" \       # Your telemetry ingestion key
-  -H "x-oneuptime-service-name: prod-network" \        # Service name for filtering in UI
+  -H "x-oneuptime-token: <YOUR_TELEMETRY_KEY>" \
+  -H "x-oneuptime-service-name: prod-network" \
   -d '{
     "messages": [
-      "<134>1 2025-11-06T02:12:04Z edge-fw-01 paloalto 4021 0 [event@32473 src=192.0.2.10 dst=198.51.100.8 action=allow] SSL inbound inspection active"
+      "<134>1 2025-11-06T02:12:04Z edge-fw-01 paloalto 4021 0 [event@32473 src=\"192.0.2.10\" dst=\"198.51.100.8\" action=\"allow\"] SSL inbound inspection active"
     ]
   }'
 # PRI 134 = facility 16 (local0) + severity 6 (info)
@@ -72,7 +74,7 @@ module(load="omhttp")
 # This format matches OneUptime's expected payload structure
 template(name="OneUptimeJSON" type="list") {
   constant(value="{\"messages\":[\"")
-  property(name="rawmsg")              # Include the full raw syslog line
+  property(name="rawmsg" format="json")   # Full raw syslog line, JSON-escaped
   constant(value="\"]}")
 }
 
