@@ -58,11 +58,11 @@ rs.initiate({
   ]
 });
 
-// Or use IP address
+// Or use another resolvable DNS hostname
 rs.initiate({
   _id: "rs0",
   members: [
-    { _id: 0, host: "192.168.1.10:27017" }
+    { _id: 0, host: "mongodb1.example.net:27017" }
   ]
 });
 ```
@@ -88,7 +88,7 @@ nc -zv member2-hostname 27017
 nc -zv member3-hostname 27017
 
 # Check if MongoDB is listening on all members
-sudo netstat -tlnp | grep 27017
+sudo ss -tlnp | grep 27017
 ```
 
 **Solution:**
@@ -145,8 +145,8 @@ sudo systemctl stop mongod
 # Backup first!
 sudo cp -r /var/lib/mongodb /var/lib/mongodb.backup
 
-# Remove replica set configuration
-sudo rm -rf /var/lib/mongodb/local.*
+# Empty the dbPath before reinitializing
+sudo find /var/lib/mongodb -mindepth 1 -delete
 
 sudo systemctl start mongod
 ```
@@ -192,7 +192,7 @@ rs.initiate({
 }
 ```
 
-**Cause:** Keyfile authentication enabled but not properly configured.
+**Cause:** Access control is enabled and the client is not authenticated, or the localhost exception is no longer available.
 
 **Solution:**
 
@@ -247,15 +247,16 @@ sudo systemctl start mongod
 sudo systemctl status mongod
 
 # Verify listening
-sudo netstat -tlnp | grep 27017
+sudo ss -tlnp | grep 27017
 ```
 
 ### Step 3: Initialize the Replica Set
 
-```javascript
-// Connect to one member
-mongosh mongodb://member1:27017
+```bash
+mongosh --host localhost --port 27017
+```
 
+```javascript
 // Initialize
 rs.initiate({
   _id: "rs0",
@@ -272,12 +273,14 @@ rs.status();
 
 ### Step 4: Create Admin User (if authentication enabled)
 
-```javascript
-// Connect to primary
-mongosh mongodb://member1:27017
+```bash
+# Connect locally to the primary before the first user is created
+mongosh --host localhost --port 27017
+```
 
+```javascript
 // Switch to admin database
-use admin
+db = db.getSiblingDB("admin");
 
 // Create admin user
 db.createUser({
@@ -329,8 +332,8 @@ rs.status();
 // Check configuration
 rs.conf();
 
-// Check if primary (rs.isMaster() is deprecated since MongoDB 5.0, use rs.hello())
-rs.hello();
+// Check if primary (isMaster is deprecated since MongoDB 5.0, use hello)
+db.hello();
 ```
 
 ## Reconfiguring an Existing Replica Set
@@ -342,6 +345,7 @@ cfg = rs.conf();
 // Modify member settings
 cfg.members[1].priority = 2;  // Change priority
 cfg.members[2].hidden = true;  // Hide member
+cfg.members[2].priority = 0;
 cfg.members[2].votes = 0;
 
 // Apply new configuration
@@ -382,7 +386,7 @@ graph TD
     B -->|74| D[Network/Connectivity]
     B -->|23| E[Already Initialized]
     B -->|103| F[Name Mismatch]
-    B -->|Auth Error| G[Keyfile Issue]
+    B -->|Auth Error| G[Authentication Issue]
 
     C --> C1[Verify hostname -f]
     C --> C2[Update configuration]
@@ -392,7 +396,7 @@ graph TD
     D --> D3[Verify bindIp]
 
     E --> E1[Check rs.status]
-    E --> E2[Remove local.* if needed]
+    E --> E2[Empty dbPath if needed]
 
     F --> F1[Match replSetName]
     F --> F2[Match _id in rs.initiate]
@@ -405,7 +409,7 @@ graph TD
 
 | Mistake | Symptom | Fix |
 |---------|---------|-----|
-| Wrong hostname | "No host described" | Use hostname -f or IP |
+| Wrong hostname | "No host described" | Use hostname -f or a DNS hostname |
 | Firewall blocking | Quorum check failed | Open port 27017 |
 | bindIp: 127.0.0.1 | Members can't connect | Change to 0.0.0.0 |
 | Different keyfiles | Auth failed | Copy same keyfile to all |
@@ -421,7 +425,7 @@ rs.status();
 
 // If stuck in STARTUP or RECOVERING
 // Check oplog
-use local
+db = db.getSiblingDB("local");
 db.oplog.rs.find().sort({ts: -1}).limit(1);
 
 // Force member to become primary (emergency only)
