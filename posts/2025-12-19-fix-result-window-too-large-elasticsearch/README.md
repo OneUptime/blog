@@ -99,10 +99,12 @@ GET /products/_search
   },
   "sort": [
     { "created_at": "desc" },
-    { "_id": "asc" }
+    { "tie_breaker_id": "asc" }
   ]
 }
 ```
+
+In these examples, `tie_breaker_id` is a keyword field that stores a copy of the document `_id` with `doc_values` enabled. Elasticsearch restricts direct sorting on `_id`.
 
 The response includes sort values for each hit:
 
@@ -137,7 +139,7 @@ GET /products/_search
   },
   "sort": [
     { "created_at": "desc" },
-    { "_id": "asc" }
+    { "tie_breaker_id": "asc" }
   ],
   "search_after": [1702915200000, "def456"]
 }
@@ -160,7 +162,7 @@ def paginate_with_search_after(index, query, page_size=20):
             "query": query,
             "sort": [
                 {"created_at": "desc"},
-                {"_id": "asc"}
+                {"tie_breaker_id": "asc"}
             ]
         }
 
@@ -200,7 +202,7 @@ async function* paginateWithSearchAfter(index, query, pageSize = 20) {
       query,
       sort: [
         { created_at: 'desc' },
-        { _id: 'asc' }
+        { tie_breaker_id: 'asc' }
       ]
     };
 
@@ -208,7 +210,7 @@ async function* paginateWithSearchAfter(index, query, pageSize = 20) {
       body.search_after = searchAfter;
     }
 
-    const response = await client.search({ index, body });
+    const response = await client.search({ index, ...body });
     const hits = response.hits.hits;
 
     if (hits.length === 0) break;
@@ -364,7 +366,7 @@ with PITPaginator("products", query) as paginator:
 
 ## Solution 4: Scroll API (For Export/Batch Processing)
 
-The Scroll API is designed for processing large result sets, not user pagination:
+The Scroll API can be used for processing large result sets, not user pagination. Current Elasticsearch docs recommend PIT with `search_after` instead of scroll for deep pagination beyond 10,000 hits:
 
 ```json
 // Initial scroll request
@@ -405,6 +407,8 @@ DELETE /_search/scroll
 ### Scroll Implementation
 
 ```python
+import json
+
 def export_with_scroll(es, index, query, batch_size=1000):
     """Export all documents using scroll API."""
 
@@ -462,44 +466,16 @@ graph TD
 
 ## Jumping to Pages with Search After
 
-One limitation of `search_after` is you can't jump directly to page 50. Here's a workaround:
+One limitation of `search_after` is you can't jump directly to page 50. Here's a bounded workaround for pages that are still within `index.max_result_window`; beyond that, use cached cursors as users move forward:
 
 ```python
-def get_page_cursor(es, index, query, page_number, page_size):
-    """Get the search_after cursor for a specific page."""
-
-    # Calculate how many documents to skip
-    skip = (page_number - 1) * page_size
-
-    if skip == 0:
-        return None
-
-    # Use a single request to get the cursor
-    response = es.search(
-        index=index,
-        body={
-            "size": 1,
-            "query": query,
-            "sort": [
-                {"created_at": "desc"},
-                {"_id": "asc"}
-            ],
-            "_source": False,
-            "track_total_hits": True
-        },
-        from_=skip - 1  # Get the last doc before our page
-    )
-
-    hits = response["hits"]["hits"]
-    if not hits:
-        return None
-
-    return hits[0]["sort"]
+MAX_RESULT_WINDOW = 10000
 
 def get_page(es, index, query, page_number, page_size):
     """Get a specific page of results."""
+    offset = (page_number - 1) * page_size
 
-    if page_number <= 500:  # Within safe from/size range
+    if offset + page_size <= MAX_RESULT_WINDOW:
         return es.search(
             index=index,
             body={
@@ -507,28 +483,16 @@ def get_page(es, index, query, page_number, page_size):
                 "query": query,
                 "sort": [
                     {"created_at": "desc"},
-                    {"_id": "asc"}
+                    {"tie_breaker_id": "asc"}
                 ]
             },
-            from_=(page_number - 1) * page_size
+            from_=offset
         )
 
-    # Beyond safe range, use search_after
-    cursor = get_page_cursor(es, index, query, page_number, page_size)
-
-    body = {
-        "size": page_size,
-        "query": query,
-        "sort": [
-            {"created_at": "desc"},
-            {"_id": "asc"}
-        ]
-    }
-
-    if cursor:
-        body["search_after"] = cursor
-
-    return es.search(index=index, body=body)
+    raise ValueError(
+        "Cannot jump directly beyond index.max_result_window; "
+        "use search_after with cached cursors from previous pages."
+    )
 ```
 
 ## Best Practices
@@ -541,7 +505,7 @@ Always include a tiebreaker field for consistent ordering:
 {
   "sort": [
     { "created_at": "desc" },
-    { "_id": "asc" }  // Tiebreaker for documents with same timestamp
+    { "tie_breaker_id": "asc" }  // Tiebreaker for documents with same timestamp
   ]
 }
 ```
@@ -615,6 +579,39 @@ class PaginationSession:
             self.cursors[page_number + 1] = next_cursor
 
         return response
+
+    def _search(self, es, index, query, cursor, page_size):
+        body = {
+            "size": page_size,
+            "query": query,
+            "sort": [
+                {"created_at": "desc"},
+                {"tie_breaker_id": "asc"}
+            ]
+        }
+
+        if cursor:
+            body["search_after"] = cursor
+
+        return es.search(index=index, body=body)
+
+    def _find_cursor(self, es, index, query, page_number, page_size):
+        cached_pages = [page for page in self.cursors if page < page_number]
+        current_page = max(cached_pages, default=1)
+        cursor = self.cursors.get(current_page)
+
+        while current_page < page_number:
+            response = self._search(es, index, query, cursor, page_size)
+            hits = response["hits"]["hits"]
+
+            if not hits:
+                return None
+
+            cursor = hits[-1]["sort"]
+            current_page += 1
+            self.cursors[current_page] = cursor
+
+        return cursor
 ```
 
 ## Conclusion
