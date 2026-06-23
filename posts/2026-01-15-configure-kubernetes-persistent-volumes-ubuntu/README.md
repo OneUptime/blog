@@ -663,7 +663,7 @@ volumeBindingMode: Immediate
 parameters:
   # Number of replicas for fault tolerance
   numberOfReplicas: "3"
-  # Spread replicas across different nodes
+  # Minutes to wait before cleaning up a stale/failed replica (2880 = 48h)
   staleReplicaTimeout: "2880"
   # Enable data locality for performance
   dataLocality: "best-effort"
@@ -916,7 +916,9 @@ echo -e "\n=== Pending PVCs ==="
 kubectl get pvc --all-namespaces --field-selector=status.phase=Pending
 
 echo -e "\n=== Storage-related Events ==="
-kubectl get events --all-namespaces --field-selector reason=FailedMount,reason=FailedAttachVolume,reason=ProvisioningFailed --sort-by='.lastTimestamp'
+# Field selectors AND together, so filter Warning events and grep for storage reasons
+kubectl get events --all-namespaces --field-selector type=Warning --sort-by='.lastTimestamp' \
+  | grep -iE 'FailedMount|FailedAttachVolume|ProvisioningFailed'
 ```
 
 ## Monitoring Storage with OneUptime
