@@ -8,7 +8,7 @@ Description: Learn to implement efficient PostgreSQL connection pooling in Go us
 
 ---
 
-Connection pooling is one of the most critical performance optimizations for any database-backed application. Without proper pooling, your Go application would create a new TCP connection to PostgreSQL for every query, incurring significant overhead from connection establishment, TLS handshakes, and authentication. This guide covers everything you need to know about implementing robust connection pooling in Go using both the standard library's `database/sql` package and the high-performance `pgxpool` library.
+Connection pooling is one of the most critical performance optimizations for any database-backed application. Without proper pooling or connection reuse, your Go application might create a new TCP connection to PostgreSQL for every query, incurring significant overhead from connection establishment, TLS handshakes, and authentication. This guide covers everything you need to know about implementing robust connection pooling in Go using both the standard library's `database/sql` package and the high-performance `pgxpool` library.
 
 ## Understanding Connection Pooling
 
@@ -30,7 +30,6 @@ package main
 import (
     "context"
     "database/sql"
-    "fmt"
     "log"
     "time"
 
@@ -83,7 +82,7 @@ func setupDatabasePool(dsn string) (*sql.DB, error) {
 
     // Maximum number of open connections to the database
     // Set this based on your database's max_connections and number of app instances
-    // Formula: max_connections / number_of_app_instances - buffer_for_admin
+    // Formula: (max_connections - reserved_connections) / number_of_app_instances
     db.SetMaxOpenConns(25)
 
     // Maximum number of idle connections in the pool
@@ -93,13 +92,13 @@ func setupDatabasePool(dsn string) (*sql.DB, error) {
 
     // Maximum lifetime of a connection
     // Connections older than this are closed and replaced
-    // Helps with load balancer connection distribution
-    // Set slightly below PostgreSQL's idle_session_timeout
+    // Helps with load balancer connection distribution and server-side session limits
     db.SetConnMaxLifetime(30 * time.Minute)
 
     // Maximum idle time for a connection
     // Idle connections older than this are closed
     // Helps reduce resource usage during low traffic
+    // Set slightly below PostgreSQL's idle_session_timeout if it is configured
     db.SetConnMaxIdleTime(5 * time.Minute)
 
     return db, nil
@@ -207,7 +206,6 @@ package main
 import (
     "context"
     "log"
-    "time"
 
     "github.com/jackc/pgx/v5/pgxpool"
 )
@@ -246,7 +244,6 @@ import (
     "log"
     "time"
 
-    "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -278,9 +275,6 @@ func createProductionPool(ctx context.Context, connString string) (*pgxpool.Pool
     // ConnConfig allows setting connection-level parameters
     config.ConnConfig.ConnectTimeout = 5 * time.Second
 
-    // Set default query execution timeout
-    config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-
     // Create the pool with the configuration
     return pgxpool.NewWithConfig(ctx, config)
 }
@@ -310,7 +304,6 @@ import (
     "context"
     "log"
     "sync/atomic"
-    "time"
 
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
@@ -374,17 +367,17 @@ func createPoolWithHooks(ctx context.Context, connString string) (*pgxpool.Pool,
         return err
     }
 
-    // BeforeAcquire is called before returning a connection from the pool
+    // PrepareConn is called before returning a connection from the pool
     // Return false to reject a connection (it will be closed and a new one created)
-    config.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
+    config.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
         // Validate the connection before use
         // This is a good place to check if the connection is still valid
         if conn.IsClosed() {
             log.Printf("Rejecting closed connection")
-            return false
+            return false, nil
         }
         metrics.OnAcquire()
-        return true
+        return true, nil
     }
 
     // AfterRelease is called after a connection is returned to the pool
@@ -395,6 +388,11 @@ func createPoolWithHooks(ctx context.Context, connString string) (*pgxpool.Pool,
         // Close connections that have been used too many times
         // This is handled by MaxConnLifetime but can add custom logic here
         return true
+    }
+
+    // BeforeClose is called right before a connection is closed and removed from the pool
+    config.BeforeClose = func(conn *pgx.Conn) {
+        metrics.OnDestroy()
     }
 
     pool, err := pgxpool.NewWithConfig(ctx, config)
@@ -410,7 +408,6 @@ pgxpool provides detailed statistics about pool behavior. Exposing these metrics
 package main
 
 import (
-    "context"
     "encoding/json"
     "log"
     "net/http"
@@ -892,8 +889,8 @@ func (app *Application) Run() error {
             app.server.Close()
         }
 
-        // Close the database pool
-        // This waits for acquired connections to be released
+        // Close the database pool after HTTP handlers have returned their connections
+        // Close blocks until all acquired connections are returned to the pool
         log.Println("Closing database pool...")
         app.pool.Close()
 
@@ -1020,6 +1017,7 @@ package main
 import (
     "context"
     "fmt"
+    "net/url"
     "os"
     "strconv"
     "time"
@@ -1065,15 +1063,18 @@ func LoadDatabaseConfig() (*DatabaseConfig, error) {
 
 // ConnectionString returns a PostgreSQL connection string
 func (c *DatabaseConfig) ConnectionString() string {
-    return fmt.Sprintf(
-        "postgres://%s:%s@%s:%d/%s?sslmode=%s",
-        c.User,
-        c.Password,
-        c.Host,
-        c.Port,
-        c.Database,
-        c.SSLMode,
-    )
+    u := &url.URL{
+        Scheme: "postgres",
+        User:   url.UserPassword(c.User, c.Password),
+        Host:   fmt.Sprintf("%s:%d", c.Host, c.Port),
+        Path:   c.Database,
+    }
+
+    q := u.Query()
+    q.Set("sslmode", c.SSLMode)
+    u.RawQuery = q.Encode()
+
+    return u.String()
 }
 
 // CreatePool creates a pgxpool with the configuration
@@ -1128,12 +1129,7 @@ import (
     "context"
     "log"
     "net/http"
-    "os"
-    "os/signal"
-    "syscall"
     "time"
-
-    "github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
