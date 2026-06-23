@@ -66,8 +66,8 @@ flowchart LR
 package auth
 
 import (
-    "crypto/rsa"
     "errors"
+    "fmt"
     "time"
 
     "github.com/golang-jwt/jwt/v5"
@@ -564,8 +564,6 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials"
-    "google.golang.org/grpc/credentials/oauth"
 
     pb "your-module/proto"
 )
@@ -786,6 +784,7 @@ func ExampleUsage() {
 ```python
 import grpc
 import jwt
+from concurrent import futures
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any
 
@@ -1137,6 +1136,8 @@ package auth
 
 import (
     "context"
+    "errors"
+    "fmt"
     "time"
 
     "github.com/go-redis/redis/v8"
@@ -1252,6 +1253,7 @@ flowchart TD
 package config
 
 import (
+    "errors"
     "time"
 )
 
