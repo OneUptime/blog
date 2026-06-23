@@ -53,8 +53,8 @@ PASETO tokens are identified by their version and purpose. Understanding these i
 
 **Version 4 (v4)** (Recommended):
 - Latest version with improved security margins
-- Local: XChaCha20-Poly1305 with BLAKE2b
-- Public: Ed25519 with improved key derivation
+- Local: XChaCha20 with BLAKE2b authentication
+- Public: Ed25519 for asymmetric signatures
 
 ### Purposes
 
@@ -80,8 +80,7 @@ Create a new Go module and install the required dependencies:
 mkdir paseto-demo
 cd paseto-demo
 go mod init paseto-demo
-go get github.com/o1egl/paseto/v2
-go get golang.org/x/crypto/ed25519
+go get github.com/o1egl/paseto
 ```
 
 For PASETO v4 support, we will use an alternative library:
@@ -595,35 +594,33 @@ func (ts *TokenService) CreateToken(userID, email string) (string, error) {
 	token.SetString("email", email)
 
 	// Include key ID in footer for key selection during validation
-	footer := []byte(kid)
+	token.SetFooter([]byte(kid))
 
-	return token.V4Encrypt(key, footer), nil
+	return token.V4Encrypt(key, nil), nil
 }
 
 // ValidateToken verifies a token using the appropriate key
 func (ts *TokenService) ValidateToken(tokenString string) (*paseto.Token, error) {
 	// First, extract the footer to get the key ID
-	// The footer is base64url encoded after the last period
 	parser := paseto.NewParser()
 	parser.AddRule(paseto.NotExpired())
 
-	// Try current key first
-	key, currentKID := ts.keyManager.GetCurrentKey()
-	token, err := parser.ParseV4Local(key, tokenString, nil)
-	if err == nil {
-		return token, nil
+	footer, err := parser.UnsafeParseFooter(paseto.V4Local, tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse token footer: %w", err)
 	}
 
-	// Try previous key for tokens issued before rotation
-	prevKey, prevErr := ts.keyManager.GetKeyByID(currentKID)
-	if prevErr == nil && prevKey != nil {
-		token, err = parser.ParseV4Local(*prevKey, tokenString, nil)
-		if err == nil {
-			return token, nil
-		}
+	key, err := ts.keyManager.GetKeyByID(string(footer))
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("token validation failed with all keys: %w", err)
+	token, err := parser.ParseV4Local(*key, tokenString, nil)
+	if err != nil {
+		return nil, fmt.Errorf("token validation failed: %w", err)
+	}
+
+	return token, nil
 }
 
 func main() {
@@ -670,7 +667,7 @@ func main() {
 
 Integrating PASETO with HTTP middleware allows you to protect API endpoints efficiently.
 
-This example shows a complete middleware implementation for the standard library and popular frameworks:
+This example shows a complete middleware implementation for the standard library:
 
 ```go
 package main
@@ -853,12 +850,14 @@ Migrating from JWT to PASETO requires careful planning to avoid disrupting exist
 
 This example demonstrates a dual-token system that supports both JWT and PASETO during migration:
 
+```bash
+go get github.com/golang-jwt/jwt/v5
+```
+
 ```go
 package main
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
