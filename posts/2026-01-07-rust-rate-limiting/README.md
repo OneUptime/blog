@@ -33,10 +33,12 @@ The `governor` crate provides a high-performance, production-ready rate limiter.
 
 ```toml
 [dependencies]
-governor = "0.6"
+governor = "0.10"
 nonzero_ext = "0.3"
 tokio = { version = "1", features = ["full"] }
-axum = "0.7"
+axum = "0.8"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 ```
 
 ### Basic Rate Limiter
@@ -85,7 +87,7 @@ async fn check_rate_limit(
 
 use governor::{
     clock::DefaultClock,
-    state::{InMemoryState, keyed::DefaultKeyedStateStore},
+    state::keyed::DefaultKeyedStateStore,
     Quota, RateLimiter,
 };
 use std::net::IpAddr;
@@ -144,8 +146,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use governor::{
-    clock::DefaultClock,
-    state::{InMemoryState, keyed::DefaultKeyedStateStore},
+    clock::{Clock, DefaultClock},
+    state::keyed::DefaultKeyedStateStore,
     Quota, RateLimiter,
 };
 use std::net::{IpAddr, SocketAddr};
@@ -459,7 +461,18 @@ impl SlidingWindow {
 
     /// Get time until next request is allowed
     pub async fn retry_after(&self) -> Option<Duration> {
-        let requests = self.requests.lock().await;
+        let mut requests = self.requests.lock().await;
+        let now = Instant::now();
+        let window_start = now - self.window_size;
+
+        // Remove requests outside the window
+        while let Some(&first) = requests.front() {
+            if first < window_start {
+                requests.pop_front();
+            } else {
+                break;
+            }
+        }
 
         if requests.len() < self.max_requests {
             return None; // Not rate limited
@@ -468,7 +481,6 @@ impl SlidingWindow {
         // Find the oldest request that will expire
         requests.front().map(|&oldest| {
             let expiry = oldest + self.window_size;
-            let now = Instant::now();
             if expiry > now {
                 expiry - now
             } else {
