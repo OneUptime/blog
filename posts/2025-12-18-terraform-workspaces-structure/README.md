@@ -21,10 +21,10 @@ flowchart TD
     A --> D[Workspace: staging]
     A --> E[Workspace: prod]
 
-    B --> F[default.tfstate]
-    C --> G[dev.tfstate]
-    D --> H[staging.tfstate]
-    E --> I[prod.tfstate]
+    B --> F[State for default]
+    C --> G[State for dev]
+    D --> H[State for staging]
+    E --> I[State for prod]
 ```
 
 ## Basic Workspace Commands
@@ -219,13 +219,13 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
     encrypt        = true
+    use_lockfile   = true
 
     # Each workspace gets its own state file:
-    # infrastructure/env:/dev/terraform.tfstate
-    # infrastructure/env:/staging/terraform.tfstate
-    # infrastructure/env:/prod/terraform.tfstate
+    # env:/dev/infrastructure/terraform.tfstate
+    # env:/staging/infrastructure/terraform.tfstate
+    # env:/prod/infrastructure/terraform.tfstate
     workspace_key_prefix = "env:"
   }
 }
@@ -242,9 +242,10 @@ terraform {
     key                  = "infrastructure.tfstate"
 
     # State files:
-    # tfstate/infrastructureenv:dev
-    # tfstate/infrastructureenv:staging
-    # tfstate/infrastructureenv:prod
+    # tfstate/infrastructure.tfstate
+    # tfstate/infrastructure.tfstateenv:dev
+    # tfstate/infrastructure.tfstateenv:staging
+    # tfstate/infrastructure.tfstateenv:prod
   }
 }
 ```
