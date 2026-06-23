@@ -166,7 +166,7 @@ velero install \
   --provider azure \
   --plugins velero/velero-plugin-for-microsoft-azure:v1.11.0 \
   --bucket velero \
-  --backup-location-config storageAccount=velerobackups \
+  --backup-location-config storageAccount=velerobackups,storageAccountKeyEnvVar=AZURE_STORAGE_ACCOUNT_ACCESS_KEY \
   --secret-file ./credentials-velero
 ```
 
@@ -456,20 +456,17 @@ Restore infrastructure components first, then application workloads. This orderi
 
 ```bash
 # Restore infrastructure components first (certificates, ingress)
+# The --wait flag blocks until the restore completes
 velero restore create dr-infra \
   --from-backup latest-backup \
-  --include-namespaces cert-manager,ingress-nginx
-
-# Wait for infrastructure restore to complete
-velero restore wait dr-infra
+  --include-namespaces cert-manager,ingress-nginx \
+  --wait
 
 # Restore application workloads after infrastructure is ready
 velero restore create dr-apps \
   --from-backup latest-backup \
-  --include-namespaces production
-
-# Wait for application restore to complete
-velero restore wait dr-apps
+  --include-namespaces production \
+  --wait
 ```
 
 ### Step 4: Verify Restoration
