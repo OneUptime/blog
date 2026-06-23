@@ -88,7 +88,7 @@ spec:
         detectors: [env, system]       # Detect from environment vars and system calls
     exporters:
       otlphttp:                        # Send all signals to OneUptime via OTLP HTTP
-        endpoint: https://oneuptime.com/otlp/v1
+        endpoint: https://oneuptime.com/otlp
         headers:
           x-oneuptime-token: ${ONEUPTIME_OTLP_TOKEN}  # Auth token from secret
       debug:                           # Also log telemetry locally for debugging
@@ -165,7 +165,7 @@ Propagate `traceparent` headers between services so cross-cluster calls stay sti
 
 ## Step 5: Export every signal into OneUptime
 
-The OTLP HTTP exporter sends all pipelines to `https://oneuptime.com/otlp/v1`. Create separate exporters if you want to split development and production projects, but keep the Collector config identical so workloads do not know about environment-specific tokens.
+The OTLP HTTP exporter sends all pipelines to `https://oneuptime.com/otlp` (the exporter automatically appends the signal-specific `/v1/traces`, `/v1/metrics`, and `/v1/logs` paths). Create separate exporters if you want to split development and production projects, but keep the Collector config identical so workloads do not know about environment-specific tokens.
 
 Inside OneUptime:
 
@@ -187,7 +187,7 @@ Collecting signals is only useful when you translate them into capacity plans. P
 ### Right-size pods with requests and limits
 
 - Track `container_cpu_usage_seconds_total` and `container_memory_working_set_bytes` against `kube_pod_container_resource_requests_*` to see how close workloads run to their guarantees.
-- Surface over-commit ratios (`sum(container_memory_working_set_bytes) / sum(kube_node_status_allocatable_memory_bytes)`) in OneUptime dashboards; alert if they exceed thresholds that historically caused eviction storms.
+- Surface over-commit ratios (`sum(container_memory_working_set_bytes) / sum(kube_node_status_allocatable{resource="memory"})`) in OneUptime dashboards; alert if they exceed thresholds that historically caused eviction storms.
 - Audit namespaces that still run without requests or limits using `kube_pod_container_resource_limits_*` metrics and turn findings into backlog items.
 
 ### Keep nodes healthy and balanced
@@ -210,7 +210,7 @@ kubectl top pods -A --sort-by=memory
 
 ### Automate scaling decisions
 
-- Feed `http.server.duration`, queue depth, or custom SLO burn metrics into a Horizontal Pod Autoscaler (HPA) and observe scaling events through the `kube_hpa_status_current_replicas` series.
+- Feed `http.server.duration`, queue depth, or custom SLO burn metrics into a Horizontal Pod Autoscaler (HPA) and observe scaling events through the `kube_horizontalpodautoscaler_status_current_replicas` series.
 - For memory-bound services, add a Vertical Pod Autoscaler recommendation pipeline but enforce guardrails before it writes updates; record decisions in OneUptime runbooks so on-call engineers know which workloads self-tune.
 - Use cluster-autoscaler metrics (`cluster_autoscaler_node_group_min_size`, `cluster_autoscaler_unschedulable_pods_count`) to alert when there is insufficient capacity or a cloud API quota is blocking node creation.
 
@@ -226,7 +226,7 @@ Document these practices in your capacity playbooks and revisit dashboards quart
 
 - Collector pods `CrashLoopBackOff`: check missing token secret or mis-typed exporter endpoint.
 - No metrics landing: verify kubelet port `10250` is reachable; on hardened clusters you may need a client cert instead of `insecure_skip_verify`.
-- High CPU on nodes: drop `collection_interval` to 60s or use `delta_tempo` processor to pre-aggregate histograms before export.
+- High CPU on nodes: raise `collection_interval` to 60s or add the `interval` processor to re-aggregate metrics over a window before export.
 - Logs missing namespace metadata: ensure the Collector ServiceAccount has `get` permissions on pods.
 
 ## Next steps
