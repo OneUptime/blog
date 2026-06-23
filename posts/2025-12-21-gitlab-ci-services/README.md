@@ -54,7 +54,7 @@ test:
 
 ## Service Hostnames
 
-The service hostname is derived from the image name. The default hostname removes the registry and replaces special characters with dashes.
+The service hostname is derived from the image name. GitLab strips the tag (everything after the colon) and replaces slashes with dashes to create the hostname. The registry and any dots in the image name are preserved.
 
 ```yaml
 # Image name to hostname mapping
@@ -63,7 +63,7 @@ services:
   - redis:7-alpine                 # hostname: redis
   - mysql:8.0                      # hostname: mysql
   - elasticsearch:8.10.0           # hostname: elasticsearch
-  - registry.example.com/myimage   # hostname: registry-example-com-myimage
+  - registry.example.com/myimage   # hostname: registry.example.com-myimage
 ```
 
 You can also specify a custom alias.
