@@ -289,6 +289,8 @@ docker run --rm \
   -v appdata:/data \
   -e RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups \
   -e RESTIC_PASSWORD=your-encryption-password \
+  -e AWS_ACCESS_KEY_ID=xxx \
+  -e AWS_SECRET_ACCESS_KEY=xxx \
   restic/restic restore abc123 --target /data
 ```
 
@@ -355,12 +357,14 @@ docker run --rm \
 
 # Restore specific backup archive to target volume
 # -v appdata:/target: destination for restored files
+# borg extract always writes into the current working directory, so set it with -w
 docker run --rm \
   -v appdata:/target \
   -v borg-repo:/repo \
+  -w /target \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
-  borg extract /repo::backup-20240106 --target /target
+  borg extract /repo::backup-20240106
 ```
 
 ---
