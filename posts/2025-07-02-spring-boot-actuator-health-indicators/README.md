@@ -858,6 +858,7 @@ package com.example.health;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.health.Health;
@@ -902,7 +903,7 @@ public class CircuitBreakerHealthIndicator implements ReactiveHealthIndicator {
         
         // Perform health check through circuit breaker
         return Mono.fromCallable(() -> performHealthCheck())
-            .transform(mono -> circuitBreaker.decorateMono(() -> mono));
+            .transformDeferred(CircuitBreakerOperator.of(circuitBreaker));
     }
 
     private Health performHealthCheck() {
@@ -1225,8 +1226,8 @@ public class CachedHealthIndicator implements HealthIndicator {
         // Return cached result if still valid
         if (cached != null && !cached.isExpired()) {
             log.debug("Returning cached health result");
-            return cached.health()
-                .status(cached.health().getStatus())
+            return Health.status(cached.health().getStatus())
+                .withDetails(cached.health().getDetails())
                 .withDetail("cached", true)
                 .withDetail("cacheAge", 
                     Duration.between(cached.timestamp(), Instant.now()).toMillis() + "ms")
@@ -1429,11 +1430,11 @@ public class HealthConfig {
     @Bean
     public HttpCodeStatusMapper httpCodeStatusMapper() {
         return new SimpleHttpCodeStatusMapper(Map.of(
-            Status.DOWN, 503,
-            Status.OUT_OF_SERVICE, 503,
-            new Status("DEGRADED"), 200,  // Still functional
-            Status.UP, 200,
-            Status.UNKNOWN, 200
+            Status.DOWN.getCode(), 503,
+            Status.OUT_OF_SERVICE.getCode(), 503,
+            new Status("DEGRADED").getCode(), 200,  // Still functional
+            Status.UP.getCode(), 200,
+            Status.UNKNOWN.getCode(), 200
         ));
     }
 }
