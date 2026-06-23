@@ -27,7 +27,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build Docker image
         run: docker build -t myapp:latest .
@@ -51,13 +51,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -93,13 +93,13 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -107,7 +107,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -117,7 +117,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -133,13 +133,13 @@ For Docker Hub, use repository secrets:
 
 ```yaml
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -154,17 +154,28 @@ Build for multiple CPU architectures:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build multi-arch
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -182,7 +193,7 @@ Speed up builds with layer caching:
 
 ```yaml
       - name: Build with registry cache
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -195,7 +206,7 @@ Speed up builds with layer caching:
 
 ```yaml
       - name: Build with GHA cache
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -208,7 +219,7 @@ Speed up builds with layer caching:
 
 ```yaml
       - name: Cache Docker layers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
@@ -216,10 +227,10 @@ Speed up builds with layer caching:
             ${{ runner.os }}-buildx-
 
       - name: Build with local cache
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          push: false
           tags: myapp:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -236,14 +247,14 @@ Pass build-time variables:
 
 ```yaml
       - name: Build with args
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           build-args: |
             NODE_VERSION=20
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             GIT_SHA=${{ github.sha }}
-          push: true
+          push: false
           tags: myapp:latest
 ```
 
@@ -251,12 +262,12 @@ Pass secrets securely:
 
 ```yaml
       - name: Build with secrets
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           secrets: |
             npm_token=${{ secrets.NPM_TOKEN }}
-          push: true
+          push: false
           tags: myapp:latest
 ```
 
@@ -278,6 +289,10 @@ Build multiple Docker images in parallel:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     strategy:
       matrix:
         include:
@@ -289,17 +304,17 @@ jobs:
             image: myorg/worker
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           push: true
@@ -312,14 +327,14 @@ Scan images for vulnerabilities before pushing:
 
 ```yaml
       - name: Build for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
           tags: myapp:scan
 
       - name: Scan image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: myapp:scan
           format: 'sarif'
@@ -327,7 +342,7 @@ Scan images for vulnerabilities before pushing:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 ```
@@ -338,7 +353,7 @@ Generate software bill of materials:
 
 ```yaml
       - name: Build with attestations
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -353,7 +368,7 @@ Build on all events, push only on main:
 
 ```yaml
       - name: Build and conditionally push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/main' }}
@@ -386,20 +401,21 @@ jobs:
     permissions:
       contents: read
       packages: write
-      security-events: write
+      attestations: write
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -407,7 +423,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -418,7 +434,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
