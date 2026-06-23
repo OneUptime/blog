@@ -8,15 +8,15 @@ Description: Learn what OAuth 2.0 is, how it works under the hood, and how to im
 
 ---
 
-You've seen "Sign in with Google" or "Login with GitHub" buttons everywhere. Ever wondered how they work without your app ever seeing the user's password? That's OAuth in action.
+You've seen "Sign in with Google" or "Login with GitHub" buttons everywhere. Ever wondered how they work without your app ever seeing the user's password? That's OAuth in action, usually combined with OpenID Connect for sign-in.
 
 ## What is OAuth?
 
 **OAuth 2.0** is an authorization framework that allows third-party applications to access a user's resources without exposing their credentials. It's the industry standard for secure delegated access.
 
-When you click "Sign in with Google," you're not giving the application your Google password. Instead, Google gives the application a limited-access token that proves you authorized it.
+When you click "Sign in with Google," you're not giving the application your Google password. Instead, Google gives the application limited-access tokens, and OpenID Connect can provide a signed ID token that proves who signed in.
 
-**Traditional Login (Dangerous):**
+**Password Sharing (Dangerous):**
 
 ```mermaid
 sequenceDiagram
@@ -24,7 +24,7 @@ sequenceDiagram
     participant App
 
     User->>App: Username + Password
-    Note over App: App stores your<br/>password (bad!)
+    Note over App: App handles your<br/>password (bad!)
     App->>User: Access granted
 ```
 
@@ -119,7 +119,7 @@ sequenceDiagram
 
 ### 2. Authorization Code Flow with PKCE
 
-Required for mobile and single-page applications. Adds a code verifier to prevent authorization code interception.
+Required for native mobile apps and recommended by current OAuth security guidance for single-page applications. Adds a code verifier to prevent authorization code interception.
 
 ```mermaid
 sequenceDiagram
@@ -211,7 +211,7 @@ client_secret=YOUR_CLIENT_SECRET         # Secret proving your server's identity
 
 The token response contains everything you need to access protected resources and maintain the user's session. Store these tokens securely on your server and never expose them to the client-side.
 
-```json
+```jsonc
 {
   "access_token": "ya29.a0AfH6SMBx...",  // Use this to call Google APIs (short-lived, ~1 hour)
   "expires_in": 3600,                     // Token lifetime in seconds (3600 = 1 hour)
@@ -257,7 +257,7 @@ Store your OAuth credentials in environment variables to keep them out of source
 GOOGLE_CLIENT_ID=your_client_id_here       # From Google Cloud Console OAuth credentials
 GOOGLE_CLIENT_SECRET=your_client_secret_here   # Keep this secret! Never expose client-side
 REDIRECT_URI=http://localhost:3000/callback    # Must match Google Console configuration
-SESSION_SECRET=your_random_session_secret      # Random string for session encryption
+SESSION_SECRET=your_random_session_secret      # Optional if you replace the demo Map with signed/encrypted session middleware
 ```
 
 ### The Complete Implementation
@@ -342,7 +342,7 @@ app.get('/login', (req, res) => {
     scope: 'openid email profile',            // Permissions to request from user
     state: state,                             // CSRF protection token
     access_type: 'offline',                   // Request refresh_token for long-lived access
-    prompt: 'consent'                         // Always show consent screen (ensures refresh token)
+    prompt: 'consent'                         // Show consent screen again when you need Google to issue a refresh token
   });
 
   // Redirect user to Google's authorization page
@@ -603,12 +603,12 @@ const tokenParams = new URLSearchParams({
 ### 4. Store Tokens Securely
 
 - **Server-side**: Use encrypted session storage or a secure database
-- **Client-side**: Use `HttpOnly` cookies, never localStorage for access tokens
+- **Browser apps**: Prefer server-set `HttpOnly`, `Secure`, `SameSite` cookies for app sessions; never store access tokens in localStorage
 - **Never log tokens**: Treat them like passwords
 
 ### 5. Implement Token Refresh
 
-Access tokens expire quickly (usually 1 hour). Implement refresh token rotation.
+Access tokens expire quickly (often around 1 hour). Implement token refresh.
 
 This helper function ensures you always have a valid access token before making API calls. It proactively refreshes the token 60 seconds before expiration to avoid failed requests. In production, consider adding retry logic for network failures during refresh.
 
@@ -621,12 +621,19 @@ async function getValidAccessToken(session) {
   }
 
   // Token expired or expiring soon - refresh it
-  const response = await axios.post(GOOGLE_TOKEN_URL, {
-    grant_type: 'refresh_token',           // Use refresh token flow
-    refresh_token: session.refreshToken,   // The long-lived refresh token
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET  // Required for confidential clients
-  });
+  const response = await axios.post(GOOGLE_TOKEN_URL,
+    new URLSearchParams({
+      grant_type: 'refresh_token',           // Use refresh token flow
+      refresh_token: session.refreshToken,   // The long-lived refresh token
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET  // Required for confidential clients
+    }),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    }
+  );
 
   // Update session with new access token
   session.accessToken = response.data.access_token;
@@ -781,7 +788,7 @@ OAuth 2.0 is simpler but requires HTTPS for security.
 
 - **OAuth 2.0** lets apps access user resources without passwords
 - **Authorization Code flow** is the most secure for web apps
-- **PKCE** is mandatory for mobile and single-page applications
+- **PKCE** is mandatory for native mobile apps and recommended by current OAuth security guidance for single-page applications
 - **Access tokens** authorize API calls; **refresh tokens** get new access tokens
 - **Always validate state** to prevent CSRF attacks
 - **Use HTTPS** everywhere - tokens are bearer credentials
