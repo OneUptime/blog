@@ -90,7 +90,8 @@ global:
   # Metrics for Prometheus
   metrics:
     enabled: true
-    enableAgentMetrics: true
+    # Prometheus cannot scrape Consul agent metrics when TLS is enabled.
+    enableAgentMetrics: false
     agentMetricsRetentionTime: "1m"
 
 # Consul Server configuration
@@ -139,13 +140,13 @@ connectInject:
   enabled: true
   default: false  # Require explicit annotation
 
+  # API Gateway
+  apiGateway:
+    manageExternalCRDs: true
+
   # Transparent proxy
   transparentProxy:
     defaultEnabled: true
-
-  # Consul DNS
-  consulDNS:
-    enabled: true
 
   # Metrics
   metrics:
@@ -165,6 +166,7 @@ connectInject:
 # Sync Kubernetes services to Consul
 syncCatalog:
   enabled: true
+  default: false
   toConsul: true
   toK8S: false
   k8sPrefix: ""
@@ -184,17 +186,8 @@ controller:
 # DNS configuration
 dns:
   enabled: true
+  enableRedirection: true
   type: ClusterIP
-
-# Ingress Gateway
-ingressGateways:
-  enabled: true
-  defaults:
-    replicas: 2
-  gateways:
-    - name: ingress-gateway
-      service:
-        type: LoadBalancer
 
 # Terminating Gateway (for external services)
 terminatingGateways:
@@ -277,9 +270,6 @@ spec:
   protocol: http
   meshGateway:
     mode: local
-  transparentProxy:
-    outboundListenerPort: 15001
-    dialedDirectly: false
 ```
 
 ## 5. Configure Intentions
@@ -354,36 +344,55 @@ spec:
       targetPort: 8080
 ```
 
-## 7. Ingress Gateway Configuration
+## 7. API Gateway Configuration
 
-Expose services externally through an ingress gateway.
+Expose services externally through Consul API Gateway.
 
 ```yaml
-apiVersion: consul.hashicorp.com/v1alpha1
-kind: IngressGateway
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
 metadata:
-  name: ingress-gateway
+  name: api-gateway
   namespace: consul
 spec:
+  gatewayClassName: consul
   listeners:
-    - port: 8080
-      protocol: http
-      services:
-        - name: api
-          hosts:
-            - api.example.com
-        - name: web
-          hosts:
-            - www.example.com
-    - port: 8443
-      protocol: http
-      services:
-        - name: api
-          hosts:
-            - api.example.com
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: api.example.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: api.example.com
       tls:
-        enabled: true
-        tlsMinVersion: TLSv1_2
+        mode: Terminate
+        certificateRefs:
+          - name: api-gateway-cert
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: api-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: api-gateway
+      namespace: consul
+      sectionName: https
+  hostnames:
+    - api.example.com
+  rules:
+    - backendRefs:
+        - kind: Service
+          name: api
+          port: 8080
 ```
 
 ## 8. External Services via Terminating Gateway
@@ -398,16 +407,10 @@ metadata:
   name: external-database
 spec:
   protocol: tcp
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: external-database
-  annotations:
-    consul.hashicorp.com/service-sync: "false"
-spec:
-  type: ExternalName
-  externalName: database.external.example.com
+  destination:
+    addresses:
+      - database.external.example.com
+    port: 5432
 ---
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: TerminatingGateway
@@ -417,12 +420,11 @@ metadata:
 spec:
   services:
     - name: external-database
-      caFile: /etc/consul/tls/ca.crt
 ```
 
 ## 9. Consul DNS in Kubernetes
 
-Configure pods to use Consul DNS.
+With `dns.enableRedirection` enabled in the Helm values, service mesh pods can resolve Consul DNS names.
 
 ```yaml
 apiVersion: apps/v1
@@ -430,11 +432,15 @@ kind: Deployment
 metadata:
   name: app-with-consul-dns
 spec:
+  selector:
+    matchLabels:
+      app: app-with-consul-dns
   template:
     metadata:
+      labels:
+        app: app-with-consul-dns
       annotations:
         consul.hashicorp.com/connect-inject: "true"
-        consul.hashicorp.com/consul-dns: "true"
     spec:
       containers:
         - name: app
@@ -451,12 +457,17 @@ Or configure cluster-wide DNS forwarding:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  consul.server: |
+  Corefile: |
+    .:53 {
+        # Existing CoreDNS configuration
+    }
     consul {
-      forward . $(CONSUL_DNS_SERVICE_IP)
+        errors
+        cache 30
+        forward . <consul-dns-service-cluster-ip>
     }
 ```
 
@@ -466,33 +477,27 @@ Access Consul metrics and UI.
 
 ```bash
 # Port-forward to Consul UI
-kubectl port-forward svc/consul-ui -n consul 8500:80
+kubectl port-forward service/consul-server -n consul 8501:8501
 
 # Access UI
-open http://localhost:8500
+open https://localhost:8501/ui
 
-# Get metrics
-kubectl port-forward svc/consul-server -n consul 8500:8500
-curl http://localhost:8500/v1/agent/metrics
+# Set CLI/API environment for a TLS and ACL-enabled cluster
+export CONSUL_HTTP_ADDR=https://localhost:8501
+export CONSUL_HTTP_SSL_VERIFY=false
+export CONSUL_HTTP_TOKEN=$(kubectl get secret consul-bootstrap-acl-token \
+  -n consul \
+  --template='{{.data.token | base64decode }}')
 ```
 
-**Prometheus ServiceMonitor:**
+**Prometheus scrape annotations added by Consul:**
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
 metadata:
-  name: consul
-  namespace: consul
-spec:
-  selector:
-    matchLabels:
-      app: consul
-  endpoints:
-    - port: http
-      path: /v1/agent/metrics
-      params:
-        format: ["prometheus"]
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "20200"
 ```
 
 ## 11. Upgrade and Maintenance
@@ -519,7 +524,7 @@ helm upgrade consul hashicorp/consul \
 
 # Verify
 kubectl get pods -n consul
-consul members
+kubectl exec -n consul consul-server-0 -- consul members
 ```
 
 ## Best Practices
