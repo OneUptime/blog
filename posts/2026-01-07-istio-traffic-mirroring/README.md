@@ -70,8 +70,8 @@ flowchart LR
 
 Before implementing traffic mirroring, ensure you have the following:
 
-- A Kubernetes cluster (v1.21+)
-- Istio installed and configured (v1.10+)
+- A Kubernetes cluster version supported by your Istio release
+- Istio installed and configured with traffic management enabled
 - `kubectl` configured to access your cluster
 - `istioctl` installed for Istio management
 - Basic understanding of Istio VirtualService and DestinationRule concepts
@@ -85,11 +85,10 @@ The following commands verify your Istio installation is ready for traffic mirro
 kubectl get pods -n istio-system
 
 # Verify Istio injection is enabled for your namespace
-# The istio-injection label must be set to 'enabled'
+# The namespace should have either istio-injection=enabled or an istio.io/rev label
 kubectl get namespace default --show-labels
 
 # Check Istio version to ensure compatibility
-# Traffic mirroring is available in Istio 1.0+ with improvements in later versions
 istioctl version
 ```
 
@@ -136,7 +135,7 @@ First, we need to define the destination rules for both the primary and mirror s
 # destination-rule.yaml
 # DestinationRule defines policies that apply to traffic after routing
 # We define two subsets: v1 (primary) and v2 (mirror)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-destination
@@ -178,7 +177,7 @@ Now, create the VirtualService that configures traffic mirroring. This is where 
 # virtual-service-mirror.yaml
 # VirtualService defines how requests are routed within the mesh
 # This configuration sends 100% of traffic to v1 while mirroring to v2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-mirror
@@ -241,7 +240,7 @@ The following configuration demonstrates different percentage-based mirroring sc
 # virtual-service-percentage-mirror.yaml
 # This configuration demonstrates percentage-based mirroring
 # Useful for controlling resource usage and costs in high-traffic environments
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-percentage-mirror
@@ -351,7 +350,7 @@ When deploying a new version of a service, mirror production traffic to validate
 # use-case-new-version.yaml
 # Mirror traffic to a new service version for pre-release testing
 # This allows testing with real production traffic patterns
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-shadow-test
@@ -379,7 +378,7 @@ spec:
         value: 25.0
 ---
 # DestinationRule for the payment service versions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-versions
@@ -405,7 +404,7 @@ When migrating to a new database, mirror traffic to compare query results:
 # use-case-database-migration.yaml
 # Mirror traffic to validate database migration
 # Allows comparison of results between old and new database backends
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-service-db-migration
@@ -454,7 +453,7 @@ Mirror traffic to benchmark the performance of optimized service versions:
 # use-case-performance-benchmark.yaml
 # Mirror traffic to an optimized version for performance comparison
 # Useful for validating performance improvements before rollout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-service-benchmark
@@ -481,7 +480,7 @@ spec:
         value: 100.0
 ---
 # Additional retry and timeout settings for comparison
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: search-service-performance
@@ -517,7 +516,7 @@ Mirror traffic to compare machine learning model predictions:
 # use-case-ml-model-testing.yaml
 # Mirror traffic to compare ML model predictions
 # Enables safe testing of new models with production data
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: recommendation-service-ml-test
@@ -674,6 +673,11 @@ spec:
       targetPort: 8080
       protocol: TCP
       name: http
+    # Optional: expose Envoy metrics if you use a ServiceMonitor for sidecar stats
+    - port: 15090
+      targetPort: 15090
+      protocol: TCP
+      name: http-envoy-prom
   # Selector matches both v1 and v2 pods
   # Istio's VirtualService determines actual routing
   selector:
@@ -689,7 +693,7 @@ Apply the complete Istio configuration for traffic mirroring:
 # Complete Istio configuration for traffic mirroring
 ---
 # DestinationRule defines the subsets and traffic policies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-destination
@@ -728,7 +732,7 @@ spec:
           simple: ROUND_ROBIN
 ---
 # VirtualService with traffic mirroring configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routing
@@ -772,7 +776,7 @@ spec:
       timeout: 10s
 ---
 # Optional: Gateway for external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-gateway
@@ -863,17 +867,23 @@ Create a ServiceMonitor for Prometheus to collect Istio metrics:
 
 ```yaml
 # service-monitor.yaml
-# ServiceMonitor for collecting Istio metrics from Envoy proxies
+# ServiceMonitor for collecting Istio metrics from Envoy sidecar admin ports
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: istio-mesh-monitor
   namespace: istio-system
 spec:
+  # Select the namespace where the application service exists
+  namespaceSelector:
+    matchNames:
+      - default
   selector:
     matchLabels:
       app: my-app
   endpoints:
+    # The selected Kubernetes Service must expose the Envoy admin metrics port
+    # or you can rely on Istio's built-in Prometheus scrape configuration instead
     - port: http-envoy-prom
       interval: 15s
       path: /stats/prometheus
@@ -1053,13 +1063,13 @@ http:
     # No mirror configuration here
 ```
 
-### 3. Set Appropriate Timeouts
+### 3. Set Appropriate Traffic Policies
 
 Ensure mirrored requests don't consume excessive resources:
 
 ```yaml
-# Configure timeout for shadow traffic
-apiVersion: networking.istio.io/v1beta1
+# Configure connection limits and outlier detection for shadow traffic
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: shadow-timeout
@@ -1075,7 +1085,7 @@ spec:
             # Limit connections to prevent resource exhaustion
             http2MaxRequests: 500
             maxRequestsPerConnection: 50
-        # Set aggressive timeout for shadow traffic
+        # Eject repeatedly unhealthy shadow endpoints
         # Shadow responses are discarded anyway
         outlierDetection:
           consecutive5xxErrors: 3
@@ -1216,8 +1226,8 @@ Mirrored requests have a `-shadow` suffix in the Host header:
 
 ```yaml
 # Handle the shadow header in your application
-# Or configure Istio to retain the original header
-apiVersion: networking.istio.io/v1beta1
+# Or use an EnvoyFilter if the shadow service must see the original authority
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: remove-shadow-suffix
@@ -1234,21 +1244,24 @@ spec:
           filterChain:
             filter:
               name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.router"
       patch:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.lua
           typed_config:
             "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local host = request_handle:headers():get(":authority")
-                if host then
-                  -- Remove -shadow suffix from host header
-                  host = string.gsub(host, "-shadow$", "")
-                  request_handle:headers():replace(":authority", host)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local host = request_handle:headers():get(":authority")
+                  if host then
+                    -- Remove -shadow suffix from host header
+                    host = string.gsub(host, "-shadow$", "")
+                    request_handle:headers():replace(":authority", host)
+                  end
                 end
-              end
 ```
 
 ## Conclusion
