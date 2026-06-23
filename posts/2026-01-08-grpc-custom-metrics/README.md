@@ -203,7 +203,7 @@ func NewServiceMetrics(namespace, subsystem string, reg prometheus.Registerer) *
             Subsystem: subsystem,
             Name:      "payload_size_bytes",
             Help:      "Size of request/response payloads",
-            Buckets:   prometheus.ExponentialBuckets(100, 2, 10), // 100B to ~100KB
+            Buckets:   prometheus.ExponentialBuckets(100, 2, 10), // 100B to ~50KB
         },
         []string{"direction", "method"},
     )
@@ -913,7 +913,7 @@ func categorizeError(err error) string {
     switch st.Code().String() {
     case "Unavailable", "ResourceExhausted":
         return "availability"
-    case "DeadlineExceeded", "Cancelled":
+    case "DeadlineExceeded", "Canceled":
         return "timeout"
     case "InvalidArgument", "FailedPrecondition":
         return "validation"
