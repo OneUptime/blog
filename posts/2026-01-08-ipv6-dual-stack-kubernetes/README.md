@@ -8,7 +8,7 @@ Description: A comprehensive guide to enabling and configuring dual-stack IPv4/I
 
 ---
 
-IPv4 address exhaustion is real. With IoT devices multiplying and cloud infrastructure expanding, dual-stack networking is no longer optional - it's essential. Kubernetes has supported dual-stack since version 1.21 as a stable feature. This guide walks you through enabling it from scratch.
+IPv4 address exhaustion is real. With IoT devices multiplying and cloud infrastructure expanding, dual-stack networking is no longer optional - it's essential. Kubernetes has supported dual-stack since version 1.23 as a stable (GA) feature. This guide walks you through enabling it from scratch.
 
 ## Understanding Dual-Stack Networking
 
@@ -49,10 +49,10 @@ flowchart TB
 
 ### Kubernetes Version
 
-Dual-stack is stable in Kubernetes 1.21+. Check your version:
+Dual-stack is stable in Kubernetes 1.23+. Check your version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ### Infrastructure Requirements
@@ -840,7 +840,7 @@ echo "=== Pre-Migration Checks ==="
 
 # Check Kubernetes version
 echo "1. Kubernetes Version:"
-kubectl version --short
+kubectl version
 
 # Check CNI compatibility
 echo "2. CNI Plugin:"
