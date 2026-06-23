@@ -127,7 +127,7 @@ groups:
           severity: warning
         annotations:
           summary: "High error rate in {{ $labels.service }}"
-          description: "Service {{ $labels.service }} in {{ $labels.namespace }} has error rate {{ $values.A }}/s"
+          description: "Service {{ $labels.service }} in {{ $labels.namespace }} has error rate {{ $values.A.Value }}/s"
 ```
 
 ## Solution 3: Use Recording Rules
@@ -226,16 +226,18 @@ Configure the alert to:
 
 Even though you can't use dashboard variables, you can use alert labels and values in notifications.
 
-### Available Template Variables in Notifications
+### Available Template Variables in Alert Rule Annotations
 
 ```go
-// In notification templates, you can use:
+// In alert rule annotations and labels, you can use:
 {{ $labels }}              // All labels as map
 {{ $labels.instance }}     // Specific label value
 {{ $values }}              // All query values
-{{ $values.A }}            // Specific query value
+{{ $values.A.Value }}      // Specific query value
 {{ $value }}               // Alert value (for simple alerts)
 ```
+
+Notification templates use the notification data object instead, such as `.CommonLabels`, `.Alerts.Firing`, `.Labels`, and `.Values`.
 
 ### Example Notification Template
 
@@ -262,9 +264,9 @@ Create two versions of important panels:
 1. **Dashboard panel** - Uses variables for exploration
 2. **Alert panel** - Uses hardcoded or regex values for alerting
 
-### Strategy 2: Use Variables with Default Values
+### Strategy 2: Use the Same Default Scope in Alert Queries
 
-Configure variables with sensible defaults that work for alerts:
+Configure variables with sensible defaults for dashboards:
 
 ```json
 {
@@ -281,9 +283,9 @@ Configure variables with sensible defaults that work for alerts:
 }
 ```
 
-Then in your alert query:
+Then write the equivalent resolved scope directly in your separate alert query:
 ```promql
-# This works because $__all resolves to .* regex
+# Alert query uses a literal regex instead of the dashboard variable
 rate(http_requests_total{instance=~".*"}[5m])
 ```
 
