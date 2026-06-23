@@ -126,14 +126,14 @@ helm repo update
 kubectl create namespace falco
 
 # Install Falco with modern eBPF driver and JSON output enabled
-# The modern_bpf driver uses CO-RE (Compile Once, Run Everywhere) for better compatibility
+# The modern_ebpf driver uses CO-RE (Compile Once, Run Everywhere) for better compatibility
 helm install falco falcosecurity/falco \
   --namespace falco \
-  --set driver.kind=modern_bpf \
+  --set driver.kind=modern_ebpf \
   --set falcosidekick.enabled=true \
   --set falcosidekick.webui.enabled=true \
   --set collectors.kubernetes.enabled=true \
-  --set json_output=true
+  --set falco.json_output=true
 ```
 
 ### Understanding Falco Architecture
@@ -329,13 +329,11 @@ Create a custom rules file with the following security-focused rules:
 After creating custom rules, validate them before deployment:
 
 ```bash
-# Validate the custom rules file for syntax errors
-# The --validate flag checks rules without starting Falco
-sudo falco --validate /etc/falco/rules.d/custom_rules.yaml
-
-# Test rules against a sample event log (if available)
-# This helps verify rules trigger as expected
-sudo falco -r /etc/falco/rules.d/custom_rules.yaml --dry-run
+# Validate the custom rules file for syntax errors without processing events
+# Include the default rules so custom rules can reference default macros
+sudo falco --dry-run \
+  -r /etc/falco/falco_rules.yaml \
+  -r /etc/falco/rules.d/custom_rules.yaml
 
 # Restart Falco to load the new rules
 # The service will automatically load all rules from rules.d
@@ -463,9 +461,9 @@ Falco can monitor specific system calls for deep security visibility. The follow
   desc: Detect processes with dangerous Linux capabilities
   condition: >
     spawned_process and
-    thread.cap_effective contains CAP_SYS_ADMIN or
-    thread.cap_effective contains CAP_SYS_PTRACE or
-    thread.cap_effective contains CAP_SYS_MODULE
+    (thread.cap_effective contains CAP_SYS_ADMIN or
+     thread.cap_effective contains CAP_SYS_PTRACE or
+     thread.cap_effective contains CAP_SYS_MODULE)
   output: >
     Process started with dangerous capabilities
     (process=%proc.name capabilities=%thread.cap_effective
@@ -493,11 +491,11 @@ helm repo update
 kubectl create namespace tetragon
 
 # Install Tetragon with recommended settings for production
-# export.stdout.enabled outputs events to container logs for easy viewing
+# export.mode=stdout outputs events to container logs for easy viewing
 # enableProcessCred captures process credentials for security analysis
 helm install tetragon cilium/tetragon \
   --namespace tetragon \
-  --set tetragon.export.stdout.enabled=true \
+  --set export.mode=stdout \
   --set tetragon.enableProcessCred=true \
   --set tetragon.enableProcessNs=true
 
@@ -906,7 +904,7 @@ falcosidekick:
     # Prometheus metrics endpoint
     prometheus:
       # Exposes /metrics endpoint for Prometheus scraping
-      extralabels: "source:falco"
+      extralabels: "k8s.ns.name,k8s.pod.name"
 
     # Webhook for custom integrations
     webhook:
@@ -983,27 +981,17 @@ flowchart TB
 Tetragon exposes metrics that can be scraped by Prometheus:
 
 ```yaml
-# tetragon-servicemonitor.yaml
-# ServiceMonitor for Prometheus Operator to scrape Tetragon metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: tetragon
-  namespace: tetragon
-  labels:
-    # Ensure this matches your Prometheus selector
-    app: tetragon
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: tetragon
-  namespaceSelector:
-    matchNames:
-      - tetragon
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
+# tetragon-prometheus-values.yaml
+# Helm values to create a ServiceMonitor for Prometheus Operator
+tetragon:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      # Ensure these labels match your Prometheus ServiceMonitor selector
+      extraLabels:
+        release: prometheus
+      scrapeInterval: 30s
 ```
 
 Create Prometheus alerting rules for Tetragon events:
@@ -1020,16 +1008,16 @@ spec:
   groups:
     - name: tetragon-security
       rules:
-        # Alert when process kill actions are triggered
+        # Alert when a high-risk enforcement policy observes matching events
         - alert: TetragonPolicyViolation
           expr: |
-            increase(tetragon_policy_event_total{action="sigkill"}[5m]) > 0
+            increase(tetragon_policy_events_total{policy="crypto-mining-prevention"}[5m]) > 0
           for: 0m
           labels:
             severity: critical
           annotations:
-            summary: "Tetragon killed a process due to policy violation"
-            description: "A process was terminated by Tetragon enforcement policy. Check logs for details."
+            summary: "Tetragon observed a crypto-mining prevention policy match"
+            description: "The crypto-mining prevention policy matched at least one event. Check Tetragon logs for enforcement details."
 
         # Alert on high volume of security events
         - alert: HighSecurityEventVolume
@@ -1098,19 +1086,19 @@ stringData:
       routes:
         # Critical security alerts go to PagerDuty
         - receiver: 'pagerduty-critical'
-          match:
-            severity: critical
+          matchers:
+            - severity="critical"
           continue: true
 
         # All security alerts go to security channel
         - receiver: 'slack-security'
-          match_re:
-            alertname: 'Tetragon.*|Falco.*|.*Security.*'
+          matchers:
+            - alertname=~"Tetragon.*|Falco.*|.*Security.*"
 
         # Container escape alerts need immediate attention
         - receiver: 'pagerduty-critical'
-          match_re:
-            alertname: '.*Escape.*|.*Privilege.*'
+          matchers:
+            - alertname=~".*Escape.*|.*Privilege.*"
 
     receivers:
       - name: 'slack-notifications'
@@ -1228,17 +1216,17 @@ kubectl create namespace tetragon --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy Falco with Falcosidekick
-# Using modern_bpf driver for best performance and compatibility
+# Using modern_ebpf driver for best performance and compatibility
 echo "Deploying Falco..."
 helm upgrade --install falco falcosecurity/falco \
   --namespace falco \
-  --set driver.kind=modern_bpf \
+  --set driver.kind=modern_ebpf \
   --set falcosidekick.enabled=true \
   --set falcosidekick.webui.enabled=true \
   --set falcosidekick.config.slack.webhookurl="${SLACK_WEBHOOK_URL:-}" \
   --set falcosidekick.config.slack.minimumpriority="warning" \
   --set collectors.kubernetes.enabled=true \
-  --set json_output=true \
+  --set falco.json_output=true \
   --wait
 
 # Deploy Tetragon
@@ -1248,7 +1236,7 @@ helm upgrade --install tetragon cilium/tetragon \
   --namespace tetragon \
   --set tetragon.enableProcessCred=true \
   --set tetragon.enableProcessNs=true \
-  --set tetragon.export.stdout.enabled=true \
+  --set export.mode=stdout \
   --wait
 
 # Deploy Prometheus for metrics collection
@@ -1301,7 +1289,7 @@ Create a comprehensive Grafana dashboard for security visibility:
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "sum by (priority) (rate(falco_events_total[5m]))",
+            "expr": "sum by (priority) (rate(falcosecurity_falcosidekick_falco_events_total[5m]))",
             "legendFormat": "{{priority}}"
           }
         ]
@@ -1312,8 +1300,8 @@ Create a comprehensive Grafana dashboard for security visibility:
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "sum by (action) (rate(tetragon_policy_event_total[5m]))",
-            "legendFormat": "{{action}}"
+            "expr": "sum by (policy) (rate(tetragon_policy_events_total[5m]))",
+            "legendFormat": "{{policy}}"
           }
         ]
       },
@@ -1323,7 +1311,7 @@ Create a comprehensive Grafana dashboard for security visibility:
         "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
         "targets": [
           {
-            "expr": "topk(10, sum by (rule) (increase(falco_events_total[1h])))",
+            "expr": "topk(10, sum by (rule) (increase(falcosecurity_falcosidekick_falco_events_total[1h])))",
             "format": "table",
             "instant": true
           }
@@ -1335,7 +1323,7 @@ Create a comprehensive Grafana dashboard for security visibility:
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
         "targets": [
           {
-            "expr": "sum by (namespace) (tetragon_events_total{type=\"process_exec\"})",
+            "expr": "sum by (namespace) (tetragon_events_total{type=\"PROCESS_EXEC\"})",
             "legendFormat": "{{namespace}}"
           }
         ]
@@ -1514,15 +1502,16 @@ eBPF monitoring is efficient but still requires optimization at scale:
 ```yaml
 # performance-tuning.yaml
 # Helm values for performance-optimized Falco deployment
-falco:
-  # Use modern eBPF driver for best performance
-  driver:
-    kind: modern_bpf
+# Use modern eBPF driver for best performance
+driver:
+  kind: modern_ebpf
 
   # Buffer sizing for high-throughput environments
   # Increase if you see dropped events
-  syscall_buf_size_preset: 4
+  modernEbpf:
+    bufSizePreset: 4
 
+falco:
   # Output buffering to reduce I/O overhead
   buffered_outputs: true
 
@@ -1530,28 +1519,19 @@ falco:
   outputs_queue:
     capacity: 10000
 
-  # Resource limits to prevent runaway consumption
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1024Mi
-    requests:
-      cpu: 100m
-      memory: 512Mi
+# Resource limits to prevent runaway consumption
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+  requests:
+    cpu: 100m
+    memory: 512Mi
 
 # Tetragon performance settings
 tetragon:
-  # Ring buffer size for event collection
-  # Larger buffers reduce the chance of dropped events
-  btf:
-    enabled: true  # Use BTF for CO-RE
-
-  # Export configuration
-  export:
-    # Batch events for efficiency
-    filenames:
-      maxEvents: 1000
-      flushTimeoutMs: 5000
+  # BTF path for advanced deployments
+  btf: ""  # Set an explicit BTF file path only for advanced deployments
 
   resources:
     limits:
@@ -1560,6 +1540,11 @@ tetragon:
     requests:
       cpu: 100m
       memory: 256Mi
+
+# Export configuration
+export:
+  filenames:
+    - tetragon.log
 ```
 
 ### Security Hardening
