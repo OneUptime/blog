@@ -51,7 +51,7 @@ Ceph + Rook grew popular because it behaves like cloud storage but runs beside y
   - RGW → S3 endpoint for apps
 ```
 
-On bare metal, each worker contributes disks advertised via Kubernetes `LocalVolume` or `LVM`. Rook deploys OSD pods on those nodes, so capacity grows linearly with cluster size.
+On bare metal, each worker contributes raw disks, partitions, or LVM logical volumes. Rook deploys OSD pods on those nodes, so capacity grows linearly with cluster size.
 
 ---
 
@@ -89,7 +89,7 @@ On bare metal, each worker contributes disks advertised via Kubernetes `LocalVol
 
 ## Quick Helm Deployment Example
 
-Below is a "kitchen table" deployment you can run in a homelab or staging environment before rolling into production. It deploys the Rook operator plus a Ceph cluster that consumes raw devices advertised via the `local-storage` CSI driver.
+Below is a "kitchen table" deployment you can run in a homelab or staging environment before rolling into production. It deploys the Rook operator plus a Ceph cluster that consumes raw block devices directly on each node.
 
 ### 1. Add the Chart Repos
 
@@ -155,9 +155,9 @@ cephClusterSpec:
 cephBlockPools:
   - name: fast-rbd                      # Pool name referenced by StorageClass
     spec:
+      failureDomain: host               # Spread replicas across hosts, not just OSDs
       replicated:
         size: 3                         # Triple replication for high durability
-      crushRoot: host                   # Spread replicas across hosts, not just OSDs
     storageClass:
       enabled: true                     # Automatically create a StorageClass for this pool
       name: fast-rbd                    # StorageClass name developers will reference
