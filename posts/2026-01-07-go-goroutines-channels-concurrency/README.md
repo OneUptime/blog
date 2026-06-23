@@ -47,10 +47,10 @@ func main() {
 When working with goroutines, there are several important practices to keep in mind:
 
 1. **Always know when goroutines will end** - A goroutine that never terminates is a goroutine leak
-2. **Pass data explicitly** - Avoid capturing loop variables by reference
+2. **Pass data explicitly** - Avoid accidentally sharing variables between goroutines
 3. **Use synchronization primitives** - Never rely on timing assumptions
 
-The following example shows the common pitfall of capturing loop variables incorrectly, and how to fix it.
+The following example shows a common pitfall with pre-existing loop variables, and how to fix it. In Go 1.22 and later, variables declared directly by a `for` loop have per-iteration scope, but explicitly passing values is still a clear and version-compatible habit.
 
 ```go
 package main
@@ -63,8 +63,9 @@ import (
 func main() {
     var wg sync.WaitGroup
 
-    // WRONG: Capturing loop variable by reference
-    for i := 0; i < 5; i++ {
+    // WRONG: Reusing a pre-existing loop variable
+    var i int
+    for i = 0; i < 5; i++ {
         wg.Add(1)
         go func() {
             defer wg.Done()
@@ -954,7 +955,6 @@ Proper error handling in concurrent code requires careful design. Here is a patt
 package main
 
 import (
-    "errors"
     "fmt"
     "sync"
 )
@@ -1053,7 +1053,7 @@ func main() {
     sources := []string{"source1", "source2", "source3", "source4"}
 
     for _, source := range sources {
-        source := source // Capture loop variable
+        source := source // Explicit copy for Go versions before 1.22
         g.Go(func() error {
             return fetchData(ctx, source)
         })
@@ -1108,9 +1108,23 @@ func main() {
     }
 
     // Refill at steady rate
+    burstTicker := time.NewTicker(200 * time.Millisecond)
+    defer burstTicker.Stop()
+    done := make(chan struct{})
+    defer close(done)
+
     go func() {
-        for t := range time.NewTicker(200 * time.Millisecond).C {
-            burstyLimiter <- t
+        for {
+            select {
+            case t := <-burstTicker.C:
+                select {
+                case burstyLimiter <- t:
+                case <-done:
+                    return
+                }
+            case <-done:
+                return
+            }
         }
     }()
 
