@@ -50,8 +50,8 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 10
-    reviewers:
-      - "myteam/maintainers"
+    # Note: the dependabot.yml "reviewers" option was removed by GitHub in May 2025.
+    # Use a CODEOWNERS file to request reviews on Dependabot PRs instead.
     labels:
       - "dependencies"
       - "automated"
@@ -142,7 +142,7 @@ Renovate offers more flexibility than Dependabot. Add it via GitHub App or self-
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
+    "config:recommended",
     ":preserveSemverRanges",
     "group:recommended"
   ],
@@ -165,11 +165,11 @@ Renovate offers more flexibility than Dependabot. Add it via GitHub App or self-
       "automerge": true
     },
     {
-      "matchPackagePatterns": ["eslint"],
+      "matchPackageNames": ["/eslint/"],
       "groupName": "eslint packages"
     },
     {
-      "matchPackagePatterns": ["jest", "@types/jest"],
+      "matchPackageNames": ["/jest/", "/@types/jest/"],
       "groupName": "jest packages"
     },
     {
