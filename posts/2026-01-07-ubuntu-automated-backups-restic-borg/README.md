@@ -41,7 +41,7 @@ Before diving into implementation, let's understand the key differences between 
 | **Deduplication** | Content-defined chunking | Content-defined chunking |
 | **Encryption** | AES-256-CTR + Poly1305-AES | AES-256-CTR + HMAC-SHA256 |
 | **Compression** | Zstd (since v0.14) | LZ4, Zstd, Zlib, LZMA |
-| **Remote Backends** | S3, SFTP, REST, B2, Azure, GCS | SSH/SFTP (native), rclone mount |
+| **Remote Backends** | S3, SFTP, REST, B2, Azure, GCS | SSH (native), local filesystems, rclone mount |
 | **Repository Lock** | Exclusive and shared locks | Exclusive locks |
 | **Append-Only Mode** | Supported | Supported |
 | **Performance** | Fast, parallel operations | Very fast deduplication |
@@ -59,7 +59,7 @@ Before diving into implementation, let's understand the key differences between 
 - Maximum backup speed is critical
 - You need advanced compression options
 - Lower memory usage is important for constrained systems
-- You primarily use SSH/SFTP for remote storage
+- You primarily use SSH for remote storage
 - You want mature, battle-tested software
 
 ---
@@ -324,48 +324,45 @@ Create a borg patterns file with advanced matching:
 sudo mkdir -p /etc/borg
 sudo tee /etc/borg/patterns.txt << 'EOF'
 # Borg pattern syntax:
-# P = Path prefix match
-# R = Regular expression
-# sh = Shell-style pattern (fnmatch)
-# fm = fnmatch pattern (same as sh)
+# P sets the default pattern style
+# R adds a recursion root when roots are not passed on the command line
+# sh = Shell-style pattern
+# fm = fnmatch-style full path match
 
 # Exclude caches using shell patterns
-sh:**/.cache
-sh:**/cache
-sh:**/Cache
+- **/.cache
+- **/cache
+- **/Cache
 
 # Exclude temporary files
-sh:**/*.tmp
-sh:**/*.temp
-sh:**/*~
+- **/*.tmp
+- **/*.temp
+- **/*~
 
 # Exclude development dependencies
-sh:**/node_modules
-sh:**/.venv
-sh:**/__pycache__
+- **/node_modules
+- **/.venv
+- **/__pycache__
 
 # Exclude IDE directories
-sh:**/.idea
-sh:**/.vscode
+- **/.idea
+- **/.vscode
 
 # Exclude build directories
-sh:**/build
-sh:**/dist
-sh:**/target
+- **/build
+- **/dist
+- **/target
 
 # Exclude specific large files using regex
-R:.*\.(iso|vmdk|vdi)$
+- re:.*\.(iso|vmdk|vdi)$
 
 # Exclude log files
-sh:**/*.log
-sh:**/logs
-
-# Include everything in /etc (override previous excludes)
-+ /etc
+- **/*.log
+- **/logs
 
 # Exclude everything in specific directories
-- /home/*/.steam
-- /home/*/.local/share/Trash
+- home/*/.steam
+- home/*/.local/share/Trash
 EOF
 ```
 
@@ -535,7 +532,7 @@ restic init --repo sftp:user@backup-server.example.com:/backups/restic-repo
 restic --repo sftp:user@backup-server.example.com:/backups/restic-repo backup /home
 ```
 
-### Borg with SSH/SFTP
+### Borg with SSH
 
 Configure borg with remote repository over SSH:
 
@@ -611,6 +608,7 @@ set -euo pipefail
 # Configuration
 export RESTIC_REPOSITORY="s3:s3.amazonaws.com/your-bucket/restic-backups"
 export RESTIC_PASSWORD_FILE="/etc/backup-credentials/restic-password"
+export RESTIC_CACHE_DIR="/var/cache/restic"
 export AWS_ACCESS_KEY_ID="your-access-key"
 export AWS_SECRET_ACCESS_KEY="your-secret-key"
 
@@ -648,6 +646,7 @@ echo "=========================================="
 EOF
 
 sudo chmod +x /usr/local/bin/restic-backup.sh
+sudo mkdir -p /var/cache/restic
 ```
 
 Create the systemd service unit:
@@ -673,7 +672,7 @@ StandardError=journal
 PrivateTmp=true
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/log /backup
+ReadWritePaths=/var/log /var/cache/restic -/backup
 
 [Install]
 WantedBy=multi-user.target
@@ -731,7 +730,7 @@ Create the borg backup script:
 # Create the borg backup script
 sudo tee /usr/local/bin/borg-backup.sh << 'EOF'
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 # Configuration
 export BORG_REPO="user@backup-server:/backups/borg-repo"
@@ -773,6 +772,7 @@ echo "Pruning old archives..."
 borg prune \
   --list \
   --show-rc \
+  --glob-archives "$(hostname)-*" \
   --keep-hourly 24 \
   --keep-daily 7 \
   --keep-weekly 4 \
@@ -873,12 +873,12 @@ restic snapshots
 # Forget old snapshots with retention policy
 # This only marks snapshots for deletion, doesn't free space yet
 restic forget \
-  --keep-last 5 \          # Keep 5 most recent snapshots
-  --keep-hourly 24 \       # Keep hourly for last 24 hours
-  --keep-daily 7 \         # Keep daily for last 7 days
-  --keep-weekly 4 \        # Keep weekly for last 4 weeks
-  --keep-monthly 12 \      # Keep monthly for last 12 months
-  --keep-yearly 5          # Keep yearly for last 5 years
+  --keep-last 5 \
+  --keep-hourly 24 \
+  --keep-daily 7 \
+  --keep-weekly 4 \
+  --keep-monthly 12 \
+  --keep-yearly 5
 
 # Combine forget with prune to also free space
 restic forget \
@@ -920,17 +920,17 @@ borg prune --list --dry-run \
   --keep-daily 7 \
   --keep-weekly 4
 
-# Prune by prefix (useful for multi-host repos)
+# Prune by archive name pattern (useful for multi-host repos)
 borg prune \
   --list \
-  --prefix "$(hostname)-" \
+  --glob-archives "$(hostname)-*" \
   --keep-daily 7 \
   --keep-weekly 4
 
 # Compact repository after pruning to free space
 borg compact
 
-# Compact with threshold (only if more than 10% space can be freed)
+# Compact with threshold (10 is the default; lower values compact more aggressively)
 borg compact --threshold 10
 ```
 
@@ -967,7 +967,7 @@ restic restore latest --target /restore/location
 # Restore specific files or directories
 restic restore latest --target /restore/location --include "/home/user/documents"
 
-# Restore with path rewriting
+# Select the latest snapshot for a specific backup path before restoring matching files
 restic restore latest --target /restore/location --path "/home/user" --include "/home/user/important"
 
 # Mount repository for browsing (FUSE required)
@@ -1053,7 +1053,7 @@ fi
 
 # Include last 50 lines of log
 if [ -f "$LOG_FILE" ]; then
-  BODY="$BODY\n\n=== Last 50 lines of log ===\n$(tail -50 $LOG_FILE)"
+  BODY="$BODY\n\n=== Last 50 lines of log ===\n$(tail -50 "$LOG_FILE")"
 fi
 
 echo -e "$BODY" | mail -s "$SUBJECT" "$ADMIN_EMAIL"
@@ -1073,6 +1073,11 @@ sudo tee /usr/local/bin/backup-metrics.sh << 'EOF'
 
 METRICS_FILE="/var/lib/node_exporter/textfile_collector/backup_metrics.prom"
 RESTIC_REPO="/backup/restic-repo"
+export RESTIC_REPOSITORY="$RESTIC_REPO"
+export RESTIC_PASSWORD_FILE="/etc/backup-credentials/restic-password"
+
+mkdir -p "$(dirname "$METRICS_FILE")"
+: > "$METRICS_FILE.tmp"
 
 # Get last snapshot timestamp for restic
 if command -v restic &> /dev/null; then
@@ -1147,7 +1152,7 @@ fi
 restic backup --cache-dir /var/cache/restic /home
 
 # Restic: Limit bandwidth for backup over slow connections
-restic backup --limit-upload 5000 /home  # 5 MB/s limit
+restic backup --limit-upload 5120 /home  # 5 MiB/s limit
 
 # Borg: Use checkpoints for very large backups
 borg create --checkpoint-interval 600 ::archive /large-dataset
@@ -1202,7 +1207,7 @@ Both restic and borg are excellent choices for automated backups on Ubuntu. Rest
 
 Key takeaways:
 
-- **Always encrypt your backups** - both tools provide strong encryption by default
+- **Always encrypt your backups** - both tools provide strong encryption when configured as shown
 - **Use systemd timers** for reliable scheduling instead of cron
 - **Implement retention policies** to manage storage costs
 - **Test your restores regularly** - a backup you cannot restore is worthless
