@@ -237,17 +237,21 @@ network:
       addresses:
         - 192.168.1.10/24
         - 2001:db8:1::10/64
-      # IPv4 gateway
-      gateway4: 192.168.1.1
-      # IPv6 gateway (default route)
-      gateway6: 2001:db8:1::1
       # Configure name servers for DNS resolution
       nameservers:
         addresses:
           - 8.8.8.8
           - 2001:4860:4860::8888
-      # Define static routes for IPv6
+      # Define routes, including the default gateways.
+      # Note: the gateway4 and gateway6 keys are deprecated; set default
+      # routes here instead using "to: default".
       routes:
+        # IPv4 default gateway
+        - to: default
+          via: 192.168.1.1
+        # IPv6 default gateway
+        - to: default
+          via: 2001:db8:1::1
         # Route to remote network through primary gateway
         - to: 2001:db8:2::/64
           via: 2001:db8:1::1
