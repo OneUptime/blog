@@ -10,7 +10,7 @@ Description: Learn how to build modern, reactive Rails applications using Hotwir
 
 > Hotwire brings the speed and responsiveness of single-page applications to Rails without writing complex JavaScript. By sending HTML over the wire instead of JSON, you get fast, reactive interfaces while keeping your logic in Ruby.
 
-Hotwire (HTML Over The Wire) represents a fundamental shift in how we build modern web applications. Instead of building JSON APIs and complex JavaScript frontends, Hotwire lets you write server-side Ruby code that updates specific parts of the page in real-time. It consists of three key technologies: Turbo Drive, Turbo Frames, Turbo Streams, and Stimulus for JavaScript sprinkles.
+Hotwire (HTML Over The Wire) represents a fundamental shift in how we build modern web applications. Instead of building JSON APIs and complex JavaScript frontends, Hotwire lets you write server-side Ruby code that updates specific parts of the page in real-time. It consists of two complementary technologies: Turbo (which provides Turbo Drive, Turbo Frames, and Turbo Streams) and Stimulus for JavaScript sprinkles.
 
 ---
 
