@@ -82,6 +82,12 @@ import (
 	"time"
 )
 
+type User struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}
+
 // LargeResponse simulates a complex API response
 // Each field requires reflection inspection during serialization
 type LargeResponse struct {
@@ -118,8 +124,8 @@ func demonstrateLimitations() {
 	}
 	fmt.Printf("100k marshals took: %v\n", time.Since(start))
 
-	// Issue 3: No streaming support for complex structures
-	// Large payloads must be fully loaded into memory
+	// Issue 3: Streaming requires more manual code
+	// Large payloads need json.Encoder/json.Decoder patterns to avoid loading everything into memory
 }
 
 func main() {
@@ -190,7 +196,7 @@ func BenchmarkStdLibUnmarshal(b *testing.B) {
 
 ### Installing sonic
 
-sonic requires Go 1.16 or higher and works best on amd64 architecture with AVX/AVX2 support.
+sonic requires Go 1.18 or higher and works best on supported CPU targets: amd64, or arm64 with Go 1.20 or higher.
 
 ```bash
 # Install sonic library
@@ -292,11 +298,8 @@ func main() {
 
 	// Using encoder options for fine-grained control
 	// SortMapKeys ensures consistent output order
-	enc := encoder.NewEncoder(nil)
-	enc.SetSortMapKeys(true)
-	enc.SetEscapeHTML(false)  // Disable HTML escaping for performance
-
-	result, _ := enc.Encode(cfg)
+	// sonic does not escape HTML by default; enabling EscapeHTML is available when needed
+	result, _ := encoder.Encode(cfg, encoder.SortMapKeys)
 	fmt.Println("Custom encoder:", string(result))
 }
 ```
@@ -426,8 +429,8 @@ easyjson -all models/order.go
 # Generate with specific options
 easyjson -no_std_marshalers -all models/order.go
 
-# For entire packages
-easyjson -all ./models/...
+# For an entire package
+easyjson -all -pkg ./models
 ```
 
 ### Using Generated easyjson Code
@@ -560,13 +563,6 @@ This benchmark suite tests marshaling and unmarshaling performance across differ
 
 ```go
 package benchmark
-
-import (
-	"encoding/json"
-	"testing"
-
-	"github.com/bytedance/sonic"
-)
 
 // SmallPayload represents a minimal JSON structure
 type SmallPayload struct {
@@ -968,13 +964,15 @@ type StreamEncoder struct {
 	w       io.Writer
 	enc     *json.Encoder
 	started bool
+	first   bool
 }
 
 // NewStreamEncoder creates a streaming JSON array encoder
 func NewStreamEncoder(w io.Writer) *StreamEncoder {
 	return &StreamEncoder{
-		w:   w,
-		enc: json.NewEncoder(w),
+		w:     w,
+		enc:   json.NewEncoder(w),
+		first: true,
 	}
 }
 
@@ -982,14 +980,23 @@ func NewStreamEncoder(w io.Writer) *StreamEncoder {
 func (s *StreamEncoder) Start() error {
 	_, err := s.w.Write([]byte("[\n"))
 	s.started = true
+	s.first = true
 	return err
 }
 
 // WriteItem writes a single item to the JSON array
 func (s *StreamEncoder) WriteItem(item interface{}) error {
 	if !s.started {
-		s.Start()
+		if err := s.Start(); err != nil {
+			return err
+		}
 	}
+	if !s.first {
+		if _, err := s.w.Write([]byte(",\n")); err != nil {
+			return err
+		}
+	}
+	s.first = false
 	return s.enc.Encode(item)
 }
 
@@ -1136,10 +1143,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/decoder"
 )
 
 type DataRecord struct {
@@ -1156,16 +1163,18 @@ func ProcessLargeFile(filename string) error {
 	}
 	defer file.Close()
 
-	// Read file content
-	stat, _ := file.Stat()
-	data := make([]byte, stat.Size())
-	file.Read(data)
-
 	// Use sonic's streaming decoder
-	dec := decoder.NewStreamDecoder(data)
+	dec := sonic.ConfigDefault.NewDecoder(file)
 
-	var record DataRecord
-	for dec.Decode(&record) == nil {
+	for {
+		var record DataRecord
+		if err := dec.Decode(&record); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
 		// Process each record as it's decoded
 		fmt.Printf("Processing record %d with %d metrics\n",
 			record.ID, len(record.Metrics))
@@ -1237,7 +1246,6 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/render"
 )
 
 // SonicJSON implements gin's render.Render interface
@@ -1324,6 +1332,7 @@ Configure Echo to use sonic for JSON operations.
 package main
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/bytedance/sonic"
@@ -1348,7 +1357,8 @@ func (s SonicSerializer) Serialize(c echo.Context, i interface{}, indent string)
 		return err
 	}
 
-	return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, data)
+	_, err = c.Response().Write(data)
+	return err
 }
 
 // Deserialize decodes the request body using sonic
@@ -1356,10 +1366,10 @@ func (s SonicSerializer) Deserialize(c echo.Context, i interface{}) error {
 	body := c.Request().Body
 	defer body.Close()
 
-	// Read the body
-	buf := make([]byte, c.Request().ContentLength)
-	body.Read(buf)
-
+	buf, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
 	return sonic.Unmarshal(buf, i)
 }
 
@@ -1718,7 +1728,7 @@ func SafeUnmarshal(data []byte, v interface{}) error {
 		if errors.As(err, &syntaxErr) {
 			return &JSONError{
 				Operation: "unmarshal",
-				Err:       fmt.Errorf("syntax error at position %d", syntaxErr.Pos),
+				Err:       fmt.Errorf("syntax error: %w", syntaxErr),
 			}
 		}
 		return &JSONError{
