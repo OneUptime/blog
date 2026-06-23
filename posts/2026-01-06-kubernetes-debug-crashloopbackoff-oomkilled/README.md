@@ -307,7 +307,8 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,MEM:.status.conditions[?
 kubectl top pods -n <namespace> --containers | tee -a memory-metrics.txt
 
 # After collecting enough data, find P99
-cat memory-metrics.txt | awk '{print $3}' | sort -n | tail -1
+# With --containers the columns are: POD NAME CPU(cores) MEMORY(bytes)
+cat memory-metrics.txt | awk '{print $4}' | sort -n | tail -1
 ```
 
 Set limit to P99 + 20% buffer:
