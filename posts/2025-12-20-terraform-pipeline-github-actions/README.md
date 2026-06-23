@@ -41,7 +41,7 @@ on:
       - 'terraform/**'
 
 env:
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.6'
   WORKING_DIR: terraform
 
 jobs:
@@ -152,9 +152,9 @@ jobs:
         with:
           script: |
             const output = `#### Terraform Plan
-            ```
+            \`\`\`
             ${{ steps.plan.outputs.stdout }}
-            ```
+            \`\`\`
 
             *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
 
@@ -275,7 +275,7 @@ terraform {
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -337,8 +337,11 @@ jobs:
       - name: Detect Drift
         id: drift
         run: |
+          set +e
           terraform plan -detailed-exitcode -out=tfplan 2>&1 | tee plan.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exitcode=${PIPESTATUS[0]}
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+          exit "$exitcode"
         working-directory: terraform
         continue-on-error: true
 
@@ -354,7 +357,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: 'Infrastructure Drift Detected',
-              body: `Terraform detected drift from the desired state.\n\n```\n${plan.slice(0, 60000)}\n````,
+              body: `Terraform detected drift from the desired state.\n\n\`\`\`\n${plan.slice(0, 60000)}\n\`\`\``,
               labels: ['infrastructure', 'drift']
             });
 ```
@@ -367,6 +370,10 @@ Add security scanning with tfsec or Checkov:
 jobs:
   security:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -435,7 +442,7 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.6'
   AWS_REGION: us-east-1
 
 jobs:
@@ -504,9 +511,9 @@ jobs:
         with:
           script: |
             const output = `### Terraform Plan
-            ```
+            \`\`\`
             ${{ steps.plan.outputs.stdout }}
-            ````;
+            \`\`\``;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
