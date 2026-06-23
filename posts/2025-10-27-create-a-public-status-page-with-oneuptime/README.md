@@ -52,76 +52,50 @@ A public status page is the front door to your reliability program. With OneUpti
 ## Step 4: Configure the domain and SSL
 
 1. In **Domains**, add your preferred hostname (for example `status.acmecloud.com`).
-2. Follow the DNS instructions to create the CNAME or A record pointing to OneUptime.
-3. Once DNS propagates, OneUptime automatically provisions SSL certificates so visitors see a secure padlock.
-4. Keep the default `oneuptime.com` link active while DNS changes propagate, then switch communication to the custom domain.
+2. Follow the DNS instructions to create the CNAME record pointing to the target shown in the Domains screen.
+3. After OneUptime verifies the CNAME, order a free SSL certificate from the same screen. OneUptime provisions and renews it automatically (via Let's Encrypt) so visitors see a secure padlock.
+4. Keep the default OneUptime status page link active while DNS changes propagate, then switch communication to the custom domain.
 
-The following DNS record configuration maps your custom domain to OneUptime's servers. A CNAME record is the recommended approach as it automatically handles IP address changes on OneUptime's infrastructure.
+The following DNS record configuration maps your custom domain to OneUptime. A CNAME record is the recommended approach as it automatically handles IP address changes on OneUptime's infrastructure. OneUptime shows the exact CNAME target to use on the **Domains** screen, so copy the value displayed there rather than guessing it.
 
 ```dns
 ; DNS Zone file example for status.acmecloud.com
-; This CNAME record points your custom status page domain to OneUptime's servers
+; This CNAME record points your custom status page domain to OneUptime
 ; Replace 'acmecloud.com' with your actual domain name
+; Replace the target below with the CNAME value shown on the OneUptime Domains screen
 
-status.acmecloud.com.   IN   CNAME   statuspage.oneuptime.com.
+status.acmecloud.com.   IN   CNAME   <cname-target-from-oneuptime>.
 ; TTL (Time To Live) can be set to 300 seconds (5 minutes) for faster propagation
 ; Once verified, increase TTL to 3600 (1 hour) for better caching
 ```
 
-If your DNS provider does not support CNAME records at the root domain, use an A record instead. This configuration directly points to OneUptime's IP address for status page hosting.
-
-```dns
-; Alternative A record configuration (use if CNAME is not supported)
-; Note: Check OneUptime documentation for the current IP address
-
-status.acmecloud.com.   IN   A   <oneuptime-ip-address>
-; You may also need to add an AAAA record for IPv6 support
-status.acmecloud.com.   IN   AAAA   <oneuptime-ipv6-address>
-```
+OneUptime verifies custom status page domains via a CNAME record, so add the domain as a subdomain (for example `status.acmecloud.com`) where CNAME records are supported.
 
 ---
 
-## Step 5: Embed status widgets (optional)
+## Step 5: Embed a status badge (optional)
 
-You can embed a status badge or widget on your website to show real-time system health. This gives users quick visibility without leaving your site.
+You can embed a lightweight status badge on your website to show real-time system health. This gives users quick visibility without leaving your site.
 
-The following HTML snippet embeds a status badge that automatically updates to reflect your current system status. Place this code anywhere you want the badge to appear, such as your footer or help center.
+First, open your status page's **Embedded Status Badge** settings, enable the badge, and generate a security token. OneUptime then builds a badge URL of the form `https://oneuptime.com/status-page/badge/<your-status-page-id>?token=<your-token>` that returns an SVG image reflecting your current overall status. Regenerating the token invalidates any existing embeds, so rotate it if you suspect the URL has leaked.
+
+The following HTML snippet embeds the badge with an `<img>` tag. Place this code anywhere you want the badge to appear, such as your footer or help center.
 
 ```html
 <!-- OneUptime Status Badge Embed -->
-<!-- This iframe displays a real-time status indicator from your OneUptime status page -->
-<!-- Replace 'your-status-page-id' with your actual status page identifier -->
+<!-- This image displays a real-time status indicator from your OneUptime status page -->
+<!-- Replace the status page id and token with the values from your badge settings -->
 
-<iframe
-    src="https://oneuptime.com/status-page/your-status-page-id/badge"
-    width="250"
-    height="50"
-    scrolling="no"
-    style="border: none;"
-></iframe>
+<img
+    src="https://oneuptime.com/status-page/badge/your-status-page-id?token=your-token"
+    alt="Status Badge"
+/>
 ```
 
-For a more customizable approach, use the JavaScript widget. This script dynamically injects the status component and supports custom styling options.
+The badge URL also works anywhere an image does — for example, in Markdown for a GitHub README:
 
-```html
-<!-- OneUptime JavaScript Widget -->
-<!-- This script loads the full status widget with more customization options -->
-
-<div id="oneuptime-status-widget"></div>
-
-<script>
-    // Configuration object for the OneUptime status widget
-    window.oneuptimeStatusWidget = {
-        statusPageId: 'your-status-page-id',  // Your unique status page identifier
-        containerId: 'oneuptime-status-widget', // DOM element to render widget into
-        theme: 'light',  // Options: 'light', 'dark', or 'auto' (follows system preference)
-        showComponents: true,  // Display individual component statuses
-        showIncidents: true    // Show recent incidents and updates
-    };
-</script>
-
-<!-- Load the OneUptime widget script -->
-<script src="https://oneuptime.com/status-page/widget.js" async></script>
+```markdown
+![Status](https://oneuptime.com/status-page/badge/your-status-page-id?token=your-token)
 ```
 
 ---
@@ -139,33 +113,24 @@ The following JSON payload shows the structure of webhook notifications sent by 
 
 ```json
 {
-    "event": "incident.created",
-    "timestamp": "2025-10-27T14:30:00Z",
-    "statusPage": {
-        "id": "your-status-page-id",
-        "name": "Acme Cloud Status"
-    },
-    "incident": {
-        "id": "incident-123",
-        "title": "Elevated API Latency",
-        "state": "investigating",
-        "severity": "minor",
-        "affectedComponents": [
-            {
-                "id": "component-api",
-                "name": "Core API",
-                "status": "degraded_performance"
-            }
-        ],
-        "updates": [
-            {
-                "message": "We are investigating reports of slow API responses.",
-                "createdAt": "2025-10-27T14:30:00Z"
-            }
-        ]
+    "eventType": "IncidentCreated",
+    "statusPageId": "your-status-page-id",
+    "statusPageName": "Acme Cloud Status",
+    "statusPageUrl": "https://status.acmecloud.com",
+    "unsubscribeUrl": "https://status.acmecloud.com/unsubscribe/...",
+    "data": {
+        "incidentId": "incident-123",
+        "incidentNumber": "42",
+        "incidentTitle": "Elevated API Latency",
+        "incidentDescription": "We are investigating reports of slow API responses.",
+        "incidentSeverity": "Minor",
+        "resourcesAffected": "Core API",
+        "detailsUrl": "https://status.acmecloud.com/incidents/incident-123"
     }
 }
 ```
+
+OneUptime sends similar payloads for other events, each with its own `eventType` (for example `IncidentStateChanged`, `ScheduledMaintenanceStateChanged`, and `AnnouncementCreated`) and an `eventType`-specific `data` object.
 
 ---
 
