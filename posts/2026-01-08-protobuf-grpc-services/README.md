@@ -553,6 +553,7 @@ package mycompany.api.v1;
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
 
 // User service definition
 service UserService {
