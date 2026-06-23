@@ -246,6 +246,21 @@ public class GlobalExceptionHandler {
                 parseEx.getLocation().getColumnNr(),
                 parseEx.getOriginalMessage());
 
+        } else if (cause instanceof InvalidFormatException formatEx) {
+            // InvalidFormatException is the most specific subtype, so check it first
+            message = "Invalid value format";
+            detail = String.format("Cannot convert '%s' to type %s for field '%s'",
+                formatEx.getValue(),
+                formatEx.getTargetType().getSimpleName(),
+                getFieldName(formatEx));
+
+        } else if (cause instanceof MismatchedInputException mismatchEx) {
+            // MismatchedInputException is more specific than JsonMappingException
+            message = "Type mismatch";
+            detail = String.format("Expected %s but got different type for field '%s'",
+                mismatchEx.getTargetType().getSimpleName(),
+                getFieldName(mismatchEx));
+
         } else if (cause instanceof JsonMappingException mappingEx) {
             message = "JSON mapping error";
 
@@ -260,19 +275,6 @@ public class GlobalExceptionHandler {
             } else {
                 detail = getRootCauseMessage(mappingEx);
             }
-
-        } else if (cause instanceof InvalidFormatException formatEx) {
-            message = "Invalid value format";
-            detail = String.format("Cannot convert '%s' to type %s for field '%s'",
-                formatEx.getValue(),
-                formatEx.getTargetType().getSimpleName(),
-                getFieldName(formatEx));
-
-        } else if (cause instanceof MismatchedInputException mismatchEx) {
-            message = "Type mismatch";
-            detail = String.format("Expected %s but got different type for field '%s'",
-                mismatchEx.getTargetType().getSimpleName(),
-                getFieldName(mismatchEx));
         }
 
         log.warn("Request parsing error for {}: {}", request.getRequestURI(), message);
