@@ -83,7 +83,7 @@ flowchart TB
     subgraph Telescope Structure
         A[config/telescope.php] --> B[Configuration options]
         C[app/Providers/TelescopeServiceProvider.php] --> D[Service provider]
-        E[storage/framework/cache/telescope] --> F[Cached data]
+        E[public/vendor/telescope] --> F[Published front-end assets]
         G[database/migrations/*_telescope_*] --> H[Database tables]
     end
 ```
@@ -143,20 +143,6 @@ return [
     |
     */
     'enabled' => env('TELESCOPE_ENABLED', true),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Telescope Data Pruning
-    |--------------------------------------------------------------------------
-    |
-    | Configure how long to keep Telescope entries.
-    | Entries older than this are deleted by the prune command.
-    |
-    */
-    'pruning' => [
-        'enabled' => env('TELESCOPE_PRUNING_ENABLED', true),
-        'hours' => env('TELESCOPE_PRUNING_HOURS', 24),
-    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -280,8 +266,8 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
      */
     public function register(): void
     {
-        // Only enable Telescope in local environment by default
-        // Remove this block to enable in all environments
+        // Enable Telescope's dark theme dashboard (optional)
+        // Access is restricted to non-local environments via the gate() method below
         Telescope::night();
 
         $this->hideSensitiveRequestDetails();
@@ -1445,14 +1431,8 @@ return [
     // Only enable in specific environments
     'enabled' => env('TELESCOPE_ENABLED', false),
 
-    // Use Redis for better performance in production
+    // Telescope ships with the 'database' storage driver
     'driver' => env('TELESCOPE_DRIVER', 'database'),
-
-    // More aggressive pruning in production
-    'pruning' => [
-        'enabled' => true,
-        'hours' => env('TELESCOPE_PRUNING_HOURS', 6),
-    ],
 
     // Disable verbose watchers in production
     'watchers' => [
@@ -1514,13 +1494,9 @@ public function register(): void
                $entry->hasMonitoredTag();
     });
 
-    // Add monitored tags in production
-    // Only entries with these tags are recorded
-    Telescope::monitoredTags([
-        'important',
-        'debug',
-        'critical',
-    ]);
+    // The hasMonitoredTag() check above records entries whose tags you have
+    // marked as "monitored" from the Telescope dashboard (the "Monitored Tags"
+    // screen). Monitored tags are stored in the telescope_monitoring table.
 }
 ```
 
@@ -1532,7 +1508,6 @@ public function register(): void
 
 TELESCOPE_ENABLED=true
 TELESCOPE_DRIVER=database
-TELESCOPE_PRUNING_HOURS=6
 
 # Disable verbose watchers
 TELESCOPE_MODEL_WATCHER=false
