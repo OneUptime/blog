@@ -14,10 +14,10 @@ The HTTP 405 "Method Not Allowed" status code indicates that the server recogniz
 
 ```mermaid
 flowchart LR
-    A[Client POST Request] --> B{Nginx}
+    A[Client Request] --> B{Nginx}
     B -->|Static Location| C[405 Not Allowed]
     B -->|Proxy Location| D[Backend Server]
-    B -->|WebDAV Enabled| E[Process Request]
+    B -->|PUT/DELETE WebDAV Request| E[Process Request]
 
     C --> F[Error Response]
     D --> G[Backend Processes POST]
@@ -63,7 +63,7 @@ location / {
 
 ## Solution 1: Allow POST for Static Files
 
-If you genuinely need to accept POST requests to static resources (uncommon but sometimes required for single-page applications), use the `error_page` directive:
+If you genuinely need to return a static file for POST requests (uncommon, but sometimes used as a fallback for single-page applications), use the `error_page` directive:
 
 ```nginx
 location / {
@@ -75,14 +75,14 @@ location / {
 }
 ```
 
-A more explicit approach:
+A more explicit approach for cases where an empty 200 response is enough:
 
 ```nginx
 location / {
     root /var/www/html;
     index index.html;
 
-    # Handle POST requests for static files
+    # Return an empty successful response for POST requests
     if ($request_method = POST) {
         return 200;
     }
@@ -155,9 +155,9 @@ server {
 }
 ```
 
-## Solution 4: Enable WebDAV for File Uploads
+## Solution 4: Enable WebDAV for PUT/DELETE File Operations
 
-If you need POST (or PUT/DELETE) for actual file operations, enable the WebDAV module:
+If you need PUT or DELETE for actual file operations, enable the WebDAV module. Nginx's built-in WebDAV module does not process POST requests:
 
 ```nginx
 location /uploads/ {
@@ -165,7 +165,6 @@ location /uploads/ {
 
     # Enable WebDAV methods
     dav_methods PUT DELETE MKCOL COPY MOVE;
-    dav_ext_methods PROPFIND OPTIONS;
 
     # Allow file creation
     create_full_put_path on;
@@ -309,6 +308,7 @@ http {
         # SPA fallback - serves index.html for all routes
         location / {
             try_files $uri $uri/ /index.html;
+            error_page 405 =200 /index.html;
         }
     }
 }
