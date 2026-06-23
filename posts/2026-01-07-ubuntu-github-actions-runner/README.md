@@ -112,18 +112,18 @@ sudo su - github-runner
 # Create and navigate to the actions-runner directory
 mkdir actions-runner && cd actions-runner
 
-# Download the latest runner package
+# Download the current runner package
 # Replace the URL with the one from your GitHub settings
 # GitHub provides this URL in Settings > Actions > Runners > New self-hosted runner
-curl -o actions-runner-linux-x64-2.321.0.tar.gz -L \
-    https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz
+curl -o actions-runner-linux-x64-2.335.1.tar.gz -L \
+    https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
 
 # Verify the package integrity using SHA256 checksum
 # Replace the hash with the one provided by GitHub
-echo "ba46ba7ce3a4d7236b16fbe44419fb453bc08f866b24f04d549ec89f1722a29e  actions-runner-linux-x64-2.321.0.tar.gz" | shasum -a 256 -c
+echo "4ef2f25285f0ae4477f1fe1e346db76d2f3ebf03824e2ddd1973a2819bf6c8cf  actions-runner-linux-x64-2.335.1.tar.gz" | shasum -a 256 -c
 
 # Extract the runner package
-tar xzf ./actions-runner-linux-x64-2.321.0.tar.gz
+tar xzf ./actions-runner-linux-x64-2.335.1.tar.gz
 ```
 
 ### Step 4: Configure the Runner
@@ -200,7 +200,7 @@ Group=github-runner
 WorkingDirectory=/home/github-runner/actions-runner
 
 # Execute the runner script
-ExecStart=/home/github-runner/actions-runner/run.sh
+ExecStart=/home/github-runner/actions-runner/bin/runsvc.sh
 
 # Restart the service if it fails
 Restart=always
@@ -265,8 +265,8 @@ Labels allow you to route jobs to specific runners based on their capabilities.
 
 # Default labels added automatically:
 # - self-hosted
-# - Linux
-# - X64 (or ARM64 for ARM systems)
+# - linux
+# - x64 (or ARM64 for ARM64 systems)
 ```
 
 ### Using Labels in Workflows
@@ -288,7 +288,7 @@ jobs:
   build:
     # Target runners with all specified labels
     # The job runs only on runners that have ALL these labels
-    runs-on: [self-hosted, Linux, X64, docker]
+    runs-on: [self-hosted, linux, x64, docker]
 
     steps:
       - name: Checkout code
@@ -300,17 +300,17 @@ jobs:
           echo "Hostname: $(hostname)"
 ```
 
-### Using Label Expressions
+### Using Groups and Labels Together
 
-GitHub Actions supports expressions for more flexible runner selection.
+GitHub Actions supports combining runner groups and labels for more flexible runner selection.
 
 ```yaml
 jobs:
   build:
-    # Use any runner that matches the expression
+    # Use a runner in the group that also has the listed labels
     runs-on:
       group: production-runners
-      labels: [self-hosted, Linux]
+      labels: [self-hosted, linux]
 
     steps:
       - name: Checkout
@@ -341,8 +341,10 @@ Many CI/CD workflows require Docker for building and testing containerized appli
 ### Installing Docker
 
 ```bash
-# Remove any old Docker installations
-sudo apt remove docker docker-engine docker.io containerd runc 2>/dev/null
+# Remove any conflicting Docker packages
+for pkg in docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc; do
+    sudo apt remove -y "$pkg" 2>/dev/null || true
+done
 
 # Install prerequisites for Docker repository
 sudo apt update
@@ -354,16 +356,18 @@ sudo apt install -y \
 
 # Add Docker's official GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Add Docker repository to apt sources
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null << EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker Engine and related tools
 sudo apt update
@@ -377,8 +381,8 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 # This allows the runner to execute Docker commands without sudo
 sudo usermod -aG docker github-runner
 
-# Verify Docker installation
-sudo -u github-runner docker run hello-world
+# Verify Docker installation in a new login session so group membership is applied
+sudo -iu github-runner docker run hello-world
 
 # If you're using the systemd service, restart it to apply group changes
 sudo systemctl restart github-runner
@@ -539,7 +543,7 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, linux, x64]
 
     # Set restrictive permissions
     permissions:
@@ -577,7 +581,7 @@ jobs:
 Protect sensitive data in your workflows.
 
 ```bash
-# Create an environment file for runner-specific secrets
+# Create an environment file for runner-wide variables
 # This file should have restricted permissions
 sudo tee /home/github-runner/actions-runner/.env > /dev/null << 'EOF'
 # Runner environment configuration
@@ -636,6 +640,7 @@ GITHUB_URL="${1:-https://github.com/OWNER/REPO}"
 RUNNER_TOKEN="${2}"
 NUM_RUNNERS="${3:-4}"
 BASE_DIR="/home/github-runner"
+RUNNER_PACKAGE="$BASE_DIR/actions-runner/actions-runner-linux-x64-2.335.1.tar.gz"
 
 if [ -z "$RUNNER_TOKEN" ]; then
     echo "Usage: $0 <github_url> <token> [num_runners]"
@@ -652,7 +657,7 @@ for i in $(seq 1 $NUM_RUNNERS); do
     sudo -u github-runner mkdir -p "$RUNNER_DIR"
 
     # Extract runner package
-    sudo -u github-runner tar xzf "$BASE_DIR/actions-runner-linux-x64-2.321.0.tar.gz" \
+    sudo -u github-runner tar xzf "$RUNNER_PACKAGE" \
         -C "$RUNNER_DIR"
 
     # Configure the runner
@@ -674,7 +679,7 @@ After=network.target
 User=github-runner
 Group=github-runner
 WorkingDirectory=$RUNNER_DIR
-ExecStart=$RUNNER_DIR/run.sh
+ExecStart=$RUNNER_DIR/bin/runsvc.sh
 Restart=always
 RestartSec=10
 
@@ -696,9 +701,9 @@ EOF
 sudo chmod +x /usr/local/bin/setup-multi-runner.sh
 ```
 
-### Dynamic Auto-Scaling with Webhooks
+### Dynamic Auto-Scaling with Polling
 
-Create a webhook-based auto-scaling solution.
+Create a polling-based auto-scaling controller.
 
 ```bash
 # Create a simple auto-scaling controller script
@@ -706,7 +711,7 @@ sudo tee /usr/local/bin/runner-autoscaler.py > /dev/null << 'EOF'
 #!/usr/bin/env python3
 """
 GitHub Actions Runner Auto-Scaler
-Monitors workflow queue and scales runners dynamically
+Monitors runner usage and scales runners dynamically
 """
 
 import os
@@ -722,12 +727,11 @@ GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 GITHUB_ORG = os.environ.get('GITHUB_ORG')
 MIN_RUNNERS = int(os.environ.get('MIN_RUNNERS', 1))
 MAX_RUNNERS = int(os.environ.get('MAX_RUNNERS', 10))
-SCALE_UP_THRESHOLD = int(os.environ.get('SCALE_UP_THRESHOLD', 5))
 SCALE_DOWN_THRESHOLD = int(os.environ.get('SCALE_DOWN_THRESHOLD', 0))
 CHECK_INTERVAL = int(os.environ.get('CHECK_INTERVAL', 60))
 
-def get_queued_jobs():
-    """Get the number of queued workflow jobs"""
+def get_runner_usage():
+    """Get the total and busy runner counts"""
     headers = {
         'Authorization': f'token {GITHUB_TOKEN}',
         'Accept': 'application/vnd.github.v3+json'
@@ -792,13 +796,13 @@ def main():
 
     while True:
         try:
-            total, busy = get_queued_jobs()
+            total, busy = get_runner_usage()
             active = get_active_runners()
             idle = active - busy
 
             print(f"[{datetime.now()}] Active: {active}, Busy: {busy}, Idle: {idle}")
 
-            # Scale up if all runners are busy and we have queued jobs
+            # Scale up if all active runners are busy
             if idle == 0 and busy >= active:
                 print("Scaling up: All runners busy")
                 scale_up()
@@ -850,7 +854,7 @@ RUN useradd -m -s /bin/bash runner && \
 WORKDIR /home/runner
 
 # Download runner
-ARG RUNNER_VERSION=2.321.0
+ARG RUNNER_VERSION=2.335.1
 RUN curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L \
     https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz && \
     tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz && \
