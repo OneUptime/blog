@@ -337,6 +337,7 @@ package main
 import (
     "context"
     "log"
+    "sync"
     "time"
 
     "github.com/sony/gobreaker"
@@ -676,7 +677,6 @@ import (
     "time"
 
     "github.com/sony/gobreaker"
-    "google.golang.org/grpc"
 )
 
 // ServiceBreakerConfig holds per-service circuit breaker configuration
@@ -754,6 +754,7 @@ package circuitbreaker
 
 import (
     "context"
+    "fmt"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
@@ -831,8 +832,11 @@ import (
     "sync"
     "time"
 
+    "github.com/sony/gobreaker"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/status"
 )
 
 // HealthAwareBreaker combines circuit breaker with health checks
@@ -1026,7 +1030,6 @@ package main
 import (
     "context"
     "log"
-    "net"
     "time"
 
     "github.com/sony/gobreaker"
