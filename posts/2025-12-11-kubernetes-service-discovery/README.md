@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Service Discovery, DNS, CoreDNS, Microservice
 
-Description: Learn how to implement service discovery in Kubernetes using built-in DNS, Services, and Endpoints, with practical examples for inter-service communication.
+Description: Learn how to implement service discovery in Kubernetes using built-in DNS, Services, and EndpointSlices, with practical examples for inter-service communication.
 
 ---
 
@@ -12,7 +12,7 @@ Kubernetes provides built-in service discovery through its Service abstraction a
 
 ## How Kubernetes Service Discovery Works
 
-When you create a Service, Kubernetes assigns it a stable ClusterIP and creates DNS records. Pods can discover services using DNS names or environment variables, and traffic is automatically load-balanced across healthy Pod endpoints.
+When you create a Service, Kubernetes assigns it a stable ClusterIP and creates DNS records. Pods can discover services using DNS names or environment variables, and traffic is automatically load-balanced across ready Pod endpoints.
 
 ```mermaid
 graph TB
@@ -107,8 +107,8 @@ kubectl apply -f api-deployment.yaml
 
 kubectl get svc api
 
-# View endpoints (Pod IPs)
-kubectl get endpoints api
+# View EndpointSlices (Pod IPs)
+kubectl get endpointslices -l kubernetes.io/service-name=api
 
 # Test DNS resolution from a debug pod
 kubectl run debug --rm -it --image=busybox -- nslookup api.default.svc.cluster.local
@@ -176,7 +176,6 @@ orders = client.call_service('order-service.orders', '/orders')
 package main
 
 import (
-    "encoding/json"
     "fmt"
     "io"
     "net/http"
@@ -259,10 +258,10 @@ spec:
       targetPort: 5432
 ```
 
-DNS queries for headless services return all Pod IPs:
+DNS queries for headless services return the ready Pod IPs selected by the Service:
 
 ```bash
-# Returns all Pod IPs
+# Returns ready Pod IPs
 nslookup database.default.svc.cluster.local
 
 # Individual pod DNS (for StatefulSets)
@@ -323,9 +322,8 @@ spec:
   containers:
     - name: app
       image: myapp:1.0
-      env:
-        # Kubernetes automatically injects these for services
-        # API_SERVICE_HOST, API_SERVICE_PORT, etc.
+      # Kubernetes automatically injects service environment variables
+      # such as API_SERVICE_HOST and API_SERVICE_PORT for active Services.
 ```
 
 Access service info from environment:
@@ -341,7 +339,7 @@ api_port = os.getenv('API_SERVICE_PORT', '80')
 api_url = f"http://{api_host}:{api_port}"
 ```
 
-Note: Environment variables are only set at Pod creation time. DNS is preferred for dynamic discovery.
+Note: Environment variables are only set at Pod creation time, so the Service must exist before the client Pod is created. DNS is preferred for dynamic discovery.
 
 ## 5. ExternalName Services
 
@@ -440,7 +438,7 @@ data:
 For advanced service discovery with traffic management, integrate Istio.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -461,7 +459,7 @@ spec:
             host: api
             subset: v1
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-destination
@@ -484,8 +482,8 @@ Troubleshoot service discovery issues:
 # Check service exists
 kubectl get svc api -o wide
 
-# Check endpoints are populated
-kubectl get endpoints api
+# Check EndpointSlices are populated
+kubectl get endpointslices -l kubernetes.io/service-name=api
 
 # Test DNS from debug pod
 kubectl run debug --rm -it --image=nicolaka/netshoot -- bash
