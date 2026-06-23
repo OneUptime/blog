@@ -136,12 +136,17 @@ curl -X GET "https://api.cloudflare.com/client/v4/zones/{zone_id}/dnssec" \
 Route 53 supports DNSSEC for both domain registration and DNS hosting.
 
 
-### Step 1: Enable DNSSEC Signing
+### Step 1: Create a KMS Key
+
+DNSSEC signing in Route 53 requires a customer managed asymmetric KMS key
+(`ECC_NIST_P256`, usage `SIGN_VERIFY`) created in the `us-east-1` region:
 
 ```bash
 # Using AWS CLI
-aws route53 enable-hosted-zone-dnssec \
-    --hosted-zone-id Z1234567890ABC
+aws kms create-key \
+    --region us-east-1 \
+    --key-spec ECC_NIST_P256 \
+    --key-usage SIGN_VERIFY
 ```
 
 ### Step 2: Create Key-Signing Key (KSK)
@@ -505,8 +510,10 @@ dig example.com DS @a.gtld-servers.net
 dig example.com DNSKEY +short | head -1
 # Output: 257 3 13 [public key]
 
-# Calculate key tag
-echo "257 3 13 [public key]" | dnssec-keygen -f KSK -a 13 -n ZONE example.com -C
+# Compute the DS record (and key tag) from the published DNSKEY
+dig example.com DNSKEY > example.com.dnskey
+dnssec-dsfromkey -2 -f example.com.dnskey example.com
+# The first field of each DS line is the key tag
 ```
 
 ### Issue 3: Algorithm Mismatch
