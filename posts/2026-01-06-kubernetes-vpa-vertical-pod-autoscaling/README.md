@@ -484,8 +484,8 @@ resourcePolicy:
 
 Key VPA metrics:
 - `vpa_recommender_recommendation_latency_seconds`
-- `vpa_recommender_aggregate_container_states`
-- `vpa_updater_eviction_total`
+- `vpa_recommender_aggregate_container_states_count`
+- `vpa_updater_evicted_pods_total`
 
 This PrometheusRule creates an alert when VPA recommendations differ significantly from current resource requests, indicating potential optimization opportunities.
 
@@ -502,8 +502,8 @@ spec:
         - alert: VPARecommendationSignificantChange
           expr: |
             abs(
-              vpa_recommender_recommendation_cpu_target
-              - on(namespace, vpa, container)
+              kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"}
+              - on(namespace, container)
               kube_pod_container_resource_requests{resource="cpu"}
             ) / kube_pod_container_resource_requests{resource="cpu"} > 0.5
           for: 1h
@@ -519,12 +519,12 @@ These PromQL queries help visualize VPA performance by comparing recommendations
 
 ```promql
 # Current vs Recommended CPU - shows optimization opportunities
-vpa_recommender_recommendation_cpu_target{namespace="production"}
+kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu", namespace="production"}
 vs
 sum(kube_pod_container_resource_requests{resource="cpu", namespace="production"}) by (pod)
 
 # Eviction rate - monitors VPA update frequency
-rate(vpa_updater_eviction_total[1h])
+rate(vpa_updater_evicted_pods_total[1h])
 ```
 
 ## VPA for Different Workloads
