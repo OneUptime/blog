@@ -90,10 +90,10 @@ package main
 
 import (
     "net/http"
+    "strconv"
     "time"
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var requestLatency = promauto.NewHistogramVec(
@@ -104,6 +104,21 @@ var requestLatency = promauto.NewHistogramVec(
     },
     []string{"method", "endpoint", "status"},
 )
+
+type statusRecorder struct {
+    http.ResponseWriter
+    status      int
+    wroteHeader bool
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+    if r.wroteHeader {
+        return
+    }
+    r.wroteHeader = true
+    r.status = status
+    r.ResponseWriter.WriteHeader(status)
+}
 
 func instrumentHandler(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +132,7 @@ func instrumentHandler(next http.Handler) http.Handler {
         requestLatency.WithLabelValues(
             r.Method,
             r.URL.Path,
-            http.StatusText(wrapped.status),
+            strconv.Itoa(wrapped.status),
         ).Observe(duration)
     })
 }
@@ -210,8 +225,10 @@ buckets = [1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600]
 
 ```python
 # Exponential buckets
-import prometheus_client
-buckets = prometheus_client.exponential_buckets(0.001, 2, 15)
+def exponential_buckets(start, factor, count):
+    return [start * (factor ** i) for i in range(count)]
+
+buckets = exponential_buckets(0.001, 2, 15)
 # Results: 0.001, 0.002, 0.004, 0.008, ... up to 16.384
 ```
 
@@ -292,9 +309,11 @@ sum(rate(http_request_duration_seconds_count[5m]))
 # Error budget remaining (target: 99.9% within 500ms)
 # Over a 30-day window
 1 - (
+  1 - (
     sum(increase(http_request_duration_seconds_bucket{le="0.5"}[30d]))
     /
     sum(increase(http_request_duration_seconds_count[30d]))
+  )
 ) / 0.001  # 0.1% error budget
 ```
 
@@ -444,7 +463,7 @@ groups:
 
 ```python
 # Good: Measure complete request handling
-@REQUEST_LATENCY.time()
+@REQUEST_LATENCY.labels(method='GET', endpoint='/api/users', status='200').time()
 def handle_request():
     # includes all processing
     pass
