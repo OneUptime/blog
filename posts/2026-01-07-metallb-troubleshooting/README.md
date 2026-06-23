@@ -313,9 +313,10 @@ sudo tcpdump -i eth0 arp -n
 # The MAC address should match one of your Kubernetes node's interfaces
 arp -n | grep 192.168.1.100
 
-# From a node, check which speaker is handling a specific IP
-# This shows the current leader for each allocated IP
-kubectl logs -n metallb-system -l component=speaker | grep "handling"
+# Check which node is advertising a specific IP
+# Service events and ServiceL2Status show the current L2 announcer
+kubectl describe svc <service-name> -n <namespace> | grep -i "announcing from node"
+kubectl get servicel2statuses.metallb.io -n metallb-system -o yaml
 ```
 
 ### Diagnose Speaker Leader Election
@@ -323,9 +324,9 @@ kubectl logs -n metallb-system -l component=speaker | grep "handling"
 In L2 mode, only one speaker announces each IP. Verify leader election:
 
 ```bash
-# Check speaker logs for leader election status
-# Each IP should have exactly one speaker handling it
-kubectl logs -n metallb-system -l component=speaker --tail=100 | grep -E "(leader|election)"
+# Check service events for announcement status
+# Each L2 service IP should be announced by exactly one node
+kubectl describe svc <service-name> -n <namespace> | grep -i "announcing from node"
 
 # Check memberlist state for cluster membership
 kubectl logs -n metallb-system -l component=speaker --tail=100 | grep memberlist
@@ -473,7 +474,7 @@ If you have access to your BGP router, check its perspective:
 
 # Cisco IOS
 show ip bgp summary
-show ip bgp neighbors 10.244.0.15
+show ip bgp neighbors <node-ip>
 show ip route bgp
 
 # FRRouting (commonly used in network labs)
@@ -501,13 +502,13 @@ metadata:
   annotations:
     # Request a specific IP from the pool
     # The IP must be available in a configured pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
 
     # Request IP from a specific pool
-    metallb.universe.tf/address-pool: "production-pool"
+    metallb.io/address-pool: "production-pool"
 
     # Allow sharing the same IP with other services (requires same sharing key)
-    metallb.universe.tf/allow-shared-ip: "shared-key-1"
+    metallb.io/allow-shared-ip: "shared-key-1"
 spec:
   type: LoadBalancer
   ports:
@@ -541,8 +542,8 @@ kind: Service
 metadata:
   name: http-service
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
+    metallb.io/allow-shared-ip: "web-services"
 spec:
   type: LoadBalancer
   ports:
@@ -559,8 +560,8 @@ kind: Service
 metadata:
   name: https-service
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
+    metallb.io/allow-shared-ip: "web-services"
 spec:
   type: LoadBalancer
   ports:
@@ -591,17 +592,17 @@ flowchart LR
 ### Step-by-Step Connectivity Test
 
 ```bash
-# Step 1: Test basic connectivity to the VIP from outside the cluster
-# This verifies the IP is reachable at the network level
-ping 192.168.1.100
+# Step 1: For L2 mode, verify ARP resolution from the same subnet
+# Do not rely on ICMP ping; the LoadBalancer IP may not answer ping
+arping -I eth0 192.168.1.100
 
 # Step 2: Test the service port
 # This verifies traffic is reaching the node
 nc -zv 192.168.1.100 80
 
-# Step 3: Check if the service has endpoints
-# No endpoints means no healthy pods matching the selector
-kubectl get endpoints <service-name> -n <namespace>
+# Step 3: Check if the service has EndpointSlices
+# No ready endpoints means no healthy pods matching the selector
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
 
 # Step 4: Verify pod is healthy and listening
 kubectl exec -it <pod-name> -n <namespace> -- netstat -tlnp
@@ -791,6 +792,24 @@ spec:
     - protocol: UDP
       port: 7946
   egress:
+  # Allow memberlist protocol between speaker pods
+  - to:
+    - podSelector:
+        matchLabels:
+          component: speaker
+    ports:
+    - protocol: TCP
+      port: 7946
+    - protocol: UDP
+      port: 7946
+  # Allow access to the Kubernetes API server
+  # Replace this CIDR with your cluster's API server service IP or endpoint range
+  - to:
+    - ipBlock:
+        cidr: 10.96.0.1/32
+    ports:
+    - protocol: TCP
+      port: 443
   # Allow BGP to external routers
   - to:
     - ipBlock:
@@ -898,7 +917,7 @@ By following the diagnostic workflows and using the commands provided in this gu
 
 ## Further Reading
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [MetalLB GitHub Repository](https://github.com/metallb/metallb)
 - [Kubernetes Service Types](https://kubernetes.io/docs/concepts/services-networking/service/)
 - [BGP Fundamentals](https://www.cloudflare.com/learning/security/glossary/what-is-bgp/)
