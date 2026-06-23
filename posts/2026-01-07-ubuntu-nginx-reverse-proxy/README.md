@@ -211,9 +211,8 @@ After Certbot modifies your configuration, it will look similar to this:
 
 server {
     # Listen on port 443 for HTTPS connections with HTTP/2 support
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com www.example.com;
 
@@ -262,9 +261,8 @@ For more control over SSL settings, you can manually configure SSL:
 # Advanced SSL configuration with custom security settings
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com www.example.com;
 
@@ -327,21 +325,21 @@ sudo systemctl list-timers | grep certbot
 sudo certbot renew --dry-run
 ```
 
-### Create a custom renewal hook to reload Nginx
+### Create a custom deploy hook to reload Nginx
 
 ```bash
-# Create a post-renewal hook directory if it doesn't exist
-sudo mkdir -p /etc/letsencrypt/renewal-hooks/post
+# Create a deploy hook directory if it doesn't exist
+sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 
 # Create a script to reload Nginx after certificate renewal
-sudo nano /etc/letsencrypt/renewal-hooks/post/reload-nginx.sh
+sudo nano /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 ```
 
-### Post-renewal hook script content
+### Deploy hook script content
 
 ```bash
 #!/bin/bash
-# This script runs after successful certificate renewal
+# This script runs after each successfully issued or renewed certificate
 # It reloads Nginx to pick up the new certificates
 
 # Log the renewal event
@@ -357,11 +355,11 @@ systemctl reload nginx
 ### Make the hook script executable
 
 ```bash
-# Set executable permissions on the renewal hook
-sudo chmod +x /etc/letsencrypt/renewal-hooks/post/reload-nginx.sh
+# Set executable permissions on the deploy hook
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 ```
 
-### Set up a custom cron job for renewal (optional)
+### Set up a custom cron job for renewal instead of the systemd timer (optional)
 
 ```bash
 # Edit the crontab for root user
@@ -371,9 +369,10 @@ sudo crontab -e
 ### Add the following cron entry
 
 ```cron
+# Use this only as an alternative to the systemd timer, not in addition to it.
 # Run certificate renewal check twice daily at 3:00 AM and 3:00 PM
 # The --quiet flag suppresses output unless there's an error
-0 3,15 * * * /usr/bin/certbot renew --quiet --post-hook "systemctl reload nginx"
+0 3,15 * * * /usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
 ```
 
 ## WebSocket Proxying
@@ -393,9 +392,8 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com;
 
@@ -495,9 +493,8 @@ upstream myapp_backend {
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com;
 
@@ -576,8 +573,7 @@ upstream myapp_backend {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -614,9 +610,8 @@ Adding security headers helps protect your application from common web vulnerabi
 # Includes all recommended security headers
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com;
 
@@ -817,7 +812,7 @@ curl -I https://example.com
 curl -sI https://example.com | grep -E "(Strict-Transport|X-Frame|X-Content|X-XSS|Content-Security|Referrer-Policy)"
 
 # Test WebSocket upgrade
-curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: test" -H "Sec-WebSocket-Version: 13" https://example.com/ws
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" https://example.com/ws
 ```
 
 ### Common troubleshooting commands
