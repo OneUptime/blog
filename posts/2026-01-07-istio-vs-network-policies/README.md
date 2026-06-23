@@ -67,7 +67,7 @@ graph TB
 | **mTLS (Mutual TLS)** | No | Yes |
 | **Traffic Encryption** | No | Yes (automatic) |
 | **Identity-Based Policies** | Limited (namespace/pod labels) | Yes (SPIFFE identities) |
-| **Rate Limiting** | No | Yes |
+| **Rate Limiting** | No | Yes (via Envoy filters/extensions) |
 | **Retries & Timeouts** | No | Yes |
 | **Circuit Breaking** | No | Yes |
 | **Request Routing** | No | Yes |
@@ -301,7 +301,7 @@ Istio is the right choice when you need:
 ```mermaid
 graph TB
     subgraph "Control Plane"
-        Istiod["istiod<br/>(Pilot, Citadel, Galley)"]
+        Istiod["istiod<br/>(Discovery, certificates, config validation)"]
     end
 
     subgraph "Data Plane - Namespace: production"
@@ -379,6 +379,7 @@ spec:
             paths: ["/metrics", "/health", "/ready"]
 
     # Rule 3: Allow admin access with JWT validation
+    # Requires a RequestAuthentication policy for the accepted JWT issuers
     - from:
         - source:
             # Require requests to have a valid JWT with admin claim
@@ -549,7 +550,7 @@ flowchart LR
 - HTTP headers and query parameters
 - gRPC service names and methods
 - JWT claims and authentication data
-- Request and response bodies (for custom filters)
+- Request and response bodies (only with custom Envoy/Wasm filters, not native AuthorizationPolicy)
 
 ### Practical Comparison Example
 
@@ -620,9 +621,9 @@ spec:
             # Only the /process endpoint, not /refund or /admin
             paths: ["/process"]
       when:
-        # Additional security: require idempotency key header
+        # Additional security: require a non-empty idempotency key header
         - key: request.headers[x-idempotency-key]
-          notValues: [""]
+          values: ["*"]
 ```
 
 ## Hybrid Deployment Strategies
@@ -1073,9 +1074,9 @@ Understanding the performance implications of each approach is essential for pro
 
 ### Network Policies Performance
 
-- **Latency Impact:** Minimal (handled by kernel/eBPF)
+- **Latency Impact:** Minimal (handled in the node datapath, such as iptables or eBPF, depending on the CNI)
 - **CPU Overhead:** Negligible
-- **Memory Overhead:** Low (policy rules stored in kernel)
+- **Memory Overhead:** Low
 - **Scalability:** Excellent (CNI-dependent)
 
 ### Istio Performance
@@ -1160,9 +1161,6 @@ kubectl describe networkpolicy backend-ingress-policy -n production
 ```bash
 # Check if sidecars are injected
 kubectl get pods -n production -o jsonpath='{.items[*].spec.containers[*].name}' | tr ' ' '\n' | grep istio-proxy
-
-# Verify mTLS status
-istioctl x authz check pod/backend-deployment-xxx -n production
 
 # Check authorization policy matching
 istioctl experimental authz check pod/backend-pod -n production
