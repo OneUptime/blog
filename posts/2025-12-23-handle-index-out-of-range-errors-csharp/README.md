@@ -295,8 +295,8 @@ public static class SafeCollectionExtensions
 }
 
 // Usage
-var numbers = new[] { 1, 2, 3 };
-var value = numbers.SafeGet(10); // null instead of exception
+var names = new[] { "a", "b", "c" };
+var value = names.SafeGet(10); // null instead of exception
 
 var list = new List<string> { "a", "b" };
 if (list.TryGetValue(5, out var item))
