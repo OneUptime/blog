@@ -111,23 +111,18 @@ server {
         try_files $uri $uri/ /index.php?$args;
     }
 
+    # Deny access to sensitive files
+    location ~* /(?:uploads|files)/.*\.php$ {
+        deny all;
+    }
+
     # Pass PHP scripts to FastCGI server
     location ~ \.php$ {
-        # Prevent PHP execution in uploads
-        location ~ /uploads/ {
-            deny all;
-        }
-
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
         fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
-    }
-
-    # Deny access to sensitive files
-    location ~* /(?:uploads|files)/.*\.php$ {
-        deny all;
     }
 
     location ~ /\.ht {
@@ -165,7 +160,7 @@ server {
         try_files $uri /index.php$is_args$args;
     }
 
-    # DEV environment - allow access to index_dev.php
+    # Handle the front controller
     location ~ ^/index\.php(/|$) {
         fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
         fastcgi_split_path_info ^(.+\.php)(/.*)$;
@@ -200,7 +195,7 @@ server {
     index index.php;
 
     location / {
-        try_files $uri $uri/ /index.php?/$request_uri;
+        try_files $uri $uri/ /index.php$is_args$args;
     }
 
     location ~ \.php$ {
@@ -453,7 +448,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
     root /var/www/html/public;
     index index.php;
@@ -466,7 +462,6 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Gzip compression
     gzip on;
