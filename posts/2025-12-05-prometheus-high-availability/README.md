@@ -333,8 +333,8 @@ spec:
             - '--http-address=0.0.0.0:9090'
             - '--grpc-address=0.0.0.0:10901'
             - '--query.replica-label=replica'
-            - '--store=dnssrv+_grpc._tcp.thanos-sidecar.monitoring.svc'
-            - '--store=dnssrv+_grpc._tcp.thanos-store.monitoring.svc'
+            - '--endpoint=dnssrv+_grpc._tcp.thanos-sidecar.monitoring.svc'
+            - '--endpoint=dnssrv+_grpc._tcp.thanos-store.monitoring.svc'
           ports:
             - containerPort: 9090
               name: http
@@ -471,7 +471,7 @@ global:
   scrape_interval: 15s
   external_labels:
     cluster: production
-    replica: $(POD_NAME)
+    replica: ${POD_NAME}
 
 remote_write:
   - url: http://cortex-distributor:8080/api/v1/push
@@ -534,7 +534,7 @@ count(up{job="prometheus"})
 thanos_sidecar_prometheus_up
 
 # Check Thanos store health
-thanos_store_bucket_operations_total
+thanos_objstore_bucket_operations_total
 
 # Check data replication
 count by (replica) (up)
