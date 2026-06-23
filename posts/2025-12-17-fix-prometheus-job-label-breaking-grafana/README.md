@@ -80,11 +80,13 @@ scrape_configs:
     relabel_configs:
       # Use the pod's app label as the job label
       - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: (.+)
         target_label: job
-      # Or use namespace/name combination
-      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_name]
-        separator: '/'
-        target_label: job
+
+      # Or use namespace/name combination instead
+      # - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_name]
+      #   separator: '/'
+      #   target_label: job
 ```
 
 ## Problem 2: Job Label Overwrites
@@ -111,14 +113,12 @@ scrape_configs:
       - targets: ['target:9090']
 ```
 
-Or selectively preserve the job label:
+Or selectively restore the original job label after Prometheus renames it to `exported_job`:
 
 ```yaml
-relabel_configs:
-  # If target has job label, use it; otherwise use job_name
-  - source_labels: [job]
-    target_label: __tmp_job
-  - source_labels: [__tmp_job]
+metric_relabel_configs:
+  # If the scraped metric had a job label, use it instead of the scrape job
+  - source_labels: [exported_job]
     regex: (.+)
     target_label: job
 ```
@@ -230,6 +230,9 @@ scrape_configs:
   - job_name: 'federate'
     honor_labels: true
     metrics_path: '/federate'
+    params:
+      'match[]':
+        - '{job="api"}'
     static_configs:
       - targets: ['prometheus-a:9090']
         labels:
