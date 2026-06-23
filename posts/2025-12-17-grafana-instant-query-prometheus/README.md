@@ -8,7 +8,7 @@ Description: Learn how to configure and troubleshoot instant queries in Grafana 
 
 ---
 
-Instant queries in Prometheus return a single value at a specific point in time, unlike range queries that return values over a time window. Grafana can use instant queries for stat panels, gauges, and tables, but configuration requires understanding how the query type affects results.
+Instant queries in Prometheus evaluate an expression at a specific point in time and return one sample per matching series, unlike range queries that return values over a time window. Grafana can use instant queries for stat panels, gauges, and tables, but configuration requires understanding how the query type affects results.
 
 ## Understanding Query Types
 
@@ -22,7 +22,7 @@ flowchart LR
     end
 
     subgraph Instant Query
-        D[Single Timestamp] --> E[Single Value]
+        D[Single Timestamp] --> E[One Sample Per Series]
         E --> F[Stat/Gauge Panel]
     end
 ```
@@ -34,12 +34,12 @@ Instant queries: `/api/v1/query?query=...&time=...`
 
 Enable instant query in the Grafana panel query options.
 
-In the query editor, expand Query Options and enable Instant:
+In the Prometheus query editor, set Type to Instant:
 
 ```text
 Query: up{job="prometheus"}
 Options:
-  - Instant: ON
+  - Type: Instant
   - Format: Table (or Time series)
 ```
 
@@ -103,7 +103,7 @@ Configure a stat panel with instant query:
 
 ## 3. Handle Time Parameter
 
-Instant queries use the dashboard time range end time by default. Override with query options.
+Grafana sends the dashboard time range to the datasource, and an instant Prometheus query evaluates at the end of that range. Override panel time settings only when the panel should use a different range from the dashboard.
 
 ```json
 {
@@ -119,15 +119,15 @@ Instant queries use the dashboard time range end time by default. Override with 
 }
 ```
 
-To query at a specific relative time:
+To query at a specific relative or fixed time:
 
 ```promql
 # Query value from 1 hour ago
 
 up offset 1h
 
-# Query value from start of day
-up @ start()
+# Query value at a fixed Unix timestamp
+up @ 1704067200
 ```
 
 ## 4. Format Results for Tables
@@ -253,14 +253,16 @@ Combine both query types in a single dashboard.
 
 ## 7. Variable Queries with Instant
 
-Use instant queries for template variable population.
+Use Prometheus query variables for template variable population.
 
 ```yaml
 # Variable configuration
 name: instances
 type: query
 datasource: Prometheus
-query: label_values(up, instance)
+queryType: Label values
+label: instance
+metric: up
 refresh: On Dashboard Load
 ```
 
@@ -289,16 +291,14 @@ Configure query caching for frequently accessed instant queries:
 # grafana.ini
 [caching]
 enabled = true
-
-# For Prometheus datasource
-[datasources.prometheus]
-query_caching_enabled = true
-query_caching_ttl = 30s
+ttl = 30s
 ```
+
+Then enable query caching on the Prometheus data source's Cache tab. Query caching is available in Grafana Enterprise and Grafana Cloud.
 
 ## 9. Alert Rule Instant Queries
 
-Grafana alerting uses instant queries by default.
+Grafana alerting can use instant Prometheus queries for current-value checks.
 
 ```yaml
 # Alert rule definition
@@ -315,13 +315,20 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: up{job="myapp"}
               instant: true
+              range: false
               intervalMs: 1000
               maxDataPoints: 43200
           - refId: C
             datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
             model:
               conditions:
                 - evaluator:
@@ -333,6 +340,7 @@ groups:
                     params: [A]
                   reducer:
                     type: last
+                  type: query
               refId: C
               type: classic_conditions
         for: 5m
