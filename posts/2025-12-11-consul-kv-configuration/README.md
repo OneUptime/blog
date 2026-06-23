@@ -8,7 +8,7 @@ Description: Learn how to use Consul's Key-Value store for centralized configura
 
 ---
 
-Consul's Key-Value (KV) store provides a simple yet powerful way to store and retrieve configuration data across distributed systems. Unlike static configuration files, Consul KV enables dynamic configuration updates without service restarts and provides consistency across all nodes in your cluster.
+Consul's Key-Value (KV) store provides a simple yet powerful way to store and retrieve configuration data across distributed systems. Unlike static configuration files, Consul KV enables dynamic configuration updates without service restarts and provides consistent storage through Consul servers in your cluster.
 
 ## Understanding Consul KV
 
@@ -72,13 +72,13 @@ consul kv delete -recurse config/api/deprecated/
 Using the HTTP API:
 
 ```bash
-# Set a key (value must be base64 encoded for binary data)
+# Set a key (the request body is stored as the raw value)
 curl -X PUT -d 'production' http://localhost:8500/v1/kv/config/api/environment
 
 # Get a key
 curl http://localhost:8500/v1/kv/config/api/environment
 
-# Get decoded value
+# Get decoded value (the JSON response encodes Value as base64)
 curl -s http://localhost:8500/v1/kv/config/api/environment | jq -r '.[0].Value' | base64 -d
 
 # List keys with prefix
@@ -161,7 +161,8 @@ Implement blocking queries to watch for changes in real-time:
 
 ```bash
 # Block until the key changes (or timeout after 5 minutes)
-# The index parameter is the ModifyIndex from the previous query
+# Use the X-Consul-Index response header from the previous query
+# (for a single key, this corresponds to the key's ModifyIndex)
 curl "http://localhost:8500/v1/kv/config/api/settings?index=123&wait=5m"
 ```
 
@@ -218,10 +219,13 @@ class ConfigWatcher:
                     wait='30s'
                 )
 
+                seen_keys = set()
+
                 if data:
                     # Update cache and notify callbacks
                     for item in data:
                         key = item['Key']
+                        seen_keys.add(key)
                         value = item['Value'].decode('utf-8') if item['Value'] else None
 
                         if self.config_cache.get(key) != value:
@@ -230,6 +234,13 @@ class ConfigWatcher:
 
                             for callback in self.callbacks:
                                 callback(key, old_value, value)
+
+                for key in list(self.config_cache):
+                    if key.startswith(prefix) and key not in seen_keys:
+                        old_value = self.config_cache.pop(key)
+
+                        for callback in self.callbacks:
+                            callback(key, old_value, None)
 
             except Exception as e:
                 print(f"Watch error: {e}")
@@ -271,6 +282,7 @@ import (
     "encoding/json"
     "fmt"
     "log"
+    "strings"
     "sync"
     "time"
 
@@ -358,8 +370,11 @@ func (w *ConfigWatcher) Watch(prefix string) {
 
         lastIndex = meta.LastIndex
 
+        seen := make(map[string]struct{}, len(pairs))
+
         for _, pair := range pairs {
             key := pair.Key
+            seen[key] = struct{}{}
             newValue := string(pair.Value)
 
             w.cacheLock.RLock()
@@ -374,6 +389,25 @@ func (w *ConfigWatcher) Watch(prefix string) {
                 for _, cb := range w.callbacks {
                     cb(key, oldValue, newValue)
                 }
+            }
+        }
+
+        deleted := make(map[string]string)
+
+        w.cacheLock.Lock()
+        for key, oldValue := range w.cache {
+            if strings.HasPrefix(key, prefix) {
+                if _, ok := seen[key]; !ok {
+                    deleted[key] = oldValue
+                    delete(w.cache, key)
+                }
+            }
+        }
+        w.cacheLock.Unlock()
+
+        for key, oldValue := range deleted {
+            for _, cb := range w.callbacks {
+                cb(key, oldValue, "")
             }
         }
     }
@@ -400,7 +434,7 @@ func main() {
 
 ## 5. Use consul-template for File-Based Configuration
 
-consul-template renders configuration files from Consul data and restarts services when configuration changes:
+consul-template renders configuration files from Consul data and reloads or restarts services when configuration changes:
 
 ```bash
 # Install consul-template
@@ -446,7 +480,9 @@ template {
   perms       = 0644
 
   # Command to run after rendering
-  command     = "systemctl reload api-service"
+  exec {
+    command = ["systemctl", "reload", "api-service"]
+  }
 
   # Wait for changes to settle before rendering
   wait {
