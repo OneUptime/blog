@@ -603,6 +603,7 @@ package analysis
 
 import (
     "fmt"
+    "strings"
 
     "google.golang.org/protobuf/proto"
     "google.golang.org/protobuf/reflect/protoreflect"
@@ -647,7 +648,7 @@ func PrintSizeAnalysis(msg proto.Message) {
     total := proto.Size(msg)
 
     fmt.Printf("Message Size Analysis (Total: %d bytes)\n", total)
-    fmt.Println("=" * 50)
+    fmt.Println(strings.Repeat("=", 50))
 
     for field, size := range sizes {
         percentage := float64(size) / float64(total) * 100
@@ -795,23 +796,29 @@ package tracing
 
 import (
     "context"
+    "runtime"
+    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/exporters/jaeger"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-    "go.opentelemetry.io/otel/trace"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
-// InitTracer initializes OpenTelemetry with Jaeger exporter
+// InitTracer initializes OpenTelemetry with an OTLP exporter.
+// The standalone Jaeger exporter was removed from OpenTelemetry-Go;
+// Jaeger accepts OTLP natively (on port 4318 for HTTP).
 func InitTracer(serviceName string) (*sdktrace.TracerProvider, error) {
-    exporter, err := jaeger.New(jaeger.WithCollectorEndpoint(
-        jaeger.WithEndpoint("http://jaeger:14268/api/traces"),
-    ))
+    exporter, err := otlptracehttp.New(
+        context.Background(),
+        otlptracehttp.WithEndpoint("jaeger:4318"),
+        otlptracehttp.WithInsecure(),
+    )
     if err != nil {
         return nil, err
     }
@@ -838,9 +845,9 @@ func NewTracedServer() *grpc.Server {
 
 // NewTracedClient creates a gRPC client with tracing
 func NewTracedClient(target string) (*grpc.ClientConn, error) {
-    return grpc.Dial(
+    return grpc.NewClient(
         target,
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
     )
 }
@@ -970,10 +977,8 @@ opts := []grpc.DialOption{
 ### 2. Message Optimization
 
 ```go
-// Use arena allocation for high-throughput scenarios
-import "google.golang.org/protobuf/internal/impl"
-
-// Reuse message objects
+// Reuse message objects with a sync.Pool to reduce allocations
+// in high-throughput scenarios
 var msgPool = sync.Pool{
     New: func() interface{} {
         return &pb.MyMessage{}
@@ -1060,8 +1065,9 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"
-      - "14268:14268"
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
 
   pyroscope:
     image: pyroscope/pyroscope:latest
