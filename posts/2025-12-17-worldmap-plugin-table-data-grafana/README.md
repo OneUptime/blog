@@ -8,11 +8,11 @@ Description: Learn how to configure the Grafana Worldmap plugin with table data 
 
 ---
 
-The Grafana Worldmap plugin (and its successor, the Geomap panel) allows you to visualize metrics geographically. When your data comes in table format with location information, proper configuration is required to map values to coordinates. This guide shows you how to set up geographic visualizations with table data.
+The Grafana Worldmap plugin is deprecated; for new dashboards, use its successor, the Geomap panel. Both allow you to visualize metrics geographically. When your data comes in table format with location information, proper configuration is required to map values to coordinates. This guide shows you how to set up geographic visualizations with table data.
 
 ## Understanding Worldmap Data Requirements
 
-The Worldmap panel needs three things:
+The Geomap panel needs three things for coordinate-based marker layers:
 
 1. **Latitude** - Geographic latitude coordinate
 2. **Longitude** - Geographic longitude coordinate
@@ -52,6 +52,8 @@ sum by (location, latitude, longitude) (
 )
 ```
 
+Prometheus labels are strings, so if you store coordinates in labels, add **Convert field type** transformations for `latitude` and `longitude` and convert them to **Numeric** before using them as coordinate fields.
+
 ### Panel Configuration
 
 1. Select **Geomap** panel (or legacy Worldmap)
@@ -90,6 +92,11 @@ sum by (location, latitude, longitude) (
               "field": "value"
             }
           }
+        },
+        "location": {
+          "mode": "coords",
+          "latitude": "latitude",
+          "longitude": "longitude"
         }
       }
     ]
@@ -106,10 +113,10 @@ When your data only has location names (countries, cities, regions):
 ```text
 | country | requests |
 |---------|----------|
-| US      | 5000     |
-| GB      | 3000     |
-| JP      | 4500     |
-| AU      | 1200     |
+| USA     | 5000     |
+| GBR     | 3000     |
+| JPN     | 4500     |
+| AUS     | 1200     |
 ```
 
 ### Configure Location Lookup
@@ -149,7 +156,7 @@ sum by (region) (rate(http_requests_total[5m]))
 ### Step 2: Add Transformations
 
 1. **Series to rows** - Convert time series to table format
-2. **Add field from calculation** - Add coordinate columns
+2. **Lookup fields from resource** - Add coordinates from built-in country, state, or airport lookups
 3. **Organize fields** - Rename and reorder
 
 ### Transformation Configuration
@@ -160,6 +167,13 @@ sum by (region) (rate(http_requests_total[5m]))
     {
       "id": "seriesToRows",
       "options": {}
+    },
+    {
+      "id": "lookup",
+      "options": {
+        "field": "region",
+        "lookup": "Countries"
+      }
     },
     {
       "id": "organize",
@@ -205,6 +219,8 @@ scrape_configs:
           lat: '53.3498'
           lon: '-6.2603'
 ```
+
+Because Prometheus label values are strings, convert the `lat` and `lon` fields to **Numeric** with Grafana's **Convert field type** transformation before selecting them in Geomap's coordinate location mode.
 
 ### Panel Setup
 
@@ -264,6 +280,8 @@ WHERE $timeFilter
 GROUP BY "location", "latitude", "longitude"
 ```
 
+This InfluxQL example assumes `location`, `latitude`, and `longitude` are tags. InfluxQL `GROUP BY` can group by tags, not fields.
+
 ### Format as Table
 
 Set the query format to **Table** in the query editor.
@@ -292,7 +310,7 @@ Tokyo,35.6762,139.6503
 
 ### Join Transformation
 
-1. Add **Outer join** transformation
+1. Add **Join by field** transformation and choose **Outer join (for SQL-like data)**
 2. Join on: `city`
 3. Result includes metrics with coordinates
 
@@ -425,7 +443,7 @@ sum by (location, lat, lon) (up) > 0
 ### Missing Lookup Matches
 
 1. Check country/region codes match gazetteer format
-2. Use ISO codes (US, GB, JP) not full names
+2. Use ISO 3166-1 alpha-3 codes (USA, GBR, JPN) not full names
 3. Verify case sensitivity
 
 ## Data Format Reference
