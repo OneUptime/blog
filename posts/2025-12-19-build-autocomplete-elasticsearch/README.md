@@ -27,7 +27,7 @@ flowchart TD
     A --> E[Prefix Query]
 
     B --> B1["Fastest, FST-based"]
-    C --> C1["Flexible, any position"]
+    C --> C1["Flexible, any word order"]
     D --> D1["Built-in, easy setup"]
     E --> E1["Simple, limited"]
 ```
@@ -306,6 +306,9 @@ Here is a full implementation combining multiple approaches:
 PUT /autocomplete_demo
 {
   "settings": {
+    "index": {
+      "max_ngram_diff": 13
+    },
     "analysis": {
       "filter": {
         "edge_ngram_filter": {
@@ -387,22 +390,20 @@ class AutocompleteService:
         """Use completion suggester for prefix matching."""
         response = self.es.search(
             index=self.index,
-            body={
-                "suggest": {
-                    "name-suggest": {
-                        "prefix": query,
-                        "completion": {
-                            "field": "name.completion",
-                            "size": size,
-                            "skip_duplicates": True,
-                            "fuzzy": {
-                                "fuzziness": "AUTO"
-                            }
+            suggest={
+                "name-suggest": {
+                    "prefix": query,
+                    "completion": {
+                        "field": "name.completion",
+                        "size": size,
+                        "skip_duplicates": True,
+                        "fuzzy": {
+                            "fuzziness": "AUTO"
                         }
                     }
-                },
-                "_source": ["name", "category", "popularity"]
-            }
+                }
+            },
+            source=["name", "category", "popularity"]
         )
 
         suggestions = response.get("suggest", {}).get("name-suggest", [])
@@ -422,32 +423,30 @@ class AutocompleteService:
         """Use edge ngram for flexible matching."""
         response = self.es.search(
             index=self.index,
-            body={
-                "size": size,
-                "query": {
-                    "function_score": {
-                        "query": {
-                            "match": {
-                                "name": {
-                                    "query": query,
-                                    "operator": "and"
-                                }
+            size=size,
+            query={
+                "function_score": {
+                    "query": {
+                        "match": {
+                            "name": {
+                                "query": query,
+                                "operator": "and"
                             }
-                        },
-                        "functions": [
-                            {
-                                "field_value_factor": {
-                                    "field": "popularity",
-                                    "factor": 1.2,
-                                    "modifier": "log1p",
-                                    "missing": 1
-                                }
+                        }
+                    },
+                    "functions": [
+                        {
+                            "field_value_factor": {
+                                "field": "popularity",
+                                "factor": 1.2,
+                                "modifier": "log1p",
+                                "missing": 1
                             }
-                        ]
-                    }
-                },
-                "_source": ["name", "category", "popularity"]
-            }
+                        }
+                    ]
+                }
+            },
+            source=["name", "category", "popularity"]
         )
 
         return [
@@ -505,9 +504,14 @@ class Autocomplete {
   }
 
   renderResults(suggestions) {
-    this.results.innerHTML = suggestions
-      .map(s => `<div class="suggestion" data-value="${s.name}">${s.name}</div>`)
-      .join('');
+    this.results.innerHTML = '';
+    suggestions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'suggestion';
+      item.dataset.value = s.name;
+      item.textContent = s.name;
+      this.results.appendChild(item);
+    });
     this.results.style.display = 'block';
   }
 
