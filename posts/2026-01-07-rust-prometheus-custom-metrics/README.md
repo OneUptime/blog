@@ -39,6 +39,12 @@ lazy_static = "1.4"
 # Web framework for metrics endpoint
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+
+# Supporting crates used by the complete example
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
 ```
 
 ---
@@ -367,7 +373,7 @@ pub fn metrics_router() -> Router {
     Router::new().route("/metrics", get(metrics_handler))
 }
 
-// Alternative: Include process metrics (memory, CPU, file descriptors)
+// Alternative: Include Linux process metrics (memory, CPU, file descriptors)
 pub fn metrics_handler_with_process() -> Response {
     // Collect default process metrics
     let process_metrics = prometheus::gather();
