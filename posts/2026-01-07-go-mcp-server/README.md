@@ -10,7 +10,7 @@ Description: Build an MCP (Model Context Protocol) server in Go to create custom
 
 The Model Context Protocol (MCP) is an open standard that enables AI assistants like Claude to interact with external tools, data sources, and services. By building an MCP server, you can extend AI capabilities with custom functionality - from database queries to API integrations, file operations, and beyond.
 
-In this comprehensive guide, we will build a production-ready MCP server in Go from scratch, covering protocol concepts, tool definitions, request handling, and integration with AI assistants.
+In this comprehensive guide, we will build a functional MCP server in Go from scratch, covering protocol concepts, tool definitions, request handling, and integration with AI assistants.
 
 ## What is the Model Context Protocol?
 
@@ -88,7 +88,7 @@ type JSONRPCRequest struct {
 // JSONRPCResponse represents an outgoing JSON-RPC 2.0 response
 type JSONRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id,omitempty"`
+	ID      interface{}     `json:"id"`
 	Result  interface{}     `json:"result,omitempty"`
 	Error   *JSONRPCError   `json:"error,omitempty"`
 }
@@ -431,6 +431,11 @@ func (s *Server) handleRequest(data []byte) *JSONRPCResponse {
 	// Route the request to the appropriate handler
 	result, err := s.routeRequest(&req)
 	if err != nil {
+		// Notifications (no ID) don't get responses, even on errors
+		if req.ID == nil {
+			return nil
+		}
+
 		rpcErr, ok := err.(*JSONRPCError)
 		if !ok {
 			rpcErr = &JSONRPCError{
@@ -462,7 +467,7 @@ func (s *Server) routeRequest(req *JSONRPCRequest) (interface{}, error) {
 	switch req.Method {
 	case "initialize":
 		return s.handleInitialize(req)
-	case "initialized":
+	case "notifications/initialized":
 		// Client notification - no response needed
 		return nil, nil
 	case "tools/list":
@@ -484,7 +489,7 @@ func (s *Server) routeRequest(req *JSONRPCRequest) (interface{}, error) {
 // handleInitialize processes the initialize request from clients
 func (s *Server) handleInitialize(req *JSONRPCRequest) (*InitializeResult, error) {
 	return &InitializeResult{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: "2025-11-25",
 		Capabilities: ServerCapabilities{
 			Tools:     &ToolsCapability{},
 			Resources: &ResourcesCapability{},
@@ -864,6 +869,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -1010,7 +1016,6 @@ Testing is essential to ensure your MCP server works correctly. Here is a compre
 package mcp
 
 import (
-	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -1163,6 +1168,7 @@ Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 {
   "mcpServers": {
     "go-mcp-server": {
+      "type": "stdio",
       "command": "/path/to/your/mcp-server-go",
       "args": [],
       "env": {
@@ -1195,13 +1201,21 @@ For development and debugging, you can test the server manually:
 
 ```bash
 # Send an initialize request
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./mcp-server
+printf '%s\n%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual-test","version":"1.0.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' | ./mcp-server
 
 # List available tools
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./mcp-server
+printf '%s\n%s\n%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual-test","version":"1.0.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./mcp-server
 
 # Call a tool
-echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"system_info","arguments":{}}}' | ./mcp-server
+printf '%s\n%s\n%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual-test","version":"1.0.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"system_info","arguments":{}}}' | ./mcp-server
 ```
 
 ## Advanced Features
@@ -1259,6 +1273,12 @@ When building MCP servers, keep these security practices in mind:
 
 ```go
 // Example: Validating file paths to prevent directory traversal
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
 func validateFilePath(path string) error {
 	// Ensure path is absolute and within allowed directories
 	absPath, err := filepath.Abs(path)
@@ -1293,5 +1313,5 @@ The Model Context Protocol opens up endless possibilities for AI automation and 
 
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
 - [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
-- [Claude Desktop MCP Documentation](https://docs.anthropic.com/claude/docs/mcp)
+- [Claude Code MCP Documentation](https://docs.anthropic.com/en/docs/claude-code/mcp)
 - [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
