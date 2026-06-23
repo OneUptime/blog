@@ -118,6 +118,8 @@ public abstract class ApplicationException extends RuntimeException {
 
 ### Specific Exceptions
 
+Place each public exception class in its own `.java` file under the `com.example.exception` package.
+
 ```java
 package com.example.exception;
 
@@ -218,6 +220,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.List;
@@ -348,8 +351,10 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTypeMismatch(
             MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
 
+        Class<?> requiredType = ex.getRequiredType();
+        String requiredTypeName = requiredType != null ? requiredType.getSimpleName() : "the required type";
         String message = String.format("Parameter '%s' should be of type %s",
-            ex.getName(), ex.getRequiredType().getSimpleName());
+            ex.getName(), requiredTypeName);
 
         ErrorResponse error = ErrorResponse.builder()
             .timestamp(Instant.now())
@@ -397,7 +402,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(error);
     }
 
-    // Handle 404 errors
+    // Handle 404 errors when DispatcherServlet is configured to throw NoHandlerFoundException
     @ExceptionHandler(NoHandlerFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoHandlerFound(
             NoHandlerFoundException ex, HttpServletRequest request) {
@@ -414,6 +419,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 
+    // Handle missing static resources in Spring Framework 6.1+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+
+        ErrorResponse error = ErrorResponse.builder()
+            .timestamp(Instant.now())
+            .status(HttpStatus.NOT_FOUND.value())
+            .error("RESOURCE_NOT_FOUND")
+            .message(ex.getMessage())
+            .path(request.getRequestURI())
+            .traceId(traceIdProvider.getTraceId())
+            .build();
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
     // Handle database constraint violations
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
@@ -422,8 +444,10 @@ public class GlobalExceptionHandler {
         log.error("Data integrity violation", ex);
 
         String message = "Database constraint violation";
-        if (ex.getMessage().contains("unique constraint") ||
-            ex.getMessage().contains("Duplicate entry")) {
+        String exceptionMessage = ex.getMessage();
+        if (exceptionMessage != null &&
+            (exceptionMessage.contains("unique constraint") ||
+            exceptionMessage.contains("Duplicate entry"))) {
             message = "A record with this value already exists";
         }
 
@@ -581,7 +605,8 @@ public class UserService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("User", "email", request.getEmail());
         }
-        // Create user...
+        User user = mapToEntity(request);
+        return mapToResponse(userRepository.save(user));
     }
 }
 ```
