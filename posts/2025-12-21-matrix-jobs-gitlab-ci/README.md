@@ -212,7 +212,7 @@ test:
     - job: build
       parallel:
         matrix:
-          - ARCH: ${ARCH}
+          - ARCH: ['$[[ matrix.ARCH ]]']
   script:
     - ./test-${ARCH}.sh
 ```
