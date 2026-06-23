@@ -38,8 +38,10 @@ Minimal SDK setup using OTLP exporter, W3C propagators, and head sampling. This 
 ```ts
 // Import OpenTelemetry SDK and core components
 import { NodeSDK } from '@opentelemetry/sdk-node'
-import { Resource } from '@opentelemetry/resources'
-import { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions'
+import { resourceFromAttributes } from '@opentelemetry/resources'
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+// deployment.environment.name is an unstable convention, imported from the /incubating entry point
+import { ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions/incubating'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { CompositePropagator, W3CTraceContextPropagator, W3CBaggagePropagator } from '@opentelemetry/core'
@@ -49,7 +51,7 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 // Initialize the OpenTelemetry SDK with all necessary components
 const sdk = new NodeSDK({
   // Resource attributes identify this service in traces
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'checkout-api',  // Unique service identifier
     [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',  // Environment tag
   }),
