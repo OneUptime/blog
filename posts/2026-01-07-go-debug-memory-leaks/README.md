@@ -81,9 +81,14 @@ type BoundedCache struct {
 }
 
 func (c *BoundedCache) Add(item Item) {
+    if c.maxSize <= 0 {
+        return
+    }
     if len(c.items) >= c.maxSize {
         // Remove oldest item (FIFO eviction)
-        c.items = c.items[1:]
+        copy(c.items, c.items[1:])
+        c.items[len(c.items)-1] = item
+        return
     }
     c.items = append(c.items, item)
 }
@@ -117,15 +122,14 @@ func processData(largeData []byte) func() int {
 }
 ```
 
-**6. Time.Ticker Not Stopped**
+**6. Long-Running Tickers Not Stopped**
 
-Failing to stop a ticker leaks the ticker goroutine.
+In Go 1.23 and later, the garbage collector can recover unreferenced tickers even if they have not been stopped. You should still stop a ticker when the surrounding loop is done so it stops delivering ticks.
 
 ```go
-// Leaky ticker - never stopped
+// Leaky ticker loop - no cancellation path, so this function never exits
 func leakyTicker() {
     ticker := time.NewTicker(time.Second)
-    // BUG: ticker.Stop() is never called
     for range ticker.C {
         // Do work
     }
@@ -270,8 +274,7 @@ ROUTINE ======================== main.allocateBuffer
 # Generate a visual graph (requires graphviz)
 (pprof) web
 
-# Generate a flamegraph
-(pprof) web flamegraph
+# For a flame graph, use the web interface and select the Flame graph view
 ```
 
 ### Web-Based Profile Visualization
@@ -339,6 +342,8 @@ Here is an example program and its escape analysis:
 // escape_example.go
 package main
 
+import "fmt"
+
 // Value does not escape - allocated on stack
 func stackAllocation() int {
     x := 42
@@ -395,14 +400,14 @@ func createUser() User {
 **2. Interface Conversions**
 
 ```go
-// data escapes because interface{} hides the concrete type
+// data may escape if the interface value is passed to code that retains it
 func logData(data interface{}) {
     log.Println(data)
 }
 
 func caller() {
     x := 42
-    logData(x) // x escapes to heap
+    logData(x) // Check escape analysis output to verify whether x escapes
 }
 ```
 
@@ -831,13 +836,14 @@ func startWorker() {
 }
 
 // After (fixed)
-func startWorker(ctx context.Context) {
-    ch := make(chan int)
+func startWorker(ctx context.Context, ch <-chan int) {
     go func() {
-        defer close(ch)
         for {
             select {
-            case v := <-ch:
+            case v, ok := <-ch:
+                if !ok {
+                    return
+                }
                 process(v)
             case <-ctx.Done():
                 return // Clean exit when context is cancelled
