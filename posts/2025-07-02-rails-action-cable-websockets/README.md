@@ -149,9 +149,6 @@ Rails.application.configure do
     %r{http://192\.168\.0\.\d+:3000}
   ]
   
-  # Use async adapter for development (no Redis needed)
-  config.action_cable.adapter = :async
-  
   # Disable request forgery protection for WebSocket
   config.action_cable.disable_request_forgery_protection = true
 end
@@ -169,9 +166,6 @@ Rails.application.configure do
     'https://yourapp.com',
     'https://www.yourapp.com'
   ]
-  
-  # Use Redis adapter for production
-  config.action_cable.adapter = :redis
   
   # Mount path
   config.action_cable.mount_path = '/cable'
