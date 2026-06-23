@@ -195,12 +195,16 @@ spec:
               min: 500
               max: 599
           isFailure: true
+      # Mark this route as safe to retry on failure
+      isRetryable: true
       # Maximum time to wait for a response
       timeout: 30s
-      # Retry configuration for failed requests
-      retries:
-        isRetryable: true
-        maxRetries: 3
+  # Retry budget limits retries relative to original requests.
+  # Linkerd uses a retry budget rather than a fixed max-retries count.
+  retryBudget:
+    retryRatio: 0.2          # Retries may add at most 20% to request load
+    minRetriesPerSecond: 10  # Plus 10 "free" retries per second
+    ttl: 10s                 # Window used to calculate the retry rate
 ```
 
 ## Option 2: Istio Setup
