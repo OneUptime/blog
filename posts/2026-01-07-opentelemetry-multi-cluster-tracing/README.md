@@ -145,8 +145,7 @@ data:
         detectors:
           - env
           - system
-          - docker
-          - kubernetes
+          - k8snode
         timeout: 5s
         override: false
 
@@ -155,6 +154,8 @@ data:
       k8sattributes:
         auth_type: "serviceAccount"
         passthrough: false
+        filter:
+          node_from_env_var: K8S_NODE_NAME
         extract:
           metadata:
             - k8s.pod.name
@@ -217,6 +218,40 @@ Deploy the agent as a DaemonSet. The DaemonSet ensures one collector pod runs on
 # otel-agent-daemonset.yaml
 # This DaemonSet deploys the OpenTelemetry Collector agent on every node.
 # Using a DaemonSet ensures low-latency collection from all pods on the node.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: opentelemetry
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: opentelemetry
+roleRef:
+  kind: ClusterRole
+  name: otel-collector
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -594,11 +629,11 @@ sequenceDiagram
     participant SB as Service B<br/>(Cluster 2)
     participant SC as Service C<br/>(Cluster 2)
 
-    SA->>SA: Start span (trace_id=abc123)
-    SA->>LB: HTTP Request<br/>traceparent: 00-abc123-span1-01<br/>tracestate: cluster=cluster-1
+    SA->>SA: Start span (trace_id=4bf92f3577b34da6a3ce929d0e0e4736)
+    SA->>LB: HTTP Request<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01<br/>tracestate: cluster=cluster-1
     LB->>SB: Forward with headers preserved
     SB->>SB: Extract context, start child span
-    SB->>SC: Internal call<br/>traceparent: 00-abc123-span2-01
+    SB->>SC: Internal call<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-b7ad6b7169203331-01
     SC->>SC: Extract context, start child span
     SC-->>SB: Response
     SB-->>LB: Response
@@ -623,11 +658,13 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -748,7 +785,7 @@ When using a service mesh like Istio, trace context propagation can be enhanced 
 # istio-telemetry.yaml
 # This configuration enables trace context propagation in Istio service mesh.
 # It ensures that the Envoy sidecars properly propagate trace headers.
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -782,16 +819,13 @@ spec:
   meshConfig:
     # Enable access logging for debugging
     accessLogFile: /dev/stdout
+    # Enable trace generation in the mesh
+    enableTracing: true
     # Configure default tracing behavior
     defaultConfig:
       tracing:
         # Set sampling rate (percentage)
         sampling: 100.0
-        # Configure OpenTelemetry as the tracing provider
-        opentelemetry:
-          # Point to the cluster's OTel collector gateway
-          otel_service: otel-gateway.opentelemetry.svc.cluster.local
-          port: 4317
     # Define the OpenTelemetry extension provider
     extensionProviders:
       - name: opentelemetry
@@ -800,8 +834,7 @@ spec:
           port: 4317
           # Specify the resource detectors to use
           resource_detectors:
-            - environment
-            - dynatrace
+            environment: {}
 ```
 
 ## Collector Federation Patterns
@@ -865,13 +898,15 @@ data:
               cert_file: /certs/server.crt
               key_file: /certs/server.key
               client_ca_file: /certs/ca.crt
-              # Require client certificates for mutual TLS
-              require_client_auth: true
+            auth:
+              authenticator: bearertokenauth
           http:
             endpoint: 0.0.0.0:4318
             tls:
               cert_file: /certs/server.crt
               key_file: /certs/server.key
+            auth:
+              authenticator: bearertokenauth
 
     processors:
       # High memory limits for the federation collector
@@ -884,21 +919,6 @@ data:
       batch:
         send_batch_size: 10000
         timeout: 20s
-
-      # Span metrics connector generates metrics from trace data
-      # This provides RED metrics (Rate, Errors, Duration) automatically
-      spanmetrics:
-        dimensions:
-          - name: k8s.cluster.name
-          - name: service.name
-          - name: service.namespace
-          - name: http.method
-          - name: http.status_code
-        exemplars:
-          enabled: true
-        histogram:
-          explicit:
-            buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
       # Group by trace processor ensures complete traces are processed together
       # This is important for accurate tail-based sampling
@@ -922,7 +942,7 @@ data:
       spanmetrics:
         dimensions:
           - name: k8s.cluster.name
-          - name: service.name
+          - name: service.namespace
         histogram:
           explicit:
             buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
@@ -971,7 +991,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, groupbytrace, transform, batch]
-          exporters: [otlp/jaeger, otlp/tempo, otlp/storage]
+          exporters: [spanmetrics, otlp/jaeger, otlp/tempo, otlp/storage]
         # Metrics pipeline for span metrics
         metrics:
           receivers: [spanmetrics]
@@ -1161,13 +1181,15 @@ For Jaeger:
 
 ```text
 # Find traces from a specific cluster
-service="my-service" && k8s.cluster.name="production-us-east-1"
+service: my-service
+tags: k8s.cluster.name=production-us-east-1
 
 # Find traces that span multiple clusters
-k8s.cluster.name="production-us-east-1" OR k8s.cluster.name="production-us-west-2"
+Run separate searches with tags: k8s.cluster.name=production-us-east-1 and k8s.cluster.name=production-us-west-2
 
 # Find cross-cluster calls
-k8s.cluster.name="production-us-east-1" && span.kind="client"
+service: my-service
+tags: k8s.cluster.name=production-us-east-1 span.kind=client
 ```
 
 For Grafana Tempo with TraceQL:
@@ -1560,19 +1582,15 @@ spec:
     spec:
       containers:
         - name: trace-generator
-          image: otel/opentelemetry-collector-contrib:0.92.0
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Generate test traces using telemetrygen
-              telemetrygen traces \
-                --otlp-endpoint otel-gateway.opentelemetry.svc.cluster.local:4317 \
-                --otlp-insecure \
-                --traces 100 \
-                --workers 4 \
-                --service my-test-service \
-                --span-duration 100ms
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.154.0
+          args:
+            - traces
+            - --otlp-endpoint=otel-gateway.opentelemetry.svc.cluster.local:4317
+            - --otlp-insecure
+            - --traces=100
+            - --workers=4
+            - --service=my-test-service
+            - --span-duration=100ms
           env:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "k8s.cluster.name=test-cluster,deployment.environment=test"
@@ -1687,12 +1705,12 @@ processors:
         probabilistic:
           sampling_percentage: 5
 
-      # Always capture cross-cluster traces
+      # Capture traces explicitly marked as cross-cluster by your instrumentation
       - name: cross-cluster-policy
         type: string_attribute
         string_attribute:
-          key: span.kind
-          values: [client, server]
+          key: cross_cluster
+          values: ["true"]
 ```
 
 ### 3. Plan for Failure Scenarios
