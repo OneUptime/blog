@@ -281,10 +281,9 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
         return 0;
     }
 
-    // Get the current PID (process ID)
-    // bpf_get_current_pid_tgid() returns (pid << 32 | tgid)
-    // We want the lower 32 bits (tgid in kernel = pid in userspace)
-    e->pid = bpf_get_current_pid_tgid() >> 32;
+    // Get the current process ID using CO-RE
+    // task->tgid is the thread group ID, which is the process ID in user space
+    e->pid = BPF_CORE_READ(task, tgid);
 
     // Get the current UID (user ID)
     // Similar to above, uid_gid returns (gid << 32 | uid)
@@ -341,6 +340,7 @@ This program loads the eBPF code and processes events. Note the use of the gener
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/resource.h>
 
@@ -658,6 +658,7 @@ The following examples demonstrate proper CO-RE usage patterns:
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_tracing.h>
 
 // BPF_CORE_READ - Read a single field with CO-RE relocation
 // Syntax: BPF_CORE_READ(source_ptr, field1, field2, ...)
@@ -741,21 +742,23 @@ CO-RE allows you to write code that adapts to different kernel versions:
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_tracing.h>
 
 // Use bpf_core_enum_value() to handle enum changes between versions
 // Some enums are renumbered or renamed across kernel versions
 
 SEC("tp_btf/task_newtask")
-int handle_new_task(u64 *ctx)
+int BPF_PROG(handle_new_task, struct task_struct *task, u64 clone_flags)
 {
-    struct task_struct *task = (struct task_struct *)ctx[0];
+    (void)clone_flags;
 
     // Reading the exit_state field - location varies by kernel version
     // CO-RE automatically adjusts the offset
     int exit_state = BPF_CORE_READ(task, exit_state);
 
     // For optional fields that may not exist, use conditional access
-    // This prevents compile errors on kernels without the field
+    // This adapts to target kernels where the field may be absent.
+    // The field must still exist in the vmlinux.h used at compile time.
     #define FIELD_EXISTS_HELPER(type, field) \
         bpf_core_field_exists(((type *)0)->field)
 
@@ -771,18 +774,16 @@ int handle_new_task(u64 *ctx)
     return 0;
 }
 
-// Handling renamed fields across kernel versions
-// Use BPF_CORE_READ_BITFIELD for bitfield access
+// Reading fields from kprobe arguments
 SEC("kprobe/__set_task_comm")
 int handle_set_comm(struct pt_regs *ctx)
 {
-    struct task_struct *task = (struct task_struct *)ctx;
+    struct task_struct *task = (struct task_struct *)PT_REGS_PARM1(ctx);
 
-    // Access bitfield flags safely
-    // Bitfields require special handling due to varying layouts
-    unsigned int flags = BPF_CORE_READ_BITFIELD_PROBED(task, atomic_flags);
+    // Access the task flags field safely with CO-RE relocation
+    unsigned int flags = BPF_CORE_READ(task, flags);
 
-    bpf_printk("Task atomic_flags: %u\n", flags);
+    bpf_printk("Task flags: %u\n", flags);
 
     return 0;
 }
@@ -994,6 +995,7 @@ Here's a comprehensive guide to debugging libbpf programs:
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <stdarg.h>
 #include <bpf/libbpf.h>
 
 // Custom print callback with more context
