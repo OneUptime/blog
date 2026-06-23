@@ -27,7 +27,7 @@ Region > Zone > Sub-zone
 For example:
 - Region: `us-west1`
 - Zone: `us-west1-a`
-- Sub-zone: `rack-1` (optional)
+- Sub-zone: `rack-1` (optional, configured in Istio with the `topology.istio.io/subzone` node label)
 
 ```mermaid
 graph TD
@@ -91,7 +91,7 @@ The following DestinationRule enables simple locality load balancing for the pay
 ```yaml
 # DestinationRule that enables basic locality load balancing
 # This configuration tells Istio to prefer local endpoints over remote ones
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-locality
@@ -153,7 +153,7 @@ The following DestinationRule shows a comprehensive outlier detection configurat
 ```yaml
 # Complete DestinationRule with detailed outlier detection settings
 # This configuration ensures reliable failover when local endpoints become unhealthy
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-locality
@@ -201,7 +201,7 @@ The following DestinationRule demonstrates a basic failover configuration where 
 ```yaml
 # DestinationRule with explicit locality failover rules
 # Defines which regions should handle traffic when the primary region is unavailable
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service-failover
@@ -245,14 +245,14 @@ spec:
 
 ### Zone-Level Failover
 
-For more granular control, you can configure failover at the zone level within a region:
+For more granular control, Istio automatically uses zone and sub-zone locality information for failover within a region. The `failover` setting is only for constraining regional failover.
 
-The following configuration shows zone-level failover, ensuring traffic stays within the same region when possible before failing over to a different region:
+The following configuration keeps zone and sub-zone failover enabled by default and constrains cross-region failover only when the local region is unhealthy:
 
 ```yaml
 # Zone-level failover configuration for fine-grained traffic control
 # This ensures traffic stays within the region when possible
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service-zone-failover
@@ -264,15 +264,9 @@ spec:
       simple: LEAST_REQUEST
       localityLbSetting:
         enabled: true
-        # Zone-level failover rules
+        # Zone and sub-zone failover are handled automatically.
+        # Regional failover rules constrain cross-region behavior.
         failover:
-          # Zone A fails over to Zone B, then Zone C (same region)
-          - from: us-west1/us-west1-a
-            to: us-west1/us-west1-b
-          - from: us-west1/us-west1-b
-            to: us-west1/us-west1-c
-          - from: us-west1/us-west1-c
-            to: us-west1/us-west1-a
           # If entire us-west1 region is down, fail over to us-east1
           - from: us-west1
             to: us-east1
@@ -320,7 +314,7 @@ The following DestinationRule demonstrates weighted distribution across multiple
 ```yaml
 # Weighted locality distribution configuration
 # Distributes traffic across regions based on specified percentages
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway-weighted
@@ -366,16 +360,16 @@ spec:
       maxEjectionPercent: 50
 ```
 
-### Combining Failover and Distribution
+### Choosing Failover or Distribution
 
-You can combine weighted distribution with failover policies for robust traffic management:
+Istio requires you to choose one locality policy in a DestinationRule: `distribute`, `failover`, or `failoverPriority`. You cannot configure `distribute` and `failover` in the same `localityLbSetting`.
 
-The following configuration shows how to use weighted distribution as the primary routing strategy while maintaining failover rules as a safety net:
+The following configuration shows how to use weighted distribution as the primary routing strategy. Use a separate failover-only policy instead when you need explicit regional failover behavior:
 
 ```yaml
-# Combined weighted distribution and failover configuration
-# Uses weights for normal operation, failover for emergency scenarios
-apiVersion: networking.istio.io/v1beta1
+# Weighted distribution configuration
+# Uses weights for normal operation
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service-combined
@@ -397,15 +391,6 @@ spec:
             to:
               "us-east1/*": 80
               "us-west1/*": 20
-        # Failover rules activate when weighted destinations are unhealthy
-        # These provide a safety net when primary and secondary fail
-        failover:
-          - from: us-west1
-            to: eu-west1
-          - from: us-east1
-            to: eu-west1
-          - from: eu-west1
-            to: us-east1
     # Aggressive outlier detection for critical service
     outlierDetection:
       consecutive5xxErrors: 2
@@ -452,12 +437,12 @@ graph TB
     DBW -.->|Replication| DBEU
 ```
 
-The following DestinationRule shows an active-active configuration that keeps traffic local while providing automatic failover:
+The following DestinationRule shows an active-active configuration that keeps traffic local. If you need explicit regional failover constraints, use `failover` instead of `distribute` in the same `localityLbSetting`:
 
 ```yaml
 # Active-Active multi-region configuration
-# Each region handles traffic locally with automatic failover
-apiVersion: networking.istio.io/v1beta1
+# Each region handles traffic locally with weighted distribution
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-processor-active-active
@@ -480,14 +465,6 @@ spec:
           - from: eu-west1/*
             to:
               "eu-west1/*": 100
-        # Failover chain for disaster recovery
-        failover:
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
-          - from: eu-west1
-            to: us-east1
     # Strict outlier detection for payment processing
     outlierDetection:
       consecutive5xxErrors: 2
@@ -500,12 +477,12 @@ spec:
 
 In an active-passive setup, one region handles all traffic while others remain on standby.
 
-The following configuration routes 100% of traffic to the active region but maintains warm standby regions for failover:
+The following configuration assumes the global load balancer sends client traffic to the active region during normal operation, while Istio constrains regional failover to warm standby regions when the active region's service endpoints are unhealthy:
 
 ```yaml
 # Active-Passive configuration with warm standby
 # Primary region handles all traffic, standby regions ready for failover
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service-active-passive
@@ -517,12 +494,6 @@ spec:
       simple: ROUND_ROBIN
       localityLbSetting:
         enabled: true
-        # Route ALL traffic to the primary region (us-west1)
-        distribute:
-          # Traffic from any location goes to primary
-          - from: "*"
-            to:
-              "us-west1/*": 100
         # Failover chain when primary region fails
         failover:
           # Primary fails to secondary
@@ -552,7 +523,7 @@ The following VirtualService and DestinationRule combination enables time-based 
 # Combined with external configuration for time-based switching
 ---
 # DestinationRule for business hours routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: support-service-follow-sun
@@ -583,7 +554,7 @@ spec:
 ---
 # VirtualService for header-based regional routing
 # Allows explicit region selection via headers
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: support-service-routing
@@ -623,7 +594,7 @@ spec:
             host: support-service.production.svc.cluster.local
 ---
 # Subsets for regional routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: support-service-subsets
@@ -646,37 +617,37 @@ spec:
 
 ### Setting Up Locality Metrics
 
-Istio provides built-in metrics for monitoring locality-aware routing. The following Prometheus queries help track locality distribution:
+Istio provides built-in metrics for monitoring service traffic. Standard Istio metrics include source and destination cluster labels; if you need exact region or zone labels, add custom telemetry dimensions for those values.
 
-The following PromQL queries help you monitor how traffic is distributed across localities and identify potential issues:
+The following PromQL queries help you monitor how traffic is distributed across clusters and identify potential issues:
 
 ```promql
-# Query 1: Request distribution by source and destination locality
-# Shows how traffic flows between different localities
+# Query 1: Request distribution by source and destination cluster
+# Shows how traffic flows between different clusters
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_service="payment-service.production.svc.cluster.local"
-}[5m])) by (source_workload_namespace, destination_locality)
+}[5m])) by (source_cluster, destination_cluster)
 
-# Query 2: Success rate by locality
-# Helps identify if certain localities have lower success rates
+# Query 2: Success rate by destination cluster
+# Helps identify if certain clusters have lower success rates
 sum(rate(istio_requests_total{
   reporter="destination",
   response_code="200",
   destination_service="payment-service.production.svc.cluster.local"
-}[5m])) by (destination_locality)
+}[5m])) by (destination_cluster)
 /
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_service="payment-service.production.svc.cluster.local"
-}[5m])) by (destination_locality)
+}[5m])) by (destination_cluster)
 
-# Query 3: Latency percentiles by locality
-# Compare latency across different localities
+# Query 3: Latency percentiles by destination cluster
+# Compare latency across different clusters
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{
   reporter="destination",
   destination_service="payment-service.production.svc.cluster.local"
-}[5m])) by (le, destination_locality))
+}[5m])) by (le, destination_cluster))
 
 # Query 4: Outlier ejection events
 # Track when endpoints are ejected due to health issues
@@ -685,17 +656,17 @@ sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name)
 
 ### Grafana Dashboard Configuration
 
-The following JSON snippet shows how to create a Grafana panel for visualizing locality distribution:
+The following JSON snippet shows how to create a Grafana panel for visualizing cluster distribution:
 
 ```json
 {
-  "title": "Traffic Distribution by Locality",
+  "title": "Traffic Distribution by Cluster",
   "type": "piechart",
   "datasource": "Prometheus",
   "targets": [
     {
-      "expr": "sum(rate(istio_requests_total{reporter=\"destination\"}[5m])) by (destination_locality)",
-      "legendFormat": "{{destination_locality}}"
+      "expr": "sum(rate(istio_requests_total{reporter=\"destination\"}[5m])) by (destination_cluster)",
+      "legendFormat": "{{destination_cluster}}"
     }
   ],
   "options": {
@@ -726,7 +697,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata
 kubectl get endpoints payment-service -n production -o yaml | grep -A 10 "addresses:"
 
 # Check if Istio proxy has correct locality information
-istioctl proxy-config endpoints <pod-name> -n production --cluster "outbound|80||payment-service.production.svc.cluster.local" -o json | jq '.[] | {address: .hostStatuses[].address, locality: .hostStatuses[].locality}'
+istioctl proxy-config endpoints <pod-name> -n production --cluster "outbound|80||payment-service.production.svc.cluster.local" -o json | jq '.[] | {clusterName, locality, endpoints: (.lbEndpoints | length)}'
 
 # Verify DestinationRule is applied correctly
 istioctl analyze -n production
@@ -897,12 +868,12 @@ spec:
         - alert: HighCrossRegionTraffic
           expr: |
             sum(rate(istio_requests_total{
-              source_locality!~"us-west1.*",
-              destination_locality=~"us-west1.*"
+              source_cluster!="cluster-us-west1",
+              destination_cluster="cluster-us-west1"
             }[5m]))
             /
             sum(rate(istio_requests_total{
-              destination_locality=~"us-west1.*"
+              destination_cluster="cluster-us-west1"
             }[5m])) > 0.3
           for: 5m
           labels:
@@ -981,7 +952,7 @@ metadata:
     istio-injection: enabled
 ---
 # Frontend Service - Keep traffic local for best user experience
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend-locality
@@ -1004,21 +975,14 @@ spec:
           - from: eu-west1/*
             to:
               "eu-west1/*": 100
-        failover:
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
-          - from: eu-west1
-            to: us-east1
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 5s
       baseEjectionTime: 30s
       maxEjectionPercent: 100
 ---
-# Cart Service - Session affinity with locality preference
-apiVersion: networking.istio.io/v1beta1
+# Cart Service - Locality preference
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cart-service-locality
@@ -1027,11 +991,7 @@ spec:
   host: cart-service.ecommerce.svc.cluster.local
   trafficPolicy:
     loadBalancer:
-      # Use consistent hashing for session affinity
-      consistentHash:
-        httpCookie:
-          name: cart-session
-          ttl: 3600s
+      simple: LEAST_REQUEST
       localityLbSetting:
         enabled: true
         distribute:
@@ -1047,13 +1007,6 @@ spec:
             to:
               "eu-west1/*": 95
               "us-east1/*": 5
-        failover:
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
-          - from: eu-west1
-            to: us-east1
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
@@ -1061,7 +1014,7 @@ spec:
       maxEjectionPercent: 100
 ---
 # Product Service - Read-heavy, can distribute globally
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-locality
@@ -1090,21 +1043,14 @@ spec:
               "eu-west1/*": 80
               "us-east1/*": 15
               "us-west1/*": 5
-        failover:
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
-          - from: eu-west1
-            to: us-east1
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 100
 ---
-# Order Service - Critical, strict locality with aggressive failover
-apiVersion: networking.istio.io/v1beta1
+# Order Service - Critical, strict locality with aggressive outlier detection
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-locality
@@ -1134,13 +1080,6 @@ spec:
           - from: eu-west1/*
             to:
               "eu-west1/*": 100
-        failover:
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
-          - from: eu-west1
-            to: us-east1
     # Aggressive outlier detection for critical service
     outlierDetection:
       consecutive5xxErrors: 2
@@ -1150,7 +1089,7 @@ spec:
       maxEjectionPercent: 100
 ---
 # Payment Service - Most critical, strict locality, database region awareness
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-locality
@@ -1177,12 +1116,6 @@ spec:
           - from: "*"
             to:
               "us-west1/*": 100
-        failover:
-          # Only failover when entire primary region is down
-          - from: us-west1
-            to: us-east1
-          - from: us-east1
-            to: us-west1
     # Very aggressive outlier detection
     outlierDetection:
       consecutive5xxErrors: 1
