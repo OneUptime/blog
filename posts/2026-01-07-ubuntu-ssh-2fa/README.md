@@ -537,14 +537,15 @@ google-authenticator
 
 ### Allowing Fallback Authentication
 
-For recovery scenarios, you might want to allow console access without 2FA:
+For recovery scenarios, remember that `/etc/pam.d/sshd` only governs SSH logins — local console (and serial/IPMI) logins use a different PAM service (`login`), so they are **not** affected by the SSH 2FA configuration and already bypass the SSH verification code. Do not add a rule like `auth [success=done default=ignore] pam_succeed_if.so service = sshd` to `/etc/pam.d/sshd`: in that file the `service` is always `sshd`, so the rule would match every connection and skip Google Authenticator, silently disabling 2FA for all SSH access.
+
+If you need to recover SSH access without your TOTP device, use one of these instead:
 
 ```bash
-# Edit PAM SSH configuration
-sudo nano /etc/pam.d/sshd
-
-# Add this line to skip 2FA for local console logins
-auth [success=done default=ignore] pam_succeed_if.so service = sshd
+# Option 1: log in with an emergency scratch code at the "Verification code:" prompt
+# Option 2: log in via the local console (which is not subject to SSH 2FA),
+#           then remove the affected user's configuration to reset 2FA:
+sudo rm /home/username/.google_authenticator
 ```
 
 ### Time Synchronization
@@ -633,11 +634,12 @@ sudo -u username google-authenticator
 On systems with SELinux (less common on Ubuntu):
 
 ```bash
-# Check for SELinux denials
+# Check for SELinux denials related to sshd and the PAM module
 sudo ausearch -m avc -ts recent
 
-# Allow the PAM module if blocked
-sudo setsebool -P authlogin_yubikey 1
+# If a denial is logged, generate an allow rule from it and load it as a module
+sudo ausearch -m avc -ts recent | audit2allow -M ssh-2fa
+sudo semodule -i ssh-2fa.pp
 ```
 
 ### Viewing Detailed SSH Debug Output
