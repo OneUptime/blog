@@ -88,10 +88,10 @@ Before installing Istio in production, ensure the following prerequisites are me
 Verify your Kubernetes cluster meets the minimum requirements for running Istio in production:
 
 ```bash
-# Check Kubernetes version (Istio 1.20+ requires Kubernetes 1.26+)
+# Check Kubernetes version against the support matrix for your Istio release
 
 # This command verifies both client and server versions
-kubectl version --short
+kubectl version
 
 # Verify cluster has sufficient nodes for HA deployment
 # Production requires at least 3 worker nodes for proper distribution
@@ -127,7 +127,7 @@ metadata:
 
 ---
 
-Resource Sizing and Limits
+## Resource Sizing and Limits
 
 Proper resource allocation is critical for production stability. Under-provisioned components can cause cascading failures.
 
@@ -365,8 +365,13 @@ metadata:
   name: high-traffic-api
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: high-traffic-api
   template:
     metadata:
+      labels:
+        app: high-traffic-api
       annotations:
         # Override proxy CPU requests for high-traffic service
         sidecar.istio.io/proxyCPU: "500m"
@@ -394,7 +399,7 @@ Enforce mutual TLS across all service-to-service communication:
 # strict-mtls.yaml
 # This PeerAuthentication policy enforces mTLS for all services
 # Apply this after verifying all services can establish mTLS connections
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -406,16 +411,15 @@ spec:
     # Use PERMISSIVE during migration, then switch to STRICT
     mode: STRICT
 ---
-# Corresponding DestinationRule to ensure clients use mTLS
-# This complements the PeerAuthentication policy
-apiVersion: networking.istio.io/v1beta1
+# Optional explicit DestinationRule for a known in-mesh service.
+# Istio's Auto mTLS already originates mTLS for in-mesh workloads when possible.
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: default
-  namespace: istio-system
+  name: api-service-mtls
+  namespace: production
 spec:
-  # Apply to all hosts in the mesh
-  host: "*.local"
+  host: api-service.production.svc.cluster.local
   trafficPolicy:
     tls:
       # ISTIO_MUTUAL uses Istio-provisioned certificates
@@ -430,7 +434,7 @@ Implement least-privilege access controls:
 # deny-all-default.yaml
 # Default deny policy - blocks all traffic unless explicitly allowed
 # This is the foundation of zero-trust networking
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -442,7 +446,7 @@ spec:
 # allow-frontend-to-backend.yaml
 # Explicitly allow specific service-to-service communication
 # Each allowed path should be documented and reviewed
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-api
@@ -467,7 +471,7 @@ spec:
 ---
 # allow-ingress-traffic.yaml
 # Allow external traffic through the ingress gateway
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-ingress-gateway
@@ -487,40 +491,22 @@ spec:
 
 ### Certificate Management
 
-Configure automatic certificate rotation with proper lifetimes:
+Configure certificate handling with Istio's built-in CA and cert-manager for ingress certificates:
 
 ```yaml
-# certificate-config.yaml
-# Configure Istio's certificate authority settings
-# These settings balance security with operational overhead
+# ca-config.yaml
+# Configure Istio's certificate authority provider.
+# Istio workload certificates are issued and rotated automatically by default.
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    # Certificate settings
-    certificates:
-      # Use kubernetes as the certificate signer
-      - secretName: cacerts
-        dnsNames:
-          - "*.production.svc.cluster.local"
-
-    defaultConfig:
-      proxyMetadata:
-        # Rotate certificates before expiry
-        # 24h rotation for short-lived certificates
-        PROXY_CONFIG_XDS_AGENT: "true"
-
   values:
     pilot:
       env:
-        # Workload certificate TTL (default 24h)
-        # Shorter TTLs are more secure but increase CA load
+        # Use Istio's built-in CA for workload certificates.
         PILOT_CERT_PROVIDER: "istiod"
-        # Root CA certificate lifetime (10 years)
-        # This should outlast your deployment lifecycle
-        AUTO_RELOAD_PLUGIN_CERTS: "true"
 ---
-# For production, use cert-manager for external CA integration
+# For production, use cert-manager for gateway certificate management
 # This example shows integration with Let's Encrypt for gateway certs
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -1358,15 +1344,13 @@ Reduce memory usage by limiting sidecar proxy configuration scope:
 # sidecar-scope.yaml
 # Limit what each sidecar knows about
 # This dramatically reduces memory usage and push time in large clusters
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
   namespace: production
 spec:
-  # Apply to all workloads in this namespace
-  workloadSelector:
-    labels: {}
+  # Omit workloadSelector to apply to all workloads in this namespace
 
   egress:
     # Only include services that this namespace actually needs
@@ -1381,13 +1365,12 @@ spec:
 
   # Reduce listener configuration
   outboundTrafficPolicy:
-    # REGISTRY_ONLY blocks traffic to unknown services
-    # More secure and reduces config size
+    # REGISTRY_ONLY blocks traffic to unknown services.
     mode: REGISTRY_ONLY
 ---
 # Per-workload sidecar for maximum optimization
 # Use this for services with known, limited dependencies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -1505,9 +1488,14 @@ echo "Step 6: Validating canary deployment..."
 sleep 30  # Allow metrics to accumulate
 
 # Check for errors in canary namespace
+PROM_QUERY='sum(rate(istio_requests_total{reporter="destination",destination_service_namespace="'${CANARY_NAMESPACE}'",response_code=~"5.*"}[5m])) / sum(rate(istio_requests_total{reporter="destination",destination_service_namespace="'${CANARY_NAMESPACE}'"}[5m]))'
 ERROR_RATE=$(kubectl exec -n istio-system deploy/prometheus -- \
-    promql 'sum(rate(istio_requests_total{reporter="destination",destination_service_namespace="'${CANARY_NAMESPACE}'",response_code=~"5.*"}[5m])) / sum(rate(istio_requests_total{reporter="destination",destination_service_namespace="'${CANARY_NAMESPACE}'"}[5m]))' \
-    2>/dev/null | grep -oP '[\d.]+' || echo "0")
+    promtool query instant -o json http://localhost:9090 "${PROM_QUERY}" \
+    2>/dev/null | jq -r '.data.result[0].value[1] // "0"')
+
+if [[ "${ERROR_RATE}" == "NaN" ]]; then
+    ERROR_RATE="0"
+fi
 
 if (( $(echo "${ERROR_RATE} > 0.01" | bc -l) )); then
     echo "ERROR: High error rate (${ERROR_RATE}) detected in canary namespace!"
@@ -1644,7 +1632,7 @@ check "All gateway pods are ready" \
 
 # Verify gateway service
 check "Gateway LoadBalancer has external IP" \
-    "[ -n \"\$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')\" ]"
+    "[ -n \"\$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')\" ]"
 
 echo ""
 echo "--- Security Checks ---"
@@ -1698,7 +1686,7 @@ check "No configuration issues found" \
 
 # Verify no deprecated APIs
 check "No deprecated Istio APIs in use" \
-    "[ -z \"\$(kubectl get virtualservices,destinationrules,gateways --all-namespaces -o json | jq -r '.items[] | select(.apiVersion | contains(\"v1alpha3\")) | .metadata.name')\" ]"
+    "[ -z \"\$(kubectl get peerauthentications,authorizationpolicies,virtualservices,destinationrules,gateways,sidecars --all-namespaces -o json | jq -r '.items[] | select(.apiVersion | test(\"v1alpha3|v1beta1\")) | .metadata.name')\" ]"
 
 echo ""
 echo "=== Summary ==="
