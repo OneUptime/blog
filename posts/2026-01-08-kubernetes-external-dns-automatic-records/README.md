@@ -432,7 +432,7 @@ metadata:
     # Set TTL (in seconds)
     external-dns.alpha.kubernetes.io/ttl: "300"
 
-    # Set specific record type
+    # Manually set the target (IP creates an A record, hostname creates a CNAME)
     external-dns.alpha.kubernetes.io/target: "1.2.3.4"
 
     # Cloudflare-specific: enable proxy
