@@ -166,16 +166,20 @@ This JSON formatter outputs logs in a structured format, making them easily sear
 # Custom JSON formatter with trace correlation
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from opentelemetry import trace
 
 class StructuredFormatter(logging.Formatter):
     """Format logs as structured JSON for searchability"""
 
+    # Attributes present on every LogRecord. Anything not in this set was
+    # supplied via the logger's `extra` parameter and should be merged in.
+    _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+
     def format(self, record: logging.LogRecord) -> str:
         # Build base log record with standard fields
         log_dict = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -192,9 +196,12 @@ class StructuredFormatter(logging.Formatter):
             log_dict["trace_id"] = format(ctx.trace_id, "032x")
             log_dict["span_id"] = format(ctx.span_id, "016x")
 
-        # Merge any extra fields passed to the logger
-        if hasattr(record, "extra"):
-            log_dict.update(record.extra)
+        # Merge any extra fields passed to the logger. The logging module
+        # sets each key from `extra={...}` as a direct attribute on the
+        # record, so collect every attribute that isn't a standard one.
+        for key, value in record.__dict__.items():
+            if key not in self._RESERVED:
+                log_dict[key] = value
 
         # Include full exception traceback if present
         if record.exc_info:
@@ -258,7 +265,7 @@ This example shows a complete FastAPI application with OneUptime logging integra
 ```python
 # app/main.py
 # Complete FastAPI application with OneUptime logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
 import logging
 import os
