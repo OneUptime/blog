@@ -30,12 +30,12 @@ Ceph is designed with high availability in mind, which makes zero-downtime upgra
 
 - **Redundancy**: Multiple instances of each daemon type ensure service continuity
 - **Rolling upgrades**: Components can be upgraded one at a time
-- **Version compatibility**: Ceph maintains backward compatibility between adjacent major versions
+- **Version compatibility**: Ceph supports rolling upgrades along the upgrade paths documented for each release
 - **CRUSH algorithm**: Data placement continues to work during partial upgrades
 
 ### Component Upgrade Order
 
-The recommended upgrade order is critical for maintaining cluster stability:
+The recommended upgrade order depends on how the cluster is deployed. For cephadm-managed clusters, use the orchestrator-driven upgrade workflow (`ceph orch upgrade start`), which upgrades managers, monitors, and then the remaining daemons automatically. The manual package-based workflow below is intended for non-cephadm clusters and follows the documented order used by recent Ceph releases:
 
 ```mermaid
 flowchart TD
@@ -43,8 +43,8 @@ flowchart TD
     B --> C[Upgrade MON Daemons]
     C --> D[Upgrade MGR Daemons]
     D --> E[Upgrade OSD Daemons]
-    E --> F[Upgrade RGW Daemons]
-    F --> G[Upgrade MDS Daemons]
+    E --> F[Upgrade MDS Daemons]
+    F --> G[Upgrade RGW Daemons]
     G --> H[Post-Upgrade Validation]
     H --> I[Enable New Features]
     I --> J[Upgrade Complete]
@@ -55,8 +55,8 @@ flowchart TD
     C -.->|Rollback Needed| L[Rollback MON]
     D -.->|Rollback Needed| M[Rollback MGR]
     E -.->|Rollback Needed| N[Rollback OSD]
-    F -.->|Rollback Needed| O[Rollback RGW]
-    G -.->|Rollback Needed| P[Rollback MDS]
+    F -.->|Rollback Needed| P[Rollback MDS]
+    G -.->|Rollback Needed| O[Rollback RGW]
 ```
 
 ## Pre-Upgrade Checklist
@@ -108,13 +108,13 @@ ceph pg dump_stuck unclean
 
 ### Check Version Compatibility
 
-Verify the current version and ensure the target version is compatible for a direct upgrade.
+Verify the current version and ensure the target version is supported by the release-specific upgrade notes. Do not rely on `ceph features` as an upgrade compatibility matrix; it shows supported feature bits for connected clients and daemons.
 
 ```bash
 # Display current Ceph version for all daemons
 ceph versions
 
-# Check version compatibility matrix
+# Show feature bits reported by clients and daemons
 ceph features
 ```
 
@@ -226,8 +226,8 @@ check_pg_status() {
 # Function to check available disk space
 check_disk_space() {
     echo -e "\n[5/8] Checking OSD disk space..."
-    MAX_USAGE=$(ceph osd df 2>/dev/null | awk 'NR>1 {print $7}' | \
-        sed 's/%//' | sort -rn | head -1)
+    MAX_USAGE=$(ceph osd df --format json 2>/dev/null | \
+        jq '[.nodes[] | select(.type == "osd") | .utilization] | max // 0')
 
     if (( $(echo "$MAX_USAGE < 80" | bc -l) )); then
         echo -e "${GREEN}PASS${NC}: Maximum OSD usage is ${MAX_USAGE}%"
@@ -256,7 +256,7 @@ check_recovery() {
 # Function to check MGR module status
 check_mgr_modules() {
     echo -e "\n[7/8] Checking MGR modules..."
-    ACTIVE_MGR=$(ceph mgr stat 2>/dev/null | jq -r '.active_name')
+    ACTIVE_MGR=$(ceph mgr dump --format json 2>/dev/null | jq -r '.active_name')
 
     if [[ -n "$ACTIVE_MGR" ]] && [[ "$ACTIVE_MGR" != "null" ]]; then
         echo -e "${GREEN}PASS${NC}: Active MGR is $ACTIVE_MGR"
@@ -334,19 +334,19 @@ sequenceDiagram
         Admin->>OSD: Wait for recovery
     end
 
+    loop For each MDS
+        Admin->>MDS: Reduce CephFS ranks to one
+        Admin->>MDS: Stop daemon
+        Admin->>MDS: Upgrade packages
+        Admin->>MDS: Start daemon
+    end
+
     loop For each RGW
         Admin->>RGW: Remove from load balancer
         Admin->>RGW: Stop daemon
         Admin->>RGW: Upgrade packages
         Admin->>RGW: Start daemon
         Admin->>RGW: Add to load balancer
-    end
-
-    loop For each MDS
-        Admin->>MDS: Fail over if active
-        Admin->>MDS: Stop daemon
-        Admin->>MDS: Upgrade packages
-        Admin->>MDS: Start daemon
     end
 
     Admin->>Admin: Unset noout flag
@@ -471,7 +471,7 @@ fi
 echo "Starting upgrade of mgr.$MGR_ID"
 
 # Step 1: Check if this is the active manager
-ACTIVE_MGR=$(ceph mgr stat | jq -r '.active_name')
+ACTIVE_MGR=$(ceph mgr dump --format json | jq -r '.active_name')
 echo "Current active manager: $ACTIVE_MGR"
 
 # Step 2: If upgrading the active manager, trigger failover first
@@ -485,7 +485,7 @@ if [[ "$ACTIVE_MGR" == "$MGR_ID" ]]; then
     sleep 5
 
     # Verify new active manager
-    NEW_ACTIVE=$(ceph mgr stat | jq -r '.active_name')
+    NEW_ACTIVE=$(ceph mgr dump --format json | jq -r '.active_name')
     echo "New active manager: $NEW_ACTIVE"
 fi
 
@@ -507,8 +507,8 @@ sudo systemctl start ceph-mgr@$MGR_ID
 
 # Step 6: Verify manager is running
 sleep 5
-MGR_STATUS=$(ceph mgr stat | jq -r '.standbys[].name' 2>/dev/null | grep "$MGR_ID" || \
-             ceph mgr stat | jq -r '.active_name' | grep "$MGR_ID" || echo "")
+MGR_STATUS=$(ceph mgr dump --format json | jq -r '.standbys[].name' 2>/dev/null | grep "$MGR_ID" || \
+             ceph mgr dump --format json | jq -r '.active_name' | grep "$MGR_ID" || echo "")
 
 if [[ -n "$MGR_STATUS" ]]; then
     echo "SUCCESS: mgr.$MGR_ID is running"
@@ -583,7 +583,8 @@ echo "=========================================="
 
 # Step 1: Get list of OSDs on this host
 echo "Identifying OSDs on $HOSTNAME..."
-OSD_LIST=$(ceph osd tree | grep -A1 "$HOSTNAME" | grep osd | awk '{print $4}' | sed 's/osd\.//')
+OSD_LIST=$(ceph osd tree --format json | \
+    jq -r --arg host "$HOSTNAME" '.nodes[] | select(.type == "host" and .name == $host) | .children[]')
 
 if [[ -z "$OSD_LIST" ]]; then
     echo "No OSDs found on $HOSTNAME"
@@ -635,7 +636,9 @@ echo "Waiting for OSDs to come online..."
 sleep 10
 
 for OSD_ID in $OSD_LIST; do
-    OSD_UP=$(ceph osd tree | grep "osd.$OSD_ID" | grep -c "up" || true)
+    OSD_UP=$(ceph osd tree --format json | \
+        jq -r --argjson id "$OSD_ID" '.nodes[] | select(.type == "osd" and .id == $id) | .status' | \
+        grep -c "^up$" || true)
     if [[ "$OSD_UP" -eq 0 ]]; then
         echo "WARNING: osd.$OSD_ID may not be up yet"
     else
@@ -858,11 +861,29 @@ echo -e "\nRGW verification complete"
 
 ## Upgrading MDS (Metadata Servers)
 
-MDS servers handle CephFS metadata operations. They support active-standby configuration for high availability during upgrades.
+MDS servers handle CephFS metadata operations. CephFS upgrades require extra preparation because active MDS ranks do not have built-in versioning for seamless mixed-version operation. Before restarting MDS daemons, reduce each file system to one active rank and disable standby-replay, then restore the original settings after the MDS upgrade is complete.
+
+### Prepare CephFS for MDS Upgrade
+
+Run these commands for each CephFS file system before upgrading MDS daemons.
+
+```bash
+# Record current values so they can be restored after the upgrade
+ceph fs get <fs_name> | grep -E "max_mds|allow_standby_replay"
+
+# Disable standby-replay daemons during the upgrade
+ceph fs set <fs_name> allow_standby_replay false
+
+# Reduce the file system to one active MDS rank
+ceph fs set <fs_name> max_mds 1
+
+# Wait until only rank 0 remains active and other ranks are standby
+ceph status
+```
 
 ### MDS Upgrade Procedure
 
-This script handles MDS upgrades with proper failover management for CephFS.
+This script upgrades one MDS daemon after the CephFS preparation above has been completed.
 
 ```bash
 #!/bin/bash
@@ -887,12 +908,12 @@ ceph mds stat
 ACTIVE_MDS=$(ceph fs status 2>/dev/null | grep "active" | awk '{print $1}')
 echo "Active MDS daemons: $ACTIVE_MDS"
 
-# Step 3: If this is an active MDS, fail it over
+# Step 3: If this is an active MDS and a standby is available, fail it over
 if echo "$ACTIVE_MDS" | grep -q "$MDS_ID"; then
     echo "mds.$MDS_ID is active. Initiating failover..."
 
     # Set the MDS to fail over to standby
-    ceph mds fail $MDS_ID
+    ceph mds fail mds.$MDS_ID
 
     # Wait for failover to complete
     echo "Waiting for failover to complete..."
@@ -934,6 +955,14 @@ ceph fs status
 echo "Upgrade complete for mds.$MDS_ID"
 ```
 
+After all MDS daemons are upgraded, restore the original CephFS settings that you recorded before the upgrade.
+
+```bash
+# Restore the original values for each file system
+ceph fs set <fs_name> max_mds <original_max_mds>
+ceph fs set <fs_name> allow_standby_replay <original_allow_standby_replay>
+```
+
 ### Verify CephFS After MDS Upgrade
 
 Ensure CephFS is fully functional after MDS upgrades.
@@ -954,14 +983,24 @@ ceph fs status
 echo -e "\n[2/5] MDS versions:"
 ceph tell mds.* version
 
+# Find the active rank-0 MDS daemon
+ACTIVE_MDS=$(ceph fs dump --format json | \
+    jq -r '.filesystems[0].mdsmap.info[] | select(.rank == 0 and .state == "up:active") | .name' | \
+    head -1)
+
+if [[ -z "$ACTIVE_MDS" ]]; then
+    echo "No active rank-0 MDS found"
+    exit 1
+fi
+
 # Verify MDS sessions
 echo -e "\n[3/5] Active MDS sessions:"
-ceph daemon mds.$(ceph fs status | grep active | awk '{print $1}') session ls 2>/dev/null | \
+ceph daemon mds.$ACTIVE_MDS session ls 2>/dev/null | \
     jq '. | length' | xargs -I {} echo "Active sessions: {}"
 
 # Check for any stuck requests
 echo -e "\n[4/5] Checking for stuck requests:"
-ceph daemon mds.$(ceph fs status | grep active | awk '{print $1}') dump_ops_in_flight 2>/dev/null | \
+ceph daemon mds.$ACTIVE_MDS dump_ops_in_flight 2>/dev/null | \
     jq '.ops | length' | xargs -I {} echo "In-flight ops: {}"
 
 # Verify mount functionality (if test mount point exists)
@@ -1089,7 +1128,7 @@ check_mgr() {
     echo -e "\n[7/10] Checking MGR status..."
     ceph mgr stat
 
-    ACTIVE=$(ceph mgr stat | jq -r '.active_name')
+    ACTIVE=$(ceph mgr dump --format json | jq -r '.active_name')
     if [[ -n "$ACTIVE" ]] && [[ "$ACTIVE" != "null" ]]; then
         echo "PASS: MGR is active ($ACTIVE)"
     else
@@ -1102,14 +1141,22 @@ check_mgr() {
 check_rados() {
     echo -e "\n[8/10] Testing RADOS functionality..."
 
+    TEST_POOL=${TEST_POOL:-$(ceph osd pool ls | head -1)}
+
+    if [[ -z "$TEST_POOL" ]]; then
+        echo "FAIL: No RADOS pool available for testing"
+        ((ERRORS++))
+        return
+    fi
+
     # Create a test object
-    echo "test-data-$(date +%s)" | rados -p .mgr put upgrade-test-object - 2>/dev/null
+    echo "test-data-$(date +%s)" | rados -p "$TEST_POOL" put upgrade-test-object - 2>/dev/null
 
     if [[ $? -eq 0 ]]; then
-        echo "PASS: RADOS write successful"
+        echo "PASS: RADOS write successful in pool $TEST_POOL"
 
         # Read the object back
-        rados -p .mgr get upgrade-test-object - 2>/dev/null
+        rados -p "$TEST_POOL" get upgrade-test-object - 2>/dev/null
         if [[ $? -eq 0 ]]; then
             echo "PASS: RADOS read successful"
         else
@@ -1118,7 +1165,7 @@ check_rados() {
         fi
 
         # Clean up
-        rados -p .mgr rm upgrade-test-object 2>/dev/null
+        rados -p "$TEST_POOL" rm upgrade-test-object 2>/dev/null
     else
         echo "FAIL: RADOS write failed"
         ((ERRORS++))
@@ -1295,7 +1342,8 @@ ceph osd set nobackfill
 ceph osd set norecover
 
 # Step 2: Get OSDs on this host
-OSD_LIST=$(ceph osd tree | grep -A1 "$HOSTNAME" | grep osd | awk '{print $4}' | sed 's/osd\.//')
+OSD_LIST=$(ceph osd tree --format json | \
+    jq -r --arg host "$HOSTNAME" '.nodes[] | select(.type == "host" and .name == $host) | .children[]')
 
 # Step 3: Stop all OSDs on host
 echo "Stopping OSDs..."
@@ -1432,14 +1480,14 @@ ceph osd set pause
 
 # Step 2: Capture current state
 echo "[2/6] Capturing current cluster state..."
-mkdir -p /backup/emergency-recovery-$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR=/backup/emergency-recovery-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$BACKUP_DIR"
 
-ceph status > $BACKUP_DIR/status.txt
-ceph osd dump > $BACKUP_DIR/osd-dump.txt
-ceph mon dump > $BACKUP_DIR/mon-dump.txt
-ceph pg dump > $BACKUP_DIR/pg-dump.txt
-ceph osd getcrushmap -o $BACKUP_DIR/crushmap.bin
+ceph status > "$BACKUP_DIR/status.txt"
+ceph osd dump > "$BACKUP_DIR/osd-dump.txt"
+ceph mon dump > "$BACKUP_DIR/mon-dump.txt"
+ceph pg dump > "$BACKUP_DIR/pg-dump.txt"
+ceph osd getcrushmap -o "$BACKUP_DIR/crushmap.bin"
 
 echo "Backup saved to $BACKUP_DIR"
 
@@ -1631,7 +1679,7 @@ Upgrading a Ceph cluster with zero downtime requires careful planning, systemati
 Key takeaways:
 
 1. **Always perform pre-upgrade checks** to ensure the cluster is healthy before starting.
-2. **Follow the correct upgrade order**: MON -> MGR -> OSD -> RGW -> MDS.
+2. **Follow the correct upgrade order**: MON -> MGR -> OSD -> MDS -> RGW for manual non-cephadm upgrades, or use `ceph orch upgrade` for cephadm-managed clusters.
 3. **Upgrade one daemon at a time** and wait for the cluster to stabilize.
 4. **Monitor cluster health continuously** throughout the upgrade process.
 5. **Have rollback procedures ready** in case issues arise.
