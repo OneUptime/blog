@@ -27,7 +27,7 @@ Before we begin, ensure you have:
 
 ### The Sharing Key Annotation
 
-MetalLB uses a special annotation called `metallb.universe.tf/allow-shared-ip` to enable IP sharing between services. When multiple services have the same sharing key value, MetalLB can assign them the same IP address.
+MetalLB uses a special annotation called `metallb.io/allow-shared-ip` to enable IP sharing between services. When multiple services have the same sharing key value, MetalLB can assign them the same IP address.
 
 The following diagram illustrates how IP sharing works in MetalLB:
 
@@ -71,8 +71,9 @@ When you configure IP sharing, MetalLB performs the following steps:
 
 1. **Checks for compatible sharing keys**: Services with matching `allow-shared-ip` annotation values are candidates for sharing
 2. **Validates port uniqueness**: Ensures no port conflicts exist between services
-3. **Assigns the same IP**: Allocates a single IP address to all compatible services
-4. **Routes traffic by port**: Incoming traffic is routed to the appropriate service based on the destination port
+3. **Checks traffic policy compatibility**: Ensures services either both use the default `Cluster` external traffic policy or select the exact same pods
+4. **Assigns the same IP**: Allocates a single IP address to all compatible services
+5. **Routes traffic by port**: Incoming traffic is routed to the appropriate service based on the destination port
 
 ## Configuring IP Sharing
 
@@ -117,7 +118,7 @@ spec:
 
 ### Step 3: Create Services with IP Sharing
 
-Now, let's create multiple services that share the same IP address. The key is to use the same value for the `metallb.universe.tf/allow-shared-ip` annotation:
+Now, let's create multiple services that share the same IP address. The key is to use the same value for the `metallb.io/allow-shared-ip` annotation:
 
 The first service handles HTTP traffic on port 80:
 
@@ -132,11 +133,10 @@ metadata:
   annotations:
     # This annotation value acts as a "sharing key"
     # All services with the same key can share an IP address
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  # Optionally request a specific IP from the pool
-  loadBalancerIP: 192.168.1.100
   ports:
     # HTTP traffic on standard port 80
     - name: http
@@ -158,11 +158,10 @@ metadata:
   name: web-https
   annotations:
     # Same sharing key as web-http service enables IP sharing
-    metallb.universe.tf/allow-shared-ip: "web-services"
+    metallb.io/allow-shared-ip: "web-services"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  # Request the same IP as the HTTP service
-  loadBalancerIP: 192.168.1.100
   ports:
     # HTTPS traffic on standard port 443
     - name: https
@@ -231,10 +230,10 @@ kind: Service
 metadata:
   name: dns-tcp
   annotations:
-    metallb.universe.tf/allow-shared-ip: "dns-services"
+    metallb.io/allow-shared-ip: "dns-services"
+    metallb.io/loadBalancerIPs: 192.168.1.101
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.101
   ports:
     # DNS over TCP - note the protocol specification
     - name: dns-tcp
@@ -251,10 +250,10 @@ kind: Service
 metadata:
   name: dns-udp
   annotations:
-    metallb.universe.tf/allow-shared-ip: "dns-services"
+    metallb.io/allow-shared-ip: "dns-services"
+    metallb.io/loadBalancerIPs: 192.168.1.101
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.101
   ports:
     # DNS over UDP - same port number but different protocol
     - name: dns-udp
@@ -297,10 +296,10 @@ kind: Service
 metadata:
   name: webapp-http
   annotations:
-    metallb.universe.tf/allow-shared-ip: "webapp-frontend"
+    metallb.io/allow-shared-ip: "webapp-frontend"
+    metallb.io/loadBalancerIPs: 192.168.1.102
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.102
   ports:
     - name: http
       port: 80
@@ -313,10 +312,10 @@ kind: Service
 metadata:
   name: webapp-https
   annotations:
-    metallb.universe.tf/allow-shared-ip: "webapp-frontend"
+    metallb.io/allow-shared-ip: "webapp-frontend"
+    metallb.io/loadBalancerIPs: 192.168.1.102
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.102
   ports:
     - name: https
       port: 443
@@ -369,10 +368,10 @@ kind: Service
 metadata:
   name: frontend
   annotations:
-    metallb.universe.tf/allow-shared-ip: "platform-services"
+    metallb.io/allow-shared-ip: "platform-services"
+    metallb.io/loadBalancerIPs: 192.168.1.103
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.103
   ports:
     - port: 80
       targetPort: 3000
@@ -385,10 +384,10 @@ kind: Service
 metadata:
   name: api-gateway
   annotations:
-    metallb.universe.tf/allow-shared-ip: "platform-services"
+    metallb.io/allow-shared-ip: "platform-services"
+    metallb.io/loadBalancerIPs: 192.168.1.103
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.103
   ports:
     - port: 8080
       targetPort: 8080
@@ -401,10 +400,10 @@ kind: Service
 metadata:
   name: prometheus
   annotations:
-    metallb.universe.tf/allow-shared-ip: "platform-services"
+    metallb.io/allow-shared-ip: "platform-services"
+    metallb.io/loadBalancerIPs: 192.168.1.103
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.103
   ports:
     - port: 9090
       targetPort: 9090
@@ -417,10 +416,10 @@ kind: Service
 metadata:
   name: grafana
   annotations:
-    metallb.universe.tf/allow-shared-ip: "platform-services"
+    metallb.io/allow-shared-ip: "platform-services"
+    metallb.io/loadBalancerIPs: 192.168.1.103
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.103
   ports:
     # Using port 3001 externally to avoid conflict with frontend's port 80
     - port: 3001
@@ -442,10 +441,10 @@ metadata:
   name: game-server-main
   annotations:
     # Sharing key groups all game server services
-    metallb.universe.tf/allow-shared-ip: "game-server"
+    metallb.io/allow-shared-ip: "game-server"
+    metallb.io/loadBalancerIPs: 192.168.1.104
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.104
   ports:
     # Main game traffic - typically uses UDP for low latency
     - name: game
@@ -460,10 +459,10 @@ kind: Service
 metadata:
   name: game-server-rcon
   annotations:
-    metallb.universe.tf/allow-shared-ip: "game-server"
+    metallb.io/allow-shared-ip: "game-server"
+    metallb.io/loadBalancerIPs: 192.168.1.104
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.104
   ports:
     # RCON (Remote Console) for admin commands - uses TCP
     - name: rcon
@@ -478,10 +477,10 @@ kind: Service
 metadata:
   name: game-server-voice
   annotations:
-    metallb.universe.tf/allow-shared-ip: "game-server"
+    metallb.io/allow-shared-ip: "game-server"
+    metallb.io/loadBalancerIPs: 192.168.1.104
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.104
   ports:
     # Voice chat - uses UDP for real-time audio
     - name: voice
@@ -518,7 +517,7 @@ graph TB
 
 ### Limitation 3: All Services Must Request the Same IP
 
-For IP sharing to work reliably, all services should specify the same `loadBalancerIP`. If one service doesn't specify an IP, MetalLB may assign a different IP:
+For IP sharing to work reliably, all services should request the same IP with MetalLB's `metallb.io/loadBalancerIPs` annotation. If one service doesn't specify an IP, MetalLB may assign a different IP:
 
 ```yaml
 # CORRECT: Both services request the same specific IP
@@ -528,10 +527,10 @@ kind: Service
 metadata:
   name: service-a
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-group"
+    metallb.io/allow-shared-ip: "shared-group"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.100  # Explicitly specified
   # ... rest of config
 
 ---
@@ -540,10 +539,10 @@ kind: Service
 metadata:
   name: service-b
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-group"
+    metallb.io/allow-shared-ip: "shared-group"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.100  # Same IP as service-a
   # ... rest of config
 ```
 
@@ -558,10 +557,10 @@ kind: Service
 metadata:
   name: stateful-app
   annotations:
-    metallb.universe.tf/allow-shared-ip: "mixed-affinity"
+    metallb.io/allow-shared-ip: "mixed-affinity"
+    metallb.io/loadBalancerIPs: 192.168.1.105
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.105
   # Enable client IP-based session affinity
   sessionAffinity: ClientIP
   sessionAffinityConfig:
@@ -580,10 +579,10 @@ kind: Service
 metadata:
   name: stateless-app
   annotations:
-    metallb.universe.tf/allow-shared-ip: "mixed-affinity"
+    metallb.io/allow-shared-ip: "mixed-affinity"
+    metallb.io/loadBalancerIPs: 192.168.1.105
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.105
   # No session affinity - requests distributed evenly
   sessionAffinity: None
   ports:
@@ -625,16 +624,16 @@ Choose sharing key names that describe the logical grouping of services:
 ```yaml
 # GOOD: Descriptive sharing keys that indicate purpose
 annotations:
-  metallb.universe.tf/allow-shared-ip: "production-web-frontend"
+  metallb.io/allow-shared-ip: "production-web-frontend"
 
 # GOOD: Environment and application context
 annotations:
-  metallb.universe.tf/allow-shared-ip: "staging-api-services"
+  metallb.io/allow-shared-ip: "staging-api-services"
 
 # AVOID: Generic or non-descriptive keys
 annotations:
-  metallb.universe.tf/allow-shared-ip: "shared"  # Too generic
-  metallb.universe.tf/allow-shared-ip: "group1"  # Not meaningful
+  metallb.io/allow-shared-ip: "shared"  # Too generic
+  metallb.io/allow-shared-ip: "group1"  # Not meaningful
 ```
 
 ### 2. Document Port Allocations
@@ -721,7 +720,7 @@ kubectl get services -A -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].sta
 
 # Show IP sharing groups (services sharing the same IP)
 echo -e "\n=== IP Sharing Analysis ==="
-kubectl get services -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXTERNAL-IP:.status.loadBalancer.ingress[0].ip,SHARING-KEY:.metadata.annotations.metallb\.universe\.tf/allow-shared-ip' | grep -v '<none>' | sort -k3
+kubectl get services -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXTERNAL-IP:.status.loadBalancer.ingress[0].ip,SHARING-KEY:.metadata.annotations.metallb\.io/allow-shared-ip' | grep -v '<none>' | sort -k3
 ```
 
 ## Troubleshooting
@@ -739,7 +738,7 @@ kubectl logs -n metallb-system deployment/controller | tail -50
 kubectl get ipaddresspools -n metallb-system -o yaml
 
 # Check if the sharing key matches other services
-kubectl get services -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.metallb\.universe\.tf/allow-shared-ip}{"\n"}{end}'
+kubectl get services -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.metallb\.io/allow-shared-ip}{"\n"}{end}'
 ```
 
 ### Issue: Traffic Not Reaching Service
@@ -753,8 +752,8 @@ kubectl get l2advertisements -n metallb-system -o yaml
 # Check which node is announcing the IP
 kubectl logs -n metallb-system -l component=speaker | grep -i "announcing\|claimed"
 
-# Verify the service endpoints are healthy
-kubectl get endpoints <service-name>
+# Verify the service EndpointSlices are healthy
+kubectl get endpointslices -l kubernetes.io/service-name=<service-name>
 
 # Test connectivity from within the cluster
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- http://<external-ip>:<port>
@@ -765,18 +764,17 @@ kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- http:
 If services sometimes get different IPs:
 
 ```yaml
-# Ensure ALL services specify the exact same loadBalancerIP
+# Ensure ALL services specify the exact same MetalLB loadBalancerIPs annotation
 # Even one service missing this field can cause inconsistencies
 apiVersion: v1
 kind: Service
 metadata:
   name: my-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "my-group"
+    metallb.io/allow-shared-ip: "my-group"
+    metallb.io/loadBalancerIPs: 192.168.1.100
 spec:
   type: LoadBalancer
-  # ALWAYS specify this for consistent IP assignment in sharing groups
-  loadBalancerIP: 192.168.1.100
   # ... rest of config
 ```
 
@@ -819,13 +817,13 @@ metadata:
   namespace: webapp
   annotations:
     # Sharing key groups this with other webapp services
-    metallb.universe.tf/allow-shared-ip: "webapp-production"
+    metallb.io/allow-shared-ip: "webapp-production"
+    metallb.io/loadBalancerIPs: 192.168.1.200
   labels:
     app: webapp
     protocol: http
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
     - name: http
       port: 80
@@ -843,13 +841,13 @@ metadata:
   name: webapp-https
   namespace: webapp
   annotations:
-    metallb.universe.tf/allow-shared-ip: "webapp-production"
+    metallb.io/allow-shared-ip: "webapp-production"
+    metallb.io/loadBalancerIPs: 192.168.1.200
   labels:
     app: webapp
     protocol: https
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
     - name: https
       port: 443
@@ -867,13 +865,13 @@ metadata:
   name: webapp-websocket
   namespace: webapp
   annotations:
-    metallb.universe.tf/allow-shared-ip: "webapp-production"
+    metallb.io/allow-shared-ip: "webapp-production"
+    metallb.io/loadBalancerIPs: 192.168.1.200
   labels:
     app: webapp
     protocol: websocket
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   # Session affinity important for WebSocket connections
   sessionAffinity: ClientIP
   sessionAffinityConfig:
@@ -891,13 +889,13 @@ spec:
 
 ## Conclusion
 
-IP sharing in MetalLB is a powerful feature that helps optimize IP address utilization in bare metal Kubernetes clusters. By using the `metallb.universe.tf/allow-shared-ip` annotation, you can efficiently share a single external IP address across multiple services while maintaining proper traffic routing based on ports.
+IP sharing in MetalLB is a powerful feature that helps optimize IP address utilization in bare metal Kubernetes clusters. By using the `metallb.io/allow-shared-ip` annotation, you can efficiently share a single external IP address across multiple services while maintaining proper traffic routing based on ports.
 
 Key takeaways:
 
 1. **Use consistent sharing keys**: All services that should share an IP must have the same annotation value
 2. **Avoid port conflicts**: Ensure each service uses unique ports within the same protocol
-3. **Specify explicit IPs**: Always use `loadBalancerIP` for predictable behavior
+3. **Specify explicit IPs**: Always use `metallb.io/loadBalancerIPs` for predictable behavior
 4. **Document your allocations**: Maintain clear records of which ports are used by which services
 5. **Monitor and troubleshoot**: Use MetalLB logs and kubectl commands to diagnose issues
 
@@ -905,6 +903,6 @@ By following the practices outlined in this guide, you can effectively manage IP
 
 ## Further Reading
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [Kubernetes Service Types](https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types)
 - [MetalLB GitHub Repository](https://github.com/metallb/metallb)
