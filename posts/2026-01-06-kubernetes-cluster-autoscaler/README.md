@@ -260,7 +260,7 @@ These parameters control Cluster Autoscaler behavior. Tune them based on your wo
 
 ### Priority Expander Configuration
 
-The priority expander lets you define preference order for node groups. Lower numbers have higher priority.
+The priority expander lets you define preference order for node groups. Higher numbers have higher priority.
 
 ```yaml
 apiVersion: v1
@@ -270,11 +270,11 @@ metadata:
   namespace: kube-system
 data:
   priorities: |-
-    10:
+    50:
       - .*spot.*           # Highest priority: prefer spot instances for cost savings
     20:
       - .*general.*        # Second priority: general purpose nodes
-    50:
+    10:
       - .*compute.*        # Lowest priority: compute optimized (more expensive)
 ```
 
