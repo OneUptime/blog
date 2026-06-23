@@ -409,16 +409,17 @@ chmod +x balenaEtcher-1.18.11-x64.AppImage
 # Add Balena's repository for automatic updates
 curl -1sLf 'https://dl.cloudsmith.io/public/balena/etcher/setup.deb.sh' | sudo -E bash
 sudo apt update
-sudo apt install balena-etcher-electron
+# Current 2.x releases use the package name "balena-etcher"
+# (older 1.x releases were published as "balena-etcher-electron")
+sudo apt install balena-etcher
 
-# Method 3: Install using Snap
-# Snap provides sandboxed installation with automatic updates
-sudo snap install balena-etcher
-
-# Method 4: Install using Flatpak
-# Flatpak also provides sandboxed installation
-flatpak install flathub io.balena_etcher
+# Method 3: Install using Flatpak
+# Flatpak provides sandboxed installation
+flatpak install flathub io.balena.etcher
 ```
+
+> Note: balenaEtcher is not published on the official Snap Store. Use the
+> AppImage, the Cloudsmith APT repository, or Flatpak above instead.
 
 ### Using Etcher
 
@@ -431,15 +432,11 @@ Etcher's interface is straightforward with three steps:
 ### Etcher CLI (for advanced users)
 
 ```bash
-# Etcher also provides a CLI tool for automation
-# Install etcher-cli
-npm install -g etcher-cli
-
-# Basic usage
-sudo etcher /path/to/image.iso --drive /dev/sdb --yes
-
-# With validation disabled (faster but less safe)
-sudo etcher /path/to/image.iso --drive /dev/sdb --yes --no-unmount --no-check
+# Note: The standalone etcher-cli npm package is deprecated and is no longer
+# bundled with current balenaEtcher releases. For scripted/automated writes,
+# use the dd command shown in Method 1 (or pv + dd) instead, which is the
+# recommended approach on headless or remote systems.
+sudo dd if=/path/to/image.iso of=/dev/sdb bs=4M status=progress conv=fsync
 ```
 
 ## Method 4: Using Ventoy for Multi-Boot USB
@@ -485,8 +482,9 @@ sudo ./Ventoy2Disk.sh -i -s /dev/sdb
 # Install with both GPT and Secure Boot
 sudo ./Ventoy2Disk.sh -i -g -s /dev/sdb
 
-# Specify partition size for Ventoy (in MB)
-# This reserves space for the boot partition
+# Preserve space at the end of the disk (in MB)
+# This leaves the specified amount of space unused by Ventoy so you can
+# create your own partition there afterwards
 sudo ./Ventoy2Disk.sh -i -r 32 /dev/sdb
 
 # Non-interactive installation (for scripting)
