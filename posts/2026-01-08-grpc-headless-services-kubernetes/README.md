@@ -193,9 +193,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
     "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/resolver"
 
     pb "github.com/example/grpc-service/proto"
 )
@@ -475,10 +473,12 @@ func init() {
 type k8sResolverBuilder struct{}
 
 func (b *k8sResolverBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+    ctx, cancel := context.WithCancel(context.Background())
     r := &k8sResolver{
         target: target,
         cc:     cc,
-        ctx:    context.Background(),
+        ctx:    ctx,
+        cancel: cancel,
     }
     go r.watch()
     return r, nil
