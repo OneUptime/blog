@@ -87,7 +87,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -170,9 +170,9 @@ resource "aws_ecr_repository" "app" {
 }
 ```
 
-## Method 2: Dynamic Provider Configuration
+## Method 2: Parameterized Provider Configuration
 
-For more flexibility, use dynamic provider configuration with variables:
+For more flexibility, use provider configurations parameterized with variables:
 
 ```hcl
 # variables.tf
@@ -230,7 +230,7 @@ terraform {
   required_providers {
     aws = {
       source                = "hashicorp/aws"
-      version               = "~> 5.0"
+      version               = "~> 6.0"
       configuration_aliases = [aws.target]
     }
   }
@@ -321,7 +321,7 @@ terraform {
     key            = "accounts/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -336,6 +336,10 @@ provider "aws" {
 
 module "vpc" {
   source = "../../modules/vpc"
+
+  providers = {
+    aws.target = aws
+  }
 
   vpc_cidr    = var.vpc_cidr
   environment = "production"
@@ -379,7 +383,11 @@ resource "aws_ecr_repository_policy" "app" {
     ]
   })
 }
+```
 
+The ECS task execution role in each target account still needs IAM permission to call `ecr:GetAuthorizationToken` before it can authenticate to Amazon ECR.
+
+```hcl
 # Use the ECR repository in production
 resource "aws_ecs_task_definition" "app" {
   provider = aws.production
@@ -402,7 +410,7 @@ resource "aws_ecs_task_definition" "app" {
 resource "aws_vpc_peering_connection" "prod_to_shared" {
   provider      = aws.production
   vpc_id        = aws_vpc.production.id
-  peer_vpc_id   = aws_vpc.shared.id
+  peer_vpc_id   = var.shared_vpc_id
   peer_owner_id = "333333333333"  # Shared account ID
   peer_region   = "us-east-1"
 
@@ -440,7 +448,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
