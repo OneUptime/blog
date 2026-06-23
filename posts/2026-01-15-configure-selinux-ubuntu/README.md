@@ -417,6 +417,10 @@ type myapp_exec_t;
 type myapp_data_t;
 type myapp_log_t;
 
+# Define the type for the PID/runtime file (referenced in myapp.fc)
+type myapp_var_run_t;
+files_pid_file(myapp_var_run_t)
+
 # Mark myapp_t as a domain type
 domain_type(myapp_t)
 
@@ -729,7 +733,7 @@ docker info | grep -i selinux
 docker run --security-opt label=enable nginx
 
 # Run container with specific SELinux labels
-docker run --security-opt label=type:container_runtime_t nginx
+docker run --security-opt label=type:container_t nginx
 
 # Disable SELinux for a specific container (not recommended)
 docker run --security-opt label=disable nginx
@@ -756,7 +760,7 @@ podman run --security-opt label=enable nginx
 # Check container process labels
 podman top container_name label
 
-# Generate SELinux policy for container
+# Generate a systemd unit for a container (preserves SELinux labels on restart)
 podman generate systemd --new --name mycontainer > mycontainer.service
 ```
 
@@ -785,13 +789,13 @@ spec:
   securityContext:
     seLinuxOptions:
       level: "s0:c123,c456"
-      type: "container_runtime_t"
+      type: "container_t"
   containers:
   - name: app
     image: nginx
     securityContext:
       seLinuxOptions:
-        type: "container_runtime_t"
+        type: "container_t"
 ```
 
 ## Common Use Cases
