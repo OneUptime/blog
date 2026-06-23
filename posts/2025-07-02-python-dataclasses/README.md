@@ -1081,7 +1081,7 @@ Combine dataclasses with Pydantic for powerful validation:
 ```python
 from dataclasses import dataclass, field
 from typing import List, Optional
-from pydantic import validator, ValidationError
+from pydantic import field_validator, ValidationError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from datetime import datetime
 import re
@@ -1104,7 +1104,8 @@ class ValidatedUser:
     tags: List[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     
-    @validator("username")
+    @field_validator("username")
+    @classmethod
     def validate_username(cls, v):
         """Validate username format."""
         if len(v) < 3:
@@ -1115,7 +1116,8 @@ class ValidatedUser:
             raise ValueError("Username must contain only letters, numbers, and underscores")
         return v.lower()  # Normalize to lowercase
     
-    @validator("email")
+    @field_validator("email")
+    @classmethod
     def validate_email(cls, v):
         """Validate email format."""
         email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -1123,14 +1125,16 @@ class ValidatedUser:
             raise ValueError("Invalid email format")
         return v.lower()
     
-    @validator("age")
+    @field_validator("age")
+    @classmethod
     def validate_age(cls, v):
         """Validate age range."""
         if v < 0 or v > 150:
             raise ValueError("Age must be between 0 and 150")
         return v
     
-    @validator("tags")
+    @field_validator("tags")
+    @classmethod
     def validate_tags(cls, v):
         """Validate and normalize tags."""
         return [tag.lower().strip() for tag in v if tag.strip()]
