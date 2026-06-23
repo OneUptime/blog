@@ -204,7 +204,7 @@ nginx -t && systemctl reload nginx
 Handle URLs with multiple parameters:
 
 ```nginx
-# Map for category slug to ID
+# Map for category ID to slug
 map $arg_cat $category_slug {
     default "";
     1       electronics;
@@ -421,24 +421,29 @@ rewrite ^/old-page$ /new-page? permanent;
 # /old-page?foo=bar -> /new-page
 
 # Replace query string with new parameters
-rewrite ^/old-page$ /new-page?newparam=1 permanent;
+rewrite ^/old-page$ /new-page?newparam=1? permanent;
 # /old-page?foo=bar -> /new-page?newparam=1
 # (original query string is replaced, not appended)
 
 # Append new parameters while preserving original query string
-rewrite ^/old-page$ /new-page?newparam=1&$query_string permanent;
+rewrite ^/old-page$ /new-page?newparam=1 permanent;
 # /old-page?foo=bar -> /new-page?newparam=1&foo=bar
 ```
 
 ### Case-Insensitive Matching
 
 ```nginx
-# Map is case-sensitive by default
+# Literal map strings are case-insensitive by default
 map $uri $redirect {
-    /Page     /new-page/;  # Only matches /Page, not /page or /PAGE
+    /Page     /new-page/;  # Matches /Page, /page, and /PAGE
 }
 
-# For case-insensitive, use regex in map
+# For case-sensitive matching, use a case-sensitive regex in map
+map $uri $redirect {
+    ~^/Page$   /new-page/;  # Only matches /Page
+}
+
+# For explicit case-insensitive regex matching, use ~*
 map $uri $redirect {
     ~*^/page$   /new-page/;  # Matches /page, /Page, /PAGE
 }
