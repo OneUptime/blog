@@ -144,7 +144,7 @@ location /api {
 
 ## Handling Regex Locations
 
-When using regex in location blocks, you cannot include a static URI in `proxy_pass`. However, you can use captured groups from the regex:
+When using regex in location blocks, you cannot include a static URI in `proxy_pass` for normal location-prefix replacement. However, you can build the full upstream URI with captured groups from the regex:
 
 ```nginx
 # This will NOT work - static URI in regex location causes configuration error
@@ -166,9 +166,9 @@ location ~ ^/api/v(\d+)/(.*)$ {
 
 ## Debugging Trailing Slash Issues
 
-### Enable Debug Logging
+### Add Access Logging
 
-Add debug logging to see exactly what Nginx sends to the backend:
+Add access logging to help correlate the original request with the selected upstream:
 
 ```nginx
 http {
@@ -202,7 +202,7 @@ tcpdump -i lo -A -s 0 'port 3000 and tcp'
 | Error | Likely Cause |
 |-------|--------------|
 | 404 Not Found | Path mismatch due to trailing slash issue |
-| 502 Bad Gateway | Backend not receiving expected path |
+| 502 Bad Gateway | Backend unavailable, unreachable, or returning an invalid response |
 | Redirect loops | Trailing slash causing path duplication |
 
 ## Production-Ready Configuration
@@ -258,7 +258,7 @@ server {
 | Location | proxy_pass | Request | Sent to Backend |
 |----------|------------|---------|-----------------|
 | `/api` | `http://backend` | `/api/users` | `/api/users` |
-| `/api` | `http://backend/` | `/api/users` | `//users` |
+| `/api` | `http://backend/` | `/api/users` | `/users` |
 | `/api/` | `http://backend` | `/api/users` | `/api/users` |
 | `/api/` | `http://backend/` | `/api/users` | `/users` |
 | `/api/` | `http://backend/v2/` | `/api/users` | `/v2/users` |
