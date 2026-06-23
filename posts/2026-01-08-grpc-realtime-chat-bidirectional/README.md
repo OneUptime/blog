@@ -1580,6 +1580,7 @@ type ReconnectingClient struct {
     *ChatClient
 
     serverAddr    string
+    user          *pb.User
     reconnectChan chan struct{}
     mu            sync.Mutex
     isConnected   bool
@@ -1593,6 +1594,7 @@ func NewReconnectingClient(serverAddr string, user *pb.User) *ReconnectingClient
     return &ReconnectingClient{
         ChatClient:    nil,
         serverAddr:    serverAddr,
+        user:          user,
         reconnectChan: make(chan struct{}, 1),
         maxRetries:    10,
         baseDelay:     time.Second,
@@ -1604,7 +1606,7 @@ func (rc *ReconnectingClient) Connect() error {
     rc.mu.Lock()
     defer rc.mu.Unlock()
 
-    client, err := NewChatClient(rc.serverAddr, rc.ChatClient.user)
+    client, err := NewChatClient(rc.serverAddr, rc.user)
     if err != nil {
         return err
     }
