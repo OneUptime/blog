@@ -161,6 +161,8 @@ jobs:
           echo "Worker: ${{ needs.build.outputs.worker-image }}"
 ```
 
+> **Heads up:** A matrix runs the same job definition multiple times, and every matrix instance writes to the *same* set of job-level outputs. GitHub does not merge these per key - the last matrix job to finish wins, and the run order is not guaranteed. In practice this means only one of `api-image`, `web-image`, or `worker-image` is reliably populated downstream. To collect distinct values from each matrix leg, upload them as artifacts and read them back in the dependent job (or use a helper such as `cloudposse/github-action-matrix-outputs-write` and `cloudposse/github-action-matrix-outputs-read`).
+
 ## JSON Outputs
 
 Pass complex data as JSON:
@@ -187,7 +189,11 @@ jobs:
           }
           EOF
           )
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          {
+            echo "matrix<<EOF"
+            echo "$MATRIX"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
   build:
     needs: analyze
@@ -265,6 +271,8 @@ jobs:
           echo "Shard 3: ${{ needs.test.outputs.result-3 }}"
           echo "Shard 4: ${{ needs.test.outputs.result-4 }}"
 ```
+
+> **Note:** This has the same matrix limitation described above - each shard overwrites the shared job outputs, so the `result-N` values are not reliably aggregated. For real result collection, upload each shard's result as an artifact and combine them in the `summary` job.
 
 ## Using Outputs with Actions
 
