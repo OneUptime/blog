@@ -62,7 +62,7 @@ spec:
   # Services without specific IP requests will use this pool
   addresses:
     - 192.168.1.100-192.168.1.150
-  # Prevent auto-assignment to preserve IPs for explicit requests
+  # Allow auto-assignment for general-purpose services
   autoAssign: true
 ---
 apiVersion: metallb.io/v1beta1
@@ -89,7 +89,7 @@ kubectl apply -f ip-address-pools.yaml
 
 ## Method 1: Using loadBalancerIP Field
 
-The most straightforward way to request a static IP is using the `spec.loadBalancerIP` field in your Service definition.
+The most straightforward way to request a static IP is using the `spec.loadBalancerIP` field in your Service definition. Kubernetes deprecated this field in v1.24 because it is under-specified and does not support dual-stack, but MetalLB still supports it for single-address requests.
 
 This method directly specifies which IP address the service should receive. The IP must be within one of your configured address pools.
 
@@ -132,7 +132,7 @@ spec:
 
 ## Method 2: Using MetalLB Annotations
 
-MetalLB provides annotations for more granular control over IP allocation. These annotations offer additional flexibility beyond the standard loadBalancerIP field.
+MetalLB provides annotations for more granular control over IP allocation. These annotations offer additional flexibility beyond the standard loadBalancerIP field and are the preferred option for dual-stack services.
 
 The following example demonstrates using annotations to request an IP from a specific pool, which is useful when you have multiple pools for different purposes.
 
@@ -148,9 +148,9 @@ metadata:
   annotations:
     # Request IP from a specific pool
     # This ensures the IP comes from our reserved static pool
-    metallb.universe.tf/address-pool: static-reserved-pool
+    metallb.io/address-pool: static-reserved-pool
     # Alternative: Request a specific IP using annotation
-    # metallb.universe.tf/loadBalancerIPs: 192.168.1.201
+    # metallb.io/loadBalancerIPs: 192.168.1.201
 spec:
   type: LoadBalancer
   ports:
@@ -177,7 +177,7 @@ metadata:
   annotations:
     # Request specific IPs for both IPv4 and IPv6
     # Comma-separated list for multiple IP assignments
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.202,2001:db8::1
+    metallb.io/loadBalancerIPs: 192.168.1.202,2001:db8::1
 spec:
   type: LoadBalancer
   # Enable dual-stack IP family policy
@@ -228,9 +228,9 @@ metadata:
   annotations:
     # The sharing key must be identical across all services sharing an IP
     # Choose a descriptive key that identifies this group of services
-    metallb.universe.tf/allow-shared-ip: "production-gateway"
+    metallb.io/allow-shared-ip: "production-gateway"
     # Specify which pool to allocate from
-    metallb.universe.tf/address-pool: static-reserved-pool
+    metallb.io/address-pool: static-reserved-pool
 spec:
   # All services sharing an IP must request the same address
   loadBalancerIP: 192.168.1.205
@@ -254,8 +254,8 @@ metadata:
   namespace: production
   annotations:
     # Same sharing key as frontend to enable IP sharing
-    metallb.universe.tf/allow-shared-ip: "production-gateway"
-    metallb.universe.tf/address-pool: static-reserved-pool
+    metallb.io/allow-shared-ip: "production-gateway"
+    metallb.io/address-pool: static-reserved-pool
 spec:
   # Request the same IP as the frontend service
   loadBalancerIP: 192.168.1.205
@@ -276,8 +276,8 @@ metadata:
   namespace: production
   annotations:
     # All three services share the same IP using this key
-    metallb.universe.tf/allow-shared-ip: "production-gateway"
-    metallb.universe.tf/address-pool: static-reserved-pool
+    metallb.io/allow-shared-ip: "production-gateway"
+    metallb.io/address-pool: static-reserved-pool
 spec:
   loadBalancerIP: 192.168.1.205
   type: LoadBalancer
@@ -294,10 +294,10 @@ spec:
 
 For IP sharing to work, the following conditions must be met:
 
-1. **Same sharing key**: All services must have identical `metallb.universe.tf/allow-shared-ip` annotation values
-2. **No port conflicts**: Services cannot use the same port numbers
-3. **Same protocol family**: All services must use the same protocol (TCP or UDP)
-4. **Same IP request**: All services must request the same `loadBalancerIP`
+1. **Same sharing key**: All services must have identical `metallb.io/allow-shared-ip` annotation values
+2. **No port conflicts**: Services cannot use the same protocol/port tuple
+3. **Compatible traffic policy**: Services must both use the default `Cluster` external traffic policy, or they must select the exact same set of pods
+4. **Same IP request**: All services must request the same `loadBalancerIP` or `metallb.io/loadBalancerIPs` address
 
 ## IP Reservation Strategies
 
@@ -352,9 +352,9 @@ spec:
   autoAssign: true
 ```
 
-### Strategy 2: Using Priority-Based Pool Selection
+### Strategy 2: Using Advertisement-Based Pool Selection
 
-Configure L2 or BGP advertisements with pool selectors for prioritized allocation:
+Configure L2 or BGP advertisements with pool selectors to control which pools are announced on which networks:
 
 ```yaml
 # l2-advertisements.yaml
@@ -391,7 +391,7 @@ spec:
 
 ### Strategy 3: Namespace-Based IP Allocation
 
-Implement namespace-specific IP ranges using pool selectors:
+Implement namespace-specific IP ranges using `serviceAllocation` selectors:
 
 ```yaml
 # namespace-pools.yaml
@@ -408,8 +408,10 @@ spec:
   addresses:
     - 10.0.100.1-10.0.100.50
   autoAssign: false
-  # Note: Namespace restriction is enforced via RBAC and naming conventions
-  # MetalLB doesn't natively support namespace selectors on pools
+  # Only services in the production namespace can use this pool
+  serviceAllocation:
+    namespaces:
+      - production
 ---
 # Staging namespace pool with separate range
 apiVersion: metallb.io/v1beta1
@@ -421,6 +423,9 @@ spec:
   addresses:
     - 10.0.200.1-10.0.200.50
   autoAssign: true
+  serviceAllocation:
+    namespaces:
+      - staging
 ```
 
 ## DNS Integration Considerations
@@ -466,7 +471,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.20.0
           args:
             # Watch for LoadBalancer services
             - --source=service
@@ -509,7 +514,7 @@ metadata:
   namespace: production
   annotations:
     # Request static IP from MetalLB
-    metallb.universe.tf/address-pool: static-reserved-pool
+    metallb.io/address-pool: static-reserved-pool
     # External-DNS annotation: create DNS record with this hostname
     # Multiple hostnames can be comma-separated
     external-dns.alpha.kubernetes.io/hostname: app.example.com,www.example.com
@@ -527,25 +532,42 @@ spec:
 
 ### CoreDNS Integration for Internal DNS
 
-For internal cluster DNS, integrate with CoreDNS:
+For internal cluster DNS, integrate with CoreDNS by adding a `hosts` block to the `coredns` ConfigMap's Corefile:
 
 ```yaml
 # coredns-configmap-addition.yaml
-# Add custom DNS entries for MetalLB-assigned static IPs
-# This ConfigMap patch adds a 'hosts' plugin block
+# Add custom DNS entries for MetalLB-assigned static IPs.
+# Merge the hosts block into your existing Corefile; do not replace
+# cluster-specific plugins or settings blindly.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  # Custom hosts file for static IP mappings
-  metallb.override: |
-    # Map internal service names to their static IPs
-    # These entries take precedence over service discovery
-    192.168.1.200 nginx.internal.cluster
-    192.168.1.205 gateway.internal.cluster
-    192.168.1.210 api.internal.cluster
+  Corefile: |
+    .:53 {
+        errors
+        health
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+            pods insecure
+            fallthrough in-addr.arpa ip6.arpa
+        }
+        hosts {
+            # Map internal service names to their static IPs
+            192.168.1.200 nginx.internal.cluster
+            192.168.1.205 gateway.internal.cluster
+            192.168.1.210 api.internal.cluster
+            fallthrough
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
 ```
 
 ## Monitoring and Troubleshooting
@@ -576,9 +598,9 @@ kubectl get svc --all-namespaces -o jsonpath='{range .items[?(@.spec.type=="Load
 **Issue: Service stuck in Pending state**
 
 ```bash
-# Check MetalLB speaker logs for allocation errors
+# Check MetalLB controller logs for allocation errors
 # Common causes: IP not in pool, IP already allocated, pool exhausted
-kubectl logs -n metallb-system -l component=speaker --tail=50
+kubectl logs -n metallb-system -l component=controller --tail=50
 
 # Verify the requested IP is within a configured pool
 kubectl get ipaddresspools -n metallb-system -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.addresses}{"\n"}{end}'
@@ -586,14 +608,14 @@ kubectl get ipaddresspools -n metallb-system -o jsonpath='{range .items[*]}{.met
 
 **Issue: IP sharing not working**
 
-```yaml
+```bash
 # Troubleshooting checklist for IP sharing
 # Verify these conditions are met:
 
 # 1. Check sharing keys match exactly (case-sensitive)
-kubectl get svc -o jsonpath='{range .items[*]}{.metadata.name}: {.metadata.annotations.metallb\.universe\.tf/allow-shared-ip}{"\n"}{end}'
+kubectl get svc -o jsonpath='{range .items[*]}{.metadata.name}: {.metadata.annotations.metallb\.io/allow-shared-ip}{"\n"}{end}'
 
-# 2. Verify no port conflicts exist
+# 2. Verify no protocol/port conflicts exist
 kubectl get svc -o jsonpath='{range .items[*]}{.metadata.name}: {range .spec.ports[*]}{.port}/{.protocol} {end}{"\n"}{end}'
 
 # 3. Confirm all services request the same IP
@@ -626,7 +648,7 @@ echo "Current IP Allocations:"
 echo "-----------------------"
 kubectl get svc --all-namespaces \
   -o custom-columns=\
-'NAMESPACE:.metadata.namespace,SERVICE:.metadata.name,EXTERNAL-IP:.status.loadBalancer.ingress[0].ip,REQUESTED-IP:.spec.loadBalancerIP,POOL:.metadata.annotations.metallb\.universe\.tf/address-pool' \
+'NAMESPACE:.metadata.namespace,SERVICE:.metadata.name,EXTERNAL-IP:.status.loadBalancer.ingress[0].ip,REQUESTED-IP:.spec.loadBalancerIP,POOL:.metadata.annotations.metallb\.io/address-pool' \
   | grep -v '<none>'
 
 echo ""
@@ -635,7 +657,7 @@ echo ""
 echo "IP Sharing Groups:"
 echo "------------------"
 kubectl get svc --all-namespaces \
-  -o jsonpath='{range .items[?(@.metadata.annotations.metallb\.universe\.tf/allow-shared-ip)]}{.metadata.namespace}/{.metadata.name}: {.metadata.annotations.metallb\.universe\.tf/allow-shared-ip}{"\n"}{end}'
+  -o jsonpath='{range .items[?(@.metadata.annotations.metallb\.io/allow-shared-ip)]}{.metadata.namespace}/{.metadata.name}: {.metadata.annotations.metallb\.io/allow-shared-ip}{"\n"}{end}'
 ```
 
 ## Best Practices Summary
@@ -699,7 +721,8 @@ metadata:
   name: ingress-nginx
   namespace: ingress-nginx
   annotations:
-    metallb.universe.tf/address-pool: prod-static-pool
+    metallb.io/address-pool: prod-static-pool
+    metallb.io/allow-shared-ip: "primary-gateway"
     external-dns.alpha.kubernetes.io/hostname: "*.example.com"
 spec:
   loadBalancerIP: 10.0.50.1
@@ -721,8 +744,8 @@ metadata:
   name: api-gateway
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: prod-static-pool
-    metallb.universe.tf/allow-shared-ip: "primary-gateway"
+    metallb.io/address-pool: prod-static-pool
+    metallb.io/allow-shared-ip: "primary-gateway"
 spec:
   loadBalancerIP: 10.0.50.1
   type: LoadBalancer
@@ -750,7 +773,7 @@ With these practices in place, your MetalLB-powered services will maintain consi
 
 ## Additional Resources
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
-- [MetalLB Configuration Reference](https://metallb.universe.tf/configuration/)
+- [MetalLB Official Documentation](https://metallb.io/)
+- [MetalLB Configuration Reference](https://metallb.io/configuration/)
 - [External-DNS Documentation](https://github.com/kubernetes-sigs/external-dns)
 - [Kubernetes Service Types](https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
