@@ -30,7 +30,7 @@ RUN npm run build
 FROM gcr.io/distroless/nodejs22
 # Copy only the compiled output from the build stage
 COPY --from=build /app/dist /app
-CMD ["server.js"]
+CMD ["/app/server.js"]
 ```
 
 Pair this with `--target` when you need to run CI tasks inside intermediate stages without bloating the final artifact.
@@ -177,8 +177,8 @@ TARGET=$(docker ps --filter name=redis -q)
 
 # Launch a debug container sharing the target's network namespace
 # nicolaka/netshoot: Popular image with networking debug tools
-# 127.0.0.1 now refers to the Redis container's localhost
-docker run -it --network container:$TARGET nicolaka/netshoot redis-cli -h 127.0.0.1
+# 127.0.0.1 now refers to the Redis container's localhost, so we can probe its port
+docker run -it --network container:$TARGET nicolaka/netshoot nc -zv 127.0.0.1 6379
 ```
 
 No port-forwards, no Compose edits, just instant shell access for diagnostics.
