@@ -64,7 +64,7 @@ haproxy -v
 
 You should see output similar to:
 ```text
-HAProxy version 2.8.x-xxxxxx-xx
+HAProxy version 2.4.x-xxxxxx-xx on Ubuntu 22.04 or 2.8.x-xxxxxx-xx on Ubuntu 24.04
 ```
 
 ### Enable HAProxy to start on boot
@@ -86,7 +86,7 @@ The main HAProxy configuration file is located at `/etc/haproxy/haproxy.cfg`. Be
 sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.backup
 ```
 
-Now, let us create a basic load balancer configuration. This example assumes you have two web servers running on ports 8080 and 8081.
+Now, let us create a basic load balancer configuration. This example assumes you have three web servers running on port 8080.
 
 ### Open the configuration file for editing
 ```bash
@@ -128,7 +128,7 @@ defaults
     log global
     option httplog
 
-    # Log null connections (connections with no data)
+    # Do not log null connections (connections with no data)
     option dontlognull
 
     # Connection timeouts
@@ -160,7 +160,7 @@ frontend http_front
     # Add X-Forwarded-For header to preserve client IP
     option forwardfor
 
-    # Enable HTTP connection closing after each request
+    # Close the server-side HTTP connection after each response
     option http-server-close
 
     # Add custom header to identify the load balancer
@@ -399,7 +399,7 @@ global
     ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
 
-    # Enable SSL session caching for performance
+    # Set the default Diffie-Hellman parameter size
     tune.ssl.default-dh-param 2048
 
 frontend https_front
@@ -421,11 +421,11 @@ frontend tcp_front
 
     # Use TCP content inspection to route based on SNI
     tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
+    tcp-request content accept if { req.ssl_hello_type 1 }
 
     # Route to appropriate backend based on SNI hostname
-    use_backend web1_backend if { req_ssl_sni -i web1.example.com }
-    use_backend web2_backend if { req_ssl_sni -i web2.example.com }
+    use_backend web1_backend if { req.ssl_sni -i web1.example.com }
+    use_backend web2_backend if { req.ssl_sni -i web2.example.com }
 
     default_backend default_ssl_backend
 
@@ -711,8 +711,8 @@ frontend http_front
     # Track request rates per source IP
     stick-table type ip size 100k expire 30s store http_req_rate(10s)
 
-    # Track current connection count
-    tcp-request connection track-sc0 src
+    # Track each HTTP request for the source IP
+    http-request track-sc0 src
 
     # Deny if request rate exceeds 100 requests per 10 seconds
     acl rate_abuse sc0_http_req_rate gt 100
@@ -803,7 +803,6 @@ frontend http_https_front
     http-response set-header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     http-response set-header X-Frame-Options "SAMEORIGIN"
     http-response set-header X-Content-Type-Options "nosniff"
-    http-response set-header X-XSS-Protection "1; mode=block"
 
     # Redirect HTTP to HTTPS
     http-request redirect scheme https code 301 unless { ssl_fc }
@@ -814,7 +813,7 @@ frontend http_https_front
 
     # Rate limiting
     stick-table type ip size 100k expire 30s store http_req_rate(10s)
-    tcp-request connection track-sc0 src
+    http-request track-sc0 src
     acl rate_abuse sc0_http_req_rate gt 100
     http-request deny deny_status 429 if rate_abuse
 
