@@ -358,16 +358,8 @@ speaker:
 
   priorityClassName: system-node-critical
 
-  # Enable host networking for better performance
-  hostNetwork: true
-
-  # Security context for performance features
-  securityContext:
-    capabilities:
-      add:
-        - NET_ADMIN
-        - NET_RAW
-        - SYS_ADMIN
+  # The official chart runs speaker pods with hostNetwork: true and
+  # the required container capabilities by default.
 
 controller:
   resources:
@@ -457,9 +449,9 @@ metadata:
   name: high-throughput-service
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: high-throughput-pool
-    metallb.universe.tf/allow-shared-ip: "high-throughput-group"
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.100"
+    metallb.io/address-pool: high-throughput-pool
+    metallb.io/allow-shared-ip: "high-throughput-group"
+    metallb.io/loadBalancerIPs: "192.168.1.100"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -524,7 +516,7 @@ spec:
 
 ### Switching to IPVS Mode
 
-IPVS mode provides better performance than iptables for high-throughput scenarios. Update kube-proxy configuration:
+IPVS mode can provide better scaling characteristics than iptables in large high-throughput scenarios. Update kube-proxy configuration:
 
 ```yaml
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
@@ -589,6 +581,24 @@ lsmod | grep ip_vs
 Deploy ServiceMonitor for MetalLB metrics collection:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-speaker-metrics
+  namespace: metallb-system
+  labels:
+    app.kubernetes.io/name: metallb
+    app.kubernetes.io/component: speaker
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: metallb
+    app.kubernetes.io/component: speaker
+  ports:
+    - name: metricshttps
+      port: 9120
+      targetPort: metricshttps
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -598,10 +608,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: metallb
+      app.kubernetes.io/component: speaker
   endpoints:
-    - port: monitoring
+    - port: metricshttps
       interval: 15s
       path: /metrics
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 ### Key Metrics to Monitor
@@ -749,7 +763,7 @@ metadata:
   name: iperf3-lb
   namespace: benchmark
   annotations:
-    metallb.universe.tf/address-pool: high-throughput-pool
+    metallb.io/address-pool: high-throughput-pool
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -932,7 +946,9 @@ network:
       mtu: 9000
       addresses:
         - 192.168.1.10/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
 ```
 
 ### Busy Polling Configuration
