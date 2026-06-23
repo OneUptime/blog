@@ -613,7 +613,7 @@ func ProcessTaskWithCustomTiming(taskType string, task Task) error {
 
 ## Working with Summaries
 
-Summaries calculate configurable quantiles over a sliding time window. They are useful when you need precise quantile calculations on the client side.
+Summaries calculate configurable quantile estimates over a sliding time window. They are useful when you need client-side quantile calculations with configured error bounds.
 
 ### Creating a Basic Summary
 
@@ -746,9 +746,9 @@ HISTOGRAM ADVANTAGES:
 - Better for alerting on SLOs
 
 SUMMARY ADVANTAGES:
-- Accurate quantile calculation on the client side
+- Client-side quantile estimation with configured error bounds
 - No need to predefine buckets
-- Useful when you need exact quantiles without server-side aggregation
+- Useful when you need client-side quantiles without server-side aggregation
 
 RECOMMENDATION:
 Use Histograms in most cases because:
@@ -757,7 +757,7 @@ Use Histograms in most cases because:
 3. You can always calculate quantiles using histogram_quantile()
 
 Use Summaries only when:
-1. You have a single instance and need precise quantiles
+1. You have a single instance and need client-side quantile estimates
 2. You cannot predict the value distribution to set buckets
 3. Client-side quantile calculation is specifically required
 */
@@ -776,9 +776,9 @@ var httpDuration = prometheus.NewHistogramVec(
 var preciseLatency = prometheus.NewSummary(
     prometheus.SummaryOpts{
         Name: "precise_latency_seconds",
-        Help: "Use when you need exact client-side quantiles",
+        Help: "Use when you need client-side quantile estimates",
         Objectives: map[float64]float64{
-            0.99: 0.001, // Very precise 99th percentile
+            0.99: 0.001, // 99th percentile estimate with tight error bounds
         },
     },
 )
@@ -1017,6 +1017,7 @@ import (
     "os"
     "os/signal"
     "runtime"
+    "strconv"
     "syscall"
     "time"
 
@@ -1129,7 +1130,7 @@ func (m *Metrics) InstrumentHandler(name string, handler http.HandlerFunc) http.
 
         // Record metrics
         duration := time.Since(start).Seconds()
-        status := http.StatusText(wrapped.statusCode)
+        status := strconv.Itoa(wrapped.statusCode)
 
         m.RequestsTotal.WithLabelValues(name, r.Method, status).Inc()
         m.RequestDuration.WithLabelValues(name, r.Method).Observe(duration)
@@ -1261,7 +1262,7 @@ sum(rate(myapp_http_requests_total{status=~"5.."}[5m]))
 
 # 95th percentile latency from histogram
 histogram_quantile(0.95,
-  rate(myapp_http_request_duration_seconds_bucket[5m])
+  sum(rate(myapp_http_request_duration_seconds_bucket[5m])) by (le)
 )
 
 # 95th percentile latency by handler
@@ -1316,7 +1317,7 @@ func TestRequestsCounter(t *testing.T) {
     expected := `
         # HELP myapp_http_requests_total Total HTTP requests by handler and status
         # TYPE myapp_http_requests_total counter
-        myapp_http_requests_total{handler="test",method="GET",status="OK"} 1
+        myapp_http_requests_total{handler="test",method="GET",status="200"} 1
     `
 
     if err := testutil.CollectAndCompare(
