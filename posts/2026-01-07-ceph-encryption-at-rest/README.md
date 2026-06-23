@@ -8,7 +8,7 @@ Description: A complete guide to enabling and managing encryption at rest for Ce
 
 ---
 
-Data security is paramount in modern infrastructure, and encryption at rest is a fundamental requirement for protecting sensitive information stored in your Ceph clusters. This comprehensive guide covers everything you need to know about configuring encryption at rest for Ceph storage, from OSD-level encryption with dm-crypt/LUKS to RBD image encryption and enterprise key management with HashiCorp Vault.
+Data security is paramount in modern infrastructure, and encryption at rest is a fundamental requirement for protecting sensitive information stored in your Ceph clusters. This comprehensive guide covers everything you need to know about configuring encryption at rest for Ceph storage, from OSD-level encryption with dm-crypt/LUKS to RBD image encryption and enterprise key management with HashiCorp Vault for supported RGW and Ceph CSI workflows.
 
 ## Table of Contents
 
@@ -71,9 +71,9 @@ flowchart TB
     FSEnc --> OSDEnc
     RGW --> OSDEnc
 
-    RBDEnc --> Vault
+    RBDEnc --> LocalKeys
+    RGW --> Vault
     OSDEnc --> LocalKeys
-    LocalKeys --> Vault
 
     OSDEnc --> OSD1
     OSDEnc --> OSD2
@@ -86,22 +86,20 @@ flowchart TB
 sequenceDiagram
     participant Admin as Administrator
     participant Ceph as Ceph Cluster
-    participant Vault as HashiCorp Vault
+    participant MON as Ceph Monitors
     participant OSD as OSD Node
 
-    Admin->>Vault: Initialize Vault & Enable Transit
-    Admin->>Vault: Create Encryption Key
-    Admin->>Ceph: Configure Vault Integration
+    Admin->>Ceph: Create OSD with --dmcrypt or encrypted: true
 
-    Note over Ceph,Vault: During OSD Creation
-    Ceph->>Vault: Request Data Encryption Key (DEK)
-    Vault-->>Ceph: Return Wrapped DEK
-    Ceph->>OSD: Store Encrypted DEK
-    OSD->>OSD: Initialize dm-crypt with DEK
+    Note over Ceph,MON: During OSD Creation
+    Ceph->>Ceph: Generate dm-crypt and lockbox keys
+    Ceph->>MON: Store dm-crypt key in monitor config-key store
+    Ceph->>OSD: Prepare encrypted logical volumes
+    OSD->>OSD: Initialize dm-crypt with OSD key
 
-    Note over OSD,Vault: During OSD Startup
-    OSD->>Vault: Request DEK Unwrap
-    Vault-->>OSD: Return Unwrapped DEK
+    Note over OSD,MON: During OSD Startup
+    OSD->>MON: Retrieve dm-crypt key
+    MON-->>OSD: Return dm-crypt key
     OSD->>OSD: Unlock dm-crypt Volume
 ```
 
@@ -116,7 +114,7 @@ Before enabling OSD encryption, ensure you have the following:
 - Ceph cluster version Nautilus (14.x) or later
 - cryptsetup package installed on all OSD nodes
 - Sufficient CPU resources (AES-NI support recommended)
-- Key management solution (Vault recommended for production)
+- Key handling and recovery procedures for the monitor config-key store
 
 The following command installs the required cryptsetup package on Debian/Ubuntu systems:
 
@@ -141,7 +139,7 @@ Starting with Ceph Nautilus, `ceph-volume` is the recommended tool for OSD deplo
 
 #### Method 1: Encrypt New OSDs During Creation
 
-The following command creates a new encrypted OSD using the lvm batch method. The --dmcrypt flag enables LUKS encryption:
+The following command creates a new encrypted OSD using the lvm create method. The --dmcrypt flag enables LUKS encryption:
 
 ```bash
 # Create encrypted OSD using ceph-volume lvm
@@ -202,25 +200,11 @@ sudo ceph orch apply -i osd-encrypted-spec.yaml
 
 ### Configuring dm-crypt Options
 
-Ceph provides several configuration options to customize the dm-crypt encryption settings. Add these to your ceph.conf file:
+For modern `ceph-volume` and cephadm deployments, encryption is enabled at OSD creation time with `--dmcrypt` or `encrypted: true`. `ceph-volume` intentionally exposes only a small set of encryption controls, so do not rely on old `ceph-disk` options such as `osd_dmcrypt_type` to turn encryption on for new OSDs. Use deployment specs and verify the resulting OSD metadata instead:
 
-```ini
-# /etc/ceph/ceph.conf
-# dm-crypt encryption configuration options
-
-[global]
-# Enable OSD encryption cluster-wide
-# When set to true, all new OSDs will be encrypted by default
-osd_dmcrypt_type = luks2
-
-# Specify the encryption cipher and mode
-# aes-xts-plain64 is recommended for disk encryption
-# 256-bit key provides strong security with good performance
-osd_dmcrypt_key_size = 256
-
-# LUKS key slot to use (0-7 available)
-# Slot 0 is typically used for the primary key
-osd_dmcrypt_key_slot = 0
+```bash
+# Confirm ceph-volume recorded encryption metadata for OSDs
+sudo ceph-volume lvm list --format json | jq '.[] | .[].tags | {osd_id: ."ceph.osd_id", encrypted: ."ceph.encrypted"}'
 ```
 
 ### Managing Encryption Keys
@@ -249,10 +233,9 @@ After deploying encrypted OSDs, verify the encryption status:
 # Look for entries corresponding to your OSD devices
 sudo dmsetup status | grep crypt
 
-# Verify LUKS header on an OSD device
-# This confirms the device is properly encrypted
-# Replace /dev/sdb with your actual OSD device
-sudo cryptsetup luksDump /dev/sdb
+# Verify a LUKS header on the encrypted logical volume or partition
+# Use the encrypted device path reported by ceph-volume, not necessarily the raw disk
+sudo cryptsetup luksDump /dev/ceph-<vg-id>/osd-block-<osd-uuid>
 ```
 
 Query the OSD metadata to confirm encryption is enabled:
@@ -265,17 +248,16 @@ sudo ceph-volume lvm list --format json | jq '.[] | {osd_id: .[0].tags["ceph.osd
 
 ## Key Management with HashiCorp Vault
 
-For production environments, integrating Ceph with HashiCorp Vault provides enterprise-grade key management with features like automatic key rotation, audit logging, and centralized secrets management.
+For production environments, HashiCorp Vault can provide enterprise-grade key management for supported Ceph workflows such as RGW server-side encryption with SSE-KMS and Ceph CSI encrypted volumes. Ceph OSD dm-crypt keys are managed through Ceph's monitor config-key workflow, not directly through Vault transit.
 
 ### Vault Integration Architecture
 
 ```mermaid
 flowchart LR
     subgraph CephCluster["Ceph Cluster"]
-        MON["Monitor"]
-        OSD1["OSD 1"]
-        OSD2["OSD 2"]
-        MGR["Manager"]
+        RGW["Object Gateway"]
+        CSI["Ceph CSI"]
+        RBD["RBD Volumes"]
     end
 
     subgraph VaultCluster["Vault Cluster"]
@@ -289,10 +271,9 @@ flowchart LR
         Consul["Consul/etcd"]
     end
 
-    MON <-->|Token Auth| VaultPrimary
-    OSD1 <-->|Wrap/Unwrap Keys| Transit
-    OSD2 <-->|Wrap/Unwrap Keys| Transit
-    MGR -->|Audit Logs| KV
+    RGW <-->|SSE-KMS Key Operations| Transit
+    CSI <-->|Volume Passphrases| KV
+    CSI --> RBD
     VaultPrimary --> Consul
     VaultStandby --> Consul
     VaultPrimary <-.->|Replication| VaultStandby
@@ -300,12 +281,12 @@ flowchart LR
 
 ### Setting Up Vault for Ceph Integration
 
-First, install and initialize HashiCorp Vault. The following commands set up a production-ready Vault server:
+First, install and initialize HashiCorp Vault. The following commands show the basic server setup steps; production deployments should also follow HashiCorp's hardening, TLS, storage, backup, and upgrade guidance:
 
 ```bash
 # Download and install HashiCorp Vault
 # Always verify the checksum for security
-export VAULT_VERSION="1.15.4"
+export VAULT_VERSION="2.0.3"
 wget https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip
 unzip vault_${VAULT_VERSION}_linux_amd64.zip
 sudo mv vault /usr/local/bin/
@@ -363,7 +344,7 @@ Create a systemd service file for Vault:
 
 [Unit]
 Description=HashiCorp Vault
-Documentation=https://www.vaultproject.io/docs/
+Documentation=https://developer.hashicorp.com/vault/docs/
 Requires=network-online.target
 After=network-online.target
 ConditionFileNotEmpty=/etc/vault.d/vault.hcl
@@ -416,7 +397,7 @@ vault operator unseal <key-3>
 
 ### Enabling the Transit Secrets Engine
 
-The Transit secrets engine provides encryption as a service, which Ceph uses for key wrapping:
+The Transit secrets engine provides encryption as a service. Ceph RGW can use Vault transit as a KMS backend for S3 server-side encryption:
 
 ```bash
 # Authenticate to Vault with root token
@@ -427,17 +408,14 @@ vault login <root-token>
 # Transit provides cryptographic operations without exposing keys
 vault secrets enable transit
 
-# Create an encryption key for Ceph OSD encryption
+# Create an encryption key for RGW SSE-KMS
 # aes256-gcm96 provides authenticated encryption
-vault write -f transit/keys/ceph-osd-key \
-    type=aes256-gcm96 \
-    exportable=false \
-    allow_plaintext_backup=false
-
-# Create a separate key for RBD image encryption
-vault write -f transit/keys/ceph-rbd-key \
+vault write -f transit/keys/mybucketkey \
     type=aes256-gcm96 \
     exportable=false
+
+# Ceph CSI's Vault KMS examples use Vault KV to store per-volume passphrases
+vault secrets enable -path=secret kv-v2
 ```
 
 ### Creating Vault Policies for Ceph
@@ -445,66 +423,52 @@ vault write -f transit/keys/ceph-rbd-key \
 Create fine-grained policies to control Ceph's access to Vault:
 
 ```hcl
-# ceph-osd-policy.hcl
-# Vault policy for Ceph OSD encryption operations
+# ceph-rgw-policy.hcl
+# Vault policy for RGW SSE-KMS operations
 
-# Allow encrypting and decrypting using the OSD key
-path "transit/encrypt/ceph-osd-key" {
+# Allow encrypting and decrypting using the RGW key
+path "transit/encrypt/mybucketkey" {
   capabilities = ["update"]
 }
 
-path "transit/decrypt/ceph-osd-key" {
-  capabilities = ["update"]
-}
-
-# Allow generating data encryption keys wrapped with the master key
-path "transit/datakey/plaintext/ceph-osd-key" {
+path "transit/decrypt/mybucketkey" {
   capabilities = ["update"]
 }
 
 # Allow rewrapping keys during key rotation
-path "transit/rewrap/ceph-osd-key" {
+path "transit/rewrap/mybucketkey" {
   capabilities = ["update"]
 }
 
 # Read-only access to key configuration
-path "transit/keys/ceph-osd-key" {
+path "transit/keys/mybucketkey" {
   capabilities = ["read"]
 }
 ```
 
-Create a policy for RBD encryption:
+Create a policy for Ceph CSI volume passphrase storage:
 
 ```hcl
-# ceph-rbd-policy.hcl
-# Vault policy for RBD image encryption operations
+# ceph-csi-policy.hcl
+# Vault policy for Ceph CSI encrypted volume passphrases
 
-# Allow all transit operations for RBD encryption
-path "transit/encrypt/ceph-rbd-key" {
-  capabilities = ["update"]
+path "secret/data/ceph-csi/*" {
+  capabilities = ["create", "read", "update", "delete"]
 }
 
-path "transit/decrypt/ceph-rbd-key" {
-  capabilities = ["update"]
-}
-
-path "transit/datakey/plaintext/ceph-rbd-key" {
-  capabilities = ["update"]
-}
-
-path "transit/rewrap/ceph-rbd-key" {
-  capabilities = ["update"]
+path "secret/metadata/ceph-csi/*" {
+  capabilities = ["read", "list", "delete"]
 }
 ```
 
 Apply the policies to Vault:
 
 ```bash
-# Write the OSD policy to Vault
-vault policy write ceph-osd-policy ceph-osd-policy.hcl
+# Write the RGW policy to Vault
+vault policy write ceph-rgw-policy ceph-rgw-policy.hcl
 
-# Write the RBD policy to Vault
-vault policy write ceph-rbd-policy ceph-rbd-policy.hcl
+# Write the Ceph CSI policy to Vault
+vault policy write ceph-csi-policy ceph-csi-policy.hcl
 
 # Create a combined policy for general Ceph operations
 vault policy write ceph-admin-policy - <<EOF
@@ -519,7 +483,7 @@ path "sys/policies/acl/*" {
 EOF
 ```
 
-### Configuring AppRole Authentication for Ceph
+### Configuring AppRole Authentication for RGW
 
 AppRole is the recommended authentication method for machine-to-machine communication:
 
@@ -527,48 +491,49 @@ AppRole is the recommended authentication method for machine-to-machine communic
 # Enable AppRole authentication method
 vault auth enable approle
 
-# Create an AppRole for Ceph OSD nodes
-# The role defines how Ceph authenticates to Vault
-vault write auth/approle/role/ceph-osd \
-    token_policies="ceph-osd-policy" \
+# Create an AppRole for RGW gateways
+# The role defines how RGW authenticates to Vault
+vault write auth/approle/role/ceph-rgw \
+    token_policies="ceph-rgw-policy" \
     token_ttl=1h \
     token_max_ttl=4h \
     secret_id_ttl=0 \
     secret_id_num_uses=0
 
 # Get the Role ID (public identifier)
-vault read auth/approle/role/ceph-osd/role-id
+vault read auth/approle/role/ceph-rgw/role-id
 
 # Generate a Secret ID (keep this secure)
-vault write -f auth/approle/role/ceph-osd/secret-id
+vault write -f auth/approle/role/ceph-rgw/secret-id
 ```
 
 ### Configuring Ceph to Use Vault
 
-Configure Ceph to integrate with Vault for key management:
+Configure RGW to integrate with Vault for S3 SSE-KMS key management:
 
 ```ini
 # /etc/ceph/ceph.conf
-# Vault integration configuration
+# RGW Vault integration configuration
 
 [global]
-# RGW/RBD encryption key management with Vault
-rgw_crypt_vault_addr = https://vault.example.com:8200
-rgw_crypt_vault_auth = agent
-rgw_crypt_vault_prefix = /v1/transit/
-rgw_crypt_vault_secret_engine = transit
-rgw_crypt_vault_token_file = /etc/ceph/vault-token
+# RGW server-side encryption key management with Vault
+rgw crypt s3 kms backend = vault
+rgw crypt vault addr = https://vault.example.com:8200
+rgw crypt vault auth = agent
+rgw crypt vault prefix = /v1/transit
+rgw crypt vault secret engine = transit
+rgw crypt vault token file = /etc/ceph/vault-token
 
 # SSL/TLS configuration for Vault communication
-rgw_crypt_vault_ssl_cacert = /etc/ceph/vault-ca.pem
-rgw_crypt_vault_verify_ssl = true
+rgw crypt vault ssl cacert = /etc/ceph/vault-ca.pem
+rgw crypt vault verify ssl = true
 
 # Namespace support for Vault Enterprise
-# rgw_crypt_vault_namespace = ceph-cluster
+# rgw crypt vault namespace = ceph-cluster
 
 [client.rgw.gateway-01]
 # Per-gateway Vault configuration (optional)
-rgw_crypt_vault_addr = https://vault.example.com:8200
+rgw crypt vault addr = https://vault.example.com:8200
 ```
 
 Create a Vault agent configuration for automatic token renewal:
@@ -616,7 +581,7 @@ template {
   source      = "/etc/vault.d/templates/ceph-cert.tpl"
   destination = "/etc/ceph/ceph-cert.pem"
   perms       = 0644
-  command     = "systemctl reload ceph-osd.target"
+  command     = "systemctl reload ceph-radosgw.target"
 }
 ```
 
@@ -626,19 +591,19 @@ Implement automatic key rotation for enhanced security:
 
 ```bash
 # Configure automatic key rotation every 30 days
-# This rotates the master key in Vault, not the data encryption keys
-vault write transit/keys/ceph-osd-key/config \
+# This rotates the master key in Vault, not previously encrypted object data
+vault write transit/keys/mybucketkey/config \
     auto_rotate_period=720h
 
 # Manually trigger key rotation if needed
-vault write -f transit/keys/ceph-osd-key/rotate
+vault write -f transit/keys/mybucketkey/rotate
 
 # View key versions after rotation
-vault read transit/keys/ceph-osd-key
+vault read transit/keys/mybucketkey
 
 # Rewrap data encryption keys with the new master key version
-# This should be done after key rotation for existing OSDs
-vault write transit/rewrap/ceph-osd-key \
+# This is available for ciphertexts managed by applications using Vault transit
+vault write transit/rewrap/mybucketkey \
     ciphertext="vault:v1:base64encodedciphertext..."
 ```
 
@@ -657,7 +622,6 @@ flowchart TB
     end
 
     subgraph KeyStore["Key Storage"]
-        Vault["HashiCorp Vault"]
         LocalKey["Local Keyfile"]
     end
 
@@ -668,8 +632,7 @@ flowchart TB
 
     App --> RBDClient
     RBDClient --> LUKS2
-    LUKS2 -->|Get Key| Vault
-    LUKS2 -->|Alternative| LocalKey
+    LUKS2 -->|Read passphrase| LocalKey
     LUKS2 -->|Encrypted I/O| RBDImage
     RBDImage --> Pool
 ```
@@ -684,10 +647,10 @@ Create an encrypted RBD image with LUKS2 format:
 rbd create mypool/encrypted-image --size 100G
 
 # Format the image with LUKS2 encryption
-# You will be prompted to enter a passphrase
 # The passphrase is used to derive the encryption key
-rbd encryption format mypool/encrypted-image luks2 \
-    --encryption-passphrase-file <(echo -n "your-secure-passphrase")
+printf '%s' 'your-secure-passphrase' > rbd-passphrase.bin
+chmod 600 rbd-passphrase.bin
+rbd encryption format mypool/encrypted-image luks2 rbd-passphrase.bin
 ```
 
 For automated deployments, use a keyfile instead of a passphrase:
@@ -695,35 +658,35 @@ For automated deployments, use a keyfile instead of a passphrase:
 ```bash
 # Generate a random encryption key
 # Use /dev/random for higher entropy (slower but more secure)
-dd if=/dev/urandom of=/etc/ceph/rbd-encryption-key bs=32 count=1
+dd if=/dev/urandom of=rbd-encryption-key bs=32 count=1
 
 # Set restrictive permissions on the key file
-chmod 600 /etc/ceph/rbd-encryption-key
+chmod 600 rbd-encryption-key
 
 # Create and format encrypted image using keyfile
 rbd create mypool/encrypted-volume --size 500G
-rbd encryption format mypool/encrypted-volume luks2 \
-    --encryption-passphrase-file /etc/ceph/rbd-encryption-key
+rbd encryption format mypool/encrypted-volume luks2 rbd-encryption-key
 ```
 
 ### Mounting Encrypted RBD Images
 
-Map and mount encrypted RBD images on client systems:
+Map and mount encrypted RBD images on client systems. RBD image encryption is not supported by the `krbd` kernel module, so use the NBD mapper:
 
 ```bash
-# Map the encrypted RBD image to a local block device
+# Map the encrypted RBD image to a local NBD block device
 # This requires the encryption passphrase or keyfile
-sudo rbd device map mypool/encrypted-volume \
-    --encryption-format luks2 \
-    --encryption-passphrase-file /etc/ceph/rbd-encryption-key
+sudo modprobe nbd
+sudo rbd device map -t nbd \
+    -o encryption-passphrase-file=rbd-encryption-key \
+    mypool/encrypted-volume
 
-# The mapped device will be available at /dev/rbdX
+# The mapped device will be available at /dev/nbdX
 # Create a filesystem on the device (first time only)
-sudo mkfs.ext4 /dev/rbd0
+sudo mkfs.ext4 /dev/nbd0
 
 # Create mount point and mount the encrypted volume
 sudo mkdir -p /mnt/encrypted-data
-sudo mount /dev/rbd0 /mnt/encrypted-data
+sudo mount /dev/nbd0 /mnt/encrypted-data
 ```
 
 ### Layered Encryption for Snapshots
@@ -744,8 +707,7 @@ rbd clone mypool/encrypted-volume@snap1 mypool/encrypted-clone
 
 # Format the clone with its own encryption layer
 # This adds a second encryption layer for additional security
-rbd encryption format mypool/encrypted-clone luks2 \
-    --encryption-passphrase-file /etc/ceph/clone-encryption-key
+rbd encryption format mypool/encrypted-clone luks2 clone-encryption-key
 ```
 
 ### RBD Encryption with Kubernetes
@@ -772,7 +734,7 @@ parameters:
   # Enable RBD encryption
   encrypted: "true"
 
-  # Encryption passphrase from Kubernetes Secret
+  # KMS configuration ID from the Ceph CSI KMS ConfigMap
   encryptionKMSID: vault-kms
 
   # CSI driver options
@@ -806,11 +768,10 @@ data:
         "vaultAddress": "https://vault.example.com:8200",
         "vaultAuthPath": "/v1/auth/kubernetes/login",
         "vaultRole": "ceph-csi-role",
-        "vaultPassphraseRoot": "/v1/secret/data",
+        "vaultBackend": "kv-v2",
+        "vaultPassphraseRoot": "/v1/secret",
         "vaultPassphrasePath": "ceph-csi/",
-        "vaultCAVerify": "true",
-        "vaultCAFromSecret": "vault-ca-cert",
-        "tenantConfigName": "ceph-csi-kms-config"
+        "vaultCAVerify": "true"
       }
     }
 ```
@@ -840,27 +801,25 @@ CephFS provides file-level encryption using fscrypt, the Linux filesystem encryp
 
 ### CephFS fscrypt Setup
 
-Enable fscrypt support in your CephFS filesystem:
+Prepare fscrypt on a CephFS client:
 
 ```bash
-# Check if the MDS supports fscrypt
-ceph fs get cephfs | grep -i encrypt
+# Verify the client kernel and CephFS client support fscrypt
+uname -r
 
-# Enable fscrypt feature on the filesystem
-# NOTE: This requires a recent kernel (5.4+) on clients
-ceph fs set cephfs allow_new_snaps true
+# Initialize system-wide fscrypt configuration
+sudo fscrypt setup
 
-# Set the encryption policy for new files
-# This is done on the client side
-fscrypt setup /mnt/cephfs
+# Initialize fscrypt metadata on the mounted CephFS filesystem
+sudo fscrypt setup /mnt/cephfs
 ```
 
 Configure fscrypt on the CephFS mount:
 
 ```bash
-# Mount CephFS with encryption support
-sudo mount -t ceph mon1:6789:/ /mnt/cephfs \
-    -o name=admin,secret=<key>,test_dummy_encryption
+# Mount CephFS with the kernel client
+sudo mount -t ceph name@.cephfs=/ /mnt/cephfs \
+    -o mon_addr=mon1:6789,secret=<key>
 
 # Setup fscrypt on the mounted filesystem
 sudo fscrypt setup /mnt/cephfs
@@ -885,11 +844,11 @@ Encryption at rest is often required for regulatory compliance. Here are key con
 | HIPAA | Encryption of PHI at rest | Full disk encryption with key management |
 | GDPR | Appropriate technical measures | Encryption + access controls |
 | SOC 2 | Encryption of sensitive data | OSD encryption + audit logging |
-| FedRAMP | FIPS 140-2 validated encryption | FIPS-compliant dm-crypt configuration |
+| FedRAMP | FIPS 140-2/140-3 validated encryption | OS-level FIPS mode with validated cryptographic modules |
 
-### FIPS 140-2 Compliance Configuration
+### FIPS Compliance Configuration
 
-For environments requiring FIPS 140-2 compliance:
+For environments requiring FIPS 140-2 or FIPS 140-3 compliance:
 
 ```bash
 # Enable FIPS mode on the operating system first
@@ -899,26 +858,18 @@ sudo fips-mode-setup --enable
 # Verify FIPS mode is active
 cat /proc/sys/crypto/fips_enabled
 
-# Configure dm-crypt to use FIPS-approved algorithms only
-# Update ceph.conf to use approved ciphers
-# AES-256 in XTS mode is FIPS approved
+# Verify dm-crypt, OpenSSL, and other crypto providers come from validated OS packages
 ```
 
-Update Ceph configuration for FIPS compliance:
+Update Ceph configuration to require encrypted messenger v2 connections:
 
 ```ini
 # /etc/ceph/ceph.conf
-# FIPS 140-2 compliant encryption settings
+# Encrypted messenger settings
 
 [global]
-# Use FIPS-approved cipher
-osd_dmcrypt_type = luks2
-
-# AES-256 key size for FIPS compliance
-osd_dmcrypt_key_size = 256
-
-# Ensure only FIPS-approved algorithms are used
-# This requires FIPS mode enabled at OS level
+# Require encrypted messenger v2 connections
+# This requires FIPS mode enabled and configured at OS level when FIPS validation is required
 ms_cluster_mode = secure
 ms_service_mode = secure
 ms_client_mode = secure
@@ -974,8 +925,8 @@ echo "Checking Vault Integration..."
 vault status > /dev/null 2>&1
 if [ $? -eq 0 ]; then
     echo "  Vault Status: CONNECTED"
-    # Check key exists
-    vault read transit/keys/ceph-osd-key > /dev/null 2>&1
+    # Check RGW KMS key exists
+    vault read transit/keys/mybucketkey > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "  Encryption Key: PRESENT"
     else
@@ -1009,10 +960,10 @@ pre_deployment:
 
 deployment:
   - name: "Enable OSD encryption"
-    config: "osd_dmcrypt_type = luks2"
+    config: "ceph-volume --dmcrypt or cephadm encrypted: true"
 
-  - name: "Configure Vault integration"
-    notes: "Required for production key management"
+  - name: "Configure Vault integration where supported"
+    notes: "Use for RGW SSE-KMS or Ceph CSI encrypted volumes, not direct OSD dm-crypt key management"
 
   - name: "Enable audit logging"
     command: "vault audit enable file"
@@ -1022,7 +973,7 @@ post_deployment:
     command: "ceph-volume lvm list"
 
   - name: "Test key rotation"
-    command: "vault write -f transit/keys/ceph-osd-key/rotate"
+    command: "vault write -f transit/keys/mybucketkey/rotate"
 
   - name: "Document key recovery procedures"
     notes: "Essential for disaster recovery"
@@ -1171,10 +1122,10 @@ sudo ceph-volume lvm activate --dmcrypt <osd-id> <osd-uuid>
 
 ### Vault Connection Failures
 
-Debug Vault connectivity issues:
+Debug Vault connectivity issues for RGW SSE-KMS or Ceph CSI encrypted volumes:
 
 ```bash
-# Test Vault connectivity from OSD node
+# Test Vault connectivity from an RGW or CSI node
 curl -k https://vault.example.com:8200/v1/sys/health
 
 # Verify Vault token is valid
@@ -1183,8 +1134,8 @@ vault token lookup
 # Check Vault agent logs
 sudo journalctl -u vault-agent
 
-# Test transit encryption manually
-vault write transit/encrypt/ceph-osd-key plaintext=$(echo -n "test" | base64)
+# Test transit encryption manually for the RGW key
+vault write transit/encrypt/mybucketkey plaintext=$(echo -n "test" | base64)
 ```
 
 ### RBD Encryption Mount Failures
@@ -1192,21 +1143,19 @@ vault write transit/encrypt/ceph-osd-key plaintext=$(echo -n "test" | base64)
 Troubleshoot RBD encryption issues:
 
 ```bash
-# Check if the RBD image has encryption header
+# Check the RBD image details
 rbd info mypool/encrypted-volume
 
-# Verify encryption format
-rbd encryption format mypool/encrypted-volume --format=json | jq .
+# Map through rbd-nbd, which performs the encryption load operation
+sudo modprobe nbd
 
 # Test with verbose output
-sudo rbd device map mypool/encrypted-volume \
-    --encryption-format luks2 \
-    --encryption-passphrase-file /etc/ceph/rbd-key \
-    --debug-rbd 20 \
-    --debug-ms 1
+sudo rbd --debug-rbd 20 --debug-ms 1 device map -t nbd \
+    -o encryption-passphrase-file=rbd-encryption-key \
+    mypool/encrypted-volume
 
-# Check kernel RBD module logs
-dmesg | grep rbd
+# Check NBD and RBD logs
+dmesg | grep -E 'nbd|rbd'
 ```
 
 ### Performance Degradation After Enabling Encryption
@@ -1241,7 +1190,7 @@ Document and test key recovery procedures:
 # Emergency key recovery procedure
 
 # IMPORTANT: This procedure requires access to:
-# 1. Vault root token or recovery keys
+# 1. Ceph administrator access to the monitor config-key store
 # 2. Original OSD UUID
 
 OSD_UUID=$1
@@ -1265,14 +1214,14 @@ else
     echo "Key not found in Ceph config-key store"
 fi
 
-# Step 2: Check Vault backup if available
+# Step 2: Check an operator-managed backup if available
 echo ""
-echo "Checking Vault backup..."
-vault kv get secret/ceph-backup/osd/$OSD_UUID 2>/dev/null
+echo "Checking operator-managed key backup..."
+ceph config-key get backup/dm-crypt/osd/$OSD_UUID/luks 2>/dev/null
 if [ $? -eq 0 ]; then
-    echo "Backup key found in Vault"
+    echo "Backup key found"
 else
-    echo "No backup key found in Vault"
+    echo "No backup key found"
 fi
 
 echo ""
@@ -1283,12 +1232,12 @@ echo "Consult your disaster recovery documentation."
 
 ## Conclusion
 
-Ceph encryption at rest provides robust protection for your stored data through multiple complementary approaches. By implementing OSD-level encryption with dm-crypt/LUKS, integrating with HashiCorp Vault for enterprise key management, and utilizing RBD image encryption for granular control, you can meet the most stringent security and compliance requirements.
+Ceph encryption at rest provides robust protection for your stored data through multiple complementary approaches. By implementing OSD-level encryption with dm-crypt/LUKS, integrating with HashiCorp Vault where Ceph supports it, and utilizing RBD image encryption for granular control, you can meet stringent security and compliance requirements.
 
 Key takeaways:
 
 1. **Layer your encryption**: Use OSD encryption as the foundation and add RBD/CephFS encryption for additional security
-2. **Invest in key management**: HashiCorp Vault or similar KMS is essential for production deployments
+2. **Invest in key management**: Protect Ceph's monitor config-key store for OSD encryption, and use a KMS such as HashiCorp Vault for supported RGW and CSI workflows
 3. **Plan for performance**: Enable AES-NI and tune your configuration for encrypted workloads
 4. **Document recovery procedures**: Encryption is only as good as your ability to recover from key loss
 5. **Maintain compliance**: Regular audits and key rotation are crucial for regulatory compliance
@@ -1297,8 +1246,10 @@ With proper planning and implementation, encryption at rest adds minimal overhea
 
 ## Additional Resources
 
-- [Ceph Documentation: Encryption](https://docs.ceph.com/en/latest/rados/configuration/osd-config-ref/#encryption)
-- [HashiCorp Vault Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit)
+- [Ceph Documentation: ceph-volume encryption](https://docs.ceph.com/en/latest/ceph-volume/lvm/encryption/)
+- [Ceph Documentation: RBD image encryption](https://docs.ceph.com/en/latest/rbd/rbd-encryption/)
+- [Ceph Documentation: RGW Vault integration](https://docs.ceph.com/en/latest/radosgw/vault/)
+- [HashiCorp Vault Transit Secrets Engine](https://developer.hashicorp.com/vault/docs/secrets/transit)
 - [dm-crypt/LUKS Documentation](https://gitlab.com/cryptsetup/cryptsetup/-/wikis/home)
 - [NIST SP 800-111: Guide to Storage Encryption](https://csrc.nist.gov/publications/detail/sp/800-111/final)
 - [PCI DSS Encryption Requirements](https://www.pcisecuritystandards.org/)
