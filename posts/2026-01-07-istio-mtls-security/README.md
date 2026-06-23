@@ -98,8 +98,8 @@ flowchart TB
 
 Before enabling mTLS, ensure you have:
 
-- A Kubernetes cluster (version 1.22+)
-- Istio installed (version 1.18+ recommended)
+- A Kubernetes cluster compatible with your Istio release (Istio 1.30 supports Kubernetes 1.32-1.36)
+- A supported Istio release installed (Istio 1.30 is current at validation time)
 - kubectl configured to communicate with your cluster
 - istioctl installed for debugging and verification
 
@@ -180,7 +180,7 @@ This policy enables STRICT mTLS for all services across the entire mesh. Apply t
 # mesh-wide-strict-mtls.yaml
 # This policy applies to ALL workloads in the mesh
 # It ensures no plaintext traffic is accepted anywhere
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -208,7 +208,7 @@ This policy enables STRICT mTLS for all services within a specific namespace whi
 # namespace-strict-mtls.yaml
 # Apply STRICT mTLS only to the production namespace
 # Other namespaces remain unaffected by this policy
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -234,7 +234,7 @@ This policy enables STRICT mTLS for a specific workload using label selectors. U
 # workload-strict-mtls.yaml
 # Apply STRICT mTLS only to the payment-service workload
 # Other workloads in the same namespace are not affected
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-service-mtls
@@ -258,13 +258,13 @@ kubectl apply -f workload-strict-mtls.yaml
 
 ### Port-Level mTLS Configuration
 
-This policy allows different mTLS modes for different ports on the same workload. Useful for services with mixed protocol requirements:
+This policy allows different mTLS modes for different workload ports on the same workload. Useful for services with mixed protocol requirements:
 
 ```yaml
 # port-level-mtls.yaml
 # Configure different mTLS modes for different ports
 # Useful when some ports need plaintext (e.g., health checks)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-gateway-mtls
@@ -277,6 +277,7 @@ spec:
     # Default mode for all ports not explicitly specified
     mode: STRICT
   # Override mTLS mode for specific ports
+  # These keys are workload/container ports, not Kubernetes Service ports
   portLevelMtls:
     # Health check port - allow plaintext for external load balancers
     8080:
@@ -320,7 +321,7 @@ This policy enables PERMISSIVE mode mesh-wide, allowing gradual migration of ser
 # mesh-wide-permissive-mtls.yaml
 # Enable PERMISSIVE mode for the entire mesh
 # This allows both mTLS and plaintext traffic during migration
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -328,8 +329,9 @@ metadata:
 spec:
   mtls:
     # PERMISSIVE mode accepts both mTLS and plaintext
-    # Istio will automatically use mTLS when both sides support it
-    # Falls back to plaintext for non-mesh services
+    # With Auto mTLS, Istio clients automatically use mTLS
+    # when the destination has a sidecar and fall back to plaintext
+    # for destinations without sidecars
     mode: PERMISSIVE
 ```
 
@@ -349,7 +351,7 @@ This configuration sets namespace-wide PERMISSIVE mode while enforcing STRICT mo
 # Namespace-wide PERMISSIVE mode with STRICT exceptions
 ---
 # Base policy: PERMISSIVE for the namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -360,7 +362,7 @@ spec:
 ---
 # Exception: STRICT mode for sensitive workloads
 # The payment service must always use mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-strict
@@ -421,17 +423,12 @@ spec:
     defaultConfig:
       # Control how often proxies check for certificate updates
       proxyMetadata:
-        # Certificate rotation check interval
-        ISTIO_META_CERT_REFRESH_INTERVAL: "10m"
-  values:
-    pilot:
-      env:
-        # Workload certificate validity duration
+        # Workload certificate lifetime requested by the proxy agent
         # Default is 24h, adjust based on security requirements
-        WORKLOAD_CERT_TTL: "24h"
-        # Grace period before expiration to trigger rotation
-        # Certificate will be renewed when remaining validity < this value
-        CITADEL_SELF_SIGNED_CA_GRACE_PERIOD_PERCENTILE: "20"
+        SECRET_TTL: "24h"
+        # Rotation starts when the remaining lifetime reaches this ratio
+        # Default is 0.5, meaning roughly halfway through the certificate lifetime
+        SECRET_GRACE_PERIOD_RATIO: "0.5"
 ```
 
 ### Using Custom CA Certificates
@@ -451,8 +448,8 @@ metadata:
 # Kubernetes TLS secret type
 type: Opaque
 data:
-  # Base64-encoded CA certificate
-  # This is the root certificate that signs all workload certs
+  # Base64-encoded signing CA certificate
+  # This is the intermediate CA certificate used by Istio CA
   ca-cert.pem: <base64-encoded-ca-cert>
 
   # Base64-encoded CA private key
@@ -460,7 +457,7 @@ data:
   ca-key.pem: <base64-encoded-ca-key>
 
   # Base64-encoded certificate chain
-  # Full chain from workload cert to root CA
+  # Certificate chain from the signing CA to the root CA
   cert-chain.pem: <base64-encoded-cert-chain>
 
   # Base64-encoded root certificate
@@ -533,18 +530,19 @@ Before migration, understand your current mTLS status across all workloads:
 
 ```bash
 # Check current mTLS status across all namespaces
-# This shows which connections are using mTLS
+# This detects invalid or conflicting Istio configuration
 istioctl analyze --all-namespaces
 ```
 
-This script checks the detailed mTLS status for each namespace:
+This script checks whether pods are in the mesh and which TLS policies apply:
 
 ```bash
-# Check mTLS status for all pods in a namespace
-# Replace NAMESPACE with your target namespace
+# Describe Istio configuration for pods in each namespace
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== Namespace: $ns ==="
-  istioctl x authz check -n $ns 2>/dev/null || echo "No sidecars in namespace"
+  for pod in $(kubectl get pods -n "$ns" -o jsonpath='{.items[*].metadata.name}'); do
+    istioctl x describe pod "$pod" -n "$ns" 2>/dev/null || true
+  done
 done
 ```
 
@@ -576,7 +574,7 @@ Start with PERMISSIVE mode to allow both mTLS and plaintext traffic during migra
 # migration-permissive.yaml
 # Phase 1: Enable PERMISSIVE mode mesh-wide
 # This ensures no service disruption during migration
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -595,20 +593,19 @@ kubectl apply -f migration-permissive.yaml
 
 ### Step 4: Configure DestinationRules
 
-DestinationRules configure how clients connect to services. Enable mTLS for outgoing connections:
+DestinationRules configure how clients connect to services. Istio's Auto mTLS normally configures mTLS automatically for in-mesh traffic when no DestinationRule TLS settings are present. If you explicitly create DestinationRules for in-mesh services, make sure they use `ISTIO_MUTUAL`:
 
 ```yaml
 # destination-rule-mtls.yaml
-# Configure clients to use mTLS when connecting to services
-# This applies to all services in the mesh
-apiVersion: networking.istio.io/v1beta1
+# Configure clients to use mTLS when connecting to one in-mesh service
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: default
-  namespace: istio-system
+  name: payment-service-mtls
+  namespace: production
 spec:
-  # Apply to all hosts in the mesh
-  host: "*.local"
+  # Use the Kubernetes service host from Istio's service registry
+  host: payment-service.production.svc.cluster.local
   trafficPolicy:
     tls:
       # ISTIO_MUTUAL uses Istio's certificate system
@@ -616,10 +613,10 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Apply the DestinationRule to enable mTLS for client connections:
+Apply the DestinationRule when you need to override or supplement Auto mTLS:
 
 ```bash
-# Apply DestinationRule for mTLS
+# Apply DestinationRule for explicit mTLS
 kubectl apply -f destination-rule-mtls.yaml
 ```
 
@@ -628,18 +625,18 @@ kubectl apply -f destination-rule-mtls.yaml
 Verify that mTLS is active between services before proceeding:
 
 ```bash
-# Check if mTLS is active between services
-# This shows the TLS mode for each connection
-istioctl proxy-config listeners <POD_NAME>.<NAMESPACE> -o json | \
-  grep -A 5 "transport_socket"
+# Check the policies and DestinationRules that apply to a pod
+# The output includes whether the pod receives STRICT mTLS
+istioctl x describe pod <POD_NAME> -n <NAMESPACE>
 ```
 
 This command provides detailed verification of mTLS status between two workloads:
 
 ```bash
 # Verify mTLS between specific services
-# Shows authentication status for connections
-istioctl x authz check <POD_NAME>.<NAMESPACE>
+# Look for tlsMode: istio in the destination endpoint metadata
+istioctl proxy-config endpoint <CLIENT_POD>.<CLIENT_NAMESPACE> \
+  --cluster "outbound|<PORT>||<SERVICE>.<SERVICE_NAMESPACE>.svc.cluster.local" -o json
 ```
 
 ### Step 6: Gradually Enable STRICT Mode
@@ -652,7 +649,7 @@ Once all services have sidecars, gradually enable STRICT mode namespace by names
 # Start with less critical namespaces
 ---
 # Enable STRICT for staging first
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -662,7 +659,7 @@ spec:
     mode: STRICT
 ---
 # After validation, enable for production
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -680,7 +677,7 @@ After validating all namespaces, enable mesh-wide STRICT mode:
 # mesh-strict-final.yaml
 # Final phase: Mesh-wide STRICT mTLS
 # Only apply after all services are verified working
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -707,16 +704,16 @@ Check the overall mTLS status in your mesh:
 
 ```bash
 # Check overall mTLS status
-# This provides a summary of mTLS configuration across the mesh
+# This detects invalid or conflicting Istio configuration
 istioctl analyze --all-namespaces
 ```
 
 Verify the authentication policy for a specific workload:
 
 ```bash
-# Verify authentication policy for a workload
+# Verify authentication and destination policies for a workload
 # This shows what policies apply to a specific pod
-istioctl authn tls-check <POD_NAME>.<NAMESPACE>
+istioctl x describe pod <POD_NAME> -n <NAMESPACE>
 ```
 
 ### Checking Connection Encryption
@@ -725,10 +722,13 @@ This command verifies that connections are actually encrypted between services:
 
 ```bash
 # Verify TLS connection between services
-# This shows the TLS version and cipher being used
-istioctl proxy-config endpoint <POD_NAME>.<NAMESPACE> -o json | \
-  jq '.[] | select(.status.healthStatus.healthy==true) |
-  {cluster: .cluster.name, tlsMode: .metadata.filterMetadata["istio"].tlsMode}'
+# This shows whether destination endpoints are marked for Istio mTLS
+istioctl proxy-config endpoint <CLIENT_POD>.<CLIENT_NAMESPACE> \
+  --cluster "outbound|<PORT>||<SERVICE>.<SERVICE_NAMESPACE>.svc.cluster.local" -o json | \
+  jq '.[] | {
+    address: .endpoint.address,
+    tlsMode: .metadata.filterMetadata["istio"].tlsMode
+  }'
 ```
 
 ### Using Kiali for Visual Verification
@@ -823,7 +823,7 @@ When some services use protocols that don't support mTLS well:
 # protocol-exception.yaml
 # Create exception for services with protocol issues
 # Some legacy protocols may not work well with mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-service-exception
@@ -845,7 +845,7 @@ Configure exceptions for services that communicate with external endpoints:
 # external-service-config.yaml
 # Configure DestinationRule for external services
 # External services outside the mesh cannot use Istio mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -869,7 +869,7 @@ Always begin migration with PERMISSIVE mode to avoid service disruption:
 
 ```yaml
 # Always start here for new deployments
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -886,7 +886,7 @@ Roll out STRICT mode namespace by namespace for controlled migration:
 ```yaml
 # Roll out STRICT mode to namespaces one at a time
 # This limits blast radius if issues occur
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -916,7 +916,7 @@ spec:
       # Alert when certificate expires within 4 hours
       # Certificates should auto-rotate well before this
       expr: |
-        (istio_agent_cert_expiry_timestamp_seconds - time()) < 14400
+        cert_expiry_seconds < 14400
       for: 5m
       labels:
         severity: warning
@@ -936,7 +936,7 @@ Maintain documentation of any mTLS exceptions with clear comments:
 # Owner: payments-team@company.com
 # Review Date: 2026-06-01
 # Ticket: SECURITY-1234
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-processor-exception
@@ -949,6 +949,8 @@ spec:
   selector:
     matchLabels:
       app: payment-processor-client
+  mtls:
+    mode: STRICT
   portLevelMtls:
     8443:
       mode: DISABLE
@@ -962,7 +964,7 @@ Combine mTLS with AuthorizationPolicies for defense in depth:
 # authorization-with-mtls.yaml
 # Combine mTLS with authorization policies
 # mTLS provides encryption; authorization provides access control
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-policy
