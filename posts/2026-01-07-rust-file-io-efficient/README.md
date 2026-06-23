@@ -19,13 +19,18 @@ Understanding when to use buffered I/O, memory mapping, or async operations is k
 ```rust
 // Comparison of I/O approaches
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, Read};
 
-// BAD: Unbuffered - many syscalls
-fn read_unbuffered(path: &str) -> std::io::Result<Vec<u8>> {
+// BAD: Byte-by-byte - many syscalls
+fn read_byte_by_byte(path: &str) -> std::io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?; // Still reads all at once
+
+    let mut byte = [0u8; 1];
+    while file.read(&mut byte)? != 0 {
+        buffer.push(byte[0]);
+    }
+
     Ok(buffer)
 }
 
@@ -42,7 +47,12 @@ fn read_buffered(path: &str) -> std::io::Result<Vec<u8>> {
 fn read_buffered_with_hint(path: &str) -> std::io::Result<Vec<u8>> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
-    let size = metadata.len() as usize;
+    let size = usize::try_from(metadata.len()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "File is too large to fit in memory on this platform",
+        )
+    })?;
 
     let mut reader = BufReader::with_capacity(64 * 1024, file); // 64KB buffer
     let mut buffer = Vec::with_capacity(size); // Pre-allocate
@@ -93,7 +103,14 @@ where
 pub fn count_lines(path: &Path) -> std::io::Result<usize> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    Ok(reader.lines().count())
+
+    let mut count = 0;
+    for line in reader.lines() {
+        line?;
+        count += 1;
+    }
+
+    Ok(count)
 }
 
 /// Search for pattern in file
@@ -101,19 +118,13 @@ pub fn grep(path: &Path, pattern: &str) -> std::io::Result<Vec<(usize, String)>>
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
-    let matches: Vec<_> = reader
-        .lines()
-        .enumerate()
-        .filter_map(|(idx, line)| {
-            line.ok().and_then(|l| {
-                if l.contains(pattern) {
-                    Some((idx + 1, l))
-                } else {
-                    None
-                }
-            })
-        })
-        .collect();
+    let mut matches = Vec::new();
+    for (idx, line) in reader.lines().enumerate() {
+        let line = line?;
+        if line.contains(pattern) {
+            matches.push((idx + 1, line));
+        }
+    }
 
     Ok(matches)
 }
@@ -199,7 +210,7 @@ For random access or very large files, memory mapping is often the fastest appro
 // src/mmap.rs
 // Memory-mapped file I/O
 
-use memmap2::{Mmap, MmapMut, MmapOptions};
+use memmap2::{Mmap, MmapOptions};
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 
@@ -215,10 +226,14 @@ pub fn search_mmap(path: &Path, pattern: &[u8]) -> std::io::Result<Vec<usize>> {
     let mmap = read_mmap(path)?;
     let data: &[u8] = &mmap;
 
+    if pattern.is_empty() {
+        return Ok((0..=data.len()).collect());
+    }
+
     let mut positions = Vec::new();
     let mut start = 0;
 
-    while start + pattern.len() <= data.len() {
+    while start <= data.len().saturating_sub(pattern.len()) {
         if let Some(pos) = data[start..].windows(pattern.len()).position(|w| w == pattern) {
             positions.push(start + pos);
             start += pos + 1;
@@ -237,14 +252,21 @@ pub fn modify_mmap(path: &Path, offset: usize, data: &[u8]) -> std::io::Result<(
     // SAFETY: Ensure exclusive access to file
     let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
 
-    if offset + data.len() > mmap.len() {
+    let end = offset.checked_add(data.len()).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Write offset would overflow",
+        )
+    })?;
+
+    if end > mmap.len() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "Write would exceed file bounds",
         ));
     }
 
-    mmap[offset..offset + data.len()].copy_from_slice(data);
+    mmap[offset..end].copy_from_slice(data);
     mmap.flush()?;
 
     Ok(())
@@ -257,18 +279,29 @@ pub fn parallel_search_mmap(path: &Path, pattern: &[u8]) -> std::io::Result<Vec<
     let mmap = read_mmap(path)?;
     let data: &[u8] = &mmap;
 
+    if pattern.is_empty() {
+        return Ok((0..=data.len()).collect());
+    }
+
     const CHUNK_SIZE: usize = 1024 * 1024; // 1MB chunks
 
     let results: Vec<Vec<usize>> = data
         .par_chunks(CHUNK_SIZE)
         .enumerate()
-        .map(|(chunk_idx, chunk)| {
-            let base_offset = chunk_idx * CHUNK_SIZE;
+        .map(|(chunk_idx, _)| {
+            let chunk_start = chunk_idx * CHUNK_SIZE;
+            let chunk_end = (chunk_start + CHUNK_SIZE).min(data.len());
+            let search_end = (chunk_end + pattern.len() - 1).min(data.len());
+            let search_region = &data[chunk_start..search_end];
             let mut positions = Vec::new();
 
-            for (i, window) in chunk.windows(pattern.len()).enumerate() {
+            for (i, window) in search_region.windows(pattern.len()).enumerate() {
+                let pos = chunk_start + i;
+                if pos >= chunk_end {
+                    break;
+                }
                 if window == pattern {
-                    positions.push(base_offset + i);
+                    positions.push(pos);
                 }
             }
 
@@ -284,14 +317,14 @@ pub fn parallel_search_mmap(path: &Path, pattern: &[u8]) -> std::io::Result<Vec<
 
 ## Async File I/O with Tokio
 
-For async applications, use `tokio::fs` for non-blocking file operations.
+For async applications, use `tokio::fs` so file operations can run without blocking async tasks directly. Most operating systems do not provide fully asynchronous filesystem APIs, so Tokio performs many filesystem operations on a blocking thread pool behind the scenes.
 
 ```rust
 // src/async_io.rs
 // Async file I/O with tokio
 
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use std::path::Path;
 
 /// Async read entire file
@@ -367,8 +400,7 @@ Handle temporary files safely with automatic cleanup.
 // src/temp_files.rs
 // Temporary file handling
 
-use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
 
 /// Create temp file with data
@@ -412,11 +444,12 @@ Prevent concurrent access issues with file locking.
 
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::Path;
 
 /// Exclusive lock for writing
 pub fn write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
@@ -426,7 +459,7 @@ pub fn write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<()> {
     file.lock_exclusive()?;
 
     // Write data
-    std::io::Write::write_all(&mut &file, data)?;
+    file.write_all(data)?;
 
     // Lock released when file is dropped
     Ok(())
@@ -434,20 +467,20 @@ pub fn write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<()> {
 
 /// Shared lock for reading
 pub fn read_with_lock(path: &Path) -> std::io::Result<Vec<u8>> {
-    let file = File::open(path)?;
+    let mut file = File::open(path)?;
 
     // Acquire shared lock (multiple readers allowed)
     file.lock_shared()?;
 
     let mut data = Vec::new();
-    std::io::Read::read_to_end(&mut &file, &mut data)?;
+    file.read_to_end(&mut data)?;
 
     Ok(data)
 }
 
 /// Try lock without blocking
 pub fn try_write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<bool> {
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
@@ -455,7 +488,7 @@ pub fn try_write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<bool> {
 
     match file.try_lock_exclusive() {
         Ok(()) => {
-            std::io::Write::write_all(&mut &file, data)?;
+            file.write_all(data)?;
             Ok(true)
         }
         Err(_) => Ok(false), // Lock held by another process
@@ -469,7 +502,7 @@ pub fn try_write_with_lock(path: &Path, data: &[u8]) -> std::io::Result<bool> {
 
 | Practice | When to Use |
 |----------|-------------|
-| BufReader/BufWriter | Always for sequential I/O |
+| BufReader/BufWriter | Small or repeated sequential reads and writes |
 | Memory mapping | Random access, very large files |
 | Async I/O | In async applications |
 | Chunked processing | Files larger than memory |
