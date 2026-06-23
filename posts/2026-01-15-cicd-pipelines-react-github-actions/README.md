@@ -15,7 +15,7 @@ Modern React applications demand automated pipelines that catch bugs early, enfo
 GitHub Actions offers several advantages for React projects:
 
 - **Native integration**: No external CI service configuration needed
-- **Free tier**: 2,000 minutes/month for public repositories
+- **Free tier**: Unlimited minutes for public repositories (private repos get 2,000 minutes/month on the Free plan)
 - **Marketplace**: Pre-built actions for common tasks
 - **Matrix builds**: Test across Node versions simultaneously
 - **Caching**: Speed up builds with dependency caching
