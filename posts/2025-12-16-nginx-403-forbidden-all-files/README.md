@@ -192,7 +192,7 @@ sudo restorecon -Rv /var/www/html/uploads/
 # Allow Nginx to connect to network (for proxy_pass)
 sudo setsebool -P httpd_can_network_connect 1
 
-# Allow Nginx to connect to specific ports
+# Allow Nginx to listen on a non-standard HTTP port
 sudo semanage port -a -t http_port_t -p tcp 8080
 ```
 
@@ -305,7 +305,7 @@ server {
 
 ### Solution 7: Handle Symbolic Links
 
-Nginx may not follow symlinks by default:
+Nginx follows symlinks by default, but symlink targets can still cause 403 errors if the target path has restrictive permissions, wrong SELinux context, or `disable_symlinks` is enabled:
 
 ```bash
 # Check for symbolic links
@@ -315,7 +315,7 @@ ls -la /var/www/html/
 lrwxrwxrwx 1 www-data www-data 24 Dec 16 10:00 index.html -> /home/user/site/index.html
 ```
 
-Configure Nginx to follow symlinks:
+Configure Nginx to allow symlinks if `disable_symlinks` was enabled:
 
 ```nginx
 server {
@@ -340,7 +340,8 @@ Create a script to diagnose 403 errors:
 # debug_403.sh - Diagnose Nginx 403 Forbidden errors
 
 WEB_ROOT="${1:-/var/www/html}"
-NGINX_USER=$(grep -E "^user" /etc/nginx/nginx.conf | awk '{print $2}' | tr -d ';')
+NGINX_USER=$(grep -E "^[[:space:]]*user[[:space:]]" /etc/nginx/nginx.conf | awk '{print $2}' | tr -d ';')
+NGINX_USER="${NGINX_USER:-nobody}"
 
 echo "=== Nginx 403 Forbidden Debugger ==="
 echo ""
