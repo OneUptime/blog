@@ -573,7 +573,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.monitoring:9090
-        metricName: grpc_server_handled_total
         threshold: "100"
         query: |
           sum(rate(grpc_server_handled_total{
@@ -584,7 +583,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.monitoring:9090
-        metricName: grpc_server_started_total
         threshold: "50"
         query: |
           sum(grpc_server_started_total{namespace="grpc-services"})
