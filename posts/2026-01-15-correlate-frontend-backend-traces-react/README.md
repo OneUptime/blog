@@ -959,7 +959,8 @@ function UserProfile({ userId }: { userId: string }) {
 
 ```typescript
 // src/tracing/sampler.ts
-import { Sampler, SamplingResult, SamplingDecision, Context, Link, Attributes } from '@opentelemetry/api';
+import { Context, Link, Attributes } from '@opentelemetry/api';
+import { Sampler, SamplingResult, SamplingDecision } from '@opentelemetry/sdk-trace-base';
 
 // Sample based on URL patterns
 export class UrlBasedSampler implements Sampler {
@@ -1032,7 +1033,8 @@ const sampler = new UrlBasedSampler({
 
 ```typescript
 // src/tracing/sessionSampler.ts
-import { Sampler, SamplingResult, SamplingDecision, Context, Link, Attributes } from '@opentelemetry/api';
+import { Context, Link, Attributes } from '@opentelemetry/api';
+import { Sampler, SamplingResult, SamplingDecision } from '@opentelemetry/sdk-trace-base';
 
 // Sample entire sessions to get complete user journeys
 export class SessionSampler implements Sampler {
