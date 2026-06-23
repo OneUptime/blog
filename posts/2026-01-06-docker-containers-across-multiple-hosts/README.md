@@ -25,7 +25,7 @@ There are several solutions, each with different complexity and capabilities.
 
 ## Option 1: Docker Swarm Overlay Networks
 
-Swarm creates encrypted overlay networks that span hosts automatically. It's the simplest option if you don't need Kubernetes.
+Swarm creates overlay networks that span hosts automatically, with optional encryption for application data. It's the simplest option if you don't need Kubernetes.
 
 ### Initialize Swarm
 
@@ -118,7 +118,7 @@ docker stack deploy -c docker-compose.yml myapp
 **Pros:**
 - Built into Docker, no extra tools
 - Automatic service discovery
-- Encrypted by default with `--opt encrypted`
+- Application data encryption available with `--opt encrypted`
 - Rolling updates and health checks
 
 **Cons:**
@@ -158,7 +158,7 @@ ListenPort = 51820                 # UDP port for WireGuard
 
 [Peer]
 PublicKey = <host2-public-key>     # Host 2's public key
-AllowedIPs = 10.0.0.2/32, 172.18.0.0/16  # Peer IP + its Docker subnet
+AllowedIPs = 10.0.0.2/32, 172.21.0.0/16  # Peer IP + its Docker subnet
 Endpoint = <host2-public-ip>:51820       # How to reach Host 2
 ```
 
@@ -175,7 +175,7 @@ ListenPort = 51820
 
 [Peer]
 PublicKey = <host1-public-key>     # Host 1's public key
-AllowedIPs = 10.0.0.1/32, 172.17.0.0/16  # Peer IP + its Docker subnet
+AllowedIPs = 10.0.0.1/32, 172.20.0.0/16  # Peer IP + its Docker subnet
 Endpoint = <host1-public-ip>:51820       # How to reach Host 1
 ```
 
@@ -199,25 +199,23 @@ Create Docker networks with non-overlapping subnets on each host. This prevents 
 # Create Docker networks with non-overlapping ranges
 # IMPORTANT: Each host must use a different subnet
 
-# Host 1 - uses 172.17.x.x range
-docker network create --subnet=172.17.0.0/16 app-net
+# Host 1 - uses 172.20.x.x range
+docker network create --subnet=172.20.0.0/16 app-net
 
-# Host 2 - uses 172.18.x.x range (no overlap)
-docker network create --subnet=172.18.0.0/16 app-net
+# Host 2 - uses 172.21.x.x range (no overlap)
+docker network create --subnet=172.21.0.0/16 app-net
 ```
 
-### Add Routes for Container Networks
+### Verify Routes for Container Networks
 
-These routes tell each host how to reach containers on the other host through the WireGuard tunnel.
+With the `AllowedIPs` entries above, `wg-quick` adds routes for the remote Docker subnets automatically. Verify that each host routes the other host's container subnet through `wg0`.
 
 ```bash
 # On Host 1: route to Host 2's containers through WireGuard tunnel
-# Traffic to 172.18.x.x goes via Host 2's WireGuard IP
-sudo ip route add 172.18.0.0/16 via 10.0.0.2
+ip route show 172.21.0.0/16
 
 # On Host 2: route to Host 1's containers through WireGuard tunnel
-# Traffic to 172.17.x.x goes via Host 1's WireGuard IP
-sudo ip route add 172.17.0.0/16 via 10.0.0.1
+ip route show 172.20.0.0/16
 ```
 
 Now containers can communicate using container IPs across hosts.
@@ -256,13 +254,14 @@ services:
       - TS_AUTHKEY=${TS_AUTHKEY}       # Pre-auth key from Tailscale admin
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false             # Use kernel networking for performance
+      - TS_ACCEPT_DNS=true             # Accept MagicDNS settings inside the namespace
     volumes:
       - tailscale-state:/var/lib/tailscale  # Persist auth state
+    devices:
       - /dev/net/tun:/dev/net/tun      # TUN device for networking
     cap_add:
       - NET_ADMIN                      # Required for network configuration
-      - SYS_MODULE                     # Required for kernel module
-    network_mode: host                 # Shares network with host
+      - NET_RAW                        # Required for raw network operations
 
   api:
     image: myapp:latest
@@ -286,12 +285,15 @@ Running Tailscale on the host as a subnet router exposes your Docker network to 
 # Install Tailscale on host (not in container)
 curl -fsSL https://tailscale.com/install.sh | sh
 
+# Enable IP forwarding for subnet routing
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+
 # Advertise Docker network to the Tailnet
-# --accept-routes allows receiving routes from other subnet routers
-tailscale up --advertise-routes=172.17.0.0/16 --accept-routes
+sudo tailscale set --advertise-routes=172.17.0.0/16
 ```
 
-On other hosts, containers can reach 172.17.0.0/16 through Tailscale.
+Approve the advertised route in the Tailscale admin console. On Linux clients that need to use the route, run `sudo tailscale set --accept-routes`. On other hosts, containers can reach 172.17.0.0/16 through Tailscale.
 
 ### Tailscale with MagicDNS
 
@@ -372,12 +374,15 @@ Redis cluster nodes need to announce their actual IPs to clients. This configura
 services:
   redis:
     image: redis:7
+    # Comments cannot be placed inside this folded command block; YAML would
+    # pass them to redis-server as literal arguments.
     command: >
       redis-server
-      --cluster-enabled yes                       # Enable cluster mode
+      --cluster-enabled yes
       --cluster-config-file nodes.conf
-      --cluster-announce-ip ${HOST_TAILSCALE_IP}  # Announce Tailscale IP
+      --cluster-announce-ip ${HOST_TAILSCALE_IP}
       --cluster-announce-port 6379
+      --cluster-announce-bus-port 16379
     ports:
       - "6379:6379"      # Redis client port
       - "16379:16379"    # Redis cluster bus port
@@ -415,7 +420,7 @@ All three options support encryption. Enable it to protect container traffic cro
 
 ```bash
 # Swarm - enable IPsec encryption on overlay network
-docker network create --opt encrypted overlay-net
+docker network create --driver overlay --opt encrypted overlay-net
 
 # WireGuard encrypts by default (ChaCha20-Poly1305)
 
