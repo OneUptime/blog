@@ -148,10 +148,10 @@ Add the following configuration:
 # Enable DNSSEC validation
 dnssec
 
-# Trust anchor file location
-trust-anchors-file=/etc/dnsmasq.d/trust-anchors.conf
+# Include the trust anchors file (a file of trust-anchor= directives)
+conf-file=/etc/dnsmasq.d/trust-anchors.conf
 
-# Check DNSSEC signatures (return SERVFAIL for invalid)
+# Check unsigned replies really are unsigned (on by default since 2.80)
 dnssec-check-unsigned
 
 # Log DNSSEC validation for debugging
@@ -185,7 +185,7 @@ Add the root trust anchor:
 # Root zone trust anchor (KSK-2017)
 # Updated: 2017-10-11
 # This is the current root zone Key Signing Key
-.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
+trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 ```
 
 ### Step 3: Set Proper Permissions
@@ -241,10 +241,11 @@ bogus-priv
 # Enable DNSSEC validation
 dnssec
 
-# Path to trust anchors file
-trust-anchors-file=/etc/dnsmasq.d/trust-anchors.conf
+# Include the trust anchors file (a file of trust-anchor= directives)
+conf-file=/etc/dnsmasq.d/trust-anchors.conf
 
-# DNSSEC timestamp file for preventing replay attacks
+# Timestamp file used to confirm the system clock is valid before
+# checking DNSSEC signature times (useful on boot before NTP sync)
 dnssec-timestamp=/var/lib/dnsmasq/dnssec-timestamp
 
 # Check unsigned replies are really unsigned
@@ -255,8 +256,8 @@ dnssec-check-unsigned
 # Remove in production for performance
 dnssec-debug
 
-# Do not perform DNSSEC validation for these domains
-# Use carefully - only for known unsigned internal domains
+# Skip the signature timestamp (validity period) check.
+# Only useful at boot before the clock is synced; remove once NTP is up.
 # dnssec-no-timecheck
 
 # -----------------
@@ -330,10 +331,6 @@ group=dnsmasq
 # Number of concurrent DNS queries to upstream
 dns-forward-max=1000
 
-# Timeout for upstream queries (seconds)
-# Default is 10, increase for slow networks
-# query-retry=10
-
 # Enable EDNS(0) for larger packets
 edns-packet-max=4096
 ```
@@ -349,7 +346,7 @@ edns-packet-max=4096
 # Root Zone Trust Anchor
 # -----------------------
 # This is the trust anchor for the DNS root zone
-# Format: zone,keytag,algorithm,digesttype,digest
+# Format: trust-anchor=zone,keytag,algorithm,digesttype,digest
 #
 # Current root KSK (Key Signing Key) - KSK-2017
 # Key tag: 20326
@@ -361,16 +358,16 @@ edns-packet-max=4096
 # this must be updated!
 # Check: https://data.iana.org/root-anchors/root-anchors.xml
 
-.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
+trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 
 # Previous root KSK (KSK-2010) - RETIRED
 # Kept for reference only, DO NOT use
-# .,19036,8,2,49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5
+# trust-anchor=.,19036,8,2,49AAC11D7B6F6446702E54A1607371607A1A41855200FD2CE1CDDE32F24E8FB5
 
 # Internal Domain Trust Anchors (Example)
 # -----------------------------------------
 # If you have internal domains with DNSSEC, add their trust anchors here
-# internal.company.com.,12345,8,2,ABCDEF123456789...
+# trust-anchor=internal.company.com.,12345,8,2,ABCDEF123456789...
 
 # IMPORTANT NOTES:
 # ----------------
@@ -384,12 +381,14 @@ edns-packet-max=4096
 
 Manually managing trust anchors is error-prone. Here's how to automate it.
 
-### Using RFC 5011 Automated Updates
+### Keeping the System Clock Check in Place
 
-dnsmasq supports RFC 5011 automated trust anchor updates. This allows dnsmasq to automatically track root key rollovers.
+Unlike a full validating resolver such as Unbound, dnsmasq does **not** implement RFC 5011 automated trust anchor rollover. Its trust anchors are static: you must update them yourself when ICANN rolls the root key (or let your distribution's package update them). The script below shows one way to automate that.
+
+dnsmasq does, however, provide `dnssec-timestamp`, which writes a timestamp file so it can confirm the system clock is sane before it starts checking signature validity periods. This avoids spurious validation failures on devices that boot with a wrong clock (before NTP sync):
 
 ```ini
-# Enable RFC 5011 automated trust anchor management
+# Confirm the system clock is valid before checking signature times
 # This requires a writable timestamp file
 dnssec-timestamp=/var/lib/dnsmasq/dnssec-timestamp
 ```
@@ -466,7 +465,7 @@ cat > "$TEMP_FILE" << EOF
 # Source: $ANCHOR_URL
 
 # Root zone trust anchor
-.,${ANCHORS}
+trust-anchor=.,${ANCHORS}
 EOF
 
 # Backup existing file
@@ -737,8 +736,8 @@ Enable detailed logging for troubleshooting:
 # Log all queries
 log-queries
 
-# Extra logging for DNSSEC
-log-dnssec
+# Extra logging for DNSSEC validation
+dnssec-debug
 
 # Log to specific file
 log-facility=/var/log/dnsmasq-debug.log
@@ -851,7 +850,7 @@ server=/onion/
 # Enable strict DNSSEC validation
 dnssec
 dnssec-check-unsigned
-trust-anchors-file=/etc/dnsmasq.d/trust-anchors.conf
+conf-file=/etc/dnsmasq.d/trust-anchors.conf
 
 # --- Rate Limiting ---
 # Limit cache size to prevent memory exhaustion
@@ -1040,9 +1039,9 @@ sudo systemctl restart dnsmasq
 | Option | Description | Example Value | Required |
 |--------|-------------|---------------|----------|
 | `dnssec` | Enable DNSSEC validation | (flag, no value) | Yes |
-| `trust-anchors-file` | Path to trust anchors file | `/etc/dnsmasq.d/trust-anchors.conf` | Yes |
+| `trust-anchor` | Trust anchor DS record for a zone (include a file of these with `conf-file`) | `.,20326,8,2,...` | Yes |
 | `dnssec-check-unsigned` | Return SERVFAIL for unsigned replies from signed zones | (flag, no value) | Recommended |
-| `dnssec-timestamp` | File for RFC 5011 timestamp | `/var/lib/dnsmasq/dnssec-timestamp` | Optional |
+| `dnssec-timestamp` | File used to confirm the clock is valid before checking signature times | `/var/lib/dnsmasq/dnssec-timestamp` | Optional |
 | `dnssec-debug` | Enable DNSSEC debugging output | (flag, no value) | Debug only |
 | `dnssec-no-timecheck` | Disable signature time validation | (flag, no value) | Not recommended |
 | `server` | Upstream DNS server | `9.9.9.9` | Yes |
@@ -1050,7 +1049,6 @@ sudo systemctl restart dnsmasq
 | `min-cache-ttl` | Minimum cache TTL (seconds) | `300` | Optional |
 | `max-cache-ttl` | Maximum cache TTL (seconds) | `86400` | Optional |
 | `log-queries` | Log all DNS queries | (flag, no value) | Debug only |
-| `log-dnssec` | Log DNSSEC validation details | (flag, no value) | Debug only |
 | `user` | Run as this user | `dnsmasq` | Recommended |
 | `group` | Run as this group | `dnsmasq` | Recommended |
 
@@ -1094,7 +1092,7 @@ Configuring dnsmasq with DNSSEC validation provides a critical security layer fo
 
 1. **Always use DNSSEC validation** - It protects against DNS spoofing and cache poisoning attacks
 
-2. **Keep trust anchors updated** - Use automated scripts or RFC 5011 to manage root key rollovers
+2. **Keep trust anchors updated** - dnsmasq does not do RFC 5011 rollover, so rely on your distribution's package updates or an automated script to manage root key rollovers
 
 3. **Choose DNSSEC-validating upstream resolvers** - Quad9, Cloudflare, and Google all support DNSSEC
 
