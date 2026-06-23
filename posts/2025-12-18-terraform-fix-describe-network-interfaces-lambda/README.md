@@ -6,7 +6,7 @@ Tags: Terraform, AWS, Lambda, IAM, VPC, Troubleshooting
 
 Description: Learn how to resolve the common 'DescribeNetworkInterfaces' permission error when deploying Lambda functions in VPCs with Terraform. This guide covers IAM policies, ENI management, and best practices.
 
-When deploying AWS Lambda functions inside a VPC using Terraform, you might encounter the dreaded "DescribeNetworkInterfaces" permission error. This occurs because Lambda needs specific EC2 permissions to manage Elastic Network Interfaces (ENIs) that connect your function to the VPC. Let's understand why this happens and how to fix it properly.
+When deploying AWS Lambda functions inside a VPC using Terraform, you might encounter the dreaded "DescribeNetworkInterfaces" permission error. This occurs because Lambda needs specific EC2 permissions to create and manage the Hyperplane Elastic Network Interfaces (ENIs) that connect your function to the VPC. Let's understand why this happens and how to fix it properly.
 
 ## Understanding the Error
 
@@ -34,15 +34,16 @@ graph TD
 
 ## Why Lambda Needs EC2 Permissions
 
-When you configure a Lambda function with VPC access, AWS creates Elastic Network Interfaces in your specified subnets. The Lambda execution role needs permissions to:
+When you configure a Lambda function with VPC access, AWS creates or reuses Hyperplane ENIs for the subnet and security group combinations that you specify. The Lambda execution role needs permissions to:
 
 1. **DescribeNetworkInterfaces** - Find existing ENIs
 2. **CreateNetworkInterface** - Create new ENIs for the function
 3. **DeleteNetworkInterface** - Clean up ENIs when the function is deleted
 4. **DescribeSubnets** - Validate subnet configurations
-5. **DescribeVpcs** - Validate VPC configurations
-6. **DescribeSecurityGroups** - Validate security group configurations
-7. **AssignPrivateIpAddresses** - Assign IPs to ENIs
+5. **AssignPrivateIpAddresses** - Assign IPs to ENIs
+6. **UnassignPrivateIpAddresses** - Release secondary private IPs from ENIs
+
+The IAM principal that creates or updates the function also needs permissions such as `ec2:DescribeSecurityGroups`, `ec2:DescribeSubnets`, `ec2:DescribeVpcs`, and `ec2:GetSecurityGroupsForVpc` so Lambda can verify the VPC resources during deployment.
 
 ## The Solution: AWSLambdaVPCAccessExecutionRole
 
@@ -72,7 +73,7 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc_access" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-# Also attach basic execution role for CloudWatch Logs
+# Optional: this is redundant with AWSLambdaVPCAccessExecutionRole, which already includes CloudWatch Logs permissions
 resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -81,7 +82,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 
 ## Custom Policy Approach
 
-If you prefer a custom policy with minimal permissions:
+If you prefer a custom policy with the same VPC and logging permissions:
 
 ```hcl
 resource "aws_iam_role" "lambda" {
@@ -119,16 +120,6 @@ resource "aws_iam_role_policy" "lambda_vpc_access" {
         Resource = "*"
       },
       {
-        Sid    = "VPCDescribePermissions"
-        Effect = "Allow"
-        Action = [
-          "ec2:DescribeSubnets",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeVpcs"
-        ]
-        Resource = "*"
-      },
-      {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [
@@ -145,7 +136,7 @@ resource "aws_iam_role_policy" "lambda_vpc_access" {
 
 ## More Restrictive Policy with Resource Constraints
 
-For better security, restrict permissions to specific resources:
+AWS's documented custom policy uses `Resource = "*"`. If your organization requires additional guardrails, you can restrict the network-interface management actions that support resource-level permissions, while still leaving the required describe actions on all resources:
 
 ```hcl
 data "aws_caller_identity" "current" {}
@@ -165,25 +156,24 @@ resource "aws_iam_role_policy" "lambda_vpc_access_restricted" {
           "ec2:CreateNetworkInterface"
         ]
         Resource = [
-          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:subnet/${aws_subnet.private_a.id}",
-          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:subnet/${aws_subnet.private_b.id}",
-          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:network-interface/*",
-          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:security-group/${aws_security_group.lambda.id}"
+          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:subnet/${aws_subnet.private_a.id}",
+          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:subnet/${aws_subnet.private_b.id}",
+          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:network-interface/*",
+          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:security-group/${aws_security_group.lambda.id}"
         ]
       },
       {
         Sid    = "ManageNetworkInterfaces"
         Effect = "Allow"
         Action = [
-          "ec2:DescribeNetworkInterfaces",
           "ec2:DeleteNetworkInterface",
           "ec2:AssignPrivateIpAddresses",
           "ec2:UnassignPrivateIpAddresses"
         ]
-        Resource = "*"
+        Resource = "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:network-interface/*"
         Condition = {
           StringEquals = {
-            "ec2:Vpc" = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:vpc/${aws_vpc.main.id}"
+            "ec2:Vpc" = "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:vpc/${aws_vpc.main.id}"
           }
         }
       },
@@ -192,8 +182,7 @@ resource "aws_iam_role_policy" "lambda_vpc_access_restricted" {
         Effect = "Allow"
         Action = [
           "ec2:DescribeSubnets",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeVpcs"
+          "ec2:DescribeNetworkInterfaces"
         ]
         Resource = "*"
       }
@@ -208,6 +197,8 @@ Here's a complete example that won't have permission errors:
 
 ```hcl
 # VPC and networking
+data "aws_region" "current" {}
+
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -221,7 +212,7 @@ resource "aws_vpc" "main" {
 resource "aws_subnet" "private_a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.1.0/24"
-  availability_zone = "${data.aws_region.current.name}a"
+  availability_zone = "${data.aws_region.current.region}a"
 
   tags = {
     Name = "lambda-private-a"
@@ -231,7 +222,7 @@ resource "aws_subnet" "private_a" {
 resource "aws_subnet" "private_b" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
-  availability_zone = "${data.aws_region.current.name}b"
+  availability_zone = "${data.aws_region.current.region}b"
 
   tags = {
     Name = "lambda-private-b"
@@ -287,7 +278,7 @@ resource "aws_lambda_function" "main" {
   function_name = "vpc-connected-function"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = data.archive_file.lambda.output_path
 
   vpc_config {
@@ -396,7 +387,7 @@ resource "aws_route_table_association" "private_a" {
 
 ### Pitfall 3: ENI Limits
 
-Each Lambda function creates ENIs. Check your account limits:
+Lambda creates or reuses Hyperplane ENIs for subnet and security group combinations, and can scale the number of ENIs based on traffic and concurrency. Check your account limits:
 
 ```bash
 aws service-quotas get-service-quota \
@@ -430,7 +421,7 @@ module "lambda" {
 
   function_name = "vpc-connected-function"
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
 
   source_path = "${path.module}/src"
 
