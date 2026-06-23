@@ -78,6 +78,7 @@ Before implementing authorization policies, ensure you have:
 - `kubectl` configured to communicate with your cluster
 - `istioctl` installed for debugging and analysis
 - Workloads deployed with Istio sidecar injection enabled
+- mTLS enabled when matching peer identities such as `principals`, `namespaces`, or `serviceAccounts`
 
 ## Basic AuthorizationPolicy Structure
 
@@ -93,7 +94,7 @@ kind: AuthorizationPolicy
 metadata:
   # Name uniquely identifies this policy within the namespace
   name: example-policy
-  # Namespace where the policy applies (mesh-wide if istio-system)
+  # Namespace where the policy applies (mesh-wide if this is Istio's root namespace)
   namespace: default
 spec:
   # Selector specifies which workloads this policy applies to
@@ -151,7 +152,11 @@ spec:
 
   rules:
   # Rule 1: Allow GET requests to product endpoints
-  - to:
+  - from:
+    - source:
+        # Presence match: require any authenticated workload identity from mTLS
+        principals: ["*"]
+    to:
     - operation:
         # Only allow HTTP GET method
         methods: ["GET"]
@@ -269,12 +274,12 @@ spec:
 
 ### Deny by IP Range
 
-Block requests from specific IP ranges, useful for blocking known malicious sources:
+Block requests from specific source IP ranges. For original client IPs at an ingress gateway, use `remoteIpBlocks` with trusted proxy configuration instead.
 
 ```yaml
-# Block requests from specific IP ranges
-# This is useful for blocking traffic from known malicious sources
-# or restricting access based on network topology
+# Block requests from specific source IP ranges
+# This is useful for restricting access based on workload
+# or network topology
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -387,6 +392,8 @@ spec:
         # Headers from authz response to add to the client response on deny
         headersToDownstreamOnDeny:
           - "x-auth-error"
+        # Send authorization checks to /check on the authz service
+        pathPrefix: "/check"
         # Timeout for the authorization check
         timeout: 5s
         # Include body in check request (useful for POST validation)
@@ -448,16 +455,6 @@ import (
     "strings"
 )
 
-// AuthRequest represents the incoming authorization check request
-type AuthRequest struct {
-    // Headers from the original request
-    Headers map[string]string `json:"headers"`
-    // Path being accessed
-    Path    string            `json:"path"`
-    // HTTP method
-    Method  string            `json:"method"`
-}
-
 // AuthResponse represents our authorization decision
 type AuthResponse struct {
     // Allowed indicates if the request should be permitted
@@ -470,6 +467,7 @@ type AuthResponse struct {
 
 func main() {
     // Handler for authorization check requests from Envoy
+    http.HandleFunc("/check/", handleAuthCheck)
     http.HandleFunc("/check", handleAuthCheck)
 
     log.Println("Starting external authorization service on :8080")
@@ -477,33 +475,38 @@ func main() {
 }
 
 func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
-    // Parse the authorization request
-    var authReq AuthRequest
-    if err := json.NewDecoder(r.Body).Decode(&authReq); err != nil {
-        // If we can't parse the request, deny by default
-        http.Error(w, "Invalid request", http.StatusBadRequest)
-        return
+    // Envoy's HTTP ext_authz check is an HTTP request, not a JSON payload.
+    headers := make(map[string]string)
+    for key, values := range r.Header {
+        if len(values) > 0 {
+            headers[strings.ToLower(key)] = values[0]
+        }
+    }
+
+    path := strings.TrimPrefix(r.URL.Path, "/check")
+    if path == "" {
+        path = "/"
     }
 
     // Extract the authorization token
-    authHeader := authReq.Headers["authorization"]
+    authHeader := headers["authorization"]
 
     // Implement your custom authorization logic here
     // This example validates a bearer token and checks permissions
-    response := checkAuthorization(authHeader, authReq.Path, authReq.Method)
+    response := checkAuthorization(authHeader, path, r.Method)
 
     // Return appropriate HTTP status
     if response.Allowed {
-        // 200 OK tells Envoy to allow the request
-        w.WriteHeader(http.StatusOK)
         // Include any headers to add to the upstream request
         for key, value := range response.Headers {
             w.Header().Set(key, value)
         }
+        // 200 OK tells Envoy to allow the request
+        w.WriteHeader(http.StatusOK)
     } else {
+        w.Header().Set("x-auth-error", response.Message)
         // 403 Forbidden tells Envoy to deny the request
         w.WriteHeader(http.StatusForbidden)
-        w.Header().Set("x-auth-error", response.Message)
     }
 
     json.NewEncoder(w).Encode(response)
@@ -802,10 +805,11 @@ spec:
           - "trusted-services"
           - "internal-tools"
 
-  # Rule 3: Allow requests from specific IP ranges (external traffic)
+  # Rule 3: Allow requests from specific source IP ranges
   - from:
     - source:
-        # Match requests from corporate network
+        # Match source workload or connection IPs from the corporate network.
+        # For original client IPs at ingress, use remoteIpBlocks.
         ipBlocks:
           - "203.0.113.0/24"
         # Exclude specific IPs within the range
@@ -1118,8 +1122,8 @@ Check for policy issues:
 # This command checks for common misconfigurations
 istioctl analyze -n your-namespace
 
-# Analyze specific workload
-istioctl analyze -n your-namespace --selector app=your-app
+# Analyze a policy manifest without connecting to the live cluster
+istioctl analyze --use-kube=false policy.yaml
 ```
 
 ### Check Effective Policies
