@@ -57,7 +57,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
         "aggs": {
           "duplicate_count": {
             "value_count": {
-              "field": "_id"
+              "field": "order_id.keyword"
             }
           },
           "duplicate_docs": {
@@ -108,9 +108,15 @@ curl -X GET "https://localhost:9200/orders/_search" \
   -d '{
     "size": 0,
     "aggs": {
-      "total_duplicates": {
-        "cardinality": {
+      "total_orders": {
+        "value_count": {
           "field": "order_id.keyword"
+        }
+      },
+      "unique_order_ids": {
+        "cardinality": {
+          "field": "order_id.keyword",
+          "precision_threshold": 40000
         }
       },
       "duplicate_groups": {
@@ -249,7 +255,8 @@ def reindex_without_duplicates(
         for doc in scan(
             es,
             index=source_index,
-            query={"sort": [{timestamp_field: "desc"}]}
+            query={"sort": [{timestamp_field: "desc"}]},
+            preserve_order=True
         ):
             unique_value = doc["_source"].get(unique_field)
 
@@ -261,7 +268,12 @@ def reindex_without_duplicates(
                     "_source": doc["_source"]
                 }
 
-    success, errors = bulk(es, generate_unique_docs(), chunk_size=1000)
+    success, errors = bulk(
+        es,
+        generate_unique_docs(),
+        chunk_size=1000,
+        raise_on_error=False
+    )
     print(f"Reindexed {success} unique documents, {len(errors)} errors")
 
     return success
@@ -285,35 +297,9 @@ curl -X PUT "https://localhost:9200/_transform/deduplicate_orders" \
     "dest": {
       "index": "orders_deduplicated"
     },
-    "pivot": {
-      "group_by": {
-        "order_id": {
-          "terms": {
-            "field": "order_id.keyword"
-          }
-        }
-      },
-      "aggregations": {
-        "latest_timestamp": {
-          "max": { "field": "created_at" }
-        },
-        "customer_id": {
-          "scripted_metric": {
-            "init_script": "state.docs = []",
-            "map_script": "state.docs.add(new HashMap(params._source))",
-            "combine_script": "return state.docs",
-            "reduce_script": "def all = []; for (s in states) { all.addAll(s) } all.sort((a,b) -> b.created_at.compareTo(a.created_at)); return all.size() > 0 ? all[0].customer_id : null"
-          }
-        },
-        "amount": {
-          "scripted_metric": {
-            "init_script": "state.docs = []",
-            "map_script": "state.docs.add(new HashMap(params._source))",
-            "combine_script": "return state.docs",
-            "reduce_script": "def all = []; for (s in states) { all.addAll(s) } all.sort((a,b) -> b.created_at.compareTo(a.created_at)); return all.size() > 0 ? all[0].amount : 0"
-          }
-        }
-      }
+    "latest": {
+      "unique_key": ["order_id.keyword"],
+      "sort": "created_at"
     }
   }'
 
@@ -364,9 +350,7 @@ index_with_dedup(order, "orders", ["order_id"])  # Updates, not duplicates
 ```python
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import scan, bulk
-from collections import defaultdict
 import hashlib
-from datetime import datetime
 
 es = Elasticsearch(
     ["https://localhost:9200"],
@@ -386,8 +370,12 @@ class ElasticsearchDeduplicator:
         query = {
             "size": 0,
             "aggs": {
-                "total_docs": {"value_count": {"field": "_id"}},
-                "unique_values": {"cardinality": {"field": f"{unique_field}.keyword"}},
+                "unique_values": {
+                    "cardinality": {
+                        "field": f"{unique_field}.keyword",
+                        "precision_threshold": 40000
+                    }
+                },
                 "duplicate_groups": {
                     "terms": {
                         "field": f"{unique_field}.keyword",
@@ -401,14 +389,15 @@ class ElasticsearchDeduplicator:
         response = self.es.search(index=self.index, body=query)
         aggs = response["aggregations"]
 
-        total = aggs["total_docs"]["value"]
+        total = self.es.count(index=self.index)["count"]
         unique = aggs["unique_values"]["value"]
         duplicates = total - unique
+        ratio = duplicates / total if total > 0 else 0
 
         print(f"Total documents: {total:,}")
         print(f"Unique values: {unique:,}")
         print(f"Duplicate documents: {duplicates:,}")
-        print(f"Duplicate ratio: {duplicates/total*100:.2f}%")
+        print(f"Duplicate ratio: {ratio*100:.2f}%")
 
         if aggs["duplicate_groups"]["buckets"]:
             print("\nTop duplicate groups:")
@@ -419,67 +408,36 @@ class ElasticsearchDeduplicator:
             "total": total,
             "unique": unique,
             "duplicates": duplicates,
-            "ratio": duplicates / total if total > 0 else 0
+            "ratio": ratio
         }
 
     def find_all_duplicate_ids(self, unique_field, timestamp_field, keep="latest"):
         """Find all document IDs that should be deleted."""
         ids_to_delete = []
+        sort_order = "desc" if keep == "latest" else "asc"
+        current_key = None
 
-        # Use composite aggregation for large datasets
-        after_key = None
+        for doc in scan(
+            self.es,
+            index=self.index,
+            query={
+                "_source": [unique_field],
+                "sort": [
+                    {f"{unique_field}.keyword": "asc"},
+                    {timestamp_field: sort_order}
+                ]
+            },
+            preserve_order=True
+        ):
+            key = doc["_source"].get(unique_field)
+            if key is None:
+                continue
 
-        while True:
-            query = {
-                "size": 0,
-                "aggs": {
-                    "groups": {
-                        "composite": {
-                            "size": 1000,
-                            "sources": [
-                                {"key": {"terms": {"field": f"{unique_field}.keyword"}}}
-                            ]
-                        },
-                        "aggs": {
-                            "docs": {
-                                "top_hits": {
-                                    "size": 100,
-                                    "sort": [{timestamp_field: "desc" if keep == "latest" else "asc"}],
-                                    "_source": False
-                                }
-                            },
-                            "count": {
-                                "value_count": {"field": "_id"}
-                            },
-                            "has_dups": {
-                                "bucket_selector": {
-                                    "buckets_path": {"count": "count"},
-                                    "script": "params.count > 1"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            if key != current_key:
+                current_key = key
+                continue
 
-            if after_key:
-                query["aggs"]["groups"]["composite"]["after"] = after_key
-
-            response = self.es.search(index=self.index, body=query)
-            buckets = response["aggregations"]["groups"]["buckets"]
-
-            if not buckets:
-                break
-
-            for bucket in buckets:
-                hits = bucket["docs"]["hits"]["hits"]
-                # Keep first, delete rest
-                for hit in hits[1:]:
-                    ids_to_delete.append(hit["_id"])
-
-            after_key = response["aggregations"]["groups"].get("after_key")
-            if not after_key:
-                break
+            ids_to_delete.append(doc["_id"])
 
         return ids_to_delete
 
@@ -533,7 +491,8 @@ class ElasticsearchDeduplicator:
             for doc in scan(
                 self.es,
                 index=self.index,
-                query={"sort": [{timestamp_field: "desc"}]}
+                query={"sort": [{timestamp_field: "desc"}]},
+                preserve_order=True
             ):
                 key = doc["_source"].get(unique_field)
                 if key not in seen_keys:
@@ -543,7 +502,12 @@ class ElasticsearchDeduplicator:
                         "_source": doc["_source"]
                     }
 
-        success, errors = bulk(self.es, generate_unique(), chunk_size=1000)
+        success, errors = bulk(
+            self.es,
+            generate_unique(),
+            chunk_size=1000,
+            raise_on_error=False
+        )
 
         # Finalize index
         self.es.indices.put_settings(
