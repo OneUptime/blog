@@ -48,39 +48,41 @@ The default failover process involves several time-consuming steps:
 
 | Phase | L2 Mode Default | BGP Mode Default |
 |-------|-----------------|------------------|
-| Failure Detection | 10-30 seconds | 90 seconds (Hold Timer) |
+| Failure Detection | A few seconds in healthy networks; longer for clients with stale neighbor caches | Negotiated BGP hold timer, commonly 90-180 seconds |
 | Leader Election | 1-5 seconds | N/A (all nodes announce) |
 | ARP/Route Propagation | 1-5 seconds | 5-30 seconds |
-| **Total Downtime** | **12-40 seconds** | **95-120 seconds** |
+| **Total Downtime** | **Usually under 10 seconds; longer with buggy ARP/NDP clients** | **95-210 seconds without faster timers or BFD** |
 
 ## Layer 2 Mode Optimization
 
 Layer 2 mode uses ARP (IPv4) or NDP (IPv6) to announce IP addresses. Optimization focuses on faster failure detection and announcement propagation.
 
-### Configuring Faster MemberList Settings
+### Ensuring Fast MemberList Failure Detection
 
-MetalLB uses HashiCorp's memberlist library for node failure detection. Adjust these settings for faster detection.
+MetalLB uses HashiCorp's memberlist library for node failure detection in Layer 2 mode. MetalLB does not expose supported ConfigMap fields for tuning memberlist probe intervals directly, so the most important production step is to ensure memberlist traffic is not delayed or blocked between speakers.
 
-Apply this ConfigMap to tune memberlist parameters:
+Allow memberlist traffic between MetalLB speaker pods:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
-  name: metallb-memberlist
+  name: allow-metallb-memberlist
   namespace: metallb-system
-data:
-  config: |
-    # Reduce probe interval from default 1s to 500ms
-    probe-interval: 500ms
-    # Reduce probe timeout from default 500ms to 200ms
-    probe-timeout: 200ms
-    # Reduce suspicion multiplier for faster failure detection
-    suspicion-mult: 2
-    # Number of indirect probes to use
-    indirect-checks: 2
-    # Retransmit multiplier for reliable message delivery
-    retransmit-mult: 2
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: speaker
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: speaker
+    ports:
+    - protocol: TCP
+      port: 7946
+    - protocol: UDP
+      port: 7946
 ```
 
 ### Optimizing Speaker DaemonSet
@@ -96,7 +98,15 @@ metadata:
   name: speaker
   namespace: metallb-system
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metallb
+      app.kubernetes.io/component: speaker
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metallb
+        app.kubernetes.io/component: speaker
     spec:
       containers:
       - name: speaker
@@ -166,7 +176,7 @@ Run this script on all MetalLB speaker nodes:
 # Reduce ARP cache timeout for faster updates
 
 echo 60 > /proc/sys/net/ipv4/neigh/default/gc_stale_time
-echo 30 > /proc/sys/net/ipv4/neigh/default/base_reachable_time_ms
+echo 30000 > /proc/sys/net/ipv4/neigh/default/base_reachable_time_ms
 
 # Increase ARP cache size for busy environments
 echo 4096 > /proc/sys/net/ipv4/neigh/default/gc_thresh1
@@ -179,7 +189,7 @@ echo 1 > /proc/sys/net/ipv4/conf/all/arp_accept
 # Make settings persistent
 cat >> /etc/sysctl.d/99-metallb-optimization.conf << EOF
 net.ipv4.neigh.default.gc_stale_time = 60
-net.ipv4.neigh.default.base_reachable_time_ms = 30
+net.ipv4.neigh.default.base_reachable_time_ms = 30000
 net.ipv4.neigh.default.gc_thresh1 = 4096
 net.ipv4.neigh.default.gc_thresh2 = 8192
 net.ipv4.neigh.default.gc_thresh3 = 16384
@@ -213,10 +223,8 @@ spec:
   holdTime: 9s
   # Connect retry timer
   connectTime: 3s
-  # Graceful restart for planned maintenance
-  gracefulRestart:
-    enabled: true
-    time: 60s
+  # Graceful restart for planned maintenance (FRR-based modes)
+  enableGracefulRestart: true
   nodeSelectors:
   - matchLabels:
       node-role.kubernetes.io/worker: ""
@@ -235,9 +243,9 @@ metadata:
   name: fast-bfd
   namespace: metallb-system
 spec:
-  # Minimum interval between sent packets (50-60000ms)
+  # Minimum interval for receiving packets, in milliseconds
   receiveInterval: 50
-  # Minimum interval for receiving packets (50-60000ms)
+  # Minimum interval between sent packets, in milliseconds
   transmitInterval: 50
   # Detection multiplier (failure after multiplier * interval)
   detectMultiplier: 3
@@ -247,8 +255,6 @@ spec:
   echoInterval: 25
   # Passive mode (wait for peer to initiate)
   passiveMode: false
-  # Minimum TTL for incoming packets (for security)
-  minimumTtl: 254
 ```
 
 Link BFD profile to BGP peer:
@@ -289,7 +295,7 @@ spec:
   aggregationLengthV6: 128
   localPref: 100
   communities:
-  - no-export
+  - 65535:65281
   - 65000:100
   peers:
   - router-with-bfd
@@ -491,7 +497,7 @@ subjects:
 
 ### Node Failure Detection Script
 
-Deploy a DaemonSet for application-aware node failure detection:
+Deploy a DaemonSet for application-aware node failure detection. This example logs local health failures for alerting; use Kubernetes node labels, taints, or an external controller to change MetalLB advertisement eligibility rather than sending Unix signals to the speaker process.
 
 ```yaml
 apiVersion: apps/v1
@@ -511,32 +517,33 @@ spec:
       hostNetwork: true
       containers:
       - name: detector
-        image: busybox:1.35
+        image: busybox:1.36
         command:
         - /bin/sh
         - -c
         - |
           while true; do
             # Check critical services
-            if ! curl -sf http://localhost:10256/healthz > /dev/null 2>&1; then
-              echo "kube-proxy unhealthy, triggering failover"
-              # Signal MetalLB speaker to withdraw routes
-              kill -SIGUSR1 $(pidof speaker) 2>/dev/null || true
+            if ! wget -q -T 1 -O - http://localhost:10256/healthz > /dev/null 2>&1; then
+              echo "kube-proxy unhealthy on ${NODE_NAME}"
             fi
 
             # Check network connectivity
-            if ! ping -c 1 -W 1 $GATEWAY_IP > /dev/null 2>&1; then
-              echo "Gateway unreachable, triggering failover"
-              kill -SIGUSR1 $(pidof speaker) 2>/dev/null || true
+            if ! ping -c 1 -W 1 "$GATEWAY_IP" > /dev/null 2>&1; then
+              echo "Gateway unreachable from ${NODE_NAME}"
             fi
 
             sleep 2
           done
         env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: GATEWAY_IP
           value: "10.0.0.1"
         securityContext:
-          privileged: true
+          allowPrivilegeEscalation: false
 ```
 
 ## Kubernetes-Level Optimizations
@@ -568,7 +575,6 @@ spec:
         command:
         - /node-problem-detector
         - --logtostderr
-        - --config.system-log-monitor=/config/kernel-monitor.json,/config/docker-monitor.json
         - --config.custom-plugin-monitor=/config/network-problem-monitor.json
         volumeMounts:
         - name: log
@@ -593,6 +599,7 @@ spec:
       - name: config
         configMap:
           name: node-problem-detector-config
+          defaultMode: 0755
 ```
 
 Create custom network problem monitor:
@@ -645,7 +652,15 @@ metadata:
   name: speaker
   namespace: metallb-system
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metallb
+      app.kubernetes.io/component: speaker
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metallb
+        app.kubernetes.io/component: speaker
     spec:
       topologySpreadConstraints:
       - maxSkew: 1
@@ -653,15 +668,15 @@ spec:
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
-            app: metallb
-            component: speaker
+            app.kubernetes.io/name: metallb
+            app.kubernetes.io/component: speaker
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
-            app: metallb
-            component: speaker
+            app.kubernetes.io/name: metallb
+            app.kubernetes.io/component: speaker
       nodeSelector:
         metallb-speaker: "enabled"
 ```
@@ -693,7 +708,7 @@ spec:
     - kube-controller-manager
     - --node-monitor-period=2s
     - --node-monitor-grace-period=20s
-    - --pod-eviction-timeout=30s
+    - --node-eviction-rate=1
 ```
 
 ## Monitoring and Alerting
@@ -743,7 +758,7 @@ spec:
         description: "MetalLB speaker on {{ $labels.instance }} has been down for more than 10 seconds."
 
     - alert: MetalLBBGPSessionDown
-      expr: metallb_bgp_session_up == 0
+      expr: (metallb_bgp_session_up == 0) or (frrk8s_bgp_session_up == 0)
       for: 5s
       labels:
         severity: critical
@@ -752,7 +767,7 @@ spec:
         description: "BGP session {{ $labels.peer }} is down on {{ $labels.instance }}."
 
     - alert: MetalLBBFDSessionDown
-      expr: metallb_bfd_session_up == 0
+      expr: (frrk8s_bfd_session_up == 0) or (metallb_bfd_session_up == 0)
       for: 1s
       labels:
         severity: critical
@@ -761,21 +776,21 @@ spec:
         description: "BFD session {{ $labels.peer }} is down, expect immediate failover."
 
     - alert: MetalLBFailoverOccurred
-      expr: increase(metallb_layer2_announcements_total[1m]) > 0 and increase(metallb_layer2_announcements_total[1m]) != increase(metallb_layer2_announcements_total[2m] offset 1m)
+      expr: changes(metallb_bgp_session_up[1m]) > 0 or changes(frrk8s_bgp_session_up[1m]) > 0 or increase(frrk8s_bfd_session_down_events[1m]) > 0
       labels:
         severity: warning
       annotations:
         summary: "MetalLB failover detected"
-        description: "A Layer 2 failover event occurred in the last minute."
+        description: "A BGP or BFD session state changed in the last minute."
 
-    - alert: MetalLBHighFailoverLatency
-      expr: histogram_quantile(0.99, rate(metallb_speaker_announce_duration_seconds_bucket[5m])) > 2
+    - alert: MetalLBConfigStale
+      expr: metallb_k8s_client_config_stale_bool == 1
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High MetalLB announcement latency"
-        description: "99th percentile announcement latency is above 2 seconds."
+        summary: "MetalLB is running with stale configuration"
+        description: "MetalLB rejected its latest Kubernetes configuration and is continuing with the last valid configuration."
 ```
 
 ### Grafana Dashboard
@@ -792,7 +807,7 @@ Create comprehensive failover monitoring dashboard:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(metallb_bgp_session_up)",
+            "expr": "sum(metallb_bgp_session_up) or sum(frrk8s_bgp_session_up)",
             "legendFormat": "Active Sessions"
           }
         ],
@@ -814,40 +829,32 @@ Create comprehensive failover monitoring dashboard:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(metallb_bfd_session_up)",
+            "expr": "sum(frrk8s_bfd_session_up) or sum(metallb_bfd_session_up)",
             "legendFormat": "Active BFD Sessions"
           }
         ]
       },
       {
-        "title": "Failover Events (Last Hour)",
+        "title": "BGP and BFD Events (Last Hour)",
         "type": "timeseries",
         "targets": [
           {
-            "expr": "increase(metallb_layer2_announcements_total[5m])",
-            "legendFormat": "L2 Announcements"
+            "expr": "increase(metallb_bgp_updates_total[5m]) or increase(frrk8s_bgp_updates_total[5m])",
+            "legendFormat": "BGP Updates"
           },
           {
-            "expr": "increase(metallb_bgp_updates_total[5m])",
-            "legendFormat": "BGP Updates"
+            "expr": "increase(frrk8s_bfd_session_down_events[5m])",
+            "legendFormat": "BFD Down Events"
           }
         ]
       },
       {
-        "title": "Announcement Latency",
+        "title": "Advertised Prefixes",
         "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(metallb_speaker_announce_duration_seconds_bucket[5m]))",
-            "legendFormat": "p50"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(metallb_speaker_announce_duration_seconds_bucket[5m]))",
-            "legendFormat": "p95"
-          },
-          {
-            "expr": "histogram_quantile(0.99, rate(metallb_speaker_announce_duration_seconds_bucket[5m]))",
-            "legendFormat": "p99"
+            "expr": "sum(metallb_bgp_announced_prefixes_total) or sum(frrk8s_bgp_announced_prefixes_total)",
+            "legendFormat": "Announced Prefixes"
           }
         ]
       }
@@ -1052,7 +1059,6 @@ spec:
   echoMode: true
   echoInterval: 25
   passiveMode: false
-  minimumTtl: 254
 ---
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
@@ -1064,16 +1070,13 @@ spec:
   peerASN: 65000
   peerAddress: 10.0.0.1
   peerPort: 179
-  sourceAddress: 10.0.0.100
   bfdProfile: production-bfd
   keepaliveTime: 3s
   holdTime: 9s
   connectTime: 3s
   password: "secure-bgp-password"
   ebgpMultiHop: false
-  gracefulRestart:
-    enabled: true
-    time: 60s
+  enableGracefulRestart: true
   nodeSelectors:
   - matchLabels:
       metallb-speaker: "enabled"
@@ -1088,16 +1091,13 @@ spec:
   peerASN: 65000
   peerAddress: 10.0.0.2
   peerPort: 179
-  sourceAddress: 10.0.0.100
   bfdProfile: production-bfd
   keepaliveTime: 3s
   holdTime: 9s
   connectTime: 3s
   password: "secure-bgp-password"
   ebgpMultiHop: false
-  gracefulRestart:
-    enabled: true
-    time: 60s
+  enableGracefulRestart: true
   nodeSelectors:
   - matchLabels:
       metallb-speaker: "enabled"
