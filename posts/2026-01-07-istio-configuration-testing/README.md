@@ -76,7 +76,8 @@ istioctl analyze my-virtualservice.yaml
 istioctl analyze virtualservice.yaml destinationrule.yaml gateway.yaml
 
 # Analyze an entire directory of configuration files recursively
-istioctl analyze -R ./istio-configs/
+# Directory recursion is enabled by default in current Istio releases
+istioctl analyze ./istio-configs/
 ```
 
 ### Combining Live Cluster and Local Analysis
@@ -97,12 +98,12 @@ istioctl analyze --context=production-cluster my-config.yaml
 In some cases, you may want to ignore certain analysis messages that are expected or don't apply to your use case:
 
 ```bash
-# Suppress specific message codes using the -S flag
-# IST0102 is the code for "Referenced gateway not found" warnings
-istioctl analyze -S "IST0102=*" my-config.yaml
+# Suppress specific message codes using the -S/--suppress flag
+# IST0101 is the code for "Referenced resource not found" errors
+istioctl analyze -S "IST0101=VirtualService reviews-route.bookinfo" my-config.yaml
 
 # Suppress multiple message types
-istioctl analyze -S "IST0102=*" -S "IST0101=*" my-config.yaml
+istioctl analyze -S "IST0101=VirtualService *.bookinfo" -S "IST0132=VirtualService *.bookinfo" my-config.yaml
 ```
 
 ### Example: VirtualService Analysis
@@ -112,7 +113,7 @@ Let's examine a VirtualService configuration that contains common issues and see
 ```yaml
 # virtualservice-with-issues.yaml
 # This VirtualService has intentional issues that istioctl analyze will detect
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-route
@@ -129,14 +130,12 @@ spec:
             end-user:
               exact: jason
       route:
-        # Issue 2: References a subset that isn't defined in DestinationRule
+        # Issue 2: References a service host that isn't present in the analyzed configuration
         - destination:
-            host: reviews
-            subset: v2-undefined
+            host: reviews-missing
     - route:
         - destination:
-            host: reviews
-            subset: v1
+            host: reviews-missing
 ```
 
 Running analysis on the above configuration will produce helpful error messages:
@@ -147,7 +146,7 @@ istioctl analyze virtualservice-with-issues.yaml
 
 # Expected output showing the detected issues:
 # Error [IST0101] (VirtualService bookinfo/reviews-route) Referenced gateway not found: "non-existent-gateway"
-# Error [IST0102] (VirtualService bookinfo/reviews-route) Referenced subset not found: "v2-undefined"
+# Error [IST0101] (VirtualService bookinfo/reviews-route) Referenced host not found: "reviews-missing"
 ```
 
 ## Dry-Run Validation
@@ -229,7 +228,7 @@ echo ""
 # Step 2: Run istioctl analyze for Istio-specific validation
 # This checks for Istio configuration best practices and common issues
 echo "[2/4] Running istioctl analyze..."
-if ! istioctl analyze "$CONFIG_PATH" -R 2>&1; then
+if ! istioctl analyze "$CONFIG_PATH" 2>&1; then
     echo "WARNING: istioctl analyze found issues"
 fi
 echo ""
@@ -273,9 +272,9 @@ brew install kubeval
 curl -L https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz | tar xz
 sudo mv kubeval /usr/local/bin/
 
-# Validate Istio resources against their CRD schemas
-# The --additional-schema-locations flag points to Istio's schema definitions
-kubeval --additional-schema-locations https://raw.githubusercontent.com/istio/istio/master/manifests/charts/base/crds virtualservice.yaml
+# Validate Istio resources against pre-converted JSON schemas
+# kubeval cannot use raw CRD YAML files as schemas; convert them to kubeval's expected layout first
+kubeval --additional-schema-locations "file://$PWD/schemas" virtualservice.yaml
 ```
 
 ### Using kubeconform for Modern Validation
@@ -313,16 +312,17 @@ package istio.validation
 
 # Rule: Deny VirtualServices without timeout configuration
 # Timeouts are critical for preventing cascading failures
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
-    route := input.spec.http[_].route[_]
-    not input.spec.http[_].timeout
+    http_route := input.spec.http[_]
+    http_route.route
+    not http_route.timeout
     msg := sprintf("VirtualService '%s' must specify a timeout for reliability", [input.metadata.name])
 }
 
 # Rule: Require retry configuration for production services
 # Retries help handle transient failures gracefully
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     input.metadata.namespace == "production"
     http_route := input.spec.http[_]
@@ -332,23 +332,23 @@ deny[msg] {
 
 # Rule: Enforce mTLS in production namespace
 # Mutual TLS is required for secure service-to-service communication
-deny[msg] {
+deny contains msg if {
     input.kind == "PeerAuthentication"
     input.metadata.namespace == "production"
-    input.spec.mtls.mode != "STRICT"
+    not input.spec.mtls.mode == "STRICT"
     msg := sprintf("PeerAuthentication '%s' must use STRICT mTLS mode in production", [input.metadata.name])
 }
 
 # Rule: Require explicit hosts in VirtualService
 # Prevents accidental catch-all routing
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     count(input.spec.hosts) == 0
     msg := sprintf("VirtualService '%s' must specify at least one host", [input.metadata.name])
 }
 
 # Rule: Limit connection pool size to prevent resource exhaustion
-warn[msg] {
+warn contains msg if {
     input.kind == "DestinationRule"
     pool := input.spec.trafficPolicy.connectionPool.tcp
     pool.maxConnections > 1000
@@ -363,7 +363,7 @@ Running OPA validation against your configurations:
 # Install conftest first
 brew install conftest  # macOS
 # or
-curl -L https://github.com/open-policy-agent/conftest/releases/download/v0.45.0/conftest_0.45.0_Linux_x86_64.tar.gz | tar xz
+curl -L https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz | tar xz
 
 # Run validation with custom policies
 # The --policy flag specifies the directory containing OPA policies
@@ -498,9 +498,9 @@ total_requests=100
 for i in $(seq 1 $total_requests); do
     response=$(curl -s --max-time $TIMEOUT "${GATEWAY_URL}/productpage")
     if echo "$response" | grep -q "reviews-v1"; then
-        ((v1_count++))
+        ((v1_count+=1))
     elif echo "$response" | grep -q "reviews-v2"; then
-        ((v2_count++))
+        ((v2_count+=1))
     fi
 done
 
@@ -511,6 +511,7 @@ if [ $v2_percentage -ge 5 ] && [ $v2_percentage -le 25 ]; then
     echo -e "${GREEN}PASSED${NC} (v2: ${v2_percentage}%)"
 else
     echo -e "${RED}FAILED${NC} (v2: ${v2_percentage}%, expected 5-25%)"
+    exit 1
 fi
 
 echo ""
@@ -519,7 +520,7 @@ echo "=== Tests Complete ==="
 
 ### Testing with Fortio Load Generator
 
-Fortio is the official Istio load testing tool. It provides detailed statistics about latency and throughput:
+Fortio is the load testing tool used in Istio's official circuit breaking task. It provides detailed statistics about latency and throughput:
 
 ```bash
 #!/bin/bash
@@ -628,18 +629,20 @@ echo ""
 echo "[3/4] Testing plain HTTP rejection..."
 
 # Deploy a test pod without Istio sidecar to test from outside the mesh
-kubectl run mtls-test --image=curlimages/curl --restart=Never --rm -i --timeout=30s -- \
+kubectl run mtls-test --image=curlimages/curl --restart=Never --rm -i --timeout=30s \
+    --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' -- \
     curl -s --max-time 5 http://productpage.$NAMESPACE.svc.cluster.local:9080/productpage 2>&1 || true
 
 # If mTLS is STRICT, the connection should fail or be rejected
 echo "Plain HTTP test completed (connection should have failed)"
 echo ""
 
-# Test 4: Verify certificate details
-# Check that proper certificates are being used for mTLS
+# Test 4: Verify certificate details from the proxy's SDS secrets
+# Istio sidecars receive workload certificates through SDS, not mounted /etc/certs files
 echo "[4/4] Checking proxy certificates..."
-kubectl exec -n $NAMESPACE $(kubectl get pod -n $NAMESPACE -l app=productpage -o jsonpath='{.items[0].metadata.name}') -c istio-proxy -- \
-    openssl s_client -connect ratings:9080 -cert /etc/certs/cert-chain.pem -key /etc/certs/key.pem -CAfile /etc/certs/root-cert.pem 2>&1 | head -20
+istioctl proxy-config secret \
+    $(kubectl get pod -n $NAMESPACE -l app=productpage -o jsonpath='{.items[0].metadata.name}') \
+    -n $NAMESPACE
 
 echo ""
 echo "=== mTLS Tests Complete ==="
@@ -737,8 +740,8 @@ on:
 
 # Environment variables used across jobs
 env:
-  ISTIO_VERSION: "1.20.0"
-  KUBERNETES_VERSION: "1.28.0"
+  ISTIO_VERSION: "1.30.1"
+  KUBERNETES_VERSION: "1.33.0"
 
 jobs:
   # Job 1: Basic syntax and schema validation
@@ -790,14 +793,14 @@ jobs:
         # Analyze configurations for Istio-specific issues
         # --use-kube=false allows analysis without a live cluster
         run: |
-          istioctl analyze --use-kube=false istio/ -R
+          istioctl analyze --use-kube=false istio/
 
       - name: Check for deprecated APIs
         # Warn about any deprecated Istio API versions
         run: |
           echo "Checking for deprecated Istio API versions..."
           if grep -r "networking.istio.io/v1alpha3" istio/; then
-            echo "::warning::Found deprecated v1alpha3 APIs. Consider upgrading to v1beta1."
+            echo "::warning::Found deprecated v1alpha3 APIs. Consider upgrading to networking.istio.io/v1."
           fi
 
   # Job 3: Policy validation with OPA/Conftest
@@ -813,18 +816,19 @@ jobs:
       - name: Install conftest
         # Conftest runs OPA policies against configuration files
         run: |
-          curl -L https://github.com/open-policy-agent/conftest/releases/download/v0.45.0/conftest_0.45.0_Linux_x86_64.tar.gz | tar xz
+          curl -L https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz | tar xz
           sudo mv conftest /usr/local/bin/
 
       - name: Run policy checks
         # Execute custom OPA policies against Istio configurations
         run: |
-          conftest test --policy policies/istio istio/
+          set -o pipefail
+          conftest test --policy policies/istio --output json istio/ | tee conftest-results.json
 
       - name: Upload policy results
         # Store policy check results as an artifact for review
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: policy-results
           path: conftest-results.json
@@ -872,7 +876,7 @@ jobs:
         # Deploy a sample application to test the configurations
         run: |
           kubectl label namespace default istio-injection=enabled
-          kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+          kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
           kubectl wait --for=condition=ready pod -l app=productpage --timeout=300s
 
       - name: Run integration tests
@@ -939,11 +943,14 @@ stages:
   - security
 
 variables:
-  ISTIO_VERSION: "1.20.0"
+  ISTIO_VERSION: "1.30.1"
+  KUBECTL_VERSION: "v1.33.0"
+  KIND_VERSION: "v0.32.0"
 
 # Base template for jobs that need istioctl
 .istioctl-template:
   before_script:
+    - apk add --no-cache curl tar gzip
     - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
     - mv istio-$ISTIO_VERSION/bin/istioctl /usr/local/bin/
 
@@ -975,10 +982,10 @@ validate:syntax:
 # Job: Run istioctl analyze
 analyze:istio:
   stage: analyze
-  image: ubuntu:22.04
+  image: alpine:3.20
   extends: .istioctl-template
   script:
-    - istioctl analyze --use-kube=false istio/ -R
+    - istioctl analyze --use-kube=false istio/
   rules:
     - changes:
         - istio/**/*
@@ -998,22 +1005,25 @@ analyze:policies:
 test:integration:
   stage: test
   image:
-    name: bitnami/kubectl:latest
+    name: docker:27-cli
     entrypoint: ['']
   extends: .istioctl-template
   services:
     - name: docker:dind
       alias: docker
   variables:
-    DOCKER_HOST: tcp://docker:2376
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    # Install kind for local cluster creation
-    - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+    # Install kubectl and kind for local cluster creation
+    - curl -Lo ./kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    - chmod +x ./kubectl && mv ./kubectl /usr/local/bin/
+    - curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
     - chmod +x ./kind && mv ./kind /usr/local/bin/
 
     # Create test cluster
     - kind create cluster --name istio-test
-    - export KUBECONFIG=$(kind get kubeconfig-path --name istio-test)
+    - kind export kubeconfig --name istio-test
 
     # Install Istio
     - istioctl install --set profile=demo -y
@@ -1051,8 +1061,8 @@ For GitOps workflows using Argo CD, you can add pre-sync hooks for validation:
 
 ```yaml
 # argo-pre-sync-validation.yaml
-# Argo CD PreSync hook that validates Istio configurations before deployment
-# This ensures only valid configurations are deployed to the cluster
+# Argo CD PreSync hook that validates the live Istio configuration before deployment
+# Use CI or a repo-aware Argo CD plugin/job to validate desired manifests from Git
 
 apiVersion: batch/v1
 kind: Job
@@ -1068,20 +1078,16 @@ spec:
     spec:
       containers:
         - name: validator
-          image: istio/istioctl:1.20.0
+          image: istio/istioctl:1.30.1
           command:
             - /bin/sh
             - -c
             - |
               echo "=== Istio Configuration Validation ==="
 
-              # Clone the repository to access configurations
-              # In Argo CD, configs are already available in the repo path
-              cd /repo
-
-              # Run istioctl analyze on all Istio resources
+              # Run istioctl analyze on the live cluster state before sync
               echo "Running istioctl analyze..."
-              istioctl analyze --use-kube=true istio/ -R
+              istioctl analyze --all-namespaces
 
               # Check the exit code - non-zero means validation failed
               if [ $? -ne 0 ]; then
@@ -1091,12 +1097,6 @@ spec:
               fi
 
               echo "Validation successful - proceeding with sync"
-          volumeMounts:
-            - name: repo
-              mountPath: /repo
-      volumes:
-        - name: repo
-          emptyDir: {}
       restartPolicy: Never
   backoffLimit: 0  # Don't retry - fail fast on validation errors
 ```
@@ -1209,35 +1209,35 @@ Create a validation rule for naming conventions:
 package istio.naming
 
 # Rule: VirtualService names must follow the pattern: <service>-vs
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     not endswith(input.metadata.name, "-vs")
     msg := sprintf("VirtualService '%s' must end with '-vs' suffix", [input.metadata.name])
 }
 
 # Rule: DestinationRule names must follow the pattern: <service>-dr
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     not endswith(input.metadata.name, "-dr")
     msg := sprintf("DestinationRule '%s' must end with '-dr' suffix", [input.metadata.name])
 }
 
 # Rule: Gateway names must follow the pattern: <purpose>-gateway
-deny[msg] {
+deny contains msg if {
     input.kind == "Gateway"
     not endswith(input.metadata.name, "-gateway")
     msg := sprintf("Gateway '%s' must end with '-gateway' suffix", [input.metadata.name])
 }
 
 # Rule: Resources must have required labels
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     not input.metadata.labels.app
     msg := sprintf("VirtualService '%s' must have an 'app' label", [input.metadata.name])
 }
 
 # Rule: Resources must have owner annotations for traceability
-deny[msg] {
+deny contains msg if {
     required_annotations := ["team", "contact"]
     annotation := required_annotations[_]
     not input.metadata.annotations[annotation]
@@ -1293,7 +1293,7 @@ Add comments and documentation to your configurations:
 # Last reviewed: 2024-01-15
 # Related ticket: PLAT-1234
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-vs
@@ -1369,10 +1369,10 @@ spec:
             description: "istiod is experiencing configuration push errors. Check istiod logs for details."
 
         # Alert: Invalid Istio configurations
-        # Triggers when istioctl analyze reports errors
+        # Requires a custom metric emitted by your CI job or validation controller
         - alert: IstioConfigValidationErrors
           expr: |
-            istio_build_validation_errors_total > 0
+            istio_config_validation_errors_total > 0
           for: 1m
           labels:
             severity: critical
