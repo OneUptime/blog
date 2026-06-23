@@ -831,9 +831,9 @@ quit
 ```bash
 # Common options:
 autoexpect -f filename.exp    # Specify output file
-autoexpect -p                 # Conservative mode (prompts only)
-autoexpect -Q                 # Quote all expect patterns
-autoexpect -c                 # Capture interactive session in real-time
+autoexpect -p                 # Prompt mode (expect only the last line/prompt)
+autoexpect -Q char            # Set a quote character for entering toggle keys
+autoexpect -c                 # Conservative mode (pause briefly before each character)
 ```
 
 ### Cleaning Up Autoexpect Output
@@ -928,7 +928,7 @@ puts "Script completed successfully"
 ### Autoexpect Tips
 
 1. **Keep sessions short**: Record only what you need
-2. **Use conservative mode** (`-p`): Generates cleaner scripts
+2. **Use prompt mode** (`-p`): Generates cleaner scripts that match on prompts
 3. **Always clean up**: Remove sensitive data like passwords
 4. **Parameterize**: Replace hardcoded values with variables
 5. **Add error handling**: Autoexpect does not add timeout handlers
