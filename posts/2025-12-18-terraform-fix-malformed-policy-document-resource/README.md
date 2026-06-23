@@ -157,7 +157,7 @@ resource "aws_iam_role" "cross_account" {
     Statement = [{
       Effect   = "Allow"
       Action   = "sts:AssumeRole"
-      Resource = "arn:aws:iam::OTHER_ACCOUNT:root"  # Wrong!
+      Resource = "arn:aws:iam::111122223333:root"  # Wrong!
     }]
   })
 }
@@ -171,7 +171,7 @@ resource "aws_iam_role" "cross_account" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::OTHER_ACCOUNT:root"
+        AWS = "arn:aws:iam::111122223333:root"
       }
       Action = "sts:AssumeRole"
     }]
@@ -288,7 +288,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
 
 ## Using Data Sources for Common Trust Policies
 
-AWS provides data sources for common trust policy patterns:
+The Terraform AWS provider provides the `aws_iam_policy_document` data source for common trust policy patterns:
 
 ```hcl
 # Use aws_iam_policy_document for cleaner syntax
@@ -316,6 +316,8 @@ resource "aws_iam_role" "lambda" {
 Trust policies can include conditions:
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role" "github_actions" {
   name = "github-actions-role"
 
@@ -346,7 +348,7 @@ resource "aws_iam_role" "github_actions" {
 
 ```bash
 # Check JSON validity
-echo '{"Version":"2012-10-17",...}' | jq .
+jq . trust-policy.json
 ```
 
 ### 2. Use Terraform Console
@@ -364,11 +366,20 @@ terraform console
   })
 ```
 
-### 3. Check AWS IAM Policy Simulator
+### 3. Use IAM Access Analyzer or Policy Simulator
 
 Test policies before applying:
-- Go to IAM Console > Policy Simulator
-- Test trust policies and permissions policies separately
+- Validate trust policies with IAM Access Analyzer policy validation
+- Or use the AWS CLI:
+
+```bash
+aws accessanalyzer validate-policy \
+  --policy-document file://trust-policy.json \
+  --policy-type RESOURCE_POLICY \
+  --validate-policy-resource-type AWS::IAM::AssumeRolePolicyDocument
+```
+
+- Use IAM Policy Simulator for identity-based permissions policies. It does not simulate resource-based policies for IAM roles.
 
 ### 4. Enable Detailed Terraform Logging
 
