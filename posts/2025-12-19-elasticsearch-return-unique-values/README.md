@@ -62,7 +62,7 @@ Response:
 
 1. **Use `.keyword` suffix** for text fields to get exact values
 2. **Set appropriate size** - default is 10, increase for more unique values
-3. **Results are approximate** for high-cardinality fields
+3. **Document counts and top-term selection can be approximate** for high-cardinality fields
 
 ## Method 2: Cardinality Aggregation (Count Only)
 
@@ -98,7 +98,7 @@ Response:
 ```
 
 The `precision_threshold` controls accuracy versus memory usage:
-- Values up to this threshold are nearly exact
+- Counts up to this threshold are expected to be close to accurate
 - Higher values use more memory but are more accurate
 - Maximum is 40000
 
@@ -125,7 +125,7 @@ curl -X GET "https://localhost:9200/logs/_search" \
   }'
 ```
 
-To paginate through all values, use `after_key`:
+To paginate through all values, set `after` to the `after_key` returned in the previous response:
 
 ```bash
 curl -X GET "https://localhost:9200/logs/_search" \
@@ -356,9 +356,9 @@ curl -X GET "https://localhost:9200/orders/_search" \
 
 | Method | Use Case | Memory | Accuracy |
 |--------|----------|--------|----------|
-| Terms | Up to 10K unique values | Medium | Exact up to size |
+| Terms | Up to 10K unique values | Medium | Exact values for returned buckets; counts/top list may be approximate |
 | Cardinality | Count only | Low | Approximate |
-| Composite | Millions of values | Low (paginated) | Exact |
+| Composite | Millions of values | Low (paginated) | Exact when all pages are read |
 | Collapse | One doc per value | Medium | Exact |
 
 ## Best Practices
