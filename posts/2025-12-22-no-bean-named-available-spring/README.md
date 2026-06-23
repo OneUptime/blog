@@ -39,14 +39,15 @@ flowchart TD
     A[Bean Requested] --> B{Bean Name Specified?}
     B -->|Yes| C[Search by Name]
     B -->|No| D[Search by Type]
-    C --> E{Bean Found?}
-    D --> E
+    C --> E{Named Bean Found?}
     E -->|No| F[NoSuchBeanDefinitionException]
-    E -->|Yes| G{Multiple Beans?}
-    G -->|Yes| H{@Primary or @Qualifier?}
+    E -->|Yes| J[Return Bean]
+    D --> G{Beans Found?}
+    G -->|No| F
+    G -->|One| J
+    G -->|Multiple| H{@Primary or @Qualifier?}
     H -->|No| I[NoUniqueBeanDefinitionException]
-    H -->|Yes| J[Return Bean]
-    G -->|No| J
+    H -->|Yes| J
 ```
 
 ---
@@ -425,11 +426,11 @@ class UserControllerTest {
 // Solution 1: Include the service
 @SpringBootTest(classes = {UserController.class, UserService.class})
 
-// Solution 2: Use @MockBean
+// Solution 2: Use @MockitoBean
 @SpringBootTest(classes = {UserController.class})
 class UserControllerTest {
 
-    @MockBean
+    @MockitoBean
     private UserService userService;
 
     @Autowired
@@ -504,7 +505,7 @@ class EagerValidationTest {
 | Name mismatch | Use correct bean name with @Qualifier |
 | Conditional not met | Check @Conditional* conditions |
 | No implementation | Add implementing class with stereotype annotation |
-| Test context | Use @MockBean or include dependencies |
+| Test context | Use @MockitoBean or include dependencies |
 
 ---
 
