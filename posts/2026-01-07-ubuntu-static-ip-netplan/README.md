@@ -593,7 +593,7 @@ network:
       dhcp4: false
       addresses:
         - 192.168.1.100/24
-      # Override MAC address (macaddress must be lowercase)
+      # Override MAC address (standard XX:XX:XX:XX:XX:XX format)
       macaddress: "00:11:22:33:44:55"
       routes:
         - to: default
