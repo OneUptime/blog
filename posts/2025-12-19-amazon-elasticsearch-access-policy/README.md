@@ -93,8 +93,8 @@ For public endpoints, restrict access by IP address:
       "Condition": {
         "IpAddress": {
           "aws:SourceIp": [
-            "192.168.1.0/24",
-            "10.0.0.0/8",
+            "192.0.2.0/24",
+            "198.51.100.0/24",
             "203.0.113.50/32"
           ]
         }
@@ -119,7 +119,7 @@ For public endpoints, restrict access by IP address:
       "Resource": "arn:aws:es:us-east-1:123456789012:domain/my-domain/*",
       "Condition": {
         "IpAddress": {
-          "aws:SourceIp": "10.0.0.0/8"
+          "aws:SourceIp": "203.0.113.0/24"
         }
       }
     }
@@ -219,7 +219,7 @@ flowchart TB
     D --> A
 
     E[Internet] -.->|Blocked| A
-    E -->|Via NAT/Bastion| B
+    E -->|Via VPN/Bastion| B
 ```
 
 ### VPC Security Group Configuration
@@ -234,10 +234,10 @@ aws ec2 create-security-group \
 
 # Allow inbound from application security group
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-opensearch \
+  --group-id sg-0123456789abcdef0 \
   --protocol tcp \
   --port 443 \
-  --source-group sg-application
+  --source-group sg-0abcdef1234567890
 ```
 
 ### Terraform Configuration
@@ -314,7 +314,7 @@ resource "aws_security_group" "opensearch" {
 
 ## Fine-Grained Access Control
 
-Enable fine-grained access control for document-level security:
+Enable fine-grained access control for document-level security. Fine-grained access control requires HTTPS, encryption at rest, and node-to-node encryption:
 
 ### Enable via AWS Console or CLI
 
@@ -339,6 +339,7 @@ Map IAM roles to OpenSearch security roles:
 curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api/rolesmapping/all_access" \
   -H "Content-Type: application/json" \
   --aws-sigv4 "aws:amz:us-east-1:es" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -d '{
     "backend_roles": [
       "arn:aws:iam::123456789012:role/AdminRole"
@@ -353,6 +354,7 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api
 curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api/roles/logs_reader" \
   -H "Content-Type: application/json" \
   --aws-sigv4 "aws:amz:us-east-1:es" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -d '{
     "cluster_permissions": [
       "cluster_composite_ops_ro"
@@ -369,6 +371,7 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api
 curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api/rolesmapping/logs_reader" \
   -H "Content-Type: application/json" \
   --aws-sigv4 "aws:amz:us-east-1:es" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -d '{
     "backend_roles": [
       "arn:aws:iam::123456789012:role/LogViewerRole"
@@ -380,36 +383,32 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_security/api
 
 Applications must sign requests with AWS credentials:
 
-### Python with boto3 and requests-aws4auth
+### Python with boto3 and opensearch-py
 
 ```python
-from elasticsearch import Elasticsearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
+from urllib.parse import urlparse
+
 import boto3
+from opensearchpy import AWSV4SignerAuth, OpenSearch, RequestsHttpConnection
 
 # Get credentials
 credentials = boto3.Session().get_credentials()
 region = 'us-east-1'
-service = 'es'
+host = 'https://my-domain.us-east-1.es.amazonaws.com'
+url = urlparse(host)
 
-awsauth = AWS4Auth(
-    credentials.access_key,
-    credentials.secret_key,
-    region,
-    service,
-    session_token=credentials.token
-)
+auth = AWSV4SignerAuth(credentials, region)
 
-es = Elasticsearch(
-    hosts=[{'host': 'my-domain.us-east-1.es.amazonaws.com', 'port': 443}],
-    http_auth=awsauth,
+client = OpenSearch(
+    hosts=[{'host': url.netloc, 'port': url.port or 443}],
+    http_auth=auth,
     use_ssl=True,
     verify_certs=True,
     connection_class=RequestsHttpConnection
 )
 
-# Now use es client normally
-response = es.search(index="my-index", body={"query": {"match_all": {}}})
+# Now use the client normally
+response = client.search(index="my-index", body={"query": {"match_all": {}}})
 ```
 
 ### Node.js with AWS SDK
@@ -496,6 +495,7 @@ aws iam simulate-principal-policy \
 ```bash
 curl -X GET "https://my-domain.us-east-1.es.amazonaws.com/" \
   --aws-sigv4 "aws:amz:us-east-1:es" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -v
 ```
 
