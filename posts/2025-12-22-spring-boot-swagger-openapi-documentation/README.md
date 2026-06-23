@@ -8,7 +8,7 @@ Description: Learn how to set up interactive API documentation in Spring Boot us
 
 ---
 
-Good API documentation is essential for any REST API. SpringDoc OpenAPI provides automatic generation of OpenAPI 3.0 documentation with an interactive Swagger UI. This guide shows you how to set it up and customize it for your Spring Boot application.
+Good API documentation is essential for any REST API. SpringDoc OpenAPI provides automatic generation of OpenAPI 3 documentation with an interactive Swagger UI. This guide shows you how to set it up and customize it for your Spring Boot application.
 
 ## Dependencies
 
@@ -16,7 +16,7 @@ Good API documentation is essential for any REST API. SpringDoc OpenAPI provides
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.8.6</version>
+    <version>2.8.17</version>
 </dependency>
 ```
 
@@ -26,7 +26,7 @@ For WebFlux applications:
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
-    <version>2.8.6</version>
+    <version>2.8.17</version>
 </dependency>
 ```
 
@@ -520,14 +520,16 @@ public ResponseEntity<OrderDTO> createOrder(@RequestBody CreateOrderRequest requ
 
 ## Generating OpenAPI Spec at Build Time
 
+The Maven plugin fetches the OpenAPI document from a running application during the integration-test phase, so use it with the `spring-boot-maven-plugin` start/stop goals or keep the application running locally.
+
 ```xml
 <plugin>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-maven-plugin</artifactId>
-    <version>1.4</version>
+    <version>1.5</version>
     <executions>
         <execution>
-            <id>generate-openapi</id>
+            <id>integration-test</id>
             <goals>
                 <goal>generate</goal>
             </goals>
