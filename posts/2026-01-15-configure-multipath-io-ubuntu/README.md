@@ -209,12 +209,13 @@ defaults {
     # Basic Operation Settings
     # -------------------------------------------------------------------------
 
-    # Enable multipath functionality (yes/no)
-    # Set to "no" to disable multipath globally
+    # Use friendly names (mpath0, mpath1, ...) from the bindings file
+    # instead of the raw WWID as the device name (yes/no)
     user_friendly_names yes
 
-    # Find all available paths to each multipath device
-    # Options: "yes" = discover all paths, "no" = only use configured paths
+    # Controls when a device is treated as a multipath device
+    # "yes" = only create a multipath device when 2+ paths share a WWID
+    #         (or the device was already a multipath device)
     find_multipaths yes
 
     # -------------------------------------------------------------------------
@@ -271,10 +272,7 @@ defaults {
     # Timeout and Retry Settings
     # -------------------------------------------------------------------------
 
-    # Number of failed path checks before marking path as failed
-    no_path_retry 5
-
-    # Flush multipath device maps on daemon shutdown (yes/no)
+    # Disable queueing when the last path to a device is deleted (yes/no)
     flush_on_last_del yes
 
     # Maximum number of open file descriptors
@@ -340,13 +338,13 @@ blacklist {
     # Exclude USB storage devices
     device {
         vendor "USB"
-        product "*"
+        product ".*"
     }
 
     # Exclude ATA/SATA drives (usually local)
     device {
         vendor "ATA"
-        product "*"
+        product ".*"
     }
 
     # Exclude VMware virtual disks if not using multipath in VM
