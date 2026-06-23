@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Metric, Monitoring, Labels, Cardinality, Observability
 
-Description: Learn how to count unique label values in Prometheus using PromQL functions like count, group, and label_values.
+Description: Learn how to count unique label values in Prometheus using PromQL aggregation operators like count and group.
 
 ---
 
@@ -15,8 +15,8 @@ Prometheus labels provide dimensional data that makes metrics powerful and flexi
 ## TL;DR
 
 - Use `count(group by (label_name) (metric_name))` to count unique label values
-- The `group` function deduplicates time series by label combinations
-- Use `label_values()` in Grafana for dropdown variable population
+- The `group` aggregation operator deduplicates time series by label combinations
+- Use Grafana's `label_values()` query helper for dropdown variable population
 - Monitor cardinality to prevent memory issues in Prometheus
 - High cardinality labels can degrade query performance
 
@@ -36,7 +36,7 @@ Understanding label cardinality helps with several critical tasks:
 
 ## The Core Technique: group and count
 
-The most reliable way to count unique label values combines `group` and `count`:
+The most reliable way to count unique label values combines the `group` and `count` aggregation operators:
 
 ```promql
 # Count unique values for a specific label
@@ -51,7 +51,7 @@ This query:
 
 ### How group Works
 
-The `group` function creates one time series per unique label combination:
+The `group` aggregation operator creates one time series per unique label combination:
 
 ```promql
 # Original metric might have multiple series per instance
@@ -78,7 +78,7 @@ http_requests_total{instance="web-02", method="GET", status="200"}
 count(group by (instance) (up))
 
 # How many instances per job?
-count(group by (instance) (up)) by (job)
+count by (job) (group by (job, instance) (up))
 ```
 
 ### Count Unique Services
@@ -98,7 +98,7 @@ count(group by (service) (rate(http_requests_total[1h]) > 0))
 count(group by (status_code) (http_requests_total))
 
 # Count status codes per endpoint
-count(group by (status_code) (http_requests_total)) by (endpoint)
+count by (endpoint) (group by (endpoint, status_code) (http_requests_total))
 ```
 
 ### Count Kubernetes Resources
@@ -108,7 +108,7 @@ count(group by (status_code) (http_requests_total)) by (endpoint)
 count(group by (namespace) (kube_pod_info))
 
 # Count unique pods per namespace
-count(group by (pod) (kube_pod_info)) by (namespace)
+count by (namespace) (group by (namespace, pod) (kube_pod_info))
 
 # Count unique node names
 count(group by (node) (kube_node_info))
@@ -154,7 +154,7 @@ flowchart TD
 
 ## Using label_values in Grafana
 
-Grafana provides the `label_values()` function for populating template variables:
+Grafana provides the `label_values()` query helper for populating template variables:
 
 ```promql
 # Get all unique instance values
@@ -192,28 +192,28 @@ Sort: Alphabetical (asc)
 
 ```promql
 # Count instances with high CPU usage
-count(group by (instance) (
-  rate(node_cpu_seconds_total{mode="idle"}[5m]) < 0.1
-))
+count(
+  avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) < 0.1
+)
 
 # Count services with error rates above threshold
-count(group by (service) (
-  rate(http_requests_total{status_code=~"5.."}[5m]) /
-  rate(http_requests_total[5m]) > 0.01
-))
+count(
+  (
+    sum by (service) (rate(http_requests_total{status_code=~"5.."}[5m])) /
+    sum by (service) (rate(http_requests_total[5m]))
+  ) > 0.01
+)
 ```
 
 ### Count Over Time
 
 ```promql
-# Track how many instances reported over the last hour
-count_over_time(
-  count(group by (instance) (up))[1h:5m]
-)
+# Count instances that reported at least once in the last hour
+count(group by (instance) (max_over_time(up[1h])))
 
 # Maximum number of unique pods seen in 24 hours
 max_over_time(
-  count(group by (pod) (kube_pod_status_phase))[24h:15m]
+  count(group by (namespace, pod) (kube_pod_status_phase))[24h:15m]
 )
 ```
 
@@ -239,7 +239,7 @@ High cardinality can cause performance problems. Monitor it proactively:
 # Total number of time series (requires Prometheus 2.x)
 prometheus_tsdb_head_series
 
-# Series created per scrape
+# Series created per second
 rate(prometheus_tsdb_head_series_created_total[5m])
 ```
 
@@ -311,11 +311,11 @@ groups:
     rules:
       # Count unique instances per job
       - record: job:instances:count
-        expr: count(group by (instance) (up)) by (job)
+        expr: count by (job) (group by (job, instance) (up))
 
       # Count unique pods per namespace
       - record: namespace:pods:count
-        expr: count(group by (pod) (kube_pod_info)) by (namespace)
+        expr: count by (namespace) (group by (namespace, pod) (kube_pod_info))
 
       # Count unique services
       - record: cluster:services:count
