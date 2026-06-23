@@ -41,10 +41,10 @@ sequenceDiagram
     participant Consumer as Consumer Service
     participant Backend as Backend Service
 
-    Note over Producer: Create Span: "publish"
+    Note over Producer: Create Span: "send"
     Producer->>Producer: Inject trace context into message headers
     Producer->>Queue: Publish Message (with trace context)
-    Note over Producer: End Span: "publish"
+    Note over Producer: End Span: "send"
 
     Note over Queue: Message stored with trace context
 
@@ -63,10 +63,11 @@ OpenTelemetry defines semantic conventions for messaging systems that ensure con
 |-----------|-------------|---------|
 | `messaging.system` | The messaging system identifier | `kafka`, `rabbitmq`, `aws_sqs` |
 | `messaging.destination.name` | The message destination name | `orders-topic`, `user-events` |
-| `messaging.operation` | The operation being performed | `publish`, `receive`, `process` |
+| `messaging.operation.type` | The operation type being performed | `send`, `receive`, `process` |
+| `messaging.operation.name` | The system-specific operation name | `send`, `basic_publish`, `ReceiveMessage` |
 | `messaging.message.id` | Unique identifier of the message | `msg-12345` |
-| `messaging.kafka.partition` | Kafka partition (Kafka-specific) | `3` |
-| `messaging.rabbitmq.routing_key` | Routing key (RabbitMQ-specific) | `user.created` |
+| `messaging.destination.partition.id` | Kafka partition (Kafka-specific) | `3` |
+| `messaging.rabbitmq.destination.routing_key` | Routing key (RabbitMQ-specific) | `user.created` |
 
 ## Apache Kafka Instrumentation
 
@@ -156,18 +157,20 @@ class InstrumentedKafkaProducer:
             key: The message key for partitioning
             value: The message payload as a dictionary
         """
-        # Create a PRODUCER span for this publish operation
+        # Create a PRODUCER span for this send operation
         # SpanKind.PRODUCER indicates this is a message producer
         with tracer.start_as_current_span(
-            name=f"{topic} publish",  # Span name follows convention: <destination> <operation>
+            name=f"{topic} send",  # Span name follows convention: <destination> <operation type>
             kind=SpanKind.PRODUCER,
         ) as span:
             # Set semantic convention attributes for messaging
             # These attributes help with filtering and analysis in your trace viewer
             span.set_attribute("messaging.system", "kafka")
             span.set_attribute("messaging.destination.name", topic)
-            span.set_attribute("messaging.operation", "publish")
-            span.set_attribute("messaging.kafka.message.key", key)
+            span.set_attribute("messaging.operation.type", "send")
+            span.set_attribute("messaging.operation.name", "send")
+            if key is not None:
+                span.set_attribute("messaging.kafka.message.key", key)
 
             # Prepare headers dictionary for trace context injection
             # Kafka headers are key-value pairs where values are bytes
@@ -198,7 +201,7 @@ class InstrumentedKafkaProducer:
                 record_metadata = future.get(timeout=10)
 
                 # Add metadata to the span for debugging
-                span.set_attribute("messaging.kafka.partition", record_metadata.partition)
+                span.set_attribute("messaging.destination.partition.id", str(record_metadata.partition))
                 span.set_attribute("messaging.kafka.offset", record_metadata.offset)
 
             except Exception as e:
@@ -317,10 +320,11 @@ class InstrumentedKafkaConsumer:
                 # Set messaging semantic convention attributes
                 span.set_attribute("messaging.system", "kafka")
                 span.set_attribute("messaging.destination.name", self.topic)
-                span.set_attribute("messaging.operation", "process")
-                span.set_attribute("messaging.kafka.partition", message.partition)
+                span.set_attribute("messaging.operation.type", "process")
+                span.set_attribute("messaging.operation.name", "process")
+                span.set_attribute("messaging.destination.partition.id", str(message.partition))
                 span.set_attribute("messaging.kafka.offset", message.offset)
-                span.set_attribute("messaging.kafka.consumer.group",
+                span.set_attribute("messaging.consumer.group.name",
                                    self.consumer.config['group_id'])
 
                 # Add message key if present
@@ -444,17 +448,18 @@ class InstrumentedRabbitMQPublisher:
             routing_key: The routing key for message routing
             message: The message payload as a dictionary
         """
-        # Create a PRODUCER span for this publish operation
+        # Create a PRODUCER span for this send operation
         # The span name includes both exchange and routing key for clarity
         with tracer.start_as_current_span(
-            name=f"{exchange} publish",
+            name=f"{exchange}:{routing_key} send",
             kind=SpanKind.PRODUCER,
         ) as span:
             # Set RabbitMQ-specific semantic convention attributes
             span.set_attribute("messaging.system", "rabbitmq")
-            span.set_attribute("messaging.destination.name", exchange)
-            span.set_attribute("messaging.operation", "publish")
-            span.set_attribute("messaging.rabbitmq.routing_key", routing_key)
+            span.set_attribute("messaging.destination.name", f"{exchange}:{routing_key}")
+            span.set_attribute("messaging.operation.type", "send")
+            span.set_attribute("messaging.operation.name", "basic_publish")
+            span.set_attribute("messaging.rabbitmq.destination.routing_key", routing_key)
 
             # Prepare headers for trace context injection
             # RabbitMQ supports arbitrary headers in message properties
@@ -588,9 +593,12 @@ class InstrumentedRabbitMQConsumer:
             ) as span:
                 # Set RabbitMQ-specific attributes
                 span.set_attribute("messaging.system", "rabbitmq")
-                span.set_attribute("messaging.destination.name", method.exchange)
-                span.set_attribute("messaging.operation", "process")
-                span.set_attribute("messaging.rabbitmq.routing_key", method.routing_key)
+                span.set_attribute("messaging.destination.name",
+                                   f"{method.exchange}:{method.routing_key}")
+                span.set_attribute("messaging.operation.type", "process")
+                span.set_attribute("messaging.operation.name", "process")
+                span.set_attribute("messaging.rabbitmq.destination.routing_key", method.routing_key)
+                span.set_attribute("messaging.rabbitmq.message.delivery_tag", method.delivery_tag)
                 span.set_attribute("messaging.message.body.size", len(body))
 
                 try:
@@ -719,14 +727,15 @@ class InstrumentedSQSProducer:
 
         # Create a PRODUCER span for this send operation
         with tracer.start_as_current_span(
-            name=f"{queue_name} publish",
+            name=f"{queue_name} send",
             kind=SpanKind.PRODUCER,
         ) as span:
             # Set SQS-specific semantic convention attributes
             span.set_attribute("messaging.system", "aws_sqs")
             span.set_attribute("messaging.destination.name", queue_name)
-            span.set_attribute("messaging.operation", "publish")
-            span.set_attribute("messaging.url", queue_url)
+            span.set_attribute("messaging.operation.type", "send")
+            span.set_attribute("messaging.operation.name", "SendMessage")
+            span.set_attribute("aws.sqs.queue.url", queue_url)
 
             # Prepare a carrier for trace context injection
             carrier = {}
@@ -752,7 +761,7 @@ class InstrumentedSQSProducer:
             # FIFO queues require this for message ordering
             if message_group_id:
                 send_params['MessageGroupId'] = message_group_id
-                span.set_attribute("messaging.sqs.message_group_id", message_group_id)
+                span.set_attribute("aws.sqs.message_group_id", message_group_id)
 
             try:
                 # Send the message
@@ -763,7 +772,7 @@ class InstrumentedSQSProducer:
 
                 # For FIFO queues, also record the sequence number
                 if 'SequenceNumber' in response:
-                    span.set_attribute("messaging.sqs.sequence_number",
+                    span.set_attribute("aws.sqs.sequence_number",
                                        response['SequenceNumber'])
 
                 return response['MessageId']
@@ -785,12 +794,13 @@ class InstrumentedSQSProducer:
 
         # Create a parent span for the batch operation
         with tracer.start_as_current_span(
-            name=f"{queue_name} publish_batch",
+            name=f"{queue_name} send_batch",
             kind=SpanKind.PRODUCER,
         ) as batch_span:
             batch_span.set_attribute("messaging.system", "aws_sqs")
             batch_span.set_attribute("messaging.destination.name", queue_name)
-            batch_span.set_attribute("messaging.operation", "publish")
+            batch_span.set_attribute("messaging.operation.type", "send")
+            batch_span.set_attribute("messaging.operation.name", "SendMessageBatch")
             batch_span.set_attribute("messaging.batch.message_count", len(messages))
 
             # Build batch entries with trace context
@@ -921,7 +931,8 @@ class InstrumentedSQSConsumer:
             ) as receive_span:
                 receive_span.set_attribute("messaging.system", "aws_sqs")
                 receive_span.set_attribute("messaging.destination.name", queue_name)
-                receive_span.set_attribute("messaging.operation", "receive")
+                receive_span.set_attribute("messaging.operation.type", "receive")
+                receive_span.set_attribute("messaging.operation.name", "ReceiveMessage")
 
                 try:
                     # Receive messages with long polling
@@ -977,13 +988,14 @@ class InstrumentedSQSConsumer:
         ) as span:
             span.set_attribute("messaging.system", "aws_sqs")
             span.set_attribute("messaging.destination.name", queue_name)
-            span.set_attribute("messaging.operation", "process")
+            span.set_attribute("messaging.operation.type", "process")
+            span.set_attribute("messaging.operation.name", "process")
             span.set_attribute("messaging.message.id", message['MessageId'])
 
             # Add SQS-specific attributes
             attributes = message.get('Attributes', {})
             if 'ApproximateReceiveCount' in attributes:
-                span.set_attribute("messaging.sqs.receive_count",
+                span.set_attribute("aws.sqs.approximate_receive_count",
                                    int(attributes['ApproximateReceiveCount']))
 
             try:
@@ -1043,7 +1055,7 @@ When using AWS Lambda as an SQS consumer, the instrumentation pattern is slightl
 
 ```python
 # AWS Lambda function with SQS trigger and OpenTelemetry instrumentation
-# Uses the AWS Lambda OpenTelemetry layer for automatic context handling
+# Manually extracts message context for each SQS record
 
 import json
 from opentelemetry import trace
@@ -1100,10 +1112,11 @@ def lambda_handler(event, context):
             links=links,
         ) as span:
             span.set_attribute("messaging.system", "aws_sqs")
-            span.set_attribute("messaging.operation", "process")
+            span.set_attribute("messaging.operation.type", "process")
+            span.set_attribute("messaging.operation.name", "process")
             span.set_attribute("messaging.message.id", record['messageId'])
             span.set_attribute("cloud.platform", "aws_lambda")
-            span.set_attribute("faas.execution", context.aws_request_id)
+            span.set_attribute("faas.invocation_id", context.aws_request_id)
 
             try:
                 # Parse and process the message
@@ -1114,8 +1127,9 @@ def lambda_handler(event, context):
                 span.record_exception(e)
                 span.set_status(trace.StatusCode.ERROR, str(e))
 
-                # Add to batch item failures for partial batch response
-                # This enables SQS to retry only failed messages
+                # Add to batch item failures for partial batch response.
+                # The event source mapping must enable ReportBatchItemFailures
+                # for Lambda to retry only failed messages.
                 batch_item_failures.append({
                     'itemIdentifier': record['messageId']
                 })
@@ -1174,8 +1188,12 @@ Sometimes you need a custom propagator for message queue systems that have speci
 
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.context import Context
-from opentelemetry.trace import get_current_span, SpanContext
-from opentelemetry.trace.propagation import set_span_in_context
+from opentelemetry.trace import (
+    NonRecordingSpan,
+    SpanContext,
+    get_current_span,
+    set_span_in_context,
+)
 from typing import Optional, Mapping, MutableMapping
 
 class MessageQueuePropagator(TextMapPropagator):
@@ -1286,7 +1304,7 @@ class MessageQueuePropagator(TextMapPropagator):
 
             # Return context with the span set
             return set_span_in_context(
-                trace.NonRecordingSpan(span_context),
+                NonRecordingSpan(span_context),
                 context
             )
 
@@ -1363,11 +1381,12 @@ class MultiHopMessageProcessor:
 
         # Create a new span for the retry forward
         with tracer.start_as_current_span(
-            name=f"{retry_queue} forward_retry",
+            name=f"{retry_queue} send",
             kind=SpanKind.PRODUCER,
             links=links,
         ) as span:
-            span.set_attribute("messaging.operation", "retry")
+            span.set_attribute("messaging.operation.type", "send")
+            span.set_attribute("messaging.operation.name", "forward_retry")
             span.set_attribute("messaging.destination.name", retry_queue)
 
             # Increment retry count in the message
@@ -1403,11 +1422,12 @@ class MultiHopMessageProcessor:
             ))
 
         with tracer.start_as_current_span(
-            name=f"{dlq} forward_dlq",
+            name=f"{dlq} send",
             kind=SpanKind.PRODUCER,
             links=links,
         ) as span:
-            span.set_attribute("messaging.operation", "dlq")
+            span.set_attribute("messaging.operation.type", "send")
+            span.set_attribute("messaging.operation.name", "forward_dlq")
             span.set_attribute("messaging.destination.name", dlq)
             span.set_attribute("error.message", error)
 
@@ -1435,14 +1455,14 @@ Follow a consistent naming convention for message queue spans:
 
 ```python
 # Span naming conventions for message queues
-# Format: <destination> <operation>
+# Format: <destination> <operation type>
 
 # Good examples:
-"orders-topic publish"     # Kafka producer
+"orders-topic send"        # Kafka producer
 "orders-topic receive"     # Kafka consumer (receive phase)
 "orders-topic process"     # Kafka consumer (process phase)
-"user-events publish"      # RabbitMQ publisher
-"order-queue publish"      # SQS producer
+"user-events send"         # RabbitMQ publisher
+"order-queue send"         # SQS producer
 "order-queue process"      # SQS consumer
 
 # Avoid these patterns:
@@ -1469,7 +1489,8 @@ def enrich_producer_span(span, message: dict, topic: str, partition: int = None)
     # Semantic convention attributes
     span.set_attribute("messaging.system", "kafka")
     span.set_attribute("messaging.destination.name", topic)
-    span.set_attribute("messaging.operation", "publish")
+    span.set_attribute("messaging.operation.type", "send")
+    span.set_attribute("messaging.operation.name", "send")
 
     # Message characteristics
     span.set_attribute("messaging.message.body.size", len(json.dumps(message)))
@@ -1484,7 +1505,7 @@ def enrich_producer_span(span, message: dict, topic: str, partition: int = None)
 
     # Infrastructure context
     if partition is not None:
-        span.set_attribute("messaging.kafka.partition", partition)
+        span.set_attribute("messaging.destination.partition.id", str(partition))
 
 def enrich_consumer_span(span, message: dict, topic: str,
                           consumer_group: str, partition: int, offset: int):
@@ -1494,9 +1515,10 @@ def enrich_consumer_span(span, message: dict, topic: str,
     # Semantic convention attributes
     span.set_attribute("messaging.system", "kafka")
     span.set_attribute("messaging.destination.name", topic)
-    span.set_attribute("messaging.operation", "process")
-    span.set_attribute("messaging.kafka.consumer.group", consumer_group)
-    span.set_attribute("messaging.kafka.partition", partition)
+    span.set_attribute("messaging.operation.type", "process")
+    span.set_attribute("messaging.operation.name", "process")
+    span.set_attribute("messaging.consumer.group.name", consumer_group)
+    span.set_attribute("messaging.destination.partition.id", str(partition))
     span.set_attribute("messaging.kafka.offset", offset)
 
     # Processing context
@@ -1824,8 +1846,8 @@ With these tools in place, your message-driven architecture becomes observable a
 
 ## Further Reading
 
-- [OpenTelemetry Messaging Semantic Conventions](https://opentelemetry.io/docs/reference/specification/trace/semantic_conventions/messaging/)
-- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/instrumentation/python/)
+- [OpenTelemetry Messaging Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/messaging/)
+- [OpenTelemetry Python SDK Documentation](https://opentelemetry.io/docs/languages/python/)
 - [Distributed Tracing with OpenTelemetry](https://opentelemetry.io/docs/concepts/signals/traces/)
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
 - [RabbitMQ Tutorials](https://www.rabbitmq.com/getstarted.html)
