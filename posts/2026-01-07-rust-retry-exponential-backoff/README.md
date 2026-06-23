@@ -44,7 +44,9 @@ The `backoff` crate provides configurable retry strategies with async support.
 [dependencies]
 backoff = { version = "0.4", features = ["tokio"] }
 tokio = { version = "1", features = ["full"] }
+reqwest = "0.13"
 thiserror = "1"
+tracing = "0.1"
 ```
 
 ### Basic Retry
@@ -86,7 +88,8 @@ async fn fetch_with_retry(client: &Client, url: &str) -> Result<String, reqwest:
         client
             .get(url)
             .send()
-            .await?
+            .await
+            .map_err(backoff::Error::transient)?
             .text()
             .await
             .map_err(backoff::Error::transient)  // Mark as retryable
@@ -165,14 +168,9 @@ pub async fn fetch_classified(client: &Client, url: &str) -> Result<String, Serv
             .get(url)
             .send()
             .await
+            .map_err(classify_error)?
+            .error_for_status()
             .map_err(classify_error)?;
-
-        let status = response.status();
-        if !status.is_success() {
-            return Err(classify_status(status, reqwest::Error::from(
-                std::io::Error::new(std::io::ErrorKind::Other, "HTTP error")
-            )));
-        }
 
         response
             .text()
@@ -196,6 +194,7 @@ pub async fn fetch_classified(client: &Client, url: &str) -> Result<String, Serv
 [dependencies]
 tokio-retry = "0.3"
 tokio = { version = "1", features = ["full"] }
+reqwest = "0.13"
 ```
 
 ### Basic Usage
@@ -212,8 +211,8 @@ use tokio_retry::{
 
 /// Create retry strategy with jitter
 fn retry_strategy() -> impl Iterator<Item = Duration> {
-    ExponentialBackoff::from_millis(100)
-        .factor(2)              // Double each time
+    ExponentialBackoff::from_millis(2)
+        .factor(50)             // 100ms, 200ms, 400ms, ...
         .max_delay(Duration::from_secs(30))  // Cap at 30s
         .map(jitter)            // Add randomization
         .take(5)                // Max 5 retries
@@ -223,7 +222,7 @@ fn retry_strategy() -> impl Iterator<Item = Duration> {
 pub async fn fetch_with_condition(url: &str) -> Result<String, reqwest::Error> {
     let client = reqwest::Client::new();
 
-    Retry::spawn(retry_strategy(), || async {
+    Retry::start(retry_strategy(), || async {
         client.get(url).send().await?.text().await
     })
     .await
@@ -243,7 +242,7 @@ where
         client.get(url).send().await?.text().await
     };
 
-    tokio_retry::RetryIf::spawn(retry_strategy(), action, should_retry).await
+    tokio_retry::RetryIf::start(retry_strategy(), action, should_retry).await
 }
 
 // Usage example
@@ -402,6 +401,7 @@ pub enum CircuitBreakerError<E> {
 
 use std::sync::Arc;
 use std::time::Duration;
+use backoff::ExponentialBackoffBuilder;
 
 pub struct ResilientClient {
     client: reqwest::Client,
@@ -437,7 +437,7 @@ impl ResilientClient {
             async move {
                 // Check circuit breaker first
                 if !breaker.can_execute().await {
-                    return Err(backoff::Error::transient(ResilientError::CircuitOpen));
+                    return Err(backoff::Error::permanent(ResilientError::CircuitOpen));
                 }
 
                 // Make request
@@ -445,13 +445,13 @@ impl ResilientClient {
                     Ok(response) => {
                         if response.status().is_success() {
                             breaker.record_success().await;
-                            response
-                                .text()
-                                .await
-                                .map_err(|e| {
-                                    breaker.record_failure();
-                                    backoff::Error::transient(ResilientError::Network(e))
-                                })
+                            match response.text().await {
+                                Ok(body) => Ok(body),
+                                Err(e) => {
+                                    breaker.record_failure().await;
+                                    Err(backoff::Error::transient(ResilientError::Network(e)))
+                                }
+                            }
                         } else if response.status().is_server_error() {
                             breaker.record_failure().await;
                             Err(backoff::Error::transient(ResilientError::Server(
@@ -508,6 +508,8 @@ pub enum ResilientError {
 // src/logged_retry.rs
 // Retry with detailed logging
 
+use std::time::Duration;
+use backoff::ExponentialBackoffBuilder;
 use tracing::{info, warn, instrument};
 
 #[instrument(skip(operation), fields(attempt = tracing::field::Empty))]
@@ -552,7 +554,11 @@ where
                         error = ?e,
                         "Operation failed, will retry"
                     );
-                    Err(backoff::Error::transient(e))
+                    if attempt >= max_attempts {
+                        Err(backoff::Error::permanent(e))
+                    } else {
+                        Err(backoff::Error::transient(e))
+                    }
                 }
             }
         }
@@ -593,7 +599,7 @@ let backoff = ExponentialBackoffBuilder::new()
 
 // 3. Limited attempts
 let strategy = ExponentialBackoff::from_millis(100)
-    .take(5);  // Max 5 attempts
+    .take(5);  // Max 5 retry delays
 
 // 4. With jitter
 let strategy = ExponentialBackoff::from_millis(100)
