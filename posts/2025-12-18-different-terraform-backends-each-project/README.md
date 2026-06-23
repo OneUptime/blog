@@ -55,20 +55,20 @@ Create separate backend configuration files for each project:
 
 ```hcl
 # backends/project-a.hcl
-bucket         = "terraform-state-project-a"
-key            = "infrastructure/terraform.tfstate"
-region         = "us-east-1"
-dynamodb_table = "terraform-locks-project-a"
-encrypt        = true
+bucket       = "terraform-state-project-a"
+key          = "infrastructure/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
+encrypt      = true
 ```
 
 ```hcl
 # backends/project-b.hcl
-bucket         = "terraform-state-project-b"
-key            = "infrastructure/terraform.tfstate"
-region         = "us-west-2"
-dynamodb_table = "terraform-locks-project-b"
-encrypt        = true
+bucket       = "terraform-state-project-b"
+key          = "infrastructure/terraform.tfstate"
+region       = "us-west-2"
+use_lockfile = true
+encrypt      = true
 ```
 
 ```hcl
@@ -77,6 +77,17 @@ resource_group_name  = "terraform-state-rg"
 storage_account_name = "tfstateprojectc"
 container_name       = "tfstate"
 key                  = "terraform.tfstate"
+```
+
+For Project C, declare the Azure backend type in that project's root module:
+
+```hcl
+# project-c/backend.tf
+terraform {
+  backend "azurerm" {
+    # These values will be provided at init time
+  }
+}
 ```
 
 ### Initialize with Backend Config
@@ -106,7 +117,7 @@ terraform {
     bucket         = ""  # Set via TF_BACKEND_BUCKET
     key            = ""  # Set via TF_BACKEND_KEY
     region         = ""  # Set via TF_BACKEND_REGION
-    dynamodb_table = ""  # Set via TF_BACKEND_DYNAMODB_TABLE
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -134,8 +145,7 @@ source "configs/${PROJECT_NAME}.env"
 terraform init \
     -backend-config="bucket=${TF_BACKEND_BUCKET}" \
     -backend-config="key=${TF_BACKEND_KEY}" \
-    -backend-config="region=${TF_BACKEND_REGION}" \
-    -backend-config="dynamodb_table=${TF_BACKEND_DYNAMODB_TABLE}"
+    -backend-config="region=${TF_BACKEND_REGION}"
 
 echo "Initialized Terraform for project: ${PROJECT_NAME}"
 ```
@@ -147,7 +157,6 @@ echo "Initialized Terraform for project: ${PROJECT_NAME}"
 export TF_BACKEND_BUCKET="terraform-state-project-a"
 export TF_BACKEND_KEY="infrastructure/terraform.tfstate"
 export TF_BACKEND_REGION="us-east-1"
-export TF_BACKEND_DYNAMODB_TABLE="terraform-locks-project-a"
 ```
 
 ```bash
@@ -155,7 +164,6 @@ export TF_BACKEND_DYNAMODB_TABLE="terraform-locks-project-a"
 export TF_BACKEND_BUCKET="terraform-state-project-b"
 export TF_BACKEND_KEY="infrastructure/terraform.tfstate"
 export TF_BACKEND_REGION="us-west-2"
-export TF_BACKEND_DYNAMODB_TABLE="terraform-locks-project-b"
 ```
 
 ## Method 3: Directory-Based Projects
@@ -186,11 +194,11 @@ infrastructure/
 # project-a/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "terraform-state-project-a"
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks-project-a"
-    encrypt        = true
+    bucket       = "terraform-state-project-a"
+    key          = "infrastructure/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 
@@ -209,11 +217,11 @@ module "vpc" {
 # project-b/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "terraform-state-project-b"
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-west-2"
-    dynamodb_table = "terraform-locks-project-b"
-    encrypt        = true
+    bucket       = "terraform-state-project-b"
+    key          = "infrastructure/terraform.tfstate"
+    region       = "us-west-2"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 
@@ -234,11 +242,11 @@ For projects that share infrastructure patterns but need separate state, use wor
 # backend.tf
 terraform {
   backend "s3" {
-    bucket         = "terraform-state-shared"
-    key            = "projects/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "terraform-state-shared"
+    key          = "projects/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
 
     # State path includes workspace name
     workspace_key_prefix = "workspaces"
@@ -362,30 +370,12 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-resource "aws_dynamodb_table" "terraform_locks" {
-  for_each = toset(var.projects)
-
-  name         = "terraform-locks-${each.key}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name    = "Terraform Locks - ${each.key}"
-    Project = each.key
-  }
-}
-
 output "backend_configs" {
   value = {
     for project in var.projects : project => {
-      bucket         = aws_s3_bucket.terraform_state[project].id
-      dynamodb_table = aws_dynamodb_table.terraform_locks[project].name
-      region         = data.aws_region.current.name
+      bucket       = aws_s3_bucket.terraform_state[project].id
+      use_lockfile = true
+      region       = data.aws_region.current.name
     }
   }
 }
@@ -418,9 +408,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.11.0
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -447,7 +437,7 @@ jobs:
 
 ## Best Practices
 
-1. **Use state locking** - Always configure DynamoDB or equivalent for state locking
+1. **Use state locking** - Enable S3 lockfiles for S3 backends or the equivalent locking mechanism for other backends
 2. **Enable encryption** - Encrypt state files at rest
 3. **Version state buckets** - Enable versioning to recover from corruption
 4. **Restrict access** - Use IAM policies to limit who can access state
