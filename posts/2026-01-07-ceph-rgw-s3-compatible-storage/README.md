@@ -10,7 +10,7 @@ Description: Learn how to deploy and configure Ceph RADOS Gateway (RGW) for S3-c
 
 ## Introduction
 
-Ceph RADOS Gateway (RGW) is a powerful object storage interface built on top of Ceph's distributed storage system. It provides a RESTful API that is fully compatible with Amazon S3, making it an excellent choice for organizations looking to build their own S3-compatible storage infrastructure without vendor lock-in.
+Ceph RADOS Gateway (RGW) is a powerful object storage interface built on top of Ceph's distributed storage system. It provides a RESTful API that is compatible with many Amazon S3 operations, making it an excellent choice for organizations looking to build their own S3-compatible storage infrastructure without vendor lock-in.
 
 In this comprehensive guide, we will walk through deploying and configuring Ceph RGW, setting up S3 API compatibility, managing users and buckets, and integrating with applications using standard S3 SDKs.
 
@@ -86,13 +86,13 @@ If you're using Cephadm (the recommended deployment method for modern Ceph clust
 
 ```bash
 # Deploy a single RGW instance on a specific host
-# The 'default' is the realm name, and 'us-east-1' is the zone name
+# The service id is arbitrary for a single-cluster deployment
 # This creates an S3-compatible endpoint on the specified host
-sudo cephadm shell -- ceph orch apply rgw default.us-east-1 --placement="1 rgw-host1"
+sudo cephadm shell -- ceph orch apply rgw rgw --placement="1 rgw-host1"
 
 # To deploy multiple RGW instances for high availability:
 # This spreads RGW daemons across multiple hosts for load balancing
-sudo cephadm shell -- ceph orch apply rgw default.us-east-1 --placement="3 rgw-host1 rgw-host2 rgw-host3"
+sudo cephadm shell -- ceph orch apply rgw rgw --placement="3 rgw-host1 rgw-host2 rgw-host3"
 ```
 
 ### Step 3: Verify RGW Deployment
@@ -204,11 +204,11 @@ sudo ceph config set client.rgw rgw_enable_apis "s3, s3website, swift, swift_aut
 # Set the default storage class for new objects
 sudo ceph config set client.rgw rgw_default_storage_class "STANDARD"
 
-# Configure object versioning support
-# This allows S3 bucket versioning to work correctly
+# Enable lifecycle processing threads
+# These threads are needed for lifecycle expiration and transition rules
 sudo ceph config set client.rgw rgw_enable_lc_threads true
 
-# Set the maximum object size (5GB is S3's single PUT limit)
+# Set the maximum object size for a regular PUT (5GB is S3's single PUT limit)
 sudo ceph config set client.rgw rgw_max_put_size 5368709120
 ```
 
@@ -243,18 +243,14 @@ rgw_dns_name = s3.example.com
 # Increase for high-traffic deployments
 rgw_thread_pool_size = 512
 
-# Number of RGW instances for this daemon
+# Number of concurrent RADOS handles used by RGW
 rgw_num_rados_handles = 4
 
 # Enable server-side encryption
 rgw_crypt_s3_kms_backend = vault
 
-# Object lock support (for compliance/retention)
+# Lifecycle processing support
 rgw_enable_lc_threads = true
-
-# Bucket index sharding for large buckets
-# Helps distribute index load across OSDs
-rgw_bucket_index_max_aio = 128
 
 # Garbage collection settings
 rgw_gc_max_objs = 32
@@ -383,9 +379,6 @@ aws --endpoint-url http://rgw-host1:8080 s3api put-bucket-versioning \
 Implement access control using bucket policies.
 
 ```json
-// bucket-policy.json
-// This policy allows public read access to objects in the bucket
-// WARNING: Only use public policies for truly public content
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -431,13 +424,10 @@ aws --endpoint-url http://rgw-host1:8080 s3api get-bucket-policy \
 Set up lifecycle rules for automatic data management.
 
 ```json
-// lifecycle-policy.json
-// This lifecycle configuration manages object expiration and transitions
-// Helps optimize storage costs by moving old data to cheaper tiers
 {
     "Rules": [
         {
-            "ID": "MoveToGlacierAfter90Days",
+            "ID": "MoveToInfrequentAccessAfter90Days",
             "Status": "Enabled",
             "Filter": {
                 "Prefix": "archives/"
@@ -445,7 +435,7 @@ Set up lifecycle rules for automatic data management.
             "Transitions": [
                 {
                     "Days": 90,
-                    "StorageClass": "GLACIER"
+                    "StorageClass": "STANDARD_IA"
                 }
             ]
         },
@@ -528,6 +518,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 import logging
+from typing import Optional
 
 # Configure logging to track operations
 logging.basicConfig(level=logging.INFO)
@@ -663,7 +654,7 @@ def download_file(client, bucket_name: str, object_key: str, local_path: str) ->
 
 
 def generate_presigned_url(client, bucket_name: str, object_key: str,
-                           expiration: int = 3600) -> str:
+                           expiration: int = 3600) -> Optional[str]:
     """
     Generate a pre-signed URL for temporary access.
 
@@ -747,11 +738,6 @@ def multipart_upload(client, bucket_name: str, object_key: str,
     Returns:
         True on success, False on error
     """
-    import os
-    import math
-
-    file_size = os.path.getsize(file_path)
-
     try:
         # Initiate multipart upload
         # This returns an upload ID to track the parts
@@ -855,12 +841,10 @@ const {
     PutObjectCommand,
     GetObjectCommand,
     ListObjectsV2Command,
-    DeleteObjectCommand,
-    GetObjectCommand
+    DeleteObjectCommand
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const fs = require('fs');
-const { Readable } = require('stream');
 
 /**
  * Create an S3 client configured for Ceph RGW
@@ -1137,6 +1121,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -1215,7 +1200,7 @@ func (r *RGWClient) CreateBucket(ctx context.Context, bucketName string) error {
 }
 
 // UploadFile uploads a local file to Ceph RGW
-// Reads the entire file into memory - for large files, use multipart upload
+// Streams the file through PutObject; for very large files, use multipart upload
 func (r *RGWClient) UploadFile(ctx context.Context, bucketName, key, filePath string) error {
 	// Open the file for reading
 	file, err := os.Open(filePath)
@@ -1501,9 +1486,9 @@ backend rgw_http_backend
     balance roundrobin
 
     # Enable HTTP health checks
-    # RGW responds to GET / with status info
+    # RGW may return a 4xx response to unauthenticated S3 requests; that still proves HTTP is responding
     option httpchk GET /
-    http-check expect status 200
+    http-check expect rstatus (2|3|4)[0-9][0-9]
 
     # Health check intervals
     default-server inter 3s fall 3 rise 2
@@ -1595,17 +1580,16 @@ vrrp_instance RGW_VIP {
 
 ## Part 7: Monitoring and Troubleshooting
 
-### Step 21: Enable RGW Metrics for Prometheus
+### Step 21: Enable RGW Logs and Prometheus Metrics
 
-Configure RGW to expose metrics for Prometheus monitoring.
+Configure Ceph metrics for Prometheus monitoring and enable RGW usage logs.
 
 ```bash
 # Enable the Prometheus module in Ceph Manager
 # This exposes metrics at http://mgr-host:9283/metrics
 sudo ceph mgr module enable prometheus
 
-# Configure RGW to expose its own metrics
-# These are specific to S3 operations and performance
+# Enable RGW usage and operation logs
 sudo ceph config set client.rgw rgw_enable_usage_log true
 sudo ceph config set client.rgw rgw_usage_log_tick_interval 30
 sudo ceph config set client.rgw rgw_usage_log_flush_threshold 1024
@@ -1617,12 +1601,12 @@ sudo ceph config set client.rgw rgw_ops_log_rados true
 
 ### Step 22: Prometheus Configuration for RGW
 
-Configure Prometheus to scrape RGW metrics.
+Configure Prometheus to scrape Ceph and RGW-related metrics.
 
 ```yaml
 # /etc/prometheus/prometheus.yml
 # Prometheus configuration for Ceph RGW monitoring
-# Scrapes metrics from Ceph Manager and individual RGW instances
+# Scrapes metrics from Ceph Manager and ceph-exporter
 
 global:
   scrape_interval: 15s
@@ -1636,19 +1620,14 @@ scrape_configs:
       - targets: ['ceph-mgr1:9283', 'ceph-mgr2:9283']
     metrics_path: /metrics
 
-  # Scrape individual RGW instance metrics
-  # Each RGW exposes metrics on its admin port
-  - job_name: 'ceph-rgw'
+  # Scrape ceph-exporter for daemon perf counters, including RGW counters
+  - job_name: 'ceph-exporter'
     static_configs:
       - targets:
-        - 'rgw-host1:9090'
-        - 'rgw-host2:9090'
-        - 'rgw-host3:9090'
-    metrics_path: /admin/prometheus
-    # Authentication for admin endpoint
-    basic_auth:
-      username: 'prometheus-user'
-      password: 'prometheus-secret'
+        - 'rgw-host1:9926'
+        - 'rgw-host2:9926'
+        - 'rgw-host3:9926'
+    metrics_path: /metrics
 
   # HAProxy metrics for load balancer monitoring
   - job_name: 'haproxy'
@@ -1666,11 +1645,11 @@ Here are essential commands for troubleshooting RGW issues.
 sudo ceph orch ps --daemon-type rgw
 
 # View RGW daemon logs for errors
-# Replace rgw.default.us-east-1.rgw-host1 with your daemon name
+# Replace rgw.rgw.rgw-host1 with your daemon name
 sudo ceph log last 100 --channel cluster --log_level 0
 
 # Check RGW-specific logs on the host
-sudo journalctl -u ceph-radosgw@rgw.default.us-east-1.rgw-host1 -f
+sudo journalctl -u ceph-radosgw@rgw.rgw.rgw-host1 -f
 
 # Verify RGW pools exist and are healthy
 # RGW creates several pools for metadata and data
@@ -1702,7 +1681,7 @@ aws --endpoint-url http://rgw-host1:8080 s3 ls --debug 2>&1 | head -100
 sudo radosgw-admin sync status
 
 # View RGW performance metrics
-sudo ceph daemon rgw.default.us-east-1.rgw-host1 perf dump
+sudo ceph daemon rgw.rgw.rgw-host1 perf dump
 
 # Check RADOS cluster health
 # RGW depends on a healthy RADOS cluster
@@ -1762,13 +1741,13 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -subj "/CN=s3.example.com"
 
 # Combine into a PEM file for HAProxy
-sudo cat /etc/ceph/ssl/rgw.crt /etc/ceph/ssl/rgw.key > /etc/haproxy/certs/rgw.pem
+sudo sh -c 'cat /etc/ceph/ssl/rgw.crt /etc/ceph/ssl/rgw.key > /etc/haproxy/certs/rgw.pem'
 
 # Configure RGW to use SSL directly (without HAProxy)
 sudo ceph config set client.rgw rgw_frontends "beast ssl_port=443 ssl_certificate=/etc/ceph/ssl/rgw.crt ssl_private_key=/etc/ceph/ssl/rgw.key"
 
 # Restart RGW to apply SSL configuration
-sudo ceph orch restart rgw.default.us-east-1
+sudo ceph orch restart rgw.rgw
 ```
 
 ### Step 26: Implement Access Logging
@@ -1799,7 +1778,7 @@ sudo radosgw-admin usage trim --end-date=$(date -d '30 days ago' +%Y-%m-%d)
 
 You have now successfully configured Ceph RADOS Gateway (RGW) as an S3-compatible object storage solution. This setup provides:
 
-- **S3 API Compatibility**: Full support for S3 operations, enabling seamless integration with existing applications and tools
+- **S3 API Compatibility**: Support for many S3 operations, enabling seamless integration with existing applications and tools
 - **Scalability**: Horizontal scaling by adding more RGW instances and OSD nodes
 - **High Availability**: Load balancing and automatic failover for continuous service
 - **Security**: TLS encryption, access control policies, and comprehensive logging
