@@ -122,7 +122,7 @@ flowchart LR
 
 ### Prerequisites
 
-Before you begin, ensure you have a Linux system with kernel version 4.4 or higher (5.x+ recommended for full feature support).
+Before you begin, ensure you have a Linux system with kernel version 4.4 or higher (5.8+ recommended for the modern features and capabilities discussed here).
 
 The following commands install the necessary development tools and libraries for eBPF programming:
 
@@ -167,7 +167,7 @@ bpftool version
 
 # Verify kernel supports eBPF by checking available program types
 # This lists all eBPF features supported by your kernel
-bpftool feature
+sudo bpftool feature probe kernel
 ```
 
 ### Kernel Configuration
@@ -179,13 +179,14 @@ Ensure your kernel has eBPF support enabled. These configuration options should 
 # CONFIG_BPF=y means eBPF is enabled in your kernel
 # CONFIG_BPF_SYSCALL=y enables the bpf() system call
 # CONFIG_BPF_JIT=y enables Just-In-Time compilation for performance
-grep CONFIG_BPF /boot/config-$(uname -r)
+grep -E 'CONFIG_(BPF|HAVE_.*BPF)' /boot/config-$(uname -r)
 
 # Expected output should include:
 # CONFIG_BPF=y
 # CONFIG_BPF_SYSCALL=y
 # CONFIG_BPF_JIT=y
 # CONFIG_HAVE_BPF_JIT=y
+# CONFIG_HAVE_EBPF_JIT=y
 ```
 
 ## Understanding eBPF Maps
@@ -255,10 +256,10 @@ Create the eBPF kernel-space program that will run in the kernel:
 // Without GPL license, certain eBPF helpers won't be available
 char LICENSE[] SEC("license") = "GPL";
 
-// SEC("kprobe/...") tells the loader where to attach this program
-// We're attaching to __x64_sys_execve - the execve syscall handler
+// SEC("ksyscall/...") tells the loader where to attach this program
+// We're attaching to the execve syscall handler by syscall name
 // This function is called every time a new program is executed
-SEC("kprobe/__x64_sys_execve")
+SEC("ksyscall/execve")
 int hello_execve(struct pt_regs *ctx)
 {
     // Get the process ID and thread group ID
@@ -273,7 +274,7 @@ int hello_execve(struct pt_regs *ctx)
 
     // bpf_get_current_comm() fills the buffer with current process name
     // Returns 0 on success, negative error code on failure
-    bpf_get_current_comm(&comm, sizeof(comm));
+    bpf_get_current_comm(comm, sizeof(comm));
 
     // Print a message to the kernel trace pipe
     // bpf_printk() is a debugging helper - output goes to:
@@ -413,7 +414,7 @@ The Makefile automates the build process for both eBPF and user-space programs:
 # Uses Clang for eBPF compilation and GCC for user-space code
 
 # Compiler settings
-# clang is required for eBPF - GCC doesn't support eBPF target
+# clang is the most common compiler for eBPF examples
 CLANG := clang
 CC := gcc
 
@@ -470,7 +471,8 @@ Execute these commands to build and run your eBPF program:
 make
 
 # Run the loader with root privileges
-# Root is required because loading eBPF programs needs CAP_BPF capability
+# Root is the simplest option; non-root loading requires capabilities such as
+# CAP_BPF plus CAP_PERFMON for tracing programs on modern kernels
 sudo ./hello
 ```
 
@@ -549,7 +551,7 @@ struct {
 
 // Attach to the raw_syscalls:sys_enter tracepoint
 // This fires at the entry of every system call
-// Using raw tracepoint for minimal overhead
+// This uses a regular tracepoint section; raw tracepoints use raw_tp/... sections
 SEC("tracepoint/raw_syscalls/sys_enter")
 int count_syscalls(void *ctx)
 {
@@ -800,7 +802,7 @@ int xdp_drop_ip(struct xdp_md *ctx)
         // IP is blocklisted - increment counter and drop
         __sync_fetch_and_add(count, 1);
 
-        // XDP_DROP tells the NIC to drop this packet immediately
+        // XDP_DROP tells XDP to drop this packet immediately
         // The packet never reaches the network stack
         return XDP_DROP;
     }
