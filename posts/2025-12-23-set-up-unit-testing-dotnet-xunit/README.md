@@ -411,8 +411,8 @@ dotnet test --filter "FullyQualifiedName~UserServiceTests"
 dotnet test --collect:"XPlat Code Coverage"
 
 # Run tests in parallel (default) or sequentially
-dotnet test -- xunit.parallelizeAssembly=true
-dotnet test -- xunit.parallelizeTestCollections=false
+dotnet test -- xUnit.ParallelizeAssembly=true
+dotnet test -- xUnit.ParallelizeTestCollections=false
 ```
 
 ### Test Configuration with xunit.runner.json
