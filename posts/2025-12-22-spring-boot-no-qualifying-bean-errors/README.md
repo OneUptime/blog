@@ -51,13 +51,17 @@ Spring Boot only scans packages at or below your main application class by defau
 
 ```java
 // Main application in com.example.app
+package com.example.app;
+
 @SpringBootApplication
 public class MyApplication {
     public static void main(String[] args) {
         SpringApplication.run(MyApplication.class, args);
     }
 }
+```
 
+```java
 // Problem: Service in com.other.services - won't be scanned
 package com.other.services;
 
@@ -81,8 +85,7 @@ public class ExternalService {
 **Solution 2:** Explicitly add packages to component scan:
 
 ```java
-@SpringBootApplication
-@ComponentScan(basePackages = {"com.example.app", "com.other.services"})
+@SpringBootApplication(scanBasePackages = {"com.example.app", "com.other.services"})
 public class MyApplication {
     public static void main(String[] args) {
         SpringApplication.run(MyApplication.class, args);
