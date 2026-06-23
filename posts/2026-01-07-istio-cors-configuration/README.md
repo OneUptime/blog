@@ -257,9 +257,9 @@ spec:
         # allowOrigins with prefix matching
         # Any origin starting with this prefix will be allowed
         allowOrigins:
-          # Allow all HTTPS subdomains of example.com
-          # This matches: https://app.example.com, https://test.example.com, etc.
-          - prefix: "https://"
+          # Allow preview deployments that use a controlled hostname prefix
+          # This matches: https://preview-123.staging.example.com, etc.
+          - prefix: "https://preview-"
         allowMethods:
           - GET
           - POST
@@ -500,7 +500,7 @@ flowchart TD
     subgraph "Istio CORS Processing"
         D --> I[Istio Gateway receives<br/>OPTIONS request]
         I --> J{Origin matches<br/>allowOrigins?}
-        J -->|No| K[Return 403<br/>or no CORS headers]
+        J -->|No| K[Forward upstream by default<br/>without CORS allow headers]
         J -->|Yes| L[Check requested<br/>method and headers]
         L --> M{Method in<br/>allowMethods?}
         M -->|No| K
@@ -548,16 +548,17 @@ spec:
         # Considerations for setting maxAge:
         # - Longer values (24h) reduce preflight requests but delay policy updates
         # - Shorter values (1h) allow faster policy propagation but increase load
-        # - Most browsers cap maxAge at 24 hours regardless of value set
+        # - Browsers apply their own caps; Chromium currently caps this lower than Firefox
         #
         # Recommended values:
-        # - Production (stable policies): "24h" or "86400s"
+        # - Production (stable policies): "2h", "7200s", or "86400s" where Firefox can benefit
         # - Staging (frequent changes): "1h" or "3600s"
         # - Development (testing): "60s" or "1m"
-        maxAge: "86400s"  # 24 hours - maximum effective cache time
+        maxAge: "7200s"  # 2 hours - Chromium's current effective cap
 
-        # Note: Setting maxAge to "0" disables caching, causing a preflight
-        # for every non-simple request. Only use for debugging.
+        # Note: Omitting maxAge or setting it to a very low value increases
+        # preflight frequency because browsers use short defaults when this
+        # header is not present.
       route:
         - destination:
             host: api-service
@@ -603,10 +604,10 @@ spec:
           - x-csrf-token
 
         # exposeHeaders allows the browser to read these response headers
-        # when credentials mode is enabled
+        # when credentials mode is enabled. Set-Cookie is intentionally not
+        # listed because browsers do not expose it to frontend JavaScript.
         exposeHeaders:
           - x-request-id
-          - set-cookie
 
         # allowCredentials: Enable sending cookies and auth headers
         #
@@ -708,12 +709,19 @@ spec:
           - DELETE
           - OPTIONS
 
-        # Allow common development headers
+        # Allow common development headers. Wildcards do not have wildcard
+        # semantics for credentialed browser requests, so list the headers
+        # used by your development frontend.
         allowHeaders:
-          - "*"  # Wildcard allowed in development
+          - content-type
+          - accept
+          - authorization
+          - x-request-id
+          - x-csrf-token
 
         exposeHeaders:
-          - "*"
+          - x-request-id
+          - x-correlation-id
 
         # Short cache time for rapid iteration
         # Changes to CORS policy are reflected quickly
@@ -962,11 +970,12 @@ flowchart TD
 # These configurations create security vulnerabilities
 
 # Anti-pattern 1: Wildcard origin with credentials
-# This is BLOCKED by browsers but indicates misconfiguration
+# This is blocked when the response uses Access-Control-Allow-Origin: *
+# and is also unsafe when a catch-all matcher reflects every request origin
 # corsPolicy:
 #   allowOrigins:
-#     - exact: "*"  # NEVER do this with credentials
-#   allowCredentials: true  # This combination is forbidden
+#     - regex: ".*"  # NEVER use a catch-all origin matcher with credentials
+#   allowCredentials: true
 
 # Anti-pattern 2: Overly permissive regex
 # corsPolicy:
@@ -986,7 +995,7 @@ flowchart TD
 # Anti-pattern 5: Exposing sensitive headers
 # corsPolicy:
 #   exposeHeaders:
-#     - set-cookie      # Sensitive
+#     - set-cookie      # Browsers do not expose this to JavaScript
 #     - authorization   # Sensitive
 #     - x-api-secret    # Sensitive
 ---
@@ -1277,7 +1286,7 @@ istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
 
 # Get detailed route configuration
 istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json | \
-  jq '.[] | select(.name == "https.443.https") | .virtualHosts[].cors'
+  jq '.. | objects | select(has("cors")) | .cors'
 ```
 
 ### Debugging Checklist
@@ -1321,7 +1330,7 @@ spec:
         response:
           set:
             # Expose debug information (remove in production)
-            x-debug-origin-received: "%REQ(origin)%"
+            x-debug-cors-route: "api-cors-debug"
 
       route:
         - destination:
@@ -1376,7 +1385,36 @@ spec:
 
 ## Monitoring CORS with Prometheus Metrics
 
-Track CORS-related metrics for observability:
+Track CORS-related metrics for observability. Istio's standard metrics do not include the HTTP method as a label by default, so add a bounded method label before using method-specific Prometheus queries:
+
+```yaml
+# Add request_method to Istio request metrics for CORS monitoring
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: cors-method-metrics
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+          tagOverrides:
+            request_method:
+              value: "request.method"
+        - match:
+            metric: REQUEST_DURATION
+          tagOverrides:
+            request_method:
+              value: "request.method"
+```
+
+Scrape the ingress gateway metrics with Prometheus Operator:
 
 ```yaml
 # ServiceMonitor for CORS metrics
