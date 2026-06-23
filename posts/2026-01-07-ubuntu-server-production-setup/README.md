@@ -250,9 +250,6 @@ PermitEmptyPasswords no
 # Disable challenge-response authentication
 ChallengeResponseAuthentication no
 
-# Use only SSH Protocol 2 (more secure)
-Protocol 2
-
 # Set maximum authentication attempts
 MaxAuthTries 3
 
@@ -723,14 +720,14 @@ Add the following line:
 
 ```text
 # Secure shared memory
-tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0
+tmpfs /dev/shm tmpfs defaults,noexec,nosuid 0 0
 ```
 
 Apply the changes:
 
 ```bash
 # Remount shared memory with new options
-sudo mount -o remount /run/shm
+sudo mount -o remount /dev/shm
 ```
 
 ### Disable Unused Network Protocols
