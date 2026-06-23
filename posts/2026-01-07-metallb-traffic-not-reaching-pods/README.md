@@ -17,18 +17,16 @@ Before diving into troubleshooting, you need to understand how traffic flows thr
 ```mermaid
 flowchart LR
     Client[External Client] --> Router[Network Router]
-    Router --> Speaker[MetalLB Speaker]
-    Speaker --> Node[Kubernetes Node]
+    Router --> Node[Kubernetes Node Announcing IP]
     Node --> kube-proxy[kube-proxy/iptables]
-    kube-proxy --> Service[Service ClusterIP]
+    kube-proxy --> Service[Service VIP]
     Service --> Pod[Application Pod]
 
     subgraph "Layer 2 Mode"
-        Speaker
+        Node
     end
 
     subgraph "Kubernetes Cluster"
-        Node
         kube-proxy
         Service
         Pod
@@ -47,7 +45,13 @@ Check if MetalLB assigned an external IP to your service:
 kubectl get svc -A | grep LoadBalancer
 ```
 
-Verify the service has endpoints (running pods):
+Verify the service has ready endpoints. In current Kubernetes releases, EndpointSlices are the primary API for service backends:
+
+```bash
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
+```
+
+On older clusters, you may also see the legacy Endpoints object:
 
 ```bash
 kubectl get endpoints <service-name> -n <namespace>
@@ -59,7 +63,7 @@ Check the service details including selector and ports:
 kubectl describe svc <service-name> -n <namespace>
 ```
 
-If endpoints are empty, your pods either are not running or their labels do not match the service selector. Check pod status:
+If EndpointSlices show no ready addresses, your pods either are not running, are not ready, or their labels do not match the service selector. Check pod status:
 
 ```bash
 kubectl get pods -n <namespace> -l <selector-label>=<selector-value>
@@ -125,7 +129,7 @@ kubectl get svc <service-name> -n <namespace> -o jsonpath='{.status.loadBalancer
 
 From your external client, test basic connectivity to the LoadBalancer IP.
 
-Test if the IP responds to ping (if ICMP is allowed):
+Do not rely on ping as the main test. MetalLB exposes Service traffic, and the official troubleshooting guidance notes that pinging the service IP is not a valid proof that the Service works. If your environment deliberately handles ICMP for the address, ping can still give a weak reachability signal:
 
 ```bash
 ping <loadbalancer-ip>
@@ -153,15 +157,15 @@ In Layer 2 mode, MetalLB responds to ARP requests. ARP problems are a common cau
 sequenceDiagram
     participant Client as External Client
     participant Switch as Network Switch
-    participant Speaker as MetalLB Speaker
+    participant Node as Announcing Node
     participant Pod as Application Pod
 
     Client->>Switch: ARP: Who has 192.168.1.100?
-    Switch->>Speaker: ARP Request
-    Speaker->>Switch: ARP Reply: MAC aa:bb:cc:dd:ee:ff
+    Switch->>Node: ARP Request
+    Node->>Switch: ARP Reply: MAC aa:bb:cc:dd:ee:ff
     Switch->>Client: ARP Reply
-    Client->>Speaker: TCP SYN to 192.168.1.100
-    Speaker->>Pod: Forward to Pod
+    Client->>Node: TCP SYN to 192.168.1.100
+    Node->>Pod: Forward via kube-proxy/CNI
     Pod->>Client: TCP Response
 ```
 
@@ -179,13 +183,13 @@ ping -c 1 <loadbalancer-ip>
 arp -n | grep <loadbalancer-ip>
 ```
 
-On the MetalLB speaker node, check which node is announcing the IP. First, identify which node is the speaker for your service:
+On the MetalLB speaker node, check which node is announcing the IP. First, identify which node is announcing your service from the service events:
 
 ```bash
-kubectl get events -n metallb-system --field-selector reason=nodeAssigned
+kubectl describe svc <service-name> -n <namespace>
 ```
 
-Or check speaker logs for assignment:
+Look for events such as `announcing from node "..." with protocol "layer2"` or check speaker logs for the LoadBalancer IP:
 
 ```bash
 kubectl logs -n metallb-system -l component=speaker | grep <loadbalancer-ip>
@@ -202,16 +206,19 @@ ssh <node> ip link show
 
 For BGP mode, verify route advertisement and peer connectivity.
 
-Check BGP session status on the speaker:
+Check BGP session status from metrics. Native BGP mode and the deprecated FRR mode expose `metallb_bgp_session_up`; the default FRR-K8s backend exposes `frrk8s_bgp_session_up`.
+
+For native BGP mode, check speaker logs:
 
 ```bash
-kubectl exec -n metallb-system <speaker-pod> -- birdcl show protocols all
+kubectl logs -n metallb-system -l component=speaker | grep -i "bgp session"
 ```
 
-Verify routes are being advertised:
+For FRR or FRR-K8s based deployments, query FRR with `vtysh` from the FRR container or FRR-K8s pod. Container names can vary by installation, so replace both placeholders with the names from your cluster:
 
 ```bash
-kubectl exec -n metallb-system <speaker-pod> -- birdcl show route export
+kubectl exec -n metallb-system <frr-pod> -c <frr-container> -- vtysh -c "show bgp summary"
+kubectl exec -n metallb-system <frr-pod> -c <frr-container> -- vtysh -c "show bgp ipv4"
 ```
 
 On your upstream router, verify the route is received. This command varies by router vendor. Example for a Linux router:
@@ -245,19 +252,19 @@ ssh <node>
 Capture traffic on the external interface:
 
 ```bash
-sudo tcpdump -i <interface> host <loadbalancer-ip> -nn
+sudo tcpdump -nn -i <interface> host <loadbalancer-ip>
 ```
 
 If traffic arrives at the node, capture on all interfaces to see if it reaches kube-proxy:
 
 ```bash
-sudo tcpdump -i any host <loadbalancer-ip> or host <pod-ip> -nn
+sudo tcpdump -nn -i any "host <loadbalancer-ip> or host <pod-ip>"
 ```
 
 Capture traffic specific to your service port:
 
 ```bash
-sudo tcpdump -i any port <service-port> -nn
+sudo tcpdump -nn -i any port <service-port>
 ```
 
 If you see incoming packets but no responses, the issue is within the cluster (kube-proxy, iptables, or the pod itself).
@@ -303,7 +310,7 @@ Test if the service works from within the cluster to isolate external network is
 Deploy a debug pod:
 
 ```bash
-kubectl run debug --image=nicolaka/netshoot --rm -it -- /bin/bash
+kubectl run debug --image=nicolaka/netshoot --rm -it --restart=Never -- /bin/bash
 ```
 
 From inside the debug pod, test the service:
@@ -362,8 +369,8 @@ kubectl get svc <service-name> -n <namespace> -o jsonpath='{.spec.externalTraffi
 ```
 
 With `externalTrafficPolicy: Local`:
-- Traffic only goes to nodes running the pods
-- If no pods run on the speaker node, traffic is dropped
+- Traffic is only advertised from nodes running ready local endpoints
+- If traffic reaches a node without a local endpoint, kube-proxy will not forward it to pods on other nodes
 - Health checks must be configured correctly
 
 Check if pods run on the speaker node:
@@ -372,10 +379,10 @@ Check if pods run on the speaker node:
 kubectl get pods -n <namespace> -o wide | grep <node-name>
 ```
 
-If using Local policy and no pods are on the speaker node, either:
+If using Local policy and the service is not being announced from the nodes you expect, either:
 - Change to `externalTrafficPolicy: Cluster`
 - Use node affinity to ensure pods run on speaker nodes
-- Configure MetalLB to only announce from nodes with pods
+- Check L2Advertisement or BGPAdvertisement node selectors
 
 ## Step 11: Verify Firewall Rules
 
@@ -489,13 +496,13 @@ echo "MetalLB Traffic Diagnostic for $SERVICE_NAME"
 echo "=========================================="
 
 echo -e "\n[1] Service Configuration"
-kubectl get svc $SERVICE_NAME -n $NAMESPACE -o wide
+kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o wide
 
-echo -e "\n[2] Service Endpoints"
-kubectl get endpoints $SERVICE_NAME -n $NAMESPACE
+echo -e "\n[2] Service EndpointSlices"
+kubectl get endpointslices -n "$NAMESPACE" -l "kubernetes.io/service-name=$SERVICE_NAME"
 
 echo -e "\n[3] LoadBalancer IP"
-LB_IP=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+LB_IP=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "LoadBalancer IP: $LB_IP"
 
 if [ -z "$LB_IP" ]; then
@@ -518,19 +525,25 @@ echo -e "\n[7] L2 Advertisements"
 kubectl get l2advertisements -n metallb-system
 
 echo -e "\n[8] External Traffic Policy"
-ETP=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.externalTrafficPolicy}')
+ETP=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.externalTrafficPolicy}')
 echo "externalTrafficPolicy: ${ETP:-Cluster}"
 
 echo -e "\n[9] Backend Pods"
-SELECTOR=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.selector}' | tr -d '{}' | sed 's/:/=/g')
-kubectl get pods -n $NAMESPACE -l $SELECTOR -o wide
+SELECTOR=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o go-template='{{range $k,$v := .spec.selector}}{{printf "%s=%s," $k $v}}{{end}}' | sed 's/,$//')
+if [ -n "$SELECTOR" ]; then
+    kubectl get pods -n "$NAMESPACE" -l "$SELECTOR" -o wide
+else
+    echo "Service has no selector; check manually managed EndpointSlices."
+fi
 
 echo -e "\n[10] Network Policies"
-kubectl get networkpolicies -n $NAMESPACE
+kubectl get networkpolicies -n "$NAMESPACE"
 
 echo -e "\n[11] Testing from debug pod..."
+CLUSTER_IP=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
+SERVICE_PORT=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}')
 kubectl run metallb-debug-$$ --image=nicolaka/netshoot --rm -i --restart=Never -- \
-    sh -c "echo 'Testing ClusterIP...' && curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://\$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.clusterIP}'):\$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.ports[0].port}')/ 2>/dev/null || echo 'Failed'"
+    sh -c "echo 'Testing ClusterIP...' && curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://$CLUSTER_IP:$SERVICE_PORT/ 2>/dev/null || echo 'Failed'"
 
 echo -e "\n=========================================="
 echo "Diagnostic complete"
@@ -611,10 +624,10 @@ spec:
 ```
 
 Key metrics to monitor:
-- `metallb_bgp_session_up` - BGP session status
+- `metallb_bgp_session_up` or `frrk8s_bgp_session_up` - BGP session status, depending on the BGP backend
 - `metallb_allocator_addresses_in_use_total` - IP usage
-- `metallb_layer2_requests_received_total` - ARP requests
-- `metallb_announced_services_total` - Services being announced
+- `metallb_k8s_client_config_stale_bool` - stale or invalid loaded configuration
+- `metallb_bgp_announced_prefixes_total` or `frrk8s_bgp_announced_prefixes_total` - prefixes being advertised in BGP mode
 
 Set up alerts for critical issues:
 
@@ -636,7 +649,7 @@ spec:
           annotations:
             summary: MetalLB speaker is down
         - alert: MetalLBBGPSessionDown
-          expr: metallb_bgp_session_up == 0
+          expr: metallb_bgp_session_up == 0 or frrk8s_bgp_session_up == 0
           for: 5m
           labels:
             severity: critical
