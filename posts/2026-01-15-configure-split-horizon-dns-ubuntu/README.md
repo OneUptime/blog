@@ -234,7 +234,11 @@ Add the include directive near the top.
 include "/etc/bind/named.conf.acls";
 include "/etc/bind/named.conf.options";
 include "/etc/bind/named.conf.local";
-include "/etc/bind/named.conf.default-zones";
+// NOTE: Do NOT include named.conf.default-zones here.
+// Once any "view" statement exists, BIND requires every zone to live
+// inside a view ("when using 'view' statements, all zones must be in
+// views"). The default zones are instead included within each view in
+// named.conf.local below.
 ```
 
 ## Internal vs External Zone Files
@@ -467,6 +471,10 @@ view "external" {
 
     // Only allow queries to zones we're authoritative for
     allow-query { any; };
+
+    // Include default zones (localhost, broadcast addresses)
+    // Required in every view once views are in use
+    include "/etc/bind/named.conf.default-zones";
 
     // External zone definition for example.com
     zone "example.com" {
@@ -819,10 +827,13 @@ addn-hosts=/etc/dnsmasq.d/hosts.internal
 # For eth1 (external interface) - return external IPs
 localise-queries
 
-# Method 2: Use address records with interface binding
-# Internal records (only served to internal interface)
-interface-name=intranet.example.com,eth0,192.168.1.50
-interface-name=gitlab.example.com,eth0,192.168.1.52
+# Method 2: Bind a name to an interface's own address
+# Syntax: interface-name=<name>,<interface> -- note it takes NO IP
+# address; the answer is read from the named interface (handy when that
+# interface's address is assigned dynamically). Fixed internal IPs are
+# better expressed in the addn-hosts file above.
+interface-name=ns1.example.com,eth0
+interface-name=gateway.example.com,eth0
 ```
 
 ### Create Internal Hosts File
