@@ -691,8 +691,8 @@ class FileUploadControllerTest {
     void shouldUploadFile() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file",
-            "test.txt",
-            MediaType.TEXT_PLAIN_VALUE,
+            "test.png",
+            MediaType.IMAGE_PNG_VALUE,
             "Hello, World!".getBytes()
         );
 
