@@ -468,35 +468,33 @@ class MyTest { }
 class MyTest { }
 ```
 
-### 2. Nested Test Configuration Not Detected
+### 2. Top-Level Test Configuration Not Imported
+
+A *nested* static `@TestConfiguration` class is detected automatically and used in addition to your primary configuration. A *top-level* `@TestConfiguration` class is excluded from component scanning by design, so its beans are not registered unless you import it explicitly.
 
 ```java
-// Inner @TestConfiguration not automatically detected
+// Top-level @TestConfiguration is NOT picked up by component scanning
+@TestConfiguration
+public class MyTestConfig {
+    @Bean
+    public MyService myService() {
+        return new MyService();
+    }
+}
+
+// Without @Import, the beans above are not registered
 @SpringBootTest
 class MyTest {
-
-    @TestConfiguration
-    static class InnerConfig {
-        @Bean
-        public MyService myService() {
-            return new MyService();
-        }
-    }
-
-    // Need to import it explicitly
     @Test
     void test() { }
 }
 
-// Solution: Use @Import
+// Solution: Use @Import to register it explicitly
 @SpringBootTest
-@Import(MyTest.InnerConfig.class)
+@Import(MyTestConfig.class)
 class MyTest {
-
-    @TestConfiguration
-    static class InnerConfig {
-        // ...
-    }
+    @Test
+    void test() { }
 }
 ```
 
