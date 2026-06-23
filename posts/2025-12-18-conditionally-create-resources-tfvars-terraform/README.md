@@ -41,6 +41,12 @@ variable "create_database" {
   description = "Create RDS database instance"
 }
 
+variable "db_password" {
+  type        = string
+  sensitive   = true
+  description = "Master password for the RDS database"
+}
+
 # main.tf
 resource "aws_cloudwatch_metric_alarm" "cpu_alarm" {
   count = var.enable_monitoring ? 1 : 0
@@ -228,6 +234,7 @@ resource "aws_flow_log" "main" {
   log_destination_type     = "cloud-watch-logs"
   log_destination          = aws_cloudwatch_log_group.flow_logs[0].arn
   iam_role_arn             = aws_iam_role.flow_logs[0].arn
+  depends_on               = [aws_iam_role_policy.flow_logs]
 }
 
 resource "aws_cloudwatch_log_group" "flow_logs" {
@@ -256,22 +263,51 @@ resource "aws_iam_role" "flow_logs" {
   })
 }
 
+resource "aws_iam_role_policy" "flow_logs" {
+  count = var.features.enable_vpc_flow_logs ? 1 : 0
+
+  name = "vpc-flow-logs-policy"
+  role = aws_iam_role.flow_logs[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # guardduty.tf
 resource "aws_guardduty_detector" "main" {
   count = var.features.enable_guardduty ? 1 : 0
 
   enable = true
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-  }
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  count = var.features.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  count = var.features.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
 }
 
 # elasticache.tf
@@ -471,8 +507,8 @@ module "monitoring" {
   count  = var.deploy_monitoring_stack ? 1 : 0
   source = "./modules/monitoring"
 
-  retention_days = var.monitoring_config.retention_days
-  alert_email    = var.monitoring_config.alert_email
+  retention_days = var.deploy_monitoring_stack ? var.monitoring_config.retention_days : null
+  alert_email    = var.deploy_monitoring_stack ? var.monitoring_config.alert_email : null
   vpc_id         = aws_vpc.main.id
 }
 
