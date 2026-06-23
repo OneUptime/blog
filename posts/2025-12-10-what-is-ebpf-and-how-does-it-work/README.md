@@ -28,11 +28,11 @@ Key characteristics:
 
 | Property | Description |
 |----------|-------------|
-| **Sandboxed** | eBPF programs run in a restricted virtual machine; they can't crash the kernel |
+| **Sandboxed** | eBPF programs run in a restricted virtual machine and are designed not to crash the kernel |
 | **Verified** | Every program is statically analyzed before execution to ensure safety |
 | **JIT Compiled** | Programs are compiled to native machine code for near-native performance |
 | **Event-Driven** | Programs attach to specific hook points and run when those events occur |
-| **Zero-Copy** | Data can be accessed directly from kernel space without expensive copies |
+| **In-Kernel Processing** | Data can be filtered and aggregated in kernel space to avoid unnecessary transfers to userspace |
 
 ---
 
@@ -86,6 +86,13 @@ This simple eBPF program counts system calls across the entire system. The `SEC`
 
 ```c
 // Simple example: Count system calls
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, u64);
+} syscall_count SEC(".maps");
+
 // SEC macro attaches this function to the sys_enter tracepoint
 SEC("tracepoint/raw_syscalls/sys_enter")
 int count_syscalls(struct trace_event_raw_sys_enter *ctx) {
@@ -266,7 +273,7 @@ Maps are the **primary data structure** for eBPF programs. They enable:
 
 ### Example: Counting Events by Process
 
-This program counts system calls per process ID. The map is defined using modern BTF (BPF Type Format) syntax, and the program demonstrates both looking up existing entries and inserting new ones atomically.
+This program counts system calls per process ID. The map is defined using modern BTF (BPF Type Format) syntax, and the program demonstrates both looking up existing entries and inserting new ones.
 
 ```c
 // Define a hash map: PID -> count
@@ -280,7 +287,7 @@ struct {
 
 SEC("tracepoint/raw_syscalls/sys_enter")
 int count_by_pid(void *ctx) {
-    // Extract PID from combined PID/TGID (upper 32 bits contain PID)
+    // Extract process ID/TGID from combined PID/TGID (upper 32 bits contain TGID)
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 *count, init_val = 1;  // Initial value for new entries
 
@@ -326,18 +333,18 @@ With eBPF, you can observe:
 ### Low Overhead
 
 Because eBPF programs:
-- Run in kernel space (no context switching)
+- Run at kernel hook points without a userspace round trip for every event
 - Are JIT compiled (near-native speed)
 - Can aggregate in-kernel (reduce data volume)
 
-Overhead is typically **< 1%** even with extensive tracing.
+Overhead can be very low, especially when programs aggregate data in-kernel, but it depends on the hooks, event rate, and amount of data exported.
 
 ### Universal Visibility
 
 One eBPF program can observe:
 - Any language (Go, Rust, Python, Node.js, Java...)
 - Any framework
-- Any container or VM
+- Containers on the same host, and VM activity that is visible from the host or from inside the guest
 - Kernel operations invisible to application-level tools
 
 This is particularly valuable for [profiling](https://oneuptime.com/blog/post/2025-09-09-basics-of-profiling/view) where you need to understand not just application code but also how it interacts with the kernel.
@@ -374,7 +381,7 @@ Many modern observability platforms combine both approaches.
 
 **Load Balancing**: Facebook's Katran handles millions of connections using XDP-based load balancing with consistent hashing.
 
-**Service Mesh**: Cilium replaces traditional iptables-based networking in Kubernetes with eBPF for 10x better performance.
+**Service Mesh**: Cilium can replace traditional iptables-based Kubernetes networking with eBPF for improved performance, scalability, and visibility.
 
 **DDoS Mitigation**: Cloudflare uses XDP to drop malicious packets at wire speed before they consume kernel resources.
 
@@ -449,7 +456,7 @@ The OpenTelemetry project is actively working on eBPF integration:
 
 ### OpenTelemetry eBPF
 
-The `opentelemetry-ebpf-profiler` project (formerly Prodfiler) provides:
+The `opentelemetry-ebpf-profiler` project, based on Elastic's donated Universal Profiling eBPF agent and later joined by Parca Agent development, provides:
 - Whole-system continuous profiling
 - Integration with OTel collectors
 - Stack trace correlation with traces
@@ -501,7 +508,7 @@ eBPF isn't magic. There are real limitations:
 
 | Limitation | Details |
 |------------|---------|
-| **Linux only** | No Windows or macOS support (yet) |
+| **Primarily Linux** | eBPF is mature in Linux; eBPF for Windows exists but is still a work in progress and is not equivalent to Linux eBPF. macOS does not provide native eBPF support |
 | **Kernel version** | Many features require Linux 4.x+ or 5.x+ |
 | **Verifier constraints** | No unbounded loops, limited stack, no sleeping |
 | **Helper function limits** | Can only call approved kernel functions |
@@ -513,7 +520,7 @@ eBPF isn't magic. There are real limitations:
 
 **Debugging difficulty**: When something goes wrong, debugging eBPF is harder than application code.
 
-**Security implications**: eBPF programs run with kernel privileges. A bug won't crash the kernel (thanks to the verifier), but malicious or poorly-written programs could cause issues.
+**Security implications**: eBPF programs run with kernel privileges. The verifier is designed to prevent unsafe programs from being loaded, but malicious or poorly-written programs can still cause operational issues such as excessive overhead or overly broad policy enforcement.
 
 **Learning curve**: Writing eBPF programs requires understanding kernel internals.
 
@@ -521,8 +528,8 @@ eBPF isn't magic. There are real limitations:
 
 - Access application-level context (user IDs, session data, business logic)
 - Provide the same semantic richness as explicit instrumentation
-- Run on non-Linux systems
-- Modify application behavior (safely)
+- Run with the same maturity and feature set on non-Linux systems
+- Arbitrarily modify application business logic
 
 ---
 
@@ -602,7 +609,7 @@ eBPF continues to evolve rapidly:
 
 ### Near-Term Developments
 
-- **eBPF on Windows**: Microsoft is actively developing eBPF support
+- **eBPF on Windows**: Microsoft is continuing to develop eBPF support for Windows
 - **More program types**: Expanding what eBPF can hook into
 - **Better tooling**: Improved debugging, testing, and development experience
 - **Language support**: More high-level languages (Rust, Go) for writing eBPF
