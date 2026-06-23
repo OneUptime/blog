@@ -211,7 +211,7 @@ Install dependencies:
 npm install @opentelemetry/api \
 						@opentelemetry/sdk-node \
 						@opentelemetry/auto-instrumentations-node \
-						@opentelemetry/exporter-otlp-http \
+						@opentelemetry/exporter-trace-otlp-http \
 						@opentelemetry/resources \
 						@opentelemetry/semantic-conventions
 ```
@@ -222,7 +222,7 @@ npm install @opentelemetry/api \
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
