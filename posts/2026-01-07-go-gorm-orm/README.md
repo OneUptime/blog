@@ -181,7 +181,7 @@ type User struct {
     LastLoginAt *time.Time `gorm:"index"`
 
     // JSON field for flexible data storage
-    Preferences map[string]interface{} `gorm:"type:jsonb"`
+    Preferences map[string]interface{} `gorm:"serializer:json;type:jsonb"`
 
     // Relationships (defined later)
     Posts    []Post    `gorm:"foreignKey:UserID"`
@@ -201,6 +201,8 @@ Here is a comprehensive reference for commonly used GORM struct tags.
 
 ```go
 package models
+
+import "time"
 
 // TagReference demonstrates all common GORM struct tags
 type TagReference struct {
@@ -284,9 +286,9 @@ package repository
 
 import (
     "context"
-    "errors"
 
     "gorm.io/gorm"
+    "gorm.io/gorm/clause"
 )
 
 // UserRepository handles user database operations
@@ -443,7 +445,7 @@ func (r *UserRepository) Update(ctx context.Context, id uint, updates map[string
 
 // Save updates all fields of a user (including zero values)
 func (r *UserRepository) Save(ctx context.Context, user *User) error {
-    // Save will update all fields, including zero values
+    // Save will update all fields, including zero values, or insert if no primary key is set
     // Use this when you want to explicitly set fields to zero/empty
     result := r.db.WithContext(ctx).Save(user)
     return result.Error
@@ -557,7 +559,7 @@ type Profile struct {
     Location  string `gorm:"type:varchar(100)"`
 
     // Social links stored as JSON
-    SocialLinks map[string]string `gorm:"type:jsonb"`
+    SocialLinks map[string]string `gorm:"serializer:json;type:jsonb"`
 }
 
 // User has one Profile
@@ -703,12 +705,10 @@ Use AutoMigrate for development environments to automatically sync schema change
 func AutoMigrate(db *gorm.DB) error {
     // AutoMigrate will:
     // - Create tables if they don't exist
-    // - Add missing columns
-    // - Add missing indexes
+    // - Add missing foreign keys, constraints, columns, and indexes
+    // - Change existing column types when size/precision changes or a column becomes nullable
     // It will NOT:
     // - Delete unused columns (data safety)
-    // - Change column types
-    // - Delete unused indexes
 
     err := db.AutoMigrate(
         &User{},
@@ -824,20 +824,19 @@ func RollbackMigration(db *sql.DB, migrationsPath string) error {
 Add indexes and constraints for better performance and data integrity.
 
 ```go
-// CreateIndexes manually creates indexes using GORM's Migrator
+// CreateIndexes manually creates indexes using GORM and SQL
 func CreateIndexes(db *gorm.DB) error {
-    migrator := db.Migrator()
-
     // Create a composite index
-    if !migrator.HasIndex(&User{}, "idx_users_name") {
-        err := migrator.CreateIndex(&User{}, "idx_users_name")
-        if err != nil {
-            return err
-        }
+    err := db.Exec(`
+        CREATE INDEX IF NOT EXISTS idx_users_name
+        ON users(first_name, last_name)
+    `).Error
+    if err != nil {
+        return err
     }
 
     // Create a partial index using raw SQL
-    err := db.Exec(`
+    err = db.Exec(`
         CREATE INDEX IF NOT EXISTS idx_active_users
         ON users(email)
         WHERE is_active = true AND deleted_at IS NULL
@@ -1157,7 +1156,7 @@ func ManualTransactionExample(db *gorm.DB) error {
         return tx.Error
     }
 
-    // Defer rollback - will be ignored if transaction is committed
+    // Roll back on panic before re-throwing
     defer func() {
         if r := recover(); r != nil {
             tx.Rollback()
@@ -1166,12 +1165,17 @@ func ManualTransactionExample(db *gorm.DB) error {
     }()
 
     // Perform operations
-    if err := tx.Create(&User{Email: "test@example.com"}).Error; err != nil {
+    user := User{
+        Email:        "test@example.com",
+        Username:     "testuser",
+        PasswordHash: "hashed-password",
+    }
+    if err := tx.Create(&user).Error; err != nil {
         tx.Rollback()
         return err
     }
 
-    if err := tx.Create(&Profile{UserID: 1, Bio: "Test bio"}).Error; err != nil {
+    if err := tx.Create(&Profile{UserID: user.ID, Bio: "Test bio"}).Error; err != nil {
         tx.Rollback()
         return err
     }
@@ -1297,6 +1301,9 @@ Properly handle and wrap GORM errors for better debugging.
 ```go
 import (
     "errors"
+    "fmt"
+    "strings"
+
     "gorm.io/gorm"
 )
 
