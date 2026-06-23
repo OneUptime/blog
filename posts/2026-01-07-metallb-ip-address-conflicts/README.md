@@ -281,7 +281,7 @@ flowchart TD
     B -->|Cross-Cluster| E[Audit All Clusters]
 
     C --> C1{Manual IP Request?}
-    C1 -->|Yes| C2[Remove spec.loadBalancerIP]
+    C1 -->|Yes| C2[Remove static IP request]
     C1 -->|No| C3[Check Pool Configuration]
 
     D --> D1{Can Relocate Device?}
@@ -323,22 +323,27 @@ Step 2: Determine which service should keep the IP
 
 ```bash
 # Check if either service has a specific IP request
-kubectl get service -n <namespace> <service-name> -o jsonpath='{.spec.loadBalancerIP}'
+kubectl get service -n <namespace> <service-name> -o json | \
+  jq -r '.metadata.annotations["metallb.io/loadBalancerIPs"] // "", .spec.loadBalancerIP // ""'
 ```
 
 Step 3: Remove the conflicting service and let MetalLB reassign
 
 ```bash
-# Delete and recreate the service that should get a new IP
+# Back up the service before changing it
 kubectl get service -n <namespace> <service-name> -o yaml > service-backup.yaml
 
-# Remove the loadBalancerIP if it was manually specified
-kubectl patch service -n <namespace> <service-name> --type='json' \
-  -p='[{"op": "remove", "path": "/spec/loadBalancerIP"}]'
+# Remove MetalLB's preferred static IP annotation if it was manually specified
+kubectl annotate service -n <namespace> <service-name> \
+  metallb.io/loadBalancerIPs-
 
-# Delete and recreate to force new IP assignment
-kubectl delete service -n <namespace> <service-name>
-kubectl apply -f service-backup.yaml
+# Remove the legacy loadBalancerIP field if it was manually specified
+kubectl patch service -n <namespace> <service-name> --type='json' \
+  -p='[{"op": "remove", "path": "/spec/loadBalancerIP"}]' 2>/dev/null || true
+
+# Restart the controller if MetalLB keeps the old assignment after the service update
+kubectl rollout restart deployment/controller -n metallb-system
+kubectl rollout status deployment/controller -n metallb-system
 ```
 
 ### Procedure 2: Resolving External Device Conflicts
@@ -391,9 +396,9 @@ Step 3: Force MetalLB to release the IP
 # Delete the service using the conflicting IP
 kubectl delete service -n <namespace> <service-name>
 
-# Clear the ARP cache on MetalLB speaker nodes
-for pod in $(kubectl get pods -n metallb-system -l component=speaker -o name); do
-  kubectl exec -n metallb-system $pod -- ip neigh flush all
+# Clear the ARP cache on nodes running MetalLB speakers
+kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u | while read node_name; do
+  kubectl debug node/$node_name -it --image=nicolaka/netshoot --profile=sysadmin -- chroot /host ip neigh flush all
 done
 
 # Recreate the service
@@ -497,17 +502,17 @@ After resolving conflicts, clear ARP caches to ensure immediate effect:
 kubectl get nodes -o name | while read node; do
   node_name=${node#node/}
   echo "Clearing ARP cache on $node_name"
-  kubectl debug node/$node_name -it --image=busybox -- ip neigh flush all
+  kubectl debug node/$node_name -it --image=nicolaka/netshoot --profile=sysadmin -- chroot /host ip neigh flush all
 done
 ```
 
 ### On MetalLB Speaker Pods
 
 ```bash
-# Execute ARP flush on all speaker pods
-for pod in $(kubectl get pods -n metallb-system -l component=speaker -o name); do
-  echo "Clearing ARP cache in $pod"
-  kubectl exec -n metallb-system ${pod#pod/} -- sh -c "ip neigh flush all" 2>/dev/null || true
+# Speaker containers are distroless; flush the host ARP cache on their nodes instead
+kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u | while read node_name; do
+  echo "Clearing ARP cache on $node_name"
+  kubectl debug node/$node_name -it --image=nicolaka/netshoot --profile=sysadmin -- chroot /host ip neigh flush all
 done
 ```
 
@@ -544,11 +549,11 @@ netsh interface ip delete arpcache
 
 ## Forcing MetalLB IP Reallocation
 
-Sometimes you need to force MetalLB to completely reallocate IPs:
+Sometimes you need to force MetalLB to reload its configuration:
 
-### Graceful Service Migration
+### Controlled Service Migration
 
-Migrate services to new IPs without downtime:
+Migrate services to new IPs with controlled disruption:
 
 ```bash
 #!/bin/bash
@@ -566,49 +571,35 @@ fi
 echo "Step 1: Creating backup of current service..."
 kubectl get service -n $NAMESPACE $SERVICE -o yaml > ${SERVICE}-backup.yaml
 
-echo "Step 2: Creating temporary service for traffic handling..."
-kubectl get service -n $NAMESPACE $SERVICE -o yaml | \
-  sed "s/name: $SERVICE/name: ${SERVICE}-temp/" | \
-  kubectl apply -f -
-
-echo "Step 3: Waiting for temporary service to get IP..."
-sleep 10
-TEMP_IP=$(kubectl get service -n $NAMESPACE ${SERVICE}-temp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "Temporary service IP: $TEMP_IP"
-
-echo "Step 4: Deleting original service..."
-kubectl delete service -n $NAMESPACE $SERVICE
-
-echo "Step 5: Recreating service with new configuration..."
+echo "Step 2: Updating the static IP request..."
 if [ -n "$NEW_IP" ]; then
-  kubectl get service -n $NAMESPACE ${SERVICE}-temp -o yaml | \
-    sed "s/name: ${SERVICE}-temp/name: $SERVICE/" | \
-    sed "s/loadBalancerIP:.*/loadBalancerIP: $NEW_IP/" | \
-    kubectl apply -f -
+  kubectl annotate service -n $NAMESPACE $SERVICE \
+    metallb.io/loadBalancerIPs=$NEW_IP --overwrite
 else
-  kubectl get service -n $NAMESPACE ${SERVICE}-temp -o yaml | \
-    sed "s/name: ${SERVICE}-temp/name: $SERVICE/" | \
-    kubectl apply -f -
+  kubectl annotate service -n $NAMESPACE $SERVICE metallb.io/loadBalancerIPs- 2>/dev/null || true
+  kubectl patch service -n $NAMESPACE $SERVICE --type='json' \
+    -p='[{"op": "remove", "path": "/spec/loadBalancerIP"}]' 2>/dev/null || true
 fi
 
-echo "Step 6: Verifying new IP assignment..."
-sleep 5
+echo "Step 3: Restarting MetalLB controller if the old assignment is retained..."
+kubectl rollout restart deployment/controller -n metallb-system
+kubectl rollout status deployment/controller -n metallb-system
+
+echo "Step 4: Verifying new IP assignment..."
+sleep 10
 NEW_ASSIGNED_IP=$(kubectl get service -n $NAMESPACE $SERVICE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "New service IP: $NEW_ASSIGNED_IP"
-
-echo "Step 7: Cleaning up temporary service..."
-kubectl delete service -n $NAMESPACE ${SERVICE}-temp
 
 echo "Migration complete!"
 ```
 
-### Force Complete Pool Reallocation
+### Force MetalLB to Reload Pool Configuration
 
-In severe cases, force all services to get new IPs:
+In severe cases, force MetalLB to reload its configuration:
 
 ```bash
 #!/bin/bash
-# force-reallocation.sh - Force complete IP reallocation
+# force-reallocation.sh - Force MetalLB to reload pool configuration
 
 echo "WARNING: This will cause temporary service disruption!"
 read -p "Continue? (yes/no): " confirm
@@ -621,7 +612,6 @@ fi
 echo "Creating backups..."
 kubectl get services --all-namespaces -o json | jq '.items[] | select(.spec.type=="LoadBalancer")' > lb-services-backup.json
 
-# Delete and recreate MetalLB configuration
 echo "Restarting MetalLB controller..."
 kubectl rollout restart deployment/controller -n metallb-system
 
@@ -633,7 +623,7 @@ echo "Restarting MetalLB speakers..."
 kubectl rollout restart daemonset/speaker -n metallb-system
 kubectl rollout status daemonset/speaker -n metallb-system
 
-echo "MetalLB has been restarted. Services will be reallocated."
+echo "MetalLB has been restarted. Delete and recreate any service that still retains an old assignment."
 ```
 
 ## Preventing Future Conflicts
@@ -782,17 +772,15 @@ spec:
   groups:
   - name: metallb-ip-conflicts
     rules:
-    - alert: MetalLBDuplicateIPAssignment
+    - alert: MetalLBConfigStale
       expr: |
-        count by (ip) (
-          metallb_allocator_addresses_in_use_total
-        ) > 1
+        metallb_k8s_client_config_stale_bool > 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Duplicate IP assignment detected"
-        description: "IP {{ $labels.ip }} is assigned to multiple services"
+        summary: "MetalLB is running with stale configuration"
+        description: "A MetalLB component could not load the latest configuration"
 
     - alert: MetalLBPoolExhausted
       expr: |
@@ -804,15 +792,15 @@ spec:
         summary: "MetalLB IP pool nearly exhausted"
         description: "Pool {{ $labels.pool }} has fewer than 5 IPs available"
 
-    - alert: MetalLBSpeakerAnnounceFailure
+    - alert: MetalLBBGPSessionDown
       expr: |
-        increase(metallb_speaker_announce_failed_total[5m]) > 0
+        metallb_bgp_session_up == 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "MetalLB speaker announce failures"
-        description: "Speaker on {{ $labels.node }} failing to announce IPs"
+        summary: "MetalLB BGP session down"
+        description: "BGP session to {{ $labels.peer }} is down"
 ```
 
 ## Troubleshooting Common Scenarios
@@ -836,8 +824,8 @@ Resolution:
 ```bash
 # Force service IP update
 kubectl annotate service -n <namespace> <service-name> \
-  metallb.universe.tf/address-pool- \
-  metallb.universe.tf/address-pool=production-pool
+  metallb.io/address-pool- \
+  metallb.io/address-pool=production-pool
 
 # Or delete and recreate
 kubectl delete service -n <namespace> <service-name>
@@ -864,7 +852,7 @@ When integrating MetalLB with cloud environments:
 
 ```yaml
 # Ensure MetalLB only manages specific IP ranges
-# Use avoid-buggy-ips annotation if needed
+# Use avoidBuggyIPs if needed
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
