@@ -73,7 +73,7 @@ location /app/ {
 }
 ```
 
-### Protocol-Relative Rewrites
+### Scheme-Aware Rewrites
 
 ```nginx
 location / {
@@ -135,16 +135,16 @@ location / {
 
 ### Handle Compressed Responses
 
-Backend responses might be gzip compressed. You need to decompress before filtering:
+Backend responses might be gzip compressed. The most reliable approach is to prevent the backend from sending compressed content before filtering:
 
 ```nginx
 location / {
     proxy_pass http://backend:8080;
 
-    # Decompress backend response for filtering
+    # Ask the backend for an uncompressed response for filtering
     proxy_set_header Accept-Encoding "";
 
-    # Or use gunzip module
+    # Or use the gunzip module when clients do not advertise gzip support
     # gunzip on;
 
     sub_filter_once off;
@@ -200,8 +200,8 @@ location / {
     more_set_headers "X-Backend: hidden";
     more_clear_headers "X-Powered-By";
 
-    # Conditional header replacement
-    more_set_headers -s '301 302' 'Location: https://public.example.com$upstream_http_location';
+    # Conditional header addition
+    more_set_headers -s '301 302' 'X-Redirect-Handled: true';
 }
 ```
 
@@ -406,7 +406,7 @@ curl http://nginx-server/page.html | grep -o 'http://[^"]*'
 
 ## Performance Considerations
 
-1. **sub_filter impact**: Body rewriting requires buffering the entire response, which uses memory
+1. **sub_filter impact**: Body rewriting scans and modifies response buffers, which adds CPU and memory overhead
 2. **Disable gzip from backend**: `proxy_set_header Accept-Encoding ""` to avoid decompression overhead
 3. **Be specific with sub_filter_types**: Only process content types that need rewriting
 4. **Use proxy_redirect first**: It is more efficient than sub_filter for header rewrites
