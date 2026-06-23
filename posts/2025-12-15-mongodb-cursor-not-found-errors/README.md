@@ -52,18 +52,18 @@ Disable the automatic cursor timeout. Use with caution and always close cursors 
 
 ```javascript
 // Node.js driver
-const cursor = collection.find({}).noCursorTimeout();
+const cursor = collection.find({}, { noCursorTimeout: true });
 
 try {
   for await (const doc of cursor) {
-    await processDocument(doc);  // Even slow processing is OK
+    await processDocument(doc);  // Slow processing is OK, but avoid idle periods over the session timeout
   }
 } finally {
   await cursor.close();  // Always close manually!
 }
 
 // Mongoose
-const cursor = Model.find({}).cursor({ noCursorTimeout: true });
+const cursor = Model.find({}).cursor().addCursorFlag('noCursorTimeout', true);
 
 cursor.on('data', async (doc) => {
   await processDocument(doc);
@@ -169,7 +169,8 @@ async function paginateByDate(collection, startDate, endDate, batchSize = 1000) 
 Fetch more documents per batch to reduce round trips.
 
 ```javascript
-// Default batch size is 101 documents for first batch, then 16MB or 101 docs
+// Default initial batch is the lesser of 101 documents or 16 MiB;
+// subsequent batches are limited by 16 MiB unless batchSize is set
 const cursor = collection.find({}).batchSize(5000);
 
 for await (const doc of cursor) {
@@ -342,7 +343,7 @@ const client = new MongoClient(uri, {
 // Use read concern for consistency
 const cursor = collection
   .find({})
-  .readConcern('majority');
+  .withReadConcern('majority');
 ```
 
 ## Monitoring and Debugging
@@ -356,19 +357,25 @@ console.log('Open cursors:', serverStatus.metrics.cursor.open.total);
 console.log('Timed out cursors:', serverStatus.metrics.cursor.timedOut);
 
 // Current operations
-const currentOps = await db.admin().command({
-  currentOp: true,
-  '$or': [
-    { op: 'getmore' },
-    { 'cursor': { $exists: true } }
-  ]
-});
+const currentOps = await db.admin().aggregate([
+  { $currentOp: { allUsers: true, idleCursors: true } },
+  {
+    $match: {
+      $or: [
+        { op: 'getmore' },
+        { type: 'idleCursor' }
+      ]
+    }
+  }
+]).toArray();
 ```
 
 ### Logging Cursor Activity
 
 ```javascript
 // Add cursor lifecycle logging
+const client = new MongoClient(uri, { monitorCommands: true });
+
 client.on('commandStarted', (event) => {
   if (event.commandName === 'getMore') {
     console.log(`getMore on cursor ${event.command.getMore}`);
