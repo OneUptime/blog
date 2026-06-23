@@ -14,8 +14,8 @@ Covered queries are the fastest type of query in MongoDB. When a query is "cover
 
 A query is covered when:
 
-1. All fields in the query filter are part of the index
-2. All fields in the projection are part of the index
+1. All fields in the query filter are part of the same index
+2. All fields in the projection are part of the same index
 3. No fields in the projection require document access
 4. The `_id` field is excluded from projection (unless indexed)
 
@@ -72,29 +72,33 @@ function isQueryCovered(explainResult) {
   const stats = explainResult.executionStats;
 
   // A covered query examines 0 documents
-  if (stats.totalDocsExamined === 0 && stats.nReturned > 0) {
-    return true;
-  }
-
-  // Check for IXSCAN with no FETCH stage
+  // and has an index scan that is not below a FETCH stage.
   const plan = explainResult.queryPlanner.winningPlan;
-  return checkPlanForCovered(plan);
+  return stats.totalDocsExamined === 0 && checkPlanForCovered(plan);
 }
 
-function checkPlanForCovered(plan) {
+function checkPlanForCovered(plan, belowFetch = false) {
   // If we see FETCH, it's not covered
   if (plan.stage === 'FETCH') {
-    return false;
+    belowFetch = true;
   }
 
   // IXSCAN without FETCH is covered
-  if (plan.stage === 'IXSCAN') {
+  if ((plan.stage === 'IXSCAN' || plan.stage === 'DISTINCT_SCAN') && !belowFetch) {
     return true;
   }
 
   // Check input stages
   if (plan.inputStage) {
-    return checkPlanForCovered(plan.inputStage);
+    return checkPlanForCovered(plan.inputStage, belowFetch);
+  }
+
+  if (plan.inputStages) {
+    return plan.inputStages.some((stage) => checkPlanForCovered(stage, belowFetch));
+  }
+
+  if (plan.queryPlan) {
+    return checkPlanForCovered(plan.queryPlan, belowFetch);
   }
 
   return false;
@@ -176,8 +180,8 @@ async function getProductListing(category, page = 1, limit = 20) {
 // Index for autocomplete
 db.searchTerms.createIndex({
   prefix: 1,
-  term: 1,
-  popularity: -1
+  popularity: -1,
+  term: 1
 });
 
 // Covered autocomplete query
@@ -336,13 +340,13 @@ const result = await db.transactions.aggregate([
 
 ## Limitations of Covered Queries
 
-### 1. Array Fields Break Coverage
+### 1. Array Fields Limit Coverage
 
 ```javascript
 // Index on array field
 db.posts.createIndex({ tags: 1, title: 1 });
 
-// NOT covered - multikey indexes require document access
+// NOT covered - multikey indexes cannot cover queries over array fields
 db.posts.find(
   { tags: "mongodb" },
   { _id: 0, title: 1 }
@@ -449,6 +453,6 @@ Covered queries provide the best possible read performance in MongoDB:
 2. **Exclude _id** - Use `{ _id: 0 }` in projections
 3. **Verify with explain()** - Check that totalDocsExamined is 0
 4. **Balance index size** - Wider indexes use more memory
-5. **Understand limitations** - Array fields and text search cannot be covered
+5. **Understand limitations** - Queries over array fields and text search cannot be covered
 
 When implemented correctly, covered queries can improve read performance by 10-100x by eliminating document fetches entirely.
