@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Operator, Kubernetes, Service Mesh, GitOps
 
-Description: A guide to using Istio Operator for declarative Istio lifecycle management.
+Description: A legacy guide to using Istio Operator for declarative Istio lifecycle management.
 
 ---
 
-Managing Istio installations manually can become complex and error-prone, especially in production environments with multiple clusters. The Istio Operator provides a declarative approach to Istio lifecycle management, enabling you to install, configure, and upgrade Istio using Kubernetes custom resources. This guide covers everything you need to know about managing Istio with the Istio Operator.
+Managing Istio installations manually can become complex and error-prone, especially in production environments with multiple clusters. The Istio Operator provided a declarative approach to Istio lifecycle management, enabling you to install, configure, and upgrade Istio using Kubernetes custom resources. However, Istio's in-cluster operator was deprecated in Istio 1.23 and removed from Istio core in 1.24. The examples in this guide use Istio 1.20.0 and apply to legacy in-cluster operator installations or compatible ecosystem operators such as the Classic Operator Controller. For new installations on supported Istio releases, use Helm or `istioctl install` with an `IstioOperator` file instead.
 
 ## Table of Contents
 
@@ -68,19 +68,19 @@ flowchart TB
 - **Declarative Configuration**: Define your entire Istio installation as code
 - **GitOps-Friendly**: Store configurations in version control and apply via CI/CD
 - **Automatic Reconciliation**: The operator continuously ensures the actual state matches the desired state
-- **Simplified Upgrades**: Update the version field and let the operator handle the rest
+- **Simplified Upgrades**: Update the `tag` or `revision` field and let the operator handle the rest
 - **Consistent Environments**: Use the same configuration across development, staging, and production
 
 ## Installing the Istio Operator
 
 Before installing the Istio Operator, ensure you have the following prerequisites:
-- Kubernetes cluster (version 1.22 or later recommended)
+- Kubernetes cluster supported by your Istio release (Istio 1.20 supported Kubernetes 1.25 through 1.29)
 - `kubectl` configured with cluster access
 - `istioctl` CLI tool installed
 
 ### Method 1: Using istioctl
 
-The simplest way to install the Istio Operator is using the `istioctl` command-line tool. This deploys the operator controller to your cluster:
+For Istio 1.23 and earlier, the simplest way to install the in-cluster Istio Operator was using the `istioctl` command-line tool. This deploys the operator controller to your cluster:
 
 ```bash
 # Install the Istio Operator controller into the istio-operator namespace
@@ -102,7 +102,7 @@ istioctl operator init \
 
 ### Method 2: Using Helm
 
-For more control over the operator deployment, you can use Helm to install the operator:
+For Istio 1.23 and earlier, you can also use Helm to install the in-cluster operator:
 
 ```bash
 # Add the Istio Helm repository
@@ -146,11 +146,14 @@ kind: IstioOperator
 metadata:
   # Name of the IstioOperator resource - you can have multiple in different namespaces
   name: istio-control-plane
-  # The namespace where Istio components will be installed
+  # The namespace containing this IstioOperator resource. If spec.namespace is unset,
+  # Istio installs control plane resources into this namespace.
   namespace: istio-system
 spec:
   # Istio version to install - should match your operator version
   tag: 1.20.0
+  # Namespace where Istio control plane resources will be installed
+  namespace: istio-system
   # Installation profile - determines which components are installed by default
   profile: default
 ```
@@ -213,7 +216,7 @@ Istio provides several installation profiles that serve as starting points for d
 | `demo` | All features enabled for demonstration | Testing and learning |
 | `minimal` | Only istiod, no gateways | Custom gateway deployments |
 | `remote` | For multi-cluster remote clusters | Multi-cluster setups |
-| `empty` | No components, base only | Complete custom builds |
+| `empty` | No components | Complete custom builds |
 | `preview` | Experimental features enabled | Testing new features |
 | `ambient` | Ambient mesh mode | Sidecar-less deployments |
 
@@ -375,7 +378,9 @@ spec:
             - type: Resource
               resource:
                 name: cpu
-                targetAverageUtilization: 80
+                target:
+                  type: Utilization
+                  averageUtilization: 80
         # Pod anti-affinity to spread across nodes
         affinity:
           podAntiAffinity:
@@ -713,7 +718,7 @@ sequenceDiagram
 
 ### In-Place Upgrade
 
-For simple upgrades within the same minor version:
+For simple patch upgrades within the same minor version:
 
 ```yaml
 # Update the tag to trigger an in-place upgrade
@@ -725,8 +730,8 @@ metadata:
   namespace: istio-system
 spec:
   profile: default
-  # Change version from 1.19.0 to 1.20.0
-  tag: 1.20.0
+  # Change version from 1.20.0 to 1.20.8
+  tag: 1.20.8
   # Optionally update the hub for custom registries
   hub: docker.io/istio
 ```
@@ -862,9 +867,6 @@ kind: Application
 metadata:
   name: istio
   namespace: argocd
-  # Ensure ArgoCD doesn't prune Istio resources accidentally
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   project: infrastructure
   source:
@@ -877,7 +879,7 @@ spec:
     namespace: istio-system
   syncPolicy:
     automated:
-      # Enable auto-pruning with caution for Istio
+      # Keep pruning disabled unless you have tested deletion behavior carefully
       prune: false
       selfHeal: true
     syncOptions:
@@ -1037,8 +1039,8 @@ istioctl proxy-status
 # Dump Envoy configuration for debugging
 istioctl proxy-config all <pod-name> -n <namespace>
 
-# Verify mutual TLS configuration
-istioctl authn tls-check <pod-name>.<namespace>
+# Inspect proxy certificates when troubleshooting mutual TLS
+istioctl proxy-config secret <pod-name>.<namespace>
 
 # Check the operator's view of the installation
 kubectl get istiooperator -n istio-system -o jsonpath='{.items[*].status}'
@@ -1101,7 +1103,9 @@ kubectl get istiooperator -n istio-system -o jsonpath='{.items[*].status}'
          - type: Resource
            resource:
              name: cpu
-             targetAverageUtilization: 80
+             target:
+               type: Utilization
+               averageUtilization: 80
    ```
 
 5. **Enable Access Logging**
@@ -1140,25 +1144,31 @@ spec:
     # Enable automatic mTLS
     enableAutoMtls: true
     defaultConfig:
-      # Enable proxy protocol
+      # Enable DNS capture
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
   values:
     global:
-      # Use distroless images for reduced attack surface
+      # Use the default proxy image from the configured hub and tag
       proxy:
         image: proxyv2
       # Restrict pilot privileges
       pilotCertProvider: istiod
-    # Enable strict peer authentication by default
-    pilot:
-      env:
-        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: "true"
+---
+# Enforce strict mutual TLS for workloads in the mesh root namespace
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
 ```
 
 ## Conclusion
 
-The Istio Operator provides a powerful, declarative approach to managing Istio installations. By leveraging the operator pattern, you can:
+For legacy deployments, the Istio Operator provides a powerful, declarative approach to managing Istio installations. By leveraging the operator pattern, you can:
 
 - Define your entire Istio configuration as code
 - Integrate seamlessly with GitOps workflows
@@ -1174,4 +1184,4 @@ Key takeaways:
 5. Integrate with GitOps tools like ArgoCD or Flux for automated deployments
 6. Follow best practices for high availability, security, and resource management
 
-With the Istio Operator, managing complex Istio deployments becomes more predictable, repeatable, and maintainable, allowing you to focus on your applications rather than infrastructure management.
+With the Istio Operator, managing legacy Istio deployments becomes more predictable, repeatable, and maintainable. For supported Istio releases in 2026, migrate in-cluster operator deployments to Helm, `istioctl install`, or a compatible ecosystem operator before upgrading beyond Istio 1.23.
