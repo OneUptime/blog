@@ -93,17 +93,19 @@ db.currentOp({
 db.killOp(opId)
 ```
 
-### dbStats and collStats
+### dbStats and $collStats
 
 ```javascript
 // Database statistics
 db.stats()
 
 // Collection statistics
-db.collection.stats()
+db.collection.aggregate([{ $collStats: { storageStats: {} } }])
 
 // Detailed collection stats with index sizes
-const stats = db.collection.stats({ indexDetails: true });
+const stats = db.collection.aggregate([
+  { $collStats: { storageStats: {} } }
+]).toArray()[0].storageStats;
 print(`Document count: ${stats.count}`);
 print(`Data size: ${stats.size / 1024 / 1024} MB`);
 print(`Storage size: ${stats.storageSize / 1024 / 1024} MB`);
@@ -223,12 +225,11 @@ const checkReplicationLag = () => {
 version: '3'
 services:
   mongodb-exporter:
-    image: percona/mongodb_exporter:0.40
-    environment:
-      - MONGODB_URI=mongodb://user:pass@mongodb:27017
+    image: percona/mongodb_exporter:0.51
     ports:
       - "9216:9216"
     command:
+      - '--mongodb.uri=mongodb://user:pass@mongodb:27017'
       - '--collect-all'
       - '--compatible-mode'
 ```
@@ -248,7 +249,8 @@ scrape_configs:
 rate(mongodb_op_counters_total[5m])
 
 # Connection utilization
-mongodb_connections{state="current"} / mongodb_connections{state="available"} * 100
+mongodb_connections{state="current"} /
+(mongodb_connections{state="current"} + mongodb_connections{state="available"}) * 100
 
 # Replication lag in seconds
 mongodb_mongod_replset_member_replication_lag
@@ -256,14 +258,15 @@ mongodb_mongod_replset_member_replication_lag
 # Memory usage
 mongodb_memory{type="resident"}
 
-# Cache hit ratio
-rate(mongodb_wiredtiger_cache_bytes_read_into_cache[5m]) /
-(rate(mongodb_wiredtiger_cache_bytes_read_into_cache[5m]) +
- rate(mongodb_wiredtiger_cache_bytes_written_from_cache[5m]))
+# Cache read hit ratio
+(1 - (
+  rate(mongodb_ss_wt_cache_pages_read_into_cache[5m]) /
+  rate(mongodb_ss_wt_cache_pages_requested_from_the_cache[5m])
+)) * 100
 
 # Query targeting efficiency
-mongodb_mongod_metrics_query_executor_total{state="scanned_objects"} /
-mongodb_mongod_metrics_query_executor_total{state="returned"}
+rate(mongodb_mongod_metrics_query_executor_total{state="scanned_objects"}[5m]) /
+rate(mongodb_mongod_metrics_document_total{type="returned"}[5m])
 ```
 
 ### Grafana Dashboard Panels
@@ -286,7 +289,7 @@ mongodb_mongod_metrics_query_executor_total{state="returned"}
       "type": "gauge",
       "targets": [
         {
-          "expr": "mongodb_connections{state='current'}"
+          "expr": "mongodb_connections{state=\"current\"}"
         }
       ]
     },
@@ -296,7 +299,7 @@ mongodb_mongod_metrics_query_executor_total{state="returned"}
       "targets": [
         {
           "expr": "mongodb_mongod_replset_member_replication_lag",
-          "legendFormat": "{{member}}"
+          "legendFormat": "{{name}}"
         }
       ]
     }
@@ -426,18 +429,22 @@ class MongoDBMonitor {
 }
 
 // Usage
-const monitor = new MongoDBMonitor('mongodb://localhost:27017');
-await monitor.connect();
+async function main() {
+  const monitor = new MongoDBMonitor('mongodb://localhost:27017');
+  await monitor.connect();
 
-setInterval(async () => {
-  const health = await monitor.checkHealth();
-  console.log(JSON.stringify(health, null, 2));
+  setInterval(async () => {
+    const health = await monitor.checkHealth();
+    console.log(JSON.stringify(health, null, 2));
 
-  // Send to monitoring system
-  if (!health.healthy) {
-    // Send alert
-  }
-}, 60000); // Every minute
+    // Send to monitoring system
+    if (!health.healthy) {
+      // Send alert
+    }
+  }, 60000); // Every minute
+}
+
+main().catch(console.error);
 ```
 
 ## Alerting Strategy
@@ -476,7 +483,7 @@ groups:
           summary: "MongoDB instance down"
 
       - alert: MongoDBHighConnections
-        expr: mongodb_connections{state="current"} / mongodb_connections{state="available"} > 0.8
+        expr: mongodb_connections{state="current"} / (mongodb_connections{state="current"} + mongodb_connections{state="available"}) > 0.8
         for: 5m
         labels:
           severity: warning
@@ -492,7 +499,7 @@ groups:
           summary: "MongoDB replication lag > 10 seconds"
 
       - alert: MongoDBNoPrimary
-        expr: mongodb_mongod_replset_member_state{state="PRIMARY"} != 1
+        expr: sum by (set) (mongodb_mongod_replset_my_state == 1) < 1
         for: 1m
         labels:
           severity: critical
