@@ -258,14 +258,14 @@ Use additional flags to control fuzzing behavior:
 # Limit parallel fuzzing workers
 go test -fuzz=FuzzParseURL -fuzztime=1m -parallel=4
 
-# Use a specific seed corpus directory
-go test -fuzz=FuzzParseURL -fuzztime=1m -test.fuzzcachedir=/tmp/fuzz-cache
+# Use a specific build cache directory for the generated fuzz corpus
+GOCACHE=/tmp/go-cache go test -fuzz=FuzzParseURL -fuzztime=1m
 
 # Run only the seed corpus without generating new inputs (for CI)
 go test -run=FuzzParseURL
 
 # Keep running indefinitely until interrupted
-go test -fuzz=FuzzParseURL -fuzztime=0
+go test -fuzz=FuzzParseURL
 ```
 
 ### Running Fuzz Tests in CI/CD
@@ -321,6 +321,7 @@ import (
     "bytes"
     "crypto/aes"
     "crypto/cipher"
+    "errors"
     "testing"
 )
 
@@ -386,11 +387,16 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 // pkcs7Unpad removes PKCS#7 padding
 func pkcs7Unpad(data []byte) ([]byte, error) {
     if len(data) == 0 {
-        return nil, nil
+        return nil, errors.New("empty padded data")
     }
     padding := int(data[len(data)-1])
-    if padding > len(data) {
-        return data, nil
+    if padding == 0 || padding > len(data) {
+        return nil, errors.New("invalid padding")
+    }
+    for _, b := range data[len(data)-padding:] {
+        if int(b) != padding {
+            return nil, errors.New("invalid padding")
+        }
     }
     return data[:len(data)-padding], nil
 }
@@ -418,11 +424,10 @@ func FuzzMultipleTypes(f *testing.F) {
 // Go's fuzzer supports these parameter types in fuzz targets:
 // - string
 // - []byte
-// - int, int8, int16, int32, int64
-// - uint, uint8, uint16, uint32, uint64
+// - int, int8, int16, int32/rune, int64
+// - uint, uint8/byte, uint16, uint32, uint64
 // - float32, float64
 // - bool
-// - rune
 ```
 
 ## Fuzzing Parsers and Validators
@@ -767,10 +772,10 @@ import (
     "testing"
 )
 
-// CustomJSONMarshal is our custom implementation we want to verify
-func CustomJSONMarshal(v interface{}) ([]byte, error) {
+// CustomJSONUnmarshal is our custom implementation we want to verify
+func CustomJSONUnmarshal(data []byte, v interface{}) error {
     // Custom implementation
-    return customMarshalImpl(v)
+    return customUnmarshalImpl(data, v)
 }
 
 // FuzzDifferentialJSON compares custom JSON implementation against stdlib.
@@ -983,11 +988,10 @@ func FuzzWithTimeout(f *testing.F) {
         defer cancel()
 
         done := make(chan struct{})
-        var parseErr error
 
         go func() {
             defer close(done)
-            _, parseErr = ParseWithContext(ctx, input)
+            _, _ = ParseWithContext(ctx, input)
         }()
 
         select {
@@ -1006,6 +1010,9 @@ Use memory analysis with fuzzing:
 
 ```bash
 # Run fuzzing with address sanitizer (requires CGO)
+CGO_ENABLED=1 go test -fuzz=FuzzParser -fuzztime=5m -asan
+
+# Run fuzzing with the race detector
 CGO_ENABLED=1 go test -fuzz=FuzzParser -fuzztime=5m -race
 
 # Run fuzzing with memory sanitizer
@@ -1017,17 +1024,15 @@ CGO_ENABLED=1 CC=clang go test -fuzz=FuzzParser -fuzztime=5m -msan
 Set up OSS-Fuzz or ClusterFuzz for continuous coverage:
 
 ```go
-//go:build gofuzz
-
 package parser
 
-// FuzzParser is compatible with OSS-Fuzz infrastructure
-func FuzzParser(data []byte) int {
-    _, err := Parse(data)
-    if err != nil {
-        return 0
-    }
-    return 1
+import "testing"
+
+// FuzzParser is a native Go fuzz target that OSS-Fuzz can build.
+func FuzzParser(f *testing.F) {
+    f.Fuzz(func(t *testing.T, data []byte) {
+        _, _ = Parse(data)
+    })
 }
 ```
 
