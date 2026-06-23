@@ -70,7 +70,7 @@ async function main() {
 main();
 ```
 
-The worker script receives data via `workerData` and sends results back to the main thread using `parentPort.postMessage()`. The worker runs synchronously - it does not have access to the main thread's event loop.
+The worker script receives data via `workerData` and sends results back to the main thread using `parentPort.postMessage()`. CPU-bound JavaScript in the worker runs on that worker's own thread, so it does not block the main thread's event loop.
 
 **worker.js:**
 
@@ -98,6 +98,10 @@ For simpler cases, you can define both the main thread and worker code in the sa
 ```javascript
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
+function heavyComputation(input) {
+  return input.toUpperCase();
+}
+
 // isMainThread is true when running in the main process, false in workers
 if (isMainThread) {
   // === Main thread code ===
@@ -119,7 +123,7 @@ if (isMainThread) {
 
 ## Building a Worker Thread Pool
 
-Creating a new worker for every task is expensive (~35ms startup time). A thread pool maintains pre-created workers that are reused for multiple tasks. Tasks are queued when all workers are busy and processed as workers become available.
+Creating a new worker for every task is expensive because each worker has startup and memory overhead. A thread pool maintains pre-created workers that are reused for multiple tasks. Tasks are queued when all workers are busy and processed as workers become available.
 
 ```javascript
 const { Worker } = require('worker_threads');
@@ -166,13 +170,16 @@ class WorkerPool {
     // Handle worker errors
     worker.on('error', (error) => {
       const callback = worker.currentCallback;
+      worker.currentCallback = null;
       if (callback) {
         callback.reject(error);
       }
 
       // Remove failed worker and create a replacement
       this.workers = this.workers.filter(w => w !== worker);
+      this.freeWorkers = this.freeWorkers.filter(w => w !== worker);
       this.addWorker();
+      this.processQueue();
     });
 
     this.workers.push(worker);
@@ -342,6 +349,7 @@ class ImageProcessor {
 // Express integration - create a single processor instance
 const express = require('express');
 const app = express();
+app.use(express.json());
 const processor = new ImageProcessor();
 
 // Image resize endpoint - main thread stays responsive
@@ -420,7 +428,7 @@ parentPort.on('message', (chunk) => {
 
 ### Password Hashing with Worker Threads
 
-Bcrypt is deliberately slow to resist brute-force attacks, but this blocks the event loop. Moving hashing to a worker keeps your authentication endpoints responsive even under load.
+Bcrypt is deliberately slow to resist brute-force attacks. The synchronous bcrypt APIs block the event loop, while the asynchronous APIs use a thread pool; moving hashing to a dedicated worker can isolate this CPU-intensive work and keep authentication endpoints responsive under load.
 
 ```javascript
 // hash-worker.js
@@ -605,17 +613,19 @@ const IO_HEAVY_POOL_SIZE = os.cpus().length * 2;
 By default, `postMessage` serializes and copies data. For large ArrayBuffers, use the transfer list to move ownership instead - this is zero-copy and much faster.
 
 ```javascript
+const largeArray = new Uint8Array(1024 * 1024);
+
 // BAD: Copying large buffer - slow for large data
 // Data is serialized, copied to worker, then deserialized
-worker.postMessage({ data: largeBuffer });
+worker.postMessage({ data: largeArray });
 
 // GOOD: Transfer ownership (zero-copy) using transfer list
 // The buffer is moved, not copied - instant regardless of size
-worker.postMessage({ data: largeBuffer }, [largeBuffer.buffer]);
+worker.postMessage({ data: largeArray }, [largeArray.buffer]);
 
 // IMPORTANT: After transfer, the buffer is empty in the sending thread!
 // The worker now owns it exclusively
-console.log(largeBuffer.length); // 0
+console.log(largeArray.byteLength); // 0
 ```
 
 ### 3. Handle Worker Crashes Gracefully
@@ -645,6 +655,11 @@ class ResilientWorkerPool {
   }
 
   handleWorkerFailure(failedWorker) {
+    if (failedWorker.isFailed) {
+      return;
+    }
+    failedWorker.isFailed = true;
+
     // Remove crashed worker from all pools
     this.workers = this.workers.filter(w => w !== failedWorker);
     this.freeWorkers = this.freeWorkers.filter(w => w !== failedWorker);
