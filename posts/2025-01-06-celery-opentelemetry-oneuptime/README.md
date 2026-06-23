@@ -222,6 +222,7 @@ Define custom metrics to track task execution patterns and queue health:
 
 ```python
 # metrics.py
+import os
 from opentelemetry import metrics
 
 # Get a meter instance for creating metrics
