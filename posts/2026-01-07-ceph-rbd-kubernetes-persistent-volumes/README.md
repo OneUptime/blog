@@ -52,10 +52,11 @@ The architecture shows the complete flow from a Kubernetes Pod requesting storag
 Before proceeding, ensure you have:
 
 - A running Ceph cluster (Quincy or later recommended)
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster version supported by your chosen Rook release
 - kubectl configured with cluster admin access
 - Helm 3.x installed (for Rook deployment)
 - At least 3 nodes for proper Ceph replication
+- Prometheus Operator CRDs installed if you enable Rook monitoring or apply ServiceMonitor resources
 
 ## Part 1: Ceph RBD Pool Creation and Configuration
 
@@ -126,10 +127,10 @@ Configure the default features for RBD images created in this pool:
 # - object-map: improves performance for sparse images (bit 8)
 # - fast-diff: enables fast diff calculations (bit 16)
 # - deep-flatten: allows flattening of cloned images (bit 32)
-ceph osd pool set kubernetes rbd_default_features 61
+rbd config pool set kubernetes rbd_default_features layering,exclusive-lock,object-map,fast-diff,deep-flatten
 
-# Alternatively, set features using names (more readable)
-# The numeric value 61 corresponds to: layering + exclusive-lock + object-map + fast-diff + deep-flatten
+# If you prefer numeric feature flags, the value 61 corresponds to:
+# layering + exclusive-lock + object-map + fast-diff + deep-flatten
 # Note: value 125 would also include journaling (bit 64), which is needed for RBD mirroring
 ```
 
@@ -219,7 +220,7 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  # Ceph version to deploy - use Quincy (v17) or later for best compatibility
+  # Ceph version to deploy - this example uses Reef (v18)
   cephVersion:
     image: quay.io/ceph/ceph:v18.2.0
     allowUnsupported: false
@@ -339,6 +340,10 @@ kubectl apply -f ceph-cluster.yaml
 # Watch the cluster deployment progress
 # This may take several minutes depending on cluster size
 kubectl -n rook-ceph get pods -w
+
+# Deploy the Rook toolbox before running ceph/rbd commands inside Kubernetes
+kubectl create -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
+kubectl -n rook-ceph rollout status deploy/rook-ceph-tools
 
 # Check cluster health
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
@@ -467,6 +472,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 
@@ -484,6 +491,8 @@ allowVolumeExpansion: true
 # Volume binding mode
 # - Immediate: PV is created immediately when PVC is created
 # - WaitForFirstConsumer: PV creation waits until Pod is scheduled
+volumeBindingMode: Immediate
+
 mountOptions:
   # Mount options for the filesystem
   - discard
@@ -808,8 +817,7 @@ parameters:
 
   # MapOptions for performance tuning
   # queue_depth: number of outstanding I/O requests (higher = more parallelism)
-  # lock_on_read: disable for better read performance if exclusive access guaranteed
-  mapOptions: "queue_depth=128,lock_on_read=0"
+  mapOptions: "queue_depth=128"
 
   # Mounter options
   # rbd-nbd provides better performance than kernel RBD in some scenarios
@@ -819,6 +827,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 
