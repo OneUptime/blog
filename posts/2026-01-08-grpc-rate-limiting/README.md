@@ -657,6 +657,7 @@ package ratelimit
 
 import (
     "context"
+    "strconv"
     "time"
 
     "github.com/go-redis/redis/v8"
@@ -753,8 +754,11 @@ func (tb *RedisTokenBucket) Tokens(ctx context.Context, key string) (float64, er
         return tb.capacity, nil
     }
 
-    tokens, _ := result[0].(float64)
-    lastRefill, _ := result[1].(float64)
+    // HMGet returns stored hash values as strings, so parse them.
+    tokensStr, _ := result[0].(string)
+    lastRefillStr, _ := result[1].(string)
+    tokens, _ := strconv.ParseFloat(tokensStr, 64)
+    lastRefill, _ := strconv.ParseFloat(lastRefillStr, 64)
 
     // Calculate current tokens
     elapsed := float64(time.Now().UnixMilli()-int64(lastRefill)) / 1000
@@ -769,7 +773,9 @@ package interceptors
 
 import (
     "context"
+    "log"
     "strconv"
+    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
@@ -965,7 +971,6 @@ func (a *AdaptiveRateLimiter) GetCurrentRate() float64 {
 package ratelimit
 
 import (
-    "context"
     "sync"
 )
 
@@ -1048,6 +1053,7 @@ package ratelimit
 
 import (
     "context"
+    "fmt"
     "sync"
     "time"
 )
@@ -1170,6 +1176,8 @@ func (qm *QuotaManager) GetRemainder(ctx context.Context, id string) (int64, err
 import time
 import threading
 import redis
+import grpc
+from concurrent import futures
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
@@ -1348,9 +1356,14 @@ package interceptors
 import (
     "context"
     "strconv"
+    "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/status"
+
+    "your-module/ratelimit"
 )
 
 // RateLimitHeaders adds rate limit information to response headers
@@ -1405,8 +1418,8 @@ func RateLimitInterceptorWithHeaders(limiter *ratelimit.TokenBucket, limit int64
 package ratelimit
 
 import (
-    "context"
     "sync"
+    "sync/atomic"
     "testing"
     "time"
 )
