@@ -46,7 +46,7 @@ sequenceDiagram
 [dependencies]
 # HTTP client
 
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.13", features = ["json", "query"] }
 tokio = { version = "1", features = ["full"] }
 
 # Serialization
@@ -54,12 +54,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Error handling
-thiserror = "1"
+thiserror = "2"
 anyhow = "1"
 
 [dev-dependencies]
 # HTTP mocking
-wiremock = "0.5"
+wiremock = "0.6"
 
 # Assertions
 claims = "0.7"
@@ -295,7 +295,7 @@ async fn test_header_matching() {
         .mount(&mock_server)
         .await;
 
-    // Without auth header - no mock matches, request fails
+    // Without auth header - no mock matches, WireMock returns 404
     // With auth header - mock matches
 }
 
@@ -711,8 +711,12 @@ async fn test_malformed_json_response() {
 
 #[tokio::test]
 async fn test_connection_refused() {
-    // Use a port that's definitely not listening
-    let client = GithubClient::with_base_url("http://localhost:59999");
+    // Bind to an available local port, then drop the listener so nothing is listening there.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let client = GithubClient::with_base_url(&format!("http://{}", addr));
     let result = client.get_user("anyone").await;
 
     assert!(result.is_err());
