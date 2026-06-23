@@ -340,10 +340,14 @@ variable "databases" {
 resource "aws_db_instance" "primary" {
   for_each = { for db in var.databases : db.name => db }
 
-  identifier     = each.value.name
-  engine         = each.value.engine
-  engine_version = each.value.version
-  instance_class = each.value.size
+  identifier                  = each.value.name
+  allocated_storage           = 20
+  engine                      = each.value.engine
+  engine_version              = each.value.version
+  instance_class              = each.value.size
+  username                    = "dbadmin"
+  manage_master_user_password = true
+  backup_retention_period     = 7
 
   tags = {
     Name = each.value.name
@@ -372,7 +376,8 @@ resource "aws_db_instance" "replicas" {
   for_each = { for replica in local.all_replicas : replica.key => replica }
 
   identifier          = each.value.key
-  replicate_source_db = aws_db_instance.primary[each.value.primary_db].identifier
+  region              = each.value.region
+  replicate_source_db = aws_db_instance.primary[each.value.primary_db].arn
   instance_class      = each.value.size
 
   tags = {
@@ -423,8 +428,6 @@ resource "aws_ecs_service" "services" {
   task_definition = aws_ecs_task_definition.services[each.key].arn
   desired_count   = each.value.replicas
 
-  # Health check uses the optional health_path with default
-  health_check_grace_period_seconds = 60
 }
 
 resource "aws_ecs_task_definition" "services" {
@@ -445,6 +448,7 @@ resource "aws_ecs_task_definition" "services" {
           hostPort      = each.value.port
         }
       ]
+      # Health check uses the optional health_path with default
       healthCheck = {
         command = ["CMD-SHELL", "curl -f http://localhost:${each.value.port}${each.value.health_path} || exit 1"]
       }
