@@ -277,9 +277,9 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### Alternative: Kernel Parameter Method
+### Alternative: Kernel Parameter Method (Legacy)
 
-You can also set the default scheduler via kernel parameters:
+On older kernels you could set the default scheduler with the `elevator=` kernel parameter. Note that this parameter was deprecated and has **no effect** on kernels using the multi-queue block layer (Linux 5.0 and later, which covers all currently supported Ubuntu releases). On such kernels it is silently ignored and a warning is logged. Use the udev rule shown above instead. The `elevator=` approach is included here only for reference on legacy systems:
 
 ```bash
 # Edit GRUB configuration to set default I/O scheduler
@@ -291,7 +291,8 @@ Add the elevator parameter:
 
 ```bash
 # Add or modify the GRUB_CMDLINE_LINUX_DEFAULT line
-# elevator=none sets the noop scheduler for all drives
+# elevator=none requested the noop scheduler for all drives on
+# legacy (single-queue) kernels; ignored on Linux 5.0+ (blk-mq)
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash elevator=none"
 ```
 
@@ -659,7 +660,8 @@ Add monitoring configuration:
 # -S on: enable automatic attribute autosave
 # -n standby: don't spin up drive for checks
 # -s (S/../.././02|L/../../6/03): short test daily at 2AM, long weekly Sat 3AM
-# -W 0,0,45: warn if temp rises 45C from baseline
+# -W DIFF,INFO,CRIT temperature directive; 0,0,45 logs a critical
+#   warning when the drive reaches an absolute 45C (DIFF/INFO disabled)
 # -m root: email alerts to root
 /dev/sda -a -o on -S on -n standby -s (S/../.././02|L/../../6/03) -W 0,0,45 -m root
 ```
@@ -833,7 +835,9 @@ Reduce browser disk writes by using tmpfs:
 mkdir -p ~/.cache/browser-ramdisk
 
 # Add to fstab for automatic mounting
-echo 'tmpfs /home/$USER/.cache/browser-ramdisk tmpfs noatime,nodev,nosuid,size=512M 0 0' | sudo tee -a /etc/fstab
+# Note: /etc/fstab does not expand variables like $USER, so you must
+# write out the full path. Replace "youruser" with your actual username.
+echo 'tmpfs /home/youruser/.cache/browser-ramdisk tmpfs noatime,nodev,nosuid,size=512M 0 0' | sudo tee -a /etc/fstab
 ```
 
 ### Optimizing tmp Directories
