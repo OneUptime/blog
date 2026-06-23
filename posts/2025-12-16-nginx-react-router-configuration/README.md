@@ -62,7 +62,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # SSL Configuration
@@ -75,7 +76,7 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # Gzip compression
     gzip on;
@@ -193,13 +194,21 @@ server {
     }
 
     # Admin app
-    location /admin {
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    location /admin/ {
         alias /var/www/admin-app/build/;
         try_files $uri $uri/ /admin/index.html;
     }
 
     # Dashboard app
-    location /dashboard {
+    location = /dashboard {
+        return 301 /dashboard/;
+    }
+
+    location /dashboard/ {
         alias /var/www/dashboard-app/build/;
         try_files $uri $uri/ /dashboard/index.html;
     }
@@ -243,6 +252,11 @@ server {
     # For SPA routes - serve index.html
     location / {
         try_files $uri $uri/ /index.html;
+    }
+
+    # Missing asset files should still return a real 404
+    location ~* \.[^/]+$ {
+        try_files $uri =404;
     }
 
     # Custom 404 page for truly missing files
@@ -322,8 +336,6 @@ server {
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     build: .
@@ -355,14 +367,14 @@ volumes:
 Create a config that reads from window:
 
 ```javascript
-// public/config.js (served by Nginx)
+// public/config.js.template
 window.RUNTIME_CONFIG = {
-    API_URL: '__API_URL__',
-    FEATURE_FLAGS: '__FEATURE_FLAGS__'
+    API_URL: '${API_URL}',
+    FEATURE_FLAGS: '${FEATURE_FLAGS}'
 };
 ```
 
-### Nginx Configuration with Environment Substitution
+### Nginx Configuration for Runtime Config
 
 ```nginx
 server {
@@ -372,12 +384,10 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Substitute environment variables in config.js
+    # Serve runtime config without long-term caching
     location = /config.js {
-        sub_filter '__API_URL__' '${API_URL}';
-        sub_filter '__FEATURE_FLAGS__' '${FEATURE_FLAGS}';
-        sub_filter_once off;
-        sub_filter_types application/javascript;
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
     location / {
@@ -392,7 +402,7 @@ server {
 #!/bin/sh
 # entrypoint.sh
 
-# Substitute environment variables in config.js
+# Substitute environment variables in config.js before Nginx starts
 envsubst < /usr/share/nginx/html/config.js.template > /usr/share/nginx/html/config.js
 
 # Start nginx
@@ -508,8 +518,8 @@ curl http://example.com/users
 
 ### Issue: API Requests Going to React
 
-**Cause**: Location order matters - API location should come before catch-all
-**Fix**: Put specific locations (`/api/`) before generic ones (`/`)
+**Cause**: Missing or incorrect API location
+**Fix**: Define a specific API location (`/api/`) so those requests are proxied instead of falling back to the SPA
 
 ## Summary
 
