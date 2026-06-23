@@ -41,8 +41,8 @@ Create a reusable tracing module that all services can import. This ensures cons
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 
@@ -52,10 +52,10 @@ function initTracing(serviceName) {
   });
 
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-      [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+      'deployment.environment.name': process.env.NODE_ENV || 'development',
     }),
     spanProcessor: new BatchSpanProcessor(exporter),
     textMapPropagator: new W3CTraceContextPropagator(),
@@ -265,7 +265,7 @@ server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () =>
 ```javascript
 // grpc-client.js
 const grpc = require('@grpc/grpc-js');
-const { trace, propagation, context } = require('@opentelemetry/api');
+const { trace, propagation, context, SpanStatusCode } = require('@opentelemetry/api');
 
 const client = new orderProto.OrderService(
   'order-service:50051',
@@ -416,7 +416,7 @@ async function startConsumer() {
 ```javascript
 // kafka-producer.js
 const { Kafka } = require('kafkajs');
-const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode, ROOT_CONTEXT } = require('@opentelemetry/api');
 
 const kafka = new Kafka({ brokers: ['kafka:9092'] });
 const producer = kafka.producer();
@@ -508,7 +508,7 @@ async function startConsumer() {
 For background jobs triggered by HTTP requests:
 
 ```javascript
-const { trace, context, propagation, ROOT_CONTEXT } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode, ROOT_CONTEXT } = require('@opentelemetry/api');
 
 // When creating a job, serialize trace context
 async function createBackgroundJob(jobData) {
