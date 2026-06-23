@@ -55,9 +55,9 @@ curl -X PUT "https://localhost:9200/articles" \
   }'
 
 curl -X POST "https://localhost:9200/articles/_bulk" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -u elastic:password \
-  -d '
+  --data-binary '
 {"index":{}}
 {"title":"Quick Brown Fox","content":"The quick brown fox jumps over the lazy dog","category":"animals","status":"published"}
 {"index":{}}
@@ -449,8 +449,7 @@ def search_with_query_type(query_type, field, value, **kwargs):
         "query_string": {"query_string": {"query": value, "default_field": field, **kwargs}}
     }
 
-    body = {"query": queries[query_type]}
-    response = es.search(index="articles", body=body)
+    response = es.search(index="articles", query=queries[query_type])
 
     print(f"\n{query_type.upper()} query for '{value}' on '{field}':")
     print(f"  Hits: {response['hits']['total']['value']}")
