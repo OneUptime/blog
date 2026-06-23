@@ -49,7 +49,7 @@ MetalLB provides a network load balancer implementation for bare-metal Kubernete
 ```bash
 # Install MetalLB
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Wait for pods to be ready
 kubectl wait --namespace metallb-system \
@@ -138,32 +138,23 @@ Access your services at `http://<any-node-ip>:30080`.
 
 ## Solution 3: Use HostNetwork
 
-For single-node clusters or when you need ports 80/443 directly:
+For single-node clusters or when you need ports 80/443 directly, patch the controller Pods to use the host network:
 
-```yaml
-# nginx-ingress-hostnetwork.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ingress-nginx-controller
-  namespace: ingress-nginx
+```bash
+kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type='strategic' -p '
 spec:
   template:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      containers:
-      - name: controller
-        ports:
-        - containerPort: 80
-          hostPort: 80
-        - containerPort: 443
-          hostPort: 443
+'
 ```
+
+This approach does not use a Service to expose the controller. If you use it, delete or disable the `ingress-nginx-controller` Service and make sure only one controller Pod is scheduled per node, because only one process can bind ports 80 and 443 on a node.
 
 ## Solution 4: External Load Balancer Integration
 
-If you have an external load balancer (HAProxy, F5, etc.), use `externalIPs`:
+If you have an external load balancer (HAProxy, F5, etc.), expose the controller with NodePort and forward traffic from the load balancer to the node IPs and NodePorts:
 
 ```yaml
 apiVersion: v1
@@ -172,21 +163,23 @@ metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
 spec:
-  type: LoadBalancer
-  externalIPs:
-  - 203.0.113.10  # Your external LB IP
+  type: NodePort
+  externalTrafficPolicy: Local
   ports:
   - name: http
     port: 80
     targetPort: 80
+    nodePort: 30080
   - name: https
     port: 443
     targetPort: 443
+    nodePort: 30443
   selector:
     app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/component: controller
 ```
 
-Configure your external load balancer to forward traffic to the NodePorts.
+Configure your external load balancer to forward traffic to the NodePorts. With `externalTrafficPolicy: Local`, make sure the load balancer only sends traffic to nodes running an ingress controller Pod.
 
 ## Solution 5: Local Development with minikube/kind
 
@@ -227,7 +220,7 @@ Create cluster and install Nginx Ingress:
 ```bash
 kind create cluster --config kind-config.yaml
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
 ```
 
 ## Solution 6: Cloud-Specific Fixes
@@ -239,29 +232,31 @@ Ensure the AWS Load Balancer Controller is installed:
 ```bash
 # Install using Helm
 helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
     -n kube-system \
     --set clusterName=my-cluster \
     --set serviceAccount.create=false \
-    --set serviceAccount.name=aws-load-balancer-controller
+    --set serviceAccount.name=aws-load-balancer-controller \
+    --version 1.14.0
 ```
 
-Check IAM permissions for the controller.
+Check IAM permissions for the controller. If you use EKS Auto Mode, you do not need to install the AWS Load Balancer Controller for standard load balancing.
 
 ### GKE
 
-Verify the cloud controller manager is running:
+Describe the Service and check the events for Google Cloud load balancer errors such as quota, subnet, firewall, or static IP issues:
 
 ```bash
-kubectl get pods -n kube-system | grep cloud-controller
+kubectl describe svc ingress-nginx-controller -n ingress-nginx
 ```
 
 ### Azure AKS
 
-Ensure the Azure cloud provider is configured:
+Describe the Service and check the events for Azure Load Balancer errors such as quota, subnet, managed identity, or public IP policy issues:
 
 ```bash
-kubectl get pods -n kube-system | grep cloud-controller
+kubectl describe svc ingress-nginx-controller -n ingress-nginx
 ```
 
 ## Troubleshooting Checklist
@@ -310,7 +305,7 @@ Here is a complete setup script for bare-metal clusters:
 #!/bin/bash
 
 # Install Nginx Ingress Controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for ingress controller
 kubectl wait --namespace ingress-nginx \
@@ -319,7 +314,7 @@ kubectl wait --namespace ingress-nginx \
     --timeout=120s
 
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB
 kubectl wait --namespace metallb-system \
@@ -427,7 +422,7 @@ curl -H "Host: test.example.com" http://$EXTERNAL_IP
 |-------------|----------|
 | Bare-metal production | MetalLB |
 | Single node / edge | HostNetwork |
-| External LB available | externalIPs |
+| External LB available | NodePort behind the external load balancer |
 | Local development (minikube) | minikube tunnel |
 | Local development (kind) | extraPortMappings |
 | AWS EKS | AWS Load Balancer Controller |
