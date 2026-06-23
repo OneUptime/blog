@@ -139,7 +139,7 @@ build:
 
 ```yaml
 artifacts:
-  name: "myapp-${CI_COMMIT_SHA:0:8}-${CI_JOB_NAME}"
+  name: "myapp-${CI_COMMIT_SHORT_SHA}-${CI_JOB_NAME}"
   paths:
     - dist/
 ```
