@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Container, Containerd, Docker, Kubernetes, DevOps, Container Runtime
 
-Description: Learn what containerd is, how it differs from Docker, why Kubernetes adopted it as the default runtime, and when you should care about container runtimes.
+Description: Learn what containerd is, how it differs from Docker, why Kubernetes uses CRI-compatible runtimes directly, and when you should care about container runtimes.
 
 ---
 
-If you've worked with containers, you've almost certainly used Docker. But under the hood, Docker relies on a component called **containerd** to actually run your containers. With Kubernetes deprecating Docker as a runtime and adopting containerd directly, understanding this technology has become essential for anyone working with containers in production.
+If you've worked with containers, you've almost certainly used Docker. But under the hood, Docker relies on a component called **containerd** to actually run your containers. With Kubernetes removing its built-in Docker integration and using CRI-compatible runtimes such as containerd directly, understanding this technology has become essential for anyone working with containers in production.
 
 ## What is containerd?
 
@@ -83,7 +83,7 @@ flowchart TB
 - CLI (`docker` command)
 - Docker Daemon (`dockerd`)
 - Image building (`docker build`)
-- Docker Compose
+- Docker Compose plugin (included with Docker Desktop and commonly installed with Docker Engine)
 - Docker Swarm
 - containerd (embedded)
 
@@ -93,7 +93,7 @@ flowchart TB
 - Snapshot management
 - Network namespace setup (via CNI)
 - No build functionality (need BuildKit separately)
-- No CLI (need `ctr` or `nerdctl`)
+- No Docker-like CLI (use `ctr` for debugging or `nerdctl` for a Docker-compatible CLI)
 
 ### When to use each
 
@@ -137,7 +137,7 @@ flowchart LR
 
 **Benefits:**
 - Fewer moving parts
-- Lower resource usage (~20% less memory)
+- Lower runtime overhead
 - Faster container operations
 - Direct CRI implementation
 - Better maintained (CNCF project)
@@ -194,8 +194,20 @@ sudo systemctl start containerd
 For Red Hat-based systems, containerd is also available through Docker's repository. The dnf package manager handles dependency resolution automatically.
 
 ```bash
-# Add Docker's repository for CentOS/RHEL systems
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+# Install repository management plugin
+sudo dnf -y install dnf-plugins-core
+
+# Add Docker's repository for RHEL systems
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+
+# For CentOS, use:
+# sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+# For Fedora 41 and newer, use:
+# sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo
+
+# For older Fedora releases, use:
+# sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
 
 # Install containerd package
 sudo dnf install -y containerd.io
@@ -213,7 +225,7 @@ sudo systemctl start containerd     # Start immediately
 
 For Kubernetes, you need to enable the CRI plugin and configure the cgroup driver. The cgroup driver must match between containerd and kubelet to avoid resource management issues.
 
-Edit `/etc/containerd/config.toml`:
+Edit `/etc/containerd/config.toml`. For containerd 1.x, use:
 
 ```toml
 # Config file format version
@@ -223,7 +235,7 @@ version = 2
   # CRI plugin configuration - enables Kubernetes integration
   [plugins."io.containerd.grpc.v1.cri"]
     # The pause container creates the pod's network namespace
-    sandbox_image = "registry.k8s.io/pause:3.9"
+    sandbox_image = "registry.k8s.io/pause:3.10"
     [plugins."io.containerd.grpc.v1.cri".containerd]
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
         # Configure runc as the OCI runtime
@@ -235,10 +247,35 @@ version = 2
             SystemdCgroup = true
 ```
 
+For containerd 2.x, the runtime plugin path changed:
+
+```toml
+# Config file format version
+version = 3
+
+[plugins]
+  [plugins."io.containerd.cri.v1.images"]
+    # The pause container creates the pod's network namespace
+    [plugins."io.containerd.cri.v1.images".pinned_images]
+      sandbox = "registry.k8s.io/pause:3.10"
+
+  # CRI plugin configuration - enables Kubernetes integration
+  [plugins."io.containerd.cri.v1.runtime"]
+    [plugins."io.containerd.cri.v1.runtime".containerd]
+      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+        # Configure runc as the OCI runtime
+        [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
+            # CRITICAL: Use systemd cgroup driver to match kubelet
+            # Mismatched cgroup drivers cause pod failures
+            SystemdCgroup = true
+```
+
 Key settings:
 
-- **SystemdCgroup = true**: Use systemd cgroup driver (matches kubelet default)
-- **sandbox_image**: The pause container image for pod networking
+- **SystemdCgroup = true**: Use systemd cgroup driver (matches kubeadm's kubelet default)
+- **sandbox_image / pinned_images.sandbox**: The pause container image for pod networking
 
 After modifying the configuration, restart containerd to apply changes:
 
@@ -278,9 +315,9 @@ sudo ctr tasks list
 
 ```bash
 # Download and install nerdctl binary
-wget https://github.com/containerd/nerdctl/releases/download/v1.7.0/nerdctl-1.7.0-linux-amd64.tar.gz
+wget https://github.com/containerd/nerdctl/releases/download/v2.3.3/nerdctl-2.3.3-linux-amd64.tar.gz
 # Extract to /usr/local/bin for system-wide access
-sudo tar -xzf nerdctl-1.7.0-linux-amd64.tar.gz -C /usr/local/bin
+sudo tar -xzf nerdctl-2.3.3-linux-amd64.tar.gz -C /usr/local/bin
 
 # Now use familiar Docker-like commands
 # -d runs detached, --name sets container name, -p maps ports
@@ -340,7 +377,7 @@ Both are CRI-compliant runtimes for Kubernetes. How do they compare?
 | Image building | Via BuildKit | No |
 | Docker compatibility | High (same images) | High (same images) |
 | Used by | Docker, Kubernetes, others | Kubernetes, OpenShift |
-| CNCF status | Graduated | Incubating |
+| CNCF status | Graduated | Graduated |
 | Footprint | Slightly larger | Minimal |
 
 **Choose containerd if:**
@@ -389,7 +426,7 @@ When a container fails to start, check the task status and logs to identify the 
 # List tasks to see container states (running, stopped, etc.)
 sudo ctr -n k8s.io tasks list
 # View container output - replace <container-id> with actual ID
-sudo ctr -n k8s.io tasks logs <container-id>
+sudo crictl logs <container-id>
 ```
 
 **Image pull failures:**
@@ -419,9 +456,9 @@ Cgroup driver mismatches between containerd and kubelet cause pods to fail. Both
 
 1. **Use systemd cgroup driver** for Kubernetes deployments
 2. **Configure image garbage collection** to prevent disk exhaustion
-3. **Set resource limits** in containerd config for production
+3. **Set workload resource requests and limits** in your orchestrator for production
 4. **Use nerdctl** for human-friendly CLI interactions
-5. **Monitor containerd metrics** via the `/metrics` endpoint
+5. **Monitor containerd metrics** via the `/v1/metrics` endpoint
 6. **Keep containerd updated** - security patches matter
 
 ### Enabling Metrics
@@ -441,6 +478,7 @@ Configure Prometheus to scrape containerd metrics. This enables monitoring of co
 ```yaml
 # Add to prometheus.yml scrape_configs
 - job_name: 'containerd'
+  metrics_path: /v1/metrics
   static_configs:
     # Point to containerd metrics endpoint
     - targets: ['localhost:1338']
@@ -450,9 +488,9 @@ Configure Prometheus to scrape containerd metrics. This enables monitoring of co
 
 - **containerd** is the container runtime that actually runs your containers
 - **Docker uses containerd** internally - they're not competitors
-- **Kubernetes switched to containerd** directly for efficiency (removing the Docker middleman)
+- **Kubernetes switched away from dockershim** to CRI-compatible runtimes such as containerd
 - **Your images work everywhere** - Docker, containerd, and CRI-O all use OCI images
-- **For Kubernetes nodes**, containerd is the default and recommended runtime
+- **For Kubernetes nodes**, containerd is a common CRI-compatible runtime
 - **For local development**, Docker Desktop (which uses containerd) remains convenient
 
 ---
