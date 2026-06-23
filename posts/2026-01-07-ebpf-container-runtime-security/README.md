@@ -74,7 +74,7 @@ Before implementing eBPF-based container security, ensure you have:
 
 - Linux kernel version 5.8 or higher (for full eBPF features)
 - BCC (BPF Compiler Collection) or libbpf installed
-- Root privileges or CAP_BPF capability
+- Root privileges, or CAP_BPF plus the additional capabilities needed by the program type (for example, CAP_PERFMON for tracing programs and CAP_NET_ADMIN for traffic-control programs)
 - Container runtime (Docker, containerd, or CRI-O)
 
 The following commands install the necessary dependencies on Ubuntu/Debian systems:
@@ -115,20 +115,20 @@ sequenceDiagram
     Container->>Syscall: execve("/bin/sh")
     Syscall->>eBPF: Trigger tracepoint
     eBPF->>eBPF: Extract container context
-    eBPF->>Map: Check policy
+    eBPF->>Map: Match monitoring policy
     alt Policy Violation
         eBPF->>Map: Log event to ring buffer
         Map->>Agent: Push security event
         Agent->>Agent: Alert / Take action
     else Allowed
-        eBPF->>Syscall: Continue execution
+        eBPF->>Map: No event recorded
     end
     Syscall->>Container: Return result
 ```
 
 ### Syscall Monitor Implementation
 
-The following eBPF program monitors critical system calls within containers. This implementation uses tracepoints to intercept syscall entries and extracts container context for policy decisions:
+The following eBPF program monitors critical system calls within containers. This implementation uses tracepoints to observe syscall entries and extracts container context for alerting decisions:
 
 ```c
 // syscall_monitor.bpf.c
@@ -180,14 +180,15 @@ struct {
     __type(value, __u32);                // monitoring flag (1 = enabled)
 } monitored_containers SEC(".maps");
 
-// Hash map containing blocked syscalls per container
-// Key is cgroup_id, value is a bitmap of blocked syscall numbers
+// Hash map containing watched syscalls per container
+// Key is cgroup_id, value is a bitmap of syscall numbers to alert on.
+// Tracepoints are observational; use LSM or seccomp hooks for blocking.
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 10240);
     __type(key, __u64);                  // cgroup ID
-    __type(value, __u64);                // blocked syscall bitmap
-} blocked_syscalls SEC(".maps");
+    __type(value, __u64);                // monitored syscall bitmap
+} watched_syscalls SEC(".maps");
 
 // Helper function to get the current task's mount namespace ID
 // Mount namespaces are used by containers for filesystem isolation
@@ -254,6 +255,7 @@ int trace_syscall_enter(struct trace_event_raw_sys_enter *ctx) {
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
         return 0;
+    __builtin_memset(event, 0, sizeof(*event));
 
     // Populate event structure with process information
     __u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -384,6 +386,9 @@ class ContainerSecurityMonitor:
         # Event history for behavioral analysis
         self.event_history = {}
 
+        # bpf_ktime_get_ns() is monotonic time since boot, not Unix epoch time.
+        self.boot_time_ns = time.time_ns() - time.monotonic_ns()
+
         print("[*] Initializing eBPF container security monitor...")
 
     def _load_policies(self, config_path):
@@ -403,8 +408,8 @@ class ContainerSecurityMonitor:
             # Enable behavioral anomaly detection
             "enable_anomaly_detection": True,
 
-            # Syscalls that should be blocked (returns -EPERM)
-            "blocked_syscalls": [175, 176],  # module loading
+            # Syscalls that would require BPF LSM or seccomp for enforcement.
+            "enforcement_candidates": [175, 176],  # module loading
 
             # UIDs that are exempt from monitoring (system services)
             "exempt_uids": [0],  # root is often exempt for system containers
@@ -439,7 +444,9 @@ class ContainerSecurityMonitor:
 
         # Format event for logging
         event_data = {
-            "timestamp": datetime.fromtimestamp(event.timestamp / 1e9).isoformat(),
+            "timestamp": datetime.fromtimestamp(
+                (self.boot_time_ns + event.timestamp) / 1e9
+            ).isoformat(),
             "pid": event.pid,
             "tid": event.tid,
             "uid": event.uid,
@@ -813,6 +820,7 @@ int trace_exec(struct trace_event_raw_sched_process_exec *ctx) {
     event = bpf_ringbuf_reserve(&ns_events, sizeof(*event), 0);
     if (!event)
         return 0;
+    __builtin_memset(event, 0, sizeof(*event));
 
     // Get current task structure
     task = (struct task_struct *)bpf_get_current_task();
@@ -1270,6 +1278,7 @@ int trace_execve_enter(struct trace_event_raw_sys_enter *ctx) {
     event = bpf_ringbuf_reserve(&exec_events, sizeof(*event), 0);
     if (!event)
         return 0;
+    __builtin_memset(event, 0, sizeof(*event));
 
     // Set event type
     event->event_type = EVENT_EXEC;
@@ -1344,6 +1353,7 @@ int trace_process_exit(struct trace_event_raw_sched_process_template *ctx) {
     event = bpf_ringbuf_reserve(&exec_events, sizeof(*event), 0);
     if (!event)
         return 0;
+    __builtin_memset(event, 0, sizeof(*event));
 
     event->event_type = EVENT_EXIT;
     event->timestamp = bpf_ktime_get_ns();
@@ -1461,6 +1471,10 @@ class BehavioralAnalyzer:
         # Learning mode settings
         self.learning_period = timedelta(minutes=learning_period_minutes)
         self.container_start_times: Dict[int, datetime] = {}
+
+        # eBPF event timestamps are often monotonic nanoseconds from
+        # bpf_ktime_get_ns(); convert those before formatting alerts.
+        self.boot_time_ns = time.time_ns() - time.monotonic_ns()
 
         # Known-malicious process patterns
         self.malicious_patterns = self._load_malicious_patterns()
@@ -1758,8 +1772,12 @@ class BehavioralAnalyzer:
             severity: Anomaly severity (CRITICAL, HIGH, MEDIUM, LOW)
             details: Additional details about the anomaly
         """
+        timestamp = event.timestamp
+        if timestamp > 1e12:
+            timestamp = (self.boot_time_ns + int(timestamp)) / 1e9
+
         anomaly = {
-            "timestamp": datetime.fromtimestamp(event.timestamp).isoformat(),
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat(),
             "type": anomaly_type,
             "severity": severity,
             "cgroup_id": event.cgroup_id,
@@ -1802,8 +1820,10 @@ class BehavioralAnalyzer:
             "known_uids": list(baseline.known_uids),
             "process_count": len(baseline.known_processes),
             "is_learning": self._is_learning(cgroup_id),
-            "last_updated": datetime.fromtimestamp(baseline.last_updated).isoformat()
-                if baseline.last_updated else None,
+            "last_updated": datetime.fromtimestamp(
+                (self.boot_time_ns + int(baseline.last_updated)) / 1e9
+                if baseline.last_updated > 1e12 else baseline.last_updated
+            ).isoformat() if baseline.last_updated else None,
         }
 
     def export_baselines(self, filepath: str):
@@ -1837,7 +1857,7 @@ if __name__ == "__main__":
 
 ## Policy Enforcement
 
-eBPF enables not just monitoring but also active policy enforcement. You can block syscalls, terminate processes, and restrict network access in real-time.
+eBPF enables not just monitoring but also active policy enforcement when it is attached at enforcement-capable hooks. You can deny operations with LSM or cgroup hooks, signal processes from supported program types, and restrict network access in real-time.
 
 ### Policy Enforcement Architecture
 
@@ -1899,6 +1919,9 @@ The following eBPF program uses Linux Security Modules (LSM) hooks to enforce se
 #include <linux/bpf.h>
 #include <linux/lsm_hooks.h>
 #include <linux/capability.h>
+#include <linux/errno.h>
+#include <linux/fcntl.h>
+#include <linux/net.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
@@ -1980,6 +2003,7 @@ static __always_inline void audit_log(const char *hook, const char *target,
     event = bpf_ringbuf_reserve(&audit_events, sizeof(*event), 0);
     if (!event)
         return;
+    __builtin_memset(event, 0, sizeof(*event));
 
     event->timestamp = bpf_ktime_get_ns();
     event->cgroup_id = bpf_get_current_cgroup_id();
@@ -2009,11 +2033,13 @@ static __always_inline void audit_log(const char *hook, const char *target,
 // LSM hook for file open operations
 // Controls which files containers can access
 SEC("lsm/file_open")
-int BPF_PROG(enforce_file_open, struct file *file) {
+int BPF_PROG(enforce_file_open, struct file *file, int ret) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     struct container_policy *policy;
     char path[MAX_PATH_LEN];
-    int ret;
+
+    if (ret != 0)
+        return ret;
 
     // Look up policy for this container
     policy = bpf_map_lookup_elem(&container_policies, &cgroup_id);
@@ -2030,8 +2056,8 @@ int BPF_PROG(enforce_file_open, struct file *file) {
     bpf_probe_read_kernel(&d_name, sizeof(d_name), &dentry->d_name);
     bpf_probe_read_kernel_str(&path, sizeof(path), d_name.name);
 
-    // Check if path matches any policy prefix
-    // In production, this would do proper prefix matching
+    // This simplified example uses the dentry name. In production, use
+    // bpf_d_path or userspace path resolution for full prefix matching.
     __u32 operation = 1;  // Read operation
 
     // Check flags to determine operation type
@@ -2056,9 +2082,12 @@ int BPF_PROG(enforce_file_open, struct file *file) {
 // LSM hook for socket creation
 // Controls network access for containers
 SEC("lsm/socket_create")
-int BPF_PROG(enforce_socket_create, int family, int type, int protocol, int kern) {
+int BPF_PROG(enforce_socket_create, int family, int type, int protocol, int kern, int ret) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     struct container_policy *policy;
+
+    if (ret != 0)
+        return ret;
 
     // Skip kernel-internal sockets
     if (kern)
@@ -2085,9 +2114,12 @@ int BPF_PROG(enforce_socket_create, int family, int type, int protocol, int kern
 // Enforces capability restrictions in containers
 SEC("lsm/capable")
 int BPF_PROG(enforce_capable, const struct cred *cred, struct user_namespace *ns,
-             int cap, unsigned int opts) {
+             int cap, unsigned int opts, int ret) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     struct container_policy *policy;
+
+    if (ret != 0)
+        return ret;
 
     policy = bpf_map_lookup_elem(&container_policies, &cgroup_id);
     if (!policy)
@@ -2116,9 +2148,12 @@ int BPF_PROG(enforce_capable, const struct cred *cred, struct user_namespace *ns
 // LSM hook for ptrace operations
 // Prevents container processes from debugging each other
 SEC("lsm/ptrace_access_check")
-int BPF_PROG(enforce_ptrace, struct task_struct *child, unsigned int mode) {
+int BPF_PROG(enforce_ptrace, struct task_struct *child, unsigned int mode, int ret) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     struct container_policy *policy;
+
+    if (ret != 0)
+        return ret;
 
     policy = bpf_map_lookup_elem(&container_policies, &cgroup_id);
     if (!policy)
@@ -2139,9 +2174,12 @@ int BPF_PROG(enforce_ptrace, struct task_struct *child, unsigned int mode) {
 // LSM hook for kernel module loading
 // Always deny module loading from containers
 SEC("lsm/kernel_module_request")
-int BPF_PROG(enforce_module_request, char *kmod_name) {
+int BPF_PROG(enforce_module_request, char *kmod_name, int ret) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     struct container_policy *policy;
+
+    if (ret != 0)
+        return ret;
 
     policy = bpf_map_lookup_elem(&container_policies, &cgroup_id);
     if (!policy)
@@ -2703,22 +2741,24 @@ The following table summarizes the kernel version requirements for different eBP
 
 | Feature | Minimum Kernel Version |
 |---------|----------------------|
-| Basic tracepoints | 4.1 |
+| BPF tracepoint programs | 4.7 |
 | BPF_MAP_TYPE_RINGBUF | 5.8 |
 | LSM BPF hooks | 5.7 |
 | BTF (BPF Type Format) | 5.2 |
 | CO-RE (Compile Once, Run Everywhere) | 5.2 |
-| Signed BPF programs | 5.15 |
+| BPF program signing | Kernel and distribution dependent; not a standard Linux 5.15 feature |
 
 ### Performance Tuning
 
 The following configuration optimizes eBPF for production container security deployments:
 
 ```bash
-# Increase BPF memory limits for high-throughput monitoring
-# These settings allow larger BPF programs and more map entries
+# Enable JIT compilation and optional BPF runtime statistics.
+# bpf_stats_enabled is useful for profiling, but it adds per-run overhead.
 sudo sysctl -w kernel.bpf_stats_enabled=1
 sudo sysctl -w net.core.bpf_jit_enable=1
+
+# Enable JIT hardening when security is preferred over maximum JIT throughput.
 sudo sysctl -w net.core.bpf_jit_harden=2
 
 # Increase locked memory limit for BPF maps
