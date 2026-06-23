@@ -46,7 +46,8 @@ public class UserService : IUserService
 {
     public async Task<User?> GetByIdAsync(int id)
     {
-        // Implementation
+        await Task.CompletedTask;
+        return null;
     }
 }
 
@@ -79,10 +80,11 @@ app.Run();
 
 ## Common Cause 2: Wrong Lifetime Scope
 
-Services with shorter lifetimes cannot be injected into services with longer lifetimes:
+Scoped services should not be injected into singleton services:
 
 ```csharp
-// This will fail at runtime
+// This can fail when scope validation is enabled and can otherwise capture
+// a scoped dependency for the lifetime of the singleton.
 builder.Services.AddSingleton<IUserService, UserService>(); // Singleton
 builder.Services.AddScoped<IUserRepository, UserRepository>(); // Scoped
 
@@ -147,16 +149,16 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 // ILogger is automatically registered by the framework
 ```
 
-## Common Cause 4: Registration Order
+## Common Cause 4: Incomplete Framework Registration
 
-Some extension methods must be called in a specific order:
+Some framework services require related registrations:
 
 ```csharp
-// Wrong order - may cause issues
+// Incomplete - Identity stores are not connected to the DbContext
 builder.Services.AddDbContext<AppDbContext>();
 builder.Services.AddIdentity<User, Role>(); // Depends on DbContext
 
-// Correct order
+// Complete registration
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
@@ -211,7 +213,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateScopes = true;
-    options.ValidateOnBuild = true; // Validates all registrations at startup
+    options.ValidateOnBuild = true; // Validates non-open-generic registrations at startup
 });
 ```
 
@@ -276,7 +278,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 
 ## Common Cause 7: Assembly Scanning Issues
 
-When using assembly scanning, ensure types are discoverable:
+When using assembly scanning with a library such as Scrutor, ensure types are discoverable:
 
 ```csharp
 // This might miss services in other assemblies
