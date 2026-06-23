@@ -107,7 +107,7 @@ First, let's install MetalLB using the official manifests. The following command
 # - Controller deployment (handles IP address allocation)
 # - Speaker daemonset (announces IPs via ARP)
 # - Required RBAC permissions
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 Wait for MetalLB components to be ready before proceeding:
@@ -222,7 +222,7 @@ spec:
     - 192.168.1.50-192.168.1.59
 
   # Disable auto-assignment to require explicit pool selection
-  # Services must use annotation: metallb.universe.tf/address-pool: database-pool
+  # Services must use annotation: metallb.io/address-pool: database-pool
   autoAssign: false
 ```
 
@@ -423,10 +423,10 @@ metadata:
   # Optional: Add annotations to control MetalLB behavior
   annotations:
     # Uncomment to request a specific IP address
-    # metallb.universe.tf/loadBalancerIPs: "192.168.1.240"
+    # metallb.io/loadBalancerIPs: "192.168.1.240"
 
     # Uncomment to request from a specific pool (required for autoAssign: false pools)
-    # metallb.universe.tf/address-pool: priority-pool
+    # metallb.io/address-pool: priority-pool
 spec:
   # Type LoadBalancer triggers MetalLB to assign an external IP
   type: LoadBalancer
@@ -477,7 +477,7 @@ metadata:
   annotations:
     # Request a specific IP address from the pool
     # The IP must be available and within a configured pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.245"
+    metallb.io/loadBalancerIPs: "192.168.1.245"
 spec:
   type: LoadBalancer
   selector:
@@ -500,7 +500,7 @@ metadata:
   namespace: default
   annotations:
     # Request IP from the priority pool (which has autoAssign: false)
-    metallb.universe.tf/address-pool: priority-pool
+    metallb.io/address-pool: priority-pool
 spec:
   type: LoadBalancer
   selector:
@@ -523,11 +523,11 @@ sequenceDiagram
     participant Client
     participant OldLeader as Node 1 (Old Leader)
     participant NewLeader as Node 2 (New Leader)
-    participant Controller as MetalLB Controller
+    participant Speakers as MetalLB Speakers
 
     Note over OldLeader: Node failure or speaker crash
-    OldLeader->>Controller: Heartbeat timeout
-    Controller->>NewLeader: Elect new leader for IP
+    Speakers->>Speakers: memberlist detects failed speaker
+    Speakers->>NewLeader: Recompute stateless owner for IP
     NewLeader->>Client: Gratuitous ARP announcement
     Note over Client: Updates ARP cache
     Client->>NewLeader: Traffic now flows to new leader
@@ -549,7 +549,7 @@ gantt
     Node failure         :crit, failure, 10, 11
 
     section Recovery
-    Detection (1-3s)     :detection, 11, 14
+    Detection (usually a few seconds) :detection, 11, 14
     Election (< 1s)      :election, 14, 15
     Gratuitous ARP       :arp, 15, 16
     Client ARP update    :client, 16, 17
@@ -635,7 +635,7 @@ graph LR
 
 2. **No True Load Balancing**: Unlike BGP mode, Layer 2 doesn't distribute incoming connections across multiple nodes. The leader node handles all external traffic.
 
-3. **Failover Delay**: When the leader fails, there's a brief interruption (typically 1-3 seconds) while a new leader is elected and clients update their ARP caches.
+3. **Failover Delay**: When the leader fails, there's a brief interruption while the speakers detect the failed node and clients update their ARP caches. On modern clients this is usually only a few seconds, but stale client caches can make recovery slower.
 
 4. **Network Scope**: Only works within a single Layer 2 network segment. Cannot advertise IPs across routed networks without additional configuration.
 
@@ -649,7 +649,7 @@ graph LR
 |----------|-------------|--------|
 | Development/Testing | Yes | Simple setup, no network configuration needed |
 | Home Lab | Yes | Works on any network, easy to configure |
-| Small Production (<100 RPS) | Yes | Sufficient for moderate traffic loads |
+| Low-throughput Production | Yes | Sufficient when one node's ingress bandwidth is enough |
 | Single L2 Network | Yes | Works perfectly within one network segment |
 | High-Traffic Production | No | Use BGP mode for true load distribution |
 | Multi-Site Deployments | No | Requires BGP for cross-network routing |
@@ -704,9 +704,12 @@ kubectl get pods -n metallb-system -l component=speaker
 # Verify memberlist communication between speakers
 kubectl logs -n metallb-system -l component=speaker | grep -i "memberlist"
 
-# Check if nodes can communicate on the memberlist port (7946)
-kubectl exec -n metallb-system $(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}') -- \
-  wget -q -O - http://localhost:7472/metrics | grep memberlist
+# Check memberlist-related metrics from a speaker pod
+SPEAKER_POD=$(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n metallb-system pod/$SPEAKER_POD 9120:9120
+
+# In another terminal, query the HTTPS metrics endpoint
+curl -k https://localhost:9120/metrics | grep memberlist
 ```
 
 ### Debugging Commands
@@ -824,6 +827,7 @@ spec:
 
 ```yaml
 # Network Policy to restrict MetalLB speaker communication
+# Adjust the API server ipBlock to match your cluster's kubernetes service IP.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -854,8 +858,15 @@ spec:
               name: monitoring
       ports:
         - protocol: TCP
-          port: 7472
+          port: 9120
   egress:
+    # Allow communication with the Kubernetes API server
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
     # Allow communication with other speakers
     - to:
         - podSelector:
