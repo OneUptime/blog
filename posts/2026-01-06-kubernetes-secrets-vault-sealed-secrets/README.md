@@ -361,7 +361,7 @@ Install Vault CSI provider:
 
 ```bash
 # Enable the CSI provider in the Vault Helm release
-helm install vault hashicorp/vault \
+helm upgrade vault hashicorp/vault \
   --namespace vault \
   --set csi.enabled=true
 ```
@@ -468,7 +468,7 @@ Create ClusterSecretStore:
 The ClusterSecretStore defines the connection to Vault at the cluster level, allowing multiple ExternalSecrets across namespaces to use the same backend.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -497,7 +497,7 @@ Create ExternalSecret:
 The ExternalSecret defines which secrets to sync from Vault and how to map them to a Kubernetes Secret. The operator handles automatic refresh based on the interval.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
