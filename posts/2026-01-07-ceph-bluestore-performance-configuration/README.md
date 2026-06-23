@@ -103,13 +103,13 @@ The optimal device separation depends on your hardware:
 
 | Component | Recommended Device | Size Calculation |
 |-----------|-------------------|------------------|
-| WAL | NVMe SSD | 1-2 GB per OSD |
-| DB | NVMe or fast SSD | 30-60 GB per OSD |
+| WAL | NVMe SSD, or colocated with DB | Use only when you have a very small amount of fast storage |
+| DB | NVMe or fast SSD | At least 2.5% of the data device; older RGW-heavy deployments often use 4% or more |
 | Data | HDD, SSD, or NVMe | Based on capacity needs |
 
 ## Configuring DB and WAL Devices
 
-Separating the DB and WAL onto faster devices is crucial for maximizing performance, especially when using HDDs for data storage.
+Separating the DB onto a faster device is crucial for maximizing performance, especially when using HDDs for data storage. If you specify a DB device but do not specify a separate WAL device, BlueStore places the WAL on the fastest available device by colocating it with the DB.
 
 ### Creating OSDs with Separate DB/WAL Devices
 
@@ -119,12 +119,12 @@ The following command creates an OSD with dedicated DB and WAL devices. This con
 # Create an OSD with separate DB and WAL devices
 
 # --data: Primary data device (HDD in this case)
-# --block-db: Dedicated device partition for RocksDB database
-# --block-wal: Dedicated device partition for RocksDB write-ahead log
+# --block.db: Dedicated device partition for RocksDB database
+# --block.wal: Dedicated device partition for RocksDB write-ahead log
 ceph-volume lvm create \
     --data /dev/sda \
-    --block-db /dev/nvme0n1p1 \
-    --block-wal /dev/nvme0n1p2
+    --block.db /dev/nvme0n1p1 \
+    --block.wal /dev/nvme0n1p2
 ```
 
 ### Partitioning NVMe for Multiple OSDs
@@ -144,20 +144,27 @@ NUM_OSDS=4
 # DB: 50GB per OSD (stores RocksDB data)
 WAL_SIZE="2G"
 DB_SIZE="50G"
+WAL_SIZE_MIB=2048
+DB_SIZE_MIB=51200
 
 # Create GPT partition table
 parted -s ${NVME_DEVICE} mklabel gpt
 
-# Create WAL partitions first (they benefit most from being at the start of device)
+# Create WAL partitions first
+START_MIB=1
 for i in $(seq 1 ${NUM_OSDS}); do
     echo "Creating WAL partition ${i} of size ${WAL_SIZE}"
-    parted -s ${NVME_DEVICE} mkpart wal${i} ${WAL_SIZE}
+    END_MIB=$((START_MIB + WAL_SIZE_MIB))
+    parted -s ${NVME_DEVICE} mkpart wal${i} ${START_MIB}MiB ${END_MIB}MiB
+    START_MIB=${END_MIB}
 done
 
 # Create DB partitions after WAL partitions
 for i in $(seq 1 ${NUM_OSDS}); do
     echo "Creating DB partition ${i} of size ${DB_SIZE}"
-    parted -s ${NVME_DEVICE} mkpart db${i} ${DB_SIZE}
+    END_MIB=$((START_MIB + DB_SIZE_MIB))
+    parted -s ${NVME_DEVICE} mkpart db${i} ${START_MIB}MiB ${END_MIB}MiB
+    START_MIB=${END_MIB}
 done
 
 # Display final partition layout
@@ -331,12 +338,11 @@ The allocator manages free space on the data device. Choosing the right allocato
 ```ini
 [osd]
 # Allocator selection
-# Options: bitmap (default), stupid, avl, btree
-# bitmap: Best for most workloads, balanced memory/performance
-# stupid: Lower memory usage, good for large sequential writes
-bluestore_allocator = bitmap
+# Options include bitmap, avl, btree, hybrid, and hybrid_btree2
+# The current default is hybrid; avoid changing this unless testing shows a clear benefit
+bluestore_allocator = hybrid
 
-# Bitmap allocator specific settings
+# Freelist metadata granularity
 # Block size for allocation tracking
 # Smaller values = finer granularity but more memory
 bluestore_freelist_blocks_per_key = 128
@@ -406,7 +412,7 @@ bluestore_compression_mode = aggressive
 # Options: snappy, zstd, lz4, zlib
 # snappy: Fast, moderate compression ratio
 # lz4: Very fast, good compression ratio (recommended)
-# zstd: Slower, excellent compression ratio
+# zstd: Excellent compression ratio but higher CPU overhead, especially for small writes
 # zlib: Slowest, good compression ratio
 bluestore_compression_algorithm = lz4
 
@@ -507,26 +513,12 @@ The following configuration optimizes BlueStore's internal queuing and threading
 ```ini
 [osd]
 # =============================================================================
-# Async I/O Configuration
-# =============================================================================
-
-# Enable kernel async I/O (recommended for all deployments)
-bluestore_aio = true
-
-# Number of I/O threads for async operations
-# Increase for NVMe devices, decrease for HDDs
-bluestore_aio_threads = 10
-
-# Maximum concurrent AIO operations
-# Higher values improve parallelism on fast storage
-bluestore_aio_max_queue_depth = 32
-
-# =============================================================================
 # Deferred Write Configuration
 # =============================================================================
 
 # Threshold for deferred (async) writes
-# Writes smaller than this bypass the journal for better latency
+# Writes smaller than this are written to the WAL and then asynchronously
+# written to the block device, which can help rotational media
 bluestore_prefer_deferred_size_hdd = 65536   # 64KB
 bluestore_prefer_deferred_size_ssd = 0       # Disable for SSD
 
@@ -552,8 +544,9 @@ bluestore_kv_thread_pipelined = true
 osd_op_num_threads_per_shard = 2
 osd_op_num_shards = 5
 
-# Prioritize client I/O over background operations
-osd_op_queue = wpq
+# Current Ceph releases default to mclock_scheduler for QoS. Use wpq only
+# when you have tested it for a specific legacy or overloaded-OSD workload.
+osd_op_queue = mclock_scheduler
 osd_op_queue_cut_off = high
 ```
 
@@ -566,10 +559,6 @@ For all-NVMe deployments, additional tuning can extract maximum performance. The
 # =============================================================================
 # NVMe-Optimized Settings
 # =============================================================================
-
-# Increase parallelism for NVMe devices
-bluestore_aio_threads = 16
-bluestore_aio_max_queue_depth = 64
 
 # Disable deferred writes for NVMe (direct writes are fast enough)
 bluestore_prefer_deferred_size_ssd = 0
@@ -589,11 +578,8 @@ bluestore_rocksdb_options = "compaction_readahead_size=2097152,max_background_co
 # WARNING: Only use if you have reliable hardware and UPS
 # =============================================================================
 
-# Skip fsync for BlueFS (unsafe without battery-backed cache)
-# bluefs_sync_write = false
-
-# Reduce sync frequency (increases risk of data loss on crash)
-# bluestore_sync_submit_transaction = false
+# Avoid disabling persistence-related safety mechanisms for performance unless
+# you have validated the exact release, storage stack, and failure model.
 ```
 
 ## Monitoring and Benchmarking
@@ -697,7 +683,7 @@ Use RADOS bench to establish baseline performance and validate configuration cha
 
 # Create a benchmark pool with appropriate settings
 ceph osd pool create bench 128 128
-ceph osd pool set bench size 1  # Single replica for benchmark consistency
+ceph osd pool set bench size 1  # Only for isolated test clusters; this removes redundancy
 
 # Sequential write benchmark (60 seconds)
 # This tests maximum sequential write throughput
@@ -740,6 +726,7 @@ sudo fio --name=randwrite \
 # Cleanup after benchmarking
 sudo rbd unmap /dev/rbd0
 rbd rm bench/bench-image
+# Requires mon_allow_pool_delete=true in the monitor configuration
 ceph osd pool delete bench bench --yes-i-really-really-mean-it
 ```
 
@@ -809,7 +796,7 @@ bluestore_cache_autotune_interval = 5
 # =============================================================================
 
 # Allocator selection
-bluestore_allocator = bitmap
+bluestore_allocator = hybrid
 
 # Minimum allocation sizes
 bluestore_min_alloc_size_hdd = 65536   # 64KB for HDD
@@ -818,11 +805,6 @@ bluestore_min_alloc_size_ssd = 4096    # 4KB for NVMe DB/WAL
 # =============================================================================
 # I/O and Threading Configuration
 # =============================================================================
-
-# Async I/O configuration
-bluestore_aio = true
-bluestore_aio_threads = 8
-bluestore_aio_max_queue_depth = 32
 
 # Deferred write configuration
 bluestore_prefer_deferred_size_hdd = 65536
@@ -911,7 +893,7 @@ The following table summarizes common performance issues and their solutions:
 
 | Symptom | Likely Cause | Solution |
 |---------|--------------|----------|
-| High commit_lat | Slow WAL device | Move WAL to faster NVMe |
+| High commit_lat | Slow WAL or DB device | Move WAL/DB to faster NVMe, or ensure WAL is colocated on a fast DB device |
 | High kv_lat | RocksDB compaction | Increase DB device size, tune compaction |
 | Low cache hit rate | Insufficient cache | Increase osd_memory_target |
 | High CPU during writes | Compression overhead | Reduce compression level or use faster algorithm |
@@ -921,7 +903,7 @@ The following table summarizes common performance issues and their solutions:
 
 Configuring Ceph BlueStore for maximum performance requires understanding the interplay between hardware, caching, compression, and workload characteristics. Key takeaways include:
 
-1. **Separate DB and WAL devices**: Using fast NVMe for metadata significantly improves performance for HDD-based deployments
+1. **Separate DB devices, and WAL when appropriate**: Using fast NVMe for metadata significantly improves performance for HDD-based deployments
 2. **Tune cache based on workload**: Use autotuning for general workloads, or manually configure ratios for specific access patterns
 3. **Choose compression wisely**: Balance space savings against CPU overhead based on your data compressibility
 4. **Monitor continuously**: Regular performance monitoring helps identify issues before they impact users
