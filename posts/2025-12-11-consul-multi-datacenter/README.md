@@ -125,6 +125,7 @@ ports {
   http = 8500
   https = 8501
   grpc = 8502
+  grpc_tls = 8503
 }
 ```
 
@@ -191,6 +192,7 @@ ports {
   http = 8500
   https = 8501
   grpc = 8502
+  grpc_tls = 8503
 }
 ```
 
@@ -384,9 +386,9 @@ dig @127.0.0.1 -p 8600 api-geo.query.consul
 
 ## 6. ACL Replication
 
-Configure ACL token replication across datacenters.
+Configure ACL token replication across datacenters. If ACLs are enabled, provide an ACL token with the required privileges when running the CLI and API commands.
 
-On secondary datacenter, create replication token:
+Create a replication token in the primary datacenter, then set it on each secondary server:
 
 ```bash
 # On primary DC, create replication token
@@ -435,7 +437,7 @@ Check federation status and health.
 # List all members including WAN
 consul members -wan
 
-# Check datacenter connectivity
+# Check local Raft peers
 consul operator raft list-peers
 
 # Check WAN coordinates (latency estimation)
@@ -464,8 +466,7 @@ def monitor_federation():
             try:
                 # Get nodes in datacenter
                 index, nodes = c.catalog.nodes(dc=dc)
-                healthy = sum(1 for n in nodes if n.get('Status') != 'critical')
-                print(f"  {dc}: {healthy}/{len(nodes)} healthy nodes")
+                print(f"  {dc}: {len(nodes)} registered nodes")
 
                 # Get services
                 index, services = c.catalog.services(dc=dc)
