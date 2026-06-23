@@ -47,6 +47,16 @@ Add Spring for GraphQL to your `pom.xml`:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- For Bean Validation with @Valid -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <!-- For method-level security -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
     <!-- For WebSocket subscriptions -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -433,6 +443,9 @@ public class BookEventPublisher {
 package com.example.graphql.config;
 
 import graphql.language.StringValue;
+import graphql.language.Value;
+import graphql.GraphQLContext;
+import graphql.execution.CoercedVariables;
 import graphql.schema.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -440,6 +453,7 @@ import org.springframework.graphql.execution.RuntimeWiringConfigurer;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 @Configuration
 public class GraphQLConfig {
@@ -457,7 +471,9 @@ public class GraphQLConfig {
             .coercing(new Coercing<Instant, String>() {
 
                 @Override
-                public String serialize(Object dataFetcherResult) {
+                public String serialize(Object dataFetcherResult,
+                        GraphQLContext graphQLContext,
+                        Locale locale) {
                     if (dataFetcherResult instanceof Instant) {
                         return DateTimeFormatter.ISO_INSTANT
                             .format((Instant) dataFetcherResult);
@@ -467,7 +483,9 @@ public class GraphQLConfig {
                 }
 
                 @Override
-                public Instant parseValue(Object input) {
+                public Instant parseValue(Object input,
+                        GraphQLContext graphQLContext,
+                        Locale locale) {
                     if (input instanceof String) {
                         return Instant.parse((String) input);
                     }
@@ -476,7 +494,10 @@ public class GraphQLConfig {
                 }
 
                 @Override
-                public Instant parseLiteral(Object input) {
+                public Instant parseLiteral(Value<?> input,
+                        CoercedVariables variables,
+                        GraphQLContext graphQLContext,
+                        Locale locale) {
                     if (input instanceof StringValue) {
                         return Instant.parse(((StringValue) input).getValue());
                     }
@@ -559,43 +580,23 @@ package com.example.graphql.dataloader;
 
 import com.example.entity.User;
 import com.example.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.dataloader.DataLoader;
-import org.dataloader.DataLoaderFactory;
-import org.dataloader.DataLoaderRegistry;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.graphql.execution.BatchLoaderRegistry;
+import reactor.core.publisher.Mono;
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Component
-@RequiredArgsConstructor
-public class DataLoaderRegistryFactory {
+@Configuration
+public class DataLoaderConfig {
 
-    private final UserRepository userRepository;
-
-    public DataLoaderRegistry create() {
-        DataLoaderRegistry registry = new DataLoaderRegistry();
-
-        // Batch load users by ID
-        DataLoader<Long, User> userLoader = DataLoaderFactory.newDataLoader(
-            (List<Long> userIds) -> CompletableFuture.supplyAsync(() -> {
-                Map<Long, User> usersById = userRepository.findAllById(userIds)
+    public DataLoaderConfig(BatchLoaderRegistry registry, UserRepository userRepository) {
+        registry.forTypePair(Long.class, User.class)
+            .registerMappedBatchLoader((Set<Long> userIds, environment) ->
+                Mono.fromSupplier(() -> userRepository.findAllById(userIds)
                     .stream()
-                    .collect(Collectors.toMap(User::getId, Function.identity()));
-
-                return userIds.stream()
-                    .map(usersById::get)
-                    .collect(Collectors.toList());
-            })
-        );
-
-        registry.register("userLoader", userLoader);
-
-        return registry;
+                    .collect(Collectors.toMap(User::getId, Function.identity()))));
     }
 }
 ```
@@ -608,8 +609,7 @@ public class DataLoaderRegistryFactory {
 public class BookController {
 
     @SchemaMapping(typeName = "Book", field = "author")
-    public CompletableFuture<User> author(Book book, DataFetchingEnvironment env) {
-        DataLoader<Long, User> userLoader = env.getDataLoader("userLoader");
+    public CompletableFuture<User> author(Book book, DataLoader<Long, User> userLoader) {
         return userLoader.load(book.getAuthorId());
     }
 }
@@ -620,6 +620,15 @@ public class BookController {
 ## Security
 
 ### Method-Level Security
+
+Enable method security for `@PreAuthorize`:
+
+```java
+@Configuration
+@EnableMethodSecurity
+public class SecurityConfig {
+}
+```
 
 ```java
 @Controller
