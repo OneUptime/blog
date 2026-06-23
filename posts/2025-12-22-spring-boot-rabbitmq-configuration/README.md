@@ -390,6 +390,7 @@ public class OrderMessageConsumer {
 ```java
 package com.example.config;
 
+import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
@@ -398,6 +399,7 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
+import org.springframework.retry.interceptor.RetryOperationsInterceptor;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 
@@ -416,10 +418,17 @@ public class RabbitListenerConfig {
         factory.setMaxConcurrentConsumers(10);
         factory.setPrefetchCount(10);
 
-        // Configure retry
-        factory.setRetryTemplate(retryTemplate());
+        // Configure consumer-side retry via the advice chain
+        factory.setAdviceChain(retryInterceptor());
 
         return factory;
+    }
+
+    @Bean
+    public RetryOperationsInterceptor retryInterceptor() {
+        return RetryInterceptorBuilder.stateless()
+            .retryOperations(retryTemplate())
+            .build();
     }
 
     @Bean
@@ -509,11 +518,12 @@ public HeadersExchange headersExchange() {
 
 @Bean
 public Binding headersBinding(Queue queue, HeadersExchange exchange) {
+    // whereAll requires every listed header to match (sets x-match = all)
+    // Use whereAny(...) for x-match = any
     return BindingBuilder.bind(queue)
         .to(exchange)
-        .where("x-match").matches("all")
-        .and("type").exists()
-        .and("priority").matches("high");
+        .whereAll(Map.of("type", "order", "priority", "high"))
+        .match();
 }
 ```
 
