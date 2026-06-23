@@ -546,7 +546,9 @@ public class OrderService {
             });
     }
 
-    @Async
+    // Note: no @Async here - it is private and called from within the same
+    // class, so a Spring proxy could not intercept it anyway (see pitfalls
+    // below). It simply returns an already-completed future.
     private CompletableFuture<Order> findOrderFromCacheAsync(Long orderId) {
         // Fallback to cached data
         return CompletableFuture.completedFuture(
