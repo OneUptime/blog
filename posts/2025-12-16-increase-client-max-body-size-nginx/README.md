@@ -120,7 +120,7 @@ server {
 
 ## Related Timeout Settings
 
-Large file uploads take time. Adjust timeouts to prevent premature disconnection:
+Large file uploads take time. Adjust timeouts to prevent premature disconnection. Nginx timeout values are generally measured between successive read or write operations, not as a limit for the entire upload:
 
 ```nginx
 server {
@@ -139,13 +139,13 @@ server {
     location /upload {
         proxy_pass http://backend:3000;
 
-        # Backend connection timeout
-        proxy_connect_timeout 300s;
+        # Backend connection timeout (usually cannot exceed 75s)
+        proxy_connect_timeout 75s;
 
-        # Timeout for reading response from backend
+        # Timeout between reads from backend
         proxy_read_timeout 300s;
 
-        # Timeout for sending request to backend
+        # Timeout between writes to backend
         proxy_send_timeout 300s;
     }
 }
@@ -153,7 +153,7 @@ server {
 
 ## Buffering Configuration
 
-Control how Nginx handles large request bodies:
+Control how Nginx handles request-body buffering and proxied response buffering:
 
 ```nginx
 server {
@@ -168,13 +168,13 @@ server {
     # Buffer size for reading client request body
     client_body_buffer_size 128k;
 
-    # Write body to file if larger than buffer
+    # Do not always save the entire body to a file
     client_body_in_file_only off;
 
     location /upload {
         proxy_pass http://backend:3000;
 
-        # Buffer settings for proxy
+        # Buffer settings for proxied requests and responses
         proxy_request_buffering on;
         proxy_buffering on;
         proxy_buffer_size 128k;
@@ -225,7 +225,7 @@ http {
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" request_time=$request_time '
-                    'body_bytes=$request_length';
+                    'request_length=$request_length';
 
     access_log /var/log/nginx/access.log main;
 
@@ -301,11 +301,11 @@ server {
         proxy_set_header Connection "";
 
         # Extended timeouts for large files
-        proxy_connect_timeout 300s;
+        proxy_connect_timeout 75s;
         proxy_send_timeout 600s;
         proxy_read_timeout 600s;
 
-        # Buffering for large files
+        # Buffer client request bodies before proxying; buffer backend responses
         proxy_request_buffering on;
         proxy_buffering on;
     }
@@ -391,7 +391,7 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB
 ```ini
 ; php.ini
 upload_max_filesize = 500M
-post_max_size = 500M
+post_max_size = 550M
 max_execution_time = 600
 max_input_time = 600
 ```
