@@ -325,8 +325,7 @@ npm install -D prettier eslint-config-prettier eslint-plugin-prettier
   "arrowParens": "always",
   "endOfLine": "lf",
   "jsxSingleQuote": false,
-  "quoteProps": "as-needed",
-  "plugins": ["prettier-plugin-tailwindcss"]
+  "quoteProps": "as-needed"
 }
 ```
 
@@ -545,7 +544,7 @@ src/
 
 **src/components/common/Button/Button.tsx**
 ```typescript
-import { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 
 import styles from './Button.module.css';
 
@@ -571,7 +570,7 @@ export const Button = ({
   className,
   disabled,
   ...props
-}: ButtonProps): React.ReactElement => {
+}: ButtonProps): ReactElement => {
   const buttonClasses = [
     styles.button,
     styles[variant],
