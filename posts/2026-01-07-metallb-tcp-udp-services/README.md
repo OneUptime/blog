@@ -59,7 +59,7 @@ flowchart TB
 
 Before proceeding, ensure you have:
 
-- A Kubernetes cluster (v1.20+) running on bare-metal or virtual machines
+- A Kubernetes cluster running on bare-metal or virtual machines (v1.26+ for stable single-Service mixed protocol support)
 - MetalLB installed and configured with an IP address pool
 - kubectl configured to access your cluster
 - Basic understanding of Kubernetes Services
@@ -84,7 +84,7 @@ metadata:
   namespace: database
   annotations:
     # Optional: Request a specific IP from the MetalLB pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.240"
+    metallb.io/loadBalancerIPs: "192.168.1.240"
 spec:
   # LoadBalancer type triggers MetalLB to assign an external IP
   type: LoadBalancer
@@ -150,8 +150,8 @@ For stateful TCP connections that require session persistence, configure session
 
 ```yaml
 # mysql-service.yaml
-# MySQL service with session affinity to maintain connection state
-# This is crucial for applications using connection pooling
+# MySQL service with session affinity for client-to-backend stickiness
+# Useful only when the application keeps client-specific state outside a single TCP connection
 apiVersion: v1
 kind: Service
 metadata:
@@ -159,12 +159,12 @@ metadata:
   namespace: database
   annotations:
     # Optionally specify which address pool to use
-    metallb.universe.tf/address-pool: "production-pool"
+    metallb.io/address-pool: "production-pool"
 spec:
   type: LoadBalancer
 
-  # Session affinity ensures clients reconnect to the same pod
-  # Important for MySQL prepared statements and transactions
+  # Session affinity makes new connections from the same client IP prefer the same pod
+  # It does not preserve state from a closed TCP connection
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
@@ -199,7 +199,7 @@ metadata:
   name: dns-external
   namespace: kube-system
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.241"
+    metallb.io/loadBalancerIPs: "192.168.1.241"
 spec:
   type: LoadBalancer
 
@@ -233,7 +233,7 @@ metadata:
   name: game-server-external
   namespace: gaming
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.242"
+    metallb.io/loadBalancerIPs: "192.168.1.242"
 spec:
   type: LoadBalancer
 
@@ -270,7 +270,7 @@ Some applications require both TCP and UDP on the same port. A classic example i
 
 ### Understanding Mixed Protocol Limitations
 
-Prior to Kubernetes 1.20, exposing both TCP and UDP on the same port required separate services. With the `MixedProtocolLBService` feature (stable in 1.24+), you can combine them in a single service.
+Before the `MixedProtocolLBService` feature was available, exposing both TCP and UDP on the same port required separate services. With the `MixedProtocolLBService` feature (enabled by default in 1.24+ and stable in 1.26+), you can combine them in a single service.
 
 The following diagram shows the architecture for mixed protocol services:
 
@@ -301,26 +301,26 @@ flowchart LR
     Port53 -->|"UDP"| UDPHandler
 ```
 
-### Single Service with Mixed Protocols (Kubernetes 1.24+)
+### Single Service with Mixed Protocols (Kubernetes 1.26+)
 
 With modern Kubernetes versions, you can define both protocols in a single service. This simplifies management and ensures both protocols share the same external IP.
 
 ```yaml
 # dns-mixed-service.yaml
 # DNS service exposing both TCP and UDP on port 53
-# Requires Kubernetes 1.24+ with MixedProtocolLBService feature
+# Requires Kubernetes 1.26+ for stable MixedProtocolLBService support
 apiVersion: v1
 kind: Service
 metadata:
   name: dns-mixed-external
   namespace: kube-system
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.243"
+    metallb.io/loadBalancerIPs: "192.168.1.243"
 spec:
   type: LoadBalancer
 
   # Allocate the same IP for both protocols
-  # This is the default behavior in Kubernetes 1.24+
+  # This is the default behavior for LoadBalancer services
   allocateLoadBalancerNodePorts: true
 
   selector:
@@ -334,7 +334,7 @@ spec:
       targetPort: 53
 
     # TCP for zone transfers and large responses
-    # DNS responses over 512 bytes require TCP
+    # DNS clients use TCP for zone transfers and for retrying truncated UDP responses
     - name: dns-tcp
       protocol: TCP
       port: 53
@@ -355,7 +355,7 @@ metadata:
   name: turn-server-external
   namespace: webrtc
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.244"
+    metallb.io/loadBalancerIPs: "192.168.1.244"
     # Add description for documentation
     description: "TURN server for WebRTC NAT traversal"
 spec:
@@ -408,8 +408,8 @@ metadata:
   namespace: kube-system
   annotations:
     # IMPORTANT: Use the same IP as the UDP service
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.245"
-    metallb.universe.tf/allow-shared-ip: "dns-service-group"
+    metallb.io/loadBalancerIPs: "192.168.1.245"
+    metallb.io/allow-shared-ip: "dns-service-group"
 spec:
   type: LoadBalancer
 
@@ -432,9 +432,9 @@ metadata:
   namespace: kube-system
   annotations:
     # Same IP as TCP service - MetalLB will share the IP
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.245"
+    metallb.io/loadBalancerIPs: "192.168.1.245"
     # The sharing key must match across all services sharing an IP
-    metallb.universe.tf/allow-shared-ip: "dns-service-group"
+    metallb.io/allow-shared-ip: "dns-service-group"
 spec:
   type: LoadBalancer
 
@@ -513,8 +513,8 @@ spec:
           ports:
             - containerPort: 5432
 
-          # Readiness probe determines if pod receives traffic
-          # MetalLB routes traffic only to pods with passing readiness
+          # Readiness probe determines if the pod is included in Service endpoints
+          # Kubernetes routes Service traffic only to ready pods
           readinessProbe:
             tcpSocket:
               port: 5432
@@ -579,16 +579,18 @@ spec:
               protocol: UDP
             - containerPort: 53
               protocol: TCP
-            # Health check HTTP port
+            # Health check HTTP ports
             - containerPort: 8080
+              protocol: TCP
+            - containerPort: 8181
               protocol: TCP
 
           # For UDP services, use HTTP health endpoint if available
-          # CoreDNS exposes a health plugin on port 8080
+          # CoreDNS exposes health on port 8080 and readiness on port 8181 by default
           readinessProbe:
             httpGet:
               path: /ready
-              port: 8080
+              port: 8181
             initialDelaySeconds: 2
             periodSeconds: 5
 
@@ -599,8 +601,8 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
 
-          # Alternative: Use exec probe with dig command
-          # Uncomment below if HTTP health endpoint is unavailable
+          # Alternative: Use an exec probe with dig or another DNS client
+          # Uncomment below if the image includes the tool and no HTTP endpoint is available
           # readinessProbe:
           #   exec:
           #     command:
@@ -644,8 +646,8 @@ spec:
             - containerPort: 5349
               protocol: TCP
 
-          # TCP check on TURN port verifies service is running
-          # This indirectly validates UDP availability too
+          # TCP check on TURN port verifies that the process accepts TCP connections
+          # Add an application-specific UDP or HTTP health check if you need to validate UDP
           readinessProbe:
             tcpSocket:
               port: 3478
@@ -658,7 +660,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
 
-          # Resource limits prevent health check timeouts
+          # Resource limits help prevent resource starvation that can cause timeouts
           resources:
             requests:
               cpu: 100m
@@ -691,7 +693,7 @@ metadata:
   name: sip-signaling
   namespace: voip
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.250"
+    metallb.io/loadBalancerIPs: "192.168.1.250"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -722,7 +724,7 @@ metadata:
   name: rtp-media
   namespace: voip
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.251"
+    metallb.io/loadBalancerIPs: "192.168.1.251"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -752,7 +754,7 @@ metadata:
   name: management-api
   namespace: voip
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.252"
+    metallb.io/loadBalancerIPs: "192.168.1.252"
 spec:
   type: LoadBalancer
   selector:
@@ -862,9 +864,9 @@ Use these commands to troubleshoot TCP and UDP service issues.
 # Look for EXTERNAL-IP column - should not show <pending>
 kubectl get svc -n your-namespace your-service-name
 
-# Verify service endpoints are populated
-# Empty ENDPOINTS indicates selector mismatch or unhealthy pods
-kubectl get endpoints -n your-namespace your-service-name
+# Verify service EndpointSlices are populated
+# Empty endpoint lists indicate selector mismatch or unhealthy pods
+kubectl get endpointslice -n your-namespace -l kubernetes.io/service-name=your-service-name
 
 # Check pod readiness - unready pods won't receive traffic
 kubectl get pods -n your-namespace -l app=your-app -o wide
@@ -942,7 +944,7 @@ Use annotations and labels to document IP assignments.
 ```yaml
 metadata:
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.240"
+    metallb.io/loadBalancerIPs: "192.168.1.240"
     description: "Production PostgreSQL - Contact: dba@company.com"
   labels:
     environment: production
@@ -990,7 +992,7 @@ With these patterns, you can confidently expose databases, game servers, DNS, Vo
 
 ## Additional Resources
 
-- [MetalLB Official Documentation](https://metallb.universe.tf/)
+- [MetalLB Official Documentation](https://metallb.io/)
 - [Kubernetes Service Types](https://kubernetes.io/docs/concepts/services-networking/service/)
 - [Mixed Protocol LoadBalancer Services KEP](https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/1435-mixed-protocol-lb)
 - [Kubernetes Health Probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
