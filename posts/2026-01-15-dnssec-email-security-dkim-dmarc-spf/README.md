@@ -566,7 +566,6 @@ dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
 ```text
 options {
     dnssec-validation auto;
-    dnssec-enable yes;
 };
 
 zone "example.com" {
