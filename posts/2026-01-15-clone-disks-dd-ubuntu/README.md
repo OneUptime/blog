@@ -186,7 +186,7 @@ sudo dd if=/dev/sda of=/dev/sdb bs=64K status=progress
 # Aggressive (faster, good for healthy disks):
 sudo dd if=/dev/sda of=/dev/sdb bs=1M status=progress
 
-# For SSDs (align with typical SSD page size):
+# For SSDs (a large block size improves throughput):
 sudo dd if=/dev/sda of=/dev/sdb bs=4M status=progress
 ```
 
