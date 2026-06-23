@@ -31,8 +31,8 @@ This is the default for quick pilots or smaller teams.
 
 Each status-page user gets their own credential pair - no shared logins - so you can disable individual access without touching other accounts.
 
-1. In your OneUptime project, open **Status Pages → Private Users**.
-2. Choose **Username & Password** and invite users by email. They receive onboarding links with enforced password complexity.
+1. In your OneUptime project, open the status page's **Private Users** settings.
+2. Add users by email - each private user gets their own email + password credential. They receive onboarding links to set a password.
 
 **When to use it:** early-stage rollouts, contractor access where IdP federation is overkill.
 
@@ -44,8 +44,8 @@ Each status-page user gets their own credential pair - no shared logins - so you
 
 Single Sign-On brings your page under the same policies as the rest of your stack - MFA, device posture, conditional access. SCIM keeps membership current so offboarding is instant.
 
-1. Navigate to **Authentication → SSO** and choose Okta, Azure AD, Google Workspace, or any SAML/OIDC provider.
-2. Enable **SCIM provisioning** so adds/removes in the source directory sync automatically. Dormant emails disappear without manual cleanup.
+1. Open the status page's **SSO** settings and configure a SAML 2.0 connection - the sign-on URL, issuer, and signing certificate from any SAML 2.0 identity provider such as Okta, Azure AD (Entra ID), or Google Workspace.
+2. Open the **SCIM** settings and enable provisioning so adds/removes in the source directory sync automatically. Dormant emails disappear without manual cleanup.
 3. Test with a pilot group before rolling out to all users.
 
 **Benefits:**
@@ -61,8 +61,8 @@ Single Sign-On brings your page under the same policies as the rest of your stac
 
 The master password is a one-to-many secret meant for deliberate, time-bound sharing - think executive briefings, investor updates, or incident bridges where dozens of people need immediate read-only access.
 
-1. Under **Authentication**, generate a **Master Password**. Treat it like any production secret.
-2. Set an expiration date and reminder to rotate it after major incidents or staff changes.
+1. On the status page's **Authentication Settings** page, set a **Master Password**. It is stored as a secure hash and cannot be retrieved, so treat it like any production secret. Note that enabling the master password disables SSO/SCIM and email + password sign-in for that page.
+2. Schedule your own reminder to rotate it after major incidents or staff changes - rotation is manual, since there is no built-in expiration date.
 3. Distribute it out-of-band (secure chat, encrypted email) and remind recipients not to reuse it elsewhere.
 
 **When to reach for it:**
@@ -77,8 +77,8 @@ The master password is a one-to-many secret meant for deliberate, time-bound sha
 
 Authentication handles *who* is logging in. IP whitelisting adds a control around *where* that login originates.
 
-1. Go to **Status Pages → Authentication → IP Whitelist**.
-2. Add CIDR ranges for corporate offices, VPN gateways, or customer-owned network blocks. Both IPv4 and IPv6 are supported.
+1. Go to the status page's **Authentication Settings** page and edit the **IP Whitelist**.
+2. Add the addresses for corporate offices, VPN gateways, or customer-owned network blocks, one entry per line. Individual IPv4 and IPv6 addresses are supported, as are IPv4 CIDR ranges (CIDR ranges are IPv4-only).
 3. Test from inside and outside the allowed range to confirm the block is enforced before announcing the change.
 
 ---
