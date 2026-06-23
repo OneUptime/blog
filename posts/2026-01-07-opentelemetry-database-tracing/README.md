@@ -93,14 +93,22 @@ The following code sets up the OpenTelemetry SDK with proper trace provider conf
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+// deployment.environment.name is still an incubating convention, so it is only
+// exported from the '/incubating' entry point, not the stable package root.
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions/incubating');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 // Create the OTLP exporter to send traces to your collector
 // The endpoint should point to your OpenTelemetry Collector or backend
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {
     // Add authentication headers if required by your backend
     'Authorization': process.env.OTEL_AUTH_HEADER || '',
@@ -111,36 +119,36 @@ const traceExporter = new OTLPTraceExporter({
 // This automatically instruments supported libraries including database drivers
 const sdk = new NodeSDK({
   // Define resource attributes to identify your service in traces
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-application',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-application',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
 
   // Use batch processing to efficiently send spans to the collector
   // This reduces network overhead by batching multiple spans together
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
+  spanProcessors: [new BatchSpanProcessor(traceExporter, {
     // Maximum number of spans to batch before sending
     maxQueueSize: 2048,
     // Maximum time to wait before sending a batch
     scheduledDelayMillis: 5000,
     // Maximum number of spans per batch
     maxExportBatchSize: 512,
-  }),
+  })],
 
   // Enable auto-instrumentation for all supported libraries
   // This includes database drivers, HTTP clients, and more
   instrumentations: [
     getNodeAutoInstrumentations({
-      // Enable enhanced database instrumentation with query details
+      // Keep enhanced reporting disabled unless you have reviewed its data exposure.
       '@opentelemetry/instrumentation-pg': {
-        enhancedDatabaseReporting: true,
+        enhancedDatabaseReporting: false,
       },
-      '@opentelemetry/instrumentation-mysql': {
-        enhancedDatabaseReporting: true,
+      '@opentelemetry/instrumentation-mysql2': {
+        maskStatement: true,
       },
       '@opentelemetry/instrumentation-mongodb': {
-        enhancedDatabaseReporting: true,
+        enhancedDatabaseReporting: false,
       },
     }),
   ],
@@ -172,7 +180,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
 import os
 import atexit
 
@@ -187,7 +194,7 @@ def configure_opentelemetry():
     resource = Resource.create({
         SERVICE_NAME: os.getenv("SERVICE_NAME", "my-python-app"),
         SERVICE_VERSION: os.getenv("SERVICE_VERSION", "1.0.0"),
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "development"),
+        "deployment.environment.name": os.getenv("DEPLOYMENT_ENV", "development"),
     })
 
     # Create the tracer provider with the resource configuration
@@ -196,7 +203,7 @@ def configure_opentelemetry():
     # Configure the OTLP exporter to send traces to your collector
     # The endpoint should match your OpenTelemetry Collector configuration
     otlp_exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces"),
         headers={
             "Authorization": os.getenv("OTEL_AUTH_HEADER", ""),
         },
@@ -252,7 +259,7 @@ sequenceDiagram
     Inst->>OTel: End Span
     Inst-->>App: Return Result
 
-    Note over Inst,OTel: Span includes db.statement,<br/>db.operation, duration
+    Note over Inst,OTel: Span includes db.query.text,<br/>db.operation.name, duration
 ```
 
 ### Node.js PostgreSQL Instrumentation
@@ -264,7 +271,7 @@ This example demonstrates comprehensive PostgreSQL instrumentation including con
 // Ensure tracing.js is imported before this file
 
 const { Pool } = require('pg');
-const { trace, SpanStatusCode, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer for creating custom spans
 // The tracer name helps identify the source of spans in your observability backend
@@ -308,19 +315,20 @@ async function query(text, params = []) {
     try {
       // Add semantic database attributes following OpenTelemetry conventions
       // These attributes enable filtering and analysis in your observability tool
-      span.setAttribute('db.system', 'postgresql');
-      span.setAttribute('db.name', process.env.PG_DATABASE || 'myapp');
-      span.setAttribute('db.user', process.env.PG_USER || 'postgres');
-      span.setAttribute('db.connection_string', `${process.env.PG_HOST}:${process.env.PG_PORT}`);
+      span.setAttribute('db.system.name', 'postgresql');
+      span.setAttribute('db.namespace', process.env.PG_DATABASE || 'myapp');
+      span.setAttribute('server.address', process.env.PG_HOST || 'localhost');
+      span.setAttribute('server.port', parseInt(process.env.PG_PORT || '5432'));
+      span.setAttribute('app.db.user', process.env.PG_USER || 'postgres');
 
       // Extract the SQL operation type (SELECT, INSERT, UPDATE, DELETE)
       // This helps categorize and filter queries by operation
       const operation = extractSqlOperation(text);
-      span.setAttribute('db.operation', operation);
+      span.setAttribute('db.operation.name', operation);
 
       // Store the sanitized SQL statement
       // Never log raw parameters that might contain sensitive data
-      span.setAttribute('db.statement', sanitizeQuery(text, params));
+      span.setAttribute('db.query.text', sanitizeQuery(text, params));
 
       // Record the start time for accurate duration measurement
       const startTime = Date.now();
@@ -429,8 +437,8 @@ async function transaction(callback) {
     const client = await pool.connect();
 
     try {
-      span.setAttribute('db.system', 'postgresql');
-      span.setAttribute('db.operation', 'TRANSACTION');
+      span.setAttribute('db.system.name', 'postgresql');
+      span.setAttribute('db.operation.name', 'TRANSACTION');
 
       // Start the transaction
       await client.query('BEGIN');
@@ -488,10 +496,8 @@ import psycopg2
 from psycopg2 import pool
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
-from opentelemetry.semconv.trace import SpanAttributes
 from contextlib import contextmanager
 import os
-import re
 import time
 
 # Get a tracer for creating custom spans
@@ -569,16 +575,18 @@ def execute_query(sql: str, params: tuple = None, fetch: bool = True):
     # Start a span for this database operation
     with tracer.start_as_current_span("postgresql.query") as span:
         # Add semantic database attributes following OpenTelemetry conventions
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.name", os.getenv("PG_DATABASE", "myapp"))
-        span.set_attribute("db.user", os.getenv("PG_USER", "postgres"))
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.namespace", os.getenv("PG_DATABASE", "myapp"))
+        span.set_attribute("server.address", os.getenv("PG_HOST", "localhost"))
+        span.set_attribute("server.port", int(os.getenv("PG_PORT", "5432")))
+        span.set_attribute("app.db.user", os.getenv("PG_USER", "postgres"))
 
         # Extract and record the operation type
         operation = extract_sql_operation(sql)
-        span.set_attribute("db.operation", operation)
+        span.set_attribute("db.operation.name", operation)
 
         # Record the sanitized SQL statement (no sensitive parameter values)
-        span.set_attribute("db.statement", sanitize_query(sql, params))
+        span.set_attribute("db.query.text", sanitize_query(sql, params))
 
         # Get a connection from the pool
         conn = None
@@ -661,8 +669,8 @@ def transaction():
     """
     # Start a parent span for the entire transaction
     with tracer.start_as_current_span("postgresql.transaction") as span:
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.operation", "TRANSACTION")
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.operation.name", "TRANSACTION")
 
         conn = None
 
@@ -679,8 +687,8 @@ def transaction():
                 """Execute a query within the transaction."""
                 # Create a child span for each query in the transaction
                 with tracer.start_as_current_span("postgresql.query") as query_span:
-                    query_span.set_attribute("db.operation", extract_sql_operation(sql))
-                    query_span.set_attribute("db.statement", sanitize_query(sql, params))
+                    query_span.set_attribute("db.operation.name", extract_sql_operation(sql))
+                    query_span.set_attribute("db.query.text", sanitize_query(sql, params))
 
                     start = time.time()
                     cursor.execute(sql, params)
@@ -809,16 +817,16 @@ async function query(sql, params = []) {
   return tracer.startActiveSpan('mysql.query', async (span) => {
     try {
       // Set semantic database attributes following OpenTelemetry conventions
-      span.setAttribute('db.system', 'mysql');
-      span.setAttribute('db.name', process.env.MYSQL_DATABASE || 'myapp');
-      span.setAttribute('db.user', process.env.MYSQL_USER || 'root');
-      span.setAttribute('db.connection_string',
-        `${process.env.MYSQL_HOST}:${process.env.MYSQL_PORT}`);
+      span.setAttribute('db.system.name', 'mysql');
+      span.setAttribute('db.namespace', process.env.MYSQL_DATABASE || 'myapp');
+      span.setAttribute('server.address', process.env.MYSQL_HOST || 'localhost');
+      span.setAttribute('server.port', parseInt(process.env.MYSQL_PORT || '3306'));
+      span.setAttribute('app.db.user', process.env.MYSQL_USER || 'root');
 
       // Record the operation type and sanitized statement
       const operation = extractMySqlOperation(sql);
-      span.setAttribute('db.operation', operation);
-      span.setAttribute('db.statement', sanitizeMySqlQuery(sql, params));
+      span.setAttribute('db.operation.name', operation);
+      span.setAttribute('db.query.text', sanitizeMySqlQuery(sql, params));
 
       // Capture parameter count for debugging (never log actual values)
       span.setAttribute('db.parameter_count', params.length);
@@ -898,8 +906,8 @@ async function transaction(callback) {
     let connection;
 
     try {
-      span.setAttribute('db.system', 'mysql');
-      span.setAttribute('db.operation', 'TRANSACTION');
+      span.setAttribute('db.system.name', 'mysql');
+      span.setAttribute('db.operation.name', 'TRANSACTION');
 
       // Get a dedicated connection for the transaction
       connection = await pool.getConnection();
@@ -913,8 +921,8 @@ async function transaction(callback) {
       const tracedQuery = async (sql, params = []) => {
         return tracer.startActiveSpan('mysql.query', async (querySpan) => {
           try {
-            querySpan.setAttribute('db.operation', extractMySqlOperation(sql));
-            querySpan.setAttribute('db.statement', sanitizeMySqlQuery(sql, params));
+            querySpan.setAttribute('db.operation.name', extractMySqlOperation(sql));
+            querySpan.setAttribute('db.query.text', sanitizeMySqlQuery(sql, params));
 
             const startTime = Date.now();
             const [rows, fields] = await connection.execute(sql, params);
@@ -1008,7 +1016,7 @@ Here is comprehensive MongoDB instrumentation for Node.js applications:
 // database/mongodb.js - MongoDB client with OpenTelemetry instrumentation
 
 const { MongoClient, ObjectId } = require('mongodb');
-const { trace, SpanStatusCode, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer for MongoDB operations
 const tracer = trace.getTracer('mongodb-instrumentation', '1.0.0');
@@ -1454,26 +1462,18 @@ function collection(collectionName) {
  * @param {string} operation - Operation type
  */
 function setCommonAttributes(span, collectionName, operation) {
-  span.setAttribute('db.system', 'mongodb');
-  span.setAttribute('db.name', dbName);
-  span.setAttribute('db.mongodb.collection', collectionName);
-  span.setAttribute('db.operation', operation);
-  span.setAttribute('db.connection_string', sanitizeConnectionString(mongoUri));
-}
-
-/**
- * Sanitize connection string to remove credentials
- *
- * @param {string} uri - MongoDB connection URI
- * @returns {string} - Sanitized URI
- */
-function sanitizeConnectionString(uri) {
+  span.setAttribute('db.system.name', 'mongodb');
+  span.setAttribute('db.namespace', dbName);
+  span.setAttribute('db.collection.name', collectionName);
+  span.setAttribute('db.operation.name', operation);
   try {
-    const url = new URL(uri);
-    url.password = '***';
-    return url.toString();
+    const url = new URL(mongoUri);
+    span.setAttribute('server.address', url.hostname);
+    if (url.port) {
+      span.setAttribute('server.port', parseInt(url.port));
+    }
   } catch {
-    return '***connection_string***';
+    // Ignore non-standard MongoDB connection strings that URL cannot parse.
   }
 }
 
@@ -1815,7 +1815,7 @@ class MongoQuerySanitizer {
     // Check if string matches sensitive patterns
     if (typeof value === 'string') {
       for (const pattern of this.config.sensitivePatterns) {
-        if (pattern.test(value)) {
+        if (new RegExp(pattern.source, pattern.flags.replace('g', '')).test(value)) {
           return this.config.maskText;
         }
       }
@@ -1993,8 +1993,8 @@ class SlowQueryDetector {
 
     // Record duration in histogram
     queryDurationHistogram.record(duration, {
-      'db.system': database,
-      'db.operation': operation,
+      'db.system.name': database,
+      'db.operation.name': operation,
     });
 
     // Determine severity level
@@ -2003,8 +2003,8 @@ class SlowQueryDetector {
     if (severity !== 'normal') {
       // Increment slow query counter
       slowQueryCounter.add(1, {
-        'db.system': database,
-        'db.operation': operation,
+        'db.system.name': database,
+        'db.operation.name': operation,
         'severity': severity,
       });
 
@@ -2347,25 +2347,25 @@ const poolWaitingGauge = meter.createObservableGauge('db.pool.waiting', {
 function registerPoolMetrics(pool, database) {
   poolSizeGauge.addCallback((observableResult) => {
     observableResult.observe(pool.totalCount || 0, {
-      'db.system': database,
+      'db.system.name': database,
     });
   });
 
   poolActiveGauge.addCallback((observableResult) => {
     observableResult.observe(pool.activeCount || 0, {
-      'db.system': database,
+      'db.system.name': database,
     });
   });
 
   poolIdleGauge.addCallback((observableResult) => {
     observableResult.observe(pool.idleCount || 0, {
-      'db.system': database,
+      'db.system.name': database,
     });
   });
 
   poolWaitingGauge.addCallback((observableResult) => {
     observableResult.observe(pool.waitingCount || 0, {
-      'db.system': database,
+      'db.system.name': database,
     });
   });
 }
@@ -2381,14 +2381,14 @@ Use consistent semantic conventions for span attributes to enable powerful filte
 
 const DB_ATTRIBUTES = {
   // Required attributes
-  SYSTEM: 'db.system',           // postgresql, mysql, mongodb
-  NAME: 'db.name',               // Database name
-  OPERATION: 'db.operation',     // SELECT, INSERT, UPDATE, DELETE
-  STATEMENT: 'db.statement',     // Sanitized query
+  SYSTEM: 'db.system.name',       // postgresql, mysql, mongodb
+  NAMESPACE: 'db.namespace',      // Database name or namespace
+  OPERATION: 'db.operation.name', // SELECT, INSERT, UPDATE, DELETE
+  QUERY_TEXT: 'db.query.text',    // Sanitized query
 
   // Recommended attributes
-  USER: 'db.user',               // Database user
-  CONNECTION_STRING: 'db.connection_string', // Sanitized connection string
+  SERVER_ADDRESS: 'server.address',
+  SERVER_PORT: 'server.port',
 
   // Custom attributes for enhanced analysis
   DURATION_MS: 'db.query_duration_ms',
@@ -2405,12 +2405,16 @@ const DB_ATTRIBUTES = {
 // Helper function to set standard attributes
 function setDatabaseAttributes(span, config) {
   span.setAttribute(DB_ATTRIBUTES.SYSTEM, config.system);
-  span.setAttribute(DB_ATTRIBUTES.NAME, config.database);
+  span.setAttribute(DB_ATTRIBUTES.NAMESPACE, config.database);
   span.setAttribute(DB_ATTRIBUTES.OPERATION, config.operation);
-  span.setAttribute(DB_ATTRIBUTES.STATEMENT, config.statement);
+  span.setAttribute(DB_ATTRIBUTES.QUERY_TEXT, config.statement);
 
-  if (config.user) {
-    span.setAttribute(DB_ATTRIBUTES.USER, config.user);
+  if (config.serverAddress) {
+    span.setAttribute(DB_ATTRIBUTES.SERVER_ADDRESS, config.serverAddress);
+  }
+
+  if (config.serverPort) {
+    span.setAttribute(DB_ATTRIBUTES.SERVER_PORT, config.serverPort);
   }
 
   if (config.duration) {
