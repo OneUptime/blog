@@ -37,16 +37,14 @@ GET /products/_search
 }
 ```
 
-This explicitly returns everything. Also watch for empty query objects:
+This explicitly returns everything. Also watch for search requests where your application accidentally omits the query:
 
 ```json
 GET /products/_search
-{
-  "query": {}
-}
+{}
 ```
 
-An empty query defaults to match_all.
+With no query in the request body, Elasticsearch returns all documents.
 
 ### Fix
 
@@ -65,7 +63,7 @@ GET /products/_search
 
 ## Cause 2: Analyzer Mismatch
 
-This is the most common cause. Your index analyzer and search analyzer produce different tokens.
+This is a common cause of surprising search behavior. Your index analyzer and search analyzer may produce different tokens.
 
 ### Diagnosing the Problem
 
@@ -196,7 +194,7 @@ Response:
 }
 ```
 
-Match analyzes the query, splitting "Electronics & Computers" into tokens. But category is a keyword field that expects exact match.
+The `match` query analyzes the input using the field's search analyzer. For a `keyword` field, that usually means the whole value is treated as one term, so it behaves like exact matching rather than full-text search.
 
 **Using term on text field:**
 
@@ -300,7 +298,7 @@ GET /products/_search
 
 ## Cause 5: Empty or Whitespace Query String
 
-Empty strings can match everything:
+Empty strings usually match nothing with the default `match` query behavior, but they often lead application code to omit the query or switch to a broad fallback:
 
 ```json
 GET /products/_search
@@ -313,7 +311,7 @@ GET /products/_search
 }
 ```
 
-Or whitespace-only:
+Whitespace-only input has the same problem:
 
 ```json
 GET /products/_search
@@ -349,7 +347,7 @@ def search_products(query_string):
 
 ## Cause 6: Field Name Typos or Non-Existent Fields
 
-Querying a field that does not exist returns all documents:
+Querying a field that does not exist returns no matches:
 
 ```json
 GET /products/_search
@@ -362,20 +360,11 @@ GET /products/_search
 }
 ```
 
-Elasticsearch does not error - it just finds no matches in "titl" field.
+Elasticsearch does not error - it just finds no matches in the "titl" field. This can look like an "all documents" problem if your application retries without the bad filter or falls back to an unfiltered search.
 
 ### Fix
 
-Enable strict mapping:
-
-```json
-PUT /products/_settings
-{
-  "index.query.default_field": "title"
-}
-```
-
-Or use index mapping to validate fields exist:
+Use index mapping to validate fields exist:
 
 ```python
 def search_with_validation(index, field, query):
@@ -406,6 +395,8 @@ GET /products/_search
   }
 }
 ```
+
+This can match every document that has at least one indexed term in `title`, and wildcard queries can be expensive.
 
 ### Fix
 
@@ -499,9 +490,9 @@ POST /products/_analyze
 2. **Validate input** - Check for empty/whitespace queries
 3. **Test with explain** - Verify query behavior during development
 4. **Log actual queries** - Capture what is sent to Elasticsearch
-5. **Set default_field** - Control which field is searched by default
+5. **Set default_field** - Control which fields are searched by default for queries that use it, such as `query_string` or `multi_match`
 6. **Use query validation** - Catch issues before production
 
 ## Conclusion
 
-When Elasticsearch returns every document, the cause is usually one of these issues: accidental match_all, analyzer mismatches, wrong field types, missing minimum_should_match, or non-existent fields. Use the debugging techniques - explain API, analyze API, and query validation - to diagnose the specific issue. Most problems stem from not understanding how analyzers process your data and queries differently.
+When Elasticsearch returns every document, the cause is usually one of these issues: accidental match_all, a missing query, broad wildcard patterns, or missing minimum_should_match. Analyzer mismatches, wrong field types, and non-existent fields more often produce no matches or surprising matches. Use the debugging techniques - explain API, analyze API, and query validation - to diagnose the specific issue. Most problems stem from not understanding how analyzers process your data and queries differently.
