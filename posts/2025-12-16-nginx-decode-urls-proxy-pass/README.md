@@ -15,19 +15,19 @@ URL encoding issues in Nginx proxy configurations can cause unexpected behavior 
 ```mermaid
 flowchart LR
     subgraph Client
-        URL1["Request: /api/search?q=hello%20world"]
+        URL1["Request: /api/search/hello%20world"]
     end
 
     subgraph Nginx
-        Decode[Nginx decodes<br/>to: hello world]
-        Encode[Re-encodes<br/>to: hello%20world]
+        Decode[Nginx normalizes URI<br/>to: /api/search/hello world"]
+        Proxy[Builds upstream URI<br/>from normalized path]
     end
 
     subgraph Backend
-        URL2["Receives: /api/search?q=hello%20world"]
+        URL2["Receives a valid upstream URI"]
     end
 
-    Client --> Decode --> Encode --> Backend
+    Client --> Decode --> Proxy --> Backend
 
     Note["This usually works correctly"]
     style Note fill:#2d5a2d,color:#fff
@@ -64,7 +64,7 @@ By default, Nginx normalizes URIs:
 1. Decodes percent-encoded characters
 2. Resolves relative paths (`.` and `..`)
 3. Merges consecutive slashes
-4. Re-encodes when proxying
+4. Uses the normalized URI when `proxy_pass` includes a URI
 
 ```nginx
 # This configuration normalizes URIs
@@ -73,6 +73,8 @@ location /api/ {
     proxy_pass http://backend/api/;
 }
 ```
+
+If `proxy_pass` is specified without a URI, Nginx passes the original request URI when the request has not been rewritten.
 
 ### The URI vs $uri Variable
 
@@ -131,15 +133,20 @@ flowchart LR
 When you need to strip or modify the path prefix:
 
 ```nginx
-# Problem: Stripping prefix causes re-encoding
+# Problem: Stripping prefix uses the normalized URI
 location /api/ {
-    proxy_pass http://backend/;  # URI gets re-encoded
+    proxy_pass http://backend/;  # URI is based on the normalized request URI
 }
+```
 
-# Solution: Use rewrite to preserve encoding
+```nginx
+# Solution: Build the upstream URI from the original request URI
 location /api/ {
-    rewrite ^/api/(.*)$ /$1 break;
-    proxy_pass http://backend;
+    set $backend_uri $request_uri;
+    if ($backend_uri ~ ^/api(/.*)$) {
+        set $backend_uri $1;
+    }
+    proxy_pass http://backend$backend_uri;
 }
 ```
 
@@ -161,13 +168,13 @@ location /api/ {
 
 ### Solution 4: Handle Double Encoding
 
-Sometimes URLs arrive already encoded, and Nginx encodes them again:
+Sometimes URLs arrive with encoded percent signs, and the backend expects one level less encoding:
 
 ```nginx
 # Client sends: /path/hello%2520world (already double-encoded)
 # Backend expects: /path/hello%20world
 
-# Using map to decode once
+# Using map to unescape one encoded percent sign
 map $request_uri $decoded_uri {
     default $request_uri;
     "~^(?<prefix>.*?)%25(?<suffix>.*)$" "${prefix}%${suffix}";
@@ -179,6 +186,8 @@ server {
     }
 }
 ```
+
+This map only changes the first `%25` sequence. For general URL decoding, use application logic or Lua.
 
 ### Solution 5: Lua-Based URL Handling
 
@@ -218,9 +227,12 @@ http {
 # Preserving: /public/files/my%20doc.pdf -> /files/my%20doc.pdf
 
 location /public/files/ {
-    # Using rewrite with break to preserve encoding
-    rewrite ^/public/files/(.*)$ /files/$1 break;
-    proxy_pass http://backend;
+    # Use the original request URI so encoded characters remain encoded
+    set $backend_uri $request_uri;
+    if ($backend_uri ~ ^/public/files(/.*)$) {
+        set $backend_uri /files$1;
+    }
+    proxy_pass http://backend$backend_uri;
 }
 ```
 
@@ -255,9 +267,9 @@ location /s3/ {
 location /api/ {
     # $is_args is "?" if query string exists, empty otherwise
     # $args is the query string
-    proxy_pass http://backend/v2/$is_args$args;
+    # If you only need the query string: proxy_pass http://backend/v2/$is_args$args;
 
-    # Or use request_uri to preserve everything
+    # Use request_uri to preserve everything while changing the path
     set $backend_path $request_uri;
     if ($backend_path ~ ^/api/(.*)$) {
         set $backend_path /v2/$1;
@@ -286,7 +298,7 @@ location /graphql {
 ```mermaid
 flowchart TB
     subgraph Rules["proxy_pass Behavior Rules"]
-        R1["proxy_pass http://backend;<br/>URI passed as-is (normalized)"]
+        R1["proxy_pass http://backend;<br/>Original URI passed unless rewritten"]
         R2["proxy_pass http://backend/;<br/>Location prefix replaced"]
         R3["proxy_pass http://backend/path;<br/>Location prefix replaced with /path"]
         R4["proxy_pass http://backend$uri;<br/>Explicit variable control"]
@@ -301,7 +313,7 @@ flowchart TB
 ### With and Without Trailing Slash
 
 ```nginx
-# No trailing slash on proxy_pass - URI appended as-is
+# No URI on proxy_pass - original request URI is passed
 location /api {
     proxy_pass http://backend;
     # /api/users -> http://backend/api/users
@@ -419,7 +431,7 @@ http {
 URL encoding in Nginx proxy configurations requires understanding how Nginx normalizes URIs:
 
 1. **Use `$request_uri`** when you need to preserve the exact original URL
-2. **Use `rewrite` with `break`** when you need to modify the path while preserving encoding
+2. **Build the upstream URI from `$request_uri`** when you need to modify the path while preserving encoding
 3. **Understand proxy_pass trailing slashes** - they affect how URIs are constructed
 4. **Test with encoded characters** to verify your configuration handles edge cases
 5. **Consider Lua module** for complex URL manipulation requirements
