@@ -60,10 +60,10 @@ async function sendWelcomeEmail(userId, email) {
     },
     {
       // Job options
-      attempts: 3,  // Retry up to 3 times on failure
+      attempts: 3,  // Try the job up to 3 total times
       backoff: {
         type: 'exponential',  // Wait longer between each retry
-        delay: 1000,          // Initial delay: 1s, 2s, 4s
+        delay: 1000,          // Retry delays: 1s, then 2s
       },
     }
   );
@@ -148,7 +148,7 @@ worker.on('progress', (job, progress) => {
 
 ## Delayed Jobs
 
-Schedule jobs to run in the future. Delayed jobs are stored in Redis and moved to the active queue when their delay expires. This is ideal for reminders, scheduled notifications, or retry delays.
+Schedule jobs to run in the future. Delayed jobs are stored in Redis and moved to the waiting queue when their delay expires, ready for workers to pick them up. This is ideal for reminders, scheduled notifications, or retry delays.
 
 ```javascript
 // Schedule job for 7 days from now
@@ -161,7 +161,7 @@ await emailQueue.add(
 );
 
 // Schedule at a specific date/time
-const targetDate = new Date('2024-12-25T09:00:00Z');
+const targetDate = new Date('2026-12-25T09:00:00Z');
 await emailQueue.add(
   'holiday-greeting',
   { campaign: 'christmas' },
@@ -191,7 +191,7 @@ await notificationQueue.add(
   'weekly-digest',
   { userId },
   {
-    priority: 10,  // Default priority level
+    priority: 10,  // Normal priority within your application's priority scheme
   }
 );
 
@@ -216,7 +216,7 @@ await queue.add('job', data, {
   attempts: 5,
   backoff: {
     type: 'exponential',
-    delay: 1000, // Delays: 1s, 2s, 4s, 8s, 16s
+    delay: 1000, // Retry delays: 1s, 2s, 4s, 8s
   },
 });
 
@@ -270,7 +270,7 @@ const worker = new Worker('email', async (job) => {
 // Listen for failed jobs to implement DLQ logic
 worker.on('failed', async (job, err) => {
   // Check if all retry attempts have been exhausted
-  if (job.attemptsMade >= job.opts.attempts) {
+  if (job.attemptsMade >= (job.opts.attempts || 1)) {
     // Move failed job to DLQ with full context for debugging
     await deadLetterQueue.add('failed-email', {
       originalJob: {
@@ -356,7 +356,7 @@ const flow = await flowProducer.add({
         {
           name: 'process-order',     // This runs FIRST
           queueName: 'orders',
-          data: { orderId: '123', items: [...] },
+          data: { orderId: '123', items: orderItems },
         },
       ],
     },
@@ -369,51 +369,51 @@ const flow = await flowProducer.add({
 
 ## Repeatable Jobs (Cron)
 
-Schedule recurring jobs using cron expressions or fixed intervals. Repeatable jobs are persisted in Redis and automatically reschedule after each execution.
+Schedule recurring jobs using cron expressions or fixed intervals. In BullMQ 5.16.0 and newer, Job Schedulers are the current API for recurring jobs. They are persisted in Redis and produce jobs according to the configured schedule.
 
 ```javascript
 // Every hour using cron expression
 // Format: minute hour day-of-month month day-of-week
-await reportQueue.add(
-  'hourly-stats',
-  {},
+await reportQueue.upsertJobScheduler(
+  'hourly-stats-scheduler',
   {
-    repeat: {
-      pattern: '0 * * * *', // Run at minute 0 of every hour
-    },
+    pattern: '0 * * * *', // Run at minute 0 of every hour
+  },
+  {
+    name: 'hourly-stats',
+    data: {},
   }
 );
 
 // Every 5 minutes using interval
 // Useful for health checks and monitoring tasks
-await healthCheckQueue.add(
-  'check-services',
-  { services: ['api', 'db', 'cache'] },
+await healthCheckQueue.upsertJobScheduler(
+  'check-services-scheduler',
   {
-    repeat: {
-      every: 5 * 60 * 1000, // 5 minutes in milliseconds
-    },
+    every: 5 * 60 * 1000, // 5 minutes in milliseconds
+  },
+  {
+    name: 'check-services',
+    data: { services: ['api', 'db', 'cache'] },
   }
 );
 
 // Daily at 9 AM in a specific timezone
 // Important: always specify timezone to avoid DST issues
-await digestQueue.add(
-  'daily-digest',
-  {},
+await digestQueue.upsertJobScheduler(
+  'daily-digest-scheduler',
   {
-    repeat: {
-      pattern: '0 9 * * *',      // 9:00 AM daily
-      tz: 'America/New_York',    // Timezone-aware scheduling
-    },
+    pattern: '0 9 * * *',      // 9:00 AM daily
+    tz: 'America/New_York',    // Timezone-aware scheduling
+  },
+  {
+    name: 'daily-digest',
+    data: {},
   }
 );
 
-// Remove a repeatable job by its key
-// Key format: name:::pattern (or name:::every for interval-based)
-await reportQueue.removeRepeatableByKey(
-  'hourly-stats:::0 * * * *'
-);
+// Remove a recurring schedule by its scheduler ID
+await reportQueue.removeJobScheduler('hourly-stats-scheduler');
 ```
 
 ## Queue Events and Monitoring
@@ -423,7 +423,7 @@ Subscribe to queue events for logging, metrics, and alerting. QueueEvents provid
 ```javascript
 const { QueueEvents } = require('bullmq');
 
-// QueueEvents subscribes to Redis pub/sub for real-time updates
+// QueueEvents uses Redis Streams for real-time updates
 const queueEvents = new QueueEvents('email', { connection });
 
 // Job added to queue, waiting for a worker
@@ -486,7 +486,7 @@ const connection = new IORedis({
 
 // Default job options applied to all jobs in the queue
 const defaultJobOptions = {
-  attempts: 3,                 // Retry failed jobs up to 3 times
+  attempts: 3,                 // Try failed jobs up to 3 total times
   backoff: {
     type: 'exponential',
     delay: 1000,               // Start with 1 second delay
@@ -535,6 +535,10 @@ module.exports = { createQueue, createWorker, connection };
 
 Bull Board provides a web-based UI for monitoring and managing your queues. It shows job status, allows retrying failed jobs, and displays real-time queue statistics.
 
+```bash
+npm install @bull-board/api @bull-board/express
+```
+
 ```javascript
 const { createBullBoard } = require('@bull-board/api');
 const { BullMQAdapter } = require('@bull-board/api/bullMQAdapter');
@@ -562,6 +566,10 @@ app.use('/admin/queues', serverAdapter.getRouter());
 ## Prometheus Metrics
 
 Export queue metrics to Prometheus for alerting and dashboards. Track job throughput, processing time, and queue depth to detect issues early.
+
+```bash
+npm install prom-client
+```
 
 ```javascript
 const prometheus = require('prom-client');
@@ -595,7 +603,9 @@ worker.on('completed', (job) => {
   jobsProcessed.inc({ queue: 'email', status: 'completed' });
 
   // Record job duration for latency analysis
-  const duration = (Date.now() - job.timestamp) / 1000;
+  const startedAt = job.processedOn || job.timestamp;
+  const finishedAt = job.finishedOn || Date.now();
+  const duration = (finishedAt - startedAt) / 1000;
   jobDuration.observe({ queue: 'email', job: job.name }, duration);
 });
 
