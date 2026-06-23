@@ -20,7 +20,7 @@ In Layer 2 mode, one node "owns" each service IP and responds to ARP requests. W
 
 ### BGP Mode
 
-In BGP mode, all nodes advertise the service IP to BGP peers. Traffic is distributed across multiple nodes based on ECMP (Equal-Cost Multi-Path) routing.
+In BGP mode, all eligible nodes advertise the service IP to BGP peers. Traffic is distributed across multiple nodes based on ECMP (Equal-Cost Multi-Path) routing.
 
 The following diagram illustrates how MetalLB handles traffic in both modes:
 
@@ -68,10 +68,16 @@ Verify IP address pool status:
 kubectl get ipaddresspools -n metallb-system
 ```
 
-Check which node currently owns each LoadBalancer service IP (Layer 2 mode):
+Check assigned LoadBalancer service IPs:
 
 ```bash
 kubectl get svc -A -o wide | grep LoadBalancer
+```
+
+Check which node currently receives traffic for each LoadBalancer service IP (Layer 2 mode):
+
+```bash
+kubectl get servicel2statuses -A
 ```
 
 Identify the speaker pod logs to see current IP assignments:
@@ -86,23 +92,23 @@ kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=50
 
 In Layer 2 mode, MetalLB uses leader election to determine which node responds to ARP/NDP requests for each service IP. Only one node at a time "owns" each IP address.
 
-Check current leader for each service:
+Check current Layer 2 status for each service:
 
 ```bash
-kubectl describe configmap -n metallb-system metallb-state
+kubectl get servicel2statuses -A
 ```
 
-Or parse speaker logs for ownership information:
+Or inspect the status objects for the selected node and interfaces:
 
 ```bash
-kubectl logs -n metallb-system -l component=speaker | grep "assuming leadership"
+kubectl describe servicel2statuses -A
 ```
 
 ### Graceful Node Drain for Layer 2
 
-When draining a node that owns service IPs, MetalLB automatically fails over to another node. However, the failover causes a brief disruption (typically 1-3 seconds).
+When the speaker on a node that owns service IPs becomes unavailable, MetalLB automatically fails over to another eligible node. However, `kubectl drain --ignore-daemonsets` does not evict the MetalLB speaker DaemonSet pod, so failover normally happens when the speaker is stopped, the node is powered down, or the node is removed from the eligible announcer set. The failover usually completes within a few seconds for clients that process gratuitous ARP or unsolicited NDP correctly.
 
-The following diagram shows the Layer 2 failover process during node drain:
+The following diagram shows the Layer 2 failover process during maintenance:
 
 ```mermaid
 sequenceDiagram
@@ -114,9 +120,9 @@ sequenceDiagram
     Note over Node1: Owns 192.168.1.100
     Client->>Node1: Traffic to 192.168.1.100
 
-    K8s->>Node1: kubectl drain
-    Node1->>Node1: Pod eviction begins
-    Node1-->>Node2: Leadership transfer
+    K8s->>Node1: maintenance stops speaker or node
+    Node1->>Node1: Speaker becomes unavailable
+    Node1-->>Node2: New leader selected
 
     Note over Node2: Sends Gratuitous ARP
     Node2->>Client: GARP: 192.168.1.100 at Node2
@@ -134,9 +140,9 @@ kubectl drain <node-name> \
   --grace-period=60
 ```
 
-### Forcing IP Migration Before Drain
+### Triggering IP Migration Before Drain
 
-To minimize disruption, you can force IP migration before draining by cordoning the node and waiting for MetalLB to reassign IPs.
+To minimize disruption, move traffic away before taking the node offline. Deleting the speaker pod can trigger a temporary failover while the pod is unavailable, but a DaemonSet can recreate the speaker on the same cordoned node. For persistent planned migration, remove the node from the eligible announcer set with your `L2Advertisement` `nodeSelectors`, or drain promptly after verifying that traffic has moved.
 
 Step 1: Cordon the node to prevent new pods from being scheduled:
 
@@ -144,27 +150,23 @@ Step 1: Cordon the node to prevent new pods from being scheduled:
 kubectl cordon <node-name>
 ```
 
-Step 2: Delete the MetalLB speaker pod on the target node to trigger immediate failover:
+Step 2: Delete the MetalLB speaker pod on the target node to trigger failover while the pod is unavailable:
 
 ```bash
 kubectl delete pod -n metallb-system -l component=speaker \
   --field-selector spec.nodeName=<node-name>
 ```
 
-Step 3: Wait for the speaker pod to be recreated and IPs to fail over:
+Step 3: Wait for MetalLB to report the new Layer 2 announcer:
 
 ```bash
-kubectl wait --for=condition=ready pod \
-  -n metallb-system \
-  -l component=speaker \
-  --field-selector spec.nodeName=<node-name> \
-  --timeout=60s
+kubectl get servicel2statuses -A -w
 ```
 
-Step 4: Verify IPs have moved by checking speaker logs:
+Step 4: Verify IPs have moved by checking status:
 
 ```bash
-kubectl logs -n metallb-system -l component=speaker --tail=20 | grep -E "(leader|announcing)"
+kubectl get servicel2statuses -A
 ```
 
 Step 5: Now proceed with the drain:
@@ -190,15 +192,15 @@ Verify the speaker pod is running:
 kubectl get pods -n metallb-system -o wide | grep <node-name>
 ```
 
-The node will participate in leader election again but won't immediately take over IPs. IPs only migrate when the current leader fails or is drained.
+The node will participate in leader election again. Because Layer 2 election is stateless, adding the node back usually does not move an IP, but it can move one if the node becomes the first eligible announcer for that service IP.
 
 ## BGP Mode Maintenance
 
-BGP mode provides more graceful traffic handling during maintenance because multiple nodes advertise each IP.
+BGP mode provides more graceful traffic handling during maintenance because multiple eligible nodes advertise each IP.
 
 ### Understanding BGP Route Withdrawal
 
-When a node is drained, MetalLB withdraws its BGP routes, and upstream routers remove the node from ECMP paths. This process is typically faster and more graceful than Layer 2 failover.
+When the speaker or BGP backend on a node stops advertising a service IP, MetalLB withdraws its BGP routes, and upstream routers remove the node from ECMP paths. A normal `kubectl drain --ignore-daemonsets` does not evict the speaker DaemonSet pod, so route withdrawal normally happens when the speaker or FRR/FRR-K8s pod is stopped, the node is powered down, or the node is removed from the eligible advertiser set.
 
 The following diagram illustrates the BGP route withdrawal process:
 
@@ -214,24 +216,22 @@ sequenceDiagram
     Router->>Node2: 33% traffic
     Router->>Node3: 33% traffic
 
-    Note over Node1: kubectl drain begins
+    Note over Node1: Speaker or BGP backend stops
     Node1->>Router: BGP WITHDRAW 192.168.1.100
 
     Note over Router: Updates routing table
     Router->>Node2: 50% traffic
     Router->>Node3: 50% traffic
 
-    Note over Node1: Safe to continue drain
+    Note over Node1: Safe to continue maintenance
 ```
 
 ### Graceful BGP Drain Procedure
 
-Step 1: Check current BGP session status:
+Step 1: Check current BGP advertisement status:
 
 ```bash
-kubectl exec -n metallb-system -it \
-  $(kubectl get pods -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}') \
-  -- birdcl show protocols
+kubectl get servicebgpstatuses -A
 ```
 
 Step 2: Cordon the node:
@@ -240,17 +240,18 @@ Step 2: Cordon the node:
 kubectl cordon <node-name>
 ```
 
-Step 3: Delete speaker pod to withdraw BGP routes immediately:
+Step 3: Delete the speaker pod to withdraw BGP routes while the pod is unavailable:
 
 ```bash
 kubectl delete pod -n metallb-system -l component=speaker \
   --field-selector spec.nodeName=<node-name>
 ```
 
-Step 4: Wait for BGP convergence (typically 5-30 seconds depending on router configuration):
+Step 4: Wait for BGP convergence and verify the node has been removed from the advertised service status:
 
 ```bash
 sleep 30
+kubectl get servicebgpstatuses -A
 ```
 
 Step 5: Proceed with drain:
@@ -344,10 +345,8 @@ echo "Starting pre-drain procedure for node: ${NODE_NAME}"
 echo "Step 1: Cordoning node..."
 kubectl cordon "${NODE_NAME}"
 
-echo "Step 2: Getting current service IPs owned by this node..."
-OWNED_IPS=$(kubectl logs -n "${METALLB_NAMESPACE}" -l component=speaker \
-  --field-selector spec.nodeName="${NODE_NAME}" \
-  | grep "announcing" | tail -10)
+echo "Step 2: Getting current Layer 2 service status..."
+OWNED_IPS=$(kubectl get servicel2statuses -A 2>/dev/null || true)
 echo "${OWNED_IPS}"
 
 echo "Step 3: Deleting speaker pod to trigger failover..."
@@ -355,21 +354,15 @@ kubectl delete pod -n "${METALLB_NAMESPACE}" -l component=speaker \
   --field-selector spec.nodeName="${NODE_NAME}" \
   --wait=true
 
-echo "Step 4: Waiting for new speaker pod..."
+echo "Step 4: Waiting briefly for traffic to move..."
 sleep 10
-kubectl wait --for=condition=ready pod \
-  -n "${METALLB_NAMESPACE}" \
-  -l component=speaker \
-  --field-selector spec.nodeName="${NODE_NAME}" \
-  --timeout=120s
 
 echo "Step 5: Verifying IP failover..."
 sleep 5
-NEW_OWNERS=$(kubectl logs -n "${METALLB_NAMESPACE}" -l component=speaker \
-  | grep "announcing" | tail -20)
+NEW_OWNERS=$(kubectl get servicel2statuses -A 2>/dev/null || true)
 echo "${NEW_OWNERS}"
 
-echo "Pre-drain complete. Node ${NODE_NAME} is ready for drain."
+echo "Pre-drain check complete. If the node still appears in ServiceL2Status, remove it from L2Advertisement nodeSelectors or drain promptly before maintenance."
 echo "Run: kubectl drain ${NODE_NAME} --ignore-daemonsets --delete-emptydir-data"
 ```
 
@@ -429,15 +422,11 @@ main() {
       --field-selector spec.nodeName="${NODE_NAME}" -o name 2>/dev/null || echo "")
 
     if [ -n "${speaker_pod}" ]; then
-        log "Deleting speaker pod to trigger IP migration..."
+        log "Deleting speaker pod to trigger temporary IP migration..."
         kubectl delete "${speaker_pod}" -n "${METALLB_NAMESPACE}" --wait=true
 
-        log "Waiting for speaker pod recreation..."
+        log "Waiting briefly for traffic convergence..."
         sleep 10
-        kubectl wait --for=condition=ready pod \
-          -n "${METALLB_NAMESPACE}" \
-          -l component=speaker \
-          --timeout=120s || true
 
         wait_for_ip_migration "${mode}"
     else
@@ -490,7 +479,7 @@ main() {
     log "Recent speaker events:"
     kubectl get events -n "${METALLB_NAMESPACE}" \
       --sort-by='.lastTimestamp' \
-      --field-selector reason!=Normal \
+      --field-selector type!=Normal \
       | tail -20
 
     log "Checking for pending LoadBalancer services..."
@@ -510,9 +499,9 @@ main
 
 ## Pod Disruption Budgets for MetalLB
 
-Create PDBs to ensure MetalLB components remain available during maintenance.
+Create PDBs to ensure evictable MetalLB components remain available during maintenance. Note that `kubectl drain --ignore-daemonsets` does not evict DaemonSet-managed speaker pods, so a speaker PDB does not control normal node drain behavior.
 
-PDB for the speaker DaemonSet (ensure at least one speaker per zone for HA):
+Optional PDB for voluntary speaker evictions outside normal drain workflows:
 
 ```yaml
 apiVersion: policy/v1
@@ -546,7 +535,7 @@ spec:
 
 ## Handling IP Address Pool Exhaustion
 
-During maintenance, temporary IP address conflicts can occur. Configure adequate address pools.
+During maintenance, service assignments can fail if your pools are exhausted. Configure adequate address pools.
 
 Create a larger IP pool with proper sizing:
 
@@ -599,7 +588,7 @@ spec:
 
     - alert: MetalLBIPNotAdvertised
       expr: |
-        metallb_bgp_announced_prefixes_total == 0
+        frrk8s_bgp_announced_prefixes_total == 0
       for: 2m
       labels:
         severity: warning
@@ -609,7 +598,7 @@ spec:
 
     - alert: MetalLBBGPSessionDown
       expr: |
-        metallb_bgp_session_up == 0
+        frrk8s_bgp_session_up == 0
       for: 1m
       labels:
         severity: critical
@@ -635,13 +624,13 @@ count by (node) (
 BGP session status:
 
 ```promql
-metallb_bgp_session_up
+frrk8s_bgp_session_up
 ```
 
 Announced prefixes per node:
 
 ```promql
-sum by (node) (metallb_bgp_announced_prefixes_total)
+sum by (node) (frrk8s_bgp_announced_prefixes_total)
 ```
 
 ## Rolling Maintenance Strategy
@@ -769,7 +758,7 @@ For emergency maintenance where graceful draining is not possible, use these pro
 
 ### Force Failover for Layer 2
 
-When you need immediate IP migration:
+When you need to stop a speaker immediately:
 
 ```bash
 kubectl delete pod -n metallb-system -l component=speaker \
@@ -779,7 +768,7 @@ kubectl delete pod -n metallb-system -l component=speaker \
 
 ### Force BGP Route Withdrawal
 
-Force immediate route withdrawal:
+Force route withdrawal while the speaker pod is unavailable:
 
 ```bash
 kubectl delete pod -n metallb-system -l component=speaker \
@@ -823,7 +812,7 @@ kubectl drain <failing-node> \
 
 ### Configuration Recommendations
 
-For Layer 2 mode, spread services across multiple pools to minimize impact:
+For Layer 2 mode, restrict advertisements to the nodes that should be eligible to receive traffic:
 
 ```yaml
 apiVersion: metallb.io/v1beta1
