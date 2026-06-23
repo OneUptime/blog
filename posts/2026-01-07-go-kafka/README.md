@@ -58,7 +58,7 @@ volumes:
   kafka_data:
 ```
 
-Start the environment with `docker-compose up -d`.
+Start the environment with `docker compose up -d`.
 
 ## Basic Producer Implementation
 
@@ -122,6 +122,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
 
@@ -151,8 +152,7 @@ func createOptimizedWriter() *kafka.Writer {
         // Compression reduces network bandwidth and storage.
         Compression: kafka.Snappy,
 
-        // Enable idempotent writes to prevent duplicates on retries.
-        // This is essential for exactly-once semantics.
+        // Create the topic automatically if it does not already exist.
         AllowAutoTopicCreation: true,
     }
 }
@@ -220,7 +220,7 @@ func (b *CustomBalancer) Balance(msg kafka.Message, partitions ...int) int {
     // Use FNV hash for consistent distribution.
     hasher := fnv.New32a()
     hasher.Write([]byte(tenantID))
-    return int(hasher.Sum32()) % len(partitions)
+    return partitions[int(hasher.Sum32())%len(partitions)]
 }
 
 func main() {
@@ -292,7 +292,8 @@ func main() {
     defer reader.Close()
 
     // Set the offset to the beginning for this example.
-    // In production, you'd typically continue from the last committed offset.
+    // In production, either store offsets externally for a partition reader
+    // or use a consumer group for committed offsets.
     reader.SetOffset(kafka.FirstOffset)
 
     ctx := context.Background()
@@ -345,7 +346,7 @@ func main() {
     reader := kafka.NewReader(kafka.ReaderConfig{
         Brokers:        []string{"localhost:9092"},
         Topic:          "orders",
-        Partition:      0,
+        GroupID:        "order-processor",
         MinBytes:       1,    // Read even single messages
         MaxBytes:       10e6,
         CommitInterval: 0,    // Disable auto-commit for manual control
@@ -430,7 +431,7 @@ func createConsumerGroup(groupID, topic string, handler EventHandler) {
         MinBytes:       10e3,             // 10KB
         MaxBytes:       10e6,             // 10MB
         MaxWait:        3 * time.Second,  // Poll timeout
-        CommitInterval: time.Second,      // Auto-commit interval
+        CommitInterval: 0,                // Commit synchronously when CommitMessages is called
         StartOffset:    kafka.LastOffset, // Start from latest for new groups
 
         // Session and heartbeat timeouts for group coordination.
@@ -491,8 +492,8 @@ func createConsumerGroup(groupID, topic string, handler EventHandler) {
         // Process the event.
         if err := handler(ctx, event); err != nil {
             log.Printf("handler error for event %s: %v", event.Type, err)
-            // Depending on requirements, you might not commit here
-            // to enable retry logic.
+            // Don't commit, so the message can be retried.
+            continue
         }
 
         // Commit after processing.
@@ -542,13 +543,17 @@ import (
 type PartitionProcessor struct {
     partition int
     messages  chan kafka.Message
+    reader    *kafka.Reader
+    ctx       context.Context
     wg        *sync.WaitGroup
 }
 
-func newPartitionProcessor(partition int, wg *sync.WaitGroup) *PartitionProcessor {
+func newPartitionProcessor(ctx context.Context, partition int, reader *kafka.Reader, wg *sync.WaitGroup) *PartitionProcessor {
     pp := &PartitionProcessor{
         partition: partition,
         messages:  make(chan kafka.Message, 100),
+        reader:    reader,
+        ctx:       ctx,
         wg:        wg,
     }
     go pp.run()
@@ -562,6 +567,10 @@ func (pp *PartitionProcessor) run() {
         // Process message - maintain order within this partition.
         log.Printf("Partition %d: processing offset %d", pp.partition, msg.Offset)
         time.Sleep(10 * time.Millisecond) // Simulate work
+
+        if err := pp.reader.CommitMessages(pp.ctx, msg); err != nil {
+            log.Printf("Partition %d: commit error for offset %d: %v", pp.partition, msg.Offset, err)
+        }
     }
 }
 
@@ -598,7 +607,7 @@ func main() {
         }
 
         wg.Add(1)
-        pp := newPartitionProcessor(partition, &wg)
+        pp := newPartitionProcessor(ctx, partition, reader, &wg)
         processors[partition] = pp
         return pp
     }
@@ -614,9 +623,6 @@ func main() {
         // Route to the appropriate partition processor.
         processor := getProcessor(msg.Partition)
         processor.submit(msg)
-
-        // Commit the message.
-        reader.CommitMessages(ctx, msg)
     }
 
     // Cleanup: close all processors and wait.
@@ -803,6 +809,7 @@ import (
     "encoding/binary"
     "fmt"
     "log"
+    "time"
 
     "github.com/linkedin/goavro/v2"
     "github.com/segmentio/kafka-go"
@@ -836,16 +843,16 @@ func (sr *SchemaRegistry) Encode(schemaID int, data map[string]interface{}) ([]b
     }
 
     // Encode to Avro binary.
-    binary, err := codec.BinaryFromNative(nil, data)
+    avroBytes, err := codec.BinaryFromNative(nil, data)
     if err != nil {
         return nil, err
     }
 
     // Prepend magic byte and schema ID (Confluent wire format).
-    result := make([]byte, 5+len(binary))
+    result := make([]byte, 5+len(avroBytes))
     result[0] = 0 // Magic byte
     binary.BigEndian.PutUint32(result[1:5], uint32(schemaID))
-    copy(result[5:], binary)
+    copy(result[5:], avroBytes)
 
     return result, nil
 }
@@ -887,7 +894,7 @@ func main() {
             {"name": "id", "type": "string"},
             {"name": "name", "type": "string"},
             {"name": "email", "type": "string"},
-            {"name": "created_at", "type": "long", "logicalType": "timestamp-millis"}
+            {"name": "created_at", "type": {"type": "long", "logicalType": "timestamp-millis"}}
         ]
     }`
 
@@ -1107,13 +1114,13 @@ func main() {
 }
 ```
 
-## Exactly-Once Semantics Patterns
+## Idempotent Processing Patterns
 
-Achieving exactly-once semantics requires careful coordination between Kafka and your application.
+Achieving exactly-once effects requires careful coordination between Kafka and your application.
 
-### Transactional Producer Pattern
+### Atomic Batch Producer Pattern
 
-Use transactions for atomic writes across multiple topics:
+Use a synchronous writer and a single `WriteMessages` call for an atomic batch write to one topic:
 
 ```go
 package main
@@ -1126,72 +1133,63 @@ import (
     "github.com/segmentio/kafka-go"
 )
 
-// TransactionalProducer wraps kafka.Writer with transaction support.
-// Note: kafka-go has limited transaction support compared to the Java client.
-// This pattern shows how to achieve transactional-like behavior.
-type TransactionalProducer struct {
+// BatchProducer wraps kafka.Writer for reliable batch writes.
+// kafka-go's high-level Writer does not expose the full Kafka transaction API
+// needed for atomic multi-topic writes or atomic offset commits with outputs.
+type BatchProducer struct {
     writer *kafka.Writer
-    txnID  string
 }
 
-func NewTransactionalProducer(brokers []string, txnID string) *TransactionalProducer {
-    return &TransactionalProducer{
-        txnID: txnID,
+func NewBatchProducer(brokers []string, topic string) *BatchProducer {
+    return &BatchProducer{
         writer: &kafka.Writer{
             Addr:         kafka.TCP(brokers...),
+            Topic:        topic,
             RequiredAcks: kafka.RequireAll,
-            // Enable idempotent producer - essential for exactly-once.
-            // This ensures that retries don't produce duplicates.
-            Async: false,
+            Async:        false,
         },
     }
 }
 
-// WriteTransactionally writes messages to multiple topics atomically.
-func (tp *TransactionalProducer) WriteTransactionally(ctx context.Context, messages []kafka.Message) error {
-    // In a real transaction, you'd use Kafka's transaction API.
-    // This simplified version ensures all-or-nothing semantics
-    // by batching all messages in a single write call.
-    return tp.writer.WriteMessages(ctx, messages...)
+// WriteBatch writes messages to the writer's topic in a single batch.
+func (bp *BatchProducer) WriteBatch(ctx context.Context, messages []kafka.Message) error {
+    return bp.writer.WriteMessages(ctx, messages...)
 }
 
-func (tp *TransactionalProducer) Close() error {
-    return tp.writer.Close()
+func (bp *BatchProducer) Close() error {
+    return bp.writer.Close()
 }
 
 func main() {
-    producer := NewTransactionalProducer(
+    producer := NewBatchProducer(
         []string{"localhost:9092"},
-        "order-processor-1",
+        "orders",
     )
     defer producer.Close()
 
     ctx := context.Background()
 
-    // Write to multiple topics atomically.
+    // Write multiple records to one topic in one synchronous batch.
     messages := []kafka.Message{
         {
-            Topic: "orders",
             Key:   []byte("order-123"),
-            Value: []byte(`{"status": "completed"}`),
+            Value: []byte(`{"event": "order.completed"}`),
         },
         {
-            Topic: "inventory",
-            Key:   []byte("product-456"),
-            Value: []byte(`{"reserved": -1}`),
+            Key:   []byte("order-124"),
+            Value: []byte(`{"event": "order.completed"}`),
         },
         {
-            Topic: "notifications",
-            Key:   []byte("user-789"),
-            Value: []byte(`{"type": "order_complete"}`),
+            Key:   []byte("order-125"),
+            Value: []byte(`{"event": "order.completed"}`),
         },
     }
 
-    if err := producer.WriteTransactionally(ctx, messages); err != nil {
-        log.Fatalf("transaction failed: %v", err)
+    if err := producer.WriteBatch(ctx, messages); err != nil {
+        log.Fatalf("batch write failed: %v", err)
     }
 
-    fmt.Println("Transaction completed successfully")
+    fmt.Println("Batch write completed successfully")
 }
 ```
 
@@ -1245,18 +1243,21 @@ func (ds *DeduplicationStore) cleanup() {
     }
 }
 
-// MarkProcessed records that a message was processed.
-// Returns false if already processed (duplicate).
-func (ds *DeduplicationStore) MarkProcessed(messageID string) bool {
+// IsProcessed checks whether a message ID has already been processed.
+func (ds *DeduplicationStore) IsProcessed(messageID string) bool {
+    ds.mu.RLock()
+    defer ds.mu.RUnlock()
+
+    _, exists := ds.processed[messageID]
+    return exists
+}
+
+// MarkProcessed records that a message was processed successfully.
+func (ds *DeduplicationStore) MarkProcessed(messageID string) {
     ds.mu.Lock()
     defer ds.mu.Unlock()
 
-    if _, exists := ds.processed[messageID]; exists {
-        return false // Duplicate
-    }
-
     ds.processed[messageID] = time.Now()
-    return true
 }
 
 // GenerateMessageID creates a unique ID for deduplication.
@@ -1267,7 +1268,7 @@ func GenerateMessageID(msg kafka.Message) string {
     return hex.EncodeToString(hash[:16])
 }
 
-// IdempotentConsumer ensures exactly-once processing semantics.
+// IdempotentConsumer avoids reprocessing messages that were already handled.
 type IdempotentConsumer struct {
     reader *kafka.Reader
     store  *DeduplicationStore
@@ -1298,7 +1299,7 @@ func (ic *IdempotentConsumer) Process(ctx context.Context, handler func(kafka.Me
         messageID := GenerateMessageID(msg)
 
         // Check for duplicate.
-        if !ic.store.MarkProcessed(messageID) {
+        if ic.store.IsProcessed(messageID) {
             log.Printf("Skipping duplicate message: %s", messageID)
             ic.reader.CommitMessages(ctx, msg)
             continue
@@ -1307,9 +1308,11 @@ func (ic *IdempotentConsumer) Process(ctx context.Context, handler func(kafka.Me
         // Process the message.
         if err := handler(msg); err != nil {
             log.Printf("processing error: %v", err)
-            // Note: In a real implementation, you might want to
-            // remove the ID from the store to allow retry.
+            // Don't mark or commit; Kafka can redeliver the message.
+            continue
         }
+
+        ic.store.MarkProcessed(messageID)
 
         // Commit after successful processing.
         if err := ic.reader.CommitMessages(ctx, msg); err != nil {
@@ -1632,7 +1635,7 @@ Building reliable Kafka applications in Go with `segmentio/kafka-go` requires un
 3. **Consumer Groups**: Enable horizontal scaling with automatic partition assignment
 4. **Serialization**: Use JSON for simplicity or Avro for schema evolution
 5. **Error Handling**: Implement retries with backoff and dead letter queues
-6. **Exactly-Once**: Combine idempotent producers, deduplication, and the outbox pattern
+6. **Idempotent processing**: Combine explicit commits, deduplication, and the outbox pattern to make retries safe
 
 The patterns shown in this guide form the foundation for building production-ready event-driven systems. Start with the basic producer and consumer examples, then add reliability patterns as your requirements demand.
 
