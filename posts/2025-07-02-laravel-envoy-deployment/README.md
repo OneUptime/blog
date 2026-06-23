@@ -587,7 +587,7 @@ flowchart TB
     # Cache views
     php artisan view:cache
     
-    # Cache events (Laravel 11+)
+    # Cache events (Laravel 5.8.9+)
     php artisan event:cache 2>/dev/null || true
     
     echo "Application optimized!"
@@ -1710,7 +1710,7 @@ stopwaitsecs=3600
     
     echo ""
     echo "Database tables:"
-    php artisan db:table --counts 2>/dev/null || php artisan tinker --execute="print_r(Schema::getTableListing());"
+    php artisan db:show --counts 2>/dev/null || php artisan tinker --execute="print_r(Schema::getTableListing());"
 @endtask
 
 {{-- Full system diagnostic --}}
