@@ -68,7 +68,7 @@ The speaker component operates as a DaemonSet, meaning by default it runs on eve
 Before configuring speaker node selection, ensure you have:
 
 - A running Kubernetes cluster (v1.20+)
-- MetalLB installed (v0.13+)
+- MetalLB Operator installed (v0.13+)
 - `kubectl` configured with cluster admin access
 - Understanding of Kubernetes labels and node selectors
 
@@ -93,7 +93,7 @@ kubectl get nodes --show-labels | grep metallb-speaker
 
 ### Step 2: Configure MetalLB with Node Selector
 
-Create or update the MetalLB configuration to include node selectors. The following configuration restricts speaker pods to nodes with the `metallb-speaker=true` label.
+Create or update the MetalLB custom resource to include node selectors. The following configuration restricts speaker pods to nodes with the `metallb-speaker=true` label.
 
 ```yaml
 # metallb-config.yaml
@@ -114,8 +114,6 @@ spec:
   speakerConfig:
     # Runtime class for speaker pods (optional)
     runtimeClassName: ""
-    # Security context settings (optional)
-    securityContext: {}
 ```
 
 Apply the configuration to your cluster:
@@ -172,9 +170,9 @@ graph LR
 
 Sometimes it's easier to specify which nodes should NOT run speakers rather than which ones should. This approach is useful when you have many edge nodes but only a few specialized nodes to exclude.
 
-### Using Node Anti-Affinity
+### Using Node Affinity
 
-Node anti-affinity prevents speaker pods from scheduling on specific nodes. This configuration excludes GPU nodes and control plane nodes from running speakers.
+Node affinity can prevent speaker pods from scheduling on specific nodes. This configuration excludes GPU nodes and restricted internal nodes from running speakers.
 
 ```yaml
 # metallb-exclusion.yaml
@@ -287,10 +285,9 @@ spec:
   nodeSelector:
     node-role.kubernetes.io/edge: "true"
 
-  speakerConfig:
-    # Tolerations allow speakers to run on nodes with specific taints
-    # Edge nodes might have taints to prevent regular workloads
-    tolerations:
+  # Tolerations allow speakers to run on nodes with specific taints
+  # Edge nodes might have taints to prevent regular workloads
+  speakerTolerations:
     # Tolerate the edge-node taint that might be applied to edge nodes
     - key: "node-role.kubernetes.io/edge"
       operator: "Exists"
@@ -300,6 +297,7 @@ spec:
       operator: "Exists"
       effect: "NoSchedule"
 
+  speakerConfig:
     # Affinity rules for more complex scheduling requirements
     affinity:
       nodeAffinity:
@@ -420,8 +418,7 @@ spec:
   nodeSelector:
     node-role.kubernetes.io/metallb-speaker: "true"
 
-  speakerConfig:
-    tolerations:
+  speakerTolerations:
     # Tolerate the standard not-ready taint
     # Ensures speakers can run during node initialization
     - key: "node.kubernetes.io/not-ready"
@@ -523,34 +520,8 @@ spec:
   nodeSelector:
     node-role.kubernetes.io/metallb-speaker: "true"
 
-  # Controller configuration (runs on any node by default)
-  controllerConfig:
-    # Controller can run anywhere, doesn't need special placement
-    priorityClassName: system-cluster-critical
-    resources:
-      limits:
-        cpu: "200m"
-        memory: "200Mi"
-      requests:
-        cpu: "100m"
-        memory: "100Mi"
-
-  # Speaker configuration with full production settings
-  speakerConfig:
-    # Priority ensures speaker pods are scheduled first
-    priorityClassName: system-node-critical
-
-    # Resource limits for speaker pods
-    resources:
-      limits:
-        cpu: "100m"
-        memory: "100Mi"
-      requests:
-        cpu: "25m"
-        memory: "25Mi"
-
-    # Tolerations for various node conditions
-    tolerations:
+  # Tolerations for various node conditions
+  speakerTolerations:
     # System tolerations for node conditions
     - key: "node.kubernetes.io/not-ready"
       operator: "Exists"
@@ -577,6 +548,32 @@ spec:
     - key: "network-critical"
       operator: "Exists"
       effect: "NoSchedule"
+
+  # Controller configuration (runs on any node by default)
+  controllerConfig:
+    # Controller can run anywhere, doesn't need special placement
+    priorityClassName: system-cluster-critical
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "200Mi"
+      requests:
+        cpu: "100m"
+        memory: "100Mi"
+
+  # Speaker configuration with full production settings
+  speakerConfig:
+    # Priority ensures speaker pods are scheduled first
+    priorityClassName: system-node-critical
+
+    # Resource limits for speaker pods
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "100Mi"
+      requests:
+        cpu: "25m"
+        memory: "25Mi"
 
     # Affinity rules for optimal placement
     affinity:
@@ -702,7 +699,7 @@ kubectl get daemonset -n metallb-system speaker -o yaml | grep -A50 spec:
 kubectl describe pod -n metallb-system <speaker-pod-name>
 
 # Verify tolerations are correctly configured
-kubectl get metallb -n metallb-system metallb -o yaml | grep -A20 tolerations
+kubectl get metallb -n metallb-system metallb -o yaml | grep -A20 speakerTolerations
 ```
 
 ## Summary
