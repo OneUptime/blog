@@ -69,7 +69,7 @@ flowchart TD
 
 Before we begin, ensure your system meets the following requirements:
 
-- Linux kernel version 4.14 or higher (5.x recommended for full feature support)
+- Linux kernel version 4.14 or higher for many BCC examples; Linux 5.8 or higher is required for the ring buffer examples shown here
 - BCC (BPF Compiler Collection) or libbpf installed
 - Root privileges for loading eBPF programs
 - Development headers for your kernel
@@ -80,7 +80,7 @@ The following commands install the necessary dependencies on Ubuntu/Debian syste
 # Install BCC tools and development dependencies
 
 sudo apt-get update
-sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) \
+sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) bpftool \
     python3-bpfcc libbpf-dev clang llvm
 
 # Verify eBPF support
@@ -94,7 +94,7 @@ For RHEL/CentOS systems, use the following installation commands:
 
 ```bash
 # Install BCC on RHEL/CentOS
-sudo yum install -y bcc-tools bcc-devel kernel-devel clang llvm
+sudo yum install -y bcc-tools bcc-devel kernel-devel bpftool clang llvm
 
 # Enable eBPF-related kernel modules if needed
 sudo modprobe kheaders
@@ -151,7 +151,7 @@ struct dns_header {
 
 ## Building a Basic DNS Query Monitor
 
-Let us start with a basic eBPF program that captures DNS queries by attaching to the UDP send path. This program monitors outgoing DNS queries on port 53.
+Let us start with a basic eBPF program that captures DNS query metadata by attaching to the UDP send path. This program monitors outgoing DNS messages sent to port 53, but it does not parse the DNS payload.
 
 The following eBPF program uses kprobes to intercept UDP packets destined for DNS servers:
 
@@ -169,6 +169,7 @@ The following eBPF program uses kprobes to intercept UDP packets destined for DN
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
 
 // Define the maximum length of domain names we will capture
 // DNS labels can be up to 63 characters, full names up to 253 characters
@@ -184,10 +185,10 @@ struct dns_event {
     __u32 daddr;            // Destination IP address (DNS server)
     __u16 sport;            // Source port
     __u16 dport;            // Destination port (usually 53)
-    __u16 query_id;         // DNS transaction ID
-    __u16 query_type;       // DNS query type (A, AAAA, MX, etc.)
+    __u16 query_id;         // DNS transaction ID (not parsed in this basic example)
+    __u16 query_type;       // DNS query type (not parsed in this basic example)
     char comm[16];          // Process command name
-    char dns_name[MAX_DNS_NAME_LEN];  // Queried domain name
+    char dns_name[MAX_DNS_NAME_LEN];  // Queried domain name (not parsed in this basic example)
 };
 
 // Ring buffer for sending events to userspace
@@ -197,7 +198,7 @@ struct {
     __uint(max_entries, 256 * 1024);  // 256KB ring buffer
 } events SEC(".maps");
 
-// Hash map to track active queries for latency calculation
+// Hash map for later latency examples; not used by this basic metadata-only probe
 // Key: transaction_id + source port combination
 // Value: timestamp when query was sent
 struct {
@@ -286,6 +287,8 @@ int BPF_KPROBE(trace_udp_sendmsg, struct sock *sk, struct msghdr *msg, size_t le
     if (!event)
         return 0;
 
+    __builtin_memset(event, 0, sizeof(*event));
+
     // Populate basic event metadata
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     event->pid = pid_tgid >> 32;
@@ -300,6 +303,9 @@ int BPF_KPROBE(trace_udp_sendmsg, struct sock *sk, struct msghdr *msg, size_t le
     BPF_CORE_READ_INTO(&event->daddr, sk, __sk_common.skc_daddr);
     BPF_CORE_READ_INTO(&event->sport, sk, __sk_common.skc_num);
     event->dport = dport;
+
+    // This basic kprobe example captures socket metadata only.
+    // Parsing query_id, query_type, and dns_name would require reading msg->msg_iter.
 
     // Submit the event to userspace
     bpf_ringbuf_submit(event, 0);
@@ -698,11 +704,8 @@ int dns_parser(struct xdp_md *ctx)
     // Extract DNS flags
     __u16 flags = bpf_ntohs(dns->flags);
     __u8 qr = (flags >> 15) & 0x1;      // Query (0) or Response (1)
-    __u8 opcode = (flags >> 11) & 0xF;  // Operation code
     __u8 aa = (flags >> 10) & 0x1;      // Authoritative Answer
     __u8 tc = (flags >> 9) & 0x1;       // Truncated
-    __u8 rd = (flags >> 8) & 0x1;       // Recursion Desired
-    __u8 ra = (flags >> 7) & 0x1;       // Recursion Available
     __u8 rcode = flags & 0xF;           // Response Code
 
     // Update statistics
@@ -722,6 +725,8 @@ int dns_parser(struct xdp_md *ctx)
     event = bpf_ringbuf_reserve(&dns_events, sizeof(*event), 0);
     if (!event)
         return XDP_PASS;
+
+    __builtin_memset(event, 0, sizeof(*event));
 
     // Populate event fields
     event->timestamp = bpf_ktime_get_ns();
@@ -751,8 +756,10 @@ int dns_parser(struct xdp_md *ctx)
     if (name_len > 0) {
         void *qtype_ptr = question + name_len;
         if ((void *)(qtype_ptr + 4) <= data_end) {
-            event->query_type = bpf_ntohs(*(__u16 *)qtype_ptr);
-            event->query_class = bpf_ntohs(*((__u16 *)qtype_ptr + 1));
+            __be16 *qtype = (__be16 *)qtype_ptr;
+            __be16 *qclass = (__be16 *)(qtype_ptr + 2);
+            event->query_type = bpf_ntohs(*qtype);
+            event->query_class = bpf_ntohs(*qclass);
         }
     }
 
@@ -803,6 +810,7 @@ The following eBPF program implements latency tracking using a hash map to corre
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/udp.h>
+#include <linux/pkt_cls.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
@@ -886,7 +894,7 @@ static __always_inline __u32 get_latency_bucket(__u64 latency_ns) {
 
 // Process outgoing DNS query
 // Records the query in the pending_queries map with current timestamp
-SEC("tc")
+SEC("tc/egress")
 int track_dns_query(struct __sk_buff *skb)
 {
     void *data = (void *)(long)skb->data;
@@ -907,7 +915,11 @@ int track_dns_query(struct __sk_buff *skb)
     if (ip->protocol != IPPROTO_UDP)
         return TC_ACT_OK;
 
-    struct udphdr *udp = (void *)ip + (ip->ihl * 4);
+    int ip_hdr_len = ip->ihl * 4;
+    if (ip_hdr_len < sizeof(struct iphdr))
+        return TC_ACT_OK;
+
+    struct udphdr *udp = (void *)ip + ip_hdr_len;
     if ((void *)(udp + 1) > data_end)
         return TC_ACT_OK;
 
@@ -950,7 +962,7 @@ int track_dns_query(struct __sk_buff *skb)
 
 // Process incoming DNS response
 // Looks up the original query and calculates latency
-SEC("tc")
+SEC("tc/ingress")
 int track_dns_response(struct __sk_buff *skb)
 {
     void *data = (void *)(long)skb->data;
@@ -971,7 +983,11 @@ int track_dns_response(struct __sk_buff *skb)
     if (ip->protocol != IPPROTO_UDP)
         return TC_ACT_OK;
 
-    struct udphdr *udp = (void *)ip + (ip->ihl * 4);
+    int ip_hdr_len = ip->ihl * 4;
+    if (ip_hdr_len < sizeof(struct iphdr))
+        return TC_ACT_OK;
+
+    struct udphdr *udp = (void *)ip + ip_hdr_len;
     if ((void *)(udp + 1) > data_end)
         return TC_ACT_OK;
 
@@ -1243,12 +1259,12 @@ sequenceDiagram
     Stub-->>Client: Answer: 93.184.216.34
 ```
 
-The following eBPF program traces the DNS resolution chain by tracking queries at multiple points:
+The following eBPF program traces application-level DNS resolution start and completion with uprobes on `getaddrinfo()`. To observe cache hits, upstream queries, referrals, and resolver-to-authoritative hops, combine this style of application tracing with packet-level hooks or resolver-specific instrumentation.
 
 ```c
 // dns_chain_tracer.bpf.c
-// Traces DNS resolution chains including cache hits and upstream queries
-// Useful for debugging complex DNS resolution paths
+// Traces application-level DNS resolution start and completion.
+// Use packet-level hooks or resolver-specific uprobes to add upstream hops.
 
 #include <linux/bpf.h>
 #include <linux/ptrace.h>
@@ -1344,6 +1360,8 @@ static __always_inline void emit_chain_event(
     if (!event)
         return;
 
+    __builtin_memset(event, 0, sizeof(*event));
+
     event->timestamp = bpf_ktime_get_ns();
     event->query_start_ts = chain->start_ts;
     event->pid = chain->pid;
@@ -1365,8 +1383,9 @@ static __always_inline void emit_chain_event(
     bpf_ringbuf_submit(event, 0);
 }
 
-// Trace getaddrinfo() entry - application starts DNS resolution
-SEC("uprobe/libc:getaddrinfo")
+// Trace getaddrinfo() entry - application starts DNS resolution.
+// Replace the libc path if your distribution stores libc elsewhere.
+SEC("uprobe//lib/x86_64-linux-gnu/libc.so.6:getaddrinfo")
 int trace_getaddrinfo_entry(struct pt_regs *ctx)
 {
     // Get the hostname argument (first parameter)
@@ -1394,8 +1413,9 @@ int trace_getaddrinfo_entry(struct pt_regs *ctx)
     return 0;
 }
 
-// Trace getaddrinfo() return - resolution complete
-SEC("uretprobe/libc:getaddrinfo")
+// Trace getaddrinfo() return - resolution complete.
+// Replace the libc path if your distribution stores libc elsewhere.
+SEC("uretprobe//lib/x86_64-linux-gnu/libc.so.6:getaddrinfo")
 int trace_getaddrinfo_return(struct pt_regs *ctx)
 {
     int ret = PT_REGS_RC(ctx);
@@ -1670,12 +1690,12 @@ flowchart LR
     end
 ```
 
-The following eBPF program detects potential DNS tunneling:
+The following eBPF helper code detects potential DNS tunneling indicators after another eBPF hook has parsed the DNS query name and type:
 
 ```c
 // dns_security.bpf.c
-// DNS security monitoring - detects tunneling and other malicious patterns
-// Analyzes query patterns, entropy, and frequency
+// DNS security monitoring helpers - detect tunneling and other malicious patterns.
+// Call analyze_dns_query() from an XDP, TC, or socket hook after parsing a DNS query.
 
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
@@ -1850,6 +1870,8 @@ static __always_inline void emit_alert(
     alert = bpf_ringbuf_reserve(&security_alerts, sizeof(*alert), 0);
     if (!alert)
         return;
+
+    __builtin_memset(alert, 0, sizeof(*alert));
 
     alert->timestamp = bpf_ktime_get_ns();
     alert->pid = bpf_get_current_pid_tgid() >> 32;
