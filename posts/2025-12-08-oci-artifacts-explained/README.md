@@ -17,7 +17,7 @@ We needed a way to move more than images through the exact same registry plumbin
 - **Image spec**: Defines how layers, configs, and manifests are structured.
 - **Runtime spec**: Defines how runtimes (containerd, runc, Kata) unpack and run those bundles.
 - **Distribution spec**: Defines the registry API for pushing/pulling blobs by digest.
-- **Artifact support** (OCI Image Spec v1.1+): Adds the `artifactType` field and the Referrers API so registries know "this manifest is a Helm chart" or "this digest is a signature for that SBOM". Artifacts reuse the standard image manifest format with an empty config descriptor.
+- **Artifact support** (OCI Image Spec v1.1+ and Distribution Spec v1.1+): Adds the `artifactType` and `subject` fields in image manifests, plus the Referrers API in registries, so tooling can know "this manifest is a Helm chart" or "this digest is a signature for that SBOM". Artifacts reuse the standard image manifest format with an empty config descriptor.
 
 The last piece is what most teams mean today when they say "OCI artifact".
 
@@ -29,29 +29,27 @@ This JSON structure shows the core components of an OCI artifact manifest. OCI a
 
 ```json
 {
-  // Standard OCI image manifest media type (reused for all artifacts)
   "mediaType": "application/vnd.oci.image.manifest.v1+json",
-  // Schema version must be 2
   "schemaVersion": 2,
-  // artifactType tells consumers how to interpret the layers (e.g., Helm chart)
   "artifactType": "application/vnd.cncf.helm.chart.v1+json",
-  // Empty config descriptor signals this is an artifact, not a runnable image
   "config": {
     "mediaType": "application/vnd.oci.empty.v1+json",
     "size": 2,
     "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
   },
-  // The actual content of the artifact as layers (content-addressed blobs)
   "layers": [
-    { "mediaType": "application/tar+gzip", "size": 23142, "digest": "sha256:..." }
+    {
+      "mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+      "size": 23142,
+      "digest": "sha256:e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317"
+    }
   ],
-  // Optional: links this artifact to another digest (e.g., signature -> image)
   "subject": {
     "mediaType": "application/vnd.oci.image.manifest.v1+json",
-    "digest": "sha256:image"
+    "digest": "sha256:5b0bcabd1ed22e9fb1310cf6c2dec7cdef19f0ad69efa1f392e94a4333501270",
+    "size": 7682
   },
-  // Human-readable metadata that stays immutable with the digest
-  "annotations": { "org.opencontainers.artifact.created": "2025-12-08T09:00:00Z" }
+  "annotations": { "org.opencontainers.image.created": "2025-12-08T09:00:00Z" }
 }
 ```
 
@@ -104,12 +102,9 @@ This command demonstrates how to publish a policy bundle as an OCI artifact usin
 # Push a policy bundle to GitHub Container Registry as an OCI artifact
 
 # oras is the official OCI Registry As Storage client
-oras push ghcr.io/oneuptime/policies:rbac-v1 \
-  # Specify the artifact type so consumers know this is an OPA policy
-  --artifact-type application/vnd.cncf.openpolicyagent.config.v1+json \
-  # The file to upload with its media type (gzipped tarball)
+oras push --artifact-type application/vnd.cncf.openpolicyagent.config.v1+json \
+  ghcr.io/oneuptime/policies:rbac-v1 \
   policy.bundle.tar.gz:application/gzip \
-  # Annotations for provenance and environment tracking
   --annotation org.opencontainers.image.source=https://github.com/oneuptime/policies \
   --annotation org.oneuptime.stage="prod"
 ```
@@ -118,7 +113,7 @@ oras push ghcr.io/oneuptime/policies:rbac-v1 \
 - `artifact-type` tells downstream tooling how to interpret the blob.
 - Annotations stay immutable with the digest, so promotion pipelines can rely on them.
 
-Need to link the artifact to a container image you scanned? Use the `--subject` flag so scanners know *which* image the report belongs to.
+Need to link the artifact to a container image you scanned? Use `oras attach --artifact-type ... <image>@<digest> <file>` so scanners know *which* image the report belongs to.
 
 ---
 
