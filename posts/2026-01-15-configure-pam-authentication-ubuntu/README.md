@@ -680,7 +680,7 @@ postgres        -       memlock         unlimited
 *               hard    maxlogins       10
 @students       hard    maxlogins       2
 
-# Maximum concurrent logins for same user from same source
+# Maximum number of all logins on the entire system
 *               hard    maxsyslogins    100
 ```
 
