@@ -145,20 +145,21 @@ scrape_configs:
     scheme: https
     tls_config:
       ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
     relabel_configs:
       # Map node labels
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
 ```
 
-### Discovering Endpoints
+### Discovering EndpointSlices
 
 ```yaml
 scrape_configs:
-  - job_name: 'kubernetes-endpoints'
+  - job_name: 'kubernetes-endpointslices'
     kubernetes_sd_configs:
-      - role: endpoints
+      - role: endpointslice
     relabel_configs:
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
         action: keep
@@ -237,8 +238,10 @@ scrape_configs:
 ```python
 #!/usr/bin/env python3
 import json
+import os
 import requests
 import time
+import tempfile
 
 def fetch_targets():
     # Your custom logic to discover targets
@@ -262,8 +265,11 @@ def fetch_targets():
     return targets
 
 def write_targets(targets, path):
-    with open(path, 'w') as f:
+    directory = os.path.dirname(path)
+    with tempfile.NamedTemporaryFile('w', dir=directory, delete=False) as f:
         json.dump(targets, f, indent=2)
+        temp_path = f.name
+    os.replace(temp_path, path)
 
 if __name__ == '__main__':
     while True:
@@ -281,9 +287,9 @@ scrape_configs:
   - job_name: 'consul-services'
     consul_sd_configs:
       - server: 'consul.example.com:8500'
-        services: []  # Empty means all services
-        tags:
-          - 'prometheus'
+        # Omit services to discover all services
+        filter: 'ServiceTags contains "prometheus"'
+        health_filter: 'Service.Tags contains "prometheus"'
     relabel_configs:
       - source_labels: [__meta_consul_service]
         target_label: service
