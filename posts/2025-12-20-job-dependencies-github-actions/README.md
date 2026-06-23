@@ -134,7 +134,7 @@ jobs:
         run: |
           # Split tests into 4 groups
           TESTS=$(find tests -name "*.test.js" | sort)
-          GROUPS=$(echo "$TESTS" | jq -R . | jq -s 'to_entries | group_by(.key % 4) | map(map(.value))')
+          GROUPS=$(echo "$TESTS" | jq -R . | jq -cs 'to_entries | group_by(.key % 4) | map(map(.value))')
           echo "groups=$GROUPS" >> $GITHUB_OUTPUT
 
   test:
@@ -151,7 +151,7 @@ jobs:
       - name: Run test group
         run: |
           TESTS='${{ needs.setup.outputs.test-groups }}'
-          GROUP_TESTS=$(echo "$TESTS" | jq -r ".[${{ matrix.group }}][]")
+          GROUP_TESTS=$(echo "$TESTS" | jq -r ".[${{ matrix.group }}][]?")
           echo "Running tests: $GROUP_TESTS"
           npm test -- $GROUP_TESTS
 
@@ -163,7 +163,7 @@ jobs:
       - name: Check results
         run: |
           echo "All test groups completed"
-          echo "Matrix results: ${{ toJson(needs.test.result) }}"
+          echo "Matrix results: ${{ toJSON(needs.test.result) }}"
 ```
 
 ## Fan-In Pattern
@@ -248,14 +248,14 @@ jobs:
 
   notify-success:
     needs: [deploy-staging, deploy-production]
-    if: success()
+    if: ${{ !cancelled() && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "Deployment succeeded!"
 
   notify-failure:
     needs: [deploy-staging, deploy-production]
-    if: failure()
+    if: ${{ !cancelled() && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "Deployment failed!"
@@ -392,6 +392,8 @@ jobs:
     services:
       postgres:
         image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
     steps:
@@ -475,7 +477,7 @@ jobs:
   # Runs if ANY dependency succeeded
   deploy-if-any-pass:
     needs: [test-a, test-b, test-c]
-    if: contains(needs.*.result, 'success')
+    if: ${{ !cancelled() && contains(needs.*.result, 'success') }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "At least one test passed"
