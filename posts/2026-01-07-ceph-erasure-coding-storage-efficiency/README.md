@@ -147,7 +147,7 @@ LRC reduces recovery bandwidth by adding local parity chunks, ideal for large cl
 
 ```mermaid
 flowchart TD
-    subgraph LRC["LRC with k=4, m=2, l=2"]
+    subgraph LRC["LRC with k=4, m=2, l=3"]
         subgraph Group1["Local Group 1"]
             D1[Data 1]
             D2[Data 2]
@@ -174,25 +174,25 @@ The following command creates an LRC profile for reduced recovery bandwidth:
 
 ```bash
 # Create an LRC erasure code profile
-# l=2: Creates local parity groups of 2 data chunks each
+# l=3: Creates local parity groups of three chunks each
 # This reduces recovery bandwidth by allowing local recovery within groups
 ceph osd erasure-code-profile set lrc-profile \
     plugin=lrc \
     k=4 \
     m=2 \
-    l=2 \
+    l=3 \
     crush-failure-domain=host
 ```
 
 ### 4. SHEC Plugin (Shingled Erasure Code)
 
-SHEC provides efficient recovery with lower overhead than LRC.
+SHEC provides efficient recovery with lower overhead than LRC, but it is deprecated in the Umbrella release and scheduled for removal in a future Ceph release.
 
 The following command creates a SHEC profile:
 
 ```bash
 # Create a SHEC erasure code profile
-# c=2: Number of chunks for local parity calculation
+# c=2: Durability estimator; approximately 2 OSDs can be down without losing data
 # Provides faster recovery than standard Reed-Solomon
 ceph osd erasure-code-profile set shec-profile \
     plugin=shec \
@@ -204,7 +204,7 @@ ceph osd erasure-code-profile set shec-profile \
 
 ### 5. Clay Plugin
 
-Clay codes provide optimal recovery bandwidth, minimizing network traffic during rebuilds.
+Clay codes provide optimal recovery bandwidth, minimizing network traffic during rebuilds, but the Clay plugin is deprecated in the Umbrella release and scheduled for removal in a future Ceph release.
 
 The following command creates a Clay profile for minimal recovery bandwidth:
 
@@ -257,7 +257,7 @@ The following command creates a production-ready EC profile with appropriate par
 #   crush-failure-domain=host: Distribute chunks across different hosts
 #   crush-root=default: Use the default CRUSH root
 ceph osd erasure-code-profile set production-ec-profile \
-    plugin=jerasure \
+    plugin=isa \
     k=8 \
     m=3 \
     technique=reed_sol_van \
@@ -307,10 +307,9 @@ ceph osd pool set ec-data-pool compression_mode passive
 ceph osd pool set ec-data-pool compression_required_ratio 0.5
 
 # Configure PG (Placement Group) count
-# Use the PG calculator: https://ceph.io/pgcalc/
-# General formula: (OSDs * 100) / pool_size, rounded to power of 2
+# Prefer the PG autoscaler for modern Ceph clusters.
+# If manually setting PGs, calculate based on OSD count, pool ratio, and total pool count.
 ceph osd pool set ec-data-pool pg_num 256
-ceph osd pool set ec-data-pool pgp_num 256
 ```
 
 ## Using Erasure Coding with Different Ceph Services
@@ -329,13 +328,25 @@ ceph osd pool create rgw.buckets.data erasure production-ec-profile
 # Metadata pools should remain replicated for performance
 ceph osd pool create rgw.buckets.index replicated
 
-# Enable RGW application on both pools
+# Create replicated pool for incomplete multipart upload metadata
+ceph osd pool create rgw.buckets.non-ec replicated
+
+# Enable RGW application on all RGW pools
 ceph osd pool application enable rgw.buckets.data rgw
 ceph osd pool application enable rgw.buckets.index rgw
+ceph osd pool application enable rgw.buckets.non-ec rgw
 
 # Configure RGW to use EC for data placement
-# Edit ceph.conf or use the following commands:
-ceph config set client.rgw rgw_override_bucket_index_max_shards 16
+radosgw-admin zone placement modify \
+    --rgw-zone default \
+    --placement-id default-placement \
+    --data-pool rgw.buckets.data \
+    --index-pool rgw.buckets.index \
+    --data-extra-pool rgw.buckets.non-ec
+
+# For multisite realms only, commit the period after changing zone placement.
+# If you are not using multisite, restart RGW daemons instead.
+radosgw-admin period update --commit
 ```
 
 The following RGW zone configuration uses EC for data storage:
@@ -354,7 +365,8 @@ The following RGW zone configuration uses EC for data storage:
           }
         },
         "data_extra_pool": "rgw.buckets.non-ec",
-        "index_type": 0
+        "index_type": 0,
+        "inline_data": true
       }
     }
   ]
@@ -363,7 +375,7 @@ The following RGW zone configuration uses EC for data storage:
 
 ### RBD (RADOS Block Device)
 
-RBD requires special handling with EC pools because EC pools do not support overwrites directly.
+RBD requires special handling with EC pools because erasure-coded pools allow only full-object writes by default.
 
 ```mermaid
 flowchart LR
@@ -382,7 +394,7 @@ The following commands set up RBD with EC data pool:
 
 ```bash
 # Create a replicated pool for RBD metadata
-# Metadata requires overwrites which EC does not support
+# Metadata uses OMAP data structures and should remain replicated
 ceph osd pool create rbd-metadata replicated
 ceph osd pool set rbd-metadata size 3
 
@@ -390,7 +402,7 @@ ceph osd pool set rbd-metadata size 3
 ceph osd pool create rbd-data erasure production-ec-profile
 
 # Enable overwrites on EC pool for RBD
-# IMPORTANT: This is required for RBD to work with EC
+# IMPORTANT: This is required for RBD to work with EC and requires BlueStore OSDs
 ceph osd pool set rbd-data allow_ec_overwrites true
 
 # Enable RBD application
@@ -413,7 +425,7 @@ The following commands configure CephFS with EC:
 
 ```bash
 # Create replicated pool for CephFS metadata
-# Metadata pools MUST be replicated (EC not supported)
+# Metadata pools MUST be replicated because CephFS metadata uses OMAP data structures
 ceph osd pool create cephfs-metadata replicated
 ceph osd pool set cephfs-metadata size 3
 
@@ -457,7 +469,7 @@ ceph osd pool get ec-data-pool stripe_width
 
 # Create a profile with custom stripe unit for large sequential I/O
 ceph osd erasure-code-profile set large-stripe-profile \
-    plugin=jerasure \
+    plugin=isa \
     k=8 \
     m=3 \
     technique=reed_sol_van \
@@ -641,7 +653,7 @@ Large sequential reads make EC ideal for video archives:
 ```bash
 # Create profile optimized for large sequential objects
 ceph osd erasure-code-profile set video-archive-profile \
-    plugin=jerasure \
+    plugin=isa \
     k=10 \
     m=4 \
     technique=reed_sol_van \
@@ -651,10 +663,10 @@ ceph osd erasure-code-profile set video-archive-profile \
 # Create the pool
 ceph osd pool create video-archive erasure video-archive-profile
 
-# Configure for large objects
+# Configure for large objects and provide a PG autoscaler size hint
 ceph osd pool set video-archive compression_algorithm zstd
 ceph osd pool set video-archive compression_mode aggressive
-ceph osd pool set video-archive target_max_bytes 100TB
+ceph osd pool set video-archive target_max_bytes 109951162777600
 ```
 
 ### Use Case 2: Backup and Cold Storage
@@ -664,7 +676,7 @@ Maximum efficiency for infrequently accessed data:
 ```bash
 # Create high-efficiency profile for backups
 ceph osd erasure-code-profile set backup-profile \
-    plugin=jerasure \
+    plugin=isa \
     k=12 \
     m=2 \
     technique=reed_sol_van \
@@ -673,7 +685,6 @@ ceph osd erasure-code-profile set backup-profile \
 # Create the pool with minimal resource allocation
 ceph osd pool create backup-storage erasure backup-profile
 ceph osd pool set backup-storage pg_num 64
-ceph osd pool set backup-storage pgp_num 64
 
 # Enable compression for maximum savings
 ceph osd pool set backup-storage compression_algorithm zstd
@@ -696,7 +707,6 @@ ceph osd erasure-code-profile set ml-data-profile \
 ceph osd pool create ml-datasets erasure ml-data-profile
 
 # Configure for mixed workload
-ceph osd pool set ml-datasets allow_ec_overwrites true
 ceph osd pool application enable ml-datasets rgw
 ```
 
@@ -727,20 +737,20 @@ The following commands migrate data from replicated to EC pool:
 # Create the destination EC pool
 ceph osd pool create new-ec-pool erasure production-ec-profile
 
-# Use rados cppool for migration (simple but slow)
+# Use rados cppool for simple raw RADOS object migration (not service metadata)
 rados cppool old-replicated-pool new-ec-pool
 
 # Alternative: Use rbd migration for RBD images
-rbd migration prepare --source-pool old-pool \
-    --dest-pool new-pool \
-    --dest-data-pool ec-data-pool \
-    image-name
+rbd migration prepare \
+    --data-pool ec-data-pool \
+    old-pool/image-name \
+    new-pool/image-name
 
 # Execute the migration
-rbd migration execute --pool new-pool image-name
+rbd migration execute new-pool/image-name
 
 # Commit when satisfied
-rbd migration commit --pool new-pool image-name
+rbd migration commit new-pool/image-name
 
 # Verify data integrity after migration
 rados -p new-ec-pool ls | wc -l
