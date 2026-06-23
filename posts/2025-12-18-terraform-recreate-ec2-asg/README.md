@@ -86,8 +86,8 @@ resource "aws_autoscaling_group" "app" {
       skip_matching = true
     }
 
-    # Triggers that start instance refresh
-    triggers = ["tag", "launch_template"]
+    # Additional ASG property changes that start instance refresh
+    triggers = ["tag"]
   }
 
   tag {
@@ -96,7 +96,7 @@ resource "aws_autoscaling_group" "app" {
     propagate_at_launch = true
   }
 
-  # This tag change triggers refresh when var.ami_id changes
+  # This tag records the launch template version and can trigger a refresh
   tag {
     key                 = "LaunchTemplateVersion"
     value               = aws_launch_template.app.latest_version
@@ -306,7 +306,7 @@ resource "aws_autoscaling_group" "app" {
       instance_warmup        = 300
     }
 
-    triggers = ["launch_template"]
+    # Launch template and mixed instances policy changes trigger refresh automatically
   }
 }
 ```
@@ -376,7 +376,7 @@ resource "aws_autoscaling_group" "app" {
       checkpoint_percentages = [25, 50, 75, 100]
     }
 
-    triggers = ["tag", "launch_template"]
+    triggers = ["tag"]
   }
 
   # Force refresh when AMI changes
