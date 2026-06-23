@@ -377,7 +377,7 @@ If your Docker host has direct IPv6 connectivity, configure the upstream router 
 
 ```bash
 # On your router/gateway (example using Linux router)
-ip -6 route add 2001:db8:1::/64 via 2001:db8::docker-host
+ip -6 route add 2001:db8:1::/64 via 2001:db8::1
 
 # Verify routing on the Docker host
 ip -6 route show
@@ -392,7 +392,7 @@ If your containers share the same /64 prefix as your host, enable NDP proxy:
 sudo sysctl -w net.ipv6.conf.eth0.proxy_ndp=1
 
 # Add proxy entries for container addresses
-sudo ip -6 neigh add proxy 2001:db8:1::container1 dev eth0
+sudo ip -6 neigh add proxy 2001:db8:1::10 dev eth0
 ```
 
 Automate this with a script triggered by Docker events:
@@ -457,7 +457,7 @@ sudo ip6tables -I DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCE
 sudo ip6tables -I DOCKER-USER -p ipv6-icmp -j ACCEPT
 
 # Allow traffic from trusted subnet
-sudo ip6tables -I DOCKER-USER -s 2001:db8:trusted::/48 -j ACCEPT
+sudo ip6tables -I DOCKER-USER -s 2001:db8:abcd::/48 -j ACCEPT
 
 # Drop all other external traffic to containers (example)
 sudo ip6tables -A DOCKER-USER -i eth0 -j DROP
@@ -526,7 +526,7 @@ sudo ip6tables -L DOCKER -n -v
 3. **Test connectivity**:
 ```bash
 # From external host
-curl -6 http://[2001:db8:1::container]:80
+curl -6 http://[2001:db8:1::10]:80
 ```
 
 4. **Check for upstream firewall**:
@@ -582,10 +582,10 @@ On all Swarm manager and worker nodes, configure daemon.json:
 ```json
 {
   "ipv6": true,
-  "fixed-cidr-v6": "fd00:docker::/64",
+  "fixed-cidr-v6": "fd00:1::/64",
   "default-address-pools": [
     {"base": "10.0.0.0/8", "size": 24},
-    {"base": "fd00:swarm::/48", "size": 64}
+    {"base": "fd00:2::/48", "size": 64}
   ]
 }
 ```
@@ -598,7 +598,7 @@ docker network create \
   --driver overlay \
   --ipv6 \
   --subnet 10.100.0.0/24 \
-  --subnet fd00:swarm:1::/64 \
+  --subnet fd00:2:1::/64 \
   swarm-network
 ```
 
@@ -610,7 +610,6 @@ docker service create \
   --name web \
   --network swarm-network \
   --publish published=80,target=80,mode=host \
-  --publish published=80,target=80,mode=host,protocol=tcp \
   nginx:alpine
 ```
 
@@ -775,7 +774,7 @@ locals {
 variable "docker_ipv6_subnet" {
   description = "IPv6 subnet for Docker containers"
   type        = string
-  default     = "fd00:docker::/64"
+  default     = "fd00:1::/64"
 }
 ```
 
