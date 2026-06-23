@@ -31,9 +31,9 @@ flowchart LR
 
 Knowing this stack helps when you need to step outside the Docker CLI. For example, `ctr` (installed with containerd) and `runc` let you reproduce Docker behavior during incident debugging or when building custom pipelines.
 
-## 2. Images Are OCI Artifacts.
+## 2. Images Are OCI-Compatible Artifacts.
 
-Every Docker image is an OCI manifest: JSON pointing to a config blob plus a series of content-addressed layers. You can inspect one without pulling it:
+Modern Docker images are distributed as OCI or Docker v2 manifests: JSON pointing to a config blob plus a series of content-addressed layers. You can inspect one without pulling it:
 
 This command uses the `crane` tool to fetch and display the manifest metadata for an image directly from the registry. It's useful for understanding an image's layer structure and sizes before downloading potentially gigabytes of data.
 
@@ -48,7 +48,7 @@ $ crane manifest nginx:1.27 | jq '.layers[] | {mediaType, size}'
 Key takeaways:
 
 - Layers are compressed tar archives. Their SHA256 digests guarantee immutability.
-- The config object lists the root filesystem diff IDs, environment variables, entrypoint, exposed ports, and OCI annotations.
+- The config object lists the root filesystem diff IDs, environment variables, entrypoint, exposed ports, and image labels; OCI manifests and indexes can also carry annotations.
 - Because layers are content-addressed, identical steps across images are shared on disk, making `docker build` and `docker pull` fast after the first run.
 
 ## 3. Copy-on-Write Layers and OverlayFS
@@ -65,21 +65,21 @@ FROM golang:1.22-alpine AS build
 WORKDIR /src
 # Copy source files into the build container
 COPY . .
-# Compile the binary with trimpath to remove local paths from the binary
-RUN go build -trimpath -o app ./cmd/api
+# Compile a static binary with trimpath to remove local paths from the binary
+RUN CGO_ENABLED=0 go build -trimpath -o app ./cmd/api
 
 # Stage 2: minimal runtime image
-# Use distroless base image (no shell, minimal attack surface)
-FROM gcr.io/distroless/base
+# Use distroless static image (no shell, minimal attack surface)
+FROM gcr.io/distroless/static-debian12
 # Copy only the compiled binary from the build stage
 COPY --from=build /src/app /app
 # Set the container's entrypoint to run the binary directly
 ENTRYPOINT ["/app"]
 ```
 
-Each instruction creates a new layer. You can see them via `docker history myorg/api:latest`. At runtime, writes land in the topmost writable layer, so deleting a file only hides it; the old bytes still live below. That is why multistage builds (like the example above) and `docker image prune` matter.
+Filesystem-changing instructions like `RUN`, `COPY`, and `ADD` create new layers; metadata instructions show up in image history without necessarily adding filesystem data. You can see them via `docker history myorg/api:latest`. At runtime, writes land in the topmost writable layer, so deleting a file only hides it; the old bytes still live below. That is why multistage builds (like the example above) and `docker image prune` matter.
 
-If you ever wonder where files sit on disk, list `/var/lib/docker/overlay2`. Each directory is a layer identified by its digest.
+If you ever wonder where files sit on disk, list `/var/lib/docker/overlay2`. The directories are Docker-managed overlay layer and cache directories; do not edit them directly.
 
 ## 4. Namespaces: Showing Each Container Its Own World
 
@@ -87,7 +87,7 @@ Namespaces virtualize kernel resources so one container's processes cannot accid
 
 - **PID namespace**: process IDs start at 1 inside the container. Only processes inside can signal each other unless explicitly shared.
 - **Mount namespace**: containers get their own mount table. Docker overlays layers, bind-mounts volumes, and hides host paths you never asked for.
-- **Network namespace**: each container owns a virtual NIC. Docker wires it to a bridge (docker0), a macvlan, or your custom CNI plugin.
+- **Network namespace**: each container owns a virtual NIC. Docker wires it to a bridge (docker0), macvlan, ipvlan, or another configured network driver.
 - **IPC & UTS namespaces**: isolate shared-memory segments and hostnames.
 
 You can prove it by entering a container's namespaces from the host:
@@ -120,13 +120,13 @@ This command starts an nginx container with strict resource limits. Memory is ca
 $ docker run --memory=256m --cpus=1 nginx
 ```
 
-Behind the scenes Docker creates a cgroup like `/sys/fs/cgroup/docker/<id>/` and writes files including:
+Behind the scenes Docker creates a container cgroup (the exact path depends on the cgroup version and driver, such as systemd) and writes limit files such as:
 
 - `memory.max = 268435456`
 - `cpu.max = 100000 100000` (1 full CPU)
-- `pids.max = 4096`
+- `pids.max`, if you configured a PID limit
 
-The kernel meters every page fault, CPU slice, and fork against these numbers. That is why production throttling or OOM events show up in `docker stats`, `ctr cgroup`, or observability pipelines. You can emit those metrics to OneUptime the same way you scrape `node_exporter`.
+The kernel meters every page fault, CPU slice, and fork against these numbers. That is why production throttling or OOM events show up in `docker stats`, `ctr --namespace moby task metrics <container>`, or observability pipelines. You can emit those metrics to OneUptime the same way you scrape `node_exporter`.
 
 ## 6. Networking: Virtual Ethernet, Bridges, and NAT
 
@@ -139,8 +139,8 @@ By default Docker creates:
 Advanced scenarios:
 
 - **User-defined bridges**: better DNS, service discovery, and isolation per stack.
-- **macvlan/ipvlan**: map containers directly onto the physical LAN with real MAC addresses (useful for legacy appliances).
-- **CNI plugins**: in Kubernetes or Compose v2 you can hand networking to technologies like Calico or Cilium.
+- **macvlan/ipvlan**: place containers directly on the physical LAN; macvlan gives each container its own MAC address, while ipvlan shares the parent interface MAC.
+- **CNI plugins**: in Kubernetes or containerd-based setups you can hand networking to technologies like Calico or Cilium.
 
 Troubleshoot connectivity by inspecting the namespace: `ip netns exec <ns> ip addr show` or `ethtool vethXYZ` to check duplex and MTU.
 
@@ -149,7 +149,7 @@ Troubleshoot connectivity by inspecting the namespace: `ip netns exec <ns> ip ad
 OverlayFS is great for root filesystems, but stateful apps need persistent volumes:
 
 - **Bind mounts** (`-v /host/path:/container/path`) share a real host directory.
-- **Named volumes** store data under `/var/lib/docker/volumes` and can use plugins like `local`, `nfs`, or CSI drivers.
+- **Named volumes** store data under `/var/lib/docker/volumes` by default and can use the local driver (including NFS mount options) or third-party volume plugins.
 - **Tmpfs** mounts keep secrets in RAM (`--tmpfs /run/secrets:rw,noexec,nosuid,size=64m`).
 
 Snapshotters in containerd (overlayfs, btrfs, zfs, stargz) change performance characteristics. For high-density hosts, consider native ZFS/btrfs snapshotters to get instant clones without overlay penalties.
@@ -205,7 +205,7 @@ When these commands succeed, you know the kernel is healthy and any Docker issue
 
 - Docker is a client, daemon, content store, snapshotter, and OCI runtime glued together.
 - Containers are simply Linux processes with isolated namespaces plus cgroup budgets and layered filesystems.
-- Images are verifiable OCI artifacts; builds are deterministic dependency graphs, so optimize them like any other supply chain.
+- Images are verifiable OCI-compatible artifacts; builds are dependency graphs, so optimize them like any other supply chain.
 - Observability and security hinge on understanding cgroups, capabilities, and overlayfs behavior, not on memorizing `docker` flags.
 
 Once you see containers as orchestration of existing kernel primitives, you can design better runtime policies, troubleshoot weird behavior quickly, and decide when Docker is enough versus when you need Kubernetes or specialized runtimes.
