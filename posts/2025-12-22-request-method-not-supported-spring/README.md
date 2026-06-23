@@ -393,7 +393,7 @@ class ProductControllerTest {
     }
 
     @Test
-    void createProduct_WithGet_Returns405() throws Exception {
+    void createProduct_WithUnsupportedPut_Returns405() throws Exception {
         mockMvc.perform(get("/api/v1/products")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Test\",\"price\":9.99}"))
