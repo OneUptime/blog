@@ -1065,7 +1065,6 @@ sudo apache2ctl -e debug -k restart
     # Logging Configuration
     # =====================================
     ErrorLog /var/www/example.com/logs/error.log
-    CustomLog /var/www/example.com/logs/access.log combined
     LogLevel warn
 
     # Don't log health checks from monitoring
