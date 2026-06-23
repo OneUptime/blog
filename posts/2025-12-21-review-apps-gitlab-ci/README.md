@@ -113,7 +113,6 @@ stop_review:
     - echo "$KUBECONFIG_CONTENT" > /root/.kube/config
   script:
     - helm uninstall $RELEASE_NAME --namespace $KUBE_NAMESPACE
-    - kubectl delete namespace $KUBE_NAMESPACE-$CI_COMMIT_REF_SLUG || true
   environment:
     name: review/$CI_COMMIT_REF_SLUG
     action: stop
@@ -293,12 +292,13 @@ stop_review:
 ### Shared Database with Schema Isolation
 
 ```yaml
-variables:
-  REVIEW_SCHEMA: review_${CI_COMMIT_REF_SLUG//-/_}
-
 deploy_review:
   script:
     - |
+      # GitLab's variables: block uses Go's os.Expand and does not support bash
+      # parameter substitution, so build the schema name here in the script.
+      REVIEW_SCHEMA="review_${CI_COMMIT_REF_SLUG//-/_}"
+
       # Create schema
       psql $DATABASE_URL -c "CREATE SCHEMA IF NOT EXISTS $REVIEW_SCHEMA;"
 
