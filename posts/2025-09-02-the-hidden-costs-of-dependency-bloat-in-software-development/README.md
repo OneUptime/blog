@@ -24,7 +24,7 @@ Take React upgrades, for example. In a bloated project, going from version 16 to
 
 ## The Security Time Bomb
 
-If maintenance is a slow burn, security is the bomb waiting to go off. Each dependency is a potential weak spot for hackers. According to the 2023 State of Software Supply Chain report, 84% of codebases have at least one vulnerable dependency- and the more you have, the bigger the target.
+If maintenance is a slow burn, security is the bomb waiting to go off. Each dependency is a potential weak spot for hackers. According to the 2023 Open Source Security and Risk Analysis (OSSRA) report, 84% of codebases have at least one known open source vulnerability- and the more you have, the bigger the target.
 
 It works like this: More packages mean more ways for bad actors to sneak in. A tiny utility could have a flaw that lets attackers into your system. Patches get buried in the mess, and testing them takes forever. Then there are transitive vulnerabilities- flaws in dependencies of dependencies- that can wreck your app without warning. And supply chain attacks, like SolarWinds or the xz-utils backdoor, where malware hides in packages you trust.
 
@@ -55,7 +55,7 @@ Schedule quarterly reviews of your dependencies:
 ### 3. Embrace Minimalism
 
 Choose frameworks and libraries that minimize dependencies:
-- Go with smaller alternatives (lodash vs underscore)
+- Go with smaller alternatives (underscore vs lodash)
 - Consider vanilla JavaScript over heavy frameworks for simple tasks
 - Use tree-shaking and dead code elimination in your build process
 
