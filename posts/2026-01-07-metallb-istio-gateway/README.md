@@ -24,7 +24,7 @@ This guide covers:
 ## Prerequisites
 
 Before starting, ensure you have:
-- A Kubernetes cluster (v1.25+) running on bare-metal or VMs
+- A Kubernetes cluster running a version supported by your Istio release. The examples below use Istio 1.30.1, which is officially supported on Kubernetes 1.32 through 1.36.
 - `kubectl` configured with cluster admin access
 - Helm v3 installed
 - Basic understanding of Kubernetes networking concepts
@@ -100,6 +100,12 @@ helm repo update
 
 # Create a dedicated namespace for MetalLB components
 kubectl create namespace metallb-system
+
+# Allow MetalLB speaker pods to run with the privileges they require
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 
 # Install MetalLB with Helm, enabling the speaker component for L2/BGP advertisement
 # The --wait flag ensures the installation completes before proceeding
@@ -255,17 +261,16 @@ Now we install Istio with the ingress gateway component configured to work with 
 
 ### Install Istio using istioctl
 
-The following commands download and install Istio with a production-ready configuration:
+The following commands download and install Istio with the default profile:
 
 ```bash
-# Download the latest Istio release (adjust version as needed)
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+# Download Istio 1.30.1 (adjust version as needed for your cluster)
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.1 sh -
 
 # Add istioctl to your PATH for the current session
-export PATH=$PWD/istio-1.20.0/bin:$PATH
+export PATH=$PWD/istio-1.30.1/bin:$PATH
 
-# Install Istio with the default profile which includes the ingress gateway
-# The 'default' profile is suitable for production with reasonable defaults
+# Install Istio with the default profile, which includes the ingress gateway
 istioctl install --set profile=default -y
 
 # Verify Istio installation
@@ -288,10 +293,10 @@ metadata:
   namespace: istio-system
   annotations:
     # Tell MetalLB to use our dedicated Istio IP pool
-    metallb.universe.tf/address-pool: istio-pool
+    metallb.io/address-pool: istio-pool
     # Optional: Request a specific IP from the pool for consistency
     # This is useful when you need a predictable IP for DNS configuration
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.250"
+    metallb.io/loadBalancerIPs: "192.168.1.250"
   labels:
     app: istio-ingressgateway
     istio: ingressgateway
@@ -348,8 +353,7 @@ sequenceDiagram
     participant Client
     participant MetalLB as MetalLB Speaker
     participant IngressGW as Istio Ingress Gateway
-    participant VS as VirtualService
-    participant DR as DestinationRule
+    participant Config as Istio Routing Config
     participant Sidecar as Envoy Sidecar
     participant App as Application Pod
 
@@ -357,10 +361,8 @@ sequenceDiagram
     Note over MetalLB: ARP/BGP routes to node<br/>running speaker
     MetalLB->>IngressGW: Forward to Gateway pod
     Note over IngressGW: TLS termination or<br/>passthrough based on config
-    IngressGW->>VS: Match host and path
-    VS->>DR: Apply traffic policy
-    Note over DR: mTLS, load balancing,<br/>circuit breaking
-    DR->>Sidecar: Route to service pod
+    Note over Config: Gateway, VirtualService,<br/>and DestinationRule configure Envoy
+    IngressGW->>Sidecar: Route to selected service pod
     Note over Sidecar: mTLS encryption<br/>between pods
     Sidecar->>App: Deliver request
     App-->>Client: Response travels back<br/>through the same path
@@ -375,7 +377,7 @@ The Gateway resource defines the entry point for traffic entering the mesh. This
 # Gateway configuration for handling incoming HTTPS traffic
 # The Gateway listens on the ingress gateway pods and terminates TLS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -441,7 +443,7 @@ The VirtualService defines how traffic matching the Gateway is routed to backend
 # VirtualService configuration for routing traffic from the Gateway
 # to backend services based on host and path matching
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -493,7 +495,7 @@ spec:
     #     fixedDelay: 5s
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-routes
@@ -538,11 +540,10 @@ graph LR
     end
 
     subgraph "Gateway Layer"
-        TLS1[TLS Termination<br/>at Gateway]
+        GW[Istio Gateway<br/>Envoy]
     end
 
     subgraph "Service Mesh - mTLS Enabled"
-        GW[Istio Gateway<br/>Envoy]
         SvcA[Service A<br/>Envoy Sidecar]
         SvcB[Service B<br/>Envoy Sidecar]
     end
@@ -551,8 +552,7 @@ graph LR
         CA[istiod<br/>Certificate Authority]
     end
 
-    Client -->|HTTPS| TLS1
-    TLS1 -->|mTLS| GW
+    Client -->|HTTPS| GW
     GW -->|mTLS| SvcA
     SvcA -->|mTLS| SvcB
     CA -.->|Issue Certs| GW
@@ -569,7 +569,7 @@ This PeerAuthentication policy enforces mTLS for all pod-to-pod communication wi
 # Enable STRICT mTLS mode for the entire mesh
 # This ensures all traffic between pods is encrypted and authenticated
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -584,13 +584,13 @@ spec:
 
 ### Configure DestinationRule for mTLS
 
-DestinationRules work with PeerAuthentication to ensure clients also use mTLS when connecting to services:
+Istio's auto mTLS configures sidecar clients to use mTLS for workloads with proxies. You can also use DestinationRules with PeerAuthentication to explicitly ensure clients use mTLS when connecting to services:
 
 ```yaml
 # destination-rule-mtls.yaml
 # DestinationRule ensures clients use mTLS when connecting to services
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: users-service-mtls
@@ -625,7 +625,7 @@ For the Istio Gateway, you can configure different TLS modes depending on your s
 # gateway-tls-options.yaml
 # Different TLS configurations for various security requirements
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -655,9 +655,8 @@ spec:
       mode: MUTUAL
       # Server certificate
       credentialName: gateway-cert
-      # CA certificate to validate client certificates
-      # Clients must present a valid certificate signed by this CA
-      caCertificates: /etc/istio/gateway-ca/ca.crt
+      # The credentialName secret should include cacert (or use a separate
+      # <credentialName>-cacert secret) to validate client certificates
     hosts:
     - "mutual.example.com"
 
@@ -728,6 +727,40 @@ Create separate Istio ingress gateway deployments for different purposes:
 # multi-gateway-deployment.yaml
 # Deploy multiple Istio ingress gateways for different traffic classes
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: istio-partner-gateway
+  namespace: istio-system
+
+---
+# Allow the partner gateway to read TLS credentials by credentialName
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: istio-partner-gateway-sds
+  namespace: istio-system
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: istio-partner-gateway-sds
+  namespace: istio-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: istio-partner-gateway-sds
+subjects:
+- kind: ServiceAccount
+  name: istio-partner-gateway
+  namespace: istio-system
+
+---
 # Partner Gateway - for B2B API access with mutual TLS
 apiVersion: apps/v1
 kind: Deployment
@@ -749,22 +782,15 @@ spec:
         app: istio-partner-gateway
         istio: partner-gateway
       annotations:
-        # Inject the Istio sidecar for the gateway pod
-        sidecar.istio.io/inject: "false"
+        # Use Istio's gateway injection template for this gateway pod
+        inject.istio.io/templates: gateway
+        sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: istio-partner-gateway
       containers:
       - name: istio-proxy
-        # Use the same Istio proxy image as the main gateway
-        image: docker.io/istio/proxyv2:1.20.0
-        args:
-        - proxy
-        - router
-        - --domain
-        - $(POD_NAMESPACE).svc.cluster.local
-        - --proxyLogLevel=warning
-        - --proxyComponentLogLevel=misc:error
-        - --log_output_level=default:info
+        # The injection webhook replaces this placeholder with the configured proxy image
+        image: auto
         ports:
         - containerPort: 8080
           protocol: TCP
@@ -772,19 +798,6 @@ spec:
           protocol: TCP
         - containerPort: 15021
           protocol: TCP
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: INSTANCE_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
         resources:
           requests:
             cpu: 100m
@@ -802,9 +815,9 @@ metadata:
   namespace: istio-system
   annotations:
     # Use the Istio IP pool for consistent IP management
-    metallb.universe.tf/address-pool: istio-pool
+    metallb.io/address-pool: istio-pool
     # Request a specific IP for the partner gateway
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.251"
+    metallb.io/loadBalancerIPs: "192.168.1.251"
   labels:
     app: istio-partner-gateway
     istio: partner-gateway
@@ -832,8 +845,8 @@ metadata:
   name: istio-internal-gateway
   namespace: istio-system
   annotations:
-    metallb.universe.tf/address-pool: istio-pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.252"
+    metallb.io/address-pool: istio-pool
+    metallb.io/loadBalancerIPs: "192.168.1.252"
   labels:
     app: istio-internal-gateway
     istio: internal-gateway
@@ -864,7 +877,7 @@ Create separate Gateway resources that select their respective ingress gateway d
 # Gateway configurations for each ingress gateway deployment
 ---
 # Partner Gateway - requires client certificates
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: partner-gateway
@@ -881,13 +894,14 @@ spec:
     tls:
       # MUTUAL mode requires clients to present valid certificates
       mode: MUTUAL
+      # The secret should include tls.crt, tls.key, and cacert
       credentialName: partner-gateway-tls
     hosts:
     - "partner-api.example.com"
 
 ---
 # Internal Gateway - for corporate internal services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: internal-gateway
@@ -925,7 +939,7 @@ Route traffic through the appropriate gateway based on the hostname:
 # VirtualServices for routing through different gateways
 ---
 # Partner API VirtualService
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: partner-api-routes
@@ -950,7 +964,7 @@ spec:
 
 ---
 # Internal Admin Dashboard
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: admin-dashboard-routes
@@ -969,7 +983,7 @@ spec:
 
 ---
 # Internal Monitoring Tools
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: monitoring-routes
@@ -1019,10 +1033,10 @@ metadata:
   name: istio-ingressgateway-http
   namespace: istio-system
   annotations:
-    metallb.universe.tf/address-pool: istio-pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.250"
+    metallb.io/address-pool: istio-pool
+    metallb.io/loadBalancerIPs: "192.168.1.250"
     # Enable IP sharing with other services
-    metallb.universe.tf/allow-shared-ip: "shared-gateway-ip"
+    metallb.io/allow-shared-ip: "shared-gateway-ip"
 spec:
   type: LoadBalancer
   selector:
@@ -1043,11 +1057,11 @@ metadata:
   name: istio-grpc-gateway
   namespace: istio-system
   annotations:
-    metallb.universe.tf/address-pool: istio-pool
+    metallb.io/address-pool: istio-pool
     # Same IP as HTTP gateway
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.250"
+    metallb.io/loadBalancerIPs: "192.168.1.250"
     # Same sharing key enables IP sharing
-    metallb.universe.tf/allow-shared-ip: "shared-gateway-ip"
+    metallb.io/allow-shared-ip: "shared-gateway-ip"
 spec:
   type: LoadBalancer
   selector:
@@ -1113,10 +1127,9 @@ kubectl logs -n istio-system -l app=istio-ingressgateway --tail=100
 istioctl analyze
 
 # Check if the Gateway is listening on the expected ports
-kubectl exec -n istio-system deploy/istio-ingressgateway -- netstat -tlnp
-
-# Use istioctl to debug the proxy configuration
 istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
+
+# Use istioctl to debug route configuration
 istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
 ```
 
@@ -1125,8 +1138,8 @@ istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
 When experiencing mTLS-related connection issues:
 
 ```bash
-# Check the mTLS status of services
-istioctl x authz check <pod-name>
+# Check whether a pod enforces mTLS and whether clients use mTLS
+istioctl x describe pod <pod-name>
 
 # Verify PeerAuthentication policies
 kubectl get peerauthentication -A
@@ -1161,9 +1174,9 @@ kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.
 kubectl get gateway -A -o yaml | grep -A3 "selector:"
 ```
 
-## Complete Example: Production-Ready Configuration
+## Complete Example: Production-Oriented Configuration
 
-Here is a complete, production-ready configuration that combines all the elements discussed:
+Here is a complete, production-oriented configuration that combines all the elements discussed:
 
 ```yaml
 # production-metallb-istio.yaml
@@ -1200,8 +1213,8 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    metallb.universe.tf/address-pool: production-istio-pool
-    metallb.universe.tf/loadBalancerIPs: "10.0.100.10"
+    metallb.io/address-pool: production-istio-pool
+    metallb.io/loadBalancerIPs: "10.0.100.10"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -1217,7 +1230,7 @@ spec:
 
 ---
 # Mesh-wide strict mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -1228,7 +1241,7 @@ spec:
 
 ---
 # Production Gateway with TLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: production-gateway
@@ -1257,7 +1270,7 @@ spec:
 
 ---
 # Example VirtualService
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-virtualservice
@@ -1284,7 +1297,7 @@ spec:
 
 ---
 # DestinationRule with mTLS and resilience settings
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -1325,7 +1338,7 @@ With this configuration, your bare-metal Kubernetes cluster can provide the same
 
 ## Further Reading
 
-- [MetalLB Documentation](https://metallb.universe.tf/)
+- [MetalLB Documentation](https://metallb.io/)
 - [Istio Gateway Documentation](https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/)
 - [Istio Security Best Practices](https://istio.io/latest/docs/ops/best-practices/security/)
 - [Kubernetes LoadBalancer Services](https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
