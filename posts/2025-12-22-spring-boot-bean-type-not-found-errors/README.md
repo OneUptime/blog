@@ -379,7 +379,7 @@ class UserServiceTest {
 @SpringBootTest
 class UserServiceTest {
 
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
 
     @Autowired
@@ -408,7 +408,7 @@ class UserControllerTest {
 
     // UserService is not loaded by @WebMvcTest
     // Need to mock it
-    @MockBean
+    @MockitoBean
     private UserService userService;
 }
 ```
@@ -427,6 +427,10 @@ public class PayPalPaymentService implements PaymentService { }
 @Service
 public class OrderService {
     private final PaymentService paymentService;  // Ambiguous!
+
+    public OrderService(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
 }
 ```
 
@@ -475,7 +479,7 @@ public class OrderService {
 | Profile | Correct @Profile active? |
 | Configuration | @Configuration class has @Configuration? |
 | Interface | Implementation class exists and is annotated? |
-| Test | @MockBean for dependencies in test context? |
+| Test | @MockitoBean for dependencies in test context? |
 
 ## Summary
 
