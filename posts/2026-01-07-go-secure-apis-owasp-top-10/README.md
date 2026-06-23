@@ -14,18 +14,18 @@ Building secure APIs is not optional in today's threat landscape. The OWASP Top 
 
 The OWASP Top 10 is a standard awareness document representing the most critical security risks to web applications. For Go APIs, the most relevant vulnerabilities include:
 
-1. **A01:2021 - Broken Access Control**
-2. **A02:2021 - Cryptographic Failures**
-3. **A03:2021 - Injection**
-4. **A04:2021 - Insecure Design**
-5. **A05:2021 - Security Misconfiguration**
-6. **A06:2021 - Vulnerable and Outdated Components**
-7. **A07:2021 - Identification and Authentication Failures**
-8. **A08:2021 - Software and Data Integrity Failures**
-9. **A09:2021 - Security Logging and Monitoring Failures**
-10. **A10:2021 - Server-Side Request Forgery (SSRF)**
+1. **A01:2025 - Broken Access Control**
+2. **A02:2025 - Security Misconfiguration**
+3. **A03:2025 - Software Supply Chain Failures**
+4. **A04:2025 - Cryptographic Failures**
+5. **A05:2025 - Injection**
+6. **A06:2025 - Insecure Design**
+7. **A07:2025 - Authentication Failures**
+8. **A08:2025 - Software or Data Integrity Failures**
+9. **A09:2025 - Security Logging and Alerting Failures**
+10. **A10:2025 - Mishandling of Exceptional Conditions**
 
-Let's dive into practical implementations for each.
+Let's dive into practical implementations for key categories.
 
 ## Project Setup
 
@@ -35,17 +35,17 @@ First, let's set up a secure Go API project with the necessary dependencies.
 // go.mod - Define your module and dependencies
 module secure-api
 
-go 1.22
+go 1.26
 
 require (
-    github.com/gin-gonic/gin v1.9.1
-    github.com/golang-jwt/jwt/v5 v5.2.0
+    github.com/gin-gonic/gin v1.12.0
+    github.com/golang-jwt/jwt/v5 v5.3.1
     github.com/lib/pq v1.10.9
-    golang.org/x/crypto v0.18.0
-    github.com/go-playground/validator/v10 v10.16.0
-    github.com/rs/cors v1.10.1
-    go.uber.org/zap v1.26.0
-    golang.org/x/time v0.5.0
+    golang.org/x/crypto v0.53.0
+    github.com/go-playground/validator/v10 v10.30.3
+    github.com/rs/cors v1.11.1
+    go.uber.org/zap v1.28.0
+    golang.org/x/time v0.15.0
 )
 ```
 
@@ -62,7 +62,6 @@ package middleware
 
 import (
     "net/http"
-    "strings"
 
     "github.com/gin-gonic/gin"
 )
@@ -110,7 +109,15 @@ func RequirePermission(resource, action string) gin.HandlerFunc {
             return
         }
 
-        role := Role(userRole.(string))
+        roleString, ok := userRole.(string)
+        if !ok {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "invalid authentication context",
+            })
+            return
+        }
+
+        role := Role(roleString)
 
         // Check if user has required permission
         if !hasPermission(role, resource, action) {
@@ -155,6 +162,7 @@ import (
     "database/sql"
     "net/http"
     "strconv"
+    "time"
 
     "github.com/gin-gonic/gin"
 )
@@ -163,10 +171,23 @@ type OrderHandler struct {
     db *sql.DB
 }
 
+type Order struct {
+    ID        int64     `json:"id"`
+    UserID    int64     `json:"user_id"`
+    ProductID int64     `json:"product_id"`
+    Quantity  int       `json:"quantity"`
+    Status    string    `json:"status"`
+    CreatedAt time.Time `json:"created_at"`
+}
+
 // GetOrder retrieves an order only if it belongs to the authenticated user
 func (h *OrderHandler) GetOrder(c *gin.Context) {
     // Get authenticated user ID from context
-    userID, _ := c.Get("userID")
+    userID, exists := c.Get("userID")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+        return
+    }
 
     // Parse order ID from URL parameter
     orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -200,7 +221,7 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 }
 ```
 
-## A02: Cryptographic Failures
+## A04: Cryptographic Failures
 
 Protect sensitive data with proper encryption and secure password handling.
 
@@ -290,6 +311,9 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
     if err != nil {
         return false, err
     }
+    if version != argon2.Version {
+        return false, errors.New("incompatible argon2 version")
+    }
 
     _, err = fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
     if err != nil {
@@ -321,7 +345,7 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 }
 ```
 
-## A03: Injection Prevention
+## A05: Injection Prevention
 
 SQL injection and other injection attacks remain critical threats.
 
@@ -335,6 +359,7 @@ package repository
 import (
     "context"
     "database/sql"
+    "fmt"
     "time"
 )
 
@@ -347,6 +372,13 @@ type User struct {
     Email     string
     Name      string
     CreatedAt time.Time
+}
+
+type SearchFilters struct {
+    Name     string
+    Email    string
+    SortBy   string
+    SortDesc bool
 }
 
 // INSECURE: Never do this - vulnerable to SQL injection
@@ -431,6 +463,9 @@ func (r *UserRepository) SearchUsers(ctx context.Context, filters SearchFilters)
         }
         users = append(users, u)
     }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
 
     return users, nil
 }
@@ -487,7 +522,7 @@ func ProcessFile(filename string) error {
 }
 ```
 
-## A04: Insecure Design - Input Validation
+## A06: Insecure Design - Input Validation
 
 Comprehensive input validation is the first line of defense.
 
@@ -576,16 +611,15 @@ func ValidateRequest(req interface{}) error {
 
 ### Input Sanitization Middleware
 
-Sanitize all input before processing.
+Sanitize untrusted input at parsing boundaries before processing.
 
 ```go
 package middleware
 
 import (
-    "bytes"
     "html"
-    "io"
     "net/http"
+    "net/url"
     "regexp"
     "strings"
 
@@ -611,11 +645,13 @@ func (s *InputSanitizer) Middleware() gin.HandlerFunc {
         c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, s.MaxBodySize)
 
         // Sanitize query parameters
-        for key, values := range c.Request.URL.Query() {
+        query := c.Request.URL.Query()
+        for key, values := range query {
             for i, value := range values {
-                c.Request.URL.Query()[key][i] = s.SanitizeString(value)
+                query[key][i] = s.SanitizeString(value)
             }
         }
+        c.Request.URL.RawQuery = query.Encode()
 
         c.Next()
     }
@@ -650,9 +686,20 @@ func (s *InputSanitizer) SanitizeEmail(email string) string {
 
     return email
 }
+
+// SanitizeForm sanitizes URL-encoded form values.
+func (s *InputSanitizer) SanitizeForm(values url.Values) url.Values {
+    sanitized := url.Values{}
+    for key, vals := range values {
+        for _, value := range vals {
+            sanitized.Add(key, s.SanitizeString(value))
+        }
+    }
+    return sanitized
+}
 ```
 
-## A05: Security Misconfiguration
+## A02: Security Misconfiguration
 
 Proper security headers and CORS configuration are essential.
 
@@ -673,8 +720,8 @@ func SecurityHeaders() gin.HandlerFunc {
         // Prevent MIME type sniffing
         c.Header("X-Content-Type-Options", "nosniff")
 
-        // Enable XSS filter in browsers (legacy, but still useful)
-        c.Header("X-XSS-Protection", "1; mode=block")
+        // Disable deprecated browser XSS filters; rely on CSP instead
+        c.Header("X-XSS-Protection", "0")
 
         // Prevent clickjacking
         c.Header("X-Frame-Options", "DENY")
@@ -824,7 +871,7 @@ type TokenConfig struct {
     AccessTokenTTL     time.Duration
     RefreshTokenTTL    time.Duration
     Issuer             string
-    Audience           []string
+    Audience           string
 }
 
 // Claims represents custom JWT claims
@@ -865,7 +912,7 @@ func (s *TokenService) GenerateTokenPair(userID int64, email, role string) (acce
             IssuedAt:  jwt.NewNumericDate(now),
             NotBefore: jwt.NewNumericDate(now),
             Issuer:    s.config.Issuer,
-            Audience:  s.config.Audience,
+            Audience:  jwt.ClaimStrings{s.config.Audience},
         },
     }
 
@@ -898,11 +945,15 @@ func (s *TokenService) GenerateTokenPair(userID int64, email, role string) (acce
 func (s *TokenService) ValidateAccessToken(tokenString string) (*Claims, error) {
     token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
         // Verify signing method
-        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+        if token.Method != jwt.SigningMethodHS256 {
             return nil, ErrInvalidToken
         }
         return s.config.AccessTokenSecret, nil
-    })
+    },
+        jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+        jwt.WithIssuer(s.config.Issuer),
+        jwt.WithAudience(s.config.Audience),
+    )
 
     if err != nil {
         if errors.Is(err, jwt.ErrTokenExpired) {
@@ -1080,7 +1131,7 @@ func (lr *LoginRateLimiter) RecordFailedAttempt(identifier string) {
 }
 ```
 
-## A09: Security Logging and Monitoring
+## A09: Security Logging and Alerting
 
 Comprehensive logging is essential for detecting and responding to attacks.
 
@@ -1188,7 +1239,7 @@ func (sl *SecurityLogger) LogAccessDenied(userID int64, resource, action, ip str
 }
 ```
 
-## A10: Server-Side Request Forgery (SSRF) Prevention
+## SSRF Prevention for A01: Broken Access Control
 
 Prevent SSRF attacks when your API makes outbound requests.
 
@@ -1293,6 +1344,10 @@ func isPrivateIP(ip net.IP) bool {
         "172.16.0.0/12",
         "192.168.0.0/16",
         "169.254.0.0/16", // Link-local
+        "100.64.0.0/10",  // Carrier-grade NAT
+        "0.0.0.0/8",      // Current network
+        "::1/128",        // IPv6 localhost
+        "::/128",         // IPv6 unspecified
         "fc00::/7",       // IPv6 private
         "fe80::/10",      // IPv6 link-local
     }
@@ -1310,7 +1365,8 @@ func isPrivateIP(ip net.IP) bool {
     return false
 }
 
-// SafeHTTPClient returns an HTTP client configured to prevent SSRF
+// SafeHTTPClient returns an HTTP client with timeout and redirect validation.
+// Call ValidateURL immediately before making the initial request.
 func (p *SSRFProtector) SafeHTTPClient() *http.Client {
     return &http.Client{
         Timeout: 10 * time.Second,
@@ -1323,6 +1379,15 @@ func (p *SSRFProtector) SafeHTTPClient() *http.Client {
             return p.ValidateURL(req.URL.String())
         },
     }
+}
+
+// SafeGet validates the initial URL before making a GET request.
+func (p *SSRFProtector) SafeGet(rawURL string) (*http.Response, error) {
+    if err := p.ValidateURL(rawURL); err != nil {
+        return nil, err
+    }
+
+    return p.SafeHTTPClient().Get(rawURL)
 }
 ```
 
@@ -1363,7 +1428,7 @@ func main() {
         AccessTokenTTL:     15 * time.Minute,
         RefreshTokenTTL:    7 * 24 * time.Hour,
         Issuer:             "your-api",
-        Audience:           []string{"your-app"},
+        Audience:           "your-app",
     }
     tokenService := auth.NewTokenService(tokenConfig)
 
