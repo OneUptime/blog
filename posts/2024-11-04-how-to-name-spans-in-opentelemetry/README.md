@@ -30,7 +30,7 @@ This code snippet demonstrates naming a span with a class and method identifier,
 ```typescript
 // Set a descriptive span name using ClassName.methodName convention
 // This clearly identifies both the component and the specific operation
-span.setName('YourClassName.functionName');
+span.updateName('YourClassName.functionName');
 ```
 
 
@@ -42,7 +42,7 @@ This example shows the Service.action naming pattern, which is ideal for microse
 ```typescript
 // Use consistent naming: ServiceName.actionDescription
 // This makes filtering and searching traces much easier
-span.setName('UserService.fetchUserById');
+span.updateName('UserService.fetchUserById');
 ```
 
 
@@ -54,7 +54,7 @@ This hierarchical pattern includes the layer (Controller), component (UserContro
 ```typescript
 // Hierarchical naming: Layer/Component.action
 // Useful for distinguishing between Controller, Service, and Repository layers
-span.setName('Controller/UserController.getUser');
+span.updateName('Controller/UserController.getUser');
 ```
 
 
