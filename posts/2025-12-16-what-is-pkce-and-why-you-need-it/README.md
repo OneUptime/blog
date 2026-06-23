@@ -100,7 +100,7 @@ flowchart LR
         A[Malicious App with<br/>Same URL Scheme]
         B[Browser History<br/>Access]
         C[Referrer Header<br/>Leakage]
-        D[Network<br/>Interception]
+        D[OS or Log<br/>Leakage]
     end
 
     Vectors --> Code[Authorization Code]
@@ -164,6 +164,14 @@ When starting the authorization flow, your application generates a random string
 The following code demonstrates how to generate a cryptographically secure code verifier using the Web Crypto API. This verifier serves as the secret that only your application knows, and it must be generated fresh for each authorization request.
 
 ```javascript
+// Convert binary data to URL-safe base64 encoding
+function base64URLEncode(buffer) {
+  return btoa(String.fromCharCode(...buffer))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 // Generate a code verifier using cryptographically secure random values
 function generateCodeVerifier() {
   // Create a byte array to hold 32 random bytes (256 bits of entropy)
@@ -332,7 +340,7 @@ sequenceDiagram
     participant Auth as Auth Server
 
     Note over App: code_verifier = "abc123..."
-    Note over App: code_challenge = SHA256("abc123...")
+    Note over App: code_challenge = BASE64URL(SHA256("abc123..."))
 
     User->>App: 1. Click "Login"
     App->>Auth: 2. Auth Request + code_challenge
@@ -424,9 +432,9 @@ flowchart TB
 
 ### Strongly Recommended
 
-- **Server-side applications**: OAuth 2.1 (the upcoming revision) recommends PKCE for all clients, including confidential ones. It provides defense-in-depth against authorization code injection attacks.
+- **Server-side applications**: OAuth 2.0 Security Best Current Practice (RFC 9700) recommends PKCE for confidential clients. The current OAuth 2.1 draft requires PKCE for authorization code clients except in narrow confidential-client deployments with proper OpenID Connect nonce protection. PKCE provides defense-in-depth against authorization code injection attacks.
 
-The OAuth 2.0 Security Best Current Practice document (RFC 9700, which updates RFC 6819) and the OAuth 2.1 draft both recommend using PKCE universally.
+The OAuth 2.0 Security Best Current Practice document (RFC 9700, which updates RFC 6819) requires PKCE for public clients and recommends it for confidential clients. The OAuth 2.1 draft goes further by making PKCE the default requirement for authorization code clients.
 
 ## Code Challenge Methods
 
@@ -467,7 +475,7 @@ The `plain` method sends the verifier as-is:
 code_challenge = code_verifier
 ```
 
-This provides minimal security improvement and should only be used when the client genuinely cannot perform cryptographic operations (which is rare in modern environments).
+This protects only the narrower case where an attacker can see the authorization response but not the authorization request. It should only be used when the client genuinely cannot perform cryptographic operations and the client knows the authorization server supports `plain` (which is rare in modern environments).
 
 ### Method Comparison
 
@@ -580,9 +588,13 @@ class PKCEAuth {
     // Create the SHA-256 challenge from the verifier
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 
-    // Store verifier in sessionStorage (survives redirects, cleared on tab close)
-    // IMPORTANT: Never store in localStorage as it persists indefinitely
+    // Generate and store state for CSRF protection
+    const state = this.generateRandomString(16);
+
+    // Store verifier and state in sessionStorage (survives redirects, cleared on tab close)
+    // IMPORTANT: Never store the verifier in localStorage as it persists indefinitely
     sessionStorage.setItem('pkce_verifier', codeVerifier);
+    sessionStorage.setItem('oauth_state', state);
 
     // Build the authorization URL with all required PKCE parameters
     const params = new URLSearchParams({
@@ -590,9 +602,9 @@ class PKCEAuth {
       client_id: this.clientId,           // Identify our application
       redirect_uri: this.redirectUri,     // Where to return after authorization
       scope: 'openid profile email',      // Requested permissions
-      code_challenge: codeChallenge,      // The hashed verifier for PKCE
+      code_challenge: codeChallenge,      // The hashed and encoded verifier for PKCE
       code_challenge_method: 'S256',      // Indicate SHA-256 was used
-      state: this.generateRandomString(16) // CSRF protection token
+      state                                 // CSRF protection token
     });
 
     // Redirect user to authorization server to authenticate
@@ -600,40 +612,51 @@ class PKCEAuth {
   }
 
   // Exchange the authorization code for access and refresh tokens
-  async exchangeCodeForTokens(authorizationCode) {
-    // Retrieve the verifier we stored before the redirect
+  async exchangeCodeForTokens(authorizationCode, returnedState) {
+    // Retrieve the verifier and state we stored before the redirect
     const codeVerifier = sessionStorage.getItem('pkce_verifier');
+    const expectedState = sessionStorage.getItem('oauth_state');
 
-    // Verify we have the verifier (should always exist if flow started correctly)
-    if (!codeVerifier) {
-      throw new Error('No code verifier found');
+    // Verify we have the verifier and state (should always exist if flow started correctly)
+    if (!codeVerifier || !expectedState) {
+      throw new Error('No PKCE verifier or state found');
     }
 
-    // Make POST request to token endpoint with the code and verifier
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded', // OAuth requires form encoding
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',  // Indicate we're exchanging a code
-        code: authorizationCode,           // The code from the callback URL
-        redirect_uri: this.redirectUri,    // Must match original request exactly
-        client_id: this.clientId,          // Our application identifier
-        code_verifier: codeVerifier        // The original verifier (proves we started the flow)
-      })
-    });
-
-    // CRITICAL: Clear the verifier immediately after use (one-time use only)
-    sessionStorage.removeItem('pkce_verifier');
-
-    // Check for errors from the token endpoint
-    if (!response.ok) {
-      throw new Error('Token exchange failed');
+    // Validate returned state before exchanging the authorization code
+    if (returnedState !== expectedState) {
+      sessionStorage.removeItem('pkce_verifier');
+      sessionStorage.removeItem('oauth_state');
+      throw new Error('Invalid state');
     }
 
-    // Return the token response containing access_token, refresh_token, etc.
-    return response.json();
+    try {
+      // Make POST request to token endpoint with the code and verifier
+      const response = await fetch(this.tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded', // OAuth requires form encoding
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',  // Indicate we're exchanging a code
+          code: authorizationCode,           // The code from the callback URL
+          redirect_uri: this.redirectUri,    // Must match original request exactly
+          client_id: this.clientId,          // Our application identifier
+          code_verifier: codeVerifier        // The original verifier (proves we started the flow)
+        })
+      });
+
+      // Check for errors from the token endpoint
+      if (!response.ok) {
+        throw new Error('Token exchange failed');
+      }
+
+      // Return the token response containing access_token, refresh_token, etc.
+      return response.json();
+    } finally {
+      // CRITICAL: Clear one-time values immediately after use
+      sessionStorage.removeItem('pkce_verifier');
+      sessionStorage.removeItem('oauth_state');
+    }
   }
 }
 ```
@@ -743,11 +766,12 @@ timeline
     2015 : RFC 7636 - PKCE
          : Introduced for mobile apps
          : Optional enhancement
-    2020 : OAuth 2.0 Security BCP
-         : PKCE recommended for ALL clients
+    2025 : RFC 9700 - OAuth 2.0 Security BCP
+         : PKCE required for public clients
+         : PKCE recommended for confidential clients
          : Defense in depth approach
-    2024 : OAuth 2.1 Draft
-         : PKCE REQUIRED for all flows
+    2026 : OAuth 2.1 Draft
+         : PKCE REQUIRED for authorization code clients
          : Implicit flow deprecated
     Future : OAuth 2.1 Final
           : PKCE is the standard
@@ -785,4 +809,4 @@ Key takeaways:
 - **Generate cryptographically secure verifiers**: Use proper random number generators.
 - **Store verifiers securely and temporarily**: Clear them after use.
 
-As OAuth 2.1 becomes the standard, PKCE will transition from a recommendation to a requirement. Implementing it now ensures your authentication flows are secure and future-proof.
+As OAuth 2.1 becomes the standard, PKCE will transition from a recommendation to a default requirement for authorization code clients. Implementing it now ensures your authentication flows are secure and future-proof.
