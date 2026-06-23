@@ -36,12 +36,9 @@ flowchart LR
 ### InfluxDB Query (InfluxQL)
 
 ```sql
-SELECT last("value") AS "value", time
+SELECT last("value") AS "value"
 FROM "events"
 WHERE $timeFilter
-GROUP BY time($__interval) fill(none)
-ORDER BY time DESC
-LIMIT 1
 ```
 
 ### InfluxDB Query (Flux)
@@ -57,7 +54,7 @@ from(bucket: "mydb")
 ### Stat Panel Configuration
 
 1. Select **Stat** visualization
-2. Set **Value options** > **Fields** to `Time`
+2. Set **Value options** > **Fields** to `Time` for InfluxQL or `_time` for Flux
 3. Configure **Standard options**:
    - Unit: `dateTimeAsLocal` or `dateTimeFromNow`
 
@@ -67,7 +64,7 @@ from(bucket: "mydb")
   "options": {
     "reduceOptions": {
       "calcs": ["lastNotNull"],
-      "fields": "/^_time$/"
+      "fields": "/^(Time|_time)$/"
     },
     "textMode": "value"
   },
@@ -93,15 +90,15 @@ WHERE $timeFilter
 
 ### Grafana Transformation Approach
 
-1. Query returns the timestamp of last event
+1. Query returns the event time and a current-time value as numeric fields
 2. Add **Add field from calculation** transformation
 3. Mode: **Binary operation**
-4. Operation: Current time minus event time
+4. Operation: current-time field minus event-time field
 
 ### Alternative: Flux Calculation
 
 ```flux
-import "date"
+import "array"
 
 lastEvent = from(bucket: "mydb")
   |> range(start: -30d)
@@ -109,14 +106,12 @@ lastEvent = from(bucket: "mydb")
   |> last()
   |> findRecord(fn: (key) => true, idx: 0)
 
-from(bucket: "mydb")
-  |> range(start: -1m)
-  |> filter(fn: (r) => r._measurement == "deployments")
-  |> map(fn: (r) => ({
-      _time: r._time,
+array.from(rows: [
+  {
+      _time: now(),
       _value: float(v: uint(v: now()) - uint(v: lastEvent._time)) / 1000000000.0
-  }))
-  |> last()
+  }
+])
 ```
 
 ### Panel Configuration for Duration
@@ -140,7 +135,7 @@ Grafana provides several time-related units:
 |------|-------------|----------------|
 | `dateTimeAsLocal` | Local time format | `2024-01-15 10:30:45` |
 | `dateTimeAsUS` | US format | `01/15/2024 10:30:45 AM` |
-| `dateTimeAsISO` | ISO format | `2024-01-15T10:30:45Z` |
+| `dateTimeAsIso` | ISO format | `2024-01-15T10:30:45Z` |
 | `dateTimeFromNow` | Relative time | `5 minutes ago` |
 | `dtdurations` | Duration | `2h 30m 15s` |
 | `s` | Seconds | `3600` |
@@ -151,7 +146,7 @@ Grafana provides several time-related units:
 {
   "fieldConfig": {
     "defaults": {
-      "unit": "dateTimeFromNow",
+      "unit": "dtdurations",
       "color": {
         "mode": "thresholds"
       },
@@ -184,7 +179,7 @@ from(bucket: "mydb")
 ### InfluxQL with Math
 
 ```sql
-SELECT last("end_time") - last("start_time") AS "duration"
+SELECT last("end_time_seconds") - last("start_time_seconds") AS "duration"
 FROM "jobs"
 WHERE $timeFilter
 ```
@@ -226,17 +221,16 @@ Show time until a future event:
 ### Flux Query for Scheduled Event
 
 ```flux
-import "date"
+import "array"
 
 scheduledTime = 2024-01-20T00:00:00Z
 
-from(bucket: "mydb")
-  |> range(start: -1m)
-  |> limit(n: 1)
-  |> map(fn: (r) => ({
-      _time: r._time,
+array.from(rows: [
+  {
+      _time: now(),
       _value: float(v: uint(v: scheduledTime) - uint(v: now())) / 1000000000.0
-  }))
+  }
+])
 ```
 
 ### Panel Configuration
@@ -260,10 +254,10 @@ from(bucket: "mydb")
 
 ## Working with Unix Timestamps
 
-### InfluxQL: Convert to Unix
+### InfluxQL: Stored Unix Timestamp
 
 ```sql
-SELECT last("timestamp") * 1
+SELECT last("timestamp_ms") AS "timestamp_ms"
 FROM "events"
 WHERE $timeFilter
 ```
@@ -277,13 +271,13 @@ from(bucket: "mydb")
   |> last()
   |> map(fn: (r) => ({
       _time: r._time,
-      _value: uint(v: r._time) / uint(v: 1000000000)
+      _value: uint(v: r._time) / uint(v: 1000000)
   }))
 ```
 
 ### Display Unix Timestamp as Date
 
-Set unit to `dateTimeAsLocal`:
+Set unit to `dateTimeAsLocal` when the value is an epoch timestamp in milliseconds:
 
 ```json
 {
@@ -317,9 +311,7 @@ Set unit to `dateTimeAsLocal`:
           "unit": "dateTimeFromNow",
           "thresholds": {
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 86400000},
-              {"color": "red", "value": 172800000}
+              {"color": "green", "value": null}
             ]
           }
         }
@@ -352,7 +344,7 @@ Set unit to `dateTimeAsLocal`:
       "type": "stat",
       "targets": [
         {
-          "query": "from(bucket: \"backups\") |> range(start: -1d) |> filter(fn: (r) => r._measurement == \"backup_schedule\" and r._field == \"next_run\") |> last()",
+          "query": "from(bucket: \"backups\") |> range(start: -1d) |> filter(fn: (r) => r._measurement == \"backup_schedule\" and r._field == \"next_run_ms\") |> last()",
           "datasource": "InfluxDB"
         }
       ],
@@ -370,7 +362,7 @@ Set unit to `dateTimeAsLocal`:
 
 ### Time Shows as Large Number
 
-The value is in nanoseconds or milliseconds. Apply appropriate unit:
+The value is often in nanoseconds or seconds. Convert it to milliseconds before applying a date/time unit; for example, divide nanoseconds by 1,000,000 in the query and then use:
 
 ```json
 {
@@ -453,6 +445,6 @@ Using time fields from InfluxDB in Grafana stat panels requires:
 1. **Proper query format** - Return time as a field or calculate duration
 2. **Correct unit selection** - Use `dateTimeFromNow`, `dateTimeAsLocal`, or `dtdurations`
 3. **Field selection** - Target the `_time` field or calculated duration
-4. **Thresholds** - Set meaningful thresholds based on time values (in milliseconds)
+4. **Thresholds** - Set meaningful thresholds based on the field's numeric unit, such as seconds for `dtdurations` or milliseconds for epoch timestamp values
 
 With these techniques, you can create informative stat panels showing last event times, time since events, durations, and countdown timers - essential components of operational dashboards.
