@@ -187,8 +187,8 @@ db.events.aggregate([
         week: { $isoWeek: "$timestamp" }
       },
       count: { $sum: 1 },
-      firstDay: { $min: "$timestamp" },
-      lastDay: { $max: "$timestamp" }
+      firstEvent: { $min: "$timestamp" },
+      lastEvent: { $max: "$timestamp" }
     }
   },
   { $sort: { "_id.year": 1, "_id.week": 1 } }
@@ -230,8 +230,7 @@ db.events.aggregate([
         }
       },
       totalEvents: { $sum: 1 },
-      totalRevenue: { $sum: { $ifNull: ["$amount", 0] } },
-      avgEventsPerDay: { $avg: 1 }  // Will calculate later
+      totalRevenue: { $sum: { $ifNull: ["$amount", 0] } }
     }
   },
   {
