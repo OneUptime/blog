@@ -22,8 +22,8 @@ flowchart LR
 
     subgraph "Service Mesh with Envoy Sidecars"
         B -->|Inject Trace Headers| C[Service A + Envoy]
-        C -->|Propagate Headers| D[Service B + Envoy]
-        D -->|Propagate Headers| E[Service C + Envoy]
+        C -->|Application Forwards Headers| D[Service B + Envoy]
+        D -->|Application Forwards Headers| E[Service C + Envoy]
     end
 
     subgraph "Tracing Backend"
@@ -40,8 +40,9 @@ flowchart LR
 ```
 
 In this architecture:
-- **Envoy sidecars** automatically inject and propagate trace headers
-- **Each service** reports its spans to the Jaeger collector
+- **Envoy sidecars** generate spans and inject trace headers into proxied requests
+- **Applications** must forward trace headers on downstream calls so spans can be correlated
+- **Envoy proxies** report spans to the Jaeger collector
 - **Jaeger** aggregates spans into complete traces for visualization
 
 ## Prerequisites
@@ -79,14 +80,12 @@ spec:
     # Enable access logging for debugging (optional but helpful)
     accessLogFile: /dev/stdout
 
-    # Configure the default tracing provider
-    defaultProviders:
-      tracing:
-        - jaeger
-
-    # Enable distributed tracing with 100% sampling for testing
-    # In production, reduce this value significantly (e.g., 1.0 for 1%)
+    # Enable distributed tracing. Sampling is configured later with Telemetry API.
     enableTracing: true
+
+    # Disable legacy MeshConfig tracing options when using extension providers
+    defaultConfig:
+      tracing: {}
 
     # Define extension providers for observability
     extensionProviders:
@@ -122,12 +121,12 @@ istioctl install -f istio-operator-config.yaml --wait
 kubectl get pods -n istio-system
 
 # Check if the mesh configuration includes tracing settings
-kubectl get configmap istio -n istio-system -o yaml | grep -A 20 "defaultProviders"
+kubectl get configmap istio -n istio-system -o yaml | grep -A 20 "extensionProviders"
 ```
 
 ## Step 2: Deploying Jaeger
 
-Now let's deploy Jaeger to the cluster. We'll use the Jaeger Operator for a production-ready setup that includes all necessary components.
+Now let's deploy Jaeger to the cluster. For new production deployments, the Jaeger project recommends Jaeger v2 with the OpenTelemetry Operator or Jaeger Helm chart. If you are still operating Jaeger v1, the Jaeger Operator can manage the legacy `Jaeger` custom resource shown below.
 
 ### Option A: Quick Installation with Jaeger All-in-One (Development)
 
@@ -160,7 +159,7 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/all-in-one:1.53
+          image: jaegertracing/all-in-one:1.76.0
           # Environment variables for Jaeger configuration
           env:
             # Set the collector's sampling strategy
@@ -169,9 +168,6 @@ spec:
             # Memory storage configuration (for development only)
             - name: MEMORY_MAX_TRACES
               value: "50000"
-            # Enable metrics endpoint
-            - name: METRICS_STORAGE_TYPE
-              value: prometheus
           ports:
             # Jaeger UI port
             - containerPort: 16686
@@ -280,7 +276,7 @@ kubectl get pods -n istio-system -l app=jaeger
 
 ### Option B: Production Installation with Jaeger Operator
 
-For production environments, use the Jaeger Operator with persistent storage:
+For Jaeger v1 production environments, use the Jaeger Operator with persistent storage:
 
 ```yaml
 # jaeger-operator-install.yaml
@@ -361,7 +357,7 @@ spec:
   #         topic: jaeger-spans
 ```
 
-Install the Jaeger Operator first, then apply the custom resource:
+Install the Jaeger Operator first, then apply the custom resource. The Jaeger Operator requires cert-manager for its validating webhook, so install cert-manager before installing the operator if your cluster does not already have it.
 
 ```bash
 # Install Jaeger Operator using Helm
@@ -421,7 +417,7 @@ The following Telemetry resource configures mesh-wide sampling at 10%:
 # telemetry-sampling.yaml
 # This configures distributed tracing sampling for the entire mesh
 # Adjust the randomSamplingPercentage based on your traffic volume
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default-tracing
@@ -453,7 +449,7 @@ For namespace-specific sampling, you can override the mesh default:
 # namespace-sampling.yaml
 # Override sampling for a specific namespace
 # Useful for debugging specific services
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: high-sampling
@@ -466,7 +462,6 @@ spec:
       # 100% sampling for debugging
       # WARNING: Only use this for debugging, not production traffic
       randomSamplingPercentage: 100.0
-      # Disable tracing for specific paths (e.g., health checks)
       disableSpanReporting: false
 ```
 
@@ -475,7 +470,7 @@ For workload-specific sampling using selectors:
 ```yaml
 # workload-sampling.yaml
 # Configure sampling for specific workloads
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: critical-service-tracing
@@ -516,7 +511,7 @@ istioctl analyze -n istio-system
 
 ## Step 4: Trace Header Propagation
 
-For distributed tracing to work correctly, trace context must be propagated between services. Istio's Envoy sidecars handle this automatically for most cases, but your applications must forward certain headers.
+For distributed tracing to work correctly, trace context must be propagated between services. Istio's Envoy sidecars generate and forward headers on proxied requests, but only your application can correlate an inbound request with the outbound requests it triggers. Your applications must forward the trace context headers.
 
 ### Headers That Must Be Propagated
 
@@ -529,7 +524,7 @@ sequenceDiagram
     participant Jaeger
 
     Client->>ServiceA: Request (no trace headers)
-    Note over ServiceA: Envoy generates:<br/>x-request-id<br/>x-b3-traceid<br/>x-b3-spanid
+    Note over ServiceA: Envoy generates:<br/>x-request-id<br/>traceparent
     ServiceA->>ServiceB: Request + trace headers
     Note over ServiceB: Envoy creates child span<br/>with same traceid
     ServiceB->>ServiceC: Request + trace headers
@@ -544,9 +539,8 @@ sequenceDiagram
 
 The following headers must be forwarded by your application code:
 
-```yaml
-# Required trace headers for B3 propagation (Zipkin format)
-# These headers MUST be passed from incoming to outgoing requests
+```text
+# Trace headers commonly forwarded from incoming to outgoing requests
 
 # B3 Multi-header format (traditional)
 x-b3-traceid      # 128-bit trace identifier
@@ -564,7 +558,6 @@ tracestate        # Vendor-specific trace information
 
 # Istio-specific headers
 x-request-id      # Request identifier for correlation
-x-envoy-attempt-count  # Retry attempt counter
 ```
 
 ### Example: Header Propagation in Different Languages
@@ -599,7 +592,6 @@ TRACE_HEADERS = [
     'tracestate',
     # Istio/Envoy specific headers
     'x-request-id',
-    'x-ot-span-context',
 ]
 
 def extract_trace_headers():
@@ -637,7 +629,7 @@ def get_orders():
     )
 
     return {
-        'orders': [...],
+        'orders': [],
         'inventory': response.json()
     }
 
@@ -706,7 +698,6 @@ const TRACE_HEADERS = [
   'tracestate',
   // Istio/Envoy headers
   'x-request-id',
-  'x-ot-span-context',
 ];
 
 /**
@@ -828,7 +819,6 @@ var TraceHeaders = []string{
 	"tracestate",
 	// Istio/Envoy specific headers
 	"x-request-id",
-	"x-ot-span-context",
 }
 
 // TracingMiddleware extracts trace headers from incoming requests
@@ -944,8 +934,8 @@ Let's deploy a sample microservices application to test our distributed tracing 
 
 ```yaml
 # sample-app.yaml
-# A sample three-tier application to demonstrate distributed tracing
-# Consists of frontend, backend, and database services
+# A sample application to demonstrate distributed tracing
+# Consists of frontend, details, reviews, and ratings services
 ---
 # Namespace for the sample application
 apiVersion: v1
@@ -1061,7 +1051,7 @@ metadata:
   namespace: bookinfo
   labels:
     app: reviews
-    version: v1
+    version: v2
 spec:
   replicas: 1
   selector:
@@ -1071,11 +1061,11 @@ spec:
     metadata:
       labels:
         app: reviews
-        version: v1
+        version: v2
     spec:
       containers:
         - name: reviews
-          image: docker.io/istio/examples-bookinfo-reviews-v1:1.18.0
+          image: docker.io/istio/examples-bookinfo-reviews-v2:1.18.0
           ports:
             - containerPort: 9080
           env:
@@ -1206,6 +1196,10 @@ kubectl get pods -n bookinfo -o wide
 # Get the ingress gateway URL
 export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
 export GATEWAY_URL=$INGRESS_HOST:$INGRESS_PORT
@@ -1221,7 +1215,7 @@ Generate test traffic to create traces:
 
 ```bash
 # Generate traffic to the application
-# Each request will create a distributed trace
+# Sampled requests will create distributed traces
 for i in {1..100}; do
   curl -s -o /dev/null "http://$GATEWAY_URL/productpage"
   echo "Request $i completed"
@@ -1592,7 +1586,7 @@ Add custom attributes to spans for better filtering and analysis:
 # custom-span-attributes.yaml
 # Configure custom attributes to be added to all spans
 # These attributes help with filtering and correlation in Jaeger
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-span-attributes
@@ -1639,15 +1633,6 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    # Enable multiple propagation formats for compatibility
-    # with different tracing systems and applications
-    defaultConfig:
-      tracing:
-        # Maximum path tag length (for URL paths in spans)
-        max_path_tag_length: 256
-        # Sampling rate (alternative to Telemetry API)
-        sampling: 10.0
-
     # Configure propagation formats
     # Envoy will extract and inject headers in these formats
     extensionProviders:
@@ -1655,19 +1640,22 @@ spec:
         opentelemetry:
           service: jaeger-collector.istio-system.svc.cluster.local
           port: 4317
-          # Configure resource detectors
-          resource_detectors:
-            environment: {}
+          # Default is W3C_TRACE_CONTEXT. Add B3 only when clients or services require it.
+          context:
+            - W3C_TRACE_CONTEXT
+            - B3
+          # Maximum path tag length for URL paths in spans
+          maxTagLength: 256
 ```
 
 ### Conditional Tracing Based on Headers
 
-Create traces only for specific requests:
+For B3 propagation, force sampling for specific requests:
 
 ```yaml
 # conditional-tracing.yaml
-# Configure tracing based on request attributes
-# Useful for always tracing certain types of requests
+# Configure B3 sampling based on request attributes
+# Useful for always tracing certain types of requests when B3 context is enabled
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -1721,7 +1709,7 @@ spec:
 
 ## Step 9: Integration with Alerting
 
-Set up alerts based on trace data using Jaeger's metrics:
+Set up alerts based on trace-derived metrics generated by the OpenTelemetry Collector spanmetrics connector. This requires a collector pipeline that receives spans, runs the spanmetrics connector, and exports the resulting metrics to Prometheus:
 
 ```yaml
 # jaeger-alerts.yaml
@@ -1741,19 +1729,19 @@ spec:
       rules:
         # Alert when error rate exceeds threshold
         - alert: HighErrorRate
-          # This expression calculates error rate from Jaeger spans
+          # This expression uses spanmetrics-generated calls_total metrics
           expr: |
-            sum(rate(jaeger_spans_total{status="error"}[5m])) by (service)
+            sum by (service_name) (rate(calls_total{status_code="STATUS_CODE_ERROR", span_kind="SPAN_KIND_SERVER"}[5m]))
             /
-            sum(rate(jaeger_spans_total[5m])) by (service)
+            sum by (service_name) (rate(calls_total{span_kind="SPAN_KIND_SERVER"}[5m]))
             > 0.05
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High error rate detected in {{ $labels.service }}"
+            summary: "High error rate detected in {{ $labels.service_name }}"
             description: |
-              Service {{ $labels.service }} has an error rate of
+              Service {{ $labels.service_name }} has an error rate of
               {{ $value | humanizePercentage }} over the last 5 minutes.
               Check Jaeger for error traces.
 
@@ -1761,15 +1749,15 @@ spec:
         - alert: HighLatency
           expr: |
             histogram_quantile(0.95,
-              sum(rate(jaeger_span_duration_seconds_bucket[5m])) by (service, le)
-            ) > 2.0
+              sum by (service_name, le) (rate(duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m]))
+            ) > 2000
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "High latency detected in {{ $labels.service }}"
+            summary: "High latency detected in {{ $labels.service_name }}"
             description: |
-              P95 latency for {{ $labels.service }} is {{ $value }}s,
+              P95 latency for {{ $labels.service_name }} is {{ $value }}ms,
               exceeding the 2 second SLO.
 
         # Alert when Jaeger collector is dropping spans
@@ -1789,7 +1777,7 @@ spec:
         # Alert when trace sampling is too low
         - alert: LowTraceSampling
           expr: |
-            sum(rate(jaeger_spans_total[1h]))
+            sum(rate(calls_total{span_kind="SPAN_KIND_SERVER"}[1h]))
             /
             sum(rate(istio_requests_total[1h]))
             < 0.001
@@ -1825,7 +1813,7 @@ kubectl get pods -n bookinfo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"
 # Verify connectivity from sidecar to Jaeger
 # Exec into a sidecar and test connection
 kubectl exec -n bookinfo deploy/frontend -c istio-proxy -- \
-  curl -v jaeger-collector.istio-system:4317
+  curl -v http://jaeger-collector.istio-system:4318/
 
 # Check Telemetry resource is applied correctly
 kubectl get telemetry -A -o yaml
@@ -1859,7 +1847,7 @@ If tracing is adding significant latency:
 ```yaml
 # optimized-tracing.yaml
 # Optimized tracing configuration to reduce overhead
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: optimized-tracing
@@ -1886,13 +1874,13 @@ spec:
 
 ### Sampling Strategy for Production
 
-In production, implement adaptive sampling to balance visibility and overhead:
+In production, use percentage sampling to balance visibility and overhead:
 
 ```yaml
 # production-sampling.yaml
 # Production-ready sampling configuration
 # Uses lower default rates with higher rates for critical paths
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-sampling
@@ -1906,7 +1894,7 @@ spec:
       randomSamplingPercentage: 0.1
 ---
 # Higher sampling for payment service (critical path)
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-service-sampling
@@ -1920,21 +1908,6 @@ spec:
         - name: jaeger
       # 5% sampling for payment service
       randomSamplingPercentage: 5.0
----
-# 100% sampling for error responses
-# This ensures all errors are traced for debugging
-apiVersion: telemetry.istio.io/v1alpha1
-kind: Telemetry
-metadata:
-  name: error-sampling
-  namespace: production
-spec:
-  tracing:
-    - providers:
-        - name: jaeger
-      # Custom sampling decision based on response code
-      # Note: This requires additional EnvoyFilter configuration
-      randomSamplingPercentage: 100.0
 ```
 
 Resource Allocation for Jaeger
