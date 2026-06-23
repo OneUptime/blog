@@ -159,13 +159,15 @@ data:
   enable-hubble: "true"
   hubble-listen-address: ":4244"
   hubble-metrics-server: ":9965"
-  hubble-metrics:
-    - dns:query;ignoreAAAA
-    - drop:sourceContext=identity;destinationContext=identity
-    - tcp:sourceContext=identity;destinationContext=identity
-    - flow:sourceContext=identity;destinationContext=identity
-    - icmp:sourceContext=identity;destinationContext=identity
-    - http:sourceContext=identity;destinationContext=identity
+  # ConfigMap data values must be strings, so the metric list is a
+  # newline-separated block scalar (not a YAML sequence).
+  hubble-metrics: |
+    dns:query;ignoreAAAA
+    drop:sourceContext=identity;destinationContext=identity
+    tcp:sourceContext=identity;destinationContext=identity
+    flow:sourceContext=identity;destinationContext=identity
+    icmp:sourceContext=identity;destinationContext=identity
+    http:sourceContext=identity;destinationContext=identity
 ```
 
 ### Prometheus Integration
