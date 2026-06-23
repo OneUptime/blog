@@ -19,6 +19,9 @@ npm install mongoose
 
 # For TypeScript support (mongoose includes its own type definitions)
 npm install mongoose
+
+# Optional dependencies used in the authentication examples
+npm install bcrypt jsonwebtoken
 ```
 
 ## Basic Connection
@@ -69,6 +72,8 @@ const userSchema = new Schema({
     minlength: [2, 'Name must be at least 2 characters'],
     maxlength: [100, 'Name cannot exceed 100 characters']
   },
+  firstName: String,
+  lastName: String,
   email: {
     type: String,
     required: true,
@@ -80,6 +85,11 @@ const userSchema = new Schema({
     type: Number,
     min: [0, 'Age cannot be negative'],
     max: [150, 'Age cannot exceed 150']
+  },
+  birthDate: Date,
+  password: {
+    type: String,
+    minlength: [8, 'Password must be at least 8 characters']
   },
 
   // Enum type
@@ -115,6 +125,12 @@ const userSchema = new Schema({
 
   // Timestamps
   isActive: { type: Boolean, default: true },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
+  },
+  loginCount: { type: Number, default: 0 },
   lastLogin: Date
 }, {
   timestamps: true,  // Adds createdAt and updatedAt
@@ -133,14 +149,21 @@ const User = mongoose.model('User', userSchema);
 ```javascript
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName}`;
+  if (this.firstName || this.lastName) {
+    return `${this.firstName || ''} ${this.lastName || ''}`.trim();
+  }
+  return this.name;
 });
 
 // Virtual for age from birthdate
 userSchema.virtual('calculatedAge').get(function() {
   if (!this.birthDate) return null;
   const today = new Date();
-  const age = today.getFullYear() - this.birthDate.getFullYear();
+  let age = today.getFullYear() - this.birthDate.getFullYear();
+  const monthDiff = today.getMonth() - this.birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < this.birthDate.getDate())) {
+    age--;
+  }
   return age;
 });
 
@@ -195,13 +218,12 @@ const activeUsers = await User.findActiveUsers();
 
 ```javascript
 // Pre-save middleware
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function() {
   // Only hash password if modified
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password')) return;
 
   const bcrypt = require('bcrypt');
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Post-save middleware
@@ -210,17 +232,15 @@ userSchema.post('save', function(doc) {
 });
 
 // Pre-find middleware
-userSchema.pre(/^find/, function(next) {
+userSchema.pre(/^find/, function() {
   // Only return active users by default
-  this.find({ isActive: { $ne: false } });
-  next();
+  this.where({ isActive: { $ne: false } });
 });
 
 // Pre-deleteOne middleware (replaces deprecated pre('remove'))
-userSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+userSchema.pre('deleteOne', { document: true, query: false }, async function() {
   // Clean up related documents
   await mongoose.model('Post').deleteMany({ author: this._id });
-  next();
 });
 ```
 
@@ -351,7 +371,7 @@ const users = await User.find({
 });
 
 // Text search
-await User.createIndexes({ name: 'text', bio: 'text' });
+await User.collection.createIndex({ name: 'text', 'profile.bio': 'text' });
 const users = await User.find({ $text: { $search: 'developer' } });
 
 // Regex search
@@ -531,7 +551,7 @@ const userSchema = new Schema({
 userSchema.index({ firstName: 1, lastName: 1 });
 
 // Text index
-userSchema.index({ name: 'text', bio: 'text' });
+userSchema.index({ name: 'text', 'profile.bio': 'text' });
 
 // TTL index
 userSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3600 });
