@@ -262,8 +262,8 @@ traceroute6 -q 5 2001:4860:4860::8888
 Test path MTU discovery:
 
 ```bash
-# Use larger packets
-traceroute6 -s 1400 2001:4860:4860::8888
+# Use larger packets (packet length is a trailing positional argument)
+traceroute6 2001:4860:4860::8888 1400
 ```
 
 ### Use Different Probe Methods
