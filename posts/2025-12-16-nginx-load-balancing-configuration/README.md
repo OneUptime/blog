@@ -24,7 +24,7 @@ flowchart TB
     subgraph Benefits["Benefits"]
         B1[High Availability]
         B2[Horizontal Scaling]
-        B3[No Single Point of Failure]
+        B3[Reduced Backend Failure Impact]
     end
 
     style LB fill:#1e3a5f,color:#fff
@@ -252,7 +252,7 @@ upstream backend {
 
 Parameters:
 - `max_fails=3` - Mark unhealthy after 3 failures
-- `fail_timeout=30s` - Time window for failures and recovery check interval
+- `fail_timeout=30s` - Time window for failures and time the server stays unavailable
 
 ```mermaid
 stateDiagram-v2
@@ -262,7 +262,7 @@ stateDiagram-v2
     Unhealthy --> Healthy: 30s passed, next request succeeds
 
     Healthy: Receives traffic
-    Unhealthy: No traffic for fail_timeout
+    Unhealthy: Temporarily skipped for fail_timeout
 ```
 
 ### Active Health Checks (Nginx Plus)
@@ -450,6 +450,8 @@ server {
         # SSL to backend
         proxy_ssl_verify on;
         proxy_ssl_trusted_certificate /etc/ssl/certs/backend-ca.crt;
+        proxy_ssl_server_name on;
+        proxy_ssl_name backend.example.com;
         proxy_ssl_session_reuse on;
     }
 }
