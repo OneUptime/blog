@@ -10,7 +10,7 @@ Description: Learn how to protect sensitive data in OpenTelemetry telemetry thro
 
 ## Introduction
 
-OpenTelemetry has become the de facto standard for collecting telemetry data from distributed systems. While this observability data is invaluable for debugging, performance optimization, and system monitoring, it often contains sensitive information that must be protected. Personal Identifiable Information (PII), financial data, healthcare records, and other sensitive information can inadvertently end up in your traces, metrics, and logs.
+OpenTelemetry has become the de facto standard for collecting telemetry data from distributed systems. While this observability data is invaluable for debugging, performance optimization, and system monitoring, it often contains sensitive information that must be protected. Personally Identifiable Information (PII), financial data, healthcare records, and other sensitive information can inadvertently end up in your traces, metrics, and logs.
 
 This comprehensive guide covers the essential techniques for securing OpenTelemetry data, including PII masking, attribute filtering, data sanitization, and compliance considerations for regulations like GDPR and HIPAA.
 
@@ -231,6 +231,12 @@ func (p *PIIMaskingSpanProcessor) maskAttributes(attrs []attribute.KeyValue) []a
         if p.sensitiveKeys[key] {
             // Completely redact known sensitive fields
             masked[i] = attribute.String(key, "[REDACTED]")
+            continue
+        }
+
+        if attr.Value.Type() != attribute.STRING {
+            // Preserve non-string attributes without changing their type
+            masked[i] = attr
             continue
         }
 
@@ -492,7 +498,7 @@ processors:
         action: delete
 
       # Hash values that need to be trackable but not readable
-      # SHA256 allows correlation without exposing actual values
+      # The attributes processor hashes values for correlation without exposing actual values
       - key: user.id
         action: hash
       - key: session.id
@@ -500,33 +506,24 @@ processors:
       - key: customer.id
         action: hash
 
-  # Attributes processor: Mask PII patterns using regex
+  # Transform processor: Mask PII patterns using regex
   # This catches PII that slipped through application-level filters
-  attributes/mask-pii:
-    actions:
-      # Mask email addresses in any attribute value
-      - key: user.email
-        pattern: ^(.)(.*?)(@.*)$
-        replacement: $1***$3
-        action: extract
+  transform/mask-pii:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          # Mask email addresses in any attribute value
+          - replace_pattern(attributes["user.email"], "^(.)(.*?)(@.*)$$", "$$1***$$3")
 
-      # Mask phone numbers
-      - key: user.phone
-        pattern: ^(\+?1[-.\s]?\(?\d{3}\)?[-.\s]?)(\d{3}[-.\s]?\d{4})$
-        replacement: $1***-****
-        action: extract
+          # Mask phone numbers
+          - replace_pattern(attributes["user.phone"], "^(\\+?1[-.\\s]?\\(?\\d{3}\\)?[-.\\s]?)(\\d{3}[-.\\s]?\\d{4})$$", "$$1***-****")
 
-      # Replace IP addresses with anonymized versions
-      - key: http.client_ip
-        pattern: ^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$
-        replacement: $1.$2.0.0
-        action: extract
+          # Replace IP addresses with anonymized versions
+          - replace_pattern(attributes["http.client_ip"], "^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$$", "$$1.$$2.0.0")
 
-      # Mask credit card numbers (keep last 4 digits)
-      - key: payment.card_number
-        pattern: ^(\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?)(\d{4})$
-        replacement: ****-****-****-$2
-        action: extract
+          # Mask credit card numbers (keep last 4 digits)
+          - replace_pattern(attributes["payment.card_number"], "^(\\d{4}[-\\s]?\\d{4}[-\\s]?\\d{4}[-\\s]?)(\\d{4})$$", "****-****-****-$$2")
 
   # Filter processor: Drop spans/metrics that shouldn't be collected
   # This prevents sensitive operations from being recorded at all
@@ -551,9 +548,9 @@ processors:
       log_record:
         # Drop log records with sensitive content
         - 'severity_text == "DEBUG"'
-        - 'body contains "password"'
-        - 'body contains "secret"'
-        - 'body contains "token"'
+        - 'IsMatch(body, "password")'
+        - 'IsMatch(body, "secret")'
+        - 'IsMatch(body, "token")'
 
   # Transform processor: Advanced data transformation
   # Use OTTL (OpenTelemetry Transformation Language) for complex rules
@@ -621,7 +618,7 @@ service:
       processors:
         - memory_limiter
         - attributes/remove-sensitive
-        - attributes/mask-pii
+        - transform/mask-pii
         - filter/security
         - transform/security
         - batch
@@ -653,25 +650,30 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-## Python SDK: Implementing Secure Span Processors
+## Python SDK: Implementing Secure Exporter Wrappers
 
-For Python applications, here's how to implement PII masking in the OpenTelemetry SDK:
+For Python applications, here's how to implement PII masking before spans are exported by wrapping the OpenTelemetry exporter:
 
-The following span processor integrates with Python's OpenTelemetry SDK to sanitize trace data:
+The following masking helper and exporter wrapper integrate with Python's OpenTelemetry SDK to sanitize trace data:
 
 ```python
 """
-PII Masking Span Processor for OpenTelemetry Python SDK.
+PII Masking exporter wrapper for OpenTelemetry Python SDK.
 
-This module provides a span processor that detects and masks personally
-identifiable information (PII) in span attributes before they are exported.
+This module provides an exporter wrapper that detects and masks personally
+identifiable information (PII) in span attributes before export.
 """
 
 import re
-from typing import Optional, Sequence, Dict, Pattern, Callable
+from typing import Any, Optional, Sequence, Dict, Pattern, Callable
 from opentelemetry.sdk.trace import SpanProcessor, ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import Span
@@ -679,10 +681,10 @@ from opentelemetry.trace import Span
 
 class PIIMaskingSpanProcessor(SpanProcessor):
     """
-    A span processor that masks PII in span attributes.
+    A masking helper that provides SpanProcessor-compatible lifecycle methods.
 
-    This processor intercepts spans at export time and applies regex-based
-    masking rules to protect sensitive data. It supports both pattern-based
+    This helper stores regex-based masking rules used by the exporter wrapper
+    to protect sensitive data. It supports both pattern-based
     detection (emails, phones, etc.) and key-based filtering (known sensitive
     attribute names).
 
@@ -885,8 +887,8 @@ class PIIMaskingSpanProcessor(SpanProcessor):
 
     def _mask_attributes(
         self,
-        attributes: Dict[str, any]
-    ) -> Dict[str, any]:
+        attributes: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Mask all sensitive attributes in a dictionary.
 
@@ -923,7 +925,7 @@ class PIIMaskingSpanProcessor(SpanProcessor):
     def on_start(
         self,
         span: Span,
-        parent_context: Optional[any] = None
+        parent_context: Optional[Any] = None
     ) -> None:
         """
         Called when a span starts.
@@ -936,10 +938,9 @@ class PIIMaskingSpanProcessor(SpanProcessor):
         """
         Called when a span ends.
 
-        This is where we create a masked copy of the span and export it.
-        Note: We cannot modify the span directly, so we create a wrapper.
+        Masking is handled by the MaskedSpanExporter wrapper below.
         """
-        # The actual masking happens in the force_flush/shutdown export
+        # The actual masking happens in the exporter wrapper
         pass
 
     def shutdown(self) -> None:
@@ -1001,6 +1002,10 @@ class MaskedSpanExporter(SpanExporter):
         """Shutdown the underlying exporter."""
         self._exporter.shutdown()
 
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Force flush the underlying exporter."""
+        return self._exporter.force_flush(timeout_millis)
+
 
 class MaskedSpanData:
     """
@@ -1010,7 +1015,7 @@ class MaskedSpanData:
     while delegating other properties to the original span.
     """
 
-    def __init__(self, span: ReadableSpan, masked_attributes: Dict[str, any]):
+    def __init__(self, span: ReadableSpan, masked_attributes: Dict[str, Any]):
         """
         Initialize the masked span data wrapper.
 
@@ -1022,11 +1027,11 @@ class MaskedSpanData:
         self._masked_attributes = masked_attributes
 
     @property
-    def attributes(self) -> Dict[str, any]:
+    def attributes(self) -> Dict[str, Any]:
         """Return the masked attributes."""
         return self._masked_attributes
 
-    def __getattr__(self, name: str) -> any:
+    def __getattr__(self, name: str) -> Any:
         """Delegate all other attribute access to the original span."""
         return getattr(self._span, name)
 ```
@@ -1056,8 +1061,8 @@ def configure_secure_tracing():
     """
     Configure OpenTelemetry with PII masking enabled.
 
-    This function sets up a tracer provider with a custom span processor
-    chain that masks sensitive data before export.
+    This function sets up a tracer provider with an exporter wrapper
+    that masks sensitive data before export.
     """
     # Create the OTLP exporter that sends traces to the collector
     otlp_exporter = OTLPSpanExporter(
@@ -1469,8 +1474,11 @@ Here's how to configure your Node.js application:
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { PIIMaskingSpanProcessor } from './pii-masking-processor';
 
 /**
@@ -1513,12 +1521,12 @@ function initializeSecureTracing(): NodeSDK {
 
   // Create the SDK with security configuration
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'secure-nodejs-service',
-      [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'secure-nodejs-service',
+      [ATTR_SERVICE_VERSION]: '1.0.0',
+      'deployment.environment.name': 'production',
     }),
-    spanProcessor: piiMaskingProcessor,
+    spanProcessors: [piiMaskingProcessor],
   });
 
   return sdk;
@@ -1677,7 +1685,7 @@ service:
 
 For healthcare applications, HIPAA requires protection of Protected Health Information (PHI). Here's a comprehensive configuration:
 
-HIPAA requires encryption at rest and in transit, audit trails, and strict access controls for PHI:
+HIPAA requires appropriate administrative, physical, and technical safeguards for ePHI. In practice, this usually means encryption in transit and at rest when reasonable and appropriate, audit trails, and strict access controls for PHI:
 
 ```yaml
 # HIPAA-compliant OpenTelemetry Collector configuration
@@ -1838,7 +1846,7 @@ exporters:
     path: /var/log/otel/hipaa-audit.log
     rotation:
       max_megabytes: 100
-      max_days: 2555  # 7 years retention for HIPAA
+      max_days: 2555  # Example retention period; align with your HIPAA documentation policy, state law, and organizational requirements
       max_backups: 100
 
 service:
@@ -2295,19 +2303,21 @@ Configure alerts for potential security issues:
 groups:
   - name: otel-security
     rules:
-      # Alert if sensitive attributes are detected in exported data
+      # Alert if sensitive attributes are detected by a custom detector.
+      # This metric must be emitted by your own validation or policy component.
       - alert: SensitiveDataInTelemetry
-        expr: otel_processor_filtered_spans{reason="sensitive_data"} > 0
+        expr: increase(sensitive_telemetry_records_total[1m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "Sensitive data detected in telemetry"
-          description: "The collector has filtered {{ $value }} spans containing sensitive data in the last minute"
+          description: "A custom detector found {{ $value }} telemetry records containing sensitive data in the last minute."
 
       # Alert on TLS certificate expiration
+      # Replace this expression with metrics from your certificate monitoring system.
       - alert: OtelCertificateExpiringSoon
-        expr: otel_receiver_tls_cert_expiry_seconds < 604800  # 7 days
+        expr: cert_exporter_not_after_seconds{job="otel-collector"} - time() < 604800  # 7 days
         labels:
           severity: warning
         annotations:
@@ -2315,8 +2325,9 @@ groups:
           description: "Certificate expires in {{ $value | humanizeDuration }}"
 
       # Alert on failed authentication
+      # Replace this expression with metrics from the authenticator extension you use.
       - alert: OtelAuthenticationFailures
-        expr: rate(otel_receiver_authentication_failures_total[5m]) > 0
+        expr: rate(otelcol_authentication_failures_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
