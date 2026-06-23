@@ -426,7 +426,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -460,7 +460,8 @@ include "root" {
 }
 
 include "env" {
-  path = "../env.hcl"
+  path   = "../env.hcl"
+  expose = true
 }
 
 terraform {
@@ -468,7 +469,7 @@ terraform {
 }
 
 inputs = {
-  environment = local.environment
+  environment = include.env.locals.environment
   vpc_cidr    = "10.0.0.0/16"
 }
 ```
