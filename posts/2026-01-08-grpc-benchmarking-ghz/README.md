@@ -105,7 +105,7 @@ graph TD
 
     C --> C1[--total]
     C --> C2[--concurrency]
-    C --> C3[--qps]
+    C --> C3[--rps]
     C --> C4[--duration]
 
     D --> D1[--data]
@@ -124,7 +124,7 @@ graph TD
 |-----------|-------------|---------|
 | `--total` | Total number of requests | `--total 10000` |
 | `--concurrency` | Number of concurrent workers | `--concurrency 50` |
-| `--qps` | Queries per second limit | `--qps 100` |
+| `--rps` | Requests per second rate limit | `--rps 100` |
 | `--duration` | Duration of the test | `--duration 30s` |
 | `--connections` | Number of connections | `--connections 10` |
 | `--timeout` | Request timeout | `--timeout 20s` |
@@ -155,7 +155,7 @@ ghz --insecure \
     --proto ./protos/user.proto \
     --call user.UserService/GetUser \
     --data '{"user_id": "123"}' \
-    --qps 500 \
+    --rps 500 \
     --duration 60s \
     --connections 5 \
     localhost:50051
@@ -180,7 +180,7 @@ for QPS in 100 200 500 1000 2000 5000; do
         --proto $PROTO \
         --call $METHOD \
         --data "$DATA" \
-        --qps $QPS \
+        --rps $QPS \
         --duration 30s \
         --format json \
         --output "results_${QPS}qps.json" \
@@ -296,7 +296,7 @@ ghz --insecure \
 
 Available template variables:
 - `{{.RequestNumber}}` - Current request number
-- `{{.FullyQualifiedMethod}}` - Full method name
+- `{{.FullyQualifiedName}}` - Full method name
 - `{{.MethodName}}` - Short method name
 - `{{.ServiceName}}` - Service name
 - `{{.InputName}}` - Input message name
@@ -925,7 +925,7 @@ For complex benchmarks, use a configuration file:
   "concurrency": 50,
   "connections": 10,
   "timeout": "20s",
-  "dial-timeout": "10s",
+  "connect-timeout": "10s",
   "keepalive": "10s",
   "format": "json",
   "output": "results.json",
