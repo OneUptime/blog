@@ -48,6 +48,9 @@ db.users.createIndex(
     { email: 1 },
     { collation: { locale: 'en', strength: 2 } }
 )
+
+db.users.find({ email: "USER@example.com" })
+    .collation({ locale: 'en', strength: 2 })
 ```
 
 ### Compound Index
@@ -81,11 +84,11 @@ Automatically created when indexing array fields:
 
 ```javascript
 // Document with array field
-{
+db.products.insertOne({
     _id: 1,
     name: "Product",
     tags: ["electronics", "sale", "featured"]
-}
+})
 
 // Create multikey index
 db.products.createIndex({ tags: 1 })
@@ -138,14 +141,14 @@ For location-based queries:
 db.locations.createIndex({ location: "2dsphere" })
 
 // Document with GeoJSON point
-{
+db.locations.insertOne({
     _id: 1,
     name: "Coffee Shop",
     location: {
         type: "Point",
         coordinates: [-73.856077, 40.848447]  // [longitude, latitude]
     }
-}
+})
 
 // Find locations near a point
 db.locations.find({
@@ -193,7 +196,7 @@ db.orders.createIndex(
     { unique: true }
 )
 
-// Unique with sparse (ignore nulls)
+// Unique with sparse (allows multiple documents missing the field, but not duplicate null values)
 db.users.createIndex(
     { socialSecurityNumber: 1 },
     { unique: true, sparse: true }
@@ -246,7 +249,7 @@ db.events.createIndex(
 // Insert document with expiration
 db.events.insertOne({
     type: "notification",
-    data: { ... },
+    data: { message: "expires automatically" },
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)  // Expires in 24 hours
 })
 ```
@@ -262,24 +265,27 @@ Analyze query execution:
 db.orders.find({ status: "pending" }).explain("executionStats")
 
 // Key metrics to check
-{
+const explanation = {
     executionStats: {
         nReturned: 150,           // Documents returned
         executionTimeMillis: 5,   // Query time
         totalKeysExamined: 150,   // Index entries scanned
         totalDocsExamined: 150    // Documents scanned
     },
-    winningPlan: {
-        stage: "FETCH",           // Should see IXSCAN, not COLLSCAN
-        inputStage: {
-            stage: "IXSCAN",
-            indexName: "status_1"
+    queryPlanner: {
+        winningPlan: {
+            stage: "FETCH",       // Should include IXSCAN, not COLLSCAN
+            inputStage: {
+                stage: "IXSCAN",
+                indexName: "status_1"
+            }
         }
     }
 }
 
 // Compare index efficiency
-// Ideal: totalKeysExamined ~= nReturned ~= totalDocsExamined
+// For selective, non-covered queries: totalKeysExamined and totalDocsExamined should be close to nReturned
+// For covered queries: totalDocsExamined should be 0
 ```
 
 ### Finding Missing Indexes
@@ -448,7 +454,9 @@ class IndexManager {
         // Check if new index is a prefix of existing
         if (newKeys.length <= existingKeys.length) {
             for (let i = 0; i < newKeys.length; i++) {
-                if (existingKeys[i] !== newKeys[i]) return false;
+                if (existingKeys[i] !== newKeys[i] || existing[existingKeys[i]] !== newIndex[newKeys[i]]) {
+                    return false;
+                }
             }
             return true;
         }
@@ -460,6 +468,37 @@ class IndexManager {
         const keyCount = Object.keys(indexSpec).length;
         // Rough estimate: 20 bytes overhead + 8 bytes per key field
         return docCount * (20 + keyCount * 8);
+    }
+
+    getWinningPlan(explanation) {
+        const winningPlan = explanation.queryPlanner?.winningPlan;
+        return winningPlan?.queryPlan || winningPlan;
+    }
+
+    findStage(plan, stageName) {
+        if (!plan || typeof plan !== 'object') return null;
+        if (plan.stage === stageName) return plan;
+
+        for (const key of ['inputStage', 'outerStage', 'innerStage']) {
+            const result = this.findStage(plan[key], stageName);
+            if (result) return result;
+        }
+
+        for (const key of ['inputStages', 'children']) {
+            if (Array.isArray(plan[key])) {
+                for (const child of plan[key]) {
+                    const result = this.findStage(child, stageName);
+                    if (result) return result;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    getIndexName(explanation) {
+        const ixscan = this.findStage(this.getWinningPlan(explanation), 'IXSCAN');
+        return ixscan?.indexName || 'COLLSCAN';
     }
 
     async analyzeQueryPerformance(collectionName, query, options = {}) {
@@ -476,7 +515,7 @@ class IndexManager {
             documentsExamined: explanation.executionStats.totalDocsExamined,
             keysExamined: explanation.executionStats.totalKeysExamined,
             documentsReturned: explanation.executionStats.nReturned,
-            indexUsed: explanation.queryPlanner.winningPlan.inputStage?.indexName || 'COLLSCAN',
+            indexUsed: this.getIndexName(explanation),
             isEfficient: this.checkEfficiency(explanation.executionStats),
             suggestion: this.generateSuggestion(explanation)
         };
@@ -489,13 +528,14 @@ class IndexManager {
 
     generateSuggestion(explanation) {
         const stats = explanation.executionStats;
+        const winningPlan = this.getWinningPlan(explanation);
+
+        if (this.findStage(winningPlan, 'COLLSCAN')) {
+            return "No index used - add an index for this query pattern";
+        }
 
         if (stats.totalDocsExamined > stats.nReturned * 10) {
             return "Consider adding a more selective index";
-        }
-
-        if (explanation.queryPlanner.winningPlan.stage === "COLLSCAN") {
-            return "No index used - add an index for this query pattern";
         }
 
         if (stats.totalKeysExamined > stats.nReturned * 5) {
