@@ -208,7 +208,9 @@ def cli():
 
 # @cli.command() registers this function as a subcommand of 'cli'
 # Users will call it as: file-tool list [OPTIONS] DIRECTORY
-@cli.command()
+# We pass an explicit name; otherwise Click would derive "list-files"
+# from the function name (underscores become dashes).
+@cli.command("list")
 @click.argument("directory", type=click.Path(exists=True))
 # type=click.Path(exists=True) validates that the path exists
 @click.option("--pattern", "-p", default="*", help="Glob pattern to match files.")
@@ -324,6 +326,7 @@ For complex CLIs, you can nest command groups to create hierarchies like `git re
 # project_cli.py
 import click
 import json
+from datetime import datetime
 from pathlib import Path
 
 @click.group()
@@ -385,7 +388,7 @@ def env_create(ctx, name, env_type, region):
     environments[name] = {
         "type": env_type,
         "region": region,
-        "created_at": click.get_current_context().info_name
+        "created_at": datetime.now().isoformat()
     }
 
     # Save updated config
@@ -1350,18 +1353,12 @@ Both Click and Typer support automatic shell completion:
 ### Typer Shell Completion
 
 ```bash
-# Generate completion script for your shell
-# Bash
-task --install-completion bash
+# Install completion for the current shell (auto-detected:
+# bash, zsh, fish, and PowerShell are all supported)
+task --install-completion
 
-# Zsh
-task --install-completion zsh
-
-# Fish
-task --install-completion fish
-
-# PowerShell
-task --install-completion powershell
+# Or print the completion script so you can inspect or install it manually
+task --show-completion
 ```
 
 ### Click Shell Completion
