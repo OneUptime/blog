@@ -395,22 +395,24 @@ Enhance Pi-hole's blocking capability by adding additional blocklists.
 sqlite3 /etc/pihole/gravity.db "SELECT address FROM adlist;"
 
 # Add a new blocklist
+# There is no "pihole adlist" CLI subcommand; add lists by inserting
+# directly into the gravity database, then rebuild gravity with `pihole -g`.
 # Replace URL with the blocklist you want to add
-pihole -a adlist add "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', 1);"
 
 # Popular blocklists to consider:
 
 # StevenBlack's Unified Hosts (ads + malware)
-pihole -a adlist add "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', 1);"
 
 # OISD Full blocklist (comprehensive)
-pihole -a adlist add "https://abp.oisd.nl/basic/"
+sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('https://abp.oisd.nl/basic/', 1);"
 
 # Firebog Suspicious List
-pihole -a adlist add "https://v.firebog.net/hosts/static/w3kbl.txt"
+sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('https://v.firebog.net/hosts/static/w3kbl.txt', 1);"
 
 # AdGuard DNS Filter
-pihole -a adlist add "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
+sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt', 1);"
 
 # Update gravity database after adding lists
 pihole -g
@@ -441,7 +443,7 @@ BLOCKLISTS=(
 # Add each blocklist
 for list in "${BLOCKLISTS[@]}"; do
     echo "Adding blocklist: $list"
-    pihole -a adlist add "$list"
+    sqlite3 /etc/pihole/gravity.db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('$list', 1);"
 done
 
 # Update gravity
@@ -903,8 +905,11 @@ Pi-hole provides comprehensive monitoring and statistics capabilities.
 # Display real-time stats in terminal
 pihole -c
 
-# Display stats in chronometer mode (updates every second)
+# Output stats once and exit (no continuous refresh)
 pihole -c -e
+
+# Continuously refresh stats every N seconds (e.g. every 5 seconds)
+pihole -c -r 5
 
 # Output stats as JSON (useful for scripting)
 pihole -c -j
@@ -1136,8 +1141,9 @@ dig @127.0.0.1 -p 5335 example.com | grep "Query time"
 ### Checking Pi-hole Logs
 
 ```bash
-# View all Pi-hole related logs
-pihole -l
+# Toggle DNS query logging on or off (pihole -l is the logging command,
+# not a log viewer). Use "on", "off", or "off noflush".
+pihole -l on
 
 # View real-time DNS queries
 pihole -t
