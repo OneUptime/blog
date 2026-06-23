@@ -18,7 +18,7 @@ A JWT consists of three parts:
 Header.Payload.Signature
 ```
 
-A JWT contains three base64-encoded parts: the header specifies the signing algorithm, the payload contains claims (user data and metadata), and the signature ensures the token hasn't been tampered with.
+A JWT contains three base64url-encoded parts: the header specifies the signing algorithm, the payload contains claims (user data and metadata), and the signature ensures the token hasn't been tampered with.
 
 ```javascript
 // Header - describes the token type and signing algorithm
@@ -75,6 +75,10 @@ const config = {
 // Prevents running with weak or missing secrets
 if (!config.accessToken.secret || config.accessToken.secret.length < 32) {
   throw new Error('JWT_ACCESS_SECRET must be at least 32 characters');
+}
+
+if (!config.refreshToken.secret || config.refreshToken.secret.length < 32) {
+  throw new Error('JWT_REFRESH_SECRET must be at least 32 characters');
 }
 
 // Generate both access and refresh tokens for a user
@@ -206,6 +210,7 @@ app.post('/auth/refresh', async (req, res) => {
     // Step 1: Verify the refresh token signature and claims
     const decoded = jwt.verify(refreshToken, config.refreshToken.secret, {
       algorithms: ['HS256'],
+      issuer: 'your-app',
     });
 
     // Ensure we're dealing with a refresh token, not an access token
@@ -386,7 +391,10 @@ app.post('/auth/logout', authenticate, async (req, res) => {
 
   if (refreshToken) {
     try {
-      const decoded = jwt.verify(refreshToken, config.refreshToken.secret);
+      const decoded = jwt.verify(refreshToken, config.refreshToken.secret, {
+        algorithms: ['HS256'],
+        issuer: 'your-app',
+      });
       await revokeRefreshToken(decoded.sub, decoded.jti);
     } catch (error) {
       // Token invalid, but still clear cookie
@@ -409,7 +417,7 @@ app.post('/auth/logout', authenticate, async (req, res) => {
 ### Algorithm Substitution Attack
 
 ```javascript
-// BAD - allows algorithm to be changed
+// BAD - relies on library defaults for accepted algorithms
 jwt.verify(token, secret);
 
 // GOOD - explicitly specify allowed algorithms
@@ -432,7 +440,7 @@ const decoded = jwt.verify(token, secret, {
 // If using asymmetric keys
 const publicKey = fs.readFileSync('public.pem');
 
-// BAD - could be tricked into using public key as HMAC secret
+// BAD - relies on library defaults and key-type detection
 jwt.verify(token, publicKey);
 
 // GOOD - explicitly require RS256
@@ -442,26 +450,39 @@ jwt.verify(token, publicKey, { algorithms: ['RS256'] });
 ### Token Sidejacking (XSS + Token Theft)
 
 ```javascript
-// For mobile/SPA where cookies aren't possible:
-// 1. Store tokens in memory only
+// For web apps that return access tokens to JavaScript:
+// 1. Store access tokens in memory only
 // 2. Use short expiration (5-15 minutes)
-// 3. Implement fingerprinting
+// 3. Bind tokens to a random fingerprint cookie
 
-function generateTokenWithFingerprint(user, req) {
-  // Generate unique fingerprint from client characteristics
-  const fingerprint = crypto
+function generateTokenWithFingerprint(user, res) {
+  // Generate a random fingerprint instead of deriving one from IP address
+  const fingerprint = crypto.randomBytes(50).toString('hex');
+  const fingerprintHash = crypto
     .createHash('sha256')
-    .update(req.get('User-Agent') || '')
-    .update(req.ip)
+    .update(fingerprint)
     .digest('hex');
+
+  res.cookie('__Secure-Fgp', fingerprint, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: 15 * 60 * 1000,
+    path: '/',
+  });
 
   const accessToken = jwt.sign(
     {
       sub: user.id,
-      fingerprint: fingerprint.substring(0, 16),
+      fingerprint: fingerprintHash,
     },
     config.accessToken.secret,
-    { expiresIn: '15m' }
+    {
+      expiresIn: '15m',
+      algorithm: 'HS256',
+      issuer: 'your-app',
+      audience: 'your-api',
+    }
   );
 
   return accessToken;
@@ -471,12 +492,15 @@ function generateTokenWithFingerprint(user, req) {
 function authenticateWithFingerprint(req, res, next) {
   // ... verify token
 
+  const fingerprint = req.cookies.__Secure-Fgp;
+  if (!fingerprint) {
+    return res.status(401).json({ error: 'Missing token fingerprint' });
+  }
+
   const expectedFingerprint = crypto
     .createHash('sha256')
-    .update(req.get('User-Agent') || '')
-    .update(req.ip)
-    .digest('hex')
-    .substring(0, 16);
+    .update(fingerprint)
+    .digest('hex');
 
   if (decoded.fingerprint !== expectedFingerprint) {
     return res.status(401).json({ error: 'Token fingerprint mismatch' });
