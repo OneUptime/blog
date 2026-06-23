@@ -129,7 +129,6 @@ mod shutdown;
 use axum::{routing::get, Router};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() {
@@ -219,6 +218,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
+use tokio::time::Instant;
 
 /// Tracks active connections and signals when all are drained
 pub struct ConnectionTracker {
@@ -255,18 +255,29 @@ impl ConnectionTracker {
 
     /// Wait for all connections to drain with timeout
     pub async fn wait_for_drain(&self, timeout: Duration) -> bool {
-        if self.active_count() == 0 {
-            return true;
-        }
+        let deadline = Instant::now() + timeout;
 
-        tokio::select! {
-            _ = self.all_drained.notified() => true,
-            _ = tokio::time::sleep(timeout) => {
-                tracing::warn!(
-                    active = self.active_count(),
-                    "Timeout waiting for connections to drain"
-                );
-                false
+        loop {
+            if self.active_count() == 0 {
+                return true;
+            }
+
+            let notified = self.all_drained.notified();
+            tokio::pin!(notified);
+
+            if self.active_count() == 0 {
+                return true;
+            }
+
+            tokio::select! {
+                _ = &mut notified => {}
+                _ = tokio::time::sleep_until(deadline) => {
+                    tracing::warn!(
+                        active = self.active_count(),
+                        "Timeout waiting for connections to drain"
+                    );
+                    return false;
+                }
             }
         }
     }
@@ -298,8 +309,7 @@ impl Drop for ConnectionGuard {
 // Middleware to track active requests
 
 use axum::{
-    extract::State,
-    http::Request,
+    extract::{Request, State},
     middleware::Next,
     response::Response,
 };
@@ -307,10 +317,10 @@ use std::sync::Arc;
 
 use crate::connection_tracker::{ConnectionGuard, ConnectionTracker};
 
-pub async fn track_connections<Bd>(
+pub async fn track_connections(
     State(tracker): State<Arc<ConnectionTracker>>,
-    request: Request<Bd>,
-    next: Next<Bd>,
+    request: Request,
+    next: Next,
 ) -> Response {
     // Create guard - increments count on creation, decrements on drop
     let _guard = ConnectionGuard::new(tracker);
@@ -331,12 +341,20 @@ pub async fn track_connections<Bd>(
 // Production-ready graceful shutdown
 
 use axum::{
-    extract::State,
+    extract::{Request, State},
     http::StatusCode,
-    middleware,
+    middleware::{self as axum_middleware, Next},
     routing::get,
     Router,
 };
+mod connection_tracker;
+mod middleware;
+mod shutdown;
+
+use crate::connection_tracker::ConnectionTracker;
+use crate::middleware::connection_tracking::track_connections;
+use crate::shutdown::shutdown_signal;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -384,12 +402,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health/ready", get(readiness))
         .route("/api/process", get(process_request))
         // Track connections middleware
-        .layer(middleware::from_fn_with_state(
+        .layer(axum_middleware::from_fn_with_state(
             connections.clone(),
             track_connections,
         ))
         // Reject new requests during shutdown
-        .layer(middleware::from_fn_with_state(
+        .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             reject_during_shutdown,
         ))
@@ -401,6 +419,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run server with graceful shutdown
     let server = axum::serve(listener, app);
+
+    // Subscribe before moving the sender into the shutdown task
+    let mut shutdown_rx = shutdown_tx.subscribe();
 
     // Handle shutdown
     let shutdown_handle = tokio::spawn(async move {
@@ -433,7 +454,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Run server until shutdown
-    let mut shutdown_rx = shutdown_tx.subscribe();
     server
         .with_graceful_shutdown(async move {
             let _ = shutdown_rx.recv().await;
@@ -448,10 +468,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Middleware to reject requests during shutdown
-async fn reject_during_shutdown<Bd>(
+async fn reject_during_shutdown(
     State(state): State<AppState>,
-    request: axum::http::Request<Bd>,
-    next: middleware::Next<Bd>,
+    request: Request,
+    next: Next,
 ) -> Result<axum::response::Response, StatusCode> {
     if state.is_shutting_down() {
         // Return 503 during shutdown
@@ -481,6 +501,11 @@ async fn process_request() -> &'static str {
     tokio::time::sleep(Duration::from_secs(1)).await;
     "Processed"
 }
+
+async fn create_db_pool() -> Result<sqlx::PgPool, sqlx::Error> {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    sqlx::PgPool::connect(&database_url).await
+}
 ```
 
 ---
@@ -493,7 +518,6 @@ Coordinate shutdown of background tasks.
 // src/background_tasks.rs
 // Graceful shutdown for background workers
 
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
@@ -614,7 +638,13 @@ metadata:
   name: rust-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: rust-app
   template:
+    metadata:
+      labels:
+        app: rust-app
     spec:
       containers:
       - name: app
@@ -635,7 +665,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 
       # Allow enough time for graceful shutdown
-      # Should be longer than your drain timeout
+      # Should be longer than your preStop delay plus drain timeout
       terminationGracePeriodSeconds: 45
 ```
 
@@ -689,14 +719,14 @@ mod tests {
         let tracker = ConnectionTracker::new();
 
         // Simulate 3 active connections
-        let guards: Vec<_> = (0..3)
+        let mut guards: Vec<_> = (0..3)
             .map(|_| ConnectionGuard::new(tracker.clone()))
             .collect();
 
         assert_eq!(tracker.active_count(), 3);
 
         // Drop one connection
-        drop(guards.into_iter().next());
+        drop(guards.pop());
 
         assert_eq!(tracker.active_count(), 2);
     }
@@ -723,7 +753,7 @@ mod tests {
 1. **Set readiness to false first** - Kubernetes removes from LB
 2. **Use preStop hook** - Gives time for LB to update
 3. **Track active connections** - Know when it's safe to stop
-4. **Set appropriate timeouts** - terminationGracePeriodSeconds > drain timeout
+4. **Set appropriate timeouts** - terminationGracePeriodSeconds > preStop delay + drain timeout
 5. **Clean up resources** - Close DB connections, flush buffers
 6. **Log shutdown progress** - Helps debug issues
 
