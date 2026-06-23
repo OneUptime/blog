@@ -104,15 +104,7 @@ resource "azurerm_mssql_firewall_rule" "azure_services" {
 ### Create SQL Login and User with MSSQL Provider
 
 ```hcl
-provider "mssql" {
-  hostname = azurerm_mssql_server.main.fully_qualified_domain_name
-  port     = 1433
-
-  sql_auth {
-    username = azurerm_mssql_server.main.administrator_login
-    password = random_password.sql_admin.result
-  }
-}
+provider "mssql" {}
 
 # Generate password for app user
 resource "random_password" "app_user" {
@@ -157,7 +149,7 @@ resource "mssql_user" "app" {
 Contained users do not require server-level logins:
 
 ```hcl
-# Enable contained database authentication on server
+# Azure SQL Database supports database-level contained users
 resource "azurerm_mssql_server" "main" {
   name                         = "sql-server-${var.environment}"
   resource_group_name          = azurerm_resource_group.main.name
@@ -232,23 +224,15 @@ resource "null_resource" "aad_user" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      # Login with Azure AD
-      az login --service-principal \
-        -u $ARM_CLIENT_ID \
-        -p $ARM_CLIENT_SECRET \
-        --tenant $ARM_TENANT_ID
-
-      # Get access token for SQL
-      TOKEN=$(az account get-access-token \
-        --resource https://database.windows.net/ \
-        --query accessToken -o tsv)
-
-      # Create user using sqlcmd with AAD token
+      # The service principal must be the Microsoft Entra admin
+      # or already have ALTER ANY USER in this database.
       sqlcmd -S ${azurerm_mssql_server.main.fully_qualified_domain_name} \
         -d ${azurerm_mssql_database.app.name} \
-        -G -P "$TOKEN" \
+        --authentication-method ActiveDirectoryServicePrincipal \
+        -U "$ARM_CLIENT_ID" \
+        -P "$ARM_CLIENT_SECRET" \
         -Q "
-          IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${data.azuread_user.app_developer.display_name}')
+          IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${data.azuread_user.app_developer.user_principal_name}')
           BEGIN
             CREATE USER [${data.azuread_user.app_developer.user_principal_name}] FROM EXTERNAL PROVIDER;
             ALTER ROLE db_datareader ADD MEMBER [${data.azuread_user.app_developer.user_principal_name}];
@@ -286,10 +270,13 @@ resource "null_resource" "aad_group_user" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      # The service principal must be the Microsoft Entra admin
+      # or already have ALTER ANY USER in this database.
       sqlcmd -S ${azurerm_mssql_server.main.fully_qualified_domain_name} \
         -d ${azurerm_mssql_database.app.name} \
-        -U ${azurerm_mssql_server.main.administrator_login} \
-        -P '${random_password.sql_admin.result}' \
+        --authentication-method ActiveDirectoryServicePrincipal \
+        -U "$ARM_CLIENT_ID" \
+        -P "$ARM_CLIENT_SECRET" \
         -Q "
           IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${azuread_group.sql_readers.display_name}')
           BEGIN
@@ -322,10 +309,13 @@ resource "null_resource" "managed_identity_user" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      # The service principal must be the Microsoft Entra admin
+      # or already have ALTER ANY USER in this database.
       sqlcmd -S ${azurerm_mssql_server.main.fully_qualified_domain_name} \
         -d ${azurerm_mssql_database.app.name} \
-        -U ${azurerm_mssql_server.main.administrator_login} \
-        -P '${random_password.sql_admin.result}' \
+        --authentication-method ActiveDirectoryServicePrincipal \
+        -U "$ARM_CLIENT_ID" \
+        -P "$ARM_CLIENT_SECRET" \
         -Q "
           IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${azurerm_user_assigned_identity.app.name}')
           BEGIN
@@ -466,6 +456,8 @@ module "app_user" {
 
 ## Storing Credentials Securely
 
+Key Vault protects runtime access to credentials, but Terraform still stores secret values that it manages in state. Use a secure remote backend with encryption and tightly scoped access.
+
 ```hcl
 # Store credentials in Key Vault
 resource "azurerm_key_vault_secret" "sql_connection" {
@@ -500,4 +492,4 @@ output "database_name" {
 
 ---
 
-Managing Azure SQL users with Terraform requires using either the MSSQL provider for native support or null_resource with sqlcmd for more complex scenarios. For production environments, prefer Azure AD authentication with managed identities, which eliminates password management. Always store sensitive credentials in Azure Key Vault and use appropriate database roles following the principle of least privilege.
+Managing Azure SQL users with Terraform requires using either the MSSQL provider for native support or null_resource with sqlcmd for more complex scenarios. For production environments, prefer Azure AD authentication with managed identities, which eliminates password management. Store sensitive credentials in Azure Key Vault, protect Terraform state, and use appropriate database roles following the principle of least privilege.
