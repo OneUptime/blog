@@ -85,8 +85,10 @@ services:
       - "4317:4317"
       # OTLP HTTP receiver - used by browser/lightweight clients
       - "4318:4318"
-      # Prometheus metrics endpoint for collector health
+      # Collector internal telemetry endpoint
       - "8888:8888"
+      # Prometheus exporter endpoint for scraped CI/CD metrics
+      - "8889:8889"
     networks:
       - observability
 
@@ -97,7 +99,7 @@ services:
       # Jaeger UI for viewing traces
       - "16686:16686"
       # Jaeger OTLP gRPC endpoint
-      - "14250:14250"
+      - "4317"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
@@ -213,7 +215,7 @@ env:
   # Resource attributes provide context about the pipeline
   OTEL_RESOURCE_ATTRIBUTES: >-
     service.version=${{ github.sha }},
-    deployment.environment=ci,
+    deployment.environment.name=ci,
     vcs.repository.name=${{ github.repository }},
     vcs.ref.name=${{ github.ref_name }}
 
@@ -224,7 +226,7 @@ jobs:
     outputs:
       # Pass trace context to downstream jobs
       trace_id: ${{ steps.init-trace.outputs.trace_id }}
-      parent_span_id: ${{ steps.build.outputs.span_id }}
+      root_span_id: ${{ steps.init-trace.outputs.root_span_id }}
 
     steps:
       # Install otel-cli for creating spans from shell
@@ -232,12 +234,13 @@ jobs:
       - name: Install OpenTelemetry CLI
         run: |
           # Download the latest otel-cli release
+          OTEL_CLI_VERSION="0.4.5"
           curl -L -o otel-cli.tar.gz \
-            https://github.com/equinix-labs/otel-cli/releases/latest/download/otel-cli_Linux_x86_64.tar.gz
+            "https://github.com/equinix-labs/otel-cli/releases/download/v${OTEL_CLI_VERSION}/otel-cli_${OTEL_CLI_VERSION}_linux_amd64.tar.gz"
           tar -xzf otel-cli.tar.gz
           sudo mv otel-cli /usr/local/bin/
           # Verify installation
-          otel-cli version
+          otel-cli --help
 
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -247,22 +250,24 @@ jobs:
       - name: Initialize Pipeline Trace
         id: init-trace
         run: |
+          # Generate stable trace context for propagation to other jobs
+          TRACE_ID=$(openssl rand -hex 16)
+          ROOT_SPAN_ID=$(openssl rand -hex 8)
+          echo "trace_id=$TRACE_ID" >> $GITHUB_OUTPUT
+          echo "root_span_id=$ROOT_SPAN_ID" >> $GITHUB_OUTPUT
+          echo "TRACEPARENT=00-${TRACE_ID}-${ROOT_SPAN_ID}-01" >> $GITHUB_ENV
+
           # Create the root span for the entire pipeline
-          # The --background flag starts a span without blocking
-          # Store the trace context for propagation to other jobs
-          TRACE_OUTPUT=$(otel-cli span \
+          otel-cli span \
             --service "$OTEL_SERVICE_NAME" \
             --name "pipeline:${{ github.workflow }}" \
             --attrs "github.run_id=${{ github.run_id }}" \
             --attrs "github.actor=${{ github.actor }}" \
             --attrs "github.event_name=${{ github.event_name }}" \
             --attrs "github.sha=${{ github.sha }}" \
-            --tp-print)
-
-          # Extract trace_id for cross-job propagation
-          TRACE_ID=$(echo "$TRACE_OUTPUT" | grep -oP 'trace_id=\K[a-f0-9]+')
-          echo "trace_id=$TRACE_ID" >> $GITHUB_OUTPUT
-          echo "traceparent=$TRACE_OUTPUT" >> $GITHUB_ENV
+            --force-trace-id "$TRACE_ID" \
+            --force-span-id "$ROOT_SPAN_ID" \
+            --tp-print
 
       # Setup Node.js with tracing
       - name: Setup Node.js
@@ -272,7 +277,6 @@ jobs:
             --service "$OTEL_SERVICE_NAME" \
             --name "setup:nodejs" \
             --attrs "node.version=20" \
-            --tp-carrier-file /tmp/traceparent \
             -- bash -c '
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt-get install -y nodejs
@@ -316,24 +320,26 @@ jobs:
           # Output build duration for metrics
           echo "Build completed in ${BUILD_DURATION}ms"
 
-          # Store span ID for downstream correlation
-          echo "span_id=$(otel-cli span-id)" >> $GITHUB_OUTPUT
-
       # Lint step with error tracking
       - name: Lint Code
         run: |
           # Run linting and capture any failures
-          otel-cli exec \
+          if otel-cli exec \
             --service "$OTEL_SERVICE_NAME" \
             --name "lint:code" \
             --attrs "linter=eslint" \
-            -- npm run lint || {
-              # If linting fails, record the error in the span
-              otel-cli span event \
-                --name "lint.failure" \
-                --attrs "error.type=lint_error"
+            -- npm run lint; then
+              echo "Lint completed successfully"
+          else
+              # Record a failed span with explicit error status
+              otel-cli span \
+                --service "$OTEL_SERVICE_NAME" \
+                --name "lint:code" \
+                --attrs "linter=eslint,error.type=lint_error" \
+                --status-code error \
+                --status-description "npm run lint failed"
               exit 1
-            }
+          fi
 
       # Upload artifacts with tracing
       - name: Upload Build Artifacts
@@ -360,8 +366,9 @@ jobs:
     steps:
       - name: Install OpenTelemetry CLI
         run: |
+          OTEL_CLI_VERSION="0.4.5"
           curl -L -o otel-cli.tar.gz \
-            https://github.com/equinix-labs/otel-cli/releases/latest/download/otel-cli_Linux_x86_64.tar.gz
+            "https://github.com/equinix-labs/otel-cli/releases/download/v${OTEL_CLI_VERSION}/otel-cli_${OTEL_CLI_VERSION}_linux_amd64.tar.gz"
           tar -xzf otel-cli.tar.gz
           sudo mv otel-cli /usr/local/bin/
 
@@ -373,7 +380,7 @@ jobs:
       - name: Run ${{ matrix.test-type }} Tests
         env:
           # Propagate trace context from parent job
-          TRACEPARENT: "00-${{ needs.build.outputs.trace_id }}-${{ needs.build.outputs.parent_span_id }}-01"
+          TRACEPARENT: "00-${{ needs.build.outputs.trace_id }}-${{ needs.build.outputs.root_span_id }}-01"
         run: |
           otel-cli exec \
             --service "$OTEL_SERVICE_NAME" \
@@ -392,8 +399,9 @@ jobs:
     steps:
       - name: Install OpenTelemetry CLI
         run: |
+          OTEL_CLI_VERSION="0.4.5"
           curl -L -o otel-cli.tar.gz \
-            https://github.com/equinix-labs/otel-cli/releases/latest/download/otel-cli_Linux_x86_64.tar.gz
+            "https://github.com/equinix-labs/otel-cli/releases/download/v${OTEL_CLI_VERSION}/otel-cli_${OTEL_CLI_VERSION}_linux_amd64.tar.gz"
           tar -xzf otel-cli.tar.gz
           sudo mv otel-cli /usr/local/bin/
 
@@ -408,17 +416,17 @@ jobs:
       # This enables linking deployments to application traces
       - name: Deploy to Production
         env:
-          TRACEPARENT: "00-${{ needs.build.outputs.trace_id }}-${{ needs.build.outputs.parent_span_id }}-01"
+          TRACEPARENT: "00-${{ needs.build.outputs.trace_id }}-${{ needs.build.outputs.root_span_id }}-01"
         run: |
           # Generate a unique deployment ID for correlation
           DEPLOYMENT_ID=$(uuidgen)
 
           # Create deployment span with correlation attributes
-          otel-cli exec \
+          if otel-cli exec \
             --service "$OTEL_SERVICE_NAME" \
             --name "deploy:production" \
             --attrs "deployment.id=$DEPLOYMENT_ID" \
-            --attrs "deployment.environment=production" \
+            --attrs "deployment.environment.name=production" \
             --attrs "deployment.version=${{ github.sha }}" \
             --kind client \
             -- bash -c '
@@ -433,13 +441,20 @@ jobs:
 
               # Example: Deploy to AWS
               # aws s3 sync dist/ s3://my-bucket/
-            '
-
-          # Record deployment completion event
-          otel-cli span event \
-            --name "deployment.completed" \
-            --attrs "deployment.id=$DEPLOYMENT_ID" \
-            --attrs "deployment.status=success"
+            '; then
+            otel-cli span \
+              --service "$OTEL_SERVICE_NAME" \
+              --name "deployment.completed" \
+              --attrs "deployment.id=$DEPLOYMENT_ID,deployment.status=succeeded"
+          else
+            otel-cli span \
+              --service "$OTEL_SERVICE_NAME" \
+              --name "deployment.failed" \
+              --attrs "deployment.id=$DEPLOYMENT_ID,deployment.status=failed" \
+              --status-code error \
+              --status-description "deployment command failed"
+            exit 1
+          fi
 
           # Output deployment ID for downstream correlation
           echo "Deployment $DEPLOYMENT_ID completed successfully"
@@ -469,19 +484,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # This action exports workflow traces to OTLP endpoint
-      # It runs in the background and captures all step timings
-      - name: Export Workflow Traces
-        uses: inception-health/otel-export-trace-action@v1
-        with:
-          # Your OTLP endpoint (gRPC)
-          otlpEndpoint: ${{ secrets.OTEL_ENDPOINT }}
-          # Service name for this workflow
-          otlpHeaders: ${{ secrets.OTEL_HEADERS }}
-          serviceName: github-actions
-          # Include job and step attributes
-          runId: ${{ github.run_id }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -496,6 +498,25 @@ jobs:
 
       - name: Test
         run: npm test
+
+  export-trace:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+    steps:
+      # This action exports completed workflow traces to an OTLP endpoint
+      - name: Export Workflow Traces
+        uses: inception-health/otel-export-trace-action@v1
+        with:
+          # Your OTLP endpoint (gRPC)
+          otlpEndpoint: ${{ secrets.OTEL_ENDPOINT }}
+          # OTLP headers, for example: authorization=Bearer <token>
+          otlpHeaders: ${{ secrets.OTEL_HEADERS }}
+          # Service name for this workflow
+          otelServiceName: github-actions
+          # Include job and step attributes from this workflow run
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          runId: ${{ github.run_id }}
 ```
 
 ## Jenkins Pipeline Tracing
@@ -735,9 +756,6 @@ This approach gives you full control over span creation and attributes. We use t
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
-import io.opentelemetry.api.trace.StatusCode
-import io.opentelemetry.context.Context
-import io.opentelemetry.context.Scope
 
 pipeline {
     agent any
@@ -758,12 +776,7 @@ pipeline {
                         endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT
                     ])
 
-                    // Create the root span for this pipeline
-                    env.TRACE_CONTEXT = createPipelineSpan([
-                        pipelineName: env.JOB_NAME,
-                        buildNumber: env.BUILD_NUMBER,
-                        gitCommit: env.GIT_COMMIT
-                    ])
+                    echo "OpenTelemetry tracing initialized for ${env.JOB_NAME} #${env.BUILD_NUMBER}"
                 }
             }
         }
@@ -790,15 +803,7 @@ pipeline {
                     withSpan('test', [
                         'test.framework': 'jest'
                     ]) {
-                        try {
-                            sh 'npm test'
-                            setSpanStatus(StatusCode.OK)
-                        } catch (Exception e) {
-                            // Record exception in span
-                            recordException(e)
-                            setSpanStatus(StatusCode.ERROR, e.message)
-                            throw e
-                        }
+                        sh 'npm test'
                     }
                 }
             }
@@ -815,35 +820,19 @@ pipeline {
 
                     withSpan('deploy', [
                         'deployment.id': deploymentId,
-                        'deployment.environment': 'production',
+                        'deployment.environment.name': 'production',
                         'deployment.version': env.GIT_COMMIT
                     ], SpanKind.CLIENT) {
-                        // Add deployment event
-                        addSpanEvent('deployment.started', [
-                            'deployment.id': deploymentId
-                        ])
+                        echo "Deployment ${deploymentId} started"
 
                         sh '''
                             echo "Deploying to production..."
                             # Deployment commands here
                         '''
 
-                        addSpanEvent('deployment.completed', [
-                            'deployment.id': deploymentId,
-                            'deployment.status': 'success'
-                        ])
+                        echo "Deployment ${deploymentId} completed"
                     }
                 }
-            }
-        }
-    }
-
-    post {
-        always {
-            script {
-                // End the root span and flush telemetry
-                endPipelineSpan()
-                flushTelemetry()
             }
         }
     }
@@ -861,14 +850,7 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.resources.Resource
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes
-
-// Thread-local storage for span context
-@groovy.transform.Field
-static ThreadLocal<Span> currentSpan = new ThreadLocal<>()
-
-@groovy.transform.Field
-static ThreadLocal<Scope> currentScope = new ThreadLocal<>()
+import io.opentelemetry.api.common.AttributeKey
 
 /**
  * Initialize the OpenTelemetry SDK with OTLP exporter
@@ -879,8 +861,8 @@ def call(Map config) {
     def resource = Resource.getDefault()
         .merge(Resource.create(
             io.opentelemetry.api.common.Attributes.of(
-                ResourceAttributes.SERVICE_NAME, config.serviceName,
-                ResourceAttributes.SERVICE_VERSION, config.version ?: 'unknown'
+                AttributeKey.stringKey('service.name'), config.serviceName,
+                AttributeKey.stringKey('service.version'), config.version ?: 'unknown'
             )
         ))
 
@@ -979,25 +961,6 @@ processors:
   batch:
     timeout: 5s
 
-  # Span metrics processor creates metrics from spans
-  # This enables tracking build performance over time
-  spanmetrics:
-    metrics_exporter: prometheus
-    # Dimensions to include in metrics
-    dimensions:
-      - name: service.name
-      - name: pipeline.name
-      - name: stage.name
-      - name: build.status
-      - name: deployment.environment
-    # Histogram buckets for duration tracking
-    # Buckets are in seconds
-    dimensions_cache_size: 1000
-    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
-    histogram:
-      explicit:
-        buckets: [5s, 10s, 30s, 60s, 120s, 300s, 600s]
-
   # Filter processor to focus on CI/CD spans
   filter/cicd:
     spans:
@@ -1008,11 +971,28 @@ processors:
           - "github-actions.*"
           - "jenkins.*"
 
+connectors:
+  # Span metrics connector creates metrics from spans
+  # This enables tracking build performance over time
+  span_metrics:
+    # Dimensions to include in metrics
+    dimensions:
+      - name: pipeline.name
+      - name: stage.name
+      - name: build.status
+      - name: deployment.environment.name
+    # Histogram buckets for duration tracking
+    # Buckets are in seconds
+    aggregation_cardinality_limit: 1000
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+    histogram:
+      explicit:
+        buckets: [5s, 10s, 30s, 60s, 120s, 300s, 600s]
+
 exporters:
   # Prometheus exporter for metrics
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: cicd
     # Add constant labels for all metrics
     const_labels:
       source: opentelemetry
@@ -1027,11 +1007,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, filter/cicd, spanmetrics]
-      exporters: [otlp]
+      processors: [batch, filter/cicd]
+      exporters: [otlp, span_metrics]
 
     metrics:
-      receivers: [otlp]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheus]
 ```
@@ -1048,7 +1028,7 @@ Example Grafana dashboard configuration for visualizing CI/CD metrics:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, sum(rate(cicd_span_duration_bucket{span_name=~\"build.*\"}[5m])) by (le, service_name))",
+            "expr": "histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_milliseconds_bucket{span_name=~\"build.*\"}[5m])) by (le, service_name))",
             "legendFormat": "{{service_name}}"
           }
         ]
@@ -1058,7 +1038,7 @@ Example Grafana dashboard configuration for visualizing CI/CD metrics:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(rate(cicd_span_duration_count{span_status_code=\"OK\", span_name=~\"build.*\"}[1h])) / sum(rate(cicd_span_duration_count{span_name=~\"build.*\"}[1h])) * 100",
+            "expr": "sum(rate(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_OK\", span_name=~\"build.*\"}[1h])) / sum(rate(traces_span_metrics_calls_total{span_name=~\"build.*\"}[1h])) * 100",
             "legendFormat": "Success Rate"
           }
         ]
@@ -1068,7 +1048,7 @@ Example Grafana dashboard configuration for visualizing CI/CD metrics:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(increase(cicd_span_duration_count{span_name=~\"deploy.*\"}[24h]))",
+            "expr": "sum(increase(traces_span_metrics_calls_total{span_name=~\"deploy.*\"}[24h]))",
             "legendFormat": "Deployments"
           }
         ]
@@ -1078,7 +1058,7 @@ Example Grafana dashboard configuration for visualizing CI/CD metrics:
         "type": "barchart",
         "targets": [
           {
-            "expr": "avg(cicd_span_duration_sum / cicd_span_duration_count) by (span_name)",
+            "expr": "avg(traces_span_metrics_duration_milliseconds_sum / traces_span_metrics_duration_milliseconds_count) by (span_name)",
             "legendFormat": "{{span_name}}"
           }
         ]
@@ -1165,7 +1145,7 @@ create_deployment_span() {
         --service "deployment-service" \
         --name "deploy:${APP_NAME}" \
         --attrs "deployment.id=${DEPLOYMENT_ID}" \
-        --attrs "deployment.environment=${DEPLOY_ENV}" \
+        --attrs "deployment.environment.name=${DEPLOY_ENV}" \
         --attrs "deployment.timestamp=${DEPLOYMENT_TIMESTAMP}" \
         --attrs "service.name=${APP_NAME}" \
         --attrs "service.version=${GIT_COMMIT}" \
@@ -1185,7 +1165,7 @@ deploy_to_kubernetes() {
         --from-literal=DEPLOYMENT_ID="${DEPLOYMENT_ID}" \
         --from-literal=DEPLOYMENT_TIMESTAMP="${DEPLOYMENT_TIMESTAMP}" \
         --from-literal=SERVICE_VERSION="${GIT_COMMIT}" \
-        --from-literal=DEPLOYMENT_ENVIRONMENT="${DEPLOY_ENV}" \
+        --from-literal=DEPLOYMENT_ENVIRONMENT_NAME="${DEPLOY_ENV}" \
         --dry-run=client -o yaml | kubectl apply -f -
 
     # Update deployment with new image and metadata
@@ -1225,10 +1205,12 @@ deploy_to_ecs() {
 
 # Main deployment logic with tracing
 main() {
-    # Record deployment start event
-    otel-cli span event \
+    # Record deployment start as a standalone span
+    otel-cli span \
+        --service "deployment-service" \
         --name "deployment.started" \
-        --attrs "deployment.id=${DEPLOYMENT_ID}"
+        --attrs "deployment.id=${DEPLOYMENT_ID}" \
+        --endpoint "${OTEL_ENDPOINT}"
 
     # Perform deployment based on platform
     case "${DEPLOY_PLATFORM:-kubernetes}" in
@@ -1246,13 +1228,15 @@ main() {
     esac
 
     # Record deployment success
-    create_deployment_span "success"
+    create_deployment_span "succeeded"
 
-    # Record deployment completion event
-    otel-cli span event \
+    # Record deployment completion as a standalone span
+    otel-cli span \
+        --service "deployment-service" \
         --name "deployment.completed" \
         --attrs "deployment.id=${DEPLOYMENT_ID}" \
-        --attrs "deployment.status=success"
+        --attrs "deployment.status=succeeded" \
+        --endpoint "${OTEL_ENDPOINT}"
 
     echo "Deployment completed successfully!"
     echo "Deployment ID for correlation: ${DEPLOYMENT_ID}"
@@ -1273,23 +1257,27 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
 // Read deployment metadata from environment
 // These are injected during deployment for correlation
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID || 'unknown';
 const DEPLOYMENT_TIMESTAMP = process.env.DEPLOYMENT_TIMESTAMP || new Date().toISOString();
 const SERVICE_VERSION = process.env.SERVICE_VERSION || process.env.GIT_COMMIT || 'unknown';
-const DEPLOYMENT_ENVIRONMENT = process.env.DEPLOYMENT_ENVIRONMENT || 'development';
+const DEPLOYMENT_ENVIRONMENT = process.env.DEPLOYMENT_ENVIRONMENT_NAME || 'development';
 
 // Create resource with deployment correlation attributes
 // These attributes appear on every span, enabling correlation with CI/CD traces
-const resource = new Resource({
+const resource = resourceFromAttributes({
   // Standard semantic conventions
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-application',
-  [SemanticResourceAttributes.SERVICE_VERSION]: SERVICE_VERSION,
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: DEPLOYMENT_ENVIRONMENT,
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-application',
+  [ATTR_SERVICE_VERSION]: SERVICE_VERSION,
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: DEPLOYMENT_ENVIRONMENT,
 
   // Deployment correlation attributes
   // Match these with your CI/CD pipeline span attributes
@@ -1449,9 +1437,9 @@ vcs.commit.author: "developer@example.com"
 
 # Deployment attributes
 deployment.id: "uuid-here"
-deployment.environment: "production"
+deployment.environment.name: "production"
 deployment.version: "v1.2.3"
-deployment.status: "success|failure|rollback"
+deployment.status: "succeeded|failed"
 ```
 
 ### 3. Error Handling and Status
@@ -1481,12 +1469,12 @@ run_with_tracing() {
         # Success - set OK status
         otel-cli span end \
             --sockdir /tmp/otel \
-            --status-code Ok
+            --status-code ok
     else
         # Failure - set Error status with message
         otel-cli span end \
             --sockdir /tmp/otel \
-            --status-code Error \
+            --status-code error \
             --status-description "Command failed: $command"
         return 1
     fi
@@ -1527,7 +1515,7 @@ processors:
       - name: production-deploys
         type: string_attribute
         string_attribute:
-          key: deployment.environment
+          key: deployment.environment.name
           values: [production]
 
       # Sample 10% of successful builds
