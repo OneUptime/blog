@@ -233,7 +233,7 @@ test:
 
 ## Parallel Jobs with Needs
 
-Reference specific parallel job instances.
+For a job parallelized with a numeric `parallel` value, reference it by name to depend on all of its instances. The `needs:parallel:matrix` syntax only works when the upstream job uses `parallel:matrix` (see the next section), so it cannot select individual instances of a numeric `parallel` job.
 
 ```yaml
 build:
@@ -245,14 +245,11 @@ build:
     paths:
       - dist-$CI_NODE_INDEX/
 
-# Wait for all parallel build jobs
+# Wait for all parallel build jobs and download their artifacts
 test:
   stage: test
   needs:
-    - job: build
-      parallel:
-        matrix:
-          - CI_NODE_INDEX: [1, 2, 3]
+    - build
   script:
     - npm test
 ```
