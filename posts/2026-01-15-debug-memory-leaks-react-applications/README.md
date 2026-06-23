@@ -781,8 +781,8 @@ function useAbortController(): AbortController {
   const abortControllerRef = useRef<AbortController>(new AbortController());
 
   useEffect(() => {
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    // Abort the same controller that consumers received during render.
+    const controller = abortControllerRef.current;
 
     return () => {
       controller.abort();
