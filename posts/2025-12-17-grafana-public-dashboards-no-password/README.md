@@ -27,16 +27,16 @@ graph TD
 
 ## Method 1: Public Dashboard Feature (Recommended)
 
-Grafana 9.1+ includes a built-in Public Dashboard feature that creates a read-only, shareable link for specific dashboards. In Grafana 11.x (released September 2024), this feature was renamed from "Public Dashboards" to **"Externally Shared Dashboards"** (also called "Shared Dashboards"). The functionality is the same; only the label changed in the UI.
+Grafana 9.1+ includes a built-in Public Dashboard feature that creates a read-only, shareable link for specific dashboards. In Grafana 11.5, this feature was renamed from "Public Dashboards" to **"Shared Dashboards"**. In current Grafana documentation, the feature is described as **"Externally Shared Dashboards"**. The functionality is the same; only the label changed in the UI.
 
 ### Enable Public Dashboards
 
-In Grafana 9.x and 10.x, the feature must be explicitly enabled via a feature toggle. In Grafana 11+ the feature is enabled by default and no toggle is required.
+In early Grafana 9.x versions, the feature had to be explicitly enabled via a feature toggle. In current Grafana versions, shared dashboards are enabled by default and can be disabled with the `[public_dashboards]` setting.
 
-For Grafana 9.x/10.x, enable the feature in Grafana configuration:
+For early Grafana 9.x versions, enable the feature in Grafana configuration:
 
 ```ini
-# grafana.ini (Grafana 9.x / 10.x only)
+# grafana.ini (early Grafana 9.x only)
 
 [feature_toggles]
 enable = publicDashboards
@@ -45,20 +45,28 @@ enable = publicDashboards
 Or via environment variable:
 
 ```yaml
-# Docker Compose (Grafana 9.x / 10.x)
+# Docker Compose (early Grafana 9.x only)
 services:
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:9.1.0
     environment:
       - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+```
+
+For current Grafana versions, keep shared dashboards enabled or explicitly enable them:
+
+```ini
+# grafana.ini
+[public_dashboards]
+enabled = true
 ```
 
 ### Create a Public Dashboard
 
 1. Open the dashboard you want to share
 2. Click the Share button (top right)
-3. Select "Public Dashboard" tab
-4. Toggle "Public Dashboard" to enabled
+3. Select "Share externally"
+4. Set link access to "Anyone with the link"
 5. Configure options:
    - Time range picker enabled/disabled
    - Annotations visibility
@@ -71,7 +79,7 @@ services:
 services:
   grafana:
     environment:
-      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+      - GF_PUBLIC_DASHBOARDS_ENABLED=true
       # Optional: custom domain for public URLs
       - GF_SERVER_ROOT_URL=https://grafana.example.com
 ```
@@ -81,8 +89,8 @@ services:
 To revoke a public dashboard:
 
 1. Open the dashboard
-2. Go to Share > Public Dashboard
-3. Toggle off "Public Dashboard" or delete the configuration
+2. Go to Share > Share externally
+3. Pause or revoke access
 
 ## Method 2: Anonymous Access
 
@@ -101,8 +109,12 @@ org_name = Public
 # Role for anonymous users (Viewer recommended)
 org_role = Viewer
 
-# Hide login form
+# Hide version information for anonymous users
 hide_version = true
+
+[auth]
+# Hide login form
+disable_login_form = true
 ```
 
 ### Docker Compose Configuration
@@ -115,7 +127,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_NAME=Public
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - grafana_data:/var/lib/grafana
     ports:
@@ -137,7 +149,7 @@ data:
     org_role = Viewer
 
     [auth]
-    disable_login_form = false
+    disable_login_form = true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -173,9 +185,8 @@ org_role = Viewer
 org_id = 2
 
 [security]
-# Disable certain features for viewers
+# Prevent viewers from performing temporary dashboard edits
 viewers_can_edit = false
-editors_can_admin = false
 ```
 
 ### Create a Public Organization
@@ -226,9 +237,6 @@ curl -X POST \
 external_enabled = true
 external_snapshot_url = https://snapshots.raintank.io
 external_snapshot_name = Publish to snapshot.raintank.io
-
-# Remove sensitive data from snapshots
-remove_expired = true
 ```
 
 ### Limitations of Snapshots
@@ -308,7 +316,7 @@ providers:
 
 ### Data Source Permissions
 
-Restrict what data anonymous users can query:
+Use a dedicated data source for public dashboards. In Grafana Enterprise or Grafana Cloud, data source permissions can further restrict who can query a data source:
 
 ```yaml
 # Data source provisioning
@@ -319,10 +327,10 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
-    # Read-only queries only
     jsonData:
+      # HTTP method for Prometheus queries
       httpMethod: GET
-      # Restrict query time range
+      # Lowest interval/step value for queries
       timeInterval: "15s"
 ```
 
@@ -359,14 +367,7 @@ networks:
 
 Protect public dashboards from abuse:
 
-```ini
-# grafana.ini
-[security]
-# Rate limit for anonymous users
-rate_limit_anonymous = 100
-```
-
-Or use a reverse proxy:
+Use a reverse proxy:
 
 ```nginx
 # nginx.conf
@@ -388,9 +389,6 @@ Remove sensitive data from public dashboards:
 # grafana.ini
 [auth.anonymous]
 org_role = Viewer
-
-[security]
-# Hide version info
 hide_version = true
 
 [users]
@@ -398,8 +396,8 @@ hide_version = true
 allow_sign_up = false
 
 [unified_alerting]
-# Hide alerting for anonymous users
-enabled = false
+# Disable alert rule evaluation
+execute_alerts = false
 ```
 
 ## Complete Public Dashboard Setup
@@ -414,8 +412,8 @@ services:
   grafana-public:
     image: grafana/grafana:latest
     environment:
-      # Enable public dashboards feature
-      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+      # Keep shared dashboards enabled
+      - GF_PUBLIC_DASHBOARDS_ENABLED=true
 
       # Anonymous access as fallback
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -424,11 +422,11 @@ services:
 
       # Security settings
       - GF_SECURITY_ALLOW_EMBEDDING=true
-      - GF_SECURITY_HIDE_VERSION=true
+      - GF_AUTH_ANONYMOUS_HIDE_VERSION=true
       - GF_USERS_ALLOW_SIGN_UP=false
 
       # Disable unused features
-      - GF_ALERTING_ENABLED=false
+      - GF_UNIFIED_ALERTING_EXECUTE_ALERTS=false
       - GF_EXPLORE_ENABLED=false
 
       # Server settings
