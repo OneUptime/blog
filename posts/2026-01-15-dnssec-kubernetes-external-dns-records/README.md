@@ -133,22 +133,21 @@ aws kms create-key \
   --description "DNSSEC signing key for example.com" \
   --key-spec ECC_NIST_P256 \
   --key-usage SIGN_VERIFY \
-  --customer-master-key-spec ECC_NIST_P256 \
   --region us-east-1
 
 # Note the KeyId from the output
 KMS_KEY_ID="arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
 
-# Enable DNSSEC signing
-aws route53 enable-hosted-zone-dnssec \
-  --hosted-zone-id Z1234567890ABC
-
-# Create key signing key
+# Create key signing key (a KSK must exist before signing can be enabled)
 aws route53 create-key-signing-key \
   --hosted-zone-id Z1234567890ABC \
   --name example-com-ksk \
   --key-management-service-arn $KMS_KEY_ID \
   --status ACTIVE
+
+# Enable DNSSEC signing
+aws route53 enable-hosted-zone-dnssec \
+  --hosted-zone-id Z1234567890ABC
 ```
 
 #### Step 2: Configure External-DNS for Route 53
@@ -390,11 +389,11 @@ az network dns dnssec-config create \
   --resource-group myResourceGroup \
   --zone-name example.com
 
-# Get DS records for registrar
+# Get DS records for registrar (only the KSK has delegation signer info)
 az network dns dnssec-config show \
   --resource-group myResourceGroup \
   --zone-name example.com \
-  --query "signingKeys[?keyType=='KEY_SIGNING'].dsRecord" \
+  --query "signingKeys[?delegationSignerInfo!=null].delegationSignerInfo" \
   --output table
 ```
 
