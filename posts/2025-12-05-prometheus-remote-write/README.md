@@ -180,7 +180,7 @@ remote_write:
 
 ```yaml
 remote_write:
-  - url: "https://prometheus-us-central1.grafana.net/api/prom/push"
+  - url: "https://<your-metrics-instance-endpoint>/api/prom/push"
     basic_auth:
       username: your-instance-id
       password_file: /etc/prometheus/grafana-cloud-api-key
@@ -241,22 +241,22 @@ remote_write:
 
 ```promql
 # Samples pending in queue
-prometheus_remote_storage_pending_samples
+prometheus_remote_storage_samples_pending
 
 # Samples sent successfully
-rate(prometheus_remote_storage_succeeded_samples_total[5m])
+rate(prometheus_remote_storage_samples_total[5m])
 
 # Samples failed
-rate(prometheus_remote_storage_failed_samples_total[5m])
+rate(prometheus_remote_storage_samples_failed_total[5m])
 
 # Samples dropped
-rate(prometheus_remote_storage_dropped_samples_total[5m])
+rate(prometheus_remote_storage_samples_dropped_total[5m])
 
 # Queue shards
 prometheus_remote_storage_shards
 
 # Bytes sent
-rate(prometheus_remote_storage_sent_bytes_total[5m])
+rate(prometheus_remote_storage_bytes_total[5m])
 
 # Send latency
 prometheus_remote_storage_sent_batch_duration_seconds
@@ -270,7 +270,7 @@ groups:
     rules:
       - alert: RemoteWriteFailing
         expr: |
-          rate(prometheus_remote_storage_failed_samples_total[5m]) > 0
+          rate(prometheus_remote_storage_samples_failed_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -279,7 +279,7 @@ groups:
 
       - alert: RemoteWriteQueueBacklog
         expr: |
-          prometheus_remote_storage_pending_samples > 10000
+          prometheus_remote_storage_samples_pending > 10000
         for: 10m
         labels:
           severity: warning
@@ -302,17 +302,17 @@ groups:
 
 ```promql
 # Write throughput (samples/s)
-sum(rate(prometheus_remote_storage_succeeded_samples_total[5m]))
+sum(rate(prometheus_remote_storage_samples_total[5m]))
 
 # Error rate
-sum(rate(prometheus_remote_storage_failed_samples_total[5m]))
+sum(rate(prometheus_remote_storage_samples_failed_total[5m]))
 /
-sum(rate(prometheus_remote_storage_succeeded_samples_total[5m]))
+sum(rate(prometheus_remote_storage_samples_total[5m]))
 
 # Queue utilization
-prometheus_remote_storage_pending_samples
+prometheus_remote_storage_samples_pending
 /
-prometheus_remote_storage_samples_total
+(prometheus_remote_storage_shards * prometheus_remote_storage_shard_capacity)
 
 # Shard efficiency
 prometheus_remote_storage_shards / prometheus_remote_storage_shards_max
@@ -376,7 +376,6 @@ Prometheus uses Write-Ahead Log (WAL) for buffering:
 storage:
   tsdb:
     wal_compression: true
-    out_of_order_time_window: 30m
 ```
 
 ## Security Best Practices
