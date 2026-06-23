@@ -56,7 +56,7 @@ Types and their changelog sections:
 | `build` | Build System | None |
 | `ci` | CI | None |
 | `chore` | Chores | None |
-| `BREAKING CHANGE` | Breaking Changes | Major |
+| `!` or `BREAKING CHANGE` footer | Breaking Changes | Major |
 
 ## Release Please Setup
 
@@ -74,6 +74,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -83,7 +84,6 @@ jobs:
       - uses: google-github-actions/release-please-action@v4
         with:
           release-type: node
-          package-name: my-package
 ```
 
 This creates a release PR that accumulates changes:
@@ -117,6 +117,10 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,6 +190,9 @@ on:
 jobs:
   changelog:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -213,12 +220,12 @@ jobs:
             HASH=$(echo "$line" | cut -d' ' -f1)
             MSG=$(echo "$line" | cut -d' ' -f2-)
 
-            if [[ "$MSG" == feat:* ]] || [[ "$MSG" == feat\(*\):* ]]; then
+            if [[ "$MSG" == *"BREAKING CHANGE"* ]] || [[ "$MSG" =~ ^[a-z]+(\([^)]+\))?!: ]]; then
+              BREAKING="${BREAKING}\n- ${MSG} (${HASH})"
+            elif [[ "$MSG" == feat:* ]] || [[ "$MSG" == feat\(*\):* ]]; then
               FEATURES="${FEATURES}\n- ${MSG#feat*: } (${HASH})"
             elif [[ "$MSG" == fix:* ]] || [[ "$MSG" == fix\(*\):* ]]; then
               FIXES="${FIXES}\n- ${MSG#fix*: } (${HASH})"
-            elif [[ "$MSG" == *"BREAKING CHANGE"* ]]; then
-              BREAKING="${BREAKING}\n- ${MSG} (${HASH})"
             elif [[ "$MSG" != chore:* ]] && [[ "$MSG" != ci:* ]]; then
               OTHER="${OTHER}\n- ${MSG} (${HASH})"
             fi
@@ -287,6 +294,8 @@ on:
 jobs:
   version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       new_version: ${{ steps.version.outputs.new_version }}
       changelog: ${{ steps.changelog.outputs.changelog }}
@@ -305,11 +314,19 @@ jobs:
       - name: Determine version bump
         id: bump
         run: |
-          COMMITS=$(git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s")
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
-          if echo "$COMMITS" | grep -q "BREAKING CHANGE"; then
+          if [ -z "$LATEST_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${LATEST_TAG}..HEAD"
+          fi
+
+          COMMITS=$(git log "$RANGE" --pretty=format:"%s%n%b")
+
+          if echo "$COMMITS" | grep -qE "BREAKING CHANGE|^[a-z]+(\([^)]+\))?!:"; then
             echo "bump=major" >> $GITHUB_OUTPUT
-          elif echo "$COMMITS" | grep -qE "^feat"; then
+          elif echo "$COMMITS" | grep -qE "^feat(\([^)]+\))?:"; then
             echo "bump=minor" >> $GITHUB_OUTPUT
           else
             echo "bump=patch" >> $GITHUB_OUTPUT
@@ -350,7 +367,8 @@ jobs:
 
             const tag = execSync('git describe --tags --abbrev=0 2>/dev/null || echo ""').toString().trim();
             const range = tag ? `${tag}..HEAD` : 'HEAD';
-            const commits = execSync(`git log ${range} --pretty=format:"%H|%s|%an"`).toString().trim().split('\n');
+            const output = execSync(`git log ${range} --pretty=format:"%H|%s|%an"`).toString().trim();
+            const commits = output ? output.split('\n') : [];
 
             const sections = {
               breaking: [],
@@ -363,7 +381,7 @@ jobs:
               const [hash, message, author] = commit.split('|');
               const short = hash.substring(0, 7);
 
-              if (message.includes('BREAKING CHANGE')) {
+              if (message.includes('BREAKING CHANGE') || /^[a-z]+(\([^)]+\))?!:/.test(message)) {
                 sections.breaking.push(`- ${message} (${short})`);
               } else if (message.startsWith('feat')) {
                 sections.features.push(`- ${message.replace(/^feat(\([^)]+\))?:\s*/, '')} (${short})`);
@@ -389,6 +407,9 @@ jobs:
   release:
     needs: version
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -401,13 +422,12 @@ jobs:
           VERSION="${{ needs.version.outputs.new_version }}"
           DATE=$(date +%Y-%m-%d)
 
-          cat > CHANGELOG.new.md << 'EOF'
-          # Changelog
-
-          ## [$VERSION] - $DATE
-
+          {
+            printf "# Changelog\n\n## [%s] - %s\n\n" "$VERSION" "$DATE"
+            cat <<'CHANGELOG'
           ${{ needs.version.outputs.changelog }}
-          EOF
+          CHANGELOG
+          } > CHANGELOG.new.md
 
           if [ -f CHANGELOG.md ]; then
             tail -n +3 CHANGELOG.md >> CHANGELOG.new.md
@@ -442,6 +462,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -474,17 +496,24 @@ jobs:
 
       - name: Create GitHub Release
         uses: actions/github-script@v7
+        env:
+          RELEASE_NOTES: ${{ steps.notes.outputs.notes }}
+          PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
         with:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
-            const notes = `${{ steps.notes.outputs.notes }}`;
+            const notes = process.env.RELEASE_NOTES || '';
+            const previousTag = process.env.PREVIOUS_TAG;
+            const fullChangelog = previousTag
+              ? `\n\n**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tag}`
+              : '';
 
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
               name: `Release ${tag}`,
-              body: `## What's Changed\n\n${notes}\n\n**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${{ steps.prev_tag.outputs.tag }}...${tag}`,
+              body: `## What's Changed\n\n${notes}${fullChangelog}`,
               draft: false,
               prerelease: tag.includes('-')
             });
