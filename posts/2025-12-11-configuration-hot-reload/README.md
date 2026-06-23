@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Configuration Management, Hot Reload, DevOps, Microservice, Dynamic Configuration
 
-Description: Learn how to implement configuration hot-reload in your applications, enabling real-time configuration updates without service restarts using file watchers, Consul, and etcd.
+Description: Learn how to implement configuration hot-reload in your applications, enabling real-time configuration updates without service restarts using file watchers and Consul.
 
 ---
 
-Configuration hot-reload allows applications to update their behavior without restarts. This is essential for production systems where downtime must be minimized and configuration changes need to take effect immediately. This guide covers multiple approaches including file-based, Consul-based, and etcd-based hot-reload implementations.
+Configuration hot-reload allows applications to update their behavior without restarts. This is essential for production systems where downtime must be minimized and configuration changes need to take effect immediately. This guide covers multiple approaches including file-based, Consul-based, signal-based, and HTTP-triggered hot-reload implementations.
 
 ## Hot-Reload Architecture
 
@@ -19,7 +19,6 @@ graph LR
     subgraph "Configuration Sources"
         FILE[Config File]
         CONSUL[Consul KV]
-        ETCD[etcd]
     end
 
     subgraph "Application"
@@ -31,8 +30,6 @@ graph LR
 
     FILE -->|Watch| WATCHER
     CONSUL -->|Watch| WATCHER
-    ETCD -->|Watch| WATCHER
-
     WATCHER -->|Changed| VALIDATOR
     VALIDATOR -->|Valid| CACHE
     CACHE -->|Get Config| APP
@@ -40,7 +37,7 @@ graph LR
 
 ## 1. File-Based Hot-Reload
 
-Watch configuration files for changes using inotify (Linux) or fsnotify (cross-platform).
+Watch configuration files for changes using platform file notification APIs, such as inotify on Linux, through libraries like watchdog for Python or fsnotify for Go.
 
 **Python Implementation:**
 
@@ -93,6 +90,10 @@ class ConfigHotReloader:
                 new_config = yaml.safe_load(content)
             else:
                 raise ValueError(f"Unsupported config format: {self.config_path}")
+
+            if not isinstance(new_config, dict):
+                logger.error("Configuration must be a mapping")
+                return False
 
             # Validate configuration
             if not self._validate_config(new_config):
@@ -150,10 +151,22 @@ class ConfigHotReloader:
             def __init__(handler_self, reloader):
                 handler_self.reloader = reloader
 
-            def on_modified(handler_self, event):
-                if event.src_path == handler_self.reloader.config_path:
-                    logger.info("Config file modified, reloading...")
+            def _is_config_path(handler_self, path):
+                return path and os.path.abspath(path) == handler_self.reloader.config_path
+
+            def _reload_if_config_changed(handler_self, path):
+                if handler_self._is_config_path(path):
+                    logger.info("Config file changed, reloading...")
                     handler_self.reloader._load_config()
+
+            def on_modified(handler_self, event):
+                handler_self._reload_if_config_changed(event.src_path)
+
+            def on_created(handler_self, event):
+                handler_self._reload_if_config_changed(event.src_path)
+
+            def on_moved(handler_self, event):
+                handler_self._reload_if_config_changed(event.dest_path)
 
         self._observer = Observer()
         self._observer.schedule(
@@ -229,8 +242,13 @@ type ConfigHotReloader struct {
 }
 
 func NewConfigHotReloader(configPath string, callback func(Config)) (*ConfigHotReloader, error) {
+    absPath, err := filepath.Abs(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to resolve config path: %w", err)
+    }
+
     r := &ConfigHotReloader{
-        configPath:     configPath,
+        configPath:     absPath,
         reloadCallback: callback,
     }
 
@@ -321,8 +339,11 @@ func (r *ConfigHotReloader) StartWatching() error {
                 if !ok {
                     return
                 }
-                if event.Op&fsnotify.Write == fsnotify.Write {
-                    log.Println("Config file modified, reloading...")
+                if filepath.Clean(event.Name) != r.configPath {
+                    continue
+                }
+                if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+                    log.Println("Config file changed, reloading...")
                     if err := r.loadConfig(); err != nil {
                         log.Printf("Failed to reload config: %v", err)
                     }
@@ -336,7 +357,7 @@ func (r *ConfigHotReloader) StartWatching() error {
         }
     }()
 
-    return watcher.Add(r.configPath)
+    return watcher.Add(filepath.Dir(r.configPath))
 }
 
 func (r *ConfigHotReloader) StopWatching() {
@@ -369,7 +390,7 @@ func main() {
 
 ## 2. Consul-Based Hot-Reload
 
-Use Consul watches for distributed configuration hot-reload.
+Use Consul KV blocking queries for distributed configuration hot-reload.
 
 ```python
 import consul
@@ -548,9 +569,6 @@ Trigger reload via Unix signals (SIGHUP).
 
 ```python
 import signal
-import sys
-import os
-
 class SignalReloadHandler:
     def __init__(self, config_loader):
         self.config_loader = config_loader
