@@ -10,7 +10,7 @@ Description: Learn how to enforce Kubernetes network policies using eBPF for imp
 
 ## Introduction
 
-Network policies in Kubernetes are essential for securing communication between pods and services. Traditional implementations rely on iptables, which can become a performance bottleneck at scale. eBPF (extended Berkeley Packet Filter) offers a revolutionary approach to network policy enforcement, providing superior performance, deep visibility, and advanced capabilities like Layer 7 filtering.
+Network policies in Kubernetes are essential for securing communication between pods and services. Traditional implementations rely on iptables, which can become a performance bottleneck at scale. eBPF (extended Berkeley Packet Filter) offers a revolutionary approach to network policy enforcement, providing superior performance and deep visibility. In Cilium, Layer 7 filtering is handled by redirecting selected traffic from the eBPF datapath to an Envoy proxy.
 
 In this comprehensive guide, we will explore how to implement network policies using eBPF through Cilium, the most widely adopted eBPF-based CNI (Container Network Interface) for Kubernetes.
 
@@ -30,7 +30,7 @@ Before diving into implementation, let's understand why eBPF is transforming Kub
 - **O(1) lookups**: Hash-based lookups instead of linear chain traversal
 - **Programmable**: Custom logic can be loaded into the kernel
 - **Deep visibility**: Full packet introspection at kernel level
-- **L7 support**: Native understanding of application protocols
+- **L7 support**: Integration with an application-aware proxy for HTTP, gRPC, and DNS policies
 - **Real-time metrics**: Built-in observability capabilities
 
 ## Architecture Overview
@@ -52,9 +52,8 @@ flowchart TB
         end
 
         subgraph "Control Plane"
-            CiliumOperator[Cilium Operator]
+            K8sAPI[Kubernetes API<br/>CRDs]
             CiliumAgent[Cilium Agent]
-            KVSTORE[(KV Store<br/>etcd/CRDs)]
         end
 
         subgraph "Policy Sources"
@@ -64,11 +63,10 @@ flowchart TB
         end
     end
 
-    K8sNP --> CiliumOperator
-    CNP --> CiliumOperator
-    CCNP --> CiliumOperator
-    CiliumOperator --> KVSTORE
-    KVSTORE --> CiliumAgent
+    K8sNP --> K8sAPI
+    CNP --> K8sAPI
+    CCNP --> K8sAPI
+    K8sAPI --> CiliumAgent
     CiliumAgent --> BPFMap1
 
     Pod1 --> TC2
@@ -83,10 +81,10 @@ flowchart TB
 
 Before we begin, ensure you have:
 
-- A Kubernetes cluster (v1.21+)
+- A Kubernetes cluster compatible with your chosen Cilium release (Cilium 1.19.x is tested with Kubernetes 1.32-1.35)
 - kubectl configured
 - Helm 3.x installed
-- Linux kernel 4.19+ (5.4+ recommended for full features)
+- Linux kernel 5.10+ or an equivalent distribution kernel (for example, RHEL 8.10's 4.18 kernel)
 
 ## Installing Cilium
 
@@ -107,7 +105,7 @@ helm repo update
 # - eBPF kube-proxy replacement for better performance
 # - Hubble for observability
 # - Host routing via eBPF for improved networking
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.5 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=${API_SERVER_IP} \
@@ -123,12 +121,12 @@ Verify that Cilium is running correctly by checking the status of all Cilium pod
 
 ```bash
 # Wait for Cilium pods to be ready
-kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=cilium-agent \
+kubectl wait --for=condition=Ready pods -l k8s-app=cilium \
   -n kube-system --timeout=300s
 
 # Check Cilium status using the CLI
 # This shows connectivity status, cluster health, and feature availability
-kubectl exec -n kube-system -it ds/cilium -- cilium status
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg status
 
 # Verify eBPF programs are loaded
 # This lists all BPF programs attached by Cilium
@@ -190,9 +188,6 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: demo
-  labels:
-    # Enable Cilium policy enforcement for this namespace
-    policy.cilium.io/enforce: "true"
 ---
 # Frontend deployment - simulates public-facing web servers
 apiVersion: apps/v1
@@ -453,8 +448,8 @@ spec:
   - toEndpoints:
     - matchLabels:
         # CoreDNS/kube-dns runs in kube-system namespace
-        k8s:io.kubernetes.pod.namespace: kube-system
-        k8s-app: kube-dns
+        "k8s:io.kubernetes.pod.namespace": kube-system
+        "k8s:k8s-app": kube-dns
     toPorts:
     - ports:
       # DNS uses both UDP and TCP on port 53
@@ -611,18 +606,18 @@ spec:
         - method: ".*"
           path: "/admin/.*"
           headers:
-          - "X-Admin-Token: .*"
+          - "X-Admin-Token: required"
 ```
 
 ### gRPC Policies
 
-Cilium also supports gRPC-specific policies for microservices using Protocol Buffers:
+Cilium can enforce gRPC traffic by matching the HTTP/2 method and path used by gRPC:
 
 ```yaml
 # Save as: l7-grpc-policy.yaml
 # gRPC policy for microservices communication:
-# - Filters based on gRPC service and method names
-# - Works with Protocol Buffer definitions
+# - Filters based on the gRPC HTTP/2 path for service and method names
+# - Does not inspect Protocol Buffer message fields
 # - Enables fine-grained RPC access control
 ---
 apiVersion: cilium.io/v2
@@ -679,12 +674,15 @@ spec:
   # Allow DNS resolution first (required for FQDN rules)
   - toEndpoints:
     - matchLabels:
-        k8s:io.kubernetes.pod.namespace: kube-system
-        k8s-app: kube-dns
+        "k8s:io.kubernetes.pod.namespace": kube-system
+        "k8s:k8s-app": kube-dns
     toPorts:
     - ports:
       - port: "53"
-        protocol: UDP
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: "*"
   # Allow access to specific external APIs
   - toFQDNs:
     # Exact domain match
@@ -708,31 +706,22 @@ For policies that should apply across all namespaces, use CiliumClusterwideNetwo
 # Cluster-wide policies for global security enforcement:
 # - Apply to all namespaces without per-namespace configuration
 # - Useful for compliance and baseline security requirements
-# - Cannot be overridden by namespace-level policies
+# - Combine additively with namespace-level allow policies
 ---
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: global-deny-external-access
+  name: global-default-deny-egress
 spec:
   # This description helps with policy auditing
-  description: "Deny direct internet access from all pods except explicitly allowed"
+  description: "Default deny egress from all pods unless explicitly allowed"
   endpointSelector:
     matchLabels: {}
-  egress:
-  # Block access to external networks (public internet)
-  # CIDR 0.0.0.0/0 matches all IPv4 addresses
-  - toCIDR:
-    - "0.0.0.0/0"
-    # Except for private networks and cluster IPs
-    toCIDRSet:
-    - cidr: "0.0.0.0/0"
-      except:
-      - "10.0.0.0/8"      # Private network (Class A)
-      - "172.16.0.0/12"   # Private network (Class B)
-      - "192.168.0.0/16"  # Private network (Class C)
+  # Empty egress rules select all endpoints and put them into default-deny mode
+  # until another policy explicitly allows traffic
+  egress: []
 ---
-# Allow specific namespaces to access the internet
+# Allow specifically labeled pods to access the internet
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
@@ -800,36 +789,34 @@ Use Cilium's built-in tools to diagnose policy issues:
 ```bash
 # Check policy status on a specific endpoint
 # First, get the endpoint ID for a pod
-kubectl exec -n kube-system -it ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg endpoint list
 
 # Get detailed policy information for an endpoint
 # Replace <endpoint-id> with the actual ID from above
-kubectl exec -n kube-system -it ds/cilium -- cilium endpoint get <endpoint-id>
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 
 # View the BPF policy map entries
 # This shows the compiled policy rules in the datapath
-kubectl exec -n kube-system -it ds/cilium -- cilium bpf policy get --all
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg bpf policy list
 
 # Check identity of a pod (identities are used for policy matching)
-kubectl exec -n kube-system -it ds/cilium -- cilium identity list
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg identity list
 
-# Debug policy for a specific identity pair
-# Shows whether traffic between two identities would be allowed
-kubectl exec -n kube-system -it ds/cilium -- \
-  cilium policy trace --src-identity <src-id> --dst-identity <dst-id> --dport 8080
+# Validate Cilium policy syntax currently deployed in the cluster
+kubectl exec -n kube-system -it ds/cilium -- cilium-dbg preflight validate-cnp
 
 # Validate policy syntax before applying
 kubectl apply --dry-run=client -f policy.yaml
 ```
 
-### Policy Simulation
+### Policy Validation
 
 Test policies before applying them to production:
 
 ```yaml
 # Save as: test-policy.yaml
-# Policy for testing and simulation
-# Use Cilium's policy trace feature to validate before applying
+# Policy for testing and validation
+# Use server-side validation and Cilium's policy validator before production
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -852,28 +839,15 @@ spec:
       - port: "8080"
 ```
 
-Simulate the policy using Cilium's policy trace:
+Validate the policy before applying it broadly:
 
 ```bash
-# Get the security identities for source and destination pods
-SRC_ID=$(kubectl exec -n kube-system ds/cilium -- \
-  cilium identity list | grep "app=frontend" | awk '{print $1}')
-DST_ID=$(kubectl exec -n kube-system ds/cilium -- \
-  cilium identity list | grep "app=backend" | awk '{print $1}')
+# Validate the Kubernetes and CRD schema without persisting the policy
+kubectl apply --dry-run=server -f test-policy.yaml
 
-# Trace the policy to see if traffic would be allowed
-# This simulates the policy decision without affecting live traffic
-kubectl exec -n kube-system ds/cilium -- \
-  cilium policy trace \
-  --src-identity $SRC_ID \
-  --dst-identity $DST_ID \
-  --dport 8080 \
-  --proto TCP
-
-# The output shows:
-# - Which policies match
-# - The final verdict (ALLOWED/DENIED)
-# - The rule that caused the decision
+# Validate CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy objects
+# already deployed in the cluster
+kubectl exec -n kube-system ds/cilium -- cilium-dbg preflight validate-cnp
 ```
 
 ### Using Cilium Monitor for Real-Time Debugging
@@ -883,19 +857,19 @@ Monitor eBPF events in real-time for deep debugging:
 ```bash
 # Start monitoring all events on a Cilium agent
 # This shows packet flow through the eBPF datapath
-kubectl exec -n kube-system ds/cilium -- cilium monitor
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor
 
 # Filter for policy-related events only
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # Monitor drops only (helps identify blocked traffic)
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 
 # Monitor specific endpoint
 ENDPOINT_ID=$(kubectl exec -n kube-system ds/cilium -- \
-  cilium endpoint list | grep "backend" | awk '{print $1}')
+  cilium-dbg endpoint list | grep "backend" | awk '{print $1}')
 kubectl exec -n kube-system ds/cilium -- \
-  cilium monitor --from $ENDPOINT_ID --to $ENDPOINT_ID
+  cilium-dbg monitor --related-to $ENDPOINT_ID
 ```
 
 ## Advanced Policy Patterns
@@ -1083,12 +1057,12 @@ spec:
 
 ### Rate Limiting with L7 Policies
 
-Implement rate limiting at the network policy level:
+Select API traffic with an L7 policy, then apply rate limiting with Envoy configuration:
 
 ```yaml
 # Save as: rate-limiting-policy.yaml
-# L7 rate limiting policy using Cilium's Envoy integration
-# Note: Requires Cilium's L7 proxy to be enabled
+# L7 policy that selects the API traffic to protect
+# Note: Network policies allow or deny traffic; rate limiting is configured in Envoy
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -1109,47 +1083,9 @@ spec:
         protocol: TCP
       rules:
         http:
-        # L7 policy with implicit connection tracking
-        # For explicit rate limiting, use Cilium's Envoy config
+        # L7 policy selects API traffic; use Envoy configuration for rate limiting
         - method: ".*"
           path: "/api/.*"
-          # Headers can be used to implement token bucket
-          # tracking per client
----
-# For advanced rate limiting, configure Envoy via CiliumEnvoyConfig
-apiVersion: cilium.io/v2
-kind: CiliumEnvoyConfig
-metadata:
-  name: rate-limit-config
-  namespace: backend
-spec:
-  services:
-  - name: api-server
-    namespace: backend
-  resources:
-  - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
-    name: api-rate-limit-listener
-    filter_chains:
-    - filters:
-      - name: envoy.filters.network.http_connection_manager
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          stat_prefix: api_rate_limit
-          http_filters:
-          - name: envoy.filters.http.local_ratelimit
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-              stat_prefix: http_local_rate_limiter
-              token_bucket:
-                # 100 requests per second
-                max_tokens: 100
-                tokens_per_fill: 100
-                fill_interval: 1s
-              filter_enabled:
-                runtime_key: local_rate_limit_enabled
-                default_value:
-                  numerator: 100
-                  denominator: HUNDRED
 ```
 
 ## Monitoring and Metrics
@@ -1189,10 +1125,10 @@ Key metrics to monitor for network policies:
 
 # Number of policy drops (blocked traffic)
 # High values may indicate misconfiguration or attacks
-cilium_drop_count_total{reason="Policy denied"}
+cilium_drop_count_total{reason=~"Policy.*"}
 
-# Policy import errors (syntax or semantic issues)
-cilium_policy_import_errors_total
+# Policy changes by outcome
+cilium_policy_change_total
 
 # Number of policy revision updates
 # Helps track policy changes over time
@@ -1203,7 +1139,7 @@ cilium_policy_endpoint_enforcement_status
 cilium_proxy_upstream_reply_seconds_bucket
 
 # Identity count (helps understand policy complexity)
-cilium_identity_count
+cilium_identity
 ```
 
 ### Creating a Policy Dashboard
@@ -1317,11 +1253,8 @@ kubectl create namespace demo-staging
 # Apply policies with dry-run first
 kubectl apply --dry-run=server -f policy.yaml
 
-# Use Cilium's policy trace to validate
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod demo-staging:frontend-xxx \
-  --dst-k8s-pod demo-staging:backend-xxx \
-  --dport 8080
+# Use Cilium's policy validator to check deployed CNP and CCNP resources
+kubectl exec -n kube-system ds/cilium -- cilium-dbg preflight validate-cnp
 
 # Monitor for unexpected drops after applying
 hubble observe --namespace demo-staging --verdict DROPPED --follow
