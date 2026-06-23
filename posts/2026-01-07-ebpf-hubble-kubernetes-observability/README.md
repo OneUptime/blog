@@ -16,7 +16,7 @@ Unlike traditional observability tools that rely on application-level instrument
 
 - **Zero instrumentation required**: No code changes or sidecars needed
 - **Low overhead**: eBPF programs run efficiently in the kernel
-- **Complete visibility**: Captures all network traffic, including encrypted connections
+- **Complete flow visibility**: Captures network flow metadata, including encrypted flow status, without requiring application changes
 - **Real-time insights**: Immediate visibility into network flows and service dependencies
 
 ## Architecture Overview
@@ -57,7 +57,7 @@ graph TB
 
 Before installing Hubble, ensure you have:
 
-- A Kubernetes cluster (version 1.21 or later)
+- A Kubernetes cluster compatible with Cilium 1.15 (Cilium 1.15 is tested with Kubernetes 1.26 through 1.29)
 - kubectl configured to access your cluster
 - Helm 3.x installed
 - Cilium CNI installed (Hubble is a component of Cilium)
@@ -201,26 +201,37 @@ Download and install the Hubble CLI on your local machine:
 
 ```bash
 # Set the Hubble CLI version to download
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
 
 # Download the appropriate binary for your architecture
-# This example is for Linux AMD64; adjust for your OS
+# This example is for Linux; the architecture is detected above
 curl -L --remote-name-all \
-  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz \
-  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz.sha256sum
+  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-${HUBBLE_ARCH}.tar.gz \
+  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
 
 # Verify the download integrity using the SHA256 checksum
-sha256sum --check hubble-linux-amd64.tar.gz.sha256sum
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
 
 # Extract the binary to a location in your PATH
-sudo tar xzvf hubble-linux-amd64.tar.gz -C /usr/local/bin
+sudo tar xzvf hubble-linux-${HUBBLE_ARCH}.tar.gz -C /usr/local/bin
 ```
 
-For macOS users, use Homebrew for a simpler installation:
+For macOS users, download the Darwin binary:
 
 ```bash
-# Install Hubble CLI using Homebrew on macOS
-brew install hubble
+# Install Hubble CLI on macOS
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "arm64" ]; then HUBBLE_ARCH=arm64; fi
+
+curl -L --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-darwin-${HUBBLE_ARCH}.tar.gz \
+  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-darwin-${HUBBLE_ARCH}.tar.gz.sha256sum
+
+shasum -a 256 -c hubble-darwin-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvf hubble-darwin-${HUBBLE_ARCH}.tar.gz -C /usr/local/bin
 ```
 
 ### Connecting to Hubble Relay
@@ -253,23 +264,23 @@ The `hubble observe` command is your primary tool for watching network flows in 
 ```bash
 # Observe all flows in real-time across the entire cluster
 # This streams all network events as they happen
-hubble observe
+hubble observe --follow
 
 # Filter flows for a specific namespace
 # Useful for focusing on a particular application
 hubble observe --namespace production
 
-# Observe flows for a specific pod by label selector
+# Observe flows for pods matching a specific label selector
 # Great for debugging individual services
-hubble observe --pod app=frontend
+hubble observe --label app=frontend
 
 # Watch only HTTP traffic with request/response details
-# The -t http flag filters for Layer 7 HTTP flows
-hubble observe -t http
+# The --protocol http flag filters for Layer 7 HTTP flows
+hubble observe --protocol http
 
 # Observe DNS queries and responses
 # Helpful for debugging DNS resolution issues
-hubble observe -t dns
+hubble observe --protocol dns
 
 # Filter flows by verdict (forwarded, dropped, error)
 # Essential for troubleshooting network policies
@@ -297,11 +308,11 @@ hubble observe --to-identity world
 
 # Watch for TCP connection issues (SYN, RST, FIN events)
 # Great for debugging connection timeouts
-hubble observe -t trace:sock
+hubble observe -t trace-sock
 
 # View flows with full Layer 7 HTTP details
 # Shows HTTP methods, paths, and response codes
-hubble observe -t http -o json | jq .
+hubble observe --protocol http -o json | jq .
 
 # Export flows to a file for later analysis
 # The -o jsonpb format provides full flow details
@@ -413,7 +424,7 @@ You can also generate service dependency information using the Hubble CLI:
 # This provides the building blocks for a service map
 hubble observe --print-node-name \
   --output json | \
-  jq -r '[.source.namespace, .source.pod_name, .destination.namespace, .destination.pod_name] | @tsv' | \
+  jq -r '[.source.namespace, .source.podName, .destination.namespace, .destination.podName] | @tsv' | \
   sort -u
 
 # Export flow data for external visualization tools
@@ -422,9 +433,9 @@ hubble observe \
   --since 1h \
   --output jsonpb | \
   jq -c '{
-    source: (.source.namespace + "/" + .source.pod_name),
-    dest: (.destination.namespace + "/" + .destination.pod_name),
-    protocol: .l4.protocol
+    source: (.source.namespace + "/" + .source.podName),
+    dest: (.destination.namespace + "/" + .destination.podName),
+    protocol: (if .l4.TCP then "TCP" elif .l4.UDP then "UDP" elif .l4.SCTP then "SCTP" else "OTHER" end)
   }' > service-flows.jsonl
 ```
 
@@ -471,12 +482,12 @@ data:
             ]
           },
           {
-            "title": "DNS Query Latency",
-            "type": "heatmap",
+            "title": "DNS Queries by RCODE",
+            "type": "graph",
             "targets": [
               {
-                "expr": "sum(rate(hubble_dns_query_duration_seconds_bucket[5m])) by (le)",
-                "legendFormat": "{{le}}"
+                "expr": "sum(rate(hubble_dns_queries_total[5m])) by (rcode)",
+                "legendFormat": "{{rcode}}"
               }
             ]
           },
@@ -509,13 +520,13 @@ hubble observe --since 1h -o json | \
 # Identify the most common destination ports
 # Useful for understanding service communication patterns
 hubble observe --since 1h -o json | \
-  jq -r '.l4.TCP.destination_port // .l4.UDP.destination_port' | \
+  jq -r '.l4.TCP.destinationPort // .l4.UDP.destinationPort' | \
   sort | uniq -c | sort -rn | head -20
 
 # Find services with the highest error rates
 # Critical for identifying problematic services
 hubble observe --since 1h --verdict DROPPED -o json | \
-  jq -r '[.source.namespace, .source.pod_name] | @tsv' | \
+  jq -r '[.source.namespace, .source.podName] | @tsv' | \
   sort | uniq -c | sort -rn | head -10
 ```
 
@@ -529,21 +540,21 @@ Hubble helps you understand and debug Kubernetes Network Policies by showing whi
 # View flows with policy information
 # The policy-verdict field shows which policy allowed or denied the traffic
 hubble observe --output json | \
-  jq 'select(.policy_match_type != null) | {
-    src: .source.pod_name,
-    dst: .destination.pod_name,
+  jq 'select(.policyMatchType != null) | {
+    src: .source.podName,
+    dst: .destination.podName,
     verdict: .verdict,
-    policy: .policy_match_type
+    policy: .policyMatchType
   }'
 
 # Find all dropped flows due to policy violations
 # Essential for troubleshooting network policy issues
 hubble observe --verdict DROPPED -o json | \
-  jq 'select(.drop_reason_desc | contains("POLICY"))' | \
+  jq 'select(.dropReasonDesc | contains("POLICY"))' | \
   jq -c '{
-    src: .source.namespace + "/" + .source.pod_name,
-    dst: .destination.namespace + "/" + .destination.pod_name,
-    reason: .drop_reason_desc
+    src: .source.namespace + "/" + .source.podName,
+    dst: .destination.namespace + "/" + .destination.podName,
+    reason: .dropReasonDesc
   }'
 ```
 
@@ -598,13 +609,13 @@ hubble status
 If Hubble consumes too much memory, adjust the flow buffer:
 
 ```yaml
-# Reduce memory usage by limiting flow buffer size
+# Reduce memory usage by limiting the event buffer capacity
 # hubble-memory-values.yaml
 hubble:
   enabled: true
-  # Reduce the flow buffer size (default is 4096)
-  # Lower values reduce memory but may drop flows under high load
-  flowBufferSize: 2048
+  # Reduce the number of recent flows cached by Hubble (default is 4095)
+  # Lower values reduce memory but keep less flow history
+  eventBufferCapacity: "2047"
 
   relay:
     enabled: true
@@ -652,20 +663,18 @@ EOF
 
 ### Exporting to OpenTelemetry
 
-Configure Hubble to export traces to an OpenTelemetry collector:
+Hubble does not expose a native `hubble.otel` Helm value. To integrate with OpenTelemetry, deploy the Hubble OpenTelemetry adapter or export flow logs for an OpenTelemetry Collector pipeline. For example, enable the built-in Hubble flow log exporter:
 
 ```yaml
 # hubble-otel-values.yaml
-# Enable OpenTelemetry export for distributed tracing integration
+# Enable Hubble flow export for collection by an external pipeline
 hubble:
   enabled: true
 
-  # Configure trace export to OpenTelemetry collector
-  otel:
-    enabled: true
-    endpoint: "otel-collector.monitoring.svc.cluster.local:4317"
-    # Use gRPC for efficient trace export
-    insecure: true
+  export:
+    static:
+      enabled: true
+      filePath: /var/run/cilium/hubble/events.log
 ```
 
 ### Exporting to Prometheus
@@ -747,16 +756,15 @@ Configure appropriate flow retention:
 # Configure flow retention for long-term analysis
 hubble:
   # Keep more flows in memory for historical queries
-  flowBufferSize: 16384
+  eventBufferCapacity: "16383"
 
   # Export flows to external storage for long-term retention
   export:
+    fileMaxSizeMb: 100
+    fileMaxBackups: 5
     static:
       enabled: true
-      filePath: /var/run/hubble/flows.log
-      # Rotate files to prevent disk exhaustion
-      maxSize: 100Mi
-      maxFiles: 5
+      filePath: /var/run/cilium/hubble/events.log
 ```
 
 ## Conclusion
