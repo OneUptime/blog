@@ -166,7 +166,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # SSL Configuration
@@ -181,7 +182,6 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Logging
     access_log /var/log/nginx/myapp_access.log;
@@ -191,21 +191,21 @@ server {
     client_max_body_size 10M;
 
     # Static files
-    location /static {
-        alias /var/www/myapp/static;
+    location /static/ {
+        alias /var/www/myapp/static/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
     # Favicon
-    location /favicon.ico {
+    location = /favicon.ico {
         alias /var/www/myapp/static/favicon.ico;
         expires 30d;
         access_log off;
     }
 
     # Robots.txt
-    location /robots.txt {
+    location = /robots.txt {
         alias /var/www/myapp/static/robots.txt;
         access_log off;
     }
@@ -221,10 +221,10 @@ server {
         uwsgi_send_timeout 60;
 
         # Headers
-        uwsgi_param Host $host;
-        uwsgi_param X-Real-IP $remote_addr;
-        uwsgi_param X-Forwarded-For $proxy_add_x_forwarded_for;
-        uwsgi_param X-Forwarded-Proto $scheme;
+        uwsgi_param HTTP_HOST $host;
+        uwsgi_param HTTP_X_REAL_IP $remote_addr;
+        uwsgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;
+        uwsgi_param HTTP_X_FORWARDED_PROTO $scheme;
     }
 }
 ```
@@ -347,11 +347,9 @@ harakiri = 60
 buffer-size = 65535
 ```
 
-### docker-compose.yml
+### compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -371,13 +369,12 @@ services:
     expose:
       - "8000"
     environment:
-      - FLASK_ENV=production
       - DATABASE_URL=postgresql://user:pass@db/myapp
     volumes:
       - ./static:/app/static:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -408,8 +405,8 @@ server {
 
     client_max_body_size 10M;
 
-    location /static {
-        alias /var/www/static;
+    location /static/ {
+        alias /var/www/static/;
         expires 30d;
     }
 
@@ -537,7 +534,7 @@ server {
 sudo nginx -t
 
 # Test uWSGI configuration
-uwsgi --ini uwsgi.ini --check-static /var/www/myapp
+uwsgi --ini uwsgi.ini --show-config
 
 # Check uWSGI status
 uwsgi --connect-and-read /var/www/myapp/uwsgi-stats.sock
