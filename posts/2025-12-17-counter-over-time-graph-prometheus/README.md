@@ -89,7 +89,7 @@ irate(http_requests_total[5m])
 Key properties:
 - More responsive to spikes
 - Noisier visualization
-- Good for alerting on sudden changes
+- Good for graphing volatile, fast-moving counters
 - Range vector is minimum lookback
 
 ## Choosing the Right Function
@@ -108,7 +108,7 @@ flowchart TD
 | Use Case | Function | Example |
 |----------|----------|---------|
 | Dashboard trends | `rate()` | `rate(http_requests_total[5m])` |
-| Alert on spikes | `irate()` | `irate(http_requests_total[2m])` |
+| Graph volatile spikes | `irate()` | `irate(http_requests_total[2m])` |
 | Daily totals | `increase()` | `increase(http_requests_total[24h])` |
 | Error rates | `rate()` | `rate(http_errors_total[5m]) / rate(http_requests_total[5m])` |
 
@@ -211,8 +211,8 @@ Rule of thumb: Range should be at least 4 times your scrape interval.
 ### Mistake 3: Mixing rate() with sum() Incorrectly
 
 ```promql
-# Wrong - rate of sum doesn't work
-rate(sum(http_requests_total)[5m])
+# Wrong - rate after aggregation can't detect per-series resets
+rate(sum(http_requests_total)[5m:])
 
 # Correct - sum of rate
 sum(rate(http_requests_total[5m]))
@@ -263,10 +263,10 @@ Panel configuration:
 
 ### Cumulative Sum Within Time Range
 
-Show cumulative progress throughout the day:
+Show the rolling total over the last day:
 
 ```promql
-# Cumulative requests today (approximation)
+# Rolling requests over the last day (approximation)
 sum_over_time(
   sum(increase(http_requests_total[1m]))[1d:1m]
 )
@@ -405,7 +405,7 @@ my_counter
 
 ### Unexpected Spikes
 
-Counter resets can cause spikes. Debug with:
+If spikes line up with restarts, check for resets:
 ```promql
 # See reset count
 resets(my_counter[1h])
