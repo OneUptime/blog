@@ -1320,6 +1320,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
@@ -1363,9 +1364,10 @@ public class DeprecationInterceptor implements HandlerInterceptor {
             // Standard deprecation header
             response.setHeader("Deprecation", "true");
             
-            // Sunset header with date
+            // Sunset header with date (RFC 8594 requires an HTTP-date)
             response.setHeader("Sunset", 
-                sunsetDate.format(DateTimeFormatter.ISO_DATE));
+                sunsetDate.atStartOfDay(ZoneOffset.UTC)
+                    .format(DateTimeFormatter.RFC_1123_DATE_TIME));
             
             // Link to migration guide
             response.setHeader("Link", 
