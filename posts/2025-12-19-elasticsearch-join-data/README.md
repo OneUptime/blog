@@ -39,7 +39,7 @@ graph TD
 
     C --> H[Duplicate Data in Documents]
     D --> I[Objects within Documents]
-    E --> J[Same Index, Different Types]
+    E --> J[Same Index, Join Relations]
     F --> K[Multiple Queries in App]
     G --> L[Query-time Lookup]
 ```
@@ -86,7 +86,7 @@ curl -X GET "https://localhost:9200/orders/_search" \
       "bool": {
         "must": [
           { "match": { "customer.name": "John" } },
-          { "term": { "customer.tier": "gold" } }
+          { "term": { "customer.tier.keyword": "gold" } }
         ]
       }
     }
@@ -414,6 +414,18 @@ for order in orders:
 Query one index based on values from another document.
 
 ```bash
+# Create products with product_id mapped for exact ID matching
+curl -X PUT "https://localhost:9200/products" \
+  -H "Content-Type: application/json" \
+  -u elastic:password \
+  -d '{
+    "mappings": {
+      "properties": {
+        "product_id": { "type": "keyword" }
+      }
+    }
+  }'
+
 # Document with list of IDs
 curl -X POST "https://localhost:9200/user_preferences/_doc/user-001" \
   -H "Content-Type: application/json" \
