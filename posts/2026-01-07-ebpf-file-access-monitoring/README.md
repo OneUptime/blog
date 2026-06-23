@@ -112,7 +112,7 @@ Before we begin, ensure your system meets the following requirements:
 The following commands install the necessary tools and verify your kernel supports eBPF:
 
 ```bash
-# Check kernel version (requires 4.18+ for full eBPF support, 5.8+ recommended)
+# Check kernel version (4.18+ is a practical baseline for many tracing setups, 5.8+ recommended)
 
 uname -r
 
@@ -124,9 +124,8 @@ sudo apt-get install -y bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
 # Install libbpf and bpftool for CO-RE (Compile Once, Run Everywhere) programs
 sudo apt-get install -y libbpf-dev bpftool
 
-# Verify eBPF is available by checking the bpf syscall
-# The output should show the bpf system call number
-grep bpf /proc/kallsyms | head -5
+# Verify eBPF support with bpftool
+sudo bpftool feature probe kernel | head -40
 
 # Check if BTF (BPF Type Format) is available for CO-RE
 # BTF enables portable eBPF programs across kernel versions
@@ -168,10 +167,10 @@ This Python program uses BCC to trace all file open operations with detailed met
 """
 file_open_tracer.py - Monitor all file open operations using eBPF
 
-This script attaches to the openat/openat2 system calls to capture:
+This script attaches to the openat system call to capture:
 - Process ID and thread ID
 - User ID and group ID
-- Full file path being opened
+- The pathname argument being opened (absolute or relative, as supplied by the process)
 - Open flags (read, write, create, etc.)
 - Timestamp of the operation
 
@@ -180,8 +179,6 @@ Usage: sudo python3 file_open_tracer.py
 
 from bcc import BPF
 from datetime import datetime
-import ctypes
-import os
 
 # Define the eBPF program that runs in kernel space
 # This program attaches to the sys_enter_openat tracepoint
@@ -313,6 +310,8 @@ def print_event(cpu, data, size):
           f"FLAGS={decode_flags(event.flags)}")
 
 def main():
+    global bpf
+
     print("Starting file open tracer...")
     print("Press Ctrl+C to exit\n")
 
@@ -353,7 +352,7 @@ file_rw_monitor.py - Monitor file read/write operations with byte counts
 This script tracks all file I/O operations including:
 - Read operations with bytes read
 - Write operations with bytes written
-- File descriptor to filename mapping
+- File descriptor tracking for each operation
 - Per-process I/O statistics
 
 Usage: sudo python3 file_rw_monitor.py
@@ -361,7 +360,6 @@ Usage: sudo python3 file_rw_monitor.py
 
 from bcc import BPF
 from datetime import datetime
-import ctypes
 
 # eBPF program for read/write monitoring
 # Uses both entry and exit tracepoints to capture return values
@@ -607,7 +605,7 @@ flowchart LR
     style TP_UNLINK fill:#e1f5fe
 ```
 
-This program monitors directory creation, deletion, renaming, and file unlinking:
+This program monitors directory creation, deletion, renaming, file unlinking, and symlink creation:
 
 ```python
 #!/usr/bin/env python3
@@ -698,6 +696,25 @@ TRACEPOINT_PROBE(syscalls, sys_enter_rmdir) {
 
 // Monitor unlink/unlinkat operations
 // Captures file deletion attempts
+TRACEPOINT_PROBE(syscalls, sys_enter_unlink) {
+    struct dir_event event = {};
+
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    event.pid = pid_tgid >> 32;
+
+    u64 uid_gid = bpf_get_current_uid_gid();
+    event.uid = uid_gid & 0xFFFFFFFF;
+
+    event.timestamp = bpf_ktime_get_ns();
+    event.op_type = OP_UNLINK;
+
+    bpf_get_current_comm(&event.comm, sizeof(event.comm));
+    bpf_probe_read_user_str(&event.path, sizeof(event.path), args->pathname);
+
+    dir_events.perf_submit(args, &event, sizeof(event));
+    return 0;
+}
+
 TRACEPOINT_PROBE(syscalls, sys_enter_unlinkat) {
     struct dir_event event = {};
 
@@ -719,6 +736,52 @@ TRACEPOINT_PROBE(syscalls, sys_enter_unlinkat) {
 
 // Monitor rename operations
 // Captures both source and destination paths
+TRACEPOINT_PROBE(syscalls, sys_enter_rename) {
+    struct dir_event event = {};
+
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    event.pid = pid_tgid >> 32;
+
+    u64 uid_gid = bpf_get_current_uid_gid();
+    event.uid = uid_gid & 0xFFFFFFFF;
+
+    event.timestamp = bpf_ktime_get_ns();
+    event.op_type = OP_RENAME;
+
+    bpf_get_current_comm(&event.comm, sizeof(event.comm));
+
+    // Capture source path
+    bpf_probe_read_user_str(&event.path, sizeof(event.path), args->oldname);
+    // Capture destination path
+    bpf_probe_read_user_str(&event.path2, sizeof(event.path2), args->newname);
+
+    dir_events.perf_submit(args, &event, sizeof(event));
+    return 0;
+}
+
+TRACEPOINT_PROBE(syscalls, sys_enter_renameat) {
+    struct dir_event event = {};
+
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    event.pid = pid_tgid >> 32;
+
+    u64 uid_gid = bpf_get_current_uid_gid();
+    event.uid = uid_gid & 0xFFFFFFFF;
+
+    event.timestamp = bpf_ktime_get_ns();
+    event.op_type = OP_RENAME;
+
+    bpf_get_current_comm(&event.comm, sizeof(event.comm));
+
+    // Capture source path
+    bpf_probe_read_user_str(&event.path, sizeof(event.path), args->oldname);
+    // Capture destination path
+    bpf_probe_read_user_str(&event.path2, sizeof(event.path2), args->newname);
+
+    dir_events.perf_submit(args, &event, sizeof(event));
+    return 0;
+}
+
 TRACEPOINT_PROBE(syscalls, sys_enter_renameat2) {
     struct dir_event event = {};
 
@@ -939,10 +1002,6 @@ struct file_access_event {
 
 BPF_PERF_OUTPUT(file_events);
 
-// Hash map to track processes we've already alerted on
-// Prevents duplicate alerts for the same process/file combination
-BPF_HASH(alerted, u64, u64);
-
 TRACEPOINT_PROBE(syscalls, sys_enter_openat) {
     struct file_access_event event = {};
 
@@ -994,7 +1053,7 @@ class SensitiveFileMonitor:
         if syslog_enabled:
             syslog.openlog("sensitive-file-monitor",
                           syslog.LOG_PID,
-                          syslog.LOG_SECURITY)
+                          syslog.LOG_AUTHPRIV)
 
     def _compile_patterns(self):
         """Flatten patterns for efficient matching."""
@@ -1225,6 +1284,7 @@ bpf_program = """
 #include <linux/fs.h>
 #include <linux/nsproxy.h>
 #include <linux/ns_common.h>
+#include <asm/unistd.h>
 
 // Comprehensive audit event structure
 struct audit_event {
@@ -1234,8 +1294,6 @@ struct audit_event {
     u32 ppid;
     u32 uid;
     u32 gid;
-    u32 euid;           // Effective UID
-    u32 egid;           // Effective GID
     u32 session_id;     // Session ID for user tracking
     u64 cgroup_id;      // Container identification
     int syscall_nr;     // System call number
@@ -1243,13 +1301,13 @@ struct audit_event {
     int ret_value;      // Return value (fd or error)
     char comm[16];
     char filename[256];
-    char cwd[256];      // Current working directory
 };
 
 BPF_PERF_OUTPUT(audit_events);
 
 // Track open operations to capture return values
 BPF_HASH(inflight_opens, u64, struct audit_event);
+BPF_HASH(inflight_writes, u64, struct audit_event);
 
 TRACEPOINT_PROBE(syscalls, sys_enter_openat) {
     struct audit_event event = {};
@@ -1265,7 +1323,6 @@ TRACEPOINT_PROBE(syscalls, sys_enter_openat) {
     event.uid = uid_gid & 0xFFFFFFFF;
     event.gid = uid_gid >> 32;
 
-    // Get effective credentials from task struct
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
 
     // Get parent PID
@@ -1280,7 +1337,7 @@ TRACEPOINT_PROBE(syscalls, sys_enter_openat) {
     // Get cgroup ID for container identification
     event.cgroup_id = bpf_get_current_cgroup_id();
 
-    event.syscall_nr = 257;  // __NR_openat
+    event.syscall_nr = __NR_openat;
     event.flags = args->flags;
 
     bpf_get_current_comm(&event.comm, sizeof(event.comm));
@@ -1313,7 +1370,7 @@ TRACEPOINT_PROBE(syscalls, sys_exit_openat) {
 
 // Monitor write operations for data modification tracking
 TRACEPOINT_PROBE(syscalls, sys_enter_write) {
-    // Only track writes to regular files (fd > 2)
+    // Skip standard input, output, and error.
     if (args->fd <= 2) {
         return 0;
     }
@@ -1330,12 +1387,28 @@ TRACEPOINT_PROBE(syscalls, sys_enter_write) {
     event.gid = uid_gid >> 32;
 
     event.cgroup_id = bpf_get_current_cgroup_id();
-    event.syscall_nr = 1;  // __NR_write
+    event.syscall_nr = __NR_write;
     event.flags = args->fd;  // Store fd in flags field
 
     bpf_get_current_comm(&event.comm, sizeof(event.comm));
 
+    inflight_writes.update(&pid_tgid, &event);
+    return 0;
+}
+
+TRACEPOINT_PROBE(syscalls, sys_exit_write) {
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+
+    struct audit_event *event_ptr = inflight_writes.lookup(&pid_tgid);
+    if (!event_ptr) {
+        return 0;
+    }
+
+    struct audit_event event = *event_ptr;
+    event.ret_value = args->ret;
+
     audit_events.perf_submit(args, &event, sizeof(event));
+    inflight_writes.delete(&pid_tgid);
     return 0;
 }
 """
@@ -1756,32 +1829,19 @@ The following techniques help minimize the performance impact of eBPF file monit
 
 ```python
 # Example: Filtering in kernel space to reduce event volume
-# This eBPF code only reports events for specific file patterns
+# This eBPF code only reports events under /etc/
 
 filter_bpf = """
 #include <uapi/linux/ptrace.h>
-
-// LPM trie for efficient prefix matching
-// Key: path prefix, Value: should monitor (1) or not (0)
-BPF_LPM_TRIE(monitored_paths, u64);
 
 TRACEPOINT_PROBE(syscalls, sys_enter_openat) {
     char filename[256];
     bpf_probe_read_user_str(&filename, sizeof(filename), args->filename);
 
-    // Check if path starts with monitored prefix
-    // Using LPM trie for O(1) prefix matching
-    struct {
-        u32 prefixlen;
-        char data[256];
-    } key = {};
-
-    key.prefixlen = 256 * 8;  // bits
-    __builtin_memcpy(key.data, filename, 256);
-
-    u64 *value = monitored_paths.lookup(&key);
-    if (!value || *value == 0) {
-        return 0;  // Skip non-monitored paths
+    if (!(filename[0] == '/' && filename[1] == 'e' &&
+          filename[2] == 't' && filename[3] == 'c' &&
+          filename[4] == '/')) {
+        return 0;  // Skip paths outside /etc/
     }
 
     // Continue with event processing...
@@ -1810,6 +1870,8 @@ class HAFileMonitor:
     def __init__(self):
         self.bpf = None
         self.running = True
+        self.event_count = 0
+        self.error_count = 0
 
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -1858,6 +1920,8 @@ class HAFileMonitor:
 When monitoring containerized workloads, map cgroup IDs to container names:
 
 ```python
+import os
+
 def get_container_name(cgroup_id):
     """
     Resolve cgroup ID to container name.
