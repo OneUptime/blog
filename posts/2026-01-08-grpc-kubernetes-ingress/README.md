@@ -99,7 +99,7 @@ data:
   proxy-buffer-size: "16k"
   proxy-buffers-number: "4"
 
-  # Enable backend HTTP/2
+  # Trust X-Forwarded-* headers from an upstream L7 proxy
   use-forwarded-headers: "true"
 
   # gRPC-specific settings
@@ -259,9 +259,6 @@ metadata:
       # Buffer settings
       grpc_buffer_size 64k;
 
-      # Enable HTTP/2 server push (optional)
-      http2_push_preload on;
-
     nginx.ingress.kubernetes.io/configuration-snippet: |
       # Log gRPC requests
       access_log /var/log/nginx/grpc_access.log;
@@ -310,7 +307,7 @@ Traefik uses IngressRoute CRDs for advanced configuration:
 
 ```yaml
 # traefik-grpc-ingressroute.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-service-ingressroute
@@ -335,7 +332,7 @@ Configure middleware for timeout and retry handling:
 
 ```yaml
 # traefik-middleware.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: grpc-middleware
@@ -346,7 +343,7 @@ spec:
       - name: grpc-retry
       - name: grpc-headers
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: grpc-retry
@@ -356,7 +353,7 @@ spec:
     attempts: 3
     initialInterval: 100ms
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: grpc-headers
@@ -371,7 +368,7 @@ spec:
 
 ```yaml
 # traefik-complete-grpc.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
 metadata:
   name: grpc-transport
@@ -386,7 +383,7 @@ spec:
     responseHeaderTimeout: 0s  # Disable for streaming
     idleConnTimeout: 90s
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-service-route
@@ -409,7 +406,7 @@ spec:
     options:
       name: grpc-tls-options
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: TLSOption
 metadata:
   name: grpc-tls-options
@@ -428,7 +425,7 @@ spec:
 
 ```yaml
 # traefik-multi-service.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-multi-service-route
@@ -559,7 +556,7 @@ Traefik TLS Passthrough:
 
 ```yaml
 # tls-passthrough-traefik.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
 metadata:
   name: grpc-tls-passthrough
