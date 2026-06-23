@@ -86,9 +86,9 @@ db.users.find({
     age: { $gt: 30 }
 })
 
-// BAD: $elemMatch on non-array field context
+// BAD: $elemMatch with a non-object condition
 db.users.find({
-    name: { $elemMatch: { $eq: "John" } }  // Error if name is string
+    tags: { $elemMatch: "active" }  // Error - $elemMatch expects a query object
 })
 
 // GOOD: $elemMatch on array field
@@ -205,8 +205,7 @@ storage:
 # GOOD: Proper YAML indentation
 storage:
   dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
+  directoryPerDB: true
 
 # BAD: Invalid option
 storage:
@@ -238,7 +237,7 @@ db.users.createIndex(
     { email: 1 },
     {
         partialFilterExpression: {
-            active: "true"  // String instead of boolean
+            active: { $ne: false }  // $ne is not supported in partialFilterExpression
         }
     }
 )
@@ -367,16 +366,30 @@ class QueryValidator {
     validateAggregationPipeline(pipeline) {
         const errors = [];
         const validStages = [
-            '$addFields', '$bucket', '$bucketAuto', '$collStats',
-            '$count', '$facet', '$geoNear', '$graphLookup',
-            '$group', '$indexStats', '$limit', '$listSessions',
+            '$addFields', '$bucket', '$bucketAuto', '$changeStream',
+            '$changeStreamSplitLargeEvent', '$collStats', '$count',
+            '$currentOp', '$densify', '$documents', '$facet', '$fill',
+            '$geoNear', '$graphLookup', '$group', '$indexStats',
+            '$limit', '$listClusterCatalog', '$listLocalSessions',
+            '$listSampledQueries', '$listSearchIndexes', '$listSessions',
             '$lookup', '$match', '$merge', '$out', '$planCacheStats',
-            '$project', '$redact', '$replaceRoot', '$replaceWith',
-            '$sample', '$search', '$set', '$skip', '$sort',
-            '$sortByCount', '$unset', '$unwind'
+            '$project', '$querySettings', '$queryStats', '$rankFusion',
+            '$redact', '$replaceRoot', '$replaceWith', '$sample',
+            '$score', '$scoreFusion', '$search', '$searchMeta', '$set',
+            '$setWindowFields', '$shardedDataDistribution', '$skip',
+            '$sort', '$sortByCount', '$unionWith', '$unset', '$unwind',
+            '$vectorSearch'
         ];
 
         pipeline.forEach((stage, index) => {
+            if (typeof stage !== 'object' || stage === null || Array.isArray(stage)) {
+                errors.push({
+                    stage: index,
+                    message: 'Each stage must be an object with exactly one operator'
+                });
+                return;
+            }
+
             const stageKeys = Object.keys(stage);
 
             if (stageKeys.length !== 1) {
@@ -385,6 +398,7 @@ class QueryValidator {
                     message: 'Each stage must have exactly one operator',
                     keys: stageKeys
                 });
+                return;
             }
 
             const operator = stageKeys[0];
@@ -415,7 +429,15 @@ class QueryValidator {
     }
 
     validateGroupStage(group, stageIndex, errors) {
-        if (!group._id && group._id !== null) {
+        if (typeof group !== 'object' || group === null || Array.isArray(group)) {
+            errors.push({
+                stage: stageIndex,
+                message: '$group requires an object'
+            });
+            return;
+        }
+
+        if (!Object.prototype.hasOwnProperty.call(group, '_id')) {
             errors.push({
                 stage: stageIndex,
                 message: '$group requires an _id field'
@@ -423,8 +445,11 @@ class QueryValidator {
         }
 
         const validAccumulators = [
-            '$sum', '$avg', '$min', '$max', '$first', '$last',
-            '$push', '$addToSet', '$stdDevPop', '$stdDevSamp'
+            '$accumulator', '$addToSet', '$avg', '$bottom', '$bottomN',
+            '$concatArrays', '$count', '$first', '$firstN', '$last',
+            '$lastN', '$max', '$maxN', '$median', '$mergeObjects',
+            '$min', '$minN', '$percentile', '$push', '$setUnion',
+            '$stdDevPop', '$stdDevSamp', '$sum', '$top', '$topN'
         ];
 
         for (const [field, value] of Object.entries(group)) {
