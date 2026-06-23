@@ -145,7 +145,7 @@ class MongoToElasticsearchSync:
             print(f"Updated: {doc_id}")
 
         elif operation == "delete":
-            es.delete(index=self.index_name, id=doc_id, ignore=[404])
+            es.options(ignore_status=404).delete(index=self.index_name, id=doc_id)
             print(f"Deleted: {doc_id}")
 
         elif operation == "replace":
@@ -268,8 +268,8 @@ output {
     hosts => ["https://localhost:9200"]
     user => "elastic"
     password => "password"
-    ssl => true
-    ssl_certificate_verification => false
+    ssl_enabled => true
+    ssl_verification_mode => "none"
     index => "products"
     document_id => "%{mongo_id}"
   }
@@ -490,8 +490,6 @@ def transform_document(doc, config):
 ## Docker Compose Setup
 
 ```yaml
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:6.0
