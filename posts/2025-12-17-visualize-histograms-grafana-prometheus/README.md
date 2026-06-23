@@ -17,8 +17,8 @@ Prometheus histograms are powerful for tracking distributions - response times, 
 - Use `histogram_quantile()` for percentile calculations (p50, p95, p99)
 - Heatmaps show distribution changes over time
 - Rate the histogram before calculating quantiles
-- Use native histogram format if on Prometheus 2.40+
-- Always include the `le` label in aggregations
+- Use native histogram format if it is enabled in your Prometheus setup
+- Always include the `le` label in classic histogram aggregations
 
 ---
 
@@ -162,25 +162,25 @@ sum(rate(http_request_duration_seconds_bucket[$__rate_interval])) by (le)
 ### Panel Configuration
 
 1. Visualization: Heatmap
-2. Data format: Time series buckets
+2. Query format: Heatmap
 3. Y-Axis: Buckets
 4. Color scheme: Spectral or similar
-5. Options > Calculate from data: On
+5. Options > Calculate from data: Off
 
 ### Advanced Heatmap Settings
 
-For smoother visualization, enable "Calculate from data" in the heatmap panel options. Grafana will automatically convert cumulative histogram buckets into non-cumulative counts for proper heatmap rendering. Set the Y-axis bucket configuration to use the `le` label values from Prometheus.
+Set the Prometheus query format to "Heatmap" so Grafana converts cumulative histogram buckets into non-cumulative counts and sorts the series by bucket boundary. In the heatmap panel, keep "Calculate from data" disabled because the Prometheus histogram buckets are already bucketed data.
 
 ---
 
-## Visualization Option 3: Bar Gauge Distribution
+## Visualization Option 3: Bar Gauge Cumulative Buckets
 
-Show current distribution as a bar chart:
+Show current cumulative bucket counts as a bar gauge:
 
 ### Query
 
 ```promql
-# Current bucket distribution
+# Current cumulative bucket counts
 sum(increase(http_request_duration_seconds_bucket[5m])) by (le)
 ```
 
@@ -276,11 +276,11 @@ sum(rate(http_request_duration_seconds_count[5m]))
 ### Issue: NaN Values in Percentiles
 
 ```promql
-# Problem: No data in time range
+# Problem: No observations in time range
 histogram_quantile(0.99, rate(metric_bucket[5m]))
 # Returns NaN
 
-# Solution: Use longer range or check if data exists
+# Solution: Use a longer range or check whether the metric has observations
 histogram_quantile(0.99, rate(metric_bucket[15m]))
 ```
 
@@ -308,24 +308,24 @@ histogram_quantile(0.95, sum(rate(metric_bucket[5m])) by (le, service))
 
 ---
 
-## Native Histograms (Prometheus 2.40+)
+## Native Histograms
 
-Prometheus 2.40 introduced native histograms with automatic bucketing:
+Prometheus 2.40 introduced native histograms as an experimental feature behind a feature flag. In Prometheus 3.8+, native histograms are stable, but scraping them still needs to be enabled in the Prometheus scrape configuration:
 
 ```promql
 # Native histogram quantile (simpler syntax)
 histogram_quantile(0.95, sum(rate(http_request_duration_seconds[5m])))
 
 # No need to specify _bucket suffix
-# Buckets are determined automatically
+# No le label is required for native histogram aggregation
 ```
 
 ### Benefits of Native Histograms
 
-- Lower cardinality (fewer time series)
-- More accurate percentiles
-- Automatic bucket boundary selection
-- Better memory efficiency
+- One time series per histogram instead of separate `_bucket`, `_sum`, and `_count` series
+- Quantile error limited by the configured native histogram resolution
+- Easier aggregation because native histogram buckets are compatible
+- Ad-hoc queries for quantiles and time windows
 
 ---
 
