@@ -179,6 +179,10 @@ variable "server_name" {
   type = string
 }
 
+variable "backup_vault_name" {
+  type = string
+}
+
 locals {
   is_production = strcontains(var.server_name, "prod")
   is_database   = strcontains(var.server_name, "db") || strcontains(var.server_name, "database")
@@ -193,7 +197,7 @@ resource "aws_backup_plan" "database" {
 
   rule {
     rule_name         = "daily-backup"
-    target_vault_name = aws_backup_vault.main.name
+    target_vault_name = var.backup_vault_name
     schedule          = "cron(0 5 ? * * *)"
 
     lifecycle {
@@ -341,12 +345,12 @@ resource "aws_instance" "main" {
 }
 ```
 
-## Creating a Reusable Function
+## Creating Reusable Checks
 
 ```hcl
 # Using locals to create reusable check patterns
 locals {
-  # Helper function via locals
+  # Helper checks via locals
   environment_checks = {
     for env in ["dev", "staging", "prod"] : env => strcontains(var.environment, env)
   }
@@ -354,9 +358,9 @@ locals {
   # Complex check helper
   name_analysis = {
     original    = var.resource_name
-    has_prefix  = strcontains(var.resource_name, var.name_prefix)
-    has_suffix  = strcontains(var.resource_name, var.name_suffix)
-    is_valid    = strcontains(var.resource_name, var.name_prefix) && strcontains(var.resource_name, var.name_suffix)
+    has_prefix  = startswith(var.resource_name, var.name_prefix)
+    has_suffix  = endswith(var.resource_name, var.name_suffix)
+    is_valid    = startswith(var.resource_name, var.name_prefix) && endswith(var.resource_name, var.name_suffix)
   }
 }
 
