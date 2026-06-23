@@ -139,7 +139,7 @@ sudo journalctl --vacuum-time=7d
 # Limit to 500MB
 sudo journalctl --vacuum-size=500M
 
-# Keep only last 100 entries
+# Keep only the last 100 journal files
 sudo journalctl --vacuum-files=100
 ```
 
