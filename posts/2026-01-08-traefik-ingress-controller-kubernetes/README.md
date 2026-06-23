@@ -390,14 +390,14 @@ spec:
     - websecure
   routes:
     # Route based on API version header
-    - match: Host(`api.example.com`) && Headers(`X-API-Version`, `v2`)
+    - match: Host(`api.example.com`) && Header(`X-API-Version`, `v2`)
       kind: Rule
       services:
         - name: api-v2-service
           port: 80
 
     # Route based on custom header
-    - match: Host(`api.example.com`) && HeadersRegexp(`Authorization`, `Bearer.*`)
+    - match: Host(`api.example.com`) && HeaderRegexp(`Authorization`, `Bearer.*`)
       kind: Rule
       services:
         - name: authenticated-service
@@ -525,13 +525,11 @@ spec:
     # Custom headers
     customResponseHeaders:
       X-Custom-Response-Header: "value"
-    customRequestHeaders:
-      X-Forwarded-Proto: "https"
-
-    # Remove headers
-    customResponseHeaders:
+      # Remove headers by setting them to an empty value
       X-Powered-By: ""
       Server: ""
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
 ```
 
 ### Redirect Middleware
@@ -851,14 +849,14 @@ spec:
     - websecure
   routes:
     # Match multiple conditions with AND
-    - match: Host(`api.example.com`) && PathPrefix(`/v1`) && Method(`GET`, `POST`)
+    - match: Host(`api.example.com`) && PathPrefix(`/v1`) && (Method(`GET`) || Method(`POST`))
       kind: Rule
       services:
         - name: api-v1-service
           port: 80
 
     # Match with query parameters
-    - match: Host(`api.example.com`) && Query(`version=2`)
+    - match: Host(`api.example.com`) && Query(`version`, `2`)
       kind: Rule
       services:
         - name: api-v2-service
