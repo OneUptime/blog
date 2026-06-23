@@ -60,14 +60,13 @@ Unit files are stored in several directories with different priorities:
 
 ```bash
 # System unit files installed by packages (lowest priority)
-
 /lib/systemd/system/
 
-# Administrator-created unit files (higher priority)
-/etc/systemd/system/
-
-# Runtime unit files (highest priority, temporary)
+# Runtime unit files (temporary, overrides /lib)
 /run/systemd/system/
+
+# Administrator-created unit files (highest priority, overrides the others)
+/etc/systemd/system/
 ```
 
 ---
@@ -214,6 +213,11 @@ After=network.target
 # Optional: Start after database is ready
 After=postgresql.service
 
+# Restart rate limiting (StartLimit* directives belong in the [Unit] section)
+# Number of restart attempts within the interval below
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
 [Service]
 # Type of service startup behavior
 # simple: default, process started is the main process
@@ -251,10 +255,6 @@ Restart=on-failure
 
 # Time to wait before restarting
 RestartSec=10
-
-# Number of restart attempts within a time window
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Standard output and error handling
 StandardOutput=journal
@@ -394,7 +394,9 @@ Before=nginx.service
 # If any required unit fails, this unit will also stop
 Requires=postgresql.service
 
-# Like Requires, but also orders this unit after the required units
+# Stronger than Requires: if the bound unit stops or fails for any
+# reason (even outside systemd), this unit is also stopped.
+# Note: it does not add ordering on its own, so pair it with After=
 BindsTo=postgresql.service
 
 # Weaker than Requires - tries to start these units
@@ -794,7 +796,7 @@ journalctl -F CONTAINER_NAME
 
 ---
 
-Resource Limits with cgroups
+## Resource Limits with cgroups
 
 systemd uses cgroups (control groups) to manage and limit resources for services. This is crucial for preventing runaway processes from affecting system stability.
 
@@ -1070,18 +1072,19 @@ systemctl is-enabled postgresql.service
 Configure automatic recovery in the unit file:
 
 ```ini
-[Service]
-# Restart on failure
-Restart=on-failure
-RestartSec=10
-
-# Limit restart attempts
+[Unit]
+# Limit restart attempts (StartLimit* directives belong in the [Unit] section)
 StartLimitBurst=5
 StartLimitIntervalSec=300
 
 # Action after exceeding restart limit
 # Options: none, reboot, reboot-force, reboot-immediate, poweroff, exit
 StartLimitAction=none
+
+[Service]
+# Restart on failure
+Restart=on-failure
+RestartSec=10
 
 # Optional: notify external monitoring on failure
 ExecStopPost=/opt/scripts/notify-failure.sh
