@@ -43,6 +43,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -110,7 +114,7 @@ resource "azurerm_key_vault" "main" {
   soft_delete_retention_days  = 7
   purge_protection_enabled    = false
 
-  # Enable Azure services to access the vault
+  # Allow VM and ARM deployment scenarios to retrieve secrets if needed
   enabled_for_deployment          = true
   enabled_for_disk_encryption     = false
   enabled_for_template_deployment = true
@@ -308,7 +312,7 @@ resource "azurerm_application_gateway" "main" {
   # SSL Certificate from KeyVault
   ssl_certificate {
     name                = "ssl-cert"
-    key_vault_secret_id = azurerm_key_vault_certificate.ssl.secret_id
+    key_vault_secret_id = azurerm_key_vault_certificate.ssl.versionless_secret_id
   }
 
   # HTTPS Listener
@@ -370,7 +374,8 @@ resource "azurerm_application_gateway" "main" {
   }
 
   depends_on = [
-    azurerm_key_vault_access_policy.appgw
+    azurerm_key_vault_access_policy.appgw,
+    azurerm_key_vault_certificate.ssl
   ]
 }
 ```
@@ -424,6 +429,13 @@ resource "azurerm_role_assignment" "terraform_keyvault" {
   role_definition_name = "Key Vault Certificates Officer"
   principal_id         = data.azurerm_client_config.current.object_id
 }
+
+# Allow Terraform to read the certificate secret ID during configuration
+resource "azurerm_role_assignment" "terraform_keyvault_secrets" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
 ```
 
 ## Troubleshooting Common Issues
@@ -466,14 +478,13 @@ resource "azurerm_application_gateway" "main" {
 
 ### Issue 4: Certificate Renewal
 
-KeyVault handles renewal for generated certificates. For imported certificates:
+KeyVault handles renewal for generated certificates. For imported certificates, import a new version with the same certificate name and keep the Application Gateway reference versionless:
 
 ```hcl
-# Use a null_resource to detect certificate changes
-resource "null_resource" "certificate_update" {
-  triggers = {
-    cert_thumbprint = azurerm_key_vault_certificate.ssl.thumbprint
-  }
+# Application Gateway polls KeyVault and picks up newer certificate versions
+ssl_certificate {
+  name                = "ssl-cert"
+  key_vault_secret_id = azurerm_key_vault_certificate.ssl.versionless_secret_id
 }
 ```
 
