@@ -59,8 +59,8 @@ flowchart TB
 ### The Three Timeout Types
 
 1. **proxy_connect_timeout** - Time to establish a connection with the backend
-2. **proxy_send_timeout** - Time to send the request to the backend
-3. **proxy_read_timeout** - Time to wait for the backend response
+2. **proxy_send_timeout** - Time allowed between two write operations while sending the request to the backend
+3. **proxy_read_timeout** - Time allowed between two read operations while waiting for the backend response
 
 ## Diagnosing the Problem
 
@@ -137,7 +137,7 @@ http {
             proxy_pass http://backend;
 
             # Increase timeouts (default is 60s)
-            proxy_connect_timeout 300s;
+            proxy_connect_timeout 75s;
             proxy_send_timeout 300s;
             proxy_read_timeout 300s;
 
@@ -193,9 +193,9 @@ server {
 }
 ```
 
-### Solution 3: Implement Upstream Health Checks
+### Solution 3: Implement Upstream Failure Handling
 
-Configure Nginx to detect and avoid slow or unresponsive backends:
+Configure Nginx to mark failed upstreams temporarily unavailable and retry other backends:
 
 ```nginx
 upstream backend {
@@ -212,7 +212,7 @@ server {
     location / {
         proxy_pass http://backend;
 
-        # HTTP/1.1 is required for keepalive
+        # Use HTTP/1.1 and clear Connection for upstream keepalive on older Nginx versions
         proxy_http_version 1.1;
         proxy_set_header Connection "";
 
@@ -469,7 +469,7 @@ Upstream timeout errors in Nginx indicate that your backend is not responding qu
 
 1. **Identify the timeout phase** from the error message (connect, send, or read)
 2. **Adjust timeout values** appropriately for your application's needs
-3. **Implement health checks** to route around failing backends
+3. **Implement upstream failure handling** to route around failing backends
 4. **Optimize backend performance** to reduce response times
 5. **Add caching** to reduce backend load
 6. **Monitor continuously** with detailed logging
