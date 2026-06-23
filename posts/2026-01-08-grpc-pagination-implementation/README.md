@@ -803,9 +803,7 @@ package client
 
 import (
     "context"
-    "fmt"
     "io"
-    "time"
 
     pb "github.com/example/pagination"
     "google.golang.org/grpc"
@@ -983,8 +981,8 @@ import (
     "context"
     "fmt"
     "log"
-    "time"
 
+    pb "github.com/example/pagination"
     "github.com/example/pagination/client"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
