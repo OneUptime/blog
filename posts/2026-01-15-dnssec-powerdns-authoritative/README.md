@@ -169,10 +169,11 @@ sudo pdnsutil secure-zone example.com
 ```
 
 This command:
-1. Generates a 256-bit ECDSA ZSK (algorithm 13)
-2. Generates a 256-bit ECDSA KSK (algorithm 13)
-3. Signs all existing records
-4. Creates NSEC3 records for authenticated denial
+1. Generates a single 256-bit ECDSA Combined Signing Key (CSK) using ECDSAP256SHA256 (algorithm 13), which acts as both KSK and ZSK
+2. Activates the key and signs all existing records
+3. Uses NSEC for authenticated denial of existence (run `set-nsec3` afterwards if you want NSEC3)
+
+If you prefer separate KSK and ZSK keys, set `default-zsk-algorithm` in `pdns.conf` before securing the zone, or use the manual method below.
 
 ### Method 2: Manual Key Generation
 
@@ -234,22 +235,24 @@ The DS record with digest type 2 (SHA-256) is recommended for most registrars.
 ### Configure NSEC3
 
 ```bash
-# Enable NSEC3 with recommended parameters
-sudo pdnsutil set-nsec3 example.com '1 0 10 aabbccdd'
+# Enable NSEC3 with recommended parameters (RFC 9276: 0 iterations, no salt)
+sudo pdnsutil set-nsec3 example.com '1 0 0 -'
 ```
 
 Parameters explained:
-- `1`: Hash algorithm (1 = SHA-1)
+- `1`: Hash algorithm (1 = SHA-1, the only valid value)
 - `0`: Opt-out flag (0 = no opt-out)
-- `10`: Number of hash iterations
-- `aabbccdd`: Salt (hex string)
+- `0`: Number of hash iterations (RFC 9276 recommends 0)
+- `-`: Salt (RFC 9276 recommends no salt; use `-` for an empty salt, or a hex string to set one)
+
+Older guidance suggested non-zero iterations and a salt (for example `1 0 10 aabbccdd`), but RFC 9276 now recommends 0 iterations and no salt because the extra hashing provides little security benefit while increasing resolver load.
 
 ### Use NSEC3 Narrow Mode
 
 NSEC3 narrow mode generates NSEC3 records on-the-fly, reducing database size:
 
 ```bash
-# Enable narrow mode (default in PowerDNS)
+# Enable narrow mode (opt-in; not enabled by default)
 sudo pdnsutil set-nsec3 example.com '1 0 10 aabbccdd' narrow
 ```
 
