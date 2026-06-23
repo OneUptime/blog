@@ -19,7 +19,7 @@ The following diagram illustrates Istio's architecture and resource consumption 
 ```mermaid
 graph TB
     subgraph "Control Plane"
-        istiod["istiod<br/>(Pilot, Citadel, Galley)"]
+        istiod["istiod<br/>(Pilot, CA, config validation)"]
     end
 
     subgraph "Data Plane"
@@ -193,7 +193,7 @@ The following Sidecar resource restricts all proxies in the namespace to only ac
 ```yaml
 # Sidecar resource to scope Envoy configuration
 # This reduces memory usage by limiting the services each proxy knows about
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -207,8 +207,8 @@ spec:
     # "./*" means all services in the current namespace
     - "./*"
 
-    # Allow access to the istio-system namespace for control plane
-    # This is required for proper mesh operation
+    # Allow access to mesh services in the istio-system namespace
+    # Include this when workloads need to call services there
     - "istio-system/*"
 
     # Explicitly list external namespaces this app depends on
@@ -227,7 +227,7 @@ The following configuration limits a specific service to only the endpoints it a
 ```yaml
 # Workload-specific Sidecar for precise configuration control
 # Use when different services in a namespace have different dependencies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: payment-service-sidecar
@@ -253,7 +253,7 @@ spec:
   - hosts:
     # Access to own namespace
     - "./*"
-    # Control plane access
+    # Access to mesh services in istio-system
     - "istio-system/*"
     # Only the specific external services needed
     - "database-namespace/postgres.database-namespace.svc.cluster.local"
@@ -261,8 +261,8 @@ spec:
 
   # Outbound traffic policy
   outboundTrafficPolicy:
-    # REGISTRY_ONLY blocks access to services not in the mesh
-    # This provides security and reduces config size
+    # REGISTRY_ONLY drops unknown outbound traffic that is not in the service registry
+    # This helps catch missing ServiceEntry resources but is not an outbound firewall
     mode: REGISTRY_ONLY
 ```
 
@@ -310,7 +310,7 @@ The following Telemetry resource configures which metrics are collected:
 ```yaml
 # Telemetry resource to customize metrics collection
 # Reducing metrics significantly lowers resource usage
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-metrics-config
@@ -358,7 +358,7 @@ The following configuration removes or modifies labels that create too many time
 ```yaml
 # Telemetry configuration to reduce metric cardinality
 # High cardinality labels can cause Prometheus memory issues
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: low-cardinality-metrics
@@ -380,8 +380,7 @@ spec:
         request_protocol:
           operation: REMOVE
 
-        # Replace high-cardinality response_code with response_code_class
-        # Changes 200, 201, 204 -> 2xx
+        # Remove response_code if status-code-level breakdown is not needed
         response_code:
           operation: REMOVE
 
@@ -411,22 +410,20 @@ spec:
   meshConfig:
     # Enable distributed tracing
     enableTracing: true
+    defaultProviders:
+      tracing:
+      - opentelemetry
+    extensionProviders:
+    - name: opentelemetry
+      opentelemetry:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
 
     defaultConfig:
       tracing:
-        # Sampling rate: 1.0 = 100%, 0.01 = 1%
+        # Sampling rate is a percentage: 1.0 = 1%, 0.01 = 0.01%
         # For high-traffic production, 1% is often sufficient
         sampling: 1.0
-
-        # Maximum tag length to prevent memory bloat
-        # Truncates long values in span tags
-        max_tag_length: 256
-
-        # Custom tags to add context without expensive lookups
-        custom_tags:
-          environment:
-            literal:
-              value: "production"
 ```
 
 ### Namespace-Specific Tracing Overrides
@@ -438,7 +435,7 @@ The following Telemetry resource overrides tracing for a specific namespace:
 ```yaml
 # Namespace-specific tracing configuration
 # Use higher sampling for critical services, lower for high-volume services
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: high-volume-tracing
@@ -459,7 +456,7 @@ spec:
           value: "batch-processing"
 ---
 # Higher sampling for critical user-facing services
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: critical-service-tracing
@@ -479,7 +476,7 @@ The following configuration enables access logging only for specific conditions:
 ```yaml
 # Telemetry configuration for conditional access logging
 # Only log errors or slow requests to reduce volume
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: conditional-access-logs
@@ -493,7 +490,7 @@ spec:
       expression: "response.code >= 400"
 ---
 # Alternative: Log slow requests for performance debugging
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: slow-request-logging
@@ -663,8 +660,8 @@ spec:
         - name: PILOT_DEBOUNCE_MAX
           value: "1s"
 
-        # Enable incremental xDS for faster, smaller pushes
-        # Only sends changed configuration instead of full state
+        # Include EDS pushes in debouncing
+        # This may delay endpoint updates slightly but reduces push frequency
         - name: PILOT_ENABLE_EDS_DEBOUNCE
           value: "true"
 
@@ -681,12 +678,12 @@ spec:
 
 ### Enabling Delta xDS
 
-Delta xDS sends only configuration changes instead of full state, dramatically reducing bandwidth and CPU.
+Delta xDS uses Envoy's incremental xDS protocol instead of the state-of-the-world protocol, reducing bandwidth and CPU for large meshes.
 
-The following configuration enables delta xDS (requires Istio 1.12+):
+Delta xDS is enabled by default in Istio 1.22 and later. For older supported versions where it is not already enabled, set the proxy metadata flag on the proxy side:
 
 ```yaml
-# IstioOperator enabling delta xDS for efficiency
+# IstioOperator enabling delta xDS for older versions where it is not the default
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
@@ -698,14 +695,6 @@ spec:
         # Enable delta xDS on the proxy side
         # This is the most impactful optimization for large meshes
         ISTIO_DELTA_XDS: "true"
-
-  components:
-    pilot:
-      k8s:
-        env:
-        # Enable delta xDS on the control plane side
-        - name: PILOT_ENABLE_INCREMENTAL_MCP
-          value: "true"
 ```
 
 ## 5. Gateway Optimization
@@ -765,35 +754,49 @@ spec:
                 topologyKey: kubernetes.io/hostname
 ```
 
-### Gateway-Specific Sidecar Configuration
+### Gateway Configuration Scoping
 
-Apply Sidecar resources to gateways to limit their configuration scope.
+Sidecar resources do not apply to gateways. Scope gateway configuration with the Gateway and VirtualService resources that bind only the hosts and backend services the gateway actually serves.
 
-The following Sidecar limits what the gateway knows about:
+The following Gateway and VirtualService limit the gateway routing configuration to the hosts and services it handles:
 
 ```yaml
-# Sidecar resource for ingress gateway
-# Gateways only need to know about services they route to
-apiVersion: networking.istio.io/v1beta1
-kind: Sidecar
+# Gateway and VirtualService resources for ingress gateway scoping
+apiVersion: networking.istio.io/v1
+kind: Gateway
 metadata:
-  name: ingress-gateway-sidecar
+  name: public-api-gateway
   namespace: istio-system
 spec:
-  workloadSelector:
-    labels:
-      app: istio-ingressgateway
-  egress:
-  - hosts:
-    # Gateway routes to frontend namespace
-    - "frontend/*"
-    # Gateway routes to API namespace
-    - "api/*"
-    # Gateway routes to specific services in other namespaces
-    - "backend/order-service.backend.svc.cluster.local"
-    - "backend/user-service.backend.svc.cluster.local"
-    # Required for Istio internal communication
-    - "istio-system/*"
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: public-api-cert
+    hosts:
+    - "api.example.com"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: public-api-routes
+  namespace: api
+spec:
+  hosts:
+  - "api.example.com"
+  gateways:
+  - istio-system/public-api-gateway
+  http:
+  - route:
+    - destination:
+        host: api-service.api.svc.cluster.local
+        port:
+          number: 8080
 ```
 
 ## 6. Protocol and Connection Optimization
@@ -809,7 +812,7 @@ The following DestinationRule configures connection pooling:
 ```yaml
 # DestinationRule with optimized connection pooling
 # Apply to high-traffic services for better performance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: optimized-connection-pool
@@ -859,7 +862,7 @@ The following DestinationRule sets up circuit breaking:
 ```yaml
 # DestinationRule with circuit breaker settings
 # Prevents overwhelming unhealthy services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: circuit-breaker-config
@@ -933,7 +936,7 @@ spec:
     - alert: IstioSidecarHighCPU
       expr: |
         rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
-        / container_spec_cpu_quota{container="istio-proxy"} * 100000 > 80
+        / (container_spec_cpu_quota{container="istio-proxy"} / container_spec_cpu_period{container="istio-proxy"}) > 0.8
       for: 10m
       labels:
         severity: warning
@@ -969,10 +972,7 @@ avg(container_memory_working_set_bytes{container="istio-proxy"})
 # Total CPU used by all sidecars
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]))
 
-# xDS configuration size per proxy
-sum(envoy_cluster_manager_cluster_added) by (pod)
-
-# Number of clusters (endpoints) known to each proxy
+# Number of active clusters known to each proxy
 # Lower is better after Sidecar resource optimization
 envoy_cluster_manager_active_clusters
 
@@ -1040,6 +1040,14 @@ spec:
 
     # Enable tracing with low sampling
     enableTracing: true
+    defaultProviders:
+      tracing:
+      - opentelemetry
+    extensionProviders:
+    - name: opentelemetry
+      opentelemetry:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
 
     defaultConfig:
       # Limit Envoy concurrency
@@ -1051,9 +1059,9 @@ spec:
       # Tracing configuration
       tracing:
         sampling: 1.0
-        max_tag_length: 256
+        max_path_tag_length: 256
 
-      # Enable delta xDS
+      # Enable delta xDS on older versions where it is not the default
       proxyMetadata:
         ISTIO_DELTA_XDS: "true"
 
