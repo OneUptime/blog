@@ -25,9 +25,7 @@ Before we begin, ensure you have the following dependencies installed:
 
 ```bash
 go get google.golang.org/grpc
-go get google.golang.org/grpc/metadata
 go get go.opentelemetry.io/otel
-go get go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 go get golang.org/x/time/rate
 ```
 
@@ -707,7 +705,6 @@ package interceptors
 import (
     "context"
 
-    "golang.org/x/time/rate"
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -791,7 +788,6 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
     "google.golang.org/grpc"
     "google.golang.org/grpc/metadata"
@@ -1086,7 +1082,6 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
