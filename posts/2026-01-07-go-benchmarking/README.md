@@ -42,16 +42,20 @@ package concat
 
 import "testing"
 
+var concatResult string
+
 // BenchmarkConcatStrings measures the performance of string concatenation
 // The function name must start with "Benchmark" and accept *testing.B
 func BenchmarkConcatStrings(b *testing.B) {
     // Prepare test data outside the benchmark loop
     strs := []string{"hello", "world", "from", "go", "benchmark"}
 
-    // The benchmark loop - always use b.N iterations
+    var result string
+    // The benchmark loop - use b.N iterations in traditional benchmarks
     for i := 0; i < b.N; i++ {
-        ConcatStrings(strs)
+        result = ConcatStrings(strs)
     }
+    concatResult = result
 }
 ```
 
@@ -150,37 +154,44 @@ import (
     "testing"
 )
 
+var stringConcatResult string
+
 // BenchmarkStringConcat compares different string concatenation methods
 func BenchmarkStringConcat(b *testing.B) {
     strs := []string{"hello", "world", "from", "go", "benchmark"}
 
     // Sub-benchmark for naive concatenation using + operator
     b.Run("NaiveConcat", func(b *testing.B) {
+        var result string
         for i := 0; i < b.N; i++ {
-            result := ""
+            result = ""
             for _, s := range strs {
                 result += s
             }
-            _ = result
         }
+        stringConcatResult = result
     })
 
     // Sub-benchmark for strings.Join
     b.Run("StringsJoin", func(b *testing.B) {
+        var result string
         for i := 0; i < b.N; i++ {
-            _ = strings.Join(strs, "")
+            result = strings.Join(strs, "")
         }
+        stringConcatResult = result
     })
 
     // Sub-benchmark for strings.Builder
     b.Run("StringBuilder", func(b *testing.B) {
+        var result string
         for i := 0; i < b.N; i++ {
             var sb strings.Builder
             for _, s := range strs {
                 sb.WriteString(s)
             }
-            _ = sb.String()
+            result = sb.String()
         }
+        stringConcatResult = result
     })
 }
 ```
@@ -204,6 +215,8 @@ Table-driven benchmarks are excellent for testing performance across different i
 package search
 
 import "testing"
+
+var searchResult int
 
 // LinearSearch performs a simple linear search through a slice
 func LinearSearch(data []int, target int) int {
@@ -238,9 +251,11 @@ func BenchmarkLinearSearch(b *testing.B) {
         target := tc.size - 1
 
         b.Run(tc.name, func(b *testing.B) {
+            var result int
             for i := 0; i < b.N; i++ {
-                LinearSearch(data, target)
+                result = LinearSearch(data, target)
             }
+            searchResult = result
         })
     }
 }
@@ -355,6 +370,8 @@ import (
     "testing"
 )
 
+var queryResult string
+
 // MockDatabase simulates an expensive-to-create database connection
 type MockDatabase struct {
     data map[string]string
@@ -380,9 +397,11 @@ func BenchmarkDatabaseQuery(b *testing.B) {
     // Reset timer to exclude setup time from measurements
     b.ResetTimer()
 
+    var result string
     for i := 0; i < b.N; i++ {
-        db.Query("m")
+        result = db.Query("m")
     }
+    queryResult = result
 }
 ```
 
@@ -461,9 +480,9 @@ StringConcat-8       5.00 +/- 0%    1.00 +/- 0%    -80.00% (p=0.000 n=10+10)
 ```
 
 Key metrics:
-- `+/- X%`: variance in measurements
+- `+/- X%`: confidence interval for the reported statistic
 - `delta`: percentage change between old and new
-- `p=0.000`: p-value indicating statistical significance (lower is better)
+- `p=0.000`: p-value indicating statistical significance (lower means stronger evidence that the difference is not noise)
 - `n=10+10`: number of samples used from each run
 
 ### Creating a Benchmarking Script
@@ -478,14 +497,14 @@ set -e
 
 BENCH_PATTERN="${1:-.}"
 BRANCH_OLD="${2:-main}"
-BRANCH_NEW="${3:-HEAD}"
 COUNT="${4:-10}"
+
+# Save current branch before switching branches
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH_NEW="${3:-$CURRENT_BRANCH}"
 
 echo "Comparing benchmarks: $BRANCH_OLD vs $BRANCH_NEW"
 echo "Pattern: $BENCH_PATTERN, Count: $COUNT"
-
-# Save current branch
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 # Run benchmarks on old branch
 echo "Running benchmarks on $BRANCH_OLD..."
@@ -1055,7 +1074,7 @@ Here is a checklist for writing effective Go benchmarks:
 
 1. **Name benchmarks clearly**: Use descriptive names that indicate what is being measured
 
-2. **Always use b.N correctly**: Loop exactly `b.N` times without modification
+2. **Use b.N correctly**: Loop exactly `b.N` times without modification in traditional benchmarks
 
 3. **Prevent compiler optimization**: Assign results to package-level variables
 
