@@ -101,6 +101,17 @@ inputs:
     default: false
 ```
 
+### Number Input
+
+```yaml
+inputs:
+  retries:
+    description: 'Number of retry attempts'
+    required: false
+    type: number
+    default: 3
+```
+
 ### Environment Input
 
 ```yaml
@@ -306,8 +317,9 @@ Trigger with inputs programmatically:
 
 ```bash
 curl -X POST \
-  -H "Authorization: token $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github.v3+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   https://api.github.com/repos/owner/repo/actions/workflows/deploy.yml/dispatches \
   -d '{
     "ref": "main",
@@ -535,8 +547,10 @@ jobs:
         continue-on-error: ${{ inputs.rollback_on_failure }}
 
       - name: Rollback on failure
-        if: failure() && inputs.rollback_on_failure
-        run: ./scripts/deploy.sh ${{ steps.current.outputs.version }}
+        if: inputs.rollback_on_failure && steps.deploy.outcome == 'failure'
+        run: |
+          ./scripts/deploy.sh ${{ steps.current.outputs.version }}
+          exit 1
 
   notify:
     needs: [validate, deploy]
