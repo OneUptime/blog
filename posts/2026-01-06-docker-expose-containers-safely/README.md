@@ -262,12 +262,12 @@ http {
         ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
         ssl_prefer_server_ciphers off;
 
-        # Rate limiting - burst allows temporary spikes, nodelay returns 503 immediately
-        limit_req zone=api_limit burst=20 nodelay;
-        # Connection limiting - max 10 simultaneous connections per IP
-        limit_conn conn_limit 10;
-
         location / {
+            # Rate limiting - burst allows temporary spikes, nodelay rejects excess with 503 immediately
+            limit_req zone=api_limit burst=20 nodelay;
+            # Connection limiting - max 10 simultaneous connections per IP
+            limit_conn conn_limit 10;
+
             proxy_pass http://api_backend;
             # Use HTTP/1.1 for keepalive connections
             proxy_http_version 1.1;
@@ -288,7 +288,7 @@ http {
 
         # Health check endpoint - no rate limit for monitoring
         location /health {
-            limit_req off;  # Disable rate limiting for health checks
+            # No limit_req/limit_conn here, so the limits applied in location / above don't affect health checks
             proxy_pass http://api_backend;
         }
     }
