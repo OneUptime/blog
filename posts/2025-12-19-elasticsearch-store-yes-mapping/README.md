@@ -92,6 +92,16 @@ curl -X PUT "localhost:9200/articles_optimized" -H 'Content-Type: application/js
   }
 }'
 
+# Index a document
+
+curl -X POST "localhost:9200/articles_optimized/_doc/1" -H 'Content-Type: application/json' -d'
+{
+  "title": "Understanding Elasticsearch Storage",
+  "content": "This is a very long article content... (imagine 50KB of text)",
+  "author": "John Doe",
+  "published_date": "2024-01-15"
+}'
+
 # Retrieve stored fields directly
 curl -X GET "localhost:9200/articles_optimized/_doc/1?stored_fields=title,author,published_date"
 ```
@@ -135,14 +145,14 @@ curl -X PUT "localhost:9200/logs" -H 'Content-Type: application/json' -d'
 }'
 ```
 
-Here, `_source` is disabled entirely, and only specific fields are stored. This saves storage when the full payload is rarely needed.
+Here, `_source` is disabled entirely, and only specific fields are stored. This saves storage only when the full payload does not need to be retrieved from Elasticsearch.
 
 ### Use Case 2: Search Results with Highlights
 
 Retrieve summary fields while highlighting from content:
 
 ```bash
-curl -X GET "localhost:9200/articles/_search" -H 'Content-Type: application/json' -d'
+curl -X GET "localhost:9200/articles_optimized/_search" -H 'Content-Type: application/json' -d'
 {
   "stored_fields": ["title", "author", "published_date"],
   "query": {
@@ -225,7 +235,7 @@ def benchmark_retrieval(index, doc_id, iterations=1000):
     source_times = []
     for _ in range(iterations):
         start = time.time()
-        es.get(index=index, id=doc_id, _source=['title', 'author'])
+        es.get(index=index, id=doc_id, source_includes=['title', 'author'])
         source_times.append(time.time() - start)
 
     # stored_fields retrieval
@@ -239,7 +249,7 @@ def benchmark_retrieval(index, doc_id, iterations=1000):
     print(f"stored_fields avg: {sum(stored_times)/len(stored_times)*1000:.3f}ms")
 ```
 
-For documents over 10KB where you retrieve less than 10% of fields, stored fields can be 2-5x faster.
+For large documents where you retrieve only a small subset of fields, stored fields can be faster, but you should benchmark with your own data.
 
 ## Trade-offs
 
@@ -247,7 +257,7 @@ For documents over 10KB where you retrieve less than 10% of fields, stored field
 |--------|-------------|------------|
 | Storage Size | Smaller | Larger (data duplicated) |
 | Index Speed | Faster | Slightly slower |
-| Full Doc Retrieval | Fast | Must reconstruct from fields |
+| Full Doc Retrieval | Fast | Uses `_source` if enabled; unavailable if `_source` is disabled |
 | Partial Retrieval | Parses entire _source | Direct field access |
 | Flexibility | Can retrieve any field | Only stored fields available |
 
@@ -302,7 +312,7 @@ This keeps `_source` for most fields while excluding large ones.
 ## Retrieving Stored Fields in Search
 
 ```bash
-curl -X GET "localhost:9200/articles/_search" -H 'Content-Type: application/json' -d'
+curl -X GET "localhost:9200/articles_optimized/_search" -H 'Content-Type: application/json' -d'
 {
   "stored_fields": ["title", "author", "published_date"],
   "query": {
