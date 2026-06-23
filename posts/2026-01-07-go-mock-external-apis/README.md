@@ -48,10 +48,8 @@ package weather
 import (
     "encoding/json"
     "fmt"
-    "io"
     "net/http"
-    "net/http/httptest"
-    "testing"
+    "net/url"
 )
 
 // WeatherResponse represents the API response structure
@@ -70,9 +68,9 @@ type WeatherClient struct {
 
 // GetWeather fetches weather for a given city
 func (c *WeatherClient) GetWeather(city string) (*WeatherResponse, error) {
-    url := fmt.Sprintf("%s/weather?city=%s", c.BaseURL, city)
+    endpoint := fmt.Sprintf("%s/weather?city=%s", c.BaseURL, url.QueryEscape(city))
 
-    resp, err := c.HTTPClient.Get(url)
+    resp, err := c.HTTPClient.Get(endpoint)
     if err != nil {
         return nil, fmt.Errorf("failed to fetch weather: %w", err)
     }
@@ -355,7 +353,7 @@ package payment
 
 import (
     "context"
-    "errors"
+    "fmt"
     "testing"
 
     "go.uber.org/mock/gomock"
@@ -395,7 +393,6 @@ func (s *PaymentService) ProcessOrder(ctx context.Context, req PaymentRequest, e
 func TestProcessOrderSuccess(t *testing.T) {
     // Create a new gomock controller
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish() // Ensures all expectations are met
 
     // Create mock instances
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
@@ -461,7 +458,6 @@ gomock provides powerful matchers for flexible assertions:
 ```go
 func TestProcessOrderWithMatchers(t *testing.T) {
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
     mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -538,7 +534,6 @@ func InAmountRange(min, max float64) gomock.Matcher {
 
 func TestProcessOrderWithCustomMatcher(t *testing.T) {
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
     mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -587,7 +582,6 @@ The following example demonstrates how to verify calls happen in a specific orde
 ```go
 func TestPaymentFlowOrder(t *testing.T) {
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
     mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -801,7 +795,6 @@ Mock interface errors for comprehensive testing:
 ```go
 func TestProcessOrderPaymentFailure(t *testing.T) {
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
     mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -837,7 +830,6 @@ func TestProcessOrderPaymentFailure(t *testing.T) {
 
 func TestProcessOrderNotificationFailure(t *testing.T) {
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
     mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -889,6 +881,10 @@ Following best practices ensures your tests are reliable, maintainable, and fast
 Design your code to accept dependencies through interfaces:
 
 ```go
+type InventoryService interface {
+    ReserveItem(itemID string, quantity int) error
+}
+
 // Good: Dependencies are injected
 type OrderService struct {
     paymentGateway PaymentGateway
@@ -912,8 +908,8 @@ type BadOrderService struct {
 func (s *BadOrderService) ProcessOrder() error {
     // Directly creates HTTP client - cannot be mocked
     client := &http.Client{}
-    resp, err := client.Get("https://api.payment.com/process")
-    // ...
+    _, err := client.Get("https://api.payment.com/process")
+    return err
 }
 ```
 
@@ -924,7 +920,6 @@ Use fixture functions to reduce test boilerplate:
 ```go
 // testFixtures provides common test setup
 type testFixtures struct {
-    ctrl            *gomock.Controller
     mockGateway     *mocks.MockPaymentGateway
     mockNotification *mocks.MockNotificationService
     service         *PaymentService
@@ -943,22 +938,15 @@ func setupTestFixtures(t *testing.T) *testFixtures {
     }
 
     return &testFixtures{
-        ctrl:             ctrl,
         mockGateway:      mockGateway,
         mockNotification: mockNotification,
         service:          service,
     }
 }
 
-// cleanup releases resources
-func (f *testFixtures) cleanup() {
-    f.ctrl.Finish()
-}
-
 // Example usage in tests
 func TestWithFixtures(t *testing.T) {
     f := setupTestFixtures(t)
-    defer f.cleanup()
 
     f.mockGateway.EXPECT().
         ProcessPayment(gomock.Any(), gomock.Any()).
@@ -1044,7 +1032,6 @@ func TestPaymentScenarios(t *testing.T) {
     for _, sc := range scenarios {
         t.Run(sc.name, func(t *testing.T) {
             ctrl := gomock.NewController(t)
-            defer ctrl.Finish()
 
             mockGateway := mocks.NewMockPaymentGateway(ctrl)
             mockNotification := mocks.NewMockNotificationService(ctrl)
@@ -1117,7 +1104,6 @@ func TestParallelSafety(t *testing.T) {
 
     // Each parallel test gets its own mock controller
     ctrl := gomock.NewController(t)
-    defer ctrl.Finish()
 
     mockGateway := mocks.NewMockPaymentGateway(ctrl)
 
