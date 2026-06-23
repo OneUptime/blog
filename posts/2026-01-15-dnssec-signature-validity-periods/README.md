@@ -297,10 +297,12 @@ options {
     sig-validity-interval 14 3;      # 14 days validity, resign at 3 days
     dnskey-sig-validity 21;          # 21 days for DNSKEY
 
-    # Signature inception offset (for clock skew)
-    sig-signing-signatures 1000;     # Signatures per quantum
-    sig-signing-nodes 1000;          # Nodes per quantum
-    sig-signing-type 65534;          # Private type for signing
+    # Incremental (online) signing tuning - controls how much signing
+    # work is done per quantum, not inception offset or clock skew
+    # (named applies a fixed inception offset automatically)
+    sig-signing-signatures 1000;     # Max signatures generated per quantum
+    sig-signing-nodes 1000;          # Max nodes examined per quantum
+    sig-signing-type 65534;          # Private record type tracking signing
 };
 
 zone "example.com" {
@@ -324,22 +326,28 @@ zone "example.com" {
 ```bash
 # pdns.conf
 
-# Default signature validity (days)
+# PowerDNS uses a fixed RRSIG validity window of 3 weeks (inception ~1 week
+# in the past, expiration ~2 weeks in the future), rolling forward one week
+# every Thursday. The window itself is not configurable to an arbitrary
+# number of days.
+
+# SOA-EDIT controls how the SOA serial is bumped so secondaries re-transfer
+# the zone and pick up fresh RRSIGs.
 default-soa-edit=inception-epoch
 default-soa-edit-signed=inception-epoch
 
-# Signature validity in seconds
-signature-inception-skew=3600        # 1 hour backwards
+# PowerDNS 5.1.3+ can extend RRSIG expiry (in seconds, range 0..31536000)
+rrsig-expiry-extend=604800           # extend expiry by 1 week
 ```
 
 ```sql
--- Per-zone settings via database
-UPDATE domains SET
-    settings = '{"signatures":{"validity":1209600,"inception":3600}}'
-WHERE name = 'example.com';
+-- Per-zone settings live in the domainmetadata table, not a JSON column.
+-- For example, set SOA-EDIT for a single zone:
+INSERT INTO domainmetadata (domain_id, kind, content)
+SELECT id, 'SOA-EDIT', 'INCEPTION-EPOCH' FROM domains WHERE name = 'example.com';
 
--- 1209600 seconds = 14 days
--- 3600 seconds = 1 hour inception skew
+-- PowerDNS does not expose a per-zone RRSIG validity-in-seconds knob;
+-- the 3-week signing window is fixed in the signer.
 ```
 
 ### Knot DNS
@@ -383,9 +391,7 @@ EXPIRATION=$(date -u +%Y%m%d%H%M%S -d "14 days")
 
 # Sign the zone
 ldns-signzone \
-    -n \
-    -p \
-    -s "${INCEPTION}" \
+    -i "${INCEPTION}" \
     -e "${EXPIRATION}" \
     -f "${SIGNED_FILE}" \
     "${ZONE_FILE}" \
@@ -438,6 +444,7 @@ Checks RRSIG expiration and alerts on approaching deadlines.
 
 import dns.resolver
 import dns.rdatatype
+import dns.flags
 import datetime
 import sys
 
@@ -457,19 +464,24 @@ def check_zone_signatures(zone: str, warning_days: int = 3, critical_days: int =
     warning_threshold = now + datetime.timedelta(days=warning_days)
     critical_threshold = now + datetime.timedelta(days=critical_days)
 
+    # Request DNSSEC records by setting the EDNS DO bit, otherwise the
+    # resolver will not return the RRSIGs we need to inspect.
+    resolver = dns.resolver.Resolver()
+    resolver.use_edns(0, dns.flags.DO, 4096)
+
     try:
         # Query for common record types
         for rdtype in ['A', 'AAAA', 'MX', 'TXT', 'DNSKEY', 'NS', 'SOA']:
             try:
-                answers = dns.resolver.resolve(zone, rdtype)
+                answers = resolver.resolve(zone, rdtype)
 
                 # Get RRSIG for this RRset
                 for rrsig in answers.response.answer:
                     if rrsig.rdtype == dns.rdatatype.RRSIG:
                         for sig in rrsig:
-                            expiration = datetime.datetime.strptime(
-                                str(sig.expiration),
-                                '%Y%m%d%H%M%S'
+                            # RRSIG.expiration is seconds since the Unix epoch
+                            expiration = datetime.datetime.utcfromtimestamp(
+                                sig.expiration
                             )
 
                             results['signatures_checked'] += 1
