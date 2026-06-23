@@ -88,7 +88,7 @@ resource "aws_ecs_cluster" "main" {
 
 resource "aws_launch_template" "ecs_instances" {
   name_prefix   = "ecs-instance-"
-  image_id      = data.aws_ami.ecs_optimized.id
+  image_id      = data.aws_ssm_parameter.ecs_optimized_ami.value
   instance_type = "t3.medium"
 
   iam_instance_profile {
@@ -118,15 +118,9 @@ resource "aws_launch_template" "ecs_instances" {
   }
 }
 
-# Get the latest ECS-optimized AMI
-data "aws_ami" "ecs_optimized" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-ecs-hvm-*-x86_64-ebs"]
-  }
+# Get the latest recommended ECS-optimized Amazon Linux 2023 AMI
+data "aws_ssm_parameter" "ecs_optimized_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
 }
 ```
 
@@ -189,6 +183,22 @@ resource "aws_nat_gateway" "main" {
   depends_on = [aws_internet_gateway.main]
 }
 
+# Route table for public subnets
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
 # Route table for private subnets
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
@@ -212,7 +222,7 @@ data "aws_availability_zones" "available" {
 
 ## Cause 4: Security Group Blocking Outbound Traffic
 
-ECS instances need outbound internet access to reach ECS APIs.
+ECS instances need outbound HTTPS access to reach ECS APIs, either through internet/NAT routing or VPC endpoints.
 
 ```hcl
 resource "aws_security_group" "ecs_instances" {
@@ -246,7 +256,7 @@ resource "aws_security_group" "ecs_instances" {
 
 ## Using VPC Endpoints Instead of NAT
 
-For better security and lower cost, use VPC endpoints.
+For private connectivity and to avoid routing ECS and ECR traffic through NAT, use VPC endpoints.
 
 ```hcl
 # ECS endpoint
@@ -351,7 +361,7 @@ resource "aws_autoscaling_group" "ecs" {
 
   tag {
     key                 = "AmazonECSManaged"
-    value               = true
+    value               = "true"
     propagate_at_launch = true
   }
 
