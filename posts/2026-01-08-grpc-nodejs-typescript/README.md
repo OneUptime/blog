@@ -1211,8 +1211,9 @@ export function createLoggingInterceptor(): grpc.ServerInterceptor {
 
     // Create a responder to intercept responses
     const responder = new grpc.ResponderBuilder()
-      .withStart((metadata, next) => {
-        next(metadata);
+      .withStart((next) => {
+        // Deliver the listener built above to the call
+        next(listener);
       })
       .withSendMessage((message, next) => {
         console.log(
@@ -1245,7 +1246,7 @@ export function createLoggingInterceptor(): grpc.ServerInterceptor {
       })
       .build();
 
-    return new grpc.ServerInterceptingCall(call, listener, responder);
+    return new grpc.ServerInterceptingCall(call, responder);
   };
 }
 
