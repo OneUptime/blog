@@ -49,7 +49,7 @@ echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://
 # Update package list with the new repository
 sudo apt update
 
-# Install PostgreSQL 17 (latest stable version as of 2026)
+# Install PostgreSQL 17 (a current, fully supported stable release; PostgreSQL 18 is also available)
 sudo apt install -y postgresql-17 postgresql-contrib-17
 ```
 
@@ -155,8 +155,8 @@ effective_cache_size = 12GB
 # WAL level - 'replica' enables streaming replication
 wal_level = replica
 
-# Number of WAL segments to keep for replication
-# Higher values provide more buffer for slow standbys
+# Maximum number of concurrent connections from standby servers
+# and streaming base backup clients
 max_wal_senders = 10
 
 # Maximum number of replication slots
@@ -758,9 +758,6 @@ wal_keep_size = 2GB
 # Enable archiving for additional safety (optional but recommended)
 archive_mode = on
 archive_command = 'cp %p /var/lib/postgresql/17/archive/%f'
-
-# Hot standby feedback to prevent query conflicts
-hot_standby_feedback = on
 ```
 
 Update `pg_hba.conf` to allow replication connections:
