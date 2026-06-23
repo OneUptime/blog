@@ -64,12 +64,12 @@ jobs:
         run: npm test -- --shard=${{ matrix.shard }}/4
 ```
 
-Most test frameworks support sharding:
+Many test frameworks support sharding:
 
 - **Jest**: `--shard=1/4`
 - **Vitest**: `--shard=1/4`
 - **pytest**: `pytest-split` or `pytest-xdist`
-- **RSpec**: `--only-failures` with custom splitting
+- **RSpec**: `parallel_tests` gem or custom splitting
 
 ## Dynamic Shard Count
 
@@ -142,16 +142,25 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test --shard=${{ matrix.shard }}/5
 
-      - name: Upload test results
+      - name: Upload blob report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.shard }}
-          path: playwright-report/
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
           retention-days: 7
 ```
 
-Merge reports after all shards complete:
+Configure Playwright to use the blob reporter on CI, then merge reports after all shards complete:
+
+```typescript
+// playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  reporter: process.env.CI ? 'blob' : 'html',
+});
+```
 
 ```yaml
   merge-reports:
@@ -170,12 +179,12 @@ Merge reports after all shards complete:
       - name: Download all reports
         uses: actions/download-artifact@v4
         with:
-          pattern: playwright-report-*
-          path: all-reports
+          pattern: blob-report-*
+          path: all-blob-reports
           merge-multiple: true
 
       - name: Merge reports
-        run: npx playwright merge-reports --reporter html ./all-reports
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
 
       - name: Upload merged report
         uses: actions/upload-artifact@v4
@@ -219,9 +228,9 @@ jobs:
           path: results-${{ matrix.group }}.xml
 ```
 
-## Jest with Timing-Based Splitting
+## Jest with Timing Data
 
-Balance test shards by execution time, not count:
+Capture timing data so you can rebalance shards over time:
 
 ```yaml
 jobs:
@@ -398,7 +407,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - run: npm test -- --testPathPattern="\.unit\."
+      - run: npm test -- --testPathPatterns="\.unit\."
 
   slow-tests:
     runs-on: ubuntu-latest
@@ -412,7 +421,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - run: npm test -- --testPathPattern="\.integration\." --shard=${{ matrix.shard }}/4
+      - run: npm test -- --testPathPatterns="\.integration\." --shard=${{ matrix.shard }}/4
 ```
 
 ## Best Practices
