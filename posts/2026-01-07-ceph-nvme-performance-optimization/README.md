@@ -226,7 +226,7 @@ osd_op_num_threads_per_shard_ssd = 2
 ms_bind_msgr2 = true
 
 [osd]
-# BlueStore is required for NVMe optimization
+# BlueStore is the recommended OSD backend for modern Ceph deployments
 osd_objectstore = bluestore
 
 # Increase the number of OSD shards
@@ -262,11 +262,10 @@ osd_scrub_chunk_max = 25
 osd_deep_scrub_interval = 604800  # Weekly deep scrub
 osd_scrub_interval_randomize_ratio = 0.5
 
-# Memory target for BlueStore cache
-# This is critical for NVMe performance
-# Allocate 4-8GB per OSD depending on available memory
-bluestore_cache_size_hdd = 1073741824     # 1GB for HDD
-bluestore_cache_size_ssd = 4294967296     # 4GB for SSD/NVMe
+# Memory target for the OSD process and BlueStore cache
+# This is critical for NVMe performance. Modern Ceph releases use
+# osd_memory_target and BlueStore cache autotuning by default.
+osd_memory_target = 8589934592            # 8GB per OSD
 
 # Increase the rocksdb cache for metadata
 # NVMe benefits from larger metadata caches
@@ -382,22 +381,17 @@ These settings optimize BlueStore's caching behavior for NVMe workloads. Add the
 
 ```ini
 [osd]
-# Total cache memory target per OSD
-# For NVMe, allocate 4-8GB depending on workload
-# This memory is used for caching data and metadata
-bluestore_cache_size = 4294967296  # 4GB
-
-# Cache memory ratios
-# Adjust based on workload: more kv for metadata-heavy, more data for large objects
-bluestore_cache_meta_ratio = 0.4   # 40% for metadata
-bluestore_cache_kv_ratio = 0.4     # 40% for RocksDB key-value
-bluestore_cache_data_ratio = 0.2   # 20% for object data
-
-# Alternatively, use automatic sizing based on OSD memory target
+# Use automatic sizing based on OSD memory target
 # This is the recommended approach for modern Ceph versions
 osd_memory_target = 8589934592     # 8GB total OSD memory target
 osd_memory_base = 805306368        # 768MB base memory
 osd_memory_cache_min = 1073741824  # 1GB minimum cache
+
+# Optional manual cache ratios
+# Adjust based on workload: more kv for metadata-heavy, more data for large objects
+bluestore_cache_meta_ratio = 0.4   # 40% for metadata
+bluestore_cache_kv_ratio = 0.4     # 40% for RocksDB key-value
+bluestore_cache_data_ratio = 0.2   # 20% for object data
 
 # Cache trimming behavior
 bluestore_cache_trim_interval = 0.05     # Trim every 50ms
@@ -434,11 +428,12 @@ bluestore_rocksdb_options = \
     max_background_compactions=4,\
     max_background_flushes=4
 
-# Block cache for RocksDB reads
-# Larger values improve metadata read performance
+# RocksDB sharding is enabled by default for OSDs created on Pacific or later
 bluestore_rocksdb_cf = true
-bluestore_block_size = 65536             # 64KB blocks for NVMe
-bluestore_min_alloc_size_ssd = 4096      # 4KB minimum allocation
+
+# Minimum allocation size is baked into each OSD when it is created.
+# The default for non-rotational media is 4KB in current Ceph releases.
+bluestore_min_alloc_size_ssd = 4096      # 4KB minimum allocation for SSD/NVMe
 ```
 
 ### Dedicated WAL and DB Devices
@@ -511,15 +506,9 @@ This configuration selects the appropriate allocator based on your use case:
 ```ini
 [osd]
 # Allocator selection for BlueStore
-# 'bitmap' - Best for most workloads, good fragmentation resistance
-# 'stupid' - Lower CPU overhead, suitable for sequential workloads
-# 'avl'    - Legacy allocator, not recommended for NVMe
-
-# For mixed workloads (recommended for most NVMe deployments)
+# Current Ceph releases default to the bitmap allocator. Change this only
+# after testing on your exact Ceph release and workload.
 bluestore_allocator = bitmap
-
-# For sequential workloads (large object storage, backup)
-# bluestore_allocator = stupid
 
 # Extent size affects allocation granularity
 # Larger values reduce fragmentation but may waste space for small objects
@@ -792,14 +781,20 @@ for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     echo "performance" > $cpu
 done
 
-# Disable C-states deeper than C1
+# Disable C-states deeper than C1 on RHEL-like systems
 # Deeper C-states add wake-up latency
-grubby --update-kernel=ALL --args="intel_idle.max_cstate=1 processor.max_cstate=1"
+if command -v grubby >/dev/null 2>&1; then
+    grubby --update-kernel=ALL --args="intel_idle.max_cstate=1 processor.max_cstate=1"
+fi
 
 # Alternative: Use tuned profile for latency-sensitive workloads
 # This is the recommended approach for production systems
-yum install -y tuned tuned-profiles-cpu-partitioning
-tuned-adm profile latency-performance
+if command -v yum >/dev/null 2>&1; then
+    yum install -y tuned tuned-profiles-cpu-partitioning
+fi
+if command -v tuned-adm >/dev/null 2>&1; then
+    tuned-adm profile latency-performance
+fi
 
 # Verify settings
 echo "Current CPU governors:"
@@ -807,7 +802,7 @@ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq -c
 
 echo ""
 echo "Current tuned profile:"
-tuned-adm active
+tuned-adm active 2>/dev/null || echo "tuned is not installed"
 ```
 
 ### Memory Configuration
@@ -1270,7 +1265,12 @@ fio fio-nvme-ceph.fio --output=fio-results.json --output-format=json
 
 # Parse results
 echo "=== FIO Benchmark Results ==="
-jq -r '.jobs[] | "\(.jobname): IOPS=\(.read.iops + .write.iops | floor), BW=\((.read.bw + .write.bw) / 1024 | floor)MB/s, Lat=\((.read.lat_ns.mean + .write.lat_ns.mean) / 1000 | floor)us"' fio-results.json
+jq -r '.jobs[] |
+  (.read.total_ios + .write.total_ios) as $ios |
+  (if $ios > 0 then
+    ((.read.lat_ns.mean * .read.total_ios + .write.lat_ns.mean * .write.total_ios) / $ios / 1000)
+  else 0 end) as $lat_us |
+  "\(.jobname): IOPS=\(.read.iops + .write.iops | floor), BW=\((.read.bw + .write.bw) / 1024 | floor)MB/s, Lat=\($lat_us | floor)us"' fio-results.json
 ```
 
 ### Performance Validation Checklist
@@ -1290,8 +1290,8 @@ echo "--- OSD Configuration Check ---"
 ceph daemon osd.0 config get osd_op_num_shards_ssd 2>/dev/null || \
     ceph config get osd.0 osd_op_num_shards_ssd
 
-ceph daemon osd.0 config get bluestore_cache_size 2>/dev/null || \
-    ceph config get osd.0 bluestore_cache_size
+ceph daemon osd.0 config get osd_memory_target 2>/dev/null || \
+    ceph config get osd.0 osd_memory_target
 
 # Check 2: BlueStore performance counters
 echo ""
@@ -1338,25 +1338,19 @@ Configure Ceph to export metrics for Prometheus monitoring.
 
 This configuration enables comprehensive metrics export:
 
-```yaml
-# /etc/ceph/ceph.conf additions for Prometheus monitoring
-[mgr]
-# Enable the Prometheus module for metrics export
-mgr/prometheus/server_addr = 0.0.0.0
-mgr/prometheus/server_port = 9283
-
-# Enable high-resolution metrics
-mgr/prometheus/scrape_interval = 10
-
-# Include per-OSD metrics for performance analysis
-mgr/prometheus/rbd_stats_pools = *
-```
-
-Enable the module and configure Prometheus:
-
 ```bash
 # Enable Prometheus module in Ceph
 ceph mgr module enable prometheus
+
+# Configure the Prometheus manager module
+ceph config set mgr mgr/prometheus/server_addr 0.0.0.0
+ceph config set mgr mgr/prometheus/server_port 9283
+
+# Use a scrape interval of at least 10 seconds and match Prometheus' interval
+ceph config set mgr mgr/prometheus/scrape_interval 15
+
+# Include per-pool RBD image metrics for performance analysis
+ceph config set mgr mgr/prometheus/rbd_stats_pools "*"
 
 # Prometheus scrape configuration
 # Add to your prometheus.yml:
@@ -1477,7 +1471,7 @@ groups:
           severity: warning
         annotations:
           summary: "BlueStore cache hit ratio below 70%"
-          description: "Consider increasing bluestore_cache_size or osd_memory_target"
+          description: "Consider increasing osd_memory_target or reviewing BlueStore cache ratios"
 
       # Alert on network saturation
       - alert: CephNetworkSaturation
@@ -1665,15 +1659,19 @@ ps aux | grep -E 'ceph-osd' | awk '{printf "%-20s %8s MB\n", $11, $6/1024}'
 echo ""
 echo "--- BlueStore Cache Statistics ---"
 for osd in $(ceph osd ls); do
-    CACHE=$(ceph daemon osd.$osd perf dump 2>/dev/null | jq -r '.bluestore.bluestore_cache_bytes // "N/A"')
-    echo "OSD.$osd: $((CACHE / 1024 / 1024)) MB"
+    CACHE=$(ceph daemon osd.$osd perf dump 2>/dev/null | jq -r '.bluestore.bluestore_cache_bytes // empty')
+    if [ -n "$CACHE" ]; then
+        echo "OSD.$osd: $((CACHE / 1024 / 1024)) MB"
+    else
+        echo "OSD.$osd: cache metric unavailable"
+    fi
 done
 
 # Check configured memory targets
 echo ""
 echo "--- Memory Configuration ---"
 ceph daemon osd.0 config get osd_memory_target
-ceph daemon osd.0 config get bluestore_cache_size
+ceph daemon osd.0 config get bluestore_cache_autotune
 
 # Memory optimization recommendations
 echo ""
