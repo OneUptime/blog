@@ -45,10 +45,12 @@ edition = "2021"
 # Async runtime
 
 tokio = { version = "1", features = ["full", "io-std"] }
+async-trait = "0.1"
 
 # JSON-RPC and serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+url = { version = "2", optional = true }
 
 # Async I/O
 futures = "0.3"
@@ -62,15 +64,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Optional: Database connectivity
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"], optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
 
 # Optional: HTTP client for API integrations
-reqwest = { version = "0.11", features = ["json"], optional = true }
+reqwest = { version = "0.13", features = ["json"], optional = true }
 
 [features]
 default = []
-database = ["sqlx"]
-http = ["reqwest"]
+database = ["dep:sqlx"]
+http = ["dep:reqwest", "dep:url"]
 ```
 
 ---
@@ -98,7 +100,6 @@ pub struct JsonRpcRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<JsonRpcId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
@@ -183,7 +184,11 @@ pub enum Content {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image")]
-    Image { data: String, mime_type: String },
+    Image {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+    },
     #[serde(rename = "resource")]
     Resource { resource: ResourceContent },
 }
@@ -191,9 +196,12 @@ pub enum Content {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceContent {
     pub uri: String,
-    pub text: Option<String>,
-    pub blob: Option<String>,
+    #[serde(rename = "mimeType", skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
 }
 
 /// Resource definition
@@ -333,6 +341,15 @@ impl McpServer {
             }
         };
 
+        if request.id.is_none() {
+            if request.method == "notifications/initialized" {
+                info!("MCP client initialized");
+            } else {
+                debug!("Ignoring notification: {}", request.method);
+            }
+            return None;
+        }
+
         let result = self.dispatch(&request).await;
 
         Some(JsonRpcResponse {
@@ -363,7 +380,7 @@ impl McpServer {
 
     async fn handle_initialize(&self, _request: &JsonRpcRequest) -> Result<serde_json::Value, JsonRpcError> {
         let response = serde_json::json!({
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-11-25",
             "capabilities": {
                 "tools": { "listChanged": false },
                 "resources": { "listChanged": false, "subscribe": false },
@@ -394,12 +411,14 @@ impl McpServer {
             data: None,
         })?;
 
-        let tools = self.tools.read().await;
-        let handler = tools.get(&params.name).ok_or_else(|| JsonRpcError {
-            code: -32602,
-            message: format!("Unknown tool: {}", params.name),
-            data: None,
-        })?;
+        let handler = {
+            let tools = self.tools.read().await;
+            tools.get(&params.name).cloned().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: format!("Unknown tool: {}", params.name),
+                data: None,
+            })?
+        };
 
         let result = handler.call(params.arguments).await.map_err(|e| JsonRpcError {
             code: -32603,
@@ -416,7 +435,7 @@ impl McpServer {
 
     async fn handle_resources_list(&self) -> Result<serde_json::Value, JsonRpcError> {
         let resources = self.resources.read().await;
-        Ok(serde_json::json!({ "resources": *resources }))
+        Ok(serde_json::json!({ "resources": &*resources }))
     }
 
     async fn handle_resources_read(&self, request: &JsonRpcRequest) -> Result<serde_json::Value, JsonRpcError> {
@@ -438,7 +457,7 @@ impl McpServer {
 
     async fn handle_prompts_list(&self) -> Result<serde_json::Value, JsonRpcError> {
         let prompts = self.prompts.read().await;
-        Ok(serde_json::json!({ "prompts": *prompts }))
+        Ok(serde_json::json!({ "prompts": &*prompts }))
     }
 
     async fn handle_prompts_get(&self, request: &JsonRpcRequest) -> Result<serde_json::Value, JsonRpcError> {
@@ -483,6 +502,7 @@ use crate::types::*;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Echo tool - returns the input text
 pub struct EchoTool;
@@ -597,11 +617,12 @@ impl ToolHandler for CalculatorTool {
 
 /// File reader tool - reads files from allowed directories
 pub struct FileReaderTool {
-    allowed_dirs: Vec<String>,
+    allowed_dirs: Vec<PathBuf>,
 }
 
 impl FileReaderTool {
     pub fn new(allowed_dirs: Vec<String>) -> Self {
+        let allowed_dirs = allowed_dirs.into_iter().map(PathBuf::from).collect();
         Self { allowed_dirs }
     }
 }
@@ -646,7 +667,7 @@ impl ToolHandler for FileReaderTool {
             });
         }
 
-        let content = tokio::fs::read_to_string(path).await?;
+        let content = tokio::fs::read_to_string(&canonical).await?;
 
         Ok(CallToolResult {
             content: vec![Content::Text { text: content }],
@@ -704,11 +725,20 @@ impl ToolHandler for HttpFetchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing url"))?;
 
+        let method = arguments
+            .get("method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("GET");
+
         // Security check: ensure host is allowed
         let parsed = url::Url::parse(url)?;
         let host = parsed.host_str().unwrap_or("");
 
-        if !self.allowed_hosts.iter().any(|h| host.ends_with(h)) {
+        let host_allowed = self.allowed_hosts.iter().any(|allowed| {
+            host == allowed || host.ends_with(&format!(".{}", allowed))
+        });
+
+        if !host_allowed {
             return Ok(CallToolResult {
                 content: vec![Content::Text {
                     text: format!("Error: Host '{}' not in allowed list", host),
@@ -717,7 +747,13 @@ impl ToolHandler for HttpFetchTool {
             });
         }
 
-        let response = self.client.get(url).send().await?;
+        let request = match method {
+            "GET" => self.client.get(url),
+            "POST" => self.client.post(url),
+            _ => return Err(anyhow::anyhow!("Unsupported method: {}", method)),
+        };
+
+        let response = request.send().await?;
         let body = response.text().await?;
 
         Ok(CallToolResult {
@@ -781,7 +817,7 @@ impl ToolHandler for DatabaseTool {
             .fetch_all(&self.pool)
             .await?
             .iter()
-            .map(|row| {
+            .map(|_row| {
                 // Convert row to JSON (simplified)
                 serde_json::json!({})
             })
