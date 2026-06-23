@@ -57,7 +57,7 @@ flowchart TD
     A[Case-Insensitive Query] --> B{Index Available?}
     B -->|No| C[Full Collection Scan]
     B -->|Yes| D{Query Type}
-    D -->|Anchored ^pattern| E[Index Prefix Scan]
+    D -->|Case-sensitive anchored ^pattern| E[Index Prefix Scan]
     D -->|Unanchored pattern| F[Full Index Scan]
     D -->|Collation Match| G[Efficient Index Use]
 
@@ -69,13 +69,16 @@ flowchart TD
 
 ### Performance Warning
 
-Regex queries without anchors cannot efficiently use indexes.
+Case-sensitive regex queries can use prefix index optimization when they are anchored. Case-insensitive regex queries are not collation-aware, so they cannot take advantage of case-insensitive collation indexes.
 
 ```javascript
-// This can use an index (anchored at start)
+// This can use prefix index optimization (case-sensitive and anchored at start)
+db.users.find({ username: { $regex: /^john/ } });
+
+// This CANNOT use a case-insensitive collation index efficiently
 db.users.find({ username: { $regex: /^john/i } });
 
-// This CANNOT efficiently use an index
+// This also CANNOT efficiently use an index
 db.users.find({ username: { $regex: /john/i } });
 
 // Check with explain
@@ -244,7 +247,7 @@ db.users.find({ usernameLower: { $exists: false } }).forEach(function(doc) {
 
 ## Method 5: Aggregation $toLower
 
-Use aggregation for ad-hoc case-insensitive queries without pre-normalization.
+Use aggregation for ad-hoc case-insensitive queries without pre-normalization. This is best for ASCII strings because MongoDB only defines `$toLower` behavior for ASCII characters.
 
 ```javascript
 // Case-insensitive search in aggregation
@@ -291,7 +294,7 @@ flowchart TD
 
 | Method | Performance | Index Support | Flexibility |
 |--------|-------------|---------------|-------------|
-| $regex /i | Slow | Limited (anchored only) | High |
+| $regex /i | Slow | Cannot use case-insensitive collation indexes | High |
 | Collation | Fast | Full | Medium |
 | Text Index | Fast | Full | Medium |
 | Normalized Field | Fast | Full | High |
@@ -409,7 +412,7 @@ db.logs.find({ $text: { $search: "error" } });  // Much faster
 
 ```javascript
 // Turkish has special case rules
-// "i".toUpperCase() = "I" in Turkish
+// "i" and "I" are not a simple lowercase/uppercase pair in Turkish
 
 // Use appropriate locale
 db.users.find({ username: "istanbul" })
