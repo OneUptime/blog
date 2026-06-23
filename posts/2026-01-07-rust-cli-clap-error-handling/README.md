@@ -34,6 +34,7 @@ thiserror = "1"
 # Configuration
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+dirs = "6"
 
 # Colored output
 colored = "2"
@@ -44,6 +45,10 @@ tokio = { version = "1", features = ["full"], optional = true }
 [features]
 default = []
 async = ["tokio"]
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
 ```
 
 ---
@@ -428,9 +433,15 @@ pub fn select(message: &str, options: &[&str], default: usize) -> Result<usize> 
         return Ok(default);
     }
 
-    input.parse::<usize>()
-        .map(|n| n.saturating_sub(1))
-        .map_err(|_| anyhow::anyhow!("Invalid selection"))
+    let selection = input
+        .parse::<usize>()
+        .map_err(|_| anyhow::anyhow!("Invalid selection"))?;
+
+    if selection == 0 || selection > options.len() {
+        anyhow::bail!("Invalid selection");
+    }
+
+    Ok(selection - 1)
 }
 ```
 
@@ -444,7 +455,8 @@ pub fn select(message: &str, options: &[&str], default: usize) -> Result<usize> 
 
 use crate::config::Config;
 use crate::prompt;
-use anyhow::{Context, Result, bail};
+use crate::{ConfigAction, Environment};
+use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 
@@ -550,6 +562,7 @@ pub mod exit_code {
 // In main.rs
 fn main() {
     let cli = Cli::parse();
+    let verbose = cli.verbose;
 
     let exit_code = match run(cli) {
         Ok(()) => exit_code::SUCCESS,
@@ -557,8 +570,10 @@ fn main() {
             eprintln!("{}: {}", "error".red().bold(), e);
 
             // Print cause chain in verbose mode
-            for cause in e.chain().skip(1) {
-                eprintln!("  {}: {}", "caused by".yellow(), cause);
+            if verbose {
+                for cause in e.chain().skip(1) {
+                    eprintln!("  {}: {}", "caused by".yellow(), cause);
+                }
             }
 
             determine_exit_code(&e)
