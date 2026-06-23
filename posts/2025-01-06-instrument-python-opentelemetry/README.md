@@ -714,8 +714,10 @@ OpenTelemetry supports configuration via environment variables:
 
 ```bash
 # Service identification
+# Note: there is no dedicated OTEL_SERVICE_VERSION variable. Only
+# OTEL_SERVICE_NAME is defined by the spec; set service.version (and any
+# other resource attributes) via OTEL_RESOURCE_ATTRIBUTES instead.
 export OTEL_SERVICE_NAME="my-python-service"
-export OTEL_SERVICE_VERSION="1.0.0"
 
 # OTLP exporter configuration
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
@@ -727,7 +729,7 @@ export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
 export OTEL_TRACES_SAMPLER_ARG="0.5"  # Sample 50% of traces
 
 # Resource attributes
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.namespace=backend"
+export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0,deployment.environment=production,service.namespace=backend"
 
 # Logging
 export OTEL_LOG_LEVEL="info"
