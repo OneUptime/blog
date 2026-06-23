@@ -46,15 +46,17 @@ flowchart TD
     B -->|Empty/Non-Empty| E[$exists + $ne]
     B -->|Complex Logic| F[Aggregation Pipeline]
 
-    C --> G[Indexed - Fast]
+    C --> G[Exact Match Only]
     D --> H[Not Indexed - Slower]
-    E --> I[Can Use Index]
+    E --> I[Positive Exists Can Use Index]
     F --> J[Most Flexible]
 ```
 
 ## Using $expr with $size for Comparisons
 
 To query arrays larger or smaller than a certain size, use `$expr` with the `$size` aggregation operator.
+
+These examples assume the field exists and contains an array. If the field can be missing or can contain a non-array value, guard `$size` with `$isArray` first.
 
 ```javascript
 // Find posts with more than 5 tags
@@ -103,7 +105,7 @@ db.posts.find({
 });
 ```
 
-This approach can use indexes and is often faster than `$expr`.
+Positive `$exists: true` checks can use indexes and are often faster than `$expr`.
 
 ```javascript
 // Create an index that can help with this query
@@ -138,7 +140,7 @@ db.posts.find({ "tags.0": { $exists: true } });
 
 // Method 2: Using $ne with empty array
 db.posts.find({
-  tags: { $exists: true, $ne: [] }
+  tags: { $type: "array", $ne: [] }
 });
 
 // Method 3: Using $expr
@@ -149,7 +151,7 @@ db.posts.find({
 
 ## Aggregation Pipeline Approach
 
-For complex size-based queries, use the aggregation pipeline with `$match` and `$addFields`.
+For complex size-based queries, use the aggregation pipeline with `$match` and `$addFields`. These examples also assume the field exists and contains an array.
 
 ```javascript
 // Add array size as a field, then filter
@@ -230,9 +232,9 @@ db.posts.updateOne(
   }
 );
 
-// When pulling from array, decrement count
+// When pulling a unique value from array, decrement count only if it exists
 db.posts.updateOne(
-  { _id: postId },
+  { _id: postId, tags: "oldTag" },
   {
     $pull: { tags: "oldTag" },
     $inc: { tagCount: -1 }
@@ -268,7 +270,7 @@ async function pushToArrayWithCount(collection, filter, arrayField, value) {
 async function pullFromArrayWithCount(collection, filter, arrayField, value) {
   const countField = `${arrayField}Count`;
 
-  return collection.updateOne(filter, {
+  return collection.updateOne({ ...filter, [arrayField]: value }, {
     $pull: { [arrayField]: value },
     $inc: { [countField]: -1 }
   });
@@ -331,7 +333,7 @@ db.users.find({
   $expr: { $lt: [{ $size: "$interests" }, 3] }
 });
 
-// Or using dot notation (faster if indexed)
+// Or using dot notation
 db.users.find({
   "interests.2": { $exists: false }
 });
@@ -392,9 +394,9 @@ db.posts.aggregate([
 
 | Method | Index Support | Use Case |
 |--------|---------------|----------|
-| `$size: n` | Yes | Exact size match |
+| `$size: n` | No | Exact size match |
 | `$expr: { $gt: [{$size}, n] }` | No | Range comparisons |
-| `"array.n": { $exists }` | Yes | At least n+1 elements |
+| `"array.n": { $exists: true }` | Yes | At least n+1 elements |
 | Stored count field | Yes | Frequent range queries |
 | Aggregation | No | Complex logic |
 
@@ -407,7 +409,7 @@ flowchart LR
     D -->|Range| F[Store Count Field]
 
     C --> G[Simple, Flexible]
-    E --> H[Fast, Indexed]
+    E --> H[Simple Exact Match]
     F --> I[Fastest, Maintainable]
 ```
 
