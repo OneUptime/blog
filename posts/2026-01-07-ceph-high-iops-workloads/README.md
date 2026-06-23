@@ -136,8 +136,8 @@ The following commands create an OSD with dedicated WAL and DB devices. This is 
 # DB: Stores RocksDB metadata (larger, fast)
 ceph-volume lvm create \
     --data /dev/sdb \
-    --block-wal /dev/nvme0n1p1 \
-    --block-db /dev/nvme0n1p2
+    --block.wal /dev/nvme0n1p1 \
+    --block.db /dev/nvme0n1p2
 ```
 
 ### BlueStore Configuration
@@ -146,14 +146,6 @@ The following configuration optimizes BlueStore for IOPS. Add these settings to 
 
 ```ini
 [osd]
-# Disable device-specific optimizations that may limit performance
-# This allows manual tuning for maximum IOPS
-bluestore_devs_source = none
-
-# Increase the number of BlueStore threads for parallel I/O
-# Higher values improve IOPS on multi-core systems with fast storage
-bluestore_threads = 8
-
 # Set cache size for BlueStore metadata and data
 # 4GB cache helps reduce read latency for frequently accessed data
 bluestore_cache_size = 4294967296
@@ -161,8 +153,10 @@ bluestore_cache_size = 4294967296
 # Allocate 70% of cache to key-value (metadata) operations
 # Metadata caching is critical for IOPS performance
 bluestore_cache_kv_ratio = 0.7
+bluestore_cache_meta_ratio = 0.2
 
-# Note: The data cache portion is implicitly the remainder: 1.0 - bluestore_cache_kv_ratio
+# Note: The data cache portion is implicitly the remainder:
+# 1.0 - bluestore_cache_meta_ratio - bluestore_cache_kv_ratio
 # There is no bluestore_cache_data_ratio config parameter in Ceph
 
 # Minimum allocation size for SSDs (4KB matches SSD page size)
@@ -172,7 +166,7 @@ bluestore_min_alloc_size_ssd = 4096
 # Minimum allocation size for HDDs (larger to reduce seeks)
 bluestore_min_alloc_size_hdd = 65536
 
-# Enable aggressive prefetching for sequential workloads
+# Let Ceph resize BlueStore caches within the OSD memory target
 bluestore_cache_autotune = true
 
 # RocksDB compaction settings for reduced latency spikes
@@ -189,19 +183,6 @@ Proper memory allocation ensures OSDs have sufficient resources for caching and 
 # Target memory for each OSD process
 # 8GB per OSD is recommended for high-IOPS NVMe deployments
 osd_memory_target = 8589934592
-
-# Enable memory autotuning within the target limit
-osd_memory_cache_autotune = true
-
-# Number of OSD operation threads
-# Match this to the number of CPU cores dedicated to each OSD
-osd_op_threads = 8
-
-# Number of threads for disk I/O operations
-osd_disk_threads = 4
-
-# Increase the number of recovery threads for faster rebalancing
-osd_recovery_threads = 2
 
 # Maximum concurrent recovery operations per OSD
 # Higher values speed up recovery but may impact client IOPS
@@ -234,7 +215,6 @@ ms_crc_header = true
 
 # TCP socket buffer sizes for high-throughput connections
 ms_tcp_rcvbuf = 16777216
-ms_tcp_sendbuf = 16777216
 
 # Disable Nagle's algorithm for lower latency
 ms_tcp_nodelay = true
@@ -485,10 +465,15 @@ rbd create high-iops-pool/database-volume \
     --object-size 65536 \
     --stripe-unit 65536 \
     --stripe-count 4 \
-    --image-feature layering,exclusive-lock,object-map,fast-diff
+    --image-feature layering \
+    --image-feature striping \
+    --image-feature exclusive-lock \
+    --image-feature object-map \
+    --image-feature fast-diff
 
-# Enable image features that improve IOPS
-# Object-map and fast-diff reduce metadata operations
+# For existing images, enable feature dependencies in order
+# Object-map requires exclusive-lock; fast-diff requires object-map
+rbd feature enable high-iops-pool/database-volume exclusive-lock
 rbd feature enable high-iops-pool/database-volume object-map
 rbd feature enable high-iops-pool/database-volume fast-diff
 ```
@@ -505,7 +490,7 @@ rbd map high-iops-pool/database-volume \
     --options rw,queue_depth=128
 
 # For persistent mapping, add to /etc/ceph/rbdmap:
-# high-iops-pool/database-volume id=admin,keyring=/etc/ceph/ceph.client.admin.keyring,options=rw queue_depth=128
+# high-iops-pool/database-volume id=admin,keyring=/etc/ceph/ceph.client.admin.keyring,options='rw,queue_depth=128'
 ```
 
 ### librbd Tuning for QEMU/KVM
@@ -564,9 +549,7 @@ time_based=1
 # Group results for clarity
 group_reporting=1
 # Collect latency statistics
-lat_target=5000
-lat_window=1000000
-lat_percentile=99.9
+percentile_list=99.9
 
 [random-read-4k]
 # Random read workload
@@ -665,7 +648,7 @@ flowchart TD
 
     F --> I[Increase iodepth]
 
-    G --> J[Increase osd_op_threads]
+    G --> J[Check OSD CPU and messenger threads]
     H --> K{Check Network}
 
     K -->|Network OK| L[Check Storage Device IOPS]
@@ -726,10 +709,11 @@ ms_type = async+posix
 ms_async_op_threads = 8
 ms_tcp_nodelay = true
 ms_tcp_rcvbuf = 16777216
-ms_tcp_sendbuf = 16777216
 
-# Enable performance monitoring
-mgr_modules = dashboard,prometheus,pg_autoscaler
+# Enable performance monitoring with:
+# ceph mgr module enable dashboard
+# ceph mgr module enable prometheus
+# ceph mgr module enable pg_autoscaler
 
 [mon]
 # Monitor data path
@@ -749,17 +733,13 @@ osd_data = /var/lib/ceph/osd/ceph-$id
 # Memory management
 # 8GB per OSD for NVMe deployments
 osd_memory_target = 8589934592
-osd_memory_cache_autotune = true
-
-# Thread configuration for high-core-count servers
-osd_op_threads = 8
-osd_disk_threads = 4
 
 # BlueStore configuration
 bluestore_cache_size = 4294967296
 bluestore_cache_autotune = true
 bluestore_cache_kv_ratio = 0.7
-# Note: data cache is implicitly 1.0 - bluestore_cache_kv_ratio; no bluestore_cache_data_ratio parameter exists
+bluestore_cache_meta_ratio = 0.2
+# Note: data cache is implicitly 1.0 - bluestore_cache_meta_ratio - bluestore_cache_kv_ratio; no bluestore_cache_data_ratio parameter exists
 
 # SSD-optimized allocation
 bluestore_min_alloc_size_ssd = 4096
@@ -823,7 +803,7 @@ groups:
       - alert: CephHighLatency
         # Average operation latency in milliseconds
         expr: |
-          (ceph_osd_op_latency_sum / ceph_osd_op_latency_count) > 10
+          (sum(rate(ceph_osd_op_latency_sum[5m])) / sum(rate(ceph_osd_op_latency_count[5m]))) * 1000 > 10
         for: 5m
         labels:
           severity: critical
@@ -844,16 +824,16 @@ sum(rate(ceph_osd_op_r[1m]))
 sum(rate(ceph_osd_op_w[1m]))
 
 # Per-OSD IOPS (useful for identifying hot spots)
-rate(ceph_osd_op_r{osd=~"osd.*"}[1m]) + rate(ceph_osd_op_w{osd=~"osd.*"}[1m])
+rate(ceph_osd_op_r{ceph_daemon=~"osd.*"}[1m]) + rate(ceph_osd_op_w{ceph_daemon=~"osd.*"}[1m])
 
 # Average read latency in milliseconds
-avg(ceph_osd_op_r_latency_sum / ceph_osd_op_r_latency_count) * 1000
+avg(rate(ceph_osd_op_r_latency_sum[1m]) / rate(ceph_osd_op_r_latency_count[1m])) * 1000
 
-# 99th percentile write latency
-histogram_quantile(0.99, rate(ceph_osd_op_w_latency_bucket[5m]))
+# Average write latency in milliseconds
+avg(rate(ceph_osd_op_w_latency_sum[1m]) / rate(ceph_osd_op_w_latency_count[1m])) * 1000
 
 # IOPS by pool
-sum by (pool) (rate(ceph_pool_rd[1m]) + rate(ceph_pool_wr[1m]))
+sum by (name) ((rate(ceph_pool_rd[1m]) + rate(ceph_pool_wr[1m])) * on(pool_id) group_left(name) ceph_pool_metadata)
 ```
 
 ## Troubleshooting IOPS Issues
@@ -873,7 +853,7 @@ flowchart TD
     B -->|High Memory| E[Cache Pressure]
     B -->|Normal| F[Check Network]
 
-    C --> G[Increase osd_op_threads]
+    C --> G[Check OSD CPU and messenger threads]
     D --> H{SSD or HDD?}
     E --> I[Increase osd_memory_target]
     F --> J{Latency or Bandwidth?}
@@ -907,8 +887,8 @@ ceph daemon osd.0 dump_historic_ops
 # Monitor PG distribution (uneven distribution hurts IOPS)
 ceph pg dump | awk '/^[0-9]/ {print $1, $15}' | sort -k2 -n
 
-# Check for blocked requests
-ceph daemon osd.0 dump_blocked_ops
+# Check current in-flight operations
+ceph daemon osd.0 ops
 
 # View BlueStore cache statistics
 ceph daemon osd.0 perf dump | jq '.bluestore'
