@@ -34,14 +34,14 @@ Now `http://localhost:8080/healthz` hits the container directly. Perfect for ste
 
 ## 2. Port-Forward to a Service
 
-When forwarding to a Service, Kubernetes routes your traffic through the Service's load balancing logic. This lets you test what clients see when they connect via the Service DNS name.
+When forwarding to a Service, `kubectl` resolves the Service to one of its backing Pods and forwards directly to that single Pod. This lets you reach a Service by name without looking up Pod names.
 
 ```bash
-# Forward local port 9000 to Service port 80 (which routes to backend Pods)
+# Forward local port 9000 to Service port 80 (mapped to the chosen Pod's target port)
 kubectl port-forward svc/payments-api 9000:80 -n dev
 ```
 
-Here Kubernetes load-balances across Pods, matching what clients see. Test sticky sessions, TLS termination, or HTTP headers locally without exposing the Service to the internet.
+Note that `port-forward` does not go through the Service's load balancing — it picks one endpoint and sends all traffic to that single Pod for the life of the session, so it won't exercise round-robin or sticky-session behavior across Pods. It's still handy for inspecting HTTP headers or responses locally without exposing the Service to the internet.
 
 ## 3. Port-Forward to Databases/Queues
 
