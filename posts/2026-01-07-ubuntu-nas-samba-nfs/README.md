@@ -122,9 +122,13 @@ sudo zfs set quota=1T nas_pool/backups
 # Enable automatic snapshots for data protection
 sudo apt install zfs-auto-snapshot -y
 
-# Configure snapshot retention policy in crontab
+# Configure snapshot retention policy in the installed cron files
 # Keep 4 15-minute, 24 hourly, 7 daily, 4 weekly, 12 monthly snapshots
-sudo systemctl enable zfs-auto-snapshot.timer
+sudo sed -i 's/--keep=[0-9]\+/--keep=4/' /etc/cron.d/zfs-auto-snapshot
+sudo sed -i 's/--keep=[0-9]\+/--keep=24/' /etc/cron.hourly/zfs-auto-snapshot
+sudo sed -i 's/--keep=[0-9]\+/--keep=7/' /etc/cron.daily/zfs-auto-snapshot
+sudo sed -i 's/--keep=[0-9]\+/--keep=4/' /etc/cron.weekly/zfs-auto-snapshot
+sudo sed -i 's/--keep=[0-9]\+/--keep=12/' /etc/cron.monthly/zfs-auto-snapshot
 ```
 
 ### Creating the Directory Structure
@@ -501,28 +505,19 @@ sudo ufw reload
 For easier firewall management with NFSv3, configure static ports.
 
 ```bash
-# Configure NFS to use static ports
-sudo tee /etc/default/nfs-kernel-server > /dev/null << 'EOF'
-# Number of NFS server threads
-RPCNFSDCOUNT=8
+# Configure NFS to use static ports on Ubuntu 22.04 and newer
+sudo tee /etc/nfs.conf.d/nas-ports.conf > /dev/null << 'EOF'
+[mountd]
+manage-gids = true
+port = 20048
 
-# Runtime priority of server
-RPCNFSDPRIORITY=0
+[statd]
+port = 32765
+outgoing-port = 32766
 
-# Options for rpc.mountd
-RPCMOUNTDOPTS="--manage-gids --port 20048"
-
-# Options for rpc.statd
-RPCSTATDOPTS="--port 32765 --outgoing-port 32766"
-
-# Options for rpc.lockd
-RPCLOCKDOPTS="--port 32803"
-
-# Options for sm-notify
-RPCSMNOTIFYOPTS=""
-
-# Enable NFSv4 (also handles v3)
-NEED_SVCGSSD=""
+[lockd]
+port = 32803
+udp-port = 32803
 EOF
 
 # Configure lockd ports
@@ -610,7 +605,7 @@ sudo smbcontrol all reload-config
 ### Samba Performance Optimization
 
 ```bash
-# Add performance settings to smb.conf [global] section
+# Add performance settings to the smb.conf [global] section
 sudo tee -a /etc/samba/smb.conf.performance > /dev/null << 'EOF'
 # Performance tuning additions for [global] section
 
@@ -640,22 +635,23 @@ sudo tee -a /etc/samba/smb.conf.performance > /dev/null << 'EOF'
    # SMB2/3 performance tuning
    server multi channel support = yes
 EOF
+
+sudo sed -i '/^#======================= Share Definitions/i\   include = /etc/samba/smb.conf.performance' /etc/samba/smb.conf
+testparm -s
+sudo smbcontrol all reload-config
 ```
 
 ### NFS Performance Optimization
 
 ```bash
 # Increase NFS server threads for better parallel performance
-sudo tee /etc/default/nfs-kernel-server > /dev/null << 'EOF'
-# Increase number of NFS daemon threads
-# Recommended: 8 threads per CPU core for busy servers
-RPCNFSDCOUNT=16
+sudo tee /etc/nfs.conf.d/nas-performance.conf > /dev/null << 'EOF'
+[nfsd]
+# Recommended starting point for busy servers; tune based on workload
+threads = 16
 
-# Priority settings
-RPCNFSDPRIORITY=0
-
-# Mount daemon options
-RPCMOUNTDOPTS="--manage-gids --port 20048"
+[mountd]
+manage-gids = true
 EOF
 
 # Restart NFS to apply changes
@@ -770,7 +766,7 @@ cat /proc/mdstat
 sudo mdadm --detail /dev/md0
 
 # Set up email alerts for RAID events
-sudo tee /etc/mdadm/mdadm.conf > /dev/null << 'EOF'
+sudo tee -a /etc/mdadm/mdadm.conf > /dev/null << 'EOF'
 MAILADDR admin@example.com
 MAILFROM nas-server@example.com
 EOF
@@ -782,8 +778,9 @@ EOF
 sudo zpool status
 
 # Enable ZFS event daemon for notifications
-sudo systemctl enable zed
-sudo systemctl start zed
+sudo apt install zfs-zed -y
+sudo systemctl enable zfs-zed
+sudo systemctl start zfs-zed
 
 # Configure ZED email notifications
 sudo tee /etc/zfs/zed.d/zed.rc > /dev/null << 'EOF'
@@ -911,6 +908,9 @@ net use
 # Install CIFS utilities
 sudo apt install cifs-utils -y
 
+# Create mount point
+sudo mkdir -p /mnt/nas
+
 # Mount Samba share temporarily
 sudo mount -t cifs //192.168.1.10/Public /mnt/nas \
     -o username=alice,uid=$(id -u),gid=$(id -g)
@@ -932,6 +932,9 @@ echo '//192.168.1.10/Public /mnt/nas cifs credentials=/root/.nas-credentials,uid
 ```bash
 # Install NFS client utilities
 sudo apt install nfs-common -y
+
+# Create mount points
+sudo mkdir -p /mnt/nas /mnt/media
 
 # Mount NFS share temporarily
 sudo mount -t nfs 192.168.1.10:/srv/nas/public /mnt/nas
@@ -958,6 +961,7 @@ mount -t smbfs //alice@192.168.1.10/Public ~/NAS
 # Enter: smb://192.168.1.10/Public
 
 # Mount NFS share
+sudo mkdir -p /Volumes/NAS
 sudo mount -t nfs -o resvport 192.168.1.10:/srv/nas/public /Volumes/NAS
 ```
 
@@ -977,6 +981,10 @@ sudo tee -a /etc/samba/smb.conf.security > /dev/null << 'EOF'
    hosts allow = 192.168.1. 127.0.0.1
    hosts deny = 0.0.0.0/0
 EOF
+
+sudo sed -i '/^#======================= Share Definitions/i\   include = /etc/samba/smb.conf.security' /etc/samba/smb.conf
+testparm -s
+sudo smbcontrol all reload-config
 ```
 
 ### Enabling Audit Logging
@@ -987,7 +995,7 @@ EOF
 
 # Example for Public share with auditing
 # [Public]
-#    vfs objects = full_audit
+#    vfs objects = fruit streams_xattr full_audit
 #    full_audit:prefix = %u|%I
 #    full_audit:success = open opendir write unlink rename mkdir rmdir chmod chown
 #    full_audit:failure = all
@@ -1011,7 +1019,7 @@ sudo tee /usr/local/bin/update-nas.sh > /dev/null << 'EOF'
 # Update NAS-related packages
 
 apt update
-apt upgrade -y samba samba-common nfs-kernel-server smartmontools
+apt install --only-upgrade -y samba samba-common nfs-kernel-server smartmontools
 systemctl restart smbd nmbd nfs-kernel-server
 echo "NAS packages updated at $(date)" >> /var/log/nas-updates.log
 EOF
@@ -1053,6 +1061,7 @@ sudo exportfs -v
 rpcinfo -p localhost
 
 # Test NFS mount from server
+sudo mkdir -p /mnt/test
 sudo mount -t nfs localhost:/srv/nas/public /mnt/test
 
 # Debug NFS with verbose mounting
