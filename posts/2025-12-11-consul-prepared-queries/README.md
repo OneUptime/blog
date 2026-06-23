@@ -33,7 +33,7 @@ graph TB
 
 ## 1. Create a Basic Prepared Query
 
-Create queries using the HTTP API or CLI.
+Create queries using the HTTP API or Terraform.
 
 ```bash
 # Create a prepared query via API
@@ -53,17 +53,15 @@ curl --request POST \
 # {"ID":"8f246b77-f3e1-ff88-5b48-8ec93abf3e05"}
 ```
 
-Or use HCL configuration:
+Or manage it with the HashiCorp Consul Terraform provider:
 
 ```hcl
 # prepared-queries.hcl
-query {
-  name = "api-query"
-  service {
-    service = "api"
-    only_passing = true
-    near = "_agent"
-  }
+resource "consul_prepared_query" "api_query" {
+  name         = "api-query"
+  service      = "api"
+  only_passing = true
+  near         = "_agent"
 }
 ```
 
@@ -231,13 +229,14 @@ dig @127.0.0.1 -p 8600 api-query.query.consul SRV
 ## 7. Python Client for Prepared Queries
 
 ```python
-import consul
 import random
-from typing import List, Dict, Optional
+from typing import List, Dict
+
+import requests
 
 class PreparedQueryClient:
     def __init__(self, consul_host='localhost', consul_port=8500):
-        self.consul = consul.Consul(host=consul_host, port=consul_port)
+        self.base_url = f"http://{consul_host}:{consul_port}"
 
     def create_query(
         self,
@@ -269,7 +268,9 @@ class PreparedQueryClient:
             if failover_dcs:
                 query_def['Service']['Failover']['Datacenters'] = failover_dcs
 
-        result = self.consul.query.create(query_def)
+        response = requests.post(f"{self.base_url}/v1/query", json=query_def)
+        response.raise_for_status()
+        result = response.json()
         return result['ID']
 
     def execute_query(
@@ -285,7 +286,12 @@ class PreparedQueryClient:
         if limit:
             params['limit'] = limit
 
-        index, result = self.consul.query.execute(name_or_id, **params)
+        response = requests.get(
+            f"{self.base_url}/v1/query/{name_or_id}/execute",
+            params=params
+        )
+        response.raise_for_status()
+        result = response.json()
 
         instances = []
         for node in result.get('Nodes', []):
@@ -312,12 +318,15 @@ class PreparedQueryClient:
 
     def list_queries(self) -> List[Dict]:
         """List all prepared queries."""
-        queries = self.consul.query.list()
-        return queries
+        response = requests.get(f"{self.base_url}/v1/query")
+        response.raise_for_status()
+        return response.json()
 
     def delete_query(self, query_id: str) -> bool:
         """Delete a prepared query."""
-        return self.consul.query.delete(query_id)
+        response = requests.delete(f"{self.base_url}/v1/query/{query_id}")
+        response.raise_for_status()
+        return True
 
 # Usage
 client = PreparedQueryClient()
@@ -388,7 +397,7 @@ func (c *PreparedQueryClient) CreateQuery(
     }
 
     if len(failoverDCs) > 0 || nearestN > 0 {
-        query.Service.Failover = api.QueryDatacenterOptions{
+        query.Service.Failover = api.QueryFailoverOptions{
             NearestN:    nearestN,
             Datacenters: failoverDCs,
         }
