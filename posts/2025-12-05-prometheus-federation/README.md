@@ -283,7 +283,8 @@ spec:
   selector:
     app: prometheus
   ports:
-    - port: 9090
+    - name: web
+      port: 9090
       targetPort: 9090
   type: ClusterIP
 ```
@@ -337,8 +338,8 @@ Monitor what you're federating:
 # Check cardinality of federated metrics
 count({job="federate-dc1"})
 
-# Check scrape duration
-prometheus_target_scrape_pool_sync_total{scrape_job="federate-dc1"}
+# Check number of samples scraped per federation scrape
+scrape_samples_scraped{job="federate-dc1"}
 ```
 
 ### Memory Usage
@@ -378,7 +379,7 @@ scrape_samples_scraped{job="federate-dc1"}
 
 ### Debug Missing Metrics
 
-```promql
+```bash
 # Check if metric exists at source
 curl 'http://source-prometheus:9090/api/v1/query?query=up'
 
