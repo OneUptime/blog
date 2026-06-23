@@ -50,7 +50,7 @@ go get go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgr
 
 ### Initializing the Tracer Provider
 
-This code sets up the OpenTelemetry tracer provider with an OTLP exporter that sends traces to a collector (like Jaeger, Zipkin, or OneUptime):
+This code sets up the OpenTelemetry tracer provider with an OTLP exporter that sends traces to an OpenTelemetry Collector or OTLP-compatible backend:
 
 ```go
 package tracing
@@ -64,25 +64,18 @@ import (
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // InitTracer initializes the OpenTelemetry tracer provider
 // serviceName identifies this service in traces
 // collectorEndpoint is the OTLP collector address (e.g., "localhost:4317")
 func InitTracer(ctx context.Context, serviceName, collectorEndpoint string) (*sdktrace.TracerProvider, error) {
-    // Create a gRPC connection to the collector
-    conn, err := grpc.NewClient(collectorEndpoint,
-        grpc.WithTransportCredentials(insecure.NewCredentials()),
-    )
-    if err != nil {
-        return nil, err
-    }
-
     // Create the OTLP trace exporter
-    exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+    exporter, err := otlptracegrpc.New(ctx,
+        otlptracegrpc.WithEndpoint(collectorEndpoint),
+        otlptracegrpc.WithInsecure(),
+    )
     if err != nil {
         return nil, err
     }
@@ -288,7 +281,7 @@ func (c *TracedHTTPClient) CallInventoryService(ctx context.Context, productID s
     }
     defer resp.Body.Close()
 
-    span.SetAttributes(attribute.Int("http.status_code", resp.StatusCode))
+    span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
 
     return io.ReadAll(resp.Body)
 }
@@ -326,7 +319,7 @@ func ExtractTraceContext(ctx context.Context, req *http.Request) context.Context
 
 ### Setting Up gRPC Server with Tracing
 
-gRPC uses interceptors for middleware functionality. The otelgrpc package provides interceptors that handle trace context automatically:
+gRPC instrumentation can use a stats handler for middleware functionality. The otelgrpc package provides handlers that handle trace context automatically:
 
 ```go
 package main
@@ -514,7 +507,6 @@ import (
     "github.com/IBM/sarama"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -578,8 +570,7 @@ func (p *TracedKafkaProducer) SendMessage(ctx context.Context, topic string, key
         trace.WithSpanKind(trace.SpanKindProducer),
         trace.WithAttributes(
             attribute.String("messaging.system", "kafka"),
-            attribute.String("messaging.destination", topic),
-            attribute.String("messaging.destination_kind", "topic"),
+            attribute.String("messaging.destination.name", topic),
         ),
     )
     defer span.End()
@@ -616,6 +607,14 @@ type TracedKafkaConsumer struct {
     tracer   trace.Tracer
 }
 
+// NewTracedKafkaConsumer creates a traced Kafka consumer wrapper
+func NewTracedKafkaConsumer(consumer sarama.Consumer) *TracedKafkaConsumer {
+    return &TracedKafkaConsumer{
+        consumer: consumer,
+        tracer:   otel.Tracer("kafka-consumer"),
+    }
+}
+
 // ProcessMessage extracts trace context and processes a Kafka message
 func (c *TracedKafkaConsumer) ProcessMessage(msg *sarama.ConsumerMessage, handler func(context.Context, []byte) error) error {
     // Extract trace context from message headers
@@ -632,7 +631,7 @@ func (c *TracedKafkaConsumer) ProcessMessage(msg *sarama.ConsumerMessage, handle
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "kafka"),
-            attribute.String("messaging.source", msg.Topic),
+            attribute.String("messaging.destination.name", msg.Topic),
             attribute.Int64("messaging.kafka.partition", int64(msg.Partition)),
             attribute.Int64("messaging.kafka.offset", msg.Offset),
         ),
@@ -662,7 +661,6 @@ import (
     amqp "github.com/rabbitmq/amqp091-go"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -719,8 +717,8 @@ func (p *TracedRabbitMQPublisher) Publish(ctx context.Context, exchange, routing
         trace.WithSpanKind(trace.SpanKindProducer),
         trace.WithAttributes(
             attribute.String("messaging.system", "rabbitmq"),
-            attribute.String("messaging.destination", exchange),
-            attribute.String("messaging.rabbitmq.routing_key", routingKey),
+            attribute.String("messaging.destination.name", exchange),
+            attribute.String("messaging.rabbitmq.destination.routing_key", routingKey),
         ),
     )
     defer span.End()
@@ -763,8 +761,8 @@ func (c *TracedRabbitMQConsumer) ProcessDelivery(d amqp.Delivery, handler func(c
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "rabbitmq"),
-            attribute.String("messaging.source", d.Exchange),
-            attribute.String("messaging.rabbitmq.routing_key", d.RoutingKey),
+            attribute.String("messaging.destination.name", d.Exchange),
+            attribute.String("messaging.rabbitmq.destination.routing_key", d.RoutingKey),
         ),
     )
     defer span.End()
@@ -979,8 +977,8 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 func (s *OrderServer) saveOrder(ctx context.Context, orderID string, req *pb.CreateOrderRequest) error {
     _, span := s.tracer.Start(ctx, "save-order-to-database",
         trace.WithAttributes(
-            attribute.String("db.system", "postgresql"),
-            attribute.String("db.operation", "INSERT"),
+            attribute.String("db.system.name", "postgresql"),
+            attribute.String("db.operation.name", "INSERT"),
         ),
     )
     defer span.End()
@@ -1143,9 +1141,7 @@ func main() {
     }
     defer partitionConsumer.Close()
 
-    tracedConsumer := &kafka.TracedKafkaConsumer{
-        tracer: otel.Tracer("kafka-consumer"),
-    }
+    tracedConsumer := kafka.NewTracedKafkaConsumer(consumer)
 
     log.Println("Notification Service starting, consuming from order-events topic")
 
@@ -1187,9 +1183,9 @@ span.SetAttributes(
     attribute.Float64("order.total", 299.99),
 
     // Technical context
-    attribute.String("db.system", "postgresql"),
-    attribute.String("db.operation", "SELECT"),
-    attribute.Int("http.status_code", 200),
+    attribute.String("db.system.name", "postgresql"),
+    attribute.String("db.operation.name", "SELECT"),
+    attribute.Int("http.response.status_code", 200),
 )
 ```
 
