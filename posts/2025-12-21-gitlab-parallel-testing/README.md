@@ -167,7 +167,7 @@ This creates 6 jobs: Node 18 on Ubuntu, Node 18 on Alpine, Node 20 on Ubuntu, an
 
 ## Combining Parallel and Matrix
 
-Combine parallel instances with matrix for comprehensive testing.
+The `parallel` keyword is either an integer or a `matrix` - you cannot nest a numeric `parallel` inside a `parallel:matrix`, and `CI_NODE_TOTAL`/`CI_NODE_INDEX` are set by GitLab and cannot be overridden through `variables`. To shard each matrix variant, add the shard as its own matrix dimension.
 
 ```yaml
 test:
@@ -175,13 +175,12 @@ test:
   parallel:
     matrix:
       - NODE_VERSION: ["18", "20"]
+        SHARD: ["1", "2", "3"]
   image: node:$NODE_VERSION
   script:
     - npm ci
-    # Each matrix variant also gets 3 parallel instances
-    - npm test -- --shard=$CI_NODE_INDEX/3
-  variables:
-    CI_NODE_TOTAL: 3
+    # Two Node versions times three shards = six jobs
+    - npm test -- --shard=$SHARD/3
 ```
 
 ## Time-Based Test Splitting
@@ -189,29 +188,26 @@ test:
 For more balanced distribution, split tests based on historical run times.
 
 ```yaml
-# Store test timing data
+# Split tests by historical run time with pytest-split
 test:
   stage: test
+  image: python:3.11
   parallel: 4
+  before_script:
+    - pip install pytest pytest-split
   script:
-    - npm ci
-    # Use timing data if available
-    - |
-      if [ -f test-times.json ]; then
-        npm test -- --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL --timing-file=test-times.json
-      else
-        npm test -- --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL
-      fi
-    # Save timing data for next run
-    - npm test -- --save-timing=test-times.json || true
+    # pytest-split balances the groups using .test_durations when it is
+    # present, and falls back to an even split when it is missing.
+    # Generate the file periodically with: pytest --store-durations
+    - pytest --splits $CI_NODE_TOTAL --group $CI_NODE_INDEX --durations-path .test_durations
   artifacts:
     paths:
-      - test-times.json
+      - .test_durations
     expire_in: 1 week
   cache:
     key: test-timing
     paths:
-      - test-times.json
+      - .test_durations
 ```
 
 ## Merging Test Results
@@ -243,8 +239,10 @@ merge_coverage:
   stage: report
   script:
     - npm install -g nyc
-    - npx nyc merge coverage/ merged-coverage/
-    - npx nyc report --reporter=html --reporter=text -t merged-coverage/
+    # nyc merge writes a single combined file; nyc report reads it from a temp dir
+    - mkdir -p merged-coverage
+    - npx nyc merge coverage/ merged-coverage/coverage.json
+    - npx nyc report --reporter=html --reporter=text -t merged-coverage/ --report-dir=coverage-report
   coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
   artifacts:
     paths:
@@ -422,8 +420,10 @@ coverage_report:
   stage: report
   script:
     - npm install -g nyc
-    - npx nyc merge coverage/ .nyc_output/
-    - npx nyc report --reporter=html --reporter=text-summary
+    # nyc merge writes a single combined file into the default .nyc_output temp dir
+    - mkdir -p .nyc_output
+    - npx nyc merge coverage/ .nyc_output/out.json
+    - npx nyc report --reporter=html --reporter=text-summary --report-dir=coverage-report
   coverage: '/Statements\s*:\s*(\d+\.?\d*)%/'
   artifacts:
     paths:
