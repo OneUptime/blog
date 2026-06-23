@@ -85,10 +85,10 @@ A media company decides to implement:
 **Cost Addition:**
 
 - **APM:** 50 instrumented hosts x $31/host = $1,550/month
-- **RUM:** 10 million events x $0.01/event = $100,000/month
-- **Synthetic Tests:** 1,000,000 API tests x $0.0007/test = $700/month
+- **RUM:** 10 million sessions x $0.0015/session = $15,000/month
+- **Synthetic Tests:** 1,000,000 API tests x $0.0005/test = $500/month
 
-**Total Premium Features Cost:** $102,250/month
+**Total Premium Features Cost:** $17,050/month
 
 These features provide valuable insights but can drastically increase expenses if not carefully managed.
 
